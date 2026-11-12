@@ -18,9 +18,9 @@ import {
   BOXTAL_HTTP_TIMEOUT_MS,
   BUDGET_EXHAUSTED_STATUS,
   budgetExhaustedMessage,
+  type Deadline,
   makeDeadline,
   timeoutHints,
-  type Deadline,
 } from "./http-budget"
 
 export type BoxtalEnvironment = "sandbox" | "production"
@@ -58,7 +58,8 @@ export function describeV3Error(body: string): string {
       ...(parsed.messages ?? []).map((m) => m?.text),
       ...(parsed.errors ?? []).map((e) => e?.message ?? e?.code),
     ].filter((t): t is string => typeof t === "string" && t !== "")
-    text = parts.length > 0 ? parts.join("; ") : typeof parsed.message === "string" ? parsed.message : ""
+    text =
+      parts.length > 0 ? parts.join("; ") : typeof parsed.message === "string" ? parsed.message : ""
   } catch {
     text = body.replace(/<[^>]*>/g, " ")
   }
@@ -278,10 +279,7 @@ export class BoxtalV3Client {
   async cancel(id: string): Promise<{ order_status: "CANCELLED" }> {
     // Boxtal returns the order with status CANCELLED on a successful delete;
     // the local link row is always flipped to CANCELLED regardless.
-    await this.request(
-      "DELETE",
-      `/shipping/v3.1/shipping-order/${encodeURIComponent(id)}`,
-    )
+    await this.request("DELETE", `/shipping/v3.1/shipping-order/${encodeURIComponent(id)}`)
     return { order_status: "CANCELLED" }
   }
 
@@ -313,7 +311,11 @@ export class BoxtalV3Client {
       "POST",
       "/shipping/v3.1/subscription",
       {
-        body: { eventType: input.eventType, callbackUrl: input.callbackUrl, webhookSecret: placeholder },
+        body: {
+          eventType: input.eventType,
+          callbackUrl: input.callbackUrl,
+          webhookSecret: placeholder,
+        },
         configSecrets: { [placeholder]: input.webhookSecretConfigKey },
       },
     )
@@ -339,16 +341,16 @@ export class BoxtalV3Client {
     await this.request(
       "PUT",
       `/shipping/v3.1/subscription/${encodeURIComponent(id)}/webhook-secret`,
-      { body: { webhookSecret: placeholder }, configSecrets: { [placeholder]: webhookSecretConfigKey } },
+      {
+        body: { webhookSecret: placeholder },
+        configSecrets: { [placeholder]: webhookSecretConfigKey },
+      },
     )
   }
 
   /** DELETE /shipping/v3.1/subscription/{id} */
   async deleteSubscription(id: string): Promise<void> {
-    await this.request(
-      "DELETE",
-      `/shipping/v3.1/subscription/${encodeURIComponent(id)}`,
-    )
+    await this.request("DELETE", `/shipping/v3.1/subscription/${encodeURIComponent(id)}`)
   }
 
   /** Pure helpers exported for reuse by the shipment orchestrator (Task 12). */
@@ -632,9 +634,7 @@ function normalizeTracking(pkgs: RawTrackingPackage[]): NormalizedTracking {
   }
 }
 
-function buildQuery(
-  query: Record<string, string | number | undefined>,
-): string {
+function buildQuery(query: Record<string, string | number | undefined>): string {
   const parts: string[] = []
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined) continue

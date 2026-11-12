@@ -33,7 +33,10 @@ export interface StreamsCtx {
 }
 
 const ENTITY = "stripe_streams"
-const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+const fail = (code: string, message: string): ErrorEnvelope => ({
+  status: "error",
+  error: { code, message },
+})
 
 /** A timestamp column read back as an ISO string, whether the store hands text or a Date. */
 export function isoOf(v: unknown): string | null {
@@ -45,7 +48,9 @@ export function isoOf(v: unknown): string | null {
 /** The issuer a French profile is offered first, and why; others are offered nothing. */
 export function suggestedIssuer(profile: Row): { issuer: "liaison"; why: string } | null {
   const country = String(profile.country ?? "").toUpperCase()
-  const vat = String(profile.vat_id ?? "").toUpperCase().replace(/\s/g, "")
+  const vat = String(profile.vat_id ?? "")
+    .toUpperCase()
+    .replace(/\s/g, "")
   if (country === "FR" || vat.startsWith("FR")) {
     return {
       issuer: "liaison",
@@ -96,12 +101,17 @@ export async function ensureCardStreams(ctx: StreamsCtx, connected: boolean): Pr
     if (p.archived_at) continue
     const row = rows.find((r) => r.issuer_profile_id === p.id)
     if (row) {
-      if (row.stripe_connected !== connected) await ctx.db.update(ENTITY, String(row.id), { stripe_connected: connected })
+      if (row.stripe_connected !== connected)
+        await ctx.db.update(ENTITY, String(row.id), { stripe_connected: connected })
       continue
     }
     if (!connected) continue
     try {
-      const created = (await ctx.db.insert(ENTITY, { issuer_profile_id: p.id, issuer: "undecided", stripe_connected: true })) as Row
+      const created = (await ctx.db.insert(ENTITY, {
+        issuer_profile_id: p.id,
+        issuer: "undecided",
+        stripe_connected: true,
+      })) as Row
       fresh.push({ ...created, issuer_profile_id: p.id, issuer: "undecided", profile: p })
     } catch {
       // A concurrent delivery created it first (unique per issuer profile).
@@ -131,7 +141,10 @@ export async function stageIssuerCard(ctx: StreamsCtx, profile: Row): Promise<st
         "Nothing is issued for card payments until this is decided. Check the choice with your accountant.",
       ],
     },
-    current_payload: { issuerProfileId: String(profile.id), ...(pick ? { issuer: pick.issuer } : {}) },
+    current_payload: {
+      issuerProfileId: String(profile.id),
+      ...(pick ? { issuer: pick.issuer } : {}),
+    },
     editable_fields: ["issuer"],
   })
   const id = approval.approval_id ?? null
@@ -147,7 +160,9 @@ export interface StripeEmails {
 export function stripeEmailsOf(row: Row | null): StripeEmails {
   const by = typeof row?.emails_confirmed_by === "string" ? row.emails_confirmed_by : null
   const at = isoOf(row?.emails_confirmed_at)
-  return by && at ? { state: "confirmed", confirmedBy: by, confirmedAt: at } : { state: "unknown", confirmedBy: null, confirmedAt: null }
+  return by && at
+    ? { state: "confirmed", confirmedBy: by, confirmedAt: at }
+    : { state: "unknown", confirmedBy: null, confirmedAt: null }
 }
 
 /** One issuer profile's streams, as `issuer_stream_get` returns them and the settings section shows. */
@@ -171,7 +186,11 @@ function standingView(row: Row | null): StandingView {
   }
 }
 
-export function streamsOf(profile: Row, card: Row | null, standing: { card?: Row | null; transfer?: Row | null } = {}) {
+export function streamsOf(
+  profile: Row,
+  card: Row | null,
+  standing: { card?: Row | null; transfer?: Row | null } = {},
+) {
   const cardStream =
     card && card.stripe_connected === true
       ? [
@@ -193,7 +212,12 @@ export function streamsOf(profile: Row, card: Row | null, standing: { card?: Row
     country: typeof profile.country === "string" ? profile.country : null,
     streams: [
       ...cardStream,
-      { stream: "transfer" as const, issuer: "liaison" as const, notBilledFromStripe: true, standing: standingView(standing.transfer ?? null) },
+      {
+        stream: "transfer" as const,
+        issuer: "liaison" as const,
+        notBilledFromStripe: true,
+        standing: standingView(standing.transfer ?? null),
+      },
       { stream: "one_off" as const, issuer: "liaison" as const, notBilledFromStripe: true },
     ],
     stripe_emails: cardStream.length > 0 ? stripeEmailsOf(card) : null,
@@ -205,7 +229,10 @@ export async function issuerStreamGet(ctx: StreamsCtx, input: { issuerProfileId?
     (p) => !p.archived_at && (!input.issuerProfileId || p.id === input.issuerProfileId),
   )
   if (input.issuerProfileId && profiles.length === 0) {
-    return fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}. List them with settings_issuer_profile_list.`)
+    return fail(
+      "issuer_not_found",
+      `No issuer profile ${input.issuerProfileId}. List them with settings_issuer_profile_list.`,
+    )
   }
   const rows = await streamRows(ctx)
   const einv = ctx as unknown as EinvCtx
@@ -231,7 +258,13 @@ export async function issuerStreamGet(ctx: StreamsCtx, input: { issuerProfileId?
 /** Who issues card payments' invoices for the org, for the Stripe app's refunds (hidden tool). */
 export async function cardStreamIssuer(ctx: Pick<StreamsCtx, "db">) {
   const rows = (await streamRows(ctx)).filter((r) => r.stripe_connected === true)
-  const issuer = rows.some((r) => r.issuer === "liaison") ? "liaison" : rows.some((r) => r.issuer === "stripe") ? "stripe" : rows.length ? "undecided" : null
+  const issuer = rows.some((r) => r.issuer === "liaison")
+    ? "liaison"
+    : rows.some((r) => r.issuer === "stripe")
+      ? "stripe"
+      : rows.length
+        ? "undecided"
+        : null
   return { issuer }
 }
 
@@ -242,7 +275,9 @@ async function decider(ctx: StreamsCtx): Promise<string> {
 async function actingAgent(ctx: StreamsCtx): Promise<string | null> {
   try {
     const raw: unknown = ctx.turn ? await ctx.turn.get() : null
-    const t = (typeof raw === "string" ? JSON.parse(raw) : raw) as { agentId?: string | null } | null
+    const t = (typeof raw === "string" ? JSON.parse(raw) : raw) as {
+      agentId?: string | null
+    } | null
     return t?.agentId ?? null
   } catch {
     // An unreadable turn is treated as an agent's: the person still decides.
@@ -253,16 +288,26 @@ async function actingAgent(ctx: StreamsCtx): Promise<string | null> {
 /** Invoices made from Stripe payments that are still unpaid: what a switch leaves behind. */
 async function unpaidStripeDocuments(ctx: StreamsCtx, issuerProfileId: string): Promise<number> {
   const rows = (await ctx.db.findMany("documents", {
-    where: { issuer_profile_id: issuerProfileId, type: "invoice", payment_status: { in: ["unpaid", "partial"] } },
+    where: {
+      issuer_profile_id: issuerProfileId,
+      type: "invoice",
+      payment_status: { in: ["unpaid", "partial"] },
+    },
     limit: 500,
   })) as Row[]
-  return rows.filter((d) => typeof d.external_ref === "string" && d.external_ref.startsWith("stripe:")).length
+  return rows.filter(
+    (d) => typeof d.external_ref === "string" && d.external_ref.startsWith("stripe:"),
+  ).length
 }
 
 /** The profile and its connected card stream, or why there is none. Read-only. */
-async function cardStreamOf(ctx: StreamsCtx, issuerProfileId: string): Promise<{ profile: Row; row: Row } | ErrorEnvelope> {
+async function cardStreamOf(
+  ctx: StreamsCtx,
+  issuerProfileId: string,
+): Promise<{ profile: Row; row: Row } | ErrorEnvelope> {
   const profile = (await ctx.db.findOne("issuer_profiles", issuerProfileId)) as Row | null
-  if (!profile) return fail("issuer_not_found", `No issuer profile ${issuerProfileId}; nothing was changed.`)
+  if (!profile)
+    return fail("issuer_not_found", `No issuer profile ${issuerProfileId}; nothing was changed.`)
   const row = (await streamRows(ctx)).find((r) => r.issuer_profile_id === issuerProfileId) ?? null
   if (!row || row.stripe_connected !== true) {
     return fail(
@@ -274,23 +319,37 @@ async function cardStreamOf(ctx: StreamsCtx, issuerProfileId: string): Promise<{
 }
 
 /** Stage-time check of issuer_stream_set: a card stream exists to decide. The pick itself is the person's, on the card. */
-export async function issuerStreamSetPreflight(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string; issuer?: string; einvoiceStanding?: boolean }) {
+export async function issuerStreamSetPreflight(
+  ctx: StreamsCtx,
+  input: { issuerProfileId: string; stream?: string; issuer?: string; einvoiceStanding?: boolean },
+) {
   if (typeof input.einvoiceStanding === "boolean" && input.issuer === undefined) {
     if (input.stream !== "card" && input.stream !== "transfer") {
-      return fail("stream_not_authorizable", "A standing e-invoice authorization is for the card or transfer stream; one-off invoices always have a person at issue. Nothing was staged.")
+      return fail(
+        "stream_not_authorizable",
+        "A standing e-invoice authorization is for the card or transfer stream; one-off invoices always have a person at issue. Nothing was staged.",
+      )
     }
     const profile = await ctx.db.findOne("issuer_profiles", input.issuerProfileId)
-    return profile ? { ok: true } : fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was staged.`)
+    return profile
+      ? { ok: true }
+      : fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was staged.`)
   }
   if (input.stream && input.stream !== "card") {
-    return fail("stream_not_choosable", "Only card subscriptions on Stripe have a choice of issuer; transfer and one-off invoices are always Liaison's. Nothing was staged.")
+    return fail(
+      "stream_not_choosable",
+      "Only card subscriptions on Stripe have a choice of issuer; transfer and one-off invoices are always Liaison's. Nothing was staged.",
+    )
   }
   const found = await cardStreamOf(ctx, input.issuerProfileId)
   return "status" in found ? found : { ok: true }
 }
 
 /** Stage-time check of issuer_emails_confirm: a card stream exists to confirm. */
-export async function issuerEmailsConfirmPreflight(ctx: StreamsCtx, input: { issuerProfileId: string }) {
+export async function issuerEmailsConfirmPreflight(
+  ctx: StreamsCtx,
+  input: { issuerProfileId: string },
+) {
   const found = await cardStreamOf(ctx, input.issuerProfileId)
   return "status" in found ? found : { ok: true }
 }
@@ -299,7 +358,8 @@ export async function issuerStreamSet(
   ctx: StreamsCtx,
   input: { issuerProfileId: string; stream?: string; issuer?: string; einvoiceStanding?: boolean },
 ) {
-  if (typeof input.einvoiceStanding === "boolean" && input.issuer === undefined) return standingSet(ctx, input)
+  if (typeof input.einvoiceStanding === "boolean" && input.issuer === undefined)
+    return standingSet(ctx, input)
   if (input.stream && input.stream !== "card") {
     return fail(
       "stream_not_choosable",
@@ -340,7 +400,12 @@ export async function issuerStreamSet(
       entity: "stripe_stream",
       action: "switched",
       entityId: String(row.id),
-      data: { issuer_profile_id: input.issuerProfileId, issuer: input.issuer, previous: before, unpaid },
+      data: {
+        issuer_profile_id: input.issuerProfileId,
+        issuer: input.issuer,
+        previous: before,
+        unpaid,
+      },
     })
   }
   const who = input.issuer === "liaison" ? "Liaison" : "Stripe"
@@ -356,7 +421,10 @@ export async function issuerStreamSet(
 }
 
 /** The card stream's standing e-invoice authorization, as issuer_stream_set reports it. */
-async function cardStanding(ctx: StreamsCtx, issuerProfileId: string): Promise<{ einvoiceStanding: boolean; standingUntil: string | null }> {
+async function cardStanding(
+  ctx: StreamsCtx,
+  issuerProfileId: string,
+): Promise<{ einvoiceStanding: boolean; standingUntil: string | null }> {
   const live = await standingOf(ctx as unknown as EinvCtx, issuerProfileId, "card")
   return { einvoiceStanding: live !== null, standingUntil: live ? untilDay(live) : null }
 }
@@ -365,7 +433,10 @@ async function cardStanding(ctx: StreamsCtx, issuerProfileId: string): Promise<{
  * The standing e-invoice authorization of the card or transfer stream (einvoicing/standing.ts).
  * On: only inside a person's approval, which mints the stream's grant. Off: at once.
  */
-async function standingSet(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string; einvoiceStanding?: boolean }) {
+async function standingSet(
+  ctx: StreamsCtx,
+  input: { issuerProfileId: string; stream?: string; einvoiceStanding?: boolean },
+) {
   const stream = input.stream
   if (stream !== "card" && stream !== "transfer") {
     return fail(
@@ -374,16 +445,25 @@ async function standingSet(ctx: StreamsCtx, input: { issuerProfileId: string; st
     )
   }
   const profile = (await ctx.db.findOne("issuer_profiles", input.issuerProfileId)) as Row | null
-  if (!profile) return fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was changed.`)
+  if (!profile)
+    return fail(
+      "issuer_not_found",
+      `No issuer profile ${input.issuerProfileId}; nothing was changed.`,
+    )
   const einv = ctx as unknown as EinvCtx
-  if (input.einvoiceStanding === false) return einvoiceStandingOff(einv, { issuerProfileId: input.issuerProfileId, stream })
+  if (input.einvoiceStanding === false)
+    return einvoiceStandingOff(einv, { issuerProfileId: input.issuerProfileId, stream })
   const on = await standingOn(einv, input.issuerProfileId, stream)
   if (!("ok" in on)) return on
   const live = await standingOf(einv, input.issuerProfileId, stream)
   const label = stream === "card" ? "card subscriptions" : "recurring by transfer"
   return {
     status: "completed" as const,
-    issuer: stream === "card" ? ((((await streamRows(ctx)).find((r) => r.issuer_profile_id === input.issuerProfileId)?.issuer as StreamIssuer | undefined) ?? "undecided")) : "liaison",
+    issuer:
+      stream === "card"
+        ? (((await streamRows(ctx)).find((r) => r.issuer_profile_id === input.issuerProfileId)
+            ?.issuer as StreamIssuer | undefined) ?? "undecided")
+        : "liaison",
     effectiveAt: isoOf(live?.turned_on_at),
     einvoiceStanding: true,
     standingUntil: on.until,
@@ -418,7 +498,8 @@ export async function issuerEmailsConfirm(ctx: StreamsCtx, input: { issuerProfil
     return {
       status: "pending_approval" as const,
       approval_id: approval?.approval_id ?? null,
-      message: "Nothing was recorded: only a person who checked Stripe's settings can confirm the emails are off, so this waits for them.",
+      message:
+        "Nothing was recorded: only a person who checked Stripe's settings can confirm the emails are off, so this waits for them.",
     }
   }
   const by = await decider(ctx)

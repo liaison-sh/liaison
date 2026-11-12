@@ -6,9 +6,10 @@
 // recipient) AND a carrier offer must be picked before the submit posts to the
 // approval gate. Restyled onto the shared Boxtal kit so it reads identically to
 // the invoicing editor: quiet cards, one accent, tabular figures, real fields.
-import { type Component, createSignal, For, onMount, Show } from "solid-js"
-import { app } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app } from "@liaison/host"
+import { type Component, createSignal, For, onMount, Show } from "solid-js"
 import {
   Button,
   Card,
@@ -240,7 +241,11 @@ export const CreateDraft: Component<{ entityId?: string; documentRef?: string }>
               </p>
               <Show when={note()?.isError ? note() : null}>
                 {(n) => (
-                  <p data-testid="boxtal-create-load-error" role="alert" class="max-w-xs text-[12px] text-error">
+                  <p
+                    data-testid="boxtal-create-load-error"
+                    role="alert"
+                    class="max-w-xs text-[12px] text-error"
+                  >
                     {n().text}
                   </p>
                 )}
@@ -252,7 +257,7 @@ export const CreateDraft: Component<{ entityId?: string; documentRef?: string }>
             <div class="flex flex-col gap-4">
               {/* Gate A — unresolved lines block the whole flow. */}
               <Show when={d().unresolved.length > 0}>
-                <Card class="border-warning-border bg-warning-glow p-4" >
+                <Card class="border-warning-border bg-warning-glow p-4">
                   <div data-testid="boxtal-unresolved-block" class="flex flex-col gap-2.5">
                     <SectionLabel class="text-warning">
                       {d().unresolved.length} line{d().unresolved.length === 1 ? "" : "s"} need a
@@ -413,7 +418,9 @@ export const CreateDraft: Component<{ entityId?: string; documentRef?: string }>
                               key: "description",
                               header: "Description",
                               role: "anchor",
-                              cell: (a) => <span class={cx(a.blocked && "text-warning")}>{a.description}</span>,
+                              cell: (a) => (
+                                <span class={cx(a.blocked && "text-warning")}>{a.description}</span>
+                              ),
                             },
                             {
                               key: "qty",

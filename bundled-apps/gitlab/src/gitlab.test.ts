@@ -41,7 +41,8 @@ describe("manifest", () => {
       MANIFEST.provisioning.verify,
     ]
     expect(names.length).toBe(16)
-    for (const name of names) expect(typeof (handlers as Record<string, unknown>)[name]).toBe("function")
+    for (const name of names)
+      expect(typeof (handlers as Record<string, unknown>)[name]).toBe("function")
   })
 
   it("never lets app code read the token: the group is the only readable field", () => {
@@ -61,21 +62,30 @@ describe("tools", () => {
     const ctx = fakeCtx({
       routes: {
         "/groups/acme/projects?per_page=50&include_subgroups=true&simple=true": json([
-          { id: 7, path_with_namespace: "acme/manuals", web_url: "https://gitlab.com/acme/manuals", default_branch: "main" },
+          {
+            id: 7,
+            path_with_namespace: "acme/manuals",
+            web_url: "https://gitlab.com/acme/manuals",
+            default_branch: "main",
+          },
         ]),
       },
     })
     expect(await gitlabListProjects({}, asCtx(ctx))).toEqual({
-      projects: [{ id: 7, path: "acme/manuals", url: "https://gitlab.com/acme/manuals", defaultBranch: "main" }],
+      projects: [
+        {
+          id: 7,
+          path: "acme/manuals",
+          url: "https://gitlab.com/acme/manuals",
+          defaultBranch: "main",
+        },
+      ],
     })
     expect(ctx.calls.map((c) => c.auth)).toEqual([AUTH])
   })
 
   it("answers not_connected without any call when there is no connection", async () => {
-    for (const settings of [
-      "throws" as const,
-      { values: {}, missing: ["token", "group"] },
-    ]) {
+    for (const settings of ["throws" as const, { values: {}, missing: ["token", "group"] }]) {
       const ctx = fakeCtx({ settings })
       expect(await gitlabListProjects({}, asCtx(ctx))).toEqual({
         error: { code: "not_connected", message: "No GitLab connection for this organization." },
@@ -94,8 +104,13 @@ describe("tools", () => {
   })
 
   it("follows x-next-page and says truncated past its page cap", async () => {
-    const page = (n: number) => json([{ iid: n, title: `#${n}`, author: { username: "a" }, assignees: [] }], { "x-next-page": String(n + 1) })
-    const routes: Record<string, ReturnType<typeof json>> = { "/projects/9/issues?per_page=100": page(1) }
+    const page = (n: number) =>
+      json([{ iid: n, title: `#${n}`, author: { username: "a" }, assignees: [] }], {
+        "x-next-page": String(n + 1),
+      })
+    const routes: Record<string, ReturnType<typeof json>> = {
+      "/projects/9/issues?per_page=100": page(1),
+    }
     for (let n = 2; n <= 11; n++) routes[`/projects/9/issues?per_page=100&page=${n}`] = page(n)
     const out = (await gitlabListIssues({ project: "9" }, asCtx(fakeCtx({ routes })))) as {
       issues: unknown[]
@@ -109,7 +124,11 @@ describe("tools", () => {
     const text = "line 1 é\nkey glpat-abcdefghijklmnopqrstuvwx\nline 3\n"
     const ctx = fakeCtx({
       routes: {
-        "/projects/acme%2Fmanuals/repository/files/docs%2Fa.md?ref=main": fileAnswer(text, "b1", "c1"),
+        "/projects/acme%2Fmanuals/repository/files/docs%2Fa.md?ref=main": fileAnswer(
+          text,
+          "b1",
+          "c1",
+        ),
         "/projects/acme%2Fmanuals": json({ path_with_namespace: "acme/manuals" }),
       },
     })
@@ -128,11 +147,25 @@ describe("tools", () => {
   it("gets a commit with its diff from the diff endpoint", async () => {
     const ctx = fakeCtx({
       routes: {
-        "/projects/9/repository/commits/abc": json({ id: "abc", short_id: "ab", title: "t", message: "m", author_name: "x", committed_date: "d", web_url: "u", parent_ids: [] }),
-        "/projects/9/repository/commits/abc/diff?per_page=100": json([{ old_path: "a", new_path: "a", diff: "+1" }]),
+        "/projects/9/repository/commits/abc": json({
+          id: "abc",
+          short_id: "ab",
+          title: "t",
+          message: "m",
+          author_name: "x",
+          committed_date: "d",
+          web_url: "u",
+          parent_ids: [],
+        }),
+        "/projects/9/repository/commits/abc/diff?per_page=100": json([
+          { old_path: "a", new_path: "a", diff: "+1" },
+        ]),
       },
     })
-    const out = (await gitlabGetCommit({ project: "9", sha: "abc", withDiff: true }, asCtx(ctx))) as {
+    const out = (await gitlabGetCommit(
+      { project: "9", sha: "abc", withDiff: true },
+      asCtx(ctx),
+    )) as {
       commit: { diffs: unknown[] }
     }
     expect(out.commit.diffs).toEqual([{ old_path: "a", new_path: "a", diff: "+1" }])
@@ -142,7 +175,14 @@ describe("tools", () => {
     const ctx = fakeCtx({
       routes: {
         "/groups/acme/search?scope=issues&search=crash&per_page=100": json([
-          { iid: 3, title: "crash", state: "opened", author: { username: "a" }, assignees: [], labels: [] },
+          {
+            iid: 3,
+            title: "crash",
+            state: "opened",
+            author: { username: "a" },
+            assignees: [],
+            labels: [],
+          },
         ]),
       },
     })
@@ -190,7 +230,9 @@ describe("knowledge source `folder`", () => {
       "/projects/7/repository/branches/main": json({ commit: { id: "HEAD1" } }),
       "/projects/7": json({ path_with_namespace: "acme/manuals" }),
       [TREE]: json(page1, { link: `<${NEXT}>; rel="next"` }),
-      [NEXT]: json([{ id: "f4", name: "faq.yaml", type: "blob", path: "docs/guides/deep/faq.yaml" }]),
+      [NEXT]: json([
+        { id: "f4", name: "faq.yaml", type: "blob", path: "docs/guides/deep/faq.yaml" },
+      ]),
     }
     for (const e of [...page1, { path: "docs/guides/deep/faq.yaml", id: "f4" }]) {
       r[`/projects/7/repository/files/${encodeURIComponent(e.path)}?ref=HEAD1`] = fileAnswer(
@@ -203,8 +245,16 @@ describe("knowledge source `folder`", () => {
   }
 
   it("parses a folder ref; an empty path is the whole branch", () => {
-    expect(parseFolderRef("acme/manuals:main:")).toEqual({ project: "acme/manuals", branch: "main", path: "" })
-    expect(parseFolderRef("7:release/1.0:docs/")).toEqual({ project: "7", branch: "release/1.0", path: "docs" })
+    expect(parseFolderRef("acme/manuals:main:")).toEqual({
+      project: "acme/manuals",
+      branch: "main",
+      path: "",
+    })
+    expect(parseFolderRef("7:release/1.0:docs/")).toEqual({
+      project: "7",
+      branch: "release/1.0",
+      path: "docs",
+    })
     expect(() => parseFolderRef("7:main")).toThrow(/expected/)
   })
 
@@ -251,7 +301,11 @@ describe("knowledge source `folder`", () => {
     })
     expect(last.folders?.upsert).toEqual([
       { externalId: "7:main:docs/guides", name: "guides", parentExternalId: null },
-      { externalId: "7:main:docs/guides/deep", name: "deep", parentExternalId: "7:main:docs/guides" },
+      {
+        externalId: "7:main:docs/guides/deep",
+        name: "deep",
+        parentExternalId: "7:main:docs/guides",
+      },
     ])
     for (const c of ctx.calls) expect(c.auth).toEqual(AUTH)
   })
@@ -283,7 +337,11 @@ describe("knowledge source `folder`", () => {
 
   it("skips a file deleted since the listing and fails the page on any other error", async () => {
     const r = routes()
-    r["/projects/7/repository/files/docs%2Fintro.md?ref=HEAD1"] = json({ message: "404 File Not Found" }, {}, 404)
+    r["/projects/7/repository/files/docs%2Fintro.md?ref=HEAD1"] = json(
+      { message: "404 File Not Found" },
+      {},
+      404,
+    )
     const out = await syncGitlabFolder(input(null), asCtx(fakeCtx({ routes: r })))
     expect(out.documents?.upsert?.map((d) => d.externalId)).toEqual(["7:main:docs/guides/setup.md"])
     r["/projects/7/repository/files/docs%2Fintro.md?ref=HEAD1"] = json({ message: "boom" }, {}, 500)
@@ -296,9 +354,16 @@ describe("knowledge source `folder`", () => {
 describe("provisioning verify", () => {
   it("passes with the token owner and the group, through the connection's credential", async () => {
     const ctx = fakeCtx({
-      routes: { "/user": json({ username: "reader" }), "/groups/acme?with_projects=false": json({ full_path: "acme" }) },
+      routes: {
+        "/user": json({ username: "reader" }),
+        "/groups/acme?with_projects=false": json({ full_path: "acme" }),
+      },
     })
-    expect(await verifyGitlab({}, asCtx(ctx))).toEqual({ ok: true, problems: [], identity: "reader @ acme" })
+    expect(await verifyGitlab({}, asCtx(ctx))).toEqual({
+      ok: true,
+      problems: [],
+      identity: "reader @ acme",
+    })
     expect(ctx.calls.map((c) => c.auth)).toEqual([AUTH, AUTH])
   })
 

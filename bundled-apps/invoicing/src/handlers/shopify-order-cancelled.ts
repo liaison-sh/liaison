@@ -12,11 +12,14 @@
 // records the lifecycle event and, for a live invoice, the attention card).
 
 import { resolveOpenParks } from "../deferred"
-import { autoCreditNoteCounterparty, issueOrParkAutoCreditNote } from "../einvoicing/parked-credit-note"
+import {
+  autoCreditNoteCounterparty,
+  issueOrParkAutoCreditNote,
+} from "../einvoicing/parked-credit-note"
 import type { LineKind } from "../issue"
 import { creditedTotalMinor, ISSUED_INVOICE_STATUSES, type MutationsCtx } from "../mutations"
-import { buildAdjustmentReversalItems } from "./shopify-refund-created"
 import { toBigInt } from "../mutations/shared"
+import { buildAdjustmentReversalItems } from "./shopify-refund-created"
 
 export interface OrderCancelledPayload {
   id: string
@@ -84,7 +87,10 @@ export type OrderCancelledResult =
 
 /** True when the runtime ctx carries the issue pipeline (so a credit note can be issued). */
 function hasIssuePipeline(ctx: OrderCancelledCtx): boolean {
-  return typeof ctx.pdf?.render === "function" && typeof (ctx.db as { batch?: unknown }).batch === "function"
+  return (
+    typeof ctx.pdf?.render === "function" &&
+    typeof (ctx.db as { batch?: unknown }).batch === "function"
+  )
 }
 
 async function findDocumentsByShopifyOrderId(
@@ -104,8 +110,7 @@ async function findDocumentsByShopifyOrderId(
     number: (r.number as string | null) ?? null,
     status: String(r.status ?? "draft"),
     grand_total_minor: toBigInt(r.grand_total_minor),
-    lifecycle_log:
-      (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
+    lifecycle_log: (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
     external_refs: (r.external_refs as Record<string, unknown> | undefined) ?? {},
   }))
 }
@@ -168,8 +173,7 @@ async function issueOneCancelCreditNote(
     { id: doc.id, lifecycle_log: doc.lifecycle_log },
     docs as unknown as Array<Record<string, unknown>>,
   )
-  const invoiceTotal =
-    doc.grand_total_minor < 0n ? -doc.grand_total_minor : doc.grand_total_minor
+  const invoiceTotal = doc.grand_total_minor < 0n ? -doc.grand_total_minor : doc.grand_total_minor
   const remaining = invoiceTotal - credited
   if (remaining <= 0n) return
 
@@ -218,19 +222,22 @@ async function issueOneCancelCreditNote(
     )
   }
 
-  await issueOrParkAutoCreditNote({ ...mctx, logger: ctx.logger }, {
-    source: "cancel",
-    original_document_id: doc.id,
-    amount_minor: remaining,
-    full_reversal: remaining >= invoiceTotal,
-    order_id: orderId,
-    issuer_profile_id: (fresh.issuer_profile_id as string | null) ?? null,
-    counterparty,
-    currency,
-    items,
-    reason: `Auto-generated on Shopify order ${orderId} cancellation`,
-    order_label: String(fresh.shopify_order_number ?? orderId),
-  })
+  await issueOrParkAutoCreditNote(
+    { ...mctx, logger: ctx.logger },
+    {
+      source: "cancel",
+      original_document_id: doc.id,
+      amount_minor: remaining,
+      full_reversal: remaining >= invoiceTotal,
+      order_id: orderId,
+      issuer_profile_id: (fresh.issuer_profile_id as string | null) ?? null,
+      counterparty,
+      currency,
+      items,
+      reason: `Auto-generated on Shopify order ${orderId} cancellation`,
+      order_label: String(fresh.shopify_order_number ?? orderId),
+    },
+  )
 }
 
 export async function onShopifyOrderCancelled(
@@ -298,10 +305,7 @@ export async function onShopifyOrderCancelled(
         reason: cancelReason,
       },
     })
-    const needsReview =
-      doc.status === "issued" ||
-      doc.status === "paid" ||
-      doc.status === "overdue"
+    const needsReview = doc.status === "issued" || doc.status === "paid" || doc.status === "overdue"
     if (needsReview) {
       anyAttention = true
       // Emit the attention-raising event (manifest rule `detail:order_cancelled`

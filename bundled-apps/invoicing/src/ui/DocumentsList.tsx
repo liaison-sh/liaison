@@ -9,40 +9,46 @@
 // (passed as the `entityId` prop). Awaiting-payment and Customs remain separate
 // focused views (a payment worklist and an export-compliance view) — they
 // answer different questions, not just a different grouping of the same table.
-import { tr } from "./i18n"
+
 import { app, currentPath, fetchBlob, onEntityChange, openFile } from "@liaison/host"
 import {
+  type Component,
   createEffect,
   createMemo,
   createResource,
   createSignal,
   onCleanup,
   onMount,
-  type Component,
 } from "solid-js"
-import { Segmented } from "./kit"
-import { documentSearch, searchInPath, setDocumentSearch } from "./search-store"
 import {
   ALL_SALES_COLUMNS,
   B2B_COLUMNS,
   BY_MARKET_COLUMNS,
+  type DashboardColumn,
   EMPTY_STATE,
   toCsv,
-  type DashboardColumn,
 } from "./dashboards/columns"
 import { DataTable } from "./dashboards/DataTable"
-import { downloadPair } from "./dashboards/pair-download"
-import { creditedIndicatorOf, pairLabelOf, pairMemberIds, pairSplitDocuments } from "./dashboards/pair-split"
+import { groupByCountry, groupByCustomer, perCurrencyRollup } from "./dashboards/groupings"
 import { orderGid, searchDocuments, searchParamsFromFilter } from "./dashboards/loader"
+import { downloadPair } from "./dashboards/pair-download"
+import {
+  creditedIndicatorOf,
+  pairLabelOf,
+  pairMemberIds,
+  pairSplitDocuments,
+} from "./dashboards/pair-split"
 import { Toolbar } from "./dashboards/Toolbar"
 import {
   applyFilter,
-  DEFAULT_FILTER,
-  filterRowsForTab,
   type DashboardFilter,
+  DEFAULT_FILTER,
   type DocumentRow,
+  filterRowsForTab,
 } from "./dashboards/types"
-import { groupByCountry, groupByCustomer, perCurrencyRollup } from "./dashboards/groupings"
+import { tr } from "./i18n"
+import { Segmented } from "./kit"
+import { documentSearch, searchInPath, setDocumentSearch } from "./search-store"
 import { rememberDocumentLabel } from "./tab-labels"
 
 type DocType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
@@ -105,7 +111,11 @@ const PO_NUMBER_COLUMN: DashboardColumn = {
 }
 // Exported so pair-split.test.ts can render the real DataTable with exactly
 // the columns this list passes it, no re-derivation.
-export const LIST_COLUMNS: DashboardColumn[] = [...ALL_SALES_COLUMNS, PAYMENT_COLUMN, PO_NUMBER_COLUMN]
+export const LIST_COLUMNS: DashboardColumn[] = [
+  ...ALL_SALES_COLUMNS,
+  PAYMENT_COLUMN,
+  PO_NUMBER_COLUMN,
+]
 
 /**
  * THE FLAT LIST IS TOO WIDE FOR A 1440 px WINDOW.
@@ -223,7 +233,9 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
       ? B2B_COLUMNS
       : group() === "market"
         ? BY_MARKET_COLUMNS
-        : listColumnsForWidth(belowFullList() ? FULL_LIST_MIN_VIEWPORT - 1 : FULL_LIST_MIN_VIEWPORT),
+        : listColumnsForWidth(
+            belowFullList() ? FULL_LIST_MIN_VIEWPORT - 1 : FULL_LIST_MIN_VIEWPORT,
+          ),
   )
   /** What the CSV carries: every column, whatever the window is doing. A
    *  narrow window is a drawing constraint, not an export one. */
@@ -251,7 +263,9 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         ids.map((id) => ({ id, number: byId.get(id)?.number ?? null })),
         {
           resolveUrl: async (id) => {
-            const res = await app.invokeTool<{ url: string | null }>("documents_download_pdf", { id })
+            const res = await app.invokeTool<{ url: string | null }>("documents_download_pdf", {
+              id,
+            })
             return res?.url ?? null
           },
           // Through the host: bound server + bearer. A page-relative fetch
@@ -305,9 +319,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         columns={columns()}
         rows={rows()}
         emptyState={
-          group() === "flat"
-            ? EMPTY_STATE.all_sales
-            : tr("No {{noun}} to group.", { noun: noun() })
+          group() === "flat" ? EMPTY_STATE.all_sales : tr("No {{noun}} to group.", { noun: noun() })
         }
         testid="invoicing-documents-table"
         rowTestid={() => "invoicing-documents-row"}
@@ -325,7 +337,10 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
           // notes): "Both" no longer describes it.
           const count = pairMemberIds(paired(), key).length
           const label = count > 2 ? "All PDFs" : "Both PDFs"
-          const title = count > 2 ? "Download every document in this group" : "Download both documents in this group"
+          const title =
+            count > 2
+              ? "Download every document in this group"
+              : "Download both documents in this group"
           return (
             <button
               type="button"

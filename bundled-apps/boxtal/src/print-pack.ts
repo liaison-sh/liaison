@@ -16,11 +16,11 @@
 //      (carrier + customs + recipient). The copy count is REPORTED, not baked
 //      into a repeated-page PDF, so the operator prints N copies on A4.
 
+import type { BoxtalToolCtx } from "./ctx"
 import { EU_MEMBERS } from "./customs"
 import { generateOrderDocuments, orderDocumentsByRef } from "./customs-documents"
 import { importLabelDocument } from "./shipment"
 import { findShipmentByRef } from "./shipment-lookup"
-import type { BoxtalToolCtx } from "./ctx"
 
 type Ctx = BoxtalToolCtx
 
@@ -102,7 +102,8 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
   let label: PrintPackResult["label"] = null
   let labelError: string | undefined
   const imported = await importLabelDocument(ctx, { id: String(row.id) }, { mergeParcels: false })
-  const labelIds = imported.label_file_ids ?? (imported.label_file_id ? [imported.label_file_id] : [])
+  const labelIds =
+    imported.label_file_ids ?? (imported.label_file_id ? [imported.label_file_id] : [])
   if (imported.error || labelIds.length === 0) {
     labelError = imported.error?.message ?? "Label not available yet."
   } else {
@@ -139,13 +140,19 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
   } else {
     const doc = (await ctx.executeTool("invoicing:documents_get", { id: documentRef })) as {
       status?: string
-      result?: { counterparty_country?: string | null; status?: string | null; number?: string | null } | null
+      result?: {
+        counterparty_country?: string | null
+        status?: string | null
+        number?: string | null
+      } | null
     }
     const docStatus = doc.status === "completed" && doc.result ? (doc.result.status ?? null) : null
     if (doc.status === "completed" && doc.result) {
       destinationCountry = doc.result.counterparty_country ?? null
     }
-    const pdf = (await ctx.executeTool("invoicing:documents_download_pdf", { id: documentRef })) as {
+    const pdf = (await ctx.executeTool("invoicing:documents_download_pdf", {
+      id: documentRef,
+    })) as {
       status?: string
       result?: { file_id?: string | null } | null
       error?: { message?: string }
@@ -174,7 +181,8 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
   let documentsError: string | undefined
   if (documentRef) {
     const [gen] = await generateOrderDocuments(ctx, [documentRef])
-    if (gen?.error) documentsError = `The order's documents could not be brought up to date: ${gen.error}`
+    if (gen?.error)
+      documentsError = `The order's documents could not be brought up to date: ${gen.error}`
     const docs = (await orderDocumentsByRef(ctx, [documentRef])).get(documentRef) ?? []
     documents = docs.map((d) => ({
       file_id: d.file_id,

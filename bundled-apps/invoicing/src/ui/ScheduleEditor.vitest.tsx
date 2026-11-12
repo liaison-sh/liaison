@@ -41,7 +41,13 @@ function update(params: Record<string, unknown>) {
   }
   const { id: _id, expected_version: _v, ...patch } = params
   stored = { ...stored, ...patch, version: version + 1 }
-  const event = { key: "invoicing:recurring_schedule", app: "invoicing", entity: "recurring_schedule", action: "updated", data: { schedule_id: "sched-1", version: version + 1 } }
+  const event = {
+    key: "invoicing:recurring_schedule",
+    app: "invoicing",
+    entity: "recurring_schedule",
+    action: "updated",
+    data: { schedule_id: "sched-1", version: version + 1 },
+  }
   queueMicrotask(() => {
     for (const l of listeners) l([event])
   })
@@ -55,13 +61,20 @@ vi.mock("@liaison/host", () => ({
     listeners.add(cb)
     return () => listeners.delete(cb)
   },
-  fetch: async () => ({ id: "contact-1", name: "Claire Vidal", company: "Hôtels Belcour", email: null }),
+  fetch: async () => ({
+    id: "contact-1",
+    name: "Claire Vidal",
+    company: "Hôtels Belcour",
+    email: null,
+  }),
   app: {
     createResource,
     tabLabel: () => {},
     invokeTool: async (tool: string, params: Record<string, unknown>) => {
-      if (tool === "recurring_list") return { rows: [structuredClone(stored)], nextCursor: null, nextRun: null }
-      if (tool === "settings_issuer_profile_list") return { items: [{ id: "issuer-1", legal_name: "Maison Nord SARL", country: "FR" }] }
+      if (tool === "recurring_list")
+        return { rows: [structuredClone(stored)], nextCursor: null, nextRun: null }
+      if (tool === "settings_issuer_profile_list")
+        return { items: [{ id: "issuer-1", legal_name: "Maison Nord SARL", country: "FR" }] }
       if (tool === "recurring_schedule_update") return update(params)
       throw new Error(`unexpected tool ${tool}`)
     },
@@ -79,7 +92,9 @@ afterEach(() => cleanup())
 
 /** One window: its own editor on the schedule as it read it. */
 function openWindow() {
-  const { container } = render(() => <ScheduleEditor initial={draftFromRow("sched-1", structuredClone(stored))} />)
+  const { container } = render(() => (
+    <ScheduleEditor initial={draftFromRow("sched-1", structuredClone(stored))} />
+  ))
   const q = <T extends Element>(sel: string) => container.querySelector(sel) as T
   return {
     price: () => q<HTMLInputElement>('input[aria-label="Unit price"]'),

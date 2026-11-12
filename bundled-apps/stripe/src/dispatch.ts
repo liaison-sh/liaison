@@ -34,13 +34,13 @@
 import { decodeState, encodeState, transition } from "./connection"
 import { StripeApiError, type StripeHttpCtx, stripeFetch } from "./http"
 import {
-  type MaskTally,
-  type MirrorDb,
-  type MirrorEntity,
   at,
   customerRow,
   disputeRow,
   invoiceRow,
+  type MaskTally,
+  type MirrorDb,
+  type MirrorEntity,
   newTally,
   paymentRow,
   refundRow,
@@ -48,7 +48,15 @@ import {
   subscriptionRow,
   writeMirror,
 } from "./mirror"
-import { chargedAt, customerOf, invoiceEventPayload, invoiceOfCharge, listRefunds, refundEvent, unmatchedPayload } from "./money-events"
+import {
+  chargedAt,
+  customerOf,
+  invoiceEventPayload,
+  invoiceOfCharge,
+  listRefunds,
+  refundEvent,
+  unmatchedPayload,
+} from "./money-events"
 import { recordMovement } from "./mrr-events"
 import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
@@ -77,17 +85,42 @@ interface Route {
   resource: string
 }
 
-const CUSTOMER: Route = { entity: "stripe_customers", path: "/v1/customers/", row: customerRow, resource: "customers" }
+const CUSTOMER: Route = {
+  entity: "stripe_customers",
+  path: "/v1/customers/",
+  row: customerRow,
+  resource: "customers",
+}
 const SUBSCRIPTION: Route = {
   entity: "stripe_subscriptions",
   path: "/v1/subscriptions/",
   row: subscriptionRow,
   resource: "subscriptions",
 }
-const INVOICE: Route = { entity: "stripe_invoices", path: "/v1/invoices/", row: invoiceRow, resource: "invoices" }
-const CHARGE: Route = { entity: "stripe_payments", path: "/v1/charges/", row: paymentRow, resource: "charges" }
-const REFUND: Route = { entity: "stripe_refunds", path: "/v1/refunds/", row: refundRow, resource: "refunds" }
-const DISPUTE: Route = { entity: "stripe_disputes", path: "/v1/disputes/", row: disputeRow, resource: "disputes" }
+const INVOICE: Route = {
+  entity: "stripe_invoices",
+  path: "/v1/invoices/",
+  row: invoiceRow,
+  resource: "invoices",
+}
+const CHARGE: Route = {
+  entity: "stripe_payments",
+  path: "/v1/charges/",
+  row: paymentRow,
+  resource: "charges",
+}
+const REFUND: Route = {
+  entity: "stripe_refunds",
+  path: "/v1/refunds/",
+  row: refundRow,
+  resource: "refunds",
+}
+const DISPUTE: Route = {
+  entity: "stripe_disputes",
+  path: "/v1/disputes/",
+  row: disputeRow,
+  resource: "disputes",
+}
 
 /** Every event type the app handles, and the object it re-fetches. */
 export const HANDLED: Record<string, Route> = {
@@ -202,7 +235,9 @@ async function moveState(
 }
 
 async function markCatchup(db: IngestDb, resource: string, code: string, now: Date): Promise<void> {
-  const rows = (await db.findMany("sync_state", { where: { resource }, limit: 1 })) as Array<{ id: string }>
+  const rows = (await db.findMany("sync_state", { where: { resource }, limit: 1 })) as Array<{
+    id: string
+  }>
   const data = { catchup_due: true, last_error_code: code, updated: now.toISOString() }
   if (rows[0]) await db.update("sync_state", rows[0].id, data)
   else await db.insert("sync_state", { resource, status: "pending", done_count: 0, ...data })
@@ -221,7 +256,11 @@ const instant = (d: Date) => new Date(d.getTime()).toISOString()
  * The same account, confirmed in this tick: the account answers (when its id is
  * known), and at least one other known object resolves in the install's mode.
  */
-async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: string): Promise<boolean> {
+async function sameAccountConfirmed(
+  ctx: IngestCtx,
+  install: Install,
+  exceptId: string,
+): Promise<boolean> {
   const live = install.livemode === true
   try {
     if (typeof install.account_id === "string" && install.account_id) {
@@ -230,7 +269,9 @@ async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: 
     }
     const known: string[] = []
     for (const route of [CUSTOMER, SUBSCRIPTION, INVOICE]) {
-      const rows = (await ctx.db.findMany(route.entity, { limit: 4 })) as Array<{ stripe_id?: unknown }>
+      const rows = (await ctx.db.findMany(route.entity, { limit: 4 })) as Array<{
+        stripe_id?: unknown
+      }>
       for (const r of rows) {
         if (typeof r.stripe_id === "string" && r.stripe_id !== exceptId && known.length < 3) {
           known.push(`${route.path}${r.stripe_id}`)
@@ -252,27 +293,54 @@ async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: 
 }
 
 /** The typed event's payload: ids, statuses and minor units as strings, never the raw object. */
-async function typedPayload(ctx: IngestCtx, route: Route, row: Obj, obj: Obj, tally: MaskTally, stripeUpdated: string): Promise<Obj> {
+async function typedPayload(
+  ctx: IngestCtx,
+  route: Route,
+  row: Obj,
+  obj: Obj,
+  tally: MaskTally,
+  stripeUpdated: string,
+): Promise<Obj> {
   const s = (v: unknown) => (typeof v === "number" ? String(v) : v)
   // Each line's net, rate and tax, and the buyer from the mirror: what invoicing issues from.
   if (route === INVOICE) return invoiceEventPayload(ctx, row, obj, tally, stripeUpdated)
   const out: Obj = { stripe_id: row.stripe_id }
-  for (const k of ["customer_id", "payment_id", "status", "currency", "mrr_minor", "amount_minor", "trial_end"]) {
+  for (const k of [
+    "customer_id",
+    "payment_id",
+    "status",
+    "currency",
+    "mrr_minor",
+    "amount_minor",
+    "trial_end",
+  ]) {
     if (k in row) out[k] = s(row[k])
   }
   return out
 }
 
 /** The charge a refund belongs to, with its invoice: the mirror's payment row, else Stripe. */
-async function chargeOfRefund(ctx: IngestCtx, refund: Obj): Promise<{ id: string; invoice: string | null; charged_at: string | null } | null> {
-  const chargeId = typeof refund.charge === "string" ? refund.charge : ((refund.charge as Obj | null)?.id as string | undefined)
+async function chargeOfRefund(
+  ctx: IngestCtx,
+  refund: Obj,
+): Promise<{ id: string; invoice: string | null; charged_at: string | null } | null> {
+  const chargeId =
+    typeof refund.charge === "string"
+      ? refund.charge
+      : ((refund.charge as Obj | null)?.id as string | undefined)
   if (!chargeId) return null
-  const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+  const [row] = (await ctx.db.findMany("stripe_payments", {
+    where: { stripe_id: chargeId },
+    limit: 1,
+  })) as Obj[]
   if (row && typeof row.invoice_id === "string" && row.invoice_id && chargedAt(row)) {
     return { id: chargeId, invoice: row.invoice_id, charged_at: chargedAt(row) }
   }
   const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {})
-  const invoice = row && typeof row.invoice_id === "string" && row.invoice_id ? row.invoice_id : await invoiceOfCharge(ctx, charge ?? {})
+  const invoice =
+    row && typeof row.invoice_id === "string" && row.invoice_id
+      ? row.invoice_id
+      : await invoiceOfCharge(ctx, charge ?? {})
   return { id: chargeId, invoice, charged_at: chargedAt(row, charge) }
 }
 
@@ -298,7 +366,12 @@ async function moneyEvents(
   }
   if (type === "charge.refund.updated") {
     const status = String(obj.status ?? "")
-    const action = status === "succeeded" ? "settled" : status === "failed" || status === "canceled" ? "failed" : null
+    const action =
+      status === "succeeded"
+        ? "settled"
+        : status === "failed" || status === "canceled"
+          ? "failed"
+          : null
     if (!action) return []
     const charge = await chargeOfRefund(ctx, obj)
     if (!charge) return []
@@ -327,7 +400,11 @@ export async function handleStripeEvent(
 ): Promise<IngestResult> {
   const now = opts.now ?? (() => new Date())
   const event = readEnvelope(payload)
-  if (!event) return { status: 400, body: "Not a Stripe event: an id and a type are required. Nothing was stored." }
+  if (!event)
+    return {
+      status: 400,
+      body: "Not a Stripe event: an id and a type are required. Nothing was stored.",
+    }
 
   // invoice.created: a ledger row, nothing else, and always a 200.
   if (event.type === "invoice.created") {
@@ -348,11 +425,18 @@ export async function handleStripeEvent(
   try {
     claim = await claimDelivery(ctx.db, event.id, event.type, now())
   } catch {
-    return { status: 500, body: "The delivery ledger could not be written; Stripe will deliver again." }
+    return {
+      status: 500,
+      body: "The delivery ledger could not be written; Stripe will deliver again.",
+    }
   }
-  if (claim.kind === "duplicate") return { status: 200, body: `Event ${event.id} was already handled; nothing changed.` }
+  if (claim.kind === "duplicate")
+    return { status: 200, body: `Event ${event.id} was already handled; nothing changed.` }
   if (claim.kind === "in_flight") {
-    return { status: 503, body: `Event ${event.id} is being handled by another run; nothing changed yet, it will be delivered again.` }
+    return {
+      status: 503,
+      body: `Event ${event.id} is being handled by another run; nothing changed yet, it will be delivered again.`,
+    }
   }
   const row = claim.row
 
@@ -379,19 +463,29 @@ export async function handleStripeEvent(
       obj = await stripeFetch<Obj>(
         ctx,
         `${route.path}${encodeURIComponent(event.objectId)}`,
-        route === SUBSCRIPTION ? { params: { expand: ["discounts", "default_payment_method"] } } : {},
+        route === SUBSCRIPTION
+          ? { params: { expand: ["discounts", "default_payment_method"] } }
+          : {},
       )
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err
       if (err.code === "key_invalid" || err.code === "permission_missing") {
         await settleDelivery(ctx.db, row, "failed", now())
         await markCatchup(ctx.db, route.resource, err.code, now())
-        await moveState(ctx, install, [{ kind: err.code === "key_invalid" ? "key_refused" : "permission_refused" }], {})
+        await moveState(
+          ctx,
+          install,
+          [{ kind: err.code === "key_invalid" ? "key_refused" : "permission_refused" }],
+          {},
+        )
         return ACK
       }
       if (err.status !== 404) throw err
       // 404: a deletion only when it is one, or when the same account is confirmed.
-      if (!event.type.endsWith(".deleted") && !(await sameAccountConfirmed(ctx, install, event.objectId))) {
+      if (
+        !event.type.endsWith(".deleted") &&
+        !(await sameAccountConfirmed(ctx, install, event.objectId))
+      ) {
         await settleDelivery(ctx.db, row, "different_account", now())
         await moveState(ctx, install, [{ kind: "account_unconfirmed" }], {})
         return ACK
@@ -409,11 +503,15 @@ export async function handleStripeEvent(
     const tally = newTally()
     const mirrorRow = route.row(obj ?? {}, tally)
     // A charge's invoice, under the current API too (no `invoice` field on the charge).
-    if (route === CHARGE && !mirrorRow.invoice_id) mirrorRow.invoice_id = await invoiceOfCharge(ctx, obj ?? {})
+    if (route === CHARGE && !mirrorRow.invoice_id)
+      mirrorRow.invoice_id = await invoiceOfCharge(ctx, obj ?? {})
     const outcome =
       route === CUSTOMER && obj?.deleted === true
         ? await ctx.db
-            .updateMany("stripe_customers", { where: { stripe_id: event.objectId }, data: { deleted_at: instant(started) } })
+            .updateMany("stripe_customers", {
+              where: { stripe_id: event.objectId },
+              data: { deleted_at: instant(started) },
+            })
             .then(() => "updated" as const)
         : await writeMirror(
             ctx.db,
@@ -432,21 +530,41 @@ export async function handleStripeEvent(
     // The typed event's payload is built first: its text is masked too.
     const typed = EMITS[event.type]
     const fresh = outcome !== "stale"
-    const typedData = typed && fresh ? await typedPayload(ctx, route, mirrorRow, obj ?? {}, tally, instant(started)) : null
+    const typedData =
+      typed && fresh
+        ? await typedPayload(ctx, route, mirrorRow, obj ?? {}, tally, instant(started))
+        : null
     // Money events come from the object as Stripe returns it now, whatever the mirror write did: a
     // concurrent write of the same object can make this one stale, and the refund or payment it
     // reports must still reach invoicing (idempotent there, by refund and invoice id).
-    const money = await moneyEvents(ctx, event.type, obj ?? {}, tally, instant(started), typeof mirrorRow.invoice_id === "string" ? mirrorRow.invoice_id : null)
+    const money = await moneyEvents(
+      ctx,
+      event.type,
+      obj ?? {},
+      tally,
+      instant(started),
+      typeof mirrorRow.invoice_id === "string" ? mirrorRow.invoice_id : null,
+    )
     if (tally.cards > 0) {
       await ctx.emit({
         entity: "card_number",
         action: "masked",
         entityId: String(mirrorRow.stripe_id ?? event.objectId),
-        data: { object: route.resource, stripe_id: mirrorRow.stripe_id, fields: tally.fields.join(", "), count: tally.cards },
+        data: {
+          object: route.resource,
+          stripe_id: mirrorRow.stripe_id,
+          fields: tally.fields.join(", "),
+          count: tally.cards,
+        },
       })
     }
     if (typed && typedData) {
-      await ctx.emit({ entity: typed[0], action: typed[1], entityId: String(mirrorRow.stripe_id), data: typedData })
+      await ctx.emit({
+        entity: typed[0],
+        action: typed[1],
+        entityId: String(mirrorRow.stripe_id),
+        data: typedData,
+      })
     }
     for (const e of money) await ctx.emit(e)
 

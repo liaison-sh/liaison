@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
-import { audience_erasure_sweep } from "./audience-erasure-consumer"
-import { createMockDb } from "../test-db"
 import { hashIdentifier } from "../lib/hash-identifier"
+import { createMockDb } from "../test-db"
+import { audience_erasure_sweep } from "./audience-erasure-consumer"
 
 interface Envelope {
   status: "completed" | "pending_approval" | "error"
@@ -21,7 +21,11 @@ function makeFetch(responses: Array<{ status: number; body: string }>) {
   const calls: FetchCall[] = []
   let idx = 0
   const fetch = async (url: string, opts?: Record<string, unknown>) => {
-    calls.push({ url, method: String(opts?.method ?? "GET"), body: typeof opts?.body === "string" ? opts.body : undefined })
+    calls.push({
+      url,
+      method: String(opts?.method ?? "GET"),
+      body: typeof opts?.body === "string" ? opts.body : undefined,
+    })
     const resp = responses[idx++]
     if (!resp) throw new Error(`no mock fetch response for call ${idx} to ${url}`)
     return { status: resp.status, headers: {}, body: resp.body }
@@ -45,7 +49,9 @@ function makeExecuteTool(
 
 describe("audience_erasure_sweep", () => {
   it("hashIdentifier('email', raw) agrees with the record's emailSha256 (hash-agreement cross-check with P3)", async () => {
-    expect(await hashIdentifier("email", EMAIL)).toBe(createHash("sha256").update(EMAIL).digest("hex"))
+    expect(await hashIdentifier("email", EMAIL)).toBe(
+      createHash("sha256").update(EMAIL).digest("hex"),
+    )
   })
 
   it("fires Meta remove-users with the matching emailSha256 for each managed audience", async () => {
@@ -53,7 +59,9 @@ describe("audience_erasure_sweep", () => {
     const { fetch, calls } = makeFetch([
       { status: 200, body: JSON.stringify({ audience_id: "aud_1", num_received: 1 }) },
     ])
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
     const connections = {
       meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
     }
@@ -73,27 +81,54 @@ describe("audience_erasure_sweep", () => {
   it("writes an audit record and marks the erasure consumed (audience_erasure_log)", async () => {
     const db = createMockDb()
     const { fetch } = makeFetch([{ status: 200, body: JSON.stringify({ num_received: 1 }) }])
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
-    await audience_erasure_sweep({ managed_meta_audience_ids: ["aud_1"] }, { db, fetch, executeTool, connections })
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
+    await audience_erasure_sweep(
+      { managed_meta_audience_ids: ["aud_1"] },
+      { db, fetch, executeTool, connections },
+    )
 
     const logRows = db.__all("audience_erasure_log")
     expect(logRows.length).toBeGreaterThan(0)
-    expect(logRows.some((r) => r.email_sha256 === EMAIL_SHA256 && r.platform === "meta" && r.status === "removed")).toBe(true)
+    expect(
+      logRows.some(
+        (r) => r.email_sha256 === EMAIL_SHA256 && r.platform === "meta" && r.status === "removed",
+      ),
+    ).toBe(true)
   })
 
   it("does not re-process an already-consumed record (idempotent by emailSha256)", async () => {
     const db = createMockDb({
       seed: {
         audience_erasure_log: [
-          { id: "log_1", email_sha256: EMAIL_SHA256, platform: "meta", status: "removed", consumed_at: "2026-06-01T00:00:00Z" },
-          { id: "log_2", email_sha256: EMAIL_SHA256, platform: "google", status: "removed", consumed_at: "2026-06-01T00:00:00Z" },
+          {
+            id: "log_1",
+            email_sha256: EMAIL_SHA256,
+            platform: "meta",
+            status: "removed",
+            consumed_at: "2026-06-01T00:00:00Z",
+          },
+          {
+            id: "log_2",
+            email_sha256: EMAIL_SHA256,
+            platform: "google",
+            status: "removed",
+            consumed_at: "2026-06-01T00:00:00Z",
+          },
         ],
       },
     })
     const { fetch, calls } = makeFetch([])
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
       { db, fetch, executeTool, connections },
@@ -105,11 +140,20 @@ describe("audience_erasure_sweep", () => {
 
   it("absent Meta connection -> clean no-op + audit note (never a crash)", async () => {
     const db = createMockDb()
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
     const connections = {} // no meta connection configured
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
-      { db, fetch: async () => { throw new Error("should not be called") }, executeTool, connections },
+      {
+        db,
+        fetch: async () => {
+          throw new Error("should not be called")
+        },
+        executeTool,
+        connections,
+      },
     )) as { meta_removed: number; meta_note?: string }
 
     expect(result.meta_removed).toBe(0)
@@ -124,13 +168,20 @@ describe("audience_erasure_sweep", () => {
       // Meta remove
       { status: 200, body: JSON.stringify({ num_received: 1 }) },
       // Google: create job
-      { status: 200, body: JSON.stringify({ results: [{ resourceName: "customers/123/offlineUserDataJobs/1" }] }) },
+      {
+        status: 200,
+        body: JSON.stringify({
+          results: [{ resourceName: "customers/123/offlineUserDataJobs/1" }],
+        }),
+      },
       // Google: addOperations
       { status: 200, body: JSON.stringify({}) },
       // Google: run
       { status: 200, body: JSON.stringify({}) },
     ])
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
     const connections = {
       meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
       google: { getToken: async () => "oauth_tok" },
@@ -157,8 +208,12 @@ describe("audience_erasure_sweep", () => {
   it("absent Google connection -> clean no-op for the Google arm, Meta arm still proceeds", async () => {
     const db = createMockDb()
     const { fetch } = makeFetch([{ status: 200, body: JSON.stringify({ num_received: 1 }) }])
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
       { db, fetch, executeTool, connections },
@@ -171,11 +226,22 @@ describe("audience_erasure_sweep", () => {
 
   it("Meta connected but no managed_meta_audience_ids -> no_op_no_audience_ids (distinct from not-connected)", async () => {
     const db = createMockDb()
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: [] },
-      { db, fetch: async () => { throw new Error("should not be called -- no audience ids to DELETE against") }, executeTool, connections },
+      {
+        db,
+        fetch: async () => {
+          throw new Error("should not be called -- no audience ids to DELETE against")
+        },
+        executeTool,
+        connections,
+      },
     )) as { meta_removed: number; meta_note?: string }
 
     expect(result.meta_removed).toBe(0)
@@ -200,8 +266,12 @@ describe("audience_erasure_sweep", () => {
       }
       return { status: 200, headers: {}, body: JSON.stringify({ num_received: 1 }) }
     }
-    const executeTool = makeExecuteTool([{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const executeTool = makeExecuteTool([
+      { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+    ])
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_good", "aud_bad"] },
       { db, fetch, executeTool, connections },
@@ -240,7 +310,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
       { emailSha256: email2, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
       { db: brokenDb as never, fetch, executeTool, connections },
@@ -256,8 +328,13 @@ describe("audience_erasure_sweep", () => {
     const db = createMockDb()
     const { fetch, calls } = makeFetch([])
     const executeTool = makeExecuteTool([])
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
-    const result = (await audience_erasure_sweep({ managed_meta_audience_ids: ["aud_1"] }, { db, fetch, executeTool, connections })) as {
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
+    const result = (await audience_erasure_sweep(
+      { managed_meta_audience_ids: ["aud_1"] },
+      { db, fetch, executeTool, connections },
+    )) as {
       processed: number
     }
     expect(result.processed).toBe(0)
@@ -272,14 +349,22 @@ describe("audience_erasure_sweep", () => {
         return {
           status: "completed",
           result: {
-            rows: [{ email_sha256: EMAIL_SHA256, reason: "gdpr_erasure", erased_at: "2026-07-01T00:00:00Z" }],
+            rows: [
+              {
+                email_sha256: EMAIL_SHA256,
+                reason: "gdpr_erasure",
+                erased_at: "2026-07-01T00:00:00Z",
+              },
+            ],
             truncated: false,
           },
         }
       }
       return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
     }
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
       { db, fetch, executeTool, connections },
@@ -293,13 +378,21 @@ describe("audience_erasure_sweep", () => {
     const db = createMockDb()
     const { fetch, calls } = makeFetch([{ status: 200, body: JSON.stringify({ num_received: 1 }) }])
     const executeTool = async (target: string): Promise<Envelope> => {
-      if (target === "database:db_read") return { status: "error", error: { code: "not_found", message: "no such read" } }
+      if (target === "database:db_read")
+        return { status: "error", error: { code: "not_found", message: "no such read" } }
       if (target === "database:db_query") {
-        return { status: "completed", result: [{ emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" }] }
+        return {
+          status: "completed",
+          result: [
+            { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
+          ],
+        }
       }
       return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
     }
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
       { db, fetch, executeTool, connections },
@@ -316,10 +409,19 @@ describe("audience_erasure_sweep", () => {
       status: "error",
       error: { code: "connect_error", message: `${target} not connected` },
     })
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+    const connections = {
+      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
-      { db, fetch: async () => { throw new Error("should not be called") }, executeTool, connections },
+      {
+        db,
+        fetch: async () => {
+          throw new Error("should not be called")
+        },
+        executeTool,
+        connections,
+      },
     )) as { processed: number; poll_degraded?: boolean; poll_note?: string }
 
     expect(result.processed).toBe(0)

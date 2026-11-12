@@ -3,17 +3,17 @@
 // The less common situations of recurring invoicing, and the e-invoice status words an invoice
 // shows: each word maps to exactly one state, and each state says what happens next.
 import { afterEach, describe, expect, it } from "bun:test"
+import { FR } from "./i18n-fr"
 import {
   EINVOICE_STATUS_TABLE,
+  type EinvoiceFacts,
   einvoiceStatusWord,
   LOAD_ERROR_LINES,
   ORPHAN_ACTIONS,
-  orphanParams,
   OVERFLOW_PAGE,
+  orphanParams,
   RecurringStates,
-  type EinvoiceFacts,
 } from "./RecurringStates"
-import { FR } from "./i18n-fr"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -49,12 +49,16 @@ describe("e-invoice status words", () => {
       [facts({ collection_state: "not_needed", payment_status: "paid" }), "Not needed"],
       [facts({ einvoice_state: "refused" }), "Refused by the buyer"],
       [facts({ einvoice_state: "failed" }), "Not sent"],
-      [facts({ collection_state: "collection_manual", payment_status: "paid" }), "To report at your platform"],
+      [
+        facts({ collection_state: "collection_manual", payment_status: "paid" }),
+        "To report at your platform",
+      ],
     ]
     const reached = states.map(([f]) => einvoiceStatusWord(f))
     expect(reached).toEqual(states.map(([, w]) => w))
     expect(new Set(reached).size).toBe(WORDS.length)
-    for (const w of reached) expect(EINVOICE_STATUS_TABLE.filter((r) => r.word === w)).toHaveLength(1)
+    for (const w of reached)
+      expect(EINVOICE_STATUS_TABLE.filter((r) => r.word === w)).toHaveLength(1)
     // A document that never went to the platform has no word at all.
     expect(einvoiceStatusWord(facts({ einvoice_state: null }))).toBeNull()
     // Every word has French.
@@ -65,7 +69,11 @@ describe("e-invoice status words", () => {
   })
 
   it("a buyer's refusal wins over a payment, and a rejected deposit reads as refused too", () => {
-    expect(einvoiceStatusWord(facts({ einvoice_state: "refused", collection_state: "reported", payment_status: "paid" }))).toBe("Refused by the buyer")
+    expect(
+      einvoiceStatusWord(
+        facts({ einvoice_state: "refused", collection_state: "reported", payment_status: "paid" }),
+      ),
+    ).toBe("Refused by the buyer")
     expect(einvoiceStatusWord(facts({ einvoice_state: "rejected" }))).toBe("Refused by the buyer")
     expect(einvoiceStatusWord(facts({ einvoice_state: "not_in_directory" }))).toBe("Not sent")
   })
@@ -80,17 +88,28 @@ describe("less common situations", () => {
   })
 
   it("a Stripe payment with no invoice offers two actions, each asking a confirm", () => {
-    expect(ORPHAN_ACTIONS.map((a) => a.tool)).toEqual(["invoice_from_stripe_payment", "payment_link_to_invoice"])
+    expect(ORPHAN_ACTIONS.map((a) => a.tool)).toEqual([
+      "invoice_from_stripe_payment",
+      "payment_link_to_invoice",
+    ])
     for (const a of ORPHAN_ACTIONS) expect(a.confirm.length).toBeGreaterThan(10)
     // Linking never marks the invoice paid, so the confirm does not say it does.
     expect(ORPHAN_ACTIONS.find((a) => a.id === "link")?.confirm).not.toContain("marked paid")
   })
 
   it("Create the invoice sends the VAT rate the amount includes, the one thing a charge with no invoice lacks", () => {
-    expect(orphanParams("create", "ch_1", null, "20")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 2000 } })
-    expect(orphanParams("create", "ch_1", null, "5,5")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 550 } })
-    expect(orphanParams("create", "ch_1", null, "0")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 0 } })
+    expect(orphanParams("create", "ch_1", null, "20")).toEqual({
+      params: { chargeId: "ch_1", vatRateBp: 2000 },
+    })
+    expect(orphanParams("create", "ch_1", null, "5,5")).toEqual({
+      params: { chargeId: "ch_1", vatRateBp: 550 },
+    })
+    expect(orphanParams("create", "ch_1", null, "0")).toEqual({
+      params: { chargeId: "ch_1", vatRateBp: 0 },
+    })
     expect(orphanParams("create", "ch_1", null, "twenty")).toHaveProperty("error")
-    expect(orphanParams("link", "ch_1", "doc-1", "")).toEqual({ params: { chargeId: "ch_1", documentId: "doc-1" } })
+    expect(orphanParams("link", "ch_1", "doc-1", "")).toEqual({
+      params: { chargeId: "ch_1", documentId: "doc-1" },
+    })
   })
 })

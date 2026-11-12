@@ -9,11 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import {
-  FULL_LIST_MIN_VIEWPORT,
-  LIST_COLUMNS,
-  listColumnsForWidth,
-} from "./DocumentsList"
+import { FULL_LIST_MIN_VIEWPORT, LIST_COLUMNS, listColumnsForWidth } from "./DocumentsList"
 import { searchPlaceholder } from "./dashboards/Toolbar"
 
 const source = readFileSync(join(import.meta.dir, "DocumentsList.tsx"), "utf-8")
@@ -46,7 +42,9 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
   it("wires the credit-notes sidebar segment to type='credit_note' (0.5.0)", () => {
     expect(source).toMatch(/"credit-notes":\s*"credit_note"/)
     // The footer noun carries singular and plural forms (0.20.19).
-    expect(source).toMatch(/"credit-notes":\s*\{\s*one:\s*"credit note",\s*other:\s*"credit notes"\s*\}/)
+    expect(source).toMatch(
+      /"credit-notes":\s*\{\s*one:\s*"credit note",\s*other:\s*"credit notes"\s*\}/,
+    )
   })
 
   // ── Payment column (feature 1 — list surfaces a synced Shopify invoice's
@@ -54,7 +52,7 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
   it("appends a Payment column to the flat List view without mutating ALL_SALES_COLUMNS", () => {
     expect(source).toContain('key: "payment"')
     expect(source).toContain('label: "Payment"')
-    expect(source).toContain("...ALL_SALES_COLUMNS, PAYMENT_COLUMN")
+    expect(source).toMatch(/\.\.\.ALL_SALES_COLUMNS,\s*PAYMENT_COLUMN\b/)
   })
 
   // red: drop the PO number column addition -> a document carrying a PO number is
@@ -62,11 +60,11 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
   it("appends a PO number column to the flat List view without mutating ALL_SALES_COLUMNS", () => {
     expect(source).toContain('key: "po_number"')
     expect(source).toContain('label: "PO number"')
-    expect(source).toContain("...ALL_SALES_COLUMNS, PAYMENT_COLUMN, PO_NUMBER_COLUMN")
+    expect(source).toMatch(/\.\.\.ALL_SALES_COLUMNS,\s*PAYMENT_COLUMN,\s*PO_NUMBER_COLUMN\b/)
   })
 
   it("only the flat group mode uses LIST_COLUMNS; customer/market keep their own column sets", () => {
-    expect(source).toContain("group() === \"customer\"")
+    expect(source).toContain('group() === "customer"')
     expect(source).toContain("B2B_COLUMNS")
     expect(source).toContain("BY_MARKET_COLUMNS")
     // The flat mode is the only one that narrows, and it narrows LIST_COLUMNS.
@@ -101,7 +99,9 @@ describe("DocumentsList column width (the PO number column was off screen at 144
 
   it("keeps every column once the window is wide enough for all of them", () => {
     expect(listColumnsForWidth(FULL_LIST_MIN_VIEWPORT)).toEqual(LIST_COLUMNS)
-    expect(LIST_COLUMNS.length * MIN_COLUMN_PX).toBeLessThanOrEqual(paneWidth(FULL_LIST_MIN_VIEWPORT))
+    expect(LIST_COLUMNS.length * MIN_COLUMN_PX).toBeLessThanOrEqual(
+      paneWidth(FULL_LIST_MIN_VIEWPORT),
+    )
   })
 
   it("exports every column to CSV whatever the window is doing", () => {

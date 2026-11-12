@@ -139,7 +139,10 @@ function orderGroupMembers<R extends PairableRow>(g: Group<R>): R[] {
     return [...goods, ...software]
   }
   const invoice = g.members.find((m) => m.type !== "credit_note")
-  const notes = g.members.filter((m) => m.type === "credit_note").slice().sort(compareCreditNotes)
+  const notes = g.members
+    .filter((m) => m.type === "credit_note")
+    .slice()
+    .sort(compareCreditNotes)
   return invoice ? [invoice, ...notes] : notes
 }
 
@@ -204,7 +207,10 @@ export function pairSplitDocuments<R extends PairableRow>(rows: R[]): Array<Pair
 }
 
 /** The document ids of a group, for a download-all action. */
-export function pairMemberIds<R extends PairableRow>(paired: Array<PairedRow<R>>, pairKey: string): string[] {
+export function pairMemberIds<R extends PairableRow>(
+  paired: Array<PairedRow<R>>,
+  pairKey: string,
+): string[] {
   return paired.filter((p) => p.pairKey === pairKey).map((p) => p.row.id)
 }
 
@@ -214,7 +220,10 @@ export function pairMemberIds<R extends PairableRow>(paired: Array<PairedRow<R>>
  * table cell: "Credits INV-2026-0042" on the credit note, "Credited by
  * CN-2026-0007" / "Credited by 2 credit notes" on the invoice.
  */
-export function pairLabelOf<R extends PairableRow>(paired: Array<PairedRow<R>>, rowId: string): string | null {
+export function pairLabelOf<R extends PairableRow>(
+  paired: Array<PairedRow<R>>,
+  rowId: string,
+): string | null {
   const hit = paired.find((p) => p.row.id === rowId)
   if (!hit) return null
   const row = hit.row
@@ -255,4 +264,3 @@ export function creditedIndicatorOf<R extends PairableRow>(row: R): string | nul
   if (numbers.length === 1) return tr("Credited by {{number}}", { number: numbers[0] ?? "" })
   return tr("Credited by {{count}} credit notes", { count: numbers.length })
 }
-

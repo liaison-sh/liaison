@@ -50,10 +50,7 @@ import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 import type { SetupKickoffPayload } from "~/modules/provisioning/setup-kickoff"
 import type { ScopeDecisionTurnPayload } from "~/modules/scope-requests/announce"
-import type {
-  FollowUpTurnPayload,
-  SecretRequestTurnPayload,
-} from "~/modules/secret-requests/announce"
+import type { SecretRequestTurnPayload } from "~/modules/secret-requests/announce"
 import type { PostedMessageDispatchParams } from "~/modules/threads/posted-message-dispatch"
 
 /** How often the leader looks for turns whose process is gone (S10). */
@@ -1109,13 +1106,6 @@ export async function registerKernelJobs(): Promise<void> {
   registerJobWorker<SecretRequestTurnPayload>("kernel", "secret-request-turn", async (payload) => {
     const { runSecretRequestTurn } = await import("~/modules/secret-requests/announce")
     await runSecretRequestTurn(payload)
-  })
-
-  // A Drive pick made from a card in a conversation hands the turn back to the
-  // agent that showed the card (google-drive/picker-announce.ts).
-  registerJobWorker<FollowUpTurnPayload>("kernel", "drive-picker-turn", async (payload) => {
-    const { runDrivePickerTurn } = await import("~/apps/google-drive/picker-announce")
-    await runDrivePickerTurn(payload)
   })
 
   // A new workspace's first admin sign-in: the setup card in their agent

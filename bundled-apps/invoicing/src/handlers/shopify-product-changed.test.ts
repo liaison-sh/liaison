@@ -18,7 +18,12 @@ const PRODUCT = {
         customs_description: "Electronic pad controller",
       },
       // Unclassified variant — no customs data → must NOT create an overlay row.
-      { id: "gid://shopify/ProductVariant/23", hs_code: null, country_of_origin: null, customs_description: null },
+      {
+        id: "gid://shopify/ProductVariant/23",
+        hs_code: null,
+        country_of_origin: null,
+        customs_description: null,
+      },
     ],
   },
 }

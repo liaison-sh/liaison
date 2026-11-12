@@ -33,20 +33,20 @@
 //   * writes ONLY when a value actually changed, so an unchanged fleet produces
 //     no writes and no events.
 
-import { getClientOrError } from "./lib/get-client"
-import { isBoxtalNotReady, latestEventTimestamp } from "./reads"
 import { ToolError } from "@liaison/app-sdk"
+import type { BoxtalToolCtx } from "./ctx"
+import { checkMissingLabels, type LabelMissingResult } from "./label-missing"
+import { sourceTrackingFromLabel } from "./label-tracking"
+import { BoxtalApiError, type NormalizedOrder } from "./lib/boxtal-v3-client"
+import { getClientOrError } from "./lib/get-client"
 import {
   ABANDONED_LINK_STATE,
   isStaleReservation,
   STALE_RESERVATION_MS,
   UNFINISHED_LINK_STATES,
 } from "./link-store"
-import { sourceTrackingFromLabel } from "./label-tracking"
 import { findShipmentsInAny, shipmentHasLabel } from "./queues"
-import { BoxtalApiError, type NormalizedOrder } from "./lib/boxtal-v3-client"
-import type { BoxtalToolCtx } from "./ctx"
-import { checkMissingLabels, type LabelMissingResult } from "./label-missing"
+import { isBoxtalNotReady, latestEventTimestamp } from "./reads"
 
 /**
  * Terminal tracking states: the parcel's journey is over and Boxtal will not
@@ -141,7 +141,6 @@ export function byStalestFirst(a: ReconcileRow, b: ReconcileRow): number {
   if (av !== bv) return av < bv ? -1 : 1
   return String(a.id) < String(b.id) ? -1 : 1
 }
-
 
 // ── orphaned-reservation sweep ───────────────────────────────────────────────
 //
@@ -267,8 +266,7 @@ export async function reconcileOrphanedCreates(
             shipmentId: String(row.id),
             documentRef: row.document_ref ?? null,
             externalId: row.external_id ?? null,
-            note:
-              "check the Boxtal dashboard for a paid label, then settle it with settle_orphan_create; nothing was bought, cancelled or retried",
+            note: "check the Boxtal dashboard for a paid label, then settle it with settle_orphan_create; nothing was bought, cancelled or retried",
           })
           await ctx.db.update("shipment", String(row.id), {
             orphan_reported_at: new Date(nowMs).toISOString(),
@@ -340,7 +338,8 @@ async function planSettle(
   clientFor: () => Promise<SettleClient | { error: { code: string; message: string } }>,
 ): Promise<SettlePlan> {
   const id = typeof input.id === "string" ? input.id.trim() : ""
-  if (!id) throw new ToolError("Give the shipment row id stuck_list reports.", { code: "invalid_input" })
+  if (!id)
+    throw new ToolError("Give the shipment row id stuck_list reports.", { code: "invalid_input" })
   if (input.outcome !== "adopt" && input.outcome !== "release") {
     throw new ToolError("outcome must be 'adopt' or 'release'.", { code: "invalid_input" })
   }
@@ -360,9 +359,14 @@ async function planSettle(
       { code: "not_orphan" },
     )
   }
-  const note = typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null
+  const note =
+    typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null
   const settledAt = new Date(nowMs).toISOString()
-  const base = { id: String(row.id), outcome: input.outcome, document_ref: row.document_ref ?? null }
+  const base = {
+    id: String(row.id),
+    outcome: input.outcome,
+    document_ref: row.document_ref ?? null,
+  }
 
   if (input.outcome === "release") {
     const held = typeof row.boxtal_order_id === "string" ? row.boxtal_order_id : ""
@@ -375,18 +379,33 @@ async function planSettle(
     return {
       row,
       // Local only: Boxtal is never told anything, and no fake CANCELLED status is written.
-      patch: { link_state: ABANDONED_LINK_STATE, orphan_settled_at: settledAt, orphan_settle_note: note },
-      result: { ...base, link_state: ABANDONED_LINK_STATE, boxtal_order_id: null, order_status: null },
+      patch: {
+        link_state: ABANDONED_LINK_STATE,
+        orphan_settled_at: settledAt,
+        orphan_settle_note: note,
+      },
+      result: {
+        ...base,
+        link_state: ABANDONED_LINK_STATE,
+        boxtal_order_id: null,
+        order_status: null,
+      },
     }
   }
 
   const orderId = typeof input.boxtal_order_id === "string" ? input.boxtal_order_id.trim() : ""
   if (!orderId) {
-    throw new ToolError("Adopting needs the Boxtal order id you found in the Boxtal dashboard (boxtal_order_id).", {
-      code: "invalid_input",
-    })
+    throw new ToolError(
+      "Adopting needs the Boxtal order id you found in the Boxtal dashboard (boxtal_order_id).",
+      {
+        code: "invalid_input",
+      },
+    )
   }
-  const linked = (await ctx.db.findMany("shipment", { where: { boxtal_order_id: orderId }, limit: 2 })) as OrphanRow[]
+  const linked = (await ctx.db.findMany("shipment", {
+    where: { boxtal_order_id: orderId },
+    limit: 2,
+  })) as OrphanRow[]
   const other = linked.find((r) => String(r.id) !== String(row.id))
   if (other) {
     throw new ToolError(
@@ -401,9 +420,12 @@ async function planSettle(
     order = await client.v3.getShippingOrder(orderId)
   } catch (err) {
     if (err instanceof BoxtalApiError && (err.status === 404 || err.status === 410)) {
-      throw new ToolError(`Boxtal has no shipping order ${orderId}. Re-check the id in the Boxtal dashboard.`, {
-        code: "order_not_found",
-      })
+      throw new ToolError(
+        `Boxtal has no shipping order ${orderId}. Re-check the id in the Boxtal dashboard.`,
+        {
+          code: "order_not_found",
+        },
+      )
     }
     throw err
   }
@@ -418,7 +440,12 @@ async function planSettle(
       orphan_settled_at: settledAt,
       orphan_settle_note: note,
     },
-    result: { ...base, link_state: "created", boxtal_order_id: orderId, order_status: orderStatus ?? row.order_status ?? null },
+    result: {
+      ...base,
+      link_state: "created",
+      boxtal_order_id: orderId,
+      order_status: orderStatus ?? row.order_status ?? null,
+    },
   }
 }
 
@@ -435,7 +462,10 @@ const defaultSettleClient = (ctx: BoxtalToolCtx) => async () => {
 export async function settleOrphanedCreate(
   ctx: BoxtalToolCtx,
   input: SettleOrphanInput,
-  opts: { now?: () => number; client?: () => Promise<SettleClient | { error: { code: string; message: string } }> } = {},
+  opts: {
+    now?: () => number
+    client?: () => Promise<SettleClient | { error: { code: string; message: string } }>
+  } = {},
 ): Promise<SettleOrphanResult> {
   const nowMs = (opts.now ?? (() => Date.now()))()
   const plan = await planSettle(ctx, input, nowMs, opts.client ?? defaultSettleClient(ctx))
@@ -493,7 +523,10 @@ export async function reconcileTracking(
   // the unfinished create reservations the orphan sweep below settles.
   const rows = (await findShipmentsInAny(ctx, [
     { order_status: { in: ["PENDING", "REQUESTED", "CONFIRMED"] }, tracking_status: null },
-    { order_status: { in: ["PENDING", "REQUESTED", "CONFIRMED"] }, tracking_status: { in: NON_TERMINAL_TRACKING } },
+    {
+      order_status: { in: ["PENDING", "REQUESTED", "CONFIRMED"] },
+      tracking_status: { in: NON_TERMINAL_TRACKING },
+    },
     { link_state: { in: [...UNFINISHED_LINK_STATES] } },
   ])) as unknown as Array<ReconcileRow & OrphanRow>
   const candidates = rows.filter(isReconcilable).sort(byStalestFirst)
@@ -530,7 +563,10 @@ export async function reconcileTracking(
       // Not scanned yet and no number held: take the one the label prints. Only then: a row that
       // already has a number (carrier or label) is never re-downloaded, and sourceTrackingFromLabel
       // skips carriers whose label it cannot read.
-      if (!tracking_number && shipmentHasLabel(row as { documents?: Array<{ type?: string }> | null })) {
+      if (
+        !tracking_number &&
+        shipmentHasLabel(row as { documents?: Array<{ type?: string }> | null })
+      ) {
         tracking_number = await sourceTrackingFromLabel(ctx, { ...row, tracking_number: null })
       }
       const clearLabelFlag = carrierNumber != null && row.tracking_from_label === true
@@ -610,7 +646,9 @@ export const reconcileTrackingJobHandler = async (
   try {
     return { ...result, labels_missing: await checkMissingLabels(ctx) }
   } catch (err) {
-    ctx.logger?.warn?.("boxtal reconcile-tracking: missing-label check failed", { err: String(err) })
+    ctx.logger?.warn?.("boxtal reconcile-tracking: missing-label check failed", {
+      err: String(err),
+    })
     return result
   }
 }

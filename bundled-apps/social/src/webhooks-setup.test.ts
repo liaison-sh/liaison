@@ -48,7 +48,12 @@ function fakeGraph(
     { id: "P2", name: "Resonant Audio Labs" },
   ]
   const state = {
-    appSub: null as null | { object: string; callback_url: string; fields: Array<{ name: string }>; active: boolean },
+    appSub: null as null | {
+      object: string
+      callback_url: string
+      fields: Array<{ name: string }>
+      active: boolean
+    },
     pageSubs: {} as Record<string, string[]>,
     verifyTokenAtSubscribe: null as unknown,
   }
@@ -64,28 +69,45 @@ function fakeGraph(
   let config: Record<string, unknown> = opts.cell
     ? { [CELL_CALLBACK_KEY]: opts.cell.callback, [CELL_VERIFY_TOKEN_KEY]: opts.cell.verifyToken }
     : {}
-  const fetch = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => {
+  const fetch = async (
+    url: string,
+    init?: { method?: string; headers?: Record<string, string>; body?: unknown },
+  ) => {
     const u = new URL(url)
     const path = u.pathname.replace(/^\/v\d+\.\d+/, "")
     const method = init?.method ?? "GET"
-    const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : undefined
+    const body =
+      typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : undefined
     const auth = init?.headers?.Authorization
     calls.push({ method, path, auth, body })
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (method === "GET" && path === "/app") return ok({ id: APP_ID })
     if (path === `/${APP_ID}/subscriptions`) {
       const token = method === "GET" ? auth?.replace(/^Bearer /, "") : body?.access_token
-      if (token !== `${APP_ID}|${SECRET}`) return { status: 400, headers: {}, body: JSON.stringify({ error: { code: 190, message: "bad app token" } }) }
+      if (token !== `${APP_ID}|${SECRET}`)
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({ error: { code: 190, message: "bad app token" } }),
+        }
       if (method === "GET") return ok({ data: state.appSub ? [state.appSub] : [] })
       // Meta checks the callback with the hub.challenge handshake before it accepts.
       state.verifyTokenAtSubscribe = config[VERIFY_TOKEN_KEY] ?? null
       if (body?.verify_token !== (config[CELL_VERIFY_TOKEN_KEY] ?? config[VERIFY_TOKEN_KEY])) {
-        return { status: 400, headers: {}, body: JSON.stringify({ error: { code: 2200, message: "Callback verification failed" } }) }
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({ error: { code: 2200, message: "Callback verification failed" } }),
+        }
       }
       state.appSub = {
         object: String(body?.object),
         callback_url: String(body?.callback_url),
-        fields: String(body?.fields).split(",").map((name) => ({ name })),
+        fields: String(body?.fields)
+          .split(",")
+          .map((name) => ({ name })),
         active: true,
       }
       return ok({ success: true })
@@ -96,9 +118,20 @@ function fakeGraph(
     const m = /^\/([^/]+)\/subscribed_apps$/.exec(path)
     if (m) {
       const pageId = m[1] as string
-      if (auth !== `Bearer tok-${pageId}`) return { status: 400, headers: {}, body: JSON.stringify({ error: { code: 190, message: "wrong token" } }) }
+      if (auth !== `Bearer tok-${pageId}`)
+        return {
+          status: 400,
+          headers: {},
+          body: JSON.stringify({ error: { code: 190, message: "wrong token" } }),
+        }
       if (pageId === opts.failPage) {
-        return { status: 403, headers: {}, body: JSON.stringify({ error: { code: 200, message: "Requires pages_manage_metadata permission" } }) }
+        return {
+          status: 403,
+          headers: {},
+          body: JSON.stringify({
+            error: { code: 200, message: "Requires pages_manage_metadata permission" },
+          }),
+        }
       }
       if (method === "GET") {
         const f = state.pageSubs[pageId]
@@ -135,7 +168,13 @@ async function seededCtx(g: ReturnType<typeof fakeGraph>, base: string | undefin
       entity: "connected_account",
       action: "create",
       orgId: "org-1",
-      data: { id: "ca-1", appName: "social", connectionName: "facebook", identifier: "U1", kernelPublicBaseUrl: base },
+      data: {
+        id: "ca-1",
+        appName: "social",
+        connectionName: "facebook",
+        identifier: "U1",
+        kernelPublicBaseUrl: base,
+      },
     } as never,
     ctx,
   )
@@ -145,7 +184,9 @@ async function seededCtx(g: ReturnType<typeof fakeGraph>, base: string | undefin
 const writes = (calls: Call[]) => calls.filter((c) => c.method === "POST")
 
 describe("social manifest: Facebook connection", () => {
-  const manifest = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
+  const manifest = JSON.parse(
+    readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"),
+  )
   test("requests pages_manage_metadata (needed for /{page-id}/subscribed_apps)", () => {
     expect(manifest.connections.facebook.scopes).toContain("pages_manage_metadata")
   })
@@ -175,7 +216,11 @@ describe("webhooks_setup", () => {
   test("runs the way the app sandbox calls it: the org from getOrgId(), no Uint8Array", async () => {
     const g = fakeGraph()
     const { ctx } = await seededCtx(g)
-    const sandboxCtx = { ...ctx, orgId: undefined, getOrgId: () => "org-1" } as unknown as typeof ctx
+    const sandboxCtx = {
+      ...ctx,
+      orgId: undefined,
+      getOrgId: () => "org-1",
+    } as unknown as typeof ctx
     const realUint8Array = globalThis.Uint8Array
     // @ts-expect-error the QuickJS sandbox has no typed arrays
     delete globalThis.Uint8Array
@@ -265,7 +310,9 @@ describe("webhooks_setup", () => {
     const { ctx } = await seededCtx(g, "")
     const pre = await webhooksSetupPreflight({}, ctx)
     expect("error" in pre && pre.error.code).toBe("callback_base_url_missing")
-    expect(await webhooksSetupPreflight({ callback_base_url: "https://other.example.com/" }, ctx)).toEqual({ ok: true })
+    expect(
+      await webhooksSetupPreflight({ callback_base_url: "https://other.example.com/" }, ctx),
+    ).toEqual({ ok: true })
     const r = await webhooksSetup({ callback_base_url: "https://other.example.com/" }, ctx)
     if (!("pages" in r)) throw new Error(JSON.stringify(r))
     expect(r.callback_url).toBe("https://other.example.com/webhooks/org-1/social/meta")
@@ -274,7 +321,13 @@ describe("webhooks_setup", () => {
   test("refuses at staging without a connected Facebook account", async () => {
     const g = fakeGraph()
     const db = createMockDb()
-    const ctx = { orgId: "org-1", db, fetch: g.fetch, connections: {}, config: g.cfg } as unknown as SocialToolCtx & {
+    const ctx = {
+      orgId: "org-1",
+      db,
+      fetch: g.fetch,
+      connections: {},
+      config: g.cfg,
+    } as unknown as SocialToolCtx & {
       config: typeof g.cfg
     }
     const pre = await webhooksSetupPreflight({}, ctx)
@@ -287,7 +340,10 @@ describe("webhooks_setup", () => {
 // app-level callback, so it points at the cell's /webhooks/_cell/meta, which routes deliveries by
 // Page id; until an edge callback exists, exactly one cell carries Meta.
 describe("webhooks_setup on a managed cell", () => {
-  const CELL = { callback: "https://cell-a.example.test/webhooks/_cell/meta", verifyToken: "cell-token" }
+  const CELL = {
+    callback: "https://cell-a.example.test/webhooks/_cell/meta",
+    verifyToken: "cell-token",
+  }
 
   test("subscribes the app to the cell callback with the cell's verify token, whatever base is passed", async () => {
     const g = fakeGraph({ cell: CELL })
@@ -305,7 +361,9 @@ describe("webhooks_setup on a managed cell", () => {
     const g = fakeGraph({ cell: CELL })
     const { ctx, db } = await seededCtx(g)
     await webhooksSetup({}, ctx)
-    const rows = (await db.findMany("sync_state", { where: { platform: "facebook", account_external_id: "U1" } })) as Array<{
+    const rows = (await db.findMany("sync_state", {
+      where: { platform: "facebook", account_external_id: "U1" },
+    })) as Array<{
       metadata?: Record<string, unknown>
     }>
     expect(rows.length).toBeGreaterThan(0)
@@ -313,7 +371,10 @@ describe("webhooks_setup on a managed cell", () => {
   })
 
   test("refuses, writing nothing, when the app's callback points at another cell", async () => {
-    const g = fakeGraph({ cell: CELL, currentCallback: "https://cell-b.example.test/webhooks/_cell/meta" })
+    const g = fakeGraph({
+      cell: CELL,
+      currentCallback: "https://cell-b.example.test/webhooks/_cell/meta",
+    })
     const { ctx } = await seededCtx(g)
     const r = await webhooksSetup({}, ctx)
     expect("error" in r && r.error.code).toBe("meta_callback_other_cell")

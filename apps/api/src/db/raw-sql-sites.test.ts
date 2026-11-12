@@ -92,8 +92,8 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/apps/knowledge/knowledge-jobs.ts#reclaimStaleRunningSources": {
     "String(STALE_RUNNING_THRESHOLD_MINUTES)": "numeric constant",
   },
-  "apps/api/src/apps/google-drive/disconnect.ts#knowledgeRel": {
-    name: "rel helper; name is a string literal at every caller (disconnect.ts:128-213)",
+  "apps/api/src/apps/knowledge/account-sources-purge.ts#knowledgeRel": {
+    name: "rel helper; name is a string literal at every caller",
   },
   "apps/api/src/apps/knowledge/schema-refs.ts#knowledgeRel": {
     name: "rel helper; name is a literal at every caller",

@@ -28,13 +28,19 @@ export class MemDb {
   private matches(r: Row, where?: Obj): boolean {
     return Object.entries(where ?? {}).every(([k, v]) => {
       if (v === null) return r[k] == null
-      if (v && typeof v === "object" && Array.isArray((v as { in?: unknown[] }).in)) return (v as { in: unknown[] }).in.includes(r[k])
+      if (v && typeof v === "object" && Array.isArray((v as { in?: unknown[] }).in))
+        return (v as { in: unknown[] }).in.includes(r[k])
       return r[k] === v
     })
   }
   async findMany(
     entity: string,
-    opts?: { where?: Obj; limit?: number; offset?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Obj
+      limit?: number
+      offset?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]> {
     await Promise.resolve()
     const out = this.rows(entity).filter((r) => this.matches(r, opts?.where))
@@ -53,7 +59,8 @@ export class MemDb {
   async insert(entity: string, data: Obj): Promise<{ id: string }> {
     await Promise.resolve()
     const key = UNIQUE[entity]
-    if (key && this.rows(entity).some((r) => r[key] === data[key])) throw new Error("duplicate key value")
+    if (key && this.rows(entity).some((r) => r[key] === data[key]))
+      throw new Error("duplicate key value")
     const id = `row-${++this.seq}`
     this.rows(entity).push({ ...structuredClone(data), id })
     return { id }
@@ -75,7 +82,10 @@ export class MemDb {
     return { count }
   }
   async delete(entity: string, id: string): Promise<void> {
-    this.tables.set(entity, this.rows(entity).filter((r) => r.id !== id))
+    this.tables.set(
+      entity,
+      this.rows(entity).filter((r) => r.id !== id),
+    )
   }
   async count(entity: string, opts?: { where?: Obj }): Promise<number> {
     return this.rows(entity).filter((r) => this.matches(r, opts?.where)).length
@@ -94,34 +104,62 @@ export class StripeApi {
   async fetch(url: string, opts?: { headers?: Record<string, string> }) {
     const u = new URL(url)
     const path = u.pathname
-    if (opts?.headers?.["Stripe-Version"] === undefined) return { status: 400, headers: {}, body: "{}" }
+    if (opts?.headers?.["Stripe-Version"] === undefined)
+      return { status: 400, headers: {}, body: "{}" }
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (path === "/v1/events") {
       const gte = Number(u.searchParams.get("created[gte]") ?? 0)
-      const data = this.events.filter((e) => (e.created as number) >= gte).sort((a, b) => (b.created as number) - (a.created as number))
+      const data = this.events
+        .filter((e) => (e.created as number) >= gte)
+        .sort((a, b) => (b.created as number) - (a.created as number))
       return ok({ data, has_more: false })
     }
     const list = this.lists.get(path)
     if (list) return ok({ object: "list", data: list, has_more: false })
     const obj = this.objects.get(path)
-    return obj ? ok(obj) : { status: 404, headers: {}, body: JSON.stringify({ error: { message: "No such object" } }) }
+    return obj
+      ? ok(obj)
+      : { status: 404, headers: {}, body: JSON.stringify({ error: { message: "No such object" } }) }
   }
 }
 
 /** The host's `ctx.time.civil`, from Intl (the tests run outside the sandbox). */
 export function civil(p: { timezone: string; at?: string | number }) {
   const zone = p.timezone === "UTC" ? "Pacific/Auckland" : p.timezone
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(
-    new Date(p.at ?? Date.now()),
-  )
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(p.at ?? Date.now()))
   const get = (t: string) => Number(parts.find((x) => x.type === t)?.value)
   const year = get("year")
   const month = get("month")
   const day = get("day")
-  return Promise.resolve({ date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`, year, month, day })
+  return Promise.resolve({
+    date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    year,
+    month,
+    day,
+  })
 }
 
-export function sub(id: string, o: { status?: string; unit?: number; qty?: number; interval?: string; count?: number; currency?: string; usage?: string; discounts?: Obj[]; tax?: { behavior: string; pct: number }; cancelAt?: number; plan?: string } = {}): Obj {
+export function sub(
+  id: string,
+  o: {
+    status?: string
+    unit?: number
+    qty?: number
+    interval?: string
+    count?: number
+    currency?: string
+    usage?: string
+    discounts?: Obj[]
+    tax?: { behavior: string; pct: number }
+    cancelAt?: number
+    plan?: string
+  } = {},
+): Obj {
   const currency = o.currency ?? "eur"
   return {
     id,
@@ -144,7 +182,11 @@ export function sub(id: string, o: { status?: string; unit?: number; qty?: numbe
             unit_amount: o.unit ?? 4900,
             currency,
             tax_behavior: o.tax?.behavior ?? "exclusive",
-            recurring: { interval: o.interval ?? "month", interval_count: o.count ?? 1, usage_type: o.usage ?? "licensed" },
+            recurring: {
+              interval: o.interval ?? "month",
+              interval_count: o.count ?? 1,
+              usage_type: o.usage ?? "licensed",
+            },
           },
         },
       ],

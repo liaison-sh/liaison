@@ -18,14 +18,14 @@
 // format} only), same discipline as the webhook/link store; signed URLs are
 // always re-minted on read via get_documents.
 
-import { getClientOrError } from "./lib/get-client"
-import { isBoxtalNotReady } from "./reads"
+import type { BoxtalToolCtx } from "./ctx"
 import {
   BoxtalApiError,
   type NormalizedTracking,
   type ShippingDocument,
 } from "./lib/boxtal-v3-client"
-import type { BoxtalToolCtx } from "./ctx"
+import { getClientOrError } from "./lib/get-client"
+import { isBoxtalNotReady } from "./reads"
 
 /** Max ids per call — each id costs up to 3 live Boxtal reads. */
 const MAX_IDS = 20
@@ -85,7 +85,14 @@ export async function importShipments(
   const ids = [...new Set((input.ids ?? []).map((s) => s.trim()).filter(Boolean))].slice(0, MAX_IDS)
   const client = await getClientOrError(ctx)
   if ("error" in client) {
-    return { rows: [], imported: 0, updated: 0, failed: 0, notice: API_LIMIT_NOTICE, error: client.error }
+    return {
+      rows: [],
+      imported: 0,
+      updated: 0,
+      failed: 0,
+      notice: API_LIMIT_NOTICE,
+      error: client.error,
+    }
   }
 
   const rows: ImportRowResult[] = []
@@ -107,7 +114,11 @@ export async function importShipments(
             "Boxtal doesn't know this order id via the API. Only orders created through this API application are fetchable. Web-interface orders are not.",
         })
       } else {
-        rows.push({ id, outcome: "error", message: err instanceof Error ? err.message : String(err) })
+        rows.push({
+          id,
+          outcome: "error",
+          message: err instanceof Error ? err.message : String(err),
+        })
       }
       continue
     }
@@ -118,7 +129,11 @@ export async function importShipments(
     } catch (err) {
       // Tracking not generated yet is a normal state for a fresh order.
       if (!isBoxtalNotReady(err, "tracking")) {
-        rows.push({ id, outcome: "error", message: err instanceof Error ? err.message : String(err) })
+        rows.push({
+          id,
+          outcome: "error",
+          message: err instanceof Error ? err.message : String(err),
+        })
         failed++
         continue
       }
@@ -129,7 +144,11 @@ export async function importShipments(
       documents = await client.v3.getDocuments(id)
     } catch (err) {
       if (!isBoxtalNotReady(err, "shipping-document")) {
-        rows.push({ id, outcome: "error", message: err instanceof Error ? err.message : String(err) })
+        rows.push({
+          id,
+          outcome: "error",
+          message: err instanceof Error ? err.message : String(err),
+        })
         failed++
         continue
       }
@@ -152,7 +171,12 @@ export async function importShipments(
     if (existing[0]) {
       await ctx.db.update("shipment", String(existing[0].id), patch)
       updated++
-      rows.push({ id, outcome: "updated", order_status: patch.order_status, tracking_status: patch.tracking_status })
+      rows.push({
+        id,
+        outcome: "updated",
+        order_status: patch.order_status,
+        tracking_status: patch.tracking_status,
+      })
     } else {
       await ctx.db.insert("shipment", {
         ...patch,
@@ -162,7 +186,12 @@ export async function importShipments(
         created_by: "user",
       })
       imported++
-      rows.push({ id, outcome: "imported", order_status: patch.order_status, tracking_status: patch.tracking_status })
+      rows.push({
+        id,
+        outcome: "imported",
+        order_status: patch.order_status,
+        tracking_status: patch.tracking_status,
+      })
     }
   }
 

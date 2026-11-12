@@ -22,17 +22,28 @@ import { createEnforcingEmit } from "../lib/emit.testutil"
 import type { KernelContactRef } from "../lib/kernel-contacts"
 import { reconcileCustomersJob } from "./reconcile-customers"
 
-interface FetchResponse { status?: number; body: unknown }
+interface FetchResponse {
+  status?: number
+  body: unknown
+}
 
-interface ResolveCall { email?: string; externalId?: string; name?: string; clear?: boolean }
+interface ResolveCall {
+  email?: string
+  externalId?: string
+  name?: string
+  clear?: boolean
+}
 
-function makeCtx(opts: {
-  shopifyFetch?: FetchResponse[]
-  contacts?: KernelContactRef[]
-}): {
+function makeCtx(opts: { shopifyFetch?: FetchResponse[]; contacts?: KernelContactRef[] }): {
   ctx: AppContext
   resolveContact: { calls: ResolveCall[] }
-  events: Array<{ entity: string; action: string; entityId?: string; data?: unknown; metadata?: Record<string, unknown> }>
+  events: Array<{
+    entity: string
+    action: string
+    entityId?: string
+    data?: unknown
+    metadata?: Record<string, unknown>
+  }>
 } {
   const responses = [...(opts.shopifyFetch ?? [])]
   const allContacts = [...(opts.contacts ?? [])]
@@ -49,11 +60,18 @@ function makeCtx(opts: {
       // is a real app table (getShopifyClient reads it) so it resolves normally.
       findMany: async (entity: string) => {
         if (entity === "kernel.contacts") {
-          throw new Error('Entity "kernel.contacts" not found (sandbox rejects literal kernel table refs)')
+          throw new Error(
+            'Entity "kernel.contacts" not found (sandbox rejects literal kernel table refs)',
+          )
         }
         if (entity === "install_metadata") {
           return [
-            { id: "i1", shopDomain: "demo.myshopify.com", connectionId: "ca1", apiVersion: "2026-04" },
+            {
+              id: "i1",
+              shopDomain: "demo.myshopify.com",
+              connectionId: "ca1",
+              apiVersion: "2026-04",
+            },
           ]
         }
         return []
@@ -62,7 +80,9 @@ function makeCtx(opts: {
       insert: async () => ({ id: "x" }),
       update: async (entity: string) => {
         if (entity === "kernel.contacts") {
-          throw new Error("reconcile must clear external ids via resolveContact, not db.update(kernel.contacts)")
+          throw new Error(
+            "reconcile must clear external ids via resolveContact, not db.update(kernel.contacts)",
+          )
         }
       },
       updateMany: async () => ({ count: 0 }),
@@ -84,7 +104,13 @@ function makeCtx(opts: {
     connections: {
       shop: {
         getAccounts: async () => [
-          { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+          {
+            id: "ca1",
+            ownerType: "org" as const,
+            ownerId: null,
+            identifier: "demo.myshopify.com",
+            displayName: null,
+          },
         ],
         getToken: async () => "test-token",
       },

@@ -18,8 +18,22 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { HostServices } from "@liaison/host"
-import { cartMoreLabel, cartSummary, ORDER_COLUMNS, orderHasItemsToShip, orderTags } from "./list-helpers"
-import { ListHelpersTestAccess, formatHoursHuman, formatShopifyMoney, listCountLabel, loadShopDomain, type OrderFilterKey, type OrderRowLike, orderMatchesFilter, statusLabel } from "./list-helpers"
+import {
+  cartMoreLabel,
+  cartSummary,
+  formatHoursHuman,
+  formatShopifyMoney,
+  ListHelpersTestAccess,
+  listCountLabel,
+  loadShopDomain,
+  ORDER_COLUMNS,
+  type OrderFilterKey,
+  type OrderRowLike,
+  orderHasItemsToShip,
+  orderMatchesFilter,
+  orderTags,
+  statusLabel,
+} from "./list-helpers"
 
 const source = readFileSync(join(import.meta.dir, "lists.tsx"), "utf-8")
 
@@ -405,7 +419,10 @@ describe("formatHoursHuman temporal-sanity oracle (never a raw hours figure abov
     for (const h of boundaries) {
       const out = formatHoursHuman(h)
       const m = out.match(/^(\d+)(h|d|mo|y)$/)
-      expect(m, `formatHoursHuman(${h}) = ${JSON.stringify(out)} is not a sane <int><unit> token`).not.toBeNull()
+      expect(
+        m,
+        `formatHoursHuman(${h}) = ${JSON.stringify(out)} is not a sane <int><unit> token`,
+      ).not.toBeNull()
       const n = Number((m as RegExpMatchArray)[1])
       // For any realistic age the numeric part stays small: years<200, months<24,
       // days<60, hours<=72. A blown magnitude means the unit ladder broke.
@@ -549,7 +566,10 @@ describe("orders list: tags, items to ship, cart summary", () => {
   })
 
   it("an order has items to ship when one line requires shipping; a software-only order does not", () => {
-    const software = { kind: "order" as const, lineItems: [{ sku: "LIC", quantity: 1, requiresShipping: false }] }
+    const software = {
+      kind: "order" as const,
+      lineItems: [{ sku: "LIC", quantity: 1, requiresShipping: false }],
+    }
     const mixed = {
       kind: "order" as const,
       lineItems: [
@@ -593,7 +613,13 @@ describe("orders list: tags, items to ship, cart summary", () => {
       lineItems: [{ sku: "LIC", quantity: 1, requiresShipping: false }],
     }
     expect(orderHasItemsToShip(long)).toBe(true)
-    expect(orderHasItemsToShip({ ...long, requiresShipping: false, lineItems: [{ sku: "DEV-2", quantity: 1 }] })).toBe(false)
+    expect(
+      orderHasItemsToShip({
+        ...long,
+        requiresShipping: false,
+        lineItems: [{ sku: "DEV-2", quantity: 1 }],
+      }),
+    ).toBe(false)
     // No order-level flag, fetched lines all software, but more lines exist: unknown, kept.
     expect(orderHasItemsToShip({ ...long, requiresShipping: null })).toBe(true)
   })
@@ -605,8 +631,12 @@ describe("orders list: tags, items to ship, cart summary", () => {
       { sku: "STAND", title: "Floor stand", quantity: 1, currentQuantity: 0 },
     ]
     expect(cartSummary(lines, { "DEV-2": "E2", STAND: "FS" }).map((e) => e.label)).toEqual(["1×E2"])
-    expect(cartMoreLabel({ lineItems: lines, lineItemsMore: true, itemsQuantity: 6 })).toBe("+5 more")
-    expect(cartMoreLabel({ lineItems: lines, lineItemsMore: true, itemsQuantity: null })).toBe("+ more")
+    expect(cartMoreLabel({ lineItems: lines, lineItemsMore: true, itemsQuantity: 6 })).toBe(
+      "+5 more",
+    )
+    expect(cartMoreLabel({ lineItems: lines, lineItemsMore: true, itemsQuantity: null })).toBe(
+      "+ more",
+    )
     expect(cartMoreLabel({ lineItems: lines, lineItemsMore: false, itemsQuantity: 1 })).toBeNull()
   })
 

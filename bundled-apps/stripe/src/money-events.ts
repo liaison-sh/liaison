@@ -21,7 +21,16 @@
 // current API links them. The document a charge becomes is keyed by
 // `stripeDocumentRef`: its invoice when it has one, else the charge itself.
 import { StripeApiError, type StripeHttpCtx, stripeFetch } from "./http"
-import { at, customerRow, type MaskTally, type MirrorDb, newTally, refundRow, scan, writeMirror } from "./mirror"
+import {
+  at,
+  customerRow,
+  type MaskTally,
+  type MirrorDb,
+  newTally,
+  refundRow,
+  scan,
+  writeMirror,
+} from "./mirror"
 
 type Obj = Record<string, unknown>
 
@@ -35,8 +44,13 @@ export function stripeDocumentRef(charge: { id: string; invoice?: string | null 
 }
 
 const idOf = (v: unknown): string | null =>
-  typeof v === "string" && v ? v : typeof (v as Obj | null)?.id === "string" ? ((v as Obj).id as string) : null
-const minor = (v: unknown): string => (typeof v === "number" && Number.isFinite(v) ? String(Math.round(v)) : "0")
+  typeof v === "string" && v
+    ? v
+    : typeof (v as Obj | null)?.id === "string"
+      ? ((v as Obj).id as string)
+      : null
+const minor = (v: unknown): string =>
+  typeof v === "number" && Number.isFinite(v) ? String(Math.round(v)) : "0"
 
 export interface RefundItem {
   id: string
@@ -74,11 +88,9 @@ export async function invoiceOfCharge(ctx: StripeHttpCtx, charge: Obj): Promise<
   const intent = idOf(charge.payment_intent)
   if (!intent) return null
   try {
-    const list = await stripeFetch<{ data?: Obj[] }>(
-      ctx,
-      "/v1/invoice_payments",
-      { params: { payment: { type: "payment_intent", payment_intent: intent }, limit: 1 } },
-    )
+    const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/invoice_payments", {
+      params: { payment: { type: "payment_intent", payment_intent: intent }, limit: 1 },
+    })
     return idOf(list?.data?.[0]?.invoice)
   } catch (err) {
     // A list Stripe does not serve for this key or account: no invoice is known.
@@ -90,14 +102,21 @@ export async function invoiceOfCharge(ctx: StripeHttpCtx, charge: Obj): Promise<
 /** A charge's date from its mirror row or its Stripe object; a missing date (the epoch) is none. */
 export function chargedAt(row: Obj | null | undefined, charge?: Obj | null): string | null {
   const v = row?.created_at_stripe
-  const fromRow = v instanceof Date ? v.toISOString() : typeof v === "string" && v ? new Date(v).toISOString() : null
+  const fromRow =
+    v instanceof Date
+      ? v.toISOString()
+      : typeof v === "string" && v
+        ? new Date(v).toISOString()
+        : null
   const out = fromRow ?? at(charge?.created)
   return out && Date.parse(out) > 0 ? out : null
 }
 
 /** Every refund of a charge, by id, newest first as Stripe lists them (at most 100). */
 export async function listRefunds(ctx: StripeHttpCtx, chargeId: string): Promise<Obj[]> {
-  const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/refunds", { params: { charge: chargeId, limit: 100 } })
+  const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/refunds", {
+    params: { charge: chargeId, limit: 100 },
+  })
   return Array.isArray(list?.data) ? list.data : []
 }
 
@@ -111,7 +130,8 @@ export async function refundEvent(
   tally: MaskTally = newTally(),
 ): Promise<RefundEventPayload> {
   for (const r of refunds) {
-    if (typeof r.id === "string") await writeMirror(ctx.db, "stripe_refunds", refundRow(r, tally), stripeUpdated)
+    if (typeof r.id === "string")
+      await writeMirror(ctx.db, "stripe_refunds", refundRow(r, tally), stripeUpdated)
   }
   const items = refunds.filter((r) => typeof r.id === "string").map(refundItem)
   const main = focus ? refundItem(focus) : (items[0] ?? null)
@@ -129,12 +149,22 @@ export async function refundEvent(
 }
 
 /** A Stripe customer's mirror row, read from the mirror, else from Stripe (masked) and written unless `store` is false. */
-export async function customerOf(ctx: MoneyEventCtx, customerId: string | null, stripeUpdated: string, store = true): Promise<Obj | null> {
+export async function customerOf(
+  ctx: MoneyEventCtx,
+  customerId: string | null,
+  stripeUpdated: string,
+  store = true,
+): Promise<Obj | null> {
   if (!customerId) return null
-  const [row] = (await ctx.db.findMany("stripe_customers", { where: { stripe_id: customerId }, limit: 1 })) as Obj[]
+  const [row] = (await ctx.db.findMany("stripe_customers", {
+    where: { stripe_id: customerId },
+    limit: 1,
+  })) as Obj[]
   if (row) return row
   try {
-    const obj = await stripeFetch<Obj>(ctx, `/v1/customers/${encodeURIComponent(customerId)}`, { params: { expand: ["tax_ids"] } })
+    const obj = await stripeFetch<Obj>(ctx, `/v1/customers/${encodeURIComponent(customerId)}`, {
+      params: { expand: ["tax_ids"] },
+    })
     if (!obj || obj.deleted === true) return null
     const fresh = customerRow(obj, newTally())
     if (store) await writeMirror(ctx.db, "stripe_customers", fresh, stripeUpdated)
@@ -152,7 +182,13 @@ export async function customerOf(ctx: MoneyEventCtx, customerId: string | null, 
 export function buyerOf(row: Obj | null, tally: MaskTally = newTally()): Obj | null {
   if (!row) return null
   const a = (row.address ?? null) as Obj | null
-  const parts = a ? [a.line1, a.line2, [a.postal_code, a.city].filter((x) => typeof x === "string" && x).join(" ")] : []
+  const parts = a
+    ? [
+        a.line1,
+        a.line2,
+        [a.postal_code, a.city].filter((x) => typeof x === "string" && x).join(" "),
+      ]
+    : []
   const address = parts.filter((x) => typeof x === "string" && x.trim()).join(", ")
   const taxIds = Array.isArray(row.tax_ids) ? (row.tax_ids as Obj[]) : []
   const vat = taxIds.find((t) => t.type === "eu_vat" || String(t.type ?? "").endsWith("_vat"))
@@ -178,7 +214,11 @@ export interface PaymentUnmatchedPayload {
   customer: Obj | null
 }
 
-export function unmatchedPayload(charge: Obj, customer: Obj | null, tally: MaskTally): PaymentUnmatchedPayload {
+export function unmatchedPayload(
+  charge: Obj,
+  customer: Obj | null,
+  tally: MaskTally,
+): PaymentUnmatchedPayload {
   const id = String(charge.id)
   return {
     charge_id: id,
@@ -224,17 +264,29 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
  * the rate and the tax Stripe charged. Works with the current line shape (`taxes`,
  * `pricing`, `discount_amounts`) and the older one (`tax_amounts`, `price`).
  */
-export async function invoiceLine(ctx: StripeHttpCtx, l: Obj, cache: RateCache, tally: MaskTally): Promise<Obj> {
+export async function invoiceLine(
+  ctx: StripeHttpCtx,
+  l: Obj,
+  cache: RateCache,
+  tally: MaskTally,
+): Promise<Obj> {
   const period = (l.period ?? {}) as Obj
   const qtyRaw = typeof l.quantity === "number" && l.quantity > 0 ? Math.round(l.quantity) : 1
-  const taxes = (Array.isArray(l.taxes) ? l.taxes : Array.isArray(l.tax_amounts) ? l.tax_amounts : []) as Obj[]
-  const discount = (Array.isArray(l.discount_amounts) ? (l.discount_amounts as Obj[]) : []).reduce((s, d) => s + num(d.amount), 0)
+  const taxes = (
+    Array.isArray(l.taxes) ? l.taxes : Array.isArray(l.tax_amounts) ? l.tax_amounts : []
+  ) as Obj[]
+  const discount = (Array.isArray(l.discount_amounts) ? (l.discount_amounts as Obj[]) : []).reduce(
+    (s, d) => s + num(d.amount),
+    0,
+  )
   const tax = taxes.reduce((s, t) => s + num(t.amount), 0)
   const inclusive = taxes.some((t) => t.tax_behavior === "inclusive" || t.inclusive === true)
   // Net after discount, before tax: Stripe's taxable amount when it states one.
   // (Several taxes on one line share one taxable base.)
   const stated = taxes.find((t) => typeof t.taxable_amount === "number")
-  const taxable = stated ? num(stated.taxable_amount) : num(l.amount) - (inclusive ? tax : 0) - discount
+  const taxable = stated
+    ? num(stated.taxable_amount)
+    : num(l.amount) - (inclusive ? tax : 0) - discount
   const gross = taxable + discount
   const rates = new Set<number>()
   for (const t of taxes) {
@@ -253,22 +305,34 @@ export async function invoiceLine(ctx: StripeHttpCtx, l: Obj, cache: RateCache, 
     unit = gross
   }
   const pricing = (l.pricing ?? {}) as Obj
-  const productName = (pricing.price_details as Obj | undefined)?.product ?? (l.price as Obj | undefined)?.product
+  const productName =
+    (pricing.price_details as Obj | undefined)?.product ?? (l.price as Obj | undefined)?.product
   return {
     description,
     quantity,
     unit_amount_excl_minor: String(Math.round(unit)),
     amount_minor: minor(l.amount),
     ...(discount > 0 ? { discount_minor: String(discount) } : {}),
-    ...(rate !== null ? { tax_rate_bp: rate, tax_minor: String(tax) } : taxes.length === 0 ? { tax_rate_bp: 0, tax_minor: "0" } : {}),
+    ...(rate !== null
+      ? { tax_rate_bp: rate, tax_minor: String(tax) }
+      : taxes.length === 0
+        ? { tax_rate_bp: 0, tax_minor: "0" }
+        : {}),
     period_start: at(period.start),
     period_end: at(period.end),
-    product_name: typeof productName === "string" ? null : scan((productName as Obj | undefined)?.name, "product name", tally),
+    product_name:
+      typeof productName === "string"
+        ? null
+        : scan((productName as Obj | undefined)?.name, "product name", tally),
   }
 }
 
 /** Every line of an invoice: the embedded page, then the rest from Stripe's lines list. */
-export async function invoiceLines(ctx: StripeHttpCtx, invoice: Obj, tally: MaskTally): Promise<Obj[]> {
+export async function invoiceLines(
+  ctx: StripeHttpCtx,
+  invoice: Obj,
+  tally: MaskTally,
+): Promise<Obj[]> {
   const embedded = (invoice.lines ?? {}) as Obj
   const lines = [...((embedded.data ?? []) as Obj[])]
   let more = embedded.has_more === true
@@ -301,7 +365,12 @@ export async function invoiceEventPayload(
   store = true,
 ): Promise<Obj> {
   const lines = await invoiceLines(ctx, obj, tally)
-  const customer = await customerOf(ctx, typeof row.customer_id === "string" ? row.customer_id : null, stripeUpdated, store)
+  const customer = await customerOf(
+    ctx,
+    typeof row.customer_id === "string" ? row.customer_id : null,
+    stripeUpdated,
+    store,
+  )
   return {
     stripe_invoice_id: row.stripe_id,
     customer_id: row.customer_id,

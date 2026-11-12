@@ -7,7 +7,15 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import manifest from "../../app.manifest.json"
-import { createStandingOff, emailsLine, InvoicingIssuerStreams, STANDING_UNDO_MS, standingLine, standingOnCall, streamRow } from "./IssuerStreams"
+import {
+  createStandingOff,
+  emailsLine,
+  InvoicingIssuerStreams,
+  STANDING_UNDO_MS,
+  standingLine,
+  standingOnCall,
+  streamRow,
+} from "./IssuerStreams"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -40,11 +48,20 @@ describe("who issues what, in the issuer settings", () => {
     expect(unknown).toContain("Please check in Stripe")
     expect(unknown).not.toMatch(/checked/i)
     // A confirmed state with no time is not a person's statement.
-    expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: null })).not.toMatch(/^Checked/)
-    expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: "2026-11-03T09:30:00.000Z" }, "en-GB")).toMatch(/^Checked by a person on 3 Nov 2026/)
+    expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: null })).not.toMatch(
+      /^Checked/,
+    )
+    expect(
+      emailsLine(
+        { state: "confirmed", confirmedBy: "u1", confirmedAt: "2026-11-03T09:30:00.000Z" },
+        "en-GB",
+      ),
+    ).toMatch(/^Checked by a person on 3 Nov 2026/)
     // No other string of the block says Checked.
     const source = readFileSync(join(import.meta.dir, "IssuerStreams.tsx"), "utf8")
-    expect(source.match(/"Checked[^"]*"/g)).toEqual(['"Checked by a person on {{day}}. Liaison cannot read this setting, so check again if someone changes it."'])
+    expect(source.match(/"Checked[^"]*"/g)).toEqual([
+      '"Checked by a person on {{day}}. Liaison cannot read this setting, so check again if someone changes it."',
+    ])
   })
 })
 
@@ -86,7 +103,11 @@ describe("the standing e-invoice authorization of a stream", () => {
     expect(STANDING_UNDO_MS).toBe(8000)
     const clock = manualClock()
     const calls: Array<{ tool: string; params: Record<string, unknown> }> = []
-    const off = createStandingOff({ run: (tool, params) => void calls.push({ tool, params }), setTimer: clock.set, clearTimer: clock.clear })
+    const off = createStandingOff({
+      run: (tool, params) => void calls.push({ tool, params }),
+      setTimer: clock.set,
+      clearTimer: clock.clear,
+    })
 
     off.request("issuer-1", "card")
     expect(off.pending()).toEqual({ issuerProfileId: "issuer-1", stream: "card" })
@@ -99,7 +120,9 @@ describe("the standing e-invoice authorization of a stream", () => {
 
     off.request("issuer-1", "card")
     clock.advance(8000)
-    expect(calls).toEqual([{ tool: "einvoice_standing_off", params: { issuerProfileId: "issuer-1", stream: "card" } }])
+    expect(calls).toEqual([
+      { tool: "einvoice_standing_off", params: { issuerProfileId: "issuer-1", stream: "card" } },
+    ])
     expect(off.pending()).toBeNull()
     // Undo after the call has gone changes nothing.
     off.undo()
@@ -108,10 +131,16 @@ describe("the standing e-invoice authorization of a stream", () => {
   })
 
   it("says off, or who turned it on, when and until when", () => {
-    expect(standingLine({ on: false, turnedOnBy: null, turnedOnAt: null, until: null }, null)).toBe("Off: e-invoices issued with no person wait for the daily send card.")
-    expect(standingLine({ on: true, turnedOnBy: "u1", turnedOnAt: "2026-11-03T09:30:00.000Z", until: "2027-02-01" }, "Claire Dubois", "en-GB")).toBe(
-      "On: turned on by Claire Dubois on 3 Nov 2026, until 1 Feb 2027.",
+    expect(standingLine({ on: false, turnedOnBy: null, turnedOnAt: null, until: null }, null)).toBe(
+      "Off: e-invoices issued with no person wait for the daily send card.",
     )
+    expect(
+      standingLine(
+        { on: true, turnedOnBy: "u1", turnedOnAt: "2026-11-03T09:30:00.000Z", until: "2027-02-01" },
+        "Claire Dubois",
+        "en-GB",
+      ),
+    ).toBe("On: turned on by Claire Dubois on 3 Nov 2026, until 1 Feb 2027.")
   })
 })
 

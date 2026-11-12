@@ -19,11 +19,17 @@ import {
   stripeMockSeed,
 } from "./money.testkit"
 import { refundsCreate, refundsCreatePreflight } from "./tools/refunds"
-import { subscriptionCancel, subscriptionCancelEffect, subscriptionCancelPreflight } from "./tools/subscriptions"
+import {
+  subscriptionCancel,
+  subscriptionCancelEffect,
+  subscriptionCancelPreflight,
+} from "./tools/subscriptions"
 
 type Obj = Record<string, any>
-const manifest = () => JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
-const refundPosts = () => stripeMockRequests().filter((r) => r.method === "POST" && r.path === "/v1/refunds")
+const manifest = () =>
+  JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
+const refundPosts = () =>
+  stripeMockRequests().filter((r) => r.method === "POST" && r.path === "/v1/refunds")
 const codeOf = (r: unknown) => (r as Obj)?.error?.code
 
 beforeEach(() => stripeMockReset())
@@ -33,7 +39,9 @@ describe("refunds_create before approval", () => {
     const db = connectedDb()
     // The mirror is behind: it says every charge is untouched and undisputed.
     for (const id of ["ch_done", "ch_disputed", "ch_small", "ch_old"]) {
-      db.seed("stripe_payments", [{ stripe_id: id, amount_minor: 10000, refunded_minor: 0, disputed: false, currency: "eur" }])
+      db.seed("stripe_payments", [
+        { stripe_id: id, amount_minor: 10000, refunded_minor: 0, disputed: false, currency: "eur" },
+      ])
     }
     seedCharge("ch_done", 10000, 10000)
     seedCharge("ch_disputed", 10000, 0, { disputed: true })
@@ -43,18 +51,34 @@ describe("refunds_create before approval", () => {
     const answers = {
       already_refunded: await refundsCreatePreflight({ chargeId: "ch_done" }, ctx),
       charge_disputed: await refundsCreatePreflight({ chargeId: "ch_disputed" }, ctx),
-      amount_over_refundable: await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 1001 }, ctx),
+      amount_over_refundable: await refundsCreatePreflight(
+        { chargeId: "ch_small", amountMinor: 1001 },
+        ctx,
+      ),
     }
     for (const [code, answer] of Object.entries(answers)) {
-      expect({ code, got: codeOf(answer), refusal: (answer as Obj).error?.refusal }).toEqual({ code, got: code, refusal: true })
+      expect({ code, got: codeOf(answer), refusal: (answer as Obj).error?.refusal }).toEqual({
+        code,
+        got: code,
+        refusal: true,
+      })
     }
     // 1000 left: N-1 and N pass, N+1 (above) was refused.
-    expect((await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 999 }, ctx)) as Obj).toMatchObject({ ok: true })
-    expect((await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 1000 }, ctx)) as Obj).toMatchObject({ ok: true })
+    expect(
+      (await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 999 }, ctx)) as Obj,
+    ).toMatchObject({ ok: true })
+    expect(
+      (await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 1000 }, ctx)) as Obj,
+    ).toMatchObject({ ok: true })
 
     // When Liaison issues the invoices, a charge with no Liaison invoice behind it is a person's call.
-    expect((await refundsCreatePreflight({ chargeId: "ch_old" }, ctx)) as Obj).toMatchObject({ ok: true })
-    const old = await refundsCreatePreflight({ chargeId: "ch_old" }, moneyCtx(db, null, { cardIssuer: "liaison" }))
+    expect((await refundsCreatePreflight({ chargeId: "ch_old" }, ctx)) as Obj).toMatchObject({
+      ok: true,
+    })
+    const old = await refundsCreatePreflight(
+      { chargeId: "ch_old" },
+      moneyCtx(db, null, { cardIssuer: "liaison" }),
+    )
     expect(codeOf(old)).toBe("no_invoice_for_refund")
     expect((old as Obj).error.message).toContain("which invoice")
     expect(refundPosts()).toHaveLength(0)
@@ -62,7 +86,10 @@ describe("refunds_create before approval", () => {
 
   it("an allowed refund pins the charge and is always decided by a person", async () => {
     seedCharge("ch_ok", 5000)
-    const out = (await refundsCreatePreflight({ chargeId: "ch_ok", amountMinor: 2000 }, moneyCtx(connectedDb(), null))) as Obj
+    const out = (await refundsCreatePreflight(
+      { chargeId: "ch_ok", amountMinor: 2000 },
+      moneyCtx(connectedDb(), null),
+    )) as Obj
     expect(out).toEqual({ ok: true, noAutoApprove: true, pinnedParams: { chargeId: "ch_ok" } })
     const t = manifest().tools.refunds_create
     expect(t).toMatchObject({
@@ -108,7 +135,12 @@ describe("refunds_create after approval", () => {
     // Staged with 5000 left; 4000 is then refunded straight in Stripe.
     seedCharge("ch_ok", 5000)
     const db = connectedDb()
-    expect((await refundsCreatePreflight({ chargeId: "ch_ok", amountMinor: 3000 }, moneyCtx(db, null))) as Obj).toMatchObject({ ok: true })
+    expect(
+      (await refundsCreatePreflight(
+        { chargeId: "ch_ok", amountMinor: 3000 },
+        moneyCtx(db, null),
+      )) as Obj,
+    ).toMatchObject({ ok: true })
     seedCharge("ch_ok", 5000, 4000)
     const late = moneyCtx(db, "apr-late")
     const refused = await refundsCreate({ chargeId: "ch_ok", amountMinor: 3000 }, late)
@@ -165,19 +197,35 @@ describe("refunds_create after approval", () => {
   it("partial refunds sum to what Stripe holds and the last one above what is left is refused", async () => {
     seedCharge("ch_parts", 10000, 1000)
     const db = connectedDb()
-    const first = (await refundsCreate({ chargeId: "ch_parts", amountMinor: 3000 }, moneyCtx(db, "apr-p1"))) as Obj
-    const second = (await refundsCreate({ chargeId: "ch_parts", amountMinor: 4000 }, moneyCtx(db, "apr-p2"))) as Obj
+    const first = (await refundsCreate(
+      { chargeId: "ch_parts", amountMinor: 3000 },
+      moneyCtx(db, "apr-p1"),
+    )) as Obj
+    const second = (await refundsCreate(
+      { chargeId: "ch_parts", amountMinor: 4000 },
+      moneyCtx(db, "apr-p2"),
+    )) as Obj
     expect([first.leftMinor, second.leftMinor]).toEqual([6000, 2000])
-    expect(codeOf(await refundsCreate({ chargeId: "ch_parts", amountMinor: 2001 }, moneyCtx(db, "apr-p3")))).toBe("amount_over_refundable")
+    expect(
+      codeOf(
+        await refundsCreate({ chargeId: "ch_parts", amountMinor: 2001 }, moneyCtx(db, "apr-p3")),
+      ),
+    ).toBe("amount_over_refundable")
     const rest = (await refundsCreate({ chargeId: "ch_parts" }, moneyCtx(db, "apr-p4"))) as Obj
     expect(rest).toMatchObject({ amountMinor: 2000, leftMinor: 0 })
-    expect(stripeMockObject("charges", "ch_parts")).toMatchObject({ amount_refunded: 10000, refunded: true })
+    expect(stripeMockObject("charges", "ch_parts")).toMatchObject({
+      amount_refunded: 10000,
+      refunded: true,
+    })
   })
 
   it("a refund with a ticket adds an internal note and never a reply", async () => {
     seedCharge("ch_t", 5000)
     const ctx = moneyCtx(connectedDb(), "apr-t")
-    const out = (await refundsCreate({ chargeId: "ch_t", amountMinor: 500, ticketId: "ticket-42" }, ctx)) as Obj
+    const out = (await refundsCreate(
+      { chargeId: "ch_t", amountMinor: 500, ticketId: "ticket-42" },
+      ctx,
+    )) as Obj
     expect(ctx.rec.calls.map((c) => c.tool)).toEqual(["tickets:addNote"])
     expect(ctx.rec.calls[0]?.params).toMatchObject({ ticketId: "ticket-42" })
     expect(String(ctx.rec.calls[0]?.params.text)).toContain(out.refundId)
@@ -186,7 +234,9 @@ describe("refunds_create after approval", () => {
 
   it("nothing is sent without an approval", async () => {
     seedCharge("ch_ok", 5000)
-    expect(codeOf(await refundsCreate({ chargeId: "ch_ok" }, moneyCtx(connectedDb(), null)))).toBe("approval_required")
+    expect(codeOf(await refundsCreate({ chargeId: "ch_ok" }, moneyCtx(connectedDb(), null)))).toBe(
+      "approval_required",
+    )
     expect(stripeMockRequests()).toHaveLength(0)
   })
 })
@@ -198,25 +248,45 @@ describe("subscription_cancel", () => {
 
   it("cancel without the write permission is blocked and parks nothing; check again is a card action on the check, never on cancel", async () => {
     stripeMockFailNext("/v1/subscriptions/sub_liaison_probe", 403)
-    const out = (await subscriptionCancelPreflight({ subscriptionId: "sub_live" }, moneyCtx(connectedDb(), null))) as Obj
+    const out = (await subscriptionCancelPreflight(
+      { subscriptionId: "sub_live" },
+      moneyCtx(connectedDb(), null),
+    )) as Obj
     expect(out.error).toMatchObject({ code: "permission_missing", refusal: true })
     expect(out.error.message).toStartWith("This key cannot cancel subscriptions")
     const actions = out.error.body.actions as Obj[]
     expect(actions.map((a) => a.tool)).toEqual(["connection_check"])
     expect(JSON.stringify(out.error.body)).not.toContain("subscription_cancel")
-    expect(stripeMockObject("subscriptions", "sub_live")).toMatchObject({ status: "active", cancel_at_period_end: false })
+    expect(stripeMockObject("subscriptions", "sub_live")).toMatchObject({
+      status: "active",
+      cancel_at_period_end: false,
+    })
     // With the permission back, the same call stages.
-    const again = (await subscriptionCancelPreflight({ subscriptionId: "sub_live" }, moneyCtx(connectedDb(), null))) as Obj
-    expect(again).toEqual({ ok: true, noAutoApprove: true, pinnedParams: { subscriptionId: "sub_live" } })
+    const again = (await subscriptionCancelPreflight(
+      { subscriptionId: "sub_live" },
+      moneyCtx(connectedDb(), null),
+    )) as Obj
+    expect(again).toEqual({
+      ok: true,
+      noAutoApprove: true,
+      pinnedParams: { subscriptionId: "sub_live" },
+    })
     expect(manifest().tools.subscription_cancel).toMatchObject({ gated: true, noAutoApprove: true })
   })
 
   it("the default cancels at period end", async () => {
     const ctx = moneyCtx(connectedDb(), "apr-c")
     const out = (await subscriptionCancel({ subscriptionId: "sub_live" }, ctx)) as Obj
-    const writes = stripeMockRequests().filter((r) => r.method !== "GET" && r.path === "/v1/subscriptions/sub_live")
-    expect(writes.map((w) => [w.method, w.body, w.idempotencyKey])).toEqual([["POST", "cancel_at_period_end=true", "apr-c"]])
-    expect(stripeMockObject("subscriptions", "sub_live")).toMatchObject({ status: "active", cancel_at_period_end: true })
+    const writes = stripeMockRequests().filter(
+      (r) => r.method !== "GET" && r.path === "/v1/subscriptions/sub_live",
+    )
+    expect(writes.map((w) => [w.method, w.body, w.idempotencyKey])).toEqual([
+      ["POST", "cancel_at_period_end=true", "apr-c"],
+    ])
+    expect(stripeMockObject("subscriptions", "sub_live")).toMatchObject({
+      status: "active",
+      cancel_at_period_end: true,
+    })
     expect(out.summary).toContain("stays active until")
     expect(manifest().tools.subscription_cancel.params.properties.atPeriodEnd.default).toBe(true)
   })
@@ -224,11 +294,25 @@ describe("subscription_cancel", () => {
   it("the card shows the MRR effect, the invoice effect and the company's open deal", async () => {
     const db = connectedDb()
     db.seed("stripe_subscriptions", [
-      { stripe_id: "sub_live", customer_id: "cus_1", plan_name: "Pro", mrr_minor: 4900, currency: "eur", current_period_end: "2026-12-01T00:00:00Z" },
+      {
+        stripe_id: "sub_live",
+        customer_id: "cus_1",
+        plan_name: "Pro",
+        mrr_minor: 4900,
+        currency: "eur",
+        current_period_end: "2026-12-01T00:00:00Z",
+      },
     ])
-    db.seed("stripe_invoices", [{ stripe_id: "in_open", subscription_id: "sub_live", status: "open", number: "INV-7" }])
-    db.seed("stripe_customers", [{ stripe_id: "cus_1", company_id: "00000000-0000-4000-8000-0000000000c1" }])
-    const out = (await subscriptionCancelEffect({ subscriptionId: "sub_live" }, moneyCtx(db, null))) as Obj
+    db.seed("stripe_invoices", [
+      { stripe_id: "in_open", subscription_id: "sub_live", status: "open", number: "INV-7" },
+    ])
+    db.seed("stripe_customers", [
+      { stripe_id: "cus_1", company_id: "00000000-0000-4000-8000-0000000000c1" },
+    ])
+    const out = (await subscriptionCancelEffect(
+      { subscriptionId: "sub_live" },
+      moneyCtx(db, null),
+    )) as Obj
     expect(out.mrrEffect).toBe("MRR falls by 49.00 EUR from 2026-12-01.")
     expect(out.invoiceEffect).toBe("No invoice after 2026-12-01. Open invoice INV-7 stays open.")
     expect(out.dealNote).toBe("Open deal with this company: Renewal 2027.")
@@ -238,8 +322,12 @@ describe("subscription_cancel", () => {
     const tools = manifest().tools as Record<string, Obj>
     const dispute = Object.entries(tools).filter(([n]) => /dispute/.test(n))
     expect(dispute.length).toBeGreaterThan(0)
-    for (const [name, t] of dispute) expect({ name, readOnly: t.readOnly }).toEqual({ name, readOnly: true })
-    const writes = Object.entries(tools).filter(([, t]) => t.gated).map(([n]) => n).sort()
+    for (const [name, t] of dispute)
+      expect({ name, readOnly: t.readOnly }).toEqual({ name, readOnly: true })
+    const writes = Object.entries(tools)
+      .filter(([, t]) => t.gated)
+      .map(([n]) => n)
+      .sort()
     expect(writes).toEqual(["refunds_create", "subscription_cancel"])
   })
 })

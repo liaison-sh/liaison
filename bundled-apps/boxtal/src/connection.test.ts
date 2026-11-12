@@ -11,11 +11,7 @@ interface FetchCall {
   body?: string
 }
 
-function makeCtx(opts: {
-  configSecret?: string | null
-  tokenStatus?: number
-  subStatus?: number
-}) {
+function makeCtx(opts: { configSecret?: string | null; tokenStatus?: number; subStatus?: number }) {
   const db = createMockDb()
   const calls: FetchCall[] = []
   // Emulates the host's ctx.fetch: the bearer exchange (whose failure answers the
@@ -35,7 +31,9 @@ function makeCtx(opts: {
     }
     let body = o?.body
     for (const placeholder of Object.keys(o?.configSecrets ?? {})) {
-      body = body?.split(placeholder).join(String(opts.configSecret === undefined ? "whsecret" : opts.configSecret))
+      body = body
+        ?.split(placeholder)
+        .join(String(opts.configSecret === undefined ? "whsecret" : opts.configSecret))
     }
     calls.push({ url, method, body })
     if (url.includes("/subscription")) {
@@ -43,17 +41,40 @@ function makeCtx(opts: {
       return {
         status,
         headers: {},
-        body: status < 400 ? JSON.stringify({ status: 200, timestamp: "t", content: { id: `sub-${calls.length}` } }) : "err",
+        body:
+          status < 400
+            ? JSON.stringify({
+                status: 200,
+                timestamp: "t",
+                content: { id: `sub-${calls.length}` },
+              })
+            : "err",
       }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const ctx = {
     orgId: "org-1",
     db,
     fetch,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
-    config: { get: async (_k: string) => (opts.configSecret === undefined ? "whsecret" : opts.configSecret), has: async (_k: string) => Boolean(opts.configSecret === undefined ? "whsecret" : opts.configSecret) },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
+    config: {
+      get: async (_k: string) => (opts.configSecret === undefined ? "whsecret" : opts.configSecret),
+      has: async (_k: string) =>
+        Boolean(opts.configSecret === undefined ? "whsecret" : opts.configSecret),
+    },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
   return { ctx, db, calls }
@@ -85,7 +106,9 @@ describe("onConnectionEstablished", () => {
     for (const p of subPosts) {
       const body = JSON.parse(p.body!)
       expect(body.webhookSecret).toBe("whsecret")
-      expect(body.callbackUrl.startsWith("https://kernel.example.com/webhooks/org-1/boxtal/")).toBe(true)
+      expect(body.callbackUrl.startsWith("https://kernel.example.com/webhooks/org-1/boxtal/")).toBe(
+        true,
+      )
       expect(body.callbackUrl.includes("/api/")).toBe(false)
     }
     const urls = subPosts.map((p) => JSON.parse(p.body!).callbackUrl)
@@ -143,10 +166,18 @@ describe("onConnectionDisconnected", () => {
     await onConnectionEstablished(event() as any, ctx)
     const before = calls.length
     await onConnectionDisconnected(
-      { app: "kernel", entity: "connected_account", action: "disconnect", orgId: "org-1", data: { id: "acc-1", appName: "boxtal" } } as any,
+      {
+        app: "kernel",
+        entity: "connected_account",
+        action: "disconnect",
+        orgId: "org-1",
+        data: { id: "acc-1", appName: "boxtal" },
+      } as any,
       ctx,
     )
-    const deletes = calls.slice(before).filter((c) => c.method === "DELETE" && c.url.includes("/subscription"))
+    const deletes = calls
+      .slice(before)
+      .filter((c) => c.method === "DELETE" && c.url.includes("/subscription"))
     expect(deletes).toHaveLength(2)
     expect(db.__all("subscription")).toHaveLength(0)
     expect(db.__all("app_config").find((r) => r.key === "webhook_status")).toBeUndefined()

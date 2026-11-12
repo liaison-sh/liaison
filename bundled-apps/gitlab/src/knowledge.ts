@@ -57,7 +57,8 @@ export interface FolderRef {
 }
 
 export function parseFolderRef(ref: unknown): FolderRef {
-  if (typeof ref !== "string") throw new Error('GitLab source: config.ref is required ("<project>:<branch>:<path>")')
+  if (typeof ref !== "string")
+    throw new Error('GitLab source: config.ref is required ("<project>:<branch>:<path>")')
   const a = ref.indexOf(":")
   const b = ref.indexOf(":", a + 1)
   if (a <= 0 || b <= a + 1) {
@@ -132,7 +133,10 @@ export async function syncGitlabFolder(
   const entries = JSON.parse(answer.body) as TreeEntry[]
 
   // A folder below the root, with every folder above it up to the root.
-  const folders = new Map<string, { externalId: string; name: string; parentExternalId: string | null }>()
+  const folders = new Map<
+    string,
+    { externalId: string; name: string; parentExternalId: string | null }
+  >()
   const folderOf = (dir: string): string | undefined => {
     if (dir === ref.path || (ref.path && !dir.startsWith(`${ref.path}/`)) || dir === "") {
       return undefined
@@ -140,7 +144,11 @@ export async function syncGitlabFolder(
     const id = idOf(dir)
     if (!folders.has(id)) {
       const parent = folderOf(parentDir(dir))
-      folders.set(id, { externalId: id, name: dir.slice(dir.lastIndexOf("/") + 1), parentExternalId: parent ?? null })
+      folders.set(id, {
+        externalId: id,
+        name: dir.slice(dir.lastIndexOf("/") + 1),
+        parentExternalId: parent ?? null,
+      })
     }
     return id
   }
@@ -181,11 +189,19 @@ export async function syncGitlabFolder(
 
   const page = { documents: { upsert }, folders: { upsert: [...folders.values()] } }
   if (handled < entries.length) {
-    return { ...page, done: false, nextCursor: { head: cursor.head, pass: { ...pass, done: handled } } }
+    return {
+      ...page,
+      done: false,
+      nextCursor: { head: cursor.head, pass: { ...pass, done: handled } },
+    }
   }
   const next = nextLink(answer)
   if (next) {
-    return { ...page, done: false, nextCursor: { head: cursor.head, pass: { ...pass, page: next, done: 0 } } }
+    return {
+      ...page,
+      done: false,
+      nextCursor: { head: cursor.head, pass: { ...pass, page: next, done: 0 } },
+    }
   }
   return { ...page, done: true, prune: true, nextCursor: { head: cursor.head } }
 }

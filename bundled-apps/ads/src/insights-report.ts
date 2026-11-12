@@ -77,7 +77,11 @@ export interface InsightsReportCtx {
 function stableJson(value: unknown): string {
   return JSON.stringify(value, (_k, v) =>
     v && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
       : v,
   )
 }
@@ -105,7 +109,10 @@ const wakeOpts = (key: string) => ({ jobId: `insights-report-${key}` })
  */
 function isReadOnlyRefusal(err: unknown): boolean {
   const e = err as { code?: unknown; message?: unknown } | null
-  return e?.code === "E_READ_ONLY_RUN_BLOCKED" || String(e?.message ?? "").includes("E_READ_ONLY_RUN_BLOCKED")
+  return (
+    e?.code === "E_READ_ONLY_RUN_BLOCKED" ||
+    String(e?.message ?? "").includes("E_READ_ONLY_RUN_BLOCKED")
+  )
 }
 
 async function forget(ctx: InsightsReportCtx, key: string): Promise<void> {
@@ -142,7 +149,11 @@ export async function fetchInsightsReport(
   let reportRunId = doc?.data.reportRunId
   if (!reportRunId) {
     reportRunId = await createInsightsReport(ctx.fetch, opts)
-    const record: InsightsReportRecord = { reportRunId, startedAt: new Date().toISOString(), wakes: 0 }
+    const record: InsightsReportRecord = {
+      reportRunId,
+      startedAt: new Date().toISOString(),
+      wakes: 0,
+    }
     try {
       await ctx.store.set(INSIGHTS_REPORTS, key, record, { ifVersion: 0 })
       await ctx.timers.wakeIn(wakeDelay(0), INSIGHTS_REPORT_JOB, { report: key }, wakeOpts(key))
@@ -204,13 +215,23 @@ export async function insightsReportJob(
     answer = await checkInsightsReport(ctx.fetch, { reportRunId: rec.reportRunId, accessToken })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    await ctx.store.set(INSIGHTS_REPORTS, key, { ...rec, failed: message }, { ifVersion: doc.version })
+    await ctx.store.set(
+      INSIGHTS_REPORTS,
+      key,
+      { ...rec, failed: message },
+      { ifVersion: doc.version },
+    )
     return { state: "failed" }
   }
 
   if (!isInsightsPending(answer)) {
     if (JSON.stringify(answer).length <= MAX_PARKED_ROWS_CHARS) {
-      await ctx.store.set(INSIGHTS_REPORTS, key, { ...rec, rows: answer }, { ifVersion: doc.version })
+      await ctx.store.set(
+        INSIGHTS_REPORTS,
+        key,
+        { ...rec, rows: answer },
+        { ifVersion: doc.version },
+      )
       return { state: "parked" }
     }
     // Too large to park: the next call extracts it from Meta itself.

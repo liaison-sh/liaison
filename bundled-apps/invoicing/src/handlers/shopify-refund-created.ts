@@ -19,13 +19,16 @@
 // simply skipped.
 
 import { park } from "../deferred"
-import { autoCreditNoteCounterparty, issueOrParkAutoCreditNote } from "../einvoicing/parked-credit-note"
+import {
+  autoCreditNoteCounterparty,
+  issueOrParkAutoCreditNote,
+} from "../einvoicing/parked-credit-note"
 import { type LineKind, storedTaxCountry } from "../issue"
 import { lineSubtotal, lineTax, majorDecimalToMinor } from "../money"
 import { creditNoteCreateAndIssue, type MutationsCtx } from "../mutations"
+import { toBigInt } from "../mutations/shared"
 import { findBillingDocumentsForOrder } from "./billing-documents"
 import type { DeferredEventInsert } from "./shopify-order-paid"
-import { toBigInt } from "../mutations/shared"
 
 export interface RefundPayload {
   id: string // refund id (numeric or gid — normalized for dedup)
@@ -109,7 +112,10 @@ export interface RefundCtx {
 
 /** True when the runtime ctx carries the issue pipeline (so a credit note can be issued). */
 function hasIssuePipeline(ctx: RefundCtx): boolean {
-  return typeof ctx.pdf?.render === "function" && typeof (ctx.db as { batch?: unknown }).batch === "function"
+  return (
+    typeof ctx.pdf?.render === "function" &&
+    typeof (ctx.db as { batch?: unknown }).batch === "function"
+  )
 }
 
 /** The shape of an original invoice line this builder needs to allocate a partial reversal. */
@@ -171,10 +177,12 @@ export function buildAdjustmentReversalItems(
   // the scope decides (the services document of a split order is scope "software").
   const allShipping =
     originalLines.length > 0 && originalLines.every((l) => l.line_kind === "shipping")
-  const kinds = new Set(originalLines.filter((l) => l.line_kind !== "shipping").map((l) => l.line_kind))
+  const kinds = new Set(
+    originalLines.filter((l) => l.line_kind !== "shipping").map((l) => l.line_kind),
+  )
   const shared = kinds.size === 1 ? [...kinds][0] : undefined
   const lineKind = (
-    allShipping ? "shipping" : shared ?? (scope === "software" ? "software" : "goods")
+    allShipping ? "shipping" : (shared ?? (scope === "software" ? "software" : "goods"))
   ) as LineKind
   const refundLabel = allShipping ? "Shipping refund" : "Refund"
   const item = (unitPriceMinor: bigint, rateBp: number, description: string) => ({
@@ -382,19 +390,22 @@ async function issueOneRefundCreditNote(
 
   // The refund authorises the reversal (no approval). An e-invoicing refusal parks THIS credit
   // note on the buyer's identity, with its own arguments, for the retry sweep to re-issue alone.
-  await issueOrParkAutoCreditNote({ ...mctx, logger: ctx.logger }, {
-    source: "refund",
-    original_document_id: args.doc.id,
-    amount_minor: args.amount,
-    full_reversal: args.fullReversal,
-    refund_id: args.refundId,
-    issuer_profile_id: (fresh.issuer_profile_id as string | null) ?? null,
-    counterparty,
-    currency,
-    items,
-    reason: `Auto-generated on Shopify refund ${args.refundId}`,
-    order_label: String(fresh.shopify_order_number ?? fresh.shopify_order_id ?? args.doc.id),
-  })
+  await issueOrParkAutoCreditNote(
+    { ...mctx, logger: ctx.logger },
+    {
+      source: "refund",
+      original_document_id: args.doc.id,
+      amount_minor: args.amount,
+      full_reversal: args.fullReversal,
+      refund_id: args.refundId,
+      issuer_profile_id: (fresh.issuer_profile_id as string | null) ?? null,
+      counterparty,
+      currency,
+      items,
+      reason: `Auto-generated on Shopify refund ${args.refundId}`,
+      order_label: String(fresh.shopify_order_number ?? fresh.shopify_order_id ?? args.doc.id),
+    },
+  )
 }
 
 /**
@@ -569,20 +580,16 @@ async function findDocumentsByShopifyOrderId(
   // Exclusion is centralised in findBillingDocumentsForOrder (billing-documents.ts).
   const rows = await findBillingDocumentsForOrder(db, shopifyOrderId, 10)
   return rows.map((r) => ({
-      id: String(r.id),
-      scope: (r.scope as string | null) ?? null,
-      grand_total_minor: toBigInt(r.grand_total_minor),
-      payment_status: String(r.payment_status ?? "unpaid"),
-      lifecycle_log:
-        (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
-    }))
+    id: String(r.id),
+    scope: (r.scope as string | null) ?? null,
+    grand_total_minor: toBigInt(r.grand_total_minor),
+    payment_status: String(r.payment_status ?? "unpaid"),
+    lifecycle_log: (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
+  }))
 }
 
 // Idempotent per (event, blocker): a redelivered refund webhook refreshes its open park.
-async function insertDeferred(
-  db: RefundDb,
-  row: DeferredEventInsert,
-): Promise<{ id: string }> {
+async function insertDeferred(db: RefundDb, row: DeferredEventInsert): Promise<{ id: string }> {
   return park({ db }, row)
 }
 
@@ -629,7 +636,11 @@ async function handleAttributedRefund(
         event_payload_json: payload,
         status: "awaiting_data",
         reason: "refund_shipping_unattributable",
-        blocked_on: { kind: "refund_shipping", shopify_order_id: orderId, shopify_refund_id: refundId },
+        blocked_on: {
+          kind: "refund_shipping",
+          shopify_order_id: orderId,
+          shopify_refund_id: refundId,
+        },
       })
       return { status: "deferred", deferred_id: def.id, reason: "refund_shipping_unattributable" }
     }
@@ -649,7 +660,11 @@ async function handleAttributedRefund(
       event_payload_json: payload,
       status: "awaiting_data",
       reason: "refund_line_item_unattributable",
-      blocked_on: { kind: "refund_line_item", shopify_order_id: orderId, shopify_refund_id: refundId },
+      blocked_on: {
+        kind: "refund_line_item",
+        shopify_order_id: orderId,
+        shopify_refund_id: refundId,
+      },
     })
     return { status: "deferred", deferred_id: def.id, reason: "refund_line_item_unattributable" }
   }
@@ -664,7 +679,9 @@ async function handleAttributedRefund(
     if (!doc) continue
     const alreadyRecorded =
       refundId !== "" &&
-      doc.lifecycle_log.some((e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId)
+      doc.lifecycle_log.some(
+        (e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId,
+      )
     const docTotal = doc.grand_total_minor < 0n ? -doc.grand_total_minor : doc.grand_total_minor
     const cumulative = sumPriorRefundedMinor(doc.lifecycle_log, refundId) + amount
     const docFullyRefunded = doc.payment_status === "refunded" || cumulative >= docTotal
@@ -719,7 +736,11 @@ async function handleAttributedRefund(
       event_payload_json: payload,
       status: "awaiting_data",
       reason: "refund_line_item_unattributable",
-      blocked_on: { kind: "refund_line_item", shopify_order_id: orderId, shopify_refund_id: refundId },
+      blocked_on: {
+        kind: "refund_line_item",
+        shopify_order_id: orderId,
+        shopify_refund_id: refundId,
+      },
     })
     return { status: "deferred", deferred_id: def.id, reason: "refund_line_item_unattributable" }
   }
@@ -784,9 +805,7 @@ export async function onShopifyRefundCreated(
   // webhook; webhooks also retry). Record each refund id at most once.
   const alreadyRecorded =
     refundId !== "" &&
-    doc.lifecycle_log.some(
-      (e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId,
-    )
+    doc.lifecycle_log.some((e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId)
   const refundAmt = resolveRefundMinor(payload)
   // Status must reflect the CUMULATIVE refund total, not this webhook alone —
   // a refund split across multiple `refunds/create` events (or a webhook plus a
@@ -794,13 +813,11 @@ export async function onShopifyRefundCreated(
   // once the sum reaches the document total. Exclude the current refund id from
   // the prior sum (it has just passed the dedup check and isn't in the log yet,
   // but a retry could be) and add this refund's amount.
-  const cumulativeRefunded =
-    sumPriorRefundedMinor(doc.lifecycle_log, refundId) + refundAmt
+  const cumulativeRefunded = sumPriorRefundedMinor(doc.lifecycle_log, refundId) + refundAmt
   // Never downgrade an already-fully-refunded document: a prior full refund may
   // have been recorded without a parseable minor amount (legacy `{ event:
   // "refunded" }`), so the cumulative sum alone would understate it.
-  const fullyRefunded =
-    doc.payment_status === "refunded" || cumulativeRefunded >= combinedTotal
+  const fullyRefunded = doc.payment_status === "refunded" || cumulativeRefunded >= combinedTotal
   const newStatus = fullyRefunded ? "refunded" : "partial"
   const actor = await ctx.getUserId()
   const newLog = [
@@ -856,12 +873,15 @@ export async function onShopifyRefundCreated(
     } catch (err) {
       // Credit-note issuance is best-effort; the refund status change stands. Still logged
       // with real context so a swallowed failure never goes unrecorded.
-      ctx.logger?.error?.("invoicing: auto refund credit note issuance failed, refund status stands", {
-        refund_id: refundId,
-        shopify_order_id: orderId,
-        document_id: doc.id,
-        err: err instanceof Error ? err.message : String(err),
-      })
+      ctx.logger?.error?.(
+        "invoicing: auto refund credit note issuance failed, refund status stands",
+        {
+          refund_id: refundId,
+          shopify_order_id: orderId,
+          document_id: doc.id,
+          err: err instanceof Error ? err.message : String(err),
+        },
+      )
     }
   }
 

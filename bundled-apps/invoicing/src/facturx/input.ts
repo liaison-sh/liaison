@@ -5,7 +5,13 @@
 // state, FX) are the only source. Nothing is recomputed from current contact or issuer data
 // except the issuer profile, which is the seller's identity at issue time.
 
-import { FacturxBuildError, type FacturxInput, type FacturxLine, type OperationCategory, type PaymentState } from "./cii"
+import {
+  FacturxBuildError,
+  type FacturxInput,
+  type FacturxLine,
+  type OperationCategory,
+  type PaymentState,
+} from "./cii"
 
 type Row = Record<string, unknown>
 
@@ -38,7 +44,11 @@ export function flatDocument(doc: Row): Row {
  *  internal cancellation (a credit note against a refused original is booked, never sent). */
 export function facturxEligible(type: string, doc: Row): boolean {
   const f = flatDocument(doc)
-  return (type === "invoice" || type === "credit_note") && f.regime === "e_invoice" && f.internal_cancellation !== true
+  return (
+    (type === "invoice" || type === "credit_note") &&
+    f.regime === "e_invoice" &&
+    f.internal_cancellation !== true
+  )
 }
 
 export interface FacturxSource {
@@ -66,11 +76,15 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
   const i = src.issuer
   const category = str(d.operation_category) as OperationCategory | null
   if (!category) {
-    throw new FacturxBuildError("facturx_data_missing", "The document has no operation category (goods, services or mixed).")
+    throw new FacturxBuildError(
+      "facturx_data_missing",
+      "The document has no operation category (goods, services or mixed).",
+    )
   }
   const number = str(d.number)
   const issueDate = dateOnly(d.issued_at)
-  if (!number || !issueDate) throw new FacturxBuildError("facturx_data_missing", "The document has no number or issue date.")
+  if (!number || !issueDate)
+    throw new FacturxBuildError("facturx_data_missing", "The document has no number or issue date.")
   const stored = str(d.payment_state) as PaymentState | null
   // Credit notes always emit x1; an invoice born paid (order-paid flow) is x2. Only the state
   // recorded AT ISSUE counts: the current payment_status is a later fact (a Factur-X first
@@ -144,7 +158,10 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
       src.type === "credit_note" && src.original?.number && src.original.issue_date
         ? { number: src.original.number, issue_date: src.original.issue_date }
         : null,
-    tax_total_eur_minor: d.tax_total_eur_minor == null || d.tax_total_eur_minor === "" ? null : big(d.tax_total_eur_minor),
+    tax_total_eur_minor:
+      d.tax_total_eur_minor == null || d.tax_total_eur_minor === ""
+        ? null
+        : big(d.tax_total_eur_minor),
     lines,
     subtotal_minor: big(d.subtotal_minor),
     tax_total_minor: big(d.tax_total_minor),

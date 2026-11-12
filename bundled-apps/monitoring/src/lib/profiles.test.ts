@@ -25,7 +25,9 @@ describe("parseSourceProfiles", () => {
   })
 
   it("accepts the value stored as a JSON string", () => {
-    expect(parseSourceProfiles('[{"source":"a","rank":2}]').profiles).toEqual([{ source: "a", rank: 2 }])
+    expect(parseSourceProfiles('[{"source":"a","rank":2}]').profiles).toEqual([
+      { source: "a", rank: 2 },
+    ])
   })
 
   it("drops each invalid entry and reports it", () => {
@@ -47,7 +49,10 @@ describe("parseSourceProfiles", () => {
   })
 
   it("reports a value that is not an array", () => {
-    expect(parseSourceProfiles({ source: "a" })).toEqual({ profiles: [], warnings: ["monitoringSources is not a list"] })
+    expect(parseSourceProfiles({ source: "a" })).toEqual({
+      profiles: [],
+      warnings: ["monitoringSources is not a list"],
+    })
     expect(parseSourceProfiles("{oops").warnings).toEqual(["monitoringSources is not valid JSON"])
   })
 })
@@ -65,7 +70,9 @@ describe("orderSources", () => {
 
 describe("parseMonitoringUrl", () => {
   it("keeps http and https only", () => {
-    expect(parseMonitoringUrl("https://grafana.example.com/d/1")).toBe("https://grafana.example.com/d/1")
+    expect(parseMonitoringUrl("https://grafana.example.com/d/1")).toBe(
+      "https://grafana.example.com/d/1",
+    )
     expect(parseMonitoringUrl("http://grafana.internal")).toBe("http://grafana.internal")
     expect(parseMonitoringUrl("javascript:alert(1)")).toBeNull()
     expect(parseMonitoringUrl("grafana.example.com")).toBeNull()

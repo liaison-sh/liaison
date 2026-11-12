@@ -29,7 +29,9 @@ const COPIED_SITE = {
   countryIsoCode: "DE",
   state: null,
 }
-function verifiedRow(over: Record<string, string | boolean | null>): Record<string, string | boolean | null> {
+function verifiedRow(
+  over: Record<string, string | boolean | null>,
+): Record<string, string | boolean | null> {
   return {
     role: "delivery",
     name: "Lena Brandt",
@@ -69,7 +71,10 @@ function b2bCase(over: Partial<GoldenCase>): GoldenCase {
 
 async function draftOf(c: GoldenCase, orderShipTo = true) {
   const { ctx, calls } = goldenCtx(c)
-  const draft = await shipmentDraftCreate(ctx, { document_ref: docId(c), ...(orderShipTo ? {} : { orderShipTo: false }) })
+  const draft = await shipmentDraftCreate(ctx, {
+    document_ref: docId(c),
+    ...(orderShipTo ? {} : { orderShipTo: false }),
+  })
   return { draft, calls }
 }
 
@@ -121,7 +126,10 @@ describe("shipment draft address: order ship-to and the address book", () => {
 
   it("uses the verified address outright when the order carries none", async () => {
     const { draft } = await draftOf(
-      b2bCase({ order: { shippingAddress: null, customerAddress: null, email: null }, book: [verifiedRow({})] }),
+      b2bCase({
+        order: { shippingAddress: null, customerAddress: null, email: null },
+        book: [verifiedRow({})],
+      }),
     )
     expect(draft.recipient_address).toMatchObject({
       street: "Werkstrasse 6",
@@ -138,8 +146,17 @@ describe("shipment draft address: order ship-to and the address book", () => {
   })
 
   it("uses the verified address over the contact copy for an invoice with no order", async () => {
-    const { draft } = await draftOf(b2bCase({ doc: { ...b2bCase({}).doc, shopify_order_id: null }, order: undefined, book: [verifiedRow({})] }))
-    expect(draft.recipient_address).toMatchObject({ street: "Werkstrasse 6", phone: "+492642000000" })
+    const { draft } = await draftOf(
+      b2bCase({
+        doc: { ...b2bCase({}).doc, shopify_order_id: null },
+        order: undefined,
+        book: [verifiedRow({})],
+      }),
+    )
+    expect(draft.recipient_address).toMatchObject({
+      street: "Werkstrasse 6",
+      phone: "+492642000000",
+    })
     expect(draft.address_check?.state).toBe("verified_only")
   })
 
@@ -149,7 +166,13 @@ describe("shipment draft address: order ship-to and the address book", () => {
         order: undefined,
         doc: { ...b2bCase({}).doc, shopify_order_id: null },
         book: [
-          verifiedRow({ verified: false, verifiedAt: null, verifiedBy: null, verifiedByName: null, verificationSource: null }),
+          verifiedRow({
+            verified: false,
+            verifiedAt: null,
+            verifiedBy: null,
+            verifiedByName: null,
+            verificationSource: null,
+          }),
           verifiedRow({ stale: true, staleAt: "2026-10-25T00:00:00.000Z" }),
           verifiedRow({ archived: true }),
           verifiedRow({ role: "billing" }),
@@ -167,9 +190,20 @@ describe("shipment draft address: order ship-to and the address book", () => {
       b2bCase({ contactAddress: { ...COPIED_SITE, postalCode: null } }),
       b2bCase({ contactAddress: { ...COPIED_SITE, phone: null } }),
       b2bCase({ order: { shippingAddress: { ...order, zip: null }, email: null } }),
-      b2bCase({ order: { shippingAddress: order, email: null }, book: [verifiedRow({ street1: "Industriepark 3", postalCode: "53111" })] }),
-      b2bCase({ order: { shippingAddress: null, customerAddress: null }, book: [verifiedRow({ postalCode: null })] }),
-      b2bCase({ order: { shippingAddress: null, customerAddress: { ...order, address1: "Am Hang 1", zip: "53489" } } }),
+      b2bCase({
+        order: { shippingAddress: order, email: null },
+        book: [verifiedRow({ street1: "Industriepark 3", postalCode: "53111" })],
+      }),
+      b2bCase({
+        order: { shippingAddress: null, customerAddress: null },
+        book: [verifiedRow({ postalCode: null })],
+      }),
+      b2bCase({
+        order: {
+          shippingAddress: null,
+          customerAddress: { ...order, address1: "Am Hang 1", zip: "53489" },
+        },
+      }),
     ]
     const sources = (c: GoldenCase): Array<[string | null, string | null]> => {
       const out: Array<[string | null, string | null]> = []
@@ -177,8 +211,10 @@ describe("shipment draft address: order ship-to and the address book", () => {
       if (o) out.push([[o.address1, o.address2].filter(Boolean).join(", ") || null, o.zip ?? null])
       const d = c.order?.customerAddress
       if (d) out.push([[d.address1, d.address2].filter(Boolean).join(", ") || null, d.zip ?? null])
-      if (c.contactAddress) out.push([c.contactAddress.street ?? null, c.contactAddress.postalCode ?? null])
-      for (const b of c.book ?? []) out.push([(b.street1 as string | null) ?? null, (b.postalCode as string | null) ?? null])
+      if (c.contactAddress)
+        out.push([c.contactAddress.street ?? null, c.contactAddress.postalCode ?? null])
+      for (const b of c.book ?? [])
+        out.push([(b.street1 as string | null) ?? null, (b.postalCode as string | null) ?? null])
       out.push(["Werkton Distribution GmbH, Fliederstrasse 7", "53424"])
       return out
     }
@@ -187,16 +223,27 @@ describe("shipment draft address: order ship-to and the address book", () => {
         const { draft } = await draftOf(c, orderShipTo)
         const a = draft.recipient_address
         const pair: [string | null, string | null] = [a?.street ?? null, a?.postalCode ?? null]
-        const from = sources(c).filter(([s, p]) => s === pair[0] && (p === pair[1] || pair[1] == null))
-        expect({ variant: variants.indexOf(c), orderShipTo, pair, found: from.length > 0 }).toMatchObject({ found: true })
+        const from = sources(c).filter(
+          ([s, p]) => s === pair[0] && (p === pair[1] || pair[1] == null),
+        )
+        expect({
+          variant: variants.indexOf(c),
+          orderShipTo,
+          pair,
+          found: from.length > 0,
+        }).toMatchObject({ found: true })
         // A postal code is never carried without a street from the same source.
-        if (pair[1] != null) expect(sources(c).some(([s, p]) => s === pair[0] && p === pair[1])).toBe(true)
+        if (pair[1] != null)
+          expect(sources(c).some(([s, p]) => s === pair[0] && p === pair[1])).toBe(true)
       }
     }
   })
 
   it("reads the order once per label-path build and never on the worklist path", async () => {
-    const usd = b2bCase({ doc: { ...b2bCase({}).doc, counterparty_country: "US" }, book: [verifiedRow({})] })
+    const usd = b2bCase({
+      doc: { ...b2bCase({}).doc, counterparty_country: "US" },
+      book: [verifiedRow({})],
+    })
     const label = await draftOf(usd)
     expect(label.calls.filter((t) => t === "shopify:orders_get")).toHaveLength(1)
     expect(label.calls.filter((t) => t === "kernel:contacts_addresses_list")).toHaveLength(1)
@@ -212,7 +259,10 @@ describe("shipment draft address: order ship-to and the address book", () => {
 
   it("the worklist path without a cached order address never uses a verified address in its place", async () => {
     // The order may carry an address the worklist cannot see; a verified address must not stand in.
-    const { draft } = await draftOf(b2bCase({ book: [verifiedRow({ street1: "Industriepark 3" })] }), false)
+    const { draft } = await draftOf(
+      b2bCase({ book: [verifiedRow({ street1: "Industriepark 3" })] }),
+      false,
+    )
     expect(draft.address_check?.used?.source).not.toBe("verified")
   })
 })

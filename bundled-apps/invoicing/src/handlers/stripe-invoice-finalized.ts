@@ -18,8 +18,13 @@
 //
 // The typed payload is the Stripe app's `invoice:finalized` (and `invoice:paid`): minor units as
 // strings across the JSON bridge, as the Shopify order payload is.
-import { resolveOpenParks, park } from "../deferred"
-import { EINVOICE_IDENTITY_PARK_KIND, GATE_CODES, type GateCode, raiseIdentityAttention } from "../einvoicing/gate"
+import { park, resolveOpenParks } from "../deferred"
+import {
+  EINVOICE_IDENTITY_PARK_KIND,
+  GATE_CODES,
+  type GateCode,
+  raiseIdentityAttention,
+} from "../einvoicing/gate"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import type { Counterparty, DraftLine } from "../issue"
 import { civilDateOf, issueDateParts } from "../issue-date"
@@ -101,8 +106,14 @@ export function payloadOf<T>(event: unknown): T {
   return (e.data && typeof e.data === "object" ? e.data : event) as T
 }
 
-export async function documentByRef(ctx: Pick<MutationsCtx, "db">, ref: string): Promise<Row | null> {
-  const rows = (await ctx.db.findMany("documents", { where: { external_ref: ref }, limit: 1 })) as Row[]
+export async function documentByRef(
+  ctx: Pick<MutationsCtx, "db">,
+  ref: string,
+): Promise<Row | null> {
+  const rows = (await ctx.db.findMany("documents", {
+    where: { external_ref: ref },
+    limit: 1,
+  })) as Row[]
   return rows[0] ?? null
 }
 
@@ -115,10 +126,16 @@ export async function cardStreamFor(
   if (rows.length === 0) return null
   const named = rows.map((row) => ({ row, issuer: issuerAt(row, at) ?? "undecided" }))
   // Several issuer profiles: the one that issues decides; none issues, the first undecided waits.
-  return named.find((n) => n.issuer === "liaison") ?? named.find((n) => n.issuer === "stripe") ?? named[0] ?? null
+  return (
+    named.find((n) => n.issuer === "liaison") ??
+    named.find((n) => n.issuer === "stripe") ??
+    named[0] ??
+    null
+  )
 }
 
-const money = (minor: bigint, currency: string) => `${(Number(minor) / 100).toFixed(2)} ${currency.toUpperCase()}`
+const money = (minor: bigint, currency: string) =>
+  `${(Number(minor) / 100).toFixed(2)} ${currency.toUpperCase()}`
 
 function parkPayload(p: StripeInvoicePayload): StripeInvoicePayload & { kind: "stripe_invoice" } {
   return { ...p, kind: "stripe_invoice" }
@@ -145,7 +162,13 @@ async function parkInvoice(
 }
 
 async function raise(ctx: StripeCtx, action: string, entityId: string, data: Row): Promise<void> {
-  if (ctx.emit) await ctx.emit({ entity: "stripe_invoice", action, entityId, data: { ...data, resolved: false } })
+  if (ctx.emit)
+    await ctx.emit({
+      entity: "stripe_invoice",
+      action,
+      entityId,
+      data: { ...data, resolved: false },
+    })
 }
 
 export interface TaxMismatch {
@@ -202,7 +225,10 @@ export function liaisonTotalOf(lines: StripeInvoiceLine[]): bigint | null {
   for (const l of lines) {
     if (typeof l.tax_rate_bp !== "number") return null
     const { qty, unit, discount } = lineNet(l)
-    total += lineAmounts({ quantity: qty.toString(), unit_price_minor: unit, discount_minor: discount }, l.tax_rate_bp).total_minor
+    total += lineAmounts(
+      { quantity: qty.toString(), unit_price_minor: unit, discount_minor: discount },
+      l.tax_rate_bp,
+    ).total_minor
   }
   return total
 }
@@ -229,7 +255,11 @@ export function invoiceLines(p: StripeInvoicePayload): DraftLine[] {
 }
 
 /** The buyer as Stripe names them, linked to a kernel contact by email; null fields stay null. */
-async function counterpartyOf(ctx: StripeCtx, p: StripeInvoicePayload, issuerCountry: string): Promise<Counterparty> {
+async function counterpartyOf(
+  ctx: StripeCtx,
+  p: StripeInvoicePayload,
+  issuerCountry: string,
+): Promise<Counterparty> {
   const c = p.customer ?? {}
   const email = typeof c.email === "string" && c.email.includes("@") ? c.email.trim() : null
   let contactId = typeof p.contact_id === "string" && p.contact_id ? p.contact_id : null
@@ -283,7 +313,12 @@ export async function onStripeInvoiceFinalized(
   //    this event names the same invoice key (stripeDocumentRef).
   const existing = await documentByRef(ctx, ref)
   if (existing) {
-    await linkBack(ctx, p.stripe_invoice_id, String(existing.id), typeof existing.number === "string" ? existing.number : null)
+    await linkBack(
+      ctx,
+      p.stripe_invoice_id,
+      String(existing.id),
+      typeof existing.number === "string" ? existing.number : null,
+    )
     await resolveOpenParks(ctx, ref, "already_issued")
     return { status: "skipped", reason: "duplicate_document", document_id: String(existing.id) }
   }
@@ -292,7 +327,13 @@ export async function onStripeInvoiceFinalized(
   const finalizedAt = isoOf(p.finalized_at) ?? new Date().toISOString()
   const stream = await cardStreamFor(ctx, finalizedAt)
   if (!stream) {
-    const def = await parkInvoice(ctx, p, "awaiting_config", "card_stream_missing", STRIPE_INVOICE_PARK)
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_config",
+      "card_stream_missing",
+      STRIPE_INVOICE_PARK,
+    )
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
   if (stream.issuer === "stripe") {
@@ -300,9 +341,16 @@ export async function onStripeInvoiceFinalized(
     return { status: "skipped", reason: "issued_by_stripe" }
   }
   if (stream.issuer === "undecided" && !opts.byPerson) {
-    const def = await parkInvoice(ctx, p, "awaiting_config", "issuer_undecided", STRIPE_UNDECIDED_PARK, {
-      issuer_profile_id: stream.row.issuer_profile_id ?? null,
-    })
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_config",
+      "issuer_undecided",
+      STRIPE_UNDECIDED_PARK,
+      {
+        issuer_profile_id: stream.row.issuer_profile_id ?? null,
+      },
+    )
     if (def.created) {
       await raise(ctx, "issuer_undecided", def.id, {
         deferred_id: def.id,
@@ -342,28 +390,50 @@ export async function onStripeInvoiceFinalized(
   // 5. Issuer and buyer.
   const issuer = await findIssuerProfile(ctx.db, String(stream.row.issuer_profile_id ?? ""))
   if (!issuer) {
-    const def = await parkInvoice(ctx, p, "awaiting_config", "issuer_profile_missing", STRIPE_INVOICE_PARK)
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_config",
+      "issuer_profile_missing",
+      STRIPE_INVOICE_PARK,
+    )
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
   const counterparty = await counterpartyOf(ctx, p, issuer.country)
   if (!counterparty.email) {
-    const def = await parkInvoice(ctx, p, "awaiting_data", "customer_email_missing", STRIPE_INVOICE_PARK, {
-      customer_id: p.customer_id ?? null,
-    })
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_data",
+      "customer_email_missing",
+      STRIPE_INVOICE_PARK,
+      {
+        customer_id: p.customer_id ?? null,
+      },
+    )
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
   if (!counterparty.address || !counterparty.legal_name) {
-    const def = await parkInvoice(ctx, p, "awaiting_data", "customer_address_missing", STRIPE_INVOICE_PARK, {
-      customer_id: p.customer_id ?? null,
-      contact_id: counterparty.contact_id,
-    })
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_data",
+      "customer_address_missing",
+      STRIPE_INVOICE_PARK,
+      {
+        customer_id: p.customer_id ?? null,
+        contact_id: counterparty.contact_id,
+      },
+    )
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
 
   // 6. Tax as charged, line by line.
   const mismatches = stripeTaxMismatches(p.lines ?? [])
   if (mismatches.length > 0) {
-    const def = await parkInvoice(ctx, p, "awaiting_data", "stripe_tax_mismatch", STRIPE_TAX_PARK, { lines: mismatches })
+    const def = await parkInvoice(ctx, p, "awaiting_data", "stripe_tax_mismatch", STRIPE_TAX_PARK, {
+      lines: mismatches,
+    })
     if (def.created && ctx.emit) {
       await ctx.emit({
         entity: "deferred",
@@ -388,10 +458,17 @@ export async function onStripeInvoiceFinalized(
   const residual = liaisonTotal === null ? null : total - liaisonTotal
   const tolerance = BigInt((p.lines ?? []).length)
   if (residual === null || residual > tolerance || -residual > tolerance) {
-    const def = await parkInvoice(ctx, p, "awaiting_data", "stripe_total_mismatch", STRIPE_TAX_PARK, {
-      liaison_total_minor: liaisonTotal === null ? null : liaisonTotal.toString(),
-      stripe_total_minor: total.toString(),
-    })
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_data",
+      "stripe_total_mismatch",
+      STRIPE_TAX_PARK,
+      {
+        liaison_total_minor: liaisonTotal === null ? null : liaisonTotal.toString(),
+        stripe_total_minor: total.toString(),
+      },
+    )
     if (def.created && ctx.emit) {
       await ctx.emit({
         entity: "deferred",
@@ -437,23 +514,38 @@ export async function onStripeInvoiceFinalized(
         park: def,
         contact_id: counterparty.contact_id,
         code: code as GateCode,
-        data: { order_label: p.number ?? p.stripe_invoice_id, contact_label: counterparty.legal_name },
+        data: {
+          order_label: p.number ?? p.stripe_invoice_id,
+          contact_label: counterparty.legal_name,
+        },
       })
     }
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
 
   // 8. Above the threshold a person approves first; the payload waits parked under its key.
-  const threshold = issuer.invoice_approval_threshold_minor != null ? toBigInt(issuer.invoice_approval_threshold_minor) : null
+  const threshold =
+    issuer.invoice_approval_threshold_minor != null
+      ? toBigInt(issuer.invoice_approval_threshold_minor)
+      : null
   if (!opts.byPerson && !ctx.approval && threshold != null && total > threshold) {
-    const def = await parkInvoice(ctx, p, "awaiting_dependency", "approval_pending", STRIPE_APPROVAL_PARK)
-    if (!def.created) return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
+    const def = await parkInvoice(
+      ctx,
+      p,
+      "awaiting_dependency",
+      "approval_pending",
+      STRIPE_APPROVAL_PARK,
+    )
+    if (!def.created)
+      return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
     const approval = await ctx.requestApproval({
       tool_name: "invoicing:invoice_from_stripe_payment",
       summary: `Issue the invoice of Stripe invoice ${p.number ?? p.stripe_invoice_id} (${money(total, p.currency)}) for ${counterparty.legal_name}`,
       summary_detail: {
         subtitle: "Above the approval threshold of this issuer",
-        lines: [`It takes the next number of ${issuer.legal_name}'s invoices, dated the day it is approved.`],
+        lines: [
+          `It takes the next number of ${issuer.legal_name}'s invoices, dated the day it is approved.`,
+        ],
       },
       current_payload: { stripeInvoiceId: p.stripe_invoice_id },
     })
@@ -501,7 +593,11 @@ export async function onStripeInvoiceFinalized(
 
 /** Tell the Stripe app that Stripe's own invoice stands (no Liaison document), so its safety job
  *  walks past it. Best effort: the next run asks again. */
-async function markIssuedBy(ctx: StripeCtx, stripeInvoiceId: string, issuedBy: "stripe" | "before_connection"): Promise<void> {
+async function markIssuedBy(
+  ctx: StripeCtx,
+  stripeInvoiceId: string,
+  issuedBy: "stripe" | "before_connection",
+): Promise<void> {
   if (!ctx.executeTool) return
   try {
     await ctx.executeTool("stripe:invoice_document_link", { stripeInvoiceId, issuedBy })

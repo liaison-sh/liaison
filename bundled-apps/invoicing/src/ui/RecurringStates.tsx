@@ -28,14 +28,48 @@ const WORD = {
   manual: "To report at your platform",
 } as const
 
-export const EINVOICE_STATUS_TABLE: ReadonlyArray<{ key: keyof typeof WORD; word: string; means: string }> = [
-  { key: "waiting", word: WORD.waiting, means: "Sent to your e-invoicing platform. The payment is reported once the money is in." },
-  { key: "collected", word: WORD.collected, means: "The payment date and the amount per VAT rate went to your e-invoicing platform." },
-  { key: "partly", word: WORD.partly, means: "After a part payment or a refund: what really came in was reported." },
-  { key: "notNeeded", word: WORD.notNeeded, means: "The customer pays the VAT (reverse charge), or you pay it when you invoice, not when paid." },
-  { key: "refused", word: WORD.refused, means: "Opens a task for you. It never creates an invoice or credit note by itself." },
-  { key: "notSent", word: WORD.notSent, means: "The e-invoicing platform did not take it. Liaison tries again, or the invoice says what to fix." },
-  { key: "manual", word: WORD.manual, means: "Your platform does not take this report from Liaison, so report the payment there." },
+export const EINVOICE_STATUS_TABLE: ReadonlyArray<{
+  key: keyof typeof WORD
+  word: string
+  means: string
+}> = [
+  {
+    key: "waiting",
+    word: WORD.waiting,
+    means: "Sent to your e-invoicing platform. The payment is reported once the money is in.",
+  },
+  {
+    key: "collected",
+    word: WORD.collected,
+    means: "The payment date and the amount per VAT rate went to your e-invoicing platform.",
+  },
+  {
+    key: "partly",
+    word: WORD.partly,
+    means: "After a part payment or a refund: what really came in was reported.",
+  },
+  {
+    key: "notNeeded",
+    word: WORD.notNeeded,
+    means:
+      "The customer pays the VAT (reverse charge), or you pay it when you invoice, not when paid.",
+  },
+  {
+    key: "refused",
+    word: WORD.refused,
+    means: "Opens a task for you. It never creates an invoice or credit note by itself.",
+  },
+  {
+    key: "notSent",
+    word: WORD.notSent,
+    means:
+      "The e-invoicing platform did not take it. Liaison tries again, or the invoice says what to fix.",
+  },
+  {
+    key: "manual",
+    word: WORD.manual,
+    means: "Your platform does not take this report from Liaison, so report the payment there.",
+  },
 ]
 
 const REFUSED = new Set(["refused", "rejected"])
@@ -56,7 +90,8 @@ function einvoiceStatusKey(f: EinvoiceFacts): keyof typeof WORD | null {
   if (NOT_SENT.has(f.einvoice_state) || f.collection_state === "failed") return "notSent"
   if (f.collection_state === "collection_manual") return "manual"
   if (f.collection_state === "not_needed") return "notNeeded"
-  if (f.collection_state === "reported") return f.payment_status === "partial" ? "partly" : "collected"
+  if (f.collection_state === "reported")
+    return f.payment_status === "partial" ? "partly" : "collected"
   return "waiting"
 }
 
@@ -70,18 +105,25 @@ export const LOAD_ERROR_LINES = {
 export const OVERFLOW_PAGE = 50
 
 /** A Stripe payment with no invoice: the two card actions, each on a gated tool with a confirm. */
-export const ORPHAN_ACTIONS: ReadonlyArray<{ id: string; tool: string; label: string; confirm: string }> = [
+export const ORPHAN_ACTIONS: ReadonlyArray<{
+  id: string
+  tool: string
+  label: string
+  confirm: string
+}> = [
   {
     id: "create",
     tool: "invoice_from_stripe_payment",
     label: "Create the invoice",
-    confirm: "Create an invoice for this payment? It goes to a person for approval before it gets a number.",
+    confirm:
+      "Create an invoice for this payment? It goes to a person for approval before it gets a number.",
   },
   {
     id: "link",
     tool: "payment_link_to_invoice",
     label: "Link to an invoice",
-    confirm: "Link this payment to the invoice you picked? Once a person approves, the invoice names this payment; its payment status does not change.",
+    confirm:
+      "Link this payment to the invoice you picked? Once a person approves, the invoice names this payment; its payment status does not change.",
   },
 ]
 
@@ -98,15 +140,21 @@ export function orphanParams(
   if (action === "link") return { params: { chargeId, ...(documentId ? { documentId } : {}) } }
   const t = vatText.trim().replace(",", ".")
   const pct = /^\d{1,2}(\.\d{1,2})?$/.test(t) ? Number(t) : Number.NaN
-  if (!Number.isFinite(pct)) return { error: tr("Type the VAT rate the amount includes, such as 20.") }
+  if (!Number.isFinite(pct))
+    return { error: tr("Type the VAT rate the amount includes, such as 20.") }
   return { params: { chargeId, vatRateBp: Math.round(pct * 100) } }
 }
 
 export const RecurringEmpty: Component = () => (
-  <div data-testid="recurring-empty" class="flex flex-col items-start gap-2 rounded-md border border-border-subtle px-4 py-5 text-[12.5px]">
+  <div
+    data-testid="recurring-empty"
+    class="flex flex-col items-start gap-2 rounded-md border border-border-subtle px-4 py-5 text-[12.5px]"
+  >
     <div class="text-[13px] font-medium text-text">{tr("No recurring schedules")}</div>
     <div class="text-text-secondary">
-      {tr("Use one for a customer you bill on a rhythm outside Stripe. Customers paying by card are already invoiced from Stripe.")}
+      {tr(
+        "Use one for a customer you bill on a rhythm outside Stripe. Customers paying by card are already invoiced from Stripe.",
+      )}
     </div>
     <Button testid="recurring-empty-new" onClick={() => navigate("/invoicing/schedule/new")}>
       {tr("New schedule")}
@@ -121,7 +169,10 @@ export const RecurringLoading: Component = () => (
 )
 
 export const RecurringLoadError: Component<{ onRetry: () => void }> = (p) => (
-  <div data-testid="recurring-load-error" class="flex flex-col items-start gap-2 rounded-md border border-border-subtle px-4 py-4 text-[12.5px]">
+  <div
+    data-testid="recurring-load-error"
+    class="flex flex-col items-start gap-2 rounded-md border border-border-subtle px-4 py-4 text-[12.5px]"
+  >
     <div class="font-medium text-text">{tr(LOAD_ERROR_LINES.title)}</div>
     <div class="text-text-secondary">{tr(LOAD_ERROR_LINES.body)}</div>
     <Button testid="recurring-load-retry" onClick={p.onRetry}>
@@ -147,12 +198,19 @@ export const EinvoiceStatusList: Component = () => (
 /** A run nobody decided by its last day: it waits, nothing issues by itself. */
 export const LastDayNote: Component<{ lastDay: string }> = (p) => (
   <p data-testid="recurring-last-day" class="text-[12.5px] text-text-secondary">
-    {tr("Nobody approved this run by {{day}}. Nothing issues by itself: it stays at the top of Home until someone decides.", { day: p.lastDay })}
+    {tr(
+      "Nobody approved this run by {{day}}. Nothing issues by itself: it stays at the top of Home until someone decides.",
+      { day: p.lastDay },
+    )}
   </p>
 )
 
 /** A Stripe payment no invoice explains, with its two actions; each asks before it runs. */
-export const OrphanPaymentCard: Component<{ chargeId: string; amount: string; documentId?: string | null }> = (p) => {
+export const OrphanPaymentCard: Component<{
+  chargeId: string
+  amount: string
+  documentId?: string | null
+}> = (p) => {
   const [asking, setAsking] = createSignal<(typeof ORPHAN_ACTIONS)[number] | null>(null)
   const [note, setNote] = createSignal<string | null>(null)
   const [vat, setVat] = createSignal("20")
@@ -161,15 +219,27 @@ export const OrphanPaymentCard: Component<{ chargeId: string; amount: string; do
     const built = orphanParams(a.id, p.chargeId, p.documentId, vat())
     if ("error" in built) return setNote(built.error)
     try {
-      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(a.tool, built.params)
-      setNote(r?.status === "error" ? (r.error?.message ?? tr("Nothing was changed.")) : tr("Sent for approval."))
+      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(
+        a.tool,
+        built.params,
+      )
+      setNote(
+        r?.status === "error"
+          ? (r.error?.message ?? tr("Nothing was changed."))
+          : tr("Sent for approval."),
+      )
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was changed."))
     }
   }
   return (
-    <div data-testid="recurring-orphan-payment" class="flex flex-col gap-2 rounded-md border border-border-subtle px-4 py-3 text-[12.5px]">
-      <div class="text-text">{tr("A Stripe payment of {{amount}} has no matching invoice.", { amount: p.amount })}</div>
+    <div
+      data-testid="recurring-orphan-payment"
+      class="flex flex-col gap-2 rounded-md border border-border-subtle px-4 py-3 text-[12.5px]"
+    >
+      <div class="text-text">
+        {tr("A Stripe payment of {{amount}} has no matching invoice.", { amount: p.amount })}
+      </div>
       <label class="flex items-center gap-2 text-text-secondary">
         {tr("VAT included in the amount, %")}
         <input

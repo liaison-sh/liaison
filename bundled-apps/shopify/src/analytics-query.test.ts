@@ -137,7 +137,7 @@ describe("buildAnalyticsQuery — typed aggregate, injection-hardened", () => {
       groupBy: "sku",
     })
     expect(query).toContain(
-      "FROM sales SHOW net_items_sold GROUP BY product_variant_sku SINCE 2026-05-01 UNTIL 2026-05-31\")",
+      'FROM sales SHOW net_items_sold GROUP BY product_variant_sku SINCE 2026-05-01 UNTIL 2026-05-31")',
     )
   })
 
@@ -230,17 +230,44 @@ describe("timeSeriesRows — dashboard-ready rows", () => {
   it("adds date (YYYY-MM-DD bucket start) to keyed rows", () => {
     const rows = timeSeriesRows(
       {
-        columns: [{ name: "product_variant_sku" }, { name: "product_title" }, { name: "day" }, { name: "net_items_sold" }],
+        columns: [
+          { name: "product_variant_sku" },
+          { name: "product_title" },
+          { name: "day" },
+          { name: "net_items_sold" },
+        ],
         rows: [
-          { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-01", net_items_sold: 3 },
-          { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-02T00:00:00Z", net_items_sold: 0 },
+          {
+            product_variant_sku: "SKU-1",
+            product_title: "Widget",
+            day: "2026-05-01",
+            net_items_sold: 3,
+          },
+          {
+            product_variant_sku: "SKU-1",
+            product_title: "Widget",
+            day: "2026-05-02T00:00:00Z",
+            net_items_sold: 0,
+          },
         ],
       },
       "day",
     )
     expect(rows).toEqual([
-      { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-01", net_items_sold: 3, date: "2026-05-01" },
-      { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-02T00:00:00Z", net_items_sold: 0, date: "2026-05-02" },
+      {
+        product_variant_sku: "SKU-1",
+        product_title: "Widget",
+        day: "2026-05-01",
+        net_items_sold: 3,
+        date: "2026-05-01",
+      },
+      {
+        product_variant_sku: "SKU-1",
+        product_title: "Widget",
+        day: "2026-05-02T00:00:00Z",
+        net_items_sold: 0,
+        date: "2026-05-02",
+      },
     ])
   })
 

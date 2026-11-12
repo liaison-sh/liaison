@@ -6,41 +6,46 @@
 // `views.activityBar.icon`, `views.tabTypes.*.component|sidebar|icon`,
 // `slots.*.component`, `views.settings[].component`) must be re-exported
 // from here so freeze-app's UI bundling picks them up.
-import { tr } from "./i18n"
-import { createResource, Show, type Component } from "solid-js"
-import { app } from "@liaison/host"
 
-export { InvoicingAppIcon } from "./icon"
-export { InvoicingSidebar } from "./sidebar"
+import { app } from "@liaison/host"
+import { type Component, createResource, Show } from "solid-js"
+import { tr } from "./i18n"
+
+export { CompanyMoneyPanel } from "./CompanyMoneyPanel"
+export { ContactDocumentsPanel } from "./ContactDocumentsPanel"
+export { InvoicingDeferred } from "./DeferredList"
 export { DocumentDetail } from "./DocumentDetail"
+export { AwaitingPayment } from "./dashboards/AwaitingPayment"
 export { Editor } from "./Editor"
 export { EditorSummary } from "./EditorSummary"
-export { ContactDocumentsPanel } from "./ContactDocumentsPanel"
-export { CompanyMoneyPanel } from "./CompanyMoneyPanel"
-export { InvoicingIssuerProfiles } from "./settings"
-export { InvoicingIssuerStreams } from "./IssuerStreams"
 export { EinvoicingRegistration } from "./einvoicing/EinvoicingRegistration"
-export { InvoicingDeferred } from "./DeferredList"
+export { InvoicingIssuerStreams } from "./IssuerStreams"
+export { InvoicingAppIcon } from "./icon"
 export { InvoicingIdentity } from "./identity/IdentityEditor"
-export { InvoicingReadiness } from "./readiness/Readiness"
-export { InvoicingReceived } from "./received/ReceivedList"
-export { InvoicingReceivedDetail } from "./received/ReceivedDetail"
-export { AwaitingPayment } from "./dashboards/AwaitingPayment"
-export { InvoicingRecurringList } from "./RecurringList"
-export { InvoicingScheduleEditor } from "./ScheduleEditor"
-export { InvoicingRunDetail } from "./RunDetail"
-export { RecurringStates } from "./RecurringStates"
 export { MonthEndRunPanel } from "./MonthEndRunPanel"
+export { InvoicingRecurringList } from "./RecurringList"
+export { RecurringStates } from "./RecurringStates"
+export { InvoicingRunDetail } from "./RunDetail"
+export { InvoicingReadiness } from "./readiness/Readiness"
+export { InvoicingReceivedDetail } from "./received/ReceivedDetail"
+export { InvoicingReceived } from "./received/ReceivedList"
+export { InvoicingScheduleEditor } from "./ScheduleEditor"
+export { InvoicingIssuerProfiles } from "./settings"
+export { InvoicingSidebar } from "./sidebar"
 export { resolveDocumentTabLabel } from "./tab-labels"
 
+import {
+  type DocumentLine as DetailDocumentLine,
+  DocumentDetail,
+  type DocumentSummary,
+} from "./DocumentDetail"
+import { InvoicingDocumentsList } from "./DocumentsList"
 // The `dashboard` tabType (`/invoicing/dashboards/:dashboardId`) now serves only
 // the Awaiting-payment worklist. The former All-sales / B2B / By-market
 // dashboards collapsed into the unified Documents view (DocumentsList) with a
 // "Group by" switch; there is no separate customs view — export documents are
 // just invoices carrying extra fields, shown inside the document itself.
 import { AwaitingPayment } from "./dashboards/AwaitingPayment"
-import { InvoicingDocumentsList } from "./DocumentsList"
-import { DocumentDetail, type DocumentLine as DetailDocumentLine, type DocumentSummary } from "./DocumentDetail"
 import { type DocType, type DraftDocument, type DraftLine, defaultDraft, Editor } from "./Editor"
 
 export const InvoicingDashboard: Component<{ entityId?: string }> = () => <AwaitingPayment />
@@ -81,7 +86,10 @@ function mapLine(l: DetailDocumentLine): DraftLine {
  *  invoice_approval_threshold_minor) fall back to `defaultDraft()`'s values;
  *  they only drive soft UI affordances (EU-VAT warning, approval badge), not
  *  save/issue correctness. */
-export function mapDocumentToDraft(doc: DocumentSummary, lines: DetailDocumentLine[]): DraftDocument {
+export function mapDocumentToDraft(
+  doc: DocumentSummary,
+  lines: DetailDocumentLine[],
+): DraftDocument {
   const base = defaultDraft(doc.type)
   return {
     id: doc.id,
@@ -171,7 +179,9 @@ export function isNewDocumentEntityId(entityId: string | undefined): boolean {
  *  rather than the tab actually being rendered — a wrong-tab-URL bug under
  *  keep-alive tab rendering (C3). */
 export function parseDocTypeFromEntityId(entityId: string | undefined): DocType {
-  const raw = entityId?.startsWith(NEW_ENTITY_PREFIX) ? entityId.slice(NEW_ENTITY_PREFIX.length) : undefined
+  const raw = entityId?.startsWith(NEW_ENTITY_PREFIX)
+    ? entityId.slice(NEW_ENTITY_PREFIX.length)
+    : undefined
   return raw === "quote" || raw === "proforma" || raw === "purchase_order" ? raw : "quote"
 }
 
@@ -186,15 +196,12 @@ export const InvoicingEditor: Component<{ entityId?: string }> = (props) => {
   const type = () => parseDocTypeFromEntityId(props.entityId)
 
   const [loaded] = createResource(
-    () => (isNew() ? null : props.entityId ?? null),
+    () => (isNew() ? null : (props.entityId ?? null)),
     async (id) => loadEditorDocument(id as string),
   )
 
   return (
-    <Show
-      when={!isNew()}
-      fallback={<Editor initial={defaultDraft(type())} />}
-    >
+    <Show when={!isNew()} fallback={<Editor initial={defaultDraft(type())} />}>
       <Show
         when={loaded()}
         fallback={
@@ -203,7 +210,9 @@ export const InvoicingEditor: Component<{ entityId?: string }> = (props) => {
               data-testid="invoicing-editor-load-error"
               class="flex h-full items-center justify-center p-6 text-[12.5px] text-error"
             >
-              {loaded.error instanceof Error ? loaded.error.message : tr("Failed to load the document.")}
+              {loaded.error instanceof Error
+                ? loaded.error.message
+                : tr("Failed to load the document.")}
             </div>
           </Show>
         }
@@ -225,7 +234,6 @@ export const InvoicingEditor: Component<{ entityId?: string }> = (props) => {
 export const InvoicingDocumentDetail: Component<{ entityId?: string }> = (props) => (
   <DocumentDetail documentId={props.entityId ?? ""} />
 )
-
 
 // The Invoicing activity-bar entry lands here — it IS the documents view
 // (all types), not a separate placeholder surface. The former Phase-17-F

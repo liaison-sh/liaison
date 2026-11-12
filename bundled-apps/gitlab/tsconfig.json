@@ -1,9 +1,6 @@
 {
   "compilerOptions": {
-    "lib": [
-      "ESNext",
-      "DOM"
-    ],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -19,17 +16,10 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "types": [
-      "bun-types"
-    ],
+    "types": ["bun-types"],
     "paths": {
-      "~/*": [
-        "../../liaison/apps/api/src/*"
-      ]
+      "~/*": ["../../liaison/apps/api/src/*"]
     }
   },
-  "include": [
-    "*.ts",
-    "src/**/*.ts"
-  ]
+  "include": ["*.ts", "src/**/*.ts"]
 }

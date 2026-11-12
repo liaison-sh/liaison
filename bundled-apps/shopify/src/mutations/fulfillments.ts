@@ -6,20 +6,20 @@
 import type { AppContext } from "@liaison/app-sdk"
 import {
   type CustomerNotification,
+  decideCustomerNotification,
   ORDER_B2B_SIGNALS_SELECTION,
   type OrderB2bSignals,
-  decideCustomerNotification,
   trackingNumbersOf,
 } from "../lib/b2b"
 import { getShopifyClient } from "../lib/get-client"
 import {
-  type PreflightResult,
-  makeMutationError,
-  preflightRefusal,
-  runMutation,
-  requireTargetId,
-  readGatedTarget,
   assertTargetState,
+  makeMutationError,
+  type PreflightResult,
+  preflightRefusal,
+  readGatedTarget,
+  requireTargetId,
+  runMutation,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -112,7 +112,10 @@ export function normalizeTrackingInfo(input: unknown): Record<string, unknown> |
     if (out[canonical] !== undefined) continue
     // DROP placeholder/sentinel scalars ("N/A", "", "none", …) — they are not real tracking data and a
     // url placeholder 422s the write. Also drop a url that is not a real absolute http(s) URL.
-    if ((canonical === "url" || canonical === "company" || canonical === "number") && isTrackingPlaceholder(value)) {
+    if (
+      (canonical === "url" || canonical === "company" || canonical === "number") &&
+      isTrackingPlaceholder(value)
+    ) {
       continue
     }
     if (canonical === "url" && !isValidTrackingUrl(value)) continue
@@ -216,7 +219,10 @@ interface OpenFoWithLines {
 function buildPartialLineItemsByFulfillmentOrder(
   requested: RequestedFulfillmentLine[],
   openFOs: OpenFoWithLines[],
-): Array<{ fulfillmentOrderId: string; fulfillmentOrderLineItems: Array<{ id: string; quantity: number }> }> {
+): Array<{
+  fulfillmentOrderId: string
+  fulfillmentOrderLineItems: Array<{ id: string; quantity: number }>
+}> {
   // Flatten every open FO line once, preserving FO order for deterministic splitting.
   const foLines = openFOs.flatMap((fo) =>
     (fo.lineItems?.nodes ?? []).map((li) => ({
@@ -232,13 +238,21 @@ function buildPartialLineItemsByFulfillmentOrder(
   for (const line of requested) {
     const quantity = line.quantity
     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
-      throw makeMutationError("BAD_PARAM", "Each lineItems entry needs a positive integer `quantity`.")
+      throw makeMutationError(
+        "BAD_PARAM",
+        "Each lineItems entry needs a positive integer `quantity`.",
+      )
     }
     const sku = typeof line.sku === "string" && line.sku.length > 0 ? line.sku : null
     const orderLineItemId =
-      typeof line.orderLineItemId === "string" && line.orderLineItemId.length > 0 ? line.orderLineItemId : null
+      typeof line.orderLineItemId === "string" && line.orderLineItemId.length > 0
+        ? line.orderLineItemId
+        : null
     if (!sku && !orderLineItemId) {
-      throw makeMutationError("BAD_PARAM", "Each lineItems entry needs a `sku` or an `orderLineItemId`.")
+      throw makeMutationError(
+        "BAD_PARAM",
+        "Each lineItems entry needs a `sku` or an `orderLineItemId`.",
+      )
     }
     let matches: typeof foLines
     if (orderLineItemId) {
@@ -312,8 +326,14 @@ function asksToNotify(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false
 }
 
-async function orderOfFulfillmentOrder(ctx: AppContext, entry: unknown): Promise<OrderB2bSignals | null> {
-  const id = entry && typeof entry === "object" ? (entry as { fulfillmentOrderId?: unknown }).fulfillmentOrderId : undefined
+async function orderOfFulfillmentOrder(
+  ctx: AppContext,
+  entry: unknown,
+): Promise<OrderB2bSignals | null> {
+  const id =
+    entry && typeof entry === "object"
+      ? (entry as { fulfillmentOrderId?: unknown }).fulfillmentOrderId
+      : undefined
   if (typeof id !== "string" || id.length === 0) return null
   const client = await getShopifyClient(ctx)
   const data = await client.query<{ fulfillmentOrder?: { order?: OrderB2bSignals | null } | null }>(
@@ -328,19 +348,25 @@ interface FulfillmentWithOrder {
   order?: OrderB2bSignals | null
 }
 
-async function fulfillmentWithOrder(ctx: AppContext, fulfillmentId: unknown): Promise<FulfillmentWithOrder | null> {
+async function fulfillmentWithOrder(
+  ctx: AppContext,
+  fulfillmentId: unknown,
+): Promise<FulfillmentWithOrder | null> {
   if (typeof fulfillmentId !== "string" || fulfillmentId.length === 0) return null
   const client = await getShopifyClient(ctx)
-  const data = await client.query<{ fulfillment?: FulfillmentWithOrder | null }>(FULFILLMENT_B2B_SIGNALS, {
-    id: fulfillmentId,
-  })
+  const data = await client.query<{ fulfillment?: FulfillmentWithOrder | null }>(
+    FULFILLMENT_B2B_SIGNALS,
+    {
+      id: fulfillmentId,
+    },
+  )
   return data.fulfillment ?? null
 }
 
 /** runMutation options that put the policy's decision on the tool result. */
-function notificationNotice(
-  notice: CustomerNotification | null,
-): { transformNode?: (node: Record<string, unknown>) => Record<string, unknown> } {
+function notificationNotice(notice: CustomerNotification | null): {
+  transformNode?: (node: Record<string, unknown>) => Record<string, unknown>
+} {
   if (!notice) return {}
   return { transformNode: (node) => ({ ...node, customerNotification: notice }) }
 }
@@ -358,7 +384,7 @@ async function buildFulfillmentInput(
   /** The order's B2B signals when the build already read them (the orderId paths). */
   order: OrderB2bSignals | null | undefined
 }> {
-  const provided = ((params.fulfillment ?? params) ?? {}) as Record<string, unknown>
+  const provided = (params.fulfillment ?? params ?? {}) as Record<string, unknown>
   const preBuilt = provided.lineItemsByFulfillmentOrder
   const requestedLines = (provided.lineItems ?? params.lineItems) as unknown
   let fulfillment: Record<string, unknown>
@@ -379,7 +405,10 @@ async function buildFulfillmentInput(
     // unfulfilled on Shopify.
     const orderId = provided.orderId ?? params.orderId
     if (typeof orderId !== "string" || orderId.length === 0) {
-      throw makeMutationError("BAD_PARAM", "Provide `orderId` alongside `lineItems` for a partial fulfillment.")
+      throw makeMutationError(
+        "BAD_PARAM",
+        "Provide `orderId` alongside `lineItems` for a partial fulfillment.",
+      )
     }
     const client = await getShopifyClient(ctx)
     const data = await client.query<{
@@ -416,7 +445,9 @@ async function buildFulfillmentInput(
     const client = await getShopifyClient(ctx)
     const data = await client.query<{
       order?:
-        | ({ fulfillmentOrders?: { nodes?: Array<{ id: string; status?: string | null }> } } & OrderB2bSignals)
+        | ({
+            fulfillmentOrders?: { nodes?: Array<{ id: string; status?: string | null }> }
+          } & OrderB2bSignals)
         | null
     }>(ORDER_FULFILLMENT_ORDERS, { id: toOrderGid(orderId) })
     order = data.order
@@ -429,7 +460,9 @@ async function buildFulfillmentInput(
     }
     const normalizedTracking = normalizeTrackingInfo(provided.trackingInfo)
     fulfillment = {
-      lineItemsByFulfillmentOrder: openFulfillmentOrders.map((fo) => ({ fulfillmentOrderId: fo.id })),
+      lineItemsByFulfillmentOrder: openFulfillmentOrders.map((fo) => ({
+        fulfillmentOrderId: fo.id,
+      })),
       ...(normalizedTracking ? { trackingInfo: normalizedTracking } : {}),
       ...(provided.notifyCustomer !== undefined ? { notifyCustomer: provided.notifyCustomer } : {}),
     }
@@ -456,7 +489,10 @@ export async function fulfillments_create_preflight(
   return { ok: true }
 }
 
-export async function fulfillments_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function fulfillments_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const { fulfillment, order } = await buildFulfillmentInput(params, ctx)
   // Whether Shopify emails the customer is the org's policy, decided here for every path (an
   // agent, an approval card, Boxtal's packed tick and carrier scan): the tracking rides on this
@@ -466,7 +502,11 @@ export async function fulfillments_create(params: Record<string, unknown>, ctx: 
     readConfig: (key) => ctx.config.get(key),
     callerAsksToNotify: asksToNotify(fulfillment.notifyCustomer),
     loadOrder: async () =>
-      order !== undefined ? order : Array.isArray(preBuilt) ? orderOfFulfillmentOrder(ctx, preBuilt[0]) : null,
+      order !== undefined
+        ? order
+        : Array.isArray(preBuilt)
+          ? orderOfFulfillmentOrder(ctx, preBuilt[0])
+          : null,
     // The one shipping email goes out with the first tracking number: a create without one sends none.
     tracking: async () => ({
       write: "create",
@@ -535,7 +575,10 @@ export async function fulfillments_update_tracking(
       return {
         write: "update",
         setsNumber,
-        hadNumber: fulfillment ? trackingNumbersOf({ numbers: (fulfillment.trackingInfo ?? []).map((t) => t?.number) }).length > 0 : null,
+        hadNumber: fulfillment
+          ? trackingNumbersOf({ numbers: (fulfillment.trackingInfo ?? []).map((t) => t?.number) })
+              .length > 0
+          : null,
       }
     },
   })
@@ -580,14 +623,23 @@ export async function fulfillments_cancel_preflight(
   try {
     const id = requireTargetId(params, "id")
     const node = await readGatedTarget(ctx, id, "Fulfillment", "fulfillments_cancel")
-    assertTargetState(node, FULFILLMENT_STATES_CANCELLABLE, "fulfillments_cancel", "fulfillment", "cancelled")
+    assertTargetState(
+      node,
+      FULFILLMENT_STATES_CANCELLABLE,
+      "fulfillments_cancel",
+      "fulfillment",
+      "cancelled",
+    )
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
   return { ok: true }
 }
 
-export async function fulfillments_cancel(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function fulfillments_cancel(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
   return runMutation(ctx, {
     query: FULFILLMENT_CANCEL,

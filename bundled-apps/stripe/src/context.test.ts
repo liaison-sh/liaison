@@ -50,9 +50,19 @@ function world() {
       next_payment_attempt: "2026-11-12T08:00:00.000Z",
       stripe_updated: "2026-11-09T10:05:00.000Z",
     },
-    { stripe_id: "in_0", customer_id: "cus_A", number: "LUNE-0041", status: "paid", amount_due_minor: 0, currency: "eur" },
+    {
+      stripe_id: "in_0",
+      customer_id: "cus_A",
+      number: "LUNE-0041",
+      status: "paid",
+      amount_due_minor: 0,
+      currency: "eur",
+    },
   ])
-  const executeTool = async (tool: string, params: Record<string, unknown>): Promise<CrossAppEnvelope> =>
+  const executeTool = async (
+    tool: string,
+    params: Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> =>
     tool === "tickets:get" && params.ticketId === TICKET
       ? { status: "completed", result: { ticket: { id: TICKET, contactId: ANA } } }
       : { status: "error", error: { code: "not_found", message: "no" } }
@@ -76,7 +86,8 @@ describe("the Stripe context lines", () => {
     expect(text).toContain("49.00 EUR")
     expect(text).not.toContain("LUNE-0041")
     // Masked: no email, no address, no name, no expiry, no run of more than 4 digits.
-    for (const leak of ["ana@maison.example", "rue des Lilas", "04/27"]) expect(text).not.toContain(leak)
+    for (const leak of ["ana@maison.example", "rue des Lilas", "04/27"])
+      expect(text).not.toContain(leak)
     expect(text).not.toMatch(/\d{5,}/)
     expect(out.lines.length).toBeLessThanOrEqual(CONTEXT_MAX_LINES)
     expect(text.length).toBeLessThanOrEqual(BUDGET_CHARS)
@@ -95,7 +106,12 @@ describe("the Stripe context lines", () => {
       expect(out.lines.join("\n")).toContain("LUNE-0042")
     }
     const other = "77777777-7777-4777-8777-777777777777"
-    expect(await customerContext({ subject: { app: "kernel", entityType: "company", entityId: other } }, ctx)).toEqual({
+    expect(
+      await customerContext(
+        { subject: { app: "kernel", entityType: "company", entityId: other } },
+        ctx,
+      ),
+    ).toEqual({
       lines: [],
     })
   })

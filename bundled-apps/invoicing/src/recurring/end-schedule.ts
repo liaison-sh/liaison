@@ -5,18 +5,18 @@
 // schedule (its last billed month is set at once, since that only stops billing). An added row just
 // goes. Ending a schedule says what it does not stop, and writes nothing anywhere but here.
 import { deleteDraftRow } from "../mutations/db-helpers"
-import type { Row } from "./run-card"
-import { dayOf, jsonOf } from "./run-card"
 import {
   afterRunWrite,
   type EditCtx,
   issuedRefusal,
   logRunEdit,
   parkForPerson,
-  refuse,
   type RunDraft,
+  refuse,
   stageRunCardAfterRemoval,
 } from "./restage"
+import type { Row } from "./run-card"
+import { dayOf, jsonOf } from "./run-card"
 
 export const LAST_INVOICE = "Last invoice"
 /** The note on a row left out because its schedule was paused while the run was open. */
@@ -26,10 +26,19 @@ export interface DiscardResult {
   ok: true
   itemState: string | null
   notes: string[]
-  run?: { run_id: string; approve_count: number; approve_total_minor: string; approval_id: string | null }
+  run?: {
+    run_id: string
+    approve_count: number
+    approve_total_minor: string
+    approval_id: string | null
+  }
 }
 
-export type DiscardParked = { status: "pending_approval"; approval_id: string | null; message: string }
+export type DiscardParked = {
+  status: "pending_approval"
+  approval_id: string | null
+  message: string
+}
 
 /** What ending a schedule leaves running, told before and after, never acted on. */
 export async function endingNotes(ctx: EditCtx, rd: RunDraft): Promise<string[]> {
@@ -48,10 +57,18 @@ export async function endingNotes(ctx: EditCtx, rd: RunDraft): Promise<string[]>
         contactId,
         ...(typeof s.company_id === "string" ? { companyId: s.company_id } : {}),
       })
-      const res = env.status === "completed" ? (env.result as { live?: boolean; subscriptions?: Array<{ id: string; plan?: string }> } | null) : null
+      const res =
+        env.status === "completed"
+          ? (env.result as {
+              live?: boolean
+              subscriptions?: Array<{ id: string; plan?: string }>
+            } | null)
+          : null
       if (res?.live) {
         const subs = (res.subscriptions ?? []).map((x) => x.id).join(", ")
-        notes.push(`Ending this does not stop their live Stripe subscription${subs ? ` ${subs}` : ""}: open their subscription in Stripe to stop it.`)
+        notes.push(
+          `Ending this does not stop their live Stripe subscription${subs ? ` ${subs}` : ""}: open their subscription in Stripe to stop it.`,
+        )
       }
     } catch {
       // Stripe not installed or not answering: there is nothing to say about it.
@@ -60,7 +77,9 @@ export async function endingNotes(ctx: EditCtx, rd: RunDraft): Promise<string[]>
   if (typeof s.last_document_id === "string" && s.last_document_id) {
     const last = (await ctx.db.findOne("documents", s.last_document_id)) as Row | null
     if (last && last.status !== "draft" && last.number) {
-      notes.push(`The earlier invoice ${String(last.number)} stays as issued; credit it with credit_note_create_and_issue if it should not stand.`)
+      notes.push(
+        `The earlier invoice ${String(last.number)} stays as issued; credit it with credit_note_create_and_issue if it should not stand.`,
+      )
     }
   }
   notes.push("Nothing else changes: no agreement, subscription or payment link is touched.")
@@ -76,13 +95,23 @@ export async function discardRunDraft(
   const itemId = String(rd.item.id)
   const draftId = String(rd.draft.id)
   if (rd.item.source === "added") {
-    const parked = await parkForPerson(ctx, "invoicing:drafts_discard", `Take the added row ${String(rd.draft.counterparty_name ?? draftId)} out of the month-end run`, input)
+    const parked = await parkForPerson(
+      ctx,
+      "invoicing:drafts_discard",
+      `Take the added row ${String(rd.draft.counterparty_name ?? draftId)} out of the month-end run`,
+      input,
+    )
     if (parked) return parked
     // An added row never asks: the row and its draft go, and no number was taken.
     await ctx.db.delete("recurring_run_items", itemId)
     await deleteDraftRow(ctx.db, draftId)
     const run = await stageRunCardAfterRemoval(ctx, String(rd.run.id))
-    return { ok: true, itemState: null, notes: [`The added row and its draft ${draftId} are gone; no number was used.`], run }
+    return {
+      ok: true,
+      itemState: null,
+      notes: [`The added row and its draft ${draftId} are gone; no number was used.`],
+      run,
+    }
   }
   if (input.applies !== "this_month" && input.applies !== "end_schedule") {
     refuse(
@@ -106,14 +135,29 @@ export async function discardRunDraft(
   const parked = await parkForPerson(ctx, "invoicing:drafts_discard", what, input)
   if (parked) return parked
   if (input.applies === "this_month") {
-    await ctx.db.update("recurring_run_items", itemId, { state: "left_out", approved_hash: null, send_grant: null })
-    await logRunEdit(ctx, draftId, { kind: "take_out", fields: [{ field: "state", from: rd.item.state, to: "left_out" }], applies: "this_month" })
+    await ctx.db.update("recurring_run_items", itemId, {
+      state: "left_out",
+      approved_hash: null,
+      send_grant: null,
+    })
+    await logRunEdit(ctx, draftId, {
+      kind: "take_out",
+      fields: [{ field: "state", from: rd.item.state, to: "left_out" }],
+      applies: "this_month",
+    })
     const r = await afterRunWrite(ctx, itemId)
     return {
       ok: true,
       itemState: "left_out",
-      notes: [`Taken out of this month's run; the draft ${draftId} is kept, so it can be put back (drafts_update with put_back). The schedule's next month is unchanged.`],
-      run: { run_id: r.run_id, approve_count: r.approve_count, approve_total_minor: r.approve_total_minor, approval_id: r.approval_id },
+      notes: [
+        `Taken out of this month's run; the draft ${draftId} is kept, so it can be put back (drafts_update with put_back). The schedule's next month is unchanged.`,
+      ],
+      run: {
+        run_id: r.run_id,
+        approve_count: r.approve_count,
+        approve_total_minor: r.approve_total_minor,
+        approval_id: r.approval_id,
+      },
     }
   }
   // End the schedule at once: it only stops billing. The previous end goes on the row and the log,
@@ -128,7 +172,11 @@ export async function discardRunDraft(
     ends_on_before: before,
     ...(beforePeriod ? { state: "left_out", approved_hash: null, send_grant: null } : {}),
   })
-  await logRunEdit(ctx, draftId, { kind: "end_schedule", fields: [{ field: "schedule.ends_on", from: before, to: endsOn }], applies: "end_schedule" })
+  await logRunEdit(ctx, draftId, {
+    kind: "end_schedule",
+    fields: [{ field: "schedule.ends_on", from: before, to: endsOn }],
+    applies: "end_schedule",
+  })
   const notes = await endingNotes(ctx, rd)
   const r = await afterRunWrite(ctx, itemId, beforePeriod ? {} : { noteAdd: [LAST_INVOICE] })
   const lead = beforePeriod
@@ -138,20 +186,32 @@ export async function discardRunDraft(
     ok: true,
     itemState: r.item_state,
     notes: [lead, ...notes],
-    run: { run_id: r.run_id, approve_count: r.approve_count, approve_total_minor: r.approve_total_minor, approval_id: r.approval_id },
+    run: {
+      run_id: r.run_id,
+      approve_count: r.approve_count,
+      approve_total_minor: r.approve_total_minor,
+      approval_id: r.approval_id,
+    },
   }
 }
 
 /** Put a left-out row back, restoring the schedule's end a "end the schedule" set. */
-export async function putBack(ctx: EditCtx, rd: RunDraft): Promise<{ restoredEndsOn: string | null | undefined }> {
+export async function putBack(
+  ctx: EditCtx,
+  rd: RunDraft,
+): Promise<{ restoredEndsOn: string | null | undefined }> {
   const log = jsonOf<Row[]>(rd.draft.lifecycle_log, [])
   const ended = [...log].reverse().find((e) => e.event === "run_edit" && e.kind === "end_schedule")
   let restoredEndsOn: string | null | undefined
   if (ended && rd.schedule) {
-    const change = (ended.fields as Array<{ field: string; from: unknown; to: unknown }> | undefined)?.find((f) => f.field === "schedule.ends_on")
+    const change = (
+      ended.fields as Array<{ field: string; from: unknown; to: unknown }> | undefined
+    )?.find((f) => f.field === "schedule.ends_on")
     if (change && dayOf(rd.schedule.ends_on) === dayOf(change.to)) {
       restoredEndsOn = dayOf(change.from)
-      await ctx.db.update("recurring_schedules", String(rd.schedule.id), { ends_on: restoredEndsOn })
+      await ctx.db.update("recurring_schedules", String(rd.schedule.id), {
+        ends_on: restoredEndsOn,
+      })
     }
   }
   await ctx.db.update("recurring_run_items", String(rd.item.id), { ends_on_before: null })

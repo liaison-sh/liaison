@@ -42,11 +42,18 @@ export const DELIVERY_LEASE_MS = 45_000
 export interface LedgerDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
-  updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }>
+  updateMany(
+    entity: string,
+    opts: { where: Record<string, unknown>; data: Record<string, unknown> },
+  ): Promise<{ count: number }>
 }
 
 export interface DeliveryRow {
@@ -84,12 +91,16 @@ export type Claim =
   | { kind: "in_flight"; row: DeliveryRow }
 
 async function read(db: LedgerDb, eventId: string): Promise<DeliveryRow | null> {
-  const rows = (await db.findMany("webhook_deliveries", { where: { event_id: eventId }, limit: 1 })) as DeliveryRow[]
+  const rows = (await db.findMany("webhook_deliveries", {
+    where: { event_id: eventId },
+    limit: 1,
+  })) as DeliveryRow[]
   return rows[0] ?? null
 }
 
 async function reclaim(db: LedgerDb, row: DeliveryRow, now: Date): Promise<Claim> {
-  if (!reclaimable(row, now)) return { kind: row.status === "processing" ? "in_flight" : "duplicate", row }
+  if (!reclaimable(row, now))
+    return { kind: row.status === "processing" ? "in_flight" : "duplicate", row }
   const claimedAt = now.toISOString()
   const won = await db.updateMany("webhook_deliveries", {
     // The event id is unique per org; the host refuses `id` in a bulk where.
@@ -102,7 +113,12 @@ async function reclaim(db: LedgerDb, row: DeliveryRow, now: Date): Promise<Claim
 }
 
 /** Claim `eventId` for this delivery, or report that it was already handled. */
-export async function claimDelivery(db: LedgerDb, eventId: string, topic: string, now: Date): Promise<Claim> {
+export async function claimDelivery(
+  db: LedgerDb,
+  eventId: string,
+  topic: string,
+  now: Date,
+): Promise<Claim> {
   const existing = await read(db, eventId)
   if (existing) return reclaim(db, existing, now)
   try {
@@ -114,7 +130,17 @@ export async function claimDelivery(db: LedgerDb, eventId: string, topic: string
       received_at: now.toISOString(),
       claimed_at: now.toISOString(),
     })
-    return { kind: "new", row: { id, event_id: eventId, topic, status: "processing", failure_count: 0, claimed_at: now.toISOString() } }
+    return {
+      kind: "new",
+      row: {
+        id,
+        event_id: eventId,
+        topic,
+        status: "processing",
+        failure_count: 0,
+        claimed_at: now.toISOString(),
+      },
+    }
   } catch (err) {
     // Lost the race on the unique index: the other delivery's row decides.
     const winner = await read(db, eventId)

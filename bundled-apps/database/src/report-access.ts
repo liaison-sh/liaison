@@ -33,10 +33,12 @@ async function unknownReference(ctx: Ctx, access: DomainAccess): Promise<string 
   }
   for (const [domain, rule] of Object.entries(access)) {
     for (const id of rule.roles ?? []) {
-      if (!roleIds.has(id)) return `domainAccess.${domain}.roles: no role ${id} in this organization`
+      if (!roleIds.has(id))
+        return `domainAccess.${domain}.roles: no role ${id} in this organization`
     }
     for (const id of rule.users ?? []) {
-      if (!known.has(id)) return `domainAccess.${domain}.users: no person ${id} in this organization`
+      if (!known.has(id))
+        return `domainAccess.${domain}.users: no person ${id} in this organization`
     }
   }
   return null

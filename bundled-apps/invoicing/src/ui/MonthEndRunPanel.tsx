@@ -5,7 +5,17 @@
 // follow what is typed. A run that changed since the panel was drawn says what changed and who
 // changed it, and offers to approve what is there now.
 import { app, fetch as hostFetch, navigate, onEntityChange } from "@liaison/host"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type Component } from "solid-js"
+import {
+  type Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { contactLabel, loadContact, pickedContactPatch } from "./ContactPicker"
 import { type DraftDocument, Editor, priceInputToMinor, rollupTotals } from "./Editor"
 import { tr } from "./i18n"
@@ -20,8 +30,8 @@ import {
   lacksAddress,
   missingSchedules,
   numberCell,
-  rightsOf,
   type RunRow,
+  rightsOf,
   runChanges,
   type ScheduleOption,
   scheduleItems,
@@ -46,10 +56,14 @@ interface RunRead {
 const money = (v: bigint, currency: string) => formatMoneyMinor(v, currency)
 
 /** The month a run bills, read from its period label (`November 2026` → `November`). */
-const monthOf = (period: string | null | undefined) => (period ?? "").split(" ")[0] || tr("this month")
+const monthOf = (period: string | null | undefined) =>
+  (period ?? "").split(" ")[0] || tr("this month")
 
 async function loadRun(runId: string): Promise<RunRead | null> {
-  const res = await app.invokeTool<(RunRead & { status: string }) | { status: "error" }>("recurring_run_get", { run_id: runId })
+  const res = await app.invokeTool<(RunRead & { status: string }) | { status: "error" }>(
+    "recurring_run_get",
+    { run_id: runId },
+  )
   return res && res.status === "completed" ? (res as RunRead) : null
 }
 
@@ -64,7 +78,9 @@ async function loadNames(ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   for (const id of ids) {
     try {
-      const res = await hostFetch<{ data?: { name?: string }; name?: string }>(`/api/users/${encodeURIComponent(id)}/preview`)
+      const res = await hostFetch<{ data?: { name?: string }; name?: string }>(
+        `/api/users/${encodeURIComponent(id)}/preview`,
+      )
       const name = res?.data?.name ?? res?.name
       if (name) out.set(id, name)
     } catch {
@@ -132,12 +148,18 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
 
   onMount(() => void refresh())
   // Live: a draft written anywhere, or the run itself, re-reads the rows.
-  const stop = onEntityChange(["invoicing:document", "invoicing:recurring_run", "invoicing:recurring_run_item"], () => void refresh())
+  const stop = onEntityChange(
+    ["invoicing:document", "invoicing:recurring_run", "invoicing:recurring_run_item"],
+    () => void refresh(),
+  )
   onCleanup(stop)
   // The card itself changed (its rows were rewritten): read the rows again.
   createEffect(
     on(
-      () => items().map((i) => `${i.item_id}:${i.content_hash}`).join(","),
+      () =>
+        items()
+          .map((i) => `${i.item_id}:${i.content_hash}`)
+          .join(","),
       () => void refresh(),
       { defer: true },
     ),
@@ -153,7 +175,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
     const diff = runChanges(before, items(), rows(), names())
     return diff.changes.length > 0 ? diff : null
   })
-  const waiting = () => rows().map(waitingSentence).filter((s): s is string => s !== null)
+  const waiting = () =>
+    rows()
+      .map(waitingSentence)
+      .filter((s): s is string => s !== null)
 
   const closeRow = () => {
     const id = openId()
@@ -183,7 +208,11 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const onTyped = (row: RunRow, d: DraftDocument) => {
     const t = rollupTotals(d.lines, !!d.prices_include_tax)
     const next = new Map(typed())
-    next.set(row.item_id, { net: t.subtotal_minor, vat: t.tax_total_minor, total: t.grand_total_minor })
+    next.set(row.item_id, {
+      net: t.subtotal_minor,
+      vat: t.tax_total_minor,
+      total: t.grand_total_minor,
+    })
     setTyped(next)
   }
 
@@ -218,7 +247,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
     if (!id) return false
     setError(null)
     try {
-      const res = await app.invokeTool<{ status?: string; error?: { message?: string } }>("drafts_create", { type: "invoice", run_id: id, ...args })
+      const res = await app.invokeTool<{ status?: string; error?: { message?: string } }>(
+        "drafts_create",
+        { type: "invoice", run_id: id, ...args },
+      )
       if (res?.status === "error") {
         setError(res.error?.message ?? tr("The request failed."))
         return false
@@ -260,7 +292,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   }
 
   const approveLabel = () =>
-    tr("Approve {{n}}, {{total}}", { n: summary().count, total: money(summary().total, summary().currency) })
+    tr("Approve {{n}}, {{total}}", {
+      n: summary().count,
+      total: money(summary().total, summary().currency),
+    })
 
   return (
     <section data-testid="month-end-panel" class="min-w-0 text-[12.5px]">
@@ -321,7 +356,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
       </Show>
 
       {/* The count, the total, and who decides: at the top, before any row. */}
-      <div data-testid="month-end-summary" class="flex flex-wrap items-baseline justify-between gap-2">
+      <div
+        data-testid="month-end-summary"
+        class="flex flex-wrap items-baseline justify-between gap-2"
+      >
         <span data-testid="month-end-approve-count" class="font-medium text-text">
           {tr("{{n}} invoices to approve, {{total}} incl. VAT", {
             n: summary().count,
@@ -338,12 +376,22 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
       <Show when={(rights().approve && props.status === "pending") || rights().write}>
         <div data-testid="month-end-actions" class="mt-2 flex flex-wrap gap-2">
           <Show when={rights().approve && props.status === "pending" && summary().count > 0}>
-            <button type="button" data-testid="month-end-approve" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void approveNow()}>
+            <button
+              type="button"
+              data-testid="month-end-approve"
+              class="min-h-11 rounded bg-accent px-3 text-accent-foreground"
+              onClick={() => void approveNow()}
+            >
               {approveLabel()}
             </button>
           </Show>
           <Show when={rights().write && run() && !adding()}>
-            <button type="button" data-testid="month-end-add" class="min-h-11 rounded border border-border px-3" onClick={() => setAdding(true)}>
+            <button
+              type="button"
+              data-testid="month-end-add"
+              class="min-h-11 rounded border border-border px-3"
+              onClick={() => setAdding(true)}
+            >
               {tr("Add an invoice someone forgot")}
             </button>
           </Show>
@@ -391,27 +439,48 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
           {(row) => {
             const amounts = () => typed().get(row.item_id) ?? null
             const manager = () =>
-              row.account_manager ? (names().get(row.account_manager) ?? tr("a teammate")) : tr("None")
+              row.account_manager
+                ? (names().get(row.account_manager) ?? tr("a teammate"))
+                : tr("None")
             const isOpen = () => openId() === row.item_id
-            const shown = () => amounts() ?? { net: BigInt(row.net_minor), vat: BigInt(row.vat_minor), total: BigInt(row.total_minor) }
-            const fromSchedule = () => !(row.flags.includes("Added") || row.latest_change?.source === "added")
+            const shown = () =>
+              amounts() ?? {
+                net: BigInt(row.net_minor),
+                vat: BigInt(row.vat_minor),
+                total: BigInt(row.total_minor),
+              }
+            const fromSchedule = () =>
+              !(row.flags.includes("Added") || row.latest_change?.source === "added")
             return (
-              <li data-testid={`month-end-row-${row.item_id}`} data-state={row.state} class="min-w-0 py-2">
+              <li
+                data-testid={`month-end-row-${row.item_id}`}
+                data-state={row.state}
+                class="min-w-0 py-2"
+              >
                 <button
                   type="button"
                   data-testid={`month-end-row-open-${row.item_id}`}
                   class="flex min-h-11 w-full min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-left"
                   onClick={() => void openRow(row)}
                 >
-                  <span class="min-w-0 flex-1 basis-40 break-words font-medium text-text">{row.customer ?? tr("Customer")}</span>
-                  <span data-testid={`month-end-row-manager-${row.item_id}`} class="text-text-secondary">
+                  <span class="min-w-0 flex-1 basis-40 break-words font-medium text-text">
+                    {row.customer ?? tr("Customer")}
+                  </span>
+                  <span
+                    data-testid={`month-end-row-manager-${row.item_id}`}
+                    class="text-text-secondary"
+                  >
                     {tr("Account manager")}: {manager()}
                   </span>
                   <span data-testid={`month-end-row-total-${row.item_id}`} class="tabular-nums">
-                    {money(shown().net, row.currency)} {tr("excl.")} · {money(shown().vat, row.currency)} {tr("VAT")} ·{" "}
+                    {money(shown().net, row.currency)} {tr("excl.")} ·{" "}
+                    {money(shown().vat, row.currency)} {tr("VAT")} ·{" "}
                     {money(shown().total, row.currency)} {tr("incl.")}
                   </span>
-                  <span data-testid={`month-end-row-number-${row.item_id}`} class="text-text-secondary">
+                  <span
+                    data-testid={`month-end-row-number-${row.item_id}`}
+                    class="text-text-secondary"
+                  >
                     {numberCell(row, run()?.run.issue_on ?? null)}
                   </span>
                 </button>
@@ -419,7 +488,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   <For each={row.flags}>
                     {(f) =>
                       isAmountCheck(f) ? (
-                        <span data-testid={`month-end-row-amount-check-${row.item_id}`} class="mr-2 font-medium text-text">
+                        <span
+                          data-testid={`month-end-row-amount-check-${row.item_id}`}
+                          class="mr-2 font-medium text-text"
+                        >
                           {f}
                         </span>
                       ) : (
@@ -427,7 +499,9 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                       )
                     }
                   </For>
-                  <Show when={changedBy(row.latest_change, names())}>{(w) => <span>{w()}</span>}</Show>
+                  <Show when={changedBy(row.latest_change, names())}>
+                    {(w) => <span>{w()}</span>}
+                  </Show>
                 </div>
                 <Show when={lacksAddress(row) && row.draft_id}>
                   <RowAddressFix
@@ -440,9 +514,15 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   />
                 </Show>
                 <Show when={isOpen()}>
-                  <div data-testid={`month-end-row-editor-${row.item_id}`} class="mt-2 min-w-0 rounded border border-border">
+                  <div
+                    data-testid={`month-end-row-editor-${row.item_id}`}
+                    class="mt-2 min-w-0 rounded border border-border"
+                  >
                     <Show when={amounts() && amounts()?.total !== BigInt(row.total_minor)}>
-                      <p data-testid={`month-end-row-unsaved-${row.item_id}`} class="px-3 pt-2 text-text-secondary">
+                      <p
+                        data-testid={`month-end-row-unsaved-${row.item_id}`}
+                        class="px-3 pt-2 text-text-secondary"
+                      >
                         {tr("Not saved yet. {{now}}, was {{was}}.", {
                           now: money(amounts()?.total ?? 0n, row.currency),
                           was: money(BigInt(row.total_minor), row.currency),
@@ -455,40 +535,82 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                         <Show
                           when={fromSchedule()}
                           fallback={
-                            <button type="button" data-testid="month-end-row-save" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void saveRow(row, null)}>
+                            <button
+                              type="button"
+                              data-testid="month-end-row-save"
+                              class="min-h-11 rounded bg-accent px-3 text-accent-foreground"
+                              onClick={() => void saveRow(row, null)}
+                            >
                               {tr("Save")}
                             </button>
                           }
                         >
-                          <button type="button" data-testid="month-end-row-save-month" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void saveRow(row, "this_month")}>
+                          <button
+                            type="button"
+                            data-testid="month-end-row-save-month"
+                            class="min-h-11 rounded bg-accent px-3 text-accent-foreground"
+                            onClick={() => void saveRow(row, "this_month")}
+                          >
                             {tr("Save for {{month}} only", { month: month() })}
                           </button>
-                          <button type="button" data-testid="month-end-row-save-on" class="min-h-11 rounded border border-border px-3" onClick={() => void saveRow(row, "from_now_on")}>
+                          <button
+                            type="button"
+                            data-testid="month-end-row-save-on"
+                            class="min-h-11 rounded border border-border px-3"
+                            onClick={() => void saveRow(row, "from_now_on")}
+                          >
                             {tr("Save from now on")}
                           </button>
                         </Show>
                         <Show
                           when={row.state === "left_out"}
                           fallback={
-                            <button type="button" data-testid="month-end-row-take-out" class="min-h-11 rounded border border-border px-3" onClick={() => setTakingOut(row.item_id)}>
+                            <button
+                              type="button"
+                              data-testid="month-end-row-take-out"
+                              class="min-h-11 rounded border border-border px-3"
+                              onClick={() => setTakingOut(row.item_id)}
+                            >
                               {tr("Take out")}
                             </button>
                           }
                         >
-                          <button type="button" data-testid="month-end-row-put-back" class="min-h-11 rounded border border-border px-3" onClick={() => void call("drafts_update", { draft_id: row.draft_id, put_back: true })}>
+                          <button
+                            type="button"
+                            data-testid="month-end-row-put-back"
+                            class="min-h-11 rounded border border-border px-3"
+                            onClick={() =>
+                              void call("drafts_update", { draft_id: row.draft_id, put_back: true })
+                            }
+                          >
                             {tr("Put back")}
                           </button>
                         </Show>
                       </Show>
-                      <button type="button" data-testid="month-end-row-ask" class="min-h-11 rounded border border-border px-3" onClick={() => ask(row)}>
+                      <button
+                        type="button"
+                        data-testid="month-end-row-ask"
+                        class="min-h-11 rounded border border-border px-3"
+                        onClick={() => ask(row)}
+                      >
                         {row.account_manager && names().get(row.account_manager)
                           ? tr("Ask {{name}}", { name: names().get(row.account_manager) ?? "" })
                           : tr("Ask in the discussion")}
                       </button>
-                      <button type="button" data-testid="month-end-row-full-editor" class="min-h-11 rounded border border-border px-3" onClick={() => navigate(`/invoicing/editor/${row.draft_id}`)}>
+                      <button
+                        type="button"
+                        data-testid="month-end-row-full-editor"
+                        class="min-h-11 rounded border border-border px-3"
+                        onClick={() => navigate(`/invoicing/editor/${row.draft_id}`)}
+                      >
                         {tr("Open the full editor")}
                       </button>
-                      <button type="button" data-testid="month-end-row-cancel" class="min-h-11 rounded px-3" onClick={closeRow}>
+                      <button
+                        type="button"
+                        data-testid="month-end-row-cancel"
+                        class="min-h-11 rounded px-3"
+                        onClick={closeRow}
+                      >
                         {tr("Cancel")}
                       </button>
                     </div>
@@ -497,8 +619,19 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                         row={row}
                         month={month()}
                         fromSchedule={fromSchedule()}
-                        onThisMonth={() => void call("drafts_discard", { draft_id: row.draft_id, applies: "this_month" })}
-                        onEnd={(endsOn) => void call("drafts_discard", { draft_id: row.draft_id, applies: "end_schedule", ends_on: endsOn })}
+                        onThisMonth={() =>
+                          void call("drafts_discard", {
+                            draft_id: row.draft_id,
+                            applies: "this_month",
+                          })
+                        }
+                        onEnd={(endsOn) =>
+                          void call("drafts_discard", {
+                            draft_id: row.draft_id,
+                            applies: "end_schedule",
+                            ends_on: endsOn,
+                          })
+                        }
                         onRemove={() => void call("drafts_discard", { draft_id: row.draft_id })}
                       />
                     </Show>
@@ -525,14 +658,17 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
         </For>
       </ul>
       <Show when={fold().foldLabel && !showFolded()}>
-        <button type="button" data-testid="month-end-folded" class="mt-2 min-h-11 text-text-secondary underline" onClick={() => setShowFolded(true)}>
+        <button
+          type="button"
+          data-testid="month-end-folded"
+          class="mt-2 min-h-11 text-text-secondary underline"
+          onClick={() => setShowFolded(true)}
+        >
           {fold().foldLabel}
         </button>
       </Show>
 
-      <Show when={runId()}>
-        {(id) => <RunDiscussion runId={id()} prefill={discussion()} />}
-      </Show>
+      <Show when={runId()}>{(id) => <RunDiscussion runId={id()} prefill={discussion()} />}</Show>
     </section>
   )
 }
@@ -553,8 +689,13 @@ function RowAddressFix(props: {
     <div class="mt-1 space-y-1">
       <Show when={found()}>
         {(f) => (
-          <div data-testid={`month-end-row-suggestion-${id}`} class="flex flex-wrap items-center gap-2 text-text-secondary">
-            <span class="min-w-0 break-words">{tr("Address an agent found: {{address}}", { address: f().text })}</span>
+          <div
+            data-testid={`month-end-row-suggestion-${id}`}
+            class="flex flex-wrap items-center gap-2 text-text-secondary"
+          >
+            <span class="min-w-0 break-words">
+              {tr("Address an agent found: {{address}}", { address: f().text })}
+            </span>
             <Show when={props.canWrite}>
               <button
                 type="button"
@@ -572,7 +713,12 @@ function RowAddressFix(props: {
         <Show
           when={props.open}
           fallback={
-            <button type="button" data-testid={`month-end-row-fix-${id}`} class="min-h-11 rounded border border-border px-3" onClick={props.onOpen}>
+            <button
+              type="button"
+              data-testid={`month-end-row-fix-${id}`}
+              class="min-h-11 rounded border border-border px-3"
+              onClick={props.onOpen}
+            >
               {tr("Fix")}
             </button>
           }
@@ -587,7 +733,12 @@ function RowAddressFix(props: {
             >
               {tr("Save the address")}
             </button>
-            <button type="button" class="min-h-11 rounded px-3" data-testid={`month-end-row-fix-cancel-${id}`} onClick={props.onCancel}>
+            <button
+              type="button"
+              class="min-h-11 rounded px-3"
+              data-testid={`month-end-row-fix-cancel-${id}`}
+              onClick={props.onCancel}
+            >
               {tr("Cancel")}
             </button>
             <input
@@ -622,7 +773,10 @@ function AddForgotten(props: {
   const [busy, setBusy] = createSignal(false)
   onMount(async () => {
     try {
-      const res = await app.invokeTool<{ rows?: ScheduleOption[] }>("recurring_list", { status: "active", limit: 200 })
+      const res = await app.invokeTool<{ rows?: ScheduleOption[] }>("recurring_list", {
+        status: "active",
+        limit: 200,
+      })
       const named: Array<ScheduleOption & { name: string }> = []
       for (const s of res?.rows ?? []) {
         if (!s.contact_id) continue
@@ -639,7 +793,8 @@ function AddForgotten(props: {
   const currency = () => props.rows[0]?.currency ?? "EUR"
   const priceMinor = () => (price().trim() ? priceInputToMinor(price(), currency()) : null)
   const qtyOk = () => Number(qty().replace(",", ".")) > 0
-  const ready = () => !busy() && !!name().trim() && !!line().trim() && priceMinor() !== null && qtyOk()
+  const ready = () =>
+    !busy() && !!name().trim() && !!line().trim() && priceMinor() !== null && qtyOk()
   const add = async (args: Record<string, unknown>) => {
     setBusy(true)
     await props.onAdd(args)
@@ -649,7 +804,12 @@ function AddForgotten(props: {
     <div data-testid="month-end-add-form" class="mt-2 space-y-2 rounded border border-border p-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <p class="font-medium text-text">{tr("Add an invoice someone forgot")}</p>
-        <button type="button" data-testid="month-end-add-cancel" class="min-h-11 rounded px-3" onClick={props.onCancel}>
+        <button
+          type="button"
+          data-testid="month-end-add-cancel"
+          class="min-h-11 rounded px-3"
+          onClick={props.onCancel}
+        >
           {tr("Cancel")}
         </button>
       </div>
@@ -665,11 +825,17 @@ function AddForgotten(props: {
                   class="min-h-11 w-full min-w-0 rounded border border-border px-3 text-left disabled:opacity-55"
                   disabled={busy()}
                   onClick={() =>
-                    void add({ counterparty_contact_id: s.contact_id, counterparty_name: s.name, items: scheduleItems(s, props.period) })
+                    void add({
+                      counterparty_contact_id: s.contact_id,
+                      counterparty_name: s.name,
+                      items: scheduleItems(s, props.period),
+                    })
                   }
                 >
                   <span class="break-words font-medium text-text">{s.name}</span>
-                  <span class="text-text-secondary">{` · ${String(s.lines[0]?.description ?? "").split("{period}").join(props.period)}`}</span>
+                  <span class="text-text-secondary">{` · ${String(s.lines[0]?.description ?? "")
+                    .split("{period}")
+                    .join(props.period)}`}</span>
                 </button>
               </li>
             )}
@@ -687,7 +853,14 @@ function AddForgotten(props: {
             void add({
               counterparty_contact_id: null,
               counterparty_name: name().trim(),
-              items: [{ position: 1, description: line().trim(), quantity: qty().trim().replace(",", "."), unit_price_minor: priceMinor() }],
+              items: [
+                {
+                  position: 1,
+                  description: line().trim(),
+                  quantity: qty().trim().replace(",", "."),
+                  unit_price_minor: priceMinor(),
+                },
+              ],
             })
           }
         >
@@ -695,10 +868,38 @@ function AddForgotten(props: {
         </button>
       </div>
       <div class="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-        <input data-testid="month-end-add-customer-name" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Customer")} value={name()} onInput={(e) => setName(e.currentTarget.value)} />
-        <input data-testid="month-end-add-customer-line" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("What it bills")} value={line()} onInput={(e) => setLine(e.currentTarget.value)} />
-        <input data-testid="month-end-add-customer-qty" inputmode="decimal" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Quantity")} aria-label={tr("Quantity")} value={qty()} onInput={(e) => setQty(e.currentTarget.value)} />
-        <input data-testid="month-end-add-customer-price" inputmode="decimal" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Unit price excl. VAT")} aria-label={tr("Unit price excl. VAT")} value={price()} onInput={(e) => setPrice(e.currentTarget.value)} />
+        <input
+          data-testid="month-end-add-customer-name"
+          class="min-h-11 min-w-0 rounded border border-border bg-surface px-2"
+          placeholder={tr("Customer")}
+          value={name()}
+          onInput={(e) => setName(e.currentTarget.value)}
+        />
+        <input
+          data-testid="month-end-add-customer-line"
+          class="min-h-11 min-w-0 rounded border border-border bg-surface px-2"
+          placeholder={tr("What it bills")}
+          value={line()}
+          onInput={(e) => setLine(e.currentTarget.value)}
+        />
+        <input
+          data-testid="month-end-add-customer-qty"
+          inputmode="decimal"
+          class="min-h-11 min-w-0 rounded border border-border bg-surface px-2"
+          placeholder={tr("Quantity")}
+          aria-label={tr("Quantity")}
+          value={qty()}
+          onInput={(e) => setQty(e.currentTarget.value)}
+        />
+        <input
+          data-testid="month-end-add-customer-price"
+          inputmode="decimal"
+          class="min-h-11 min-w-0 rounded border border-border bg-surface px-2"
+          placeholder={tr("Unit price excl. VAT")}
+          aria-label={tr("Unit price excl. VAT")}
+          value={price()}
+          onInput={(e) => setPrice(e.currentTarget.value)}
+        />
       </div>
     </div>
   )
@@ -721,20 +922,37 @@ function TakeOut(props: {
     return `${ym}-${String(last).padStart(2, "0")}`
   }
   return (
-    <div data-testid="month-end-take-out" class="mx-3 mt-2 space-y-2 rounded border border-border p-2">
+    <div
+      data-testid="month-end-take-out"
+      class="mx-3 mt-2 space-y-2 rounded border border-border p-2"
+    >
       <Show
         when={props.fromSchedule}
         fallback={
-          <button type="button" data-testid="month-end-take-out-remove" class="min-h-11 rounded border border-border px-3" onClick={props.onRemove}>
+          <button
+            type="button"
+            data-testid="month-end-take-out-remove"
+            class="min-h-11 rounded border border-border px-3"
+            onClick={props.onRemove}
+          >
             {tr("Remove this added invoice")}
           </button>
         }
       >
         <div>
-          <button type="button" data-testid="month-end-take-out-month" class="min-h-11 rounded border border-border px-3" onClick={props.onThisMonth}>
+          <button
+            type="button"
+            data-testid="month-end-take-out-month"
+            class="min-h-11 rounded border border-border px-3"
+            onClick={props.onThisMonth}
+          >
             {tr("Take out of {{month}}", { month: props.month })}
           </button>
-          <p class="mt-1 text-text-secondary">{tr("No invoice for {{month}}. It comes back by itself next month.", { month: props.month })}</p>
+          <p class="mt-1 text-text-secondary">
+            {tr("No invoice for {{month}}. It comes back by itself next month.", {
+              month: props.month,
+            })}
+          </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <label class="text-text-secondary">
@@ -758,7 +976,9 @@ function TakeOut(props: {
           </button>
         </div>
         <p class="text-text-secondary">
-          {tr("Ending the schedule stops these invoices only: a card link or a subscription elsewhere keeps running until it is turned off there.")}
+          {tr(
+            "Ending the schedule stops these invoices only: a card link or a subscription elsewhere keeps running until it is turned off there.",
+          )}
         </p>
       </Show>
     </div>

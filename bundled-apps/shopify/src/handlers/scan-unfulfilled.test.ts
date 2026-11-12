@@ -12,8 +12,13 @@ import type { AppContext } from "@liaison/app-sdk"
 import { channelName, createEnforcingEmit } from "../lib/emit.testutil"
 import { scanUnfulfilledOrdersJob } from "./scan-unfulfilled"
 
-interface FetchResponse { status?: number; body: unknown }
-interface DbRow extends Record<string, unknown> { id: string }
+interface FetchResponse {
+  status?: number
+  body: unknown
+}
+interface DbRow extends Record<string, unknown> {
+  id: string
+}
 
 function makeCtx(opts: {
   shopifyFetch?: FetchResponse[]
@@ -21,7 +26,13 @@ function makeCtx(opts: {
   connectionStatus?: string
 }): {
   ctx: AppContext
-  events: Array<{ entity: string; action: string; entityId?: string; data?: unknown; metadata?: Record<string, unknown> }>
+  events: Array<{
+    entity: string
+    action: string
+    entityId?: string
+    data?: unknown
+    metadata?: Record<string, unknown>
+  }>
   channels: string[]
   fetchBodies: string[]
 } {
@@ -59,7 +70,13 @@ function makeCtx(opts: {
     connections: {
       shop: {
         getAccounts: async () => [
-          { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+          {
+            id: "ca1",
+            ownerType: "org" as const,
+            ownerId: null,
+            identifier: "demo.myshopify.com",
+            displayName: null,
+          },
         ],
         getToken: async () => "test-token",
       },
@@ -83,7 +100,13 @@ function makeCtx(opts: {
 }
 
 const ordersResponse = (
-  orders: Array<{ id: string; createdAt: string; name: string; market?: string; currency?: string }>,
+  orders: Array<{
+    id: string
+    createdAt: string
+    name: string
+    market?: string
+    currency?: string
+  }>,
 ): FetchResponse => ({
   body: {
     data: {
@@ -112,11 +135,7 @@ describe("scanUnfulfilledOrdersJob", () => {
     const now = Date.now()
     const dayAgo = new Date(now - 26 * 3600 * 1000).toISOString()
     const { ctx, events, channels } = makeCtx({
-      shopifyFetch: [
-        ordersResponse([
-          { id: "1001", createdAt: dayAgo, name: "#1001" },
-        ]),
-      ],
+      shopifyFetch: [ordersResponse([{ id: "1001", createdAt: dayAgo, name: "#1001" }])],
     })
     const result = await scanUnfulfilledOrdersJob({}, ctx)
     expect(events.length).toBe(1)
@@ -125,7 +144,12 @@ describe("scanUnfulfilledOrdersJob", () => {
     expect(events[0]!.entityId).toBe("unfulfilled-orders")
     // Canonical channel (emit did not throw => orders:unfulfilled_digest declared).
     expect(channels[0]).toBe(channelName("shopify", "orders", "unfulfilled_digest"))
-    const data = events[0]!.data as { count: number; oldestAgeHours: number; orderNames: string[]; thresholdHours: number }
+    const data = events[0]!.data as {
+      count: number
+      oldestAgeHours: number
+      orderNames: string[]
+      thresholdHours: number
+    }
     expect(data.count).toBe(1)
     expect(data.oldestAgeHours).toBeGreaterThanOrEqual(25)
     expect(data.orderNames).toEqual(["#1001"])
@@ -136,7 +160,11 @@ describe("scanUnfulfilledOrdersJob", () => {
   it("digest event carries no market/currency axis metadata (aggregate spans all markets)", async () => {
     const dayAgo = new Date(Date.now() - 26 * 3600 * 1000).toISOString()
     const { ctx, events } = makeCtx({
-      shopifyFetch: [ordersResponse([{ id: "1003", createdAt: dayAgo, name: "#1003", market: "EU", currency: "EUR" }])],
+      shopifyFetch: [
+        ordersResponse([
+          { id: "1003", createdAt: dayAgo, name: "#1003", market: "EU", currency: "EUR" },
+        ]),
+      ],
     })
     await scanUnfulfilledOrdersJob({}, ctx)
     expect(events.length).toBe(1)
@@ -228,7 +256,15 @@ describe("scanUnfulfilledOrdersJob", () => {
     const { ctx, events, fetchBodies } = makeCtx({
       connectionStatus: "disconnected",
       // Provide a response to detect if a fetch is accidentally issued.
-      shopifyFetch: [ordersResponse([{ id: "9001", createdAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(), name: "#9001" }])],
+      shopifyFetch: [
+        ordersResponse([
+          {
+            id: "9001",
+            createdAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+            name: "#9001",
+          },
+        ]),
+      ],
     })
     const result = await scanUnfulfilledOrdersJob({}, ctx)
     expect(result).toEqual({ matched: 0 })

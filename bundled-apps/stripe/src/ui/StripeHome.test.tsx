@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { MRR_RULES, mrrRuleLines } from "../mrr"
-import { evidenceDueLine, howComputedLines, StripeHome } from "./StripeHome"
 import {
   buildAttention,
   buildMrrView,
@@ -15,6 +14,7 @@ import {
   toggleReview,
   trialsEnding,
 } from "./home-model"
+import { evidenceDueLine, howComputedLines, StripeHome } from "./StripeHome"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -75,7 +75,13 @@ describe("attention", () => {
       invoice("b", { nextPaymentAttempt: day(1) }),
       invoice("c", { nextPaymentAttempt: day(2), amountDueMinor: 10000 }),
     ]
-    const a = buildAttention({ pastDue: subs, openInvoices: invoices, disputes: [], approvals: [], now: NOW })
+    const a = buildAttention({
+      pastDue: subs,
+      openInvoices: invoices,
+      disputes: [],
+      approvals: [],
+      now: NOW,
+    })
     expect(a.failed.map((r) => r.subscriptionId)).toEqual(["a"])
     expect(a.retrying.count).toBe(2)
     expect(a.retrying.mrrByCurrency).toEqual({ eur: 98000 })
@@ -86,7 +92,10 @@ describe("attention", () => {
   it("a retry on an expired card is a failed payment to look at, never in Stripe's retries", () => {
     const a = buildAttention({
       pastDue: [sub("a", { card: { brand: "visa", last4: "4242", exp: "10/26" } }), sub("b")],
-      openInvoices: [invoice("a", { nextPaymentAttempt: day(1) }), invoice("b", { nextPaymentAttempt: day(1) })],
+      openInvoices: [
+        invoice("a", { nextPaymentAttempt: day(1) }),
+        invoice("b", { nextPaymentAttempt: day(1) }),
+      ],
       disputes: [],
       approvals: [],
       now: NOW,
@@ -113,9 +122,36 @@ describe("attention", () => {
       pastDue: [sub("a", { pastDueSince: day(-2) }), sub("b", { pastDueSince: day(-9) })],
       openInvoices: [],
       disputes: [
-        { id: "dp_2", paymentId: "ch_2", amountMinor: 100, currency: "eur", reason: null, status: "needs_response", evidenceDueBy: day(9), at: day(-3) },
-        { id: "dp_1", paymentId: "ch_1", amountMinor: 100, currency: "eur", reason: null, status: "needs_response", evidenceDueBy: day(2), at: day(-3) },
-        { id: "dp_3", paymentId: "ch_3", amountMinor: 100, currency: "eur", reason: null, status: "won", evidenceDueBy: day(1), at: day(-3) },
+        {
+          id: "dp_2",
+          paymentId: "ch_2",
+          amountMinor: 100,
+          currency: "eur",
+          reason: null,
+          status: "needs_response",
+          evidenceDueBy: day(9),
+          at: day(-3),
+        },
+        {
+          id: "dp_1",
+          paymentId: "ch_1",
+          amountMinor: 100,
+          currency: "eur",
+          reason: null,
+          status: "needs_response",
+          evidenceDueBy: day(2),
+          at: day(-3),
+        },
+        {
+          id: "dp_3",
+          paymentId: "ch_3",
+          amountMinor: 100,
+          currency: "eur",
+          reason: null,
+          status: "won",
+          evidenceDueBy: day(1),
+          at: day(-3),
+        },
       ],
       approvals: [],
       now: NOW,
@@ -126,15 +162,32 @@ describe("attention", () => {
   })
 
   it("a dispute's deadline reads as a short date, as the rest of the page", () => {
-    expect(evidenceDueLine("2026-11-14T00:00:00Z", "en")).toBe("Evidence is due in Stripe by Nov 14.")
+    expect(evidenceDueLine("2026-11-14T00:00:00Z", "en")).toBe(
+      "Evidence is due in Stripe by Nov 14.",
+    )
     expect(evidenceDueLine(null, "en")).toBe("Evidence is due in Stripe.")
   })
 
   it("Review expands only the pending approval", () => {
     const approvals = [
-      { id: "ap_1", toolName: "stripe:refunds_create", status: "pending", summary: { title: "Refund 178.80 EUR on ch_9", lines: [] } },
-      { id: "ap_2", toolName: "stripe:refunds_create", status: "decided", summary: { title: "Refund", lines: [] } },
-      { id: "ap_3", toolName: "invoicing:invoice_issue", status: "pending", summary: { title: "Issue", lines: [] } },
+      {
+        id: "ap_1",
+        toolName: "stripe:refunds_create",
+        status: "pending",
+        summary: { title: "Refund 178.80 EUR on ch_9", lines: [] },
+      },
+      {
+        id: "ap_2",
+        toolName: "stripe:refunds_create",
+        status: "decided",
+        summary: { title: "Refund", lines: [] },
+      },
+      {
+        id: "ap_3",
+        toolName: "invoicing:invoice_issue",
+        status: "pending",
+        summary: { title: "Issue", lines: [] },
+      },
     ]
     const a = buildAttention({ pastDue: [], openInvoices: [], disputes: [], approvals, now: NOW })
     // Only this app's own pending money requests are rows.
@@ -185,7 +238,14 @@ describe("monthly recurring revenue", () => {
           { plan: "Team", mrrMinor: 5000000, count: 83 },
           { plan: "Starter", mrrMinor: 2000000, count: 62 },
         ],
-        movements: { newMinor: 294000, upgradeMinor: 96000, downgradeMinor: -34100, cancelledMinor: -127800, netMinor: 228100, startMinor: 8242700 },
+        movements: {
+          newMinor: 294000,
+          upgradeMinor: 96000,
+          downgradeMinor: -34100,
+          cancelledMinor: -127800,
+          netMinor: 228100,
+          startMinor: 8242700,
+        },
         monthStart: "2026-11-01",
       },
       {
@@ -194,7 +254,14 @@ describe("monthly recurring revenue", () => {
         pastDueMinor: 0,
         activeCount: 1,
         byPlan: [{ plan: "Team", mrrMinor: 12000, count: 1 }],
-        movements: { newMinor: 0, upgradeMinor: 0, downgradeMinor: 0, cancelledMinor: 0, netMinor: 0, startMinor: 12000 },
+        movements: {
+          newMinor: 0,
+          upgradeMinor: 0,
+          downgradeMinor: 0,
+          cancelledMinor: 0,
+          netMinor: 0,
+          startMinor: 12000,
+        },
         monthStart: "2026-11-01",
       },
     ],
@@ -228,7 +295,9 @@ describe("calm interface", () => {
   it("no alarm colour anywhere in the Stripe screens", () => {
     for (const f of ["StripeHome.tsx", "HomeStates.tsx", "StripeSidebar.tsx", "home-model.ts"]) {
       const src = readFileSync(join(import.meta.dir, f), "utf8")
-      expect(src).not.toMatch(/\b(?:text|bg|border)-(?:red|rose|orange|danger|error)\b|animate-(?:pulse|ping|bounce)|tone="error"/)
+      expect(src).not.toMatch(
+        /\b(?:text|bg|border)-(?:red|rose|orange|danger|error)\b|animate-(?:pulse|ping|bounce)|tone="error"/,
+      )
     }
   })
 })

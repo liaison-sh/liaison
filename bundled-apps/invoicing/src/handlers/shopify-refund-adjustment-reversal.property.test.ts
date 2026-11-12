@@ -53,7 +53,7 @@ function assertBothInvariants(
 
   // Invariant b: never a positive line on a reversal.
   for (const it of items) {
-    expect(it.unit_price_minor as bigint <= 0n).toBe(true)
+    expect((it.unit_price_minor as bigint) <= 0n).toBe(true)
   }
 
   // Invariant c: the rounding-adjustment sweep line is only emitted when the
@@ -249,7 +249,7 @@ describe("buildAdjustmentReversalItems property guard", () => {
     const items = buildAdjustmentReversalItems(originalLines, remainingGrossMinor, "goods")
 
     for (const it of items) {
-      expect(it.unit_price_minor as bigint <= 0n).toBe(true)
+      expect((it.unit_price_minor as bigint) <= 0n).toBe(true)
     }
     assertBothInvariants(items, remainingGrossMinor)
   })
@@ -291,7 +291,9 @@ describe("buildAdjustmentReversalItems property guard", () => {
 
     const items = buildAdjustmentReversalItems(originalLines, remainingGrossMinor, "goods")
 
-    expect(items).toEqual([expect.objectContaining({ unit_price_minor: -250n, tax_rate_bp_override: 2000 })])
+    expect(items).toEqual([
+      expect.objectContaining({ unit_price_minor: -250n, tax_rate_bp_override: 2000 }),
+    ])
     assertBothInvariants(items, remainingGrossMinor)
   })
 

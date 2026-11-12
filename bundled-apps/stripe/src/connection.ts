@@ -22,7 +22,7 @@
 // nothing, so the mirror is never mixed with a second account's data. The same
 // holds for a key of the other mode (`mode_changed`).
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
-import { type StripeHttpCtx, StripeApiError, stripeFetch } from "./http"
+import { StripeApiError, type StripeHttpCtx, stripeFetch } from "./http"
 import { isStandInInstall, STANDIN_MARKER } from "./standin"
 
 export const BASE_STATES = [
@@ -50,7 +50,9 @@ export function decodeState(text: unknown): ConnectionState {
   if (typeof text !== "string") return { base: "not_connected", overlay: null }
   const [base, overlay] = text.split("+")
   return {
-    base: (BASE_STATES as readonly string[]).includes(base ?? "") ? (base as BaseState) : "not_connected",
+    base: (BASE_STATES as readonly string[]).includes(base ?? "")
+      ? (base as BaseState)
+      : "not_connected",
     overlay: (OVERLAYS as readonly string[]).includes(overlay ?? "") ? (overlay as Overlay) : null,
   }
 }
@@ -84,7 +86,9 @@ export function transition(s: ConnectionState, event: ConnectionEvent): Connecti
     case "key_refused":
       return { base: s.base, overlay: "key_invalid" }
     case "permission_refused":
-      return s.overlay === "key_invalid" || s.overlay === "different_account" ? s : { base: s.base, overlay: "partial" }
+      return s.overlay === "key_invalid" || s.overlay === "different_account"
+        ? s
+        : { base: s.base, overlay: "partial" }
     case "account_unconfirmed":
       return { base: s.base, overlay: "different_account" }
     case "webhook_secret_stored":
@@ -146,7 +150,10 @@ export interface ConnectionCheckResult {
 
 /** The slice of the app's db bridge the check uses. */
 export interface ConnectionDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number },
+  ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
 }
@@ -198,8 +205,11 @@ async function knownMirrorIds(db: ConnectionDb): Promise<string[]> {
   ] as const
   for (const [entity, path] of sources) {
     if (out.length >= 3) break
-    const rows = (await db.findMany(entity, { limit: 3 - out.length })) as Array<{ stripe_id?: unknown }>
-    for (const r of rows) if (typeof r.stripe_id === "string" && r.stripe_id) out.push(`${path}${r.stripe_id}`)
+    const rows = (await db.findMany(entity, { limit: 3 - out.length })) as Array<{
+      stripe_id?: unknown
+    }>
+    for (const r of rows)
+      if (typeof r.stripe_id === "string" && r.stripe_id) out.push(`${path}${r.stripe_id}`)
   }
   return out
 }
@@ -250,7 +260,8 @@ export async function runConnectionCheck(
   if (known.length > 0) {
     const answers: Probe[] = []
     for (const path of known) answers.push(await probe(ctx, path, {}))
-    if (answers.some((a) => a.status === 401)) return await keyRefused(ctx, install, current, opts.dryRun)
+    if (answers.some((a) => a.status === 401))
+      return await keyRefused(ctx, install, current, opts.dryRun)
     if (answers.every((a) => a.status === 404)) {
       return refuseTool(
         "different_account",
@@ -266,11 +277,10 @@ export async function runConnectionCheck(
     if (p.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
     reads.push({ ...p, resource: r.resource, label: r.label })
   }
-  const refund = await probe(
-    ctx,
-    "/v1/refunds",
-    { method: "POST", params: { charge: REFUND_PROBE_CHARGE } },
-  )
+  const refund = await probe(ctx, "/v1/refunds", {
+    method: "POST",
+    params: { charge: REFUND_PROBE_CHARGE },
+  })
   if (refund.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
 
   // 3. The mode, from any object Stripe returned.
@@ -291,8 +301,16 @@ export async function runConnectionCheck(
   const permissions: StoredPermissions = {
     mode: mode ?? previous?.mode ?? null,
     checks: [
-      ...reads.map((r, i) => ({ resource: r.resource, level: "read" as const, state: (rows[i] as CheckRow).state })),
-      { resource: "refunds", level: "write" as const, state: (rows[rows.length - 1] as CheckRow).state },
+      ...reads.map((r, i) => ({
+        resource: r.resource,
+        level: "read" as const,
+        state: (rows[i] as CheckRow).state,
+      })),
+      {
+        resource: "refunds",
+        level: "write" as const,
+        state: (rows[rows.length - 1] as CheckRow).state,
+      },
     ],
     checkedAt: now.toISOString(),
     // A stand-in install keeps its mark through a check; the check never adds it.
@@ -316,7 +334,9 @@ export async function runConnectionCheck(
     )
   }
   if (failed.length > 0) {
-    summaryParts.push(`Stripe did not answer for ${failed.map((r) => r.label).join(", ")}; run the check again later.`)
+    summaryParts.push(
+      `Stripe did not answer for ${failed.map((r) => r.label).join(", ")}; run the check again later.`,
+    )
   }
   return {
     mode: mode ?? "unknown",
@@ -336,16 +356,28 @@ export async function runConnectionCheck(
 
 function readRow(label: string, status: number): CheckRow {
   if (status === 200) return { label, level: "Read", state: "ok", meta: "Read works" }
-  if (status === 403) return { label, level: "Read", state: "missing", meta: `Missing: give Read to ${label}` }
+  if (status === 403)
+    return { label, level: "Read", state: "missing", meta: `Missing: give Read to ${label}` }
   return { label, level: "Read", state: "error", meta: `Stripe answered ${status}` }
 }
 
 function refundRow(status: number): CheckRow {
   // 404 (no such charge) and 400 mean the key may create refunds; nothing was created.
   if (status === 404 || status === 400) {
-    return { label: "Refunds", level: "Write", state: "ok", meta: "Write allowed (probe, nothing created)" }
+    return {
+      label: "Refunds",
+      level: "Write",
+      state: "ok",
+      meta: "Write allowed (probe, nothing created)",
+    }
   }
-  if (status === 403) return { label: "Refunds", level: "Write", state: "missing", meta: "Missing: give Write to Refunds" }
+  if (status === 403)
+    return {
+      label: "Refunds",
+      level: "Write",
+      state: "missing",
+      meta: "Missing: give Write to Refunds",
+    }
   return { label: "Refunds", level: "Write", state: "error", meta: `Stripe answered ${status}` }
 }
 
@@ -363,5 +395,8 @@ async function keyRefused(
   }
   // A key checked before it is stored (dry run, or no install yet) was never saved: say "this key".
   const which = install && !dryRun ? "the saved key" : "this key, so it was not saved"
-  return refuseTool("key_invalid", `Stripe refused ${which} (401): it was revoked, rolled or mistyped. ${KEY_INVALID_NEXT}`)
+  return refuseTool(
+    "key_invalid",
+    `Stripe refused ${which} (401): it was revoked, rolled or mistyped. ${KEY_INVALID_NEXT}`,
+  )
 }

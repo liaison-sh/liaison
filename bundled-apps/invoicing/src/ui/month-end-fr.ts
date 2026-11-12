@@ -26,7 +26,8 @@ export const MONTH_END_FR: Record<string, string> = {
   "{{customer}} added": "{{customer}} ajouté",
   "{{customer}} taken out": "{{customer}} retiré",
   "{{customer}} changed": "{{customer}} modifié",
-  "Total you saw: {{before}}, now {{after}}": "Total que vous avez vu : {{before}}, maintenant {{after}}",
+  "Total you saw: {{before}}, now {{after}}":
+    "Total que vous avez vu : {{before}}, maintenant {{after}}",
   "Got it": "Compris",
   "{{n}} invoices to approve, {{total}} incl. VAT": "{{n}} factures à approuver, {{total}} TTC",
   "Someone who can approve invoices decides this card.":
@@ -54,7 +55,7 @@ export const MONTH_END_FR: Record<string, string> = {
   "End the schedule": "Arrêter l'échéancier",
   "Ending the schedule stops these invoices only: a card link or a subscription elsewhere keeps running until it is turned off there.":
     "Arrêter l'échéancier arrête seulement ces factures : un lien de paiement par carte ou un abonnement ailleurs continue jusqu'à ce qu'il y soit désactivé.",
-  "Discussion": "Discussion",
+  Discussion: "Discussion",
   "Add an invoice someone forgot": "Ajouter une facture oubliée",
   "Address an agent found: {{address}}": "Adresse trouvée par un agent : {{address}}",
   "Use it": "L'utiliser",
@@ -64,6 +65,6 @@ export const MONTH_END_FR: Record<string, string> = {
   "Or a customer with no schedule:": "Ou un client sans échéancier :",
   "Add to the run": "Ajouter au lot",
   "What it bills": "Ce qui est facturé",
-  "Quantity": "Quantité",
+  Quantity: "Quantité",
   "Unit price excl. VAT": "Prix unitaire HT",
 }

@@ -89,7 +89,7 @@ An agent can also export everything held on one contact, for a data-subject requ
 
 Erasing a member (`liaison erase-user`) also clears every inbound webhook delivery still stored with a payload that names them (their id or email): waiting deliveries are dropped instead of run later. A backup taken before the erasure still holds them until it rolls over.
 
-- **From the app:** open **Settings › Organization › Export your data**, pick the apps and the format (**JSON** or **CSV**), and click **Export**. It needs `kernel:users:admin`. See [Find your way around Settings](settings.md#export-the-organizations-data).
+- **From the app:** open **Settings › Organization › Export your data**, pick the apps and the format (**JSON** or **CSV**), and click **Export**. The zip's `manifest.json` names each app's version (for a catalog app, the version active on the server). It needs `kernel:users:admin`. See [Find your way around Settings](settings.md#export-the-organizations-data).
 - **From the CLI:** `liaison export --full --output <path>` writes the whole instance (database, files, search) to a `.tar.gz`, renamed onto `--output` only when it succeeds. It needs a database connection allowed to run DDL. See the [CLI reference](../reference/cli.md).
 
 ## Export a whole organization

@@ -5,7 +5,8 @@ import { join } from "node:path"
 import { packageManifestSchema } from "@liaison/app-sdk"
 import * as handlers from "../handlers"
 
-const load = () => JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
+const load = () =>
+  JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
 
 /** Every handler name the manifest references. */
 function referencedHandlers(m: any): string[] {
@@ -18,7 +19,8 @@ function referencedHandlers(m: any): string[] {
 }
 
 // A card number, a security code or a PAN, by name: `cardNumber`, `card_number`, `cvc`, `pan`, `panLast`, ...
-const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
+const CARD_PARAM =
+  /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
   it("is at version 0.1.29", () => {
@@ -47,7 +49,11 @@ describe("stripe manifest", () => {
     expect(c.type).toBe("credentials")
     expect(c.adminScope).toBe("stripe:admin:connection")
     expect(c.credentialFields).toHaveLength(1)
-    expect(c.credentialFields[0]).toMatchObject({ name: "restrictedKey", type: "password", label: "Restricted key" })
+    expect(c.credentialFields[0]).toMatchObject({
+      name: "restrictedKey",
+      type: "password",
+      label: "Restricted key",
+    })
     expect(c.credentialFields[0].refusePattern.code).toBe("secret_key_refused")
     expect(c.appSecretConfigKeys).toEqual(["webhookSigningSecret", "webhookSigningSecretPrevious"])
   })
@@ -59,25 +65,38 @@ describe("stripe manifest", () => {
   it("no tool takes a card number parameter", () => {
     for (const [name, t] of Object.entries<any>(load().tools ?? {})) {
       for (const p of Object.keys((t.params ?? t.parameters)?.properties ?? {})) {
-        expect({ tool: name, param: p, card: CARD_PARAM.test(p) }).toEqual({ tool: name, param: p, card: false })
+        expect({ tool: name, param: p, card: CARD_PARAM.test(p) }).toEqual({
+          tool: name,
+          param: p,
+          card: false,
+        })
       }
     }
   })
 
   it("every handler the manifest names is exported", () => {
     for (const name of referencedHandlers(load())) {
-      expect({ name, type: typeof (handlers as Record<string, unknown>)[name] }).toEqual({ name, type: "function" })
+      expect({ name, type: typeof (handlers as Record<string, unknown>)[name] }).toEqual({
+        name,
+        type: "function",
+      })
     }
   })
 
   it("webhook events accept a body up to 5 MB and the probe is a declared job", () => {
     const m = load()
-    expect(m.webhooks.events).toEqual({ handler: "eventsHandler", verify: "stripeWebhookVerifier", bodyLimitBytes: 5242880 })
+    expect(m.webhooks.events).toEqual({
+      handler: "eventsHandler",
+      verify: "stripeWebhookVerifier",
+      bodyLimitBytes: 5242880,
+    })
     expect(m.jobs[m.webhookHealth.probe]).toBeDefined()
   })
 
   it("every table declares its RLS scope", () => {
-    const scopes = Object.fromEntries(Object.entries<any>(load().schema).map(([t, d]) => [t, d.rlsScope]))
+    const scopes = Object.fromEntries(
+      Object.entries<any>(load().schema).map(([t, d]) => [t, d.rlsScope]),
+    )
     expect(scopes).toEqual({
       stripe_customers: "customers",
       stripe_subscriptions: "subscriptions",
@@ -95,7 +114,11 @@ describe("stripe manifest", () => {
   it("the member tier reads only: refunds, cancellations and the connection stay out of it", () => {
     const roles = load().roles
     for (const s of roles.member.scopes) expect(s).toMatch(/:read$/)
-    for (const s of ["stripe:refunds:write", "stripe:subscriptions:write", "stripe:admin:connection"]) {
+    for (const s of [
+      "stripe:refunds:write",
+      "stripe:subscriptions:write",
+      "stripe:admin:connection",
+    ]) {
       expect(roles.member.scopes).not.toContain(s)
     }
     expect(roles.billing.extends).toBe("member")
@@ -110,6 +133,11 @@ describe("stripe manifest", () => {
   it("uses the app SDK only", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"))
     // The UI's own libraries sit beside the SDK; nothing from the kernel's apps.
-    expect(Object.keys(pkg.dependencies)).toEqual(["@liaison/app-sdk", "@liaison/app-ui", "@liaison/host", "solid-js"])
+    expect(Object.keys(pkg.dependencies)).toEqual([
+      "@liaison/app-sdk",
+      "@liaison/app-ui",
+      "@liaison/host",
+      "solid-js",
+    ])
   })
 })

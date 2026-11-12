@@ -92,7 +92,12 @@ const big = (v: unknown): bigint => {
 }
 
 const scaled = (percent: number): bigint =>
-  BigInt(Math.max(0, Math.min(MRR_RULES.percentScale, Math.round(percent * (MRR_RULES.percentScale / 100)))))
+  BigInt(
+    Math.max(
+      0,
+      Math.min(MRR_RULES.percentScale, Math.round(percent * (MRR_RULES.percentScale / 100))),
+    ),
+  )
 
 function factorOf(item: MrrItem): Frac | null {
   const f = FACTOR[String(item.interval ?? "")]
@@ -116,7 +121,10 @@ function monthly(items: MrrItem[]): { total: Frac; cadence: Frac | null } {
     let gross: Frac = { n: unit * qty, d: 1n }
     const tax = Number(it.tax_percent)
     if (it.tax_behavior === "inclusive" && Number.isFinite(tax) && tax > 0) {
-      gross = { n: gross.n * BigInt(MRR_RULES.percentScale), d: BigInt(MRR_RULES.percentScale) + scaled(tax) }
+      gross = {
+        n: gross.n * BigInt(MRR_RULES.percentScale),
+        d: BigInt(MRR_RULES.percentScale) + scaled(tax),
+      }
     }
     total = add(total, { n: gross.n * f.n, d: gross.d * f.d })
     cadence ??= f
@@ -147,14 +155,19 @@ export function computeMrr(input: MrrInput): number {
   return Number((2n * n + d) / (2n * d))
 }
 
-const asObj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null)
+const asObj = (v: unknown): Obj | null =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null
 
 /**
  * The recurring discounts of a Stripe subscription object, or null when they
  * are only ids (the object was not expanded), so the caller keeps what it held.
  */
 export function discountsOf(obj: Obj, now: Date): MrrDiscount[] | null {
-  const raw: unknown[] = Array.isArray(obj.discounts) ? obj.discounts : obj.discount ? [obj.discount] : []
+  const raw: unknown[] = Array.isArray(obj.discounts)
+    ? obj.discounts
+    : obj.discount
+      ? [obj.discount]
+      : []
   const out: MrrDiscount[] = []
   for (const entry of raw) {
     const d = asObj(entry)
@@ -181,7 +194,10 @@ export function discountsOfRow(row: Obj): MrrDiscount[] {
 }
 
 /** The two columns a row keeps for its discounts: one combined percentage, one total amount. */
-export function discountColumns(discounts: MrrDiscount[]): { discount_percent: number | null; discount_amount_minor: number | null } {
+export function discountColumns(discounts: MrrDiscount[]): {
+  discount_percent: number | null
+  discount_amount_minor: number | null
+} {
   let keep = 1
   let any = false
   let amount = 0
@@ -201,14 +217,19 @@ export function discountColumns(discounts: MrrDiscount[]): { discount_percent: n
 /** The tax rate in percent the object states for an item that includes tax, or null. */
 export function taxPercentOf(item: Obj, subscription: Obj): number | null {
   const rates = (arr: unknown): number[] =>
-    (Array.isArray(arr) ? arr : []).map((r) => Number(asObj(r)?.percentage)).filter((p) => Number.isFinite(p) && p > 0)
+    (Array.isArray(arr) ? arr : [])
+      .map((r) => Number(asObj(r)?.percentage))
+      .filter((p) => Number.isFinite(p) && p > 0)
   const own = rates(item.tax_rates)
   const list = own.length > 0 ? own : rates(subscription.default_tax_rates)
   return list.length > 0 ? list.reduce((s, p) => s + p, 0) : null
 }
 
 /** What kind of movement a change of a subscription's counted amount is. */
-export function movementKind(before: number, after: number): "new" | "upgrade" | "downgrade" | "cancelled" {
+export function movementKind(
+  before: number,
+  after: number,
+): "new" | "upgrade" | "downgrade" | "cancelled" {
   if (before <= 0) return "new"
   if (after <= 0) return "cancelled"
   return after > before ? "upgrade" : "downgrade"

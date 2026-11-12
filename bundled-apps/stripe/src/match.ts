@@ -50,7 +50,10 @@ export function emailDomain(email: string | null | undefined): string | null {
   if (typeof email !== "string") return null
   const at = email.lastIndexOf("@")
   if (at <= 0) return null
-  const d = email.slice(at + 1).trim().toLowerCase()
+  const d = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase()
   return d.includes(".") ? d : null
 }
 
@@ -87,7 +90,10 @@ type Obj = Record<string, unknown>
 
 export interface MatchRunCtx {
   db: {
-    findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+    findMany(
+      entity: string,
+      opts?: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<unknown[]>
     update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   }
   resolveContact(params: { email?: string; name?: string; externalId?: string }): Promise<unknown>
@@ -109,7 +115,9 @@ export async function existingContactByEmail(
     const env = await ctx.executeTool("kernel:contacts_search", { query: wanted, limit: 20 })
     if (env.status !== "completed") return "unknown"
     const items = ((env.result as { items?: unknown } | null)?.items ?? []) as Obj[]
-    const hit = items.find((c) => typeof c.primaryEmail === "string" && c.primaryEmail.trim().toLowerCase() === wanted)
+    const hit = items.find(
+      (c) => typeof c.primaryEmail === "string" && c.primaryEmail.trim().toLowerCase() === wanted,
+    )
     return hit && typeof hit.id === "string" ? { id: hit.id } : null
   } catch {
     return "unknown"
@@ -128,9 +136,17 @@ function asContact(raw: unknown): MatchContact | null {
  * link is never replaced, and a link is never removed because a match found
  * nothing: only a person unlinks.
  */
-export async function runCustomerMatch(stripeId: unknown, ctx: MatchRunCtx): Promise<MatchResult | null> {
+export async function runCustomerMatch(
+  stripeId: unknown,
+  ctx: MatchRunCtx,
+): Promise<MatchResult | null> {
   if (typeof stripeId !== "string" || !stripeId) return null
-  const row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: stripeId }, limit: 1 })) as Obj[])[0]
+  const row = (
+    (await ctx.db.findMany("stripe_customers", {
+      where: { stripe_id: stripeId },
+      limit: 1,
+    })) as Obj[]
+  )[0]
   if (!row || row.deleted_at != null || row.match_method === "person") return null
   const name = typeof row.name === "string" && row.name ? row.name : undefined
   const email = typeof row.email === "string" ? row.email.trim() : ""
@@ -145,13 +161,20 @@ export async function runCustomerMatch(stripeId: unknown, ctx: MatchRunCtx): Pro
   const result = await matchCustomer(
     { stripe_id: stripeId, email: typeof row.email === "string" ? row.email : null },
     {
-      contactByEmail: async (email) => asContact(await ctx.resolveContact({ email, name, externalId: stripeId })),
-      contactByExternalId: async (id) => asContact(await ctx.resolveContact({ externalId: id, name })),
+      contactByEmail: async (email) =>
+        asContact(await ctx.resolveContact({ email, name, externalId: stripeId })),
+      contactByExternalId: async (id) =>
+        asContact(await ctx.resolveContact({ externalId: id, name })),
     },
   )
   if (!result.contactId) return result
   const companyId = result.companyId ?? (typeof row.company_id === "string" ? row.company_id : null)
-  if (row.contact_id === result.contactId && row.company_id === companyId && row.match_method === result.method) return result
+  if (
+    row.contact_id === result.contactId &&
+    row.company_id === companyId &&
+    row.match_method === result.method
+  )
+    return result
   await ctx.db.update("stripe_customers", String(row.id), {
     contact_id: result.contactId,
     company_id: companyId,

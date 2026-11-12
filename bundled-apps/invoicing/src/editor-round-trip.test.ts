@@ -22,16 +22,21 @@
 // -> assert the PERSISTED row and the ISSUED totals, not any component's
 // internal state.
 
-import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
+import { FICTIONAL_SIRENS } from "./einvoicing/test-fixtures"
 import type { Counterparty, IssuerProfile } from "./issue"
 import { draftsCreate, draftsUpdate, invoiceIssue, type MutationsCtx } from "./mutations"
 import { documentsGet, type ReadsCtx } from "./reads"
 import { createMockDb, type MockDb } from "./test-db"
-import { FICTIONAL_SIRENS } from "./einvoicing/test-fixtures"
-import { applyNetToGrossOnLoad, buildItems, type DraftLine, type EditorIssuerProfile } from "./ui/Editor"
-import { mapDocumentToDraft } from "./ui/index"
+import { testTime } from "./test-time"
 import type { DocumentLine as DetailDocumentLine, DocumentSummary } from "./ui/DocumentDetail"
+import {
+  applyNetToGrossOnLoad,
+  buildItems,
+  type DraftLine,
+  type EditorIssuerProfile,
+} from "./ui/Editor"
+import { mapDocumentToDraft } from "./ui/index"
 
 const inclusiveIssuer: IssuerProfile = {
   id: "iss-1",
@@ -106,18 +111,41 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
     approval: null,
     db,
     time: testTime(),
-    pdf: { async render() { return { file_id: "pdf-1", byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() } } },
-    messages: { async post() { return { message_id: "msg-1" } } },
+    pdf: {
+      async render() {
+        return {
+          file_id: "pdf-1",
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
+      },
+    },
+    messages: {
+      async post() {
+        return { message_id: "msg-1" }
+      },
+    },
     requestApproval: async () => ({ approval_id: "appr-1" }),
     decideApproval: async () => ({ status: "error", error: { code: "not_found", message: "n/a" } }),
     executeTool: async (name: string) =>
       // No Stripe app here: the kernel answers an absent app's tool as not found.
-      name.startsWith("stripe:") ? { status: "error" as const, error: { code: "tool_not_found", message: "tool not registered" } } : ({ status: "completed", result: { dispatched: true } }),
+      name.startsWith("stripe:")
+        ? {
+            status: "error" as const,
+            error: { code: "tool_not_found", message: "tool not registered" },
+          }
+        : { status: "completed", result: { dispatched: true } },
     emit: async () => {},
   }
   const readsCtx: ReadsCtx = {
     db,
-    kernel: { async listApprovals() { return [] } },
+    kernel: {
+      async listApprovals() {
+        return []
+      },
+    },
   }
   return { ctx, readsCtx, db }
 }
@@ -127,7 +155,12 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
  *  (the Editor's net -> gross boundary once an inclusive issuer resolves —
  *  `applyNetToGrossOnLoad` in ui/Editor.tsx), then `buildItems` (what an
  *  unedited "Save" sends). */
-async function openEditSave(readsCtx: ReadsCtx, ctx: MutationsCtx, draftId: string, editLine?: (l: DraftLine) => DraftLine) {
+async function openEditSave(
+  readsCtx: ReadsCtx,
+  ctx: MutationsCtx,
+  draftId: string,
+  editLine?: (l: DraftLine) => DraftLine,
+) {
   const doc = await documentsGet(readsCtx, { id: draftId })
   if (!doc) throw new Error("document not found")
   let draft = mapDocumentToDraft(
@@ -146,7 +179,9 @@ async function openEditSave(readsCtx: ReadsCtx, ctx: MutationsCtx, draftId: stri
   applyNetToGrossOnLoad({
     initialId: doc.id,
     getDraft: () => draft,
-    setDraft: (next) => { draft = next },
+    setDraft: (next) => {
+      draft = next
+    },
     getIssuerProfiles: () => issuerProfiles,
   })
   const lines = editLine ? draft.lines.map(editLine) : draft.lines
@@ -171,7 +206,13 @@ describe("Editor open -> save -> issue round trip (tax-inclusive issuer)", () =>
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Widget", quantity: "1", unit_price_minor: 29_900n, product_source: null, external_id: null },
+        {
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 29_900n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
 
@@ -260,13 +301,25 @@ describe("Editor open -> save -> issue round trip (tax-inclusive issuer)", () =>
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Widget", quantity: "1", unit_price_minor: 29_900n, product_source: null, external_id: null },
+        {
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 29_900n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
-    expect(db.__all("document_lines").find((l) => l.document_id === draft_id)!.tax_rate_bp).toBeNull()
+    expect(
+      db.__all("document_lines").find((l) => l.document_id === draft_id)!.tax_rate_bp,
+    ).toBeNull()
 
     // The operator types a real rate change: 5.5% (550 bp) instead of the FR domestic 20%.
-    await openEditSave(readsCtx, ctx, draft_id, (l) => ({ ...l, tax_rate_bp: 550, tax_rate_bp_overridden: true }))
+    await openEditSave(readsCtx, ctx, draft_id, (l) => ({
+      ...l,
+      tax_rate_bp: 550,
+      tax_rate_bp_overridden: true,
+    }))
 
     const savedLine = db.__all("document_lines").find((l) => l.document_id === draft_id)!
     expect(savedLine.tax_rate_bp).toBe(550)

@@ -51,7 +51,11 @@ export interface OrderB2bSignals {
 }
 
 export type B2bReason = "b2b_company_buyer" | "b2b_order_tag" | "b2b_sku_suffix"
-export const B2B_REASONS: readonly B2bReason[] = ["b2b_company_buyer", "b2b_order_tag", "b2b_sku_suffix"]
+export const B2B_REASONS: readonly B2bReason[] = [
+  "b2b_company_buyer",
+  "b2b_order_tag",
+  "b2b_sku_suffix",
+]
 
 /** Read the policy value; anything unknown (or unset) is the caller's own flag. */
 export function parseShippingEmailPolicy(value: unknown): ShippingEmailPolicy {
@@ -89,12 +93,17 @@ function tagReason(order: OrderB2bSignals | null | undefined, b2bTags: string[])
   return tags.some((t) => t.length > 0 && b2bTags.includes(t)) ? "b2b_order_tag" : null
 }
 
-function skuReason(order: OrderB2bSignals | null | undefined, suffixes: string[]): B2bReason | null {
+function skuReason(
+  order: OrderB2bSignals | null | undefined,
+  suffixes: string[],
+): B2bReason | null {
   if (suffixes.length === 0) return null
   const skus = (order?.lineItems?.nodes ?? [])
     .map((n) => n?.sku?.trim().toLowerCase())
     .filter((s): s is string => typeof s === "string" && s.length > 0)
-  return skus.some((sku) => suffixes.some((suffix) => sku.endsWith(suffix))) ? "b2b_sku_suffix" : null
+  return skus.some((sku) => suffixes.some((suffix) => sku.endsWith(suffix)))
+    ? "b2b_sku_suffix"
+    : null
 }
 
 /** The B2B verdict a read carries for the approval card (`b2bOrder`). */
@@ -132,7 +141,8 @@ export function b2bVerdictFor(
   const company = companyReason(order)
   if (company) return { b2b: true, reason: company }
   if (recognition === null) return null
-  const reason = tagReason(order, recognition.orderTags) ?? skuReason(order, recognition.skuSuffixes)
+  const reason =
+    tagReason(order, recognition.orderTags) ?? skuReason(order, recognition.skuSuffixes)
   return reason ? { b2b: true, reason } : { b2b: false, reason: null }
 }
 
@@ -182,7 +192,8 @@ const MESSAGES: Record<CustomerNotificationReason, string> = {
   retail_order:
     "Shopify emailed the customer with the tracking: this is a retail order and the store's shipping email policy is retail orders only.",
   policy_all: "Shopify emailed the customer: the store's shipping email policy is every order.",
-  policy_none: "Shopify did not email the customer: the store's shipping email policy is no shipping emails.",
+  policy_none:
+    "Shopify did not email the customer: the store's shipping email policy is no shipping emails.",
   no_tracking:
     "Shopify did not email the customer: there is no tracking number yet. The customer gets one shipping email per fulfillment, sent with its first tracking number.",
   already_notified:
@@ -250,7 +261,8 @@ export function customerNotificationFor(args: {
     if (!tracking.hasNumber) return { notify: false, notice: notice(false, "no_tracking") }
   } else {
     if (!tracking.setsNumber) return { notify: false, notice: notice(false, "no_tracking") }
-    if (tracking.hadNumber === null) return { notify: false, notice: notice(false, "undecided_fail_closed") }
+    if (tracking.hadNumber === null)
+      return { notify: false, notice: notice(false, "undecided_fail_closed") }
     if (tracking.hadNumber) return { notify: false, notice: notice(false, "already_notified") }
   }
   return { notify: true, notice: notice(true, emailed) }
@@ -268,7 +280,9 @@ export async function decideCustomerNotification(args: {
   loadOrder: () => Promise<OrderB2bSignals | null | undefined>
   tracking: () => Promise<TrackingFacts>
 }): Promise<NotificationDecision> {
-  const policy = await readShippingEmailPolicy(() => args.readConfig(SHIPPING_EMAIL_POLICY_CONFIG_KEY))
+  const policy = await readShippingEmailPolicy(() =>
+    args.readConfig(SHIPPING_EMAIL_POLICY_CONFIG_KEY),
+  )
   let verdict: B2bVerdict | null = null
   if (policy === "retail_only") {
     let order: OrderB2bSignals | null | undefined
@@ -282,7 +296,10 @@ export async function decideCustomerNotification(args: {
   const base = { policy, verdict, callerAsksToNotify: args.callerAsksToNotify }
   // The tracking facts matter only when the policy would email (a create's are free; an update's
   // may need a read of the fulfilment, so ask for them only then).
-  const wouldEmail = customerNotificationFor({ ...base, tracking: { write: "create", hasNumber: true } })
+  const wouldEmail = customerNotificationFor({
+    ...base,
+    tracking: { write: "create", hasNumber: true },
+  })
   if (wouldEmail.notify !== true) return wouldEmail
   let tracking: TrackingFacts
   try {

@@ -54,7 +54,10 @@ export const STRIPE_UNREACHABLE = "Stripe could not be checked"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-const refusal = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+const refusal = (code: string, message: string): ErrorEnvelope => ({
+  status: "error",
+  error: { code, message },
+})
 
 /** The statement, trimmed, when it is long enough to say something; else null. */
 export function billsOtherOf(v: unknown): string | null {
@@ -65,7 +68,9 @@ export function billsOtherOf(v: unknown): string | null {
 async function actingAgent(ctx: GuardCtx): Promise<string | null> {
   try {
     const raw: unknown = ctx.turn ? await ctx.turn.get() : null
-    const t = (typeof raw === "string" ? JSON.parse(raw) : raw) as { agentId?: string | null } | null
+    const t = (typeof raw === "string" ? JSON.parse(raw) : raw) as {
+      agentId?: string | null
+    } | null
     return t?.agentId ?? null
   } catch {
     return "unknown"
@@ -98,19 +103,29 @@ interface BillingStatus {
 export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promise<GuardVerdict> {
   const contactId = input.contactId && UUID.test(input.contactId) ? input.contactId : null
   const companyId = input.companyId && UUID.test(input.companyId) ? input.companyId : null
-  const given = (input.emails ?? []).filter((e): e is string => typeof e === "string" && e.includes("@"))
-  if (!contactId && !companyId && given.length === 0) return { ok: true, calls: 0, billsOther: null }
+  const given = (input.emails ?? []).filter(
+    (e): e is string => typeof e === "string" && e.includes("@"),
+  )
+  if (!contactId && !companyId && given.length === 0)
+    return { ok: true, calls: 0, billsOther: null }
   // A card stream row says Stripe is connected; a missing row proves nothing (the connection event
   // may have been lost), so Stripe is asked either way and its own answer decides.
   const rowSaysConnected = await stripeConnected(ctx)
-  const emails = [...new Set([...given, ...(await contactEmails(ctx, contactId))].map((e) => e.trim().toLowerCase()))]
+  const emails = [
+    ...new Set(
+      [...given, ...(await contactEmails(ctx, contactId))].map((e) => e.trim().toLowerCase()),
+    ),
+  ]
   if (!ctx.executeTool) {
     if (!rowSaysConnected) return { ok: true, calls: 0, billsOther: null }
     return {
       ok: false,
       calls: 0,
       reason: STRIPE_UNREACHABLE,
-      error: refusal("subscription_check_unavailable", "Stripe is connected but could not be asked whether this customer pays a subscription, so nothing was issued or saved. Try again in a few minutes."),
+      error: refusal(
+        "subscription_check_unavailable",
+        "Stripe is connected but could not be asked whether this customer pays a subscription, so nothing was issued or saved. Try again in a few minutes.",
+      ),
     }
   }
   let status: BillingStatus | null = null
@@ -123,7 +138,8 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
     })
     if (env.status === "completed") status = (env.result ?? null) as BillingStatus | null
     // The Stripe app is absent or turned off: nothing bills from it.
-    else if (env.status === "error" && env.error.code === "tool_not_found") return { ok: true, calls: 1, billsOther: null }
+    else if (env.status === "error" && env.error.code === "tool_not_found")
+      return { ok: true, calls: 1, billsOther: null }
     else failure = env.status === "error" ? env.error.message : "it asked for an approval"
   } catch (err) {
     failure = err instanceof Error ? err.message : String(err)
@@ -145,18 +161,24 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
     }
   }
   if (!status.live) return { ok: true, calls: 1, billsOther: null }
-  const subs = (status.subscriptions ?? []).map((s) => (s.plan ? `${s.id} (${s.plan})` : s.id)).join(", ")
+  const subs = (status.subscriptions ?? [])
+    .map((s) => (s.plan ? `${s.id} (${s.plan})` : s.id))
+    .join(", ")
   const other = billsOtherOf(input.billsOtherThanStripe)
   if (other) {
     // On the card a person reads the statement before anything happens; at the handler a person
     // must have made it.
-    if (input.stage === "preflight" || (await personSaid(ctx))) return { ok: true, calls: 1, billsOther: other }
+    if (input.stage === "preflight" || (await personSaid(ctx)))
+      return { ok: true, calls: 1, billsOther: other }
     return {
       ok: false,
       calls: 1,
       needsPerson: true,
       reason: BILLED_BY_STRIPE,
-      error: refusal("subscription_stream_conflict", `This customer pays the live Stripe subscription ${subs}; that this bills something else ("${other}") is a person's statement, so it waits for a person.`),
+      error: refusal(
+        "subscription_stream_conflict",
+        `This customer pays the live Stripe subscription ${subs}; that this bills something else ("${other}") is a person's statement, so it waits for a person.`,
+      ),
     }
   }
   return {
@@ -171,7 +193,10 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
 }
 
 /** The contact's emails as the kernel knows them, from its identifiers only (the guard also matches unlinked Stripe customers by email): a read that does not mark the turn as having read outside text. */
-export async function contactEmails(ctx: GuardCtx, contactId: string | null | undefined): Promise<string[]> {
+export async function contactEmails(
+  ctx: GuardCtx,
+  contactId: string | null | undefined,
+): Promise<string[]> {
   if (!contactId || !UUID.test(contactId) || !ctx.executeTool) return []
   try {
     const env = await ctx.executeTool("kernel:contacts_identity", { contactId })

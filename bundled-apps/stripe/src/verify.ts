@@ -44,7 +44,12 @@ const HEADER_NAME = "stripe-signature"
 export interface StripeVerifyBridge {
   config_has(key: string): Promise<boolean>
   config_get(key: string): Promise<unknown>
-  crypto_verifyHmacForConfig(key: string, data: string, signature: string, encoding: "hex"): Promise<boolean>
+  crypto_verifyHmacForConfig(
+    key: string,
+    data: string,
+    signature: string,
+    encoding: "hex",
+  ): Promise<boolean>
 }
 
 export interface StripeVerifyParams {
@@ -75,7 +80,8 @@ export interface ParsedSignature {
  * other shape. Entries other than `t` and `v1` are allowed and ignored.
  */
 export function parseSignatureHeader(header: unknown): ParsedSignature | null {
-  if (typeof header !== "string" || header.length === 0 || header.length > MAX_HEADER_LENGTH) return null
+  if (typeof header !== "string" || header.length === 0 || header.length > MAX_HEADER_LENGTH)
+    return null
   let t: number | null = null
   const v1: string[] = []
   for (const part of header.split(",")) {
@@ -153,6 +159,7 @@ export async function verifyStripeDelivery(
   } catch {
     id = undefined
   }
-  if (typeof id !== "string" || !/^evt_[A-Za-z0-9_]+$/.test(id)) return { ok: false, reason: "missing_event_id" }
+  if (typeof id !== "string" || !/^evt_[A-Za-z0-9_]+$/.test(id))
+    return { ok: false, reason: "missing_event_id" }
   return { ok: true, replayKey: id, replayTtlSeconds: REPLAY_TTL_SECONDS }
 }

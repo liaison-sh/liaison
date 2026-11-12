@@ -168,14 +168,6 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "token-in-path",
     reason: "signed download token",
   },
-  "GET /api/drive-picker/:ticket": {
-    credential: "token-in-path",
-    reason: "256-bit one-time ticket, taken on first render (410 once used or unknown)",
-  },
-  "POST /api/drive-picker/:ticket/items": {
-    credential: "token-in-path",
-    reason: "256-bit save id minted by the page render, 15 min TTL (410 otherwise)",
-  },
   "GET /api/org-export-dl/:token": {
     credential: "token-in-path",
     reason: "signed org export download token",

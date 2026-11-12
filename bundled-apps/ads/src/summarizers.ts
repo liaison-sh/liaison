@@ -31,9 +31,30 @@ function num(v: unknown): number {
 // value the handler will send to Meta, making the major→minor conversion
 // auditable on the card (removes the major/minor visual mismatch).
 const CURRENCY_EXPONENT_MINOR: Record<string, number> = {
-  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0,
-  MGA: 0, PYG: 0, RWF: 0, UGX: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
-  BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+  BIF: 0,
+  CLP: 0,
+  DJF: 0,
+  GNF: 0,
+  ISK: 0,
+  JPY: 0,
+  KMF: 0,
+  KRW: 0,
+  MGA: 0,
+  PYG: 0,
+  RWF: 0,
+  UGX: 0,
+  VND: 0,
+  VUV: 0,
+  XAF: 0,
+  XOF: 0,
+  XPF: 0,
+  BHD: 3,
+  IQD: 3,
+  JOD: 3,
+  KWD: 3,
+  LYD: 3,
+  OMR: 3,
+  TND: 3,
 }
 
 /** Convert a major-unit amount to integer minor units for the given currency. */
@@ -68,17 +89,14 @@ export function summarizeCampaign(params: unknown): SummaryCard {
   const name = str(p.name) || "(unnamed campaign)"
   const objective = str(p.objective) || "unset"
   const status = str(p.status) || "PAUSED"
-  const cats = Array.isArray(p.special_ad_categories) && p.special_ad_categories.length > 0
-    ? (p.special_ad_categories as unknown[]).map(str).join(", ")
-    : "none"
+  const cats =
+    Array.isArray(p.special_ad_categories) && p.special_ad_categories.length > 0
+      ? (p.special_ad_categories as unknown[]).map(str).join(", ")
+      : "none"
   return {
     kind: "create_campaign",
     title: `Create campaign: ${name} (${objective})`,
-    lines: [
-      `Status: ${status}`,
-      `Special ad categories: ${cats}`,
-      ...experimentLines(params),
-    ],
+    lines: [`Status: ${status}`, `Special ad categories: ${cats}`, ...experimentLines(params)],
   }
 }
 
@@ -129,10 +147,7 @@ export function summarizeAd(params: unknown): SummaryCard {
   return {
     kind: "create_ad",
     title: `Create ad: ${name} (adset: ${adsetId})`,
-    lines: [
-      `Creative: ${creativeId}`,
-      `Status: ${status}`,
-    ],
+    lines: [`Creative: ${creativeId}`, `Status: ${status}`],
   }
 }
 
@@ -173,10 +188,7 @@ export function summarizeUploadImage(params: unknown): SummaryCard {
   return {
     kind: "upload_image",
     title: "Upload image to ad account",
-    lines: [
-      `Filename: ${filename}`,
-      `Base64 size: ~${approxKb} KB`,
-    ],
+    lines: [`Filename: ${filename}`, `Base64 size: ~${approxKb} KB`],
   }
 }
 
@@ -237,10 +249,7 @@ export function summarizeCustomAudience(params: unknown): SummaryCard {
   const subtype = str(p.subtype) || "-"
   const name = str(p.name) || "(unnamed audience)"
 
-  const lines: string[] = [
-    `Name: ${name}`,
-    `Subtype: ${subtype}`,
-  ]
+  const lines: string[] = [`Name: ${name}`, `Subtype: ${subtype}`]
 
   if (subtype === "CUSTOMER_LIST") {
     const source = str(p.customer_file_source) || "-"
@@ -359,10 +368,7 @@ export function summarizeDealerProfileUpsert(params: unknown): SummaryCard {
   const dealerType = str(p.dealer_type) || "-"
   const coverageArea = str(p.coverage_area)
 
-  const lines: string[] = [
-    `Dealer: ${dealerName}`,
-    `Type: ${dealerType}`,
-  ]
+  const lines: string[] = [`Dealer: ${dealerName}`, `Type: ${dealerType}`]
   if (coverageArea) lines.push(`Coverage area: ${coverageArea}`)
   if (str(p.reorder_cadence)) lines.push(`Reorder cadence: ${str(p.reorder_cadence)}`)
   if (str(p.notes)) lines.push(`Notes: ${str(p.notes)}`)
@@ -382,13 +388,15 @@ export function summarizeGoogleCreateCampaign(params: unknown): SummaryCard {
   const name = str(p.name) || "(unnamed campaign)"
   const channelType = str(p.advertising_channel_type) || "unset"
   const currency = str(p.currency) || ""
-  const budgetLabel = p.daily_budget !== undefined
-    ? budgetEchoLine(num(p.daily_budget), currency, "/day")
-    : "no budget set"
+  const budgetLabel =
+    p.daily_budget !== undefined
+      ? budgetEchoLine(num(p.daily_budget), currency, "/day")
+      : "no budget set"
 
-  const biddingStrategy = p.bidding_strategy && typeof p.bidding_strategy === "object"
-    ? Object.keys(p.bidding_strategy as Record<string, unknown>)[0]
-    : undefined
+  const biddingStrategy =
+    p.bidding_strategy && typeof p.bidding_strategy === "object"
+      ? Object.keys(p.bidding_strategy as Record<string, unknown>)[0]
+      : undefined
 
   return {
     kind: "google_create_campaign",
@@ -411,11 +419,7 @@ export function summarizeGoogleCreateAdgroup(params: unknown): SummaryCard {
   return {
     kind: "google_create_adgroup",
     title: `Create Google ad group: ${name}`,
-    lines: [
-      `Campaign: ${campaignId}`,
-      "Status: PAUSED",
-      ...experimentLines(params),
-    ],
+    lines: [`Campaign: ${campaignId}`, "Status: PAUSED", ...experimentLines(params)],
   }
 }
 
@@ -440,9 +444,7 @@ export function summarizeGoogleUpdateBudget(params: unknown): SummaryCard {
   const p = params as Record<string, unknown>
   const budgetResourceName = str(p.budget_resource_name) || "-"
   const currency = str(p.currency) || ""
-  const budgetLabel = p.amount !== undefined
-    ? budgetEchoLine(num(p.amount), currency, "/day")
-    : "-"
+  const budgetLabel = p.amount !== undefined ? budgetEchoLine(num(p.amount), currency, "/day") : "-"
 
   return {
     kind: "google_update_budget",
@@ -499,10 +501,7 @@ export function summarizeGoogleCreateConversionAction(params: unknown): SummaryC
   return {
     kind: "google_create_conversion_action",
     title: `Create Google conversion action: ${name}`,
-    lines: [
-      `Category: ${category}`,
-      `Type: ${type}`,
-    ],
+    lines: [`Category: ${category}`, `Type: ${type}`],
   }
 }
 
@@ -550,9 +549,10 @@ export function summarizePause(params: unknown): SummaryCard {
   const reason = str(p.reason) || "agent-paused"
   const idList = ids.length > 0 ? ids.join(", ") : "-"
 
-  const lines: string[] = ids.length > 0
-    ? ids.map((id) => `Object: ${id} | reason: ${reason}`)
-    : [`Object: - | reason: ${reason}`]
+  const lines: string[] =
+    ids.length > 0
+      ? ids.map((id) => `Object: ${id} | reason: ${reason}`)
+      : [`Object: - | reason: ${reason}`]
   lines.push(PAUSE_DELIVERY_NOTE)
 
   return {
@@ -569,7 +569,8 @@ export function summarizeGooglePause(params: unknown): SummaryCard {
   const reason = str(p.reason) || "agent-paused"
   // Google pauses target a single object; "ad" may arrive as a composite or as
   // ad_group_id + ad_id — surface whichever id the agent passed.
-  const objectId = str(p.object_id) ||
+  const objectId =
+    str(p.object_id) ||
     (str(p.ad_group_id) && str(p.ad_id) ? `${str(p.ad_group_id)}~${str(p.ad_id)}` : "") ||
     "-"
 
@@ -577,9 +578,6 @@ export function summarizeGooglePause(params: unknown): SummaryCard {
     kind: "google_pause",
     title: "Pause 1 Google object(s)",
     subtitle: `${objectType} ${objectId}`,
-    lines: [
-      `Object: ${objectId} (${objectType}) | reason: ${reason}`,
-      PAUSE_DELIVERY_NOTE,
-    ],
+    lines: [`Object: ${objectId} (${objectType}) | reason: ${reason}`, PAUSE_DELIVERY_NOTE],
   }
 }

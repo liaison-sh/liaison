@@ -687,3 +687,35 @@ describe("the API connections moved into the api-connector app's provisioning", 
     expect(res.ok).toBe(false)
   })
 })
+
+describe("the Drive shared drives moved into the google-drive app's provisioning", () => {
+  for (const [label, app] of [
+    ["connection.sharedDrives", { connection: { name: "drive", sharedDrives: ["Team"] } }],
+    ["connections[].sharedDrives", { connections: [{ name: "drive", sharedDrives: ["Team"] }] }],
+  ] as const) {
+    test(`${label} is refused with where it moved`, () => {
+      const res = validateConfig({
+        org: { slug: "fabrikam", name: "Fabrikam" },
+        apps: [{ name: "google-drive", enable: true, ...app }],
+      })
+      expect(res.ok).toBe(false)
+      if (res.ok) return
+      expect(res.code).toBe(2)
+      expect(res.message).toContain("sharedDrives moved into the google-drive app's provisioning")
+    })
+  }
+
+  test("the new shape: the app's provision block", () => {
+    const res = validateConfig({
+      org: { slug: "fabrikam", name: "Fabrikam" },
+      apps: [
+        {
+          name: "google-drive",
+          enable: true,
+          provision: { sharedDrives: [{ account: "team@example.com", drives: ["Team"] }] },
+        },
+      ],
+    })
+    expect(res.ok).toBe(true)
+  })
+})

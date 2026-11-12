@@ -2,8 +2,11 @@
 import { describe, expect, test } from "bun:test"
 import { buyerTerritory } from "./territory"
 
-const t = (billingCountry: string | null, billingPostcode: string | null = null, vatId: string | null = null) =>
-  buyerTerritory({ billingCountry, billingPostcode, vatId })
+const t = (
+  billingCountry: string | null,
+  billingPostcode: string | null = null,
+  vatId: string | null = null,
+) => buyerTerritory({ billingCountry, billingPostcode, vatId })
 
 describe("buyerTerritory", () => {
   test("metropolitan France incl. Corsica is FR", () => {
@@ -13,17 +16,22 @@ describe("buyerTerritory", () => {
   })
   test("Monaco is needs_review/monaco, with or without an FR vat id", () => {
     expect(t("MC", "98000")).toMatchObject({ territory: "needs_review", code: "monaco" })
-    expect(t("MC", "98000", "FR40303265045")).toMatchObject({ territory: "needs_review", code: "monaco" })
+    expect(t("MC", "98000", "FR40303265045")).toMatchObject({
+      territory: "needs_review",
+      code: "monaco",
+    })
     expect(t("FR", "98000")).toMatchObject({ territory: "needs_review", code: "monaco" })
   })
   test("DOM with VAT", () => {
-    for (const c of ["GP", "MQ", "RE"]) expect(t(c)).toMatchObject({ territory: "needs_review", code: "dom" })
+    for (const c of ["GP", "MQ", "RE"])
+      expect(t(c)).toMatchObject({ territory: "needs_review", code: "dom" })
     for (const p of ["97100", "97200", "97400"]) {
       expect(t("FR", p)).toMatchObject({ territory: "needs_review", code: "dom" })
     }
   })
   test("DOM without VAT", () => {
-    for (const c of ["GF", "YT"]) expect(t(c)).toMatchObject({ territory: "needs_review", code: "dom_no_vat" })
+    for (const c of ["GF", "YT"])
+      expect(t(c)).toMatchObject({ territory: "needs_review", code: "dom_no_vat" })
     for (const p of ["97300", "97600"]) {
       expect(t("FR", p)).toMatchObject({ territory: "needs_review", code: "dom_no_vat" })
     }

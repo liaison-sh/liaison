@@ -3,7 +3,7 @@
 // BoxtalAppIcon — activity-bar icon. Inline SVG (no lucide-solid dep), stroke
 // 1.5 currentColor to match the kernel's icon set. A parcel/box mark reads as
 // "shipment" without carrier-specific iconography.
-import { Show, type Component } from "solid-js"
+import { type Component, Show } from "solid-js"
 import { carrierDisplay, MARK_HEIGHT } from "./carrier-mark"
 import { cx } from "./kit"
 
@@ -83,11 +83,7 @@ export const CarrierLogo: Component<{ carrier: string; height?: number; class?: 
     <Show
       when={d().mark}
       fallback={
-        <span
-          class={cx("text-[11px] text-text-tertiary", props.class)}
-          title={d().name}
-          aria-label={d().name}
-        >
+        <span class={cx("text-[11px] text-text-tertiary", props.class)} title={d().name}>
           {d().name}
         </span>
       }

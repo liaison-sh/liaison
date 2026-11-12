@@ -2,12 +2,12 @@
 import { describe, expect, it } from "bun:test"
 import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
 import {
-  resolvePackages as resolveWithPolicy,
   type CatalogPack,
   type CatalogPackComponent,
   type CatalogProfile,
   type ResolveInput,
   type ResolverLine,
+  resolvePackages as resolveWithPolicy,
 } from "./resolver"
 
 // These worked examples are the house carton ladder's: every call resolves under that policy. The
@@ -25,7 +25,12 @@ function line(source: string | null, id: string | null, qty = 1): ResolverLine {
   }
 }
 
-function profile(source: string, id: string, weight = 1, dims?: Partial<CatalogProfile>): CatalogProfile {
+function profile(
+  source: string,
+  id: string,
+  weight = 1,
+  dims?: Partial<CatalogProfile>,
+): CatalogProfile {
   return {
     product_source: source,
     product_id: id,
@@ -39,10 +44,22 @@ function profile(source: string, id: string, weight = 1, dims?: Partial<CatalogP
 
 function pack(
   name: string,
-  dims: { length: number; width: number; height: number; gross_weight: number; carton_tare?: number | null },
+  dims: {
+    length: number
+    width: number
+    height: number
+    gross_weight: number
+    carton_tare?: number | null
+  },
 ): CatalogPack {
   const { carton_tare, ...rest } = dims
-  return { id: `pack-${name}`, name, ...rest, content_category: null, carton_tare: carton_tare ?? null }
+  return {
+    id: `pack-${name}`,
+    name,
+    ...rest,
+    content_category: null,
+    carton_tare: carton_tare ?? null,
+  }
 }
 
 function comp(packId: string, source: string, id: string, qty: number): CatalogPackComponent {
@@ -214,14 +231,23 @@ describe("stacking calculation — Knowledge 'Tessera Packing & Shipping Referen
   const et2 = profile("shopify", "ET2", 4.0, { solo_length: 59, solo_width: 38, solo_height: 8 })
   const mp = profile("shopify", "MP", 3.1, { solo_length: 49, solo_width: 34, solo_height: 10 })
   const hc = profile("shopify", "HC", 0.5, { solo_length: 45, solo_width: 30, solo_height: 3 })
-  const usbc = profile("shopify", "USBC", 0.052, { solo_length: 20, solo_width: 15, solo_height: 1 })
+  const usbc = profile("shopify", "USBC", 0.052, {
+    solo_length: 20,
+    solo_width: 15,
+    solo_height: 1,
+  })
   const bs = profile("shopify", "BS", 0.85, { solo_length: 50, solo_width: 34, solo_height: 1 })
   const ds = profile("shopify", "DS", 0.85, { solo_length: 50, solo_width: 34, solo_height: 1 })
 
   it("worked example: Tessera 2 alone -> 59x38x8, 4.0 kg (raw stack, no carton, no added margin)", () => {
     // Field regression (ticket 10341 / bf817ca5): resolver was returning 60x39x9,
     // adding a spurious +1 cm to the reference profile on the raw-stack path.
-    const res = resolvePackages({ lines: [line("shopify", "ET2")], profiles: [et2], packs: [], components: [] })
+    const res = resolvePackages({
+      lines: [line("shopify", "ET2")],
+      profiles: [et2],
+      packs: [],
+      components: [],
+    })
     expect(res.parcels).toEqual([{ length: 59, width: 38, height: 8, weight: 4.0 }])
   })
 
@@ -259,7 +285,12 @@ describe("stacking calculation — Knowledge 'Tessera Packing & Shipping Referen
   })
 
   it("worked example: 3x Tessera 2 -> carton 60x40x25, 12.5 kg", () => {
-    const res = resolvePackages({ lines: [line("shopify", "ET2", 3)], profiles: [et2], packs: [], components: [] })
+    const res = resolvePackages({
+      lines: [line("shopify", "ET2", 3)],
+      profiles: [et2],
+      packs: [],
+      components: [],
+    })
     expect(res.parcels).toEqual([{ length: 60, width: 40, height: 25, weight: 12.5 }])
   })
 
@@ -267,7 +298,12 @@ describe("stacking calculation — Knowledge 'Tessera Packing & Shipping Referen
     // 40 cm of instruments is deeper than the 38 tier: the biggest carton takes as many as fit
     // (4 x 8 cm = 32 cm, 16 kg + 1 kg tare) and the fifth travels in its own box. Never a balanced
     // 3+2 split: the house rule fills a carton before opening the next.
-    const res = resolvePackages({ lines: [line("shopify", "ET2", 5)], profiles: [et2], packs: [], components: [] })
+    const res = resolvePackages({
+      lines: [line("shopify", "ET2", 5)],
+      profiles: [et2],
+      packs: [],
+      components: [],
+    })
     expect(res.parcels).toEqual([
       { length: 60, width: 40, height: 38, weight: 17 },
       { length: 59, width: 38, height: 8, weight: 4 },
@@ -292,7 +328,12 @@ describe("stacking calculation — Knowledge 'Tessera Packing & Shipping Referen
     // Combined 10+10+1 = 21 cm -> one 60x40x20 carton at 4.85+3.1+0.052+0.5 = 8.502.
     const p = pack("TESSERA2-SILICONE", { length: 60, width: 39, height: 10, gross_weight: 4.85 })
     const res = resolvePackages({
-      lines: [line("shopify", "ET2"), line("shopify", "BS"), line("shopify", "MP"), line("shopify", "USBC")],
+      lines: [
+        line("shopify", "ET2"),
+        line("shopify", "BS"),
+        line("shopify", "MP"),
+        line("shopify", "USBC"),
+      ],
       profiles: [et2, bs, mp, usbc],
       packs: [p],
       components: [comp(p.id, "shopify", "ET2", 1), comp(p.id, "shopify", "BS", 1)],
@@ -302,7 +343,12 @@ describe("stacking calculation — Knowledge 'Tessera Packing & Shipping Referen
   })
 
   it("a confirmed master pack too deep for the ladder is never merged into; leftovers stack beside it", () => {
-    const master = pack("DEALER-MASTER-5", { length: 58, width: 38, height: 42, gross_weight: 20.5 })
+    const master = pack("DEALER-MASTER-5", {
+      length: 58,
+      width: 38,
+      height: 42,
+      gross_weight: 20.5,
+    })
     const res = resolvePackages({
       lines: [line("shopify", "ET2", 5), line("shopify", "BS", 2), line("shopify", "DS")],
       profiles: [et2, bs, ds],
@@ -356,7 +402,12 @@ describe("ticket 10341 (bf817ca5): raw-stack margin and double-taring on merge",
     // Field reproduction: Tessera 2 profile is 59x38x8 / 4 kg. The resolver was unconditionally
     // adding +1 cm to L, W and P on the raw-stack (no-carton) path, returning 60x39x9.
     const et2 = profile("shopify", "ET2", 4.0, { solo_length: 59, solo_width: 38, solo_height: 8 })
-    const res = resolvePackages({ lines: [line("shopify", "ET2")], profiles: [et2], packs: [], components: [] })
+    const res = resolvePackages({
+      lines: [line("shopify", "ET2")],
+      profiles: [et2],
+      packs: [],
+      components: [],
+    })
     expect(res.parcels).toEqual([{ length: 59, width: 38, height: 8, weight: 4.0 }])
   })
 
@@ -366,7 +417,11 @@ describe("ticket 10341 (bf817ca5): raw-stack margin and double-taring on merge",
     // inferred from dims) absorbs a loose leftover item into the SAME carton tier. The old
     // code taped it a second time: 7.3 (pack, already taped) + 0.5 (item) + 0.5 (re-tare) = 8.3.
     // Correct: the tare is counted once -> 7.8.
-    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, { solo_length: 55, solo_width: 35, solo_height: 18 })
+    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, {
+      solo_length: 55,
+      solo_width: 35,
+      solo_height: 18,
+    })
     const cbl = profile("shopify", "CBL", 0.5, { solo_length: 20, solo_width: 15, solo_height: 2 })
     const alreadyBoxedPack = pack("MASTER-ALREADY-BOXED", {
       length: 60,
@@ -391,7 +446,11 @@ describe("ticket 10341 (bf817ca5): raw-stack margin and double-taring on merge",
     // footprint. The old merge-raw branch still added +1 to each loose item's L/W,
     // returning 50x35x14.
     const mp = profile("shopify", "MP", 3.1, { solo_length: 49, solo_width: 34, solo_height: 10 })
-    const smallItem = profile("shopify", "SMALL", 0.2, { solo_length: 10, solo_width: 10, solo_height: 1 })
+    const smallItem = profile("shopify", "SMALL", 0.2, {
+      solo_length: 10,
+      solo_width: 10,
+      solo_height: 1,
+    })
     const smallPack = pack("SMALL-BOX", { length: 45, width: 30, height: 4, gross_weight: 0.6 })
     const res = resolvePackages({
       lines: [line("shopify", "SMALL"), line("shopify", "MP")],
@@ -409,9 +468,23 @@ describe("ticket 10341 (bf817ca5): raw-stack margin and double-taring on merge",
     // (tare 1.0 kg), a DIFFERENT tier than the pack's own. Skipping all taring (the old
     // isLadderCarton heuristic) declares 11.3 kg; the correct exactly-once number backs
     // out the pack's OWN 0.5 kg tare and applies the new tier's 1.0 kg: 7.3+4.0-0.5+1.0 = 11.8.
-    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, { solo_length: 55, solo_width: 35, solo_height: 18 })
-    const tallItem = profile("shopify", "TALL", 4.0, { solo_length: 40, solo_width: 30, solo_height: 8 })
-    const taredPack = pack("MASTER-TIER1", { length: 60, width: 40, height: 20, gross_weight: 7.3, carton_tare: 0.5 })
+    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, {
+      solo_length: 55,
+      solo_width: 35,
+      solo_height: 18,
+    })
+    const tallItem = profile("shopify", "TALL", 4.0, {
+      solo_length: 40,
+      solo_width: 30,
+      solo_height: 8,
+    })
+    const taredPack = pack("MASTER-TIER1", {
+      length: 60,
+      width: 40,
+      height: 20,
+      gross_weight: 7.3,
+      carton_tare: 0.5,
+    })
     const res = resolvePackages({
       lines: [line("shopify", "MASTERUNIT"), line("shopify", "TALL")],
       profiles: [masterUnit, tallItem],
@@ -427,7 +500,11 @@ describe("ticket 10341 (bf817ca5): raw-stack margin and double-taring on merge",
     // pack recorded a centimetre off nominal (60x40x21 instead of 60x40x20) -> 8.3 kg, the
     // ORIGINAL unfixed field number. The model-based fix reads carton_tare regardless of
     // whether dims happen to match a ladder tier exactly.
-    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, { solo_length: 55, solo_width: 35, solo_height: 19 })
+    const masterUnit = profile("shopify", "MASTERUNIT", 6.8, {
+      solo_length: 55,
+      solo_width: 35,
+      solo_height: 19,
+    })
     const cbl = profile("shopify", "CBL", 0.5, { solo_length: 20, solo_width: 15, solo_height: 2 })
     const measuredPack = pack("MASTER-MEASURED", {
       length: 60,
@@ -471,14 +548,27 @@ describe("pure refactor: TRUE-cm carton ladder, no +1 anywhere", () => {
   const ITEM_WEIGHT = 3
   function singleItemParcel(trueHeight: number) {
     const id = `H${trueHeight}`
-    const p = profile("shopify", id, ITEM_WEIGHT, { solo_length: 30, solo_width: 20, solo_height: trueHeight })
-    const res = resolvePackages({ lines: [line("shopify", id)], profiles: [p], packs: [], components: [] })
+    const p = profile("shopify", id, ITEM_WEIGHT, {
+      solo_length: 30,
+      solo_width: 20,
+      solo_height: trueHeight,
+    })
+    const res = resolvePackages({
+      lines: [line("shopify", id)],
+      profiles: [p],
+      packs: [],
+      components: [],
+    })
     expect(res.unresolved).toHaveLength(0)
     expect(res.parcels).toHaveLength(1)
     return res.parcels[0]!
   }
 
-  function expectMatchesOldChoice(parcel: { length: number; width: number; height: number; weight: number }, trueP: number, expected: OldChoice) {
+  function expectMatchesOldChoice(
+    parcel: { length: number; width: number; height: number; weight: number },
+    trueP: number,
+    expected: OldChoice,
+  ) {
     if (expected === "raw" || expected === "too-deep") {
       // Both the raw-ship branch and the too-deep-for-any-carton defensive branch
       // ship at true dims with no carton weight added.

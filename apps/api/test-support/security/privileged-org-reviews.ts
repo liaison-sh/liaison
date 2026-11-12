@@ -76,10 +76,6 @@ export const TRUSTED_SOURCES: Record<string, string> = {
  * dispatcher was reviewed: name → what calls it and with which org.
  */
 export const REVIEWED_DISPATCH: Record<string, string> = {
-  bridgeExtension:
-    "a manifest's bridge extension factory, kept in appBridgeExtensionRegistry per [org, app] (runtime.ts:3279); createRpcBridge calls it with the run's bridge context",
-  _bridgeExtension:
-    "a manifest's bridge extension factory, carried into the RPC bridge (runtime.ts:2098), which calls it with the run's bridge context (the org the kernel runs the app for)",
   exportName:
     "a string (the sandbox export to run, sandbox-worker.ts; the Worker export to run, workers/worker-core.ts), never a function: a property-name collision in the alias graph",
   handlerName:
@@ -357,10 +353,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "asks whether the org of the config run may decide the server-wide Liaison team switches (canManageInstanceApps): the CLI's org (resolved by the operator's own command) or the org of the agent tool call (ctx.orgId from the kernel); the answer is one boolean about that same org",
   "apps/api/src/app.ts#GET /api/connections/callback":
     "the connection OAuth callback: the org is the flow state's own (peekOAuthStateApp reads the server-held state an authenticated connect start stored, keyed by the unguessable state); before the grant it asks only whether that org's deletion has started (isOrgDeletingAsync, a boolean that refuses the callback with 410), and everything after it runs on the same state",
-  "apps/api/src/apps/google-drive/picker-page.ts#drivePickerPage":
-    "the Picker page's one-time ticket: a 256-bit random id (createPickerTicket) under a Redis key only this server writes, taken once (getdel), minted by POST /api/google-drive/picker/ticket from the authenticated caller's own org, user and scopes; pickerAccount re-checks the account is that person's and in picked mode before any token is read",
-  "apps/api/src/apps/google-drive/picker-page.ts#drivePickerPageSave":
-    "the Picker page's save id: a 256-bit random id under a Redis key only this server writes, minted by drivePickerPage from a ticket that POST /api/google-drive/picker/ticket made from the authenticated caller's own org, user, scopes and an account pickerAccount checked they may pick on; updatePickedItems re-checks the account against that org and user",
   "apps/api/src/modules/apps/app-pages.ts#renderAppPage":
     "an app page's one-time ticket: a 256-bit random id under a Redis key only this server writes, taken once (getdel) and only on a host of that org (bindingAllowsOrg) or that app's frame host, minted by createAppPageLink for the authenticated caller's own org and user, or by openAppPageHandle for the signed-in person a bridge run's handle was bound to; the person is re-checked active in that org and holding the page's scope before a page session is minted for the same binding",
   "apps/api/src/modules/apps/app-pages.ts#appPageScript":
@@ -470,8 +462,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "QA-only route, mounted only with the QA flag (refused in production, env-production-flags.test.ts)",
   "apps/api/src/modules/apps/connections/api/bridge.ts#call":
     "sandbox bridge extension: ctx is the run's bridge context (createBridgeContext in rpc-bridge.ts, the org the kernel runs the app for)",
-  "apps/api/src/apps/google-drive/bridge.ts#createGoogleDriveBridgeExtension.drive_import":
-    "sandbox bridge extension: orgId is the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/knowledge/knowledge-jobs.ts#runSyncWorker":
     "knowledge sync job: the synced_sources row the job names, loaded in the job's org",
   "apps/api/src/apps/mail/manifest-descriptor.ts#gmail":

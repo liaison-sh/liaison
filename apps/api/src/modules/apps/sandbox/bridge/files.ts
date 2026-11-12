@@ -150,6 +150,8 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           contentId?: string | null
           ordinal?: number
           callerTargetPass?: string
+          /** Downloaded from a provider (files_importFromUrl): no member uploaded it. */
+          fromNetwork?: boolean
         }
         const pass = typeof p.callerTargetPass === "string" ? p.callerTargetPass : ""
         const viaPass = pass !== "" && callerTargetPasses.delete(pass)
@@ -301,7 +303,9 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         // Resolve a real uploader user id when available; otherwise leave NULL
         // for system-ingested files (FK is nullable in schema).
         const UUID_USER_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        const uploaderId = UUID_USER_RE.test(userId) ? userId : null
+        // A file downloaded from a provider (`files_importFromUrl`) came from
+        // outside the org, whoever's run fetched it (modules/files/origin.ts).
+        const uploaderId = p.fromNetwork !== true && UUID_USER_RE.test(userId) ? userId : null
         // kernel.files is FORCE RLS with NO liaison_rls INSERT policy ("INSERT/
         // DELETE are kernel-only; liaison_admin BYPASSRLS handles them"). When
         // this bridge runs under a SYSTEM/privileged tx (inbound mail/ticket
@@ -646,6 +650,7 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           disposition: p.disposition ?? "attachment",
           contentId: p.contentId ?? null,
           ordinal: p.ordinal ?? 0,
+          fromNetwork: true,
         }),
       )
     },

@@ -31,7 +31,8 @@ export async function homeLoad(_params: Record<string, never>, ctx: { db: HomeDb
       counts: null,
       attention: null,
       mrr: null,
-      summary: "Stripe is not connected. Next step: an admin connects it in Settings, Apps, Stripe.",
+      summary:
+        "Stripe is not connected. Next step: an admin connects it in Settings, Apps, Stripe.",
     }
   }
   const state = decodeState(install.state)
@@ -44,7 +45,8 @@ export async function homeLoad(_params: Record<string, never>, ctx: { db: HomeDb
     disputes: await ctx.db.count("stripe_disputes", { where: { status: "needs_response" } }),
     trials: await ctx.db.count("stripe_subscriptions", { where: { status: "trialing" } }),
   }
-  const at = (v: unknown) => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null)
+  const at = (v: unknown) =>
+    v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null
   return {
     connection: {
       state: String(install.state),

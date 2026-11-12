@@ -24,10 +24,17 @@ import {
 
 type Obj = Record<string, unknown>
 
-const SUB_FILTER: Record<string, string> = { past_due: "past_due", trial: "trialing", cancelled: "canceled" }
+const SUB_FILTER: Record<string, string> = {
+  past_due: "past_due",
+  trial: "trialing",
+  cancelled: "canceled",
+}
 
 async function customerIdsWithStatus(ctx: ReadCtx, status: string): Promise<string[]> {
-  const rows = (await ctx.db.findMany("stripe_subscriptions", { where: { status }, limit: 1000 })) as Obj[]
+  const rows = (await ctx.db.findMany("stripe_subscriptions", {
+    where: { status },
+    limit: 1000,
+  })) as Obj[]
   return [...new Set(rows.map((r) => String(r.customer_id)))]
 }
 
@@ -59,18 +66,37 @@ export async function customersSearch(params: Obj | undefined, ctx: ReadCtx) {
         limit: 1000,
         offset: at,
       })) as Obj[]
-      for (const r of batch) if (String(r.name ?? "").toLowerCase().includes(needle)) hits.push(r)
+      for (const r of batch)
+        if (
+          String(r.name ?? "")
+            .toLowerCase()
+            .includes(needle)
+        )
+          hits.push(r)
       if (batch.length < 1000) break
     }
     const rows = hits.slice(offset, offset + limit)
-    return pageOf(rows.map(customerItem), rows, offset, limit, "customers", hits.length > offset + limit)
+    return pageOf(
+      rows.map(customerItem),
+      rows,
+      offset,
+      limit,
+      "customers",
+      hits.length > offset + limit,
+    )
   }
-  const { rows, more } = await readPage(ctx, "stripe_customers", where, offset, limit, { name: "asc", id: "asc" })
+  const { rows, more } = await readPage(ctx, "stripe_customers", where, offset, limit, {
+    name: "asc",
+    id: "asc",
+  })
   return pageOf(rows.map(customerItem), rows, offset, limit, "customers", more)
 }
 
 /** A company on this domain the caller can read, through the kernel's company search. */
-async function companyOnDomain(ctx: ReadCtx, domain: string): Promise<{ id: string; name: string } | null> {
+async function companyOnDomain(
+  ctx: ReadCtx,
+  domain: string,
+): Promise<{ id: string; name: string } | null> {
   if (!ctx.executeTool) return null
   try {
     const env = await ctx.executeTool("kernel:companies_search", { query: domain, limit: 5 })
@@ -92,10 +118,16 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
     row = ((await ctx.db.findMany("stripe_customers", { where, limit: 1 })) as Obj[])[0]
   } else if (typeof p.contactId === "string" && UUID.test(p.contactId)) {
     const [id] = await customerIdsFor(ctx, { contactId: p.contactId })
-    if (id) row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: id }, limit: 1 })) as Obj[])[0]
+    if (id)
+      row = (
+        (await ctx.db.findMany("stripe_customers", { where: { stripe_id: id }, limit: 1 })) as Obj[]
+      )[0]
   } else if (typeof p.companyId === "string" && UUID.test(p.companyId)) {
     const [id] = await customerIdsFor(ctx, { companyId: p.companyId })
-    if (id) row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: id }, limit: 1 })) as Obj[])[0]
+    if (id)
+      row = (
+        (await ctx.db.findMany("stripe_customers", { where: { stripe_id: id }, limit: 1 })) as Obj[]
+      )[0]
   } else {
     return refuseTool(
       "customer_ref_missing",
@@ -106,7 +138,12 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
     // A contact or company with no Stripe customer is an answer, not a failure: it is
     // not billed in Stripe (a prospect, or billed another way). Only a named Stripe id
     // that matches nothing is refused.
-    const named = typeof p.contactId === "string" ? "contact" : typeof p.companyId === "string" ? "company" : null
+    const named =
+      typeof p.contactId === "string"
+        ? "contact"
+        : typeof p.companyId === "string"
+          ? "company"
+          : null
     if (named) {
       return {
         customer: null,
@@ -151,7 +188,8 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
   let contactSuggestion: { contactId: string; email: string } | null = null
   if (!linked && typeof row.email === "string" && row.email.includes("@")) {
     const existing = await existingContactByEmail(ctx, row.email)
-    if (existing && existing !== "unknown") contactSuggestion = { contactId: existing.id, email: row.email.trim().toLowerCase() }
+    if (existing && existing !== "unknown")
+      contactSuggestion = { contactId: existing.id, email: row.email.trim().toLowerCase() }
   }
   const all = [row, ...subs, ...invoices]
   const customer = customerItem(row)

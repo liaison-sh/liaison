@@ -168,7 +168,9 @@ describe("activity helpers", () => {
   })
 
   it("maps the comment error codes to sentences and passes other errors through", () => {
-    expect(commentErrorText("empty_comment: the comment is empty")).toBe("Write a comment before adding it.")
+    expect(commentErrorText("empty_comment: the comment is empty")).toBe(
+      "Write a comment before adding it.",
+    )
     expect(commentErrorText("comment_too_long: at most 4000 characters")).toBe(
       "The comment is too long (4000 characters at most).",
     )
@@ -185,7 +187,9 @@ describe("incident ref and activity wiring", () => {
   it("acts on the fetched row's UUID, never on the route id, once the incident is loaded", () => {
     expect(detail).toContain("const currentId = () => incident()?.id ?? incidentId()")
     expect(detail).toContain("const params: Record<string, unknown> = { incidentId: currentId() }")
-    expect(detail).toContain('app.invokeTool("incidents_comment", { incidentId: currentId(), body })')
+    expect(detail).toContain(
+      'app.invokeTool("incidents_comment", { incidentId: currentId(), body })',
+    )
     expect(detail).not.toContain("incidentId: incidentId()")
   })
 
@@ -205,6 +209,6 @@ describe("incident ref and activity wiring", () => {
   it("keeps the row actions in a fixed 208px column whose labels and status tag never wrap", () => {
     expect(row).toContain("md:grid-cols-[16px_minmax(0,1fr)_96px_52px_84px_208px]")
     expect(row.match(/whitespace-nowrap/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
-    expect(read("StatusList.tsx")).toContain('cx("whitespace-nowrap rounded-[5px]')
+    expect(read("StatusList.tsx")).toMatch(/cx\(\s*"whitespace-nowrap rounded-\[5px\]/)
   })
 })

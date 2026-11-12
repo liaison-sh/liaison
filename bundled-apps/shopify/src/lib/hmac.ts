@@ -72,7 +72,12 @@ export async function shopifyWebhookVerifier(
   const valid =
     typeof sig === "string" &&
     sig.length > 0 &&
-    (await bridge.crypto_verifyHmacForConfig(SHOPIFY_WEBHOOK_SECRET_KEY, params.body, sig, "base64"))
+    (await bridge.crypto_verifyHmacForConfig(
+      SHOPIFY_WEBHOOK_SECRET_KEY,
+      params.body,
+      sig,
+      "base64",
+    ))
   if (!valid) return { ok: false, reason: "signature_mismatch" }
   const webhookId = headers[HEADER_WEBHOOK_ID]
   if (!webhookId) return { ok: false, reason: "missing_webhook_id" }

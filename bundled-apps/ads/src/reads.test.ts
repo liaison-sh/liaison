@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
-  insights_query,
-  campaigns_list,
-  adsets_list,
-  ads_list,
-  targeting_search,
-  media_list,
-  audiences_list,
-  pages_list,
   account_info,
-  graph_get,
-  creative_get,
   ad_preview,
+  ads_list,
+  adsets_list,
+  audiences_list,
+  campaigns_list,
   counts,
+  creative_get,
+  graph_get,
+  insights_query,
+  media_list,
+  pages_list,
   pending_approvals_list,
+  targeting_search,
 } from "./reads"
 import { createMemoryStore, createRecordingTimers } from "./test-store"
 
@@ -64,14 +64,15 @@ function makeCtx(fetchResponses: MockResponse[]) {
 
 describe("insights_query", () => {
   it("sends GET to /{adAccountId}/insights with level and date_preset", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ spend: "100.00", impressions: "5000" }] }),
-    }])
-    const result = await insights_query(
-      { level: "account", date_preset: "last_7d" },
-      ctx,
-    ) as { data: unknown[] }
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ spend: "100.00", impressions: "5000" }] }),
+      },
+    ])
+    const result = (await insights_query({ level: "account", date_preset: "last_7d" }, ctx)) as {
+      data: unknown[]
+    }
     expect(calls[0]?.url).toContain("/act_123456/insights")
     expect(calls[0]?.url).toContain("level=account")
     expect(calls[0]?.url).toContain("date_preset=last_7d")
@@ -80,19 +81,25 @@ describe("insights_query", () => {
 
   it("effective_status is the delivery-state answer — fixture with status:ACTIVE but effective_status:CAMPAIGN_PAUSED", async () => {
     // The handler surfaces effective_status from the campaigns_list, not status
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({
-        data: [{
-          id: "camp_1",
-          name: "Test",
-          status: "ACTIVE",
-          effective_status: "CAMPAIGN_PAUSED",
-        }],
-        paging: { cursors: {} },
-      }),
-    }])
-    const result = await campaigns_list({}, ctx) as { data: Array<{ status: string; effective_status: string }> }
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({
+          data: [
+            {
+              id: "camp_1",
+              name: "Test",
+              status: "ACTIVE",
+              effective_status: "CAMPAIGN_PAUSED",
+            },
+          ],
+          paging: { cursors: {} },
+        }),
+      },
+    ])
+    const result = (await campaigns_list({}, ctx)) as {
+      data: Array<{ status: string; effective_status: string }>
+    }
     const campaign = result.data[0]!
     // Both fields are surfaced
     expect(campaign.status).toBe("ACTIVE")
@@ -107,10 +114,10 @@ describe("insights_query", () => {
       { status: 200, body: JSON.stringify({ data: [{ spend: "50" }] }) },
       { status: 200, body: JSON.stringify({ data: [{ spend: "30" }] }) },
     ])
-    const result = await insights_query(
+    const result = (await insights_query(
       { level: "adset", date_preset: "last_7d", breakdowns: ["age", "gender", "region"] },
       ctx,
-    ) as { _split: boolean }
+    )) as { _split: boolean }
     expect(result._split).toBe(true)
     // Exactly 2 calls: [age,gender] and [region] — NOT three singletons (over-split).
     expect(calls.length).toBe(2)
@@ -125,22 +132,26 @@ describe("insights_query", () => {
   })
 
   it("compatible single breakdown (age only) → _split:false, exactly ONE call", async () => {
-    const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ data: [{ spend: "50" }] }) }])
-    const result = await insights_query(
+    const { ctx, calls } = makeCtx([
+      { status: 200, body: JSON.stringify({ data: [{ spend: "50" }] }) },
+    ])
+    const result = (await insights_query(
       { level: "adset", date_preset: "last_7d", breakdowns: ["age"] },
       ctx,
-    ) as { _split: boolean }
+    )) as { _split: boolean }
     expect(result._split).toBe(false)
     expect(calls.length).toBe(1)
     expect((calls[0]?.url ?? "") + (calls[0]?.body ?? "")).toContain("breakdowns=age")
   })
 
   it("compatible pair (age+gender) → _split:false, ONE combined call", async () => {
-    const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ data: [{ spend: "50" }] }) }])
-    const result = await insights_query(
+    const { ctx, calls } = makeCtx([
+      { status: 200, body: JSON.stringify({ data: [{ spend: "50" }] }) },
+    ])
+    const result = (await insights_query(
       { level: "adset", date_preset: "last_7d", breakdowns: ["age", "gender"] },
       ctx,
-    ) as { _split: boolean }
+    )) as { _split: boolean }
     expect(result._split).toBe(false)
     expect(calls.length).toBe(1)
     expect((calls[0]?.url ?? "") + (calls[0]?.body ?? "")).toContain("age%2Cgender")
@@ -150,12 +161,14 @@ describe("insights_query", () => {
     const { ctx, calls } = makeCtx([
       { status: 200, body: JSON.stringify({ report_run_id: "RUN_1" }) }, // POST async
       { status: 200, body: JSON.stringify({ id: "RUN_1", async_status: "Job Completed" }) }, // poll
-      { status: 200, body: JSON.stringify({ data: [{ spend: "12.34" }], paging: { cursors: {} } }) }, // GET results
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ spend: "12.34" }], paging: { cursors: {} } }),
+      }, // GET results
     ])
-    const result = await insights_query(
-      { level: "account", time_increment: 1 },
-      ctx,
-    ) as { data: unknown[] }
+    const result = (await insights_query({ level: "account", time_increment: 1 }, ctx)) as {
+      data: unknown[]
+    }
     expect(calls[0]?.method).toBe("POST")
     expect(calls[1]?.url).toContain("/RUN_1")
     expect(calls[2]?.url).toContain("/RUN_1/insights")
@@ -168,10 +181,10 @@ describe("insights_query", () => {
     const { ctx, calls } = makeCtx([
       { status: 200, body: JSON.stringify({ data: [{ spend: "1.00" }, { spend: "2.00" }] }) },
     ])
-    const result = await insights_query(
+    const result = (await insights_query(
       { level: "account", time_increment: "1", date_preset: "last_30d" },
       ctx,
-    ) as { data: unknown[] }
+    )) as { data: unknown[] }
     expect(calls.length).toBe(1)
     expect(calls[0]?.method).toBe("GET")
     expect(calls[0]?.url).toContain("time_increment=1")
@@ -193,7 +206,10 @@ describe("insights_query", () => {
     // status before extracting": transient, so the call answers pending and
     // keeps the run; the next call asks the same run again.
     const notReady = JSON.stringify({
-      error: { code: 1815005, message: "El trabajo de informe no ha finalizado, comprueba el estado antes de extraerlo" },
+      error: {
+        code: 1815005,
+        message: "El trabajo de informe no ha finalizado, comprueba el estado antes de extraerlo",
+      },
     })
     const { ctx, calls, store, timers } = makeCtx([
       { status: 200, body: JSON.stringify({ report_run_id: "RUN_R" }) }, // POST async
@@ -202,13 +218,24 @@ describe("insights_query", () => {
       { status: 200, body: JSON.stringify({ id: "RUN_R", async_status: "Job Completed" }) }, // next call: status
       { status: 200, body: JSON.stringify({ data: [{ spend: "9.99" }], paging: { cursors: {} } }) }, // extraction wins
     ])
-    const first = await insights_query({ level: "account", time_increment: 1 }, ctx) as Record<string, unknown>
-    expect(first).toMatchObject({ data: [], _pending: true, _pending_reason: "not_ready", report_run_id: "RUN_R" })
+    const first = (await insights_query({ level: "account", time_increment: 1 }, ctx)) as Record<
+      string,
+      unknown
+    >
+    expect(first).toMatchObject({
+      data: [],
+      _pending: true,
+      _pending_reason: "not_ready",
+      report_run_id: "RUN_R",
+    })
     expect(store.docs.size).toBe(1)
     expect(timers.wakes).toHaveLength(1)
     expect(timers.wakes[0]?.job).toBe("insights-report")
 
-    const second = await insights_query({ level: "account", time_increment: 1 }, ctx) as { data: unknown[]; _pending?: boolean }
+    const second = (await insights_query({ level: "account", time_increment: 1 }, ctx)) as {
+      data: unknown[]
+      _pending?: boolean
+    }
     expect(second._pending).toBeUndefined()
     expect((second.data[0] as { spend: number }).spend).toBe(9.99)
     // One POST in total: the second call resumed RUN_R.
@@ -219,21 +246,32 @@ describe("insights_query", () => {
   })
 
   it("a running report answers pending at once: one status call, no polling inside the run", async () => {
-    const running = JSON.stringify({ id: "RUN_P", async_status: "Job Running", async_percent_completion: 10 })
-    const responses: MockResponse[] = [{ status: 200, body: JSON.stringify({ report_run_id: "RUN_P" }) }]
+    const running = JSON.stringify({
+      id: "RUN_P",
+      async_status: "Job Running",
+      async_percent_completion: 10,
+    })
+    const responses: MockResponse[] = [
+      { status: 200, body: JSON.stringify({ report_run_id: "RUN_P" }) },
+    ]
     for (let i = 0; i < 10; i++) responses.push({ status: 200, body: running })
     const { ctx, calls } = makeCtx(responses)
-    const result = await insights_query({ level: "account", time_increment: 1 }, ctx) as { data: unknown[]; _pending?: boolean }
+    const result = (await insights_query({ level: "account", time_increment: 1 }, ctx)) as {
+      data: unknown[]
+      _pending?: boolean
+    }
     expect(result._pending).toBe(true)
     expect(result.data).toEqual([])
     expect(calls).toHaveLength(2)
   })
 
   it("campaign_id param adds filtering=[{field:'campaign.id',operator:'EQUAL',value}] to the request", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ spend: "42.00" }] }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ spend: "42.00" }] }),
+      },
+    ])
     await insights_query(
       { level: "campaign", date_preset: "last_7d", campaign_id: "camp_RAL44" },
       ctx,
@@ -247,12 +285,14 @@ describe("insights_query", () => {
   })
 
   it("money fields are parsed as decimal strings in account currency (EUR fixture)", async () => {
-    const { ctx } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({
-        data: [{ spend: "1234.56", cpm: "5.50" }],
-      }),
-    }])
+    const { ctx } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({
+          data: [{ spend: "1234.56", cpm: "5.50" }],
+        }),
+      },
+    ])
     // insights_query for a small window (sync path)
     await insights_query({ level: "account", date_preset: "last_7d" }, ctx)
     // No assertion needed on returned value shape — we just verify it doesn't throw
@@ -264,10 +304,12 @@ describe("insights_query", () => {
 
 describe("campaigns_list", () => {
   it("fetches from /{adAccountId}/campaigns with default fields", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await campaigns_list({}, ctx)
     expect(calls[0]?.url).toContain("/act_123456/campaigns")
     expect(calls[0]?.url).toContain("effective_status")
@@ -278,28 +320,34 @@ describe("campaigns_list", () => {
 
 describe("adsets_list", () => {
   it("fetches from /{adAccountId}/adsets by default", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await adsets_list({}, ctx)
     expect(calls[0]?.url).toContain("/act_123456/adsets")
   })
 
   it("fetches from /{campaign_id}/adsets when campaign_id is given", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await adsets_list({ campaign_id: "camp_999" }, ctx)
     expect(calls[0]?.url).toContain("/camp_999/adsets")
   })
 
   it("default fields include effective_status and targeting", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await adsets_list({}, ctx)
     expect(calls[0]?.url).toContain("effective_status")
     expect(calls[0]?.url).toContain("targeting")
@@ -310,28 +358,34 @@ describe("adsets_list", () => {
 
 describe("ads_list", () => {
   it("fetches from /{adAccountId}/ads by default", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await ads_list({}, ctx)
     expect(calls[0]?.url).toContain("/act_123456/ads")
   })
 
   it("fetches from /{adset_id}/ads when adset_id is given", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await ads_list({ adset_id: "adset_777" }, ctx)
     expect(calls[0]?.url).toContain("/adset_777/ads")
   })
 
   it("includes effective_status in default fields", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await ads_list({}, ctx)
     expect(calls[0]?.url).toContain("effective_status")
   })
@@ -341,10 +395,12 @@ describe("ads_list", () => {
 
 describe("targeting_search", () => {
   it("sends GET to /search with type and q", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ id: "6015559470583", name: "France" }] }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ id: "6015559470583", name: "France" }] }),
+      },
+    ])
     await targeting_search({ type: "adgeolocation", q: "France" }, ctx)
     expect(calls[0]?.url).toContain("/search")
     expect(calls[0]?.url).toContain("type=adgeolocation")
@@ -356,20 +412,27 @@ describe("targeting_search", () => {
 
 describe("media_list", () => {
   it("fetches adimages by default", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ hash: "abc123", name: "banner.jpg" }], paging: { cursors: {} } }),
-    }])
-    const result = await media_list({}, ctx) as { type: string; data: unknown[] }
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({
+          data: [{ hash: "abc123", name: "banner.jpg" }],
+          paging: { cursors: {} },
+        }),
+      },
+    ])
+    const result = (await media_list({}, ctx)) as { type: string; data: unknown[] }
     expect(calls[0]?.url).toContain("/act_123456/adimages")
     expect(result.type).toBe("images")
   })
 
   it("fetches advideos when type=videos", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await media_list({ type: "videos" }, ctx)
     expect(calls[0]?.url).toContain("/act_123456/advideos")
   })
@@ -379,10 +442,12 @@ describe("media_list", () => {
 
 describe("audiences_list", () => {
   it("fetches from /{adAccountId}/customaudiences with delivery status", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [], paging: { cursors: {} } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [], paging: { cursors: {} } }),
+      },
+    ])
     await audiences_list({}, ctx)
     expect(calls[0]?.url).toContain("/act_123456/customaudiences")
     expect(calls[0]?.url).toContain("delivery_status")
@@ -393,11 +458,13 @@ describe("audiences_list", () => {
 
 describe("pages_list", () => {
   it("fetches from /me/accounts", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ id: "page_1", name: "Fabrikam" }] }),
-    }])
-    const result = await pages_list({} as never, ctx) as { data: unknown[] }
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ id: "page_1", name: "Fabrikam" }] }),
+      },
+    ])
+    const result = (await pages_list({} as never, ctx)) as { data: unknown[] }
     expect(calls[0]?.url).toContain("/me/accounts")
     expect(result.data).toHaveLength(1)
   })
@@ -405,11 +472,22 @@ describe("pages_list", () => {
   it("does NOT request access_token and never surfaces a Page token (security)", async () => {
     // Even if Meta echoed a token, the requested fields exclude it. We assert the
     // REQUEST does not ask for access_token, and the output carries no token.
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ data: [{ id: "page_1", name: "Fabrikam", category: "Brand", access_token: "LIVE_PAGE_TOKEN_xyz" }] }),
-    }])
-    const result = await pages_list({} as never, ctx) as { data: Array<Record<string, unknown>> }
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({
+          data: [
+            {
+              id: "page_1",
+              name: "Fabrikam",
+              category: "Brand",
+              access_token: "LIVE_PAGE_TOKEN_xyz",
+            },
+          ],
+        }),
+      },
+    ])
+    const result = (await pages_list({} as never, ctx)) as { data: Array<Record<string, unknown>> }
     // The request must request only id,name,category — never access_token.
     expect(calls[0]?.url).toContain(encodeURIComponent("id,name,category"))
     expect(calls[0]?.url).not.toContain("access_token")
@@ -424,16 +502,18 @@ describe("pages_list", () => {
 
 describe("account_info", () => {
   it("fetches from /{adAccountId} expanding the adspixels edge (AdAccount has no pixel_id field)", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({
-        id: "act_123456",
-        currency: "EUR",
-        timezone_name: "Europe/Paris",
-        adspixels: { data: [{ id: "px_42", name: "Main pixel" }] },
-      }),
-    }])
-    const result = await account_info({} as never, ctx) as {
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({
+          id: "act_123456",
+          currency: "EUR",
+          timezone_name: "Europe/Paris",
+          adspixels: { data: [{ id: "px_42", name: "Main pixel" }] },
+        }),
+      },
+    ])
+    const result = (await account_info({} as never, ctx)) as {
       currency: string
       pixel_id: string | null
       adspixels?: unknown
@@ -450,11 +530,13 @@ describe("account_info", () => {
   })
 
   it("returns pixel_id null when the account has no pixel (never fabricates)", async () => {
-    const { ctx } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ id: "act_123456", currency: "EUR", adspixels: { data: [] } }),
-    }])
-    const result = await account_info({} as never, ctx) as { pixel_id: string | null }
+    const { ctx } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ id: "act_123456", currency: "EUR", adspixels: { data: [] } }),
+      },
+    ])
+    const result = (await account_info({} as never, ctx)) as { pixel_id: string | null }
     expect(result.pixel_id).toBeNull()
   })
 })
@@ -463,10 +545,12 @@ describe("account_info", () => {
 
 describe("graph_get", () => {
   it("sends GET to the given path (cannot mutate)", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ id: "camp_1", issues_info: [] }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ id: "camp_1", issues_info: [] }),
+      },
+    ])
     await graph_get({ path: "/camp_1", fields: "id,issues_info" }, ctx)
     expect(calls[0]?.method).toBe("GET")
     expect(calls[0]?.url).toContain("/camp_1")
@@ -481,8 +565,12 @@ describe("graph_get", () => {
 
   it("rejects a full URL ('://') and a smuggled access_token query (no fetch made)", async () => {
     const { ctx, calls } = makeCtx([])
-    await expect(graph_get({ path: "https://evil.example/me" }, ctx)).rejects.toThrow(/full URL|:\/\//)
-    await expect(graph_get({ path: "/me?access_token=ATTACKER" }, ctx)).rejects.toThrow(/access_token/)
+    await expect(graph_get({ path: "https://evil.example/me" }, ctx)).rejects.toThrow(
+      /full URL|:\/\//,
+    )
+    await expect(graph_get({ path: "/me?access_token=ATTACKER" }, ctx)).rejects.toThrow(
+      /access_token/,
+    )
     expect(calls.length).toBe(0)
   })
 })
@@ -497,11 +585,17 @@ describe("creative_get", () => {
     // metaFetchPaged would return [] for this shape — the test catches that bug.
     const { ctx } = makeCtx([
       // Call 1: GET /cid (creative fields)
-      { status: 200, body: JSON.stringify({ image_hash: "h1", title: "Test Ad", body: "Buy now" }) },
+      {
+        status: 200,
+        body: JSON.stringify({ image_hash: "h1", title: "Test Ad", body: "Buy now" }),
+      },
       // Call 2: GET /act_123456/adimages (keyed shape)
       { status: 200, body: JSON.stringify({ images: { h1: { url: "https://cdn/img.jpg" } } }) },
     ])
-    const result = await creative_get({ creative_id: "cid" }, ctx) as { thumbnail_url: string | null; image_urls: string[] }
+    const result = (await creative_get({ creative_id: "cid" }, ctx)) as {
+      thumbnail_url: string | null
+      image_urls: string[]
+    }
     expect(result.thumbnail_url).toBe("https://cdn/img.jpg")
     expect(result.image_urls).toContain("https://cdn/img.jpg")
   })
@@ -515,7 +609,10 @@ describe("creative_get", () => {
       // Call 3: GET /act_123456/adimages → keyed
       { status: 200, body: JSON.stringify({ images: { h2: { url: "https://cdn/chain.jpg" } } }) },
     ])
-    const result = await creative_get({ ad_id: "ad_1" }, ctx) as { creative_id: string; thumbnail_url: string | null }
+    const result = (await creative_get({ ad_id: "ad_1" }, ctx)) as {
+      creative_id: string
+      thumbnail_url: string | null
+    }
     expect(calls[0]?.url).toContain("/ad_1")
     expect(calls[1]?.url).toContain("/cid_2")
     expect(result.creative_id).toBe("cid_2")
@@ -527,9 +624,15 @@ describe("creative_get", () => {
       // Call 1: GET /cid → video creative (no image_hash)
       { status: 200, body: JSON.stringify({ video_id: "vid_1", title: "Video Ad" }) },
       // Call 2: no hashes → skip adimages; GET /vid_1 → thumbnail
-      { status: 200, body: JSON.stringify({ thumbnails: { data: [{ uri: "https://cdn/thumb.jpg" }] } }) },
+      {
+        status: 200,
+        body: JSON.stringify({ thumbnails: { data: [{ uri: "https://cdn/thumb.jpg" }] } }),
+      },
     ])
-    const result = await creative_get({ creative_id: "cid" }, ctx) as { thumbnail_url: string | null; video_id: string | null }
+    const result = (await creative_get({ creative_id: "cid" }, ctx)) as {
+      thumbnail_url: string | null
+      video_id: string | null
+    }
     expect(result.thumbnail_url).toBe("https://cdn/thumb.jpg")
     expect(result.video_id).toBe("vid_1")
   })
@@ -539,7 +642,10 @@ describe("creative_get", () => {
       // Call 1: GET /ad_missing → no creative ref
       { status: 200, body: JSON.stringify({}) },
     ])
-    const result = await creative_get({ ad_id: "ad_missing" }, ctx) as { thumbnail_url: null; reason: string }
+    const result = (await creative_get({ ad_id: "ad_missing" }, ctx)) as {
+      thumbnail_url: null
+      reason: string
+    }
     expect(result.thumbnail_url).toBeNull()
     expect(result.reason).toBe("no_creative")
   })
@@ -550,9 +656,15 @@ describe("creative_get", () => {
 describe("ad_preview", () => {
   it("single format: returns {ad_format, body} from data[0].body", async () => {
     const { ctx } = makeCtx([
-      { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='https://fb.com/preview'>" }] }) },
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ body: "<iframe src='https://fb.com/preview'>" }] }),
+      },
     ])
-    const result = await ad_preview({ ad_id: "ad_1", ad_format: "DESKTOP_FEED_STANDARD" }, ctx) as { ad_format: string; body: string | null; rows: unknown[] }
+    const result = (await ad_preview(
+      { ad_id: "ad_1", ad_format: "DESKTOP_FEED_STANDARD" },
+      ctx,
+    )) as { ad_format: string; body: string | null; rows: unknown[] }
     expect(result.ad_format).toBe("DESKTOP_FEED_STANDARD")
     expect(result.body).toContain("iframe")
     // The preview is also the one row a dashboard block reads.
@@ -563,7 +675,7 @@ describe("ad_preview", () => {
     const { ctx, calls } = makeCtx([
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe>" }] }) },
     ])
-    const result = await ad_preview({ ad_id: "ad_1" }, ctx) as { ad_format: string }
+    const result = (await ad_preview({ ad_id: "ad_1" }, ctx)) as { ad_format: string }
     expect(result.ad_format).toBe("DESKTOP_FEED_STANDARD")
     expect(calls[0]?.url).toContain("DESKTOP_FEED_STANDARD")
   })
@@ -573,10 +685,13 @@ describe("ad_preview", () => {
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='desktop'>" }] }) },
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='mobile'>" }] }) },
     ])
-    const result = await ad_preview({
-      ad_id: "ad_1",
-      ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
-    }, ctx) as { previews: Array<{ ad_format: string; body: string | null }> }
+    const result = (await ad_preview(
+      {
+        ad_id: "ad_1",
+        ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
+      },
+      ctx,
+    )) as { previews: Array<{ ad_format: string; body: string | null }> }
     expect(Array.isArray(result.previews)).toBe(true)
     expect(result.previews.length).toBe(2)
     expect(result.previews[0]?.ad_format).toBe("DESKTOP_FEED_STANDARD")
@@ -590,10 +705,13 @@ describe("ad_preview", () => {
       { status: 200, body: JSON.stringify({ data: [] }) },
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='mobile'>" }] }) },
     ])
-    const result = await ad_preview({
-      ad_id: "ad_1",
-      ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
-    }, ctx) as { previews: Array<{ ad_format: string; body: string | null }> }
+    const result = (await ad_preview(
+      {
+        ad_id: "ad_1",
+        ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
+      },
+      ctx,
+    )) as { previews: Array<{ ad_format: string; body: string | null }> }
     expect(result.previews[0]?.body).toBeNull()
     expect(result.previews[1]?.body).toContain("mobile")
   })
@@ -603,10 +721,13 @@ describe("ad_preview", () => {
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='desktop_preview'>" }] }) },
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='mobile_preview'>" }] }) },
     ])
-    const result = await ad_preview({
-      ad_id: "ad_1",
-      ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
-    }, ctx) as { previews: Array<{ body: string | null }> }
+    const result = (await ad_preview(
+      {
+        ad_id: "ad_1",
+        ad_formats: ["DESKTOP_FEED_STANDARD", "MOBILE_FEED_STANDARD"],
+      },
+      ctx,
+    )) as { previews: Array<{ body: string | null }> }
     expect(result.previews[0]?.body).not.toBe(result.previews[1]?.body)
   })
 
@@ -615,7 +736,10 @@ describe("ad_preview", () => {
     const { ctx } = makeCtx([
       { status: 400, body: JSON.stringify({ error: { message: "No creative", code: 400 } }) },
     ])
-    const result = await ad_preview({ ad_id: "ad_bad", ad_format: "DESKTOP_FEED_STANDARD" }, ctx) as { body: null; reason?: string }
+    const result = (await ad_preview(
+      { ad_id: "ad_bad", ad_format: "DESKTOP_FEED_STANDARD" },
+      ctx,
+    )) as { body: null; reason?: string }
     expect(result.body).toBeNull()
     expect(result.reason).toBeDefined()
   })
@@ -648,7 +772,13 @@ describe("counts", () => {
   })
 
   it("keeps nothing between calls: each call reads the campaigns again", async () => {
-    const page = { status: 200, body: JSON.stringify({ data: [{ id: "c1", effective_status: "ACTIVE" }], paging: { cursors: {} } }) }
+    const page = {
+      status: 200,
+      body: JSON.stringify({
+        data: [{ id: "c1", effective_status: "ACTIVE" }],
+        paging: { cursors: {} },
+      }),
+    }
     const { ctx, calls } = makeCtx([page, page])
     expect((await counts({} as never, ctx)).total).toBe(1)
     expect((await counts({} as never, ctx)).total).toBe(1)
@@ -677,7 +807,7 @@ describe("audiences_list (extended fields)", () => {
       paging: { cursors: {} },
     }
     const { ctx } = makeCtx([{ status: 200, body: JSON.stringify(fixture) }])
-    const result = await audiences_list({}, ctx) as { data: Array<Record<string, unknown>> }
+    const result = (await audiences_list({}, ctx)) as { data: Array<Record<string, unknown>> }
     const aud = result.data[0]!
     // Bound range fields present
     expect(aud.approximate_count_lower_bound).toBe(1000)
@@ -688,7 +818,9 @@ describe("audiences_list (extended fields)", () => {
   })
 
   it("requests the extended fields in the API call (fields string check)", async () => {
-    const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ data: [], paging: { cursors: {} } }) }])
+    const { ctx, calls } = makeCtx([
+      { status: 200, body: JSON.stringify({ data: [], paging: { cursors: {} } }) },
+    ])
     await audiences_list({}, ctx)
     const url = calls[0]?.url ?? ""
     expect(url).toContain("approximate_count_lower_bound")
@@ -714,8 +846,20 @@ describe("pending_approvals_list", () => {
           prefix = p
           limit = l
           return [
-            { id: "a1", toolName: "ads:pause", summary: { headline: "Pause campaign X" }, createdAt: "2026-07-10T00:00:00Z", requestedBy: "u1" },
-            { id: "a2", toolName: "ads:update_budget", summary: { headline: "Raise budget" }, createdAt: "2026-07-10T01:00:00Z", requestedBy: "u2" },
+            {
+              id: "a1",
+              toolName: "ads:pause",
+              summary: { headline: "Pause campaign X" },
+              createdAt: "2026-07-10T00:00:00Z",
+              requestedBy: "u1",
+            },
+            {
+              id: "a2",
+              toolName: "ads:update_budget",
+              summary: { headline: "Raise budget" },
+              createdAt: "2026-07-10T01:00:00Z",
+              requestedBy: "u2",
+            },
           ]
         },
       },
@@ -740,7 +884,12 @@ describe("pending_approvals_list", () => {
     const ctx = {
       fetch: async () => ({ status: 200, headers: {}, body: "{}" }),
       connections: {},
-      kernel: { listApprovals: async (_p?: string, l?: number) => { limit = l; return [] } },
+      kernel: {
+        listApprovals: async (_p?: string, l?: number) => {
+          limit = l
+          return []
+        },
+      },
     }
     await pending_approvals_list({ limit: 999 }, ctx as never)
     expect(limit).toBe(50)
@@ -750,7 +899,10 @@ describe("pending_approvals_list", () => {
 describe("graph_get: an inline query string in the path", () => {
   it("merges it into params so limit reaches Graph as a number, not '5?fields=...'", async () => {
     const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ data: [] }) }])
-    await graph_get({ path: "/act_1/insights?limit=5&date_preset=last_7d", fields: "spend,impressions" }, ctx)
+    await graph_get(
+      { path: "/act_1/insights?limit=5&date_preset=last_7d", fields: "spend,impressions" },
+      ctx,
+    )
     const url = new URL(calls[0]!.url)
     expect(url.pathname.endsWith("/act_1/insights")).toBe(true)
     expect(url.searchParams.get("limit")).toBe("5")

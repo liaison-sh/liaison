@@ -42,7 +42,7 @@ describe("monitoring UI copy is translated", () => {
     expect(badFrenchEntries(FR)).toEqual([])
   })
 
-  it("says \"prendre en compte\" for the acknowledge action in French", () => {
+  it('says "prendre en compte" for the acknowledge action in French', () => {
     ;(globalThis as any).__liaisonHost = { locale: () => "fr" }
     expect(tr("Ack")).toBe("Prendre en compte")
     expect(tr("Acknowledge")).toBe("Prendre en compte")

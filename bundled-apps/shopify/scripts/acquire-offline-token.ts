@@ -30,7 +30,9 @@ const WAIT_MS = 15 * 60_000
 
 /** The scopes the shopify app's store connection asks for (its manifest is the one source). */
 function manifestScopes(): string[] {
-  const manifest = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8")) as {
+  const manifest = JSON.parse(
+    readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"),
+  ) as {
     connections: { shop: { scopes: string[] } }
   }
   return manifest.connections.shop.scopes
@@ -64,7 +66,8 @@ async function mint(env: ShopifyEnv): Promise<void> {
   const token = (await res.json()) as { access_token: string; scope: string; expires_in?: number }
   const missing = missingScopes(manifestScopes(), token.scope.split(","))
   console.log(`Token minted (expires_in=${token.expires_in ?? "unknown"}s).`)
-  if (missing.length > 0) console.log(`It lacks: ${missing.join(", ")}. Run without --mint to approve them.`)
+  if (missing.length > 0)
+    console.log(`It lacks: ${missing.join(", ")}. Run without --mint to approve them.`)
   console.log(`\nSHOPIFY_DEV_STORE_OFFLINE_TOKEN=${token.access_token}\n`)
 }
 
@@ -83,7 +86,9 @@ async function main() {
   const store = env.domain.replace(/\.myshopify\.com$/, "")
   const approvalUrl = `https://admin.shopify.com/store/${store}/oauth/install?client_id=${encodeURIComponent(env.clientId)}`
   console.log(`The token lacks: ${missing.join(", ")}.`)
-  console.log("If the app's configuration lacks them too, add them and run `shopify app deploy` first.")
+  console.log(
+    "If the app's configuration lacks them too, add them and run `shopify app deploy` first.",
+  )
   console.log("\nOpen this link in the browser signed in to the dev store, and approve:\n")
   console.log(`  ${approvalUrl}\n`)
   console.log("Waiting for the approval…")

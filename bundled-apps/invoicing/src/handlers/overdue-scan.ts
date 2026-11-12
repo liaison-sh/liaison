@@ -67,8 +67,7 @@ function toOverdueRow(row: unknown): OverdueDocumentRow {
     due_at: (r.due_at as string | null) ?? null,
     grand_total_minor: (r.grand_total_minor as string | number) ?? "0",
     currency: String(r.currency ?? "EUR"),
-    counterparty_contact_id:
-      (r.counterparty_contact_id as string | null) ?? null,
+    counterparty_contact_id: (r.counterparty_contact_id as string | null) ?? null,
   }
 }
 

@@ -153,7 +153,13 @@ function prepRow(key: string, extra: Record<string, unknown> = {}) {
     state: "ready",
     excluded: false,
     validated: false,
-    invoice: { state: "issued", document_id: `doc-${key}`, number: `INV-${key}`, approval_id: null, kind: "invoice" },
+    invoice: {
+      state: "issued",
+      document_id: `doc-${key}`,
+      number: `INV-${key}`,
+      approval_id: null,
+      kind: "invoice",
+    },
     shipment: null,
     recipient: null,
     ...extra,
@@ -239,11 +245,18 @@ describe("To prepare: what the customer paid for shipping", () => {
     prepRows = () => {
       const row = prepRow("2001")
       if (selected) {
-        const q = row.quote as { offers: Array<{ offer_code: string }>; selected: unknown; selected_offer_code: string | null }
+        const q = row.quote as {
+          offers: Array<{ offer_code: string }>
+          selected: unknown
+          selected_offer_code: string | null
+        }
         q.selected_offer_code = selected
         q.selected = q.offers.find((o) => o.offer_code === selected) ?? null
       }
-      return [row, prepRow("2002", { customer_shipping_minor: null, customer_shipping_currency: null })]
+      return [
+        row,
+        prepRow("2002", { customer_shipping_minor: null, customer_shipping_currency: null }),
+      ]
     }
     const { PrepGrid } = await import("./PrepGrid")
     render(() => <PrepGrid />)
@@ -308,9 +321,15 @@ describe("One shipping worklist", () => {
 
     fireEvent.click(screen.getByTestId("boxtal-worklist-filter-packed"))
     await flush()
-    expect(screen.getByTestId("boxtal-worklist-filter-packed").getAttribute("aria-pressed")).toBe("true")
-    expect(screen.getByTestId("boxtal-worklist-filter-all").getAttribute("aria-pressed")).toBe("false")
-    expect(screen.getByTestId("boxtal-worklist-filter-all").className).not.toContain("bg-surface-active")
+    expect(screen.getByTestId("boxtal-worklist-filter-packed").getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    expect(screen.getByTestId("boxtal-worklist-filter-all").getAttribute("aria-pressed")).toBe(
+      "false",
+    )
+    expect(screen.getByTestId("boxtal-worklist-filter-all").className).not.toContain(
+      "bg-surface-active",
+    )
     expect(screen.getAllByRole("table")).toHaveLength(1)
     expect(screen.queryByTestId("boxtal-prep-row-3001")).toBeNull()
     expect(screen.queryByTestId("boxtal-ready-row-31")).toBeNull()

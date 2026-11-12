@@ -101,7 +101,10 @@ function httpsUrl(v: unknown): string | null {
  * Where the finding lives at its source: the comment's own permalink, else its
  * post's, else (Facebook, when Graph omitted both) a link built from the ids.
  */
-function findingLink(finding: Record<string, unknown> | null, platform: string | null): SummaryLink | null {
+function findingLink(
+  finding: Record<string, unknown> | null,
+  platform: string | null,
+): SummaryLink | null {
   if (!finding) return null
   const where = platform ?? "the source"
   const own = httpsUrl(finding.permalink)
@@ -112,7 +115,9 @@ function findingLink(finding: Record<string, unknown> | null, platform: string |
     const id = str(finding.external_id)
     const parent = str(finding.parent_external_id)
     const built = httpsUrl(
-      finding.relation === "comment_on_our_content" || parent ? facebookCommentUrl(id, parent) : facebookPostUrl(id),
+      finding.relation === "comment_on_our_content" || parent
+        ? facebookCommentUrl(id, parent)
+        : facebookPostUrl(id),
     )
     if (built) return { label: "Open on Facebook", url: built }
   }

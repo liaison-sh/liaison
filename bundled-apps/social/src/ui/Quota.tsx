@@ -6,8 +6,9 @@
 // polls deferred once the budget is spent, and each platform's stored
 // rate-limit state as readable lines (never raw JSON). Connections and monitor
 // terms are declarative blocks the kernel renders.
-import { type Component, For, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, For, Show } from "solid-js"
 import { Button } from "./kit"
 
 export interface YoutubeQuotaView {
@@ -77,7 +78,8 @@ export const SocialQuota: Component = () => {
           data-testid="social-quota-banner"
           class="rounded-md border border-warning bg-warning-glow px-3 py-2 text-warning"
         >
-          YouTube daily quota reached: {quota()?.youtube?.deferred ?? 0} watch polls deferred until the quota resets.
+          YouTube daily quota reached: {quota()?.youtube?.deferred ?? 0} watch polls deferred until
+          the quota resets.
         </div>
       </Show>
       <Show
@@ -89,7 +91,9 @@ export const SocialQuota: Component = () => {
         }
       >
         <Show when={quota()!.youtube}>
-          <div data-testid="social-quota-readout">YouTube: {youtubeQuotaLine(quota()!.youtube!)}</div>
+          <div data-testid="social-quota-readout">
+            YouTube: {youtubeQuotaLine(quota()!.youtube!)}
+          </div>
           <div
             role="meter"
             aria-label="YouTube units used today"
@@ -107,7 +111,9 @@ export const SocialQuota: Component = () => {
             />
           </div>
           <Show when={quota()!.youtube!.deferred > 0}>
-            <div data-testid="social-quota-deferred">{quota()!.youtube!.deferred} watch polls deferred</div>
+            <div data-testid="social-quota-deferred">
+              {quota()!.youtube!.deferred} watch polls deferred
+            </div>
           </Show>
         </Show>
         <For each={quota()!.rateLimits}>

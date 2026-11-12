@@ -30,14 +30,21 @@ export interface Recipient {
 
 type Row = Record<string, unknown>
 
-const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
+const text = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v.trim() : null
 
 /** A kernel read through the app's tool bridge; null when it is absent or fails. */
-async function kernelRead(ctx: RecipientCtx, tool: string, params: Record<string, unknown>): Promise<Row | null> {
+async function kernelRead(
+  ctx: RecipientCtx,
+  tool: string,
+  params: Record<string, unknown>,
+): Promise<Row | null> {
   if (!ctx.executeTool) return null
   try {
     const env = await ctx.executeTool(tool, params)
-    return env.status === "completed" && env.result && typeof env.result === "object" ? (env.result as Row) : null
+    return env.status === "completed" && env.result && typeof env.result === "object"
+      ? (env.result as Row)
+      : null
   } catch {
     return null
   }
@@ -53,7 +60,10 @@ interface BillingAddress {
   city: string | null
 }
 
-async function billingAddress(ctx: RecipientCtx, contactId: string): Promise<BillingAddress | null> {
+async function billingAddress(
+  ctx: RecipientCtx,
+  contactId: string,
+): Promise<BillingAddress | null> {
   const list = (await kernelRead(ctx, "kernel:contacts_addresses_list", { contactId }))?.addresses
   const all = (Array.isArray(list) ? list : []) as Row[]
   const a = all.find((x) => x.role === "billing") ?? all[0]
@@ -75,15 +85,36 @@ async function billingAddress(ctx: RecipientCtx, contactId: string): Promise<Bil
  * The recipient of a draft for this customer, as its records read now. An unreadable contact or
  * company leaves its fields empty, so the draft says what is missing instead of guessing.
  */
-export async function recipientOf(ctx: RecipientCtx, who: { contactId: string | null; companyId: string | null }): Promise<Recipient> {
+export async function recipientOf(
+  ctx: RecipientCtx,
+  who: { contactId: string | null; companyId: string | null },
+): Promise<Recipient> {
   const contactId = text(who.contactId)
   const companyId = text(who.companyId)
-  const contact = (contactId ? ((await kernelRead(ctx, "kernel:contacts_read", { contactId }))?.contact ?? {}) : {}) as Row
-  const companyName = companyId ? text(((await kernelRead(ctx, "kernel:companies_read", { companyId }))?.company as Row | undefined)?.name) : null
-  const identity = contactId ? ((await ctx.db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 })) as Row[])[0] : undefined
+  const contact = (
+    contactId ? ((await kernelRead(ctx, "kernel:contacts_read", { contactId }))?.contact ?? {}) : {}
+  ) as Row
+  const companyName = companyId
+    ? text(
+        (
+          (await kernelRead(ctx, "kernel:companies_read", { companyId }))?.company as
+            | Row
+            | undefined
+        )?.name,
+      )
+    : null
+  const identity = contactId
+    ? (
+        (await ctx.db.findMany("counterparty_identities", {
+          where: { contact_id: contactId },
+          limit: 1,
+        })) as Row[]
+      )[0]
+    : undefined
   const address = contactId ? await billingAddress(ctx, contactId) : null
   return {
-    counterparty_name: companyName ?? text(contact.company) ?? text(contact.name) ?? text(contact.displayName),
+    counterparty_name:
+      companyName ?? text(contact.company) ?? text(contact.name) ?? text(contact.displayName),
     counterparty_address: address?.line ?? null,
     counterparty_country: address?.country ?? text(identity?.establishment_country),
     counterparty_vat_id: text(identity?.vat_id),

@@ -14,7 +14,12 @@ import { iso, type ReadCtx, SCAN_CAP, syncedAt } from "./read-common"
 type Obj = Record<string, unknown>
 
 export interface MrrCtx extends ReadCtx {
-  time: { civil(p: { timezone: string; at?: string | number }): Promise<{ date: string; year: number; month: number; day: number }> }
+  time: {
+    civil(p: {
+      timezone: string
+      at?: string | number
+    }): Promise<{ date: string; year: number; month: number; day: number }>
+  }
   /**
    * Test seam: the clock. Unset, the host's clock answers through
    * `ctx.time.civil`, so the month is the one the product reads, never the
@@ -30,8 +35,14 @@ const PLANS_SHOWN = 10
  * The instant a month starts in a zone: the first minute whose local date is the first of it.
  * `now` unset: the month of the host's current instant.
  */
-export async function monthStartInstant(ctx: Pick<MrrCtx, "time">, zone: string, now?: Date): Promise<{ at: Date; date: string }> {
-  const local = await ctx.time.civil(now ? { timezone: zone, at: now.getTime() } : { timezone: zone })
+export async function monthStartInstant(
+  ctx: Pick<MrrCtx, "time">,
+  zone: string,
+  now?: Date,
+): Promise<{ at: Date; date: string }> {
+  const local = await ctx.time.civil(
+    now ? { timezone: zone, at: now.getTime() } : { timezone: zone },
+  )
   const date = `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}-01`
   const base = Date.UTC(local.year, local.month - 1, 1)
   // Every zone's offset is within +/- 15 hours, so the answer lies in this window, a minute at a time.
@@ -47,9 +58,15 @@ export async function monthStartInstant(ctx: Pick<MrrCtx, "time">, zone: string,
   return { at: new Date(lo * 60_000), date }
 }
 
-async function readAll(ctx: ReadCtx, entity: string, where: Obj, orderBy: Record<string, "asc" | "desc">, stopAt?: (r: Obj) => boolean) {
+async function readAll(
+  ctx: ReadCtx,
+  entity: string,
+  where: Obj,
+  orderBy: Record<string, "asc" | "desc">,
+  stopAt?: (r: Obj) => boolean,
+) {
   const out: Obj[] = []
-  let capped = false
+  const capped = false
   for (let offset = 0; ; offset += PAGE) {
     const page = (await ctx.db.findMany(entity, { where, orderBy, limit: PAGE, offset })) as Obj[]
     for (const r of page) {
@@ -112,7 +129,14 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
   const line = (currency: string): Line => {
     let l = lines.get(currency)
     if (!l) {
-      l = { currency, mrrMinor: 0, pastDueMinor: 0, activeCount: 0, byPlan: new Map(), mv: { new: 0, upgrade: 0, downgrade: 0, cancelled: 0 } }
+      l = {
+        currency,
+        mrrMinor: 0,
+        pastDueMinor: 0,
+        activeCount: 0,
+        byPlan: new Map(),
+        mv: { new: 0, upgrade: 0, downgrade: 0, cancelled: 0 },
+      }
       lines.set(currency, l)
     }
     return l
@@ -162,7 +186,10 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
       }
     })
 
-  const gapRows = (await ctx.db.findMany("sync_state", { where: { resource: "mrr_gap" }, limit: 1 })) as Obj[]
+  const gapRows = (await ctx.db.findMany("sync_state", {
+    where: { resource: "mrr_gap" },
+    limit: 1,
+  })) as Obj[]
   const gap = typeof gapRows[0]?.cursor === "string" ? gapRows[0].cursor.slice(0, 10) : null
   // A gap found this month: the changes it hides were written by the heal, dated the day it ran.
   const foundAt = Date.parse(iso(gapRows[0]?.updated) ?? "")
@@ -173,11 +200,15 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
     lines: shown,
     asOf: syncedAt(subs.rows),
     rules,
-    ...(incomplete ? { movementsIncompleteBefore: incomplete, note: `Movements incomplete before ${incomplete}.` } : {}),
+    ...(incomplete
+      ? {
+          movementsIncompleteBefore: incomplete,
+          note: `Movements incomplete before ${incomplete}.`,
+        }
+      : {}),
     summary:
       shown.length === 0
         ? "No counted Stripe subscription in the mirror, so there is no MRR line."
         : `MRR for ${shown.map((l) => l.currency.toUpperCase()).join(", ")} from the Stripe mirror, month start ${monthStartDate}${capped ? "; the mirror is larger than one read, so the figure is partial" : ""}.`,
   }
 }
-

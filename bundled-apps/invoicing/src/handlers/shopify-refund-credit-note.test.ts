@@ -7,7 +7,12 @@
 // pipeline ctx (as the kernel injects at runtime), auto-issue the reversing
 // credit note(s).
 import { describe, expect, test } from "bun:test"
-import { ISSUER_ROW, invoiceRow as baseInvoiceRow, issuePipelineCtx, lineRow } from "../__tests__/credit-note-fixtures"
+import {
+  invoiceRow as baseInvoiceRow,
+  ISSUER_ROW,
+  issuePipelineCtx,
+  lineRow,
+} from "../__tests__/credit-note-fixtures"
 import { createMockDb, type MockDb } from "../test-db"
 import {
   buildAdjustmentReversalItems,
@@ -18,7 +23,11 @@ import {
 // The refunded invoice is paid; everything else is the shared issued US export
 // invoice (zero-rated, mirrors the real scenario).
 function invoiceRow(over: Record<string, unknown>): Record<string, unknown> {
-  return baseInvoiceRow({ payment_status: "paid", lifecycle_log: [{ event: "issued" }, { event: "marked_paid" }], ...over })
+  return baseInvoiceRow({
+    payment_status: "paid",
+    lifecycle_log: [{ event: "issued" }, { event: "marked_paid" }],
+    ...over,
+  })
 }
 
 function makeFullCtx(db: MockDb): RefundCtx {
@@ -52,13 +61,49 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
       seed: {
         issuer_profiles: [ISSUER_ROW],
         documents: [
-          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", scope: "goods", grand_total_minor: "89900", number: "INV-2026-0001", number_int: 1 }),
-          invoiceRow({ id: "00000000-0000-4000-8000-000000000902", scope: "software", grand_total_minor: "16500", number: "INV-2026-0002", number_int: 2 }),
+          invoiceRow({
+            id: "00000000-0000-4000-8000-000000000901",
+            scope: "goods",
+            grand_total_minor: "89900",
+            number: "INV-2026-0001",
+            number_int: 1,
+          }),
+          invoiceRow({
+            id: "00000000-0000-4000-8000-000000000902",
+            scope: "software",
+            grand_total_minor: "16500",
+            number: "INV-2026-0002",
+            number_int: 2,
+          }),
         ],
         document_lines: [
-          lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", description: "Tessera 2", unit_price_minor: "89900" }),
-          lineRow({ id: "l-s", document_id: "00000000-0000-4000-8000-000000000902", description: "Tessera Sound", unit_price_minor: "8900", line_kind: "software", hs_code: null, country_of_origin: null, customs_description: null }),
-          lineRow({ id: "l-sh", document_id: "00000000-0000-4000-8000-000000000902", position: 2, description: "Shipping", unit_price_minor: "7600", line_kind: "shipping", hs_code: null, country_of_origin: null, customs_description: null }),
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            description: "Tessera 2",
+            unit_price_minor: "89900",
+          }),
+          lineRow({
+            id: "l-s",
+            document_id: "00000000-0000-4000-8000-000000000902",
+            description: "Tessera Sound",
+            unit_price_minor: "8900",
+            line_kind: "software",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+          }),
+          lineRow({
+            id: "l-sh",
+            document_id: "00000000-0000-4000-8000-000000000902",
+            position: 2,
+            description: "Shipping",
+            unit_price_minor: "7600",
+            line_kind: "shipping",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+          }),
         ],
       },
     })
@@ -76,15 +121,23 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     for (const cn of cns) {
       expect(Number(cn.grand_total_minor)).toBeLessThan(0)
       const ref = String((cn.external_refs as Record<string, unknown>).original_document_id)
-      expect(["00000000-0000-4000-8000-000000000901", "00000000-0000-4000-8000-000000000902"]).toContain(ref)
+      expect([
+        "00000000-0000-4000-8000-000000000901",
+        "00000000-0000-4000-8000-000000000902",
+      ]).toContain(ref)
     }
     // Each CN mirrors its invoice's lines, negated.
-    const cnLines = db.__all("document_lines").filter((l) => cns.some((c) => c.id === l.document_id))
+    const cnLines = db
+      .__all("document_lines")
+      .filter((l) => cns.some((c) => c.id === l.document_id))
     expect(cnLines.length).toBe(3)
     for (const l of cnLines) expect(Number(l.unit_price_minor)).toBeLessThan(0)
 
     // Both invoices refunded + carry the credit_note_issued marker.
-    for (const id of ["00000000-0000-4000-8000-000000000901", "00000000-0000-4000-8000-000000000902"]) {
+    for (const id of [
+      "00000000-0000-4000-8000-000000000901",
+      "00000000-0000-4000-8000-000000000902",
+    ]) {
       const inv = (await db.findOne("documents", id)) as Record<string, unknown>
       expect(inv.payment_status).toBe("refunded")
       const log = inv.lifecycle_log as Array<Record<string, unknown>>
@@ -97,13 +150,49 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
       seed: {
         issuer_profiles: [ISSUER_ROW],
         documents: [
-          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", scope: "goods", grand_total_minor: "89900", number: "INV-2026-0001", number_int: 1 }),
-          invoiceRow({ id: "00000000-0000-4000-8000-000000000902", scope: "software", grand_total_minor: "16500", number: "INV-2026-0002", number_int: 2 }),
+          invoiceRow({
+            id: "00000000-0000-4000-8000-000000000901",
+            scope: "goods",
+            grand_total_minor: "89900",
+            number: "INV-2026-0001",
+            number_int: 1,
+          }),
+          invoiceRow({
+            id: "00000000-0000-4000-8000-000000000902",
+            scope: "software",
+            grand_total_minor: "16500",
+            number: "INV-2026-0002",
+            number_int: 2,
+          }),
         ],
         document_lines: [
-          lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", description: "Tessera 2", unit_price_minor: "89900" }),
-          lineRow({ id: "l-s", document_id: "00000000-0000-4000-8000-000000000902", description: "Tessera Sound", unit_price_minor: "8900", line_kind: "software", hs_code: null, country_of_origin: null, customs_description: null }),
-          lineRow({ id: "l-sh", document_id: "00000000-0000-4000-8000-000000000902", position: 2, description: "Shipping", unit_price_minor: "7600", line_kind: "shipping", hs_code: null, country_of_origin: null, customs_description: null }),
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            description: "Tessera 2",
+            unit_price_minor: "89900",
+          }),
+          lineRow({
+            id: "l-s",
+            document_id: "00000000-0000-4000-8000-000000000902",
+            description: "Tessera Sound",
+            unit_price_minor: "8900",
+            line_kind: "software",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+          }),
+          lineRow({
+            id: "l-sh",
+            document_id: "00000000-0000-4000-8000-000000000902",
+            position: 2,
+            description: "Shipping",
+            unit_price_minor: "7600",
+            line_kind: "shipping",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+          }),
         ],
       },
     })
@@ -142,12 +231,20 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     // Both invoices were still marked refunded (the recorded refund never unwinds on a
     // credit-note failure), but only the one whose credit note actually landed carries the
     // credit_note_issued marker.
-    const inv901 = (await db.findOne("documents", "00000000-0000-4000-8000-000000000901")) as Record<string, unknown>
-    const inv902 = (await db.findOne("documents", "00000000-0000-4000-8000-000000000902")) as Record<string, unknown>
+    const inv901 = (await db.findOne(
+      "documents",
+      "00000000-0000-4000-8000-000000000901",
+    )) as Record<string, unknown>
+    const inv902 = (await db.findOne(
+      "documents",
+      "00000000-0000-4000-8000-000000000902",
+    )) as Record<string, unknown>
     expect(inv901.payment_status).toBe("refunded")
     expect(inv902.payment_status).toBe("refunded")
     const markedCount = [inv901, inv902].filter((inv) =>
-      (inv.lifecycle_log as Array<Record<string, unknown>>).some((e) => e.event === "credit_note_issued"),
+      (inv.lifecycle_log as Array<Record<string, unknown>>).some(
+        (e) => e.event === "credit_note_issued",
+      ),
     ).length
     expect(markedCount).toBe(1)
 
@@ -162,8 +259,17 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" })],
-        document_lines: [lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", description: "Tessera 2", unit_price_minor: "89900" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
+        ],
+        document_lines: [
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            description: "Tessera 2",
+            unit_price_minor: "89900",
+          }),
+        ],
       },
     })
     const baseCtx = makeFullCtx(db)
@@ -200,7 +306,10 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     if (res.status !== "ok") throw new Error("unreachable")
     // The refund status change stands even though the credit note never got issued.
     expect(res.payment_status).toBe("refunded")
-    const inv = (await db.findOne("documents", "00000000-0000-4000-8000-000000000901")) as Record<string, unknown>
+    const inv = (await db.findOne("documents", "00000000-0000-4000-8000-000000000901")) as Record<
+      string,
+      unknown
+    >
     expect(inv.payment_status).toBe("refunded")
     expect(creditNotes(db)).toHaveLength(0)
 
@@ -215,8 +324,17 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" })],
-        document_lines: [lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", description: "Tessera 2", unit_price_minor: "89900" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
+        ],
+        document_lines: [
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            description: "Tessera 2",
+            unit_price_minor: "89900",
+          }),
+        ],
       },
     })
     const ctx = makeFullCtx(db)
@@ -243,7 +361,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "9000" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "9000" }),
+        ],
         document_lines: [
           lineRow({
             id: "l-vat",
@@ -292,8 +412,17 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" })],
-        document_lines: [lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", description: "Tessera 2", unit_price_minor: "89900" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
+        ],
+        document_lines: [
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            description: "Tessera 2",
+            unit_price_minor: "89900",
+          }),
+        ],
       },
     })
     const ctx = makeFullCtx(db)
@@ -373,11 +502,22 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" })],
-        document_lines: [lineRow({ id: "l-g", document_id: "00000000-0000-4000-8000-000000000901", unit_price_minor: "89900" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000901", grand_total_minor: "89900" }),
+        ],
+        document_lines: [
+          lineRow({
+            id: "l-g",
+            document_id: "00000000-0000-4000-8000-000000000901",
+            unit_price_minor: "89900",
+          }),
+        ],
       },
     })
-    const minimal: RefundCtx = { getUserId: async () => "system", db: db as unknown as RefundCtx["db"] }
+    const minimal: RefundCtx = {
+      getUserId: async () => "system",
+      db: db as unknown as RefundCtx["db"],
+    }
     const res = await onShopifyRefundCreated(
       { data: { id: "refund-1", order_id: "ORD-1", refund_amount_minor: 89900n } },
       minimal,
@@ -391,7 +531,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "12000" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000920", grand_total_minor: "12000" }),
+        ],
         document_lines: [
           lineRow({
             id: "l-vat",
@@ -437,7 +579,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000921", grand_total_minor: "23000" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000921", grand_total_minor: "23000" }),
+        ],
         document_lines: [
           lineRow({
             id: "l-a",
@@ -503,7 +647,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     const db = createMockDb({
       seed: {
         issuer_profiles: [ISSUER_ROW],
-        documents: [invoiceRow({ id: "00000000-0000-4000-8000-000000000922", grand_total_minor: "60000" })],
+        documents: [
+          invoiceRow({ id: "00000000-0000-4000-8000-000000000922", grand_total_minor: "60000" }),
+        ],
         document_lines: [
           lineRow({
             id: "l-odd",
@@ -551,13 +697,52 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
         seed: {
           issuer_profiles: [ISSUER_ROW],
           documents: [
-            invoiceRow({ id: GOODS_ID, scope: "goods", grand_total_minor: "89900", number: "INV-2026-0001", number_int: 1 }),
-            invoiceRow({ id: SOFTWARE_ID, scope: "software", grand_total_minor: "16500", number: "INV-2026-0002", number_int: 2 }),
+            invoiceRow({
+              id: GOODS_ID,
+              scope: "goods",
+              grand_total_minor: "89900",
+              number: "INV-2026-0001",
+              number_int: 1,
+            }),
+            invoiceRow({
+              id: SOFTWARE_ID,
+              scope: "software",
+              grand_total_minor: "16500",
+              number: "INV-2026-0002",
+              number_int: 2,
+            }),
           ],
           document_lines: [
-            lineRow({ id: "l-g", document_id: GOODS_ID, description: "Tessera 2", unit_price_minor: "89900", external_id: GOODS_VARIANT }),
-            lineRow({ id: "l-s", document_id: SOFTWARE_ID, description: "Tessera Sound", unit_price_minor: "8900", line_kind: "software", hs_code: null, country_of_origin: null, customs_description: null, external_id: SOFTWARE_VARIANT }),
-            lineRow({ id: "l-sh", document_id: SOFTWARE_ID, position: 2, description: "Shipping", unit_price_minor: "7600", line_kind: "shipping", hs_code: null, country_of_origin: null, customs_description: null, external_id: null }),
+            lineRow({
+              id: "l-g",
+              document_id: GOODS_ID,
+              description: "Tessera 2",
+              unit_price_minor: "89900",
+              external_id: GOODS_VARIANT,
+            }),
+            lineRow({
+              id: "l-s",
+              document_id: SOFTWARE_ID,
+              description: "Tessera Sound",
+              unit_price_minor: "8900",
+              line_kind: "software",
+              hs_code: null,
+              country_of_origin: null,
+              customs_description: null,
+              external_id: SOFTWARE_VARIANT,
+            }),
+            lineRow({
+              id: "l-sh",
+              document_id: SOFTWARE_ID,
+              position: 2,
+              description: "Shipping",
+              unit_price_minor: "7600",
+              line_kind: "shipping",
+              hs_code: null,
+              country_of_origin: null,
+              customs_description: null,
+              external_id: null,
+            }),
           ],
         },
       })
@@ -583,7 +768,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
 
       const cns = creditNotes(db)
       expect(cns).toHaveLength(1)
-      expect(String((cns[0]!.external_refs as Record<string, unknown>).original_document_id)).toBe(SOFTWARE_ID)
+      expect(String((cns[0]!.external_refs as Record<string, unknown>).original_document_id)).toBe(
+        SOFTWARE_ID,
+      )
       expect(Number(cns[0]!.grand_total_minor)).toBe(-8900)
 
       const goods = (await db.findOne("documents", GOODS_ID)) as Record<string, unknown>
@@ -638,7 +825,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
           data: {
             id: "refund-unknown",
             order_id: "ORD-1",
-            refund_line_items: [{ external_id: "gid://shopify/ProductVariant/UNKNOWN", amount_minor: 5000n }],
+            refund_line_items: [
+              { external_id: "gid://shopify/ProductVariant/UNKNOWN", amount_minor: 5000n },
+            ],
           },
         },
         ctx,
@@ -666,7 +855,13 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
         seed: {
           issuer_profiles: [ISSUER_ROW],
           documents: [
-            invoiceRow({ id: GOODS_ID, scope: "goods", grand_total_minor: "89900", number: "INV-2026-0011", number_int: 11 }),
+            invoiceRow({
+              id: GOODS_ID,
+              scope: "goods",
+              grand_total_minor: "89900",
+              number: "INV-2026-0011",
+              number_int: 11,
+            }),
             invoiceRow({
               id: SERVICES_ID,
               scope: "software",
@@ -676,9 +871,38 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
             }),
           ],
           document_lines: [
-            lineRow({ id: "g1", document_id: GOODS_ID, description: "Tessera 2", unit_price_minor: "89900", external_id: "gid://shopify/ProductVariant/G" }),
-            lineRow({ id: "s1", document_id: SERVICES_ID, description: "Licence", unit_price_minor: "8900", tax_rate_bp: softwareRateBp, line_kind: "software", hs_code: null, country_of_origin: null, customs_description: null, external_id: "gid://shopify/ProductVariant/S" }),
-            lineRow({ id: "s2", document_id: SERVICES_ID, position: 2, description: "Shipping", unit_price_minor: "7600", tax_rate_bp: 0, line_kind: "shipping", hs_code: null, country_of_origin: null, customs_description: null, external_id: null }),
+            lineRow({
+              id: "g1",
+              document_id: GOODS_ID,
+              description: "Tessera 2",
+              unit_price_minor: "89900",
+              external_id: "gid://shopify/ProductVariant/G",
+            }),
+            lineRow({
+              id: "s1",
+              document_id: SERVICES_ID,
+              description: "Licence",
+              unit_price_minor: "8900",
+              tax_rate_bp: softwareRateBp,
+              line_kind: "software",
+              hs_code: null,
+              country_of_origin: null,
+              customs_description: null,
+              external_id: "gid://shopify/ProductVariant/S",
+            }),
+            lineRow({
+              id: "s2",
+              document_id: SERVICES_ID,
+              position: 2,
+              description: "Shipping",
+              unit_price_minor: "7600",
+              tax_rate_bp: 0,
+              line_kind: "shipping",
+              hs_code: null,
+              country_of_origin: null,
+              customs_description: null,
+              external_id: null,
+            }),
           ],
         },
       })
@@ -689,13 +913,23 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     test("a shipping only refund credits the document that carried the shipping line", async () => {
       const db = db2(0)
       const res = await onShopifyRefundCreated(
-        { data: { id: "refund-ship", order_id: "ORD-1", amount: "76.00", currency: "USD", shipping_refund_minor: "7600" } },
+        {
+          data: {
+            id: "refund-ship",
+            order_id: "ORD-1",
+            amount: "76.00",
+            currency: "USD",
+            shipping_refund_minor: "7600",
+          },
+        },
         makeFullCtx(db),
       )
       expect(res.status).toBe("ok")
       const cns = creditNotes(db)
       expect(cns).toHaveLength(1)
-      expect(String((cns[0]!.external_refs as Record<string, unknown>).original_document_id)).toBe(SERVICES_ID)
+      expect(String((cns[0]!.external_refs as Record<string, unknown>).original_document_id)).toBe(
+        SERVICES_ID,
+      )
       expect(Number(cns[0]!.grand_total_minor)).toBe(-7600)
       const goods = (await db.findOne("documents", GOODS_ID)) as Record<string, unknown>
       expect(goods.payment_status).toBe("paid")
@@ -706,7 +940,15 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     test("a refund equal to the shipping is reversed on the shipping line's rate only, labelled shipping", async () => {
       const db = db2(2000)
       await onShopifyRefundCreated(
-        { data: { id: "refund-ship2", order_id: "ORD-1", amount: "76.00", currency: "USD", shipping_refund_minor: "7600" } },
+        {
+          data: {
+            id: "refund-ship2",
+            order_id: "ORD-1",
+            amount: "76.00",
+            currency: "USD",
+            shipping_refund_minor: "7600",
+          },
+        },
         makeFullCtx(db),
       )
       const cn = creditNotes(db)[0]!
@@ -762,7 +1004,6 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
   })
 })
 
-
 describe("refund credit note against a French company buyer: the e-invoicing gate parks, never drops", () => {
   const SETTINGS = [{ id: "set-1", gate_mode: "enforce", gate_mode_source: "config" }]
   const FR_CONTACT = "00000000-0000-4000-8000-0000000c0931"
@@ -801,7 +1042,14 @@ describe("refund credit note against a French company buyer: the e-invoicing gat
         einvoicing_settings: SETTINGS,
         documents: [eInvoiceWithoutSiren(DOC, "ORD-931")],
         document_lines: [
-          lineRow({ id: "y1", document_id: DOC, unit_price_minor: "10000", tax_rate_bp: 2000, tax_minor: "2000", total_minor: "12000" }),
+          lineRow({
+            id: "y1",
+            document_id: DOC,
+            unit_price_minor: "10000",
+            tax_rate_bp: 2000,
+            tax_minor: "2000",
+            total_minor: "12000",
+          }),
         ],
       },
     })
@@ -860,10 +1108,19 @@ describe("refund credit note against a French company buyer: the e-invoicing gat
         emitted.push(e)
       },
     }
-    await onShopifyRefundCreated({ data: { id: "refund-932", order_id: "ORD-932", refund_amount_minor: 3000n } }, ctx)
-    await onShopifyRefundCreated({ data: { id: "refund-933", order_id: "ORD-933", refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-932", order_id: "ORD-932", refund_amount_minor: 3000n } },
+      ctx,
+    )
+    await onShopifyRefundCreated(
+      { data: { id: "refund-933", order_id: "ORD-933", refund_amount_minor: 3000n } },
+      ctx,
+    )
     // A webhook redelivery of the first refund refreshes nothing new either.
-    await onShopifyRefundCreated({ data: { id: "refund-932", order_id: "ORD-932", refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-932", order_id: "ORD-932", refund_amount_minor: 3000n } },
+      ctx,
+    )
     expect(db.__all("deferred_events")).toHaveLength(2)
     expect(emitted.filter((e) => e.action === "identity_missing")).toHaveLength(1)
     expect(creditNotes(db)).toHaveLength(0)

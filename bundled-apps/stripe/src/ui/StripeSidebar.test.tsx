@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import manifest from "../../app.manifest.json"
 import * as bundle from "../../ui"
 import { dotWord } from "./home-model"
-import { dotTone, sidebarRows, StripeSidebar } from "./StripeSidebar"
+import { dotTone, StripeSidebar, sidebarRows } from "./StripeSidebar"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -26,7 +26,8 @@ describe("the Stripe sidebar", () => {
     expect(dotTone("home")).toBe("success")
     expect(dotTone("importing")).toBe("muted")
     expect(dotTone("not_connected")).toBe("muted")
-    for (const k of ["revoked", "stalled", "partial", "other_account"] as const) expect(dotTone(k)).toBe("warning")
+    for (const k of ["revoked", "stalled", "partial", "other_account"] as const)
+      expect(dotTone(k)).toBe("warning")
     // The dot is never colour alone: a word says the same.
     expect(dotWord("not_connected")).toBe("Not connected")
     expect(dotWord("home")).toBe("Connected")
@@ -62,6 +63,8 @@ describe("the app's views", () => {
     // The kernel builds the activity bar from the manifests of enabled apps only; the entry
     // has no always-on flag and the tab types list nothing outside this app.
     expect(JSON.stringify(views.activityBar)).not.toMatch(/always|pinned|forceShow/i)
-    expect(Object.values<any>(views.tabTypes).every((t) => t.urlPattern.startsWith("/stripe"))).toBe(true)
+    expect(
+      Object.values<any>(views.tabTypes).every((t) => t.urlPattern.startsWith("/stripe")),
+    ).toBe(true)
   })
 })

@@ -6,15 +6,12 @@
 // re-fetch a fresh signed URL on every read; only url-stripped descriptors are
 // persisted by the webhook/link store).
 
-import { getClientOrError } from "./lib/get-client"
-import { sourceTrackingFromLabel } from "./label-tracking"
-import { applyTrackingChanged, isOperatorVisibleRef, shipmentRefFromLabelUrl } from "./link-store"
-import { BoxtalApiError } from "./lib/boxtal-v3-client"
-import type {
-  NormalizedTracking,
-  ShippingDocument,
-} from "./lib/boxtal-v3-client"
 import type { BoxtalToolCtx } from "./ctx"
+import { sourceTrackingFromLabel } from "./label-tracking"
+import type { NormalizedTracking, ShippingDocument } from "./lib/boxtal-v3-client"
+import { BoxtalApiError } from "./lib/boxtal-v3-client"
+import { getClientOrError } from "./lib/get-client"
+import { applyTrackingChanged, isOperatorVisibleRef, shipmentRefFromLabelUrl } from "./link-store"
 
 type ReadsCtx = BoxtalToolCtx
 
@@ -71,9 +68,14 @@ function assertNotRefToken(id: string): void {
  *  ready_list / search surface the local `id`, and the read tools' docs say both
  *  are accepted, so match on both (Boxtal order id first, then the local id). */
 async function findRowByOrderId(ctx: ReadsCtx, id: string) {
-  const byOrder = (await ctx.db.findMany("shipment", { where: { boxtal_order_id: id }, limit: 1 })) as Array<Record<string, unknown>>
+  const byOrder = (await ctx.db.findMany("shipment", {
+    where: { boxtal_order_id: id },
+    limit: 1,
+  })) as Array<Record<string, unknown>>
   if (byOrder[0]) return byOrder[0]
-  const byRowId = (await ctx.db.findMany("shipment", { where: { id }, limit: 1 })) as Array<Record<string, unknown>>
+  const byRowId = (await ctx.db.findMany("shipment", { where: { id }, limit: 1 })) as Array<
+    Record<string, unknown>
+  >
   return byRowId[0] ?? null
 }
 
@@ -115,7 +117,13 @@ export async function track(ctx: ReadsCtx, input: { id: string }): Promise<Track
   assertNotRefToken(input.id)
   const client = await getClientOrError(ctx)
   if ("error" in client) {
-    return { ...EMPTY_TRACKING, events: [], recipient_summary: null, external_id: null, error: client.error }
+    return {
+      ...EMPTY_TRACKING,
+      events: [],
+      recipient_summary: null,
+      external_id: null,
+      error: client.error,
+    }
   }
   // Resolve the row + Boxtal order id ONCE up front, so a caller passing the local
   // shipment row id (as ready_list/search surface) still reaches Boxtal with the
@@ -256,7 +264,7 @@ export async function getShipment(ctx: ReadsCtx, input: { id: string }): Promise
   // A tracking read with nothing in it (not scanned yet) never wipes what the row already knows:
   // a stored tracking number or status stays until Boxtal reports a real one.
   let trackingNumber =
-    tracking.tracking_number ?? ((row?.tracking_number as string | null | undefined) ?? null)
+    tracking.tracking_number ?? (row?.tracking_number as string | null | undefined) ?? null
   // Not scanned yet: the label already prints the carrier's number (FedEx Regional Economy,
   // Domestic Express), so read it from there rather than report none.
   if (!trackingNumber && row) {
@@ -273,7 +281,7 @@ export async function getShipment(ctx: ReadsCtx, input: { id: string }): Promise
     })
   }
   const trackingStatus =
-    tracking.tracking_status ?? ((row?.tracking_status as string | null | undefined) ?? null)
+    tracking.tracking_status ?? (row?.tracking_status as string | null | undefined) ?? null
   if (row) {
     // Best effort, like track: only Boxtal's own order and tracking state is written back, so a
     // failed write never fails the read; the view below is the live one either way.
@@ -283,7 +291,9 @@ export async function getShipment(ctx: ReadsCtx, input: { id: string }): Promise
         tracking_status: trackingStatus,
         tracking_number: trackingNumber,
         // The carrier reported its own number: it is no longer only the label's.
-        ...(tracking.tracking_number ? { tracking_from_label: false, tracking_to_confirm: false } : {}),
+        ...(tracking.tracking_number
+          ? { tracking_from_label: false, tracking_to_confirm: false }
+          : {}),
         status_fetched_at: new Date().toISOString(),
       })
     } catch (err) {

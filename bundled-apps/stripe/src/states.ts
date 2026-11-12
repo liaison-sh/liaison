@@ -17,12 +17,21 @@
 // and says why. Waiting approvals are left as they are: approving one later,
 // with the key fixed, works; approving it now refuses with this reason.
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
-import { type ConnectionEvent, type ConnectionState, decodeState, encodeState, transition } from "./connection"
+import {
+  type ConnectionEvent,
+  type ConnectionState,
+  decodeState,
+  encodeState,
+  transition,
+} from "./connection"
 
 type Obj = Record<string, unknown>
 
 export interface StateDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number },
+  ): Promise<unknown[]>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
 }
 
@@ -64,7 +73,12 @@ export async function moveState(
   await ctx.db.update("install_metadata", install.id, { ...extra, state: to })
   install.state = to
   if (to !== from) {
-    await ctx.emit({ entity: "connection", action: "state_changed", entityId: install.id, data: { from, to } })
+    await ctx.emit({
+      entity: "connection",
+      action: "state_changed",
+      entityId: install.id,
+      data: { from, to },
+    })
   }
   return next
 }
@@ -97,15 +111,19 @@ const IMPORTING = new Set(["pending", "running"])
 export async function syncProgress(db: Pick<StateDb, "findMany">): Promise<SyncProgress> {
   const rows = (await db.findMany("sync_state", { limit: 50 })) as Obj[]
   // The movement log keeps its place in two rows of its own (`mrr_*`); they are not an import.
-  const resources: ResourceProgress[] = rows.filter((r) => !String(r.resource).startsWith("mrr_")).map((r) => ({
-    resource: String(r.resource),
-    status: String(r.status),
-    done: Number(r.done_count) || 0,
-    total: typeof r.total_count === "number" ? r.total_count : null,
-    error: typeof r.last_error_code === "string" ? r.last_error_code : null,
-  }))
+  const resources: ResourceProgress[] = rows
+    .filter((r) => !String(r.resource).startsWith("mrr_"))
+    .map((r) => ({
+      resource: String(r.resource),
+      status: String(r.status),
+      done: Number(r.done_count) || 0,
+      total: typeof r.total_count === "number" ? r.total_count : null,
+      error: typeof r.last_error_code === "string" ? r.last_error_code : null,
+    }))
   const importing = resources.some((r) => IMPORTING.has(r.status))
-  const missing = resources.filter((r) => r.status === "failed" && r.error === "permission_missing").map((r) => r.resource)
+  const missing = resources
+    .filter((r) => r.status === "failed" && r.error === "permission_missing")
+    .map((r) => r.resource)
   return { importing, partial: importing || missing.length > 0, resources, missing }
 }
 
@@ -139,9 +157,13 @@ export async function holdWhileImporting<C extends StateCtx & { fetch: unknown }
   const result = await run(wrapped)
   const eventId = (payload as { id?: unknown } | null)?.id
   if (held && typeof eventId === "string") {
-    const rows = (await ctx.db.findMany("webhook_deliveries", { where: { event_id: eventId }, limit: 1 })) as Obj[]
+    const rows = (await ctx.db.findMany("webhook_deliveries", {
+      where: { event_id: eventId },
+      limit: 1,
+    })) as Obj[]
     const row = rows[0]
-    if (row && row.status === "processed") await ctx.db.update("webhook_deliveries", String(row.id), { status: HELD })
+    if (row && row.status === "processed")
+      await ctx.db.update("webhook_deliveries", String(row.id), { status: HELD })
   }
   return result
 }

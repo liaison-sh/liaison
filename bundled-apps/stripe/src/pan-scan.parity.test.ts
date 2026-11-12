@@ -10,7 +10,10 @@ import { join } from "node:path"
 describe("card mask copy", () => {
   it("is byte for byte the shared mask", () => {
     const copy = readFileSync(join(import.meta.dir, "pan-scan.ts"), "utf8")
-    const shared = readFileSync(join(import.meta.dir, "..", "..", "..", "packages", "shared", "src", "pan-scan.ts"), "utf8")
+    const shared = readFileSync(
+      join(import.meta.dir, "..", "..", "..", "packages", "shared", "src", "pan-scan.ts"),
+      "utf8",
+    )
     expect(copy).toBe(shared)
   })
 })

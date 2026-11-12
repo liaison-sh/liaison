@@ -15,7 +15,9 @@ import type { SourceView } from "./sources"
 export const URGENT_WASH =
   "bg-[linear-gradient(100deg,color-mix(in_srgb,var(--color-error)_16%,transparent)_0%,color-mix(in_srgb,var(--color-error)_5%,transparent)_55%,transparent_100%)]"
 
-export const ShieldIcon: Component<{ size: number; alert?: boolean; strokeWidth?: number }> = (props) => (
+export const ShieldIcon: Component<{ size: number; alert?: boolean; strokeWidth?: number }> = (
+  props,
+) => (
   <svg
     width={props.size}
     height={props.size}
@@ -42,7 +44,9 @@ const SIZES = {
 } as const
 
 /** The source's square: monogram on its hue tint, or a shield when urgent. */
-export const SourceSquare: Component<{ source: SourceView; size: keyof typeof SIZES }> = (props) => {
+export const SourceSquare: Component<{ source: SourceView; size: keyof typeof SIZES }> = (
+  props,
+) => {
   const size = () => SIZES[props.size]
   return (
     <span

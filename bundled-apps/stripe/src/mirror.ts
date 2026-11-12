@@ -22,7 +22,7 @@
 //     again. Postgres re-checks that WHERE on the newest committed row after
 //     waiting for a concurrent writer's lock, so two re-fetches committing in
 //     either order leave the later one's state.
-import { computeMrr, discountColumns, discountsOf, taxPercentOf, type MrrDiscount } from "./mrr"
+import { computeMrr, discountColumns, discountsOf, type MrrDiscount, taxPercentOf } from "./mrr"
 import { maskCardNumbers } from "./pan-scan"
 
 export type MirrorEntity =
@@ -37,7 +37,12 @@ export type MirrorEntity =
 export interface MirrorDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; offset?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      offset?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   updateMany(
@@ -75,10 +80,16 @@ const idOf = (v: unknown): string | null => (typeof v === "string" ? v : str((v 
 
 /** Unix seconds to an ISO instant, or null. */
 export function at(seconds: unknown): string | null {
-  return typeof seconds === "number" && Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : null
+  return typeof seconds === "number" && Number.isFinite(seconds)
+    ? new Date(seconds * 1000).toISOString()
+    : null
 }
 
-function cardOf(obj: Obj): { card_brand: string | null; card_last4: string | null; card_exp: string | null } {
+function cardOf(obj: Obj): {
+  card_brand: string | null
+  card_last4: string | null
+  card_exp: string | null
+} {
   const card = ((obj.payment_method_details as Obj | undefined)?.card ?? null) as Obj | null
   if (!card) return { card_brand: null, card_last4: null, card_exp: null }
   const m = num(card.exp_month)
@@ -87,7 +98,8 @@ function cardOf(obj: Obj): { card_brand: string | null; card_last4: string | nul
   return {
     card_brand: str(card.brand),
     card_last4: last4 && /^\d{4}$/.test(last4) ? last4 : null,
-    card_exp: m > 0 && y > 0 ? `${String(m).padStart(2, "0")}/${String(y % 100).padStart(2, "0")}` : null,
+    card_exp:
+      m > 0 && y > 0 ? `${String(m).padStart(2, "0")}/${String(y % 100).padStart(2, "0")}` : null,
   }
 }
 
@@ -111,7 +123,9 @@ export function customerRow(obj: Obj, tally: MaskTally): Obj {
           city: scan(addr.city, "customer address", tally),
         }
       : null,
-    tax_ids: Array.isArray(taxIds) ? taxIds.map((t) => ({ type: str(t.type), value: str(t.value) })) : null,
+    tax_ids: Array.isArray(taxIds)
+      ? taxIds.map((t) => ({ type: str(t.type), value: str(t.value) }))
+      : null,
     deleted_at: null,
     created_at_stripe: at(obj.created) ?? new Date(0).toISOString(),
   }
@@ -121,14 +135,23 @@ export function customerRow(obj: Obj, tally: MaskTally): Obj {
  * A subscription's mirror row. `kept` is the discounts the stored row already
  * holds: used when the object carries discount ids only (an event snapshot).
  */
-export function subscriptionRow(obj: Obj, tally: MaskTally, now: Date = new Date(), kept: MrrDiscount[] = []): Obj {
+export function subscriptionRow(
+  obj: Obj,
+  tally: MaskTally,
+  now: Date = new Date(),
+  kept: MrrDiscount[] = [],
+): Obj {
   scan(obj.description, "subscription description", tally)
   const items = (((obj.items as Obj | undefined)?.data ?? []) as Obj[]).map((it) => {
     const price = (it.price ?? {}) as Obj
     const rec = (price.recurring ?? {}) as Obj
     return {
       price_id: str(price.id),
-      product_name: scan(typeof price.product === "string" ? price.product : (price.product as Obj | null)?.name, "product name", tally),
+      product_name: scan(
+        typeof price.product === "string" ? price.product : (price.product as Obj | null)?.name,
+        "product name",
+        tally,
+      ),
       unit_amount: num(price.unit_amount),
       currency: str(price.currency),
       interval: str(rec.interval),
@@ -275,12 +298,16 @@ export async function writeMirror(
   written?: (before: Obj | null) => Promise<void>,
 ): Promise<WriteOutcome> {
   const stripeId = row.stripe_id
-  if (typeof stripeId !== "string" || stripeId.length === 0) throw new Error(`${entity}: a row without a Stripe id`)
+  if (typeof stripeId !== "string" || stripeId.length === 0)
+    throw new Error(`${entity}: a row without a Stripe id`)
   const mine = Date.parse(stripeUpdated)
   const data = { ...row, stripe_updated: stripeUpdated }
   let lastError: unknown = null
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const [current] = (await db.findMany(entity, { where: { stripe_id: stripeId }, limit: 1 })) as Obj[]
+    const [current] = (await db.findMany(entity, {
+      where: { stripe_id: stripeId },
+      limit: 1,
+    })) as Obj[]
     if (!current) {
       try {
         await db.insert(entity, data)
@@ -296,7 +323,10 @@ export async function writeMirror(
     const seenMs = instantMs(seen)
     if (Number.isFinite(seenMs) && seenMs > mine) return "stale"
     const { count } = await db.updateMany(entity, {
-      where: seen === null || seen === undefined ? { stripe_id: stripeId, stripe_updated: null } : { stripe_id: stripeId, stripe_updated: seen },
+      where:
+        seen === null || seen === undefined
+          ? { stripe_id: stripeId, stripe_updated: null }
+          : { stripe_id: stripeId, stripe_updated: seen },
       data,
     })
     if (count > 0) {

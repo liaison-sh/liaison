@@ -18,20 +18,16 @@ import { type DeferredRow, EMAIL_OUTCOME_UNKNOWN } from "../deferred"
 import { isParkedCreditNote, retryParkedCreditNote } from "../einvoicing/parked-credit-note"
 import { deliveryFileId } from "../legal-originals/delivery"
 import { documentsRetryPdf, type MutationsCtx } from "../mutations"
-import {
-  type DeferredDispatch,
-  deferredRetryJob,
-  type DeferredRetryResult,
-} from "./deferred-retry"
+import { type DeferredDispatch, type DeferredRetryResult, deferredRetryJob } from "./deferred-retry"
 import { isParkedDraftOrderQuote, retryParkedDraftOrderQuote } from "./shopify-draft-order"
-import { onStripeInvoiceFinalized, STRIPE_PARK_PREFIX } from "./stripe-invoice-finalized"
-import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-refund-created"
 import {
   findIssuerByShopId,
-  onShopifyOrderPaid,
   type OrderPaidCtx,
   type OrderPaidPayload,
+  onShopifyOrderPaid,
 } from "./shopify-order-paid"
+import { onStripeInvoiceFinalized, STRIPE_PARK_PREFIX } from "./stripe-invoice-finalized"
+import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-refund-created"
 
 // The cron ctx is the full bundled-app bridge, so it satisfies both the
 // order-handler surface (re-issue path) and the mutations surface (PDF retry).
@@ -50,13 +46,17 @@ function blockedField(row: DeferredRow, key: string): string {
  * re-driving the order handler would no-op at the duplicate-document guard —
  * the email is the only thing left to do).
  */
-async function retryAutoEmail(ctx: DeferredDispatchCtx, row: DeferredRow): Promise<DispatchOutcome> {
+async function retryAutoEmail(
+  ctx: DeferredDispatchCtx,
+  row: DeferredRow,
+): Promise<DispatchOutcome> {
   const documentId = blockedField(row, "document_id")
   if (!documentId) return { status: "still_blocked", reason: "missing_document_id" }
   // Once its outcome was found unknown, the automatic mail is never sent by this job again,
   // even after the ledger's retention dropped the unknown key: a person decides (they check
   // the sent folder and send the document with documents_send_to_customer, which closes this park).
-  if (row.reason === EMAIL_OUTCOME_UNKNOWN) return { status: "still_blocked", reason: EMAIL_OUTCOME_UNKNOWN }
+  if (row.reason === EMAIL_OUTCOME_UNKNOWN)
+    return { status: "still_blocked", reason: EMAIL_OUTCOME_UNKNOWN }
   const docRows = await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })
   const doc = docRows[0] as Record<string, unknown> | undefined
   if (!doc) return { status: "still_blocked", reason: "document_missing" }
@@ -167,10 +167,17 @@ export async function deferredRetryJobHandler(
     // Card payments on Stripe: a parked credit note re-runs the refund path by its refund id; a
     // parked invoice re-runs its finalized handler (the undecided stream, an unmatched payment and
     // the approval wait for a person, never this sweep). Never the Shopify order handler.
-    const payloadKind = String((row.event_payload_json as Record<string, unknown> | null)?.kind ?? "")
-    if (payloadKind === STRIPE_CREDIT_NOTE_PARK) return retryParkedStripeCreditNote(ctx, row.event_payload_json)
+    const payloadKind = String(
+      (row.event_payload_json as Record<string, unknown> | null)?.kind ?? "",
+    )
+    if (payloadKind === STRIPE_CREDIT_NOTE_PARK)
+      return retryParkedStripeCreditNote(ctx, row.event_payload_json)
     if (payloadKind.startsWith(STRIPE_PARK_PREFIX) || kind.startsWith(STRIPE_PARK_PREFIX)) {
-      if (payloadKind !== "stripe_invoice" || kind === "stripe_issuer_undecided" || kind === "stripe_invoice_approval") {
+      if (
+        payloadKind !== "stripe_invoice" ||
+        kind === "stripe_issuer_undecided" ||
+        kind === "stripe_invoice_approval"
+      ) {
         return { status: "still_blocked", reason: row.reason ?? "waits_for_a_person" }
       }
       const r = await onStripeInvoiceFinalized(row.event_payload_json, ctx)
@@ -213,5 +220,8 @@ export async function deferredRetryJobHandler(
       : { status: "ok" }
   }
 
-  return deferredRetryJob(ctx, dispatch, { ...opts, identityChangedAt: identityChangedAtLoader(ctx) })
+  return deferredRetryJob(ctx, dispatch, {
+    ...opts,
+    identityChangedAt: identityChangedAtLoader(ctx),
+  })
 }

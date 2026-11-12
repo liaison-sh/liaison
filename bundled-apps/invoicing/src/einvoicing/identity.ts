@@ -118,6 +118,11 @@ export function namesMatch(a: string | null | undefined, b: string | null | unde
 }
 
 /** Only registry-checked writes set `confirmed_via`; a derived SIREN is never confirmed by itself. */
-export function isSirenConfirmed(identity: { confirmed_via?: string | null; siren?: string | null; source?: string | null } | null | undefined): boolean {
+export function isSirenConfirmed(
+  identity:
+    | { confirmed_via?: string | null; siren?: string | null; source?: string | null }
+    | null
+    | undefined,
+): boolean {
   return !!identity?.confirmed_via
 }

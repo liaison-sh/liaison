@@ -23,13 +23,25 @@ function makeCtx(responses: Resp[]) {
   }
   const store = createMemoryStore()
   const timers = createRecordingTimers()
-  const connections = { meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) } }
+  const connections = {
+    meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+  }
   return { ctx: { fetch, store, timers, connections }, urls, store, timers }
 }
 
-const REQ = { path: "/act_1/insights", params: { level: "ad", time_increment: 1 }, accessToken: "t" }
-const status = (s: string) => ({ status: 200, body: JSON.stringify({ id: "RUN_1", async_status: s }) })
-const rows = (r: unknown[]) => ({ status: 200, body: JSON.stringify({ data: r, paging: { cursors: {} } }) })
+const REQ = {
+  path: "/act_1/insights",
+  params: { level: "ad", time_increment: 1 },
+  accessToken: "t",
+}
+const status = (s: string) => ({
+  status: 200,
+  body: JSON.stringify({ id: "RUN_1", async_status: s }),
+})
+const rows = (r: unknown[]) => ({
+  status: 200,
+  body: JSON.stringify({ data: r, paging: { cursors: {} } }),
+})
 
 describe("insights report continuation", () => {
   it("the key is stable across param key order", async () => {
@@ -46,9 +58,17 @@ describe("insights report continuation", () => {
     const out = await fetchInsightsReport(ctx, REQ)
     expect(out).toEqual({ _pending: true, report_run_id: "RUN_1", reason: "still_running" })
     const key = await insightsReportKey(REQ.path, REQ.params)
-    expect((await store.get(INSIGHTS_REPORTS, key))?.data).toMatchObject({ reportRunId: "RUN_1", wakes: 0 })
+    expect((await store.get(INSIGHTS_REPORTS, key))?.data).toMatchObject({
+      reportRunId: "RUN_1",
+      wakes: 0,
+    })
     expect(timers.wakes).toEqual([
-      { seconds: 15, job: INSIGHTS_REPORT_JOB, payload: { report: key }, jobId: `insights-report-${key}` },
+      {
+        seconds: 15,
+        job: INSIGHTS_REPORT_JOB,
+        payload: { report: key },
+        jobId: `insights-report-${key}`,
+      },
     ])
   })
 

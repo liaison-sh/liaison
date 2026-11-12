@@ -14,27 +14,28 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import manifest from "../../app.manifest.json"
 import {
-  DocumentDetail,
+  ACTION_NOTE_DISMISS_MS,
   BUILT_IN_TABS,
-  mergeTabs,
-  FOOTER_ACTIONS,
-  pdfNotReadyNote,
-  pdfStatusAffordance,
-  isEditableDocumentStatus,
-  shopifyOrderUrl,
   canConvertToInvoice,
   convertConfirmBody,
   convertResultNote,
+  DocumentDetail,
   type DocumentDetailTabContribution,
+  FOOTER_ACTIONS,
   footerActionResultNote,
-  ACTION_NOTE_DISMISS_MS,
+  isEditableDocumentStatus,
+  mergeTabs,
+  moneyChips,
+  pdfNotReadyNote,
+  pdfStatusAffordance,
+  shopifyOrderUrl,
+  stripeCollection,
   toLoadedDocument,
 } from "./DocumentDetail"
-import manifest from "../../app.manifest.json"
-import { moneyChips, stripeCollection } from "./DocumentDetail"
-import { einvoiceStatusWord } from "./RecurringStates"
 import { FR as fr } from "./i18n-fr"
+import { einvoiceStatusWord } from "./RecurringStates"
 
 const source = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf-8")
 
@@ -44,18 +45,8 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   })
 
   it("declares the four built-in tabs in spec §12 order", () => {
-    expect(BUILT_IN_TABS.map((t) => t.id)).toEqual([
-      "overview",
-      "customs",
-      "pdf",
-      "lifecycle",
-    ])
-    expect(BUILT_IN_TABS.map((t) => t.label)).toEqual([
-      "Overview",
-      "Customs",
-      "PDF",
-      "Lifecycle",
-    ])
+    expect(BUILT_IN_TABS.map((t) => t.id)).toEqual(["overview", "customs", "pdf", "lifecycle"])
+    expect(BUILT_IN_TABS.map((t) => t.label)).toEqual(["Overview", "Customs", "PDF", "Lifecycle"])
     // Sorted by order — spec §12 puts Overview first, Lifecycle last.
     const orders = BUILT_IN_TABS.map((t) => t.order)
     expect(orders).toEqual([...orders].sort((a, b) => a - b))
@@ -131,7 +122,9 @@ describe("DocumentDetail (Phase 17 F3)", () => {
 
     it("markPaid / sendToCustomer route through invoke() with the full action object (idParam intact)", () => {
       expect(source).toContain("const markPaid = () => void invoke(FOOTER_ACTIONS.mark_paid)")
-      expect(source).toContain("const sendToCustomer = () => void invoke(FOOTER_ACTIONS.send_to_customer)")
+      expect(source).toContain(
+        "const sendToCustomer = () => void invoke(FOOTER_ACTIONS.send_to_customer)",
+      )
     })
 
     it("runConvertToInvoice sends source_document_id, not id", () => {
@@ -152,7 +145,9 @@ describe("DocumentDetail (Phase 17 F3)", () => {
 
     it("a gated call ({ blocked: {...} } envelope) sets a non-error 'Sent for approval.' note", () => {
       expect(source).toContain("isBlockedResult(result)")
-      expect(footerActionResultNote("documents_mark_paid", { blocked: { approvalRequestId: "a1" } })).toEqual({
+      expect(
+        footerActionResultNote("documents_mark_paid", { blocked: { approvalRequestId: "a1" } }),
+      ).toEqual({
         text: "Sent for approval.",
         isError: false,
       })
@@ -168,7 +163,9 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     expect(pdfNotReadyNote("pending")).toBe(
       "This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.",
     )
-    expect(pdfNotReadyNote("failed")).toBe("This PDF could not be rendered. Use Retry render on the PDF tab.")
+    expect(pdfNotReadyNote("failed")).toBe(
+      "This PDF could not be rendered. Use Retry render on the PDF tab.",
+    )
     expect(pdfNotReadyNote(undefined)).toBe(pdfNotReadyNote("pending"))
     // A calm note, in the app's other language too.
     for (const s of ["pending", "failed"] as const) expect(fr[pdfNotReadyNote(s)]).toBeTruthy()
@@ -233,10 +230,15 @@ describe("DocumentDetail (Phase 17 F3)", () => {
       invoiceId: "in_1",
       customerId: "cus_1",
     })
-    expect(stripeCollection({ stripe_invoice_id: "in_1" })).toEqual({ invoiceId: "in_1", customerId: null })
+    expect(stripeCollection({ stripe_invoice_id: "in_1" })).toEqual({
+      invoiceId: "in_1",
+      customerId: null,
+    })
     expect(stripeCollection({})).toBeNull()
     expect(stripeCollection(undefined)).toBeNull()
-    expect(source).toContain('doc().type !== "credit_note" && !stripeCollection(doc().external_refs)')
+    expect(source).toContain(
+      'doc().type !== "credit_note" && !stripeCollection(doc().external_refs)',
+    )
     expect(source).toContain("document-detail-open-stripe")
     expect(source).toContain("document-detail-open-contact")
   })
@@ -268,7 +270,13 @@ describe("DocumentDetail (Phase 17 F3)", () => {
 
   it("mergeTabs preserves the contributing `app` on external tabs", () => {
     const external: DocumentDetailTabContribution[] = [
-      { id: "shipment", label: "Shipment", component: "BoxtalShipmentTab", order: 25, app: "boxtal" },
+      {
+        id: "shipment",
+        label: "Shipment",
+        component: "BoxtalShipmentTab",
+        order: 25,
+        app: "boxtal",
+      },
     ]
     const merged = mergeTabs(external)
     const shipment = merged.find((t) => t.id === "shipment")
@@ -348,7 +356,9 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     })
 
     it("re-keys the PDF fetch on pdf_file_id so an edit's re-render is picked up", () => {
-      expect(source).toMatch(/createResource\(\s*\(\)\s*=>\s*\(p\.doc\.pdf_file_id[\s\S]{0,80}fileId:\s*p\.doc\.pdf_file_id/)
+      expect(source).toMatch(
+        /createResource\(\s*\(\)\s*=>\s*\(p\.doc\.pdf_file_id[\s\S]{0,80}fileId:\s*p\.doc\.pdf_file_id/,
+      )
     })
 
     it("renders Preview/Download buttons above the embed", () => {
@@ -391,7 +401,9 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     })
 
     it("returns null when either field is not a string", () => {
-      expect(shopifyOrderUrl({ shopify_order_id: 42, shopify_shop_domain: "acme.myshopify.com" })).toBeNull()
+      expect(
+        shopifyOrderUrl({ shopify_order_id: 42, shopify_shop_domain: "acme.myshopify.com" }),
+      ).toBeNull()
     })
 
     it("source renders the Open Shopify order link only when shopifyOrderUrl() resolves", () => {
@@ -499,7 +511,11 @@ describe("DocumentDetail (Phase 17 F3)", () => {
       for (const copy of [
         convertConfirmBody({ type: "quote", shopify_draft_order_name: "#D12" }),
         convertConfirmBody({ type: "proforma" }),
-        convertResultNote({ status: "completed", mode: "shopify_order_created", shopify_order_number: "#1149" }) ?? "",
+        convertResultNote({
+          status: "completed",
+          mode: "shopify_order_created",
+          shopify_order_number: "#1149",
+        }) ?? "",
         convertResultNote({ status: "pending_approval", approval_id: "a1" }) ?? "",
       ]) {
         expect(copy).not.toMatch(/\u2014|\u2013|--/)
@@ -518,7 +534,11 @@ describe("DocumentDetail (Phase 17 F3)", () => {
       ).toBe("Order #1149 created in Shopify. The invoice is being issued.")
       // Shopify occasionally has not resolved the order name yet.
       expect(
-        convertResultNote({ status: "completed", mode: "shopify_order_created", shopify_order_number: null }),
+        convertResultNote({
+          status: "completed",
+          mode: "shopify_order_created",
+          shopify_order_number: null,
+        }),
       ).toBe("Order created in Shopify. The invoice is being issued.")
       expect(source).toContain("document-detail-convert-result")
     })
@@ -528,10 +548,18 @@ describe("DocumentDetail (Phase 17 F3)", () => {
         "Sent for approval.",
       )
       expect(
-        convertResultNote({ status: "error", error: { code: "not_convertible", message: "Quote already invoiced." } }),
+        convertResultNote({
+          status: "error",
+          error: { code: "not_convertible", message: "Quote already invoiced." },
+        }),
       ).toBe("Quote already invoiced.")
       expect(
-        convertResultNote({ status: "completed", mode: "local", document_id: "doc-2", number: "INV-1" }),
+        convertResultNote({
+          status: "completed",
+          mode: "local",
+          document_id: "doc-2",
+          number: "INV-1",
+        }),
       ).toBeNull()
       expect(convertResultNote(null)).toBeNull()
     })
@@ -594,7 +622,11 @@ describe("send to customer confirmation", () => {
       status: "completed",
       dispatched: true,
     })
-    expect(note).toEqual({ text: "Sent to the customer.", isError: false, autoDismissMs: ACTION_NOTE_DISMISS_MS })
+    expect(note).toEqual({
+      text: "Sent to the customer.",
+      isError: false,
+      autoDismissMs: ACTION_NOTE_DISMISS_MS,
+    })
   })
 
   it("a gated send says it went for approval and does not claim it was sent", () => {
@@ -618,11 +650,12 @@ describe("send to customer confirmation", () => {
   })
 })
 
-
 describe("DocumentDetail regime line", () => {
   it("mounts the regime line under the customer block, for invoices and credit notes only", () => {
     expect(source).toContain('import { RegimeLine } from "./einvoicing/RegimeLine"')
-    expect(source).toMatch(/<CustomerBlock doc=\{p\.doc\} \/>\s*<Show when=\{p\.doc\.type === "invoice" \|\| p\.doc\.type === "credit_note"\}>\s*<RegimeLine/)
+    expect(source).toMatch(
+      /<CustomerBlock doc=\{p\.doc\} \/>\s*<Show when=\{p\.doc\.type === "invoice" \|\| p\.doc\.type === "credit_note"\}>\s*<RegimeLine/,
+    )
   })
 })
 
@@ -665,19 +698,35 @@ describe("toLoadedDocument: an id that resolves to nothing", () => {
 })
 
 describe("an invoice issued by Liaison and collected elsewhere", () => {
-  const base = { status: "issued", type: "invoice", stream: "card" as const, payment_status: "unpaid", einvoice_state: "sent", collection_state: null }
+  const base = {
+    status: "issued",
+    type: "invoice",
+    stream: "card" as const,
+    payment_status: "unpaid",
+    einvoice_state: "sent",
+    collection_state: null,
+  }
 
   it("Collected shows only after an accepted report", () => {
     // Paid, but nothing reported yet, or the report failed: never Collected.
     expect(einvoiceStatusWord({ ...base, payment_status: "paid" })).not.toBe("Collected")
-    expect(einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "failed" })).not.toBe("Collected")
-    expect(einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "reported" })).toBe("Collected")
+    expect(
+      einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "failed" }),
+    ).not.toBe("Collected")
+    expect(
+      einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "reported" }),
+    ).toBe("Collected")
   })
 
   it("chips say who issued and who took the payment, and the payment only once it is in", () => {
     expect(moneyChips(base)).toEqual(["Issued by Liaison"])
-    expect(moneyChips({ ...base, payment_status: "paid" })).toEqual(["Issued by Liaison", "Collected by Stripe"])
-    expect(moneyChips({ ...base, stream: "transfer", payment_status: "paid" })).toEqual(["Issued by Liaison"])
+    expect(moneyChips({ ...base, payment_status: "paid" })).toEqual([
+      "Issued by Liaison",
+      "Collected by Stripe",
+    ])
+    expect(moneyChips({ ...base, stream: "transfer", payment_status: "paid" })).toEqual([
+      "Issued by Liaison",
+    ])
     // A draft, a quote, or a document from no stream gets no chip.
     expect(moneyChips({ ...base, status: "draft" })).toEqual([])
     expect(moneyChips({ ...base, type: "quote" })).toEqual([])

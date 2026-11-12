@@ -34,7 +34,8 @@ const BOOKABLE_REGIMES = new Set(["e_reporting"])
 const UNBOOKABLE_STATUS = new Set(["draft", "pending_approval", "voided", "cancelled"])
 
 export function bookable(doc: Row, cutover: string | null): string | null {
-  if (doc.type !== "invoice" && doc.type !== "credit_note") return `a ${String(doc.type)} is not booked`
+  if (doc.type !== "invoice" && doc.type !== "credit_note")
+    return `a ${String(doc.type)} is not booked`
   if (UNBOOKABLE_STATUS.has(String(doc.status))) return `the document is ${String(doc.status)}`
   if (!(BOOKABLE_REGIMES.has(String(doc.regime)) || doc.internal_cancellation === true)) {
     return `regime ${String(doc.regime ?? "unknown")} is not booked (only reported sales are)`
@@ -49,7 +50,11 @@ async function candidates(ctx: EinvCtx, cutover: string | null): Promise<Row[]> 
   const seen = new Set<string>()
   const pushAll = async (where: Record<string, unknown>) => {
     // Newest first: everything older than the cut-over is never booked, so the walk stops there.
-    const rows = (await ctx.db.findMany("documents", { where, orderBy: { issued_at: "desc" }, limit: 500 })) as Row[]
+    const rows = (await ctx.db.findMany("documents", {
+      where,
+      orderBy: { issued_at: "desc" },
+      limit: 500,
+    })) as Row[]
     for (const d of rows) {
       if (!onOrAfterCutover(d.issued_at, cutover)) break
       if (seen.has(String(d.id))) continue
@@ -88,7 +93,12 @@ async function releaseIfDead(ctx: EinvCtx, batch: Row): Promise<boolean> {
       }
     }
     const st = (raw ?? {}) as { status?: string | null; expired?: boolean }
-    if (st.status === "denied" || st.status === "expired" || st.status === "cancelled" || (st.status === "pending" && st.expired === true)) {
+    if (
+      st.status === "denied" ||
+      st.status === "expired" ||
+      st.status === "cancelled" ||
+      (st.status === "pending" && st.expired === true)
+    ) {
       dead = true
       why = st.status === "pending" ? "expired" : String(st.status)
     } else if (st.status === null || st.status === undefined) {
@@ -102,12 +112,18 @@ async function releaseIfDead(ctx: EinvCtx, batch: Row): Promise<boolean> {
     why = approvalId ? "approval status unavailable" : "no approval was created"
   }
   if (!dead) return false
-  await ctx.db.update("einvoice_book_batches", String(batch.id), { state: "released", finished_at: new Date().toISOString(), skipped: { released: why } })
+  await ctx.db.update("einvoice_book_batches", String(batch.id), {
+    state: "released",
+    finished_at: new Date().toISOString(),
+    skipped: { released: why },
+  })
   return true
 }
 
 /** Daily job: one batch, one approval request. */
-export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batch_id?: string; documents?: number }> {
+export async function bookDailyJob(
+  ctx: EinvCtx,
+): Promise<{ status: string; batch_id?: string; documents?: number }> {
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app) return { status: "skipped_no_provider" }
   if (!settings.book_enabled) return { status: "skipped_booking_disabled" }
@@ -115,12 +131,19 @@ export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batc
   // the documents of every batch still awaiting its approval stay out of a new one, so no
   // document is ever on two approval cards.
   const inPending = new Set<string>()
-  const pending = (await ctx.db.findMany("einvoice_book_batches", { where: { state: "pending" }, orderBy: { createdAt: "asc" }, limit: 200 })) as Row[]
+  const pending = (await ctx.db.findMany("einvoice_book_batches", {
+    where: { state: "pending" },
+    orderBy: { createdAt: "asc" },
+    limit: 200,
+  })) as Row[]
   for (const b of pending) {
     if (await releaseIfDead(ctx, b)) continue
-    for (const id of Array.isArray(b.document_ids) ? (b.document_ids as string[]) : []) inPending.add(String(id))
+    for (const id of Array.isArray(b.document_ids) ? (b.document_ids as string[]) : [])
+      inPending.add(String(id))
   }
-  const docs = (await candidates(ctx, settings.cutover_date)).filter((d) => !inPending.has(String(d.id)))
+  const docs = (await candidates(ctx, settings.cutover_date)).filter(
+    (d) => !inPending.has(String(d.id)),
+  )
   if (docs.length === 0) return { status: "nothing_to_book" }
   const totals: Record<string, Record<string, number>> = {}
   for (const d of docs) {
@@ -141,7 +164,12 @@ export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batc
   })) as Row
   if (!ctx.requestApproval) return { status: "approval_unavailable", batch_id: String(batch.id) }
   const totalLines = Object.entries(totals).map(
-    ([regime, byCur]) => `${regime === "e_reporting" ? "Reported sales" : "Internal cancellations"}: ${Object.entries(byCur).map(([c, m]) => money(m, c)).join(", ")}`,
+    ([regime, byCur]) =>
+      `${regime === "e_reporting" ? "Reported sales" : "Internal cancellations"}: ${Object.entries(
+        byCur,
+      )
+        .map(([c, m]) => money(m, c))
+        .join(", ")}`,
   )
   // The card holds 8 lines of 200 characters: the numbers fill what the totals leave.
   const numberLines: string[] = []
@@ -163,7 +191,11 @@ export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batc
     summary: `Book ${docs.length} reported sale${docs.length === 1 ? "" : "s"} in ${String(settings.provider_app).charAt(0).toUpperCase()}${String(settings.provider_app).slice(1)}`,
     summary_detail: {
       subtitle: "Ledger entries only: nothing is transmitted to any customer.",
-      lines: [...totalLines, ...numberLines, ...(rest > 0 ? [`and ${rest} more (listed on the batch)`] : [])].slice(0, 8),
+      lines: [
+        ...totalLines,
+        ...numberLines,
+        ...(rest > 0 ? [`and ${rest} more (listed on the batch)`] : []),
+      ].slice(0, 8),
     },
     current_payload: { batch_id: String(batch.id) },
     editable_fields: [],
@@ -175,7 +207,9 @@ export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batc
     await einvoiceBookBatch(ctx, { batch_id: String(batch.id) })
     return { status: "batch_booked", batch_id: String(batch.id), documents: docs.length }
   }
-  await ctx.db.update("einvoice_book_batches", String(batch.id), { approval_request_id: approval.approval_id })
+  await ctx.db.update("einvoice_book_batches", String(batch.id), {
+    approval_request_id: approval.approval_id,
+  })
   return { status: "batch_requested", batch_id: String(batch.id), documents: docs.length }
 }
 
@@ -183,25 +217,37 @@ export async function bookDailyJob(ctx: EinvCtx): Promise<{ status: string; batc
 export async function einvoiceBookBatch(ctx: EinvCtx, params: { batch_id?: string }) {
   const id = str(params?.batch_id)
   if (!id) return fail("invalid_input", "batch_id is required")
-  const batch = ((await ctx.db.findMany("einvoice_book_batches", { where: { id }, limit: 1 })) as Row[])[0]
+  const batch = (
+    (await ctx.db.findMany("einvoice_book_batches", { where: { id }, limit: 1 })) as Row[]
+  )[0]
   if (!batch) return fail("row_not_found", `batch ${id} not found`)
   if (batch.state !== "pending") return { status: "ok", batch_id: id, prepared: 0, replay: true }
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.book_enabled || !settings.provider_app) {
     await ctx.db.update("einvoice_book_batches", id, { state: "cancelled" })
-    return fail("booking_disabled", "Booking is switched off (or no provider is configured); nothing was booked.")
+    return fail(
+      "booking_disabled",
+      "Booking is switched off (or no provider is configured); nothing was booked.",
+    )
   }
   let prepared = 0
   const skipped: Array<{ document_id: string; reason: string }> = []
   for (const docId of (batch.document_ids as string[]) ?? []) {
-    const doc = ((await ctx.db.findMany("documents", { where: { id: docId }, limit: 1 })) as Row[])[0]
+    const doc = (
+      (await ctx.db.findMany("documents", { where: { id: docId }, limit: 1 })) as Row[]
+    )[0]
     const why = doc ? bookable(doc, settings.cutover_date) : "not found"
     if (why) {
       skipped.push({ document_id: docId, reason: why })
       continue
     }
     const key = idempotencyKey(docId, "book_sale", String(doc!.legal_original_sha256))
-    const existing = ((await ctx.db.findMany("einvoice_transmissions", { where: { idempotency_key: key }, limit: 1 })) as Row[])[0]
+    const existing = (
+      (await ctx.db.findMany("einvoice_transmissions", {
+        where: { idempotency_key: key },
+        limit: 1,
+      })) as Row[]
+    )[0]
     if (existing) continue
     // The approval of the batch, made portable for the booking job (one grant per document).
     const granted = await mintDispatchGrant(ctx, ["book_sale"], {
@@ -228,7 +274,10 @@ export async function einvoiceBookBatch(ctx: EinvCtx, params: { batch_id?: strin
       attempts: 0,
       lifecycle_log: [],
     })
-    await ctx.db.update("documents", docId, { einvoice_state: "booking_prepared", pa_provider: settings.provider_app })
+    await ctx.db.update("documents", docId, {
+      einvoice_state: "booking_prepared",
+      pa_provider: settings.provider_app,
+    })
     prepared += 1
   }
   await ctx.db.update("einvoice_book_batches", id, { state: "approved", skipped })
@@ -237,22 +286,37 @@ export async function einvoiceBookBatch(ctx: EinvCtx, params: { batch_id?: strin
 
 /** Booking data the provider needs, from the stored document (amounts signed for a credit note). */
 export async function bookingData(ctx: EinvCtx, doc: Row): Promise<BookingData> {
-  const lines = (await ctx.db.findMany("document_lines", { where: { document_id: String(doc.id) }, orderBy: { position: "asc" }, limit: 500 })) as Row[]
+  const lines = (await ctx.db.findMany("document_lines", {
+    where: { document_id: String(doc.id) },
+    orderBy: { position: "asc" },
+    limit: 500,
+  })) as Row[]
   const sign = doc.type === "credit_note" ? -1 : 1
   const treatment = String(doc.tax_treatment ?? "unconfigured")
   const original = str(doc.original_document_id)
   let credit_of: BookingData["credit_of"] = null
   if (original) {
-    const o = ((await ctx.db.findMany("documents", { where: { id: original }, limit: 1 })) as Row[])[0]
+    const o = (
+      (await ctx.db.findMany("documents", { where: { id: original }, limit: 1 })) as Row[]
+    )[0]
     // The original's deposit at the platform (the latest attempt that reached it).
-    const ot = ((await ctx.db.findMany("einvoice_transmissions", { where: { document_id: original }, limit: 50 })) as Row[])
+    const ot = (
+      (await ctx.db.findMany("einvoice_transmissions", {
+        where: { document_id: original },
+        limit: 50,
+      })) as Row[]
+    )
       .filter((r) => str(r.provider_ref))
       .sort((a, b) => Number(b.attempt ?? 1) - Number(a.attempt ?? 1))[0]
     credit_of = { invoice_number: String(o?.number ?? ""), provider_ref: str(ot?.provider_ref) }
   }
-  const kind = (String(doc.customer_kind ?? "individual") as BookingData["customer"]["kind"])
+  const kind = String(doc.customer_kind ?? "individual") as BookingData["customer"]["kind"]
   const name = str(doc.buyer_legal_name) ?? str(doc.counterparty_name) ?? "Customer"
-  const country = (str(doc.billing_country_code) ?? str(doc.counterparty_country) ?? "FR").toUpperCase()
+  const country = (
+    str(doc.billing_country_code) ??
+    str(doc.counterparty_country) ??
+    "FR"
+  ).toUpperCase()
   return {
     invoice_number: String(doc.number),
     issue_date: String(doc.issued_at ?? "").slice(0, 10),
@@ -286,7 +350,8 @@ export async function bookingData(ctx: EinvCtx, doc: Row): Promise<BookingData> 
         tax_minor: sign * Number(l.tax_minor ?? 0),
         tax_rate_bp: Number(l.tax_rate_bp ?? 0),
         tax_treatment: treatment,
-        operation_category: l.line_kind === "service" || l.line_kind === "software" ? "services" : "goods",
+        operation_category:
+          l.line_kind === "service" || l.line_kind === "software" ? "services" : "goods",
         rate_is_placeholder: false,
         destination_country: country,
       }),
@@ -296,7 +361,12 @@ export async function bookingData(ctx: EinvCtx, doc: Row): Promise<BookingData> 
 
 /** One booking step (called by the transmit job for a prepared `book_sale` row). */
 export async function stepBook(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
-  const doc = ((await ctx.db.findMany("documents", { where: { id: String(row.document_id) }, limit: 1 })) as Row[])[0]
+  const doc = (
+    (await ctx.db.findMany("documents", {
+      where: { id: String(row.document_id) },
+      limit: 1,
+    })) as Row[]
+  )[0]
   const settings = await readEinvoicingSettings(ctx.db)
   const why = doc ? bookable(doc, settings.cutover_date) : "not found"
   const failRow = async (code: string, message: string, retryable = false) => {
@@ -307,14 +377,22 @@ export async function stepBook(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       attempts: Number(row.attempts ?? 0) + 1,
       next_attempt_at: retryable ? new Date(Date.now() + 10 * 60_000).toISOString() : null,
     })
-    if (!retryable && doc) await ctx.db.update("documents", String(doc.id), { einvoice_state: "booking_failed" })
+    if (!retryable && doc)
+      await ctx.db.update("documents", String(doc.id), { einvoice_state: "booking_failed" })
     return { stop: code === "provider_rate_limited" }
   }
-  if (!settings.book_enabled) return failRow("booking_disabled", "Booking was switched off before this row was booked.", true)
+  if (!settings.book_enabled)
+    return failRow("booking_disabled", "Booking was switched off before this row was booked.", true)
   if (why) return failRow("not_bookable", why)
-  const lo = ((await ctx.db.findMany("legal_originals", { where: { id: String(doc!.legal_original_id) }, limit: 1 })) as Row[])[0]
+  const lo = (
+    (await ctx.db.findMany("legal_originals", {
+      where: { id: String(doc!.legal_original_id) },
+      limit: 1,
+    })) as Row[]
+  )[0]
   if (!lo?.file_id) return failRow("legal_original_missing", "The legal original file is missing.")
-  if (!ctx.contracts) return failRow("contracts_unavailable", "contract dispatch is not available here", true)
+  if (!ctx.contracts)
+    return failRow("contracts_unavailable", "contract dispatch is not available here", true)
   const env = await ctx.contracts.call(
     "einvoicing-pa@1",
     "book_sale",
@@ -328,14 +406,25 @@ export async function stepBook(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
     { grant: str(row.dispatch_grant), provider: str(row.provider_app) },
   )
   const result = env.status === "completed" ? (env.result as Row) : null
-  const err = env.status === "error" ? env.error : result?.status === "error" ? (result.error as { code: string; message: string; retryable?: boolean }) : null
+  const err =
+    env.status === "error"
+      ? env.error
+      : result?.status === "error"
+        ? (result.error as { code: string; message: string; retryable?: boolean })
+        : null
   if (err) {
     if (err.code === "vat_rate_unmappable" && ctx.emit) {
       await ctx.emit({
         entity: "einvoicing",
         action: "booking_failed",
         entityId: String(doc!.id),
-        data: { document_id: doc!.id, number: doc!.number, code: err.code, reason: err.message, resolved: false },
+        data: {
+          document_id: doc!.id,
+          number: doc!.number,
+          code: err.code,
+          reason: err.message,
+          resolved: false,
+        },
       })
     }
     return failRow(err.code, err.message, err.retryable === true)
@@ -347,23 +436,41 @@ export async function stepBook(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
     last_error: null,
     next_attempt_at: null,
   })
-  await ctx.db.update("documents", String(doc!.id), { einvoice_state: "booked", pa_provider: settings.provider_app })
+  await ctx.db.update("documents", String(doc!.id), {
+    einvoice_state: "booked",
+    pa_provider: settings.provider_app,
+  })
   return { stop: false }
 }
 
 /** After a tick: summarise every approved batch whose rows are all done. */
 export async function summariseBatches(ctx: EinvCtx): Promise<number> {
-  const batches = (await ctx.db.findMany("einvoice_book_batches", { where: { state: "approved" }, limit: 20 })) as Row[]
+  const batches = (await ctx.db.findMany("einvoice_book_batches", {
+    where: { state: "approved" },
+    limit: 20,
+  })) as Row[]
   let done = 0
   for (const b of batches) {
-    const rows = (await ctx.db.findMany("einvoice_transmissions", { where: { batch_id: String(b.id) }, limit: 1000 })) as Row[]
+    const rows = (await ctx.db.findMany("einvoice_transmissions", {
+      where: { batch_id: String(b.id) },
+      limit: 1000,
+    })) as Row[]
     if (rows.some((r) => r.state === "prepared")) continue
     const booked = rows.filter((r) => r.state === "booked")
     const failed = rows.filter((r) => r.state === "failed")
     const numberOf = async (docId: unknown) =>
-      String((((await ctx.db.findMany("documents", { where: { id: String(docId) }, limit: 1 })) as Row[])[0]?.number) ?? docId)
+      String(
+        (
+          (await ctx.db.findMany("documents", { where: { id: String(docId) }, limit: 1 })) as Row[]
+        )[0]?.number ?? docId,
+      )
     const failedNumbers = await Promise.all(failed.map((r) => numberOf(r.document_id)))
-    await ctx.db.update("einvoice_book_batches", String(b.id), { state: "done", booked: booked.length, failed: failed.length, finished_at: new Date().toISOString() })
+    await ctx.db.update("einvoice_book_batches", String(b.id), {
+      state: "done",
+      booked: booked.length,
+      failed: failed.length,
+      finished_at: new Date().toISOString(),
+    })
     if (ctx.emit) {
       await ctx.emit({
         entity: "einvoicing",
@@ -384,10 +491,16 @@ export async function summariseBatches(ctx: EinvCtx): Promise<number> {
 }
 
 /** Invariant (every 3 h): a booked invoice must never carry an e-invoicing status. */
-export async function bookingInvariantJob(ctx: EinvCtx): Promise<{ checked: number; breaches: number }> {
+export async function bookingInvariantJob(
+  ctx: EinvCtx,
+): Promise<{ checked: number; breaches: number }> {
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app || !ctx.contracts) return { checked: 0, breaches: 0 }
-  const rows = (await ctx.db.findMany("einvoice_transmissions", { where: { state: "booked", action: "book_sale" }, orderBy: { createdAt: "desc" }, limit: 200 })) as Row[]
+  const rows = (await ctx.db.findMany("einvoice_transmissions", {
+    where: { state: "booked", action: "book_sale" },
+    orderBy: { createdAt: "desc" },
+    limit: 200,
+  })) as Row[]
   let checked = 0
   let breaches = 0
   for (const row of rows) {
@@ -411,16 +524,33 @@ export async function bookingInvariantJob(ctx: EinvCtx): Promise<{ checked: numb
       breaches += 1
       await ctx.db.update("einvoice_transmissions", String(row.id), {
         lifecycle_state_raw: (s.raw as string | null) ?? null,
-        last_error: { code: "booked_but_einvoiced", message: "The provider shows an e-invoicing status on a booked (reported) sale." },
+        last_error: {
+          code: "booked_but_einvoiced",
+          message: "The provider shows an e-invoicing status on a booked (reported) sale.",
+        },
       })
-      if (settings.id) await ctx.db.update("einvoicing_settings", settings.id, { book_enabled: false, changed_by: "system:booking-invariant" })
-      const doc = ((await ctx.db.findMany("documents", { where: { id: String(row.document_id) }, limit: 1 })) as Row[])[0]
+      if (settings.id)
+        await ctx.db.update("einvoicing_settings", settings.id, {
+          book_enabled: false,
+          changed_by: "system:booking-invariant",
+        })
+      const doc = (
+        (await ctx.db.findMany("documents", {
+          where: { id: String(row.document_id) },
+          limit: 1,
+        })) as Row[]
+      )[0]
       if (ctx.emit) {
         await ctx.emit({
           entity: "einvoicing",
           action: "booking_invariant_breach",
           entityId: String(row.document_id),
-          data: { document_id: row.document_id, number: doc?.number ?? null, raw: s.raw ?? null, resolved: false },
+          data: {
+            document_id: row.document_id,
+            number: doc?.number ?? null,
+            raw: s.raw ?? null,
+            resolved: false,
+          },
         })
       }
     }

@@ -12,12 +12,11 @@ import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
 /** Knowledge curation: collections, verification, folder sources, source links and attention items. */
 /**
  * `add_folder_source` on an app that declares a knowledge source kind: the
- * app's own handler syncs it (app-sources.ts). The same app, kind and owner
- * reuse their source (reactivated when archived), so its documents keep their
- * identities. The first pass runs on the sync schedule, not inside this call.
- * A `ref` (the connector's folder reference) becomes the source's config
- * `{ ref }`, checked against the kind's config schema; the same app, kind,
- * owner and config find the same source.
+ * app's own handler syncs it (app-sources.ts). With a `ref` (a folder of the
+ * app's provider) the source is that folder (config `{ ref }`); the same app,
+ * kind, owner and ref reuse their source (reactivated when archived), so its
+ * documents keep their identities. The first pass runs on the sync schedule,
+ * not inside this call.
  */
 async function addAppSource(input: {
   txDb: unknown
@@ -35,28 +34,33 @@ async function addAppSource(input: {
   }
 }): Promise<Record<string, unknown>> {
   const { txDb, orgId, actor, source, kinds, scope, params: p } = input
-  if (p.oneShot) {
+  const folderRef = p.ref ?? null
+  if (p.oneShot && !folderRef) {
     throw new Error(
       `invalid_params: ${source} syncs through its own source on a schedule; oneShot is for folder sources`,
     )
   }
+  // A folder (`ref`) goes to the app's `folder` kind unless a kind is named.
   const chosen = p.kind
     ? kinds.find((k) => k.kind === p.kind)
     : kinds.length === 1
       ? kinds[0]
-      : null
+      : folderRef
+        ? (kinds.find((k) => k.kind === "folder") ?? null)
+        : null
   if (!chosen) {
     throw new Error(`invalid_params: kind required, one of ${kinds.map((k) => k.kind).join(", ")}`)
   }
   const { knowledgeRel } = await import("~/apps/knowledge/schema-refs")
   const owner = scope === "organization" ? null : actor.userId
-  const config: Record<string, unknown> = p.ref ? { ref: p.ref } : {}
+  const config: Record<string, unknown> = folderRef ? { ref: folderRef } : {}
   const [existing] = extractRows<{ id: string; last_sync_status: string | null }>(
     await (txDb as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
       SELECT id, last_sync_status FROM ${knowledgeRel("synced_sources")}
       WHERE org_id = ${orgId}::uuid AND app_name = ${source} AND source_kind = ${chosen.kind}
         AND COALESCE(source_config, '{}'::jsonb) = ${JSON.stringify(config)}::jsonb
         AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
+        AND (${folderRef}::text IS NULL OR folder_ref = ${folderRef})
       ORDER BY archived_at IS NULL DESC, created_at DESC
       LIMIT 1
     `),
@@ -81,8 +85,8 @@ async function addAppSource(input: {
       appName: source,
       sourceKind: chosen.kind,
       sourceConfig: config,
-      folderRef: p.ref ?? `app-source:${chosen.kind}`,
-      displayName: p.displayName ?? (p.ref ? `${chosen.title} ${p.ref}` : chosen.title),
+      folderRef: folderRef ?? `app-source:${chosen.kind}`,
+      displayName: p.displayName ?? (folderRef ? `${chosen.title} ${folderRef}` : chosen.title),
       scope,
       syncIntervalSeconds: 3600,
       defaultSensitivity:
@@ -98,6 +102,11 @@ async function addAppSource(input: {
     lastSyncStatus: created.lastSyncStatus,
     oneShot: false,
     documentsCreated: 0,
+    ...(p.oneShot
+      ? {
+          note: "This source syncs through the app on a schedule, from its first pass on: its documents arrive within minutes. Archive the source to stop it.",
+        }
+      : {}),
   }
 }
 

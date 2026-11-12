@@ -10,7 +10,12 @@ import { type Component, createResource, createSignal, For, Show } from "solid-j
 import { contactLabel, loadContact } from "./ContactPicker"
 import { tr, uiLocale } from "./i18n"
 import { Button, formatMoneyMinor } from "./kit"
-import { OVERFLOW_PAGE, RecurringEmpty, RecurringLoadError, RecurringLoading } from "./RecurringStates"
+import {
+  OVERFLOW_PAGE,
+  RecurringEmpty,
+  RecurringLoadError,
+  RecurringLoading,
+} from "./RecurringStates"
 
 const TAP = "min-h-11 md:min-h-8"
 
@@ -25,7 +30,12 @@ export interface ListRow {
   next_draft_on: string | null
   paused_until: string | null
   paid_by?: string
-  lines: Array<{ description: string; qty: number; unit_price_minor: number | string; vat_bp: number }>
+  lines: Array<{
+    description: string
+    qty: number
+    unit_price_minor: number | string
+    vat_bp: number
+  }>
   bills_other_than_stripe?: string | null
 }
 
@@ -33,7 +43,13 @@ export type ListFilter = "all" | "active" | "paused"
 
 /** The people to look up for the rows' names, each once; an ended schedule may have none. */
 export function scheduleContactIds(rows: ListRow[]): string[] {
-  return [...new Set(rows.map((r) => r.contact_id).filter((id): id is string => typeof id === "string" && id !== ""))]
+  return [
+    ...new Set(
+      rows
+        .map((r) => r.contact_id)
+        .filter((id): id is string => typeof id === "string" && id !== ""),
+    ),
+  ]
 }
 
 const FILTERS: ReadonlyArray<{ value: ListFilter; label: string }> = [
@@ -43,7 +59,12 @@ const FILTERS: ReadonlyArray<{ value: ListFilter; label: string }> = [
 ]
 
 const REPEATS: Record<string, string> = { month: "Month", quarter: "Quarter", year: "Year" }
-const STATUS: Record<string, string> = { draft: "Draft", active: "Active", paused: "Paused", ended: "Ended" }
+const STATUS: Record<string, string> = {
+  draft: "Draft",
+  active: "Active",
+  paused: "Paused",
+  ended: "Ended",
+}
 const PAID_BY: Record<string, string> = { transfer: "Bank transfer", card_link: "Card link" }
 
 export function filterRows(rows: ListRow[], f: ListFilter): ListRow[] {
@@ -62,7 +83,8 @@ export function billsText(r: ListRow): string {
 function dayLabel(day: string, locale: string): string {
   // A date-only ISO string parses as UTC midnight, shown here in UTC.
   const d = new Date(day)
-  const part = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString(locale, { ...o, timeZone: "UTC" })
+  const part = (o: Intl.DateTimeFormatOptions) =>
+    d.toLocaleDateString(locale, { ...o, timeZone: "UTC" })
   return `${part({ weekday: "short" })} ${part({ day: "numeric" })} ${part({ month: "short" })}`
 }
 
@@ -70,9 +92,15 @@ function dayLabel(day: string, locale: string): string {
 export function titleLine(rows: ListRow[], locale = uiLocale()): string {
   const active = rows.filter((r) => r.status === "active" && r.next_draft_on && r.next_issue_on)
   if (active.length === 0) return tr("Soonest first.")
-  const first = [...active].sort((a, b) => String(a.next_draft_on).localeCompare(String(b.next_draft_on)))[0] as ListRow
+  const first = [...active].sort((a, b) =>
+    String(a.next_draft_on).localeCompare(String(b.next_draft_on)),
+  )[0] as ListRow
   const n = active.filter((r) => r.next_draft_on === first.next_draft_on).length
-  const params = { n, draft: dayLabel(String(first.next_draft_on), locale), issue: dayLabel(String(first.next_issue_on), locale) }
+  const params = {
+    n,
+    draft: dayLabel(String(first.next_draft_on), locale),
+    issue: dayLabel(String(first.next_issue_on), locale),
+  }
   return n === 1
     ? tr("Soonest first. Next: {{n}} draft on {{draft}}, to issue on {{issue}}.", params)
     : tr("Soonest first. Next: {{n}} drafts on {{draft}}, to issue on {{issue}}.", params)
@@ -94,11 +122,17 @@ interface Page {
 }
 
 async function loadPage(cursor: string | null): Promise<Page> {
-  const r = await app.invokeTool<{ rows?: ListRow[]; nextCursor?: string | null; status?: string; error?: { message?: string } }>("recurring_list", {
+  const r = await app.invokeTool<{
+    rows?: ListRow[]
+    nextCursor?: string | null
+    status?: string
+    error?: { message?: string }
+  }>("recurring_list", {
     limit: OVERFLOW_PAGE,
     ...(cursor ? { cursor } : {}),
   })
-  if (!r || r.status === "error" || !Array.isArray(r.rows)) throw new Error(r?.error?.message ?? "recurring_list failed")
+  if (!r || r.status === "error" || !Array.isArray(r.rows))
+    throw new Error(r?.error?.message ?? "recurring_list failed")
   return { rows: r.rows, next: r.nextCursor ?? null }
 }
 
@@ -142,7 +176,11 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
           </span>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label={tr("Status")} class="inline-flex items-center gap-0.5 rounded-lg border border-border-subtle bg-surface p-0.5">
+          <div
+            role="group"
+            aria-label={tr("Status")}
+            class="inline-flex items-center gap-0.5 rounded-lg border border-border-subtle bg-surface p-0.5"
+          >
             <For each={FILTERS}>
               {(f) => (
                 <button
@@ -157,7 +195,12 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
               )}
             </For>
           </div>
-          <Button variant="primary" class={TAP} testid="new-schedule" onClick={() => navigate("/invoicing/schedule/new")}>
+          <Button
+            variant="primary"
+            class={TAP}
+            testid="new-schedule"
+            onClick={() => navigate("/invoicing/schedule/new")}
+          >
             {tr("New schedule")}
           </Button>
         </div>
@@ -193,20 +236,29 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
                         }}
                         class={`grid grid-cols-2 gap-x-3 gap-y-0.5 py-2.5 hover:bg-surface-hover md:grid-cols-[2fr_2fr_1.3fr_1fr_1fr_1fr_0.8fr] ${TAP}`}
                       >
-                        <span class="min-w-0 break-words font-medium text-text">{(r.contact_id ? names()?.[r.contact_id] : undefined) ?? tr("Customer")}</span>
-                        <span data-testid={`schedule-bills-${r.id}`} class="min-w-0 break-words text-text-secondary">
+                        <span class="min-w-0 break-words font-medium text-text">
+                          {(r.contact_id ? names()?.[r.contact_id] : undefined) ?? tr("Customer")}
+                        </span>
+                        <span
+                          data-testid={`schedule-bills-${r.id}`}
+                          class="min-w-0 break-words text-text-secondary"
+                        >
                           {billsText(r)}
                         </span>
                         <span class="text-text-secondary">{everyText(r)}</span>
                         <span class="tabular-nums text-text">
                           <span class="text-text-tertiary md:hidden">{tr("Next invoice")}: </span>
-                          {r.status === "paused" && r.paused_until ? tr("Resumes {{day}}", { day: r.paused_until }) : (r.next_issue_on ?? "-")}
+                          {r.status === "paused" && r.paused_until
+                            ? tr("Resumes {{day}}", { day: r.paused_until })
+                            : (r.next_issue_on ?? "-")}
                         </span>
                         <span class="tabular-nums text-text md:text-right">
                           {amountOf(r)}
                           <span class="text-text-tertiary md:hidden"> {tr("excl. VAT")}</span>
                         </span>
-                        <span class="text-text-secondary">{tr(PAID_BY[r.paid_by ?? "transfer"] ?? "Bank transfer")}</span>
+                        <span class="text-text-secondary">
+                          {tr(PAID_BY[r.paid_by ?? "transfer"] ?? "Bank transfer")}
+                        </span>
                         <span class="text-text-secondary">{tr(STATUS[r.status] ?? r.status)}</span>
                       </a>
                     </li>
@@ -215,7 +267,9 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
               </ul>
               <Show when={cursor()}>
                 <div class="flex items-center gap-3">
-                  <span class="text-text-tertiary">{tr("Showing {{n}} schedules", { n: rows().length })}</span>
+                  <span class="text-text-tertiary">
+                    {tr("Showing {{n}} schedules", { n: rows().length })}
+                  </span>
                   <Button class={TAP} testid="recurring-show-more" onClick={() => void showMore()}>
                     {tr("Show 50 more")}
                   </Button>
@@ -225,9 +279,21 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
           </Show>
         </Show>
         <ul data-testid="recurring-facts" class="flex flex-col gap-1 text-text-secondary">
-          <li>{tr("A draft has no number. It takes the next number in the series when it issues, so a discarded draft leaves no gap.")}</li>
-          <li>{tr("A schedule cannot bill the same period twice. Amounts come from the schedule, not from an agent.")}</li>
-          <li>{tr("Customers who pay by card through Stripe are not here: their invoices follow Who issues what in the issuer settings.")}</li>
+          <li>
+            {tr(
+              "A draft has no number. It takes the next number in the series when it issues, so a discarded draft leaves no gap.",
+            )}
+          </li>
+          <li>
+            {tr(
+              "A schedule cannot bill the same period twice. Amounts come from the schedule, not from an agent.",
+            )}
+          </li>
+          <li>
+            {tr(
+              "Customers who pay by card through Stripe are not here: their invoices follow Who issues what in the issuer settings.",
+            )}
+          </li>
         </ul>
       </div>
     </section>

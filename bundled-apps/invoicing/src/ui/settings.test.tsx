@@ -14,18 +14,18 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import {
-  InvoicingIssuerProfiles,
-  emitVatWarning,
-  isInvalidIban,
-  canDelete,
-  canCreate,
-  validateLogoFile,
-  LOGO_MAX_BYTES,
-  LOGO_ACCEPTED_MIME_TYPES,
-  type IssuerProfileDraft,
-} from "./settings"
 import manifest from "../../app.manifest.json"
+import {
+  canCreate,
+  canDelete,
+  emitVatWarning,
+  InvoicingIssuerProfiles,
+  type IssuerProfileDraft,
+  isInvalidIban,
+  LOGO_ACCEPTED_MIME_TYPES,
+  LOGO_MAX_BYTES,
+  validateLogoFile,
+} from "./settings"
 
 const source = readFileSync(join(import.meta.dir, "settings.tsx"), "utf-8")
 
@@ -85,7 +85,9 @@ describe("InvoicingIssuerProfiles (Phase 17 F6)", () => {
       ["book_enabled", "toggle"],
     ])
     for (const f of fields) {
-      expect(f.source).toEqual({ tool: { get: "einvoicing_settings_values", set: "einvoicing_settings_set" } })
+      expect(f.source).toEqual({
+        tool: { get: "einvoicing_settings_values", set: "einvoicing_settings_set" },
+      })
     }
     expect(fields[0]?.optionsTool).toBe("einvoicing_provider_options")
     // The page's own reads are read-only, ungated, and not for agents.
@@ -191,8 +193,8 @@ describe("InvoicingIssuerProfiles (Phase 17 F6)", () => {
     })
 
     it("every upload/confirm fetch goes through the host fetch, which carries the session auth", () => {
-      expect(source).toContain("hostFetch<UploadUrlResponse>(\"/api/files/upload-url\"")
-      expect(source).toContain("hostFetch<{ id: string }>(\"/api/files/confirm\"")
+      expect(source).toContain('hostFetch<UploadUrlResponse>("/api/files/upload-url"')
+      expect(source).toContain('hostFetch<{ id: string }>("/api/files/confirm"')
     })
   })
 

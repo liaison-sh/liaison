@@ -17,8 +17,10 @@ export const STANDIN_MARKER = "demoStandIn"
 /** The host of a stand-in install's customer-facing links. */
 export const STANDIN_HOST = "billing.payments-standin.example"
 
-export const STANDIN_PORTAL_LOGIN = /^https:\/\/billing\.payments-standin\.example\/p\/login\/[A-Za-z0-9_-]+$/
-export const STANDIN_HOSTED_INVOICE = /^https:\/\/billing\.payments-standin\.example\/i\/[A-Za-z0-9_-]+$/
+export const STANDIN_PORTAL_LOGIN =
+  /^https:\/\/billing\.payments-standin\.example\/p\/login\/[A-Za-z0-9_-]+$/
+export const STANDIN_HOSTED_INVOICE =
+  /^https:\/\/billing\.payments-standin\.example\/i\/[A-Za-z0-9_-]+$/
 
 function parsed(v: unknown): unknown {
   if (typeof v !== "string") return v
@@ -39,6 +41,8 @@ export function isStandInInstall(install: { permissions?: unknown } | null | und
 export async function readStandIn(db: {
   findMany(entity: string, opts?: { limit?: number }): Promise<unknown[]>
 }): Promise<boolean> {
-  const rows = (await db.findMany("install_metadata", { limit: 1 })) as Array<{ permissions?: unknown }>
+  const rows = (await db.findMany("install_metadata", { limit: 1 })) as Array<{
+    permissions?: unknown
+  }>
   return isStandInInstall(rows[0])
 }

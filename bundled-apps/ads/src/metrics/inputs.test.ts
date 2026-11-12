@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { createMockDb } from "../test-db"
 import {
-  gatherShopifyNetRevenue,
-  gatherShopifyRevenueSplit,
+  gatherAllInputs,
+  gatherAttributionRows,
   gatherManualSpendTotal,
   gatherPlatformSpend,
-  gatherAttributionRows,
-  gatherAllInputs,
+  gatherShopifyNetRevenue,
+  gatherShopifyRevenueSplit,
 } from "./inputs"
-import { createMockDb } from "../test-db"
 
 interface Envelope {
   status: "completed" | "pending_approval" | "error"
@@ -20,7 +20,12 @@ const PERIOD = { start: "2026-07-01", end: "2026-07-31" }
 
 function makeExecuteTool(responses: Record<string, Envelope>) {
   return async (target: string): Promise<Envelope> => {
-    return responses[target] ?? { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
+    return (
+      responses[target] ?? {
+        status: "error",
+        error: { code: "not_mocked", message: `no mock for ${target}` },
+      }
+    )
   }
 }
 
@@ -41,7 +46,9 @@ function ordersPage(
       currency: h.currency ?? "EUR",
       attributes: {
         totalAmount: h.total,
-        ...(h.shopTotal !== undefined ? { totalAmountShop: h.shopTotal, shopCurrency: h.shopCurrency ?? "EUR" } : {}),
+        ...(h.shopTotal !== undefined
+          ? { totalAmountShop: h.shopTotal, shopCurrency: h.shopCurrency ?? "EUR" }
+          : {}),
       },
     })),
     nextCursor,
@@ -52,7 +59,10 @@ function ordersPage(
 describe("gatherShopifyNetRevenue", () => {
   it("sums refund-adjusted current totals with source lineage, passing the REAL date-window params", async () => {
     const seenArgs: Record<string, unknown>[] = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target !== "shopify:orders_search") {
         return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
       }
@@ -61,10 +71,16 @@ describe("gatherShopifyNetRevenue", () => {
       // created_at_min/max — reject the query-string form that the old
       // (broken) implementation used.
       if (typeof args.query === "string" && /created_at/.test(args.query)) {
-        return { status: "error", error: { code: "invalid_params", message: "date terms in query are ignored" } }
+        return {
+          status: "error",
+          error: { code: "invalid_params", message: "date terms in query are ignored" },
+        }
       }
       if (!args.created_at_min || !args.created_at_max) {
-        return { status: "error", error: { code: "invalid_params", message: "missing created_at_min/created_at_max" } }
+        return {
+          status: "error",
+          error: { code: "invalid_params", message: "missing created_at_min/created_at_max" },
+        }
       }
       return { status: "completed", result: ordersPage([{ total: "1000" }, { total: "300" }]) }
     }
@@ -78,7 +94,10 @@ describe("gatherShopifyNetRevenue", () => {
 
   it("cursor-paginates until nextCursor is exhausted and sums every page", async () => {
     let call = 0
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       expect(target).toBe("shopify:orders_search")
       call++
       if (call === 1) {
@@ -96,7 +115,10 @@ describe("gatherShopifyNetRevenue", () => {
 
   it("degrades to unavailable (not a throw) when orders_search fails", async () => {
     const executeTool = makeExecuteTool({
-      "shopify:orders_search": { status: "error", error: { code: "connect_error", message: "not connected" } },
+      "shopify:orders_search": {
+        status: "error",
+        error: { code: "connect_error", message: "not connected" },
+      },
     })
     const result = await gatherShopifyNetRevenue({ executeTool }, PERIOD)
     expect(result.value).toBeNull()
@@ -145,7 +167,11 @@ describe("gatherShopifyNetRevenue", () => {
         status: "completed",
         result: {
           results: [
-            hit("1", "1000", { b2bCompany: { name: "A dealer" }, tags: [], lineItems: [{ sku: "KIT-01" }] }),
+            hit("1", "1000", {
+              b2bCompany: { name: "A dealer" },
+              tags: [],
+              lineItems: [{ sku: "KIT-01" }],
+            }),
             hit("2", "500", { tags: ["B2B", "Distribution"], lineItems: [{ sku: "KIT-01" }] }),
             hit("3", "200", { tags: [], lineItems: [{ sku: "KIT-01-B2B" }] }),
             hit("4", "70", { b2bOrder: { b2b: true, reason: "b2b_order_tag" }, tags: ["Trade"] }),
@@ -175,8 +201,22 @@ describe("gatherManualSpendTotal", () => {
     const db = createMockDb({
       seed: {
         manual_spend: [
-          { id: "1", channel: "dealer-co-op", period_start: "2026-07-05", period_end: "2026-07-10", amount: 300, currency: "EUR" },
-          { id: "2", channel: "print", period_start: "2026-06-01", period_end: "2026-06-30", amount: 999, currency: "EUR" },
+          {
+            id: "1",
+            channel: "dealer-co-op",
+            period_start: "2026-07-05",
+            period_end: "2026-07-10",
+            amount: 300,
+            currency: "EUR",
+          },
+          {
+            id: "2",
+            channel: "print",
+            period_start: "2026-06-01",
+            period_end: "2026-06-30",
+            amount: 999,
+            currency: "EUR",
+          },
         ],
       },
     })
@@ -194,18 +234,27 @@ describe("gatherManualSpendTotal", () => {
 
 describe("gatherPlatformSpend", () => {
   it("gathers Meta + Google spend independently — one missing does not block the other", async () => {
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target === "ads:insights_query") {
         // The real tool REQUIRES level and takes time_range {since, until}.
         if (args.level !== "account") {
-          return { status: "error", error: { code: "invalid_params", message: "level is required" } }
+          return {
+            status: "error",
+            error: { code: "invalid_params", message: "level is required" },
+          }
         }
         const tr = args.time_range as { since?: string; until?: string } | undefined
         if (tr?.since !== PERIOD.start || tr?.until !== PERIOD.end) {
           return { status: "error", error: { code: "invalid_params", message: "bad time_range" } }
         }
         // Real envelope: { data: rows, _split, currency }.
-        return { status: "completed", result: { data: [{ spend: 100 }], _split: false, currency: "EUR" } }
+        return {
+          status: "completed",
+          result: { data: [{ spend: 100 }], _split: false, currency: "EUR" },
+        }
       }
       return { status: "error", error: { code: "upstream_500", message: "Google Ads API 500" } }
     }
@@ -222,7 +271,13 @@ describe("gatherPlatformSpend", () => {
       // envelope (throws are kernel-redacted for sandboxed handlers).
       "ads:google_insights_query": {
         status: "completed",
-        result: { error: { code: "google_not_connected", message: "Google not connected: connect the Google account (adwords + content scopes) in app settings" } },
+        result: {
+          error: {
+            code: "google_not_connected",
+            message:
+              "Google not connected: connect the Google account (adwords + content scopes) in app settings",
+          },
+        },
       },
     })
     const { google } = await gatherPlatformSpend({ executeTool }, PERIOD)
@@ -234,7 +289,10 @@ describe("gatherPlatformSpend", () => {
   it("treats an unknown structured error envelope from Google as unavailable", async () => {
     const executeTool = makeExecuteTool({
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 100 }] } },
-      "ads:google_insights_query": { status: "completed", result: { error: { code: "quota_exceeded", message: "daily quota" } } },
+      "ads:google_insights_query": {
+        status: "completed",
+        result: { error: { code: "quota_exceeded", message: "daily quota" } },
+      },
     })
     const { google } = await gatherPlatformSpend({ executeTool }, PERIOD)
     expect(google.value).toBeNull()
@@ -245,7 +303,10 @@ describe("gatherPlatformSpend", () => {
   it("keeps a CONNECTED-but-failing Google read unavailable (unknown spend must degrade, not zero)", async () => {
     const executeTool = makeExecuteTool({
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 100 }] } },
-      "ads:google_insights_query": { status: "error", error: { code: "upstream_500", message: "Google Ads API 500" } },
+      "ads:google_insights_query": {
+        status: "error",
+        error: { code: "upstream_500", message: "Google Ads API 500" },
+      },
     })
     const { google } = await gatherPlatformSpend({ executeTool }, PERIOD)
     expect(google.value).toBeNull()
@@ -256,7 +317,18 @@ describe("gatherPlatformSpend", () => {
     const executeTool = makeExecuteTool({
       "database:db_read": {
         status: "completed",
-        result: { rows: [{ shopify_order_id: "1", conversion_value_minor: "900", conversion_currency: "EUR", ad_consent: "granted", created_at: "2026-07-07" }], truncated: false },
+        result: {
+          rows: [
+            {
+              shopify_order_id: "1",
+              conversion_value_minor: "900",
+              conversion_currency: "EUR",
+              ad_consent: "granted",
+              created_at: "2026-07-07",
+            },
+          ],
+          truncated: false,
+        },
       },
     })
     const result = await gatherAttributionRows({ executeTool }, PERIOD)
@@ -266,7 +338,10 @@ describe("gatherPlatformSpend", () => {
   it("reads Google spend from the { rows } envelope with the flattened cost field", async () => {
     const executeTool = makeExecuteTool({
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 10 }] } },
-      "ads:google_insights_query": { status: "completed", result: { rows: [{ cost: 42.5 }, { cost: 7.5 }], count: 2, currency: "EUR" } },
+      "ads:google_insights_query": {
+        status: "completed",
+        result: { rows: [{ cost: 42.5 }, { cost: 7.5 }], count: 2, currency: "EUR" },
+      },
     })
     const { meta, google } = await gatherPlatformSpend({ executeTool }, PERIOD)
     expect(meta.value).toBe(10)
@@ -277,7 +352,10 @@ describe("gatherPlatformSpend", () => {
 describe("gatherAttributionRows", () => {
   it("prefers the curated database:db_read (real { rows } envelope), widening a date-only period_end to end-of-day", async () => {
     const seen: Record<string, unknown>[] = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target !== "database:db_read") {
         return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
       }
@@ -285,7 +363,15 @@ describe("gatherAttributionRows", () => {
       return {
         status: "completed",
         result: {
-          rows: [{ shopify_order_id: "1", conversion_value_minor: 100, conversion_currency: "EUR", ad_consent: "granted", created_at: "2026-07-01" }],
+          rows: [
+            {
+              shopify_order_id: "1",
+              conversion_value_minor: 100,
+              conversion_currency: "EUR",
+              ad_consent: "granted",
+              created_at: "2026-07-01",
+            },
+          ],
           truncated: false,
         },
       }
@@ -299,10 +385,24 @@ describe("gatherAttributionRows", () => {
 
   it("treats a db_read { error } envelope as unavailable and falls back to db_query", async () => {
     const executeTool = makeExecuteTool({
-      "database:db_read": { status: "completed", result: { error: { code: "read_not_found", message: "no such read" } } },
+      "database:db_read": {
+        status: "completed",
+        result: { error: { code: "read_not_found", message: "no such read" } },
+      },
       "database:db_query": {
         status: "completed",
-        result: { rows: [{ shopify_order_id: "2", conversion_value_minor: 200, conversion_currency: "EUR", ad_consent: "granted", created_at: "2026-07-02" }], truncated: false },
+        result: {
+          rows: [
+            {
+              shopify_order_id: "2",
+              conversion_value_minor: 200,
+              conversion_currency: "EUR",
+              ad_consent: "granted",
+              created_at: "2026-07-02",
+            },
+          ],
+          truncated: false,
+        },
       },
     })
     const result = await gatherAttributionRows({ executeTool }, PERIOD)
@@ -313,14 +413,28 @@ describe("gatherAttributionRows", () => {
 
   it("falls back to database:db_query when the curated read tool call fails", async () => {
     const seen: Record<string, unknown>[] = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target === "database:db_read") {
         return { status: "error", error: { code: "not_found", message: "no such read" } }
       }
       seen.push(args)
       return {
         status: "completed",
-        result: { rows: [{ shopify_order_id: "2", conversion_value_minor: 200, conversion_currency: "EUR", ad_consent: "granted", created_at: "2026-07-02" }], truncated: false },
+        result: {
+          rows: [
+            {
+              shopify_order_id: "2",
+              conversion_value_minor: 200,
+              conversion_currency: "EUR",
+              ad_consent: "granted",
+              created_at: "2026-07-02",
+            },
+          ],
+          truncated: false,
+        },
       }
     }
     const result = await gatherAttributionRows({ executeTool }, PERIOD)
@@ -335,8 +449,14 @@ describe("gatherAttributionRows", () => {
 
   it("skips the db_query fallback when period bounds are not plain dates (no SQL smuggling)", async () => {
     const executeTool = makeExecuteTool({
-      "database:db_read": { status: "error", error: { code: "connect_error", message: "not connected" } },
-      "database:db_query": { status: "completed", result: { rows: [{ shopify_order_id: "x" }], truncated: false } },
+      "database:db_read": {
+        status: "error",
+        error: { code: "connect_error", message: "not connected" },
+      },
+      "database:db_query": {
+        status: "completed",
+        result: { rows: [{ shopify_order_id: "x" }], truncated: false },
+      },
     })
     const result = await gatherAttributionRows(
       { executeTool },
@@ -348,8 +468,14 @@ describe("gatherAttributionRows", () => {
 
   it("degrades to unavailable (never a crash) when both the curated read and db_query fail", async () => {
     const executeTool = makeExecuteTool({
-      "database:db_read": { status: "error", error: { code: "connect_error", message: "database app not connected" } },
-      "database:db_query": { status: "error", error: { code: "connect_error", message: "database app not connected" } },
+      "database:db_read": {
+        status: "error",
+        error: { code: "connect_error", message: "database app not connected" },
+      },
+      "database:db_query": {
+        status: "error",
+        error: { code: "connect_error", message: "database app not connected" },
+      },
     })
     const result = await gatherAttributionRows({ executeTool }, PERIOD)
     expect(result.value).toEqual([])
@@ -364,8 +490,14 @@ describe("gatherAllInputs", () => {
       "shopify:orders_search": { status: "completed", result: ordersPage([]) },
       "ads:insights_query": { status: "completed", result: { data: [] } },
       "ads:google_insights_query": { status: "completed", result: { rows: [], count: 0 } },
-      "database:db_read": { status: "error", error: { code: "connect_error", message: "not connected" } },
-      "database:db_query": { status: "error", error: { code: "connect_error", message: "not connected" } },
+      "database:db_read": {
+        status: "error",
+        error: { code: "connect_error", message: "not connected" },
+      },
+      "database:db_query": {
+        status: "error",
+        error: { code: "connect_error", message: "not connected" },
+      },
     })
     const result = await gatherAllInputs({ db, executeTool }, PERIOD)
     expect(result.attribution.value).toEqual([])
@@ -389,7 +521,10 @@ describe("gatherAllInputs: nested tool fan-out stays within the kernel breadth",
     const responses: Record<string, Envelope> = {
       "shopify:orders_search": { status: "completed", result: ordersPage([{ total: "100.00" }]) },
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 10 }] } },
-      "ads:google_insights_query": { status: "completed", result: { rows: [{ cost: 5 }], count: 1 } },
+      "ads:google_insights_query": {
+        status: "completed",
+        result: { rows: [{ cost: 5 }], count: 1 },
+      },
       "database:db_read": { status: "completed", result: { rows: [], truncated: false } },
       "database:db_query": { status: "completed", result: { rows: [], truncated: false } },
     }
@@ -402,7 +537,9 @@ describe("gatherAllInputs: nested tool fan-out stays within the kernel breadth",
       peak = Math.max(peak, inflight)
       try {
         for (let i = 0; i < 5; i++) await Promise.resolve()
-        return responses[target] ?? { status: "error", error: { code: "not_mocked", message: target } }
+        return (
+          responses[target] ?? { status: "error", error: { code: "not_mocked", message: target } }
+        )
       } finally {
         inflight--
       }

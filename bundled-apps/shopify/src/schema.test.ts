@@ -12,7 +12,9 @@ interface SchemaTable {
 }
 
 function loadSchema(): Record<string, SchemaTable> {
-  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { schema?: Record<string, SchemaTable> }
+  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+    schema?: Record<string, SchemaTable>
+  }
   if (!m.schema) throw new Error("manifest has no `schema` block")
   return m.schema
 }

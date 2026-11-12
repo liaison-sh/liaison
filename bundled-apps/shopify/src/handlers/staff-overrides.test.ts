@@ -56,7 +56,10 @@ function makeCtx(): { ctx: AppContext; tables: Map<string, DbRow[]> } {
       updateMany: async () => ({ count: 0 }),
       delete: async (entity: string, id: string) => {
         const rows = tables.get(entity) ?? []
-        tables.set(entity, rows.filter((r) => r.id !== id))
+        tables.set(
+          entity,
+          rows.filter((r) => r.id !== id),
+        )
       },
       count: async () => 0,
     },
@@ -109,10 +112,7 @@ describe("staff_overrides_upsert", () => {
 
   it("updates an existing row keyed by liaisonUserId (idempotent re-map)", async () => {
     const { ctx, tables } = makeCtx()
-    await staff_overrides_upsert(
-      { liaisonUserId: MARIE_ID, shopifyStaffId: "s1" },
-      ctx,
-    )
+    await staff_overrides_upsert({ liaisonUserId: MARIE_ID, shopifyStaffId: "s1" }, ctx)
     await staff_overrides_upsert(
       { liaisonUserId: MARIE_ID, shopifyStaffId: "s2", reason: "moved teams" },
       ctx,
@@ -125,8 +125,12 @@ describe("staff_overrides_upsert", () => {
 
   it("throws on missing liaisonUserId or shopifyStaffId", async () => {
     const { ctx } = makeCtx()
-    await expect(staff_overrides_upsert({ shopifyStaffId: "s1" }, ctx)).rejects.toThrow(/liaisonUserId/)
-    await expect(staff_overrides_upsert({ liaisonUserId: MARIE_ID }, ctx)).rejects.toThrow(/shopifyStaffId/)
+    await expect(staff_overrides_upsert({ shopifyStaffId: "s1" }, ctx)).rejects.toThrow(
+      /liaisonUserId/,
+    )
+    await expect(staff_overrides_upsert({ liaisonUserId: MARIE_ID }, ctx)).rejects.toThrow(
+      /shopifyStaffId/,
+    )
   })
 
   it("two distinct users get two distinct rows", async () => {
@@ -140,10 +144,7 @@ describe("staff_overrides_upsert", () => {
 describe("staff_overrides_delete", () => {
   it("removes the row by id", async () => {
     const { ctx, tables } = makeCtx()
-    const ins = await staff_overrides_upsert(
-      { liaisonUserId: MARIE_ID, shopifyStaffId: "s1" },
-      ctx,
-    )
+    const ins = await staff_overrides_upsert({ liaisonUserId: MARIE_ID, shopifyStaffId: "s1" }, ctx)
     await staff_overrides_delete({ id: ins.id }, ctx)
     expect((tables.get("staff_overrides") ?? []).length).toBe(0)
   })
@@ -168,7 +169,10 @@ describe("staff_overrides_upsert_preflight - stage-time refusal", () => {
     const { ctx, tables } = makeCtx()
     await staff_overrides_upsert({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx)
     const before = [...(tables.get("staff_overrides") ?? [])]
-    const out = await staff_overrides_upsert_preflight({ liaisonUserId: "u2", shopifyStaffId: "s1" }, ctx)
+    const out = await staff_overrides_upsert_preflight(
+      { liaisonUserId: "u2", shopifyStaffId: "s1" },
+      ctx,
+    )
     expect("error" in out).toBe(true)
     const err = (out as { error: { code: string; message: string } }).error
     expect(err.code).toBe("STAFF_ID_CONFLICT")
@@ -185,8 +189,12 @@ describe("staff_overrides_upsert_preflight - stage-time refusal", () => {
 
   it("passes a genuine new mapping and a re-upsert of the same user", async () => {
     const { ctx } = makeCtx()
-    expect(await staff_overrides_upsert_preflight({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx)).toEqual({ ok: true })
+    expect(
+      await staff_overrides_upsert_preflight({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx),
+    ).toEqual({ ok: true })
     await staff_overrides_upsert({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx)
-    expect(await staff_overrides_upsert_preflight({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx)).toEqual({ ok: true })
+    expect(
+      await staff_overrides_upsert_preflight({ liaisonUserId: "u1", shopifyStaffId: "s1" }, ctx),
+    ).toEqual({ ok: true })
   })
 })

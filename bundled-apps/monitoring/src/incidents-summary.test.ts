@@ -18,11 +18,48 @@ describe("incidentsSummaryHandler", () => {
     const { ctx } = makeCtx()
     const now = Date.now()
     await seed(ctx, [
-      { source: "watchdog-prod", severity: "critical", title: "a", status: "open", count: 3, last_seen_at: new Date(now - 60_000).toISOString() },
-      { source: "watchdog-prod", severity: "warning", title: "b", status: "acknowledged", count: 1, last_seen_at: new Date(now - 120_000).toISOString() },
-      { source: "shopify-disputes", severity: "warning", title: "c", status: "open", count: 1, last_seen_at: new Date(now - 30_000).toISOString() },
-      { source: "watchdog-prod", severity: "info", title: "d", status: "resolved", count: 1, resolved_at: new Date(now - 3_600_000).toISOString(), last_seen_at: new Date(now - 3_600_000).toISOString() },
-      { source: "watchdog-prod", severity: "info", title: "e", status: "resolved", count: 1, resolved_at: new Date(now - 48 * 3_600_000).toISOString(), last_seen_at: new Date(now - 48 * 3_600_000).toISOString() },
+      {
+        source: "watchdog-prod",
+        severity: "critical",
+        title: "a",
+        status: "open",
+        count: 3,
+        last_seen_at: new Date(now - 60_000).toISOString(),
+      },
+      {
+        source: "watchdog-prod",
+        severity: "warning",
+        title: "b",
+        status: "acknowledged",
+        count: 1,
+        last_seen_at: new Date(now - 120_000).toISOString(),
+      },
+      {
+        source: "shopify-disputes",
+        severity: "warning",
+        title: "c",
+        status: "open",
+        count: 1,
+        last_seen_at: new Date(now - 30_000).toISOString(),
+      },
+      {
+        source: "watchdog-prod",
+        severity: "info",
+        title: "d",
+        status: "resolved",
+        count: 1,
+        resolved_at: new Date(now - 3_600_000).toISOString(),
+        last_seen_at: new Date(now - 3_600_000).toISOString(),
+      },
+      {
+        source: "watchdog-prod",
+        severity: "info",
+        title: "e",
+        status: "resolved",
+        count: 1,
+        resolved_at: new Date(now - 48 * 3_600_000).toISOString(),
+        last_seen_at: new Date(now - 48 * 3_600_000).toISOString(),
+      },
     ])
     const res = await incidentsSummaryHandler({}, ctx)
     expect(res.data.open).toEqual({ critical: 1, warning: 1, info: 0, total: 2 })
@@ -56,17 +93,36 @@ describe("incidentsSummaryHandler: profiles and config", () => {
   it("returns profiles, warnings, the ordered source list, monitoringUrl and canConfigure", async () => {
     const { ctx } = makeCtx({
       config: {
-        monitoringSources: [{ source: "watchdog-prod", label: "Production", rank: 1, urgent: true }, { source: "bad", hue: -1 }],
+        monitoringSources: [
+          { source: "watchdog-prod", label: "Production", rank: 1, urgent: true },
+          { source: "bad", hue: -1 },
+        ],
         monitoringUrl: "https://grafana.example.com/d/1",
       },
       scopes: ["kernel:apps:admin"],
     })
     await seed(ctx, [
-      { source: "shopify-disputes", severity: "warning", title: "c", status: "open", count: 1, last_seen_at: new Date().toISOString() },
-      { source: "cron", severity: "info", title: "d", status: "open", count: 1, last_seen_at: new Date().toISOString() },
+      {
+        source: "shopify-disputes",
+        severity: "warning",
+        title: "c",
+        status: "open",
+        count: 1,
+        last_seen_at: new Date().toISOString(),
+      },
+      {
+        source: "cron",
+        severity: "info",
+        title: "d",
+        status: "open",
+        count: 1,
+        last_seen_at: new Date().toISOString(),
+      },
     ])
     const res = await incidentsSummaryHandler({}, ctx)
-    expect(res.data.profiles).toEqual([{ source: "watchdog-prod", label: "Production", rank: 1, urgent: true }])
+    expect(res.data.profiles).toEqual([
+      { source: "watchdog-prod", label: "Production", rank: 1, urgent: true },
+    ])
     expect(res.data.warnings.length).toBe(1)
     expect(res.data.sourceOrder).toEqual(["watchdog-prod", "cron", "shopify-disputes"])
     expect(res.data.sources.find((s) => s.source === "cron")?.profile).toBeNull()
@@ -75,7 +131,10 @@ describe("incidentsSummaryHandler: profiles and config", () => {
   })
 
   it("hides a non-http monitoringUrl and denies configure without kernel:apps:admin", async () => {
-    const { ctx } = makeCtx({ config: { monitoringUrl: "javascript:alert(1)" }, scopes: ["monitoring:incidents:read"] })
+    const { ctx } = makeCtx({
+      config: { monitoringUrl: "javascript:alert(1)" },
+      scopes: ["monitoring:incidents:read"],
+    })
     const res = await incidentsSummaryHandler({}, ctx)
     expect(res.data.monitoringUrl).toBeNull()
     expect(res.data.canConfigure).toBe(false)

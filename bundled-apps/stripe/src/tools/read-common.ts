@@ -11,7 +11,12 @@ type Obj = Record<string, unknown>
 export interface ReadDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number; offset?: number },
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+      offset?: number
+    },
   ): Promise<unknown[]>
 }
 
@@ -27,9 +32,14 @@ export const MAX_LIMIT = 50
 export const SCAN_CAP = 5000
 
 export const iso = (v: unknown): string | null =>
-  v instanceof Date ? v.toISOString() : typeof v === "string" && v ? new Date(v).toISOString() : null
+  v instanceof Date
+    ? v.toISOString()
+    : typeof v === "string" && v
+      ? new Date(v).toISOString()
+      : null
 export const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null)
-export const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v))
+export const num = (v: unknown): number | null =>
+  v === null || v === undefined || v === "" ? null : Number(v)
 
 export function limitOf(v: unknown): number {
   const n = Math.floor(Number(v))
@@ -82,13 +92,25 @@ export async function readPage(
   limit: number,
   orderBy: Record<string, "asc" | "desc">,
 ): Promise<{ rows: Obj[]; more: boolean }> {
-  const rows = (await ctx.db.findMany(entity, { where, orderBy, limit: limit + 1, offset })) as Obj[]
+  const rows = (await ctx.db.findMany(entity, {
+    where,
+    orderBy,
+    limit: limit + 1,
+    offset,
+  })) as Obj[]
   return { rows: rows.slice(0, limit), more: rows.length > limit }
 }
 
 /** The Stripe customer ids linked to a contact or a company (mirror only). */
-export async function customerIdsFor(ctx: ReadCtx, by: { contactId?: string; companyId?: string }): Promise<string[]> {
-  const where = by.contactId ? { contact_id: by.contactId } : by.companyId ? { company_id: by.companyId } : null
+export async function customerIdsFor(
+  ctx: ReadCtx,
+  by: { contactId?: string; companyId?: string },
+): Promise<string[]> {
+  const where = by.contactId
+    ? { contact_id: by.contactId }
+    : by.companyId
+      ? { company_id: by.companyId }
+      : null
   if (!where) return []
   const rows = (await ctx.db.findMany("stripe_customers", { where, limit: 50 })) as Obj[]
   return rows.filter((r) => r.deleted_at == null).map((r) => String(r.stripe_id))

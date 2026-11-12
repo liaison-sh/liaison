@@ -6,11 +6,11 @@
 // name-only search answered "no previous invoice" (fixtures are invented).
 
 import { describe, expect, test } from "bun:test"
+import { createMockDb } from "@liaison/test-helpers/mock-db"
 import manifest from "../app.manifest.json"
 import type { CrossAppEnvelope } from "./cross-app"
 import { customerHistory } from "./customer-history"
 import { documentsSearch, documentsSearchTool, type ReadsCtx } from "./reads"
-import { createMockDb } from "@liaison/test-helpers/mock-db"
 
 const INVOICE_ID = "6d1f2c3a-1b2c-4d5e-8f90-0a1b2c3d4e01"
 const OTHER_ID = "6d1f2c3a-1b2c-4d5e-8f90-0a1b2c3d4e02"
@@ -90,8 +90,13 @@ function ok(result: unknown): CrossAppEnvelope {
   return { status: "completed", result } as CrossAppEnvelope
 }
 
-function makeCtx(opts: { tools?: Record<string, (args: Record<string, unknown>) => unknown> } = {}) {
-  const db = createMockDb({ seed: { documents: [invoice, other, old], document_lines: lines } }, { bridgeWhereOperators: true })
+function makeCtx(
+  opts: { tools?: Record<string, (args: Record<string, unknown>) => unknown> } = {},
+) {
+  const db = createMockDb(
+    { seed: { documents: [invoice, other, old], document_lines: lines } },
+    { bridgeWhereOperators: true },
+  )
   const calls: Array<{ target: string; args: Record<string, unknown> }> = []
   const ctx: ReadsCtx = {
     db: {
@@ -103,7 +108,11 @@ function makeCtx(opts: { tools?: Record<string, (args: Record<string, unknown>) 
     executeTool: async (target, args) => {
       calls.push({ target, args })
       const handler = opts.tools?.[target]
-      if (!handler) return { status: "error", error: { code: "tool_not_found", message: "not installed" } } as CrossAppEnvelope
+      if (!handler)
+        return {
+          status: "error",
+          error: { code: "tool_not_found", message: "not installed" },
+        } as CrossAppEnvelope
       return ok(handler(args))
     },
   }
@@ -146,9 +155,18 @@ describe("documents_search finds a customer named only in the address", () => {
   test("contact_id also returns the documents made out to the contact's email or address", async () => {
     const { ctx } = makeCtx({
       tools: {
-        "kernel:contacts_read": () => ({ contact: { id: CONTACT_ID, email: "hello@fenwick-tolle.example" } }),
+        "kernel:contacts_read": () => ({
+          contact: { id: CONTACT_ID, email: "hello@fenwick-tolle.example" },
+        }),
         "kernel:contacts_addresses_list": () => ({
-          addresses: [{ street1: "Via Esempio Nuova 8", postalCode: "10124", city: "Torino", countryIso2: "IT" }],
+          addresses: [
+            {
+              street1: "Via Esempio Nuova 8",
+              postalCode: "10124",
+              city: "Torino",
+              countryIso2: "IT",
+            },
+          ],
         }),
       },
     })
@@ -183,7 +201,9 @@ describe("documents_search finds a customer named only in the address", () => {
   test("a number with no close match says that too", async () => {
     const { ctx } = makeCtx()
     const r = (await documentsSearchTool(ctx, { query: "F-2026-9999" })) as { hint: string }
-    expect(r.hint).toBe('No document is numbered "F-2026-9999". No document number ends in 9999 either.')
+    expect(r.hint).toBe(
+      'No document is numbered "F-2026-9999". No document number ends in 9999 either.',
+    )
   })
 })
 
@@ -220,7 +240,9 @@ describe("customer_history", () => {
     expect(h.documents.map((d) => d.number)).toEqual(["3107"])
     expect(h.shopify).toBe("checked")
     expect(h.shopify_orders.map((o) => o.order)).toEqual(["#3107"])
-    const queries = calls.filter((c) => c.target === "shopify:orders_search").map((c) => c.args.query)
+    const queries = calls
+      .filter((c) => c.target === "shopify:orders_search")
+      .map((c) => c.args.query)
     expect(queries).toContain('"Brenna Valdi"')
     expect(queries).toContain("name:#3107")
   })
@@ -235,7 +257,14 @@ describe("customer_history", () => {
   })
 
   test("lists the schedules that bill the customer, and says a lasting price change is made on the schedule", async () => {
-    const draft = { ...other, id: "6d1f2c3a-1b2c-4d5e-8f90-0a1b2c3d4e09", status: "draft", number: null, counterparty_name: "Quillmere Studio", counterparty_contact_id: CONTACT_ID }
+    const draft = {
+      ...other,
+      id: "6d1f2c3a-1b2c-4d5e-8f90-0a1b2c3d4e09",
+      status: "draft",
+      number: null,
+      counterparty_name: "Quillmere Studio",
+      counterparty_contact_id: CONTACT_ID,
+    }
     const schedule = (id: string, status: string) => ({
       id,
       contact_id: CONTACT_ID,
@@ -251,13 +280,20 @@ describe("customer_history", () => {
         seed: {
           documents: [draft],
           document_lines: [],
-          recurring_schedules: [schedule("9a1b2c3d-0000-4000-8000-000000000001", "active"), schedule("9a1b2c3d-0000-4000-8000-000000000002", "ended")],
+          recurring_schedules: [
+            schedule("9a1b2c3d-0000-4000-8000-000000000001", "active"),
+            schedule("9a1b2c3d-0000-4000-8000-000000000002", "ended"),
+          ],
         },
       },
       { bridgeWhereOperators: true },
     )
     const ctx: ReadsCtx = {
-      db: { findMany: (e, o) => db.findMany(e, o), findOne: (e, id) => db.findOne(e, id), count: (e, o) => db.count(e, o) },
+      db: {
+        findMany: (e, o) => db.findMany(e, o),
+        findOne: (e, id) => db.findOne(e, id),
+        count: (e, o) => db.count(e, o),
+      },
       kernel: { listApprovals: async () => [] },
     }
     const h = await customerHistory(ctx, { customer: "Quillmere" })
@@ -267,7 +303,9 @@ describe("customer_history", () => {
         status: "active",
         repeats: "month",
         next_issue_on: "2026-12-01",
-        lines: [{ description: "Monthly retainer, {period}", quantity: "1", unit_price_minor: "55000" }],
+        lines: [
+          { description: "Monthly retainer, {period}", quantity: "1", unit_price_minor: "55000" },
+        ],
       },
     ])
     expect(h.note).toContain("recurring_schedule_update")
@@ -283,7 +321,9 @@ describe("customer_history", () => {
 })
 
 describe("manifest", () => {
-  const tools = (manifest as unknown as { tools: Record<string, { description?: string; handler?: string }> }).tools
+  const tools = (
+    manifest as unknown as { tools: Record<string, { description?: string; handler?: string }> }
+  ).tools
   test("customer_history is declared and says it answers 'same price as last time'", () => {
     expect(tools.customer_history?.handler).toBe("customerHistoryHandler")
     expect(tools.customer_history?.description).toContain("same price as last time")
@@ -291,12 +331,29 @@ describe("manifest", () => {
   })
 
   test("the document search index carries the address, email, external order reference and lines", () => {
-    const doc = (manifest as unknown as {
-      entities: Record<string, { indexFields?: { bodyFields?: string[]; bodyFrom?: { tableName: string; columns: string[] } } }>
-    }).entities.document
+    const doc = (
+      manifest as unknown as {
+        entities: Record<
+          string,
+          {
+            indexFields?: {
+              bodyFields?: string[]
+              bodyFrom?: { tableName: string; columns: string[] }
+            }
+          }
+        >
+      }
+    ).entities.document
     expect(doc?.indexFields?.bodyFields).toEqual(
-      expect.arrayContaining(["counterparty_address", "counterparty_email", "external_refs.shopify_order_number"]),
+      expect.arrayContaining([
+        "counterparty_address",
+        "counterparty_email",
+        "external_refs.shopify_order_number",
+      ]),
     )
-    expect(doc?.indexFields?.bodyFrom).toMatchObject({ tableName: "document_lines", columns: ["description"] })
+    expect(doc?.indexFields?.bodyFrom).toMatchObject({
+      tableName: "document_lines",
+      columns: ["description"],
+    })
   })
 })

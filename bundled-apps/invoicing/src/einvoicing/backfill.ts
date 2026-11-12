@@ -13,13 +13,14 @@
 // The `identity-confirm` job runs the same registry confirmation over derived, unconfirmed SIRENs
 // (read off a VAT id at issue time). A confirmation bumps `changed_at`, which re-drives the
 // parks waiting on that contact.
-import { deriveKind } from "./identity-derive"
+
 import { isValidSiren, isValidSiret, sirenFromFrVat } from "./identity"
-import { type IdentityToolsCtx, contactNames, registryColumns } from "./identity-tools"
+import { deriveKind } from "./identity-derive"
+import { contactNames, type IdentityToolsCtx, registryColumns } from "./identity-tools"
 import {
+  candidateMatchesName,
   type RegistryCandidate,
   type RegistryUnconfirmedReason,
-  candidateMatchesName,
   registrySearch,
 } from "./lookup"
 import { einvoicingReadiness } from "./readiness"
@@ -57,7 +58,10 @@ export const CONFIRM_RECHECK_MS = 24 * 60 * 60 * 1000
 
 export type ConfirmOutcome =
   | { status: "confirmed"; candidate: RegistryCandidate }
-  | { status: "unconfirmed"; reason: RegistryUnconfirmedReason | "ambiguous" | "ceased" | "name_mismatch" }
+  | {
+      status: "unconfirmed"
+      reason: RegistryUnconfirmedReason | "ambiguous" | "ceased" | "name_mismatch"
+    }
 
 /** A SIREN is confirmed only by a single exact registry hit, active, whose registered name
  *  matches one of the names the counterparty is known under. */
@@ -71,11 +75,18 @@ export async function confirmSiren(
   if (res.candidates.length !== 1) return { status: "unconfirmed", reason: "ambiguous" }
   const candidate = res.candidates[0] as RegistryCandidate
   if (candidate.status !== "A") return { status: "unconfirmed", reason: "ceased" }
-  if (!candidateMatchesName(candidate, names)) return { status: "unconfirmed", reason: "name_mismatch" }
+  if (!candidateMatchesName(candidate, names))
+    return { status: "unconfirmed", reason: "name_mismatch" }
   return { status: "confirmed", candidate }
 }
 
-function confirmedColumns(candidate: RegistryCandidate, siren: string, vatId: string | null, country: string | null, now: Date): Row {
+function confirmedColumns(
+  candidate: RegistryCandidate,
+  siren: string,
+  vatId: string | null,
+  country: string | null,
+  now: Date,
+): Row {
   const fromVat = !!vatId && sirenFromFrVat(vatId, { billingCountry: country }) === siren
   return {
     siren,
@@ -91,7 +102,9 @@ const COUNTRY_LINE = /^(france|fr|république française|republique francaise)$/
 
 /** Structured billing from a printed address: the `NNNNN City` line (the last one, or the one
  *  before a trailing country line), and the street line before it. Null when there is none. */
-export function parseBillingBlob(blob: string | null | undefined): { line1: string | null; postcode: string; city: string } | null {
+export function parseBillingBlob(
+  blob: string | null | undefined,
+): { line1: string | null; postcode: string; city: string } | null {
   const lines = (blob ?? "")
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -144,7 +157,9 @@ function docTime(d: Row): string {
 
 /** The contact's latest document: the most recent issued one, else the most recent of any. */
 function latestDocument(docs: Row[]): Row | null {
-  const sorted = [...docs].sort((a, b) => (docTime(a) < docTime(b) ? 1 : docTime(a) > docTime(b) ? -1 : 0))
+  const sorted = [...docs].sort((a, b) =>
+    docTime(a) < docTime(b) ? 1 : docTime(a) > docTime(b) ? -1 : 0,
+  )
   return sorted.find((d) => d.status !== "draft") ?? sorted[0] ?? null
 }
 
@@ -153,7 +168,9 @@ async function kernelCompany(ctx: BackfillCtx, contactId: string): Promise<strin
   try {
     const env = await ctx.executeTool("kernel:contacts_read", { contactId })
     if (env.status !== "completed") return null
-    return str((env.result as { contact?: { company?: unknown } } | null | undefined)?.contact?.company)
+    return str(
+      (env.result as { contact?: { company?: unknown } } | null | undefined)?.contact?.company,
+    )
   } catch {
     return null
   }
@@ -172,7 +189,8 @@ async function issuerSteps(ctx: BackfillCtx, counts: Counts): Promise<Step[]> {
     if (upper(r.country_code) !== "FR" && upper(r.country) !== "FR") continue
     const id = digits(r.tax_registration_id)
     let patch: Row | null = null
-    if (id.length === 14 && isValidSiret(id)) patch = { siren: id.slice(0, 9), ...(str(r.siret) ? {} : { siret: id }) }
+    if (id.length === 14 && isValidSiret(id))
+      patch = { siren: id.slice(0, 9), ...(str(r.siret) ? {} : { siret: id }) }
     else if (id.length === 9 && isValidSiren(id)) patch = { siren: id }
     if (!patch) continue
     counts.issuers += 1
@@ -182,7 +200,10 @@ async function issuerSteps(ctx: BackfillCtx, counts: Counts): Promise<Step[]> {
         await ctx.db.update("issuer_profiles", String(r.id), p)
         // Row-level security drops an update the caller's scopes do not cover without an error:
         // read it back so the report never claims a write that did not happen.
-        const after = (await ctx.db.findMany("issuer_profiles", { where: { id: r.id }, limit: 1 })) as Row[]
+        const after = (await ctx.db.findMany("issuer_profiles", {
+          where: { id: r.id },
+          limit: 1,
+        })) as Row[]
         if (str(after[0]?.siren) === p.siren) return true
         counts.issuers_not_written += 1
         return false
@@ -222,15 +243,27 @@ interface ContactPlan {
   run(lookup: (siren: string) => Promise<ConfirmOutcome>): Promise<Step[]>
 }
 
-async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, now: Date): Promise<ContactPlan> {
+async function planContact(
+  ctx: BackfillCtx,
+  contactId: string,
+  counts: Counts,
+  now: Date,
+): Promise<ContactPlan> {
   const [identities, docs] = await Promise.all([
-    ctx.db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 }) as Promise<Row[]>,
-    ctx.db.findMany("documents", { where: { counterparty_contact_id: contactId }, limit: CONTACT_DOCS }) as Promise<Row[]>,
+    ctx.db.findMany("counterparty_identities", {
+      where: { contact_id: contactId },
+      limit: 1,
+    }) as Promise<Row[]>,
+    ctx.db.findMany("documents", {
+      where: { counterparty_contact_id: contactId },
+      limit: CONTACT_DOCS,
+    }) as Promise<Row[]>,
   ])
   const existing = identities[0] ?? null
   const latest = latestDocument(docs)
   const country = upper(latest?.billing_country_code) ?? upper(latest?.counterparty_country)
-  const vat = str(existing?.vat_id) ?? docs.map((d) => str(d.counterparty_vat_id)).find((v) => !!v) ?? null
+  const vat =
+    str(existing?.vat_id) ?? docs.map((d) => str(d.counterparty_vat_id)).find((v) => !!v) ?? null
   // A person or a registry check recorded this identity: never touched.
   const recorded = !!existing && existing.source !== "derived"
 
@@ -245,7 +278,8 @@ async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, 
       origin: docs.some((d) => str(d.shopify_order_id)) ? "shopify" : "manual",
     })
   }
-  const billing = kind === "business" && country === "FR" ? billingSteps(ctx, docs, latest, counts) : []
+  const billing =
+    kind === "business" && country === "FR" ? billingSteps(ctx, docs, latest, counts) : []
 
   if (recorded) {
     counts.kept += 1
@@ -255,8 +289,11 @@ async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, 
   const patch: Row = {}
   if (!str(existing?.customer_kind) && kind) patch.customer_kind = kind
   if (!str(existing?.vat_id) && vat) patch.vat_id = vat
-  const siren = str(existing?.siren) ?? (kind === "business" ? sirenFromFrVat(vat, { billingCountry: country }) : null)
-  const sirenToConfirm = kind === "business" && siren && isValidSiren(siren) && !existing?.confirmed_via ? siren : null
+  const siren =
+    str(existing?.siren) ??
+    (kind === "business" ? sirenFromFrVat(vat, { billingCountry: country }) : null)
+  const sirenToConfirm =
+    kind === "business" && siren && isValidSiren(siren) && !existing?.confirmed_via ? siren : null
 
   return {
     sirenToConfirm,
@@ -265,7 +302,10 @@ async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, 
         const outcome = await lookup(sirenToConfirm)
         if (outcome.status === "confirmed") {
           counts.confirmed += 1
-          Object.assign(patch, confirmedColumns(outcome.candidate, sirenToConfirm, vat, country, now))
+          Object.assign(
+            patch,
+            confirmedColumns(outcome.candidate, sirenToConfirm, vat, country, now),
+          )
         } else {
           counts.unconfirmed += 1
         }
@@ -276,7 +316,10 @@ async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, 
       const data = { ...patch, changed_at: now }
       if (existing) {
         counts.identities_updated += 1
-        steps.push({ apply: async () => void (await ctx.db.update("counterparty_identities", String(existing.id), data)) })
+        steps.push({
+          apply: async () =>
+            void (await ctx.db.update("counterparty_identities", String(existing.id), data)),
+        })
       } else if (patch.customer_kind) {
         counts.identities_created += 1
         steps.push({
@@ -301,7 +344,10 @@ export async function backfillIdentities(
 ): Promise<Row> {
   const dryRun = input?.dry_run !== false
   const requested = Number(input?.limit ?? BACKFILL_DEFAULT_LIMIT)
-  const limit = Math.min(BACKFILL_MAX_LIMIT, Math.max(1, Number.isFinite(requested) ? Math.floor(requested) : BACKFILL_DEFAULT_LIMIT))
+  const limit = Math.min(
+    BACKFILL_MAX_LIMIT,
+    Math.max(1, Number.isFinite(requested) ? Math.floor(requested) : BACKFILL_DEFAULT_LIMIT),
+  )
   const { offset, after } = parseCursor(input?.cursor)
   const now = new Date()
   const counts: Counts = {
@@ -397,7 +443,10 @@ export async function identityConfirmJob(
   opts: { now?: Date } = {},
 ): Promise<{ checked: number; confirmed: number }> {
   const now = opts.now ?? new Date()
-  const rows = (await ctx.db.findMany("counterparty_identities", { where: { source: "derived" }, limit: 500 })) as Row[]
+  const rows = (await ctx.db.findMany("counterparty_identities", {
+    where: { source: "derived" },
+    limit: 500,
+  })) as Row[]
   const due = rows
     .filter((r) => {
       const siren = str(r.siren)

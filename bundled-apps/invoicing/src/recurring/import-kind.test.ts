@@ -12,7 +12,9 @@ const record = (over: Record<string, unknown> = {}) => ({
   contactId: "contact-1",
   repeats: "month",
   billingDay: "last",
-  lines: [{ description: "Support plan {period}", quantity: 1, unitPriceMinor: 4900, taxRateBp: 2000 }],
+  lines: [
+    { description: "Support plan {period}", quantity: 1, unitPriceMinor: 4900, taxRateBp: 2000 },
+  ],
   ...over,
 })
 const batch = (records: Array<Record<string, unknown>>) => ({
@@ -24,7 +26,11 @@ const batch = (records: Array<Record<string, unknown>>) => ({
 
 async function setup() {
   const db = mockDb()
-  const issuer = await db.insert("issuer_profiles", { legal_name: "Fabrikam", country: "FR", default_language: "fr" })
+  const issuer = await db.insert("issuer_profiles", {
+    legal_name: "Fabrikam",
+    country: "FR",
+    default_language: "fr",
+  })
   return { db, ctx: { db }, issuerId: issuer.id }
 }
 

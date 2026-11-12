@@ -12,7 +12,7 @@
 // mounts every panel with the contact id in the `entityId` prop.
 
 import { app, navigate } from "@liaison/host"
-import { createResource, For, Show, type Component } from "solid-js"
+import { type Component, createResource, For, Show } from "solid-js"
 import { stripExternalFence } from "./kit"
 
 export interface ContactSocialPanelProps {
@@ -49,10 +49,16 @@ export async function loadContactSocial(contactId: string): Promise<{
 }> {
   const [findingsRes, dmRes] = await Promise.all([
     app
-      .invokeTool<{ findings: FindingRow[] }>("findings_list", { contact_id: contactId, limit: 100 })
+      .invokeTool<{ findings: FindingRow[] }>("findings_list", {
+        contact_id: contactId,
+        limit: 100,
+      })
       .catch(() => ({ findings: [] as FindingRow[] })),
     app
-      .invokeTool<{ conversations: ConversationRow[] }>("dm_list", { contact_id: contactId, limit: 100 })
+      .invokeTool<{ conversations: ConversationRow[] }>("dm_list", {
+        contact_id: contactId,
+        limit: 100,
+      })
       .catch(() => ({ conversations: [] as ConversationRow[] })),
   ])
   return {
@@ -93,7 +99,9 @@ export const ContactSocialPanel: Component<ContactSocialPanelProps> = (props) =>
               >
                 <span class="font-mono text-text-tertiary">{fmtDate(row.occurred_at)}</span>
                 <span class="text-text-secondary">{row.platform}</span>
-                <span class="truncate text-text">{stripExternalFence(row.content_text) || row.relation}</span>
+                <span class="truncate text-text">
+                  {stripExternalFence(row.content_text) || row.relation}
+                </span>
               </button>
             )}
           </For>
@@ -110,7 +118,9 @@ export const ContactSocialPanel: Component<ContactSocialPanelProps> = (props) =>
                 type="button"
                 data-testid={`contact-social-panel-dm-${c.id}`}
                 class="flex items-center gap-2 rounded-md border border-border-subtle bg-surface px-2 py-1 text-left hover:bg-surface-hover"
-                onClick={() => navigate(`/social/messages?conversation=${encodeURIComponent(c.id)}`)}
+                onClick={() =>
+                  navigate(`/social/messages?conversation=${encodeURIComponent(c.id)}`)
+                }
               >
                 <span class="font-mono text-text-tertiary">{fmtDate(c.last_message_at)}</span>
                 <span class="text-text-secondary">{c.participant_handle ?? c.platform}</span>

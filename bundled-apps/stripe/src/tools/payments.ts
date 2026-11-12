@@ -21,5 +21,12 @@ export async function paymentsSearch(params: Obj | undefined, ctx: ReadCtx) {
     created_at_stripe: "desc",
     id: "asc",
   })
-  return pageOf(rows.map(paymentItem), rows, offset, limit, p.unmatched === true ? "unmatched payments" : "payments", more)
+  return pageOf(
+    rows.map(paymentItem),
+    rows,
+    offset,
+    limit,
+    p.unmatched === true ? "unmatched payments" : "payments",
+    more,
+  )
 }

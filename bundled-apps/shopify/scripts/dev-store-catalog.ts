@@ -84,30 +84,104 @@ export const LOW_STOCK_THRESHOLD = 10
 
 export const FICTION_CATALOG: DevStoreCatalog = {
   products: [
-    { externalId: "liaison-seed-prod-001", title: "Kestrel Pocket Recorder", basePriceEur: "299.00" },
+    {
+      externalId: "liaison-seed-prod-001",
+      title: "Kestrel Pocket Recorder",
+      basePriceEur: "299.00",
+    },
     { externalId: "liaison-seed-prod-002", title: "Foam Windscreen", basePriceEur: "59.00" },
     { externalId: "liaison-seed-prod-003", title: "Foot Switch", basePriceEur: "89.00" },
     { externalId: "liaison-seed-prod-004", title: "Field Preamp", basePriceEur: "149.00" },
     { externalId: "liaison-seed-prod-005", title: "Cable Set", basePriceEur: "29.00" },
   ],
   customers: [
-    { externalId: "liaison-seed-cust-001", firstName: "Marie", lastName: "Dupont", email: "marie@example.com" },
-    { externalId: "liaison-seed-cust-002", firstName: "Jean", lastName: "Martin", email: "jean@example.com" },
-    { externalId: "liaison-seed-cust-003", firstName: "Sophie", lastName: "Bernard", email: "sophie@example.com" },
-    { externalId: "liaison-seed-cust-004", firstName: "Alex", lastName: "Müller", email: "alex@example.com" },
-    { externalId: "liaison-seed-cust-005", firstName: "Maria", lastName: "Garcia", email: "maria@example.com" },
-    { externalId: "liaison-seed-cust-006", firstName: "John", lastName: "Smith", email: "john@example.com" },
-    { externalId: "liaison-seed-cust-007", firstName: "Sarah", lastName: "Johnson", email: "sarah@example.com" },
-    { externalId: "liaison-seed-cust-008", firstName: "Michael", lastName: "Williams", email: "michael@example.com" },
-    { externalId: "liaison-seed-cust-009", firstName: "Aki", lastName: "Tanaka", email: "aki@example.com" },
-    { externalId: "liaison-seed-cust-010", firstName: "Hiroshi", lastName: "Sato", email: "hiroshi@example.com" },
+    {
+      externalId: "liaison-seed-cust-001",
+      firstName: "Marie",
+      lastName: "Dupont",
+      email: "marie@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-002",
+      firstName: "Jean",
+      lastName: "Martin",
+      email: "jean@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-003",
+      firstName: "Sophie",
+      lastName: "Bernard",
+      email: "sophie@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-004",
+      firstName: "Alex",
+      lastName: "Müller",
+      email: "alex@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-005",
+      firstName: "Maria",
+      lastName: "Garcia",
+      email: "maria@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-006",
+      firstName: "John",
+      lastName: "Smith",
+      email: "john@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-007",
+      firstName: "Sarah",
+      lastName: "Johnson",
+      email: "sarah@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-008",
+      firstName: "Michael",
+      lastName: "Williams",
+      email: "michael@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-009",
+      firstName: "Aki",
+      lastName: "Tanaka",
+      email: "aki@example.com",
+    },
+    {
+      externalId: "liaison-seed-cust-010",
+      firstName: "Hiroshi",
+      lastName: "Sato",
+      email: "hiroshi@example.com",
+    },
   ],
   catalogProducts: [
     { externalId: "liaison-seed-prod-ks6", title: "Kestrel 6", sku: "RAL-44", priceEur: "699.00" },
-    { externalId: "liaison-seed-prod-wnd", title: "Windscreen Pack", sku: "RAL-WND", priceEur: "49.00" },
-    { externalId: "liaison-seed-prod-case", title: "Travel Case", sku: "RAL-CASE", priceEur: "129.00" },
-    { externalId: "liaison-seed-prod-cbl", title: "XLR Cable Set", sku: "RAL-CBL", priceEur: "29.00" },
-    { externalId: "liaison-seed-prod-tc", title: "Timecode Module", sku: "RAL-TC", priceEur: "199.00" },
+    {
+      externalId: "liaison-seed-prod-wnd",
+      title: "Windscreen Pack",
+      sku: "RAL-WND",
+      priceEur: "49.00",
+    },
+    {
+      externalId: "liaison-seed-prod-case",
+      title: "Travel Case",
+      sku: "RAL-CASE",
+      priceEur: "129.00",
+    },
+    {
+      externalId: "liaison-seed-prod-cbl",
+      title: "XLR Cable Set",
+      sku: "RAL-CBL",
+      priceEur: "29.00",
+    },
+    {
+      externalId: "liaison-seed-prod-tc",
+      title: "Timecode Module",
+      sku: "RAL-TC",
+      priceEur: "199.00",
+    },
   ],
   catalogCustomers: [
     {
@@ -199,10 +273,25 @@ export const FICTION_CATALOG: DevStoreCatalog = {
   // Two SKUs read clearly low (Travel Case, Timecode Module), the rest healthy.
   inventory: [
     { productExternalId: "liaison-seed-prod-ks6", sku: "RAL-44", primaryQty: 60, secondaryQty: 40 },
-    { productExternalId: "liaison-seed-prod-wnd", sku: "RAL-WND", primaryQty: 50, secondaryQty: 30 },
-    { productExternalId: "liaison-seed-prod-case", sku: "RAL-CASE", primaryQty: 4, secondaryQty: 0 },
+    {
+      productExternalId: "liaison-seed-prod-wnd",
+      sku: "RAL-WND",
+      primaryQty: 50,
+      secondaryQty: 30,
+    },
+    {
+      productExternalId: "liaison-seed-prod-case",
+      sku: "RAL-CASE",
+      primaryQty: 4,
+      secondaryQty: 0,
+    },
     { productExternalId: "liaison-seed-prod-tc", sku: "RAL-TC", primaryQty: 9, secondaryQty: 0 },
-    { productExternalId: "liaison-seed-prod-cbl", sku: "RAL-CBL", primaryQty: 40, secondaryQty: 20 },
+    {
+      productExternalId: "liaison-seed-prod-cbl",
+      sku: "RAL-CBL",
+      primaryQty: 40,
+      secondaryQty: 20,
+    },
   ],
   secondaryLocation: {
     name: "Lyon",
@@ -222,38 +311,49 @@ export function assertCatalogConsistent(catalog: DevStoreCatalog): void {
     "inventory",
   ]
   for (const key of lists) {
-    if (!Array.isArray(catalog[key])) throw new Error(`dev-store catalog: "${key}" must be an array`)
+    if (!Array.isArray(catalog[key]))
+      throw new Error(`dev-store catalog: "${key}" must be an array`)
   }
   if (catalog.products.length === 0 || catalog.customers.length === 0) {
     throw new Error("dev-store catalog: products and customers must not be empty")
   }
-  if (!catalog.secondaryLocation?.name) throw new Error("dev-store catalog: secondaryLocation.name is required")
+  if (!catalog.secondaryLocation?.name)
+    throw new Error("dev-store catalog: secondaryLocation.name is required")
   const productIds = new Set(catalog.catalogProducts.map((p) => p.externalId))
   const customerIds = new Set(catalog.catalogCustomers.map((c) => c.externalId))
   for (const o of catalog.fulfilledOrders) {
     if (!productIds.has(o.productExternalId)) {
-      throw new Error(`dev-store catalog: order ${o.externalId} names unknown product ${o.productExternalId}`)
+      throw new Error(
+        `dev-store catalog: order ${o.externalId} names unknown product ${o.productExternalId}`,
+      )
     }
     if (!customerIds.has(o.customerExternalId)) {
-      throw new Error(`dev-store catalog: order ${o.externalId} names unknown customer ${o.customerExternalId}`)
+      throw new Error(
+        `dev-store catalog: order ${o.externalId} names unknown customer ${o.customerExternalId}`,
+      )
     }
   }
   for (const t of catalog.inventory) {
     if (!productIds.has(t.productExternalId)) {
-      throw new Error(`dev-store catalog: inventory ${t.sku} names unknown product ${t.productExternalId}`)
+      throw new Error(
+        `dev-store catalog: inventory ${t.sku} names unknown product ${t.productExternalId}`,
+      )
     }
   }
 }
 
 /** The catalog to seed: the module LIAISON_SHOPIFY_DEV_STORE_CATALOG names, else the fiction. */
-export async function loadDevStoreCatalog(env: NodeJS.ProcessEnv = process.env): Promise<DevStoreCatalog> {
+export async function loadDevStoreCatalog(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<DevStoreCatalog> {
   const file = env.LIAISON_SHOPIFY_DEV_STORE_CATALOG?.trim()
   if (!file) return FICTION_CATALOG
   const abs = path.resolve(file)
   if (!existsSync(abs)) throw new Error(`LIAISON_SHOPIFY_DEV_STORE_CATALOG: no such file ${abs}`)
   const mod = (await import(abs)) as { catalog?: DevStoreCatalog; default?: DevStoreCatalog }
   const catalog = mod.catalog ?? mod.default
-  if (!catalog) throw new Error(`LIAISON_SHOPIFY_DEV_STORE_CATALOG: ${abs} exports no \`catalog\` or default`)
+  if (!catalog)
+    throw new Error(`LIAISON_SHOPIFY_DEV_STORE_CATALOG: ${abs} exports no \`catalog\` or default`)
   assertCatalogConsistent(catalog)
   return catalog
 }

@@ -15,7 +15,12 @@ function makeCtx(db: MockDb): SocialToolCtx {
   return {
     orgId: "org-1",
     db,
-    fetch: (async () => ({ status: 200, ok: true, json: async () => ({}), text: async () => "" })) as never,
+    fetch: (async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({}),
+      text: async () => "",
+    })) as never,
     connections: {},
     config: { get: async () => null },
     async emit() {},

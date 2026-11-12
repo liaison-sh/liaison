@@ -2,12 +2,12 @@
 import { describe, expect, it } from "bun:test"
 import {
   buildCustomsArticles,
+  type CustomsDocLine,
   categoryToCustomsBasis,
   contentCategoryNumeric,
   contentCategoryV3,
   countMandatoryEmpty,
   requiresCustoms,
-  type CustomsDocLine,
 } from "./customs"
 
 function docLine(over: Partial<CustomsDocLine> = {}): CustomsDocLine {
@@ -36,10 +36,28 @@ function profiles(map: Record<string, number>) {
 describe("buildCustomsArticles", () => {
   it("maps a two-line export doc to v3 articles with the invoice customs snapshot", () => {
     const lines = [
-      docLine({ external_id: "V1", customs_description: "Touchpad", hs_code: "851762", country_of_origin: "FR", unit_price_minor: 10000n as unknown as bigint, quantity: 2 }),
-      docLine({ external_id: "V2", customs_description: "Cable", hs_code: "854442", country_of_origin: "CN", unit_price_minor: 2500n as unknown as bigint, quantity: 1 }),
+      docLine({
+        external_id: "V1",
+        customs_description: "Touchpad",
+        hs_code: "851762",
+        country_of_origin: "FR",
+        unit_price_minor: 10000n as unknown as bigint,
+        quantity: 2,
+      }),
+      docLine({
+        external_id: "V2",
+        customs_description: "Cable",
+        hs_code: "854442",
+        country_of_origin: "CN",
+        unit_price_minor: 2500n as unknown as bigint,
+        quantity: 1,
+      }),
     ]
-    const arts = buildCustomsArticles(lines, doc, profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }))
+    const arts = buildCustomsArticles(
+      lines,
+      doc,
+      profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }),
+    )
     expect(arts).toHaveLength(2)
     expect(arts[0]).toMatchObject({
       description: "Touchpad",
@@ -74,7 +92,11 @@ describe("buildCustomsArticles", () => {
       docLine({ external_id: "V1", hs_code: "851762", country_of_origin: "FR" }),
       docLine({ external_id: "V2", hs_code: "854442", country_of_origin: "CN" }),
     ]
-    const arts = buildCustomsArticles(lines, doc, profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }))
+    const arts = buildCustomsArticles(
+      lines,
+      doc,
+      profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }),
+    )
     expect(arts.some((a) => a.blocked)).toBe(false)
     expect(countMandatoryEmpty(arts)).toBe(0)
   })
@@ -103,7 +125,9 @@ describe("buildCustomsArticles", () => {
 
   it("editable override wins without mutating the source doc", () => {
     const lines = [docLine({ external_id: "V1" })]
-    const snapshot = JSON.parse(JSON.stringify(lines, (_k, v) => (typeof v === "bigint" ? v.toString() : v)))
+    const snapshot = JSON.parse(
+      JSON.stringify(lines, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    )
     const arts = buildCustomsArticles(lines, doc, profiles({ "shopify:V1": 0.5 }), {
       overrides: { "line-0": { description: "Custom name", unitWeight: 2, unitValue: 99 } },
     })
@@ -111,7 +135,9 @@ describe("buildCustomsArticles", () => {
     expect(arts[0]!.unitWeight).toBe(2)
     expect(arts[0]!.unitValue.value).toBe(99)
     // source untouched
-    const after = JSON.parse(JSON.stringify(lines, (_k, v) => (typeof v === "bigint" ? v.toString() : v)))
+    const after = JSON.parse(
+      JSON.stringify(lines, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    )
     expect(after).toEqual(snapshot)
   })
 
@@ -134,7 +160,11 @@ describe("buildCustomsArticles", () => {
       docLine({ external_id: "V1", quantity: 2, unit_price_minor: 10000n as unknown as bigint }),
       docLine({ external_id: "V2", quantity: 1, unit_price_minor: 2500n as unknown as bigint }),
     ]
-    const arts = buildCustomsArticles(lines, doc, profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }))
+    const arts = buildCustomsArticles(
+      lines,
+      doc,
+      profiles({ "shopify:V1": 0.5, "shopify:V2": 0.1 }),
+    )
     const total = arts.reduce((s, a) => s + a.quantity * a.unitValue.value, 0)
     expect(total).toBe(225) // 2*100 + 1*25
   })
@@ -243,7 +273,12 @@ describe("buildCustomsArticles -- declared currency (ticket-10154)", () => {
     // 120000 JPY is 120000 major units (zero-decimal), not 1200.
     const lines = [docLine({ unit_price_minor: 120000n as unknown as bigint })]
     const jpyFx = { ...fx, from: "JPY", rate: 0.0062 }
-    const [a] = buildCustomsArticles(lines, { incoterm: "DAP", currency: "JPY" }, profiles({ "shopify:V1": 1 }), { fx: jpyFx })
+    const [a] = buildCustomsArticles(
+      lines,
+      { incoterm: "DAP", currency: "JPY" },
+      profiles({ "shopify:V1": 1 }),
+      { fx: jpyFx },
+    )
     expect(a!.unitValue.value).toBe(744)
   })
 

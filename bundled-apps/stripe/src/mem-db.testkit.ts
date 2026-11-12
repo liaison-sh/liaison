@@ -26,7 +26,12 @@ export class MemDb {
   }
   async findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; offset?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      offset?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]> {
     const out = this.rows(entity).filter((r) => this.matches(r, opts?.where))
     const keys = Object.entries(opts?.orderBy ?? {})

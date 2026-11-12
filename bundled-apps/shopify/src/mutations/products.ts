@@ -6,15 +6,15 @@ import type { AppContext } from "@liaison/app-sdk"
 import { grantSatisfies, recordedGrantedScopes } from "../lib/constants"
 import { getShopifyClient, resolveInstallMetadata } from "../lib/get-client"
 import {
-  type PreflightResult,
-  type ShopClient,
-  resolveMutationInput,
-  runMutation,
   idempotencyKey,
   makeMutationError,
+  type PreflightResult,
   preflightRefusal,
-  requireTargetId,
   readGatedTarget,
+  requireTargetId,
+  resolveMutationInput,
+  runMutation,
+  type ShopClient,
 } from "./shared"
 import { VARIANTS_BULK_UPDATE } from "./variants"
 
@@ -79,7 +79,8 @@ export function canonicalizeProductInput(input: Record<string, unknown>): Record
   for (const [alias, canonical] of Object.entries(PRODUCT_INPUT_FIELD_ALIASES)) {
     if (alias === canonical) continue
     if (alias in input) {
-      if (input[canonical] === undefined && input[alias] !== undefined) input[canonical] = input[alias]
+      if (input[canonical] === undefined && input[alias] !== undefined)
+        input[canonical] = input[alias]
       delete input[alias]
     }
   }
@@ -104,10 +105,21 @@ const PRODUCT_CREATE = `
 // But "create product X with SKU Y at price Z" is the natural ask, and a weak model bundles a
 // variant/sku/price into products_create. We extract that spec, strip it from the ProductInput, and
 // apply it to the product's auto-created default variant after creation (a 2-step in one tool call).
-const PRODUCT_INPUT_VARIANT_KEYS = new Set(["variants", "sku", "price", "options", "optionValues", "inventoryItem"])
-function extractVariantSpec(input: Record<string, unknown>): { price?: unknown; sku?: unknown } | null {
+const PRODUCT_INPUT_VARIANT_KEYS = new Set([
+  "variants",
+  "sku",
+  "price",
+  "options",
+  "optionValues",
+  "inventoryItem",
+])
+function extractVariantSpec(
+  input: Record<string, unknown>,
+): { price?: unknown; sku?: unknown } | null {
   const v =
-    Array.isArray(input.variants) && input.variants.length > 0 && typeof input.variants[0] === "object"
+    Array.isArray(input.variants) &&
+    input.variants.length > 0 &&
+    typeof input.variants[0] === "object"
       ? (input.variants[0] as Record<string, unknown>)
       : input
   const price = v.price
@@ -117,11 +129,19 @@ function extractVariantSpec(input: Record<string, unknown>): { price?: unknown; 
 }
 
 type ProductCreateNode = {
-  product: { id: string; title?: string; status?: string; variants?: { edges?: Array<{ node: { id: string } }> } } | null
+  product: {
+    id: string
+    title?: string
+    status?: string
+    variants?: { edges?: Array<{ node: { id: string } }> }
+  } | null
   [k: string]: unknown
 }
 
-export async function products_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   // Extract the bundled variant spec (variants/sku/price) BEFORE canonicalizeProductInput's allowlist
   // strips those non-ProductInput keys — they belong on the default variant, applied post-create below.
   const raw = resolveMutationInput(params)
@@ -146,7 +166,11 @@ export async function products_create(params: Record<string, unknown>, ctx: AppC
     if (variantSpec.sku !== undefined) variant.inventoryItem = { sku: String(variantSpec.sku) }
     await runMutation(ctx, {
       query: VARIANTS_BULK_UPDATE,
-      variables: { productId: created.product.id, variants: [variant], key: idempotencyKey("variants-update", { productId: created.product.id, variant }) },
+      variables: {
+        productId: created.product.id,
+        variants: [variant],
+        key: idempotencyKey("variants-update", { productId: created.product.id, variant }),
+      },
       dataKey: "productVariantsBulkUpdate",
       eventEntity: "variant",
       eventAction: "updated",
@@ -195,9 +219,19 @@ export async function products_update_preflight(
   return { ok: true }
 }
 
-export async function products_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = buildProductUpdateInput(params)
-  return runMutation(ctx, { query: PRODUCT_UPDATE, variables: { input }, dataKey: "productUpdate", eventEntity: "product", eventAction: "updated", entityIdPath: "product.id" })
+  return runMutation(ctx, {
+    query: PRODUCT_UPDATE,
+    variables: { input },
+    dataKey: "productUpdate",
+    eventEntity: "product",
+    eventAction: "updated",
+    entityIdPath: "product.id",
+  })
 }
 
 /** Throw a precise capability-boundary error if `id` is a Shopify gid for a NON-Product entity (most
@@ -254,9 +288,19 @@ export async function products_delete_preflight(
   return { ok: true }
 }
 
-export async function products_delete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_delete(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const id = resolveProductDeleteId(params)
-  return runMutation(ctx, { query: PRODUCT_DELETE, variables: { input: { id } }, dataKey: "productDelete", eventEntity: "product", eventAction: "deleted", entityIdPath: "deletedProductId" })
+  return runMutation(ctx, {
+    query: PRODUCT_DELETE,
+    variables: { input: { id } },
+    dataKey: "productDelete",
+    eventEntity: "product",
+    eventAction: "deleted",
+    entityIdPath: "deletedProductId",
+  })
 }
 // ─────────────────────────────────────────────────────────────────────────
 //  Products — publish / unpublish  (C6)
@@ -330,7 +374,11 @@ async function readProductPublicationState(
     } | null
     publications?: {
       edges?: Array<{
-        node?: { id?: string; name?: string | null; catalog?: { id?: string; title?: string | null } | null }
+        node?: {
+          id?: string
+          name?: string | null
+          catalog?: { id?: string; title?: string | null } | null
+        }
       }>
     } | null
   }>(PRODUCT_PUBLICATIONS_QUERY, { id: productId })
@@ -347,7 +395,9 @@ async function readProductPublicationState(
     .filter((id): id is string => typeof id === "string")
   const p = data.product
   return {
-    product: p ? { id: p.id ?? productId, title: p.title ?? null, createdAt: p.createdAt ?? null } : null,
+    product: p
+      ? { id: p.id ?? productId, title: p.title ?? null, createdAt: p.createdAt ?? null }
+      : null,
     store,
     publishedOn,
   }
@@ -355,7 +405,9 @@ async function readProductPublicationState(
 
 /** Caller-supplied publication targets whose id is a real Publication gid (deduplicated, publishDate
  *  kept). A fabricated Channel id, a bare number or a malformed entry is dropped. */
-function suppliedPublicationTargets(input: unknown): Array<{ publicationId: string; publishDate?: string }> {
+function suppliedPublicationTargets(
+  input: unknown,
+): Array<{ publicationId: string; publishDate?: string }> {
   if (!Array.isArray(input)) return []
   const out: Array<{ publicationId: string; publishDate?: string }> = []
   const seen = new Set<string>()
@@ -364,7 +416,10 @@ function suppliedPublicationTargets(input: unknown): Array<{ publicationId: stri
     const pid = rec?.publicationId
     if (typeof pid !== "string" || !VALID_PUBLICATION_GID.test(pid) || seen.has(pid)) continue
     seen.add(pid)
-    const publishDate = typeof rec?.publishDate === "string" && rec.publishDate.trim() !== "" ? rec.publishDate : undefined
+    const publishDate =
+      typeof rec?.publishDate === "string" && rec.publishDate.trim() !== ""
+        ? rec.publishDate
+        : undefined
     out.push(publishDate ? { publicationId: pid, publishDate } : { publicationId: pid })
   }
   return out
@@ -387,7 +442,8 @@ function salesChannels(state: ProductPublicationState): ProductPublicationState[
 function publishTargetsFrom(input: unknown, state: ProductPublicationState): PublicationTarget[] {
   const storeIds = new Set(state.store.map((p) => p.id))
   const supplied = suppliedPublicationTargets(input).filter((t) => storeIds.has(t.publicationId))
-  if (supplied.length > 0) return supplied.map((t) => ({ ...t, name: nameOf(state, t.publicationId) }))
+  if (supplied.length > 0)
+    return supplied.map((t) => ({ ...t, name: nameOf(state, t.publicationId) }))
   const on = new Set(state.publishedOn)
   return salesChannels(state)
     .filter((p) => !on.has(p.id))
@@ -431,7 +487,8 @@ async function resolvePublishTarget(
   assertProductGid(productId, "products_publish")
   const client = await getShopifyClient(ctx)
   const state = await readProductPublicationState(client, productId)
-  if (!state.product) throw makeMutationError("NOT_FOUND", `products_publish: no Product found for ${productId}.`)
+  if (!state.product)
+    throw makeMutationError("NOT_FOUND", `products_publish: no Product found for ${productId}.`)
   const targets = publishTargetsFrom(params.input, state)
   if (targets.length === 0 && salesChannels(state).length === 0) {
     throw makeMutationError(
@@ -442,7 +499,9 @@ async function resolvePublishTarget(
   if (targets.length === 0) {
     throw makeMutationError(
       "ALREADY_PUBLISHED",
-      `product ${productId} is already published on every sales channel (${salesChannels(state).map((p) => p.name).join(", ")}); there is nothing to publish`,
+      `product ${productId} is already published on every sales channel (${salesChannels(state)
+        .map((p) => p.name)
+        .join(", ")}); there is nothing to publish`,
     )
   }
   return { productId, targets }
@@ -475,14 +534,21 @@ export async function products_publish_preflight(
   return { ok: true }
 }
 
-export async function products_publish(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_publish(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   await assertPublicationsScope(ctx, "products_publish")
   const { productId, targets } = await resolvePublishTarget(params, ctx)
   return runMutation(ctx, {
     query: PRODUCT_PUBLISH,
     variables: {
       id: productId,
-      input: targets.map((t) => (t.publishDate ? { publicationId: t.publicationId, publishDate: t.publishDate } : { publicationId: t.publicationId })),
+      input: targets.map((t) =>
+        t.publishDate
+          ? { publicationId: t.publicationId, publishDate: t.publishDate }
+          : { publicationId: t.publicationId },
+      ),
     },
     dataKey: "publishablePublish",
     eventEntity: "product",
@@ -542,7 +608,10 @@ export async function products_unpublish_preflight(
   return { ok: true }
 }
 
-export async function products_unpublish(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_unpublish(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   await assertPublicationsScope(ctx, "products_unpublish")
   const { productId, publicationIds } = await resolveUnpublishTarget(params, ctx)
   return runMutation(ctx, {

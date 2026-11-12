@@ -166,7 +166,9 @@ export async function backfillLegacyOriginals(
   if (dryRun) {
     const inBatch = new Set(batch.map((c) => c.id))
     const setAsideBefore = found.filter((c) => c.setAside && !inBatch.has(c.id)).length
-    const repointed = batch.filter((c) => c.sourceFileId && c.sourceFileId !== c.currentFileId).length
+    const repointed = batch.filter(
+      (c) => c.sourceFileId && c.sourceFileId !== c.currentFileId,
+    ).length
     return {
       status: "ok",
       dry_run: true,
@@ -181,12 +183,17 @@ export async function backfillLegacyOriginals(
         `Dry run, nothing written: ${batch.length} imported document(s) in this batch` +
         (repointed ? `, ${repointed} of them re-rendered over and to be restored` : "") +
         `; ${all.length - batch.length} more after it` +
-        (setAsideBefore ? `; ${setAsideBefore} set aside after a failed read (retry_failed: true takes them again).` : "."),
+        (setAsideBefore
+          ? `; ${setAsideBefore} set aside after a failed read (retry_failed: true takes them again).`
+          : "."),
     }
   }
 
   if (!ctx.files_getAttachmentBytes || !ctx.files_importAttachment) {
-    return { status: "error", error: { code: "unsupported", message: "The file bridge is not available in this runtime." } }
+    return {
+      status: "error",
+      error: { code: "unsupported", message: "The file bridge is not available in this runtime." },
+    }
   }
   const recordedBy = ctx.getUserId ? await ctx.getUserId() : null
   let processed = 0
@@ -213,7 +220,8 @@ export async function backfillLegacyOriginals(
     const isRepointed = c.sourceFileId !== c.currentFileId
     // Point the document back at the imported file FIRST: the file is readable only through the
     // document that references it (its `pdf` fileParent joins documents.pdf_file_id).
-    if (isRepointed) await ctx.db.update("documents", c.id, { pdf_file_id: c.sourceFileId, pdf_status: "ready" })
+    if (isRepointed)
+      await ctx.db.update("documents", c.id, { pdf_file_id: c.sourceFileId, pdf_status: "ready" })
     const undo = async () => {
       if (isRepointed) await ctx.db.update("documents", c.id, { pdf_file_id: c.currentFileId })
     }
@@ -243,13 +251,18 @@ export async function backfillLegacyOriginals(
     // A batch cut off mid-document (a request timeout) can leave this document's legal-original
     // row written but the document not yet pointed at it. Resume from that row instead of inserting
     // a second one: the same bytes finish the record; different bytes are a conflict for a person.
-    const prior = ((await ctx.db.findMany("legal_originals", {
-      where: { document_id: c.id, kind: "legacy_import" },
-      limit: 1,
-    })) as Row[])[0]
+    const prior = (
+      (await ctx.db.findMany("legal_originals", {
+        where: { document_id: c.id, kind: "legacy_import" },
+        limit: 1,
+      })) as Row[]
+    )[0]
     if (prior && str(prior.sha256) !== sha256) {
       await undo()
-      await fail(c, `legal_original_conflict: a recorded legacy original has sha256 ${str(prior.sha256)}, the imported file ${sha256}`)
+      await fail(
+        c,
+        `legal_original_conflict: a recorded legacy original has sha256 ${str(prior.sha256)}, the imported file ${sha256}`,
+      )
       continue
     }
     const row =
@@ -286,7 +299,9 @@ export async function backfillLegacyOriginals(
       docUpdate.external_refs = rest
     }
     if (isRepointed) {
-      const docRow = ((await ctx.db.findMany("documents", { where: { id: c.id }, limit: 1 })) as Row[])[0]
+      const docRow = (
+        (await ctx.db.findMany("documents", { where: { id: c.id }, limit: 1 })) as Row[]
+      )[0]
       docUpdate.lifecycle_log = [
         ...logOf(docRow?.lifecycle_log),
         {
@@ -302,7 +317,13 @@ export async function backfillLegacyOriginals(
     processed += 1
     bytes += byteLength
     if (isRepointed) repointed += 1
-    items.push({ document_id: c.id, number: c.number, sha256, byte_size: byteLength, repointed: isRepointed })
+    items.push({
+      document_id: c.id,
+      number: c.number,
+      sha256,
+      byte_size: byteLength,
+      repointed: isRepointed,
+    })
   }
 
   // A document that failed in this run is set aside too: it no longer counts as remaining.
@@ -328,6 +349,8 @@ export async function backfillLegacyOriginals(
       (repointed ? `, restored ${repointed} whose PDF had been replaced` : "") +
       (failed.length ? `; ${failed.length} could not be read and were set aside` : "") +
       (remaining ? `. ${remaining} remain: run again.` : ". None remain.") +
-      (setAside ? ` ${setAside} set aside after a failed read: retry_failed: true takes them again.` : ""),
+      (setAside
+        ? ` ${setAside} set aside after a failed read: retry_failed: true takes them again.`
+        : ""),
   }
 }

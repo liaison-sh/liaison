@@ -16,7 +16,11 @@ export interface SendStateCtx extends StripeHttpCtx {
   db: StateDb
 }
 
-const DONE: Record<string, string> = { paid: "invoice_paid", void: "invoice_void", uncollectible: "invoice_uncollectible" }
+const DONE: Record<string, string> = {
+  paid: "invoice_paid",
+  void: "invoice_void",
+  uncollectible: "invoice_uncollectible",
+}
 
 const unavailable = (why: string) =>
   refuseTool(
@@ -33,7 +37,9 @@ export async function invoiceSendState(params: Obj | undefined, ctx: SendStateCt
   if (hold) return unavailable(`Stripe cannot be asked about invoice ${id} (${hold.error.code}).`)
   let live: Obj
   try {
-    live = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, { timeoutMs: 1500 })
+    live = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, {
+      timeoutMs: 1500,
+    })
   } catch {
     return unavailable(`Stripe did not answer about invoice ${id}.`)
   }

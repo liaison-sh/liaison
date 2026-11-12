@@ -5,8 +5,8 @@
 // row offers the two decisions `deferred_tax_override` takes; both are gated, so a click files an
 // approval and the row says so.
 
-import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { app } from "@liaison/host"
+import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { tr } from "./i18n"
 import { Button } from "./kit"
 
@@ -54,7 +54,9 @@ export const InvoicingDeferred: Component<{ entityId?: string }> = () => {
   const decide = async (id: string, mode: "shopify_reported" | "as_computed") => {
     let note: { text: string; isError: boolean }
     try {
-      note = taxOverrideNote(await app.invokeTool<unknown>("deferred_tax_override", { deferred_id: id, mode }))
+      note = taxOverrideNote(
+        await app.invokeTool<unknown>("deferred_tax_override", { deferred_id: id, mode }),
+      )
     } catch (e) {
       note = { text: e instanceof Error ? e.message : tr("The action failed."), isError: true }
     }

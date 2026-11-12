@@ -5,11 +5,12 @@
 // company's people, read with `documents_search({ company_id })` as the
 // viewer: the kernel lists the panel only for a viewer holding
 // `invoicing:documents:read`, and the read returns only what they may see.
-import { tr } from "./i18n"
-import { createResource, Show, type Component } from "solid-js"
-import { app, navigate } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
-import { displayTotal, type DocumentRow } from "./ContactDocumentsPanel"
+import { app, navigate } from "@liaison/host"
+import { type Component, createResource, Show } from "solid-js"
+import { type DocumentRow, displayTotal } from "./ContactDocumentsPanel"
+import { tr } from "./i18n"
 
 export interface CompanyMoneyPanelProps {
   /** The company id: the slot host mounts every panel with it as `entityId`. */
@@ -50,25 +51,32 @@ export const CompanyMoneyPanel: Component<CompanyMoneyPanelProps> = (props) => {
           rowKey={(row) => row.id}
           rowTestid={(row) => `company-money-panel-row-${row.id}`}
           onRowClick={(row) => navigate(`/invoicing/document/${row.id}`)}
-          columns={[
-            {
-              key: "number",
-              header: "#",
-              role: "anchor",
-              cell: (row) => <span class="font-mono">{row.number ?? tr("Draft")}</span>,
-            },
-            { key: "type", header: tr("Type"), role: "secondary", cell: (row) => row.type },
-            { key: "date", header: tr("Date"), role: "meta", cell: (row) => fmtDate(row.issued_at) },
-            { key: "status", header: tr("Status"), role: "meta", cell: (row) => row.status },
-            {
-              key: "total",
-              header: tr("Total"),
-              role: "meta",
-              numeric: true,
-              align: "right",
-              cell: (row) => displayTotal(row),
-            },
-          ] as Array<CardTableColumn<DocumentRow>>}
+          columns={
+            [
+              {
+                key: "number",
+                header: "#",
+                role: "anchor",
+                cell: (row) => <span class="font-mono">{row.number ?? tr("Draft")}</span>,
+              },
+              { key: "type", header: tr("Type"), role: "secondary", cell: (row) => row.type },
+              {
+                key: "date",
+                header: tr("Date"),
+                role: "meta",
+                cell: (row) => fmtDate(row.issued_at),
+              },
+              { key: "status", header: tr("Status"), role: "meta", cell: (row) => row.status },
+              {
+                key: "total",
+                header: tr("Total"),
+                role: "meta",
+                numeric: true,
+                align: "right",
+                cell: (row) => displayTotal(row),
+              },
+            ] as Array<CardTableColumn<DocumentRow>>
+          }
         />
       </Show>
     </section>

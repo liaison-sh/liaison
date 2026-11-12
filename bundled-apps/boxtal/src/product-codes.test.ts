@@ -45,7 +45,11 @@ const WHOLESALE_SUMMARY =
 
 describe("the default mapping", () => {
   it("is empty and renames nothing: a wrapped sku is only trimmed", () => {
-    expect(EMPTY_PRODUCT_CODE_CONFIG).toEqual({ strip_prefixes: [], strip_suffixes: [], aliases: {} })
+    expect(EMPTY_PRODUCT_CODE_CONFIG).toEqual({
+      strip_prefixes: [],
+      strip_suffixes: [],
+      aliases: {},
+    })
     expect(normalizeProductSku("  ACME-K1-HARDCOVER-B2B ")).toBe("ACME-K1-HARDCOVER-B2B")
     expect(shortProductCode("ACME-K1-HARDCOVER-B2B")).toBe("ACME-K1-HARDCOVER-B2B")
     expect(shortProductCode("HARDCOVER")).toBe("HARDCOVER")
@@ -86,7 +90,9 @@ describe("shortProductCode", () => {
   })
 
   it("resolves the retail sku to the SAME code as its wholesale variant", () => {
-    expect(shortProductCode("K1-HARDCOVER", ORG)).toBe(shortProductCode("ACME-K1-HARDCOVER-B2B", ORG))
+    expect(shortProductCode("K1-HARDCOVER", ORG)).toBe(
+      shortProductCode("ACME-K1-HARDCOVER-B2B", ORG),
+    )
     expect(shortProductCode("hardcover", ORG)).toBe("HC")
   })
 
@@ -120,10 +126,9 @@ describe("resolveProductCodes", () => {
   })
 
   it("keeps first-appearance order, not alphabetical order", () => {
-    expect(resolveProductCodes("1xUSBC2M-B2B, 1xACME-K1-BLACK-B2B", ORG).map((e) => e.code)).toEqual([
-      "USBC",
-      "K1",
-    ])
+    expect(
+      resolveProductCodes("1xUSBC2M-B2B, 1xACME-K1-BLACK-B2B", ORG).map((e) => e.code),
+    ).toEqual(["USBC", "K1"])
   })
 
   it("reads the invoicing decimal quantity form", () => {
@@ -148,7 +153,10 @@ describe("resolveProductCodes", () => {
 
 describe("display rank", () => {
   // The request: ET2 first, MP second, SOUND last, everything else in one fixed order between.
-  const RANKED: ProductCodeConfig = { ...EMPTY_PRODUCT_CODE_CONFIG, ranks: { ET2: 1, MP: 2, SOUND: 1000 } }
+  const RANKED: ProductCodeConfig = {
+    ...EMPTY_PRODUCT_CODE_CONFIG,
+    ranks: { ET2: 1, MP: 2, SOUND: 1000 },
+  }
 
   it("orders identical orders the same way whatever the invoice-line order", () => {
     const a = orderProductsSummary("1xMP, 1xBSkin, 1xHC, 1xET2, 1xSOUND", RANKED)
@@ -159,7 +167,10 @@ describe("display rank", () => {
 
   it("puts unranked codes at the default rank, alphabetically between low and high ranks", () => {
     expect(DEFAULT_PRODUCT_CODE_RANK).toBe(100)
-    const cfg: ProductCodeConfig = { ...EMPTY_PRODUCT_CODE_CONFIG, ranks: { LATE: 101, EARLY: 99, TIE: 100 } }
+    const cfg: ProductCodeConfig = {
+      ...EMPTY_PRODUCT_CODE_CONFIG,
+      ranks: { LATE: 101, EARLY: 99, TIE: 100 },
+    }
     expect(orderProductsSummary("1xLATE, 1xZED, 1xTIE, 1xALPHA, 1xEARLY", cfg)).toBe(
       "1xEARLY, 1xALPHA, 1xTIE, 1xZED, 1xLATE",
     )
@@ -167,9 +178,9 @@ describe("display rank", () => {
 
   it("ranks by the short code an sku resolves to, and keeps each entry's text", () => {
     const cfg: ProductCodeConfig = { ...ORG, ranks: { K1: 1, HC: 2 } }
-    expect(orderProductsSummary("1xACME-K1-HARDCOVER-B2B, 2xUSBC2M-B2B, 1xACME-K1-BLACK-B2B", cfg)).toBe(
-      "1xACME-K1-BLACK-B2B, 1xACME-K1-HARDCOVER-B2B, 2xUSBC2M-B2B",
-    )
+    expect(
+      orderProductsSummary("1xACME-K1-HARDCOVER-B2B, 2xUSBC2M-B2B, 1xACME-K1-BLACK-B2B", cfg),
+    ).toBe("1xACME-K1-BLACK-B2B, 1xACME-K1-HARDCOVER-B2B, 2xUSBC2M-B2B")
     expect(resolveProductCodes("1xHC, 2xUSBC, 1xK1, 1xK1", cfg)).toEqual([
       { code: "K1", qty: 2 },
       { code: "HC", qty: 1 },
@@ -179,9 +190,9 @@ describe("display rank", () => {
 
   it("changes nothing for an org with no rank: first-appearance order is kept", () => {
     expect(orderProductsSummary("1xMP, 1xBSkin, 1xET2")).toBe("1xMP, 1xBSkin, 1xET2")
-    expect(orderProductsSummary("1xMP, 1xBSkin, 1xET2", { ...EMPTY_PRODUCT_CODE_CONFIG, ranks: {} })).toBe(
-      "1xMP, 1xBSkin, 1xET2",
-    )
+    expect(
+      orderProductsSummary("1xMP, 1xBSkin, 1xET2", { ...EMPTY_PRODUCT_CODE_CONFIG, ranks: {} }),
+    ).toBe("1xMP, 1xBSkin, 1xET2")
     expect(resolveProductCodes("1xMP, 1xET2").map((e) => e.code)).toEqual(["MP", "ET2"])
   })
 
@@ -191,7 +202,9 @@ describe("display rank", () => {
   })
 
   it("reads stored ranks, upper-cased, skipping junk, and a value without ranks stays rank-free", () => {
-    expect(productCodeConfigFromValue({ ranks: { et2: 1, mp: 2.5, X: "3", SOUND: 1000 } }).ranks).toEqual({
+    expect(
+      productCodeConfigFromValue({ ranks: { et2: 1, mp: 2.5, X: "3", SOUND: 1000 } }).ranks,
+    ).toEqual({
       ET2: 1,
       SOUND: 1000,
     })

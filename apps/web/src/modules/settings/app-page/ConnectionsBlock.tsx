@@ -36,8 +36,6 @@ import { connectionLabel } from "~/lib/app-label"
 import { appDisplayNames } from "~/lib/capability-copy"
 import { isNotConnectedCode } from "~/lib/tool-answer"
 import { canAccessScope } from "~/modules/auth/auth-store"
-import { DrivePickerCard } from "~/modules/drive-picker/DrivePickerCard"
-import { SharedDrivesCard } from "~/modules/drive-picker/SharedDrivesCard"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { addToast } from "~/modules/shell/toast-store"
@@ -552,20 +550,6 @@ const ConnectionCard: Component<{
                       <div class="mt-1 text-xs text-text-tertiary">
                         {i18n.t(`${P}.personalNote`)}
                       </div>
-                    </Show>
-                    {/* A Drive connected with drive.file only: the files Liaison can see. */}
-                    <Show when={props.app === "google-drive" && a.status !== "error"}>
-                      <DrivePickerCard quiet accountId={a.id} />
-                    </Show>
-                    {/* An organization's Drive: the shared drives it shares with the team. */}
-                    <Show
-                      when={
-                        props.app === "google-drive" &&
-                        a.ownerType === "org" &&
-                        a.status !== "error"
-                      }
-                    >
-                      <SharedDrivesCard accountId={a.id} />
                     </Show>
                   </div>
                   <div class="flex items-center gap-1">

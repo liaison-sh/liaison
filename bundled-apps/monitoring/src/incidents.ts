@@ -5,7 +5,13 @@
 // and emit lifecycle events (no attention translations — triage actions are
 // the operator's own doing, not news).
 import type { AppContext } from "@liaison/app-sdk"
-import { addComment, type CommentView, listComments, validateCommentBody, validateResolutionNote } from "./comments"
+import {
+  addComment,
+  type CommentView,
+  listComments,
+  validateCommentBody,
+  validateResolutionNote,
+} from "./comments"
 import { SIGNATURE_HEADER, WEBHOOK_SECRET_KEY } from "./lib/hmac"
 import {
   MONITORING_URL_CONFIG_KEY,
@@ -118,7 +124,9 @@ export async function incidentsAckHandler(
   const row = await resolveIncident(ctx, params.incidentId)
   const note = params.note != null ? validateCommentBody(params.note) : null
   if (row.status === "resolved") {
-    throw new Error(`already_resolved: ${params.incidentId}: a resolved incident reopens only when its alert re-fires`)
+    throw new Error(
+      `already_resolved: ${params.incidentId}: a resolved incident reopens only when its alert re-fires`,
+    )
   }
   const now = new Date().toISOString()
   await ctx.db.update("incidents", row.id, {
@@ -211,9 +219,21 @@ export async function incidentsSummaryHandler(
   ctx: AppContext,
 ): Promise<{ data: IncidentsSummaryWithConfig; rows: SummaryRow[] }> {
   const [open, acknowledged, resolved, sourcesConfig, urlConfig, canConfigure] = await Promise.all([
-    ctx.db.findMany("incidents", { where: { status: "open" }, orderBy: { last_seen_at: "desc" }, limit: 500 }),
-    ctx.db.findMany("incidents", { where: { status: "acknowledged" }, orderBy: { last_seen_at: "desc" }, limit: 500 }),
-    ctx.db.findMany("incidents", { where: { status: "resolved" }, orderBy: { resolved_at: "desc" }, limit: 200 }),
+    ctx.db.findMany("incidents", {
+      where: { status: "open" },
+      orderBy: { last_seen_at: "desc" },
+      limit: 500,
+    }),
+    ctx.db.findMany("incidents", {
+      where: { status: "acknowledged" },
+      orderBy: { last_seen_at: "desc" },
+      limit: 500,
+    }),
+    ctx.db.findMany("incidents", {
+      where: { status: "resolved" },
+      orderBy: { resolved_at: "desc" },
+      limit: 200,
+    }),
     ctx.config.get(SOURCES_CONFIG_KEY),
     ctx.config.get(MONITORING_URL_CONFIG_KEY),
     callerCanConfigure(ctx),

@@ -34,7 +34,12 @@ function makeCtx(o: Opts): BoxtalToolCtx {
     }
     return { status: "completed", result: {} } as never
   }
-  return { orgId: "org-1", db, executeTool, logger: { info() {}, warn() {}, error() {}, debug() {} } } as never
+  return {
+    orgId: "org-1",
+    db,
+    executeTool,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  } as never
 }
 
 const order = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
@@ -108,7 +113,10 @@ describe("unlinkedOrdersList", () => {
         order("2", "#3400", { createdAt: "2026-08-05T09:00:00Z" }),
       ],
     })
-    expect((await unlinkedOrdersList(ctx)).rows.map((r) => r.order_name)).toEqual(["#3400", "#3500"])
+    expect((await unlinkedOrdersList(ctx)).rows.map((r) => r.order_name)).toEqual([
+      "#3400",
+      "#3500",
+    ])
   })
 
   it("fails SOFT when Shopify is unreachable rather than breaking the worklist", async () => {

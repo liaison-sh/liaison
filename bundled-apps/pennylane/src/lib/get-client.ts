@@ -5,8 +5,8 @@
 // + RECORD SDK `{pennylane:{getCredentials()}}`), validates apiToken+scope, and
 // constructs a PennylaneClient wired to ctx.fetch.
 import { readConnectionCredentials } from "@liaison/app-sdk/connection-credentials"
-import { PennylaneClient, type PennylaneFetch } from "./pennylane-client"
 import type { PennylaneScope } from "../types"
+import { PennylaneClient, type PennylaneFetch } from "./pennylane-client"
 
 const CONNECTION = "pennylane"
 const REQUIRED_KEYS = ["apiToken", "scope"] as const
@@ -53,10 +53,17 @@ export async function getClient(ctx: PennylaneCtx): Promise<PennylaneFacade> {
     )
   }
   // A firm token serves many companies: Pennylane needs `X-Company-Id` on every call.
-  const companyId = typeof map.companyId === "string" && map.companyId.trim() !== "" ? map.companyId.trim() : null
+  const companyId =
+    typeof map.companyId === "string" && map.companyId.trim() !== "" ? map.companyId.trim() : null
   if (scope === "firm" && !companyId) {
-    throw new PennylaneConnectionError("Pennylane firm scope needs the company id (Company ID field of the connection)")
+    throw new PennylaneConnectionError(
+      "Pennylane firm scope needs the company id (Company ID field of the connection)",
+    )
   }
-  const client = new PennylaneClient({ fetch: ctx.fetch, apiToken: map.apiToken!, companyId: scope === "firm" ? companyId : null })
+  const client = new PennylaneClient({
+    fetch: ctx.fetch,
+    apiToken: map.apiToken!,
+    companyId: scope === "firm" ? companyId : null,
+  })
   return { client, scope }
 }

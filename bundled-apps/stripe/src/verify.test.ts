@@ -21,7 +21,11 @@ const NOW_S = Math.floor(NOW / 1000)
 const CURRENT = "whsec_currentSecretForTheOrgAAAAAAAA"
 const PREVIOUS = "whsec_previousSecretForTheOrgBBBBBBB"
 const OTHER_ORG = "whsec_anotherOrgsSecretCCCCCCCCCCCC"
-const BODY = JSON.stringify({ id: "evt_1Abc", type: "invoice.paid", data: { object: { id: "in_1" } } })
+const BODY = JSON.stringify({
+  id: "evt_1Abc",
+  type: "invoice.paid",
+  data: { object: { id: "in_1" } },
+})
 
 function sign(secret: string, t: number, body = BODY): string {
   return createHmac("sha256", secret).update(`${t}.${body}`, "utf8").digest("hex")
@@ -50,7 +54,12 @@ function bridge(config: Record<string, string | undefined>) {
 }
 
 function params(header: string | undefined, body = BODY): StripeVerifyParams {
-  return { headers: header === undefined ? {} : { "Stripe-Signature": header }, body, method: "POST", query: {} }
+  return {
+    headers: header === undefined ? {} : { "Stripe-Signature": header },
+    body,
+    method: "POST",
+    query: {},
+  }
 }
 
 describe("stripe webhook verifier", () => {
@@ -59,7 +68,11 @@ describe("stripe webhook verifier", () => {
     const good = await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign(CURRENT, NOW_S)}`), b, NOW)
     expect(good).toEqual({ ok: true, replayKey: "evt_1Abc", replayTtlSeconds: 4 * 24 * 60 * 60 })
 
-    const bad = await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign("whsec_wrongwrongwrong", NOW_S)}`), b, NOW)
+    const bad = await verifyStripeDelivery(
+      params(`t=${NOW_S},v1=${sign("whsec_wrongwrongwrong", NOW_S)}`),
+      b,
+      NOW,
+    )
     expect(bad).toEqual({ ok: false, reason: "signature_mismatch" })
     // No replay key on a refusal: the kernel takes no slot and answers 401.
     expect("replayKey" in bad).toBe(false)
@@ -83,14 +96,24 @@ describe("stripe webhook verifier", () => {
     // Mutation caught: trusting the stored value without the emptiness check,
     // so HMAC("", body) would verify between the key card and the secret card.
     const until = new Date(NOW + 60 * 60 * 1000).toISOString()
-    const { b, calls } = bridge({ [SIGNING_SECRET_KEY]: "", [PREVIOUS_SECRET_KEY]: "", [PREVIOUS_SECRET_UNTIL_KEY]: until })
+    const { b, calls } = bridge({
+      [SIGNING_SECRET_KEY]: "",
+      [PREVIOUS_SECRET_KEY]: "",
+      [PREVIOUS_SECRET_UNTIL_KEY]: until,
+    })
     const r = await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign("", NOW_S)}`), b, NOW)
     expect(r).toEqual({ ok: false, reason: "missing_secret" })
     expect(calls.filter((c) => c.method === "crypto_verifyHmacForConfig")).toEqual([])
 
     // Only the previous one empty: the current still verifies, the empty one never does.
-    const { b: b2 } = bridge({ [SIGNING_SECRET_KEY]: CURRENT, [PREVIOUS_SECRET_KEY]: "", [PREVIOUS_SECRET_UNTIL_KEY]: until })
-    expect((await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign("", NOW_S)}`), b2, NOW)).ok).toBe(false)
+    const { b: b2 } = bridge({
+      [SIGNING_SECRET_KEY]: CURRENT,
+      [PREVIOUS_SECRET_KEY]: "",
+      [PREVIOUS_SECRET_UNTIL_KEY]: until,
+    })
+    expect(
+      (await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign("", NOW_S)}`), b2, NOW)).ok,
+    ).toBe(false)
   })
 
   it("a malformed signature header is refused before the body is read", async () => {
@@ -107,7 +130,8 @@ describe("stripe webhook verifier", () => {
     ]) {
       let bodyRead = false
       const { b, calls } = bridge({ [SIGNING_SECRET_KEY]: CURRENT })
-      const headers: Record<string, string> = header === undefined ? {} : { "stripe-signature": header }
+      const headers: Record<string, string> =
+        header === undefined ? {} : { "stripe-signature": header }
       const p = {
         headers,
         get body(): string {
@@ -118,8 +142,15 @@ describe("stripe webhook verifier", () => {
         query: {},
       }
       const r = await verifyStripeDelivery(p, b, NOW)
-      expect({ header, r }).toEqual({ header, r: { ok: false, reason: "malformed_signature_header" } })
-      expect({ header, bodyRead, calls: calls.length }).toEqual({ header, bodyRead: false, calls: 0 })
+      expect({ header, r }).toEqual({
+        header,
+        r: { ok: false, reason: "malformed_signature_header" },
+      })
+      expect({ header, bodyRead, calls: calls.length }).toEqual({
+        header,
+        bodyRead: false,
+        calls: 0,
+      })
     }
   })
 
@@ -171,8 +202,16 @@ describe("stripe webhook verifier", () => {
   })
 
   it("a previous secret with no deadline, or one further than 24 hours away, verifies nothing", async () => {
-    for (const until of [undefined, "not a date", new Date(NOW + 25 * 60 * 60 * 1000).toISOString()]) {
-      const { b } = bridge({ [SIGNING_SECRET_KEY]: CURRENT, [PREVIOUS_SECRET_KEY]: PREVIOUS, [PREVIOUS_SECRET_UNTIL_KEY]: until })
+    for (const until of [
+      undefined,
+      "not a date",
+      new Date(NOW + 25 * 60 * 60 * 1000).toISOString(),
+    ]) {
+      const { b } = bridge({
+        [SIGNING_SECRET_KEY]: CURRENT,
+        [PREVIOUS_SECRET_KEY]: PREVIOUS,
+        [PREVIOUS_SECRET_UNTIL_KEY]: until,
+      })
       const r = await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign(PREVIOUS, NOW_S)}`), b, NOW)
       expect({ until, ok: r.ok }).toEqual({ until, ok: false })
     }
@@ -182,14 +221,22 @@ describe("stripe webhook verifier", () => {
     const { b, calls } = bridge({ [SIGNING_SECRET_KEY]: CURRENT })
     await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign(CURRENT, NOW_S)}`), b, NOW)
     // No call that hands a secret back: `config_get` is only ever asked for the deadline.
-    expect(calls.filter((c) => c.method === "config_get" && c.key !== PREVIOUS_SECRET_UNTIL_KEY)).toEqual([])
-    expect(calls.some((c) => c.method === "crypto_verifyHmacForConfig" && c.key === SIGNING_SECRET_KEY)).toBe(true)
+    expect(
+      calls.filter((c) => c.method === "config_get" && c.key !== PREVIOUS_SECRET_UNTIL_KEY),
+    ).toEqual([])
+    expect(
+      calls.some((c) => c.method === "crypto_verifyHmacForConfig" && c.key === SIGNING_SECRET_KEY),
+    ).toBe(true)
   })
 
   it("a verified body with no event id is refused", async () => {
     const body = JSON.stringify({ type: "invoice.paid" })
     const { b } = bridge({ [SIGNING_SECRET_KEY]: CURRENT })
-    const r = await verifyStripeDelivery(params(`t=${NOW_S},v1=${sign(CURRENT, NOW_S, body)}`, body), b, NOW)
+    const r = await verifyStripeDelivery(
+      params(`t=${NOW_S},v1=${sign(CURRENT, NOW_S, body)}`, body),
+      b,
+      NOW,
+    )
     expect(r).toEqual({ ok: false, reason: "missing_event_id" })
   })
 })

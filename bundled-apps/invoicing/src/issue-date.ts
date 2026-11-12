@@ -42,7 +42,10 @@ function isInvalidTimezone(err: unknown): err is { code: string; message?: strin
   return (err as { code?: unknown } | null | undefined)?.code === "invalid_timezone"
 }
 
-function timezoneInvalid(detail: string, outcome = "Nothing was issued and no number was used"): ErrorEnvelope {
+function timezoneInvalid(
+  detail: string,
+  outcome = "Nothing was issued and no number was used",
+): ErrorEnvelope {
   return {
     status: "error",
     error: {
@@ -63,7 +66,8 @@ export async function issueDateParts(
     const now = await ctx.time.civil({ timezone: issuer.timezone || DEFAULT_ZONE })
     return { ok: true, year_of_issue: now.year, issued_at: now.date }
   } catch (err) {
-    if (isInvalidTimezone(err)) return { ok: false, error: timezoneInvalid(String(err.message ?? "Unknown time zone")) }
+    if (isInvalidTimezone(err))
+      return { ok: false, error: timezoneInvalid(String(err.message ?? "Unknown time zone")) }
     throw err
   }
 }
@@ -86,7 +90,10 @@ export async function civilDateOf(
     return { ok: true, date: civil.date }
   } catch (err) {
     if (isInvalidTimezone(err)) {
-      return { ok: false, error: timezoneInvalid(String(err.message ?? "Unknown time zone"), "Nothing was changed") }
+      return {
+        ok: false,
+        error: timezoneInvalid(String(err.message ?? "Unknown time zone"), "Nothing was changed"),
+      }
     }
     throw err
   }
@@ -103,7 +110,10 @@ export function normalizeIssuerTimezone(zone: string): string {
 }
 
 /** Refuse a zone the host does not know, when the profile is saved. Null when it may be saved. */
-export async function checkIssuerTimezone(ctx: TimeSurface, zone: string): Promise<ErrorEnvelope | null> {
+export async function checkIssuerTimezone(
+  ctx: TimeSurface,
+  zone: string,
+): Promise<ErrorEnvelope | null> {
   try {
     await ctx.time.civil({ timezone: normalizeIssuerTimezone(zone) })
     return null

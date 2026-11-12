@@ -27,39 +27,62 @@
 // the kernel-expected `(payload, ctx)` shape and are re-exported unchanged.
 
 import { documentsIssuePreview } from "./buyer-vat"
-import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import { customerHistory } from "./customer-history"
-import { vatLookup } from "./vat-lookup"
+import { untrustedCounterparty } from "./einvoicing/issue-gate"
+import type { Counterparty } from "./issue"
 import {
-  cardStreamIssuer,
-  issuerEmailsConfirm,
-  issuerEmailsConfirmPreflight,
-  issuerStreamGet,
-  issuerStreamSet,
-  issuerStreamSetPreflight,
-  onStripeConnectionChanged,
-} from "./streams"
-import {
-  checkScheduleInput,
-  checkScheduleCreate,
-  checkScheduleUpdate,
-  recurringList,
-  recurringSchedulePause,
-  recurringScheduleCreate,
-  recurringScheduleUpdate,
-} from "./recurring/tools"
-import { recurringDraftJob, recurringDraftWrite } from "./recurring/draft-job"
-import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
-import { recurringLegalDateJob } from "./recurring/legal-date-job"
-import {
-  approvalRouteRead,
-  type RunCtx,
-  recurringRunIssue,
-  recurringRunIssuePreflight,
-  recurringRunUnapprove,
-  recurringRunUnapprovePreflight,
-} from "./recurring/run-card"
-import { recurringRunGet } from "./recurring/run-get"
+  contactRelationshipsSet,
+  creditNoteCreateAndIssue,
+  creditNoteCreateAndIssuePreflight,
+  creditNoteIssue,
+  creditNoteIssuePreflight,
+  documentsConvertLocal,
+  documentsConvertToInvoice,
+  documentsConvertToInvoicePreflight,
+  documentsMarkPaid,
+  documentsMarkPaidPreflight,
+  documentsRecordRefund,
+  documentsRecordRefundPreflight,
+  documentsRetryPdf,
+  documentsSendToCustomer,
+  documentsSendToCustomerPreflight,
+  documentsUpdate,
+  documentsUpdatePreflight,
+  documentsUpdatePreview,
+  draftIssuePreview,
+  draftsCreatePreflight,
+  draftsCreateTool,
+  draftsDiscard,
+  draftsUpdatePreflight,
+  draftsUpdateTool,
+  hsCodesAssign,
+  hsCodesLibraryDelete,
+  hsCodesLibraryUpsert,
+  hsCodesUnassign,
+  invoiceCreateAndIssue,
+  invoiceCreateAndIssuePreflight,
+  invoiceIssue,
+  invoiceIssuePreflight,
+  orderReissueApply,
+  orderReissueApplyPreflight,
+  poCreateAndIssue,
+  poCreateAndIssuePreflight,
+  poIssue,
+  proformaCreateAndIssue,
+  proformaCreateAndIssuePreflight,
+  proformaIssue,
+  proformaIssuePreflight,
+  quoteCreateAndIssue,
+  quoteCreateAndIssuePreflight,
+  quoteIssue,
+  quoteIssuePreflight,
+  settingsIssuerProfileCreate,
+  settingsIssuerProfileDelete,
+  settingsIssuerProfileUpdate,
+  settingsIssuerProfileWritePreflight,
+} from "./mutations"
+import { lineAmountsError } from "./mutations/shared"
+import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import {
   contactRelationshipsGet,
   deferredList,
@@ -73,65 +96,42 @@ import {
   pendingApprovalsList,
   settingsHsCodeList,
   settingsIssuerProfileList,
-  viewerAccess,
   settingsShopMappingList,
   settingsTaxRegimeList,
   vatValidate,
+  viewerAccess,
 } from "./reads"
+import { recurringDraftJob, recurringDraftWrite } from "./recurring/draft-job"
+import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
+import { recurringLegalDateJob } from "./recurring/legal-date-job"
 import {
-  draftsCreateTool,
-  draftsCreatePreflight,
-  draftsUpdateTool,
-  draftsUpdatePreflight,
-  draftsDiscard,
-  invoiceIssue,
-  invoiceCreateAndIssue,
-  documentsConvertToInvoice,
-  documentsConvertLocal,
-  documentsMarkPaid,
-  documentsRecordRefund,
-  documentsSendToCustomer,
-  quoteIssue,
-  quoteCreateAndIssue,
-  proformaIssue,
-  proformaCreateAndIssue,
-  poIssue,
-  poCreateAndIssue,
-  poCreateAndIssuePreflight,
-  draftIssuePreview,
-  creditNoteCreateAndIssue,
-  creditNoteIssue,
-  orderReissueApply,
-  hsCodesAssign,
-  hsCodesUnassign,
-  hsCodesLibraryUpsert,
-  hsCodesLibraryDelete,
-  contactRelationshipsSet,
-  settingsIssuerProfileCreate,
-  settingsIssuerProfileUpdate,
-  settingsIssuerProfileDelete,
-  settingsIssuerProfileWritePreflight,
-  documentsRetryPdf,
-  documentsUpdate,
-  documentsUpdatePreflight,
-  documentsUpdatePreview,
-  quoteIssuePreflight,
-  invoiceIssuePreflight,
-  invoiceCreateAndIssuePreflight,
-  documentsConvertToInvoicePreflight,
-  documentsMarkPaidPreflight,
-  documentsRecordRefundPreflight,
-  documentsSendToCustomerPreflight,
-  proformaIssuePreflight,
-  proformaCreateAndIssuePreflight,
-  quoteCreateAndIssuePreflight,
-  orderReissueApplyPreflight,
-  creditNoteCreateAndIssuePreflight,
-  creditNoteIssuePreflight,
-} from "./mutations"
-import { lineAmountsError } from "./mutations/shared"
-import { untrustedCounterparty } from "./einvoicing/issue-gate"
-import type { Counterparty } from "./issue"
+  approvalRouteRead,
+  type RunCtx,
+  recurringRunIssue,
+  recurringRunIssuePreflight,
+  recurringRunUnapprove,
+  recurringRunUnapprovePreflight,
+} from "./recurring/run-card"
+import { recurringRunGet } from "./recurring/run-get"
+import {
+  checkScheduleCreate,
+  checkScheduleInput,
+  checkScheduleUpdate,
+  recurringList,
+  recurringScheduleCreate,
+  recurringSchedulePause,
+  recurringScheduleUpdate,
+} from "./recurring/tools"
+import {
+  cardStreamIssuer,
+  issuerEmailsConfirm,
+  issuerEmailsConfirmPreflight,
+  issuerStreamGet,
+  issuerStreamSet,
+  issuerStreamSetPreflight,
+  onStripeConnectionChanged,
+} from "./streams"
+import { vatLookup } from "./vat-lookup"
 
 /** Wire params of an issuing call: a SIREN's registry confirmation is never taken from the
  *  caller (defence in depth: the gate also ignores any confirmation on a call snapshot). */
@@ -149,16 +149,17 @@ export { onShopifyOrderCreated, onShopifyOrderPaid } from "./handlers/shopify-or
 // metafield) into product_customs_overlay so export invoices auto-carry them.
 export { onShopifyProductChanged } from "./handlers/shopify-product-changed"
 export { onShopifyRefundCreated } from "./handlers/shopify-refund-created"
-import {
-  observeShopifyOrderUpdated,
-  type OrderUpdatedCtx,
-  type OrderUpdatedResult,
-} from "./handlers/shopify-order-updated"
+
 import {
   catchUpMissedPaidOrder,
   type OrderPaidCtx,
   type OrderPaidResult,
 } from "./handlers/shopify-order-paid"
+import {
+  type OrderUpdatedCtx,
+  type OrderUpdatedResult,
+  observeShopifyOrderUpdated,
+} from "./handlers/shopify-order-updated"
 
 // shopify/order:updated: record the billing baseline / flag a billable divergence on an
 // invoiced order (shopify-order-updated.ts). When the order has NO billing document at all,
@@ -170,27 +171,21 @@ export async function onShopifyOrderUpdated(
 ): Promise<OrderUpdatedResult | OrderPaidResult> {
   const observed = await observeShopifyOrderUpdated(event, ctx as unknown as OrderUpdatedCtx)
   if (observed.status !== "noop") return observed
-  return catchUpMissedPaidOrder(
-    event as Parameters<typeof catchUpMissedPaidOrder>[0],
-    ctx,
-  )
+  return catchUpMissedPaidOrder(event as Parameters<typeof catchUpMissedPaidOrder>[0], ctx)
 }
-export { onShopifyOrderCancelled } from "./handlers/shopify-order-cancelled"
-// Quotes ARE Shopify draft orders when the issuer profile is mapped to a shop: these four keep
-// the quote and its draft order in step (create/update mirror it, complete marks it invoiced,
-// delete rejects it). See handlers/shopify-draft-order.ts for the full contract.
-export {
-  onShopifyDraftOrderCreated,
-  onShopifyDraftOrderUpdated,
-  onShopifyDraftOrderCompleted,
-  onShopifyDraftOrderDeleted,
-} from "./handlers/shopify-draft-order"
-
+// ONE-TIME backfill (remove once prod reports 0 remaining): records the human
+// Shopify order number on documents issued before the column existed, so the
+// whole history is searchable by order number. Fills from external_refs when the
+// importer already wrote it, else one shopify:orders_get per unique order.
+export { backfillOrderNumbersJobHandler } from "./handlers/backfill-order-numbers"
 // --- Scheduled jobs ---
 // `deferredRetryJobHandler` is the kernel-shaped `(payload, ctx)` wrapper that
 // supplies the real re-dispatch (the pure `deferredRetryJob` drain takes an
 // injected dispatch for testability and cannot be the manifest handler itself).
 export { deferredRetryJobHandler } from "./handlers/deferred-dispatch"
+// Writes the Boxtal shipment(s) created against an invoice back onto it (external_refs.shipments)
+// through boxtal's public search tool, so invoice and parcel resolve each other in one hop.
+export { linkShipmentsJobHandler } from "./handlers/link-shipments"
 // `overdueScanJobHandler` is the kernel-shaped `(payload, ctx)` wrapper; the
 // inner `overdueScanJob(ctx, opts)` keeps its readable shape for unit tests.
 export { overdueScanJobHandler } from "./handlers/overdue-scan"
@@ -199,19 +194,22 @@ export { overdueScanJobHandler } from "./handlers/overdue-scan"
 // shape for unit tests. Reconciles issued Shopify invoices' payment_status
 // against the authoritative Shopify order financial_status.
 export { reconcileShopifyPaymentsJobHandler } from "./handlers/reconcile-shopify-payments"
-// ONE-TIME backfill (remove once prod reports 0 remaining): records the human
-// Shopify order number on documents issued before the column existed, so the
-// whole history is searchable by order number. Fills from external_refs when the
-// importer already wrote it, else one shopify:orders_get per unique order.
-export { backfillOrderNumbersJobHandler } from "./handlers/backfill-order-numbers"
-// Writes the Boxtal shipment(s) created against an invoice back onto it (external_refs.shipments)
-// through boxtal's public search tool, so invoice and parcel resolve each other in one hop.
-export { linkShipmentsJobHandler } from "./handlers/link-shipments"
 // Issues a dead run left numbered but unrendered: their render and owed email are parked for
 // deferred-retry (handlers/resume-interrupted.ts).
 export { resumeInterruptedIssuesJobHandler } from "./handlers/resume-interrupted"
-import { deferredTaxOverride, deferredTaxOverridePreflight } from "./handlers/tax-override"
+// Quotes ARE Shopify draft orders when the issuer profile is mapped to a shop: these four keep
+// the quote and its draft order in step (create/update mirror it, complete marks it invoiced,
+// delete rejects it). See handlers/shopify-draft-order.ts for the full contract.
+export {
+  onShopifyDraftOrderCompleted,
+  onShopifyDraftOrderCreated,
+  onShopifyDraftOrderDeleted,
+  onShopifyDraftOrderUpdated,
+} from "./handlers/shopify-draft-order"
+export { onShopifyOrderCancelled } from "./handlers/shopify-order-cancelled"
+
 import { backfillOrderNumbers } from "./handlers/backfill-order-numbers"
+import { deferredTaxOverride, deferredTaxOverridePreflight } from "./handlers/tax-override"
 
 // --- Data-export handler (kernel `export` tool — manifest `export.handler`) — BL-188 ---
 // Invoked by the export orchestrator as (params:{format,dateRange}, ctx); the FULL-RLS-set documents
@@ -289,10 +287,8 @@ export const documentsIssuePreviewHandler = (
   params: Parameters<typeof documentsIssuePreview>[1],
   ctx: Parameters<typeof documentsIssuePreview>[0],
 ) => documentsIssuePreview(ctx, params)
-export const viewerAccessHandler = (
-  _params: unknown,
-  ctx: Parameters<typeof viewerAccess>[0],
-) => viewerAccess(ctx)
+export const viewerAccessHandler = (_params: unknown, ctx: Parameters<typeof viewerAccess>[0]) =>
+  viewerAccess(ctx)
 export const settingsTaxRegimeListHandler = (
   _params: unknown,
   ctx: Parameters<typeof settingsTaxRegimeList>[0],
@@ -541,6 +537,9 @@ export const creditNoteIssuePreflightHandler = (
   ctx: Parameters<typeof creditNoteIssuePreflight>[0],
 ) => creditNoteIssuePreflight(ctx, params)
 
+import { backfillIdentities } from "./einvoicing/backfill"
+import { backfillLegacyOriginals } from "./einvoicing/backfill-legacy"
+import { einvoicingClassify } from "./einvoicing/classify-tool"
 // --- E-invoicing: counterparty identities, classification, settings ---
 import {
   counterpartyIdentityGet,
@@ -548,12 +547,9 @@ import {
   counterpartyIdentitySet,
   counterpartyTerritorySet,
 } from "./einvoicing/identity-tools"
-import { einvoicingClassify } from "./einvoicing/classify-tool"
-import { einvoicingSettingsSet } from "./einvoicing/settings-tool"
 import { einvoicingReadiness } from "./einvoicing/readiness"
+import { einvoicingSettingsSet } from "./einvoicing/settings-tool"
 import { legalOriginalsVerify } from "./legal-originals/verify"
-import { backfillIdentities } from "./einvoicing/backfill"
-import { backfillLegacyOriginals } from "./einvoicing/backfill-legacy"
 
 export const einvoicingClassifyHandler = (
   params: Parameters<typeof einvoicingClassify>[1],
@@ -600,11 +596,23 @@ export const einvoicingBackfillLegacyOriginalsHandler = (
 // SIRENs against the business registry, which re-drives the parks waiting on them.
 export { identityConfirmJobHandler } from "./einvoicing/backfill"
 
+import { activityRead } from "./activity"
 // — E-invoicing through the bound PA provider (contract einvoicing-pa@1) —
-import { bookDailyJob, bookingInvariantJob, einvoiceBookBatch, stepBook, summariseBatches } from "./einvoicing/booking"
+import {
+  bookDailyJob,
+  bookingInvariantJob,
+  einvoiceBookBatch,
+  stepBook,
+  summariseBatches,
+} from "./einvoicing/booking"
 import { einvoiceSendBatch, einvoiceSendDailyJob } from "./einvoicing/send-batch"
 import { einvoiceStandingDailyJob, einvoiceStandingOff } from "./einvoicing/standing"
-import { type DocumentSendStateCtx, documentSendState } from "./send-state"
+import {
+  einvoiceTransmissionGet,
+  einvoicingProviderOptions,
+  einvoicingSettingsGet,
+  einvoicingSettingsValues,
+} from "./einvoicing/transmission-read"
 import {
   type EinvCtx,
   einvoiceSend,
@@ -613,34 +621,42 @@ import {
   statusCatchUp,
   transmitTick,
 } from "./einvoicing/transmit"
-import {
-  einvoiceTransmissionGet,
-  einvoicingProviderOptions,
-  einvoicingSettingsGet,
-  einvoicingSettingsValues,
-} from "./einvoicing/transmission-read"
-import { activityRead } from "./activity"
 import { ingestOrQueue, receivedCatchUp } from "./received/ingest"
 import {
+  type ReceivedToolCtx,
   receivedActionRequest,
   receivedGet,
   receivedList,
   receivedRefresh,
   receivedSetStatus,
   receivedSetStatusPreflight,
-  type ReceivedToolCtx,
 } from "./received/tools"
+import { type DocumentSendStateCtx, documentSendState } from "./send-state"
 
-export const einvoiceSendRequestHandler = (params: { document_id?: string }, ctx: EinvCtx) => einvoiceSendRequest(ctx, params)
-export const einvoiceSendHandler = (params: Parameters<typeof einvoiceSend>[1], ctx: EinvCtx) => einvoiceSend(ctx, params)
-export const einvoiceBookBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) => einvoiceBookBatch(ctx, params)
-export const documentSendStateHandler = (params: Record<string, unknown>, ctx: DocumentSendStateCtx) => documentSendState(params, ctx)
-export const einvoiceStandingOffHandler = (params: { issuerProfileId?: string; stream?: string }, ctx: EinvCtx) => einvoiceStandingOff(ctx, params)
-export const einvoicingStandingDailyJobHandler = (_payload: unknown, ctx: EinvCtx) => einvoiceStandingDailyJob(ctx)
-export const einvoiceSendBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) => einvoiceSendBatch(ctx, params)
-export const einvoicingSendDailyJobHandler = (_payload: unknown, ctx: EinvCtx) => einvoiceSendDailyJob(ctx)
-export const einvoiceStatusRefreshHandler = (params: { document_id?: string }, ctx: EinvCtx) => einvoiceStatusRefresh(ctx, params)
-export const einvoiceTransmissionGetHandler = (params: { document_id?: string }, ctx: EinvCtx) => einvoiceTransmissionGet(ctx, params)
+export const einvoiceSendRequestHandler = (params: { document_id?: string }, ctx: EinvCtx) =>
+  einvoiceSendRequest(ctx, params)
+export const einvoiceSendHandler = (params: Parameters<typeof einvoiceSend>[1], ctx: EinvCtx) =>
+  einvoiceSend(ctx, params)
+export const einvoiceBookBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) =>
+  einvoiceBookBatch(ctx, params)
+export const documentSendStateHandler = (
+  params: Record<string, unknown>,
+  ctx: DocumentSendStateCtx,
+) => documentSendState(params, ctx)
+export const einvoiceStandingOffHandler = (
+  params: { issuerProfileId?: string; stream?: string },
+  ctx: EinvCtx,
+) => einvoiceStandingOff(ctx, params)
+export const einvoicingStandingDailyJobHandler = (_payload: unknown, ctx: EinvCtx) =>
+  einvoiceStandingDailyJob(ctx)
+export const einvoiceSendBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) =>
+  einvoiceSendBatch(ctx, params)
+export const einvoicingSendDailyJobHandler = (_payload: unknown, ctx: EinvCtx) =>
+  einvoiceSendDailyJob(ctx)
+export const einvoiceStatusRefreshHandler = (params: { document_id?: string }, ctx: EinvCtx) =>
+  einvoiceStatusRefresh(ctx, params)
+export const einvoiceTransmissionGetHandler = (params: { document_id?: string }, ctx: EinvCtx) =>
+  einvoiceTransmissionGet(ctx, params)
 export const einvoicingTransmitJobHandler = (_payload: unknown, ctx: EinvCtx) =>
   transmitTick(ctx, {
     stepBook,
@@ -649,24 +665,50 @@ export const einvoicingTransmitJobHandler = (_payload: unknown, ctx: EinvCtx) =>
     onReceived: (c, ref) => ingestOrQueue(c, ref, "webhook"),
   })
 export const einvoicingBookDailyJobHandler = (_payload: unknown, ctx: EinvCtx) => bookDailyJob(ctx)
-export const einvoicingStatusCatchUpJobHandler = (_payload: unknown, ctx: EinvCtx) => statusCatchUp(ctx)
-export const einvoicingBookingInvariantJobHandler = (_payload: unknown, ctx: EinvCtx) => bookingInvariantJob(ctx)
-export const einvoicingSettingsGetHandler = (_params: Record<string, never>, ctx: EinvCtx) => einvoicingSettingsGet(ctx)
-export const einvoicingSettingsValuesHandler = (_params: Record<string, never>, ctx: EinvCtx) => einvoicingSettingsValues(ctx)
-export const einvoicingProviderOptionsHandler = (_params: Record<string, never>, ctx: EinvCtx) => einvoicingProviderOptions(ctx)
+export const einvoicingStatusCatchUpJobHandler = (_payload: unknown, ctx: EinvCtx) =>
+  statusCatchUp(ctx)
+export const einvoicingBookingInvariantJobHandler = (_payload: unknown, ctx: EinvCtx) =>
+  bookingInvariantJob(ctx)
+export const einvoicingSettingsGetHandler = (_params: Record<string, never>, ctx: EinvCtx) =>
+  einvoicingSettingsGet(ctx)
+export const einvoicingSettingsValuesHandler = (_params: Record<string, never>, ctx: EinvCtx) =>
+  einvoicingSettingsValues(ctx)
+export const einvoicingProviderOptionsHandler = (_params: Record<string, never>, ctx: EinvCtx) =>
+  einvoicingProviderOptions(ctx)
 
 // — Reception: supplier e-invoices received through the PA (the Received tab) —
-type ReceivedActionParams = { received_id?: string; action?: string; reason?: string | null; comment?: string | null }
-export const receivedEinvoicesListHandler = (params: { status?: string; limit?: number; offset?: number }, ctx: ReceivedToolCtx) =>
-  receivedList(ctx, params)
-export const receivedEinvoicesGetHandler = (params: { received_id?: string }, ctx: ReceivedToolCtx) => receivedGet(ctx, params)
-export const receivedEinvoicesRefreshHandler = (params: { received_id?: string }, ctx: ReceivedToolCtx) => receivedRefresh(ctx, params)
-export const receivedEinvoiceActionRequestHandler = (params: ReceivedActionParams, ctx: ReceivedToolCtx) =>
-  receivedActionRequest(ctx, params)
-export const receivedEinvoiceSetStatusPreflightHandler = (params: ReceivedActionParams, ctx: ReceivedToolCtx) =>
-  receivedSetStatusPreflight(ctx, params)
-export const receivedEinvoiceSetStatusHandler = (params: ReceivedActionParams, ctx: ReceivedToolCtx) => receivedSetStatus(ctx, params)
-export const einvoicingReceivedCatchUpJobHandler = (_payload: unknown, ctx: ReceivedToolCtx) => receivedCatchUp(ctx)
+type ReceivedActionParams = {
+  received_id?: string
+  action?: string
+  reason?: string | null
+  comment?: string | null
+}
+export const receivedEinvoicesListHandler = (
+  params: { status?: string; limit?: number; offset?: number },
+  ctx: ReceivedToolCtx,
+) => receivedList(ctx, params)
+export const receivedEinvoicesGetHandler = (
+  params: { received_id?: string },
+  ctx: ReceivedToolCtx,
+) => receivedGet(ctx, params)
+export const receivedEinvoicesRefreshHandler = (
+  params: { received_id?: string },
+  ctx: ReceivedToolCtx,
+) => receivedRefresh(ctx, params)
+export const receivedEinvoiceActionRequestHandler = (
+  params: ReceivedActionParams,
+  ctx: ReceivedToolCtx,
+) => receivedActionRequest(ctx, params)
+export const receivedEinvoiceSetStatusPreflightHandler = (
+  params: ReceivedActionParams,
+  ctx: ReceivedToolCtx,
+) => receivedSetStatusPreflight(ctx, params)
+export const receivedEinvoiceSetStatusHandler = (
+  params: ReceivedActionParams,
+  ctx: ReceivedToolCtx,
+) => receivedSetStatus(ctx, params)
+export const einvoicingReceivedCatchUpJobHandler = (_payload: unknown, ctx: ReceivedToolCtx) =>
+  receivedCatchUp(ctx)
 
 // — import kinds (manifest `import.kinds`) —
 export { checkDocuments, importDocuments } from "./import-kind"
@@ -713,22 +755,37 @@ export const recurringListHandler = (
 
 // --- The month-end run (draft, card, approve, issue, legal date; see recurring/*-job.ts) ---
 export const recurringDraftJobHandler = (_payload: unknown, ctx: RunCtx) => recurringDraftJob(ctx)
-export const recurringDraftWriteHandler = (params: Parameters<typeof recurringDraftWrite>[1], ctx: RunCtx) =>
-  recurringDraftWrite(ctx, params)
+export const recurringDraftWriteHandler = (
+  params: Parameters<typeof recurringDraftWrite>[1],
+  ctx: RunCtx,
+) => recurringDraftWrite(ctx, params)
 export const recurringIssueJobHandler = (_payload: unknown, ctx: RunCtx) => recurringIssueJob(ctx)
-export const recurringLegalDateJobHandler = (_payload: unknown, ctx: RunCtx) => recurringLegalDateJob(ctx)
-export const recurringRunIssueHandler = (params: Parameters<typeof recurringRunIssue>[1], ctx: RunCtx) =>
-  recurringRunIssue(ctx, params)
-export const recurringRunUnapproveHandler = (params: Parameters<typeof recurringRunUnapprove>[1], ctx: RunCtx) =>
-  recurringRunUnapprove(ctx, params)
-export const recurringItemIssueHandler = (params: Parameters<typeof recurringItemIssue>[1], ctx: RunCtx) =>
-  recurringItemIssue(ctx, params)
-export const recurringRunGetHandler = (params: Parameters<typeof recurringRunGet>[1], ctx: RunCtx) => recurringRunGet(ctx, params)
-export const recurringRunIssuePreflightHandler = (params: { run_id: string }, ctx: RunCtx) => recurringRunIssuePreflight(ctx, params)
+export const recurringLegalDateJobHandler = (_payload: unknown, ctx: RunCtx) =>
+  recurringLegalDateJob(ctx)
+export const recurringRunIssueHandler = (
+  params: Parameters<typeof recurringRunIssue>[1],
+  ctx: RunCtx,
+) => recurringRunIssue(ctx, params)
+export const recurringRunUnapproveHandler = (
+  params: Parameters<typeof recurringRunUnapprove>[1],
+  ctx: RunCtx,
+) => recurringRunUnapprove(ctx, params)
+export const recurringItemIssueHandler = (
+  params: Parameters<typeof recurringItemIssue>[1],
+  ctx: RunCtx,
+) => recurringItemIssue(ctx, params)
+export const recurringRunGetHandler = (
+  params: Parameters<typeof recurringRunGet>[1],
+  ctx: RunCtx,
+) => recurringRunGet(ctx, params)
+export const recurringRunIssuePreflightHandler = (params: { run_id: string }, ctx: RunCtx) =>
+  recurringRunIssuePreflight(ctx, params)
 export const recurringRunUnapprovePreflightHandler = (params: { run_id: string }, ctx: RunCtx) =>
   recurringRunUnapprovePreflight(ctx, params)
-export const approvalRouteReadHandler = (params: { entityType: string; entityId: string }, ctx: RunCtx) =>
-  approvalRouteRead(ctx, params)
+export const approvalRouteReadHandler = (
+  params: { entityType: string; entityId: string },
+  ctx: RunCtx,
+) => approvalRouteRead(ctx, params)
 
 // --- Who issues what: the card stream's issuer and Stripe's own emails (see streams.ts) ---
 export const issuerStreamGetHandler = (
@@ -757,7 +814,10 @@ export const issuerEmailsConfirmHandler = (
   params: Parameters<typeof issuerEmailsConfirm>[1],
   ctx: Parameters<typeof issuerEmailsConfirm>[0],
 ) => issuerEmailsConfirm(ctx, params)
-export const cardStreamIssuerHandler = (_params: unknown, ctx: Parameters<typeof cardStreamIssuer>[0]) => cardStreamIssuer(ctx)
+export const cardStreamIssuerHandler = (
+  _params: unknown,
+  ctx: Parameters<typeof cardStreamIssuer>[0],
+) => cardStreamIssuer(ctx)
 export const onStripeConnectionStateChanged = (
   event: Parameters<typeof onStripeConnectionChanged>[1],
   ctx: Parameters<typeof onStripeConnectionChanged>[0],
@@ -765,34 +825,59 @@ export const onStripeConnectionStateChanged = (
 
 // --- Card payments on Stripe, mode A: invoices, payments, refunds, unmatched payments ---
 // Event subscribers keep the kernel's `(event, ctx)` shape; tools are flipped like the others.
-import { onStripeInvoiceFinalized as stripeInvoiceFinalized, type StripeCtx } from "./handlers/stripe-invoice-finalized"
-import { onStripeInvoiceClosed, onStripeInvoicePaid as stripeInvoicePaid, onStripeInvoicePaymentFailed } from "./handlers/stripe-invoice-paid"
-import { onStripeRefundCreated as stripeRefundCreated } from "./handlers/stripe-refund-created"
+import {
+  type StripeCtx,
+  onStripeInvoiceFinalized as stripeInvoiceFinalized,
+} from "./handlers/stripe-invoice-finalized"
+import {
+  onStripeInvoiceClosed,
+  onStripeInvoicePaymentFailed,
+  onStripeInvoicePaid as stripeInvoicePaid,
+} from "./handlers/stripe-invoice-paid"
 import {
   invoiceFromStripePayment,
   invoiceFromStripePaymentPreflight,
-  onStripePaymentUnmatched as stripePaymentUnmatched,
   paymentLinkToInvoice,
   paymentLinkToInvoicePreflight,
+  onStripePaymentUnmatched as stripePaymentUnmatched,
 } from "./handlers/stripe-payment-unmatched"
+import { onStripeRefundCreated as stripeRefundCreated } from "./handlers/stripe-refund-created"
+
 export { reconcileStripePaymentsJobHandler } from "./handlers/reconcile-stripe-payments"
 
-export const onStripeInvoiceFinalizedEvent = (event: unknown, ctx: StripeCtx) => stripeInvoiceFinalized(event, ctx)
-export const onStripeInvoicePaidEvent = (event: unknown, ctx: StripeCtx) => stripeInvoicePaid(event, ctx)
-export const onStripeInvoicePaymentFailedEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoicePaymentFailed(event, ctx)
-export const onStripeInvoiceVoidedEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoiceClosed(event, ctx, "voided")
-export const onStripeInvoiceUncollectibleEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoiceClosed(event, ctx, "uncollectible")
-export const onStripeRefundCreatedEvent = (event: unknown, ctx: StripeCtx) => stripeRefundCreated(event, ctx)
-export const onStripePaymentUnmatchedEvent = (event: unknown, ctx: StripeCtx) => stripePaymentUnmatched(event, ctx)
-export const invoiceFromStripePaymentHandler = (params: Parameters<typeof invoiceFromStripePayment>[1], ctx: StripeCtx) =>
-  invoiceFromStripePayment(ctx, params ?? {})
-export const invoiceFromStripePaymentPreflightHandler = async (params: Parameters<typeof invoiceFromStripePayment>[1], ctx: StripeCtx) => {
+export const onStripeInvoiceFinalizedEvent = (event: unknown, ctx: StripeCtx) =>
+  stripeInvoiceFinalized(event, ctx)
+export const onStripeInvoicePaidEvent = (event: unknown, ctx: StripeCtx) =>
+  stripeInvoicePaid(event, ctx)
+export const onStripeInvoicePaymentFailedEvent = (event: unknown, ctx: StripeCtx) =>
+  onStripeInvoicePaymentFailed(event, ctx)
+export const onStripeInvoiceVoidedEvent = (event: unknown, ctx: StripeCtx) =>
+  onStripeInvoiceClosed(event, ctx, "voided")
+export const onStripeInvoiceUncollectibleEvent = (event: unknown, ctx: StripeCtx) =>
+  onStripeInvoiceClosed(event, ctx, "uncollectible")
+export const onStripeRefundCreatedEvent = (event: unknown, ctx: StripeCtx) =>
+  stripeRefundCreated(event, ctx)
+export const onStripePaymentUnmatchedEvent = (event: unknown, ctx: StripeCtx) =>
+  stripePaymentUnmatched(event, ctx)
+export const invoiceFromStripePaymentHandler = (
+  params: Parameters<typeof invoiceFromStripePayment>[1],
+  ctx: StripeCtx,
+) => invoiceFromStripePayment(ctx, params ?? {})
+export const invoiceFromStripePaymentPreflightHandler = async (
+  params: Parameters<typeof invoiceFromStripePayment>[1],
+  ctx: StripeCtx,
+) => {
   const r = await invoiceFromStripePaymentPreflight(ctx, params ?? {})
   return "status" in r ? { error: r.error } : r
 }
-export const paymentLinkToInvoiceHandler = (params: Parameters<typeof paymentLinkToInvoice>[1], ctx: StripeCtx) =>
-  paymentLinkToInvoice(ctx, params)
-export const paymentLinkToInvoicePreflightHandler = async (params: Parameters<typeof paymentLinkToInvoice>[1], ctx: StripeCtx) => {
+export const paymentLinkToInvoiceHandler = (
+  params: Parameters<typeof paymentLinkToInvoice>[1],
+  ctx: StripeCtx,
+) => paymentLinkToInvoice(ctx, params)
+export const paymentLinkToInvoicePreflightHandler = async (
+  params: Parameters<typeof paymentLinkToInvoice>[1],
+  ctx: StripeCtx,
+) => {
   const r = await paymentLinkToInvoicePreflight(ctx, params)
   return "status" in r ? { error: r.error } : r
 }

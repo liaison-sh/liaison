@@ -36,14 +36,18 @@ function eurOf(minor: number, currency: string, rate: number): string {
 export async function findBooking(
   client: PennylaneClient,
   p: { idempotency_key: string },
-): Promise<{ found: false } | { found: true; provider_ref: string; e_invoicing: boolean } | OpError> {
+): Promise<
+  { found: false } | { found: true; provider_ref: string; e_invoicing: boolean } | OpError
+> {
   try {
     const page = await client.list<PennylaneInvoice>("/customer_invoices", {
       filter: [{ field: "external_reference", operator: "eq", value: p.idempotency_key }],
       limit: 2,
     })
     const hit = page.items[0]
-    return hit ? { found: true, provider_ref: String(hit.id), e_invoicing: hit.e_invoicing != null } : { found: false }
+    return hit
+      ? { found: true, provider_ref: String(hit.id), e_invoicing: hit.e_invoicing != null }
+      : { found: false }
   } catch (e) {
     return fromException(e, "find_booking")
   }
@@ -59,7 +63,9 @@ export interface BookParams {
 
 export type BookResult = { provider_ref: string; state: "booked"; adopted: boolean } | OpError
 
-function lineRates(lines: BookingLine[]): { ok: true; rates: string[] } | { ok: false; problems: string[] } {
+function lineRates(
+  lines: BookingLine[],
+): { ok: true; rates: string[] } | { ok: false; problems: string[] } {
   const rates: string[] = []
   const problems: string[] = []
   lines.forEach((l, i) => {
@@ -72,21 +78,29 @@ function lineRates(lines: BookingLine[]): { ok: true; rates: string[] } | { ok: 
 
 export async function bookSale(client: PennylaneClient, p: BookParams): Promise<BookResult> {
   const d = p.data
-  if (!d || !Array.isArray(d.lines) || d.lines.length === 0) return opError("invalid_input", "booking data with lines is required")
+  if (!d || !Array.isArray(d.lines) || d.lines.length === 0)
+    return opError("invalid_input", "booking data with lines is required")
   if (!/^[0-9a-f]{64}$/i.test(p.legal_original_sha256 ?? "")) {
     return opError("invalid_input", "legal_original_sha256 must be the legal original's SHA-256")
   }
   const rates = lineRates(d.lines)
   if (!rates.ok) {
-    return opError("vat_rate_unmappable", `No Pennylane VAT rate for: ${rates.problems.join("; ")}`, false, { problems: rates.problems })
+    return opError(
+      "vat_rate_unmappable",
+      `No Pennylane VAT rate for: ${rates.problems.join("; ")}`,
+      false,
+      { problems: rates.problems },
+    )
   }
   const foreign = d.currency.toUpperCase() !== "EUR"
   const fx = foreign ? Number(d.fx_rate) : 1
-  if (foreign && !(fx > 0)) return opError("fx_rate_missing", `A ${d.currency} booking needs the stored EUR reference rate`)
+  if (foreign && !(fx > 0))
+    return opError("fx_rate_missing", `A ${d.currency} booking needs the stored EUR reference rate`)
   try {
     const existing = await findBooking(client, { idempotency_key: p.idempotency_key })
     if ("status" in existing) return existing
-    if (existing.found) return { provider_ref: existing.provider_ref, state: "booked", adopted: true }
+    if (existing.found)
+      return { provider_ref: existing.provider_ref, state: "booked", adopted: true }
 
     const c = d.customer
     const individual = c.kind !== "business"
@@ -116,7 +130,10 @@ export async function bookSale(client: PennylaneClient, p: BookParams): Promise<
       attachmentId = att.data.id
     } catch (e) {
       if (/fingerprint/.test(String((e as Error)?.message))) {
-        return opError("legal_original_mismatch", "The file to book is not the legal original (fingerprint differs); nothing was booked")
+        return opError(
+          "legal_original_mismatch",
+          "The file to book is not the legal original (fingerprint differs); nothing was booked",
+        )
       }
       throw e
     }
@@ -133,7 +150,9 @@ export async function bookSale(client: PennylaneClient, p: BookParams): Promise<
       currency_amount_before_tax: money(d.subtotal_minor, cur),
       currency_amount: money(d.total_minor, cur),
       currency_tax: money(d.tax_minor, cur),
-      ...(foreign ? { amount: eurOf(d.total_minor, cur, fx), tax: eurOf(d.tax_minor, cur, fx) } : {}),
+      ...(foreign
+        ? { amount: eurOf(d.total_minor, cur, fx), tax: eurOf(d.tax_minor, cur, fx) }
+        : {}),
       ...(d.credit_of?.provider_ref && /^\d+$/.test(d.credit_of.provider_ref)
         ? { credited_invoice_id: Number(d.credit_of.provider_ref) }
         : {}),
@@ -145,7 +164,12 @@ export async function bookSale(client: PennylaneClient, p: BookParams): Promise<
         vat_rate: (rates as { rates: string[] }).rates[i],
         currency_amount: money(l.subtotal_minor + l.tax_minor, cur),
         currency_tax: money(l.tax_minor, cur),
-        ...(foreign ? { amount: eurOf(l.subtotal_minor + l.tax_minor, cur, fx), tax: eurOf(l.tax_minor, cur, fx) } : {}),
+        ...(foreign
+          ? {
+              amount: eurOf(l.subtotal_minor + l.tax_minor, cur, fx),
+              tax: eurOf(l.tax_minor, cur, fx),
+            }
+          : {}),
       })),
     }
     try {
@@ -157,7 +181,8 @@ export async function bookSale(client: PennylaneClient, p: BookParams): Promise<
       if ((status === 422 && /already been taken/i.test(text)) || status === 409) {
         // Booked by a run that crashed before recording it: adopt the one Pennylane holds.
         const again = await findBooking(client, { idempotency_key: p.idempotency_key })
-        if (!("status" in again) && again.found) return { provider_ref: again.provider_ref, state: "booked", adopted: true }
+        if (!("status" in again) && again.found)
+          return { provider_ref: again.provider_ref, state: "booked", adopted: true }
         const m = /ID (\d+) already exists/.exec(text)
         if (m) return { provider_ref: m[1]!, state: "booked", adopted: true }
       }

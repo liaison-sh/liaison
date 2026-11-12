@@ -12,18 +12,48 @@ describe("a Stripe invoice for a business buyer", () => {
   it("a tax-inclusive line is read net of its tax, an exclusive one as stated", async () => {
     const gross = await invoiceLine(
       noHttp,
-      { amount: 12000, quantity: 1, description: "Plan", taxes: [{ amount: 2000, tax_behavior: "inclusive", tax_rate_details: { tax_rate: { percentage: 20 } } }] },
+      {
+        amount: 12000,
+        quantity: 1,
+        description: "Plan",
+        taxes: [
+          {
+            amount: 2000,
+            tax_behavior: "inclusive",
+            tax_rate_details: { tax_rate: { percentage: 20 } },
+          },
+        ],
+      },
       new Map(),
       newTally(),
     )
-    expect(gross).toMatchObject({ unit_amount_excl_minor: "10000", tax_rate_bp: 2000, tax_minor: "2000" })
+    expect(gross).toMatchObject({
+      unit_amount_excl_minor: "10000",
+      tax_rate_bp: 2000,
+      tax_minor: "2000",
+    })
     const net = await invoiceLine(
       noHttp,
-      { amount: 10000, quantity: 1, description: "Plan", taxes: [{ amount: 2000, tax_behavior: "exclusive", tax_rate_details: { tax_rate: { percentage: 20 } } }] },
+      {
+        amount: 10000,
+        quantity: 1,
+        description: "Plan",
+        taxes: [
+          {
+            amount: 2000,
+            tax_behavior: "exclusive",
+            tax_rate_details: { tax_rate: { percentage: 20 } },
+          },
+        ],
+      },
       new Map(),
       newTally(),
     )
-    expect(net).toMatchObject({ unit_amount_excl_minor: "10000", tax_rate_bp: 2000, tax_minor: "2000" })
+    expect(net).toMatchObject({
+      unit_amount_excl_minor: "10000",
+      tax_rate_bp: 2000,
+      tax_minor: "2000",
+    })
   })
 
   it("the buyer carries the company name, its address and its EU VAT id", () => {

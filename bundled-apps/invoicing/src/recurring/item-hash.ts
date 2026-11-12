@@ -105,6 +105,9 @@ export async function currentItemHash(ctx: HashDb, item: Row, draft: Row): Promi
     orderBy: { position: "asc" },
     limit: 500,
   })) as Row[]
-  const issuer = (await ctx.db.findOne("issuer_profiles", String(draft.issuer_profile_id))) as Row | null
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(draft.issuer_profile_id),
+  )) as Row | null
   return itemContentHash(item, draft, lines, issuer)
 }

@@ -394,6 +394,28 @@ describe("ctx.fetch auth: the credential is added host-side", () => {
   })
 })
 
+describe("ctx.fetch convert xlsx-text", () => {
+  it("answers a workbook as text; a body that is not one is refused; an unknown convert too", async () => {
+    const { workbookBytes } = await import("~/modules/imports/__test-helpers__/workbook")
+    let answer: Uint8Array | string = workbookBytes([{ name: "Leads", rows: [["Name"], ["Ada"]] }])
+    upstream(() => new Response(answer))
+    const ok = JSON.parse(
+      await egress().fetch(
+        "https://docs.carrier.test/book.xlsx",
+        JSON.stringify({ convert: "xlsx-text" }),
+      ),
+    )
+    expect(ok).toMatchObject({ status: 200, body: "Sheet: Leads\nName\nAda" })
+    answer = "not a workbook"
+    await expect(
+      egress().fetch("https://docs.carrier.test/x.xlsx", JSON.stringify({ convert: "xlsx-text" })),
+    ).rejects.toMatchObject({ code: "not_a_workbook" })
+    await expect(
+      egress().fetch("https://docs.carrier.test/x", JSON.stringify({ convert: "pdf-text" })),
+    ).rejects.toMatchObject({ code: "invalid_request" })
+  })
+})
+
 describe("connections_getSettings", () => {
   it("returns only readable non-password values, and names the empty fields", async () => {
     const out = JSON.parse(await egress().connections_getSettings("carrier"))

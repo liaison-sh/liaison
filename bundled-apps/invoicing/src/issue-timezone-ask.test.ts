@@ -8,12 +8,14 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import { type IssueCtx, type IssueInput, issueDocument } from "./issue"
-import type { MutationsCtx } from "./mutations/shared"
 import { settingsIssuerProfileUpdate } from "./mutations"
+import type { MutationsCtx } from "./mutations/shared"
 import { createMockDb, type MockDb } from "./test-db"
 import { testTime } from "./test-time"
 
-const manifest = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8")) as {
+const manifest = JSON.parse(
+  readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"),
+) as {
   events: { emits: string[] }
   attention: {
     translations: Array<{
@@ -53,7 +55,13 @@ function makeCtx(opts?: { orgZone?: string; seed?: Array<Record<string, unknown>
     time: testTime(opts?.orgZone ?? "UTC"),
     pdf: {
       async render() {
-        return { file_id: "file-1", byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+        return {
+          file_id: "file-1",
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
       },
     },
     messages: { post: async () => ({ message_id: "msg-1" }) },
@@ -106,16 +114,31 @@ function draft(): IssueInput["draft"] {
     due_at: "2026-06-14",
     external_refs: {},
     lines: [
-      { position: 1, description: "Consulting", quantity: "1", unit_price_minor: 10000n, line_kind: "service", product_source: null, external_id: null },
+      {
+        position: 1,
+        description: "Consulting",
+        quantity: "1",
+        unit_price_minor: 10000n,
+        line_kind: "service",
+        product_source: null,
+        external_id: null,
+      },
     ],
   }
 }
 
 async function issueOn(ctx: IssueCtx, issuerRow: ReturnType<typeof issuer>) {
-  return issueDocument(ctx, { type: "invoice", operation_category: "services", issuer: issuerRow, counterparty, draft: draft() })
+  return issueDocument(ctx, {
+    type: "invoice",
+    operation_category: "services",
+    issuer: issuerRow,
+    counterparty,
+    draft: draft(),
+  })
 }
 
-const asks = (emitted: Emitted[]) => emitted.filter((e) => e.entity === "issuer_profile" && e.action === "timezone_unset")
+const asks = (emitted: Emitted[]) =>
+  emitted.filter((e) => e.entity === "issuer_profile" && e.action === "timezone_unset")
 
 describe("the issuer time zone is asked once", () => {
   test("the first issue on a UTC issuer raises one line, the second none, an answer stops it, and a profile with a zone never raises it", async () => {
@@ -126,7 +149,11 @@ describe("the issuer time zone is asked once", () => {
     expect(asks(unset.emitted)).toHaveLength(1)
     expect(asks(unset.emitted)[0]).toMatchObject({
       entityId: "issuer-1",
-      data: { issuer_profile_id: "issuer-1", legal_name: "Maison Nord SARL", document_id: expect.any(String) },
+      data: {
+        issuer_profile_id: "issuer-1",
+        legal_name: "Maison Nord SARL",
+        document_id: expect.any(String),
+      },
     })
     // Issuing is not blocked and nothing issued changed: the line comes after the number.
     expect(unset.db.__all("documents")).toHaveLength(1)
@@ -149,13 +176,25 @@ describe("the issuer time zone is asked once", () => {
     expect(asks(withOrgZone.emitted)).toHaveLength(0)
 
     const history = makeCtx({
-      seed: [{ id: "old-1", type: "invoice", status: "paid", issuer_profile_id: "issuer-1", number: "INV-2025-0009", number_int: 9, year_of_issue: 2025 }],
+      seed: [
+        {
+          id: "old-1",
+          type: "invoice",
+          status: "paid",
+          issuer_profile_id: "issuer-1",
+          number: "INV-2025-0009",
+          number_int: 9,
+          year_of_issue: 2025,
+        },
+      ],
     })
     await issueOn(history.ctx, issuer())
     expect(asks(history.emitted)).toHaveLength(0)
 
     // A draft is not an issue: a profile holding only drafts is still at its first issue.
-    const draftsOnly = makeCtx({ seed: [{ id: "d-1", type: "invoice", status: "draft", issuer_profile_id: "issuer-1" }] })
+    const draftsOnly = makeCtx({
+      seed: [{ id: "d-1", type: "invoice", status: "draft", issuer_profile_id: "issuer-1" }],
+    })
     await issueOn(draftsOnly.ctx, issuer())
     expect(asks(draftsOnly.emitted)).toHaveLength(1)
   })
@@ -165,16 +204,25 @@ describe("the issuer time zone is asked once", () => {
       (t) => t.event === "issuer_profile:timezone_unset",
     )
     expect(manifest.events.emits).toContain("issuer_profile:timezone_unset")
-    expect(translation?.recipients).toEqual({ kind: "scope_holders", scope: "invoicing:settings:write" })
+    expect(translation?.recipients).toEqual({
+      kind: "scope_holders",
+      scope: "invoicing:settings:write",
+    })
 
     // The answer: a profile update that sets the zone. UTC on purpose is stored as Etc/UTC.
     const { ctx, db, emitted } = makeCtx()
     await db.insert("issuer_profiles", { ...issuer(), id: "issuer-1", timezone: "UTC" })
     const row = (await db.findOne("issuer_profiles", "issuer-1")) as Record<string, unknown>
-    const answer = await settingsIssuerProfileUpdate({ ...ctx, db } as unknown as MutationsCtx, { id: String(row.id), timezone: "UTC" })
+    const answer = await settingsIssuerProfileUpdate({ ...ctx, db } as unknown as MutationsCtx, {
+      id: String(row.id),
+      timezone: "UTC",
+    })
     expect(answer.status).toBe("completed")
     const updated = emitted.find((e) => e.entity === "issuer_profile" && e.action === "updated")
-    expect((updated?.data as { changes: Record<string, unknown> }).changes.timezone).toEqual({ from: "UTC", to: "Etc/UTC" })
+    expect((updated!.data as { changes: Record<string, unknown> }).changes.timezone).toEqual({
+      from: "UTC",
+      to: "Etc/UTC",
+    })
 
     // The resolving translation reads that very event: it matches only a zone change and
     // resolves unconditionally, so an unrelated profile edit leaves the line alone.

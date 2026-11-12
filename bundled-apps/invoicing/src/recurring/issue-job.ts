@@ -16,11 +16,21 @@
 import { prepareItemSend } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
 import type { IssueBatchOp } from "../issue"
+import { BILLED_BY_STRIPE } from "../issuer-guard"
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
-import { BILLED_BY_STRIPE } from "../issuer-guard"
 import { rowIssuerHold } from "./item-state"
-import { currentItemHash, dayOf, endHold, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
+import {
+  currentItemHash,
+  dayOf,
+  endHold,
+  jsonOf,
+  type Row,
+  type RunCtx,
+  runItems,
+  stageRunCard,
+  workingDayFrom,
+} from "./run-card"
 
 /** The end state of a run whose approval left no invoice to issue: never "issued" with none issued. */
 export const NOTHING_TO_ISSUE = "nothing_to_issue"
@@ -34,13 +44,19 @@ export const ISSUE_JOB_TIMEOUT_MS = 600_000
 /** The hour, in the issuer's zone, from which a run's issue day issues. */
 export const ISSUE_HOUR = 8
 
-const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+const fail = (code: string, message: string): ErrorEnvelope => ({
+  status: "error",
+  error: { code, message },
+})
 
 /** Issue one approved item of a run: every check first, then one commit (see the file header). */
 export async function recurringItemIssue(
   ctx: RunCtx,
   input: { item_id: string },
-): Promise<{ status: "completed"; item_id: string; document_id: string; number: string; message: string } | ErrorEnvelope> {
+): Promise<
+  | { status: "completed"; item_id: string; document_id: string; number: string; message: string }
+  | ErrorEnvelope
+> {
   const before = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
   if (!before) return fail("item_not_found", `No month-end run item ${input.item_id}.`)
   // Numbers are taken only inside the run's issue window: from 08:00 on its issue day, until its
@@ -60,17 +76,33 @@ export async function recurringItemIssue(
   // made before Stripe was connected), or that Stripe cannot be asked about, is not issued. Checked
   // before the claim, so no number is taken; the row stays a draft and says why.
   if (before.state === "approved") {
-    const draftBefore = (await ctx.db.findOne("documents", String(before.document_id))) as Row | null
-    const schedule = before.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null) : null
-    const hold = draftBefore && draftBefore.status === "draft" ? await rowIssuerHold(ctx, draftBefore, schedule) : null
+    const draftBefore = (await ctx.db.findOne(
+      "documents",
+      String(before.document_id),
+    )) as Row | null
+    const schedule = before.schedule_id
+      ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null)
+      : null
+    const hold =
+      draftBefore && draftBefore.status === "draft"
+        ? await rowIssuerHold(ctx, draftBefore, schedule)
+        : null
     if (hold) {
-      const code = hold === BILLED_BY_STRIPE ? "subscription_stream_conflict" : "subscription_check_unavailable"
+      const code =
+        hold === BILLED_BY_STRIPE
+          ? "subscription_stream_conflict"
+          : "subscription_check_unavailable"
       const message =
         code === "subscription_stream_conflict"
           ? `Item ${input.item_id} was not issued and no number was used: its customer pays a live Stripe subscription, which already invoices them. It stays a draft; take it out of the run, or say on its schedule what else it bills.`
           : `Item ${input.item_id} was not issued and no number was used: Stripe is connected but could not say whether its customer pays a subscription. It stays a draft, and the run names it until it is issued again.`
       if (code === "subscription_stream_conflict") {
-        await ctx.db.update("recurring_run_items", input.item_id, { state: "needs_fix", approved_hash: null, note: BILLED_BY_STRIPE, failure: { code, message } })
+        await ctx.db.update("recurring_run_items", input.item_id, {
+          state: "needs_fix",
+          approved_hash: null,
+          note: BILLED_BY_STRIPE,
+          failure: { code, message },
+        })
       }
       return fail(code, message)
     }
@@ -86,18 +118,27 @@ export async function recurringItemIssue(
   }
   const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null
   if (!run || (run.status !== "issuing" && run.status !== "approved")) {
-    return fail("run_not_issuing", `The run of item ${input.item_id} is not issuing; nothing was issued and no number was used.`)
+    return fail(
+      "run_not_issuing",
+      `The run of item ${input.item_id} is not issuing; nothing was issued and no number was used.`,
+    )
   }
   const draftId = String(item.document_id)
   const draft = (await ctx.db.findOne("documents", draftId)) as Row | null
   if (!draft || draft.status !== "draft") {
-    return fail("draft_missing", `Draft ${draftId} of item ${input.item_id} is gone; nothing was issued and no number was used.`)
+    return fail(
+      "draft_missing",
+      `Draft ${draftId} of item ${input.item_id} is gone; nothing was issued and no number was used.`,
+    )
   }
   // The backstop: a draft, or its issuer's legal or bank details, changed since its approval: it
   // stays a draft and asks again.
   const hash = await currentItemHash(ctx, { ...item, state: "approved" }, draft)
   if (hash !== item.approved_hash) {
-    await ctx.db.update("recurring_run_items", input.item_id, { state: "waiting_reapproval", approved_hash: null })
+    await ctx.db.update("recurring_run_items", input.item_id, {
+      state: "waiting_reapproval",
+      approved_hash: null,
+    })
     return fail(
       "changed_since_approval",
       `Draft ${draftId} changed after its approval, so it was not issued and no number was used. It waits for a new approval.`,
@@ -105,7 +146,10 @@ export async function recurringItemIssue(
   }
   const externalRef = String(draft.external_ref ?? "")
   if (!externalRef) {
-    return fail("draft_without_key", `Draft ${draftId} of item ${input.item_id} has no period key; nothing was issued and no number was used.`)
+    return fail(
+      "draft_without_key",
+      `Draft ${draftId} of item ${input.item_id} has no period key; nothing was issued and no number was used.`,
+    )
   }
   const carried = jsonOf<Array<Record<string, unknown>>>(draft.lifecycle_log, [])
   // A row a person approved carries its send grant: its e-invoice is prepared under it below. A
@@ -117,10 +161,21 @@ export async function recurringItemIssue(
     {
       update: "recurring_run_items",
       id: input.item_id,
-      data: { state: "issued", document_id: { $ref: "document" }, issued_number: { $seq: "formatted" }, failure: null },
+      data: {
+        state: "issued",
+        document_id: { $ref: "document" },
+        issued_number: { $seq: "formatted" },
+        failure: null,
+      },
     },
     ...(item.schedule_id
-      ? [{ update: "recurring_schedules", id: String(item.schedule_id), data: { last_document_id: { $ref: "document" } } }]
+      ? [
+          {
+            update: "recurring_schedules",
+            id: String(item.schedule_id),
+            data: { last_document_id: { $ref: "document" } },
+          },
+        ]
       : []),
   ]
   let issued: Awaited<ReturnType<typeof issueRunDraft>>
@@ -144,7 +199,10 @@ export async function recurringItemIssue(
   }
   if (issued.status !== "completed") {
     if (issued.status === "error") return issued
-    return fail("not_issued", `Item ${input.item_id} was not issued: the issue asked for an approval.`)
+    return fail(
+      "not_issued",
+      `Item ${input.item_id} was not issued: the issue asked for an approval.`,
+    )
   }
   if (held) await prepareItemSend(ctx as unknown as EinvCtx, input.item_id)
   return {
@@ -166,7 +224,10 @@ interface RunWindow {
 }
 
 async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
-  const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(run.issuer_profile_id),
+  )) as Row | null
   if (!issuer) return null
   const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
   const issueOn = dayOf(run.issue_on) as string
@@ -179,10 +240,21 @@ async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
   }
 }
 
-async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issued: number; failed: number; more: boolean }> {
+async function issueRun(
+  ctx: RunCtx,
+  run: Row,
+  started: number,
+): Promise<{ issued: number; failed: number; more: boolean }> {
   const runId = String(run.id)
   if (run.status === "approved") {
-    await ctx.db.updateMany("recurring_runs", { where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "approved" }, data: { status: "issuing" } })
+    await ctx.db.updateMany("recurring_runs", {
+      where: {
+        issuer_profile_id: run.issuer_profile_id,
+        issue_on: dayOf(run.issue_on),
+        status: "approved",
+      },
+      data: { status: "issuing" },
+    })
   }
   let issued = 0
   let failed = 0
@@ -194,13 +266,21 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
     // Start an item only while its full timeout still fits in the job's.
     if (Date.now() - started + ITEM_TIMEOUT_MS > ISSUE_JOB_TIMEOUT_MS - 5_000) break
     started_items += 1
-    const env = await ctx.executeTool("invoicing:recurring_item_issue", { item_id: String(item.id) })
-    const result = env.status === "completed" ? (env.result as { status?: string; error?: { code: string; message: string } }) : null
+    const env = await ctx.executeTool("invoicing:recurring_item_issue", {
+      item_id: String(item.id),
+    })
+    const result =
+      env.status === "completed"
+        ? (env.result as { status?: string; error?: { code: string; message: string } })
+        : null
     if (result?.status === "completed") {
       issued += 1
       continue
     }
-    const error = env.status === "error" ? env.error : (result?.error ?? { code: "not_issued", message: "the item was not issued" })
+    const error =
+      env.status === "error"
+        ? env.error
+        : (result?.error ?? { code: "not_issued", message: "the item was not issued" })
     if (error.code === "already_issued") continue
     // Changed since its approval: not a failure, the row waits for the new card staged below.
     if (error.code === "changed_since_approval") {
@@ -210,14 +290,24 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
     failed += 1
     const now = (await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null
     if (now?.state === "approved") {
-      await ctx.db.update("recurring_run_items", String(item.id), { state: "failed", failure: { code: error.code, message: error.message } })
+      await ctx.db.update("recurring_run_items", String(item.id), {
+        state: "failed",
+        failure: { code: error.code, message: error.message },
+      })
     }
     if (ctx.emit) {
       await ctx.emit({
         entity: "recurring_run",
         action: "partial",
         entityId: runId,
-        data: { run_id: runId, item_id: String(item.id), document_id: String(item.document_id), code: error.code, reason: error.message, resolved: false },
+        data: {
+          run_id: runId,
+          item_id: String(item.id),
+          document_id: String(item.document_id),
+          code: error.code,
+          reason: error.message,
+          resolved: false,
+        },
       })
     }
   }
@@ -233,7 +323,12 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
     const status = numbered === 0 ? NOTHING_TO_ISSUE : stuck > 0 ? "partial" : "issued"
     await ctx.db.update("recurring_runs", runId, { status })
     if (status === "issued" && ctx.emit) {
-      await ctx.emit({ entity: "recurring_run", action: "issued", entityId: runId, data: { run_id: runId, issue_on: dayOf(run.issue_on), resolved: true } })
+      await ctx.emit({
+        entity: "recurring_run",
+        action: "issued",
+        entityId: runId,
+        data: { run_id: runId, issue_on: dayOf(run.issue_on), resolved: true },
+      })
     }
   }
   return { issued, failed, more: left > 0 }
@@ -245,7 +340,11 @@ async function restageRejected(ctx: RunCtx, run: Row, w: RunWindow): Promise<boo
   const askOn = workingDayFrom(issueOn)
   if (w.today < askOn || (w.today === askOn && w.hour < ISSUE_HOUR)) return false
   const claim = await ctx.db.updateMany("recurring_runs", {
-    where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "rejected" },
+    where: {
+      issuer_profile_id: run.issuer_profile_id,
+      issue_on: dayOf(run.issue_on),
+      status: "rejected",
+    },
     data: { status: "drafted", approval_request_id: null },
   })
   if (claim.count !== 1) return false
@@ -268,14 +367,19 @@ async function stageOwedCards(ctx: RunCtx): Promise<number> {
   for (const run of runs) {
     const items = await runItems(ctx, String(run.id))
     // A card still waiting is rewritten only when its rows changed, so asking again is free.
-    const owed = run.status === "drafted" ? items.some((i) => i.state === "ready") : items.some((i) => i.state === "waiting_reapproval")
+    const owed =
+      run.status === "drafted"
+        ? items.some((i) => i.state === "ready")
+        : items.some((i) => i.state === "waiting_reapproval")
     if (!owed) continue
     if ((await stageRunCard(ctx, String(run.id))).staged) staged += 1
   }
   return staged
 }
 
-export async function recurringIssueJob(ctx: RunCtx): Promise<{ status: "ok"; issued: number; failed: number; message: string }> {
+export async function recurringIssueJob(
+  ctx: RunCtx,
+): Promise<{ status: "ok"; issued: number; failed: number; message: string }> {
   const started = Date.now()
   await stageOwedCards(ctx)
   const runs = (await ctx.db.findMany("recurring_runs", {
@@ -305,6 +409,9 @@ export async function recurringIssueJob(ctx: RunCtx): Promise<{ status: "ok"; is
     status: "ok",
     issued,
     failed,
-    message: issued + failed === 0 ? "Nothing to issue now." : `Issued ${issued} invoice${issued === 1 ? "" : "s"}; ${failed} stayed drafts.`,
+    message:
+      issued + failed === 0
+        ? "Nothing to issue now."
+        : `Issued ${issued} invoice${issued === 1 ? "" : "s"}; ${failed} stayed drafts.`,
   }
 }

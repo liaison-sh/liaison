@@ -20,8 +20,14 @@
 // A card number in the reason is refused, and logs carry brand, last 4 and
 // expiry only.
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
-import { type StripeHttpCtx, StripeApiError, stripeFetch } from "../http"
-import { chargedAt, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
+import { StripeApiError, type StripeHttpCtx, stripeFetch } from "../http"
+import {
+  chargedAt,
+  invoiceOfCharge,
+  listRefunds,
+  refundItem,
+  stripeDocumentRef,
+} from "../money-events"
 import { maskCardNumbers } from "../pan-scan"
 import { moneyActionHold, type StateDb } from "../states"
 import type { ReadCtx } from "./read-common"
@@ -47,7 +53,12 @@ export interface MoneyCtx extends StripeHttpCtx, ApprovalBridges {
   executeTool?: ReadCtx["executeTool"]
   logger?: MoneyLogger
   /** The typed event bus: the refund's `refund:created` goes to invoicing at once. */
-  emit?: (event: { entity: string; action: string; entityId?: string; data?: unknown }) => Promise<void>
+  emit?: (event: {
+    entity: string
+    action: string
+    entityId?: string
+    data?: unknown
+  }) => Promise<void>
 }
 
 interface Charge {
@@ -90,7 +101,10 @@ function toCharge(raw: Obj): Charge {
       ? {
           brand: typeof card.brand === "string" ? card.brand : null,
           last4: typeof card.last4 === "string" ? card.last4 : null,
-          exp: card.exp_month && card.exp_year ? `${String(card.exp_month).padStart(2, "0")}/${card.exp_year}` : null,
+          exp:
+            card.exp_month && card.exp_year
+              ? `${String(card.exp_month).padStart(2, "0")}/${card.exp_year}`
+              : null,
         }
       : null,
   }
@@ -115,7 +129,10 @@ export function readRefusal(err: unknown, what: string, id: string): ToolRefusal
       )
     }
     if (err.status === 404) {
-      return refuseTool(`${what.replace(/ /g, "_")}_not_found`, `Stripe has no ${what} ${id}, so nothing was staged or sent.`)
+      return refuseTool(
+        `${what.replace(/ /g, "_")}_not_found`,
+        `Stripe has no ${what} ${id}, so nothing was staged or sent.`,
+      )
     }
     if (err.code === "permission_missing") {
       return refuseTool(
@@ -131,7 +148,10 @@ export function readRefusal(err: unknown, what: string, id: string): ToolRefusal
   )
 }
 
-export async function readCharge(ctx: StripeHttpCtx, chargeId: string): Promise<Charge | ToolRefusal> {
+export async function readCharge(
+  ctx: StripeHttpCtx,
+  chargeId: string,
+): Promise<Charge | ToolRefusal> {
   try {
     return toCharge(await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`))
   } catch (err) {
@@ -161,21 +181,32 @@ async function cardStreamIssuer(ctx: MoneyCtx): Promise<string | null | ToolRefu
 }
 
 /** When Liaison issues the invoices (mode A), the Liaison invoice behind this charge, or null. */
-async function invoiceBehind(ctx: MoneyCtx, chargeId: string): Promise<{ modeA: boolean; documentId: string | null } | ToolRefusal> {
+async function invoiceBehind(
+  ctx: MoneyCtx,
+  chargeId: string,
+): Promise<{ modeA: boolean; documentId: string | null } | ToolRefusal> {
   const issuer = await cardStreamIssuer(ctx)
   if (isRefusal(issuer)) return issuer
   if (issuer !== "liaison") return { modeA: false, documentId: null }
   const db = ctx.db
-  const payment = ((await db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[])[0]
+  const payment = (
+    (await db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+  )[0]
   const invoiceId = typeof payment?.invoice_id === "string" ? payment.invoice_id : null
   if (!invoiceId) return { modeA: true, documentId: null }
-  const invoice = ((await db.findMany("stripe_invoices", { where: { stripe_id: invoiceId }, limit: 1 })) as Obj[])[0]
-  const documentId = typeof invoice?.liaison_document_id === "string" ? invoice.liaison_document_id : null
+  const invoice = (
+    (await db.findMany("stripe_invoices", { where: { stripe_id: invoiceId }, limit: 1 })) as Obj[]
+  )[0]
+  const documentId =
+    typeof invoice?.liaison_document_id === "string" ? invoice.liaison_document_id : null
   return { modeA: true, documentId }
 }
 
 /** What is left to refund on the charge, or the refusal that stops this refund. */
-function refusalFor(charge: Charge, amountMinor: number | null): ToolRefusal | { left: number; amount: number } {
+function refusalFor(
+  charge: Charge,
+  amountMinor: number | null,
+): ToolRefusal | { left: number; amount: number } {
   const left = charge.amount - charge.amount_refunded
   if (charge.disputed) {
     return refuseTool(
@@ -209,12 +240,18 @@ function amountOf(v: unknown): number | null | ToolRefusal {
   )
 }
 
-async function checks(params: Obj, ctx: MoneyCtx): Promise<ToolRefusal | { charge: Charge; amount: number; left: number }> {
+async function checks(
+  params: Obj,
+  ctx: MoneyCtx,
+): Promise<ToolRefusal | { charge: Charge; amount: number; left: number }> {
   const hold = await moneyActionHold(ctx.db)
   if (hold) return hold
   const chargeId = typeof params.chargeId === "string" ? params.chargeId.trim() : ""
   if (!ID.test(chargeId)) {
-    return refuseTool("charge_ref_missing", "No Stripe charge (ch_...) was named, so nothing was staged or sent. Next step: find it with payments_search.")
+    return refuseTool(
+      "charge_ref_missing",
+      "No Stripe charge (ch_...) was named, so nothing was staged or sent. Next step: find it with payments_search.",
+    )
   }
   const card = cardNumberRefusal("reason", params.reason)
   if (card) return card
@@ -245,8 +282,14 @@ export async function refundsCreatePreflight(params: Obj | undefined, ctx: Money
 }
 
 /** A refund this approval already made, found by its metadata (never by a second POST). */
-async function refundOfApproval(ctx: MoneyCtx, chargeId: string, approvalId: string): Promise<Refund | null> {
-  const list = await stripeFetch<{ data?: Refund[] }>(ctx, "/v1/refunds", { params: { charge: chargeId, limit: 100 } })
+async function refundOfApproval(
+  ctx: MoneyCtx,
+  chargeId: string,
+  approvalId: string,
+): Promise<Refund | null> {
+  const list = await stripeFetch<{ data?: Refund[] }>(ctx, "/v1/refunds", {
+    params: { charge: chargeId, limit: 100 },
+  })
   return (list.data ?? []).find((r) => r.metadata?.liaison_approval_id === approvalId) ?? null
 }
 
@@ -265,7 +308,10 @@ async function noEffect(ctx: MoneyCtx, refusal: ToolRefusal): Promise<ToolRefusa
 async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): Promise<void> {
   if (!ctx.emit) return
   try {
-    const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+    const [row] = (await ctx.db.findMany("stripe_payments", {
+      where: { stripe_id: chargeId },
+      limit: 1,
+    })) as Obj[]
     let invoice = typeof row?.invoice_id === "string" && row.invoice_id ? row.invoice_id : null
     let charged = chargedAt(row)
     if (!invoice || !charged) {
@@ -299,13 +345,24 @@ async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): 
       },
     })
   } catch (err) {
-    ctx.logger?.warn("stripe refund not announced", { chargeId, refundId: refund.id, error: err instanceof Error ? err.message : String(err) })
+    ctx.logger?.warn("stripe refund not announced", {
+      chargeId,
+      refundId: refund.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 }
 
-async function addTicketNote(ctx: MoneyCtx, ticketId: unknown, refund: Refund, charge: Charge): Promise<string | null> {
+async function addTicketNote(
+  ctx: MoneyCtx,
+  ticketId: unknown,
+  refund: Refund,
+  charge: Charge,
+): Promise<string | null> {
   if (typeof ticketId !== "string" || !ticketId.trim() || !ctx.executeTool) return null
-  const card = charge.card?.last4 ? ` to the ${charge.card.brand ?? "card"} ending ${charge.card.last4}` : ""
+  const card = charge.card?.last4
+    ? ` to the ${charge.card.brand ?? "card"} ending ${charge.card.last4}`
+    : ""
   try {
     const out = await ctx.executeTool("tickets:addNote", {
       ticketId: ticketId.trim(),
@@ -368,7 +425,10 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
   if (existing) {
     const charge = await readCharge(ctx, chargeId)
     if (isRefusal(charge)) return noEffect(ctx, charge)
-    await ctx.approval_recordSucceeded?.(approval.toolName, JSON.stringify({ refundId: existing.id }))
+    await ctx.approval_recordSucceeded?.(
+      approval.toolName,
+      JSON.stringify({ refundId: existing.id }),
+    )
     await announceRefund(ctx, chargeId, existing)
     return result(existing, charge, await addTicketNote(ctx, p.ticketId, existing, charge), true)
   }
@@ -381,23 +441,21 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
   await ctx.approval_recordStarted?.(approval.toolName)
   let refund: Refund
   try {
-    refund = await stripeFetch<Refund>(
-      ctx,
-      "/v1/refunds",
-      {
-        method: "POST",
-        params: {
-          charge: charge.id,
-          amount,
-          reason: "requested_by_customer",
-          metadata: {
-            liaison_approval_id: approval.approvalRequestId,
-            ...(typeof p.reason === "string" && p.reason.trim() ? { liaison_reason: p.reason.trim().slice(0, 450) } : {}),
-          },
+    refund = await stripeFetch<Refund>(ctx, "/v1/refunds", {
+      method: "POST",
+      params: {
+        charge: charge.id,
+        amount,
+        reason: "requested_by_customer",
+        metadata: {
+          liaison_approval_id: approval.approvalRequestId,
+          ...(typeof p.reason === "string" && p.reason.trim()
+            ? { liaison_reason: p.reason.trim().slice(0, 450) }
+            : {}),
         },
-        idempotencyKey: approval.approvalRequestId,
       },
-    )
+      idempotencyKey: approval.approvalRequestId,
+    })
   } catch (err) {
     const definite = err instanceof StripeApiError && err.status < 500
     if (definite) {
@@ -405,7 +463,12 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
         err.code === "key_invalid" ? "key_invalid" : "stripe_refused",
         `Stripe refused refund of ${money(amount, charge.currency)} on charge ${charge.id} (${err.message}), so no money moved and no credit note follows.${err.code === "key_invalid" ? " Next step: an admin saves a working restricted key, then approve again." : ""}`,
       )
-      ctx.logger?.warn("stripe refund refused", { chargeId: charge.id, amountMinor: amount, status: err.status, card: charge.card })
+      ctx.logger?.warn("stripe refund refused", {
+        chargeId: charge.id,
+        amountMinor: amount,
+        status: err.status,
+        card: charge.card,
+      })
       return noEffect(ctx, refusal)
     }
     const refusal = refuseTool(
@@ -413,7 +476,11 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
       `Stripe's answer to refund ${money(amount, charge.currency)} on charge ${charge.id} was lost, so it is not known whether money moved. Nothing will be sent again blindly. Next step: approve again later; Stripe is searched for this approval's refund first and nothing is sent if it exists.`,
       { retryable: true },
     )
-    ctx.logger?.warn("stripe refund outcome unknown", { chargeId: charge.id, amountMinor: amount, card: charge.card })
+    ctx.logger?.warn("stripe refund outcome unknown", {
+      chargeId: charge.id,
+      amountMinor: amount,
+      card: charge.card,
+    })
     await ctx.approval_recordAmbiguous?.(approval.toolName, JSON.stringify(refusal.error))
     return refusal
   }

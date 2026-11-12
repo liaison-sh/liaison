@@ -13,7 +13,7 @@
 //
 // Run: bun run liaison/bundled-apps/shopify/scripts/verify-setup.ts
 
-import { readFile, readdir } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { graphqlThrottled, loadShopifyEnv } from "./_shopify-client.ts"
 
@@ -63,7 +63,11 @@ async function checkToken(env: ReturnType<typeof loadShopifyEnv>): Promise<Check
       `query { shop { name myshopifyDomain } }`,
     )
     if (res.data?.shop?.myshopifyDomain) {
-      return { name: "offline token", ok: true, detail: `validates against ${res.data.shop.myshopifyDomain}` }
+      return {
+        name: "offline token",
+        ok: true,
+        detail: `validates against ${res.data.shop.myshopifyDomain}`,
+      }
     }
     return { name: "offline token", ok: false, detail: "shop query returned no data" }
   } catch (err) {
@@ -73,13 +77,17 @@ async function checkToken(env: ReturnType<typeof loadShopifyEnv>): Promise<Check
 
 async function checkStaff(env: ReturnType<typeof loadShopifyEnv>): Promise<Check> {
   try {
-    const res = await graphqlThrottled<{ staffMembers: { edges: Array<{ node: { email: string } }> } }>(
-      env,
-      `query { staffMembers(first: 20) { edges { node { email } } } }`,
-    )
+    const res = await graphqlThrottled<{
+      staffMembers: { edges: Array<{ node: { email: string } }> }
+    }>(env, `query { staffMembers(first: 20) { edges { node { email } } } }`)
     const count = res.data?.staffMembers?.edges?.length ?? 0
-    if (count >= 3) return { name: "staff (≥ 3)", ok: true, detail: `${count} staff members configured` }
-    return { name: "staff (≥ 3)", ok: false, detail: `only ${count} staff member(s): add Test Refunder + Test Reader per setup doc step 4` }
+    if (count >= 3)
+      return { name: "staff (≥ 3)", ok: true, detail: `${count} staff members configured` }
+    return {
+      name: "staff (≥ 3)",
+      ok: false,
+      detail: `only ${count} staff member(s): add Test Refunder + Test Reader per setup doc step 4`,
+    }
   } catch (err) {
     const msg = (err as Error).message
     // read_users is Shopify-Plus-only; dev stores and non-Plus production stores
@@ -90,7 +98,8 @@ async function checkStaff(env: ReturnType<typeof loadShopifyEnv>): Promise<Check
         name: "staff (≥ 3)",
         ok: false,
         warn: true,
-        detail: "staffMembers query inaccessible (read_users is Plus-only), so scope-mirroring will use Liaison-side grants instead of auto-mirror; see spec amendment",
+        detail:
+          "staffMembers query inaccessible (read_users is Plus-only), so scope-mirroring will use Liaison-side grants instead of auto-mirror; see spec amendment",
       }
     }
     return { name: "staff (≥ 3)", ok: false, detail: msg }
@@ -99,13 +108,17 @@ async function checkStaff(env: ReturnType<typeof loadShopifyEnv>): Promise<Check
 
 async function checkMarkets(env: ReturnType<typeof loadShopifyEnv>): Promise<Check> {
   try {
-    const res = await graphqlThrottled<{ markets: { edges: Array<{ node: { handle: string; enabled: boolean } }> } }>(
-      env,
-      `query { markets(first: 25) { edges { node { handle enabled } } } }`,
-    )
+    const res = await graphqlThrottled<{
+      markets: { edges: Array<{ node: { handle: string; enabled: boolean } }> }
+    }>(env, `query { markets(first: 25) { edges { node { handle enabled } } } }`)
     const enabled = (res.data?.markets?.edges ?? []).filter((e) => e.node.enabled).length
-    if (enabled >= 2) return { name: "markets (≥ 2 enabled)", ok: true, detail: `${enabled} enabled markets` }
-    return { name: "markets (≥ 2 enabled)", ok: false, detail: `only ${enabled} enabled: enable EU + US per setup doc step 3` }
+    if (enabled >= 2)
+      return { name: "markets (≥ 2 enabled)", ok: true, detail: `${enabled} enabled markets` }
+    return {
+      name: "markets (≥ 2 enabled)",
+      ok: false,
+      detail: `only ${enabled} enabled: enable EU + US per setup doc step 3`,
+    }
   } catch (err) {
     return { name: "markets (≥ 2 enabled)", ok: false, detail: (err as Error).message }
   }
@@ -129,7 +142,11 @@ async function checkSeed(env: ReturnType<typeof loadShopifyEnv>): Promise<Check>
     const c = res.data?.customers.edges.length ?? 0
     const o = res.data?.orders.edges.length ?? 0
     if (p >= 5 && c >= 10 && o >= 10) {
-      return { name: "seed baseline", ok: true, detail: `${p} products / ${c} customers / ${o} orders` }
+      return {
+        name: "seed baseline",
+        ok: true,
+        detail: `${p} products / ${c} customers / ${o} orders`,
+      }
     }
     return {
       name: "seed baseline",
@@ -146,13 +163,21 @@ async function checkFixtures(): Promise<Check> {
     const entries = await readdir(FIXTURE_DIR)
     const missing = EXPECTED_FIXTURES.filter((f) => !entries.includes(f))
     if (missing.length > 0) {
-      return { name: "fixtures", ok: false, detail: `missing: ${missing.join(", ")}: run capture-fixtures.ts` }
+      return {
+        name: "fixtures",
+        ok: false,
+        detail: `missing: ${missing.join(", ")}: run capture-fixtures.ts`,
+      }
     }
     for (const f of EXPECTED_FIXTURES) {
       const text = await readFile(resolve(FIXTURE_DIR, f), "utf8")
       JSON.parse(text)
     }
-    return { name: "fixtures", ok: true, detail: `${EXPECTED_FIXTURES.length} fixture files present and parseable` }
+    return {
+      name: "fixtures",
+      ok: true,
+      detail: `${EXPECTED_FIXTURES.length} fixture files present and parseable`,
+    }
   } catch (err) {
     return { name: "fixtures", ok: false, detail: (err as Error).message }
   }
@@ -186,7 +211,9 @@ function report(checks: Check[]): void {
     console.log("✅ READY — implementation pipeline can dispatch.")
     const warns = checks.filter((c) => !c.ok && c.warn)
     if (warns.length > 0) {
-      console.log(`(${warns.length} known limitation${warns.length === 1 ? "" : "s"} — see spec for handling.)`)
+      console.log(
+        `(${warns.length} known limitation${warns.length === 1 ? "" : "s"} — see spec for handling.)`,
+      )
     }
   } else {
     console.log("❌ Setup incomplete. Address the items above.")

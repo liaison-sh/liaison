@@ -16,8 +16,8 @@ import {
   datesFrom,
   isCivilDate,
   isDueForDraft,
-  resumeOn,
   type Repeats,
+  resumeOn,
   type ScheduleError,
   validateSchedule,
 } from "./schedule"
@@ -25,7 +25,12 @@ import {
 export type RecurringCtx = Pick<MutationsCtx, "getUserId" | "db"> & {
   time: TimeSurface["time"]
   /** Announces a change, so open views of the record read it again. Absent on bare test contexts. */
-  emit?: (event: { entity: string; action: string; entityId: string; data: Record<string, unknown> }) => Promise<void>
+  emit?: (event: {
+    entity: string
+    action: string
+    entityId: string
+    data: Record<string, unknown>
+  }) => Promise<void>
   approval?: MutationsCtx["approval"] | null
   executeTool?: MutationsCtx["executeTool"]
   turn?: { get(): Promise<unknown> }
@@ -118,7 +123,10 @@ function dayOf(value: unknown): string | null {
 
 function normalize(raw: unknown): ScheduleRow {
   const row = raw as Record<string, unknown>
-  const lines = typeof row.lines === "string" ? (JSON.parse(row.lines) as ScheduleLineInput[]) : (row.lines as ScheduleLineInput[])
+  const lines =
+    typeof row.lines === "string"
+      ? (JSON.parse(row.lines) as ScheduleLineInput[])
+      : (row.lines as ScheduleLineInput[])
   return {
     ...(row as unknown as ScheduleRow),
     lines: lines ?? [],
@@ -134,7 +142,10 @@ function normalize(raw: unknown): ScheduleRow {
 async function load(ctx: RecurringCtx, id: string): Promise<ScheduleRow | Fail> {
   const raw = await ctx.db.findOne(ENTITY, id)
   if (!raw) {
-    return fail("schedule_not_found", `No recurring schedule ${id}. List them with recurring_list to find the right one.`)
+    return fail(
+      "schedule_not_found",
+      `No recurring schedule ${id}. List them with recurring_list to find the right one.`,
+    )
   }
   return normalize(raw)
 }
@@ -147,11 +158,19 @@ function invalid(errors: ScheduleError[]): Fail {
 }
 
 /** Fields the shared validation does not cover: the end date, the due terms, the card link. */
-function extraErrors(s: { ends_on?: string | null; due_rule?: string; due_days?: number | null }): ScheduleError[] {
+function extraErrors(s: {
+  ends_on?: string | null
+  due_rule?: string
+  due_days?: number | null
+}): ScheduleError[] {
   const errors: ScheduleError[] = []
-  if (s.ends_on && !isCivilDate(s.ends_on)) errors.push({ field: "billing_day", message: "ends_on must be a date, YYYY-MM-DD" })
+  if (s.ends_on && !isCivilDate(s.ends_on))
+    errors.push({ field: "billing_day", message: "ends_on must be a date, YYYY-MM-DD" })
   if (s.due_rule === "days_n" && !(Number.isInteger(s.due_days) && (s.due_days as number) > 0)) {
-    errors.push({ field: "billing_day", message: "due_rule days_n needs due_days, a whole number of days above zero" })
+    errors.push({
+      field: "billing_day",
+      message: "due_rule days_n needs due_days, a whole number of days above zero",
+    })
   }
   return errors
 }
@@ -173,7 +192,10 @@ async function issuerOf(ctx: RecurringCtx, id: string): Promise<IssuerFacts | Fa
 
 const isFail = (v: unknown): v is Fail => (v as Fail | null)?.status === "error"
 
-async function today(ctx: RecurringCtx, issuer: { timezone?: string | null }): Promise<{ ok: true; date: string } | { ok: false; error: Fail }> {
+async function today(
+  ctx: RecurringCtx,
+  issuer: { timezone?: string | null },
+): Promise<{ ok: true; date: string } | { ok: false; error: Fail }> {
   const when = await civilDateOf(ctx, issuer)
   return when.ok ? when : { ok: false, error: when.error }
 }
@@ -183,7 +205,9 @@ function withCoercedLines<T extends { lines?: ScheduleLineInput[] }>(input: T): 
   if (!Array.isArray(input.lines)) return input
   const lines = input.lines.map((l) => {
     const price = l.unit_price_minor as unknown
-    return typeof price === "string" && /^-?\d+$/.test(price) ? { ...l, unit_price_minor: Number(price) } : l
+    return typeof price === "string" && /^-?\d+$/.test(price)
+      ? { ...l, unit_price_minor: Number(price) }
+      : l
   })
   return { ...input, lines }
 }
@@ -212,23 +236,44 @@ async function scheduleGuard(
   billsOther: unknown,
   stage: "preflight" | "handler",
 ): Promise<Fail | null> {
-  const guard = await checkIssuerGuard(ctx, { contactId: who.contact_id ?? null, companyId: who.company_id ?? null, billsOtherThanStripe: billsOther, stage })
+  const guard = await checkIssuerGuard(ctx, {
+    contactId: who.contact_id ?? null,
+    companyId: who.company_id ?? null,
+    billsOtherThanStripe: billsOther,
+    stage,
+  })
   return guard.ok ? null : (guard.error as Fail)
 }
 
 /** Stage-time check of a new schedule: its fields, then the issuer guard. */
-export async function checkScheduleCreate(ctx: RecurringCtx, raw: ScheduleFields & { issue_mode?: string }): Promise<Fail | null> {
-  return checkScheduleInput(raw) ?? (await scheduleGuard(ctx, raw, raw.billsOtherThanStripe, "preflight"))
+export async function checkScheduleCreate(
+  ctx: RecurringCtx,
+  raw: ScheduleFields & { issue_mode?: string },
+): Promise<Fail | null> {
+  return (
+    checkScheduleInput(raw) ??
+    (await scheduleGuard(ctx, raw, raw.billsOtherThanStripe, "preflight"))
+  )
 }
 
 export async function recurringScheduleCreate(
   ctx: RecurringCtx,
   raw: ScheduleCreateInput,
 ): Promise<
-  { status: "completed"; id: string; scheduleStatus: string; nextIssueOn: string | null; nextDraftOn: string | null; message: string } | Fail
+  | {
+      status: "completed"
+      id: string
+      scheduleStatus: string
+      nextIssueOn: string | null
+      nextDraftOn: string | null
+      message: string
+    }
+  | Fail
 > {
   const input = withCoercedLines(raw)
-  const refused = checkScheduleInput(input) ?? (await scheduleGuard(ctx, input, input.billsOtherThanStripe, "handler"))
+  const refused =
+    checkScheduleInput(input) ??
+    (await scheduleGuard(ctx, input, input.billsOtherThanStripe, "handler"))
   if (refused) return refused
   const issuer = await issuerOf(ctx, input.issuer_profile_id)
   if (isFail(issuer)) return issuer
@@ -255,7 +300,10 @@ export async function recurringScheduleCreate(
     lines: input.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" })),
     notes: input.notes ?? null,
     ...(billsOtherOf(input.billsOtherThanStripe)
-      ? { bills_other_than_stripe: billsOtherOf(input.billsOtherThanStripe), bills_other_by: ctx.approval?.approvalDeciderId ?? userId }
+      ? {
+          bills_other_than_stripe: billsOtherOf(input.billsOtherThanStripe),
+          bills_other_by: ctx.approval?.approvalDeciderId ?? userId,
+        }
       : {}),
     next_issue_on: dates?.next_issue_on ?? null,
     next_draft_on: dates?.next_draft_on ?? null,
@@ -292,11 +340,20 @@ export async function checkScheduleUpdate(
   if ("status" in row && row.status === "error") return row as Fail
   const current = row as ScheduleRow
   if (current.status === "ended") {
-    return fail("schedule_ended", `Schedule ${current.id} has ended and cannot be changed. Save a new schedule instead.`)
+    return fail(
+      "schedule_ended",
+      `Schedule ${current.id} has ended and cannot be changed. Save a new schedule instead.`,
+    )
   }
   const stale = staleVersion(current, input.expected_version)
   if (stale) return stale
-  const { id: _id, status: _status, expected_version: _expected, billsOtherThanStripe, ...patch } = input
+  const {
+    id: _id,
+    status: _status,
+    expected_version: _expected,
+    billsOtherThanStripe,
+    ...patch
+  } = input
   const next = merged(current, patch)
   const errors = [...validateSchedule(next), ...extraErrors(next)]
   if (errors.length > 0) return invalid(errors)
@@ -306,9 +363,18 @@ export async function checkScheduleUpdate(
 }
 
 /** Tell open views of the schedule that it changed (they read it again). */
-async function announceScheduleChange(ctx: RecurringCtx, id: string, version: number): Promise<void> {
+async function announceScheduleChange(
+  ctx: RecurringCtx,
+  id: string,
+  version: number,
+): Promise<void> {
   if (!ctx.emit) return
-  await ctx.emit({ entity: "recurring_schedule", action: "updated", entityId: id, data: { schedule_id: id, version } })
+  await ctx.emit({
+    entity: "recurring_schedule",
+    action: "updated",
+    entityId: id,
+    data: { schedule_id: id, version },
+  })
 }
 
 /** A change made from an older version than the schedule now holds: refused, never written over. */
@@ -324,7 +390,16 @@ export async function recurringScheduleUpdate(
   ctx: RecurringCtx,
   raw: ScheduleUpdateInput,
 ): Promise<
-  { status: "completed"; id: string; version: number; issueMode: string; scheduleStatus: string; nextIssueOn: string | null; message: string } | Fail
+  | {
+      status: "completed"
+      id: string
+      version: number
+      issueMode: string
+      scheduleStatus: string
+      nextIssueOn: string | null
+      message: string
+    }
+  | Fail
 > {
   const input = withCoercedLines(raw)
   const refused = await checkScheduleUpdate(ctx, input)
@@ -335,7 +410,13 @@ export async function recurringScheduleUpdate(
   const now = await today(ctx, issuer)
   if (!now.ok) return now.error
 
-  const { id: _id, status: wanted, expected_version: _expected, billsOtherThanStripe, ...patch } = input
+  const {
+    id: _id,
+    status: wanted,
+    expected_version: _expected,
+    billsOtherThanStripe,
+    ...patch
+  } = input
   const next = merged(current, patch)
   const data: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(patch)) if (v !== undefined) data[k] = v
@@ -344,7 +425,8 @@ export async function recurringScheduleUpdate(
     data.bills_other_than_stripe = statement
     data.bills_other_by = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
   }
-  if (patch.lines) data.lines = patch.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" }))
+  if (patch.lines)
+    data.lines = patch.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" }))
 
   // Who turned automatic issuing on is the person who decided it: the approver of an agent's
   // request, or the person who clicked.
@@ -367,7 +449,10 @@ export async function recurringScheduleUpdate(
     status = "active"
     data.paused_until = null
     Object.assign(data, resumeOn(next, now.date))
-  } else if (current.status === "active" && (patch.billing_day !== undefined || patch.repeats !== undefined)) {
+  } else if (
+    current.status === "active" &&
+    (patch.billing_day !== undefined || patch.repeats !== undefined)
+  ) {
     Object.assign(data, datesFrom(next, now.date))
   }
   data.status = status
@@ -375,7 +460,9 @@ export async function recurringScheduleUpdate(
   await ctx.db.update(ENTITY, current.id, data)
   await announceScheduleChange(ctx, current.id, current.version + 1)
   const issueMode = String(data.issue_mode ?? current.issue_mode)
-  const nextIssueOn = (data.next_issue_on as string | null | undefined) ?? (status === "ended" ? null : (current.next_issue_on ?? null))
+  const nextIssueOn =
+    (data.next_issue_on as string | null | undefined) ??
+    (status === "ended" ? null : (current.next_issue_on ?? null))
   return {
     status: "completed",
     id: current.id,
@@ -396,7 +483,15 @@ export async function recurringSchedulePause(
   input: { id: string; until?: string | null },
   checkOnly = false,
 ): Promise<
-  { status: "completed"; id: string; scheduleStatus: "paused"; until: string | null; unchanged?: true; message: string } | Fail
+  | {
+      status: "completed"
+      id: string
+      scheduleStatus: "paused"
+      until: string | null
+      unchanged?: true
+      message: string
+    }
+  | Fail
 > {
   const row = await load(ctx, input.id)
   if ("status" in row && row.status === "error") return row as Fail
@@ -417,7 +512,10 @@ export async function recurringSchedulePause(
     }
   }
   if (current.status !== "active") {
-    return fail("schedule_not_started", `Schedule ${current.id} is a draft and bills nothing yet, so there is nothing to pause.`)
+    return fail(
+      "schedule_not_started",
+      `Schedule ${current.id} is a draft and bills nothing yet, so there is nothing to pause.`,
+    )
   }
   if (input.until) {
     const issuer = await issuerOf(ctx, current.issuer_profile_id)
@@ -425,11 +523,20 @@ export async function recurringSchedulePause(
     const now = await today(ctx, issuer)
     if (!now.ok) return now.error
     if (!isCivilDate(input.until) || input.until <= now.date) {
-      return fail("invalid_until", `until must be a date after today (${now.date}), written YYYY-MM-DD. Nothing was paused.`)
+      return fail(
+        "invalid_until",
+        `until must be a date after today (${now.date}), written YYYY-MM-DD. Nothing was paused.`,
+      )
     }
   }
   if (checkOnly) {
-    return { status: "completed", id: current.id, scheduleStatus: "paused", until: input.until ?? null, message: "Checked; nothing was written." }
+    return {
+      status: "completed",
+      id: current.id,
+      scheduleStatus: "paused",
+      until: input.until ?? null,
+      message: "Checked; nothing was written.",
+    }
   }
   await ctx.db.update(ENTITY, current.id, {
     status: "paused",
@@ -438,9 +545,10 @@ export async function recurringSchedulePause(
   })
   await announceScheduleChange(ctx, current.id, current.version + 1)
   const leftOut = await leaveOutOpenRows(ctx, current.id)
-  const runNote = leftOut > 0
-    ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`
-    : ""
+  const runNote =
+    leftOut > 0
+      ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`
+      : ""
   return {
     status: "completed",
     id: current.id,
@@ -449,7 +557,8 @@ export async function recurringSchedulePause(
     message:
       (input.until
         ? `Schedule ${current.id} is paused until ${input.until}. No draft is made while it is paused, and the days inside the pause are not billed afterwards.`
-        : `Schedule ${current.id} is paused and bills nothing until someone resumes it with recurring_schedule_update status active.`) + runNote,
+        : `Schedule ${current.id} is paused and bills nothing until someone resumes it with recurring_schedule_update status active.`) +
+      runNote,
   }
 }
 
@@ -462,16 +571,27 @@ const OPEN_ROW_STATES = new Set(["ready", "needs_fix", "approved", "waiting_reap
  * Returns how many rows were left out.
  */
 async function leaveOutOpenRows(ctx: RecurringCtx, scheduleId: string): Promise<number> {
-  const items = (await ctx.db.findMany("recurring_run_items", { where: { schedule_id: scheduleId }, limit: 500 })) as Array<Record<string, unknown>>
+  const items = (await ctx.db.findMany("recurring_run_items", {
+    where: { schedule_id: scheduleId },
+    limit: 500,
+  })) as Array<Record<string, unknown>>
   const runs = new Set<string>()
   let leftOut = 0
   for (const item of items) {
     if (!OPEN_ROW_STATES.has(String(item.state))) continue
-    const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Record<string, unknown> | null
+    const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Record<
+      string,
+      unknown
+    > | null
     if (draft && draft.status !== "draft") continue
     const notes = typeof item.note === "string" && item.note ? item.note.split(" · ") : []
     if (!notes.includes(SCHEDULE_PAUSED)) notes.push(SCHEDULE_PAUSED)
-    await ctx.db.update("recurring_run_items", String(item.id), { state: "left_out", approved_hash: null, send_grant: null, note: notes.join(" · ") })
+    await ctx.db.update("recurring_run_items", String(item.id), {
+      state: "left_out",
+      approved_hash: null,
+      send_grant: null,
+      note: notes.join(" · "),
+    })
     if (draft) {
       await logRunEdit(ctx as EditCtx, String(draft.id), {
         kind: "take_out",
@@ -494,13 +614,25 @@ async function leaveOutOpenRows(ctx: RecurringCtx, scheduleId: string): Promise<
  * The schedules that get a draft on `today`. A paused schedule whose `until` has come is resumed
  * first, from today: every billing day inside the pause is skipped, so nothing is back-billed.
  */
-export async function draftCandidates(ctx: RecurringCtx, todayDate: string): Promise<ScheduleRow[]> {
-  const paused = ((await ctx.db.findMany(ENTITY, { where: { status: "paused" } })) as unknown[]).map(normalize)
+export async function draftCandidates(
+  ctx: RecurringCtx,
+  todayDate: string,
+): Promise<ScheduleRow[]> {
+  const paused = (
+    (await ctx.db.findMany(ENTITY, { where: { status: "paused" } })) as unknown[]
+  ).map(normalize)
   for (const s of paused) {
     if (!s.paused_until || s.paused_until > todayDate) continue
-    await ctx.db.update(ENTITY, s.id, { status: "active", paused_until: null, version: s.version + 1, ...resumeOn(s, todayDate) })
+    await ctx.db.update(ENTITY, s.id, {
+      status: "active",
+      paused_until: null,
+      version: s.version + 1,
+      ...resumeOn(s, todayDate),
+    })
   }
-  const active = ((await ctx.db.findMany(ENTITY, { where: { status: "active" } })) as unknown[]).map(normalize)
+  const active = (
+    (await ctx.db.findMany(ENTITY, { where: { status: "active" } })) as unknown[]
+  ).map(normalize)
   return active.filter((s) => isDueForDraft(s, todayDate))
 }
 
@@ -521,10 +653,14 @@ export async function recurringList(
     const { notes: _notes, ...row } = normalize(r)
     return row as ScheduleRow
   })
-  const first = (await ctx.db.findMany(ENTITY, { where: { status: "active" }, orderBy: { next_issue_on: "asc" }, limit: 1 })) as unknown[]
+  const first = (await ctx.db.findMany(ENTITY, {
+    where: { status: "active" },
+    orderBy: { next_issue_on: "asc" },
+    limit: 1,
+  })) as unknown[]
   return {
     rows,
     nextCursor: found.length > limit ? String(offset + limit) : null,
-    nextRun: first[0] ? normalize(first[0]).next_issue_on ?? null : null,
+    nextRun: first[0] ? (normalize(first[0]).next_issue_on ?? null) : null,
   }
 }

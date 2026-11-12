@@ -28,7 +28,9 @@ describe("RegimeLine", () => {
     expect(v.note).toBeNull()
     expect(regimeLineView({ regime: "e_reporting", reasons: [] }, {}).label).toBe("E-reporting")
     expect(regimeLineView({ regime: "out_of_scope", reasons: [] }, {}).label).toBe("Out of scope")
-    expect(regimeLineView({ regime: "needs_review", reasons: [] }, {}).label).toBe("Awaiting a decision")
+    expect(regimeLineView({ regime: "needs_review", reasons: [] }, {}).label).toBe(
+      "Awaiting a decision",
+    )
     expect(regimeLineView({ regime: null, reasons: [] }, {}).label).toBe("Not classified yet")
     // Never a bare state: it says what it means.
     expect(regimeLineView({ regime: null, reasons: [] }, {}).reason).toContain("not yet known")
@@ -56,7 +58,9 @@ describe("RegimeLine", () => {
     expect(v.reason).toBe(eInvoiceReason.en)
     expect(v.note).toContain("SIREN")
     expect(v.tone).toBe("neutral")
-    expect(v.actions).toEqual([{ kind: "open", href: "/invoicing/identity/c-1", label: "Open the customer identity" }])
+    expect(v.actions).toEqual([
+      { kind: "open", href: "/invoicing/identity/c-1", label: "Open the customer identity" },
+    ])
   })
 
   it("a draft the gate would refuse lists every gap with exactly one action each", () => {

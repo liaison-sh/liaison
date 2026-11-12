@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, test } from "bun:test"
+import { createMockDb } from "../test-db"
 import { bookingData } from "./booking"
 import { bt23, operationCategory } from "./classify-operation"
 import type { EinvCtx } from "./transmit"
-import { createMockDb } from "../test-db"
 
 describe("operationCategory", () => {
   test("goods, and shipping counts with goods", () => {
@@ -11,29 +11,49 @@ describe("operationCategory", () => {
       category: "goods",
       source: "lines_authoritative",
     })
-    expect(operationCategory([{ line_kind: "goods" }, { line_kind: "shipping" }], { authoritative: false })).toEqual({
+    expect(
+      operationCategory([{ line_kind: "goods" }, { line_kind: "shipping" }], {
+        authoritative: false,
+      }),
+    ).toEqual({
       category: "goods",
       source: "lines_default",
     })
-    expect(operationCategory([{ line_kind: "shipping" }], { authoritative: true }).category).toBe("goods")
+    expect(operationCategory([{ line_kind: "shipping" }], { authoritative: true }).category).toBe(
+      "goods",
+    )
   })
   test("software is services", () => {
-    expect(operationCategory([{ line_kind: "software" }], { authoritative: true }).category).toBe("services")
+    expect(operationCategory([{ line_kind: "software" }], { authoritative: true }).category).toBe(
+      "services",
+    )
   })
   test("mixed", () => {
-    expect(operationCategory([{ line_kind: "software" }, { line_kind: "goods" }], { authoritative: true }).category).toBe(
-      "mixed",
-    )
     expect(
-      operationCategory([{ line_kind: "software" }, { line_kind: "shipping" }], { authoritative: true }).category,
+      operationCategory([{ line_kind: "software" }, { line_kind: "goods" }], {
+        authoritative: true,
+      }).category,
+    ).toBe("mixed")
+    expect(
+      operationCategory([{ line_kind: "software" }, { line_kind: "shipping" }], {
+        authoritative: true,
+      }).category,
     ).toBe("mixed")
   })
   test("empty -> null", () => {
-    expect(operationCategory([], { authoritative: true })).toEqual({ category: null, source: "lines_authoritative" })
-    expect(operationCategory([], { authoritative: false })).toEqual({ category: null, source: "lines_default" })
+    expect(operationCategory([], { authoritative: true })).toEqual({
+      category: null,
+      source: "lines_authoritative",
+    })
+    expect(operationCategory([], { authoritative: false })).toEqual({
+      category: null,
+      source: "lines_default",
+    })
   })
   test("a missing line_kind is the goods default", () => {
-    expect(operationCategory([{ line_kind: null }], { authoritative: false }).category).toBe("goods")
+    expect(operationCategory([{ line_kind: null }], { authoritative: false }).category).toBe(
+      "goods",
+    )
   })
 })
 
@@ -41,8 +61,13 @@ describe("service lines", () => {
   test("a consulting line classifies as services, a goods line as before, and an old document re-reads unchanged", async () => {
     const authoritative = { authoritative: true }
     expect(operationCategory([{ line_kind: "service" }], authoritative).category).toBe("services")
-    expect(operationCategory([{ line_kind: "service" }, { line_kind: "goods" }], authoritative).category).toBe("mixed")
-    expect(operationCategory([{ line_kind: "service" }, { line_kind: "shipping" }], authoritative).category).toBe("mixed")
+    expect(
+      operationCategory([{ line_kind: "service" }, { line_kind: "goods" }], authoritative).category,
+    ).toBe("mixed")
+    expect(
+      operationCategory([{ line_kind: "service" }, { line_kind: "shipping" }], authoritative)
+        .category,
+    ).toBe("mixed")
     expect(operationCategory([{ line_kind: "goods" }], authoritative).category).toBe("goods")
 
     // The booking data of a stored document reads each line's kind: a document issued before the

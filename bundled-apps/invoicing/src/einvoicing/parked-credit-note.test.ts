@@ -5,14 +5,18 @@
 // buyer's identity is fixed: never the whole refund or cancellation handler (which would see the
 // refund already recorded and issue nothing, or re-append the cancellation and re-raise its
 // attention item). Real issue pipeline against the in-memory mock db.
-import { testTime } from "../test-time"
+
 import { describe, expect, test } from "bun:test"
 import { type DeferredRow, park } from "../deferred"
 import { deferredRetryJobHandler } from "../handlers/deferred-dispatch"
-import { onShopifyOrderCancelled, type OrderCancelledCtx } from "../handlers/shopify-order-cancelled"
+import {
+  type OrderCancelledCtx,
+  onShopifyOrderCancelled,
+} from "../handlers/shopify-order-cancelled"
 import { onShopifyRefundCreated, type RefundCtx } from "../handlers/shopify-refund-created"
 import { creditNoteCreateAndIssue, documentsUpdate, type MutationsCtx } from "../mutations"
 import { createMockDb, type MockDb } from "../test-db"
+import { testTime } from "../test-time"
 import { raiseIdentityAttention } from "./gate"
 import { retryParkedCreditNote } from "./parked-credit-note"
 import { FICTIONAL_SIRENS } from "./test-fixtures"
@@ -124,7 +128,13 @@ function makeCtx(db: MockDb): { ctx: RefundCtx & OrderCancelledCtx; emitted: Emi
     time: testTime(),
     pdf: {
       async render() {
-        return { file_id: `pdf-${++seq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+        return {
+          file_id: `pdf-${++seq}`,
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
       },
     },
     messages: {
@@ -166,7 +176,11 @@ async function fixIdentity(db: MockDb, at: Date): Promise<void> {
 }
 
 const sweep = (ctx: RefundCtx & OrderCancelledCtx, now: Date) =>
-  deferredRetryJobHandler(undefined, ctx as unknown as Parameters<typeof deferredRetryJobHandler>[1], { now })
+  deferredRetryJobHandler(
+    undefined,
+    ctx as unknown as Parameters<typeof deferredRetryJobHandler>[1],
+    { now },
+  )
 
 describe("refund credit note parked on the buyer's identity", () => {
   test("park, identity fixed, sweep: exactly one credit note issued and the park resolved; a second sweep issues none", async () => {
@@ -215,7 +229,9 @@ describe("refund credit note parked on the buyer's identity", () => {
     const cns = creditNotes(db)
     expect(cns).toHaveLength(1)
     expect(String(cns[0]!.grand_total_minor)).toBe("-3000")
-    expect((cns[0]!.external_refs as Record<string, unknown>).original_document_id).toBe(ORIGINAL_ID)
+    expect((cns[0]!.external_refs as Record<string, unknown>).original_document_id).toBe(
+      ORIGINAL_ID,
+    )
     expect(cns[0]!.regime).toBe("e_invoice")
     expect(cns[0]!.buyer_siren).toBe(FICTIONAL_SIRENS[0])
     expect(parks(db)[0]!.status).toBe("resolved")
@@ -273,7 +289,14 @@ describe("refund credit note parked on the buyer's identity", () => {
     await fixIdentity(db, new Date("2026-10-14T10:01:00Z"))
     // Meanwhile a person credited 50.00 of the 120.00 by hand.
     const manual = await creditNoteCreateAndIssue(
-      { ...(ctx as unknown as MutationsCtx), approval: { approvalRequestId: "a-1", approvalDeciderId: "u-1", toolName: "invoicing:credit_note_create_and_issue" } },
+      {
+        ...(ctx as unknown as MutationsCtx),
+        approval: {
+          approvalRequestId: "a-1",
+          approvalDeciderId: "u-1",
+          toolName: "invoicing:credit_note_create_and_issue",
+        },
+      },
       {
         issuer_profile_id: "iss-1",
         counterparty: {
@@ -289,15 +312,27 @@ describe("refund credit note parked on the buyer's identity", () => {
           billing_country_code: "FR",
         },
         currency: "EUR",
-        items: [{ description: "Geste commercial", quantity: "1", unit_price_minor: -4167n, tax_rate_bp_override: 2000, line_kind: "goods" }] as never,
+        items: [
+          {
+            description: "Geste commercial",
+            quantity: "1",
+            unit_price_minor: -4167n,
+            tax_rate_bp_override: 2000,
+            line_kind: "goods",
+          },
+        ] as never,
         original_document_id: ORIGINAL_ID,
         operation_category: "goods",
       },
     )
     expect(manual.status).toBe("completed")
-    expect(await retryParkedCreditNote(ctx as unknown as MutationsCtx, row)).toEqual({ status: "ok" })
+    expect(await retryParkedCreditNote(ctx as unknown as MutationsCtx, row)).toEqual({
+      status: "ok",
+    })
     const auto = creditNotes(db).filter(
-      (d) => (d.external_refs as Record<string, unknown>).reason === "Auto-generated on Shopify refund refund-703",
+      (d) =>
+        (d.external_refs as Record<string, unknown>).reason ===
+        "Auto-generated on Shopify refund refund-703",
     )
     expect(auto).toHaveLength(1)
     // 120.00 - 50.00 (41.67 + 8.33 VAT) = 70.00 remain; the reversal never over-credits.
@@ -311,7 +346,10 @@ describe("cancellation credit note parked on the buyer's identity", () => {
     const { ctx, emitted } = makeCtx(db)
     const t0 = new Date("2026-10-14T10:00:00Z")
 
-    const res = await onShopifyOrderCancelled({ data: { orderId: ORDER, cancel_reason: "customer" } }, ctx)
+    const res = await onShopifyOrderCancelled(
+      { data: { orderId: ORDER, cancel_reason: "customer" } },
+      ctx,
+    )
     expect(res.status).toBe("ok")
     expect(creditNotes(db)).toHaveLength(0)
     expect(parks(db)).toHaveLength(1)
@@ -337,7 +375,9 @@ describe("cancellation credit note parked on the buyer's identity", () => {
     // The sweep raised no cancellation attention or audit event again: only the credit
     // note's own audit trail.
     const sinceSweep = emitted.slice(emittedAtCancel)
-    expect(sinceSweep.filter((e) => e.action === "order_cancelled" || e.action === "cancelled")).toHaveLength(0)
+    expect(
+      sinceSweep.filter((e) => e.action === "order_cancelled" || e.action === "cancelled"),
+    ).toHaveLength(0)
     // The identity item is not raised again; the sweep only closes it.
     const identityEvents = sinceSweep.filter((e) => e.action === "identity_missing")
     expect(identityEvents).toHaveLength(1)
@@ -391,7 +431,10 @@ describe("an e-invoice original whose snapshot lacks the buyer's SIREN", () => {
     const db = dbWith(eInvoiceWithoutSiren())
     const { ctx, emitted } = makeCtx(db)
     const t0 = new Date("2026-10-14T10:00:00Z")
-    await onShopifyRefundCreated({ data: { id: "refund-801", order_id: ORDER, refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-801", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
     expect(parks(db)).toHaveLength(1)
     expect(parks(db)[0]!.reason).toBe("einvoice_data_missing")
 
@@ -413,7 +456,10 @@ describe("an e-invoice original whose snapshot lacks the buyer's SIREN", () => {
   test("an unconfirmed identity does not stand in for the original's SIREN", async () => {
     const db = dbWith(eInvoiceWithoutSiren())
     const { ctx } = makeCtx(db)
-    await onShopifyRefundCreated({ data: { id: "refund-802", order_id: ORDER, refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-802", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
     await db.insert("counterparty_identities", {
       contact_id: CONTACT,
       customer_kind: "business",
@@ -446,25 +492,43 @@ describe("an e-invoice original whose snapshot lacks the buyer's SIREN", () => {
         email: "compta@atelier-exemple.example",
       },
       currency: "EUR",
-      items: [{ description: "Remise", quantity: "1", unit_price_minor: -2500n, tax_rate_bp_override: 2000, line_kind: "goods" }] as never,
+      items: [
+        {
+          description: "Remise",
+          quantity: "1",
+          unit_price_minor: -2500n,
+          tax_rate_bp_override: 2000,
+          line_kind: "goods",
+        },
+      ] as never,
       original_document_id: ORIGINAL_ID,
     })
     expect(refusal.status).toBe("error")
     if (refusal.status !== "error") throw new Error("expected a refusal")
-    const body = (refusal.error as { body?: { missing?: Array<{ field: string; fix_tool: string }> } }).body
+    const body = (
+      refusal.error as { body?: { missing?: Array<{ field: string; fix_tool: string }> } }
+    ).body
     expect(body?.missing?.find((m) => m.field === "buyer_siren")?.fix_tool).toBe("documents_update")
     expect(refusal.error.message).toContain("documents_update")
 
-    await onShopifyRefundCreated({ data: { id: "refund-803", order_id: ORDER, refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-803", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
     expect(parks(db)).toHaveLength(1)
     const park = parks(db)[0]!
     expect((park.blocked_on as Record<string, unknown>).contact_id).toBeNull()
 
     // A person links the original to its buyer's contact, and the identity gets confirmed.
-    const linked = await documentsUpdate(mctx, { id: ORIGINAL_ID, counterparty_contact_id: CONTACT })
+    const linked = await documentsUpdate(mctx, {
+      id: ORIGINAL_ID,
+      counterparty_contact_id: CONTACT,
+    })
     expect(linked.status).toBe("completed")
     await fixIdentity(db, new Date("2026-10-14T10:01:00Z"))
-    expect(await retryParkedCreditNote(mctx, park as unknown as DeferredRow)).toEqual({ status: "ok" })
+    expect(await retryParkedCreditNote(mctx, park as unknown as DeferredRow)).toEqual({
+      status: "ok",
+    })
     expect(creditNotes(db)).toHaveLength(1)
     expect(creditNotes(db)[0]!.buyer_siren).toBe(FICTIONAL_SIRENS[0])
     // The contactless park's attention item is keyed by the park; it closes with the park.
@@ -482,14 +546,25 @@ describe("identity attention closes with the last park waiting on the contact", 
         einvoicing_settings: [{ id: "set-1", gate_mode: "enforce", gate_mode_source: "config" }],
         documents: [
           legacyFrInvoice(),
-          legacyFrInvoice({ id: SECOND, number: "INV-2026-0002", number_int: 2, shopify_order_id: "ORD-T17-B" }),
+          legacyFrInvoice({
+            id: SECOND,
+            number: "INV-2026-0002",
+            number_int: 2,
+            shopify_order_id: "ORD-T17-B",
+          }),
         ],
         document_lines: [LINE, { ...LINE, id: "line-2", document_id: SECOND }],
       },
     })
     const { ctx, emitted } = makeCtx(db)
-    await onShopifyRefundCreated({ data: { id: "refund-901", order_id: ORDER, refund_amount_minor: 3000n } }, ctx)
-    await onShopifyRefundCreated({ data: { id: "refund-902", order_id: "ORD-T17-B", refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-901", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
+    await onShopifyRefundCreated(
+      { data: { id: "refund-902", order_id: "ORD-T17-B", refund_amount_minor: 3000n } },
+      ctx,
+    )
     expect(openAttention(emitted, "identity_missing")).toEqual([CONTACT])
 
     // The sweep re-issues both, one after the other: the first to resolve leaves the second
@@ -499,7 +574,8 @@ describe("identity attention closes with the last park waiting on the contact", 
     expect(out.succeeded).toBe(2)
     expect(openAttention(emitted, "identity_missing")).toEqual([])
     const resolves = emitted.filter(
-      (e) => e.action === "identity_missing" && (e.data as Record<string, unknown>).resolved === true,
+      (e) =>
+        e.action === "identity_missing" && (e.data as Record<string, unknown>).resolved === true,
     )
     expect(resolves).toHaveLength(1)
   })
@@ -515,10 +591,18 @@ describe("identity attention closes with the last park waiting on the contact", 
         event_payload_json: { id: "ORD-T17-C" },
         status: "awaiting_data",
         reason: "customer_kind_missing",
-        blocked_on: { kind: "einvoice_identity", contact_id: CONTACT, code: "customer_kind_missing" },
+        blocked_on: {
+          kind: "einvoice_identity",
+          contact_id: CONTACT,
+          code: "customer_kind_missing",
+        },
       },
     )
-    await raiseIdentityAttention(ctx, { park: def, contact_id: CONTACT, code: "customer_kind_missing" })
+    await raiseIdentityAttention(ctx, {
+      park: def,
+      contact_id: CONTACT,
+      code: "customer_kind_missing",
+    })
     expect(openAttention(emitted, "identity_missing")).toEqual([CONTACT])
     await onShopifyOrderCancelled({ data: { orderId: "ORD-T17-C" } }, ctx)
     expect(openAttention(emitted, "identity_missing")).toEqual([])
@@ -530,7 +614,10 @@ describe("a credit note refused for any other reason parks with attention, never
     const db = dbWith(legacyFrInvoice({ counterparty_email: null }))
     await fixIdentity(db, new Date("2026-10-14T09:00:00Z"))
     const { ctx, emitted } = makeCtx(db)
-    await onShopifyRefundCreated({ data: { id: "refund-951", order_id: ORDER, refund_amount_minor: 3000n } }, ctx)
+    await onShopifyRefundCreated(
+      { data: { id: "refund-951", order_id: ORDER, refund_amount_minor: 3000n } },
+      ctx,
+    )
     expect(creditNotes(db)).toHaveLength(0)
     expect(parks(db)).toHaveLength(1)
     const p = parks(db)[0]!
@@ -541,9 +628,14 @@ describe("a credit note refused for any other reason parks with attention, never
 
     // The person completes the original's recipient; the sweep re-issues the credit note alone.
     const mctx = ctx as unknown as MutationsCtx
-    expect((await documentsUpdate(mctx, { id: ORIGINAL_ID, counterparty_email: "compta@atelier-exemple.example" })).status).toBe(
-      "completed",
-    )
+    expect(
+      (
+        await documentsUpdate(mctx, {
+          id: ORIGINAL_ID,
+          counterparty_email: "compta@atelier-exemple.example",
+        })
+      ).status,
+    ).toBe("completed")
     const out = await sweep(ctx, new Date("2026-10-14T12:00:00Z"))
     expect(out.succeeded).toBe(1)
     expect(creditNotes(db)).toHaveLength(1)

@@ -3,11 +3,15 @@
 // Shopify order would get, or of an invoice to a counterparty, with the reasons and what the
 // issue gate would refuse. Never writes (the gate mode is computed, not materialised).
 import type { CrossAppExecuteTool } from "../cross-app"
+import {
+  findIssuerByShopId,
+  mergeCustomer,
+  type OrderPaidPayload,
+} from "../handlers/shopify-order-paid"
 import type { Counterparty } from "../issue"
-import { counterpartyFromRow } from "../mutations/lines"
 import { getDraft } from "../mutations/db-helpers"
+import { counterpartyFromRow } from "../mutations/lines"
 import type { MutationsDb } from "../mutations/shared"
-import { type OrderPaidPayload, findIssuerByShopId, mergeCustomer } from "../handlers/shopify-order-paid"
 import type { GateResult } from "./gate"
 import { type PreparedGate, prepareEinvoiceGate } from "./issue-gate"
 
@@ -47,7 +51,9 @@ function issuerOf(row: Row): IssuerLike {
 async function soleIssuer(db: MutationsDb): Promise<IssuerLike | { ambiguous: true } | null> {
   const rows = (await db.findMany("issuer_profiles", { limit: 50 })) as Row[]
   if (rows.length === 0) return null
-  const facts = new Set(rows.map((r) => `${String(r.country ?? "").toUpperCase()}|${!!str(r.vat_id)}`))
+  const facts = new Set(
+    rows.map((r) => `${String(r.country ?? "").toUpperCase()}|${!!str(r.vat_id)}`),
+  )
   if (facts.size > 1) return { ambiguous: true }
   return issuerOf(rows[0]!)
 }
@@ -91,8 +97,12 @@ async function classifyDocument(ctx: ClassifyToolCtx, id: string): Promise<Row> 
   }
   const draft = await getDraft(ctx.db, id)
   if (!draft) return fail("row_not_found", `document ${id} not found`)
-  const issuerRows = (await ctx.db.findMany("issuer_profiles", { where: { id: draft.issuer_profile_id }, limit: 1 })) as Row[]
-  if (!issuerRows[0]) return fail("issuer_not_found", `issuer_profile ${draft.issuer_profile_id} not found`)
+  const issuerRows = (await ctx.db.findMany("issuer_profiles", {
+    where: { id: draft.issuer_profile_id },
+    limit: 1,
+  })) as Row[]
+  if (!issuerRows[0])
+    return fail("issuer_not_found", `issuer_profile ${draft.issuer_profile_id} not found`)
   const issuer = issuerOf(issuerRows[0])
   const counterparty = counterpartyFromRow(draft, issuer)
   const prepared = await prepareEinvoiceGate(
@@ -113,11 +123,18 @@ async function classifyContact(ctx: ClassifyToolCtx, contactId: string): Promise
   const issuer = await soleIssuer(ctx.db)
   if (!issuer) return fail("no_issuer_profile", "no issuer profile is configured")
   if ("ambiguous" in issuer) {
-    return fail("issuer_profile_ambiguous", "issuer profiles differ in country or VAT registration: classify a draft (document_id) instead")
+    return fail(
+      "issuer_profile_ambiguous",
+      "issuer profiles differ in country or VAT registration: classify a draft (document_id) instead",
+    )
   }
   // Billing and name as last invoiced to this contact; the identity row wins on kind and SIREN.
-  const docs = (await ctx.db.findMany("documents", { where: { counterparty_contact_id: contactId }, limit: 10 })) as Row[]
-  const last = docs.find((d) => str(d.billing_country_code) || str(d.counterparty_country)) ?? docs[0] ?? {}
+  const docs = (await ctx.db.findMany("documents", {
+    where: { counterparty_contact_id: contactId },
+    limit: 10,
+  })) as Row[]
+  const last =
+    docs.find((d) => str(d.billing_country_code) || str(d.counterparty_country)) ?? docs[0] ?? {}
   const counterparty = counterpartyFromRow(
     {
       counterparty_contact_id: contactId,
@@ -145,7 +162,10 @@ async function classifyContact(ctx: ClassifyToolCtx, contactId: string): Promise
 async function classifyOrder(ctx: ClassifyToolCtx, orderIdRaw: string): Promise<Row> {
   const orderId = orderIdRaw.replace(/^gid:\/\/shopify\/Order\//, "")
   // Already invoiced: its recorded regime.
-  const docs = (await ctx.db.findMany("documents", { where: { shopify_order_id: orderId }, limit: 20 })) as Row[]
+  const docs = (await ctx.db.findMany("documents", {
+    where: { shopify_order_id: orderId },
+    limit: 20,
+  })) as Row[]
   const invoice = docs.find((d) => d.type === "invoice" && d.status !== "draft")
   if (invoice) {
     return {
@@ -159,12 +179,17 @@ async function classifyOrder(ctx: ClassifyToolCtx, orderIdRaw: string): Promise<
     }
   }
   // The order's event as parked (it carries the contact and the shop), plus the live order.
-  const parks = (await ctx.db.findMany("deferred_events", { where: { event_id: orderId }, limit: 5 })) as Row[]
-  const payload = (parks.find((p) => p.event_payload_json && typeof p.event_payload_json === "object")?.event_payload_json ??
-    null) as OrderPaidPayload | null
+  const parks = (await ctx.db.findMany("deferred_events", {
+    where: { event_id: orderId },
+    limit: 5,
+  })) as Row[]
+  const payload = (parks.find(
+    (p) => p.event_payload_json && typeof p.event_payload_json === "object",
+  )?.event_payload_json ?? null) as OrderPaidPayload | null
   if (!ctx.executeTool) return fail("target_app_unavailable", "the Shopify app is not reachable")
   const env = await ctx.executeTool("shopify:orders_get", { id: `gid://shopify/Order/${orderId}` })
-  if (env.status !== "completed") return fail("order_not_found", `Shopify order ${orderId} could not be read`)
+  if (env.status !== "completed")
+    return fail("order_not_found", `Shopify order ${orderId} could not be read`)
   const customer = mergeCustomer(payload?.customer, (env.result ?? null) as never)
   if (!customer) return fail("order_not_found", `Shopify order ${orderId} has no customer`)
 
@@ -176,7 +201,8 @@ async function classifyOrder(ctx: ClassifyToolCtx, orderIdRaw: string): Promise<
   if (!issuer) {
     const sole = await soleIssuer(ctx.db)
     if (!sole) return fail("no_issuer_profile", "no issuer profile is configured")
-    if ("ambiguous" in sole) return fail("issuer_profile_ambiguous", "the order's shop maps to no single issuer profile")
+    if ("ambiguous" in sole)
+      return fail("issuer_profile_ambiguous", "the order's shop maps to no single issuer profile")
     issuer = sole
   }
   const country = customer.country ?? customer.tax_country ?? issuer.country
@@ -212,12 +238,19 @@ async function classifyOrder(ctx: ClassifyToolCtx, orderIdRaw: string): Promise<
 
 export async function einvoicingClassify(
   ctx: ClassifyToolCtx,
-  input: { document_id?: string | null; shopify_order_id?: string | number | null; contact_id?: string | null },
+  input: {
+    document_id?: string | null
+    shopify_order_id?: string | number | null
+    contact_id?: string | null
+  },
 ): Promise<Row> {
   const documentId = str(input?.document_id)
   // A Shopify order id is a number to most callers: take it as one too.
   const rawOrder = input?.shopify_order_id
-  const orderId = typeof rawOrder === "number" && Number.isFinite(rawOrder) ? String(Math.trunc(rawOrder)) : str(rawOrder)
+  const orderId =
+    typeof rawOrder === "number" && Number.isFinite(rawOrder)
+      ? String(Math.trunc(rawOrder))
+      : str(rawOrder)
   const contactId = str(input?.contact_id)
   if ([documentId, orderId, contactId].filter(Boolean).length !== 1) {
     return fail("invalid_input", "pass exactly one of document_id, shopify_order_id, contact_id")

@@ -32,45 +32,45 @@ import { createMemo, createRoot, createSignal, indexArray, mapArray } from "soli
 import { formatMoneyMinor } from "../money"
 import { netLinesForIssuer } from "../mutations"
 import {
-  Editor,
-  EditorSummary,
-  DOC_TYPES,
-  LANGUAGES,
-  INCOTERMS,
-  validateDraft,
-  rollupTotals,
-  rollupTotalsInclusive,
-  grossUpLinesForDisplay,
   applyNetToGrossOnLoad,
-  customsReadiness,
-  canIssue,
-  readOnly,
-  isEditableStatus,
-  primaryActionLabel,
-  primaryActionEmailLabel,
-  createAndIssueSuccessMessage,
-  emailedMessage,
-  pendingApprovalMessage,
-  buildItems,
+  bpToPercentInput,
   buildDocumentsUpdatePatch,
-  defaultDraft,
-  statedIssuedAt,
-  NOTES_MAX_LENGTH,
-  minorToPriceInput,
-  priceInputToMinor,
-  replaceLineAt,
-  shouldReseedPriceText,
-  einvoicingIssueState,
+  buildItems,
+  canIssue,
   canIssueWithEinvoicing,
+  createAndIssueSuccessMessage,
+  customsReadiness,
+  DOC_TYPES,
   type DraftDocument,
   type DraftLine,
+  defaultDraft,
+  Editor,
   type EditorIssuerProfile,
-  issuedAtForIssuer,
+  EditorSummary,
+  einvoicingIssueState,
+  emailedMessage,
+  grossUpLinesForDisplay,
+  INCOTERMS,
+  isEditableStatus,
   issueDateNotice,
+  issuedAtForIssuer,
+  LANGUAGES,
   localCivilDate,
-  bpToPercentInput,
+  minorToPriceInput,
+  NOTES_MAX_LENGTH,
+  pendingApprovalMessage,
   percentInputToBp,
+  priceInputToMinor,
+  primaryActionEmailLabel,
+  primaryActionLabel,
+  readOnly,
+  replaceLineAt,
+  rollupTotals,
+  rollupTotalsInclusive,
+  shouldReseedPriceText,
   showCustomsColumns,
+  statedIssuedAt,
+  validateDraft,
 } from "./Editor"
 
 const sourceEditor = readFileSync(join(import.meta.dir, "Editor.tsx"), "utf-8")
@@ -251,10 +251,7 @@ describe("Editor (Phase 17 F4)", () => {
   })
 
   it("customsReadiness skips checks for domestic treatment", () => {
-    const r = customsReadiness(
-      [validLine({ hs_code: null, country_of_origin: null })],
-      "domestic",
-    )
+    const r = customsReadiness([validLine({ hs_code: null, country_of_origin: null })], "domestic")
     expect(r.ready).toBe(true) // not required for domestic
     expect(r.applicable).toBe(false)
   })
@@ -429,7 +426,9 @@ describe("Editor (Phase 17 F4)", () => {
     // The existing-draft branch must invoke issueTool(...) (not
     // createAndIssueTool(...)) — pin the exact call shape so a future edit
     // can't silently reintroduce the duplicate-draft bug.
-    expect(sourceEditor).toMatch(/issueTool\(draft\(\)\.type\),[\s\S]{0,200}?\{\s*draft_id:\s*documentId\s*\}/)
+    expect(sourceEditor).toMatch(
+      /issueTool\(draft\(\)\.type\),[\s\S]{0,200}?\{\s*draft_id:\s*documentId\s*\}/,
+    )
     // And the existing-draft issue path pushes pending edits BEFORE issuing
     // (issue-what-you-see, not the last-saved state).
     expect(sourceEditor).toMatch(/if \(!\(await pushDraftPatch\(documentId\)\)\) return/)
@@ -464,7 +463,15 @@ describe("Editor (Phase 17 F4)", () => {
       const items = buildItems(
         validDraft({
           lines: [
-            validLine({ position: 1, description: "Widget", quantity: "2", unit_price_minor: "1000", tax_rate_bp: 2000, hs_code: "9207.90", country_of_origin: "FR" }),
+            validLine({
+              position: 1,
+              description: "Widget",
+              quantity: "2",
+              unit_price_minor: "1000",
+              tax_rate_bp: 2000,
+              hs_code: "9207.90",
+              country_of_origin: "FR",
+            }),
           ],
         }),
       )
@@ -518,7 +525,12 @@ describe("Editor (Phase 17 F4)", () => {
     })
 
     it("buildDocumentsUpdatePatch leaves the frozen financial fields OUT for an issued document (paid invoice) so the save is not rejected", () => {
-      const d = validDraft({ status: "paid", counterparty_name: "Klangwerk GmbH", counterparty_vat_id: "DE298765432", notes: "Contract ref 42" })
+      const d = validDraft({
+        status: "paid",
+        counterparty_name: "Klangwerk GmbH",
+        counterparty_vat_id: "DE298765432",
+        notes: "Contract ref 42",
+      })
       const patch = buildDocumentsUpdatePatch(d, "id-paid") as Record<string, unknown>
       expect(patch.notes).toBe("Contract ref 42")
       expect(patch.counterparty_address).toBeDefined()
@@ -1075,7 +1087,10 @@ describe("Notes field", () => {
   // red: drop `notes` from buildDocumentsUpdatePatch -> Save changes on an ISSUED
   // document wipes/ignores the notes even though documents_update accepts them.
   it("buildDocumentsUpdatePatch carries the notes for an issued document", () => {
-    const d = validDraft({ status: "issued", notes: "Contract FR-2026-88\nCustoms: repaired goods returning to the EU" })
+    const d = validDraft({
+      status: "issued",
+      notes: "Contract FR-2026-88\nCustoms: repaired goods returning to the EU",
+    })
     const patch = buildDocumentsUpdatePatch(d, "44444444-4444-4444-4444-444444444444")
     expect(patch.notes).toBe("Contract FR-2026-88\nCustoms: repaired goods returning to the EU")
   })
@@ -1109,24 +1124,46 @@ describe("Editor e-invoicing fields", () => {
       label: "Fill in this field",
     })
     expect(canIssueWithEinvoicing(d, null)).toBe(false)
-    expect(canIssueWithEinvoicing(frDraft({ customer_kind: "business", operation_category: "goods" }), null)).toBe(true)
+    expect(
+      canIssueWithEinvoicing(
+        frDraft({ customer_kind: "business", operation_category: "goods" }),
+        null,
+      ),
+    ).toBe(true)
   })
 
   it("the customer's recorded kind satisfies the requirement; other buyers and non-invoices never need it", () => {
-    const identityKind = { regime: "e_reporting" as const, buyer: { source: "identity", customer_kind: "individual" as const } }
+    const identityKind = {
+      regime: "e_reporting" as const,
+      buyer: { source: "identity", customer_kind: "individual" as const },
+    }
     expect(einvoicingIssueState(frDraft(), identityKind).blockers).toEqual([])
-    expect(einvoicingIssueState(validDraft({ counterparty_country: "DE" }), null).blockers).toEqual([])
+    expect(einvoicingIssueState(validDraft({ counterparty_country: "DE" }), null).blockers).toEqual(
+      [],
+    )
     expect(einvoicingIssueState(frDraft({ type: "quote" }), null).blockers).toEqual([])
   })
 
   it("Operation type required when classify says e_invoice", () => {
-    const verdict = { regime: "e_invoice" as const, gate_mode: "enforce" as const, would_refuse: null }
+    const verdict = {
+      regime: "e_invoice" as const,
+      gate_mode: "enforce" as const,
+      would_refuse: null,
+    }
     const d = frDraft({ customer_kind: "business" })
-    expect(einvoicingIssueState(d, verdict).blockers.map((b) => b.message)).toEqual(["Operation type is required."])
+    expect(einvoicingIssueState(d, verdict).blockers.map((b) => b.message)).toEqual([
+      "Operation type is required.",
+    ])
     expect(canIssueWithEinvoicing(d, verdict)).toBe(false)
-    expect(einvoicingIssueState(frDraft({ customer_kind: "business", operation_category: "services" }), verdict).blockers).toEqual([])
     expect(
-      einvoicingIssueState(d, { regime: "e_reporting", gate_mode: "enforce", would_refuse: null }).blockers,
+      einvoicingIssueState(
+        frDraft({ customer_kind: "business", operation_category: "services" }),
+        verdict,
+      ).blockers,
+    ).toEqual([])
+    expect(
+      einvoicingIssueState(d, { regime: "e_reporting", gate_mode: "enforce", would_refuse: null })
+        .blockers,
     ).toEqual([])
   })
 
@@ -1140,7 +1177,11 @@ describe("Editor e-invoicing fields", () => {
         missing: [{ field: "buyer_siren", fix_tool: "counterparty_identity_lookup" }],
       },
     }
-    const d = frDraft({ customer_kind: "business", operation_category: "goods", counterparty_contact_id: "c-1" })
+    const d = frDraft({
+      customer_kind: "business",
+      operation_category: "goods",
+      counterparty_contact_id: "c-1",
+    })
     const state = einvoicingIssueState(d, verdict, { documentId: "doc-1" })
     expect(state.blockers).toHaveLength(1)
     expect(state.blockers[0]!.message).toContain("SIREN")
@@ -1172,14 +1213,22 @@ describe("Editor e-invoicing fields", () => {
   })
 
   it("the fields round-trip through drafts_update and reach the one-shot issue call", () => {
-    expect(sourceEditor).toMatch(/const draftPatch[\s\S]{0,1600}?customer_kind: draft\(\)\.customer_kind \?\? null/)
-    expect(sourceEditor).toMatch(/const draftPatch[\s\S]{0,1800}?operation_category: draft\(\)\.operation_category \?\? null/)
-    expect(sourceEditor).toMatch(/buildCounterparty[\s\S]{0,900}?customer_kind: d\.customer_kind \?\? null/)
+    expect(sourceEditor).toMatch(
+      /const draftPatch[\s\S]{0,1600}?customer_kind: draft\(\)\.customer_kind \?\? null/,
+    )
+    expect(sourceEditor).toMatch(
+      /const draftPatch[\s\S]{0,1800}?operation_category: draft\(\)\.operation_category \?\? null/,
+    )
+    expect(sourceEditor).toMatch(
+      /buildCounterparty[\s\S]{0,900}?customer_kind: d\.customer_kind \?\? null/,
+    )
     expect(sourceEditor).toContain('testid="editor-field-customer-kind"')
     expect(sourceEditor).toContain('testid="editor-field-operation-category"')
     expect(sourceEditor).toContain("einvoicing_classify")
     // Calm: the e-invoicing note is never painted as an error.
-    expect(sourceEditor).toMatch(/data-testid="editor-einvoicing-note"[^>]*class="[^"]*text-text-secondary/)
+    expect(sourceEditor).toMatch(
+      /data-testid="editor-einvoicing-note"[^>]*class="[^"]*text-text-secondary/,
+    )
   })
 })
 
@@ -1231,10 +1280,17 @@ describe("the issue date of a new document", () => {
   // An unknown top-level parameter is refused outright, so sending the date to a tool that does
   // not declare it would stop every new document of that type from being created.
   it("every create tool the date is sent to declares it", () => {
-    const manifest = JSON.parse(readFileSync(join(import.meta.dir, "../../app.manifest.json"), "utf8")) as {
+    const manifest = JSON.parse(
+      readFileSync(join(import.meta.dir, "../../app.manifest.json"), "utf8"),
+    ) as {
       tools: Record<string, { params: { properties: Record<string, unknown> } }>
     }
-    for (const tool of ["quote_create_and_issue", "proforma_create_and_issue", "po_create_and_issue", "credit_note_create_and_issue"]) {
+    for (const tool of [
+      "quote_create_and_issue",
+      "proforma_create_and_issue",
+      "po_create_and_issue",
+      "credit_note_create_and_issue",
+    ]) {
       expect(manifest.tools[tool]?.params.properties.issued_at, tool).toBeDefined()
     }
   })
@@ -1258,7 +1314,9 @@ describe("issueDateNotice: a date the server will refuse shows before the click"
 
   it("a date after today is refused for any type that takes one", () => {
     expect(issueDateNotice(quote("2026-12-25"), today, plain)).toContain("after today")
-    expect(issueDateNotice({ ...defaultDraft("proforma"), issued_at: "2026-12-25" }, today, plain)).toContain("after today")
+    expect(
+      issueDateNotice({ ...defaultDraft("proforma"), issued_at: "2026-12-25" }, today, plain),
+    ).toContain("after today")
   })
 
   it("a past date on an issuer with no shop is fine, and so is an unknown today", () => {
@@ -1267,7 +1325,9 @@ describe("issueDateNotice: a date the server will refuse shows before the click"
   })
 
   it("an invoice takes no date, so it never warns", () => {
-    expect(issueDateNotice({ ...defaultDraft("invoice"), issued_at: "2026-12-25" }, today, plain)).toBeNull()
+    expect(
+      issueDateNotice({ ...defaultDraft("invoice"), issued_at: "2026-12-25" }, today, plain),
+    ).toBeNull()
   })
 })
 

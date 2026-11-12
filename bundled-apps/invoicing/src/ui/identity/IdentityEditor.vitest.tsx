@@ -16,10 +16,25 @@ vi.mock("@liaison/host", () => ({
   app: {
     invokeTool: async (tool: string, params: Record<string, unknown>) => {
       calls.push({ tool, params })
-      if (tool === "counterparty_identity_get") return { status: "ok", target: "contact", contact_id: "c-1", identity: null, confirmed: false }
-      if (tool === "einvoicing_classify") return { status: "ok", regime: null, reasons: [], would_refuse: null }
+      if (tool === "counterparty_identity_get")
+        return {
+          status: "ok",
+          target: "contact",
+          contact_id: "c-1",
+          identity: null,
+          confirmed: false,
+        }
+      if (tool === "einvoicing_classify")
+        return { status: "ok", regime: null, reasons: [], would_refuse: null }
       if (tool === "counterparty_identity_lookup") return lookupAnswer
-      if (tool === "counterparty_identity_set") return { status: "ok", target: "contact", contact_id: "c-1", identity: {}, confirmed_via: "auto" }
+      if (tool === "counterparty_identity_set")
+        return {
+          status: "ok",
+          target: "contact",
+          contact_id: "c-1",
+          identity: {},
+          confirmed_via: "auto",
+        }
       return { status: "ok" }
     },
   },
@@ -65,7 +80,10 @@ describe("identity tab lookup (rendered)", () => {
     lookupAnswer = {
       status: "ok",
       query: "exemple",
-      candidates: [candidate("900000001", "EXEMPLE INDUSTRIES"), candidate("903000008", "EXEMPLE INDUSTRIES NORD")],
+      candidates: [
+        candidate("900000001", "EXEMPLE INDUSTRIES"),
+        candidate("903000008", "EXEMPLE INDUSTRIES NORD"),
+      ],
     }
     await runLookup()
     await screen.findByTestId("identity-candidate-900000001")
@@ -73,11 +91,19 @@ describe("identity tab lookup (rendered)", () => {
     // Give any stray effect a chance to fire before asserting nothing was written.
     await new Promise((r) => setTimeout(r, 50))
     expect(writes()).toHaveLength(0)
-    expect(document.querySelector("[aria-selected='true'], [aria-checked='true'], [data-selected='true']")).toBeNull()
+    expect(
+      document.querySelector(
+        "[aria-selected='true'], [aria-checked='true'], [data-selected='true']",
+      ),
+    ).toBeNull()
   })
 
   it("a single candidate is not picked either", async () => {
-    lookupAnswer = { status: "ok", query: "exemple", candidates: [candidate("900000001", "EXEMPLE INDUSTRIES")] }
+    lookupAnswer = {
+      status: "ok",
+      query: "exemple",
+      candidates: [candidate("900000001", "EXEMPLE INDUSTRIES")],
+    }
     await runLookup()
     await screen.findByTestId("identity-candidate-900000001")
     await new Promise((r) => setTimeout(r, 50))
@@ -88,11 +114,18 @@ describe("identity tab lookup (rendered)", () => {
     lookupAnswer = {
       status: "ok",
       query: "exemple",
-      candidates: [candidate("900000001", "EXEMPLE INDUSTRIES"), candidate("903000008", "EXEMPLE INDUSTRIES NORD")],
+      candidates: [
+        candidate("900000001", "EXEMPLE INDUSTRIES"),
+        candidate("903000008", "EXEMPLE INDUSTRIES NORD"),
+      ],
     }
     await runLookup()
     fireEvent.click(await screen.findByTestId("identity-candidate-pick-903000008"))
     await waitFor(() => expect(writes()).toHaveLength(1))
-    expect(writes()[0]!.params).toMatchObject({ contact_id: "c-1", siren: "903000008", source: "registry" })
+    expect(writes()[0]!.params).toMatchObject({
+      contact_id: "c-1",
+      siren: "903000008",
+      source: "registry",
+    })
   })
 })

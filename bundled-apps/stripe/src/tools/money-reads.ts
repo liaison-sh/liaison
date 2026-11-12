@@ -15,7 +15,14 @@
 import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { type MirrorDb, newTally } from "../mirror"
-import { chargedAt, invoiceEventPayload, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
+import {
+  chargedAt,
+  invoiceEventPayload,
+  invoiceOfCharge,
+  listRefunds,
+  refundItem,
+  stripeDocumentRef,
+} from "../money-events"
 import { moneyActionHold, type StateDb } from "../states"
 
 type Obj = Record<string, unknown>
@@ -34,16 +41,28 @@ const MAX_PAID = 100
 const PAGE = 200
 
 const iso = (v: unknown): string | null =>
-  v instanceof Date ? v.toISOString() : typeof v === "string" && v ? new Date(v).toISOString() : null
+  v instanceof Date
+    ? v.toISOString()
+    : typeof v === "string" && v
+      ? new Date(v).toISOString()
+      : null
 const minor = (v: unknown): string => String(v ?? "0")
 
 export async function refundsForCharge(params: Obj | undefined, ctx: MoneyReadCtx) {
   const chargeId = typeof params?.chargeId === "string" ? params.chargeId.trim() : ""
   if (!CHARGE.test(chargeId)) {
-    return refuseTool("charge_id_invalid", `"${chargeId}" is not a Stripe charge id (ch_...), so no refund was read.`)
+    return refuseTool(
+      "charge_id_invalid",
+      `"${chargeId}" is not a Stripe charge id (ch_...), so no refund was read.`,
+    )
   }
   const hold = await moneyActionHold(ctx.db)
-  if (hold) return refuseTool(hold.error.code ?? "stripe_unavailable", `Stripe cannot be asked about charge ${chargeId}: ${hold.error.message}`, { retryable: true })
+  if (hold)
+    return refuseTool(
+      hold.error.code ?? "stripe_unavailable",
+      `Stripe cannot be asked about charge ${chargeId}: ${hold.error.message}`,
+      { retryable: true },
+    )
   let charge: Obj
   let refunds: Obj[]
   try {
@@ -84,7 +103,12 @@ async function newestWhere(
 ): Promise<Obj[]> {
   const out: Obj[] = []
   for (let offset = 0; out.length < max; offset += PAGE) {
-    const page = (await ctx.db.findMany(entity, { where, orderBy: { [order]: "desc" }, limit: PAGE, offset })) as Obj[]
+    const page = (await ctx.db.findMany(entity, {
+      where,
+      orderBy: { [order]: "desc" },
+      limit: PAGE,
+      offset,
+    })) as Obj[]
     for (const r of page) {
       const at = iso(r[order])
       if (at === null) continue
@@ -99,18 +123,31 @@ async function newestWhere(
 
 export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyReadCtx) {
   const hold = await moneyActionHold(ctx.db)
-  if (hold) return refuseTool(hold.error.code ?? "stripe_unavailable", `No reconcile candidates were read: ${hold.error.message}`, { retryable: true })
+  if (hold)
+    return refuseTool(
+      hold.error.code ?? "stripe_unavailable",
+      `No reconcile candidates were read: ${hold.error.message}`,
+      { retryable: true },
+    )
   const now = Date.now()
   const since = now - WINDOW_DAYS * DAY
   // Invoices and refunds invoicing holds parked: its retry sweep re-drives them, not this job.
-  const waiting = new Set(Array.isArray(params?.waiting) ? params.waiting.filter((x): x is string => typeof x === "string") : [])
+  const waiting = new Set(
+    Array.isArray(params?.waiting)
+      ? params.waiting.filter((x): x is string => typeof x === "string")
+      : [],
+  )
 
   // Invoicing decides each finalized invoice once: a document (linked), or Stripe's own invoice
   // stands (issuer recorded). Only the undecided ones are candidates, and a zero total never is.
   const missing = await newestWhere(
     ctx,
     "stripe_invoices",
-    { liaison_document_id: null, issuer: { in: ["liaison", "undecided"] }, status: { in: ["open", "paid"] } },
+    {
+      liaison_document_id: null,
+      issuer: { in: ["liaison", "undecided"] },
+      status: { in: ["open", "paid"] },
+    },
     "finalized_at",
     since,
     MAX_INVOICES,
@@ -120,8 +157,14 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   let unread = 0
   for (const r of missing) {
     try {
-      const obj = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(String(r.stripe_id))}`, {})
-      invoices.push(await invoiceEventPayload(ctx, r, obj, newTally(), new Date(now).toISOString(), false))
+      const obj = await stripeFetch<Obj>(
+        ctx,
+        `/v1/invoices/${encodeURIComponent(String(r.stripe_id))}`,
+        {},
+      )
+      invoices.push(
+        await invoiceEventPayload(ctx, r, obj, newTally(), new Date(now).toISOString(), false),
+      )
     } catch {
       // Read again on the next run.
       unread++
@@ -160,8 +203,14 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   for (const r of refundRows) {
     const chargeId = String(r.payment_id)
     if (!paymentByCharge.has(chargeId)) {
-      const [p] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
-      paymentByCharge.set(chargeId, { invoice: typeof p?.invoice_id === "string" && p.invoice_id ? p.invoice_id : null, charged_at: chargedAt(p) })
+      const [p] = (await ctx.db.findMany("stripe_payments", {
+        where: { stripe_id: chargeId },
+        limit: 1,
+      })) as Obj[]
+      paymentByCharge.set(chargeId, {
+        invoice: typeof p?.invoice_id === "string" && p.invoice_id ? p.invoice_id : null,
+        charged_at: chargedAt(p),
+      })
     }
     const payment = paymentByCharge.get(chargeId)
     const invoiceId = payment?.invoice ?? null

@@ -7,17 +7,17 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { CUSTOMER_KIND_OPTIONS } from "../einvoicing/blockers"
 import {
+  InvoicingIdentity,
   identitySetNote,
   identityTarget,
-  InvoicingIdentity,
   lookupView,
   provenanceLine,
   sirenFieldError,
   siretFieldError,
   territoryNeeded,
 } from "./IdentityEditor"
-import { CUSTOMER_KIND_OPTIONS } from "../einvoicing/blockers"
 
 const source = readFileSync(join(import.meta.dir, "IdentityEditor.tsx"), "utf-8")
 
@@ -92,15 +92,18 @@ describe("registry lookup", () => {
   })
 
   it("says plainly when the registry has nothing or cannot be reached", () => {
-    expect(lookupView({ status: "registry_unconfirmed", reason: "no_result", message: "x" }).message).toBe(
-      "The registry returned no company for this search. Try another spelling or the SIREN.",
-    )
-    expect(lookupView({ status: "registry_unconfirmed", reason: "unreachable", message: "x" }).message).toBe(
-      "The registry could not be reached. Try again in a moment.",
-    )
-    expect(lookupView({ status: "error", error: { code: "siren_invalid", message: "SIREN 1 fails the checksum." } }).message).toBe(
-      "SIREN 1 fails the checksum.",
-    )
+    expect(
+      lookupView({ status: "registry_unconfirmed", reason: "no_result", message: "x" }).message,
+    ).toBe("The registry returned no company for this search. Try another spelling or the SIREN.")
+    expect(
+      lookupView({ status: "registry_unconfirmed", reason: "unreachable", message: "x" }).message,
+    ).toBe("The registry could not be reached. Try again in a moment.")
+    expect(
+      lookupView({
+        status: "error",
+        error: { code: "siren_invalid", message: "SIREN 1 fails the checksum." },
+      }).message,
+    ).toBe("SIREN 1 fails the checksum.")
   })
 })
 
@@ -115,14 +118,18 @@ describe("saving", () => {
       text: "Sent for a person to confirm. Nothing is recorded until then.",
       isError: false,
     })
-    expect(identitySetNote({ status: "error", error: { code: "siren_invalid", message: "SIRET bad." } })).toEqual({
+    expect(
+      identitySetNote({ status: "error", error: { code: "siren_invalid", message: "SIRET bad." } }),
+    ).toEqual({
       text: "SIRET bad.",
       isError: true,
     })
   })
 
   it("a registry proposal is shown with the saved note", () => {
-    expect(identitySetNote({ status: "ok", proposal: { note: "Public body." } }).text).toBe("Saved. Public body.")
+    expect(identitySetNote({ status: "ok", proposal: { note: "Public body." } }).text).toBe(
+      "Saved. Public body.",
+    )
   })
 })
 
@@ -139,9 +146,15 @@ describe("what is shown", () => {
 
   it("provenance says where the SIREN came from and how it was confirmed", () => {
     expect(
-      provenanceLine({ source: "registry", confirmed_via: "auto", registry_checked_at: "2026-10-14T09:00:00Z" }),
+      provenanceLine({
+        source: "registry",
+        confirmed_via: "auto",
+        registry_checked_at: "2026-10-14T09:00:00Z",
+      }),
     ).toBe("From the business registry, confirmed automatically, checked 2026-10-14.")
-    expect(provenanceLine({ source: "manual", confirmed_via: "approval" })).toBe("Typed by a person, confirmed by a person.")
+    expect(provenanceLine({ source: "manual", confirmed_via: "approval" })).toBe(
+      "Typed by a person, confirmed by a person.",
+    )
     expect(provenanceLine({ source: "vat_derived", confirmed_via: null })).toBe(
       "Read from the French VAT number, not confirmed yet.",
     )

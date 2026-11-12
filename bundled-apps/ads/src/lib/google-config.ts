@@ -104,9 +104,7 @@ export async function getGoogleConfig(ctx: GoogleCtx): Promise<GoogleConfig> {
 
   const missing = REQUIRED_KEYS.filter((k) => !map[k])
   if (missing.length > 0) {
-    throw new GoogleConfigError(
-      `Google Ads config incomplete, missing: ${missing.join(", ")}`,
-    )
+    throw new GoogleConfigError(`Google Ads config incomplete, missing: ${missing.join(", ")}`)
   }
 
   return {
@@ -145,7 +143,10 @@ async function getOauthToken(ctx: GoogleCtx, connectionName: string): Promise<st
     if (typeof flat.getToken === "function") {
       token = await flat.getToken(connectionName)
     } else {
-      const record = conns as Record<string, { getToken?: (identifier?: string) => Promise<string> } | undefined>
+      const record = conns as Record<
+        string,
+        { getToken?: (identifier?: string) => Promise<string> } | undefined
+      >
       const entry = record?.[connectionName]
       if (entry && typeof entry.getToken === "function") {
         token = await entry.getToken()

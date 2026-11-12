@@ -7,6 +7,8 @@ import { StripePanelBody, useStripePanel } from "./panel-view"
 import { panelArgs } from "./panels-model"
 
 export const CompanyStripePanel: Component<{ entityId?: string }> = (props) => {
-  const model = useStripePanel("company", () => (props.entityId ? panelArgs("company", props.entityId) : undefined))
+  const model = useStripePanel("company", () =>
+    props.entityId ? panelArgs("company", props.entityId) : undefined,
+  )
   return <StripePanelBody kind="company" model={model()} testid="company-stripe-panel" />
 }

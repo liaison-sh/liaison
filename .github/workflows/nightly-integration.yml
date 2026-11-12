@@ -202,6 +202,9 @@ jobs:
       - name: bundled-database
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-database
+      - name: bundled-google-drive
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-google-drive
       - name: bundled-gitlab
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-gitlab

@@ -27,12 +27,12 @@
 // reads an unreachable Boxtal as a quiet one.
 
 import type { UpstreamProbeResult } from "@liaison/app-sdk"
-import { getClientOrError, hasBoxtalConnection } from "./lib/get-client"
-import { BoxtalApiError } from "./lib/boxtal-v3-client"
-import { isBoxtalNotReady } from "./reads"
-import { findShipmentsInAny } from "./queues"
-import type { NormalizedTracking } from "./lib/boxtal-v3-client"
 import type { BoxtalToolCtx } from "./ctx"
+import type { NormalizedTracking } from "./lib/boxtal-v3-client"
+import { BoxtalApiError } from "./lib/boxtal-v3-client"
+import { getClientOrError, hasBoxtalConnection } from "./lib/get-client"
+import { findShipmentsInAny } from "./queues"
+import { isBoxtalNotReady } from "./reads"
 
 export type { UpstreamProbeResult }
 
@@ -91,7 +91,10 @@ export function eventInstantMs(at: string | null | undefined): number | null {
 export function newestStatusChangeMs(tracking: NormalizedTracking, nowMs: number): number | null {
   const timed = tracking.events
     .map((e) => ({ status: e.status, ms: eventInstantMs(e.at) }))
-    .filter((e): e is { status: NormalizedTracking["events"][number]["status"]; ms: number } => e.ms !== null)
+    .filter(
+      (e): e is { status: NormalizedTracking["events"][number]["status"]; ms: number } =>
+        e.ms !== null,
+    )
     .sort((a, b) => a.ms - b.ms)
   let newest: number | null = null
   let prev: string | null = null
@@ -104,7 +107,9 @@ export function newestStatusChangeMs(tracking: NormalizedTracking, nowMs: number
 
 function isProbeable(row: ProbeRow): boolean {
   return (
-    typeof row.boxtal_order_id === "string" && row.boxtal_order_id.length > 0 && row.order_status !== "CANCELLED"
+    typeof row.boxtal_order_id === "string" &&
+    row.boxtal_order_id.length > 0 &&
+    row.order_status !== "CANCELLED"
   )
 }
 
@@ -127,7 +132,7 @@ export async function probeWebhookUpstream(
   const limit = opts.limit ?? PROBE_LIMIT
   const nowMs = (opts.now ?? (() => Date.now()))()
 
-  let client
+  let client: Awaited<ReturnType<typeof getClientOrError>>
   try {
     client = await getClientOrError(ctx)
   } catch (err) {
@@ -142,7 +147,8 @@ export async function probeWebhookUpstream(
     } catch (err) {
       return { probed: false, reason: `connection state unreadable: ${String(err)}` }
     }
-    if (present) return { probed: false, reason: `Boxtal credentials unusable: ${client.error.message}` }
+    if (present)
+      return { probed: false, reason: `Boxtal credentials unusable: ${client.error.message}` }
     return { upstreamActivityAt: null }
   }
 
@@ -151,9 +157,15 @@ export async function probeWebhookUpstream(
     const [inFlight, recent] = await Promise.all([
       findShipmentsInAny(ctx, [
         { order_status: { in: LIVE_ORDER_STATUSES }, tracking_status: null },
-        { order_status: { in: LIVE_ORDER_STATUSES }, tracking_status: { in: NON_TERMINAL_TRACKING } },
+        {
+          order_status: { in: LIVE_ORDER_STATUSES },
+          tracking_status: { in: NON_TERMINAL_TRACKING },
+        },
       ]),
-      ctx.db.findMany("shipment", { orderBy: { createdAt: "desc", id: "desc" }, limit: RECENT_LIMIT }),
+      ctx.db.findMany("shipment", {
+        orderBy: { createdAt: "desc", id: "desc" },
+        limit: RECENT_LIMIT,
+      }),
     ])
     const seen = new Set<string>()
     rows = []
@@ -184,7 +196,8 @@ export async function probeWebhookUpstream(
       // No carrier tracking yet is a parcel with nothing to report, not a failed read.
       if (isBoxtalNotReady(err, "tracking")) continue
       // Refused credentials fail every read the same way: stop and say we could not look.
-      if (isAuthRefused(err)) return { probed: false, reason: `Boxtal refused the credentials: ${String(err)}` }
+      if (isAuthRefused(err))
+        return { probed: false, reason: `Boxtal refused the credentials: ${String(err)}` }
       failures++
       lastError = String(err)
     }
@@ -193,8 +206,14 @@ export async function probeWebhookUpstream(
   if (newest !== null) return { upstreamActivityAt: new Date(newest).toISOString() }
   // Nothing found, but some reads failed: we could not look, so we cannot claim quiet.
   if (failures > 0) {
-    ctx.logger?.warn?.("boxtal probe-webhook-upstream: tracking reads failed", { failures, lastError })
-    return { probed: false, reason: `${failures} of ${batch.length} tracking reads failed: ${lastError}` }
+    ctx.logger?.warn?.("boxtal probe-webhook-upstream: tracking reads failed", {
+      failures,
+      lastError,
+    })
+    return {
+      probed: false,
+      reason: `${failures} of ${batch.length} tracking reads failed: ${lastError}`,
+    }
   }
   return { upstreamActivityAt: null }
 }

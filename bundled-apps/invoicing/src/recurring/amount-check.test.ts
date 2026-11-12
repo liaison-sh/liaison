@@ -4,7 +4,7 @@
 // decimal, a dropped digit) asks for a look on the card, on the row and in the run's read. A row
 // with nothing to compare with is never flagged.
 import { describe, expect, test } from "bun:test"
-import { harness, previousDoc, schedule } from "./draft-job.test"
+import { harness, previousDoc, schedule } from "../__tests__/recurring-draft-fixtures"
 import { recurringDraftJob } from "./draft-job"
 import { amountFarFlag } from "./flags"
 import { afterRunWrite, type EditCtx } from "./restage"
@@ -17,7 +17,15 @@ const PREV = "44444444-4444-4444-8444-444444444441"
 /** A run drafted on 27 Nov for one schedule billing `price` a month, after October billed `lastPrice`. */
 async function drafted(price: number, lastPrice: string | null) {
   const prev = previousDoc(PREV, true)
-  const lines = [{ description: "Retainer {period}", qty: 1, unit_price_minor: price, vat_bp: 2000, line_kind: "service" }]
+  const lines = [
+    {
+      description: "Retainer {period}",
+      qty: 1,
+      unit_price_minor: price,
+      vat_bp: 2000,
+      line_kind: "service",
+    },
+  ]
   const h = harness(
     "2026-11-27",
     lastPrice === null
@@ -25,8 +33,31 @@ async function drafted(price: number, lastPrice: string | null) {
       : {
           schedules: [schedule(SCHED, { lines, last_document_id: prev.id })],
           docs: [prev],
-          lines: [{ id: "l-prev", document_id: PREV, position: 1, description: "Retainer November 2026", quantity: "1", unit_price_minor: lastPrice, tax_rate_bp: 2000, subtotal_minor: lastPrice }],
-          items: [{ id: "i-prev", run_id: "r-old", schedule_id: SCHED, period_key: "2026-10", period_start: "2026-10-01", period_end: "2026-10-31", document_id: PREV, position: 1, state: "issued" }],
+          lines: [
+            {
+              id: "l-prev",
+              document_id: PREV,
+              position: 1,
+              description: "Retainer November 2026",
+              quantity: "1",
+              unit_price_minor: lastPrice,
+              tax_rate_bp: 2000,
+              subtotal_minor: lastPrice,
+            },
+          ],
+          items: [
+            {
+              id: "i-prev",
+              run_id: "r-old",
+              schedule_id: SCHED,
+              period_key: "2026-10",
+              period_start: "2026-10-01",
+              period_end: "2026-10-31",
+              document_id: PREV,
+              position: 1,
+              state: "issued",
+            },
+          ],
         },
   )
   await recurringDraftJob(h.ctx)
@@ -46,7 +77,9 @@ describe("the month-end amount check", () => {
     const got = await recurringRunGet(h.ctx, { run_id: runId })
     if (got.status !== "completed") throw new Error("run not read")
     expect(got.rows[0]?.flags).toContain("Check the amount: October was 149.00 EUR excl.")
-    expect(got.message).toContain("1 row bills far from the last invoice of its schedule (Maison Sauvan)")
+    expect(got.message).toContain(
+      "1 row bills far from the last invoice of its schedule (Maison Sauvan)",
+    )
   })
 
   test("a row billing a fifth or less of last month asks for a look too", async () => {
@@ -74,21 +107,35 @@ describe("the month-end amount check", () => {
     const { h, runId, item } = await drafted(14_900, "14900")
     expect(String(item?.note)).toBe("Same as October")
     const line = h.db.__all("document_lines").find((l) => l.document_id === item?.document_id)
-    await h.db.update("document_lines", String(line?.id), { unit_price_minor: "1490000", subtotal_minor: "1490000" })
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "1490000",
+      subtotal_minor: "1490000",
+    })
     await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
     const typo = h.db.__all("recurring_run_items").find((i) => i.id === item?.id)
-    expect(String(typo?.note)).toBe("Changed since October · Check the amount: October was 149.00 EUR excl.")
+    expect(String(typo?.note)).toBe(
+      "Changed since October · Check the amount: October was 149.00 EUR excl.",
+    )
     const got = await recurringRunGet(h.ctx, { run_id: runId })
     if (got.status !== "completed") throw new Error("run not read")
     expect(got.message).toContain("bills far from the last invoice")
-    await h.db.update("document_lines", String(line?.id), { unit_price_minor: "14900", subtotal_minor: "14900" })
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "14900",
+      subtotal_minor: "14900",
+    })
     await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
     const fixed = h.db.__all("recurring_run_items").find((i) => i.id === item?.id)
     expect(String(fixed?.note)).toBe("Same as October")
   })
 
   test("the threshold is five times up or a fifth down, and zero amounts are never compared", () => {
-    const prev = { period_key: "2026-10", net_minor: 10_000n, lines_signature: "", payment_status: "paid", currency: "EUR" }
+    const prev = {
+      period_key: "2026-10",
+      net_minor: 10_000n,
+      lines_signature: "",
+      payment_status: "paid",
+      currency: "EUR",
+    }
     expect(amountFarFlag(prev, { net_minor: 49_999n })).toBeNull()
     expect(amountFarFlag(prev, { net_minor: 50_000n })).not.toBeNull()
     expect(amountFarFlag(prev, { net_minor: 2_001n })).toBeNull()

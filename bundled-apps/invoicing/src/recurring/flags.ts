@@ -57,10 +57,20 @@ export function periodLabel(periodKey: string): string {
 
 /** One canonical string per line set, so two periods compare by value. */
 export function linesSignature(
-  lines: Array<{ description?: unknown; quantity?: unknown; unit_price_minor?: unknown; tax_rate_bp?: unknown }>,
+  lines: Array<{
+    description?: unknown
+    quantity?: unknown
+    unit_price_minor?: unknown
+    tax_rate_bp?: unknown
+  }>,
 ): string {
   return JSON.stringify(
-    lines.map((l) => [String(l.description ?? ""), String(l.quantity ?? ""), String(l.unit_price_minor ?? ""), l.tax_rate_bp ?? null]),
+    lines.map((l) => [
+      String(l.description ?? ""),
+      String(l.quantity ?? ""),
+      String(l.unit_price_minor ?? ""),
+      l.tax_rate_bp ?? null,
+    ]),
   )
 }
 
@@ -85,9 +95,14 @@ function plainMinor(v: bigint, currency: string): string {
  * far more or far less than the last issued invoice, else null. Nothing to compare (no previous
  * invoice, a previous one of zero, a row of zero or less, which needs its own fix) is never flagged.
  */
-export function amountFarFlag(previous: PreviousInvoice | null, current: Pick<CurrentDraft, "net_minor">): string | null {
+export function amountFarFlag(
+  previous: PreviousInvoice | null,
+  current: Pick<CurrentDraft, "net_minor">,
+): string | null {
   if (!previous || previous.net_minor <= 0n || current.net_minor <= 0n) return null
-  const far = current.net_minor >= previous.net_minor * AMOUNT_FAR_RATIO || current.net_minor * AMOUNT_FAR_RATIO <= previous.net_minor
+  const far =
+    current.net_minor >= previous.net_minor * AMOUNT_FAR_RATIO ||
+    current.net_minor * AMOUNT_FAR_RATIO <= previous.net_minor
   if (!far) return null
   return `${AMOUNT_CHECK}${periodName(previous.period_key)} was ${plainMinor(previous.net_minor, previous.currency ?? "EUR")} excl.`
 }
@@ -108,7 +123,8 @@ export function runItemFlags(previous: PreviousInvoice | null, current: CurrentD
   if (!previous) return ["First invoice"]
   const name = periodName(previous.period_key)
   const flags: string[] = []
-  const same = previous.lines_signature === current.lines_signature && previous.net_minor === current.net_minor
+  const same =
+    previous.lines_signature === current.lines_signature && previous.net_minor === current.net_minor
   flags.push(same ? `Same as ${name}` : `Changed since ${name}`)
   const far = amountFarFlag(previous, current)
   if (far) flags.push(far)

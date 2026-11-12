@@ -100,7 +100,9 @@ describe("instagramAdapter (B4)", () => {
         return {
           status: 200,
           headers: {},
-          body: JSON.stringify({ data: [{ id: "c1", text: "hey", username: "fan1", timestamp: "t" }] }),
+          body: JSON.stringify({
+            data: [{ id: "c1", text: "hey", username: "fan1", timestamp: "t" }],
+          }),
         }
       }
       return { status: 200, headers: {}, body: "{}" }
@@ -140,15 +142,35 @@ describe("instagramAdapter (B4)", () => {
         ...ME_ROUTE,
         "/ig1/media": {
           data: [
-            { id: "own-media-1", caption: "New drop!", timestamp: "2026-06-01T10:00:00+0000", comments_count: 2 },
-            { id: "own-media-2", caption: "No comments here", timestamp: "2026-06-01T09:00:00+0000", comments_count: 0 },
+            {
+              id: "own-media-1",
+              caption: "New drop!",
+              timestamp: "2026-06-01T10:00:00+0000",
+              comments_count: 2,
+            },
+            {
+              id: "own-media-2",
+              caption: "No comments here",
+              timestamp: "2026-06-01T09:00:00+0000",
+              comments_count: 0,
+            },
           ],
           paging: { cursors: { after: "OWN_MEDIA_CURSOR" } },
         },
         "/own-media-1/comments": {
           data: [
-            { id: "ig-comment-1", text: "Where do I buy this?", username: "fan1", timestamp: "2026-06-01T10:05:00+0000" },
-            { id: "ig-comment-2", text: "Love it!", username: "fan2", timestamp: "2026-06-01T10:06:00+0000" },
+            {
+              id: "ig-comment-1",
+              text: "Where do I buy this?",
+              username: "fan1",
+              timestamp: "2026-06-01T10:05:00+0000",
+            },
+            {
+              id: "ig-comment-2",
+              text: "Love it!",
+              username: "fan2",
+              timestamp: "2026-06-01T10:06:00+0000",
+            },
           ],
         },
       })
@@ -198,16 +220,40 @@ describe("instagramAdapter (B4)", () => {
         ...ME_ROUTE,
         "/ig1/media": {
           data: [
-            { id: "own-media-1", caption: "post one", timestamp: "2026-06-01T09:00:00+0000", comments_count: 1 },
-            { id: "own-media-2", caption: "post two", timestamp: "2026-06-01T09:30:00+0000", comments_count: 1 },
+            {
+              id: "own-media-1",
+              caption: "post one",
+              timestamp: "2026-06-01T09:00:00+0000",
+              comments_count: 1,
+            },
+            {
+              id: "own-media-2",
+              caption: "post two",
+              timestamp: "2026-06-01T09:30:00+0000",
+              comments_count: 1,
+            },
           ],
           paging: { cursors: {} },
         },
         "/own-media-1/comments": {
-          data: [{ id: "dup-comment-1", text: "first", username: "fan1", timestamp: "2026-06-01T09:05:00+0000" }],
+          data: [
+            {
+              id: "dup-comment-1",
+              text: "first",
+              username: "fan1",
+              timestamp: "2026-06-01T09:05:00+0000",
+            },
+          ],
         },
         "/own-media-2/comments": {
-          data: [{ id: "dup-comment-1", text: "same id again", username: "fan1", timestamp: "2026-06-01T09:35:00+0000" }],
+          data: [
+            {
+              id: "dup-comment-1",
+              text: "same id again",
+              username: "fan1",
+              timestamp: "2026-06-01T09:35:00+0000",
+            },
+          ],
         },
       })
       const { findings } = await instagramAdapter.discover(
@@ -236,8 +282,18 @@ describe("instagramAdapter (B4)", () => {
         ...ME_ROUTE,
         "/ig1/media": {
           data: [
-            { id: "own-media-1", caption: "post one", timestamp: "2026-06-01T09:00:00+0000", comments_count: 3 },
-            { id: "own-media-2", caption: "post two", timestamp: "2026-06-01T09:30:00+0000", comments_count: 5 },
+            {
+              id: "own-media-1",
+              caption: "post one",
+              timestamp: "2026-06-01T09:00:00+0000",
+              comments_count: 3,
+            },
+            {
+              id: "own-media-2",
+              caption: "post two",
+              timestamp: "2026-06-01T09:30:00+0000",
+              comments_count: 5,
+            },
           ],
           paging: { cursors: {} },
         },
@@ -292,7 +348,12 @@ describe("instagramAdapter (B4)", () => {
           data: [
             {
               id: "conv-1",
-              participants: { data: [{ id: "ig1", username: "our_brand" }, { id: "fan-1", username: "Jamie" }] },
+              participants: {
+                data: [
+                  { id: "ig1", username: "our_brand" },
+                  { id: "fan-1", username: "Jamie" },
+                ],
+              },
               updated_time: "2026-06-01T10:00:00+0000",
             },
           ],
@@ -300,8 +361,18 @@ describe("instagramAdapter (B4)", () => {
         },
         "/conv-1/messages": {
           data: [
-            { id: "m1", from: { id: "fan-1", username: "Jamie" }, message: "hi there", created_time: "2026-06-01T09:00:00+0000" },
-            { id: "m2", from: { id: "ig1", username: "our_brand" }, message: "hello!", created_time: "2026-06-01T09:05:00+0000" },
+            {
+              id: "m1",
+              from: { id: "fan-1", username: "Jamie" },
+              message: "hi there",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+            {
+              id: "m2",
+              from: { id: "ig1", username: "our_brand" },
+              message: "hello!",
+              created_time: "2026-06-01T09:05:00+0000",
+            },
           ],
         },
       })
@@ -320,8 +391,16 @@ describe("instagramAdapter (B4)", () => {
       ])
       expect(result?.messages).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ externalId: "m1", direction: "inbound", conversationExternalId: "conv-1" }),
-          expect.objectContaining({ externalId: "m2", direction: "outbound", conversationExternalId: "conv-1" }),
+          expect.objectContaining({
+            externalId: "m1",
+            direction: "inbound",
+            conversationExternalId: "conv-1",
+          }),
+          expect.objectContaining({
+            externalId: "m2",
+            direction: "outbound",
+            conversationExternalId: "conv-1",
+          }),
         ]),
       )
       expect(parseJsonCursor(result?.nextCursor ?? null)).toEqual({
@@ -340,7 +419,12 @@ describe("instagramAdapter (B4)", () => {
               // "pro-ig1" is the API's self id — NOT "ig1" (accountExternalId).
               // Pre-fix, nonSelfParticipant compared only against "ig1", so
               // "pro-ig1" (us) was picked as the "other party" instead of fan-1.
-              participants: { data: [{ id: "pro-ig1", username: "our_brand" }, { id: "fan-1", username: "real_fan" }] },
+              participants: {
+                data: [
+                  { id: "pro-ig1", username: "our_brand" },
+                  { id: "fan-1", username: "real_fan" },
+                ],
+              },
               updated_time: "2026-06-01T10:00:00+0000",
             },
           ],
@@ -393,7 +477,12 @@ describe("instagramAdapter (B4)", () => {
         "/conv-1/messages": {
           data: [
             // from.id is some other/unexpected id, but from.username matches ours.
-            { id: "m1", from: { id: "some-other-id", username: "our_brand" }, message: "our reply", created_time: "t" },
+            {
+              id: "m1",
+              from: { id: "some-other-id", username: "our_brand" },
+              message: "our reply",
+              created_time: "t",
+            },
           ],
         },
       })
@@ -401,7 +490,9 @@ describe("instagramAdapter (B4)", () => {
         { accountExternalId: "ig1", fetch, accessToken: "tok" },
         null,
       )
-      expect(result?.messages).toEqual([expect.objectContaining({ externalId: "m1", direction: "outbound" })])
+      expect(result?.messages).toEqual([
+        expect.objectContaining({ externalId: "m1", direction: "outbound" }),
+      ])
     })
 
     test("a genuine third party (matches none of accountExternalId/meId/username) classifies as inbound", async () => {
@@ -411,14 +502,23 @@ describe("instagramAdapter (B4)", () => {
           data: [{ id: "conv-1", participants: { data: [{ id: "pro-ig1" }, { id: "fan-1" }] } }],
         },
         "/conv-1/messages": {
-          data: [{ id: "m1", from: { id: "fan-1", username: "real_fan" }, message: "hi", created_time: "t" }],
+          data: [
+            {
+              id: "m1",
+              from: { id: "fan-1", username: "real_fan" },
+              message: "hi",
+              created_time: "t",
+            },
+          ],
         },
       })
       const result = await instagramAdapter.syncDms?.(
         { accountExternalId: "ig1", fetch, accessToken: "tok" },
         null,
       )
-      expect(result?.messages).toEqual([expect.objectContaining({ externalId: "m1", direction: "inbound" })])
+      expect(result?.messages).toEqual([
+        expect.objectContaining({ externalId: "m1", direction: "inbound" }),
+      ])
     })
 
     test("/me failure degrades to accountExternalId-only matching — sync still completes, no throw", async () => {
@@ -453,7 +553,9 @@ describe("instagramAdapter (B4)", () => {
       )
       // Degraded (accountExternalId-only) matching still recognizes "ig1" as self.
       expect(result?.error).toBeUndefined()
-      expect(result?.messages).toEqual([expect.objectContaining({ externalId: "m1", direction: "outbound" })])
+      expect(result?.messages).toEqual([
+        expect.objectContaining({ externalId: "m1", direction: "outbound" }),
+      ])
     })
 
     test("empty inbox → empty result, a state with no mark and no history owed", async () => {
@@ -466,7 +568,9 @@ describe("instagramAdapter (B4)", () => {
         null,
       )
       expect(result).toMatchObject({ conversations: [], messages: [] })
-      expect(parseJsonCursor(result?.nextCursor ?? null)).toEqual({ conversations: { hw: null, bf: null } })
+      expect(parseJsonCursor(result?.nextCursor ?? null)).toEqual({
+        conversations: { hw: null, bf: null },
+      })
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
     })
 
@@ -536,8 +640,18 @@ describe("instagramAdapter (B4)", () => {
         },
         "/conv-1/messages": {
           data: [
-            { id: "m2", from: { id: "fan-1", username: "real_fan" }, message: "second", created_time: "2026-06-01T09:05:00+0000" },
-            { id: "m1", from: { id: "fan-1", username: "real_fan" }, message: "first", created_time: "2026-06-01T09:00:00+0000" },
+            {
+              id: "m2",
+              from: { id: "fan-1", username: "real_fan" },
+              message: "second",
+              created_time: "2026-06-01T09:05:00+0000",
+            },
+            {
+              id: "m1",
+              from: { id: "fan-1", username: "real_fan" },
+              message: "first",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
           ],
         },
       })
@@ -546,7 +660,10 @@ describe("instagramAdapter (B4)", () => {
         null,
       )
       expect(result?.conversations).toEqual([
-        expect.objectContaining({ participantHandle: "real_fan", participantDisplayName: "real_fan" }),
+        expect.objectContaining({
+          participantHandle: "real_fan",
+          participantDisplayName: "real_fan",
+        }),
       ])
     })
 
@@ -554,17 +671,31 @@ describe("instagramAdapter (B4)", () => {
       const fetch = makeMockFetch({
         ...ME_ROUTE,
         "/me/conversations": {
-          data: [{ id: "conv-1", participants: { data: [{ id: "ig1" }, { id: "fan-1", username: "real_handle" }] } }],
+          data: [
+            {
+              id: "conv-1",
+              participants: { data: [{ id: "ig1" }, { id: "fan-1", username: "real_handle" }] },
+            },
+          ],
         },
         "/conv-1/messages": {
-          data: [{ id: "m1", from: { id: "fan-1", username: "other_handle" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" }],
+          data: [
+            {
+              id: "m1",
+              from: { id: "fan-1", username: "other_handle" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+          ],
         },
       })
       const result = await instagramAdapter.syncDms?.(
         { accountExternalId: "ig1", fetch, accessToken: "tok" },
         null,
       )
-      expect(result?.conversations).toEqual([expect.objectContaining({ participantHandle: "real_handle" })])
+      expect(result?.conversations).toEqual([
+        expect.objectContaining({ participantHandle: "real_handle" }),
+      ])
     })
 
     test("the participant-name fallback never picks a self-authored (by /me id or username) message's name", async () => {
@@ -576,8 +707,18 @@ describe("instagramAdapter (B4)", () => {
         "/conv-1/messages": {
           // Newest-first: our own reply (self, via /me id) comes before the fan's message.
           data: [
-            { id: "m2", from: { id: "pro-ig1", username: "our_brand" }, message: "our reply", created_time: "2026-06-01T09:05:00+0000" },
-            { id: "m1", from: { id: "fan-1", username: "real_fan" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" },
+            {
+              id: "m2",
+              from: { id: "pro-ig1", username: "our_brand" },
+              message: "our reply",
+              created_time: "2026-06-01T09:05:00+0000",
+            },
+            {
+              id: "m1",
+              from: { id: "fan-1", username: "real_fan" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
           ],
         },
       })
@@ -586,7 +727,10 @@ describe("instagramAdapter (B4)", () => {
         null,
       )
       expect(result?.conversations).toEqual([
-        expect.objectContaining({ participantHandle: "real_fan", participantDisplayName: "real_fan" }),
+        expect.objectContaining({
+          participantHandle: "real_fan",
+          participantDisplayName: "real_fan",
+        }),
       ])
     })
 
@@ -595,13 +739,19 @@ describe("instagramAdapter (B4)", () => {
       let pageCalls = 0
       const fetch = (async (url: string) => {
         if (url.includes("/me?fields=id,username")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ id: "pro-ig1", username: "our_brand" }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ id: "pro-ig1", username: "our_brand" }),
+          }
         }
         if (url.includes("/me/conversations")) {
           return {
             status: 200,
             headers: {},
-            body: JSON.stringify({ data: [{ id: "conv-1", participants: { data: [{ id: "ig1" }, { id: "fan-1" }] } }] }),
+            body: JSON.stringify({
+              data: [{ id: "conv-1", participants: { data: [{ id: "ig1" }, { id: "fan-1" }] } }],
+            }),
           }
         }
         if (url.includes("/conv-1/messages")) {
@@ -610,7 +760,14 @@ describe("instagramAdapter (B4)", () => {
             status: 200,
             headers: {},
             body: JSON.stringify({
-              data: [{ id: `m${pageCalls}`, from: { id: "fan-1" }, message: "x", created_time: "2026-06-01T09:00:00+0000" }],
+              data: [
+                {
+                  id: `m${pageCalls}`,
+                  from: { id: "fan-1" },
+                  message: "x",
+                  created_time: "2026-06-01T09:00:00+0000",
+                },
+              ],
               paging: { cursors: { after: `CURSOR_${pageCalls}` } }, // always offers another page
             }),
           }
@@ -647,7 +804,9 @@ describe("instagramAdapter (B4)", () => {
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
       expect(result?.messages).toEqual([])
-      expect(result?.conversations).toEqual([expect.objectContaining({ externalId: "conv-unchanged" })])
+      expect(result?.conversations).toEqual([
+        expect.objectContaining({ externalId: "conv-unchanged" }),
+      ])
     })
 
     test("still fetches /messages when updated_time is strictly newer than the stored watermark", async () => {

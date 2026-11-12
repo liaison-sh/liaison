@@ -42,7 +42,12 @@ function store(docs: Doc[]) {
     calls,
     findMany: async (
       _entity: string,
-      o: { where?: Record<string, unknown>; orderBy?: Record<string, string>; limit?: number; offset?: number } = {},
+      o: {
+        where?: Record<string, unknown>
+        orderBy?: Record<string, string>
+        limit?: number
+        offset?: number
+      } = {},
     ) => {
       calls.push({ limit: o.limit, offset: o.offset })
       const rows = docs.filter((d) => matches(d, o.where ?? {}))
@@ -93,7 +98,11 @@ describe("invoicing timeline source", () => {
   test("rows are issued, paid and credited, never a draft", async () => {
     const paid = doc({ paid_at: "2026-03-10T09:30:00.000Z" })
     const draft = doc({ status: "draft" })
-    const credit = doc({ type: "credit_note", number: "CN-2026-0001", issued_at: "2026-03-05 00:00:00+00" })
+    const credit = doc({
+      type: "credit_note",
+      number: "CN-2026-0001",
+      issued_at: "2026-03-05 00:00:00+00",
+    })
     const db = store([paid, draft, credit])
     const out = await activityRead({ db }, input())
     expect(out.rows.map((r) => r.title)).toEqual([
@@ -113,7 +122,14 @@ describe("invoicing timeline source", () => {
       lines: JSON.stringify([{ description: "Retainer", qty: 1, unit_price_minor: 65000 }]),
       created_at: "2026-02-01T08:00:00.000Z",
     }
-    const paused = { ...schedule, id: "66666666-6666-4666-8666-666666666666", status: "paused", repeats: "quarter", lines: [], created_at: "2026-01-01T08:00:00.000Z" }
+    const paused = {
+      ...schedule,
+      id: "66666666-6666-4666-8666-666666666666",
+      status: "paused",
+      repeats: "quarter",
+      lines: [],
+      created_at: "2026-01-01T08:00:00.000Z",
+    }
     const out = await activityRead({ db: store([doc({}), schedule, paused]) }, input())
     const rows = out.rows.filter((r) => r.href?.entityType === "schedule")
     expect(rows.map((r) => [r.title, r.href?.entityId, r.contactId])).toEqual([
@@ -128,7 +144,9 @@ describe("invoicing timeline source", () => {
     const db = store([kept, gone])
     expect((await activityRead({ db }, input())).rows).toHaveLength(2)
     db.docs.splice(db.docs.indexOf(gone), 1)
-    expect((await activityRead({ db }, input())).rows.map((r) => r.id)).toEqual([`${kept.id}:issued`])
+    expect((await activityRead({ db }, input())).rows.map((r) => r.id)).toEqual([
+      `${kept.id}:issued`,
+    ])
   })
 
   /** Every page, as the kernel pages: by the last row of a full page. */
@@ -175,7 +193,9 @@ describe("invoicing timeline source", () => {
 
   test("a small page size reads every document across many calls", async () => {
     const docs = Array.from({ length: 30 }, (_, d) =>
-      Array.from({ length: 50 }, () => doc({ issued_at: `2026-05-${String(d + 1).padStart(2, "0")}` })),
+      Array.from({ length: 50 }, () =>
+        doc({ issued_at: `2026-05-${String(d + 1).padStart(2, "0")}` }),
+      ),
     ).flat()
     const seen = await pages(store(docs), 120)
     expect(new Set(seen).size).toBe(seen.length)
@@ -197,6 +217,8 @@ describe("invoicing timeline source", () => {
     } as unknown as ReadsCtx
     const rows = await documentsSearch(ctx, { company_id: "44444444-4444-4444-8444-444444444444" })
     expect(rows.map((r) => r.id)).toEqual([String(mine.id)])
-    expect(calls).toEqual([["kernel:companies_read", { companyId: "44444444-4444-4444-8444-444444444444" }]])
+    expect(calls).toEqual([
+      ["kernel:companies_read", { companyId: "44444444-4444-4444-8444-444444444444" }],
+    ])
   })
 })

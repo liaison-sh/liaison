@@ -58,10 +58,20 @@ function buildHuffman(lengths: ArrayLike<number>, offset: number, n: number): Hu
   return { counts, symbols }
 }
 
-const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258]
-const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0]
-const DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577]
-const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13]
+const LEN_BASE = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+  163, 195, 227, 258,
+]
+const LEN_EXTRA = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+]
+const DIST_BASE = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049,
+  3073, 4097, 6145, 8193, 12289, 16385, 24577,
+]
+const DIST_EXTRA = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+]
 const CL_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
 /** Inflate a raw DEFLATE stream. Throws on malformed input. */
@@ -188,7 +198,8 @@ export function inflateZlib(src: ArrayLike<number>): Bytes {
   if (src.length < 2) throw new Error("inflate: zlib header missing")
   const cmf = src[0]!
   const flg = src[1]!
-  if ((cmf & 0x0f) !== 8 || ((cmf << 8) | flg) % 31 !== 0) throw new Error("inflate: not a zlib stream")
+  if ((cmf & 0x0f) !== 8 || ((cmf << 8) | flg) % 31 !== 0)
+    throw new Error("inflate: not a zlib stream")
   const rest: Bytes = []
   for (let i = 2; i < src.length; i++) rest.push(src[i]!)
   return inflateRaw(rest)
@@ -302,7 +313,9 @@ export function pdfTextStrings(pdf: string): string[] {
     const dict = pdf.slice(objAt < 0 ? 0 : objAt, m.index)
     if (/\/Subtype\s*\/Image/.test(dict)) continue
     const raw = pdf.slice(start, end)
-    const filters = [...(dict.match(/\/Filter\s*(\[[^\]]*\]|\/\w+)/)?.[1] ?? "").matchAll(/\/(\w+)/g)].map((f) => f[1])
+    const filters = [
+      ...(dict.match(/\/Filter\s*(\[[^\]]*\]|\/\w+)/)?.[1] ?? "").matchAll(/\/(\w+)/g),
+    ].map((f) => f[1])
     try {
       let bytes: Bytes = latin1Bytes(raw)
       for (const f of filters) {
@@ -406,8 +419,13 @@ export function isValidCarrierTracking(carrier: LabelCarrier, raw: string): bool
 
 /** A postcode reduced to what two spellings of it share: uppercase, no spaces or dashes, and for
  *  the US the five-digit ZIP (a ZIP+4 is the same address). */
-export function comparablePostcode(postcode: string | null | undefined, countryIso2?: string | null): string | null {
-  const v = String(postcode ?? "").toUpperCase().replace(/[\s-]+/g, "")
+export function comparablePostcode(
+  postcode: string | null | undefined,
+  countryIso2?: string | null,
+): string | null {
+  const v = String(postcode ?? "")
+    .toUpperCase()
+    .replace(/[\s-]+/g, "")
   if (!v) return null
   if ((countryIso2 ?? "").toUpperCase() === "US") {
     const m = /^(\d{5})(\d{4})?$/.exec(v)
@@ -435,7 +453,10 @@ export function postcodesMatch(
  * read with its spaces removed (labels group the number: "1Z W49 41Y 04 9253 0257"); only numbers
  * that pass the carrier's check digit count, and two different valid numbers return null.
  */
-export function carrierTrackingFromLabelText(carrier: LabelCarrier, strings: string[]): string | null {
+export function carrierTrackingFromLabelText(
+  carrier: LabelCarrier,
+  strings: string[],
+): string | null {
   if (carrier === "fedex") return trackingNumberFromLabelText(strings)
   const found = new Set<string>()
   for (const s of strings) {
@@ -477,14 +498,19 @@ export const LABEL_ANALYSIS_PROMPT =
   "Use null for a value you cannot read with certainty. Never guess a character."
 
 /** Pull `{ tracking_number, recipient_postcode }` out of the model's answer, or null. */
-export function parseLabelAnalysis(text: string): { tracking_number: string | null; recipient_postcode: string | null } | null {
+export function parseLabelAnalysis(
+  text: string,
+): { tracking_number: string | null; recipient_postcode: string | null } | null {
   const start = text.indexOf("{")
   const end = text.lastIndexOf("}")
   if (start < 0 || end <= start) return null
   try {
     const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
     const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
-    return { tracking_number: str(obj.tracking_number), recipient_postcode: str(obj.recipient_postcode) }
+    return {
+      tracking_number: str(obj.tracking_number),
+      recipient_postcode: str(obj.recipient_postcode),
+    }
   } catch {
     return null
   }
@@ -522,7 +548,10 @@ export function labelCarriesReadableTracking(offerCode: string | null | undefine
 }
 
 /** The label's TO postcode and country, as frozen on the row at buy time. */
-function labelDestination(row: LabelSourceRow): { postcode: string | null; country: string | null } {
+function labelDestination(row: LabelSourceRow): {
+  postcode: string | null
+  country: string | null
+} {
   const raw = row.queue_facts
   let facts: Record<string, unknown> | null = null
   if (raw && typeof raw === "object") facts = raw as Record<string, unknown>
@@ -534,7 +563,10 @@ function labelDestination(row: LabelSourceRow): { postcode: string | null; count
     }
   }
   const str = (v: unknown) => (typeof v === "string" && v ? v : null)
-  return { postcode: str(facts?.to_postcode), country: str(facts?.to_country) ?? str(facts?.destination) }
+  return {
+    postcode: str(facts?.to_postcode),
+    country: str(facts?.to_country) ?? str(facts?.destination),
+  }
 }
 
 /** Errors of the analysis seam that are final: not available here (capability, the org's toggle,
@@ -599,7 +631,9 @@ async function labelFileIdFor(
           JSON.stringify({ app: "boxtal", entityType: "shipment", entityId: String(row.id) }),
         ),
       ) as Array<{ id?: string; mimeType?: string; filename?: string }>
-      const label = files.find((f) => f.mimeType === "application/pdf" && /^label-/.test(f.filename ?? ""))
+      const label = files.find(
+        (f) => f.mimeType === "application/pdf" && /^label-/.test(f.filename ?? ""),
+      )
       if (label?.id) return label.id
     }
     if (!ctx.files_importFromUrl) return null
@@ -622,7 +656,11 @@ async function labelFileIdFor(
   }
 }
 
-type VisionOutcome = { number: string } | { unavailable: true } | { rejected: string } | { transient: string }
+type VisionOutcome =
+  | { number: string }
+  | { unavailable: true }
+  | { rejected: string }
+  | { transient: string }
 
 /** Ask the host to read the label image; keep the number only if it validates. */
 async function readLabelByAnalysis(
@@ -639,7 +677,9 @@ async function readLabelByAnalysis(
     ) as { text?: string; error?: { code?: string } }
   } catch (err) {
     const code = (err as { code?: string } | null)?.code
-    return code && ANALYSIS_UNAVAILABLE.has(code) ? { unavailable: true } : { transient: "analysis_failed" }
+    return code && ANALYSIS_UNAVAILABLE.has(code)
+      ? { unavailable: true }
+      : { transient: "analysis_failed" }
   }
   if (answer.error) {
     return answer.error.code && ANALYSIS_UNAVAILABLE.has(answer.error.code)
@@ -649,7 +689,8 @@ async function readLabelByAnalysis(
   const read = parseLabelAnalysis(answer.text ?? "")
   const number = read?.tracking_number?.replace(/\s+/g, "").toUpperCase() ?? null
   if (!number || !isValidCarrierTracking(carrier, number)) return { rejected: "invalid_number" }
-  if (!postcodesMatch(read?.recipient_postcode, dest.postcode, dest.country)) return { rejected: "postcode_mismatch" }
+  if (!postcodesMatch(read?.recipient_postcode, dest.postcode, dest.country))
+    return { rejected: "postcode_mismatch" }
   return { number }
 }
 
@@ -699,17 +740,21 @@ export async function sourceTrackingFromLabel(
       number = trackingNumberFromLabelText(strings)
     } else {
       const fromText = carrierTrackingFromLabelText(carrier, strings)
-      if (fromText && labelTextShowsPostcode(strings, dest.postcode, dest.country, fromText)) number = fromText
+      if (fromText && labelTextShowsPostcode(strings, dest.postcode, dest.country, fromText))
+        number = fromText
       // An image label (no readable number in its text): the host reads it, once.
       if (!number) {
         // A row bought before the label postcode was frozen on it: the recipient contact's. With
         // no postcode at all, no read could ever pass the check: never pay for one.
         const checked = dest.postcode ? dest : await contactPostcode(ctx, row)
         if (!checked.postcode) {
-          ctx.logger?.info?.("boxtal: no recipient postcode to check a label read against, to confirm", {
-            shipmentId: String(row.id),
-            orderId,
-          })
+          ctx.logger?.info?.(
+            "boxtal: no recipient postcode to check a label read against, to confirm",
+            {
+              shipmentId: String(row.id),
+              orderId,
+            },
+          )
           await markToConfirm(ctx, row)
           return null
         }
@@ -742,7 +787,10 @@ export async function sourceTrackingFromLabel(
       return null
     }
     // Re-read so a webhook that landed while we were downloading is never overwritten.
-    const fresh = (await ctx.db.findMany("shipment", { where: { id: String(row.id) }, limit: 1 })) as LabelSourceRow[]
+    const fresh = (await ctx.db.findMany("shipment", {
+      where: { id: String(row.id) },
+      limit: 1,
+    })) as LabelSourceRow[]
     if (fresh[0]?.tracking_number) return fresh[0].tracking_number
     // Flagged: a number read off the label is shown and used by the operator's tick, but it is not
     // a carrier event, so it never triggers the automatic fulfillment (webhooks.ts).
@@ -751,7 +799,10 @@ export async function sourceTrackingFromLabel(
       tracking_from_label: true,
       tracking_to_confirm: false,
     })
-    ctx.logger?.info?.("boxtal: tracking number read from the label", { shipmentId: String(row.id), orderId })
+    ctx.logger?.info?.("boxtal: tracking number read from the label", {
+      shipmentId: String(row.id),
+      orderId,
+    })
     return number
   } catch (err) {
     ctx.logger?.warn?.("boxtal: could not read the tracking number from the label", {
@@ -771,7 +822,10 @@ async function recordTransientRead(
   orderId: string,
   reason: string,
 ): Promise<void> {
-  const fresh = (await ctx.db.findMany("shipment", { where: { id: String(row.id) }, limit: 1 })) as LabelSourceRow[]
+  const fresh = (await ctx.db.findMany("shipment", {
+    where: { id: String(row.id) },
+    limit: 1,
+  })) as LabelSourceRow[]
   if (fresh[0]?.tracking_number) return
   const attempts = (fresh[0]?.tracking_label_attempts ?? row.tracking_label_attempts ?? 0) + 1
   const final = attempts >= MAX_LABEL_READS
@@ -789,7 +843,10 @@ async function recordTransientRead(
 
 /** Mark the row "tracking to confirm", unless a number landed meanwhile. */
 async function markToConfirm(ctx: BoxtalToolCtx, row: LabelSourceRow): Promise<void> {
-  const fresh = (await ctx.db.findMany("shipment", { where: { id: String(row.id) }, limit: 1 })) as LabelSourceRow[]
+  const fresh = (await ctx.db.findMany("shipment", {
+    where: { id: String(row.id) },
+    limit: 1,
+  })) as LabelSourceRow[]
   if (fresh[0]?.tracking_number) return
   await ctx.db.update("shipment", String(row.id), { tracking_to_confirm: true })
 }

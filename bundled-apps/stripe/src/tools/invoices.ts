@@ -13,6 +13,9 @@ export async function invoicesSearch(params: Obj | undefined, ctx: ReadCtx) {
   const where: Obj = {}
   if (typeof p.customerId === "string" && p.customerId) where.customer_id = p.customerId
   if (typeof p.status === "string" && p.status) where.status = p.status
-  const { rows, more } = await readPage(ctx, "stripe_invoices", where, offset, limit, { finalized_at: "desc", id: "asc" })
+  const { rows, more } = await readPage(ctx, "stripe_invoices", where, offset, limit, {
+    finalized_at: "desc",
+    id: "asc",
+  })
   return pageOf(rows.map(invoiceItem), rows, offset, limit, "invoices", more)
 }

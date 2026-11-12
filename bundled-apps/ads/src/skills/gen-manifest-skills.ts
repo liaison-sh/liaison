@@ -53,7 +53,8 @@ export function parsePlaybookMd(raw: string): { frontmatter: PlaybookFrontmatter
     const rawValue = line.slice(idx + 1).trim()
     if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
       const inner = rawValue.slice(1, -1).trim()
-      fm[key] = inner.length === 0 ? [] : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
+      fm[key] =
+        inner.length === 0 ? [] : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
     } else {
       fm[key] = rawValue.replace(/^"(.*)"$/, "$1")
     }
@@ -94,7 +95,9 @@ export function computePlaybookSkills(): Record<string, ManifestSkill> {
  * existing hand-authored entries (e.g. ads-playbook) preserved
  * untouched, plus the 9 generated playbook entries merged in.
  */
-export function computeFullSkillsBlock(existingSkills: Record<string, unknown>): Record<string, unknown> {
+export function computeFullSkillsBlock(
+  existingSkills: Record<string, unknown>,
+): Record<string, unknown> {
   const playbooks = computePlaybookSkills()
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(existingSkills)) {
@@ -133,7 +136,9 @@ function main(): void {
 
   if (checkOnly) {
     if (nextRaw !== currentRaw) {
-      process.stderr.write("gen-manifest-skills: manifest is out of date. Run without --check to apply.\n")
+      process.stderr.write(
+        "gen-manifest-skills: manifest is out of date. Run without --check to apply.\n",
+      )
       process.exit(1)
     }
     process.stdout.write("gen-manifest-skills: manifest skills block is up to date.\n")

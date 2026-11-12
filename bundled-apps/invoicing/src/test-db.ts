@@ -20,7 +20,9 @@ const MANIFEST_SCHEMA = (
 ).schema
 
 /** `bridgeWhereOperators`: read `{ in }` and `null` in a `where` as the bridge does. */
-export function createMockDb(opts: MockDbOptions & { bridgeWhereOperators?: boolean } = {}): MockDb {
+export function createMockDb(
+  opts: MockDbOptions & { bridgeWhereOperators?: boolean } = {},
+): MockDb {
   return createSharedMockDb(opts, {
     // Mirror prod (gen_random_uuid()): generated ids must be uuid-SHAPED, because
     // document lookups route uuid input to an id lookup and everything else to a

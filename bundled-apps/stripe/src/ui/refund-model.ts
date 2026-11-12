@@ -3,9 +3,10 @@
 // The refund cards: what a pending refund approval shows, and the three other ways it can go. The card
 // reads the charge in the mirror for the refundable remainder; the approval itself still re-reads Stripe
 // at the moment it runs.
+
+import { maskedCard, type PaymentItem } from "./customers-model"
 import { type ApprovalItem, formatMoney } from "./home-model"
 import { tr } from "./i18n"
-import { maskedCard, type PaymentItem } from "./customers-model"
 
 export type RefundCardState = "pending" | "editing" | "already_refunded" | "refused"
 
@@ -19,7 +20,10 @@ export interface RefundApproval extends ApprovalItem {
 export const payloadOf = (a: RefundApproval) => a.payload ?? a.currentPayload ?? null
 
 /** Which approvals are this customer's pending refunds, by the charge they name. */
-export function refundsOf(approvals: RefundApproval[], payments: PaymentItem[]): Array<{ approval: RefundApproval; payment: PaymentItem }> {
+export function refundsOf(
+  approvals: RefundApproval[],
+  payments: PaymentItem[],
+): Array<{ approval: RefundApproval; payment: PaymentItem }> {
   const byCharge = new Map(payments.map((p) => [p.id, p]))
   const out: Array<{ approval: RefundApproval; payment: PaymentItem }> = []
   for (const approval of approvals) {
@@ -52,19 +56,30 @@ export interface RefundCardView {
   to: string
   note: string
   canApprove: boolean
-  actions: Array<{ id: "approve" | "edit" | "reject" | "credit_note" | "dismiss" | "retry" | "open_stripe"; label: string; confirm?: string }>
+  actions: Array<{
+    id: "approve" | "edit" | "reject" | "credit_note" | "dismiss" | "retry" | "open_stripe"
+    label: string
+    confirm?: string
+  }>
 }
 
 const amountOf = (a: RefundApproval, p: PaymentItem): number => {
   const raw = payloadOf(a)?.amountMinor
   const n = raw === undefined || raw === null ? NaN : Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : Math.max(0, (p.amountMinor ?? 0) - (p.refundedMinor ?? 0))
+  return Number.isFinite(n) && n > 0
+    ? n
+    : Math.max(0, (p.amountMinor ?? 0) - (p.refundedMinor ?? 0))
 }
 
 /** Digits after the decimal point of `currency`'s minor unit (2 for EUR, 0 for JPY). */
 function minorDigits(currency: string): number {
   try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: (currency || "eur").toUpperCase() }).resolvedOptions().maximumFractionDigits ?? 2
+    return (
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: (currency || "eur").toUpperCase(),
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    )
   } catch {
     return 2
   }
@@ -80,20 +95,34 @@ export function amountText(minor: number, currency: string): string {
  * The edited amount, in minor units, from what a person typed ("89.40" or "89,40"), or why
  * not: it must be more than zero and at most what is still refundable.
  */
-export function editedAmount(text: string, currency: string, leftMinor: number): { minor: number } | { error: string } {
+export function editedAmount(
+  text: string,
+  currency: string,
+  leftMinor: number,
+): { minor: number } | { error: string } {
   const d = minorDigits(currency)
   const t = text.trim().replace(",", ".")
   const m = /^(\d+)(?:\.(\d*))?$/.exec(t)
-  if (!m || (m[2] ?? "").length > d) return { error: tr("Type an amount such as {{example}}.", { example: amountText(8940, currency) }) }
+  if (!m || (m[2] ?? "").length > d)
+    return {
+      error: tr("Type an amount such as {{example}}.", { example: amountText(8940, currency) }),
+    }
   const minor = Number(m[1]) * 10 ** d + Number((m[2] ?? "").padEnd(d, "0") || "0")
-  if (!Number.isSafeInteger(minor) || minor <= 0) return { error: tr("The amount must be more than zero.") }
-  if (minor > leftMinor) return { error: tr("At most {{left}} is still refundable.", { left: amountText(leftMinor, currency) }) }
+  if (!Number.isSafeInteger(minor) || minor <= 0)
+    return { error: tr("The amount must be more than zero.") }
+  if (minor > leftMinor)
+    return {
+      error: tr("At most {{left}} is still refundable.", { left: amountText(leftMinor, currency) }),
+    }
   return { minor }
 }
 
 /** The host calls a refund card decides through (`app` from `@liaison/host`). */
 export interface RefundDecider {
-  editApproval(id: string, fields: Record<string, unknown>): Promise<{ payloadHash?: string } | null | undefined>
+  editApproval(
+    id: string,
+    fields: Record<string, unknown>,
+  ): Promise<{ payloadHash?: string } | null | undefined>
   decideApproval(id: string, decision: "approve" | "deny", payloadHash?: string): Promise<unknown>
 }
 
@@ -123,13 +152,24 @@ export async function decideRefund(
 
 /** The sentence a "Try again" or "Issue the credit note" asks before it does anything. */
 export function retryConfirm(amount: string, card: string): string {
-  return tr("This asks for a new refund of {{amount}} to the {{card}}. It still waits for a person's approval, and nothing moves until then.", { amount, card })
+  return tr(
+    "This asks for a new refund of {{amount}} to the {{card}}. It still waits for a person's approval, and nothing moves until then.",
+    { amount, card },
+  )
 }
 export function creditNoteConfirm(amount: string): string {
-  return tr("This asks the agent to issue a credit note of {{amount}} for the refund already made in Stripe. It is a new approval, and nothing is issued until a person approves it.", { amount })
+  return tr(
+    "This asks the agent to issue a credit note of {{amount}} for the refund already made in Stripe. It is a new approval, and nothing is issued until a person approves it.",
+    { amount },
+  )
 }
 
-export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string, held = false): RefundCardView {
+export function refundCardView(
+  a: RefundApproval,
+  p: PaymentItem,
+  locale: string,
+  held = false,
+): RefundCardView {
   const cur = p.currency ?? "eur"
   const state = refundCardState(a, p)
   const left = Math.max(0, (p.amountMinor ?? 0) - (p.refundedMinor ?? 0))
@@ -137,15 +177,29 @@ export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string
   const amount = formatMoney(asked, cur, locale)
   const retryMinor = Math.min(asked, left)
   const card = maskedCard(p.card)
-  const base = { state, remainderMinor: left, remainder: formatMoney(left, cur, locale), amount, amountMinor: asked, retryMinor, to: card }
+  const base = {
+    state,
+    remainderMinor: left,
+    remainder: formatMoney(left, cur, locale),
+    amount,
+    amountMinor: asked,
+    retryMinor,
+    to: card,
+  }
   if (state === "already_refunded") {
     return {
       ...base,
       title: tr("Already refunded in Stripe"),
-      note: tr("Liaison checks Stripe just before refunding, so nothing goes out twice. The refund made has no credit note yet, and it needs one."),
+      note: tr(
+        "Liaison checks Stripe just before refunding, so nothing goes out twice. The refund made has no credit note yet, and it needs one.",
+      ),
       canApprove: false,
       actions: [
-        { id: "credit_note", label: tr("Issue the credit note for it"), confirm: creditNoteConfirm(formatMoney(p.refundedMinor ?? asked, cur, locale)) },
+        {
+          id: "credit_note",
+          label: tr("Issue the credit note for it"),
+          confirm: creditNoteConfirm(formatMoney(p.refundedMinor ?? asked, cur, locale)),
+        },
         { id: "dismiss", label: tr("Dismiss") },
       ],
     }
@@ -154,10 +208,16 @@ export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string
     return {
       ...base,
       title: tr("Stripe refused the refund"),
-      note: a.error ?? tr("No credit note was issued, so Stripe and your books still agree. Nothing is lost."),
+      note:
+        a.error ??
+        tr("No credit note was issued, so Stripe and your books still agree. Nothing is lost."),
       canApprove: false,
       actions: [
-        { id: "retry", label: tr("Try again"), confirm: retryConfirm(formatMoney(retryMinor, cur, locale), card) },
+        {
+          id: "retry",
+          label: tr("Try again"),
+          confirm: retryConfirm(formatMoney(retryMinor, cur, locale), card),
+        },
         { id: "open_stripe", label: tr("Open in Stripe") },
       ],
     }
@@ -165,7 +225,9 @@ export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string
   return {
     ...base,
     title: tr("Refund {{amount}}", { amount }),
-    note: tr("Will not run if this charge is already refunded in Stripe. Checked again at the moment it runs."),
+    note: tr(
+      "Will not run if this charge is already refunded in Stripe. Checked again at the moment it runs.",
+    ),
     canApprove: !held,
     actions:
       state === "editing"

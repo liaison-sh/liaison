@@ -72,11 +72,16 @@ describe("searchHandler", () => {
     for (const hit of res.results) {
       expect(hit.entity).toBe("shipment") // bare — never "boxtal.shipment"
       expect(hit.title).toContain("Customer")
-      expect(hit.attributes).toMatchObject({ order_status: "PENDING", tracking_status: "IN_TRANSIT" })
+      expect(hit.attributes).toMatchObject({
+        order_status: "PENDING",
+        tracking_status: "IN_TRANSIT",
+      })
       // The real carrier tracking number is surfaced on every hit (it was a
       // searchable field but was not being returned — a sweep/triage reply must
       // be able to cite it without falling back to the internal row id).
-      expect(hit.attributes.tracking_number).toBe(`TRK${hit.title.match(/Customer (\d+)/)?.[1] ?? ""}`)
+      expect(hit.attributes.tracking_number).toBe(
+        `TRK${hit.title.match(/Customer (\d+)/)?.[1] ?? ""}`,
+      )
       // Regression (stuck-shipment-exception-sweep): the external order reference must be RETURNED on the
       // hit (it was searchable but never projected → the agent had no tool-backed order number to cite for
       // the dossier and fabricated one). Each seed row's external_id is `ext-<i>`.
@@ -137,7 +142,9 @@ describe("searchHandler", () => {
     // The spend notice steers the REFUSAL to fabricate per-carrier EUR spend.
     expect(res.spendNotice).toBeDefined()
     expect(res.spendNotice).toMatch(/declared parcel VALUE|declared_value/i)
-    expect(res.spendNotice).toMatch(/spend.*cannot be computed|cannot be (computed|derived)|NOT the carrier spend/i)
+    expect(res.spendNotice).toMatch(
+      /spend.*cannot be computed|cannot be (computed|derived)|NOT the carrier spend/i,
+    )
     expect(res.spendNotice).toMatch(/do NOT add up|do NOT sum|do NOT invent/i)
   })
 
@@ -180,7 +187,9 @@ describe("searchHandler", () => {
     expect(page1.coverageNotice).toMatch(/total.*COUNT of ALL shipments/)
     expect(page1.coverageNotice).toMatch(/coverage/i)
     expect(page1.coverageNotice).toMatch(/NEVER claim you 'paged to exhaustion'/)
-    expect(page1.coverageNotice).toMatch(/Do NOT invent a total or assert exhaustive coverage you did not perform/)
+    expect(page1.coverageNotice).toMatch(
+      /Do NOT invent a total or assert exhaustive coverage you did not perform/,
+    )
     // total is STABLE across pages (it is the fleet count, not the page) so the agent can trust it as it pages.
     const page2 = await searchHandler({ query: "", limit: 5, cursor: page1.nextCursor }, ctx)
     expect(page2.total).toBe(15)
@@ -200,7 +209,10 @@ describe("searchHandler", () => {
     const page1 = await searchHandler({ query: "Customer", limit: 2 }, ctx)
     expect(page1.results).toHaveLength(2)
     expect(page1.nextCursor).toBe("2") // next offset
-    const page2 = await searchHandler({ query: "Customer", limit: 2, cursor: page1.nextCursor }, ctx)
+    const page2 = await searchHandler(
+      { query: "Customer", limit: 2, cursor: page1.nextCursor },
+      ctx,
+    )
     expect(page2.results[0]!.id > page1.results[1]!.id).toBe(true)
     expect(page2.nextCursor).toBe("4")
   })

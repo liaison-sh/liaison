@@ -20,9 +20,10 @@
 // Styling: Tailwind tokens (kernel design system, dark-mode tuned). The
 // kernel's theme.css `@source "../../../../bundled-apps/**/src/**/*.{tsx,ts}"`
 // directive scans this file so the JIT emits the classes used here.
-import { For, Show, type Component } from "solid-js"
+
 import { app } from "@liaison/host"
-import { type DetailEntity, renderDetailUrl, shopSubdomain } from "./url-template"
+import { type Component, For, Show } from "solid-js"
+import { onOutsideLinkClick } from "../external-link"
 import {
   Chip,
   KeyValueRow,
@@ -33,7 +34,7 @@ import {
   StatusPill,
   useShopDomain,
 } from "../primitives"
-import { onOutsideLinkClick } from "../external-link"
+import { type DetailEntity, renderDetailUrl, shopSubdomain } from "./url-template"
 
 interface BasePanelProps {
   // `shop` is an optional fallback supplied by the host (DetailTab). The host
@@ -265,10 +266,7 @@ export const ProductPanel: Component<BasePanelProps> = (props) => {
               />
 
               <Show when={media.length > 0}>
-                <div
-                  data-testid="product-media"
-                  class="grid grid-cols-3 gap-1.5"
-                >
+                <div data-testid="product-media" class="grid grid-cols-3 gap-1.5">
                   <For each={media}>
                     {(m) => (
                       <div class="aspect-square overflow-hidden rounded-md border border-border bg-surface">
@@ -578,12 +576,7 @@ export const RefundPanel: Component<RefundPanelProps> = (props) => {
                 </Section>
               </Show>
 
-              <ExternalLink
-                entity="refund"
-                shop={shop}
-                id={props.id}
-                orderId={props.orderId}
-              />
+              <ExternalLink entity="refund" shop={shop} id={props.id} orderId={props.orderId} />
             </>
           )
         }}
@@ -614,17 +607,12 @@ export const MarketPanel: Component<BasePanelProps> = (props) => {
               <PanelHeader
                 title={(d.name as string) ?? `Market ${props.id}`}
                 currency={(d.currency as string | null | undefined) ?? null}
-                status={
-                  (d.enabled as boolean | undefined) === false ? "disabled" : "active"
-                }
+                status={(d.enabled as boolean | undefined) === false ? "disabled" : "active"}
               />
 
               <Show when={regions.length > 0}>
                 <Section title={`Regions (${regions.length})`}>
-                  <ul
-                    data-testid="market-regions"
-                    class="flex flex-wrap gap-1.5"
-                  >
+                  <ul data-testid="market-regions" class="flex flex-wrap gap-1.5">
                     <For each={regions}>
                       {(r) => (
                         <li>

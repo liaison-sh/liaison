@@ -15,7 +15,13 @@ import { formatAge, liveIncidentsLabel } from "./format"
 import { tr } from "./i18n"
 import { IncidentRow, type TriageAction } from "./incident-row"
 import { Button, Card, cx, EmptyState, Segmented } from "./kit"
-import { onMonitoringChange, ShieldIcon, SourceSquare, stripeStyle, URGENT_WASH } from "./source-glyph"
+import {
+  onMonitoringChange,
+  ShieldIcon,
+  SourceSquare,
+  stripeStyle,
+  URGENT_WASH,
+} from "./source-glyph"
 import {
   buildSourceViews,
   groupBySource,
@@ -55,7 +61,9 @@ export const StatTile: Component<{
     data-testid={props.testid}
     class="flex flex-col gap-[7px] rounded-[10px] border border-border-subtle bg-surface px-[13px] py-[11px]"
   >
-    <span class="text-[10.5px] font-medium uppercase tracking-[0.07em] text-text-tertiary">{props.label}</span>
+    <span class="text-[10.5px] font-medium uppercase tracking-[0.07em] text-text-tertiary">
+      {props.label}
+    </span>
     <span
       class={cx(
         "font-mono text-[24px] font-semibold leading-none tabular-nums",
@@ -73,7 +81,10 @@ export const StatTile: Component<{
 /** The "Live" dot + text line under a page title. */
 export const LiveLine: Component<{ children: unknown }> = (props) => (
   <div class="mt-1 flex items-center gap-[7px] text-[12px] text-text-tertiary">
-    <span class="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_0_3px_var(--color-success-glow)]" aria-hidden="true" />
+    <span
+      class="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_0_3px_var(--color-success-glow)]"
+      aria-hidden="true"
+    />
     {props.children as never}
   </div>
 )
@@ -140,7 +151,9 @@ const LanePill: Component<{ lane: Lane }> = (props) => {
             </span>
           }
         >
-          <span class={cx(base, "border-success-border bg-success-glow text-success")}>✓ {tr("All clear")}</span>
+          <span class={cx(base, "border-success-border bg-success-glow text-success")}>
+            ✓ {tr("All clear")}
+          </span>
         </Show>
       }
     >
@@ -207,7 +220,12 @@ const SourceLane: Component<{
         )}
       >
         <SourceSquare source={s()} size="md" />
-        <span class={cx("truncate", props.lane.collapsed ? "font-medium text-text-secondary" : "font-semibold text-text")}>
+        <span
+          class={cx(
+            "truncate",
+            props.lane.collapsed ? "font-medium text-text-secondary" : "font-semibold text-text",
+          )}
+        >
           {s().label}
         </span>
         <Show when={s().label !== s().source}>
@@ -250,7 +268,9 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
   // Plain Solid createResource (the boxtal/invoicing pattern) — NOT the host
   // resource factory, whose Suspense integration intermittently never resolved
   // on cold plugin-tab mounts (blank dashboard, prod 2026-07-11).
-  const [summary, { refetch: refetchSummary }] = createResource<IncidentsSummaryWithConfig | undefined>(async () => {
+  const [summary, { refetch: refetchSummary }] = createResource<
+    IncidentsSummaryWithConfig | undefined
+  >(async () => {
     const res = await app.invokeTool<{ data: IncidentsSummaryWithConfig }>("incidents_summary", {})
     return res?.data
   })
@@ -278,7 +298,12 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
   const live = createMemo(() => incidents.latest ?? [])
   const sources = createMemo(() => {
     const s = summary.latest
-    return s ? buildSourceViews(s, live().map((i) => i.source)) : []
+    return s
+      ? buildSourceViews(
+          s,
+          live().map((i) => i.source),
+        )
+      : []
   })
   const lanes = createMemo(() => groupBySource(sources(), live(), severity()))
   const callouts = createMemo(() => urgentCallouts(sources(), live()))
@@ -292,12 +317,17 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
         <div class="mx-auto flex max-w-[1000px] flex-col gap-[18px] px-6 pb-12 pt-5">
           <div class="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 class="text-[18px] font-semibold tracking-[-0.01em] text-text">{tr("Overview")}</h1>
+              <h1 class="text-[18px] font-semibold tracking-[-0.01em] text-text">
+                {tr("Overview")}
+              </h1>
               <Show when={summary.latest}>
                 <LiveLine>
                   <span data-testid="monitoring-overview-live">
                     {openTotal() > 0
-                      ? tr("Live · {{open}} open across {{sources}} sources", { open: openTotal(), sources: loudSources() })
+                      ? tr("Live · {{open}} open across {{sources}} sources", {
+                          open: openTotal(),
+                          sources: loudSources(),
+                        })
                       : tr("Live · all quiet")}
                   </span>
                 </LiveLine>
@@ -316,10 +346,16 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
           </div>
 
           <Show when={loadError()}>
-            <Card class="flex items-center justify-between gap-3 border-error-border bg-error-glow px-4 py-3" testid="monitoring-load-error">
+            <Card
+              class="flex items-center justify-between gap-3 border-error-border bg-error-glow px-4 py-3"
+              testid="monitoring-load-error"
+            >
               <span class="text-[12.5px] text-error">
                 {tr("Monitoring could not load: {{message}}", {
-                  message: loadError() instanceof Error ? (loadError() as Error).message : String(loadError()),
+                  message:
+                    loadError() instanceof Error
+                      ? (loadError() as Error).message
+                      : String(loadError()),
                 })}
               </span>
               <Button variant="danger" onClick={refetch} testid="monitoring-load-retry">
@@ -329,7 +365,10 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
           </Show>
 
           <Show when={triageError()}>
-            <Card class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error" testid="monitoring-triage-error">
+            <Card
+              class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error"
+              testid="monitoring-triage-error"
+            >
               {triageError()}
             </Card>
           </Show>
@@ -390,7 +429,11 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
               tone={(summary.latest?.open.warning ?? 0) > 0 ? "warning" : undefined}
               testid="monitoring-stat-warning"
             />
-            <StatTile label={tr("Acknowledged")} value={summary.latest?.acknowledged} testid="monitoring-stat-acknowledged" />
+            <StatTile
+              label={tr("Acknowledged")}
+              value={summary.latest?.acknowledged}
+              testid="monitoring-stat-acknowledged"
+            />
             <StatTile
               label={tr("Resolved · 24h")}
               value={summary.latest?.resolved24h}
@@ -403,7 +446,10 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
             when={summary.latest}
             fallback={
               <Show when={!loadError()}>
-                <p class="py-6 text-center text-[12px] text-text-tertiary" data-testid="monitoring-loading">
+                <p
+                  class="py-6 text-center text-[12px] text-text-tertiary"
+                  data-testid="monitoring-loading"
+                >
                   {tr("Loading…")}
                 </p>
               </Show>
@@ -414,14 +460,23 @@ export const MonitoringDashboard: Component<{ entityId?: string }> = () => {
               fallback={
                 <Card class="flex">
                   <EmptyState title={tr("No source yet")} testid="monitoring-sources-empty">
-                    {tr("No alert source has reported yet. Sources appear the first time they deliver an alert to the webhook.")}
+                    {tr(
+                      "No alert source has reported yet. Sources appear the first time they deliver an alert to the webhook.",
+                    )}
                   </EmptyState>
                 </Card>
               }
             >
               <div class="flex flex-col gap-2.5" data-testid="monitoring-lanes">
                 <For each={lanes()}>
-                  {(lane) => <SourceLane lane={lane} nowMs={nowMs()} busyId={busyId()} onTriage={(id, a) => void triage(id, a)} />}
+                  {(lane) => (
+                    <SourceLane
+                      lane={lane}
+                      nowMs={nowMs()}
+                      busyId={busyId()}
+                      onTriage={(id, a) => void triage(id, a)}
+                    />
+                  )}
                 </For>
               </div>
             </Show>

@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { einvoicingReadiness } from "./einvoicing/readiness"
 import { onOrAfterCutover } from "./einvoicing/transmit"
 import {
   checkIssuerTimezone,
@@ -14,14 +15,13 @@ import {
   issuerTimezoneUnset,
   normalizeIssuerTimezone,
 } from "./issue-date"
-import { einvoicingReadiness } from "./einvoicing/readiness"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
-import { draftOrderDateRefusal } from "./mutations/stated-issue-date"
 import type { MutationsCtx } from "./mutations/shared"
+import { draftOrderDateRefusal } from "./mutations/stated-issue-date"
 import { settingsIssuerProfileList } from "./reads"
-import { pickIssuerSaveFields } from "./ui/settings"
 import { createMockDb } from "./test-db"
 import { testTime } from "./test-time"
+import { pickIssuerSaveFields } from "./ui/settings"
 
 afterEach(() => setSystemTime())
 
@@ -40,25 +40,36 @@ describe("issueDateParts", () => {
 
   test("00:20 on 1 September in Paris, summer time", async () => {
     at("2026-08-31T22:20:00Z")
-    expect(await issueDateParts({ time: testTime() }, paris)).toMatchObject({ issued_at: "2026-09-01", year_of_issue: 2026 })
+    expect(await issueDateParts({ time: testTime() }, paris)).toMatchObject({
+      issued_at: "2026-09-01",
+      year_of_issue: 2026,
+    })
   })
 
   test("the night the clocks change", async () => {
     at("2027-03-28T01:30:00Z")
-    expect(await issueDateParts({ time: testTime() }, paris)).toMatchObject({ issued_at: "2027-03-28" })
+    expect(await issueDateParts({ time: testTime() }, paris)).toMatchObject({
+      issued_at: "2027-03-28",
+    })
   })
 
   test("an issuer on the default follows its org, and UTC with no org zone", async () => {
     at("2026-12-31T23:20:00Z")
     for (const timezone of ["UTC", null, undefined, ""]) {
-      expect(await issueDateParts({ time: testTime("Europe/Paris") }, { timezone })).toMatchObject({ issued_at: "2027-01-01" })
-      expect(await issueDateParts({ time: testTime() }, { timezone })).toMatchObject({ issued_at: "2026-12-31" })
+      expect(await issueDateParts({ time: testTime("Europe/Paris") }, { timezone })).toMatchObject({
+        issued_at: "2027-01-01",
+      })
+      expect(await issueDateParts({ time: testTime() }, { timezone })).toMatchObject({
+        issued_at: "2026-12-31",
+      })
     }
   })
 
   test("UTC chosen on purpose does not follow the org", async () => {
     at("2026-12-31T23:20:00Z")
-    expect(await issueDateParts({ time: testTime("Europe/Paris") }, { timezone: "Etc/UTC" })).toMatchObject({
+    expect(
+      await issueDateParts({ time: testTime("Europe/Paris") }, { timezone: "Etc/UTC" }),
+    ).toMatchObject({
       issued_at: "2026-12-31",
       year_of_issue: 2026,
     })
@@ -157,20 +168,34 @@ describe("the zone is asked once per issuer", () => {
     ])
     for (const timezone of ["Etc/UTC", "Europe/Paris"]) {
       await db.update("issuer_profiles", "i-1", { timezone })
-      expect((await einvoicingReadiness({ db } as never, {})).issuer_time_zones_to_choose).toBeUndefined()
+      expect(
+        (await einvoicingReadiness({ db } as never, {})).issuer_time_zones_to_choose,
+      ).toBeUndefined()
     }
   })
 
   test("an archived issuer is not asked", async () => {
     const db = createMockDb({
-      seed: { issuer_profiles: [{ ...row, id: "i-2", timezone: "UTC", archived_at: "2026-01-01" }, { ...row, timezone: "Europe/Paris" }] },
+      seed: {
+        issuer_profiles: [
+          { ...row, id: "i-2", timezone: "UTC", archived_at: "2026-01-01" },
+          { ...row, timezone: "Europe/Paris" },
+        ],
+      },
     })
-    expect((await einvoicingReadiness({ db } as never, {})).issuer_time_zones_to_choose).toBeUndefined()
+    expect(
+      (await einvoicingReadiness({ db } as never, {})).issuer_time_zones_to_choose,
+    ).toBeUndefined()
   })
 
   test("the issuer list says which profile still needs a choice", async () => {
     const db = createMockDb({
-      seed: { issuer_profiles: [{ ...row, timezone: "UTC" }, { ...row, id: "i-2", legal_name: "Bcme", timezone: "Asia/Tokyo" }] },
+      seed: {
+        issuer_profiles: [
+          { ...row, timezone: "UTC" },
+          { ...row, id: "i-2", legal_name: "Bcme", timezone: "Asia/Tokyo" },
+        ],
+      },
     })
     const { items } = await settingsIssuerProfileList({ db, time: testTime() } as never)
     expect(items.map((i) => [i.id, i.timezone_choice_needed])).toEqual([
@@ -185,21 +210,38 @@ describe("the zone is asked once per issuer", () => {
 
     const bad = await settingsIssuerProfileUpdate(ctx, { id: "i-1", timezone: "Europe/Atlantis" })
     expect(bad).toMatchObject({ status: "error", error: { code: "issuer_timezone_invalid" } })
-    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe("UTC")
+    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe(
+      "UTC",
+    )
 
-    expect(await settingsIssuerProfileUpdate(ctx, { id: "i-1", timezone: "UTC" })).toMatchObject({ status: "completed" })
-    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe("Etc/UTC")
+    expect(await settingsIssuerProfileUpdate(ctx, { id: "i-1", timezone: "UTC" })).toMatchObject({
+      status: "completed",
+    })
+    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe(
+      "Etc/UTC",
+    )
 
     // Saving something else leaves the zone alone: no choice is invented for anyone.
     await db.update("issuer_profiles", "i-1", { timezone: "UTC" })
     await settingsIssuerProfileUpdate(ctx, { id: "i-1", legal_name: "Acme SAS" })
-    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe("UTC")
+    expect(((await db.findOne("issuer_profiles", "i-1")) as Record<string, unknown>).timezone).toBe(
+      "UTC",
+    )
   })
 
   test("a settings form save never turns the column default into a choice", () => {
-    expect(pickIssuerSaveFields({ id: "i-1", legal_name: "Acme", timezone: "UTC" })).toEqual({ id: "i-1", legal_name: "Acme" })
-    expect(pickIssuerSaveFields({ id: "i-1", timezone: "Etc/UTC" })).toEqual({ id: "i-1", timezone: "Etc/UTC" })
-    expect(pickIssuerSaveFields({ id: "i-1", timezone: "Europe/Paris" })).toEqual({ id: "i-1", timezone: "Europe/Paris" })
+    expect(pickIssuerSaveFields({ id: "i-1", legal_name: "Acme", timezone: "UTC" })).toEqual({
+      id: "i-1",
+      legal_name: "Acme",
+    })
+    expect(pickIssuerSaveFields({ id: "i-1", timezone: "Etc/UTC" })).toEqual({
+      id: "i-1",
+      timezone: "Etc/UTC",
+    })
+    expect(pickIssuerSaveFields({ id: "i-1", timezone: "Europe/Paris" })).toEqual({
+      id: "i-1",
+      timezone: "Europe/Paris",
+    })
   })
 
   test("checkIssuerTimezone answers null for a known zone", async () => {
@@ -233,7 +275,9 @@ describe("guard: one door for the issue date", () => {
     files.flatMap((path) =>
       readFileSync(path, "utf8")
         .split("\n")
-        .flatMap((line, i) => (pattern.test(line) ? [`${path.slice(SRC.length + 1)}:${i + 1}: ${line.trim()}`] : [])),
+        .flatMap((line, i) =>
+          pattern.test(line) ? [`${path.slice(SRC.length + 1)}:${i + 1}: ${line.trim()}`] : [],
+        ),
     )
 
   test("it scans real code", () => {
@@ -258,7 +302,11 @@ describe("guard: one door for the issue date", () => {
       "issued_at: new Date().toISOString().slice(0, 10),",
       "const y = yearInTimezone(now, zone)",
     ]
-    const patterns = [/getUTCFullYear/, /\bissued_at\s*[:=].*toISOString\(\)\.slice\(0,\s*10\)/, /yearInTimezone/]
+    const patterns = [
+      /getUTCFullYear/,
+      /\bissued_at\s*[:=].*toISOString\(\)\.slice\(0,\s*10\)/,
+      /yearInTimezone/,
+    ]
     for (const [i, line] of refused.entries()) expect(patterns[i]?.test(line)).toBe(true)
   })
 
@@ -272,7 +320,11 @@ describe("guard: one door for the issue date", () => {
   })
 
   test("every builder of a draft takes both from issueDateParts", () => {
-    const yearSites = offenders(/^\s*year_of_issue:\s*[^,\s]/).filter((l) => !/year_of_issue:\s*(number|null)\b/.test(l))
+    // A filter on an existing document's own year (`where: { ..., year_of_issue: doc.year_of_issue }`,
+    // one key per line once formatted) builds no draft.
+    const yearSites = offenders(/^\s*year_of_issue:\s*[^,\s]/).filter(
+      (l) => !/year_of_issue:\s*(number|null|doc\.year_of_issue)\b/.test(l),
+    )
     expect(yearSites.length).toBeGreaterThanOrEqual(6)
     for (const site of yearSites) expect(site).toContain("when.year_of_issue")
     const dateSites = offenders(/^\s*issued_at:\s*[^,\s]/).filter((l) => /new Date|when\./.test(l))
@@ -283,7 +335,9 @@ describe("guard: one door for the issue date", () => {
   test("issueDocument is the only reader of draft.year_of_issue and draft.issued_at", () => {
     const readers = sources(SRC).flatMap((path) => {
       if (path.endsWith("/issue.ts")) return []
-      return /\bdraft\.(year_of_issue|issued_at)\b/.test(readFileSync(path, "utf8")) ? [path.slice(SRC.length + 1)] : []
+      return /\bdraft\.(year_of_issue|issued_at)\b/.test(readFileSync(path, "utf8"))
+        ? [path.slice(SRC.length + 1)]
+        : []
     })
     expect(readers).toEqual(["mutations/fx-issue.ts"])
   })

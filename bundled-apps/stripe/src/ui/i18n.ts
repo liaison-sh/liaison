@@ -12,7 +12,9 @@ export type TrParams = Record<string, string | number>
 
 function interpolate(text: string, params?: TrParams): string {
   if (!params) return text
-  return text.replace(/\{\{(\w+)\}\}/g, (m, name: string) => (params[name] === undefined ? m : String(params[name])))
+  return text.replace(/\{\{(\w+)\}\}/g, (m, name: string) =>
+    params[name] === undefined ? m : String(params[name]),
+  )
 }
 
 /** The reader's locale ("en" without a host). */

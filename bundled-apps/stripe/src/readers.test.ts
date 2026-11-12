@@ -15,15 +15,65 @@ const AT = "2026-11-09T10:00:00.000Z"
 function world() {
   const db = new MemDb()
   db.seed("stripe_customers", [
-    { stripe_id: "cus_A", email: "ana@maison.example", name: "Aube Lune", address: { line1: "12 rue des Lilas" }, tax_ids: [{ value: "FR123" }], stripe_updated: AT },
-    { stripe_id: "cus_B", email: "bo@gmail.com", name: "Bo Durand", company_id: null, contact_id: null, stripe_updated: "2026-11-01T00:00:00.000Z" },
+    {
+      stripe_id: "cus_A",
+      email: "ana@maison.example",
+      name: "Aube Lune",
+      address: { line1: "12 rue des Lilas" },
+      tax_ids: [{ value: "FR123" }],
+      stripe_updated: AT,
+    },
+    {
+      stripe_id: "cus_B",
+      email: "bo@gmail.com",
+      name: "Bo Durand",
+      company_id: null,
+      contact_id: null,
+      stripe_updated: "2026-11-01T00:00:00.000Z",
+    },
   ])
   db.seed("stripe_subscriptions", [
-    { stripe_id: "sub_1", customer_id: "cus_A", status: "past_due", plan_name: "Studio Pro", card_brand: "visa", card_last4: "4242", card_exp: "04/27", stripe_updated: AT },
+    {
+      stripe_id: "sub_1",
+      customer_id: "cus_A",
+      status: "past_due",
+      plan_name: "Studio Pro",
+      card_brand: "visa",
+      card_last4: "4242",
+      card_exp: "04/27",
+      stripe_updated: AT,
+    },
   ])
-  db.seed("stripe_invoices", [{ stripe_id: "in_1", customer_id: "cus_A", number: "LUNE-0042", status: "open", stripe_updated: AT }])
-  db.seed("stripe_payments", [{ stripe_id: "ch_1", customer_id: "cus_A", invoice_id: null, status: "succeeded", amount_minor: 100, card_brand: "visa", card_last4: "4242", stripe_updated: AT }])
-  db.seed("stripe_disputes", [{ stripe_id: "dp_1", payment_id: "ch_1", reason: "fraudulent", status: "needs_response", stripe_updated: AT }])
+  db.seed("stripe_invoices", [
+    {
+      stripe_id: "in_1",
+      customer_id: "cus_A",
+      number: "LUNE-0042",
+      status: "open",
+      stripe_updated: AT,
+    },
+  ])
+  db.seed("stripe_payments", [
+    {
+      stripe_id: "ch_1",
+      customer_id: "cus_A",
+      invoice_id: null,
+      status: "succeeded",
+      amount_minor: 100,
+      card_brand: "visa",
+      card_last4: "4242",
+      stripe_updated: AT,
+    },
+  ])
+  db.seed("stripe_disputes", [
+    {
+      stripe_id: "dp_1",
+      payment_id: "ch_1",
+      reason: "fraudulent",
+      status: "needs_response",
+      stripe_updated: AT,
+    },
+  ])
   return { db }
 }
 
@@ -31,10 +81,22 @@ describe("a customer page's address", () => {
   it("a customer is read by the row id its page carries, and the lists name that row id", async () => {
     const db = new MemDb()
     const ROW = "5b1f0c2e-7a64-4f0e-9d0a-2f0a1b7c9e01"
-    db.seed("stripe_customers", [{ id: ROW, stripe_id: "cus_Z", email: "zoe@maison.example", name: "Zoe Marin", stripe_updated: AT }])
-    const byRow = (await customersGet({ id: ROW }, { db })) as { customer: { id: string; rowId: string } }
+    db.seed("stripe_customers", [
+      {
+        id: ROW,
+        stripe_id: "cus_Z",
+        email: "zoe@maison.example",
+        name: "Zoe Marin",
+        stripe_updated: AT,
+      },
+    ])
+    const byRow = (await customersGet({ id: ROW }, { db })) as {
+      customer: { id: string; rowId: string }
+    }
     expect(byRow.customer).toMatchObject({ id: "cus_Z", rowId: ROW })
-    const listed = (await customersSearch({ query: "zoe" }, { db })) as { items: Array<{ rowId: string }> }
+    const listed = (await customersSearch({ query: "zoe" }, { db })) as {
+      items: Array<{ rowId: string }>
+    }
     expect(listed.items[0]?.rowId).toBe(ROW)
   })
 })
@@ -82,7 +144,10 @@ describe("the Stripe mirror readers", () => {
     const one = (await customersGet({ id: "cus_A" }, ctx)) as Record<string, unknown>
     expect(String(one.summary)).toContain("Stripe customer cus_A (Aube Lune)")
     expect(one.syncedAt).toBe(AT)
-    const none = (await customersSearch({ query: "nobody@x.example" }, ctx)) as Record<string, unknown>
+    const none = (await customersSearch({ query: "nobody@x.example" }, ctx)) as Record<
+      string,
+      unknown
+    >
     expect(none.items).toEqual([])
     expect(String(none.summary)).toContain("No customers")
   })
@@ -108,7 +173,10 @@ describe("the Stripe mirror readers", () => {
     expect(await ids({ filter: "past_due" })).toEqual(["cus_A"])
     expect(await ids({ query: "bo@gmail.com" })).toEqual(["cus_B"])
     expect(await ids({ query: "cus_B" })).toEqual(["cus_B"])
-    const first = (await customersSearch({ limit: 1 }, ctx)) as { items: unknown[]; nextCursor: string }
+    const first = (await customersSearch({ limit: 1 }, ctx)) as {
+      items: unknown[]
+      nextCursor: string
+    }
     expect(first.nextCursor).toBe("1")
     expect(await ids({ limit: 1, cursor: first.nextCursor })).toEqual(["cus_B"])
   })
@@ -120,7 +188,10 @@ describe("the Stripe mirror readers", () => {
       db,
       executeTool: async (tool: string) =>
         tool === "kernel:contacts_search"
-          ? { status: "completed" as const, result: { items: [{ id: ANA, primaryEmail: "ana@maison.example" }] } }
+          ? {
+              status: "completed" as const,
+              result: { items: [{ id: ANA, primaryEmail: "ana@maison.example" }] },
+            }
           : { status: "completed" as const, result: { items: [] } },
     }
     const one = (await customersGet({ id: "cus_A" }, ctx)) as Record<string, unknown>

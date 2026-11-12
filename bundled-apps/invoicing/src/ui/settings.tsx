@@ -12,19 +12,13 @@
 // Pure helpers (emitVatWarning / isInvalidIban / canDelete / canCreate)
 // are extracted so the bundled-app bun:test suite can pin every branch
 // without jsdom.
-import { tr } from "./i18n"
-import { CHOSEN_UTC, DEFAULT_ZONE, issuerTimezoneUnset } from "../issue-date"
-import {
-  createResource,
-  createSignal,
-  For,
-  Show,
-  type Component,
-} from "solid-js"
-import { app, fetchBlob, fetch as hostFetch } from "@liaison/host"
-import { CardTable } from "@liaison/app-ui/card-table"
-import { Badge, Button, cx, inputClass } from "./kit"
 
+import { CardTable } from "@liaison/app-ui/card-table"
+import { app, fetchBlob, fetch as hostFetch } from "@liaison/host"
+import { type Component, createResource, createSignal, For, Show } from "solid-js"
+import { CHOSEN_UTC, DEFAULT_ZONE, issuerTimezoneUnset } from "../issue-date"
+import { tr } from "./i18n"
+import { Badge, Button, cx, inputClass } from "./kit"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types & enums.
@@ -68,27 +62,68 @@ export interface IssuerProfileRow extends IssuerProfileDraft {
   reference_count: number
 }
 
-
-
-
 // ─────────────────────────────────────────────────────────────────────────
 // Pure helpers.
 // ─────────────────────────────────────────────────────────────────────────
 const EU_COUNTRIES = new Set([
-  "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
-  "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
-  "PT", "RO", "SE", "SI", "SK",
+  "AT",
+  "BE",
+  "BG",
+  "CY",
+  "CZ",
+  "DE",
+  "DK",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GR",
+  "HR",
+  "HU",
+  "IE",
+  "IT",
+  "LT",
+  "LU",
+  "LV",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SE",
+  "SI",
+  "SK",
 ])
 
 /** The only issuer-profile columns the save tools accept (the manifest params allowlist);
  *  the row the form edits also carries id / reference_count / timestamps. */
 const ISSUER_SAVE_FIELDS = [
-  "id", "legal_name", "country", "vat_id", "tax_registration_id", "address", "iban",
-  "swift_bic", "bank_name", "logo_file_id", "default_currency", "default_language",
-  "default_payment_terms_days", "prefix_invoice", "prefix_quote", "prefix_proforma",
-  "prefix_po", "invoice_approval_threshold_minor", "po_approval_threshold_minor",
-  "require_two_eyes", "auto_email_enabled", "prices_include_tax", "mail_account_id",
-  "timezone", "email_templates", "shopify_shop_id",
+  "id",
+  "legal_name",
+  "country",
+  "vat_id",
+  "tax_registration_id",
+  "address",
+  "iban",
+  "swift_bic",
+  "bank_name",
+  "logo_file_id",
+  "default_currency",
+  "default_language",
+  "default_payment_terms_days",
+  "prefix_invoice",
+  "prefix_quote",
+  "prefix_proforma",
+  "prefix_po",
+  "invoice_approval_threshold_minor",
+  "po_approval_threshold_minor",
+  "require_two_eyes",
+  "auto_email_enabled",
+  "prices_include_tax",
+  "mail_account_id",
+  "timezone",
+  "email_templates",
+  "shopify_shop_id",
 ] as const
 
 export function pickIssuerSaveFields(row: Record<string, unknown>): Record<string, unknown> {
@@ -160,10 +195,7 @@ interface UploadUrlResponse {
  *  suitable for the settings error banner. Mirrors the host-app
  *  `uploadFile` flow (apps/web/src/modules/files/file-service.ts) through the
  *  host's JSON fetch (a sandboxed bundled-app UI has no `ApiClient`). */
-export async function uploadIssuerLogo(
-  file: File,
-  issuerProfileId: string,
-): Promise<string> {
+export async function uploadIssuerLogo(file: File, issuerProfileId: string): Promise<string> {
   // Kernel calls go through the host (bound server + bearer): a page-relative
   // fetch lands on the desktop or mobile shell's own index.html.
   let presign: UploadUrlResponse
@@ -184,7 +216,8 @@ export async function uploadIssuerLogo(
   }
 
   // The presigned URL is absolute (object storage) and carries its own auth.
-  const put = await window.fetch(presign.uploadUrl, { // purity-allow: absolute-url
+  const put = await window.fetch(presign.uploadUrl, {
+    // purity-allow: absolute-url
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
@@ -236,9 +269,6 @@ async function loadIssuers(): Promise<IssuerProfileRow[]> {
   }
 }
 
-
-
-
 // ─────────────────────────────────────────────────────────────────────────
 // Component.
 // ─────────────────────────────────────────────────────────────────────────
@@ -278,9 +308,7 @@ export const InvoicingIssuerProfiles: Component = () => {
   const onSave = async () => {
     const d = editing()
     if (!d || !canCreate(d)) return
-    const tool = d.id
-      ? "settings_issuer_profile_update"
-      : "settings_issuer_profile_create"
+    const tool = d.id ? "settings_issuer_profile_update" : "settings_issuer_profile_create"
     try {
       await app.invokeTool(tool, pickIssuerSaveFields(d as unknown as Record<string, unknown>))
       setEditing(null)
@@ -401,7 +429,9 @@ export const InvoicingIssuerProfiles: Component = () => {
                       class={cx(
                         "w-full flex-1 rounded-md border bg-surface px-2.5 py-1.5 text-[12.5px] text-text outline-none transition-colors",
                         "placeholder:text-text-tertiary focus:ring-2 focus:ring-accent-tint",
-                        showVatWarn() ? "border-warning focus:border-warning" : "border-border focus:border-accent-border",
+                        showVatWarn()
+                          ? "border-warning focus:border-warning"
+                          : "border-border focus:border-accent-border",
                       )}
                     />
                   </label>
@@ -414,7 +444,9 @@ export const InvoicingIssuerProfiles: Component = () => {
                       class={cx(
                         "w-full flex-1 rounded-md border bg-surface px-2.5 py-1.5 text-[12.5px] text-text outline-none transition-colors",
                         "placeholder:text-text-tertiary focus:ring-2 focus:ring-accent-tint",
-                        showIbanWarn() ? "border-warning focus:border-warning" : "border-border focus:border-accent-border",
+                        showIbanWarn()
+                          ? "border-warning focus:border-warning"
+                          : "border-border focus:border-accent-border",
                       )}
                     />
                   </label>
@@ -424,10 +456,16 @@ export const InvoicingIssuerProfiles: Component = () => {
                       data-testid="settings-issuer-profile-field-timezone"
                       value={issuerTimezoneUnset(d()) ? "" : (d().timezone ?? "")}
                       placeholder={tr("Not chosen, for example Europe/Paris")}
-                      title={tr("Issue dates and number years use this zone. Not chosen: they follow the organization's time zone, or UTC when it has none.")}
+                      title={tr(
+                        "Issue dates and number years use this zone. Not chosen: they follow the organization's time zone, or UTC when it has none.",
+                      )}
                       onChange={(e) => {
                         const typed = e.currentTarget.value.trim()
-                        const zone = !typed ? DEFAULT_ZONE : typed === DEFAULT_ZONE ? CHOSEN_UTC : typed
+                        const zone = !typed
+                          ? DEFAULT_ZONE
+                          : typed === DEFAULT_ZONE
+                            ? CHOSEN_UTC
+                            : typed
                         setEditing({ ...d(), timezone: zone })
                       }}
                       class={inputClass}
@@ -476,7 +514,9 @@ export const InvoicingIssuerProfiles: Component = () => {
                   <span class="flex flex-col gap-0.5">
                     <span class="text-text">{tr("Prices include tax")}</span>
                     <span class="text-text-tertiary">
-                      {tr("Match your Shopify tax setting. On: prices you type are tax inclusive and the document shows the net amount plus VAT. Off: prices are net and VAT is added.")}
+                      {tr(
+                        "Match your Shopify tax setting. On: prices you type are tax inclusive and the document shows the net amount plus VAT. Off: prices are net and VAT is added.",
+                      )}
                     </span>
                   </span>
                 </label>
@@ -543,7 +583,11 @@ export const InvoicingIssuerProfiles: Component = () => {
                 </Show>
 
                 <div class="flex items-center justify-end gap-2 pt-2">
-                  <Button variant="ghost" testid="settings-issuer-profile-cancel" onClick={() => setEditing(null)}>
+                  <Button
+                    variant="ghost"
+                    testid="settings-issuer-profile-cancel"
+                    onClick={() => setEditing(null)}
+                  >
                     {tr("Cancel")}
                   </Button>
                   <Button
@@ -560,7 +604,10 @@ export const InvoicingIssuerProfiles: Component = () => {
           }}
         </Show>
 
-        <Show when={(issuers()?.length ?? 0) > 0} fallback={<div class="text-text-tertiary">{tr("No issuer profiles yet.")}</div>}>
+        <Show
+          when={(issuers()?.length ?? 0) > 0}
+          fallback={<div class="text-text-tertiary">{tr("No issuer profiles yet.")}</div>}
+        >
           <div data-testid="settings-issuer-profile-table">
             <CardTable
               rows={(issuers() ?? []).filter((row) => !row.archived_at)}
@@ -578,8 +625,20 @@ export const InvoicingIssuerProfiles: Component = () => {
                   role: "anchor",
                   cell: (row) => <span title={row.legal_name}>{row.legal_name}</span>,
                 },
-                { key: "country", header: tr("Country"), role: "secondary", fit: true, cell: (row) => row.country },
-                { key: "timezone", header: tr("Time zone"), role: "secondary", fit: true, cell: (row) => (issuerTimezoneUnset(row) ? tr("Not chosen") : row.timezone) },
+                {
+                  key: "country",
+                  header: tr("Country"),
+                  role: "secondary",
+                  fit: true,
+                  cell: (row) => row.country,
+                },
+                {
+                  key: "timezone",
+                  header: tr("Time zone"),
+                  role: "secondary",
+                  fit: true,
+                  cell: (row) => (issuerTimezoneUnset(row) ? tr("Not chosen") : row.timezone),
+                },
                 {
                   key: "vat-id",
                   header: tr("VAT ID"),

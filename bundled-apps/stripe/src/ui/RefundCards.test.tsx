@@ -5,7 +5,15 @@
 import { describe, expect, it } from "bun:test"
 import type { PaymentItem } from "./customers-model"
 import { RefundCard } from "./RefundCards"
-import { amountText, decideRefund, editedAmount, type RefundApproval, refundCardView, refundsOf, retryConfirm } from "./refund-model"
+import {
+  amountText,
+  decideRefund,
+  editedAmount,
+  type RefundApproval,
+  refundCardView,
+  refundsOf,
+  retryConfirm,
+} from "./refund-model"
 
 const payment = (over: Partial<PaymentItem> = {}): PaymentItem => ({
   id: "ch_3QOmbre1014",
@@ -21,11 +29,21 @@ const payment = (over: Partial<PaymentItem> = {}): PaymentItem => ({
   card: { brand: "mastercard", last4: "5108", exp: "07/27" },
   ...over,
 })
-const approval = (over: Partial<RefundApproval> = {}): RefundApproval => ({ id: "ap1", toolName: "stripe:refunds_create", status: "pending", payload: { chargeId: "ch_3QOmbre1014" }, ...over })
+const approval = (over: Partial<RefundApproval> = {}): RefundApproval => ({
+  id: "ap1",
+  toolName: "stripe:refunds_create",
+  status: "pending",
+  payload: { chargeId: "ch_3QOmbre1014" },
+  ...over,
+})
 
 describe("refund cards", () => {
   it('"Try again" asks a confirm stating the amount and card', () => {
-    const v = refundCardView(approval({ error: "Your Stripe balance is too low to cover it today." }), payment(), "en")
+    const v = refundCardView(
+      approval({ error: "Your Stripe balance is too low to cover it today." }),
+      payment(),
+      "en",
+    )
     expect(v.state).toBe("refused")
     const retry = v.actions.find((a) => a.id === "retry")
     expect(retry?.confirm).toBeTruthy()
@@ -39,11 +57,21 @@ describe("refund cards", () => {
 
   it('"Try again" asks for the refused amount, capped at what is left, and its confirm names that figure', () => {
     // A refused partial refund of 20.00 on a 178.80 charge.
-    const v = refundCardView(approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "2000" }, error: "Refused." }), payment(), "en")
+    const v = refundCardView(
+      approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "2000" }, error: "Refused." }),
+      payment(),
+      "en",
+    )
     expect(v.retryMinor).toBe(2000)
-    expect(v.actions.find((a) => a.id === "retry")?.confirm).toBe(retryConfirm("€20.00", "Mastercard 5108, 07/27"))
+    expect(v.actions.find((a) => a.id === "retry")?.confirm).toBe(
+      retryConfirm("€20.00", "Mastercard 5108, 07/27"),
+    )
     // More than is left by now: capped, and the confirm says the capped figure.
-    const capped = refundCardView(approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "9000" }, error: "Refused." }), payment({ refundedMinor: 17880 - 5000 }), "en")
+    const capped = refundCardView(
+      approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "9000" }, error: "Refused." }),
+      payment({ refundedMinor: 17880 - 5000 }),
+      "en",
+    )
     expect(capped.retryMinor).toBe(5000)
     expect(capped.actions.find((a) => a.id === "retry")?.confirm).toContain("€50.00")
   })
@@ -92,7 +120,11 @@ describe("refund cards", () => {
     expect(v.remainderMinor).toBe(8940)
     expect(v.actions.map((a) => a.id)).toEqual(["edit", "approve", "reject"])
     // Edited down to a part: the amount asked is the payload's.
-    const part = refundCardView(approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: 8940 }, editing: true }), payment(), "en")
+    const part = refundCardView(
+      approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: 8940 }, editing: true }),
+      payment(),
+      "en",
+    )
     expect(part.state).toBe("editing")
     expect(part.amount).toBe("€89.40")
     expect(part.actions.map((a) => a.id)).toEqual(["approve", "reject"])
@@ -110,7 +142,14 @@ describe("refund cards", () => {
 
   it("holds Approve while the key is revoked and only matches this customer's charges", () => {
     expect(refundCardView(approval(), payment(), "en", true).canApprove).toBe(false)
-    const mine = refundsOf([approval(), approval({ id: "ap2", payload: { chargeId: "ch_other" } }), approval({ id: "ap3", toolName: "stripe:subscription_cancel" })], [payment()])
+    const mine = refundsOf(
+      [
+        approval(),
+        approval({ id: "ap2", payload: { chargeId: "ch_other" } }),
+        approval({ id: "ap3", toolName: "stripe:subscription_cancel" }),
+      ],
+      [payment()],
+    )
     expect(mine.map((m) => m.approval.id)).toEqual(["ap1"])
   })
 })

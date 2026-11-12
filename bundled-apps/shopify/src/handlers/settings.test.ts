@@ -8,8 +8,8 @@
 // (src/ui/settings.tsx) consumes.
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
-import { connectionDisconnect, settingsLoad } from "./settings"
 import manifest from "../../app.manifest.json"
+import { connectionDisconnect, settingsLoad } from "./settings"
 
 type StoredRow = { id: string } & Record<string, unknown>
 
@@ -20,7 +20,10 @@ interface MockCtx {
   fetchBodies: Array<{ status?: number; body: unknown }>
 }
 
-function makeCtx(preload: Record<string, StoredRow[]> = {}, fetchBodies: Array<{ status?: number; body: unknown }> = []): MockCtx {
+function makeCtx(
+  preload: Record<string, StoredRow[]> = {},
+  fetchBodies: Array<{ status?: number; body: unknown }> = [],
+): MockCtx {
   const tables = new Map<string, StoredRow[]>()
   const updates: Array<{ entity: string; id: string; data: Record<string, unknown> }> = []
   const responses = [...fetchBodies]
@@ -32,13 +35,15 @@ function makeCtx(preload: Record<string, StoredRow[]> = {}, fetchBodies: Array<{
     db: {
       findMany: async (
         entity: string,
-        opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number },
+        opts?: {
+          where?: Record<string, unknown>
+          orderBy?: Record<string, "asc" | "desc">
+          limit?: number
+        },
       ): Promise<unknown[]> => {
         let rows = [...(tables.get(entity) ?? [])]
         if (opts?.where) {
-          rows = rows.filter((r) =>
-            Object.entries(opts.where!).every(([k, v]) => r[k] === v),
-          )
+          rows = rows.filter((r) => Object.entries(opts.where!).every(([k, v]) => r[k] === v))
         }
         if (opts?.orderBy) {
           const entry = Object.entries(opts.orderBy)[0]
@@ -78,7 +83,13 @@ function makeCtx(preload: Record<string, StoredRow[]> = {}, fetchBodies: Array<{
     connections: {
       shop: {
         getAccounts: async () => [
-          { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+          {
+            id: "ca1",
+            ownerType: "org" as const,
+            ownerId: null,
+            identifier: "demo.myshopify.com",
+            displayName: null,
+          },
         ],
         getToken: async () => "test-token",
       },
@@ -148,18 +159,21 @@ describe("settingsLoad", () => {
   })
 
   it("reports connected with shop domain + connectedAt", async () => {
-    const { ctx } = makeCtx({
-      install_metadata: [
-        {
-          id: "i1",
-          shopDomain: "demo.myshopify.com",
-          connectionStatus: "connected",
-          installedAt: iso(-86_400_000),
-          inventoryLocationAllowlist: null,
-          consecutiveScopeMirrorFailures: 0,
-        },
-      ],
-    }, [{ body: { errors: [{ message: "Access denied" }] } }])
+    const { ctx } = makeCtx(
+      {
+        install_metadata: [
+          {
+            id: "i1",
+            shopDomain: "demo.myshopify.com",
+            connectionStatus: "connected",
+            installedAt: iso(-86_400_000),
+            inventoryLocationAllowlist: null,
+            consecutiveScopeMirrorFailures: 0,
+          },
+        ],
+      },
+      [{ body: { errors: [{ message: "Access denied" }] } }],
+    )
     const bundle = await settingsLoad({}, ctx)
     expect(bundle.connection.status).toBe("connected")
     expect(bundle.connection.shopDomain).toBe("demo.myshopify.com")
@@ -191,29 +205,32 @@ describe("settingsLoad", () => {
     // manifest request minus the two Shopify-gated scopes, from a store connected
     // before read_locations was requested: only those may be reported missing
     // (read_locations is not implied by read_inventory or write_inventory).
-    const { ctx } = makeCtx({
-      install_metadata: [
-        {
-          id: "i1",
-          shopDomain: "demo.myshopify.com",
-          connectionStatus: "connected",
-          installedAt: iso(-1000),
-          consecutiveScopeMirrorFailures: 0,
-          grantedOAuthScopes: [
-            "read_markets",
-            "write_customers",
-            "write_discounts",
-            "write_draft_orders",
-            "write_fulfillments",
-            "write_inventory",
-            "write_orders",
-            "write_products",
-            "write_publications",
-            "write_returns",
-          ],
-        },
-      ],
-    }, [{ body: { errors: [{ message: "Access denied" }] } }])
+    const { ctx } = makeCtx(
+      {
+        install_metadata: [
+          {
+            id: "i1",
+            shopDomain: "demo.myshopify.com",
+            connectionStatus: "connected",
+            installedAt: iso(-1000),
+            consecutiveScopeMirrorFailures: 0,
+            grantedOAuthScopes: [
+              "read_markets",
+              "write_customers",
+              "write_discounts",
+              "write_draft_orders",
+              "write_fulfillments",
+              "write_inventory",
+              "write_orders",
+              "write_products",
+              "write_publications",
+              "write_returns",
+            ],
+          },
+        ],
+      },
+      [{ body: { errors: [{ message: "Access denied" }] } }],
+    )
     const bundle = await settingsLoad({}, ctx)
     expect(bundle.connection.scopesKnown).toBe(true)
     expect(bundle.connection.missingScopes).toEqual([
@@ -239,11 +256,31 @@ describe("settingsLoad", () => {
 
   it("builds identity-mapping rows: override > auto > unmapped", async () => {
     const { ctx } = makeCtx({
-      install_metadata: [{ id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" }],
+      install_metadata: [
+        { id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" },
+      ],
       staff_mirror: [
-        { id: "m1", shopifyStaffId: "s1", email: "auto@x", mappedLiaisonUserId: "u-auto", lastSyncedAt: iso(-2000) },
-        { id: "m2", shopifyStaffId: "s2", email: "override@x", mappedLiaisonUserId: "u-stale", lastSyncedAt: iso(-1000) },
-        { id: "m3", shopifyStaffId: "s3", email: "unmapped@x", mappedLiaisonUserId: null, lastSyncedAt: iso(-3000) },
+        {
+          id: "m1",
+          shopifyStaffId: "s1",
+          email: "auto@x",
+          mappedLiaisonUserId: "u-auto",
+          lastSyncedAt: iso(-2000),
+        },
+        {
+          id: "m2",
+          shopifyStaffId: "s2",
+          email: "override@x",
+          mappedLiaisonUserId: "u-stale",
+          lastSyncedAt: iso(-1000),
+        },
+        {
+          id: "m3",
+          shopifyStaffId: "s3",
+          email: "unmapped@x",
+          mappedLiaisonUserId: null,
+          lastSyncedAt: iso(-3000),
+        },
       ],
       staff_overrides: [{ id: "o1", shopifyStaffId: "s2", liaisonUserId: "u-override" }],
     })
@@ -259,7 +296,9 @@ describe("settingsLoad", () => {
 
   it("counts only processed/failed webhook deliveries inside the trailing 24h window", async () => {
     const { ctx } = makeCtx({
-      install_metadata: [{ id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" }],
+      install_metadata: [
+        { id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" },
+      ],
       webhook_deliveries: [
         { id: "w1", status: "processed", receivedAt: iso(-3_600_000) }, // 1h ago — in window
         { id: "w2", status: "failed", receivedAt: iso(-7_200_000) }, // 2h ago — in window
@@ -274,9 +313,13 @@ describe("settingsLoad", () => {
 
   it("surfaces customer backfill status + cursor", async () => {
     const { ctx } = makeCtx({
-      install_metadata: [{ id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" }],
+      install_metadata: [
+        { id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "disconnected" },
+      ],
       // entityType must match the value written by the backfill-customers handler ("customers", plural).
-      backfill_progress: [{ id: "b1", entityType: "customers", status: "running", cursorExternalId: "cur-42" }],
+      backfill_progress: [
+        { id: "b1", entityType: "customers", status: "running", cursorExternalId: "cur-42" },
+      ],
     })
     const bundle = await settingsLoad({}, ctx)
     expect(bundle.diagnostics.backfillStatus).toBe("running")
@@ -301,7 +344,15 @@ describe("settingsLoad", () => {
   it("populates seed suggestions from the Plus-only probe when connected", async () => {
     const { ctx } = makeCtx(
       {
-        install_metadata: [{ id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "connected", connectionId: "ca1", apiVersion: "2026-04" }],
+        install_metadata: [
+          {
+            id: "i1",
+            shopDomain: "demo.myshopify.com",
+            connectionStatus: "connected",
+            connectionId: "ca1",
+            apiVersion: "2026-04",
+          },
+        ],
         staff_overrides: [{ id: "o1", shopifyStaffId: "s1", liaisonUserId: "u-marie" }],
       },
       [
@@ -333,7 +384,9 @@ describe("settingsLoad", () => {
 describe("connectionDisconnect", () => {
   it("flips install_metadata.connectionStatus to disconnected", async () => {
     const { ctx, updates } = makeCtx({
-      install_metadata: [{ id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "connected" }],
+      install_metadata: [
+        { id: "i1", shopDomain: "demo.myshopify.com", connectionStatus: "connected" },
+      ],
     })
     const result = await connectionDisconnect({}, ctx)
     expect(result).toEqual({ ok: true, status: "disconnected" })
@@ -380,7 +433,10 @@ describe("manifest tool declarations", () => {
 
 describe("read_users connection split (Gap #2 — non-Plus stores must not fail closed)", () => {
   const shop = (
-    manifest.connections as Record<string, { scopes: string[]; optionalScopes?: string[] } | undefined>
+    manifest.connections as Record<
+      string,
+      { scopes: string[]; optionalScopes?: string[] } | undefined
+    >
   ).shop
 
   it("the base OAuth connection does NOT hard-require the Plus-only read_users scope", () => {

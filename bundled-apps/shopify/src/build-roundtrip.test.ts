@@ -12,7 +12,12 @@
 import { describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { freezeTarballPath, readTarballEntry, runFreeze, tarballEntries } from "../../../scripts/lib/freeze-roundtrip.ts"
+import {
+  freezeTarballPath,
+  readTarballEntry,
+  runFreeze,
+  tarballEntries,
+} from "../../../scripts/lib/freeze-roundtrip.ts"
 
 const TARBALL = freezeTarballPath("shopify", join(import.meta.dir, ".."))
 

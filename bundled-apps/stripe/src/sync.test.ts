@@ -9,7 +9,7 @@ import { handleStripeEvent } from "./dispatch"
 import { eventsHandler } from "./handlers"
 import { HELD, moneyActionHold, syncProgress } from "./states"
 import { runBackfill } from "./sync/backfill"
-import { type SyncCtx, advanceState } from "./sync/common"
+import { advanceState, type SyncCtx } from "./sync/common"
 import { homeLoad } from "./sync/home"
 import { onDisconnect, runCatchup } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
@@ -49,18 +49,24 @@ class MemDb {
   }
   async findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]> {
     await Promise.resolve()
     const out = this.rows(entity).filter((r) => this.matches(r, opts?.where))
     const [key, dir] = Object.entries(opts?.orderBy ?? {})[0] ?? []
-    if (key) out.sort((a, b) => (String(a[key]) < String(b[key]) ? -1 : 1) * (dir === "desc" ? -1 : 1))
+    if (key)
+      out.sort((a, b) => (String(a[key]) < String(b[key]) ? -1 : 1) * (dir === "desc" ? -1 : 1))
     return structuredClone(out.slice(0, opts?.limit ?? out.length))
   }
   async insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }> {
     await Promise.resolve()
     const key = UNIQUE[entity]
-    if (key && this.rows(entity).some((r) => r[key] === data[key])) throw new Error("duplicate key value")
+    if (key && this.rows(entity).some((r) => r[key] === data[key]))
+      throw new Error("duplicate key value")
     const id = `row-${++this.seq}`
     this.rows(entity).push({ ...structuredClone(data), id })
     return { id }
@@ -70,9 +76,13 @@ class MemDb {
     const r = this.rows(entity).find((x) => x.id === id)
     if (r) Object.assign(r, structuredClone(data))
   }
-  async updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }) {
+  async updateMany(
+    entity: string,
+    opts: { where: Record<string, unknown>; data: Record<string, unknown> },
+  ) {
     await Promise.resolve()
-    if (this.crashAt?.entity === entity && ++this.updates === this.crashAt.n) throw new Error("the worker died")
+    if (this.crashAt?.entity === entity && ++this.updates === this.crashAt.n)
+      throw new Error("the worker died")
     let count = 0
     for (const r of this.rows(entity)) {
       if (this.matches(r, opts.where)) {
@@ -120,15 +130,20 @@ class StripeApi {
     const u = new URL(url)
     const path = u.pathname
     this.calls.push(`${path}${u.search}`)
-    if (this.calls.length > this.maxCalls) throw new Error(`more than ${this.maxCalls} Stripe requests: the loop does not end`)
+    if (this.calls.length > this.maxCalls)
+      throw new Error(`more than ${this.maxCalls} Stripe requests: the loop does not end`)
     this.beforeFetch?.(path)
-    if (opts?.headers?.["Stripe-Version"] === undefined) return { status: 400, headers: {}, body: "{}" }
+    if (opts?.headers?.["Stripe-Version"] === undefined)
+      return { status: 400, headers: {}, body: "{}" }
     const status = this.all ?? this.forced.get(path)
-    if (status) return { status, headers: {}, body: JSON.stringify({ error: { message: "forced" } }) }
+    if (status)
+      return { status, headers: {}, body: JSON.stringify({ error: { message: "forced" } }) }
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (path === "/v1/events") {
       const gt = Number(u.searchParams.get("created[gt]") ?? 0)
-      const data = this.events.filter((e) => (e.created as number) > gt).sort((a, b) => (b.created as number) - (a.created as number))
+      const data = this.events
+        .filter((e) => (e.created as number) > gt)
+        .sort((a, b) => (b.created as number) - (a.created as number))
       return ok({ data, has_more: false })
     }
     if (path.startsWith("/v1/events/")) {
@@ -144,7 +159,9 @@ class StripeApi {
       return ok({ object: "list", data, has_more: start + limit < list.length })
     }
     const obj = this.objects.get(path)
-    return obj ? ok(obj) : { status: 404, headers: {}, body: JSON.stringify({ error: { message: "No such object" } }) }
+    return obj
+      ? ok(obj)
+      : { status: 404, headers: {}, body: JSON.stringify({ error: { message: "No such object" } }) }
   }
 }
 
@@ -164,10 +181,22 @@ function ctx(): SyncCtx {
   }
 }
 
-const RESOURCE_LISTS = ["/v1/customers", "/v1/subscriptions", "/v1/invoices", "/v1/charges", "/v1/refunds", "/v1/disputes"]
+const RESOURCE_LISTS = [
+  "/v1/customers",
+  "/v1/subscriptions",
+  "/v1/invoices",
+  "/v1/charges",
+  "/v1/refunds",
+  "/v1/disputes",
+]
 
 function customers(n: number): Obj[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `cus_${String(i).padStart(4, "0")}`, object: "customer", email: `c${i}@acme.example`, created: 1767000000 + i }))
+  return Array.from({ length: n }, (_, i) => ({
+    id: `cus_${String(i).padStart(4, "0")}`,
+    object: "customer",
+    email: `c${i}@acme.example`,
+    created: 1767000000 + i,
+  }))
 }
 
 function subscription(id: string, customer: string, status = "active"): Obj {
@@ -177,7 +206,21 @@ function subscription(id: string, customer: string, status = "active"): Obj {
     customer,
     status,
     currency: "eur",
-    items: { data: [{ quantity: 1, price: { id: "price_1", unit_amount: 4900, currency: "eur", recurring: { interval: "month" } }, current_period_start: 1767225600, current_period_end: 1769904000 }] },
+    items: {
+      data: [
+        {
+          quantity: 1,
+          price: {
+            id: "price_1",
+            unit_amount: 4900,
+            currency: "eur",
+            recurring: { interval: "month" },
+          },
+          current_period_start: 1767225600,
+          current_period_end: 1769904000,
+        },
+      ],
+    },
   }
 }
 
@@ -195,14 +238,20 @@ function install(state: string, extra: Obj = {}) {
 }
 
 function mirrorRow(entity: string, data: Obj) {
-  db.rows(entity).push({ id: `m-${data.stripe_id}`, stripe_updated: "2026-11-01T00:00:00.000Z", deleted_at: null, ...data })
+  db.rows(entity).push({
+    id: `m-${data.stripe_id}`,
+    stripe_updated: "2026-11-01T00:00:00.000Z",
+    deleted_at: null,
+    ...data,
+  })
 }
 
 function emptyLists() {
   for (const p of RESOURCE_LISTS) if (!api.lists.has(p)) api.list(p, [])
 }
 
-const typed = () => emitted.filter((e) => !(e.entity === "connection" && e.action === "state_changed"))
+const typed = () =>
+  emitted.filter((e) => !(e.entity === "connection" && e.action === "state_changed"))
 
 beforeEach(() => {
   db = new MemDb()
@@ -228,10 +277,15 @@ describe("the first import", () => {
     const res = await runBackfill(ctx(), { now })
     expect(res.outcome).toBe("done")
     // Mutation caught: restarting at zero sends no starting_after on the first page.
-    expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain("starting_after=cus_0099")
+    expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain(
+      "starting_after=cus_0099",
+    )
     expect(db.count("stripe_customers")).resolves.toBe(250)
     expect(new Set(db.rows("stripe_customers").map((r) => r.stripe_id)).size).toBe(250)
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ status: "done", done_count: 250 })
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      status: "done",
+      done_count: 250,
+    })
     expect(typed()).toEqual([])
   })
 
@@ -241,7 +295,8 @@ describe("the first import", () => {
     emptyLists()
     // Page 1 answers, page 2 is refused with 429.
     api.beforeFetch = (path) => {
-      if (path === "/v1/customers" && db.one("sync_state", { resource: "customers" })?.cursor) api.forced.set("/v1/customers", 429)
+      if (path === "/v1/customers" && db.one("sync_state", { resource: "customers" })?.cursor)
+        api.forced.set("/v1/customers", 429)
     }
     const started = Date.now()
     const first = await runBackfill(ctx(), { now })
@@ -249,14 +304,20 @@ describe("the first import", () => {
     expect(first).toMatchObject({ outcome: "paused", detail: "rate_limited" })
     expect(api.calls.filter((c) => c.startsWith("/v1/customers?"))).toHaveLength(2)
     expect(Date.now() - started).toBeLessThan(200)
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100, status: "running" })
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      cursor: "cus_0099",
+      done_count: 100,
+      status: "running",
+    })
 
     api.beforeFetch = null
     api.forced.delete("/v1/customers")
     api.calls = []
     const next = await runBackfill(ctx(), { now })
     expect(next.outcome).toBe("done")
-    expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain("starting_after=cus_0099")
+    expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain(
+      "starting_after=cus_0099",
+    )
     expect(new Set(db.rows("stripe_customers").map((r) => r.stripe_id)).size).toBe(150)
   })
 
@@ -267,7 +328,10 @@ describe("the first import", () => {
     await Promise.all([runBackfill(ctx(), { now }), runBackfill(ctx(), { now })])
     await runBackfill(ctx(), { now })
     expect(db.rows("stripe_customers").length).toBe(230)
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ status: "done", done_count: 230 })
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      status: "done",
+      done_count: 230,
+    })
   })
 
   it("a run whose place was moved by another run is refused at the cursor and leaves the winner's cursor", async () => {
@@ -279,29 +343,75 @@ describe("the first import", () => {
     api.beforeFetch = (path) => {
       if (path !== "/v1/customers" || moved) return
       moved = true
-      Object.assign(db.one("sync_state", { resource: "customers" }) as Row, { cursor: "cus_0099", done_count: 100, status: "running" })
+      Object.assign(db.one("sync_state", { resource: "customers" }) as Row, {
+        cursor: "cus_0099",
+        done_count: 100,
+        status: "running",
+      })
     }
     const res = await runBackfill(ctx(), { now })
     expect(res).toMatchObject({ outcome: "stopped", detail: "another run moved the import on" })
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100, status: "running" })
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      cursor: "cus_0099",
+      done_count: 100,
+      status: "running",
+    })
   })
 
   it("the cursor swap refuses a write made from a place that has moved on", async () => {
     install("waiting_first_event")
-    db.rows("sync_state").push({ id: "s1", resource: "customers", status: "running", cursor: "cus_0099", done_count: 100 })
-    const stale = { id: "s1", resource: "customers", status: "running", cursor: null, done_count: 0 } as Parameters<typeof advanceState>[1]
-    expect(await advanceState(ctx().db, stale, { cursor: "cus_0049", done_count: 50 }, now())).toBe(false)
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100 })
+    db.rows("sync_state").push({
+      id: "s1",
+      resource: "customers",
+      status: "running",
+      cursor: "cus_0099",
+      done_count: 100,
+    })
+    const stale = {
+      id: "s1",
+      resource: "customers",
+      status: "running",
+      cursor: null,
+      done_count: 0,
+    } as Parameters<typeof advanceState>[1]
+    expect(await advanceState(ctx().db, stale, { cursor: "cus_0049", done_count: 50 }, now())).toBe(
+      false,
+    )
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      cursor: "cus_0099",
+      done_count: 100,
+    })
     const fresh = { ...stale, cursor: "cus_0099", done_count: 100 }
-    expect(await advanceState(ctx().db, fresh, { cursor: "cus_0199", done_count: 200 }, now())).toBe(true)
-    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0199", done_count: 200 })
+    expect(
+      await advanceState(ctx().db, fresh, { cursor: "cus_0199", done_count: 200 }, now()),
+    ).toBe(true)
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({
+      cursor: "cus_0199",
+      done_count: 200,
+    })
   })
 
   it("an invoice finalized before the connection is mirrored as before_connection and announced to nobody", async () => {
     install("waiting_first_event")
     api.list("/v1/invoices", [
-      { id: "in_old", object: "invoice", customer: "cus_1", status: "paid", total: 100, currency: "eur", status_transitions: { finalized_at: 1793318400 } },
-      { id: "in_new", object: "invoice", customer: "cus_1", status: "open", total: 100, currency: "eur", status_transitions: { finalized_at: 1793750400 } },
+      {
+        id: "in_old",
+        object: "invoice",
+        customer: "cus_1",
+        status: "paid",
+        total: 100,
+        currency: "eur",
+        status_transitions: { finalized_at: 1793318400 },
+      },
+      {
+        id: "in_new",
+        object: "invoice",
+        customer: "cus_1",
+        status: "open",
+        total: 100,
+        currency: "eur",
+        status_transitions: { finalized_at: 1793750400 },
+      },
     ])
     emptyLists()
     await runBackfill(ctx(), { now })
@@ -312,10 +422,32 @@ describe("the first import", () => {
 
   it("while importing no number, no routine tick and no issuing event", async () => {
     install("importing", { webhook_confirmed_at: "2026-11-02T00:00:00.000Z" })
-    db.rows("sync_state").push({ id: "s1", resource: "customers", status: "running", cursor: null, done_count: 0, catchup_due: false })
-    const inv = { id: "in_W", object: "invoice", customer: "cus_1", status: "open", total: 900, currency: "eur", status_transitions: { finalized_at: 1762900000 } }
+    db.rows("sync_state").push({
+      id: "s1",
+      resource: "customers",
+      status: "running",
+      cursor: null,
+      done_count: 0,
+      catchup_due: false,
+    })
+    const inv = {
+      id: "in_W",
+      object: "invoice",
+      customer: "cus_1",
+      status: "open",
+      total: 900,
+      currency: "eur",
+      status_transitions: { finalized_at: 1762900000 },
+    }
     api.objects.set("/v1/invoices/in_W", { livemode: false, ...inv })
-    const evt = { id: "evt_W", object: "event", type: "invoice.finalized", created: 1762900001, livemode: false, data: { object: { id: "in_W" } } }
+    const evt = {
+      id: "evt_W",
+      object: "event",
+      type: "invoice.finalized",
+      created: 1762900001,
+      livemode: false,
+      data: { object: { id: "in_W" } },
+    }
     api.events.push(evt)
 
     expect((await eventsHandler(evt, ctx() as never)).status).toBe(200)
@@ -332,7 +464,9 @@ describe("the first import", () => {
     emptyLists()
     const res = await runBackfill(ctx(), { now })
     expect(res).toMatchObject({ outcome: "done", released: 1 })
-    expect(typed().filter((e) => e.entity === "invoice" && e.action === "finalized")).toHaveLength(1)
+    expect(typed().filter((e) => e.entity === "invoice" && e.action === "finalized")).toHaveLength(
+      1,
+    )
     expect(db.one("webhook_deliveries", { event_id: "evt_W" })?.status).toBe("processed")
     expect(String(db.one("install_metadata", {})?.state)).toBe("connected")
   })
@@ -344,7 +478,10 @@ describe("the first import", () => {
     api.forced.set("/v1/charges", 403)
     const res = await runBackfill(ctx(), { now })
     expect(res.outcome).toBe("done")
-    expect(db.one("sync_state", { resource: "charges" })).toMatchObject({ status: "failed", last_error_code: "permission_missing" })
+    expect(db.one("sync_state", { resource: "charges" })).toMatchObject({
+      status: "failed",
+      last_error_code: "permission_missing",
+    })
     expect(db.one("sync_state", { resource: "disputes" })?.status).toBe("done")
     expect(String(db.one("install_metadata", {})?.state)).toBe("waiting_first_event+partial")
     const home = await homeLoad({}, { db: db as never })
@@ -357,20 +494,37 @@ describe("the nightly reconcile", () => {
   beforeEach(() => {
     install("connected")
     for (const r of ["customers", "subscriptions", "invoices", "charges", "refunds", "disputes"]) {
-      db.rows("sync_state").push({ id: `s-${r}`, resource: r, status: "done", cursor: null, done_count: 0, catchup_due: false })
+      db.rows("sync_state").push({
+        id: `s-${r}`,
+        resource: r,
+        status: "done",
+        cursor: null,
+        done_count: 0,
+        catchup_due: false,
+      })
     }
   })
 
   it("the nightly job heals a lost update and writes no document", async () => {
     mirrorRow("stripe_customers", { stripe_id: "cus_A", email: "old@acme.example" })
-    mirrorRow("stripe_subscriptions", { stripe_id: "sub_A", customer_id: "cus_A", status: "active", mrr_minor: 4900 })
-    api.list("/v1/customers", [{ id: "cus_A", object: "customer", email: "new@acme.example", created: 1767000000 }])
+    mirrorRow("stripe_subscriptions", {
+      stripe_id: "sub_A",
+      customer_id: "cus_A",
+      status: "active",
+      mrr_minor: 4900,
+    })
+    api.list("/v1/customers", [
+      { id: "cus_A", object: "customer", email: "new@acme.example", created: 1767000000 },
+    ])
     api.list("/v1/subscriptions", [subscription("sub_A", "cus_A", "canceled")])
     emptyLists()
     const res = await runReconcile(ctx(), { now })
     expect(res.outcome).toBe("done")
     expect(db.one("stripe_customers", { stripe_id: "cus_A" })?.email).toBe("new@acme.example")
-    expect(db.one("stripe_subscriptions", { stripe_id: "sub_A" })).toMatchObject({ status: "canceled", mrr_minor: 0 })
+    expect(db.one("stripe_subscriptions", { stripe_id: "sub_A" })).toMatchObject({
+      status: "canceled",
+      mrr_minor: 0,
+    })
     // Nothing announced: no invoice event, so no document anywhere.
     expect(emitted).toEqual([])
   })
@@ -378,17 +532,40 @@ describe("the nightly reconcile", () => {
   it("a list page that omits a live customer and subscription, a clock customer among them, leaves both rows unchanged", async () => {
     mirrorRow("stripe_customers", { stripe_id: "cus_CLOCK", email: "clock@acme.example" })
     mirrorRow("stripe_customers", { stripe_id: "cus_B", email: "b@acme.example" })
-    mirrorRow("stripe_subscriptions", { stripe_id: "sub_CLOCK", customer_id: "cus_CLOCK", status: "active", mrr_minor: 4900 })
+    mirrorRow("stripe_subscriptions", {
+      stripe_id: "sub_CLOCK",
+      customer_id: "cus_CLOCK",
+      status: "active",
+      mrr_minor: 4900,
+    })
     // The lists leave out the test-clock customer and its subscription; by id Stripe still has both.
-    api.list("/v1/customers", [{ id: "cus_B", object: "customer", email: "b@acme.example", created: 1767000000 }])
+    api.list("/v1/customers", [
+      { id: "cus_B", object: "customer", email: "b@acme.example", created: 1767000000 },
+    ])
     api.list("/v1/subscriptions", [])
     emptyLists()
-    api.objects.set("/v1/customers/cus_CLOCK", { id: "cus_CLOCK", object: "customer", livemode: false, email: "clock@acme.example", test_clock: "clock_1", created: 1767000000 })
-    api.objects.set("/v1/subscriptions/sub_CLOCK", { livemode: false, ...subscription("sub_CLOCK", "cus_CLOCK") })
+    api.objects.set("/v1/customers/cus_CLOCK", {
+      id: "cus_CLOCK",
+      object: "customer",
+      livemode: false,
+      email: "clock@acme.example",
+      test_clock: "clock_1",
+      created: 1767000000,
+    })
+    api.objects.set("/v1/subscriptions/sub_CLOCK", {
+      livemode: false,
+      ...subscription("sub_CLOCK", "cus_CLOCK"),
+    })
     await runReconcile(ctx(), { now })
     // Mutation caught: soft-deleting rows absent from the page sets deleted_at / cancels.
-    expect(db.one("stripe_customers", { stripe_id: "cus_CLOCK" })).toMatchObject({ deleted_at: null, email: "clock@acme.example" })
-    expect(db.one("stripe_subscriptions", { stripe_id: "sub_CLOCK" })).toMatchObject({ status: "active", mrr_minor: 4900 })
+    expect(db.one("stripe_customers", { stripe_id: "cus_CLOCK" })).toMatchObject({
+      deleted_at: null,
+      email: "clock@acme.example",
+    })
+    expect(db.one("stripe_subscriptions", { stripe_id: "sub_CLOCK" })).toMatchObject({
+      status: "active",
+      mrr_minor: 4900,
+    })
 
     // Stripe not answering by id changes nothing either.
     api.forced.set("/v1/customers/cus_CLOCK", 500)
@@ -411,7 +588,11 @@ describe("the nightly reconcile", () => {
 
   it("a key swapped to another account makes reconcile write nothing and flag different_account", async () => {
     mirrorRow("stripe_customers", { stripe_id: "cus_A", email: "a@acme.example" })
-    mirrorRow("stripe_subscriptions", { stripe_id: "sub_A", customer_id: "cus_A", status: "active" })
+    mirrorRow("stripe_subscriptions", {
+      stripe_id: "sub_A",
+      customer_id: "cus_A",
+      status: "active",
+    })
     // The other account: none of our ids exists, and its lists hold its own objects.
     api.list("/v1/customers", [{ id: "cus_OTHER", object: "customer", created: 1767000000 }])
     api.list("/v1/subscriptions", [subscription("sub_OTHER", "cus_OTHER")])
@@ -433,7 +614,12 @@ describe("the nightly reconcile", () => {
     expect(res.outcome).toBe("key_invalid")
     expect(String(db.one("install_metadata", {})?.state)).toBe("connected+key_invalid")
     expect(emitted).toEqual([
-      { entity: "connection", action: "state_changed", entityId: "inst-1", data: { from: "connected", to: "connected+key_invalid" } },
+      {
+        entity: "connection",
+        action: "state_changed",
+        entityId: "inst-1",
+        data: { from: "connected", to: "connected+key_invalid" },
+      },
     ])
     expect(db.one("stripe_customers", { stripe_id: "cus_A" })?.email).toBe("a@acme.example")
     // The money action refuses before any call, and says the request stays waiting.
@@ -451,15 +637,33 @@ describe("the nightly reconcile", () => {
 
 describe("the upstream probe", () => {
   function evt(id: string, createdIso: string) {
-    return { id, object: "event", type: "customer.updated", created: Date.parse(createdIso) / 1000, livemode: false, data: { object: { id: "cus_A" } } }
+    return {
+      id,
+      object: "event",
+      type: "customer.updated",
+      created: Date.parse(createdIso) / 1000,
+      livemode: false,
+      data: { object: { id: "cus_A" } },
+    }
   }
 
   it("newer events upstream and none received for two hours stall the connection; a quiet account never stalls", async () => {
     install("connected", { last_event_at: "2026-11-10T09:00:00.000Z" })
-    api.objects.set("/v1/customers/cus_A", { id: "cus_A", object: "customer", livemode: false, email: "a@acme.example", created: 1767000000 })
+    api.objects.set("/v1/customers/cus_A", {
+      id: "cus_A",
+      object: "customer",
+      livemode: false,
+      email: "a@acme.example",
+      created: 1767000000,
+    })
     api.events.push(evt("evt_M1", "2026-11-10T09:30:00.000Z"))
     const res = await runProbe(ctx(), { now })
-    expect(res).toMatchObject({ stalled: true, missed: 1, replayed: 1, upstreamActivityAt: "2026-11-10T09:30:00.000Z" })
+    expect(res).toMatchObject({
+      stalled: true,
+      missed: 1,
+      replayed: 1,
+      upstreamActivityAt: "2026-11-10T09:30:00.000Z",
+    })
     const inst = db.one("install_metadata", {})
     expect(String(inst?.state)).toBe("connected+stalled")
     // The replay applied the event but is not a delivery: the record and the mark stay.
@@ -490,10 +694,32 @@ describe("the upstream probe", () => {
 describe("catch-up and disconnect", () => {
   it("a delivery failed on a refused key is applied once when the key works again", async () => {
     install("connected")
-    db.rows("sync_state").push({ id: "s1", resource: "invoices", status: "done", cursor: null, done_count: 0, catchup_due: false })
-    const evt = { id: "evt_K", object: "event", type: "invoice.paid", created: 1762900001, livemode: false, data: { object: { id: "in_K" } } }
+    db.rows("sync_state").push({
+      id: "s1",
+      resource: "invoices",
+      status: "done",
+      cursor: null,
+      done_count: 0,
+      catchup_due: false,
+    })
+    const evt = {
+      id: "evt_K",
+      object: "event",
+      type: "invoice.paid",
+      created: 1762900001,
+      livemode: false,
+      data: { object: { id: "in_K" } },
+    }
     api.events.push(evt)
-    api.objects.set("/v1/invoices/in_K", { id: "in_K", object: "invoice", livemode: false, customer: "cus_1", status: "paid", total: 5, currency: "eur" })
+    api.objects.set("/v1/invoices/in_K", {
+      id: "in_K",
+      object: "invoice",
+      livemode: false,
+      customer: "cus_1",
+      status: "paid",
+      total: 5,
+      currency: "eur",
+    })
     api.forced.set("/v1/invoices/in_K", 401)
     await handleStripeEvent(evt, ctx() as never)
     expect(db.one("webhook_deliveries", { event_id: "evt_K" })?.status).toBe("failed")

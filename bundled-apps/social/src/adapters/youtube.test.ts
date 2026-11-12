@@ -2,12 +2,16 @@
 import { describe, expect, test } from "bun:test"
 import searchFixture from "../__fixtures__/youtube-search.json"
 import { packCursor, parseJsonCursor } from "./cursor"
-import { makeMockFetch, type MockFetch } from "./mock-fetch"
+import { type MockFetch, makeMockFetch } from "./mock-fetch"
 import type { AdapterFetch } from "./types"
 import { youtubeAdapter } from "./youtube"
 
 const QUOTA_BODY = {
-  error: { code: 403, message: "quota", errors: [{ reason: "quotaExceeded", domain: "youtube.quota" }] },
+  error: {
+    code: 403,
+    message: "quota",
+    errors: [{ reason: "quotaExceeded", domain: "youtube.quota" }],
+  },
 }
 
 /** A fetch whose response is chosen per call by `respond(url)`; records calls. */
@@ -79,7 +83,10 @@ describe("youtubeAdapter (B4)", () => {
     expect(unitsConsumed).toBe(202)
     // First run of each term (no watermark): the next page is older history,
     // so no pageToken is kept; each term starts its own publishedAfter window.
-    const next = parseJsonCursor(nextCursor) as { v: number; terms: Record<string, { after?: string; pageToken?: string }> }
+    const next = parseJsonCursor(nextCursor) as {
+      v: number
+      terms: Record<string, { after?: string; pageToken?: string }>
+    }
     expect(next.v).toBe(2)
     expect(Object.keys(next.terms).sort()).toEqual(["term-1", "term-2"])
     expect(next.terms["term-1"]?.pageToken).toBeUndefined()
@@ -162,9 +169,15 @@ describe("youtubeAdapter (B4)", () => {
 
   test("discover with NO terms still runs own-channel comment discovery (0 keyword units, own-channel units only)", async () => {
     const fetch = makeMockFetch({
-      "/channels": { items: [{ id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } }] },
+      "/channels": {
+        items: [
+          { id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } },
+        ],
+      },
       "/playlistItems": {
-        items: [{ contentDetails: { videoId: "vid-own-1" }, snippet: { title: "Our latest video" } }],
+        items: [
+          { contentDetails: { videoId: "vid-own-1" }, snippet: { title: "Our latest video" } },
+        ],
       },
       "/commentThreads": {
         items: [
@@ -204,7 +217,11 @@ describe("youtubeAdapter (B4)", () => {
 
   test("own-channel discovery walks channels(mine) -> playlistItems(uploads) -> commentThreads per recent upload", async () => {
     const fetch = makeMockFetch({
-      "/channels": { items: [{ id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } }] },
+      "/channels": {
+        items: [
+          { id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } },
+        ],
+      },
       "/playlistItems": {
         items: [
           { contentDetails: { videoId: "vid-own-1" }, snippet: { title: "Video One" } },
@@ -219,7 +236,9 @@ describe("youtubeAdapter (B4)", () => {
     )
     const urls = fetch.calls.map((c) => c.url)
     expect(urls.some((u) => u.includes("/channels") && u.includes("mine=true"))).toBe(true)
-    expect(urls.some((u) => u.includes("/playlistItems") && u.includes("playlistId=UU-uploads"))).toBe(true)
+    expect(
+      urls.some((u) => u.includes("/playlistItems") && u.includes("playlistId=UU-uploads")),
+    ).toBe(true)
     // One commentThreads.list call per recent upload.
     expect(urls.filter((u) => u.includes("/commentThreads")).length).toBe(2)
     expect(urls.some((u) => u.includes("videoId=vid-own-1"))).toBe(true)
@@ -228,7 +247,11 @@ describe("youtubeAdapter (B4)", () => {
 
   test("own-channel discovery skips comments authored by the channel itself", async () => {
     const fetch = makeMockFetch({
-      "/channels": { items: [{ id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } }] },
+      "/channels": {
+        items: [
+          { id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } },
+        ],
+      },
       "/playlistItems": {
         items: [{ contentDetails: { videoId: "vid-own-1" }, snippet: { title: "Our video" } }],
       },
@@ -276,10 +299,17 @@ describe("youtubeAdapter (B4)", () => {
   test("a 403 (comments disabled) on one video is swallowed per-video, other videos still processed", async () => {
     const fetch = makeMockFetch(
       {
-        "/channels": { items: [{ id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } }] },
+        "/channels": {
+          items: [
+            { id: "own-chan", contentDetails: { relatedPlaylists: { uploads: "UU-uploads" } } },
+          ],
+        },
         "/playlistItems": {
           items: [
-            { contentDetails: { videoId: "vid-disabled" }, snippet: { title: "Disabled comments" } },
+            {
+              contentDetails: { videoId: "vid-disabled" },
+              snippet: { title: "Disabled comments" },
+            },
             { contentDetails: { videoId: "vid-ok" }, snippet: { title: "OK video" } },
           ],
         },
@@ -303,7 +333,11 @@ describe("youtubeAdapter (B4)", () => {
                 snippet: {
                   topLevelComment: {
                     id: "c-ok",
-                    snippet: { textDisplay: "Nice", authorDisplayName: "Fan", publishedAt: "2026-05-31T11:00:00Z" },
+                    snippet: {
+                      textDisplay: "Nice",
+                      authorDisplayName: "Fan",
+                      publishedAt: "2026-05-31T11:00:00Z",
+                    },
                   },
                 },
               },
@@ -498,7 +532,12 @@ describe("youtubeAdapter (B4)", () => {
       id: { kind: "youtube#video", videoId: id },
       // Title must carry the search term verbatim — every hit needs to survive
       // the relevance gate for this test to still exercise batching (not the gate).
-      snippet: { title: `OurBrand Video ${id}`, channelTitle: "Ch", channelId: "c", publishedAt: "2026-05-31T10:00:00Z" },
+      snippet: {
+        title: `OurBrand Video ${id}`,
+        channelTitle: "Ch",
+        channelId: "c",
+        publishedAt: "2026-05-31T10:00:00Z",
+      },
     }))
     const fetch = makeMockFetch({
       "/search": { items, nextPageToken: null },
@@ -538,7 +577,10 @@ describe("youtubeAdapter (B4)", () => {
           ? { json: { items: [], nextPageToken: "TOK_A2" } }
           : { json: { items: [] } },
       )
-      const res = await youtubeAdapter.discover({ accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW }, cursor)
+      const res = await youtubeAdapter.discover(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        cursor,
+      )
       const searches = fetch.calls.filter((c) => c.url.includes("/search"))
       expect(searches.length).toBe(2)
       for (const c of searches) expect(c.url).toContain("order=date")
@@ -549,9 +591,14 @@ describe("youtubeAdapter (B4)", () => {
       expect(t2).toContain(`publishedAfter=${encodeURIComponent("2026-10-18T00:00:00.000Z")}`)
       // term-1's token is never replayed on term-2.
       expect(t2).not.toContain("pageToken=")
-      const next = parseJsonCursor(res.nextCursor) as { terms: Record<string, { after?: string; pageToken?: string }> }
+      const next = parseJsonCursor(res.nextCursor) as {
+        terms: Record<string, { after?: string; pageToken?: string }>
+      }
       // term-1 still has a page of new videos in the same window: keep the window, next page.
-      expect(next.terms["term-1"]).toEqual({ after: "2026-10-19T00:00:00.000Z", pageToken: "TOK_A2" })
+      expect(next.terms["term-1"]).toEqual({
+        after: "2026-10-19T00:00:00.000Z",
+        pageToken: "TOK_A2",
+      })
       // term-2 drained its window: the next window starts at this run (minus the overlap).
       expect(next.terms["term-2"]).toEqual({ after: "2026-10-20T00:00:00.000Z" })
       expect(res.unitsConsumed).toBe(200 + 1) // 2 searches + channels.list
@@ -559,7 +606,10 @@ describe("youtubeAdapter (B4)", () => {
 
     test("a legacy single-token cursor is not replayed on any term", async () => {
       const fetch = scriptedFetch(() => ({ json: { items: [] } }))
-      await youtubeAdapter.discover({ accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW }, "CDIQAA")
+      await youtubeAdapter.discover(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        "CDIQAA",
+      )
       const searches = fetch.calls.filter((c) => c.url.includes("/search"))
       expect(searches.length).toBe(2)
       for (const c of searches) {
@@ -569,11 +619,17 @@ describe("youtubeAdapter (B4)", () => {
     })
 
     test("a 403 quotaExceeded on search stops discovery: no further calls, refused call not charged, term state kept", async () => {
-      const cursor = packCursor({ v: 2, terms: { "term-1": { after: "2026-10-19T00:00:00.000Z" } } })
+      const cursor = packCursor({
+        v: 2,
+        terms: { "term-1": { after: "2026-10-19T00:00:00.000Z" } },
+      })
       const fetch = scriptedFetch((url) =>
         url.includes("/search") ? { status: 403, json: QUOTA_BODY } : { json: {} },
       )
-      const res = await youtubeAdapter.discover({ accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW }, cursor)
+      const res = await youtubeAdapter.discover(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        cursor,
+      )
       expect(res.quotaExhausted).toBe(true)
       expect(res.error).toBeUndefined()
       expect(res.unitsConsumed).toBe(0)
@@ -588,20 +644,34 @@ describe("youtubeAdapter (B4)", () => {
           ? { status: 403, json: { error: { errors: [{ reason: "dailyLimitExceeded" }] } } }
           : { json: { items: [] } },
       )
-      const res = await youtubeAdapter.discover({ accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [], now: NOW }, null)
+      const res = await youtubeAdapter.discover(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [], now: NOW },
+        null,
+      )
       expect(res.quotaExhausted).toBe(true)
       expect(res.unitsConsumed).toBe(0)
     })
 
     test("a plain 403 (comments disabled) is NOT quota exhaustion", async () => {
-      const fetch = scriptedFetch(() => ({ status: 403, json: { error: { errors: [{ reason: "commentsDisabled" }] } } }))
-      const res = await youtubeAdapter.pollObject({ accountExternalId: "chan-1", fetch, accessToken: "tok" }, "vid-abc", null)
+      const fetch = scriptedFetch(() => ({
+        status: 403,
+        json: { error: { errors: [{ reason: "commentsDisabled" }] } },
+      }))
+      const res = await youtubeAdapter.pollObject(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+        "vid-abc",
+        null,
+      )
       expect(res.quotaExhausted).toBeUndefined()
     })
 
     test("pollObject on quotaExceeded reports exhaustion and charges nothing", async () => {
       const fetch = scriptedFetch(() => ({ status: 403, json: QUOTA_BODY }))
-      const res = await youtubeAdapter.pollObject({ accountExternalId: "chan-1", fetch, accessToken: "tok" }, "vid-abc", null)
+      const res = await youtubeAdapter.pollObject(
+        { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+        "vid-abc",
+        null,
+      )
       expect(res.quotaExhausted).toBe(true)
       expect(res.unitsConsumed).toBe(0)
       expect(res.findings).toEqual([])

@@ -24,11 +24,15 @@ function pattern(n: number): Uint8Array {
 
 describe("sha256Hex", () => {
   test("empty input", () => {
-    expect(sha256Hex(new Uint8Array(0))).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    expect(sha256Hex(new Uint8Array(0))).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
   })
 
   test('"abc"', () => {
-    expect(sha256Hex(enc("abc"))).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    expect(sha256Hex(enc("abc"))).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    )
   })
 
   test("the two-block NIST vector", () => {
@@ -75,7 +79,10 @@ describe("sha256OfBase64", () => {
   test("hashes the decoded bytes and reports their length", () => {
     for (const n of [0, 1, 2, 3, 55, 64, 1000, 1024 * 1024 + 7]) {
       const bytes = pattern(n)
-      expect(sha256OfBase64(Buffer.from(bytes).toString("base64"))).toEqual({ sha256: bunSha256(bytes), byteLength: n })
+      expect(sha256OfBase64(Buffer.from(bytes).toString("base64"))).toEqual({
+        sha256: bunSha256(bytes),
+        byteLength: n,
+      })
     }
   })
 })
@@ -86,7 +93,9 @@ describe("sandbox safety", () => {
   test("the backfill modules use no typed array, Buffer or node API", () => {
     for (const f of ["backfill-sha256.ts", "backfill-legacy.ts"]) {
       const src = readFileSync(join(import.meta.dir, f), "utf8").replace(/\/\/.*$/gm, "")
-      expect(src).not.toMatch(/\b(?:Uint8|Uint16|Uint32|Int8|Int16|Int32|Float32|Float64|BigInt64|BigUint64)Array\b|\bBuffer\b|\bArrayBuffer\b|from "node:/)
+      expect(src).not.toMatch(
+        /\b(?:Uint8|Uint16|Uint32|Int8|Int16|Int32|Float32|Float64|BigInt64|BigUint64)Array\b|\bBuffer\b|\bArrayBuffer\b|from "node:/,
+      )
     }
   })
 })

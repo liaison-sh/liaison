@@ -31,7 +31,13 @@ export interface SyncView {
   importing: boolean
   partial: boolean
   missing: string[]
-  resources: Array<{ resource: string; status: string; done: number; total: number | null; error: string | null }>
+  resources: Array<{
+    resource: string
+    status: string
+    done: number
+    total: number | null
+    error: string | null
+  }>
 }
 
 export interface SubItem {
@@ -88,7 +94,14 @@ export interface MrrLine {
   pastDueMinor: number
   activeCount: number
   byPlan: Array<{ plan: string; mrrMinor: number; count: number }>
-  movements: { newMinor: number; upgradeMinor: number; downgradeMinor: number; cancelledMinor: number; netMinor: number; startMinor: number }
+  movements: {
+    newMinor: number
+    upgradeMinor: number
+    downgradeMinor: number
+    cancelledMinor: number
+    netMinor: number
+    startMinor: number
+  }
   monthStart: string
 }
 
@@ -135,12 +148,16 @@ export function daysFromNow(iso: string | null | undefined, now: Date): number |
   return Number.isNaN(t) ? null : Math.ceil((t - now.getTime()) / DAY)
 }
 
-export const daysLateLabel = (n: number) => (n === 1 ? tr("1 day late") : tr("{{n}} days late", { n }))
-export const daysLeftLabel = (n: number) => (n === 1 ? tr("1 day left") : tr("{{n}} days left", { n }))
-export const inDaysLabel = (n: number) => (n === 0 ? tr("today") : n === 1 ? tr("in 1 day") : tr("in {{n}} days", { n }))
+export const daysLateLabel = (n: number) =>
+  n === 1 ? tr("1 day late") : tr("{{n}} days late", { n })
+export const daysLeftLabel = (n: number) =>
+  n === 1 ? tr("1 day left") : tr("{{n}} days left", { n })
+export const inDaysLabel = (n: number) =>
+  n === 0 ? tr("today") : n === 1 ? tr("in 1 day") : tr("in {{n}} days", { n })
 
 /** Whether the page may link out to the Stripe dashboard: never for the demo's stand-in install. */
-export const dashboardShown = (load: HomeLoad | null | undefined): boolean => load?.connection.standIn !== true
+export const dashboardShown = (load: HomeLoad | null | undefined): boolean =>
+  load?.connection.standIn !== true
 
 /** A page of the Stripe dashboard, in the mode of the key. */
 export const dashboardUrl = (mode: string | undefined, path = "") =>
@@ -179,7 +196,8 @@ export const isFrozen = (k: PageKind) => k === "revoked" || k === "other_account
 export type DotTone = "success" | "warning" | "muted"
 export function dotTone(k: PageKind): DotTone {
   if (k === "home") return "success"
-  if (k === "revoked" || k === "stalled" || k === "partial" || k === "other_account") return "warning"
+  if (k === "revoked" || k === "stalled" || k === "partial" || k === "other_account")
+    return "warning"
   return "muted"
 }
 
@@ -192,7 +210,11 @@ export function dotWord(k: PageKind): string {
 }
 
 /** What Approve does on this page: a revoked key holds it, with the reason beside it. */
-export function approveState(k: PageKind): { enabled: boolean; label: string; hint: string | null } {
+export function approveState(k: PageKind): {
+  enabled: boolean
+  label: string
+  hint: string | null
+} {
   if (isFrozen(k)) return { enabled: false, label: tr("Held"), hint: tr("Waits for the key") }
   return { enabled: true, label: tr("Approve"), hint: null }
 }
@@ -206,7 +228,11 @@ export function staleNotice(load: HomeLoad, locale: string, tz?: string): string
 
 // ---- The state cards ----
 
-export type CardAction = { id: "check" | "settings" | "stripe_keys" | "stripe_webhooks" | "stripe" | "ask"; label: string; primary?: boolean }
+export type CardAction = {
+  id: "check" | "settings" | "stripe_keys" | "stripe_webhooks" | "stripe" | "ask"
+  label: string
+  primary?: boolean
+}
 export interface StateCard {
   kind: PageKind
   title: string
@@ -216,7 +242,12 @@ export interface StateCard {
   actions: CardAction[]
 }
 
-export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?: string): StateCard | null {
+export function stateCard(
+  load: HomeLoad | null,
+  locale: string,
+  now: Date,
+  tz?: string,
+): StateCard | null {
   const kind = pageKind(load)
   const test = load?.connection.mode !== "live"
   switch (kind) {
@@ -225,7 +256,11 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
         kind,
         title: tr("Stripe is not connected"),
         body: tr("Nothing has been read from Stripe and nothing has been changed."),
-        steps: [tr("An admin connects Stripe in Settings, Apps, Stripe, with a restricted key that starts with rk_.")],
+        steps: [
+          tr(
+            "An admin connects Stripe in Settings, Apps, Stripe, with a restricted key that starts with rk_.",
+          ),
+        ],
         note: null,
         actions: [{ id: "settings", label: tr("Connect Stripe"), primary: true }],
       }
@@ -233,7 +268,9 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
       return {
         kind,
         title: tr("Key stored, waiting for Stripe's first update"),
-        body: tr("The key works. The import starts when Stripe sends its first update to this workspace."),
+        body: tr(
+          "The key works. The import starts when Stripe sends its first update to this workspace.",
+        ),
         steps: [
           tr("In Stripe, open Developers, Webhooks, and add the Liaison endpoint."),
           tr("Give the signing secret to the agent in its form."),
@@ -249,9 +286,13 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
       return {
         kind,
         title: tr("First import is running"),
-        body: tr("You have nothing to do, and you can close this page. Figures show once everything is read."),
+        body: tr(
+          "You have nothing to do, and you can close this page. Figures show once everything is read.",
+        ),
         steps: [view.mrrLine],
-        note: tr("No routine runs on this data, and nothing goes to a customer until the import ends."),
+        note: tr(
+          "No routine runs on this data, and nothing goes to a customer until the import ends.",
+        ),
         actions: [{ id: "check", label: tr("Check again") }],
       }
     }
@@ -261,8 +302,16 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
         title: tr("Connected, and this account has no subscriptions"),
         body: tr("The key works and Stripe answers. It found no customers and no subscriptions."),
         steps: [
-          ...(test ? [tr("Expected customers? This is a test key, and it only sees test data. Use a live key, rk_live_.")] : []),
-          tr("Just starting? Nothing to do. The first subscription appears here within a minute of its creation."),
+          ...(test
+            ? [
+                tr(
+                  "Expected customers? This is a test key, and it only sees test data. Use a live key, rk_live_.",
+                ),
+              ]
+            : []),
+          tr(
+            "Just starting? Nothing to do. The first subscription appears here within a minute of its creation.",
+          ),
         ],
         note: null,
         actions: [
@@ -279,7 +328,9 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
           tr("In Stripe, create a new restricted key with the same permissions."),
           tr("Give it to the agent in its form. It checks the permissions again and catches up."),
         ],
-        note: tr("Until then refunds cannot run. Approvals waiting stay open, and you decide them once the key works."),
+        note: tr(
+          "Until then refunds cannot run. Approvals waiting stay open, and you decide them once the key works.",
+        ),
         actions: [
           { id: "settings", label: tr("Replace the key"), primary: true },
           { id: "stripe_keys", label: tr("Open API keys in Stripe") },
@@ -290,7 +341,11 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
         kind,
         title: tr("This key belongs to another Stripe account"),
         body: tr("Nothing was written, so the data already read is untouched."),
-        steps: [tr("Check which account and which mode the key belongs to, then replace it or run the check again.")],
+        steps: [
+          tr(
+            "Check which account and which mode the key belongs to, then replace it or run the check again.",
+          ),
+        ],
         note: tr("Until then refunds cannot run. Approvals waiting stay open."),
         actions: [
           { id: "check", label: tr("Check again"), primary: true },
@@ -299,18 +354,31 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
       }
     case "stalled": {
       const at = asOfLine(load?.connection.lastEventAt, locale, tz)
-      const hours = load?.connection.lastEventAt ? Math.floor((now.getTime() - Date.parse(load.connection.lastEventAt)) / 3_600_000) : null
+      const hours = load?.connection.lastEventAt
+        ? Math.floor((now.getTime() - Date.parse(load.connection.lastEventAt)) / 3_600_000)
+        : null
       return {
         kind,
-        title: at ? tr("No update from Stripe since {{time}}", { time: at }) : tr("No update from Stripe for a while"),
+        title: at
+          ? tr("No update from Stripe since {{time}}", { time: at })
+          : tr("No update from Stripe for a while"),
         body:
           hours !== null && hours >= 1
-            ? tr("That was over {{hours}} hours ago. Liaison usually gets an update every few minutes.", { hours })
+            ? tr(
+                "That was over {{hours}} hours ago. Liaison usually gets an update every few minutes.",
+                { hours },
+              )
             : tr("Liaison usually gets an update every few minutes."),
         steps: [
-          tr("In Stripe, open Developers, Webhooks, then the Liaison endpoint. If it is disabled, enable it."),
-          tr("If it shows failures, the signing secret may have changed. Give the agent the new one."),
-          tr("Stripe resends missed updates for up to 72 hours, so fix this before then and nothing is lost."),
+          tr(
+            "In Stripe, open Developers, Webhooks, then the Liaison endpoint. If it is disabled, enable it.",
+          ),
+          tr(
+            "If it shows failures, the signing secret may have changed. Give the agent the new one.",
+          ),
+          tr(
+            "Stripe resends missed updates for up to 72 hours, so fix this before then and nothing is lost.",
+          ),
         ],
         note: tr("Until then Liaison checks Stripe itself every 15 minutes."),
         actions: [
@@ -323,10 +391,14 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
       const missing = load?.sync.missing.join(", ") ?? ""
       return {
         kind,
-        title: tr("The key cannot read {{what}}, the rest is fine", { what: missing || tr("everything it needs") }),
+        title: tr("The key cannot read {{what}}, the rest is fine", {
+          what: missing || tr("everything it needs"),
+        }),
         body: tr("Figures that do not need it still come through."),
         steps: [
-          tr("In Stripe, add Read on the missing resource to the same key. You do not need a new key."),
+          tr(
+            "In Stripe, add Read on the missing resource to the same key. You do not need a new key.",
+          ),
           tr("Then check again. The agent fills in what is missing."),
         ],
         note: null,
@@ -345,7 +417,15 @@ const EMPTY_SYNC: SyncView = { importing: false, partial: false, missing: [], re
 
 // ---- Import progress ----
 
-const RESOURCE_ORDER = ["customers", "subscriptions", "invoices", "payments", "charges", "refunds", "disputes"]
+const RESOURCE_ORDER = [
+  "customers",
+  "subscriptions",
+  "invoices",
+  "payments",
+  "charges",
+  "refunds",
+  "disputes",
+]
 
 const order = (r: string) => (RESOURCE_ORDER.includes(r) ? RESOURCE_ORDER.indexOf(r) : 99)
 
@@ -357,7 +437,12 @@ export function importingView(sync: SyncView) {
       status: r.status,
       done: r.done,
       total: r.total,
-      percent: r.total && r.total > 0 ? Math.min(100, Math.round((r.done / r.total) * 100)) : r.status === "done" ? 100 : 0,
+      percent:
+        r.total && r.total > 0
+          ? Math.min(100, Math.round((r.done / r.total) * 100))
+          : r.status === "done"
+            ? 100
+            : 0,
     }))
   const subs = sync.resources.find((r) => r.resource === "subscriptions")
   const mrrLine =
@@ -412,7 +497,8 @@ export function buildAttention(input: {
   const retryBySub = new Set<string>()
   for (const inv of input.openInvoices) {
     const next = inv.nextPaymentAttempt ? Date.parse(inv.nextPaymentAttempt) : Number.NaN
-    if (inv.subscriptionId && !Number.isNaN(next) && next > now.getTime()) retryBySub.add(inv.subscriptionId)
+    if (inv.subscriptionId && !Number.isNaN(next) && next > now.getTime())
+      retryBySub.add(inv.subscriptionId)
   }
   const failed: FailedRow[] = []
   const retrying = { count: 0, mrrByCurrency: {} as Record<string, number> }
@@ -433,7 +519,9 @@ export function buildAttention(input: {
       plan: s.plan,
       mrrMinor: s.mrrMinor ?? 0,
       currency,
-      daysLate: s.pastDueSince ? Math.max(0, Math.floor((now.getTime() - Date.parse(s.pastDueSince)) / DAY)) : 0,
+      daysLate: s.pastDueSince
+        ? Math.max(0, Math.floor((now.getTime() - Date.parse(s.pastDueSince)) / DAY))
+        : 0,
       amountDueMinor: inv?.amountDueMinor ?? null,
       card: s.card,
     })
@@ -444,8 +532,16 @@ export function buildAttention(input: {
   const disputes = input.disputes
     .filter((d) => d.status === "needs_response" || d.status === "warning_needs_response")
     .sort((a, b) => time(a.evidenceDueBy) - time(b.evidenceDueBy) || a.id.localeCompare(b.id))
-  const requests = input.approvals.filter((a) => a.status === "pending" && MONEY_REQUESTS.has(a.toolName ?? ""))
-  return { failed, retrying, disputes, requests, count: failed.length + disputes.length + requests.length }
+  const requests = input.approvals.filter(
+    (a) => a.status === "pending" && MONEY_REQUESTS.has(a.toolName ?? ""),
+  )
+  return {
+    failed,
+    retrying,
+    disputes,
+    requests,
+    count: failed.length + disputes.length + requests.length,
+  }
 }
 
 /** Only one of this app's pending money requests can be reviewed. */
@@ -474,7 +570,14 @@ export function trialsEnding(subs: SubItem[], now: Date, withinDays = 7): TrialR
     if (s.status !== "trialing" || !s.trialEnd) continue
     const days = daysFromNow(s.trialEnd, now)
     if (days === null || days < 0 || days > withinDays) continue
-    rows.push({ subscriptionId: s.id, customerId: s.customerId, plan: s.plan, endsAt: s.trialEnd, days, cardOnFile: s.card !== null })
+    rows.push({
+      subscriptionId: s.id,
+      customerId: s.customerId,
+      plan: s.plan,
+      endsAt: s.trialEnd,
+      days,
+      cardOnFile: s.card !== null,
+    })
   }
   return rows.sort((a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))
 }
@@ -487,10 +590,26 @@ export function buildMrrView(mrr: MrrResult | null, locale: string) {
     const cur = l.currency
     const m = l.movements
     const parts: Array<{ key: string; label: string; amount: string }> = []
-    if (m.newMinor) parts.push({ key: "new", label: tr("new"), amount: signed(m.newMinor, cur, locale) })
-    if (m.upgradeMinor) parts.push({ key: "upgrade", label: tr("upgrade"), amount: signed(m.upgradeMinor, cur, locale) })
-    if (m.downgradeMinor) parts.push({ key: "downgrade", label: tr("downgrade"), amount: signed(m.downgradeMinor, cur, locale) })
-    if (m.cancelledMinor) parts.push({ key: "cancelled", label: tr("cancelled"), amount: signed(m.cancelledMinor, cur, locale) })
+    if (m.newMinor)
+      parts.push({ key: "new", label: tr("new"), amount: signed(m.newMinor, cur, locale) })
+    if (m.upgradeMinor)
+      parts.push({
+        key: "upgrade",
+        label: tr("upgrade"),
+        amount: signed(m.upgradeMinor, cur, locale),
+      })
+    if (m.downgradeMinor)
+      parts.push({
+        key: "downgrade",
+        label: tr("downgrade"),
+        amount: signed(m.downgradeMinor, cur, locale),
+      })
+    if (m.cancelledMinor)
+      parts.push({
+        key: "cancelled",
+        label: tr("cancelled"),
+        amount: signed(m.cancelledMinor, cur, locale),
+      })
     const dir = m.netMinor > 0 ? tr("up") : m.netMinor < 0 ? tr("down") : tr("unchanged")
     return {
       currency: cur.toUpperCase(),
@@ -499,7 +618,11 @@ export function buildMrrView(mrr: MrrResult | null, locale: string) {
       start: formatMoney(m.startMinor, cur, locale),
       monthStart: l.monthStart,
       paying: l.activeCount,
-      plans: l.byPlan.map((p) => ({ plan: p.plan, count: p.count, amount: formatMoney(p.mrrMinor, cur, locale) })),
+      plans: l.byPlan.map((p) => ({
+        plan: p.plan,
+        count: p.count,
+        amount: formatMoney(p.mrrMinor, cur, locale),
+      })),
       pastDue: l.pastDueMinor > 0 ? formatMoney(l.pastDueMinor, cur, locale) : null,
       movements: parts,
     }

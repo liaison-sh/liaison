@@ -15,8 +15,9 @@
 //
 // A movement lost between the mirror write and its append (a crash) is written
 // again by the rebuild (mrr-rebuild.ts) from Stripe's events of the last 30 days.
-import { movementKind } from "./mrr"
+
 import type { MirrorDb } from "./mirror"
+import { movementKind } from "./mrr"
 
 type Obj = Record<string, unknown>
 
@@ -34,7 +35,10 @@ export interface Movement {
 }
 
 /** The latest `after_minor` the log holds for a subscription, or null when it holds none. */
-export async function chainAfter(db: MirrorDb, subscriptionId: string): Promise<{ after: number; at: string } | null> {
+export async function chainAfter(
+  db: MirrorDb,
+  subscriptionId: string,
+): Promise<{ after: number; at: string } | null> {
   const rows = (await db.findMany("stripe_mrr_events", {
     where: { subscription_id: subscriptionId },
     orderBy: { at: "desc" },
@@ -64,7 +68,10 @@ export async function appendMovement(db: MirrorDb, m: Movement): Promise<boolean
     await db.insert("stripe_mrr_events", data)
     return true
   } catch (err) {
-    const same = await db.findMany("stripe_mrr_events", { where: { stripe_event_id: m.eventId }, limit: 1 })
+    const same = await db.findMany("stripe_mrr_events", {
+      where: { stripe_event_id: m.eventId },
+      limit: 1,
+    })
     if (same.length > 0) return false
     throw err
   }
@@ -82,7 +89,11 @@ export interface RecordOptions {
  * The callback `writeMirror` takes for a subscription row: append the movement
  * this write made, if it made one.
  */
-export function recordMovement(db: MirrorDb, row: Obj, opts: RecordOptions): (before: Obj | null) => Promise<void> {
+export function recordMovement(
+  db: MirrorDb,
+  row: Obj,
+  opts: RecordOptions,
+): (before: Obj | null) => Promise<void> {
   return async (seen) => {
     const before = seen ? Number(seen.mrr_minor) || 0 : 0
     const after = Number(row.mrr_minor) || 0
@@ -94,9 +105,13 @@ export function recordMovement(db: MirrorDb, row: Obj, opts: RecordOptions): (be
     const healId = `reconcile:${subscriptionId}:${after}:${period}`
     let eventId = opts.source === "webhook" && opts.eventId ? opts.eventId : healId
     if (opts.source === "reconcile") {
-      const taken = (await db.findMany("stripe_mrr_events", { where: { stripe_event_id: eventId }, limit: 1 })) as Obj[]
+      const taken = (await db.findMany("stripe_mrr_events", {
+        where: { stripe_event_id: eventId },
+        limit: 1,
+      })) as Obj[]
       // The same heal id in the same period for another change: keep both.
-      if (taken[0] && Number(taken[0].before_minor) !== before) eventId = `${healId}:${before}:${opts.at}`
+      if (taken[0] && Number(taken[0].before_minor) !== before)
+        eventId = `${healId}:${before}:${opts.at}`
     }
     await appendMovement(db, {
       eventId,

@@ -87,7 +87,12 @@ export function lookupView(r: LookupResult | null | undefined): {
 } {
   if (!r) return { candidates: [], selected: null, derived: false, message: null }
   if (r.status === "error") {
-    return { candidates: [], selected: null, derived: false, message: r.error?.message ?? r.error?.code ?? tr("The lookup failed.") }
+    return {
+      candidates: [],
+      selected: null,
+      derived: false,
+      message: r.error?.message ?? r.error?.code ?? tr("The lookup failed."),
+    }
   }
   if (r.status === "registry_unconfirmed") {
     const message =
@@ -96,14 +101,22 @@ export function lookupView(r: LookupResult | null | undefined): {
         : tr("The registry could not be reached. Try again in a moment.")
     return { candidates: [], selected: null, derived: !!r.derived_siren, message }
   }
-  return { candidates: r.candidates ?? [], selected: null, derived: !!r.derived_siren, message: null }
+  return {
+    candidates: r.candidates ?? [],
+    selected: null,
+    derived: !!r.derived_siren,
+    message: null,
+  }
 }
 
 /** What a save (or a candidate pick) says afterwards. */
 export function identitySetNote(result: unknown): { text: string; isError: boolean } {
   const r = (result && typeof result === "object" ? result : {}) as Record<string, unknown>
   if ("blocked" in r || r.status === "pending_approval") {
-    return { text: tr("Sent for a person to confirm. Nothing is recorded until then."), isError: false }
+    return {
+      text: tr("Sent for a person to confirm. Nothing is recorded until then."),
+      isError: false,
+    }
   }
   if (r.status === "error") {
     const e = r.error as { message?: string; code?: string } | undefined
@@ -166,7 +179,11 @@ interface IdentityGetResult {
   status?: string
   counterparty_name?: string | null
   identity?: IdentityRowView | null
-  snapshot?: { customer_kind?: string | null; buyer_siren?: string | null; buyer_siret?: string | null } | null
+  snapshot?: {
+    customer_kind?: string | null
+    buyer_siren?: string | null
+    buyer_siret?: string | null
+  } | null
   error?: { message?: string }
 }
 
@@ -178,7 +195,8 @@ interface Loaded {
 
 async function loadIdentity(target: IdentityTarget): Promise<Loaded> {
   const got = await app.invokeTool<IdentityGetResult>("counterparty_identity_get", target)
-  if (got?.status === "error") throw new Error(got.error?.message ?? tr("The identity could not be loaded."))
+  if (got?.status === "error")
+    throw new Error(got.error?.message ?? tr("The identity could not be loaded."))
   let verdict: ClassifyVerdict | null = null
   try {
     const v = await app.invokeTool<ClassifyVerdict>("einvoicing_classify", target)
@@ -217,7 +235,11 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
   const identity = () => loaded()?.identity ?? null
   // The form starts from what is recorded until the person edits it.
   const shownKind = () =>
-    touched() ? kind() : ((KIND_VALUES.has(identity()?.customer_kind ?? "") ? identity()?.customer_kind : null) as CustomerKind | null)
+    touched()
+      ? kind()
+      : ((KIND_VALUES.has(identity()?.customer_kind ?? "")
+          ? identity()?.customer_kind
+          : null) as CustomerKind | null)
   const shownSiren = () => (touched() ? siren() : (identity()?.siren ?? ""))
   const shownSiret = () => (touched() ? siret() : (identity()?.siret ?? ""))
   const startEditing = () => {
@@ -269,9 +291,16 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
         query: query().trim() || null,
         postcode: postcode().trim() || null,
       }
-      setLookup(lookupView(await app.invokeTool<LookupResult>("counterparty_identity_lookup", params)))
+      setLookup(
+        lookupView(await app.invokeTool<LookupResult>("counterparty_identity_lookup", params)),
+      )
     } catch (e) {
-      setLookup({ candidates: [], selected: null, derived: false, message: e instanceof Error ? e.message : tr("The lookup failed.") })
+      setLookup({
+        candidates: [],
+        selected: null,
+        derived: false,
+        message: e instanceof Error ? e.message : tr("The lookup failed."),
+      })
     } finally {
       setBusy(false)
     }
@@ -292,7 +321,11 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
   const decideTerritory = (treatment: "as_fr" | "as_foreign") => {
     const t = target()
     if (!t || !("contact_id" in t) || !territoryReason().trim()) return
-    void run("counterparty_territory_set", { contact_id: t.contact_id, treatment, reason: territoryReason().trim() })
+    void run("counterparty_territory_set", {
+      contact_id: t.contact_id,
+      treatment,
+      reason: territoryReason().trim(),
+    })
   }
 
   return (
@@ -417,7 +450,9 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
               {tr("Save")}
             </Button>
             <span class="text-[11.5px] text-text-tertiary">
-              {tr("A SIREN the registry does not confirm under this customer's name goes to a person first.")}
+              {tr(
+                "A SIREN the registry does not confirm under this customer's name goes to a person first.",
+              )}
             </span>
           </div>
         </section>
@@ -477,10 +512,16 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
                     </span>
                     <span class="text-[11.5px] text-text-tertiary">
                       {c.active === false ? tr("Ceased") : tr("Active")}
-                      {c.name_match === false ? ` ${tr("(the name differs from the customer's)")}` : ""}
+                      {c.name_match === false
+                        ? ` ${tr("(the name differs from the customer's)")}`
+                        : ""}
                     </span>
                   </div>
-                  <Button testid={`identity-candidate-pick-${c.siren}`} disabled={busy()} onClick={() => pick(c)}>
+                  <Button
+                    testid={`identity-candidate-pick-${c.siren}`}
+                    disabled={busy()}
+                    onClick={() => pick(c)}
+                  >
                     {tr("This is the customer")}
                   </Button>
                 </li>
@@ -490,7 +531,13 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
         </section>
 
         {/* Territory treatment (buyers the classifier cannot place) */}
-        <Show when={territoryNeeded(loaded()?.verdict, identity()) && target() && "contact_id" in (target() as object)}>
+        <Show
+          when={
+            territoryNeeded(loaded()?.verdict, identity()) &&
+            target() &&
+            "contact_id" in (target() as object)
+          }
+        >
           <section data-testid="identity-territory" class="flex flex-col gap-2">
             <SectionLabel>{tr("Territory")}</SectionLabel>
             <div class="text-text-secondary">
@@ -498,7 +545,9 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
                 ? tr("Treated as France.")
                 : identity()?.territory_treatment === "as_foreign"
                   ? tr("Treated as abroad.")
-                  : tr("This buyer's territory is not decided automatically. Record a decision with its reason; a person approves it.")}
+                  : tr(
+                      "This buyer's territory is not decided automatically. Record a decision with its reason; a person approves it.",
+                    )}
             </div>
             <input
               data-testid="identity-territory-reason"
@@ -528,7 +577,10 @@ export const InvoicingIdentity: Component<{ entityId?: string }> = (props) => {
 
         <Show when={note()}>
           {(n) => (
-            <div data-testid="identity-note" class={n().isError ? "text-error" : "text-text-secondary"}>
+            <div
+              data-testid="identity-note"
+              class={n().isError ? "text-error" : "text-text-secondary"}
+            >
               {n().text}
             </div>
           )}

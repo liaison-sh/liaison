@@ -8,16 +8,17 @@
 // Principles: quiet surfaces, one accent, generous spacing, tabular money,
 // status as tinted badges (never raw enum text), real form controls (no naked
 // native widgets). Restraint over decoration.
-import { tr } from "./i18n"
+
 import {
   Badge,
   type BadgeTone,
-  ConfirmDialog as SharedConfirmDialog,
   cx,
   inputClass,
+  ConfirmDialog as SharedConfirmDialog,
 } from "@liaison/app-ui/kit"
 import { type Component, type JSX, Show } from "solid-js"
 import { currencyExponent } from "../money"
+import { tr } from "./i18n"
 
 export {
   Badge,
@@ -101,8 +102,7 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   received: "neutral",
 }
 
-const humanize = (s: string): string =>
-  s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
+const humanize = (s: string): string => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
 
 export const StatusBadge: Component<{ status: string; testid?: string }> = (props) => (
   <Badge tone={STATUS_TONE[props.status] ?? "neutral"} dot testid={props.testid}>
@@ -130,7 +130,10 @@ export const TypeLabel: Component<{ type: string; class?: string; testid?: strin
 export const dateInputClass = cx(inputClass, "[color-scheme:dark]")
 /** A date field that sizes itself: the kit's `inputClass` carries `w-full`,
  *  which beats a caller's own width and stretches the field across its row. */
-export const dateRangeInputClass = cx(inputClass.replace(/(^|\s)w-full(?=\s)/, " "), "[color-scheme:dark]")
+export const dateRangeInputClass = cx(
+  inputClass.replace(/(^|\s)w-full(?=\s)/, " "),
+  "[color-scheme:dark]",
+)
 
 const Chevron: Component<{ class?: string }> = (props) => (
   <svg

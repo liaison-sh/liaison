@@ -4,9 +4,11 @@
 // and local products. Thin presentation glue over the `packages_list` catalog
 // tool, composed entirely from the shared Boxtal UI kit so it stays visually
 // identical to the invoicing app.
-import { type Component, createSignal, For, Show } from "solid-js"
-import { app } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app } from "@liaison/host"
+import { type Component, createSignal, For, Show } from "solid-js"
+import { tr } from "./i18n"
 import {
   Badge,
   Button,
@@ -17,7 +19,6 @@ import {
   PageHeader,
   SectionLabel,
 } from "./kit"
-import { tr } from "./i18n"
 
 interface VariantRef {
   product_source: string
@@ -43,7 +44,12 @@ interface PackRow {
   name: string
   gross_weight: number
   stale: boolean
-  components: Array<{ product_source: string; product_id: string; quantity: number; label: string | null }>
+  components: Array<{
+    product_source: string
+    product_id: string
+    quantity: number
+    label: string | null
+  }>
 }
 interface LocalRow {
   id: string
@@ -99,15 +105,15 @@ const LinkVariant: Component<{
     setBusy(true)
     setError(null)
     try {
-      const res = await app.invokeTool<{ preview?: boolean; differences?: Array<{ field: string }> }>(
-        "product_profile_link",
-        {
-          product_source: props.variant.product_source,
-          product_id: props.variant.product_id,
-          profile_id: choice(),
-          ...(confirm ? { confirm: true } : {}),
-        },
-      )
+      const res = await app.invokeTool<{
+        preview?: boolean
+        differences?: Array<{ field: string }>
+      }>("product_profile_link", {
+        product_source: props.variant.product_source,
+        product_id: props.variant.product_id,
+        profile_id: choice(),
+        ...(confirm ? { confirm: true } : {}),
+      })
       if (res.preview) {
         setMovePreview((res.differences ?? []).map((d) => d.field))
         return
@@ -116,7 +122,9 @@ const LinkVariant: Component<{
       setOpen(false)
       props.onLinked()
     } catch (e) {
-      setError(tr("Could not save: {{message}}", { message: e instanceof Error ? e.message : String(e) }))
+      setError(
+        tr("Could not save: {{message}}", { message: e instanceof Error ? e.message : String(e) }),
+      )
     } finally {
       setBusy(false)
     }
@@ -125,7 +133,11 @@ const LinkVariant: Component<{
     <Show
       when={open()}
       fallback={
-        <Button variant="ghost" testid={`boxtal-unprofiled-link-${key()}`} onClick={() => setOpen(true)}>
+        <Button
+          variant="ghost"
+          testid={`boxtal-unprofiled-link-${key()}`}
+          onClick={() => setOpen(true)}
+        >
           {tr("Link to existing profile")}
         </Button>
       }
@@ -157,11 +169,19 @@ const LinkVariant: Component<{
         </Button>
         <Show when={movePreview()}>
           {(fields) => (
-            <span class="flex flex-wrap items-center gap-2" data-testid={`boxtal-unprofiled-move-${key()}`}>
+            <span
+              class="flex flex-wrap items-center gap-2"
+              data-testid={`boxtal-unprofiled-move-${key()}`}
+            >
               <span class="text-[11.5px] text-text-secondary">
                 {fields().length > 0
-                  ? tr("This variant already uses another profile. Moving it changes {{fields}} and puts it in the chosen profile's packs.", { fields: fields().join(", ") })
-                  : tr("This variant already uses another profile. Moving it puts it in the chosen profile's packs.")}
+                  ? tr(
+                      "This variant already uses another profile. Moving it changes {{fields}} and puts it in the chosen profile's packs.",
+                      { fields: fields().join(", ") },
+                    )
+                  : tr(
+                      "This variant already uses another profile. Moving it puts it in the chosen profile's packs.",
+                    )}
               </span>
               <Button
                 variant="primary"
@@ -174,7 +194,11 @@ const LinkVariant: Component<{
             </span>
           )}
         </Show>
-        <Button variant="ghost" testid={`boxtal-unprofiled-cancel-${key()}`} onClick={() => setOpen(false)}>
+        <Button
+          variant="ghost"
+          testid={`boxtal-unprofiled-cancel-${key()}`}
+          onClick={() => setOpen(false)}
+        >
           {tr("Cancel")}
         </Button>
         <Show when={error()}>
@@ -197,24 +221,38 @@ const DeleteProfile: Component<{ profile: ProfileRow; onDeleted: () => void }> =
       await app.invokeTool("product_profile_delete", { profile_id: props.profile.id })
       props.onDeleted()
     } catch (e) {
-      setError(tr("Could not save: {{message}}", { message: e instanceof Error ? e.message : String(e) }))
+      setError(
+        tr("Could not save: {{message}}", { message: e instanceof Error ? e.message : String(e) }),
+      )
     }
   }
   return (
     <Show
       when={confirming()}
       fallback={
-        <Button variant="ghost" testid={`boxtal-profile-delete-${props.profile.id}`} onClick={() => setConfirming(true)}>
+        <Button
+          variant="ghost"
+          testid={`boxtal-profile-delete-${props.profile.id}`}
+          onClick={() => setConfirming(true)}
+        >
           {tr("Delete")}
         </Button>
       }
     >
       <span class="flex items-center gap-2">
         <span class="text-[11.5px] text-text-secondary">{tr("Delete this profile?")}</span>
-        <Button variant="primary" testid={`boxtal-profile-delete-confirm-${props.profile.id}`} onClick={() => void remove()}>
+        <Button
+          variant="primary"
+          testid={`boxtal-profile-delete-confirm-${props.profile.id}`}
+          onClick={() => void remove()}
+        >
           {tr("Delete")}
         </Button>
-        <Button variant="ghost" testid={`boxtal-profile-delete-cancel-${props.profile.id}`} onClick={() => setConfirming(false)}>
+        <Button
+          variant="ghost"
+          testid={`boxtal-profile-delete-cancel-${props.profile.id}`}
+          onClick={() => setConfirming(false)}
+        >
           {tr("Cancel")}
         </Button>
         <Show when={error()}>
@@ -287,7 +325,10 @@ export const Catalog: Component = () => {
                     header: tr("Variants"),
                     role: "secondary",
                     cell: (p) => (
-                      <span class="flex flex-wrap gap-1.5" data-testid={`boxtal-profile-variants-${p.id}`}>
+                      <span
+                        class="flex flex-wrap gap-1.5"
+                        data-testid={`boxtal-profile-variants-${p.id}`}
+                      >
                         <For each={p.variants}>
                           {(v) => (
                             <span class="inline-flex items-center gap-1.5">
@@ -326,7 +367,9 @@ export const Catalog: Component = () => {
                             <span
                               data-testid={`boxtal-profile-code-sync-${p.id}`}
                               data-state={sync().state}
-                              title={[sync().skus.join(", "), sync().detail].filter(Boolean).join(": ")}
+                              title={[sync().skus.join(", "), sync().detail]
+                                .filter(Boolean)
+                                .join(": ")}
                             >
                               <Badge tone="neutral">
                                 {sync().state === "conflict"
@@ -388,7 +431,8 @@ export const Catalog: Component = () => {
             when={packs().length > 0}
             fallback={
               <EmptyState testid="boxtal-catalog-packs-empty" title="No packs">
-                Packs bundle several products into one shippable parcel with a combined gross weight.
+                Packs bundle several products into one shippable parcel with a combined gross
+                weight.
               </EmptyState>
             }
           >
@@ -413,12 +457,16 @@ export const Catalog: Component = () => {
                       <div class="flex flex-wrap gap-1.5 px-3 py-2.5">
                         <Show
                           when={pk.components.length > 0}
-                          fallback={<span class="text-[11.5px] text-text-tertiary">No components</span>}
+                          fallback={
+                            <span class="text-[11.5px] text-text-tertiary">No components</span>
+                          }
                         >
                           <For each={pk.components}>
                             {(c) => (
                               <span class="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-2 py-0.5 text-[11.5px] text-text-secondary">
-                                <span class="font-mono tabular-nums text-text-tertiary">{c.quantity}×</span>
+                                <span class="font-mono tabular-nums text-text-tertiary">
+                                  {c.quantity}×
+                                </span>
                                 <span class="text-text">{c.label ?? c.product_id}</span>
                               </span>
                             )}
@@ -442,7 +490,8 @@ export const Catalog: Component = () => {
             when={locals().length > 0}
             fallback={
               <EmptyState testid="boxtal-catalog-locals-empty" title="No local products">
-                Local products are catalog entries created in Boxtal that don't map to an external source.
+                Local products are catalog entries created in Boxtal that don't map to an external
+                source.
               </EmptyState>
             }
           >

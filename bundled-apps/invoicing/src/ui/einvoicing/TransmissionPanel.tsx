@@ -39,7 +39,13 @@ export interface TransmissionRow {
 }
 
 export interface SendPreview {
-  binding: { document_id: string; legal_original_sha256: string; buyer_siren: string; routing_address: string; attempt?: number }
+  binding: {
+    document_id: string
+    legal_original_sha256: string
+    buyer_siren: string
+    routing_address: string
+    attempt?: number
+  }
   registry_name: string | null
   registry_city: string | null
   contact_name: string | null
@@ -72,7 +78,14 @@ const LIFECYCLE_LABEL: Record<string, string> = {
 }
 
 /** Rows of the status mapping that are inferred from the platform's words, not documented. */
-const INFERRED = new Set(["deposited", "sent", "accepted", "approved", "in_dispute", "partially_collected"])
+const INFERRED = new Set([
+  "deposited",
+  "sent",
+  "accepted",
+  "approved",
+  "in_dispute",
+  "partially_collected",
+])
 
 const TERMINAL_SEND_STATES = new Set(["failed", "not_in_directory", "routing_mismatch"])
 
@@ -97,7 +110,13 @@ export interface PanelView {
   status: string | null
   /** Only a refusal / rejection / failure is worded as needing attention (never a colour alarm). */
   attention: string | null
-  timeline: Array<{ label: string; code: number | null; inferred: boolean; at: string; reason: string | null }>
+  timeline: Array<{
+    label: string
+    code: number | null
+    inferred: boolean
+    at: string
+    reason: string | null
+  }>
   canSend: boolean
   canRefresh: boolean
   blocked: string | null
@@ -105,9 +124,20 @@ export interface PanelView {
 }
 
 export function transmissionPanelView(d: TransmissionData | null): PanelView {
-  const empty: PanelView = { visible: false, status: null, attention: null, timeline: [], canSend: false, canRefresh: false, blocked: null, confirmBody: null }
+  const empty: PanelView = {
+    visible: false,
+    status: null,
+    attention: null,
+    timeline: [],
+    canSend: false,
+    canRefresh: false,
+    blocked: null,
+    confirmBody: null,
+  }
   if (!d || d.status !== "ok") return empty
-  const sends = d.transmissions.filter((t) => t.action === "send_einvoice").sort((a, b) => (a.attempt ?? 1) - (b.attempt ?? 1))
+  const sends = d.transmissions
+    .filter((t) => t.action === "send_einvoice")
+    .sort((a, b) => (a.attempt ?? 1) - (b.attempt ?? 1))
   const send = sends[sends.length - 1] ?? null
   const failedForGood = Boolean(send && TERMINAL_SEND_STATES.has(send.state))
   const book = d.transmissions.find((t) => t.action === "book_sale") ?? null
@@ -119,13 +149,20 @@ export function transmissionPanelView(d: TransmissionData | null): PanelView {
     const code = send.lifecycle_code ? ` (${send.lifecycle_code})` : ""
     status = `${tr(LIFECYCLE_LABEL[send.lifecycle_state] ?? send.lifecycle_state)}${code}`
     if (send.lifecycle_state === "refused" || send.lifecycle_state === "rejected") {
-      attention = tr("The buyer's platform gave this reason: {{reason}}. Decide whether to issue a credit note; nothing is done automatically.", {
-        reason: send.lifecycle_reason ?? tr("no reason given"),
-      })
+      attention = tr(
+        "The buyer's platform gave this reason: {{reason}}. Decide whether to issue a credit note; nothing is done automatically.",
+        {
+          reason: send.lifecycle_reason ?? tr("no reason given"),
+        },
+      )
     }
   } else if (tx) {
     status = tr(STATE_LABEL[tx.state] ?? tx.state)
-    if (tx.state === "failed" || tx.state === "not_in_directory" || tx.state === "routing_mismatch") {
+    if (
+      tx.state === "failed" ||
+      tx.state === "not_in_directory" ||
+      tx.state === "routing_mismatch"
+    ) {
       attention = tx.last_error?.message ?? null
     }
   } else if (d.einvoice_state) {
@@ -144,12 +181,16 @@ export function transmissionPanelView(d: TransmissionData | null): PanelView {
     }))
   const p = d.send_preview
   // After a terminal failure a person may send again (a new attempt under their own decision).
-  const canSend = Boolean(d.regime === "e_invoice" && (!send || failedForGood) && p && d.provider_app)
+  const canSend = Boolean(
+    d.regime === "e_invoice" && (!send || failedForGood) && p && d.provider_app,
+  )
   const confirmBody = p
     ? [
         tr("Registry name: {{name}}", { name: p.registry_name ?? "-" }),
         tr("Liaison contact: {{name}}", { name: p.contact_name ?? "-" }),
-        ...(p.name_mismatch ? [tr("The names differ: check it is the same company before sending.")] : []),
+        ...(p.name_mismatch
+          ? [tr("The names differ: check it is the same company before sending.")]
+          : []),
         tr("SIREN: {{siren}}", { siren: p.binding.buyer_siren }),
         tr("Registered office: {{city}}", { city: p.registry_city ?? "-" }),
         tr("Routing address: {{address}}", { address: p.binding.routing_address }),
@@ -170,7 +211,9 @@ export function transmissionPanelView(d: TransmissionData | null): PanelView {
 
 async function load(documentId: string): Promise<TransmissionData | null> {
   try {
-    return await app.invokeTool<TransmissionData>("einvoice_transmission_get", { document_id: documentId })
+    return await app.invokeTool<TransmissionData>("einvoice_transmission_get", {
+      document_id: documentId,
+    })
   } catch {
     return null
   }
@@ -182,7 +225,8 @@ export const TransmissionPanel: Component<{ documentId: string }> = (props) => {
   const [busy, setBusy] = createSignal(false)
   // Read only once settled (latest while refreshing): a pending read would blank the whole
   // document detail, which renders this panel under its Suspense.
-  const settled = () => (data.state === "ready" || data.state === "refreshing" ? data.latest : undefined)
+  const settled = () =>
+    data.state === "ready" || data.state === "refreshing" ? data.latest : undefined
   const view = () => transmissionPanelView(settled() ?? null)
 
   const send = async () => {
@@ -217,12 +261,21 @@ export const TransmissionPanel: Component<{ documentId: string }> = (props) => {
             {view().status}
           </span>
           <Show when={view().canSend}>
-            <Button testid="einvoice-panel-send" disabled={busy()} onClick={() => setConfirming(true)}>
+            <Button
+              testid="einvoice-panel-send"
+              disabled={busy()}
+              onClick={() => setConfirming(true)}
+            >
               {tr("Send through the e-invoicing platform")}
             </Button>
           </Show>
           <Show when={view().canRefresh}>
-            <Button testid="einvoice-panel-refresh" variant="ghost" disabled={busy()} onClick={refresh}>
+            <Button
+              testid="einvoice-panel-refresh"
+              variant="ghost"
+              disabled={busy()}
+              onClick={refresh}
+            >
               {tr("Refresh status")}
             </Button>
           </Show>
@@ -238,7 +291,10 @@ export const TransmissionPanel: Component<{ documentId: string }> = (props) => {
           </div>
         </Show>
         <Show when={view().timeline.length > 0}>
-          <ol data-testid="einvoice-panel-timeline" class="flex flex-col gap-0.5 text-text-secondary">
+          <ol
+            data-testid="einvoice-panel-timeline"
+            class="flex flex-col gap-0.5 text-text-secondary"
+          >
             <For each={view().timeline}>
               {(e) => (
                 <li data-testid="einvoice-panel-timeline-entry">

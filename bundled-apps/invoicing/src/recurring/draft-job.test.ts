@@ -2,132 +2,10 @@
 //
 // The month-end draft job against the in-memory store: one unnumbered draft per due schedule, made
 // from the schedule alone, keyed so a second run adds nothing, with flags read from the data.
+
 import { describe, expect, test } from "bun:test"
-import { createMockDb, type MockDb } from "../test-db"
-import { recurringDraftJob, recurringDraftWrite } from "./draft-job"
-import type { RunCtx } from "./run-card"
-import { weekdayOf } from "./schedule"
-
-export const ISSUER = "11111111-1111-4111-8111-111111111111"
-const CONTACT = "22222222-2222-4222-8222-222222222222"
-
-export function schedule(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    id,
-    issuer_profile_id: ISSUER,
-    contact_id: CONTACT,
-    status: "active",
-    repeats: "month",
-    billing_day: "last",
-    issue_mode: "review",
-    due_rule: "days_30",
-    lines: [{ description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000, line_kind: "service" }],
-    next_issue_on: "2026-11-30",
-    next_draft_on: "2026-11-27",
-    version: 1,
-    created_by: "user-am",
-    ...over,
-  }
-}
-
-export function previousDoc(id: string, paid: boolean): Record<string, unknown> {
-  return {
-    id,
-    type: "invoice",
-    status: "issued",
-    number: "F-2026-0040",
-    counterparty_contact_id: CONTACT,
-    counterparty_name: "Maison Sauvan",
-    counterparty_address: "3 rue des Lilas, 69001 Lyon",
-    counterparty_email: "compta@sauvan.example",
-    counterparty_country: "FR",
-    issuer_profile_id: ISSUER,
-    currency: "EUR",
-    payment_status: paid ? "paid" : "unpaid",
-    external_refs: {},
-  }
-}
-
-/** The contact's own records, as the kernel reads them: who a draft is made out to. */
-const CONTACT_RECORDS: Record<string, (params: Record<string, unknown>) => unknown> = {
-  "kernel:contacts_read": () => ({ contact: { id: CONTACT, name: "Maison Sauvan", email: "compta@sauvan.example" } }),
-  "kernel:contacts_addresses_list": () => ({ addresses: [{ role: "billing", street1: "3 rue des Lilas", postalCode: "69001", city: "Lyon", countryIso2: "FR" }] }),
-}
-
-export interface Harness {
-  ctx: RunCtx
-  db: MockDb
-  approvals: Array<Record<string, unknown>>
-  /** Approvals a person decided: the kernel no longer restages them. */
-  decided: Set<string>
-  restaged: Array<Record<string, unknown>>
-  agentCalls: number
-  draftWrites: number
-}
-
-export function harness(today: string, opts: { schedules?: Array<Record<string, unknown>>; docs?: Array<Record<string, unknown>>; lines?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>>; identities?: Array<Record<string, unknown>>; threshold?: number | null; hour?: number; kernel?: Record<string, (params: Record<string, unknown>) => unknown> } = {}): Harness {
-  const db = createMockDb({
-    bridgeWhereOperators: true,
-    seed: {
-      issuer_profiles: [
-        {
-          id: ISSUER,
-          legal_name: "Maison Nord SARL",
-          country: "FR",
-          default_currency: "EUR",
-          timezone: "Europe/Paris",
-          invoice_approval_threshold_minor: opts.threshold === undefined ? null : opts.threshold === null ? null : String(opts.threshold),
-        },
-      ],
-      recurring_schedules: opts.schedules ?? [schedule("33333333-3333-4333-8333-333333333331")],
-      ...(opts.docs ? { documents: opts.docs } : {}),
-      ...(opts.lines ? { document_lines: opts.lines } : {}),
-      ...(opts.items ? { recurring_run_items: opts.items } : {}),
-      ...(opts.identities ? { counterparty_identities: opts.identities } : {}),
-    },
-  })
-  const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], decided: new Set(), agentCalls: 0, draftWrites: 0 }
-  let n = 0
-  h.ctx = {
-    db: db as never,
-    getUserId: async () => "user-person",
-    approval: null,
-    time: {
-      async civil({ timezone }: { timezone: string }) {
-        const [y, m, d] = today.split("-").map(Number) as [number, number, number]
-        return { date: today, year: y, month: m, day: d, hour: opts.hour ?? 9, minute: 0, weekday: weekdayOf(today), zone: timezone }
-      },
-    },
-    requestApproval: async (input: Record<string, unknown>) => {
-      h.approvals.push(input)
-      n += 1
-      return { approval_id: `approval-${n}` }
-    },
-    approvals: {
-      restagePayload: async (id: string, fields: Record<string, unknown>) => {
-        // A decided approval is no longer rewritten: a change after it needs a new card.
-        if (h.decided.has(id)) return { ok: false, code: "not_pending", message: "decided" }
-        h.restaged.push({ id, ...fields })
-        return { ok: true, approval_id: id, payload_hash: "h", changed: true }
-      },
-    },
-    // A stub agent: any model or agent call made while drafting is counted and fails the test.
-    executeTool: async (target: string, params: Record<string, unknown>) => {
-      if (target.startsWith("kernel:agents") || target.includes("agent")) h.agentCalls += 1
-      if (target === "invoicing:recurring_draft_write") {
-        h.draftWrites += 1
-        return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
-      }
-      const kernel = opts.kernel?.[target] ?? CONTACT_RECORDS[target]
-      if (kernel) return { status: "completed", result: kernel(params) }
-      // No Stripe app here: the kernel answers an absent app's tool as not found.
-      if (target.startsWith("stripe:")) return { status: "error", error: { code: "tool_not_found", message: `tool ${target} not registered` } }
-      return { status: "error", error: { code: "unavailable", message: "no tool in this test" } }
-    },
-    emit: async () => {},
-  } as unknown as RunCtx
-  return h
-}
+import { CONTACT, harness, previousDoc, schedule } from "../__tests__/recurring-draft-fixtures"
+import { recurringDraftJob } from "./draft-job"
 
 describe("the month-end draft job", () => {
   test("the job drafts one unnumbered draft per due schedule from the schedule alone and stores the period", async () => {
@@ -149,11 +27,28 @@ describe("the month-end draft job", () => {
       due_at: "2026-12-30",
     })
     const lines = h.db.__all("document_lines").filter((l) => l.document_id === drafts[0]?.id)
-    expect(lines).toEqual([expect.objectContaining({ description: "Retainer November 2026", unit_price_minor: "150000", tax_rate_bp: 2000 })])
+    expect(lines).toEqual([
+      expect.objectContaining({
+        description: "Retainer November 2026",
+        unit_price_minor: "150000",
+        tax_rate_bp: 2000,
+      }),
+    ])
     const [item] = h.db.__all("recurring_run_items")
-    expect(item).toMatchObject({ period_key: "2026-11", period_start: "2026-11-01", period_end: "2026-11-30", document_id: drafts[0]?.id, state: "ready" })
+    expect(item).toMatchObject({
+      period_key: "2026-11",
+      period_start: "2026-11-01",
+      period_end: "2026-11-30",
+      document_id: drafts[0]?.id,
+      state: "ready",
+    })
     const [run] = h.db.__all("recurring_runs")
-    expect(run).toMatchObject({ issue_on: "2026-11-30", latest_issue_on: "2026-11-30", status: "drafted", approval_request_id: "approval-1" })
+    expect(run).toMatchObject({
+      issue_on: "2026-11-30",
+      latest_issue_on: "2026-11-30",
+      status: "drafted",
+      approval_request_id: "approval-1",
+    })
     // The schedule moved to its next period.
     expect(h.db.__all("recurring_schedules")[0]).toMatchObject({ next_issue_on: "2026-12-31" })
   })
@@ -192,33 +87,80 @@ describe("the month-end draft job", () => {
     const [first] = h.db.__all("recurring_run_items")
     expect(first).toMatchObject({ period_key: "2026-11", state: "needs_fix" })
     expect(String(first?.note)).toContain("No billing address")
-    expect(h.db.__all("documents")[0]).toMatchObject({ counterparty_address: null, status: "draft" })
+    expect(h.db.__all("documents")[0]).toMatchObject({
+      counterparty_address: null,
+      status: "draft",
+    })
 
     // The address is added to the contact; the November draft stays as it is, unissued.
-    addresses.push({ role: "billing", street1: "3 rue des Lilas", postalCode: "69001", city: "Lyon", countryIso2: "FR" })
+    addresses.push({
+      role: "billing",
+      street1: "3 rue des Lilas",
+      postalCode: "69001",
+      city: "Lyon",
+      countryIso2: "FR",
+    })
     const nextDraftOn = String(h.db.__all("recurring_schedules")[0]?.next_draft_on)
     Object.assign(h.ctx, { time: harness(nextDraftOn).ctx.time })
     await recurringDraftJob(h.ctx)
     const december = h.db.__all("recurring_run_items").find((i) => i.period_key === "2026-12")
     expect(december).toMatchObject({ state: "ready" })
     const draft = h.db.__all("documents").find((d) => d.id === december?.document_id)
-    expect(draft).toMatchObject({ counterparty_name: "Maison Sauvan", counterparty_address: "3 rue des Lilas, 69001 Lyon", counterparty_country: "FR" })
+    expect(draft).toMatchObject({
+      counterparty_name: "Maison Sauvan",
+      counterparty_address: "3 rue des Lilas, 69001 Lyon",
+      counterparty_country: "FR",
+    })
     // Field by field too: an e-invoice's Factur-X and its gate read these, not the one-line address.
-    expect(draft).toMatchObject({ billing_line1: "3 rue des Lilas", billing_postcode: "69001", billing_city: "Lyon", billing_country_code: "FR" })
+    expect(draft).toMatchObject({
+      billing_line1: "3 rue des Lilas",
+      billing_postcode: "69001",
+      billing_city: "Lyon",
+      billing_country_code: "FR",
+    })
   })
 
   test("a company schedule with no previous invoice bills the company: its name, billing address and VAT number", async () => {
     const company = "66666666-6666-4666-8666-666666666661"
     const h = harness("2026-11-27", {
       schedules: [schedule("33333333-3333-4333-8333-333333333331", { company_id: company })],
-      identities: [{ id: "77777777-7777-4777-8777-777777777771", contact_id: CONTACT, customer_kind: "business", vat_id: "FR40123456789" }],
+      identities: [
+        {
+          id: "77777777-7777-4777-8777-777777777771",
+          contact_id: CONTACT,
+          customer_kind: "business",
+          vat_id: "FR40123456789",
+        },
+      ],
       kernel: {
-        "kernel:contacts_read": () => ({ contact: { id: CONTACT, name: "Lucie Brume", email: "lucie@brume.example", companyId: company } }),
-        "kernel:companies_read": () => ({ company: { id: company, name: "Maison Brume SAS" }, people: [{ id: CONTACT, isMain: true }] }),
+        "kernel:contacts_read": () => ({
+          contact: {
+            id: CONTACT,
+            name: "Lucie Brume",
+            email: "lucie@brume.example",
+            companyId: company,
+          },
+        }),
+        "kernel:companies_read": () => ({
+          company: { id: company, name: "Maison Brume SAS" },
+          people: [{ id: CONTACT, isMain: true }],
+        }),
         "kernel:contacts_addresses_list": () => ({
           addresses: [
-            { role: "delivery", street1: "1 rue du Dépôt", postalCode: "69007", city: "Lyon", countryIso2: "FR" },
-            { role: "billing", street1: "12 quai Perrache", postalCode: "69002", city: "Lyon", countryIso2: "FR" },
+            {
+              role: "delivery",
+              street1: "1 rue du Dépôt",
+              postalCode: "69007",
+              city: "Lyon",
+              countryIso2: "FR",
+            },
+            {
+              role: "billing",
+              street1: "12 quai Perrache",
+              postalCode: "69002",
+              city: "Lyon",
+              countryIso2: "FR",
+            },
           ],
         }),
       },
@@ -237,10 +179,16 @@ describe("the month-end draft job", () => {
 
   test("a schedule with no person bills its company and never borrows another customer's invoice", async () => {
     const company = "66666666-6666-4666-8666-666666666661"
-    const unrelated = { ...previousDoc("44444444-4444-4444-8444-444444444449", true), counterparty_contact_id: null, counterparty_name: "Someone Else" }
+    const unrelated = {
+      ...previousDoc("44444444-4444-4444-8444-444444444449", true),
+      counterparty_contact_id: null,
+      counterparty_name: "Someone Else",
+    }
     const asked: Array<Record<string, unknown>> = []
     const h = harness("2026-11-27", {
-      schedules: [schedule("33333333-3333-4333-8333-333333333331", { company_id: company, contact_id: null })],
+      schedules: [
+        schedule("33333333-3333-4333-8333-333333333331", { company_id: company, contact_id: null }),
+      ],
       docs: [unrelated],
       kernel: {
         "kernel:contacts_read": (p) => {
@@ -251,19 +199,31 @@ describe("the month-end draft job", () => {
           asked.push(p)
           return { addresses: [] }
         },
-        "kernel:companies_read": () => ({ company: { id: company, name: "Maison Brume SAS" }, people: [] }),
+        "kernel:companies_read": () => ({
+          company: { id: company, name: "Maison Brume SAS" },
+          people: [],
+        }),
       },
     })
     await recurringDraftJob(h.ctx)
     const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
-    expect(draft).toMatchObject({ counterparty_name: "Maison Brume SAS", counterparty_contact_id: null, customer_kind: "business" })
+    expect(draft).toMatchObject({
+      counterparty_name: "Maison Brume SAS",
+      counterparty_contact_id: null,
+      customer_kind: "business",
+    })
     expect(asked).toEqual([])
   })
 
   test("a schedule with neither a person nor a company never borrows its last invoice's buyer and needs a fix", async () => {
     const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
     const h = harness("2026-11-27", {
-      schedules: [schedule("33333333-3333-4333-8333-333333333331", { contact_id: null, last_document_id: prev.id })],
+      schedules: [
+        schedule("33333333-3333-4333-8333-333333333331", {
+          contact_id: null,
+          last_document_id: prev.id,
+        }),
+      ],
       docs: [prev],
     })
     await recurringDraftJob(h.ctx)
@@ -293,13 +253,22 @@ describe("the month-end draft job", () => {
     expect(h.db.__all("recurring_run_items")).toHaveLength(2)
     expect(h.db.__all("documents").filter((d) => d.status === "draft")).toHaveLength(2)
     expect(h.approvals).toHaveLength(1)
-    expect((h.approvals[0]?.current_payload as { items: unknown[] }).items).toHaveLength(2)
+    expect((h.approvals[0]!.current_payload as { items: unknown[] }).items).toHaveLength(2)
   })
 
   test("the flags come from the data with no model call", async () => {
     const same = previousDoc("44444444-4444-4444-8444-444444444441", false)
     const changed = previousDoc("44444444-4444-4444-8444-444444444442", true)
-    const line = (doc: string, price: string) => ({ id: `l-${doc}`, document_id: doc, position: 1, description: "Retainer November 2026", quantity: "1", unit_price_minor: price, tax_rate_bp: 2000, subtotal_minor: price })
+    const line = (doc: string, price: string) => ({
+      id: `l-${doc}`,
+      document_id: doc,
+      position: 1,
+      description: "Retainer November 2026",
+      quantity: "1",
+      unit_price_minor: price,
+      tax_rate_bp: 2000,
+      subtotal_minor: price,
+    })
     const h = harness("2026-11-27", {
       schedules: [
         schedule("33333333-3333-4333-8333-333333333331", { last_document_id: same.id }),
@@ -309,14 +278,37 @@ describe("the month-end draft job", () => {
       docs: [same, changed],
       lines: [line(String(same.id), "150000"), line(String(changed.id), "120000")],
       items: [
-        { id: "i-prev-1", run_id: "r-old", schedule_id: "x1", period_key: "2026-10", period_start: "2026-10-01", period_end: "2026-10-31", document_id: same.id, position: 1, state: "issued" },
-        { id: "i-prev-2", run_id: "r-old", schedule_id: "x2", period_key: "2026-10", period_start: "2026-10-01", period_end: "2026-10-31", document_id: changed.id, position: 2, state: "issued" },
+        {
+          id: "i-prev-1",
+          run_id: "r-old",
+          schedule_id: "x1",
+          period_key: "2026-10",
+          period_start: "2026-10-01",
+          period_end: "2026-10-31",
+          document_id: same.id,
+          position: 1,
+          state: "issued",
+        },
+        {
+          id: "i-prev-2",
+          run_id: "r-old",
+          schedule_id: "x2",
+          period_key: "2026-10",
+          period_start: "2026-10-01",
+          period_end: "2026-10-31",
+          document_id: changed.id,
+          position: 2,
+          state: "issued",
+        },
       ],
     })
     await recurringDraftJob(h.ctx)
     expect(h.agentCalls).toBe(0)
     const notes = Object.fromEntries(
-      h.db.__all("recurring_run_items").filter((i) => i.period_key === "2026-11").map((i) => [String(i.schedule_id).slice(-1), i.note]),
+      h.db
+        .__all("recurring_run_items")
+        .filter((i) => i.period_key === "2026-11")
+        .map((i) => [String(i.schedule_id).slice(-1), i.note]),
     )
     expect(notes["1"]).toBe("Same as October · October is still unpaid")
     expect(notes["2"]).toBe("Changed since October")
@@ -332,16 +324,46 @@ describe("the month-end draft job", () => {
   test("a reused draft whose lines differ from its schedule needs a fix and is never ready", async () => {
     const id = "33333333-3333-4333-8333-333333333331"
     const ref = `recurring:${id}:2026-11`
-    const partial: Record<string, unknown> = { ...previousDoc("55555555-5555-4555-8555-555555555551", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const partial: Record<string, unknown> = {
+      ...previousDoc("55555555-5555-4555-8555-555555555551", false),
+      status: "draft",
+      number: null,
+      external_ref: ref,
+      external_refs: {},
+    }
     const twoLines = [
-      { description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000, line_kind: "service" },
-      { description: "Hosting {period}", qty: 2, unit_price_minor: 5000, vat_bp: 2000, line_kind: "service" },
+      {
+        description: "Retainer {period}",
+        qty: 1,
+        unit_price_minor: 150000,
+        vat_bp: 2000,
+        line_kind: "service",
+      },
+      {
+        description: "Hosting {period}",
+        qty: 2,
+        unit_price_minor: 5000,
+        vat_bp: 2000,
+        line_kind: "service",
+      },
     ]
     const h = harness("2026-11-27", {
       schedules: [schedule(id, { lines: twoLines, issue_mode: "auto" })],
       docs: [partial],
       // Only the first line was written before the job stopped.
-      lines: [{ id: "l-1", document_id: partial.id, position: 1, description: "Retainer November 2026", quantity: "1", unit_price_minor: "150000", tax_rate_bp: 2000, line_kind: "service", subtotal_minor: "150000" }],
+      lines: [
+        {
+          id: "l-1",
+          document_id: partial.id,
+          position: 1,
+          description: "Retainer November 2026",
+          quantity: "1",
+          unit_price_minor: "150000",
+          tax_rate_bp: 2000,
+          line_kind: "service",
+          subtotal_minor: "150000",
+        },
+      ],
     })
     await recurringDraftJob(h.ctx)
     const [item] = h.db.__all("recurring_run_items")
@@ -354,12 +376,33 @@ describe("the month-end draft job", () => {
   test("a reused draft whose lines match its schedule is ready", async () => {
     const id = "33333333-3333-4333-8333-333333333331"
     const ref = `recurring:${id}:2026-11`
-    const whole: Record<string, unknown> = { ...previousDoc("55555555-5555-4555-8555-555555555552", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const whole: Record<string, unknown> = {
+      ...previousDoc("55555555-5555-4555-8555-555555555552", false),
+      status: "draft",
+      number: null,
+      external_ref: ref,
+      external_refs: {},
+    }
     const h = harness("2026-11-27", {
       docs: [whole],
-      lines: [{ id: "l-1", document_id: whole.id, position: 1, description: "Retainer November 2026", quantity: "1.000", unit_price_minor: "150000", tax_rate_bp: 2000, line_kind: "service", subtotal_minor: "150000" }],
+      lines: [
+        {
+          id: "l-1",
+          document_id: whole.id,
+          position: 1,
+          description: "Retainer November 2026",
+          quantity: "1.000",
+          unit_price_minor: "150000",
+          tax_rate_bp: 2000,
+          line_kind: "service",
+          subtotal_minor: "150000",
+        },
+      ],
     })
     await recurringDraftJob(h.ctx)
-    expect(h.db.__all("recurring_run_items")[0]).toMatchObject({ document_id: whole.id, state: "ready" })
+    expect(h.db.__all("recurring_run_items")[0]).toMatchObject({
+      document_id: whole.id,
+      state: "ready",
+    })
   })
 })

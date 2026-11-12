@@ -64,7 +64,10 @@ export interface SourceView {
   tone: SourceTone
 }
 
-export type SummaryForSources = Pick<IncidentsSummaryWithConfig, "sources" | "profiles" | "sourceOrder">
+export type SummaryForSources = Pick<
+  IncidentsSummaryWithConfig,
+  "sources" | "profiles" | "sourceOrder"
+>
 
 const byName = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
@@ -99,7 +102,11 @@ export function toneOf(live: number, worst: Severity | null): SourceTone {
   return worst
 }
 
-function viewOf(source: string, health: SourceHealth | undefined, profile: SourceProfile | undefined): SourceView {
+function viewOf(
+  source: string,
+  health: SourceHealth | undefined,
+  profile: SourceProfile | undefined,
+): SourceView {
   const label = profile?.label ?? source
   const live = health?.open ?? 0
   const worst = health?.worstSeverity ?? null
@@ -121,7 +128,10 @@ function viewOf(source: string, health: SourceHealth | undefined, profile: Sourc
  * One view per source in display order. `extraSources` (ids seen in an
  * incident list but absent from the summary) are appended alphabetically.
  */
-export function buildSourceViews(summary: SummaryForSources, extraSources: Iterable<string> = []): SourceView[] {
+export function buildSourceViews(
+  summary: SummaryForSources,
+  extraSources: Iterable<string> = [],
+): SourceView[] {
   const health = new Map(summary.sources.map((s) => [s.source, s]))
   const profiles = new Map(summary.profiles.map((p) => [p.source, p]))
   const order = [...summary.sourceOrder]
@@ -209,7 +219,9 @@ export function urgentCallouts(sources: SourceView[], incidents: IncidentLike[])
 }
 
 /** Resolved by the source itself (the resolve envelope), not by a person. */
-export function isAutoResolved(inc: Pick<IncidentLike, "status" | "resolvedBy" | "resolutionNote">): boolean {
+export function isAutoResolved(
+  inc: Pick<IncidentLike, "status" | "resolvedBy" | "resolutionNote">,
+): boolean {
   return (
     inc.status === "resolved" &&
     (inc.resolvedBy ?? null) === null &&
@@ -291,7 +303,12 @@ export function draftFromSummary(summary: SummaryForSources): DraftRow[] {
   const profiles = new Map(summary.profiles.map((p) => [p.source, p]))
   return buildSourceViews(summary).map((v) => {
     const p = profiles.get(v.source)
-    return { source: v.source, label: p?.label ?? "", urgent: p?.urgent === true, hue: p?.hue ?? null }
+    return {
+      source: v.source,
+      label: p?.label ?? "",
+      urgent: p?.urgent === true,
+      hue: p?.hue ?? null,
+    }
   })
 }
 

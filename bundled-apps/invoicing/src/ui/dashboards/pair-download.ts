@@ -45,7 +45,8 @@ export async function downloadPair(
         continue
       }
       const blob = await deps.fetchBlob(url)
-      const pdf = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
+      const pdf =
+        blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
       await deps.save(pdf, `${label}.pdf`)
       result.saved.push(label)
     } catch {

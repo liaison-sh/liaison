@@ -9,13 +9,22 @@ import type { StripeCtx, StripeInvoicePayload } from "./stripe-invoice-finalized
 export const CONNECTED_AT = new Date(Date.UTC(2026, 10, 1, 9, 0)).toISOString()
 export const CONTACT = "00000000-0000-4000-8000-00000000c001"
 
-export function stripeDb(issuer: "liaison" | "stripe" | "undecided" = "liaison", over: Record<string, unknown> = {}): MockDb {
+export function stripeDb(
+  issuer: "liaison" | "stripe" | "undecided" = "liaison",
+  over: Record<string, unknown> = {},
+): MockDb {
   return createMockDb({
     bridgeWhereOperators: true,
     seed: {
       issuer_profiles: [{ ...ISSUER_ROW, timezone: "Europe/Paris", ...over }],
       stripe_streams: [
-        { id: "st-1", issuer_profile_id: ISSUER_ROW.id, issuer, stripe_connected: true, created_at: CONNECTED_AT },
+        {
+          id: "st-1",
+          issuer_profile_id: ISSUER_ROW.id,
+          issuer,
+          stripe_connected: true,
+          created_at: CONNECTED_AT,
+        },
       ],
     },
   })
@@ -28,7 +37,10 @@ export interface Emitted {
   data?: unknown
 }
 
-export function stripeCtx(db: MockDb, extra: Partial<StripeCtx> = {}): StripeCtx & { emitted: Emitted[]; calls: Array<{ tool: string; params: unknown }> } {
+export function stripeCtx(
+  db: MockDb,
+  extra: Partial<StripeCtx> = {},
+): StripeCtx & { emitted: Emitted[]; calls: Array<{ tool: string; params: unknown }> } {
   const emitted: Emitted[] = []
   const calls: Array<{ tool: string; params: unknown }> = []
   const base = issuePipelineCtx(db)
@@ -66,7 +78,12 @@ export function finalized(over: Partial<StripeInvoicePayload> = {}): StripeInvoi
     period_end: "2026-11-30",
     finalized_at: new Date(Date.UTC(2026, 10, 15, 10, 0)).toISOString(),
     billing_reason: "subscription_cycle",
-    customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR", address: "3 rue Neuve, 69001 Lyon" },
+    customer: {
+      name: "Lumen Studio",
+      email: "billing@lumen.example",
+      country: "FR",
+      address: "3 rue Neuve, 69001 Lyon",
+    },
     lines: [
       {
         description: "Pro plan",
@@ -83,5 +100,6 @@ export function finalized(over: Partial<StripeInvoicePayload> = {}): StripeInvoi
 }
 
 export const invoices = (db: MockDb) => db.__all("documents").filter((d) => d.type === "invoice")
-export const creditNotes = (db: MockDb) => db.__all("documents").filter((d) => d.type === "credit_note")
+export const creditNotes = (db: MockDb) =>
+  db.__all("documents").filter((d) => d.type === "credit_note")
 export const parks = (db: MockDb) => db.__all("deferred_events")

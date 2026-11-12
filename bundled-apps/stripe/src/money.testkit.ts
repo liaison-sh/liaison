@@ -45,7 +45,14 @@ export function moneyCtx(
   approvalId: string | null,
   opts: { cardIssuer?: string | null } = {},
 ): MoneyCtx & { rec: Recorded } {
-  const rec: Recorded = { started: 0, succeeded: [], noEffect: [], ambiguous: [], calls: [], logs: [] }
+  const rec: Recorded = {
+    started: 0,
+    succeeded: [],
+    noEffect: [],
+    ambiguous: [],
+    calls: [],
+    logs: [],
+  }
   const tool = "stripe:refunds_create"
   return {
     rec,
@@ -53,9 +60,11 @@ export function moneyCtx(
     fetch: mockFetch,
     executeTool: async (t, params) => {
       rec.calls.push({ tool: t, params })
-      if (t === "projects:deals_search") return { status: "completed", result: { items: [{ id: "d1", title: "Renewal 2027" }] } }
+      if (t === "projects:deals_search")
+        return { status: "completed", result: { items: [{ id: "d1", title: "Renewal 2027" }] } }
       // Who issues card payments' invoices, as invoicing's "Who issues what" records it.
-      if (t === "invoicing:card_stream_issuer") return { status: "completed", result: { issuer: opts.cardIssuer ?? null } }
+      if (t === "invoicing:card_stream_issuer")
+        return { status: "completed", result: { issuer: opts.cardIssuer ?? null } }
       return { status: "completed", result: { ok: true } }
     },
     logger: {
@@ -83,6 +92,19 @@ export function moneyCtx(
 }
 
 /** A charge of `amount` with `refunded` already refunded, in Stripe (the mock) only. */
-export function seedCharge(id: string, amount: number, refunded = 0, extra: Record<string, unknown> = {}) {
-  return stripeMockSeed("charges", { id, amount, amount_captured: amount, amount_refunded: refunded, refunded: refunded >= amount, disputed: false, ...extra })
+export function seedCharge(
+  id: string,
+  amount: number,
+  refunded = 0,
+  extra: Record<string, unknown> = {},
+) {
+  return stripeMockSeed("charges", {
+    id,
+    amount,
+    amount_captured: amount,
+    amount_refunded: refunded,
+    refunded: refunded >= amount,
+    disputed: false,
+    ...extra,
+  })
 }

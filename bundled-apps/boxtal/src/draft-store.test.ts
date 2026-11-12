@@ -103,7 +103,7 @@ describe("saveDraftOverride — concurrency-safe upsert (BL-254)", () => {
   it("does NOT swallow a non-unique insert error (real failures still throw with pg detail)", async () => {
     const { db } = makeStore()
     db.insert = async () => {
-      throw new Error("db_insert failed — pg: null value in column \"value\" (23502)")
+      throw new Error('db_insert failed — pg: null value in column "value" (23502)')
     }
     const ctx: DraftStoreCtx = { db }
     await expect(

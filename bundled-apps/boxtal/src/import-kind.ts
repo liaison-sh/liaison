@@ -60,14 +60,21 @@ async function each(
     try {
       out.push(await fn(record, dedupValue))
     } catch (err) {
-      out.push({ status: "failed", rows: [], error: err instanceof Error ? err.message : String(err) })
+      out.push({
+        status: "failed",
+        rows: [],
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
   return out
 }
 
 /** `boxtal.local-product`: a non-Shopify SKU. An existing SKU is skipped. */
-export async function importLocalProducts(batch: ImportBatch, ctx: ImportCtx): Promise<ImportResult[]> {
+export async function importLocalProducts(
+  batch: ImportBatch,
+  ctx: ImportCtx,
+): Promise<ImportResult[]> {
   return each(batch, async (record) => {
     const sku = str(record.sku)
     const label = str(record.label)
@@ -82,7 +89,10 @@ export async function importLocalProducts(batch: ImportBatch, ctx: ImportCtx): P
 /** `boxtal.pack`: a named carton and its component bill of materials. */
 export async function importPacks(batch: ImportBatch, ctx: ImportCtx): Promise<ImportResult[]> {
   return each(batch, async (record, dedupValue) => {
-    const existing = await ctx.db.findMany("pack", { where: { external_ref: dedupValue }, limit: 1 })
+    const existing = await ctx.db.findMany("pack", {
+      where: { external_ref: dedupValue },
+      limit: 1,
+    })
     if (existing.length > 0) return { status: "skipped", rows: [] }
     const name = str(record.name)
     if (!name) throw new Error("name is required")
@@ -162,7 +172,12 @@ export async function importShippingProfiles(
     // The previous release still reads the old per-variant table during a deploy (profiles.ts,
     // ROLLING DEPLOY): mirror the new profile onto the variant's old row, stamped. The variant had
     // no row (it would have been skipped above), and an undo of the run removes the mirror too.
-    const legacy = await ctx.db.insert(LEGACY_TABLE, { product_source, product_id, ...fields, migrated_profile_id: id })
+    const legacy = await ctx.db.insert(LEGACY_TABLE, {
+      product_source,
+      product_id,
+      ...fields,
+      migrated_profile_id: id,
+    })
     return {
       status: "created",
       rows: [

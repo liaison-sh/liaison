@@ -10,11 +10,16 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractEnvelope } from "@liaison/app-sdk/contracts"
 import { createMockDb, type ManifestSchema } from "@liaison/test-helpers/mock-db"
-import { mintContractGrant, verifyContractGrant } from "../../../../apps/api/src/modules/apps/provider-contracts/grant"
+import {
+  mintContractGrant,
+  verifyContractGrant,
+} from "../../../../apps/api/src/modules/apps/provider-contracts/grant"
 import { mintRunSendGrants, prepareItemSend } from "./run-send"
 import { type EinvCtx, stageSendAfterIssue, transmitTick } from "./transmit"
 
-const MANIFEST = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8")) as {
+const MANIFEST = JSON.parse(
+  readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8"),
+) as {
   schema: ManifestSchema
   tools: Record<string, { gated?: boolean; noAutoApprove?: boolean }>
 }
@@ -26,7 +31,15 @@ const RUN = "00000000-0000-4000-8000-0000000000b1"
 type Row = Record<string, unknown>
 
 function world() {
-  const db = createMockDb({}, { ids: "uuid", stampCreatedAt: true, bridgeWhereOperators: true, orderByManifestSchema: MANIFEST.schema })
+  const db = createMockDb(
+    {},
+    {
+      ids: "uuid",
+      stampCreatedAt: true,
+      bridgeWhereOperators: true,
+      orderByManifestSchema: MANIFEST.schema,
+    },
+  )
   const approvals: Row[] = []
   const sent: Array<{ op: string; params: Row }> = []
   const refused: string[] = []
@@ -37,16 +50,38 @@ function world() {
     approval: null,
     contracts: {
       call: async (contract, op, params, opts) => {
-        if (op === "list_status_changes") return { status: "completed", result: { items: [] }, provider: "pennylane" } as ContractEnvelope<unknown>
-        const check = verifyContractGrant(opts?.grant, { orgId: ORG, callerApp: "invoicing", contract, op, params })
+        if (op === "list_status_changes")
+          return {
+            status: "completed",
+            result: { items: [] },
+            provider: "pennylane",
+          } as ContractEnvelope<unknown>
+        const check = verifyContractGrant(opts?.grant, {
+          orgId: ORG,
+          callerApp: "invoicing",
+          contract,
+          op,
+          params,
+        })
         if (!check.ok) {
           refused.push(check.code)
-          return { status: "error", error: { code: check.code, message: check.message } } as ContractEnvelope<unknown>
+          return {
+            status: "error",
+            error: { code: check.code, message: check.message },
+          } as ContractEnvelope<unknown>
         }
         sent.push({ op, params })
-        return { status: "completed", result: { provider_ref: `pa-${sent.length}`, state: "imported" }, provider: "pennylane" } as ContractEnvelope<unknown>
+        return {
+          status: "completed",
+          result: { provider_ref: `pa-${sent.length}`, state: "imported" },
+          provider: "pennylane",
+        } as ContractEnvelope<unknown>
       },
-      grant: async () => JSON.stringify({ status: "error", error: { code: "contract_grant_refused", message: "not inside a person's approval" } }),
+      grant: async () =>
+        JSON.stringify({
+          status: "error",
+          error: { code: "contract_grant_refused", message: "not inside a person's approval" },
+        }),
     },
     files_getAttachmentBytes: async () => JSON.stringify({ bytesBase64: btoa("<xml/>") }),
     requestApproval: async (input) => {
@@ -56,13 +91,31 @@ function world() {
   }
   const approved = (tool = "invoicing:recurring_run_issue"): EinvCtx => ({
     ...base,
-    approval: { approvalRequestId: "appr-run", approvalDeciderId: "00000000-0000-4000-8000-0000000000d1", toolName: tool },
+    approval: {
+      approvalRequestId: "appr-run",
+      approvalDeciderId: "00000000-0000-4000-8000-0000000000d1",
+      toolName: tool,
+    },
     contracts: {
       ...base.contracts!,
       grant: async (contract, ops, subject) => {
         const t = MANIFEST.tools[tool.replace(/^invoicing:/, "")]
-        if (!(t?.gated === true && t.noAutoApprove === true)) return JSON.stringify({ status: "error", error: { code: "contract_grant_refused", message: "no" } })
-        return JSON.stringify({ grant: mintContractGrant({ org: ORG, caller: "invoicing", contract, ops, subject, via: "appr-run", provider: "pennylane" }) })
+        if (!(t?.gated === true && t.noAutoApprove === true))
+          return JSON.stringify({
+            status: "error",
+            error: { code: "contract_grant_refused", message: "no" },
+          })
+        return JSON.stringify({
+          grant: mintContractGrant({
+            org: ORG,
+            caller: "invoicing",
+            contract,
+            ops,
+            subject,
+            via: "appr-run",
+            provider: "pennylane",
+          }),
+        })
       },
     },
   })
@@ -87,24 +140,56 @@ function world() {
       pdf_status: "ready",
       legal_original_sha256: sha,
     })) as Row
-    const lo = (await db.insert("legal_originals", { document_id: d.id, kind: "facturx", file_id: `00000000-0000-4000-8000-${String(1000 + n).padStart(12, "0")}`, sha256: sha })) as Row
+    const lo = (await db.insert("legal_originals", {
+      document_id: d.id,
+      kind: "facturx",
+      file_id: `00000000-0000-4000-8000-${String(1000 + n).padStart(12, "0")}`,
+      sha256: sha,
+    })) as Row
     await db.update("documents", String(d.id), { legal_original_id: lo.id })
-    await db.insert("facturx_files", { document_id: d.id, file_id: `00000000-0000-4000-8000-${String(5000 + n).padStart(12, "0")}`, sha256: "x", generated_at: "2026-11-30" })
+    await db.insert("facturx_files", {
+      document_id: d.id,
+      file_id: `00000000-0000-4000-8000-${String(5000 + n).padStart(12, "0")}`,
+      sha256: "x",
+      generated_at: "2026-11-30",
+    })
     return { ...d, legal_original_sha256: sha }
   }
-  const rows = async (entity: string, where: Row = {}) => (await db.findMany(entity, { where, limit: 1000 })) as Row[]
+  const rows = async (entity: string, where: Row = {}) =>
+    (await db.findMany(entity, { where, limit: 1000 })) as Row[]
   return { db, base, approved, approvals, sent, refused, issued, rows }
 }
 
 let w: ReturnType<typeof world>
 beforeEach(async () => {
   w = world()
-  await w.db.insert("einvoicing_settings", { provider_app: "pennylane", cutover_date: "2026-11-01", send_enabled: true, book_enabled: false })
-  await w.db.insert("counterparty_identities", { contact_id: CONTACT, customer_kind: "business", siren: SIREN, routing_address: SIREN, registry_name: "CLIENT EXEMPLE", registry_status: "A", source: "registry", confirmed_via: "auto" })
+  await w.db.insert("einvoicing_settings", {
+    provider_app: "pennylane",
+    cutover_date: "2026-11-01",
+    send_enabled: true,
+    book_enabled: false,
+  })
+  await w.db.insert("counterparty_identities", {
+    contact_id: CONTACT,
+    customer_kind: "business",
+    siren: SIREN,
+    routing_address: SIREN,
+    registry_name: "CLIENT EXEMPLE",
+    registry_status: "A",
+    source: "registry",
+    confirmed_via: "auto",
+  })
 })
 
 async function item(state = "approved"): Promise<Row> {
-  return (await w.db.insert("recurring_run_items", { run_id: RUN, source: "schedule", period_key: "2026-11", document_id: "00000000-0000-4000-8000-00000000dd01", position: 1, state })) as Row
+  return (await w.db.insert("recurring_run_items", {
+    run_id: RUN,
+    source: "schedule",
+    period_key: "2026-11",
+    document_id: "00000000-0000-4000-8000-00000000dd01",
+    position: 1,
+    state,
+  })) as Row
 }
 
 describe("a month-end run approved by a person carries its sends", () => {
@@ -115,7 +200,8 @@ describe("a month-end run approved by a person carries its sends", () => {
     // Outside the person's approval nothing is minted.
     expect(await mintRunSendGrants(w.base, [String(a.id), String(b.id)])).toBe(0)
     expect(await mintRunSendGrants(w.approved(), [String(a.id), String(b.id)])).toBe(2)
-    const itemRow = async (id: unknown): Promise<Row> => ((await w.rows("recurring_run_items", { id }))[0] ?? {}) as Row
+    const itemRow = async (id: unknown): Promise<Row> =>
+      ((await w.rows("recurring_run_items", { id }))[0] ?? {}) as Row
     const [ia, ib, il] = [await itemRow(a.id), await itemRow(b.id), await itemRow(left.id)]
     expect(typeof ia.send_grant).toBe("string")
     expect(typeof ib.send_grant).toBe("string")
@@ -138,8 +224,19 @@ describe("a month-end run approved by a person carries its sends", () => {
     ])
     expect(w.refused).toHaveLength(0)
     // Row A's grant does not cover row B's invoice.
-    const params = { document_ref: String(db_.id), invoice_number: String(db_.number), legal_original_sha256: String(db_.legal_original_sha256), run_item_ref: String(b.id) }
-    const wrong = verifyContractGrant(String(ia.send_grant), { orgId: ORG, callerApp: "invoicing", contract: CONTRACT, op: "submit_einvoice", params })
+    const params = {
+      document_ref: String(db_.id),
+      invoice_number: String(db_.number),
+      legal_original_sha256: String(db_.legal_original_sha256),
+      run_item_ref: String(b.id),
+    }
+    const wrong = verifyContractGrant(String(ia.send_grant), {
+      orgId: ORG,
+      callerApp: "invoicing",
+      contract: CONTRACT,
+      op: "submit_einvoice",
+      params,
+    })
     expect(wrong).toMatchObject({ ok: false, code: "contract_grant_mismatch" })
   })
 

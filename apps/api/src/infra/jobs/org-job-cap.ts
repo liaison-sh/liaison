@@ -56,7 +56,6 @@ export const ORG_JOB_CAP_EXEMPT: ReadonlySet<string> = new Set([
   "kernel:agent-turn-resume", // a person's turn resumed after its process died
   "kernel:scope-request-decision-turn", // the turn after a person granted or refused a scope
   "kernel:secret-request-turn", // the turn after a person supplied a secret
-  "kernel:drive-picker-turn", // the turn after a person picked Drive files
   "kernel:setup-kickoff", // the first-run setup conversation a person started
   "kernel:approval-result-turn", // the turn after a person approved or rejected
   // Timers of a person's own request: delaying them changes what they do.

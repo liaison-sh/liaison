@@ -8511,4 +8511,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.appPage.popupBlocked":
     "Votre navigateur a bloqué la fenêtre. Autorisez les fenêtres pour Liaison et réessayez.",
   "kernel.appPage.failed": "Ce lien a expiré ou a déjà servi. Redemandez-en un.",
+  "google-drive.sharedDrives.description":
+    "Les drives partagés que la connexion Drive de l'organisation partage avec l'équipe.",
 }

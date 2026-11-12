@@ -2,9 +2,16 @@
 //
 // `connection_check` (agent-visible, admins) and `settings_load` (the settings
 // page's read, hidden from the agent). Neither ever sees the key.
-import { decodeState, readInstall, runConnectionCheck, storedPermissions, type ConnectionCtx } from "../connection"
+import {
+  type ConnectionCtx,
+  decodeState,
+  readInstall,
+  runConnectionCheck,
+  storedPermissions,
+} from "../connection"
 
-export const connectionCheck = (_params: Record<string, never>, ctx: ConnectionCtx) => runConnectionCheck(ctx)
+export const connectionCheck = (_params: Record<string, never>, ctx: ConnectionCtx) =>
+  runConnectionCheck(ctx)
 
 /** The kernel's check of a key before it is stored (`checkBeforeStore`): same answers, records nothing. */
 export const connectionPrecheck = (_params: Record<string, never>, ctx: ConnectionCtx) =>

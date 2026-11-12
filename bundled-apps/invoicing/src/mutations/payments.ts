@@ -3,20 +3,20 @@
 // Invoicing mutations: documents.mark_paid and documents.record_refund.
 
 import { readMinorAmount } from "@liaison/app-sdk"
-import { transition } from "../state"
-import { civilDateOf } from "../issue-date"
-import { findDocumentSummary, findIssuerProfile, sumPriorRefundedMinor } from "./db-helpers"
-import { ensureDocumentPdf } from "./pdf"
 import { reportCollection } from "../einvoicing/collection"
 import type { EinvCtx } from "../einvoicing/transmit"
+import { civilDateOf } from "../issue-date"
+import { transition } from "../state"
+import { findDocumentSummary, findIssuerProfile, sumPriorRefundedMinor } from "./db-helpers"
+import { ensureDocumentPdf } from "./pdf"
 import {
-  type MutationsCtx,
   type DocumentRowSummary,
-  type ErrorEnvelope,
   type DocumentType,
-  type PreflightResult,
-  type MutationResult,
+  type ErrorEnvelope,
   invalidAmountError,
+  type MutationResult,
+  type MutationsCtx,
+  type PreflightResult,
   toPreflightResult,
 } from "./shared"
 
@@ -50,7 +50,8 @@ async function preflightMarkPaidParams(
   ctx: MutationsCtx,
   input: { document_id: string; paid_date?: string },
 ): Promise<
-  { ok: true; doc: DocumentRowSummary; nextStatus: string; paidAt: string } | { ok: false; error: ErrorEnvelope }
+  | { ok: true; doc: DocumentRowSummary; nextStatus: string; paidAt: string }
+  | { ok: false; error: ErrorEnvelope }
 > {
   const doc = await findDocumentSummary(ctx.db, input.document_id)
   if (!doc) {
@@ -63,10 +64,7 @@ async function preflightMarkPaidParams(
     }
   }
   const status = doc.status ?? "draft"
-  const trans = transition(
-    { type: doc.type as DocumentType, status },
-    "mark_paid",
-  )
+  const trans = transition({ type: doc.type as DocumentType, status }, "mark_paid")
   if (trans.status !== "ok") {
     return {
       ok: false,
@@ -149,7 +147,12 @@ export async function documentsMarkPaid(
   // mark-paid itself, which is already persisted. `link: false` because this handler just updated
   // the documents row in its open tx: the host's privileged link-write (a separate tx) would
   // deadlock on that row lock (same reasoning as documents_update — see ensureDocumentPdf).
-  await reportCollectionAfter(ctx, doc.id, { kind: "paid", amount_minor: doc.grand_total_minor, date: paidAt, ref: `paid:${paidAt}` })
+  await reportCollectionAfter(ctx, doc.id, {
+    kind: "paid",
+    amount_minor: doc.grand_total_minor,
+    date: paidAt,
+    ref: `paid:${paidAt}`,
+  })
   await ensureDocumentPdf(ctx, doc.id, { force: true, link: false })
   return { status: "completed", document_id: doc.id }
 }
@@ -188,7 +191,10 @@ async function preflightRecordRefundParams(
   if (refundAmount === null) {
     return {
       ok: false,
-      error: { status: "error", error: invalidAmountError("refund_amount_minor", input.refund_amount_minor) },
+      error: {
+        status: "error",
+        error: invalidAmountError("refund_amount_minor", input.refund_amount_minor),
+      },
     }
   }
   input = { ...input, refund_amount_minor: refundAmount }
@@ -216,10 +222,7 @@ async function preflightRecordRefundParams(
   }
 
   if (input.refund_kind === "full") {
-    const trans = transition(
-      { type: doc.type as DocumentType, status },
-      "mark_refunded",
-    )
+    const trans = transition({ type: doc.type as DocumentType, status }, "mark_refunded")
     if (trans.status !== "ok") {
       return {
         ok: false,
@@ -341,7 +344,12 @@ export async function documentsRecordRefund(
         },
       ],
     })
-    await reportCollectionAfter(ctx, doc.id, { kind: "refund", amount_minor: input.refund_amount_minor, date: new Date().toISOString().slice(0, 10), ref: `refund:${doc.lifecycle_log.length}` })
+    await reportCollectionAfter(ctx, doc.id, {
+      kind: "refund",
+      amount_minor: input.refund_amount_minor,
+      date: new Date().toISOString().slice(0, 10),
+      ref: `refund:${doc.lifecycle_log.length}`,
+    })
     return { status: "completed", document_id: doc.id }
   }
 
@@ -365,6 +373,11 @@ export async function documentsRecordRefund(
     if (trans.status === "ok") updatePatch.status = trans.next
   }
   await ctx.db.update("documents", doc.id, updatePatch)
-  await reportCollectionAfter(ctx, doc.id, { kind: "refund", amount_minor: input.refund_amount_minor, date: new Date().toISOString().slice(0, 10), ref: `refund:${doc.lifecycle_log.length}` })
+  await reportCollectionAfter(ctx, doc.id, {
+    kind: "refund",
+    amount_minor: input.refund_amount_minor,
+    date: new Date().toISOString().slice(0, 10),
+    ref: `refund:${doc.lifecycle_log.length}`,
+  })
   return { status: "completed", document_id: doc.id }
 }

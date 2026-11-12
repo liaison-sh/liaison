@@ -5,7 +5,7 @@
 // dev store, which legitimately returns an EMPTY list — abandoned checkouts can't be seeded.)
 
 import { describe, expect, it } from "bun:test"
-import { summarizeAbandonedCheckouts, type RawAbandonedCheckout } from "./abandoned-checkouts"
+import { type RawAbandonedCheckout, summarizeAbandonedCheckouts } from "./abandoned-checkouts"
 
 function co(
   id: string,

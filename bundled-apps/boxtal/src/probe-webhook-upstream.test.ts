@@ -6,7 +6,11 @@
 // sender reports null (never pages), and an unreachable Boxtal reports
 // `probed: false` (never read as quiet).
 import { describe, expect, it } from "bun:test"
-import { eventInstantMs, probeWebhookUpstream, probeWebhookUpstreamJob } from "./probe-webhook-upstream"
+import {
+  eventInstantMs,
+  probeWebhookUpstream,
+  probeWebhookUpstreamJob,
+} from "./probe-webhook-upstream"
 import { createMockDb } from "./test-db"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
@@ -25,24 +29,40 @@ function makeCtx(opts: {
   const calls: string[] = []
   // The host runs the bearer exchange; a failed one answers the call with its status.
   const fetch = async (url: string, o?: { auth?: { exchange?: unknown } }) => {
-    if (o?.auth?.exchange && opts.tokenFails) return { status: 503, headers: {}, body: "unavailable" }
+    if (o?.auth?.exchange && opts.tokenFails)
+      return { status: 503, headers: {}, body: "unavailable" }
     calls.push(url)
     const id = (url.split("/shipping-order/")[1] ?? "").split("/")[0] ?? ""
     const live = opts.live?.[id]
-    if (live === "not_ready") return { status: 404, headers: {}, body: "NoPackageTrackingFoundException tracking" }
+    if (live === "not_ready")
+      return { status: 404, headers: {}, body: "NoPackageTrackingFoundException tracking" }
     if (live === "boom") return { status: 500, headers: {}, body: "upstream exploded" }
     if (live === "forbidden") return { status: 403, headers: {}, body: "forbidden" }
     const content = live
       ? [{ status: live[0]?.status ?? "ANNOUNCED", trackingNumber: "T", history: live }]
       : []
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content }),
+    }
   }
   const ctx = {
     orgId: "org-1",
     db,
     fetch,
     connections:
-      opts.connected === false ? {} : { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getAccounts: async () => [] } },
+      opts.connected === false
+        ? {}
+        : {
+            boxtal: {
+              getSettings: async () => ({
+                values: { environment: CREDS.environment },
+                missing: [],
+              }),
+              getAccounts: async () => [],
+            },
+          },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
@@ -76,7 +96,9 @@ describe("probeWebhookUpstream", () => {
         ],
       },
     })
-    expect(await probeWebhookUpstream(ctx, { now })).toEqual({ upstreamActivityAt: "2026-10-20T08:30:00.000Z" })
+    expect(await probeWebhookUpstream(ctx, { now })).toEqual({
+      upstreamActivityAt: "2026-10-20T08:30:00.000Z",
+    })
     expect(calls.every((u) => u.endsWith("/tracking"))).toBe(true)
     expect(calls).toHaveLength(2)
   })
@@ -92,7 +114,9 @@ describe("probeWebhookUpstream", () => {
         ],
       },
     })
-    expect(await probeWebhookUpstream(ctx, { now })).toEqual({ upstreamActivityAt: "2026-10-19T10:00:00.000Z" })
+    expect(await probeWebhookUpstream(ctx, { now })).toEqual({
+      upstreamActivityAt: "2026-10-19T10:00:00.000Z",
+    })
   })
 
   it("a zoneless Boxtal time is shifted back to a lower bound, a future one is ignored", async () => {
@@ -107,7 +131,9 @@ describe("probeWebhookUpstream", () => {
         ],
       },
     })
-    expect(await probeWebhookUpstream(ctx, { now })).toEqual({ upstreamActivityAt: "2026-10-19T20:00:00.000Z" })
+    expect(await probeWebhookUpstream(ctx, { now })).toEqual({
+      upstreamActivityAt: "2026-10-19T20:00:00.000Z",
+    })
   })
 
   it("not connected has no sender: null without calling Boxtal", async () => {
@@ -118,7 +144,10 @@ describe("probeWebhookUpstream", () => {
 
   it("nothing to track has no sender: null without calling Boxtal", async () => {
     const { ctx, calls } = makeCtx({
-      shipments: [ship("1", "", { order_status: "PENDING" }), ship("2", "o2", { order_status: "CANCELLED" })],
+      shipments: [
+        ship("1", "", { order_status: "PENDING" }),
+        ship("2", "o2", { order_status: "CANCELLED" }),
+      ],
     })
     expect(await probeWebhookUpstream(ctx, { now })).toEqual({ upstreamActivityAt: null })
     expect(calls).toEqual([])
@@ -131,13 +160,21 @@ describe("probeWebhookUpstream", () => {
 
   it("a recent delivered shipment is still probed, an old delivered one is not", async () => {
     const old = Array.from({ length: 12 }, (_, i) =>
-      ship(`old${i}`, `oo${i}`, { tracking_status: "DELIVERED", created_at: `2026-09-0${(i % 9) + 1}T10:00:00Z` }),
+      ship(`old${i}`, `oo${i}`, {
+        tracking_status: "DELIVERED",
+        created_at: `2026-09-0${(i % 9) + 1}T10:00:00Z`,
+      }),
     )
     const { ctx, calls } = makeCtx({
-      shipments: [...old, ship("new", "onew", { tracking_status: "DELIVERED", created_at: "2026-10-19T10:00:00Z" })],
+      shipments: [
+        ...old,
+        ship("new", "onew", { tracking_status: "DELIVERED", created_at: "2026-10-19T10:00:00Z" }),
+      ],
       live: { onew: [{ status: "DELIVERED", trackingDateTime: "2026-10-20T09:00:00Z" }] },
     })
-    expect(await probeWebhookUpstream(ctx, { now })).toEqual({ upstreamActivityAt: "2026-10-20T09:00:00.000Z" })
+    expect(await probeWebhookUpstream(ctx, { now })).toEqual({
+      upstreamActivityAt: "2026-10-20T09:00:00.000Z",
+    })
     expect(calls.length).toBeLessThanOrEqual(10)
   })
 
@@ -152,7 +189,9 @@ describe("probeWebhookUpstream", () => {
     const { ctx, calls } = makeCtx({ shipments: [ship("1", "o1")] })
     ctx.connections = {
       boxtal: {
-        getAccounts: async () => [{ id: "ca1", ownerType: "org", ownerId: null, identifier: "boxtal", displayName: null }],
+        getAccounts: async () => [
+          { id: "ca1", ownerType: "org", ownerId: null, identifier: "boxtal", displayName: null },
+        ],
         getSettings: async () => {
           throw new Error("decrypt failed")
         },
@@ -177,7 +216,10 @@ describe("probeWebhookUpstream", () => {
   it("credentials Boxtal refuses (403) stop the run as no report", async () => {
     const { ctx, calls } = makeCtx({
       shipments: [ship("1", "o1", { created_at: "2026-10-19T10:00:00Z" }), ship("2", "o2")],
-      live: { o1: "forbidden", o2: [{ status: "IN_TRANSIT", trackingDateTime: "2026-10-19T10:00:00Z" }] },
+      live: {
+        o1: "forbidden",
+        o2: [{ status: "IN_TRANSIT", trackingDateTime: "2026-10-19T10:00:00Z" }],
+      },
     })
     const result = await probeWebhookUpstream(ctx, { now })
     expect(result).toMatchObject({ probed: false })
@@ -186,7 +228,10 @@ describe("probeWebhookUpstream", () => {
   })
 
   it("tracking reads erroring with nothing found is no report", async () => {
-    const { ctx } = makeCtx({ shipments: [ship("1", "o1"), ship("2", "o2")], live: { o1: "boom", o2: "not_ready" } })
+    const { ctx } = makeCtx({
+      shipments: [ship("1", "o1"), ship("2", "o2")],
+      live: { o1: "boom", o2: "not_ready" },
+    })
     const result = await probeWebhookUpstream(ctx, { now })
     expect("upstreamActivityAt" in result).toBe(false)
     expect(result).toMatchObject({ probed: false })
@@ -194,7 +239,9 @@ describe("probeWebhookUpstream", () => {
 
   it("bounds the run to the limit, newest shipments first", async () => {
     const many = Array.from({ length: 30 }, (_, i) =>
-      ship(`s${i}`, `o${i}`, { created_at: new Date(Date.parse("2026-10-01T00:00:00Z") + i * 3600_000).toISOString() }),
+      ship(`s${i}`, `o${i}`, {
+        created_at: new Date(Date.parse("2026-10-01T00:00:00Z") + i * 3600_000).toISOString(),
+      }),
     )
     const { ctx, calls } = makeCtx({ shipments: many })
     await probeWebhookUpstream(ctx, { now, limit: 5 })

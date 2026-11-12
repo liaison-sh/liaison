@@ -22,7 +22,7 @@ import type { UpstreamProbeResult } from "@liaison/app-sdk"
 import { decodeState } from "../connection"
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
-import { blockedOverlay, importInProgress, type Install, moveState, readInstall } from "../states"
+import { blockedOverlay, type Install, importInProgress, moveState, readInstall } from "../states"
 import { Budget, DEFAULT_BUDGET_MS, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
@@ -51,23 +51,29 @@ export async function runProbe(
 ): Promise<UpstreamProbeResult & Partial<ProbeOutcome>> {
   const now = opts.now ?? (() => new Date())
   const install = await readInstall(ctx.db)
-  if (!install || decodeState(install.state).base === "not_connected") return { upstreamActivityAt: null }
-  if (blockedOverlay(install)) return { probed: false, reason: `the connection reads ${String(install.state)}` }
+  if (!install || decodeState(install.state).base === "not_connected")
+    return { upstreamActivityAt: null }
+  if (blockedOverlay(install))
+    return { probed: false, reason: `the connection reads ${String(install.state)}` }
 
   const lastMs = msOf(install.last_event_at)
   const sinceMs = Number.isFinite(lastMs) ? lastMs : msOf(install.connected_at)
   let page: { data?: Obj[] }
   try {
-    page = await stripeFetch<{ data?: Obj[] }>(
-      ctx,
-      "/v1/events",
-      { params: { limit: REPLAY_PER_RUN, ...(Number.isFinite(sinceMs) ? { "created[gt]": Math.floor(sinceMs / 1000) } : {}) } },
-    )
+    page = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/events", {
+      params: {
+        limit: REPLAY_PER_RUN,
+        ...(Number.isFinite(sinceMs) ? { "created[gt]": Math.floor(sinceMs / 1000) } : {}),
+      },
+    })
   } catch (err) {
     if (err instanceof StripeApiError && err.code === "key_invalid") {
       await moveState(ctx, install, [{ kind: "key_refused" }])
     }
-    return { probed: false, reason: err instanceof Error ? err.message : "Stripe could not be asked" }
+    return {
+      probed: false,
+      reason: err instanceof Error ? err.message : "Stripe could not be asked",
+    }
   }
   // Newest first, as Stripe lists them.
   const missed = (Array.isArray(page.data) ? page.data : []).filter(
@@ -83,9 +89,11 @@ export async function runProbe(
   const stalled = silentFor >= STALL_AFTER_MS && t - oldestMissedMs >= IN_FLIGHT_MS
   if (!stalled) return { upstreamActivityAt, stalled: false, missed: missed.length, replayed: 0 }
 
-  if (decodeState(install.state).overlay !== "stalled") await moveState(ctx, install, [{ kind: "stalled" }])
+  if (decodeState(install.state).overlay !== "stalled")
+    await moveState(ctx, install, [{ kind: "stalled" }])
   // During the first import the objects come from the import itself.
-  if (await importInProgress(ctx.db)) return { upstreamActivityAt, stalled: true, missed: missed.length, replayed: 0 }
+  if (await importInProgress(ctx.db))
+    return { upstreamActivityAt, stalled: true, missed: missed.length, replayed: 0 }
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
   const replayed = await replayEvents(ctx, install, [...missed].reverse(), budget)
   return { upstreamActivityAt, stalled: true, missed: missed.length, replayed }

@@ -34,7 +34,7 @@ export function isRefusal(outcome: { ok: true } | PreflightRefusal): outcome is 
  * its refusal as the Error it has always thrown, so observable behaviour on the
  * post-approval path is unchanged.
  */
-export function throwIfRefused<T>(outcome: PreflightOutcome<T>): ({ ok: true } & T) {
+export function throwIfRefused<T>(outcome: PreflightOutcome<T>): { ok: true } & T {
   if (isRefusal(outcome as { ok: true } | PreflightRefusal)) {
     throw new Error((outcome as PreflightRefusal).error.message)
   }
@@ -78,7 +78,7 @@ export function preflightGoogleAdCompositeId(
   return refuse(
     "invalid_params",
     `${toolName}: object_type "ad" requires the composite adGroupAd resource id. ` +
-      "pass ad_group_id + ad_id (joined internally as \"{adGroupId}~{adId}\"), or an object_id already in " +
-      "\"{adGroupId}~{adId}\" composite form",
+      'pass ad_group_id + ad_id (joined internally as "{adGroupId}~{adId}"), or an object_id already in ' +
+      '"{adGroupId}~{adId}" composite form',
   )
 }

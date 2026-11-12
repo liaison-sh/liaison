@@ -13,21 +13,22 @@
 // manifest declares (`views.settings[].component`, `views.detail.<entity>.component`,
 // `views.tabTypes.<type>.component`/`sidebar`, `views.activityBar.icon`) from
 // the module's named exports. Each of those names MUST be re-exported here.
-export { ShopifyDiagnostics } from "./src/ui/settings"
-export {
-  CustomerPanel,
-  ProductPanel,
-  DraftOrderPanel,
-  ReturnPanel,
-  RefundPanel,
-  MarketPanel,
-} from "./src/ui/panels"
+
 export { ShopifyHome } from "./src/ui/home"
-export { ShopifySidebar } from "./src/ui/sidebar"
 export { ShopifyAppIcon } from "./src/ui/icon"
 export {
-  ShopifyOrdersList,
   ShopifyCustomersList,
-  ShopifyProductsList,
   ShopifyMarketsList,
+  ShopifyOrdersList,
+  ShopifyProductsList,
 } from "./src/ui/lists"
+export {
+  CustomerPanel,
+  DraftOrderPanel,
+  MarketPanel,
+  ProductPanel,
+  RefundPanel,
+  ReturnPanel,
+} from "./src/ui/panels"
+export { ShopifyDiagnostics } from "./src/ui/settings"
+export { ShopifySidebar } from "./src/ui/sidebar"

@@ -5,14 +5,14 @@
 // only validates the shape so a malformed one is refused at write time rather than going quiet at
 // evaluation time, where a silent rule is indistinguishable from a parcel that needs nothing.
 import { ToolError } from "@liaison/app-sdk"
-import type { BoxtalToolCtx } from "./ctx"
 import {
-  RULE_FIELDS,
-  RULE_OPS,
   type AttentionCondition,
   type AttentionDocument,
   type AttentionRule,
+  RULE_FIELDS,
+  RULE_OPS,
 } from "./attention"
+import type { BoxtalToolCtx } from "./ctx"
 
 interface StoredRule extends AttentionRule {
   id: string
@@ -51,7 +51,10 @@ function validateConditions(input: unknown): AttentionCondition[] {
   return input.map((raw, i) => {
     const c = raw as Partial<AttentionCondition>
     if (!c || typeof c !== "object") {
-      throw new ToolError(`conditions[${i}] must be an object.`, { code: "invalid_params", retryable: false })
+      throw new ToolError(`conditions[${i}] must be an object.`, {
+        code: "invalid_params",
+        retryable: false,
+      })
     }
     if (!RULE_FIELDS.includes(c.field as never)) {
       throw new ToolError(
@@ -66,7 +69,10 @@ function validateConditions(input: unknown): AttentionCondition[] {
       )
     }
     if (c.value === undefined || c.value === null) {
-      throw new ToolError(`conditions[${i}].value is required.`, { code: "invalid_params", retryable: false })
+      throw new ToolError(`conditions[${i}].value is required.`, {
+        code: "invalid_params",
+        retryable: false,
+      })
     }
     if (c.op === "in" && !Array.isArray(c.value)) {
       throw new ToolError(`conditions[${i}] uses op "in", so value must be a list.`, {
@@ -74,7 +80,11 @@ function validateConditions(input: unknown): AttentionCondition[] {
         retryable: false,
       })
     }
-    return { field: c.field as AttentionCondition["field"], op: c.op as AttentionCondition["op"], value: c.value }
+    return {
+      field: c.field as AttentionCondition["field"],
+      op: c.op as AttentionCondition["op"],
+      value: c.value,
+    }
   })
 }
 
@@ -87,9 +97,15 @@ function validateDocuments(input: unknown): AttentionDocument[] {
     const d = raw as Partial<AttentionDocument>
     const name = typeof d?.name === "string" ? d.name.trim() : ""
     if (name === "") {
-      throw new ToolError(`documents[${i}].name is required.`, { code: "invalid_params", retryable: false })
+      throw new ToolError(`documents[${i}].name is required.`, {
+        code: "invalid_params",
+        retryable: false,
+      })
     }
-    return { name, note: typeof d?.note === "string" && d.note.trim() !== "" ? d.note.trim() : null }
+    return {
+      name,
+      note: typeof d?.note === "string" && d.note.trim() !== "" ? d.note.trim() : null,
+    }
   })
 }
 

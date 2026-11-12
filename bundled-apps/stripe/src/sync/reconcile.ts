@@ -28,8 +28,8 @@ import {
   Budget,
   DEFAULT_BUDGET_MS,
   PAGE_SIZE,
-  readAllSyncState,
   RESOURCES,
+  readAllSyncState,
   type SyncCtx,
   type SyncOptions,
   type SyncResource,
@@ -38,7 +38,14 @@ import {
 type Obj = Record<string, unknown>
 
 export interface ReconcileResult {
-  outcome: "not_connected" | "blocked" | "importing" | "different_account" | "key_invalid" | "done" | "paused"
+  outcome:
+    | "not_connected"
+    | "blocked"
+    | "importing"
+    | "different_account"
+    | "key_invalid"
+    | "done"
+    | "paused"
   written: number
   deleted: number
 }
@@ -49,16 +56,15 @@ const BY_ID_PER_RESOURCE = 25
 type Canary = "same" | "other" | "key_invalid" | "unknown" | "nothing_known"
 
 /** The same account, confirmed: at least one object the mirror holds resolves in the install's mode. */
-async function confirmAccount(
-  ctx: SyncCtx,
-  install: Install,
-): Promise<Canary> {
+async function confirmAccount(ctx: SyncCtx, install: Install): Promise<Canary> {
   const live = install.livemode === true
   const known: string[] = []
   for (const res of RESOURCES.slice(0, 3)) {
     if (known.length >= 3) break
     const rows = (await ctx.db.findMany(res.entity, { limit: 3 - known.length })) as Obj[]
-    for (const r of rows) if (typeof r.stripe_id === "string") known.push(`${res.byId}${encodeURIComponent(r.stripe_id)}`)
+    for (const r of rows)
+      if (typeof r.stripe_id === "string")
+        known.push(`${res.byId}${encodeURIComponent(r.stripe_id)}`)
   }
   if (known.length === 0) return "nothing_known"
   let notFound = 0
@@ -90,7 +96,9 @@ export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promis
   const install = await readInstall(ctx.db)
   if (!install) return { ...result, outcome: "not_connected" }
   if (blockedOverlay(install)) return { ...result, outcome: "blocked" }
-  if ((await readAllSyncState(ctx.db)).some((r) => r.status === "pending" || r.status === "running")) {
+  if (
+    (await readAllSyncState(ctx.db)).some((r) => r.status === "pending" || r.status === "running")
+  ) {
     return { ...result, outcome: "importing" }
   }
 
@@ -137,11 +145,13 @@ async function reconcileList(
     const started = new Date().toISOString()
     let body: unknown
     try {
-      body = await stripeFetch(
-        ctx,
-        res.list,
-        { params: { limit: PAGE_SIZE, ...(res.params ?? {}), ...(cursor ? { starting_after: cursor } : {}) } },
-      )
+      body = await stripeFetch(ctx, res.list, {
+        params: {
+          limit: PAGE_SIZE,
+          ...(res.params ?? {}),
+          ...(cursor ? { starting_after: cursor } : {}),
+        },
+      })
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err
       if (err.code === "key_invalid") {
@@ -157,7 +167,11 @@ async function reconcileList(
       return null
     }
     const page = asPage(body)
-    if (page.data.some((o) => typeof o.livemode === "boolean" && o.livemode !== (install.livemode === true))) {
+    if (
+      page.data.some(
+        (o) => typeof o.livemode === "boolean" && o.livemode !== (install.livemode === true),
+      )
+    ) {
       await moveState(ctx, install, [{ kind: "account_unconfirmed" }])
       result.outcome = "different_account"
       return null
@@ -187,7 +201,10 @@ async function readBackAbsent(
   result: ReconcileResult,
 ): Promise<void> {
   const where = res.entity === "stripe_customers" ? { deleted_at: null } : undefined
-  const rows = (await ctx.db.findMany(res.entity, { ...(where ? { where } : {}), limit: 500 })) as Obj[]
+  const rows = (await ctx.db.findMany(res.entity, {
+    ...(where ? { where } : {}),
+    limit: 500,
+  })) as Obj[]
   const absent = rows
     .map((r) => r.stripe_id)
     .filter((id): id is string => typeof id === "string" && !listed.has(id))
@@ -200,12 +217,22 @@ async function readBackAbsent(
     }
     const started = now().toISOString()
     try {
-      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts", "default_payment_method"] } } : {})
+      const obj = await stripeFetch<Obj>(
+        ctx,
+        `${res.byId}${encodeURIComponent(id)}`,
+        res.entity === "stripe_subscriptions"
+          ? { params: { expand: ["discounts", "default_payment_method"] } }
+          : {},
+      )
       if (obj?.deleted === true) {
-        if (res.entity === "stripe_customers" && mayDelete) await markDeleted(ctx, id, started, result)
+        if (res.entity === "stripe_customers" && mayDelete)
+          await markDeleted(ctx, id, started, result)
       } else if (obj) {
         const row = res.row(obj, tally)
-        if ((await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))) !== "stale") result.written++
+        if (
+          (await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))) !== "stale"
+        )
+          result.written++
       }
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err
@@ -217,7 +244,12 @@ async function readBackAbsent(
   }
 }
 
-async function markDeleted(ctx: SyncCtx, id: string, at: string, result: ReconcileResult): Promise<void> {
+async function markDeleted(
+  ctx: SyncCtx,
+  id: string,
+  at: string,
+  result: ReconcileResult,
+): Promise<void> {
   const { count } = await ctx.db.updateMany("stripe_customers", {
     where: { stripe_id: id, deleted_at: null },
     data: { deleted_at: at },

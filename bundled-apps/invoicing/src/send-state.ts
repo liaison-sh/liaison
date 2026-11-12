@@ -15,7 +15,11 @@ export interface DocumentSendStateCtx {
 }
 
 const unavailable = (why: string) =>
-  refuseTool("send_guard_unavailable", `${why} The reminder was not sent and waits; it is checked again before it can go.`, { retryable: true })
+  refuseTool(
+    "send_guard_unavailable",
+    `${why} The reminder was not sent and waits; it is checked again before it can go.`,
+    { retryable: true },
+  )
 
 function minor(v: unknown): bigint {
   try {
@@ -32,12 +36,19 @@ export async function documentSendState(params: Obj | undefined, ctx: DocumentSe
   const doc = (await ctx.db.findOne("documents", id)) as Obj | null
   if (!doc) return unavailable(`Document ${id} could not be read.`)
   const name = `Invoice ${String(doc.number ?? id)}`
-  if (doc.status === "voided" || doc.status === "cancelled") return { stop: true, code: "invoice_voided", label: `${name} is voided` }
+  if (doc.status === "voided" || doc.status === "cancelled")
+    return { stop: true, code: "invoice_voided", label: `${name} is voided` }
   if (doc.status === "paid" || doc.payment_status === "paid" || doc.status === "refunded") {
     return { stop: true, code: "invoice_paid", label: `${name} is paid` }
   }
   const log = (Array.isArray(doc.lifecycle_log) ? doc.lifecycle_log : []) as Obj[]
-  if (await isFullyCredited(ctx.db, { id, lifecycle_log: log, grand_total_minor: minor(doc.grand_total_minor) })) {
+  if (
+    await isFullyCredited(ctx.db, {
+      id,
+      lifecycle_log: log,
+      grand_total_minor: minor(doc.grand_total_minor),
+    })
+  ) {
     return { stop: true, code: "invoice_credited", label: `${name} is credited` }
   }
   return { stop: false }

@@ -61,18 +61,39 @@ function makeCtx(opts: {
       },
     },
     fetch: async (_url: string, init?: { body?: string }) => {
-      const body = JSON.parse(init?.body ?? "{}") as { query?: string; variables?: Record<string, unknown> }
+      const body = JSON.parse(init?.body ?? "{}") as {
+        query?: string
+        variables?: Record<string, unknown>
+      }
       const q = body.query ?? ""
       opts.calls?.push({ query: q, variables: body.variables ?? {} })
       // Route by which root field the query targets.
       if (q.includes("customers(")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: { customers: opts.route.customers ?? { edges: [], pageInfo: {} } } }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            data: { customers: opts.route.customers ?? { edges: [], pageInfo: {} } },
+          }),
+        }
       }
       if (q.includes("orders(")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: { orders: opts.route.orders ?? { edges: [], pageInfo: {} } } }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            data: { orders: opts.route.orders ?? { edges: [], pageInfo: {} } },
+          }),
+        }
       }
       if (q.includes("products(")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: { products: opts.route.products ?? { edges: [], pageInfo: {} } } }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            data: { products: opts.route.products ?? { edges: [], pageInfo: {} } },
+          }),
+        }
       }
       return { status: 200, headers: {}, body: JSON.stringify({ data: {} }) }
     },
@@ -112,7 +133,10 @@ function orderEdge(id: string, name: string) {
       createdAt: "2026-05-01T00:00:00Z",
       displayFinancialStatus: "PAID",
       displayFulfillmentStatus: "UNFULFILLED",
-      currentTotalPriceSet: { presentmentMoney: { amount: "10", currencyCode: "USD" }, shopMoney: { amount: "10", currencyCode: "USD" } },
+      currentTotalPriceSet: {
+        presentmentMoney: { amount: "10", currencyCode: "USD" },
+        shopMoney: { amount: "10", currencyCode: "USD" },
+      },
       customer: null,
     },
   }
@@ -120,7 +144,14 @@ function orderEdge(id: string, name: string) {
 
 function productEdge(id: string, title: string) {
   return {
-    node: { id, title, vendor: "ACME", status: "ACTIVE", totalInventory: 1, variants: { edges: [{ node: { id: "v1", sku: "S", price: "1.00", inventoryQuantity: 1 } }] } },
+    node: {
+      id,
+      title,
+      vendor: "ACME",
+      status: "ACTIVE",
+      totalInventory: 1,
+      variants: { edges: [{ node: { id: "v1", sku: "S", price: "1.00", inventoryQuantity: 1 } }] },
+    },
   }
 }
 
@@ -128,7 +159,10 @@ describe("searchHandler", () => {
   it("routes email-shaped query to customer search", async () => {
     const ctx = makeCtx({
       route: {
-        customers: { edges: [customerEdge("gid://shopify/Customer/1", "marie@example.com")], pageInfo: {} },
+        customers: {
+          edges: [customerEdge("gid://shopify/Customer/1", "marie@example.com")],
+          pageInfo: {},
+        },
       },
     })
     const r = await searchHandler({ query: "marie@example.com", filters: {} }, ctx)
@@ -161,7 +195,9 @@ describe("searchHandler", () => {
 
   it("returns results tagged with shopify GIDs (caller will tag .app=shopify)", async () => {
     const ctx = makeCtx({
-      route: { products: { edges: [productEdge("gid://shopify/Product/9", "Widget9")], pageInfo: {} } },
+      route: {
+        products: { edges: [productEdge("gid://shopify/Product/9", "Widget9")], pageInfo: {} },
+      },
     })
     const r = await searchHandler({ query: "widget", filters: {} }, ctx)
     expect(r.results[0]!.id).toMatch(/^gid:\/\/shopify\//)
@@ -178,10 +214,7 @@ describe("searchHandler", () => {
       lastBody = init?.body ?? ""
       return orig(url, init)
     }) as typeof ctx.fetch
-    await searchHandler(
-      { query: "marie@example.com", filters: { market: "canada" } },
-      ctx,
-    )
+    await searchHandler({ query: "marie@example.com", filters: { market: "canada" } }, ctx)
     expect(lastBody).toContain("market:canada")
   })
 
@@ -222,8 +255,14 @@ describe("searchHandler §4.4 contract", () => {
     const ctx1 = makeCtx({
       calls: calls1,
       route: {
-        orders: { edges: [orderEdge("gid://shopify/Order/1", "#1")], pageInfo: { endCursor: "O1", hasNextPage: true } },
-        products: { edges: [productEdge("gid://shopify/Product/1", "P1")], pageInfo: { endCursor: "P1", hasNextPage: true } },
+        orders: {
+          edges: [orderEdge("gid://shopify/Order/1", "#1")],
+          pageInfo: { endCursor: "O1", hasNextPage: true },
+        },
+        products: {
+          edges: [productEdge("gid://shopify/Product/1", "P1")],
+          pageInfo: { endCursor: "P1", hasNextPage: true },
+        },
         customers: { edges: [], pageInfo: { endCursor: null, hasNextPage: false } },
       },
     })

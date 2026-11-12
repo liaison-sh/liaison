@@ -56,7 +56,8 @@ export interface InvoiceabilityFacts {
   total_tax: string | null
 }
 
-const s = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
+const s = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v.trim() : null
 
 /** A MailingAddressInput (countryCode) or a GraphQL MailingAddress (countryCodeV2). */
 function toFactsAddress(a: unknown): FactsAddress | null {
@@ -114,7 +115,10 @@ function obviouslyFree(input: Record<string, unknown>): boolean {
   })
 }
 
-function factsForCompanyDraft(input: Record<string, unknown>, company: VerifiedCompanyBuyer): InvoiceabilityFacts {
+function factsForCompanyDraft(
+  input: Record<string, unknown>,
+  company: VerifiedCompanyBuyer,
+): InvoiceabilityFacts {
   const contact = company.contactCustomer
   const defaultAddress = toFactsAddress(contact?.defaultAddress)
   return {
@@ -210,9 +214,12 @@ export async function invoiceabilityFactsForDraft(
   ctx: AppContext,
 ): Promise<InvoiceabilityFacts | null> {
   const client = await getShopifyClient(ctx)
-  const data = await client.query<{ draftOrder?: DraftOrderNode | null }>(DRAFT_ORDER_INVOICEABILITY_QUERY, {
-    id: draftOrderId,
-  })
+  const data = await client.query<{ draftOrder?: DraftOrderNode | null }>(
+    DRAFT_ORDER_INVOICEABILITY_QUERY,
+    {
+      id: draftOrderId,
+    },
+  )
   const d = data.draftOrder
   if (!d) return null
   const customer = d.customer ?? null
@@ -268,7 +275,11 @@ export async function assertDraftOrderInvoiceable(
   }
   if (env?.status !== "completed") return
   const result = env.result as
-    | { applies?: boolean; problems?: Array<{ reason?: string; message?: string }>; message?: string }
+    | {
+        applies?: boolean
+        problems?: Array<{ reason?: string; message?: string }>
+        message?: string
+      }
     | null
     | undefined
   const problems = Array.isArray(result?.problems) ? result.problems : []

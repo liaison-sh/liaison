@@ -242,12 +242,25 @@ export async function planWorkersRun(
   return admission.probe ? { target, probe: true } : { target }
 }
 
-/** Running executions by token -> app, so a nested run's record names its parent app. */
-const runningExecutions = new Map<string, string>()
+/**
+ * Running executions by token: the app (a nested run's record names its parent
+ * app) and how deep the run is in a chain of nested runs (0 top-level).
+ */
+const runningExecutions = new Map<string, { app: string; depth: number }>()
+
+/** A run's depth: one below its parent's, when it is nested under a running one. */
+function runDepthOf(opts: Pick<RunAppOptions, "nested" | "nestedParentKey">): number {
+  if (!opts.nested) return 0
+  const parent = opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+  return (parent?.depth ?? 0) + 1
+}
 
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
   const started = Date.now()
-  if (opts.executionToken) runningExecutions.set(opts.executionToken, opts.appName)
+  const depth = runDepthOf(opts)
+  if (opts.executionToken) {
+    runningExecutions.set(opts.executionToken, { app: opts.appName, depth })
+  }
   let info: WorkersRunInfo = {}
   let ok = false
   let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
@@ -323,7 +336,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     // never the run's failure (modules/app-builder/logs.ts).
     void flushRunLogs(opts.bridge)
     const parentApp =
-      opts.nested && opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+      opts.nested && opts.nestedParentKey
+        ? runningExecutions.get(opts.nestedParentKey)?.app
+        : undefined
     emitRunSettled({
       ...(info.runId ? { runId: info.runId } : {}),
       app: opts.appName,
@@ -419,9 +434,17 @@ async function runOnExecutor(
         nested: opts.nested === true,
         ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
         ...(plan.probe ? { probe: true } : {}),
+        runDepth: runDepthOf(opts),
         // The fallback target's runs leave the loader's breaker and app
-        // fallbacks alone, and have nothing further to fall back to.
-        ...(executor === "workerd" ? fallbackTargetRunState() : {}),
+        // fallbacks alone, and have nothing further to fall back to. The
+        // sandbox service holds no key to fetch a module: it is pushed.
+        ...(executor === "workerd"
+          ? {
+              ...fallbackTargetRunState(),
+              pushModule: async () =>
+                (await readInstalledWorkerModule(workersTarget.sha256))?.bytes ?? null,
+            }
+          : {}),
       },
       onInfo,
     )

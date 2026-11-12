@@ -37,8 +37,8 @@ import {
   DEFAULT_BUDGET_MS,
   ensureSyncState,
   PAGE_SIZE,
-  readAllSyncState,
   RESOURCES,
+  readAllSyncState,
   type SyncCtx,
   type SyncOptions,
   type SyncResource,
@@ -66,7 +66,8 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
   const install = await readInstall(ctx.db)
   if (!install) return { outcome: "not_connected", written: 0, released: 0 }
-  if (blockedOverlay(install)) return { outcome: "blocked", written: 0, released: 0, detail: String(install.state) }
+  if (blockedOverlay(install))
+    return { outcome: "blocked", written: 0, released: 0, detail: String(install.state) }
   const connectedMs = msOf(install.connected_at)
   let written = 0
 
@@ -75,7 +76,12 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
     if (row.status === "done" || row.status === "failed") continue
     if (row.status === "pending") {
       if (!(await advanceState(ctx.db, row, { status: "running" }, now()))) {
-        return { outcome: "stopped", written, released: 0, detail: "another run moved the import on" }
+        return {
+          outcome: "stopped",
+          written,
+          released: 0,
+          detail: "another run moved the import on",
+        }
       }
       row = { ...row, status: "running" }
     }
@@ -84,11 +90,13 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
       const started = now().toISOString()
       let body: unknown
       try {
-        body = await stripeFetch(
-          ctx,
-          res.list,
-          { params: { limit: PAGE_SIZE, ...(res.params ?? {}), ...(row.cursor ? { starting_after: row.cursor } : {}) } },
-        )
+        body = await stripeFetch(ctx, res.list, {
+          params: {
+            limit: PAGE_SIZE,
+            ...(res.params ?? {}),
+            ...(row.cursor ? { starting_after: row.cursor } : {}),
+          },
+        })
       } catch (err) {
         if (!(err instanceof StripeApiError)) throw err
         if (err.code === "key_invalid") {
@@ -96,7 +104,12 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
           return { outcome: "stopped", written, released: 0, detail: "key_invalid" }
         }
         if (err.code === "permission_missing") {
-          await advanceState(ctx.db, row, { status: "failed", last_error_code: "permission_missing" }, now())
+          await advanceState(
+            ctx.db,
+            row,
+            { status: "failed", last_error_code: "permission_missing" },
+            now(),
+          )
           await moveState(ctx, install, [{ kind: "permission_refused" }])
           break
         }
@@ -104,7 +117,11 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
         return { outcome: "paused", written, released: 0, detail: err.code }
       }
       const page = asPage(body)
-      if (page.data.some((o) => typeof o.livemode === "boolean" && o.livemode !== (install.livemode === true))) {
+      if (
+        page.data.some(
+          (o) => typeof o.livemode === "boolean" && o.livemode !== (install.livemode === true),
+        )
+      ) {
         await moveState(ctx, install, [{ kind: "account_unconfirmed" }])
         return { outcome: "stopped", written, released: 0, detail: "different_account" }
       }
@@ -117,7 +134,12 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
         status: page.has_more && last ? "running" : "done",
       }
       if (!(await advanceState(ctx.db, row, next, now()))) {
-        return { outcome: "stopped", written, released: 0, detail: "another run moved the import on" }
+        return {
+          outcome: "stopped",
+          written,
+          released: 0,
+          detail: "another run moved the import on",
+        }
       }
       row = { ...row, ...next }
       if (row.status === "done") break
@@ -133,7 +155,13 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
   return { outcome: "done", written, released }
 }
 
-async function writePage(ctx: SyncCtx, res: SyncResource, objects: Obj[], started: string, connectedMs: number) {
+async function writePage(
+  ctx: SyncCtx,
+  res: SyncResource,
+  objects: Obj[],
+  started: string,
+  connectedMs: number,
+) {
   const tally = newTally()
   let n = 0
   for (const obj of objects) {
@@ -141,7 +169,11 @@ async function writePage(ctx: SyncCtx, res: SyncResource, objects: Obj[], starte
     const row = res.row(obj, tally)
     if (res.entity === "stripe_invoices") {
       const finalizedMs = msOf(row.finalized_at)
-      if (Number.isFinite(finalizedMs) && Number.isFinite(connectedMs) && finalizedMs < connectedMs) {
+      if (
+        Number.isFinite(finalizedMs) &&
+        Number.isFinite(connectedMs) &&
+        finalizedMs < connectedMs
+      ) {
         row.issuer = "before_connection"
       }
     }
@@ -162,14 +194,12 @@ async function writePage(ctx: SyncCtx, res: SyncResource, objects: Obj[], starte
 async function finishImport(ctx: SyncCtx, install: Install): Promise<void> {
   const fresh = (await readInstall(ctx.db)) ?? install
   // Before the first event, the import is simply done: that event moves the connection on.
-  if (String(fresh.state ?? "").startsWith("importing")) await moveState(ctx, fresh, [{ kind: "import_done" }])
+  if (String(fresh.state ?? "").startsWith("importing"))
+    await moveState(ctx, fresh, [{ kind: "import_done" }])
 }
 
 /** Play the held deliveries again, oldest first, through the same dispatch. */
-export async function releaseHeld(
-  ctx: SyncCtx,
-  budget: Budget,
-): Promise<number> {
+export async function releaseHeld(ctx: SyncCtx, budget: Budget): Promise<number> {
   const held = (await ctx.db.findMany("webhook_deliveries", {
     where: { status: HELD },
     orderBy: { received_at: "asc" },

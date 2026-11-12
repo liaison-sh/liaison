@@ -84,7 +84,14 @@ export const Button: Component<
     loading?: boolean
   }
 > = (props) => {
-  const [own, rest] = splitProps(props, ["variant", "size", "loading", "class", "children", "disabled"])
+  const [own, rest] = splitProps(props, [
+    "variant",
+    "size",
+    "loading",
+    "class",
+    "children",
+    "disabled",
+  ])
   return (
     <button
       type="button"

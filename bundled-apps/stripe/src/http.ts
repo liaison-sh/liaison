@@ -62,7 +62,14 @@ export class StripeApiError extends Error {
   }
 }
 
-export type FormValue = string | number | boolean | null | undefined | FormValue[] | { [k: string]: FormValue }
+export type FormValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | FormValue[]
+  | { [k: string]: FormValue }
 
 /**
  * Stripe's form encoding: nested objects as `a[b]=…`, arrays as `a[0]=…`.
@@ -73,7 +80,7 @@ export function formEncode(params: Record<string, FormValue>): string {
   const walk = (key: string, value: FormValue): void => {
     if (value === undefined || value === null) return
     if (Array.isArray(value)) {
-      value.forEach((v, i) => walk(`${key}[${i}]`, v))
+      for (const [i, v] of value.entries()) walk(`${key}[${i}]`, v)
       return
     }
     if (typeof value === "object") {

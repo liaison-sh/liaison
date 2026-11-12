@@ -885,6 +885,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             path.join(ROOT, "packages/control-plane-contract"),
             path.join(ROOT, "packages/db-core"),
             path.join(ROOT, "packages/host-sdk"),
+            path.join(ROOT, "packages/sandbox-supervisor"),
           ]),
     ],
     cwd: ROOT,
@@ -1859,6 +1860,18 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
   // Database bundled-app oracles: Report access, the db_* answers, provisioning
   // and the knowledge source's paging over an in-memory ctx (src/test-ctx.ts).
   // No Postgres needed: ctx.sql itself is the platform's (connections/sql).
+  // Google Drive bundled-app oracles: the handlers against a fake Drive behind
+  // ctx.fetch (test-ctx.ts), no Postgres.
+  "bundled-google-drive": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/drive.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/google-drive"),
+  },
   "bundled-database": {
     cmd: [
       "bun",
@@ -2397,6 +2410,7 @@ if (suite === "full") {
     "bundled-boxtal",
     "bundled-monitoring",
     "bundled-database",
+    "bundled-google-drive",
     "bundled-gitlab",
     "bundled-api-connector",
     "bundled-pennylane",

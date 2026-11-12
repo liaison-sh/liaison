@@ -78,7 +78,8 @@ export interface SocialToolCtx {
     current_payload: unknown
     editable_fields?: string[]
   }) => Promise<
-    { approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }
+    | { approval_id: string; auto_approved?: undefined }
+    | { approval_id: string | null; auto_approved: true }
   >
   /** Read-only view of this app's own approvals. `pendingFor(key, toolNames?)`
    *  lists the requests still awaiting a decision on this app's tools whose
@@ -96,8 +97,17 @@ export interface SocialToolCtx {
   approval_recordEffectLanded?: (toolName: string, externalRefJson: string) => Promise<void>
   approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
   approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
-  enqueueJob?: (jobName: string, payload: unknown, opts?: { delay?: number; jobId?: string }) => Promise<void>
-  emit?: (event: { entity: string; action: string; entityId?: string; data?: unknown }) => Promise<void>
+  enqueueJob?: (
+    jobName: string,
+    payload: unknown,
+    opts?: { delay?: number; jobId?: string },
+  ) => Promise<void>
+  emit?: (event: {
+    entity: string
+    action: string
+    entityId?: string
+    data?: unknown
+  }) => Promise<void>
   // Resolve-or-create a kernel contact for an external author/participant
   // (§5/§6). Returns the contact row (`{ id }`); the app stores `id` as the
   // finding/conversation `contact_id` so a contact's social history is joinable.

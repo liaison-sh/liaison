@@ -5,14 +5,14 @@
 // Mirrors the shopify-order-paid.test.ts harness (createMockDb + a stubbed
 // executeTool keyed by tool name).
 
-import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import { createMockDb, type MockDb } from "../test-db"
+import { testTime } from "../test-time"
 import {
-  reconcileShopifyPayments,
-  reconcileShopifyPaymentsJobHandler,
   type ReconcileCrossAppEnvelope,
   type ReconcileCtx,
+  reconcileShopifyPayments,
+  reconcileShopifyPaymentsJobHandler,
 } from "./reconcile-shopify-payments"
 
 interface SeedDocOptions {
@@ -37,7 +37,9 @@ function seedDoc(over: SeedDocOptions = {}): Record<string, unknown> {
     scope: over.scope ?? "goods",
     shopify_order_id: over.shopify_order_id === undefined ? "9001" : over.shopify_order_id,
     external_refs: over.external_refs ?? { shopify_order_id: over.shopify_order_id ?? "9001" },
-    lifecycle_log: over.lifecycle_log ?? [{ event: "issued", actor: "system", ts: "2026-06-01T00:00:00Z" }],
+    lifecycle_log: over.lifecycle_log ?? [
+      { event: "issued", actor: "system", ts: "2026-06-01T00:00:00Z" },
+    ],
   }
 }
 
@@ -102,7 +104,13 @@ function makeCtx(opts?: {
           pdf: {
             async render(p: { template_kind: string; data: unknown }) {
               renderCalls.push(p)
-              return { file_id: `pdf-${renderCalls.length}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+              return {
+                file_id: `pdf-${renderCalls.length}`,
+                byte_size: 1024,
+                page_count: 1,
+                sha256: "0".repeat(64),
+                parent_entity_id: crypto.randomUUID(),
+              }
             },
           },
         }
@@ -192,7 +200,12 @@ describe("reconcileShopifyPayments", () => {
     expect(doc.payment_status).toBe("paid")
     expect(doc.paid_at).toBe("2026-06-05")
     const log = doc.lifecycle_log as Array<Record<string, unknown>>
-    expect(log.some((e) => e.event === "marked_paid" && e.actor === "system" && e.source === "shopify_reconcile")).toBe(true)
+    expect(
+      log.some(
+        (e) =>
+          e.event === "marked_paid" && e.actor === "system" && e.source === "shopify_reconcile",
+      ),
+    ).toBe(true)
   })
 
   test("late settlement: flips to paid AND re-renders the PDF inline as 'Amount paid' (link:false, payment_status reaches render)", async () => {
@@ -201,11 +214,30 @@ describe("reconcileShopifyPayments", () => {
       pdf: true,
       issuerProfiles: [RECON_ISSUER],
       documentLines: [
-        { id: "l1", document_id: DOC, position: 1, description: "Tessera 2", quantity: "1", unit_price_minor: "74900", discount_minor: "0", line_kind: "goods", tax_rate_bp: 2000, subtotal_minor: "74900", tax_minor: "14980", total_minor: "89880", product_source: "shopify", external_id: null },
+        {
+          id: "l1",
+          document_id: DOC,
+          position: 1,
+          description: "Tessera 2",
+          quantity: "1",
+          unit_price_minor: "74900",
+          discount_minor: "0",
+          line_kind: "goods",
+          tax_rate_bp: 2000,
+          subtotal_minor: "74900",
+          tax_minor: "14980",
+          total_minor: "89880",
+          product_source: "shopify",
+          external_id: null,
+        },
       ],
       docs: [fullDoc(DOC, "9100")],
       ordersByGid: {
-        "gid://shopify/Order/9100": orderResult({ financialStatus: "PAID", fulfillmentStatus: "UNFULFILLED", createdAt: "2026-06-10T00:00:00Z" }),
+        "gid://shopify/Order/9100": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "UNFULFILLED",
+          createdAt: "2026-06-10T00:00:00Z",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -232,8 +264,16 @@ describe("reconcileShopifyPayments", () => {
         issuerProfiles: [RECON_ISSUER],
         docs: [fullDoc(A, "9301"), fullDoc(B, "9302")],
         ordersByGid: {
-          "gid://shopify/Order/9301": orderResult({ financialStatus: "PAID", fulfillmentStatus: "UNFULFILLED", createdAt: "2026-06-10T00:00:00Z" }),
-          "gid://shopify/Order/9302": orderResult({ financialStatus: "PAID", fulfillmentStatus: "UNFULFILLED", createdAt: "2026-06-10T00:00:00Z" }),
+          "gid://shopify/Order/9301": orderResult({
+            financialStatus: "PAID",
+            fulfillmentStatus: "UNFULFILLED",
+            createdAt: "2026-06-10T00:00:00Z",
+          }),
+          "gid://shopify/Order/9302": orderResult({
+            financialStatus: "PAID",
+            fulfillmentStatus: "UNFULFILLED",
+            createdAt: "2026-06-10T00:00:00Z",
+          }),
         },
       })
     const { ctx, db } = mk()
@@ -242,7 +282,9 @@ describe("reconcileShopifyPayments", () => {
     expect(r1.pdf_rerendered).toBe(1)
     const paidNow = db.__all("documents").filter((d) => d.payment_status === "paid")
     expect(paidNow).toHaveLength(1) // the OTHER stays unpaid (deferred), not silently marked paid
-    const stillUnpaid = db.__all("documents").filter((d) => (d.payment_status ?? "unpaid") === "unpaid")
+    const stillUnpaid = db
+      .__all("documents")
+      .filter((d) => (d.payment_status ?? "unpaid") === "unpaid")
     expect(stillUnpaid).toHaveLength(1)
     expect(stillUnpaid[0]!.pdf_file_id).toBe("pdf-old") // deferred doc was NOT re-rendered
 
@@ -260,7 +302,11 @@ describe("reconcileShopifyPayments", () => {
       issuerProfiles: [RECON_ISSUER],
       docs: [{ ...fullDoc(DOC, "9200"), payment_status: "paid" }],
       ordersByGid: {
-        "gid://shopify/Order/9200": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED", processedAt: "2026-06-05T00:00:00Z" }),
+        "gid://shopify/Order/9200": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+          processedAt: "2026-06-05T00:00:00Z",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -343,7 +389,10 @@ describe("reconcileShopifyPayments", () => {
         },
       ],
       ordersByGid: {
-        "gid://shopify/Order/9500": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED" }),
+        "gid://shopify/Order/9500": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -366,7 +415,10 @@ describe("reconcileShopifyPayments", () => {
         },
       ],
       ordersByGid: {
-        "gid://shopify/Order/9501": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED" }),
+        "gid://shopify/Order/9501": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -389,7 +441,9 @@ describe("reconcileShopifyPayments", () => {
     })
     const result = await reconcileShopifyPayments(ctx)
     expect(result.skipped_refunded).toBe(2)
-    expect(db.__all("documents").every((d) => d.status === "issued" && d.payment_status === "unpaid")).toBe(true)
+    expect(
+      db.__all("documents").every((d) => d.status === "issued" && d.payment_status === "unpaid"),
+    ).toBe(true)
   })
 
   test("PENDING order -> invoice unchanged", async () => {
@@ -456,7 +510,11 @@ describe("reconcileShopifyPayments", () => {
           throw new Error("Shopify API timeout")
         }
         if (id === "gid://shopify/Order/9012") {
-          return orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED", processedAt: "2026-06-05T10:00:00Z" })
+          return orderResult({
+            financialStatus: "PAID",
+            fulfillmentStatus: "FULFILLED",
+            processedAt: "2026-06-05T10:00:00Z",
+          })
         }
         return { status: "error", error: { code: "NOT_FOUND", message: "no such order" } }
       },
@@ -480,7 +538,10 @@ describe("reconcileShopifyPayments", () => {
     const { ctx, db } = makeCtx({
       docs: [seedDoc({ id: "doc-13", shopify_order_id: "9013" })],
       ordersByGid: {
-        "gid://shopify/Order/9013": { status: "error", error: { code: "RATE_LIMIT", message: "throttled" } },
+        "gid://shopify/Order/9013": {
+          status: "error",
+          error: { code: "RATE_LIMIT", message: "throttled" },
+        },
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -502,7 +563,10 @@ describe("reconcileShopifyPayments", () => {
         }),
       ],
       ordersByGid: {
-        "gid://shopify/Order/9014": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED" }),
+        "gid://shopify/Order/9014": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -531,7 +595,10 @@ describe("reconcileShopifyPayments", () => {
         seedDoc({ id: "doc-sw", shopify_order_id: "9020", scope: "software" }),
       ],
       ordersByGid: {
-        "gid://shopify/Order/9020": orderResult({ financialStatus: "PAID", fulfillmentStatus: "UNFULFILLED" }),
+        "gid://shopify/Order/9020": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "UNFULFILLED",
+        }),
       },
     })
     const result = await reconcileShopifyPayments(ctx)
@@ -564,7 +631,10 @@ describe("reconcileShopifyPayments", () => {
     const { ctx, db } = makeCtx({
       docs: [seedDoc({ id: "doc-16", shopify_order_id: "9016", scope: "goods" })],
       ordersByGid: {
-        "gid://shopify/Order/9016": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED" }),
+        "gid://shopify/Order/9016": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+        }),
       },
     })
     const result = await reconcileShopifyPaymentsJobHandler(undefined, ctx, {
@@ -576,7 +646,9 @@ describe("reconcileShopifyPayments", () => {
 
   test("candidates outside status='issued' are not scanned (a paid document is not re-fetched)", async () => {
     const { ctx, calls } = makeCtx({
-      docs: [seedDoc({ id: "doc-17", shopify_order_id: "9017", status: "paid", payment_status: "paid" })],
+      docs: [
+        seedDoc({ id: "doc-17", shopify_order_id: "9017", status: "paid", payment_status: "paid" }),
+      ],
     })
     const result = await reconcileShopifyPayments(ctx)
     expect(result.scanned).toBe(0)
@@ -595,7 +667,10 @@ describe("reconcileShopifyPayments", () => {
     const { ctx, db } = makeCtx({
       docs: [seedDoc({ id: "doc-19", shopify_order_id: "9019", scope: "goods" })],
       ordersByGid: {
-        "gid://shopify/Order/9019": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED" }),
+        "gid://shopify/Order/9019": orderResult({
+          financialStatus: "PAID",
+          fulfillmentStatus: "FULFILLED",
+        }),
       },
     })
     const fixedNow = new Date("2026-07-09T12:00:00Z")
@@ -634,7 +709,9 @@ describe("reconcileShopifyPayments", () => {
 
   test("does not emit document:paid when a document is already paid and nothing changes", async () => {
     const { ctx, emittedAttention } = makeCtx({
-      docs: [seedDoc({ id: "doc-21", shopify_order_id: "9021", status: "paid", payment_status: "paid" })],
+      docs: [
+        seedDoc({ id: "doc-21", shopify_order_id: "9021", status: "paid", payment_status: "paid" }),
+      ],
     })
     await reconcileShopifyPayments(ctx)
     expect(emittedAttention.find((e) => e.action === "paid")).toBeUndefined()
@@ -644,9 +721,14 @@ describe("reconcileShopifyPayments", () => {
 describe("the paid date reads the issuer's date", () => {
   const PARIS = { id: "iss-paris", timezone: "Europe/Paris" }
   const paidOrder = (over: { processedAt?: string; createdAt?: string }) => ({
-    "gid://shopify/Order/9001": orderResult({ financialStatus: "PAID", fulfillmentStatus: "FULFILLED", ...over }),
+    "gid://shopify/Order/9001": orderResult({
+      financialStatus: "PAID",
+      fulfillmentStatus: "FULFILLED",
+      ...over,
+    }),
   })
-  const doc = () => seedDoc({ id: "doc-1", shopify_order_id: "9001", scope: "goods", issuer_profile_id: PARIS.id })
+  const doc = () =>
+    seedDoc({ id: "doc-1", shopify_order_id: "9001", scope: "goods", issuer_profile_id: PARIS.id })
 
   test("an order processed at 00:20 on 1 January in Paris", async () => {
     const { ctx, db } = makeCtx({

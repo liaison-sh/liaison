@@ -69,7 +69,7 @@ export async function scanUnfulfilledOrdersJob(
   // repeating API calls would generate noise and potential auth errors.
   if (row.connectionStatus === "disconnected") return { matched: 0 }
   const threshold = row.unfulfilledThresholdHours ?? 24
-  let client
+  let client: Awaited<ReturnType<typeof getShopifyClient>>
   try {
     client = await getShopifyClient(ctx)
   } catch {
@@ -99,7 +99,9 @@ export async function scanUnfulfilledOrdersJob(
 
   let edges: Array<{ node: OrderNode }>
   try {
-    const data = await client.query<{ orders?: { edges?: Array<{ node: OrderNode }> } }>(QUERY, { query })
+    const data = await client.query<{ orders?: { edges?: Array<{ node: OrderNode }> } }>(QUERY, {
+      query,
+    })
     edges = data.orders?.edges ?? []
   } catch (err) {
     ctx.logger.warn(`[scan-unfulfilled] ${(err as Error).message}`)
@@ -113,7 +115,9 @@ export async function scanUnfulfilledOrdersJob(
     .filter((edge) => !!edge.node.createdAt)
     .map((edge) => {
       const node = edge.node
-      const ageHours = Math.floor((nowMs - new Date(node.createdAt as string).getTime()) / 3600 / 1000)
+      const ageHours = Math.floor(
+        (nowMs - new Date(node.createdAt as string).getTime()) / 3600 / 1000,
+      )
       return { name: node.name ?? shortId(node.id), ageHours }
     })
     .sort((a, b) => b.ageHours - a.ageHours)

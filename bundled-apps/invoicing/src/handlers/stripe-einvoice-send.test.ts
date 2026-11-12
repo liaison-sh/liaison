@@ -7,8 +7,8 @@
 import { describe, expect, test } from "bun:test"
 import type { MockDb } from "../test-db"
 import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
-import { onStripeRefundCreated } from "./stripe-refund-created"
 import { creditNotes, finalized, invoices, stripeCtx, stripeDb } from "./stripe-money.testkit"
+import { onStripeRefundCreated } from "./stripe-refund-created"
 
 type Row = Record<string, unknown>
 
@@ -20,16 +20,23 @@ async function sendingDb(): Promise<MockDb> {
   eTypes.clear()
   eTypes.add("invoice")
   const db = stripeDb()
-  await db.insert("einvoicing_settings", { provider_app: "pennylane", send_enabled: true, cutover_date: "2020-01-01" })
+  await db.insert("einvoicing_settings", {
+    provider_app: "pennylane",
+    send_enabled: true,
+    cutover_date: "2020-01-01",
+  })
   const findMany = db.findMany.bind(db)
   db.findMany = (async (entity: string, q?: { where?: Row }) => {
     const rows = (await findMany(entity, q as never)) as Row[]
-    return entity === "documents" && q?.where?.id ? rows.map((r) => (eTypes.has(String(r.type)) ? { ...r, regime: "e_invoice" } : r)) : rows
+    return entity === "documents" && q?.where?.id
+      ? rows.map((r) => (eTypes.has(String(r.type)) ? { ...r, regime: "e_invoice" } : r))
+      : rows
   }) as typeof db.findMany
   return db
 }
 
-const sendCards = (asked: Row[]) => asked.filter((a) => String(a.tool_name ?? "").includes("einvoice_send"))
+const sendCards = (asked: Row[]) =>
+  asked.filter((a) => String(a.tool_name ?? "").includes("einvoice_send"))
 
 describe("Stripe documents and the e-invoice send path", () => {
   test("an invoice issued from Stripe and its refund's credit note wait for the daily send card", async () => {
@@ -49,7 +56,14 @@ describe("Stripe documents and the e-invoice send path", () => {
     // From here only the credit note reads as an e-invoice: the original's own gate stays as stored.
     eTypes.clear()
     eTypes.add("credit_note")
-    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [{ id: "re_1", amount_minor: "1200", status: "succeeded" }] }, ctx)
+    await onStripeRefundCreated(
+      {
+        charge_id: "ch_1",
+        invoice_id: "in_1",
+        refunds: [{ id: "re_1", amount_minor: "1200", status: "succeeded" }],
+      },
+      ctx,
+    )
     const cn = creditNotes(db)[0] as Row
     expect(cn.einvoice_state).toBe("awaiting_send_batch")
     expect(sendCards(asked)).toHaveLength(0)
@@ -58,7 +72,9 @@ describe("Stripe documents and the e-invoice send path", () => {
   test("an invoice a person issues from a Stripe payment keeps its own send request", async () => {
     const db = await sendingDb()
     const ctx = stripeCtx(db)
-    const r = await onStripeInvoiceFinalized(finalized({ charge_id: "ch_1" }), ctx, { byPerson: true })
+    const r = await onStripeInvoiceFinalized(finalized({ charge_id: "ch_1" }), ctx, {
+      byPerson: true,
+    })
     expect(r.status).toBe("ok")
     expect((invoices(db)[0] as Row).einvoice_state).not.toBe("awaiting_send_batch")
   })

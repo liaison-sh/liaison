@@ -27,14 +27,31 @@ function fakeStripe(overrides: Record<string, Answer> = {}, livemode = false) {
       return { status: 400, headers: {}, body: "{}" }
     }
     const a = overrides[`${method} ${u.pathname}`]
-    if (a) return { status: a.status, headers: {}, body: JSON.stringify(a.body ?? { error: { message: "x" } }) }
+    if (a)
+      return {
+        status: a.status,
+        headers: {},
+        body: JSON.stringify(a.body ?? { error: { message: "x" } }),
+      }
     if (method === "POST" && u.pathname === "/v1/refunds") {
-      return { status: 404, headers: {}, body: JSON.stringify({ error: { code: "resource_missing" } }) }
+      return {
+        status: 404,
+        headers: {},
+        body: JSON.stringify({ error: { code: "resource_missing" } }),
+      }
     }
     if (method === "GET" && u.pathname.split("/").length === 3) {
-      return { status: 200, headers: {}, body: JSON.stringify({ object: "list", data: [{ id: "x_1", livemode }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ object: "list", data: [{ id: "x_1", livemode }] }),
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ id: u.pathname.split("/").pop(), livemode }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ id: u.pathname.split("/").pop(), livemode }),
+    }
   }
   return { fetch, calls }
 }
@@ -60,10 +77,7 @@ function memDb(seed: Record<string, Array<Record<string, unknown>>> = {}) {
   }
 }
 
-const EXPECTED_CALLS = [
-  ...PERMISSION_READS.map((r) => `GET ${r.path}`),
-  "POST /v1/refunds",
-]
+const EXPECTED_CALLS = [...PERMISSION_READS.map((r) => `GET ${r.path}`), "POST /v1/refunds"]
 
 describe("the key check", () => {
   it("the check makes one read per permission and writes nothing", async () => {
@@ -88,7 +102,14 @@ describe("the key check", () => {
     const result = await runConnectionCheck({ fetch, db })
     if ("status" in result) throw new Error("refused")
     const bad = result.checks.filter((c) => c.state !== "ok")
-    expect(bad).toEqual([{ label: "Disputes", level: "Read", state: "missing", meta: "Missing: give Read to Disputes" }])
+    expect(bad).toEqual([
+      {
+        label: "Disputes",
+        level: "Read",
+        state: "missing",
+        meta: "Missing: give Read to Disputes",
+      },
+    ])
     expect(result.state).toBe("key_stored+partial")
     expect(result.next).toContain("Disputes to Read")
     expect(tables.install_metadata?.[0]?.state).toBe("key_stored+partial")
@@ -99,12 +120,18 @@ describe("the key check", () => {
     const { db } = memDb()
     const result = await runConnectionCheck({ fetch, db })
     if ("status" in result) throw new Error("refused")
-    expect(result.checks.at(-1)).toMatchObject({ label: "Refunds", level: "Write", state: "missing" })
+    expect(result.checks.at(-1)).toMatchObject({
+      label: "Refunds",
+      level: "Write",
+      state: "missing",
+    })
   })
 
   it("a key Stripe refuses is the typed key_invalid refusal with the next step", async () => {
     const { fetch, calls } = fakeStripe({ "GET /v1/customers": { status: 401 } })
-    const { db, tables } = memDb({ install_metadata: [{ id: "i1", state: "connected", permissions: null }] })
+    const { db, tables } = memDb({
+      install_metadata: [{ id: "i1", state: "connected", permissions: null }],
+    })
     const result = await runConnectionCheck({ fetch, db })
     expect(result).toMatchObject({ status: "error", error: { code: "key_invalid", refusal: true } })
     if (!("status" in result)) throw new Error("not refused")
@@ -123,8 +150,14 @@ describe("the key check", () => {
           permissions: { mode: "test", checks: [], checkedAt: "2026-11-01T00:00:00.000Z" },
         },
       ],
-      stripe_customers: [{ id: "c1", stripe_id: "cus_A" }, { id: "c2", stripe_id: "cus_B" }],
-      stripe_subscriptions: [{ id: "s1", stripe_id: "sub_A" }, { id: "s2", stripe_id: "sub_B" }],
+      stripe_customers: [
+        { id: "c1", stripe_id: "cus_A" },
+        { id: "c2", stripe_id: "cus_B" },
+      ],
+      stripe_subscriptions: [
+        { id: "s1", stripe_id: "sub_A" },
+        { id: "s2", stripe_id: "sub_B" },
+      ],
     }
     const { fetch, calls } = fakeStripe({
       "GET /v1/customers/cus_A": { status: 404 },
@@ -135,13 +168,22 @@ describe("the key check", () => {
     const result = await runConnectionCheck({ fetch, db })
     expect(result).toMatchObject({ status: "error", error: { code: "different_account" } })
     // Up to 3 known ids, then nothing more: no permission read, no probe.
-    expect(calls.map((c) => c.path)).toEqual(["/v1/customers/cus_A", "/v1/customers/cus_B", "/v1/subscriptions/sub_A"])
+    expect(calls.map((c) => c.path)).toEqual([
+      "/v1/customers/cus_A",
+      "/v1/customers/cus_B",
+      "/v1/subscriptions/sub_A",
+    ])
     expect(tables).toEqual(before)
   })
 
   it("a key of the same account goes on when one known id answers", async () => {
     const { fetch } = fakeStripe({ "GET /v1/customers/cus_A": { status: 404 } })
-    const { db } = memDb({ stripe_customers: [{ id: "c1", stripe_id: "cus_A" }, { id: "c2", stripe_id: "cus_B" }] })
+    const { db } = memDb({
+      stripe_customers: [
+        { id: "c1", stripe_id: "cus_A" },
+        { id: "c2", stripe_id: "cus_B" },
+      ],
+    })
     const result = await runConnectionCheck({ fetch, db })
     expect("status" in result).toBe(false)
   })
@@ -149,7 +191,12 @@ describe("the key check", () => {
   it("a live key where test data is held is refused as mode_changed and nothing is replaced", async () => {
     const before = {
       install_metadata: [
-        { id: "i1", state: "connected", livemode: false, permissions: { mode: "test", checks: [], checkedAt: "x" } },
+        {
+          id: "i1",
+          state: "connected",
+          livemode: false,
+          permissions: { mode: "test", checks: [], checkedAt: "x" },
+        },
       ],
     }
     const { fetch } = fakeStripe({}, true)
@@ -166,7 +213,10 @@ describe("the check of a key before it is stored", () => {
   it("answers like the check and records nothing, even when Stripe refuses the key", async () => {
     const before = { install_metadata: [{ id: "i1", state: "connected", permissions: null }] }
     const ok = memDb(before)
-    const result = await runConnectionCheck({ fetch: fakeStripe().fetch, db: ok.db }, { dryRun: true })
+    const result = await runConnectionCheck(
+      { fetch: fakeStripe().fetch, db: ok.db },
+      { dryRun: true },
+    )
     expect("status" in result).toBe(false)
     expect(ok.tables).toEqual(before)
     const refused = memDb(before)
@@ -182,8 +232,8 @@ describe("the check of a key before it is stored", () => {
 })
 
 describe("the secret key refusal declared by the connection", () => {
-  const field = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8")).connections.stripe
-    .credentialFields[0]
+  const field = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"))
+    .connections.stripe.credentialFields[0]
   const refuses = (v: string) => new RegExp(field.refusePattern.pattern).test(v)
 
   it("a secret key is refused, nothing is stored and the card says why", () => {
@@ -191,7 +241,9 @@ describe("the secret key refusal declared by the connection", () => {
     expect(refuses(`sk_test_${"a".repeat(24)}`)).toBe(true)
     expect(refuses(`rk_test_${"a".repeat(24)}`)).toBe(false)
     expect(refuses(`rk_live_${"a".repeat(24)}`)).toBe(false)
-    expect(field.refusePattern.message).toStartWith("That is your secret key, so I did not keep it.")
+    expect(field.refusePattern.message).toStartWith(
+      "That is your secret key, so I did not keep it.",
+    )
     expect(field.refusePattern.messageKey).toBe("kernel.stripeSecretKeyRefused")
   })
 })

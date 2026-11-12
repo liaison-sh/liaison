@@ -60,7 +60,9 @@ describe("api-connector manifest", () => {
     expect(api.credentialFields.map((f: { name: string }) => f.name).sort()).toEqual(
       [...ALL_CREDENTIAL_FIELDS].sort(),
     )
-    expect(api.credentialFields.every((f: { required?: boolean }) => f.required === false)).toBe(true)
+    expect(api.credentialFields.every((f: { required?: boolean }) => f.required === false)).toBe(
+      true,
+    )
   })
 
   it("grants read/write to members and admin/accounts:admin to admins", () => {

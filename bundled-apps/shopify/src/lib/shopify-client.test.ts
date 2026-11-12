@@ -29,7 +29,8 @@ describe("ShopifyClient", () => {
         n++
         // First call (carrying the bad cursor) → Shopify "Malformed cursor"; the
         // fallback retry (after:null) → ok.
-        if (n === 1) return okResponse({ errors: [{ message: "Malformed cursor" }], extensions: COST_OK })
+        if (n === 1)
+          return okResponse({ errors: [{ message: "Malformed cursor" }], extensions: COST_OK })
         return okResponse({ data: { orders: { edges: [] } }, extensions: COST_OK })
       },
     })
@@ -52,7 +53,9 @@ describe("ShopifyClient", () => {
         return okResponse({ errors: [{ message: "Malformed cursor" }], extensions: COST_OK })
       },
     })
-    await expect(client.query("query{ orders }", { after: null })).rejects.toThrow(/Malformed cursor/)
+    await expect(client.query("query{ orders }", { after: null })).rejects.toThrow(
+      /Malformed cursor/,
+    )
     expect(n).toBe(1) // nothing to degrade to → no fallback retry
   })
 
@@ -62,12 +65,15 @@ describe("ShopifyClient", () => {
       shop: "demo",
       fetch: async () => {
         n++
-        return okResponse({ errors: [{ message: "Field 'foo' doesn't exist" }], extensions: COST_OK })
+        return okResponse({
+          errors: [{ message: "Field 'foo' doesn't exist" }],
+          extensions: COST_OK,
+        })
       },
     })
-    await expect(
-      client.query("query($after:String){ orders }", { after: "c" }),
-    ).rejects.toThrow(/doesn't exist/)
+    await expect(client.query("query($after:String){ orders }", { after: "c" })).rejects.toThrow(
+      /doesn't exist/,
+    )
     expect(n).toBe(1)
   })
 
@@ -174,13 +180,19 @@ describe("ShopifyClient", () => {
     const pages = [
       {
         data: {
-          customers: { edges: [{ node: { id: "1" } }], pageInfo: { hasNextPage: true, endCursor: "c1" } },
+          customers: {
+            edges: [{ node: { id: "1" } }],
+            pageInfo: { hasNextPage: true, endCursor: "c1" },
+          },
         },
         extensions: COST_OK,
       },
       {
         data: {
-          customers: { edges: [{ node: { id: "2" } }], pageInfo: { hasNextPage: false, endCursor: null } },
+          customers: {
+            edges: [{ node: { id: "2" } }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
         },
         extensions: COST_OK,
       },

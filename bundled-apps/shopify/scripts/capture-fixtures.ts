@@ -159,7 +159,10 @@ const FIXTURE_DIR = resolve(
   "shopify",
 )
 
-async function captureOne(env: ReturnType<typeof loadShopifyEnv>, spec: FixtureSpec): Promise<void> {
+async function captureOne(
+  env: ReturnType<typeof loadShopifyEnv>,
+  spec: FixtureSpec,
+): Promise<void> {
   try {
     const result = await graphqlThrottled(env, spec.query, spec.variables)
     const filePath = resolve(FIXTURE_DIR, `${spec.name}.json`)
@@ -235,7 +238,9 @@ async function main() {
     }
   }
 
-  console.log("\n✅ Fixtures captured. Commit them to git so unit tests are deterministic across machines.")
+  console.log(
+    "\n✅ Fixtures captured. Commit them to git so unit tests are deterministic across machines.",
+  )
 }
 
 main().catch((err) => {

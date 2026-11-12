@@ -24,6 +24,15 @@
 
 import { describe, expect, it } from "bun:test"
 import {
+  CHAIN_PRODUCT_EXTERNAL_ID,
+  CHAIN_SHOPIFY_ORDER_ID,
+  chainGoodsInvoiceFixture,
+  chainShopifyOrderMeta,
+} from "./__fixtures__/order-prep-chain"
+import { makeOrderScanStub } from "./__fixtures__/order-scan"
+import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
+import {
   computePrepInputHash,
   prepList,
   prepSelectOffer,
@@ -31,22 +40,13 @@ import {
   prepSetStatus,
   prepSync,
 } from "./prep"
-import { shipDisabledReason, shipParams } from "./ui/prep-row-logic"
 import { resolveStageOffer } from "./prep-selection"
-import { createShipment, createShipmentPreflight, shipmentDraftSetPackagePersist } from "./shipment"
-import { documentCreatedHandler } from "./webhooks"
-import { readyList } from "./queues"
 import { printRecordGet } from "./print-record"
-import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
+import { readyList } from "./queues"
+import { createShipment, createShipmentPreflight, shipmentDraftSetPackagePersist } from "./shipment"
 import { createMockDb } from "./test-db"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { makeOrderScanStub } from "./__fixtures__/order-scan"
-import {
-  CHAIN_PRODUCT_EXTERNAL_ID,
-  CHAIN_SHOPIFY_ORDER_ID,
-  chainGoodsInvoiceFixture,
-  chainShopifyOrderMeta,
-} from "./__fixtures__/order-prep-chain"
+import { shipDisabledReason, shipParams } from "./ui/prep-row-logic"
+import { documentCreatedHandler } from "./webhooks"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
@@ -127,7 +127,13 @@ function makeChainCtx(
         // world is an org that configured it.
         { id: "cfg-packaging", key: "packaging_policy", value: HOUSE_PACKAGING_POLICY },
         ...(typeof opts?.excludePickupPoint === "boolean"
-          ? [{ id: "cfg-pickup", key: "exclude_pickup_point_services", value: opts.excludePickupPoint }]
+          ? [
+              {
+                id: "cfg-pickup",
+                key: "exclude_pickup_point_services",
+                value: opts.excludePickupPoint,
+              },
+            ]
           : []),
       ],
     },
@@ -153,15 +159,31 @@ function makeChainCtx(
       }
     }
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/cotation")) {
       return { status: 200, headers: {}, body: state.cotationXml }
     }
     if (url.includes("/shipping-document")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }],
+        }),
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   // The worklist scan is order-driven, so the chain's order reaches it through
   // shopify:orders_search + invoicing:documents_for_orders. Its name/tags/date are the ones the
@@ -170,35 +192,43 @@ function makeChainCtx(
   const issuedProformaDocs = new Map<string, Record<string, unknown>>()
   const proformaLinesByDoc = new Map<
     string,
-    Array<{ description: string; quantity: number; unit_price_minor: string; external_id: string | null }>
+    Array<{
+      description: string
+      quantity: number
+      unit_price_minor: string
+      external_id: string | null
+    }>
   >()
   const chainMeta = chainShopifyOrderMeta()
   // Rebuilt per call so the test can flip the order's fulfillment status mid-chain.
   const scanStub = (target: string, args?: Record<string, unknown>) =>
-    makeOrderScanStub(opts?.documentsForOrder === false ? [] : [invoice as unknown as { id: string }], {
-      ...(opts?.documentsForOrder === false
-        ? {
-            // The same open order, with NO document behind it: what an order looks like before
-            // (or without) its invoice.
-            extraOrders: [
-              {
-                order_id: CHAIN_SHOPIFY_ORDER_ID,
-                name: chainShopifyOrderMeta().name,
-                customer: "Acme France SAS",
-                country: "FR",
-              },
-            ],
-          }
-        : {}),
-      orderOverrides: {
-        [documentRef]: {
-          name: chainMeta.name,
-          tags: chainMeta.tags,
-          createdAt: chainMeta.createdAt,
-          fulfillmentStatus: state.fulfillmentStatus,
+    makeOrderScanStub(
+      opts?.documentsForOrder === false ? [] : [invoice as unknown as { id: string }],
+      {
+        ...(opts?.documentsForOrder === false
+          ? {
+              // The same open order, with NO document behind it: what an order looks like before
+              // (or without) its invoice.
+              extraOrders: [
+                {
+                  order_id: CHAIN_SHOPIFY_ORDER_ID,
+                  name: chainShopifyOrderMeta().name,
+                  customer: "Acme France SAS",
+                  country: "FR",
+                },
+              ],
+            }
+          : {}),
+        orderOverrides: {
+          [documentRef]: {
+            name: chainMeta.name,
+            tags: chainMeta.tags,
+            createdAt: chainMeta.createdAt,
+            fulfillmentStatus: state.fulfillmentStatus,
+          },
         },
       },
-    })(target, args)
+    )(target, args)
   const executeTool = async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
     const scanned = scanStub(target, args as Record<string, unknown>)
     if (scanned) return scanned
@@ -206,7 +236,10 @@ function makeChainCtx(
       return { status: "completed", result: [{ channel: "shopify", ...invoice }] }
     }
     if (target === "invoicing:documents_get") {
-      const ref = typeof args === "string" ? args : ((args as { id?: string }).id ?? (args as { document_ref?: string }).document_ref)
+      const ref =
+        typeof args === "string"
+          ? args
+          : ((args as { id?: string }).id ?? (args as { document_ref?: string }).document_ref)
       if (ref === documentRef) return { status: "completed", result: invoice }
       return { status: "completed", result: (ref && issuedProformaDocs.get(ref)) ?? null }
     }
@@ -271,11 +304,17 @@ function makeChainCtx(
         lines,
       })
       proformaLinesByDoc.set(id, lines)
-      return { status: "completed", result: { status: "completed", document_id: id, number: `PF-${proformaSeq}` } }
+      return {
+        status: "completed",
+        result: { status: "completed", document_id: id, number: `PF-${proformaSeq}` },
+      }
     }
     if (target === "shopify:orders_get") {
       const id = (args as { id?: string }).id ?? ""
-      return { status: "completed", result: id === CHAIN_SHOPIFY_ORDER_ID ? chainShopifyOrderMeta() : null }
+      return {
+        status: "completed",
+        result: id === CHAIN_SHOPIFY_ORDER_ID ? chainShopifyOrderMeta() : null,
+      }
     }
     if (target === "shopify:fulfillments_create") {
       state.fulfillCalls.push({ target, args })
@@ -284,14 +323,22 @@ function makeChainCtx(
     return { status: "error", error: { code: "unmocked", message: target } }
   }
   const ctx = {
-      orgId: "org-1",
-      db,
-      fetch,
-      executeTool,
-      connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
-      config: { get: async () => null, has: async () => false },
-      logger: { info() {}, warn() {}, error() {}, debug() {} },
-    } as never as BoxtalToolCtx
+    orgId: "org-1",
+    db,
+    fetch,
+    executeTool,
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
+    config: { get: async () => null, has: async () => false },
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  } as never as BoxtalToolCtx
   chainIssuedProformas.set(ctx as object, proformaLinesByDoc)
   return { ctx, db, state, invoice }
 }
@@ -301,7 +348,12 @@ function makeChainCtx(
 function chainProformaLines(
   ctx: BoxtalToolCtx,
   documentRef: string,
-): Array<{ description: string; quantity: number; unit_price_minor: string; external_id: string | null }> {
+): Array<{
+  description: string
+  quantity: number
+  unit_price_minor: string
+  external_id: string | null
+}> {
   const issued = chainIssuedProformas.get(ctx)?.get(documentRef)
   return issued ?? []
 }
@@ -309,7 +361,15 @@ function chainProformaLines(
 /** Per-ctx record of what `invoicing:proforma_create_and_issue` was asked to issue. */
 const chainIssuedProformas = new WeakMap<
   object,
-  Map<string, Array<{ description: string; quantity: number; unit_price_minor: string; external_id: string | null }>>
+  Map<
+    string,
+    Array<{
+      description: string
+      quantity: number
+      unit_price_minor: string
+      external_id: string | null
+    }>
+  >
 >()
 
 describe("order prep dashboard e2e chain (webhook -> invoice -> prep_list -> re-quote -> preflight -> fulfillment)", () => {
@@ -341,7 +401,10 @@ describe("order prep dashboard e2e chain (webhook -> invoice -> prep_list -> re-
     const metaAfterSync = db.__all("prep_meta").find((m) => m.document_ref === documentRef)!
     expect(metaAfterSync.order_name).toBe("#5001")
     const quoteAfterFirstSync = db.__all("prep_quote").find((q) => q.document_ref === documentRef)!
-    const firstOffers = quoteAfterFirstSync.offers as Array<{ carrier: string; price_ht_minor: number }>
+    const firstOffers = quoteAfterFirstSync.offers as Array<{
+      carrier: string
+      price_ht_minor: number
+    }>
     expect(firstOffers[0]!.carrier).toBe("Mondial Relay") // cheapest of the light-package offers
     const listAfterFirstSync = await prepList(ctx, {})
     const rowAfterFirstSync = listAfterFirstSync.rows.find((r) => r.document_ref === documentRef)!
@@ -349,7 +412,12 @@ describe("order prep dashboard e2e chain (webhook -> invoice -> prep_list -> re-
     // prep_sync resolved the draft into prep_draft_cache, so the parcels and the product summary
     // are now on the row (they were absent before the sync, above).
     expect(rowAfterFirstSync.parcels).toHaveLength(1)
-    expect(rowAfterFirstSync.parcels[0]).toMatchObject({ length: 30, width: 25, height: 8, weight: 2.5 })
+    expect(rowAfterFirstSync.parcels[0]).toMatchObject({
+      length: 30,
+      width: 25,
+      height: 8,
+      weight: 2.5,
+    })
     expect(rowAfterFirstSync.products).toBe("1xK6")
     expect(rowAfterFirstSync.quote.cheapest).toMatchObject({ carrier: "Mondial Relay" })
     expect(rowAfterFirstSync.quote.stale).toBe(false)
@@ -383,7 +451,10 @@ describe("order prep dashboard e2e chain (webhook -> invoice -> prep_list -> re-
     })
     expect(quoteAfterEdit.input_hash).not.toBe(hashBeforeEdit)
     expect(quoteAfterEdit.input_hash).toBe(hashAfterEdit)
-    const offersAfterEdit = quoteAfterEdit.offers as Array<{ carrier: string; price_ht_minor: number }>
+    const offersAfterEdit = quoteAfterEdit.offers as Array<{
+      carrier: string
+      price_ht_minor: number
+    }>
     expect(offersAfterEdit[0]!.carrier).toBe("UPS")
     expect(offersAfterEdit.some((o) => o.carrier === "Mondial Relay")).toBe(false)
     const listAfterEdit = await prepList(ctx, {})
@@ -453,7 +524,9 @@ describe("order prep dashboard e2e chain (webhook -> invoice -> prep_list -> re-
     expect((state.fulfillCalls[0]!.args as { orderId: string }).orderId).toBe(
       `gid://shopify/Order/${CHAIN_SHOPIFY_ORDER_ID}`,
     )
-    const shipmentRow = db.__all("shipment").find((s) => s.boxtal_order_id === "boxtal-order-chain-1")!
+    const shipmentRow = db
+      .__all("shipment")
+      .find((s) => s.boxtal_order_id === "boxtal-order-chain-1")!
     expect(shipmentRow.fulfillment_synced).toBe(true)
     expect(shipmentRow.order_status).toBe("CONFIRMED")
 
@@ -520,7 +593,11 @@ describe("prep row lifecycle (order-driven)", () => {
     // 1. The row exists off the ORDER, and is honest about never having been synced.
     const first = await prepList(ctx, {})
     expect(first.rows).toHaveLength(1)
-    expect(first.rows[0]).toMatchObject({ order_key: orderKey, document_ref: documentRef, state: "not_synced" })
+    expect(first.rows[0]).toMatchObject({
+      order_key: orderKey,
+      document_ref: documentRef,
+      state: "not_synced",
+    })
     expect(first.rows[0]!.invoice.state).toBe("issued")
 
     // 2. Pull orders resolves the draft and quotes it.
@@ -602,16 +679,29 @@ describe("prep row lifecycle (order-driven)", () => {
     })
     expect("error" in bought ? bought.error : null).toBeNull()
     const shipmentId = String(db.__all("shipment")[0]!.id)
-    const facts = db.__all("shipment")[0]!.queue_facts as { skus?: unknown; carrier_family?: unknown }
+    const facts = db.__all("shipment")[0]!.queue_facts as {
+      skus?: unknown
+      carrier_family?: unknown
+    }
     expect(facts.skus).toEqual([invoice.lines[0]!.external_id])
     expect(typeof facts.carrier_family === "string" || facts.carrier_family === null).toBe(true)
 
     const before = await printRecordGet(ctx, { shipment_id: shipmentId })
     if ("error" in before) throw new Error(before.error.message)
     expect(before.invoice.date).toBe("2026-07-01")
-    expect(before.order.address).toMatchObject({ street: "5 rue du Test", city: "Lyon", postal_code: "69001", country_iso2: "FR" })
+    expect(before.order.address).toMatchObject({
+      street: "5 rue du Test",
+      city: "Lyon",
+      postal_code: "69001",
+      country_iso2: "FR",
+    })
     expect(before.lines).toHaveLength(1)
-    expect(before.lines[0]).toMatchObject({ sku: invoice.lines[0]!.external_id, hts: "9207.90", origin: "FR", quantity: 1 })
+    expect(before.lines[0]).toMatchObject({
+      sku: invoice.lines[0]!.external_id,
+      hts: "9207.90",
+      origin: "FR",
+      quantity: 1,
+    })
     expect(before.shipment.tracking_number).toBeNull()
 
     // The invoice is amended after the buy: new SKU, HS code, origin and date.
@@ -650,7 +740,10 @@ describe("prep row lifecycle (order-driven)", () => {
     expect(row.parcels).toHaveLength(1)
     expect(row.parcels[0]).toMatchObject({ length: 30, width: 25, height: 8, weight: 2.5 })
     // 1 EUR total, and the customs basis follows the DOCUMENT.
-    const totalMinor = proformaLines.reduce((s, l) => s + Number(l.unit_price_minor) * l.quantity, 0)
+    const totalMinor = proformaLines.reduce(
+      (s, l) => s + Number(l.unit_price_minor) * l.quantity,
+      0,
+    )
     expect(totalMinor).toBe(100)
   })
 

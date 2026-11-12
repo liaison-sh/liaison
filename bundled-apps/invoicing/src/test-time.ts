@@ -22,9 +22,15 @@ export function testTime(orgZone = "UTC"): TimeSurface["time"] {
           minute: "2-digit",
           weekday: "short",
         })
-        parts = new Map(fmt.formatToParts(at === undefined ? new Date() : new Date(at)).map((p) => [p.type, p.value]))
+        parts = new Map(
+          fmt
+            .formatToParts(at === undefined ? new Date() : new Date(at))
+            .map((p) => [p.type, p.value]),
+        )
       } catch {
-        throw Object.assign(new Error(`"${zone}" is not a known IANA time zone name`), { code: "invalid_timezone" })
+        throw Object.assign(new Error(`"${zone}" is not a known IANA time zone name`), {
+          code: "invalid_timezone",
+        })
       }
       const get = (k: string) => parts.get(k) ?? ""
       return {

@@ -46,7 +46,10 @@ export type PennylaneFetch = (
   status: number
   headers: Record<string, string>
   body: string
-  upload?: { size: number; parts: Array<{ name: string; size: number; sha256: string; fileId?: string }> }
+  upload?: {
+    size: number
+    parts: Array<{ name: string; size: number; sha256: string; fileId?: string }>
+  }
 }>
 
 const ERROR_MESSAGE_DETAIL_MAX = 300
@@ -61,7 +64,8 @@ export function pennylaneErrorDetail(body: string): string {
   try {
     const j = JSON.parse(body) as Record<string, unknown>
     if (j && typeof j === "object") {
-      const text = typeof j.message === "string" ? j.message : typeof j.error === "string" ? j.error : null
+      const text =
+        typeof j.message === "string" ? j.message : typeof j.error === "string" ? j.error : null
       if (text !== null) {
         const extra = [
           typeof j.field === "string" ? `field ${j.field}` : null,
@@ -74,7 +78,9 @@ export function pennylaneErrorDetail(body: string): string {
     // Not JSON: keep the raw text.
   }
   detail = detail.replace(/\s+/g, " ").trim()
-  return detail.length > ERROR_MESSAGE_DETAIL_MAX ? `${detail.slice(0, ERROR_MESSAGE_DETAIL_MAX)}…` : detail
+  return detail.length > ERROR_MESSAGE_DETAIL_MAX
+    ? `${detail.slice(0, ERROR_MESSAGE_DETAIL_MAX)}…`
+    : detail
 }
 
 export class PennylaneApiError extends Error {
@@ -114,7 +120,10 @@ export interface PennylaneResponse {
   status: number
   body: string
   headers: Record<string, string>
-  upload?: { size: number; parts: Array<{ name: string; size: number; sha256: string; fileId?: string }> }
+  upload?: {
+    size: number
+    parts: Array<{ name: string; size: number; sha256: string; fileId?: string }>
+  }
 }
 
 export class PennylaneClient {
@@ -185,30 +194,49 @@ export class PennylaneClient {
     this.noteBudget(res.headers ?? {})
     if (res.status === 429) {
       const ra = Number((res.headers ?? {})["retry-after"])
-      const at = Number.isFinite(ra) && ra > 0 ? this.now() + ra * 1000 : Math.max(this.resetAtMs, this.now() + 1000)
+      const at =
+        Number.isFinite(ra) && ra > 0
+          ? this.now() + ra * 1000
+          : Math.max(this.resetAtMs, this.now() + 1000)
       this.remaining = 0
       this.resetAtMs = at
       throw new PennylaneRateLimitError(at, this.redact(res.body ?? ""))
     }
     if (res.status >= 400) throw new PennylaneApiError(res.status, this.redact(res.body ?? ""))
-    return { status: res.status, body: res.body, headers: res.headers ?? {}, ...(res.upload ? { upload: res.upload } : {}) }
+    return {
+      status: res.status,
+      body: res.body,
+      headers: res.headers ?? {},
+      ...(res.upload ? { upload: res.upload } : {}),
+    }
   }
 
   /** One cursor page. `params` carries endpoint-specific query params (e.g. trial_balance's
    *  required `period_start`/`period_end`). */
   async list<T>(
     path: string,
-    q: { cursor?: string; limit?: number; filter?: Filter[]; sort?: string; params?: Record<string, string> } = {},
+    q: {
+      cursor?: string
+      limit?: number
+      filter?: Filter[]
+      sort?: string
+      params?: Record<string, string>
+    } = {},
   ): Promise<Page<T>> {
     const params: string[] = []
-    for (const [k, v] of Object.entries(q.params ?? {})) params.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    for (const [k, v] of Object.entries(q.params ?? {}))
+      params.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     if (q.cursor) params.push(`cursor=${encodeURIComponent(q.cursor)}`)
     params.push(`limit=${Math.min(q.limit ?? DEFAULT_LIMIT, MAX_LIMIT)}`)
     if (q.filter?.length) params.push(`filter=${encodeURIComponent(JSON.stringify(q.filter))}`)
     if (q.sort) params.push(`sort=${encodeURIComponent(q.sort)}`)
     const { body } = await this.request("GET", `${path}?${params.join("&")}`)
     const j = JSON.parse(body) as { items?: T[]; next_cursor?: string | null; has_more?: boolean }
-    return { items: j.items ?? [], next_cursor: j.next_cursor ?? null, has_more: Boolean(j.has_more) }
+    return {
+      items: j.items ?? [],
+      next_cursor: j.next_cursor ?? null,
+      has_more: Boolean(j.has_more),
+    }
   }
 
   async get<T>(path: string): Promise<T> {
@@ -217,12 +245,16 @@ export class PennylaneClient {
   }
 
   async post<T>(path: string, json: unknown): Promise<{ status: number; data: T }> {
-    const res = await this.request("POST", path, JSON.stringify(json), { contentType: "application/json" })
+    const res = await this.request("POST", path, JSON.stringify(json), {
+      contentType: "application/json",
+    })
     return { status: res.status, data: (res.body ? JSON.parse(res.body) : null) as T }
   }
 
   async put<T>(path: string, json: unknown): Promise<{ status: number; data: T }> {
-    const res = await this.request("PUT", path, JSON.stringify(json), { contentType: "application/json" })
+    const res = await this.request("PUT", path, JSON.stringify(json), {
+      contentType: "application/json",
+    })
     return { status: res.status, data: (res.body ? JSON.parse(res.body) : null) as T }
   }
 
@@ -237,6 +269,10 @@ export class PennylaneClient {
     timeoutMs = 90_000,
   ): Promise<{ status: number; data: T; upload: PennylaneResponse["upload"] }> {
     const res = await this.request("POST", path, { multipart: parts }, { timeoutMs })
-    return { status: res.status, data: (res.body ? JSON.parse(res.body) : null) as T, upload: res.upload }
+    return {
+      status: res.status,
+      data: (res.body ? JSON.parse(res.body) : null) as T,
+      upload: res.upload,
+    }
   }
 }

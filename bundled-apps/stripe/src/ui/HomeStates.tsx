@@ -17,7 +17,8 @@ import {
 } from "./home-model"
 import { tr, uiLocale } from "./i18n"
 
-export const CONTROL = "inline-flex min-h-11 items-center justify-center rounded-md px-3 text-[12.5px] font-medium md:min-h-8"
+export const CONTROL =
+  "inline-flex min-h-11 items-center justify-center rounded-md px-3 text-[12.5px] font-medium md:min-h-8"
 const PRIMARY = `${CONTROL} border border-transparent bg-accent text-bg hover:bg-accent-hover`
 const SECONDARY = `${CONTROL} border border-border bg-surface text-text hover:bg-surface-hover`
 
@@ -79,7 +80,10 @@ export const HomeStates: Component<{
           data-state={c().kind}
           class="min-w-0 rounded-lg border border-border-subtle bg-surface p-4"
         >
-          <h2 data-testid="stripe-state-title" class="text-[14px] font-semibold text-text break-words">
+          <h2
+            data-testid="stripe-state-title"
+            class="text-[14px] font-semibold text-text break-words"
+          >
             {c().title}
           </h2>
           <p class="mt-1 text-[12.5px] text-text-secondary break-words">{c().body}</p>
@@ -87,17 +91,27 @@ export const HomeStates: Component<{
             <ImportProgress load={props.load} />
           </Show>
           <Show when={c().kind !== "importing"}>
-            <ul data-testid="stripe-state-steps" class="mt-3 flex list-disc flex-col gap-1.5 pl-5 text-[12.5px] text-text-secondary">
+            <ul
+              data-testid="stripe-state-steps"
+              class="mt-3 flex list-disc flex-col gap-1.5 pl-5 text-[12.5px] text-text-secondary"
+            >
               <For each={c().steps}>{(s) => <li class="break-words">{s}</li>}</For>
             </ul>
           </Show>
           <Show when={c().note}>
-            <p data-testid="stripe-state-note" class="mt-3 text-[12px] text-text-tertiary break-words">
+            <p
+              data-testid="stripe-state-note"
+              class="mt-3 text-[12px] text-text-tertiary break-words"
+            >
               {c().note}
             </p>
           </Show>
           <div class="mt-4 flex flex-wrap gap-2">
-            <For each={c().actions.filter((a) => dashboardShown(props.load) || !DASHBOARD_ACTIONS.has(a.id))}>
+            <For
+              each={c().actions.filter(
+                (a) => dashboardShown(props.load) || !DASHBOARD_ACTIONS.has(a.id),
+              )}
+            >
               {(a) => {
                 const href = actionHref(a.id, props.load)
                 return href ? (
@@ -125,7 +139,10 @@ export const HomeStates: Component<{
             </For>
           </div>
           <Show when={note()}>
-            <p data-testid="stripe-state-check-note" class="mt-3 text-[12px] text-text-tertiary break-words">
+            <p
+              data-testid="stripe-state-check-note"
+              class="mt-3 text-[12px] text-text-tertiary break-words"
+            >
               {note()}
             </p>
           </Show>
@@ -136,15 +153,32 @@ export const HomeStates: Component<{
 }
 
 export const ImportProgress: Component<{ load: HomeLoad | null }> = (props) => {
-  const view = () => importingView(props.load?.sync ?? { importing: true, partial: true, missing: [], resources: [] })
+  const view = () =>
+    importingView(
+      props.load?.sync ?? { importing: true, partial: true, missing: [], resources: [] },
+    )
   return (
     <div data-testid="stripe-import-progress" class="mt-3 flex flex-col gap-2">
       <For each={view().rows}>
         {(r) => (
-          <div data-testid={`stripe-import-row-${r.resource}`} class="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] items-center gap-3 text-[12.5px]">
-            <span class="truncate text-text-secondary">{tr(RESOURCE_LABEL[r.resource] ?? "Other")}</span>
-            <span class="h-1.5 overflow-hidden rounded-full bg-surface-active" role="progressbar" aria-valuenow={r.percent} aria-valuemin={0} aria-valuemax={100}>
-              <span class="block h-full rounded-full bg-accent" style={{ width: `${r.percent}%` }} />
+          <div
+            data-testid={`stripe-import-row-${r.resource}`}
+            class="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] items-center gap-3 text-[12.5px]"
+          >
+            <span class="truncate text-text-secondary">
+              {tr(RESOURCE_LABEL[r.resource] ?? "Other")}
+            </span>
+            <span
+              class="h-1.5 overflow-hidden rounded-full bg-surface-active"
+              role="progressbar"
+              aria-valuenow={r.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <span
+                class="block h-full rounded-full bg-accent"
+                style={{ width: `${r.percent}%` }}
+              />
             </span>
             <span class="font-mono text-[11.5px] text-text-tertiary">
               {r.total !== null

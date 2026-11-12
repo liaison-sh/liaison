@@ -106,7 +106,12 @@ export function foldRows(
   query: string,
 ): { shown: RunRow[]; folded: RunRow[]; foldLabel: string | null } {
   const q = query.trim().toLowerCase()
-  if (q) return { shown: rows.filter((r) => (r.customer ?? "").toLowerCase().includes(q)), folded: [], foldLabel: null }
+  if (q)
+    return {
+      shown: rows.filter((r) => (r.customer ?? "").toLowerCase().includes(q)),
+      folded: [],
+      foldLabel: null,
+    }
   if (rows.length <= FOLD_ABOVE) return { shown: rows, folded: [], foldLabel: null }
   const shown = rows.filter(needsLook)
   const folded = rows.filter((r) => !needsLook(r))
@@ -139,11 +144,15 @@ export function rightsOf(scopes: readonly string[], canDecide: boolean): Rights 
 /** The sentence a waiting row carries, before the Approve button. */
 export function waitingSentence(row: RunRow): string | null {
   if (row.state === "needs_fix") {
-    return tr("{{customer}} waits for a fix: it stays a draft, uses no number and comes back to you once fixed.", {
-      customer: row.customer ?? tr("This row"),
-    })
+    return tr(
+      "{{customer}} waits for a fix: it stays a draft, uses no number and comes back to you once fixed.",
+      {
+        customer: row.customer ?? tr("This row"),
+      },
+    )
   }
-  if (row.state === "waiting_reapproval") return tr("Changed after approval: it waits for this card, the others issue on time.")
+  if (row.state === "waiting_reapproval")
+    return tr("Changed after approval: it waits for this card, the others issue on time.")
   return null
 }
 
@@ -156,11 +165,18 @@ export function numberCell(row: RunRow, issueOn: string | null): string {
 }
 
 /** Who made a row's latest change, in words; never a person for their agent. */
-export function changedBy(change: Record<string, unknown> | null, names: ReadonlyMap<string, string>): string | null {
+export function changedBy(
+  change: Record<string, unknown> | null,
+  names: ReadonlyMap<string, string>,
+): string | null {
   if (!change || change.event === "drafted") return null
-  const person = typeof change.actor_user_id === "string" ? (names.get(change.actor_user_id) ?? tr("a teammate")) : null
+  const person =
+    typeof change.actor_user_id === "string"
+      ? (names.get(change.actor_user_id) ?? tr("a teammate"))
+      : null
   if (typeof change.routine_id === "string") return tr("Changed by a routine")
-  if (typeof change.agent_id === "string") return tr("Changed by {{name}}'s agent", { name: person ?? tr("a teammate") })
+  if (typeof change.agent_id === "string")
+    return tr("Changed by {{name}}'s agent", { name: person ?? tr("a teammate") })
   if (person) return tr("Changed by {{name}}", { name: person })
   return null
 }
@@ -192,23 +208,53 @@ export function runChanges(
   const who = (id: string) => changedBy(byItem.get(id)?.latest_change ?? null, names)
   for (const item of now) {
     const old = was.get(item.item_id)
-    if (!old) changes.push({ item_id: item.item_id, customer: name(item.item_id), kind: "added", who: who(item.item_id), before: 0n, after: big(item.total_minor) })
+    if (!old)
+      changes.push({
+        item_id: item.item_id,
+        customer: name(item.item_id),
+        kind: "added",
+        who: who(item.item_id),
+        before: 0n,
+        after: big(item.total_minor),
+      })
     else if (old.content_hash !== item.content_hash)
-      changes.push({ item_id: item.item_id, customer: name(item.item_id), kind: "changed", who: who(item.item_id), before: big(old.total_minor), after: big(item.total_minor) })
+      changes.push({
+        item_id: item.item_id,
+        customer: name(item.item_id),
+        kind: "changed",
+        who: who(item.item_id),
+        before: big(old.total_minor),
+        after: big(item.total_minor),
+      })
   }
   for (const item of shown) {
     if (!is.has(item.item_id))
-      changes.push({ item_id: item.item_id, customer: name(item.item_id), kind: "removed", who: who(item.item_id), before: big(item.total_minor), after: 0n })
+      changes.push({
+        item_id: item.item_id,
+        customer: name(item.item_id),
+        kind: "removed",
+        who: who(item.item_id),
+        before: big(item.total_minor),
+        after: 0n,
+      })
   }
   const sum = (items: CardItem[]) => items.reduce((t, i) => t + big(i.total_minor), 0n)
   return { changes, before: sum(shown), after: sum(now) }
 }
 
 /** The address fields a row's fix may set (`drafts_update` patch keys). */
-const ADDRESS_FIELDS = ["counterparty_address", "billing_line1", "billing_postcode", "billing_city", "billing_country_code"] as const
+const ADDRESS_FIELDS = [
+  "counterparty_address",
+  "billing_line1",
+  "billing_postcode",
+  "billing_city",
+  "billing_country_code",
+] as const
 
 /** The address an agent found for a row, as a patch and as one line to read; null when none. */
-export function suggestedAddress(row: RunRow): { patch: Record<string, string>; text: string } | null {
+export function suggestedAddress(
+  row: RunRow,
+): { patch: Record<string, string>; text: string } | null {
   const found = row.fix_suggestion
   if (!found || typeof found !== "object") return null
   const patch: Record<string, string> = {}
@@ -220,7 +266,11 @@ export function suggestedAddress(row: RunRow): { patch: Record<string, string>; 
   if (keys.length === 0) return null
   const text =
     patch.counterparty_address ??
-    [patch.billing_line1, [patch.billing_postcode, patch.billing_city].filter(Boolean).join(" "), patch.billing_country_code]
+    [
+      patch.billing_line1,
+      [patch.billing_postcode, patch.billing_city].filter(Boolean).join(" "),
+      patch.billing_country_code,
+    ]
       .filter(Boolean)
       .join(", ")
   return { patch, text }
@@ -231,7 +281,13 @@ export interface ScheduleOption {
   id: string
   /** Null once the schedule has ended and its person was deleted. */
   contact_id: string | null
-  lines: Array<{ description: string; qty: number | string; unit_price_minor: number | string; vat_bp?: number; line_kind?: string }>
+  lines: Array<{
+    description: string
+    qty: number | string
+    unit_price_minor: number | string
+    vat_bp?: number
+    line_kind?: string
+  }>
 }
 
 /** The `drafts_create` lines for a schedule's invoice of one period, `{period}` filled as the draft job fills it. */
@@ -254,5 +310,8 @@ export function missingSchedules<T extends { name: string }>(options: T[], rows:
 
 /** A row the draft job held for want of an address (`recurring/item-state.ts`, `NO_ADDRESS`). */
 export function lacksAddress(row: RunRow): boolean {
-  return row.state === "needs_fix" && (row.flags.includes("No billing address") || suggestedAddress(row) !== null)
+  return (
+    row.state === "needs_fix" &&
+    (row.flags.includes("No billing address") || suggestedAddress(row) !== null)
+  )
 }

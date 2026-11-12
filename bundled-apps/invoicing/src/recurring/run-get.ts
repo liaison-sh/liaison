@@ -43,7 +43,9 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
   const patch = jsonOf<Row | null>(item.schedule_patch, null)
   const own = patch?.written === true ? Number(patch.written_version) : null
   const now = Number(schedule.version ?? 1)
-  return now > Number(item.schedule_version) && now !== own ? ["The schedule changed after this draft"] : []
+  return now > Number(item.schedule_version) && now !== own
+    ? ["The schedule changed after this draft"]
+    : []
 }
 
 /** A card staged for the run and not yet decided: the run still waits for it. */
@@ -64,15 +66,34 @@ export async function recurringRunGet(
 ): Promise<{ status: "completed"; run: Row; rows: RunRow[]; message: string } | ErrorEnvelope> {
   let run: Row | null = null
   if (input.run_id) run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row | null
-  else run = ((await ctx.db.findMany("recurring_runs", { orderBy: { issue_on: "desc" }, limit: 1 })) as Row[])[0] ?? null
+  else
+    run =
+      (
+        (await ctx.db.findMany("recurring_runs", {
+          orderBy: { issue_on: "desc" },
+          limit: 1,
+        })) as Row[]
+      )[0] ?? null
   if (!run) {
-    return { status: "error", error: { code: "run_not_found", message: input.run_id ? `No month-end run ${input.run_id}.` : "No month-end run exists yet." } }
+    return {
+      status: "error",
+      error: {
+        code: "run_not_found",
+        message: input.run_id
+          ? `No month-end run ${input.run_id}.`
+          : "No month-end run exists yet.",
+      },
+    }
   }
   const rows: RunRow[] = []
   for (const item of await runItems(ctx, String(run.id))) {
     const doc = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
-    const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
-    const t = doc ? draftTotals(await draftLines(ctx, String(doc.id))) : { net: 0n, vat: 0n, total: 0n }
+    const schedule = item.schedule_id
+      ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
+      : null
+    const t = doc
+      ? draftTotals(await draftLines(ctx, String(doc.id)))
+      : { net: 0n, vat: 0n, total: 0n }
     const log = jsonOf<Array<Record<string, unknown>>>(doc?.lifecycle_log, [])
     rows.push({
       item_id: String(item.id),
@@ -88,7 +109,10 @@ export async function recurringRunGet(
       number: (item.issued_number as string | null) ?? (doc?.number as string | null) ?? null,
       updated_at: doc ? updatedAtOf(doc) : null,
       latest_change: log.length > 0 ? (log[log.length - 1] ?? null) : null,
-      flags: [...(typeof item.note === "string" && item.note ? item.note.split(" · ") : []), ...scheduleMoved(item, schedule)],
+      flags: [
+        ...(typeof item.note === "string" && item.note ? item.note.split(" · ") : []),
+        ...scheduleMoved(item, schedule),
+      ],
       failure: item.failure ?? null,
       einvoice_state: (doc?.einvoice_state as string | null) ?? null,
       collection_state: (doc?.collection_state as string | null) ?? null,
@@ -96,7 +120,9 @@ export async function recurringRunGet(
       ...suggestionOf(item),
     })
   }
-  const issuer = run.issuer_profile_id ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null) : null
+  const issuer = run.issuer_profile_id
+    ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null)
+    : null
   const runOut: Row = {
     id: String(run.id),
     status: run.status,
@@ -109,7 +135,12 @@ export async function recurringRunGet(
     approval_request_id: run.approval_request_id ?? null,
     timezone: (issuer?.timezone as string | null) ?? null,
   }
-  const far = rows.filter((r) => r.state !== "issued" && r.state !== "left_out" && r.flags.some((f) => f.startsWith(AMOUNT_CHECK)))
+  const far = rows.filter(
+    (r) =>
+      r.state !== "issued" &&
+      r.state !== "left_out" &&
+      r.flags.some((f) => f.startsWith(AMOUNT_CHECK)),
+  )
   return {
     status: "completed",
     run: runOut,
@@ -120,8 +151,12 @@ export async function recurringRunGet(
         ? ` ${far.length} row${far.length === 1 ? " bills" : "s bill"} far from the last invoice of ${far.length === 1 ? "its" : "their"} schedule (${far
             .slice(0, 3)
             .map((r) => r.customer ?? r.item_id)
-            .join(", ")}${far.length > 3 ? ", ..." : ""}). The "Check the amount" flag names what was billed last time: check it with a person before the card is approved.`
+            .join(
+              ", ",
+            )}${far.length > 3 ? ", ..." : ""}). The "Check the amount" flag names what was billed last time: check it with a person before the card is approved.`
         : "") +
-      (cardWaiting(run, rows) ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.` : ""),
+      (cardWaiting(run, rows)
+        ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.`
+        : ""),
   }
 }

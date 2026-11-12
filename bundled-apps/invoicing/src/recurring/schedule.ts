@@ -39,7 +39,9 @@ function fromDays(days: number): string {
   const z = days + 719468
   const era = Math.floor(z / 146097)
   const doe = z - era * 146097
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365)
+  const yoe = Math.floor(
+    (doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365,
+  )
   const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100))
   const mp = Math.floor((5 * doy + 2) / 153)
   const d = doy - Math.floor((153 * mp + 2) / 5) + 1
@@ -113,7 +115,14 @@ function billingMonths(c: Cadence): { months: number[]; day: number | "last" } |
     if (!monthDay) return null
     return { months: [Number(monthDay[1])], day: Number(monthDay[2]) }
   }
-  const day: number | "last" | null = bd === "last" ? "last" : /^\d{1,2}$/.test(bd) ? Number(bd) : monthDay ? Number(monthDay[2]) : null
+  const day: number | "last" | null =
+    bd === "last"
+      ? "last"
+      : /^\d{1,2}$/.test(bd)
+        ? Number(bd)
+        : monthDay
+          ? Number(monthDay[2])
+          : null
   if (day === null) return null
   if (c.repeats === "month") return { months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], day }
   // A quarter bills in the last month of each quarter, or from the month a date names.
@@ -213,7 +222,11 @@ export function validateSchedule(s: ScheduleFacts): ScheduleError[] {
       (bd === "last" ||
         (/^\d{1,2}$/.test(bd) && Number(bd) >= 1 && Number(bd) <= 28) ||
         (/^\d{2}-\d{2}$/.test(bd) && isCivilDate(`2024-${bd}`)))
-    if (!ok) errors.push({ field: "billing_day", message: "give the billing day: last, a day from 1 to 28, or MM-DD for a year" })
+    if (!ok)
+      errors.push({
+        field: "billing_day",
+        message: "give the billing day: last, a day from 1 to 28, or MM-DD for a year",
+      })
   }
   const lines = Array.isArray(s.lines) ? (s.lines as ScheduleLine[]) : []
   const lineOk = (l: ScheduleLine) =>
@@ -229,7 +242,8 @@ export function validateSchedule(s: ScheduleFacts): ScheduleError[] {
   if (lines.length === 0 || !lines.every(lineOk)) {
     errors.push({
       field: "lines",
-      message: "add at least one line with a description, a quantity above zero, a price in minor units and a VAT rate in basis points",
+      message:
+        "add at least one line with a description, a quantity above zero, a price in minor units and a VAT rate in basis points",
     })
   }
   return errors

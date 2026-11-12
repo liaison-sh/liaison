@@ -9,7 +9,7 @@
 // acyclic.
 import type { AppContext } from "@liaison/app-sdk"
 import { type IncidentRecord, refFields, resolveIncident } from "./lib/refs"
-import { errSummary, resolveActorUserId, strOrNull, stripNul, toIsoOrNull } from "./lib/values"
+import { errSummary, resolveActorUserId, stripNul, strOrNull, toIsoOrNull } from "./lib/values"
 
 const COMMENT_MAX_CHARS = 4000
 
@@ -60,7 +60,8 @@ export function validateCommentBody(body: unknown): string {
  */
 export function validateResolutionNote(note: unknown): string | null {
   if (note == null) return null
-  if (typeof note !== "string") throw new Error("invalid_resolution_note: resolutionNote must be a string")
+  if (typeof note !== "string")
+    throw new Error("invalid_resolution_note: resolutionNote must be a string")
   const trimmed = stripNul(note).trim()
   if (trimmed.length > COMMENT_MAX_CHARS) {
     throw new Error(`resolution_note_too_long: at most ${COMMENT_MAX_CHARS} characters`)
@@ -89,7 +90,11 @@ export async function listComments(
  * is best effort: its only consumer is the open UIs' refresh, and failing the call after the
  * comment is stored would invite a retry that duplicates it.
  */
-export async function addComment(ctx: AppContext, row: IncidentRecord, body: string): Promise<CommentView> {
+export async function addComment(
+  ctx: AppContext,
+  row: IncidentRecord,
+  body: string,
+): Promise<CommentView> {
   const { id } = await ctx.db.insert("incident_comments", {
     incident_id: row.id,
     kind: "comment",
@@ -112,7 +117,11 @@ export async function addComment(ctx: AppContext, row: IncidentRecord, body: str
       metadata: { source: row.source, severity: row.severity },
     })
   } catch (err) {
-    ctx.logger.error("monitoring: commented emit failed", { incidentId: row.id, commentId: id, err: errSummary(err) })
+    ctx.logger.error("monitoring: commented emit failed", {
+      incidentId: row.id,
+      commentId: id,
+      err: errSummary(err),
+    })
   }
   return commentView(saved)
 }

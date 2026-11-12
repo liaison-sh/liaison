@@ -16,24 +16,19 @@
 // persisted `documents` row, not against the helper in isolation, so a future refactor that
 // reintroduces a stub anywhere in that chain fails here.
 
-import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import {
+  type Counterparty,
   CounterpartyIncompleteError,
   counterpartyCompletenessError,
-  issueDocument,
-  type Counterparty,
   type IssueCtx,
   type IssueInput,
   type IssuerProfile,
+  issueDocument,
 } from "./issue"
-import {
-  draftsCreate,
-  invoiceCreateAndIssue,
-  invoiceIssue,
-  type MutationsCtx,
-} from "./mutations"
+import { draftsCreate, invoiceCreateAndIssue, invoiceIssue, type MutationsCtx } from "./mutations"
 import { createMockDb, type MockDb } from "./test-db"
+import { testTime } from "./test-time"
 
 const issuer: IssuerProfile = {
   id: "iss-1",
@@ -106,7 +101,13 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     time: testTime(),
     pdf: {
       async render() {
-        return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+        return {
+          file_id: `pdf-${++idSeq}`,
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
       },
     },
     messages: {
@@ -118,7 +119,12 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     decideApproval: async () => ({ status: "ok" }),
     executeTool: async (name: string) =>
       // No Stripe app here: the kernel answers an absent app's tool as not found.
-      name.startsWith("stripe:") ? { status: "error" as const, error: { code: "tool_not_found", message: "tool not registered" } } : ({ status: "completed", result: {} }),
+      name.startsWith("stripe:")
+        ? {
+            status: "error" as const,
+            error: { code: "tool_not_found", message: "tool not registered" },
+          }
+        : { status: "completed", result: {} },
     emit: async () => {},
   }
   return { ctx, db }
@@ -181,7 +187,13 @@ describe("issueDocument recipient backstop", () => {
       time: testTime(),
       pdf: {
         async render() {
-          return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+          return {
+            file_id: `pdf-${++idSeq}`,
+            byte_size: 1024,
+            page_count: 1,
+            sha256: "0".repeat(64),
+            parent_entity_id: crypto.randomUUID(),
+          }
         },
       },
       messages: {
@@ -190,8 +202,13 @@ describe("issueDocument recipient backstop", () => {
         },
       },
       executeTool: async (name: string) =>
-      // No Stripe app here: the kernel answers an absent app's tool as not found.
-      name.startsWith("stripe:") ? { status: "error" as const, error: { code: "tool_not_found", message: "tool not registered" } } : ({ status: "completed", result: {} }),
+        // No Stripe app here: the kernel answers an absent app's tool as not found.
+        name.startsWith("stripe:")
+          ? {
+              status: "error" as const,
+              error: { code: "tool_not_found", message: "tool not registered" },
+            }
+          : { status: "completed", result: {} },
       emit: async () => {},
     } as unknown as IssueCtx
   }
@@ -216,14 +233,17 @@ describe("issueDocument recipient backstop", () => {
   test("throws CounterpartyIncompleteError and persists NOTHING when the recipient is incomplete", async () => {
     const db = createMockDb({ seed: {} })
     await expect(
-      issueDocument(issueCtx(db), input({
-        contact_id: null,
-        legal_name: "",
-        country: "FR",
-        vat_id: null,
-        address: null,
-        email: null,
-      })),
+      issueDocument(
+        issueCtx(db),
+        input({
+          contact_id: null,
+          legal_name: "",
+          country: "FR",
+          vat_id: null,
+          address: null,
+          email: null,
+        }),
+      ),
     ).rejects.toBeInstanceOf(CounterpartyIncompleteError)
     // The refusal must come BEFORE number allocation and the document insert: a rejected
     // issuance may not burn a gap-free invoice number nor leave a half-written row.
@@ -263,20 +283,49 @@ describe("draft-based issuance carries the draft's recipient", () => {
     ctx.fetch = async () => ({
       status: 200,
       headers: {},
-      body: JSON.stringify({ isValid: true, userError: "VALID", name: "KLANGWERK GMBH", address: "---" }),
+      body: JSON.stringify({
+        isValid: true,
+        userError: "VALID",
+        name: "KLANGWERK GMBH",
+        address: "---",
+      }),
     })
-    await db.insert("counterparty_identities", { contact_id: "contact-9", customer_kind: "business", vat_id: "DE298765432" })
+    await db.insert("counterparty_identities", {
+      contact_id: "contact-9",
+      customer_kind: "business",
+      vat_id: "DE298765432",
+    })
     const reads: Record<string, unknown> = {
-      "kernel:contacts_read": { contact: { id: "contact-9", name: "Lena Vogel", company: "Klangwerk GmbH", email: "billing@klangwerk.example" } },
+      "kernel:contacts_read": {
+        contact: {
+          id: "contact-9",
+          name: "Lena Vogel",
+          company: "Klangwerk GmbH",
+          email: "billing@klangwerk.example",
+        },
+      },
       "kernel:contacts_addresses_list": {
         addresses: [
-          { role: "delivery", street1: "Lagerweg 2", postalCode: "40549", city: "Duesseldorf", countryIso2: "DE" },
-          { role: "billing", street1: "Rheinallee 4", postalCode: "40545", city: "Duesseldorf", countryIso2: "de" },
+          {
+            role: "delivery",
+            street1: "Lagerweg 2",
+            postalCode: "40549",
+            city: "Duesseldorf",
+            countryIso2: "DE",
+          },
+          {
+            role: "billing",
+            street1: "Rheinallee 4",
+            postalCode: "40545",
+            city: "Duesseldorf",
+            countryIso2: "de",
+          },
         ],
       },
     }
     const base = ctx.executeTool
-    ctx.executeTool = async (name, args) => (name in reads ? { status: "completed", result: reads[name] } : base(name, args))
+    ctx.executeTool = async (name, args) =>
+      name in reads ? { status: "completed", result: reads[name] } : base(name, args)
     const created = await draftsCreate(ctx, {
       type: "invoice",
       issuer_profile_id: issuer.id,
@@ -294,8 +343,16 @@ describe("draft-based issuance carries the draft's recipient", () => {
     })
     const result = await invoiceIssue(ctx, { draft_id: created.draft_id })
     expect(result).toMatchObject({ status: "completed" })
-    expect(issued(db)[0]).toMatchObject({ counterparty_name: "Klangwerk GmbH", counterparty_address: "Rheinallee 4, 40545 Duesseldorf" })
-    expect(issued(db)[0]).toMatchObject({ billing_line1: "Rheinallee 4", billing_postcode: "40545", billing_city: "Duesseldorf", billing_country_code: "DE" })
+    expect(issued(db)[0]).toMatchObject({
+      counterparty_name: "Klangwerk GmbH",
+      counterparty_address: "Rheinallee 4, 40545 Duesseldorf",
+    })
+    expect(issued(db)[0]).toMatchObject({
+      billing_line1: "Rheinallee 4",
+      billing_postcode: "40545",
+      billing_city: "Duesseldorf",
+      billing_country_code: "DE",
+    })
   })
 
   test("drafts_create keeps what the caller typed and fills only what is missing from the contact", async () => {
@@ -303,7 +360,12 @@ describe("draft-based issuance carries the draft's recipient", () => {
     const base = ctx.executeTool
     ctx.executeTool = async (name, args) =>
       name === "kernel:contacts_read"
-        ? { status: "completed", result: { contact: { id: "contact-9", name: "Lucie Brume", email: "lucie@brume.example" } } }
+        ? {
+            status: "completed",
+            result: {
+              contact: { id: "contact-9", name: "Lucie Brume", email: "lucie@brume.example" },
+            },
+          }
         : base(name, args)
     const created = await draftsCreate(ctx, {
       type: "invoice",
@@ -347,7 +409,12 @@ describe("draft-based issuance carries the draft's recipient", () => {
     ctx.fetch = async () => ({
       status: 200,
       headers: {},
-      body: JSON.stringify({ isValid: true, userError: "VALID", name: "KLANGWERK GMBH", address: "---" }),
+      body: JSON.stringify({
+        isValid: true,
+        userError: "VALID",
+        name: "KLANGWERK GMBH",
+        address: "---",
+      }),
     })
     const created = await draftsCreate(ctx, {
       type: "invoice",

@@ -10,9 +10,9 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { InvoicingSidebar, NEW_DOC_TYPES } from "./sidebar"
-import { InvoicingAppIcon } from "./icon"
 import manifest from "../../app.manifest.json"
+import { InvoicingAppIcon } from "./icon"
+import { InvoicingSidebar, NEW_DOC_TYPES } from "./sidebar"
 
 const sidebarSource = readFileSync(join(import.meta.dir, "sidebar.tsx"), "utf-8")
 
@@ -93,7 +93,9 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     // `> 0 &&`, etc.) so this catches the unconditional-render regression
     // without over-pinning the implementation shape.
     expect(sidebarSource).toMatch(/Deferred/)
-    expect(sidebarSource).toMatch(/deferred[A-Z][a-zA-Z]*\s*\(\s*\)\s*>\s*0|deferred[A-Z][a-zA-Z]*\s*>\s*0/)
+    expect(sidebarSource).toMatch(
+      /deferred[A-Z][a-zA-Z]*\s*\(\s*\)\s*>\s*0|deferred[A-Z][a-zA-Z]*\s*>\s*0/,
+    )
   })
 
   it("loads Pending-Approval count via the app's own pending_approvals.list tool (F1 compliance note)", () => {
@@ -131,9 +133,11 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     // /settings/invoicing is an old path of the Settings app page (manifest `settings`), not an
     // app tab: a tab type on the same path would open it outside Settings.
     expect(tabTypes.settings).toBeUndefined()
-    expect(Object.values(tabTypes).some((t) => (t as { urlPattern?: string }).urlPattern === "/settings/invoicing")).toBe(
-      false,
-    )
+    expect(
+      Object.values(tabTypes).some(
+        (t) => (t as { urlPattern?: string }).urlPattern === "/settings/invoicing",
+      ),
+    ).toBe(false)
     // every tabType must mount the InvoicingSidebar
     for (const [, def] of Object.entries(tabTypes)) {
       expect(def.sidebar).toBe("InvoicingSidebar")
@@ -155,8 +159,19 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     // The count is the app's own list, the same the agent reads.
     expect(sidebarSource).toContain('"recurring_list"')
     const tabs = (manifest as any).views.tabTypes
-    expect(tabs.recurring).toMatchObject({ component: "InvoicingRecurringList", urlPattern: "/invoicing/recurring", singleton: true })
-    expect(tabs.schedule).toMatchObject({ component: "InvoicingScheduleEditor", urlPattern: "/invoicing/schedule/:scheduleId" })
-    expect(tabs.recurring_run).toMatchObject({ entity: "recurring_run", component: "InvoicingRunDetail", urlPattern: "/invoicing/run/:runId" })
+    expect(tabs.recurring).toMatchObject({
+      component: "InvoicingRecurringList",
+      urlPattern: "/invoicing/recurring",
+      singleton: true,
+    })
+    expect(tabs.schedule).toMatchObject({
+      component: "InvoicingScheduleEditor",
+      urlPattern: "/invoicing/schedule/:scheduleId",
+    })
+    expect(tabs.recurring_run).toMatchObject({
+      entity: "recurring_run",
+      component: "InvoicingRunDetail",
+      urlPattern: "/invoicing/run/:runId",
+    })
   })
 })

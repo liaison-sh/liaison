@@ -273,3 +273,18 @@ describe("app bridge route: not configured", () => {
     expect((await body(res)).reason).toBe("not_found")
   })
 })
+
+describe("app bridge route: subrequests", () => {
+  it("a run's calls past its subrequest cap are refused with 429, before the bridge", async () => {
+    let calls = 0
+    const run = register({ ping: async () => ++calls }, { maxBridgeCalls: 2 })
+    const s = stack()
+    expect((await call(s, run.runId, run.runToken, "ping")).status).toBe(200)
+    expect((await call(s, run.runId, run.runToken, "ping")).status).toBe(200)
+    const over = await call(s, run.runId, run.runToken, "ping")
+    expect(over.status).toBe(429)
+    expect(await over.json()).toMatchObject({ errorStatus: 429, errorCode: "subrequest_limit" })
+    expect(calls).toBe(2)
+    expect(run.settle().bridgeCalls).toBe(2)
+  })
+})

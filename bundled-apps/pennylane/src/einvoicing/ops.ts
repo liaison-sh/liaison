@@ -6,14 +6,30 @@ import type { BookingData, EinvoiceBuyer } from "@liaison/app-sdk/contracts"
 import type { PennylaneToolCtx } from "../ctx"
 import { getClient } from "../lib/get-client"
 import { PennylaneClient } from "../lib/pennylane-client"
+import {
+  fetchReceivedFile,
+  getReceived,
+  listReceived,
+  type ReceptionCtx,
+  setReceivedStatus,
+} from "../received/received"
 import { bookSale, findBooking } from "./book"
 import { fromException, type OpError } from "./errors"
 import { listStatusChanges } from "./inbox"
+import {
+  advanceEinvoice,
+  findEinvoice,
+  getEinvoiceStatus,
+  registrationStatus,
+  submitEinvoice,
+} from "./send"
 import { readAppConfig, SUBSCRIPTION_KEY } from "./webhooks"
-import { fetchReceivedFile, getReceived, listReceived, type ReceptionCtx, setReceivedStatus } from "../received/received"
-import { advanceEinvoice, findEinvoice, getEinvoiceStatus, registrationStatus, submitEinvoice } from "./send"
 
-async function withClient<T>(ctx: PennylaneToolCtx, what: string, fn: (c: PennylaneClient) => Promise<T>): Promise<T | OpError> {
+async function withClient<T>(
+  ctx: PennylaneToolCtx,
+  what: string,
+  fn: (c: PennylaneClient) => Promise<T>,
+): Promise<T | OpError> {
   let client: PennylaneClient
   try {
     client = ctx.__client instanceof PennylaneClient ? ctx.__client : (await getClient(ctx)).client
@@ -27,15 +43,25 @@ export const einvoicingRegistrationStatus = (_p: Record<string, never>, ctx: Pen
   withClient(ctx, "registration_status", async (c) => {
     try {
       const reg = await registrationStatus(c)
-      const sub = await readAppConfig<{ id: number; callback_url: string; at: string }>(ctx, SUBSCRIPTION_KEY)
-      return { ...reg, webhook: sub ? { configured: true, subscription_id: sub.id, since: sub.at } : { configured: false } }
+      const sub = await readAppConfig<{ id: number; callback_url: string; at: string }>(
+        ctx,
+        SUBSCRIPTION_KEY,
+      )
+      return {
+        ...reg,
+        webhook: sub
+          ? { configured: true, subscription_id: sub.id, since: sub.at }
+          : { configured: false },
+      }
     } catch (e) {
       return fromException(e, "registration_status")
     }
   })
 
-export const einvoicingFind = (p: { invoice_number: string; issue_date: string }, ctx: PennylaneToolCtx) =>
-  withClient(ctx, "find_einvoice", (c) => findEinvoice(c, p))
+export const einvoicingFind = (
+  p: { invoice_number: string; issue_date: string },
+  ctx: PennylaneToolCtx,
+) => withClient(ctx, "find_einvoice", (c) => findEinvoice(c, p))
 
 export const einvoicingSubmit = (
   p: {
@@ -58,7 +84,15 @@ export const einvoicingSubmit = (
 }
 
 export const einvoicingAdvance = (
-  p: { provider_ref: string; invoice_number: string; issue_date: string; document_ref?: string; legal_original_sha256?: string; stream_ref?: string; run_item_ref?: string },
+  p: {
+    provider_ref: string
+    invoice_number: string
+    issue_date: string
+    document_ref?: string
+    legal_original_sha256?: string
+    stream_ref?: string
+    run_item_ref?: string
+  },
   ctx: PennylaneToolCtx,
 ) => {
   const { stream_ref: _stream, run_item_ref: _item, ...step } = p
@@ -68,22 +102,36 @@ export const einvoicingAdvance = (
 export const einvoicingStatus = (p: { provider_ref: string }, ctx: PennylaneToolCtx) =>
   withClient(ctx, "get_einvoice_status", (c) => getEinvoiceStatus(c, p))
 
-export const einvoicingStatusChanges = (p: { cursor?: string | null; kind?: string | null }, ctx: PennylaneToolCtx) =>
-  listStatusChanges(ctx, p)
+export const einvoicingStatusChanges = (
+  p: { cursor?: string | null; kind?: string | null },
+  ctx: PennylaneToolCtx,
+) => listStatusChanges(ctx, p)
 
 export const einvoicingFindBooking = (p: { idempotency_key: string }, ctx: PennylaneToolCtx) =>
   withClient(ctx, "find_booking", (c) => findBooking(c, p))
 
 export const einvoicingBook = (
-  p: { document_ref: string; pdf_file_id: string; legal_original_sha256: string; data: BookingData; idempotency_key: string },
+  p: {
+    document_ref: string
+    pdf_file_id: string
+    legal_original_sha256: string
+    data: BookingData
+    idempotency_key: string
+  },
   ctx: PennylaneToolCtx,
 ) => withClient(ctx, "book_sale", (c) => bookSale(c, p))
 
 // — reception (optional ops) —
-export const einvoicingReceivedList = (p: { cursor?: string | null }, ctx: PennylaneToolCtx) => listReceived(ctx, p)
-export const einvoicingReceivedGet = (p: { provider_ref: string }, ctx: PennylaneToolCtx) => getReceived(ctx, p)
+export const einvoicingReceivedList = (p: { cursor?: string | null }, ctx: PennylaneToolCtx) =>
+  listReceived(ctx, p)
+export const einvoicingReceivedGet = (p: { provider_ref: string }, ctx: PennylaneToolCtx) =>
+  getReceived(ctx, p)
 export const einvoicingReceivedFile = (
-  p: { provider_ref: string; file: "original" | "rendering"; target: { app: string; entity_type: string; entity_id: string } },
+  p: {
+    provider_ref: string
+    file: "original" | "rendering"
+    target: { app: string; entity_type: string; entity_id: string }
+  },
   ctx: ReceptionCtx,
 ) => fetchReceivedFile(ctx, p)
 export const einvoicingReceivedSetStatus = (

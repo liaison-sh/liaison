@@ -5,9 +5,16 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { cardExpired, disputeLine, discussionAsk, invoiceView, maskedCard, paymentView } from "./customers-model"
-import { postToDiscussion } from "./discussion"
 import { loadCustomer, StripeCustomerDetail } from "./CustomerDetail"
+import {
+  cardExpired,
+  discussionAsk,
+  disputeLine,
+  invoiceView,
+  maskedCard,
+  paymentView,
+} from "./customers-model"
+import { postToDiscussion } from "./discussion"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -16,7 +23,18 @@ afterEach(() => {
 
 describe("the customer page", () => {
   it("a dispute has no submit control", () => {
-    const line = disputeLine({ id: "dp_1", paymentId: "ch_1", amountMinor: 58800, currency: "eur", reason: "unrecognized", status: "needs_response", evidenceDueBy: "2026-11-20T00:00:00Z" }, "en")
+    const line = disputeLine(
+      {
+        id: "dp_1",
+        paymentId: "ch_1",
+        amountMinor: 58800,
+        currency: "eur",
+        reason: "unrecognized",
+        status: "needs_response",
+        evidenceDueBy: "2026-11-20T00:00:00Z",
+      },
+      "en",
+    )
     expect(line.action).toBeNull()
     expect(line.text).toContain("€588.00")
     expect(line.text).toContain("unrecognized")
@@ -28,20 +46,82 @@ describe("the customer page", () => {
   })
 
   it("a mode B invoice shows no Liaison number", () => {
-    const stripeIssued = invoiceView({ id: "in_1", customerId: "cus_a", subscriptionId: null, status: "paid", amountDueMinor: 0, totalMinor: 49000, currency: "eur", nextPaymentAttempt: null, number: "ABC-0001", issuer: "stripe", liaisonDocumentId: "doc-9" }, "en")
+    const stripeIssued = invoiceView(
+      {
+        id: "in_1",
+        customerId: "cus_a",
+        subscriptionId: null,
+        status: "paid",
+        amountDueMinor: 0,
+        totalMinor: 49000,
+        currency: "eur",
+        nextPaymentAttempt: null,
+        number: "ABC-0001",
+        issuer: "stripe",
+        liaisonDocumentId: "doc-9",
+      },
+      "en",
+    )
     expect(stripeIssued.issuedBy).toBe("stripe")
     expect(stripeIssued.issuedLabel).toBe("Issued by Stripe")
     expect(stripeIssued.documentId).toBeNull()
-    const ours = invoiceView({ id: "in_2", customerId: "cus_a", subscriptionId: null, status: "open", amountDueMinor: 174000, totalMinor: 174000, currency: "eur", nextPaymentAttempt: null, number: "F-2026-0418", issuer: "liaison", liaisonDocumentId: "doc-1" }, "en")
+    const ours = invoiceView(
+      {
+        id: "in_2",
+        customerId: "cus_a",
+        subscriptionId: null,
+        status: "open",
+        amountDueMinor: 174000,
+        totalMinor: 174000,
+        currency: "eur",
+        nextPaymentAttempt: null,
+        number: "F-2026-0418",
+        issuer: "liaison",
+        liaisonDocumentId: "doc-1",
+      },
+      "en",
+    )
     expect(ours.issuedLabel).toBe("Issued by Liaison, collected by Stripe")
     expect(ours.documentId).toBe("doc-1")
     expect(ours.statusLabel).toBe("Unpaid")
   })
 
   it("an invoice Liaison issued reads Liaison's number, not the Stripe id", () => {
-    const ours = invoiceView({ id: "in_TFarlon", customerId: "cus_a", subscriptionId: null, status: "open", amountDueMinor: 174000, totalMinor: 174000, currency: "eur", nextPaymentAttempt: null, number: null, issuer: "liaison", liaisonDocumentId: "doc-1", liaisonDocumentNumber: "F-2026-0418" }, "en")
+    const ours = invoiceView(
+      {
+        id: "in_TFarlon",
+        customerId: "cus_a",
+        subscriptionId: null,
+        status: "open",
+        amountDueMinor: 174000,
+        totalMinor: 174000,
+        currency: "eur",
+        nextPaymentAttempt: null,
+        number: null,
+        issuer: "liaison",
+        liaisonDocumentId: "doc-1",
+        liaisonDocumentNumber: "F-2026-0418",
+      },
+      "en",
+    )
     expect([ours.number, ours.documentId]).toEqual(["F-2026-0418", "doc-1"])
-    const theirs = invoiceView({ id: "in_3", customerId: "cus_a", subscriptionId: null, status: "paid", amountDueMinor: 0, totalMinor: 100, currency: "eur", nextPaymentAttempt: null, number: "ABC-0002", issuer: "stripe", liaisonDocumentId: null, liaisonDocumentNumber: "F-2026-0001" }, "en")
+    const theirs = invoiceView(
+      {
+        id: "in_3",
+        customerId: "cus_a",
+        subscriptionId: null,
+        status: "paid",
+        amountDueMinor: 0,
+        totalMinor: 100,
+        currency: "eur",
+        nextPaymentAttempt: null,
+        number: "ABC-0002",
+        issuer: "stripe",
+        liaisonDocumentId: null,
+        liaisonDocumentNumber: "F-2026-0001",
+      },
+      "en",
+    )
     expect(theirs.number).toBe("ABC-0002")
   })
 
@@ -59,10 +139,17 @@ describe("the customer page", () => {
         return path.endsWith("/entity-discussion") ? { data: { threadId: "t1" } } : { data: {} }
       },
     }
-    const text = discussionAsk("cancel", { id: "cus_a", name: "Maison Arlon", email: null }, { id: "sub_1", label: "Group plan" })
+    const text = discussionAsk(
+      "cancel",
+      { id: "cus_a", name: "Maison Arlon", email: null },
+      { id: "sub_1", label: "Group plan" },
+    )
     await postToDiscussion("row-1", text)
     expect(tools).toEqual([])
-    expect(fetched.map((f) => f.path)).toEqual(["/api/threads/entity-discussion", "/api/threads/t1/messages"])
+    expect(fetched.map((f) => f.path)).toEqual([
+      "/api/threads/entity-discussion",
+      "/api/threads/t1/messages",
+    ])
     expect(fetched[0]?.body).toEqual({ app: "stripe", entityType: "customer", entityId: "row-1" })
     expect(fetched[1]?.body.content).toContain("cancellation of Group plan")
     expect(fetched[1]?.body.content).toContain("for my approval")
@@ -76,11 +163,32 @@ describe("the customer page", () => {
   it("shows a card as brand, last 4 and expiry and nothing more", () => {
     expect(maskedCard({ brand: "visa", last4: "4242", exp: "10/26" })).toBe("Visa 4242, 10/26")
     // Whatever a read held, only the last four digits are ever drawn.
-    expect(maskedCard({ brand: "visa", last4: "4242424242424242", exp: "10/26" })).toBe("Visa 4242, 10/26")
+    expect(maskedCard({ brand: "visa", last4: "4242424242424242", exp: "10/26" })).toBe(
+      "Visa 4242, 10/26",
+    )
     expect(maskedCard(null)).toBe("No card")
-    expect(cardExpired({ brand: "visa", last4: "4242", exp: "10/26" }, new Date("2026-11-10"))).toBe(true)
-    expect(cardExpired({ brand: "visa", last4: "4242", exp: "10/27" }, new Date("2026-11-10"))).toBe(false)
-    const p = paymentView({ id: "ch_1", customerId: "c", invoiceId: null, amountMinor: 174000, refundedMinor: 0, currency: "eur", status: "succeeded", failureCode: null, disputed: false, at: null, card: { brand: "visa", last4: "4242", exp: "10/26" } }, "en")
+    expect(
+      cardExpired({ brand: "visa", last4: "4242", exp: "10/26" }, new Date("2026-11-10")),
+    ).toBe(true)
+    expect(
+      cardExpired({ brand: "visa", last4: "4242", exp: "10/27" }, new Date("2026-11-10")),
+    ).toBe(false)
+    const p = paymentView(
+      {
+        id: "ch_1",
+        customerId: "c",
+        invoiceId: null,
+        amountMinor: 174000,
+        refundedMinor: 0,
+        currency: "eur",
+        status: "succeeded",
+        failureCode: null,
+        disputed: false,
+        at: null,
+        card: { brand: "visa", last4: "4242", exp: "10/26" },
+      },
+      "en",
+    )
     expect(p.detail).toBe("Visa 4242, 10/26")
     expect(p.refundable?.label).toBe("€1,740.00")
   })

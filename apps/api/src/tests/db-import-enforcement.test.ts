@@ -158,6 +158,10 @@ describe("db import enforcement", () => {
     // org-owned accounts are invisible to RLS; every read and write pins org,
     // app and connection in its predicate, and the caller's own personal rows.
     "modules/apps/sandbox/bridge/accounts.ts",
+    // knowledge_appSource: the calling app's own synced sources (app_name pinned
+    // in every predicate, the org's and the acting person's own), read and
+    // ensured through the privileged pool like the knowledge curation bridge.
+    "modules/apps/sandbox/bridge/app-sources.ts",
     // ctx.kernel.caller: the caller's own roles and grants in the run's org
     // (loadEffectivePermissions, the same read the domain checks used); answers
     // only whether each asked scope is held, never the person's other grants.
@@ -455,37 +459,11 @@ describe("db import enforcement", () => {
     "apps/tickets/privileged-read.ts",
     "apps/tickets/tools.ts",
     "apps/tickets/read-state.test-fixtures.ts",
-    // Google Drive connector — `driveImport` materialises a downloaded Drive
-    // file into a `kernel.files` row (privileged INSERT + upload session)
-    // outside any per-request RLS context, like the tickets host tool logic.
-    "apps/google-drive/tools.ts",
-    // Drive disconnect purge: deletes the Knowledge content synced on the
-    // disconnected connection. The rows belong to the disconnected user, not to
-    // whoever triggered the kernel event, so it runs privileged, org-scoped in SQL,
-    // after verifying the connection is disconnected.
-    "apps/google-drive/disconnect.ts",
-    // Drive picker (picked mode): reads the caller's Drive accounts (their own, or the
-    // org's for a connection admin, checked in code) and writes the picked items into
-    // the account's metadata; the sync job loads the picks with no request context.
-    // Org-scoped in SQL.
-    "apps/google-drive/picker.ts",
-    // The one-time Picker page has no session: it resolves the ticket owner's Drive
-    // token from the ticket (bound to org, person and account) through a system read.
-    "apps/google-drive/picker-page.ts",
-    // Pick lines of an agent's card: reads the picker's display name for the line,
-    // and the ids the person picked through one card (their own system lines on
-    // that thread, by the card's origin). Org-, thread- and author-scoped in SQL.
-    "apps/google-drive/picker-announce.ts",
-    // An org Drive connection's shared drives: org-owned connected accounts are
-    // invisible to RLS (only kernel rows are), so the listing, the choice (admin
-    // scope checked in code) and the admins' attention item read them privileged.
-    // Org-scoped in SQL.
-    "apps/google-drive/shared-drives.ts",
-    // What an org Drive connection already put in Knowledge: the org's Drive folders
-    // and their documents are hidden (archived) or, outside the chosen drives, deleted
-    // by the sync job and the org's setup, with no request context; the account the
-    // folder syncs through is resolved through a system read. Org-scoped in SQL.
-    "apps/google-drive/org-drive-content.ts",
+    // App sources' account purge (account-sources-purge.ts): deletes the Knowledge
+    // content an app synced through a DISCONNECTED account of its own. The rows belong
+    // to the account's owner, not to whoever triggered the event, so it runs
+    // privileged, org-scoped in SQL, after reading the kernel row (app, org, state).
+    "apps/knowledge/account-sources-purge.ts",
     // Mail disconnect purge: deletes a disconnected mailbox's imported mail and
     // its attachment file rows (kernel.files) outside any request RLS context;
     // org-scoped in SQL.
@@ -578,6 +556,9 @@ describe("db import enforcement", () => {
     // the privileged pool filtered by org_id, after the route's
     // kernel:org:admin check or the operator's CLI (catalog discovery, batch
     // reads, the org_exports rows and their expiry sweep across orgs).
+    // The export manifest names an installed app's active version (a system read
+    // of kernel.apps_active_version, no org data).
+    "modules/export/orchestrator.ts",
     "modules/export/org-archive/catalog.ts",
     "modules/export/org-archive/store.ts",
     "modules/export/org-archive/writer.ts",

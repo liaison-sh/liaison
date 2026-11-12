@@ -60,7 +60,10 @@ export interface RunRowResult {
   notes: string[]
 }
 
-export const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+export const fail = (code: string, message: string): ErrorEnvelope => ({
+  status: "error",
+  error: { code, message },
+})
 
 /** Thrown the way the draft tools refuse: `code: message`. */
 export function refuse(code: string, message: string): never {
@@ -87,7 +90,10 @@ export function noPersonBehind(turn: TurnFacts): boolean {
 }
 
 /** The run a draft belongs to, or null for any other draft. Reads an issued document too. */
-export async function runDraftOf(ctx: Pick<RunCtx, "db">, documentId: string | undefined | null): Promise<RunDraft | null> {
+export async function runDraftOf(
+  ctx: Pick<RunCtx, "db">,
+  documentId: string | undefined | null,
+): Promise<RunDraft | null> {
   if (!documentId) return null
   const draft = (await ctx.db.findOne("documents", documentId)) as Row | null
   if (!draft) return null
@@ -103,7 +109,9 @@ export async function runDraftOf(ctx: Pick<RunCtx, "db">, documentId: string | u
   if (!item) return null
   const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null
   if (!run) return null
-  const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
+  const schedule = item.schedule_id
+    ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
+    : null
   return { draft, item, run, schedule }
 }
 
@@ -145,7 +153,9 @@ function lastChangeOf(draft: Row): string {
   const log = jsonOf<Row[]>(draft.lifecycle_log, [])
   const last = [...log].reverse().find((e) => e.event === "run_edit")
   if (!last) return "by the month-end run"
-  const who = last.agent_id ? `by agent ${String(last.agent_id)} for user ${String(last.actor_user_id)}` : `by user ${String(last.actor_user_id)}`
+  const who = last.agent_id
+    ? `by agent ${String(last.agent_id)} for user ${String(last.actor_user_id)}`
+    : `by user ${String(last.actor_user_id)}`
   return `${who} at ${String(last.at)}`
 }
 
@@ -153,7 +163,11 @@ function lastChangeOf(draft: Row): string {
  * Two writers: a run draft write names the draft's `updated_at` as it was read. A different one
  * means someone changed it since, and nothing is written.
  */
-export async function checkUnchangedSince(ctx: Pick<RunCtx, "db">, rd: RunDraft, given: string | undefined): Promise<void> {
+export async function checkUnchangedSince(
+  ctx: Pick<RunCtx, "db">,
+  rd: RunDraft,
+  given: string | undefined,
+): Promise<void> {
   const current = updatedAtOf(rd.draft)
   if (typeof given !== "string" || given.trim() === "") {
     refuse(
@@ -218,20 +232,36 @@ function linesSummary(lines: Row[]): string {
 }
 
 /** What changed between two reads of a draft, field by field (the lines as one field). */
-export function draftDiff(before: Row, beforeLines: Row[], after: Row, afterLines: Row[]): FieldChange[] {
+export function draftDiff(
+  before: Row,
+  beforeLines: Row[],
+  after: Row,
+  afterLines: Row[],
+): FieldChange[] {
   const out: FieldChange[] = []
   for (const f of HEADER_FIELDS) {
     const a = f === "due_at" ? dayOf(before[f]) : (before[f] ?? null)
     const b = f === "due_at" ? dayOf(after[f]) : (after[f] ?? null)
     if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ field: f, from: a, to: b })
   }
-  const sig = (ls: Row[]) => JSON.stringify(ls.map((l) => [l.description, String(l.quantity), String(l.unit_price_minor), l.tax_rate_bp ?? null]))
-  if (sig(beforeLines) !== sig(afterLines)) out.push({ field: "lines", from: linesSummary(beforeLines), to: linesSummary(afterLines) })
+  const sig = (ls: Row[]) =>
+    JSON.stringify(
+      ls.map((l) => [
+        l.description,
+        String(l.quantity),
+        String(l.unit_price_minor),
+        l.tax_rate_bp ?? null,
+      ]),
+    )
+  if (sig(beforeLines) !== sig(afterLines))
+    out.push({ field: "lines", from: linesSummary(beforeLines), to: linesSummary(afterLines) })
   return out
 }
 
 function withoutReasons(note: unknown): string[] {
-  return (typeof note === "string" && note ? note.split(" · ") : []).filter((n) => !STATE_REASONS.includes(n))
+  return (typeof note === "string" && note ? note.split(" · ") : []).filter(
+    (n) => !STATE_REASONS.includes(n),
+  )
 }
 
 /**
@@ -241,7 +271,12 @@ function withoutReasons(note: unknown): string[] {
 export async function afterRunWrite(
   ctx: EditCtx,
   itemId: string,
-  opts: { putBack?: boolean; extraNotes?: string[]; noteAdd?: string[]; noteRemove?: string[] } = {},
+  opts: {
+    putBack?: boolean
+    extraNotes?: string[]
+    noteAdd?: string[]
+    noteRemove?: string[]
+  } = {},
 ): Promise<RunRowResult> {
   const item = (await ctx.db.findOne("recurring_run_items", itemId)) as Row
   const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row
@@ -254,12 +289,19 @@ export async function afterRunWrite(
   const data: Row = {}
   if (state !== "left_out" || opts.putBack) {
     const wasApproved = state === "approved"
-    const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
+    const schedule = item.schedule_id
+      ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
+      : null
     // The comparison with the schedule's last invoice follows the edit: an amount typed far from
     // what it billed last time asks for a look before the card is approved.
-    const prev = schedule ? await previousInvoice(ctx, schedule.last_document_id, String(draft.id)) : null
+    const prev = schedule
+      ? await previousInvoice(ctx, schedule.last_document_id, String(draft.id))
+      : null
     if (prev) {
-      const fresh = runItemFlags(prev, { net_minor: draftTotals(lines).net, lines_signature: linesSignature(lines) })
+      const fresh = runItemFlags(prev, {
+        net_minor: draftTotals(lines).net,
+        lines_signature: linesSignature(lines),
+      })
       note = [...fresh, ...note.filter((n) => !isComparisonFlag(n))]
     }
     const now = runItemState(draft, lines, await rowIssuerHold(ctx, draft, schedule))
@@ -274,7 +316,9 @@ export async function afterRunWrite(
     } else if (wasApproved || state === "waiting_reapproval" || runDecided(run)) {
       // After the decision a row that can issue waits for a new approval (it never issues unseen).
       state = "waiting_reapproval"
-      notes.push("The run was already approved, so this row waits for a new approval; the other rows issue as approved.")
+      notes.push(
+        "The run was already approved, so this row waits for a new approval; the other rows issue as approved.",
+      )
     } else {
       state = "ready"
     }
@@ -288,14 +332,24 @@ export async function afterRunWrite(
   await ctx.db.update("recurring_run_items", itemId, data)
   // The run's card: rewritten in place while it waits, or one new card after the decision. A
   // rejected run asks again on its issue day by itself.
-  let approvalId: string | null = typeof run.approval_request_id === "string" ? run.approval_request_id : null
-  if (run.status !== "rejected" && run.status !== "issued" && run.status !== "late" && run.status !== "nothing_to_issue") {
+  let approvalId: string | null =
+    typeof run.approval_request_id === "string" ? run.approval_request_id : null
+  if (
+    run.status !== "rejected" &&
+    run.status !== "issued" &&
+    run.status !== "late" &&
+    run.status !== "nothing_to_issue"
+  ) {
     const card = await stageRunCard(ctx, String(run.id))
     const fresh = (await ctx.db.findOne("recurring_runs", String(run.id))) as Row | null
-    approvalId = card.approval_id ?? (typeof fresh?.approval_request_id === "string" ? fresh.approval_request_id : null)
+    approvalId =
+      card.approval_id ??
+      (typeof fresh?.approval_request_id === "string" ? fresh.approval_request_id : null)
     if (card.owed) {
       approvalId = null
-      notes.push("A new card for the rows waiting is staged within 5 minutes; your edit does not approve them.")
+      notes.push(
+        "A new card for the rows waiting is staged within 5 minutes; your edit does not approve them.",
+      )
     }
   }
   const { items, total } = await cardItems(ctx, String(run.id))
@@ -346,13 +400,30 @@ export async function parkForPerson(
 export async function stageRunCardAfterRemoval(
   ctx: EditCtx,
   runId: string,
-): Promise<{ run_id: string; approve_count: number; approve_total_minor: string; approval_id: string | null }> {
+): Promise<{
+  run_id: string
+  approve_count: number
+  approve_total_minor: string
+  approval_id: string | null
+}> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
-  let approvalId: string | null = typeof run?.approval_request_id === "string" ? run.approval_request_id : null
-  if (run && run.status !== "rejected" && run.status !== "issued" && run.status !== "late" && run.status !== "nothing_to_issue") {
+  let approvalId: string | null =
+    typeof run?.approval_request_id === "string" ? run.approval_request_id : null
+  if (
+    run &&
+    run.status !== "rejected" &&
+    run.status !== "issued" &&
+    run.status !== "late" &&
+    run.status !== "nothing_to_issue"
+  ) {
     const card = await stageRunCard(ctx, runId)
     approvalId = card.owed ? null : (card.approval_id ?? approvalId)
   }
   const { items, total } = await cardItems(ctx, runId)
-  return { run_id: runId, approve_count: items.length, approve_total_minor: total.toString(), approval_id: approvalId }
+  return {
+    run_id: runId,
+    approve_count: items.length,
+    approve_total_minor: total.toString(),
+    approval_id: approvalId,
+  }
 }

@@ -35,18 +35,31 @@ async function approvalStatus(ctx: RunCtx, approvalId: string): Promise<string |
   return st.status ?? null
 }
 
-export async function recurringLegalDateJob(ctx: RunCtx): Promise<{ status: "ok"; runs: Array<{ run_id: string; urgency: Urgency }> }> {
-  const runs = (await ctx.db.findMany("recurring_runs", { where: { status: { in: OPEN } }, orderBy: { issue_on: "asc" }, limit: 200 })) as Row[]
+export async function recurringLegalDateJob(
+  ctx: RunCtx,
+): Promise<{ status: "ok"; runs: Array<{ run_id: string; urgency: Urgency }> }> {
+  const runs = (await ctx.db.findMany("recurring_runs", {
+    where: { status: { in: OPEN } },
+    orderBy: { issue_on: "asc" },
+    limit: 200,
+  })) as Row[]
   const out: Array<{ run_id: string; urgency: Urgency }> = []
   if (runs.length > 0) await endHold(ctx, "recurring-legal-date")
   for (const run of runs) {
     const runId = String(run.id)
-    const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
+    const issuer = (await ctx.db.findOne(
+      "issuer_profiles",
+      String(run.issuer_profile_id),
+    )) as Row | null
     if (!issuer) continue
     const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
     let status = String(run.status)
     // A card denied or expired leaves the drafts as they are; the issue job stages a new one.
-    if (status === "drafted" && typeof run.approval_request_id === "string" && run.approval_request_id !== "staging") {
+    if (
+      status === "drafted" &&
+      typeof run.approval_request_id === "string" &&
+      run.approval_request_id !== "staging"
+    ) {
       const decided = await approvalStatus(ctx, run.approval_request_id)
       if (decided === "denied" || decided === "expired" || decided === "cancelled") {
         await ctx.db.update("recurring_runs", runId, { status: "rejected" })
@@ -58,7 +71,8 @@ export async function recurringLegalDateJob(ctx: RunCtx): Promise<{ status: "ok"
       if (now.date <= (dayOf(run.latest_issue_on) as string)) continue
     }
     const urgency = urgencyOf(now.date, dayOf(run.latest_issue_on) as string)
-    if (urgency === "late" && status !== "late") await ctx.db.update("recurring_runs", runId, { status: "late" })
+    if (urgency === "late" && status !== "late")
+      await ctx.db.update("recurring_runs", runId, { status: "late" })
     if (urgency === "normal") continue
     out.push({ run_id: runId, urgency })
     if (ctx.emit) {
@@ -72,7 +86,12 @@ export async function recurringLegalDateJob(ctx: RunCtx): Promise<{ status: "ok"
           issue_on: dayOf(run.issue_on),
           latest_issue_on: dayOf(run.latest_issue_on),
           period: run.period_label,
-          when: urgency === "ends_today" ? "Ends today" : urgency === "late" ? "Late" : `Ends ${dayOf(run.latest_issue_on)}`,
+          when:
+            urgency === "ends_today"
+              ? "Ends today"
+              : urgency === "late"
+                ? "Late"
+                : `Ends ${dayOf(run.latest_issue_on)}`,
           resolved: false,
         },
       })

@@ -14,7 +14,16 @@
 // a swap stops; the one that won carries on. Nothing is counted twice and no
 // cursor goes backwards.
 import type { StripeHttpCtx } from "../http"
-import { type MaskTally, type MirrorEntity, customerRow, disputeRow, invoiceRow, paymentRow, refundRow, subscriptionRow } from "../mirror"
+import {
+  customerRow,
+  disputeRow,
+  invoiceRow,
+  type MaskTally,
+  type MirrorEntity,
+  paymentRow,
+  refundRow,
+  subscriptionRow,
+} from "../mirror"
 
 type Obj = Record<string, unknown>
 
@@ -22,7 +31,11 @@ type Obj = Record<string, unknown>
 export interface SyncDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
@@ -58,7 +71,13 @@ export interface SyncResource {
 
 /** In the order the first import reads them: customers first, so later rows find their customer. */
 export const RESOURCES: readonly SyncResource[] = [
-  { resource: "customers", entity: "stripe_customers", list: "/v1/customers", byId: "/v1/customers/", row: customerRow },
+  {
+    resource: "customers",
+    entity: "stripe_customers",
+    list: "/v1/customers",
+    byId: "/v1/customers/",
+    row: customerRow,
+  },
   {
     resource: "subscriptions",
     entity: "stripe_subscriptions",
@@ -67,10 +86,34 @@ export const RESOURCES: readonly SyncResource[] = [
     row: subscriptionRow,
     params: { status: "all", expand: ["data.discounts", "data.default_payment_method"] },
   },
-  { resource: "invoices", entity: "stripe_invoices", list: "/v1/invoices", byId: "/v1/invoices/", row: invoiceRow },
-  { resource: "charges", entity: "stripe_payments", list: "/v1/charges", byId: "/v1/charges/", row: paymentRow },
-  { resource: "refunds", entity: "stripe_refunds", list: "/v1/refunds", byId: "/v1/refunds/", row: refundRow },
-  { resource: "disputes", entity: "stripe_disputes", list: "/v1/disputes", byId: "/v1/disputes/", row: disputeRow },
+  {
+    resource: "invoices",
+    entity: "stripe_invoices",
+    list: "/v1/invoices",
+    byId: "/v1/invoices/",
+    row: invoiceRow,
+  },
+  {
+    resource: "charges",
+    entity: "stripe_payments",
+    list: "/v1/charges",
+    byId: "/v1/charges/",
+    row: paymentRow,
+  },
+  {
+    resource: "refunds",
+    entity: "stripe_refunds",
+    list: "/v1/refunds",
+    byId: "/v1/refunds/",
+    row: refundRow,
+  },
+  {
+    resource: "disputes",
+    entity: "stripe_disputes",
+    list: "/v1/disputes",
+    byId: "/v1/disputes/",
+    row: disputeRow,
+  },
 ]
 
 /** A list page: Stripe's largest. */
@@ -104,7 +147,10 @@ export interface SyncStateRow {
 }
 
 export async function readSyncState(db: SyncDb, resource: string): Promise<SyncStateRow | null> {
-  const rows = (await db.findMany("sync_state", { where: { resource }, limit: 1 })) as SyncStateRow[]
+  const rows = (await db.findMany("sync_state", {
+    where: { resource },
+    limit: 1,
+  })) as SyncStateRow[]
   return rows[0] ?? null
 }
 
@@ -116,7 +162,11 @@ export async function readAllSyncState(db: SyncDb): Promise<SyncStateRow[]> {
 }
 
 /** The row for `resource`, created `pending` when missing (a concurrent creator wins and is read back). */
-export async function ensureSyncState(db: SyncDb, resource: string, now: Date): Promise<SyncStateRow> {
+export async function ensureSyncState(
+  db: SyncDb,
+  resource: string,
+  now: Date,
+): Promise<SyncStateRow> {
   const existing = await readSyncState(db, resource)
   if (existing) return existing
   try {
@@ -146,7 +196,12 @@ export async function advanceState(
   now: Date,
 ): Promise<boolean> {
   const { count } = await db.updateMany("sync_state", {
-    where: { resource: seen.resource, cursor: seen.cursor ?? null, done_count: seen.done_count, status: seen.status },
+    where: {
+      resource: seen.resource,
+      cursor: seen.cursor ?? null,
+      done_count: seen.done_count,
+      status: seen.status,
+    },
     data: { ...data, updated: now.toISOString() },
   })
   return count > 0

@@ -15,7 +15,7 @@
 // install (the demo's, `standin.ts`) returns its own host instead, and only it.
 import { stripeFetch } from "../http"
 import { readStandIn, STANDIN_HOSTED_INVOICE, STANDIN_PORTAL_LOGIN } from "../standin"
-import { str, type ReadCtx } from "./read-common"
+import { type ReadCtx, str } from "./read-common"
 
 type Obj = Record<string, unknown>
 
@@ -64,8 +64,14 @@ export async function cardUpdateLink(params: Obj | undefined, ctx: CardLinkCtx) 
     if (!Number.isFinite(finalized) || now - finalized > STALE_MS) {
       // An old link is read again: the invoice may be paid, voided, or its page renewed.
       try {
-        const live = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(String(invoice.stripe_id))}`)
-        invoice = live.status === "open" ? { ...invoice, hosted_invoice_url: live.hosted_invoice_url } : undefined
+        const live = await stripeFetch<Obj>(
+          ctx,
+          `/v1/invoices/${encodeURIComponent(String(invoice.stripe_id))}`,
+        )
+        invoice =
+          live.status === "open"
+            ? { ...invoice, hosted_invoice_url: live.hosted_invoice_url }
+            : undefined
       } catch {
         invoice = undefined
       }

@@ -13,7 +13,10 @@ import { cardNumberRefusal } from "./refunds"
 type Obj = Record<string, unknown>
 
 export interface LinkDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number },
+  ): Promise<unknown[]>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
 }
 
@@ -25,7 +28,11 @@ export interface LinkCtx extends Pick<ReadCtx, "executeTool"> {
 const LINK_FIELDS = ["company_id", "contact_id", "match_method", "match_by"] as const
 
 /** Whether the caller can read this kernel record, through the kernel's own read. */
-async function canRead(ctx: LinkCtx, tool: "kernel:companies_read" | "kernel:contacts_read", params: Obj) {
+async function canRead(
+  ctx: LinkCtx,
+  tool: "kernel:companies_read" | "kernel:contacts_read",
+  params: Obj,
+) {
   if (!ctx.executeTool) return false
   try {
     return (await ctx.executeTool(tool, params)).status === "completed"
@@ -42,9 +49,17 @@ export async function customerLink(params: Obj | undefined, ctx: LinkCtx) {
   }
   const stripeId = typeof p.stripeCustomerId === "string" ? p.stripeCustomerId.trim() : ""
   if (!stripeId) {
-    return refuseTool("customer_ref_missing", "No Stripe customer was named, so nothing was linked. Next step: pass stripeCustomerId.")
+    return refuseTool(
+      "customer_ref_missing",
+      "No Stripe customer was named, so nothing was linked. Next step: pass stripeCustomerId.",
+    )
   }
-  const row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: stripeId }, limit: 1 })) as Obj[])[0]
+  const row = (
+    (await ctx.db.findMany("stripe_customers", {
+      where: { stripe_id: stripeId },
+      limit: 1,
+    })) as Obj[]
+  )[0]
   if (!row) {
     return refuseTool(
       "customer_not_found",
@@ -62,10 +77,19 @@ export async function customerLink(params: Obj | undefined, ctx: LinkCtx) {
         `Stripe customer ${stripeId} has no earlier link to restore, so nothing changed.`,
       )
     }
-    data = { ...Object.fromEntries(LINK_FIELDS.map((k) => [k, prev[k] ?? null])), previous_link: null }
+    data = {
+      ...Object.fromEntries(LINK_FIELDS.map((k) => [k, prev[k] ?? null])),
+      previous_link: null,
+    }
     what = "restored its previous link"
   } else if (p.unlink === true) {
-    data = { company_id: null, contact_id: null, match_method: null, match_by: null, previous_link: before }
+    data = {
+      company_id: null,
+      contact_id: null,
+      match_method: null,
+      match_by: null,
+      previous_link: before,
+    }
     what = "unlinked it"
   } else {
     const companyId = typeof p.companyId === "string" ? p.companyId : null
@@ -81,7 +105,13 @@ export async function customerLink(params: Obj | undefined, ctx: LinkCtx) {
       [contactId, "kernel:contacts_read", "contact"],
     ] as const) {
       if (id === null) continue
-      const ok = UUID.test(id) && (await canRead(ctx, tool, tool === "kernel:companies_read" ? { companyId: id } : { contactId: id }))
+      const ok =
+        UUID.test(id) &&
+        (await canRead(
+          ctx,
+          tool,
+          tool === "kernel:companies_read" ? { companyId: id } : { contactId: id },
+        ))
       if (!ok) {
         return refuseTool(
           "link_target_not_visible",

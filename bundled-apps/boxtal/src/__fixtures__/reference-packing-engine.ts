@@ -97,7 +97,13 @@ export const PRODUCTS: Record<ProductCode, Product> = {
     width: 38,
     height: 8,
     grossWeight: 4.0,
-    variantIds: ["47748313416011", "53394068734283", "55968599376203", "56257042448715", "57467563475275"],
+    variantIds: [
+      "47748313416011",
+      "53394068734283",
+      "55968599376203",
+      "56257042448715",
+      "57467563475275",
+    ],
   },
   MP: {
     code: "MP",
@@ -254,7 +260,8 @@ function stackGeometry(contents: Partial<Record<ProductCode, number>>): {
   if (!hasBaseItem) {
     let accessoriesOnly = 0
     for (const [code, qty] of Object.entries(contents) as [ProductCode, number][]) {
-      if (qty > 0 && SMALL_ACCESSORIES.includes(code)) accessoriesOnly += PRODUCTS[code].height * qty
+      if (qty > 0 && SMALL_ACCESSORIES.includes(code))
+        accessoriesOnly += PRODUCTS[code].height * qty
     }
     return { length, width, height: accessoriesOnly }
   }
@@ -315,7 +322,12 @@ export function computeParcels(lines: OrderLine[], options: PackingOptions = {})
     } else {
       trace.push("Every unit fitted a master carton; no loose remainder.")
     }
-    return { parcels, totalWeight: round3(parcels.reduce((a, p) => a + p.weight, 0)), trace, warnings }
+    return {
+      parcels,
+      totalWeight: round3(parcels.reduce((a, p) => a + p.weight, 0)),
+      trace,
+      warnings,
+    }
   }
 
   let remaining: Partial<Record<ProductCode, number>> = { ...loose }

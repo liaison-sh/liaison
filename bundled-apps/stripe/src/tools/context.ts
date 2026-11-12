@@ -41,7 +41,11 @@ async function ticketContact(ctx: ReadCtx, ticketId: string): Promise<string | n
 }
 
 export async function customerContext(params: Obj | undefined, ctx: ReadCtx) {
-  const subject = ((params ?? {}).subject ?? {}) as { app?: string; entityType?: string; entityId?: string }
+  const subject = ((params ?? {}).subject ?? {}) as {
+    app?: string
+    entityType?: string
+    entityId?: string
+  }
   const kind = `${subject.app}:${subject.entityType}`
   const id = String(subject.entityId ?? "")
   if (!UUID.test(id)) return { lines: [] }
@@ -69,9 +73,13 @@ export async function customerContext(params: Obj | undefined, ctx: ReadCtx) {
     `Stripe customer ${customerIds.slice(0, 2).join(", ")}${customerIds.length > 2 ? ` +${customerIds.length - 2}` : ""}: ${live.length} live subscription${live.length === 1 ? "" : "s"}, ${unpaid.length} unpaid invoice${unpaid.length === 1 ? "" : "s"}.`,
   ]
   for (const s of live.slice(0, SUBS_SHOWN)) {
-    const card = s.card_last4 ? `, ${String(s.card_brand ?? "card")} ending ${String(s.card_last4)}` : ""
+    const card = s.card_last4
+      ? `, ${String(s.card_brand ?? "card")} ending ${String(s.card_last4)}`
+      : ""
     const since = iso(s.past_due_since)
-    lines.push(`${String(s.plan_name ?? "Plan")}: ${String(s.status)}${since ? ` since ${since.slice(0, 10)}` : ""}${card}.`)
+    lines.push(
+      `${String(s.plan_name ?? "Plan")}: ${String(s.status)}${since ? ` since ${since.slice(0, 10)}` : ""}${card}.`,
+    )
   }
   for (const i of unpaid.slice(0, INVOICES_SHOWN)) {
     const retry = iso(i.next_payment_attempt)

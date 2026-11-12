@@ -12,71 +12,77 @@
 // only makes same-org invoicing/kernel reads, never a live carrier/store call). prep_sync is the
 // only tool here that talks to a live Shopify / Boxtal API.
 
-import { isUniqueViolation } from "./db-errors"
+import { ToolError } from "@liaison/app-sdk"
+import { postalCodeRequired, stateRequired, validateRecipientPhone } from "./address"
+import type { AddressCheck } from "./address-check"
+import { isPickupPointOffer } from "./carriers"
+import type { BoxtalToolCtx } from "./ctx"
+import { type PrepCategory, resolvePrepCategory } from "./customs"
 import { generateOrderDocuments } from "./customs-documents"
-import { shipmentDraftCreate } from "./shipment"
-import { quote } from "./shipment"
-import {
-  liveShipmentsByAnchor,
-  worklistCandidates,
-  noAnchorReason,
-  type ShipmentCoverage,
-} from "./queues"
+import { isUniqueViolation } from "./db-errors"
 import {
   coverageMovedSince,
+  type DraftCacheRow,
   isDraftCacheStale,
   loadDraftCache,
   mapWithConcurrency,
-  resolveDrafts,
   RESOLVE_LIMIT,
-  type DraftCacheRow,
+  resolveDrafts,
 } from "./draft-cache"
-import { lookupOrderForPrefill, openOrdersScan, type AnchorKind, type OrderCandidate } from "./orders"
-import type { BoxtalToolCtx } from "./ctx"
-import type { Parcel } from "./resolver"
-import { resolvePrepCategory, type PrepCategory } from "./customs"
 import { toMinor } from "./money"
-import { businessDaysBetween } from "./quote-batch"
-import { postalCodeRequired, stateRequired, validateRecipientPhone } from "./address"
-import { isPickupPointOffer } from "./carriers"
-import { pickSelectedOffer } from "./prep-selection"
-import { EMPTY_PRODUCT_CODE_CONFIG, orderProductsSummary, type ProductCodeConfig, shortProductCode } from "./product-codes"
-import { loadProductCodeConfig } from "./settings"
-// prep_meta lives in its own module (both this file and shipment.ts write it); `fetchShopifyOrderMeta`
-// is re-exported below because it was always part of this module's surface.
-import {
-  backfillContactShippingAddress,
-  cacheShipToIfStale,
-  SHIP_TO_REFRESHES_PER_SYNC,
-  type ShipToRefreshBudget,
-  fetchShopifyOrderMeta,
-  upsertPrepMeta,
-} from "./prep-meta"
 import {
   numericOrderId,
   orderKeyForDocument,
   orderKeyForDocumentRef,
   orderKeyForPendingProforma,
   orderKeyForShopifyOrder,
-  parseOrderKey,
-  upsertPrepOrderState,
   type PrepOrderItem,
   type PrepOrderStateRow,
   type PrepRecipient,
   type PrepStatus,
+  parseOrderKey,
+  upsertPrepOrderState,
 } from "./order-state"
+import {
+  type AnchorKind,
+  lookupOrderForPrefill,
+  type OrderCandidate,
+  openOrdersScan,
+} from "./orders"
+// prep_meta lives in its own module (both this file and shipment.ts write it); `fetchShopifyOrderMeta`
+// is re-exported below because it was always part of this module's surface.
+import {
+  backfillContactShippingAddress,
+  cacheShipToIfStale,
+  fetchShopifyOrderMeta,
+  SHIP_TO_REFRESHES_PER_SYNC,
+  type ShipToRefreshBudget,
+  upsertPrepMeta,
+} from "./prep-meta"
+import { pickSelectedOffer } from "./prep-selection"
+import {
+  EMPTY_PRODUCT_CODE_CONFIG,
+  orderProductsSummary,
+  type ProductCodeConfig,
+  shortProductCode,
+} from "./product-codes"
 import {
   ensureNominalProforma,
   type NominalCategory,
   type ProformaCounterparty,
   type ProformaItem,
 } from "./proforma"
-import { ToolError } from "@liaison/app-sdk"
-import type { AddressCheck } from "./address-check"
+import {
+  liveShipmentsByAnchor,
+  noAnchorReason,
+  type ShipmentCoverage,
+  worklistCandidates,
+} from "./queues"
+import { businessDaysBetween } from "./quote-batch"
+import type { Parcel } from "./resolver"
+import { loadProductCodeConfig } from "./settings"
+import { quote, shipmentDraftCreate } from "./shipment"
 
-// The per-ORDER state surface (status, exclusion, category, proforma refs) lives in order-state.ts;
-// re-exported here so the handler barrel and every existing importer keep one import site.
-export { prepExclude, prepRestore, prepSetStatus, prepSetValidated } from "./order-state"
 export type {
   PrepExcludeInput,
   PrepOrderItem,
@@ -86,6 +92,9 @@ export type {
   PrepSetValidatedInput,
   PrepStatus,
 } from "./order-state"
+// The per-ORDER state surface (status, exclusion, category, proforma refs) lives in order-state.ts;
+// re-exported here so the handler barrel and every existing importer keep one import site.
+export { prepExclude, prepRestore, prepSetStatus, prepSetValidated } from "./order-state"
 
 const LAST_SYNC_KEY = "prep_last_sync_at"
 const QUOTE_TTL_MS = 12 * 60 * 60 * 1000 // 12h
@@ -424,7 +433,10 @@ function toRecipientView(r: PrepRecipient | null | undefined): PrepRecipientView
 /** A document-less row's products, read off the order's line items. Each sku goes through the
  *  org's product-code mapping (empty by default: the sku as it is), so a wholesale variant with no
  *  shipping profile reads under the same short code as its retail twin. */
-function productsFromOrderLines(items: OrderCandidate["line_items"], productCodes: ProductCodeConfig): string {
+function productsFromOrderLines(
+  items: OrderCandidate["line_items"],
+  productCodes: ProductCodeConfig,
+): string {
   if (items.length === 0) return "-"
   return items
     .map((l) => `${l.quantity || 1}x${shortProductCode(l.sku ?? l.title ?? "item", productCodes)}`)
@@ -433,7 +445,13 @@ function productsFromOrderLines(items: OrderCandidate["line_items"], productCode
 
 function invoiceView(c: OrderCandidate, invoicingAvailable: boolean): PrepInvoiceView {
   if (!invoicingAvailable) {
-    return { state: "not_available", document_id: null, number: null, approval_id: null, kind: null }
+    return {
+      state: "not_available",
+      document_id: null,
+      number: null,
+      approval_id: null,
+      kind: null,
+    }
   }
   if (c.anchor_ref) {
     return {
@@ -474,7 +492,15 @@ export function buildRow(args: {
   /** The org's sku to short-code mapping; omitted means the empty default. */
   productCodes?: ProductCodeConfig
 }): PrepRow {
-  const { candidate: c, cached, cachedQuote, legacyState, shipment, coverage, invoicingAvailable } = args
+  const {
+    candidate: c,
+    cached,
+    cachedQuote,
+    legacyState,
+    shipment,
+    coverage,
+    invoicingAvailable,
+  } = args
   const parcels = cached?.parcels ?? []
   const destinationCountry = cached?.destination_country ?? c.destination ?? null
   const currentHash = computePrepInputHash({
@@ -515,11 +541,14 @@ export function buildRow(args: {
 
   const remaining = cached?.partial_remaining ?? null
   const remainingUnits = remaining ? remaining.reduce((sum, l) => sum + l.quantity, 0) : null
-  const partial = remaining != null || (coverage != null && coverage.shippedByLine.size > 0 && !coverage.full)
+  const partial =
+    remaining != null || (coverage != null && coverage.shippedByLine.size > 0 && !coverage.full)
   // Precedence: what the row itself stores (prep_add_shipment's prefill, and every operator
   // correction) beats the last sync cache, which beats the order/document-derived recipient. Merged
   // per field so a partially populated source cannot blank a value another one holds.
-  const recipient = toRecipientView(mergeRecipients(c.state?.recipient, cached?.recipient, c.recipient))
+  const recipient = toRecipientView(
+    mergeRecipients(c.state?.recipient, cached?.recipient, c.recipient),
+  )
 
   return {
     order_key: c.order_key,
@@ -531,12 +560,13 @@ export function buildRow(args: {
     // The order hit is the customer's name when Shopify answered. When it did not (a failed scoped
     // read, or a row read from the cache during an outage) the resolved draft's recipient is the
     // best name we hold, and it beats blanking the column to "-" in place.
-    customer: c.customer !== "-" ? c.customer : (recipient?.name || "-"),
+    customer: c.customer !== "-" ? c.customer : recipient?.name || "-",
     destination: destinationCountry ?? "-",
     order_tags: c.order_tags,
     // Ordered by the org's display rank (none set: the order the lines came in).
     products: orderProductsSummary(
-      cached?.products ?? productsFromOrderLines(c.line_items, args.productCodes ?? EMPTY_PRODUCT_CODE_CONFIG),
+      cached?.products ??
+        productsFromOrderLines(c.line_items, args.productCodes ?? EMPTY_PRODUCT_CODE_CONFIG),
       args.productCodes ?? EMPTY_PRODUCT_CODE_CONFIG,
     ),
     grand_total_minor: cached?.grand_total_minor ?? c.order_total_minor,
@@ -558,15 +588,26 @@ export function buildRow(args: {
     shipment,
     recipient,
     ...(recipientEdited(c.state?.recipient) ? { recipient_edited: true as const } : {}),
-    ...(partial ? { partially_shipped: true, ...(remainingUnits != null ? { remaining_units: remainingUnits } : {}) } : {}),
-    ...(cached?.recipient_phone_issue ? { recipient_phone_issue: cached.recipient_phone_issue } : {}),
-    ...(cached?.address_check && cached.address_check.state !== "no_verified" ? { address_check: cached.address_check } : {}),
+    ...(partial
+      ? {
+          partially_shipped: true,
+          ...(remainingUnits != null ? { remaining_units: remainingUnits } : {}),
+        }
+      : {}),
+    ...(cached?.recipient_phone_issue
+      ? { recipient_phone_issue: cached.recipient_phone_issue }
+      : {}),
+    ...(cached?.address_check && cached.address_check.state !== "no_verified"
+      ? { address_check: cached.address_check }
+      : {}),
   }
 }
 
 /** Whether the row's own stored recipient names a place: a person's prefill or correction. */
 function recipientEdited(r: PrepRecipient | null | undefined): boolean {
-  return Boolean(r && [r.street, r.city, r.postalCode].some((v) => typeof v === "string" && v.trim() !== ""))
+  return Boolean(
+    r && [r.street, r.city, r.postalCode].some((v) => typeof v === "string" && v.trim() !== ""),
+  )
 }
 
 /** Exported as a test seam: the filter predicate is pure and worth pinning directly. */
@@ -574,12 +615,16 @@ export function matchesFilters(row: PrepRow, input: PrepListInput): boolean {
   if (!input.include_excluded && row.excluded) return false
   if (typeof input.validated === "boolean" && row.validated !== input.validated) return false
   if (input.status && row.status !== input.status) return false
-  if (input.country && row.destination.trim().toUpperCase() !== input.country.trim().toUpperCase()) return false
-  if (input.tag && !row.order_tags.some((t) => t.toLowerCase() === input.tag!.toLowerCase())) return false
-  if (input.product && !row.products.toLowerCase().includes(input.product.toLowerCase())) return false
+  if (input.country && row.destination.trim().toUpperCase() !== input.country.trim().toUpperCase())
+    return false
+  if (input.tag && !row.order_tags.some((t) => t.toLowerCase() === input.tag!.toLowerCase()))
+    return false
+  if (input.product && !row.products.toLowerCase().includes(input.product.toLowerCase()))
+    return false
   if (input.search) {
     const q = input.search.toLowerCase()
-    const haystack = `${row.invoice_ref} ${row.order_name ?? ""} ${row.customer} ${row.destination}`.toLowerCase()
+    const haystack =
+      `${row.invoice_ref} ${row.order_name ?? ""} ${row.customer} ${row.destination}`.toLowerCase()
     if (!haystack.includes(q)) return false
   }
   return true
@@ -596,7 +641,10 @@ export function matchesFilters(row: PrepRow, input: PrepListInput): boolean {
  * With `order_keys` this is instead a ROW-SCOPED read: the scan is skipped, those rows are read
  * live and their drafts ARE resolved (a handful, on purpose), so a row action can patch one row.
  */
-export async function prepList(ctx: BoxtalToolCtx, input: PrepListInput = {}): Promise<PrepListResult> {
+export async function prepList(
+  ctx: BoxtalToolCtx,
+  input: PrepListInput = {},
+): Promise<PrepListResult> {
   const scoped = Array.isArray(input.order_keys) && input.order_keys.length > 0
   // UNSCOPED read: LIVE for now. Cache mode (`source: "cache"`) exists and is exercised in tests,
   // but nothing warms `prep_meta` for an order that was never prep_synced, so a cache-only scan
@@ -609,23 +657,28 @@ export async function prepList(ctx: BoxtalToolCtx, input: PrepListInput = {}): P
     ctx,
     scoped ? { order_keys: input.order_keys, bestEffortWrites: true } : { bestEffortWrites: true },
   )
-  const [{ candidates, coverage }, cache, quoteByRef, stateByRef, shipmentsByAnchor, lastSyncAt, productCodes] =
-    await Promise.all([
-      // A scoped read returns the rows it was asked for, excluded or not: the caller named them.
-      worklistCandidates(ctx, { includeExcluded: input.include_excluded || scoped, scan }),
-      loadDraftCache(ctx),
-      loadByDocumentRef<PrepQuoteRow>(ctx, "prep_quote"),
-      loadByDocumentRef<PrepStateRow>(ctx, "prep_state"),
-      liveShipmentsByAnchor(ctx),
-      getLastSyncAt(ctx),
-      loadProductCodeConfig(ctx),
-    ])
+  const [
+    { candidates, coverage },
+    cache,
+    quoteByRef,
+    stateByRef,
+    shipmentsByAnchor,
+    lastSyncAt,
+    productCodes,
+  ] = await Promise.all([
+    // A scoped read returns the rows it was asked for, excluded or not: the caller named them.
+    worklistCandidates(ctx, { includeExcluded: input.include_excluded || scoped, scan }),
+    loadDraftCache(ctx),
+    loadByDocumentRef<PrepQuoteRow>(ctx, "prep_quote"),
+    loadByDocumentRef<PrepStateRow>(ctx, "prep_state"),
+    liveShipmentsByAnchor(ctx),
+    getLastSyncAt(ctx),
+    loadProductCodeConfig(ctx),
+  ])
 
   if (scoped) {
     // The point of the scoped read: refresh exactly these anchors, nothing else.
-    const refs = candidates
-      .map((c) => c.anchor_ref)
-      .filter((ref): ref is string => ref != null)
+    const refs = candidates.map((c) => c.anchor_ref).filter((ref): ref is string => ref != null)
     if (refs.length > 0) {
       const fresh = await resolveDrafts(ctx, refs, {
         limit: refs.length,
@@ -650,7 +703,9 @@ export async function prepList(ctx: BoxtalToolCtx, input: PrepListInput = {}): P
   )
   // A scoped read returns the rows it was asked for even when they are excluded (the caller named
   // them), but every other filter still applies so a scoped read and a list read agree.
-  const filtered = rows.filter((r) => matchesFilters(r, scoped ? { ...input, include_excluded: true } : input))
+  const filtered = rows.filter((r) =>
+    matchesFilters(r, scoped ? { ...input, include_excluded: true } : input),
+  )
 
   return {
     rows: filtered,
@@ -663,7 +718,10 @@ export async function prepList(ctx: BoxtalToolCtx, input: PrepListInput = {}): P
 }
 
 async function getLastSyncAt(ctx: BoxtalToolCtx): Promise<string | null> {
-  const rows = (await ctx.db.findMany("app_config", { where: { key: LAST_SYNC_KEY }, limit: 1 })) as Array<{
+  const rows = (await ctx.db.findMany("app_config", {
+    where: { key: LAST_SYNC_KEY },
+    limit: 1,
+  })) as Array<{
     value: unknown
   }>
   return typeof rows[0]?.value === "string" ? rows[0].value : null
@@ -709,8 +767,8 @@ export const NO_OFFERS_RETURNED = "no offers returned"
 /** How many failed rows the prep_sync result names one by one. */
 const SYNC_ERRORS_SHOWN = 3
 
-export { fetchShopifyOrderMeta } from "./prep-meta"
 export type { ShopifyOrderAddress } from "./prep-meta"
+export { fetchShopifyOrderMeta } from "./prep-meta"
 
 // `backfillContactShippingAddress` lives in prep-meta.ts: the shipment draft
 // (shipment.ts) heals the contact from its Shopify order too, and shipment.ts
@@ -722,7 +780,10 @@ async function upsertPrepQuote(
   documentRef: string,
   data: { input_hash: string; offers: PrepOffer[] },
 ): Promise<void> {
-  const rows = (await ctx.db.findMany("prep_quote", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+  const rows = (await ctx.db.findMany("prep_quote", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as Array<{
     id: string
   }>
   const patch = { ...data, quote_error: null, quoted_at: new Date().toISOString() }
@@ -735,14 +796,25 @@ async function upsertPrepQuote(
 
 /** Record why a quote attempt gave no offers. Leaves the hash, the offers and `quoted_at` alone,
  *  so the next sync retries (a row never quoted has no `quoted_at` and reads as expired). */
-async function recordPrepQuoteError(ctx: BoxtalToolCtx, documentRef: string, quoteError: string): Promise<void> {
-  const rows = (await ctx.db.findMany("prep_quote", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+async function recordPrepQuoteError(
+  ctx: BoxtalToolCtx,
+  documentRef: string,
+  quoteError: string,
+): Promise<void> {
+  const rows = (await ctx.db.findMany("prep_quote", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as Array<{
     id: string
   }>
   if (rows[0]) {
     await ctx.db.update("prep_quote", rows[0].id, { quote_error: quoteError })
   } else {
-    await ctx.db.insert("prep_quote", { document_ref: documentRef, offers: [], quote_error: quoteError })
+    await ctx.db.insert("prep_quote", {
+      document_ref: documentRef,
+      offers: [],
+      quote_error: quoteError,
+    })
   }
 }
 
@@ -751,18 +823,20 @@ async function recordPrepQuoteError(ctx: BoxtalToolCtx, documentRef: string, quo
  *  first three still feed the compact cheapest + 2-alternate view. */
 const STORED_OFFER_CAP = 12
 
-function offersFromQuoteResult(offers: Array<{
-  carrier: string
-  service?: string
-  service_code?: string
-  offer_code: string
-  price_ht: number
-  price_ttc?: number
-  currency: string
-  collection_date?: string | null
-  delivery_date: string | null
-  needs_relay_point?: boolean
-}>): PrepOffer[] {
+function offersFromQuoteResult(
+  offers: Array<{
+    carrier: string
+    service?: string
+    service_code?: string
+    offer_code: string
+    price_ht: number
+    price_ttc?: number
+    currency: string
+    collection_date?: string | null
+    delivery_date: string | null
+    needs_relay_point?: boolean
+  }>,
+): PrepOffer[] {
   // Cheapest-first (the quote tool's own ranking), with business-days ETA when computable from the
   // offer's collection_date -> delivery_date span (the same helper quote-batch.ts uses — one shared
   // business-day count, not a re-derivation). The full list (capped) is cached so the row's offer
@@ -776,7 +850,10 @@ function offersFromQuoteResult(offers: Array<{
       service: o.service ?? "",
       offer_code: o.offer_code,
       price_ht_minor: toMinor(o.price_ht, o.currency),
-      price_ttc_minor: toMinor(typeof o.price_ttc === "number" ? o.price_ttc : o.price_ht, o.currency),
+      price_ttc_minor: toMinor(
+        typeof o.price_ttc === "number" ? o.price_ttc : o.price_ht,
+        o.currency,
+      ),
       currency: o.currency,
       delivery_date: o.delivery_date ?? null,
       eta_business_days: businessDaysBetween(o.collection_date ?? null, o.delivery_date ?? null),
@@ -801,21 +878,31 @@ function offersFromQuoteResult(offers: Array<{
 // Boxtal) so a large worklist doesn't burst-fire dozens of simultaneous live calls.
 const SYNC_CONCURRENCY = 5
 
-
-export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): Promise<PrepSyncResult> {
+export async function prepSync(
+  ctx: BoxtalToolCtx,
+  input: PrepSyncInput = {},
+): Promise<PrepSyncResult> {
   const limit = Math.max(1, input.limit ?? RESOLVE_LIMIT)
-  const wantRefs = input.document_refs && input.document_refs.length > 0 ? new Set(input.document_refs) : null
+  const wantRefs =
+    input.document_refs && input.document_refs.length > 0 ? new Set(input.document_refs) : null
   const askedKeys = input.order_keys && input.order_keys.length > 0 ? input.order_keys : null
 
   // SCOPE THE SCAN, not just its result. A per-row Quote, a package edit and a category change all
   // call prep_sync for ONE row; running the unscoped worklist scan first made each of them pay a
   // full paged `shopify:orders_search` walk (up to 250 orders) plus the documents_for_orders
   // batches, which is exactly the O(worklist) latency the rework exists to remove.
-  const scopeKeys = askedKeys ? [...new Set(askedKeys)] : wantRefs ? await orderKeysForDocumentRefs(ctx, [...wantRefs]) : null
+  const scopeKeys = askedKeys
+    ? [...new Set(askedKeys)]
+    : wantRefs
+      ? await orderKeysForDocumentRefs(ctx, [...wantRefs])
+      : null
   const scanScoped = scopeKeys != null && scopeKeys.length > 0
   const scan = await openOrdersScan(ctx, scanScoped ? { order_keys: scopeKeys } : {})
   // A named row is synced whether it is excluded or not: the caller asked for it by name.
-  const { candidates, coverage } = await worklistCandidates(ctx, { scan, includeExcluded: scanScoped })
+  const { candidates, coverage } = await worklistCandidates(ctx, {
+    scan,
+    includeExcluded: scanScoped,
+  })
   // A key the scan answered under another name (an order named by its number, a settled proforma)
   // is the same row: match it by the key the row carries.
   const wantKeys = askedKeys ? new Set(askedKeys.map((k) => scan.key_aliases?.get(k) ?? k)) : null
@@ -855,99 +942,123 @@ export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): P
   // Expired ship-tos refreshed this run, capped so a big worklist whose entries expire together
   // does not read every order in one burst (prep-meta.ts SHIP_TO_REFRESHES_PER_SYNC).
   const shipToBudget: ShipToRefreshBudget = { remaining: SHIP_TO_REFRESHES_PER_SYNC }
-  const rows = await mapWithConcurrency(toSync, SYNC_CONCURRENCY, async (c): Promise<PrepSyncRowResult> => {
-    const ref = c.anchor_ref!
-    let syncedMeta = false
-    let requoted = false
-    let error: string | undefined
-    let reason: string | undefined
-    try {
-      // 1. Order meta. The scan already read the order, so this is a local write, not a round trip.
-      if (c.shopify_order_id) {
-        await upsertPrepMeta(ctx, ref, {
-          shopify_order_id: c.shopify_order_id,
-          order_name: c.order_name,
-          order_tags: c.order_tags,
-          order_created_at: c.order_created_at,
-          financial_status: c.financial_status,
-          cancelled_at: c.cancelled_at,
-          staff_note: c.staff_note,
-        })
-        syncedMeta = true
-        // The contact's structured shipping address is what a label buy needs; write it once
-        // from the order's ship-to when the contact has none, and heal an existing address that
-        // is missing `state` by filling that one field in. Never overwrites a non-blank field.
-        // One order read per row at most, shared by the contact backfill and the ship-to cache
-        // (worklist drafts read the cached ship-to so the order's own address wins there too).
-        let metaRead: ReturnType<typeof fetchShopifyOrderMeta> | null = null
-        const getMeta = () => {
-          metaRead ??= fetchShopifyOrderMeta(ctx, c.shopify_order_id!)
-          return metaRead
-        }
-        const contactId = await recipientContactIdFor(ctx, ref)
-        await backfillContactShippingAddress(ctx, contactId, async () => (await getMeta())?.address ?? null)
-        // A detail read in the scan already holds the ship-to: cache it without another read
-        // (and without spending the refresh budget).
-        const shipToCached =
-          c.ship_to !== undefined
-            ? await cacheShipToIfStale(ctx, ref, async () => c.ship_to)
-            : await cacheShipToIfStale(ctx, ref, async () => (await getMeta())?.ship_to, shipToBudget)
-        // The draft above was resolved before this ship-to was cached (on a first sync the meta
-        // row did not even exist yet), so it compared the verified address with no order address
-        // and the row looked ready instead of held "Address differs" until the NEXT sync. A
-        // ship-to just written re-resolves this one draft from the cache; no order read.
-        if (shipToCached) {
-          const again = await resolveDrafts(ctx, [ref], { limit: 1, coverage })
-          const fresh = again.get(ref)
-          if (fresh) resolved.set(ref, fresh)
-        }
-      } else {
-        reason = "No linked Shopify order to sync meta from"
-      }
-
-      // 2. Quote, only when the hash changed or the cached quote is past its TTL.
-      const facts = resolved.get(ref) ?? cache.get(ref)
-      const category = c.category
-      const cached = quoteByRef.get(ref)
-      const currentHash = computePrepInputHash({
-        destination_country: facts?.destination_country ?? null,
-        parcels: facts?.parcels ?? [],
-        category,
-      })
-      const quotedAtMs = cached?.quoted_at ? Date.parse(cached.quoted_at) : NaN
-      const isExpired = Number.isNaN(quotedAtMs) || Date.now() - quotedAtMs > QUOTE_TTL_MS
-      if ((facts?.parcels.length ?? 0) > 0 && (isQuoteStale(cached, currentHash) || isExpired)) {
-        let quoteError: string | null = null
-        try {
-          const quoted = await quote(ctx, { draft_id: ref })
-          if (quoted.error) quoteError = quoted.error.message
-          else if (quoted.offers.length === 0) quoteError = NO_OFFERS_RETURNED
-          else {
-            await upsertPrepQuote(ctx, ref, { input_hash: currentHash, offers: offersFromQuoteResult(quoted.offers) })
-            requoted = true
+  const rows = await mapWithConcurrency(
+    toSync,
+    SYNC_CONCURRENCY,
+    async (c): Promise<PrepSyncRowResult> => {
+      const ref = c.anchor_ref!
+      let syncedMeta = false
+      let requoted = false
+      let error: string | undefined
+      let reason: string | undefined
+      try {
+        // 1. Order meta. The scan already read the order, so this is a local write, not a round trip.
+        if (c.shopify_order_id) {
+          await upsertPrepMeta(ctx, ref, {
+            shopify_order_id: c.shopify_order_id,
+            order_name: c.order_name,
+            order_tags: c.order_tags,
+            order_created_at: c.order_created_at,
+            financial_status: c.financial_status,
+            cancelled_at: c.cancelled_at,
+            staff_note: c.staff_note,
+          })
+          syncedMeta = true
+          // The contact's structured shipping address is what a label buy needs; write it once
+          // from the order's ship-to when the contact has none, and heal an existing address that
+          // is missing `state` by filling that one field in. Never overwrites a non-blank field.
+          // One order read per row at most, shared by the contact backfill and the ship-to cache
+          // (worklist drafts read the cached ship-to so the order's own address wins there too).
+          let metaRead: ReturnType<typeof fetchShopifyOrderMeta> | null = null
+          const getMeta = () => {
+            metaRead ??= fetchShopifyOrderMeta(ctx, c.shopify_order_id!)
+            return metaRead
           }
-        } catch (err) {
-          quoteError = err instanceof Error ? err.message : String(err)
+          const contactId = await recipientContactIdFor(ctx, ref)
+          await backfillContactShippingAddress(
+            ctx,
+            contactId,
+            async () => (await getMeta())?.address ?? null,
+          )
+          // A detail read in the scan already holds the ship-to: cache it without another read
+          // (and without spending the refresh budget).
+          const shipToCached =
+            c.ship_to !== undefined
+              ? await cacheShipToIfStale(ctx, ref, async () => c.ship_to)
+              : await cacheShipToIfStale(
+                  ctx,
+                  ref,
+                  async () => (await getMeta())?.ship_to,
+                  shipToBudget,
+                )
+          // The draft above was resolved before this ship-to was cached (on a first sync the meta
+          // row did not even exist yet), so it compared the verified address with no order address
+          // and the row looked ready instead of held "Address differs" until the NEXT sync. A
+          // ship-to just written re-resolves this one draft from the cache; no order read.
+          if (shipToCached) {
+            const again = await resolveDrafts(ctx, [ref], { limit: 1, coverage })
+            const fresh = again.get(ref)
+            if (fresh) resolved.set(ref, fresh)
+          }
+        } else {
+          reason = "No linked Shopify order to sync meta from"
         }
-        if (quoteError != null) {
-          error = quoteError
-          ctx.logger?.warn?.("prep_sync: quote failed", { order_key: c.order_key, document_ref: ref, error: quoteError })
-          await recordPrepQuoteError(ctx, ref, quoteError)
+
+        // 2. Quote, only when the hash changed or the cached quote is past its TTL.
+        const facts = resolved.get(ref) ?? cache.get(ref)
+        const category = c.category
+        const cached = quoteByRef.get(ref)
+        const currentHash = computePrepInputHash({
+          destination_country: facts?.destination_country ?? null,
+          parcels: facts?.parcels ?? [],
+          category,
+        })
+        const quotedAtMs = cached?.quoted_at ? Date.parse(cached.quoted_at) : NaN
+        const isExpired = Number.isNaN(quotedAtMs) || Date.now() - quotedAtMs > QUOTE_TTL_MS
+        if ((facts?.parcels.length ?? 0) > 0 && (isQuoteStale(cached, currentHash) || isExpired)) {
+          let quoteError: string | null = null
+          try {
+            const quoted = await quote(ctx, { draft_id: ref })
+            if (quoted.error) quoteError = quoted.error.message
+            else if (quoted.offers.length === 0) quoteError = NO_OFFERS_RETURNED
+            else {
+              await upsertPrepQuote(ctx, ref, {
+                input_hash: currentHash,
+                offers: offersFromQuoteResult(quoted.offers),
+              })
+              requoted = true
+            }
+          } catch (err) {
+            quoteError = err instanceof Error ? err.message : String(err)
+          }
+          if (quoteError != null) {
+            error = quoteError
+            ctx.logger?.warn?.("prep_sync: quote failed", {
+              order_key: c.order_key,
+              document_ref: ref,
+              error: quoteError,
+            })
+            await recordPrepQuoteError(ctx, ref, quoteError)
+          }
         }
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err)
+        ctx.logger?.warn?.("prep_sync: row sync failed", {
+          order_key: c.order_key,
+          document_ref: ref,
+          error,
+        })
       }
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-      ctx.logger?.warn?.("prep_sync: row sync failed", { order_key: c.order_key, document_ref: ref, error })
-    }
-    return {
-      document_ref: ref,
-      order_key: c.order_key,
-      synced_meta: syncedMeta,
-      requoted,
-      ...(error ? { error } : {}),
-      ...(reason ? { reason } : {}),
-    }
-  })
+      return {
+        document_ref: ref,
+        order_key: c.order_key,
+        synced_meta: syncedMeta,
+        requoted,
+        ...(error ? { error } : {}),
+        ...(reason ? { reason } : {}),
+      }
+    },
+  )
 
   const lastSyncAt = new Date().toISOString()
   await setLastSyncAt(ctx, lastSyncAt)
@@ -957,19 +1068,22 @@ export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): P
   // Quote button, an edit) stays as cheap as it was, and the scheduled pass covers the rest. Best
   // effort: never fails the sync.
   const rowScoped = (input.document_refs?.length ?? 0) > 0 || (input.order_keys?.length ?? 0) > 0
-  if (!rowScoped) try {
-    await generateOrderDocuments(
-      ctx,
-      rows.flatMap((r) => (r.error || !r.document_ref ? [] : [r.document_ref])),
-    )
-  } catch (err) {
-    ctx.logger?.warn?.("prep_sync: order documents failed", { err: String(err) })
-  }
+  if (!rowScoped)
+    try {
+      await generateOrderDocuments(
+        ctx,
+        rows.flatMap((r) => (r.error || !r.document_ref ? [] : [r.document_ref])),
+      )
+    } catch (err) {
+      ctx.logger?.warn?.("prep_sync: order documents failed", { err: String(err) })
+    }
 
   const failed = rows.filter((r) => r.error)
   const errors = {
     count: failed.length,
-    first: failed.slice(0, SYNC_ERRORS_SHOWN).map((r) => ({ order_key: r.order_key ?? r.document_ref, error: r.error! })),
+    first: failed
+      .slice(0, SYNC_ERRORS_SHOWN)
+      .map((r) => ({ order_key: r.order_key ?? r.document_ref, error: r.error! })),
   }
   const synced =
     toSync.length < totalCount
@@ -997,10 +1111,16 @@ export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): P
  * A ref no local table can map returns null for the whole set, which falls back to the full scan --
  * correct, merely not cheap, and rare (a document the worklist has never listed).
  */
-async function orderKeysForDocumentRefs(ctx: BoxtalToolCtx, refs: string[]): Promise<string[] | null> {
+async function orderKeysForDocumentRefs(
+  ctx: BoxtalToolCtx,
+  refs: string[],
+): Promise<string[] | null> {
   const keys: string[] = []
   for (const ref of refs) {
-    const metas = (await ctx.db.findMany("prep_meta", { where: { document_ref: ref }, limit: 1 })) as Array<{
+    const metas = (await ctx.db.findMany("prep_meta", {
+      where: { document_ref: ref },
+      limit: 1,
+    })) as Array<{
       shopify_order_id?: string | null
     }>
     const orderId = numericOrderId(metas[0]?.shopify_order_id)
@@ -1025,7 +1145,10 @@ async function orderKeysForDocumentRefs(ctx: BoxtalToolCtx, refs: string[]): Pro
 
 /** The invoice's counterparty contact, for the shipping-address backfill. Read from the resolved
  *  draft rather than re-derived, and null (skip the backfill) when the draft cannot resolve. */
-async function recipientContactIdFor(ctx: BoxtalToolCtx, documentRef: string): Promise<string | null> {
+async function recipientContactIdFor(
+  ctx: BoxtalToolCtx,
+  documentRef: string,
+): Promise<string | null> {
   try {
     const draft = await shipmentDraftCreate(ctx, { document_ref: documentRef, orderShipTo: false })
     return draft.recipient_contact_id ?? null
@@ -1039,7 +1162,10 @@ async function recipientContactIdFor(ctx: BoxtalToolCtx, documentRef: string): P
 }
 
 async function setLastSyncAt(ctx: BoxtalToolCtx, at: string): Promise<void> {
-  const rows = (await ctx.db.findMany("app_config", { where: { key: LAST_SYNC_KEY }, limit: 1 })) as Array<{
+  const rows = (await ctx.db.findMany("app_config", {
+    where: { key: LAST_SYNC_KEY },
+    limit: 1,
+  })) as Array<{
     id: string
   }>
   if (rows[0]) {
@@ -1057,7 +1183,10 @@ async function setLastSyncAt(ctx: BoxtalToolCtx, at: string): Promise<void> {
     await ctx.db.insert("app_config", { key: LAST_SYNC_KEY, value: at })
   } catch (err) {
     if (!isUniqueViolation(err)) throw err
-    const winner = (await ctx.db.findMany("app_config", { where: { key: LAST_SYNC_KEY }, limit: 1 })) as Array<{
+    const winner = (await ctx.db.findMany("app_config", {
+      where: { key: LAST_SYNC_KEY },
+      limit: 1,
+    })) as Array<{
       id: string
     }>
     if (!winner[0]) throw err // genuinely gone — not a recoverable race; surface the original error
@@ -1087,15 +1216,21 @@ async function upsertPrepState(
   documentRef: string,
   patch: Partial<PrepStateRow>,
 ): Promise<PrepStateRow> {
-  const rows = (await ctx.db.findMany("prep_state", { where: { document_ref: documentRef }, limit: 1 })) as Array<
-    PrepStateRow & { id: string }
-  >
+  const rows = (await ctx.db.findMany("prep_state", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as Array<PrepStateRow & { id: string }>
   if (rows[0]) {
     const merged = { ...rows[0], ...patch }
     await ctx.db.update("prep_state", rows[0].id, { ...patch })
     return merged
   }
-  const base: PrepStateRow = { document_ref: documentRef, category: "sale", excluded: false, ...patch }
+  const base: PrepStateRow = {
+    document_ref: documentRef,
+    category: "sale",
+    excluded: false,
+    ...patch,
+  }
   await ctx.db.insert("prep_state", { ...base })
   return base
 }
@@ -1358,7 +1493,10 @@ const REQUIRED_RECIPIENT_FIELDS: Array<[keyof PrepRecipient, string]> = [
   ["email", "email"],
 ]
 
-function mergeRecipient(base: PrepRecipient | null, over: PrepRecipient | undefined): PrepRecipient {
+function mergeRecipient(
+  base: PrepRecipient | null,
+  over: PrepRecipient | undefined,
+): PrepRecipient {
   const out: PrepRecipient = { ...(base ?? {}) }
   for (const [k, v] of Object.entries(over ?? {}) as Array<[keyof PrepRecipient, unknown]>) {
     if (v != null && String(v).trim() !== "") (out as Record<string, unknown>)[k] = v
@@ -1431,10 +1569,13 @@ export async function prepAddShipment(
     .filter((i) => i.name && (i.quantity ?? 0) > 0)
     .map((i) => ({ ...i, quantity: Math.max(1, Math.floor(i.quantity)) }))
   if (items.length === 0) {
-    throw new ToolError("List what is physically in the parcel: an empty shipment has nothing to declare.", {
-      code: "no_items",
-      retryable: false,
-    })
+    throw new ToolError(
+      "List what is physically in the parcel: an empty shipment has nothing to declare.",
+      {
+        code: "no_items",
+        retryable: false,
+      },
+    )
   }
 
   // A pending key first, so the row exists (and is recoverable) even if the issue call never
@@ -1455,7 +1596,9 @@ export async function prepAddShipment(
     { shopifyOrderId },
   )
 
-  const address = [recipient.street, recipient.postalCode, recipient.city].filter(Boolean).join(", ")
+  const address = [recipient.street, recipient.postalCode, recipient.city]
+    .filter(Boolean)
+    .join(", ")
   const issued = await ensureNominalProforma(ctx, {
     order_key: orderKey,
     category: input.category,
@@ -1483,7 +1626,10 @@ export async function prepAddShipment(
   if (issued.status === "error") {
     // Nothing to ship on and nothing to anchor: leaving the row would strand a permanently
     // document-less row nobody can act on. Remove it and say why, so the operator can retry.
-    const rows = (await ctx.db.findMany("prep_order_state", { where: { order_key: orderKey }, limit: 1 })) as Array<{
+    const rows = (await ctx.db.findMany("prep_order_state", {
+      where: { order_key: orderKey },
+      limit: 1,
+    })) as Array<{
       id: string
     }>
     if (rows[0]) await ctx.db.delete("prep_order_state", rows[0].id)
@@ -1567,7 +1713,6 @@ export async function prepOrderPrefill(
   }
 }
 
-
 export interface PrepDocumentPdfInput {
   /** The row whose ANCHOR document to render, or pass document_ref directly. */
   order_key?: string
@@ -1613,7 +1758,6 @@ export async function prepDocumentPdf(
   return { file_id: null, generating: true }
 }
 
-
 // ── prep_select_offer ──────────────────────────────────────────────────────
 
 export interface PrepSelectOfferInput {
@@ -1631,7 +1775,10 @@ export interface PrepSelectOfferInput {
  * with the quote: once the row's route/parcels/category change (the quote goes stale), prep_list
  * surfaces `selected: null` until a re-sync re-establishes the offer.
  */
-export async function prepSelectOffer(ctx: BoxtalToolCtx, input: PrepSelectOfferInput): Promise<PrepStateRow> {
+export async function prepSelectOffer(
+  ctx: BoxtalToolCtx,
+  input: PrepSelectOfferInput,
+): Promise<PrepStateRow> {
   const code = input.offer_code
   if (code != null && code !== "") {
     const quoteRows = (await ctx.db.findMany("prep_quote", {
@@ -1640,9 +1787,16 @@ export async function prepSelectOffer(ctx: BoxtalToolCtx, input: PrepSelectOffer
     })) as Array<{ offers?: PrepOffer[] | null }>
     const offers = quoteRows[0]?.offers ?? []
     if (!offers.some((o) => o.offer_code === code)) {
-      const listed = offers.length > 0 ? offers.map((o) => o.offer_code).join(", ") : "no cached quote, run prep_sync first"
-      throw new Error(`Offer "${code}" is not among this row's cached quote offers (${listed}). Re-sync and pick a listed offer.`)
+      const listed =
+        offers.length > 0
+          ? offers.map((o) => o.offer_code).join(", ")
+          : "no cached quote, run prep_sync first"
+      throw new Error(
+        `Offer "${code}" is not among this row's cached quote offers (${listed}). Re-sync and pick a listed offer.`,
+      )
     }
   }
-  return upsertPrepState(ctx, input.document_ref, { selected_offer_code: code && code !== "" ? code : null })
+  return upsertPrepState(ctx, input.document_ref, {
+    selected_offer_code: code && code !== "" ? code : null,
+  })
 }

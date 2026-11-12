@@ -1,0 +1,35 @@
+{
+  "entry": "tool:drive_picker",
+  "params": {},
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive"],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.846Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "config_get",
+      "args": ["pickerApiKey"],
+      "reply": "contract-picker-key"
+    },
+    {
+      "method": "config_get",
+      "args": ["pickerAppId"],
+      "reply": "123456789"
+    },
+    {
+      "method": "pages_link",
+      "args": [
+        "picker",
+        "{\"account\":\"00000000-0000-4000-8000-00000000d001\",\"apiKey\":\"contract-picker-key\",\"appId\":\"123456789\"}"
+      ],
+      "reply": {
+        "handle": "item-7c73d02d",
+        "app": "google-drive",
+        "page": "picker",
+        "expiresInSeconds": 300
+      }
+    }
+  ]
+}

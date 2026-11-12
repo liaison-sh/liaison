@@ -107,7 +107,10 @@ export function candidateNames(c: RegistryCandidate): string[] {
 }
 
 /** True when any of `expected` matches any registry name of the candidate. */
-export function candidateMatchesName(c: RegistryCandidate, expected: ReadonlyArray<string | null | undefined>): boolean {
+export function candidateMatchesName(
+  c: RegistryCandidate,
+  expected: ReadonlyArray<string | null | undefined>,
+): boolean {
   const names = candidateNames(c)
   return expected.some((e) => !!e && names.some((n) => namesMatch(e, n)))
 }
@@ -131,7 +134,11 @@ function parseEnvelope(raw: unknown): FetchResponse | null {
 
 /** The registry search URL for a query (null when there is nothing to search): also the
  *  provenance link of a SIREN the registry confirmed. */
-export function registrySearchUrl(input: { q?: string | null; siren?: string | null; postcode?: string | null }): string | null {
+export function registrySearchUrl(input: {
+  q?: string | null
+  siren?: string | null
+  postcode?: string | null
+}): string | null {
   const q = digitsOnly(input.siren) || str(input.q)
   if (!q) return null
   const postcode = str(input.postcode)
@@ -155,7 +162,9 @@ export async function registrySearch(
 
   let res: FetchResponse | null
   try {
-    res = parseEnvelope(await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }))
+    res = parseEnvelope(
+      await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }),
+    )
   } catch {
     return { status: "registry_unconfirmed", reason: "unreachable" }
   }

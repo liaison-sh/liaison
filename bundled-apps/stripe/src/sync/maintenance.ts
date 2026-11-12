@@ -56,14 +56,22 @@ export async function runCatchup(
         await ctx.db.update("webhook_deliveries", d.id, { status: "ignored" })
         continue
       }
-      return { replayed, cleared: false, detail: err instanceof Error ? err.message : "Stripe did not answer" }
+      return {
+        replayed,
+        cleared: false,
+        detail: err instanceof Error ? err.message : "Stripe did not answer",
+      }
     }
     await holdWhileImporting(event, ctx, (c) => handleStripeEvent(event, c as unknown as IngestCtx))
     replayed++
     const fresh = await readInstall(ctx.db)
-    if (fresh && blockedOverlay(fresh)) return { replayed, cleared: false, detail: String(fresh.state) }
+    if (fresh && blockedOverlay(fresh))
+      return { replayed, cleared: false, detail: String(fresh.state) }
   }
-  const left = await ctx.db.findMany("webhook_deliveries", { where: { status: "failed" }, limit: 1 })
+  const left = await ctx.db.findMany("webhook_deliveries", {
+    where: { status: "failed" },
+    limit: 1,
+  })
   if (left.length > 0) return { replayed, cleared: false }
   await ctx.db.updateMany("sync_state", {
     where: { catchup_due: true },
@@ -90,7 +98,8 @@ export async function runPrune(ctx: SyncCtx, opts: SyncOptions = {}): Promise<{ 
     })) as Obj[]
     let removed = 0
     for (const r of rows) {
-      const at = r.received_at instanceof Date ? r.received_at.getTime() : Date.parse(String(r.received_at))
+      const at =
+        r.received_at instanceof Date ? r.received_at.getTime() : Date.parse(String(r.received_at))
       if (!Number.isFinite(at) || at >= cutoff) return { pruned }
       if (KEEP.has(String(r.status))) continue
       await ctx.db.delete("webhook_deliveries", String(r.id))
@@ -127,7 +136,8 @@ export async function purgeMirror(
 ): Promise<{ removed: number; done: boolean; reconnected?: boolean }> {
   const now = opts.now ?? (() => new Date())
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
-  if (!opts.first && (await readInstall(ctx.db))) return { removed: 0, done: true, reconnected: true }
+  if (!opts.first && (await readInstall(ctx.db)))
+    return { removed: 0, done: true, reconnected: true }
   let removed = 0
   for (const entity of PURGE_ORDER) {
     while (true) {

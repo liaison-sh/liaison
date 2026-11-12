@@ -20,20 +20,25 @@ export type BadgeTone = "success" | "warning" | "error" | "muted" | "neutral"
 export function effectiveStatusTone(effectiveStatus: string): BadgeTone {
   // Maps Meta effective_status to a delivery tone.
   switch (effectiveStatus) {
-    case "ACTIVE": return "success"
+    case "ACTIVE":
+      return "success"
     case "CAMPAIGN_PAUSED":
     case "PAUSED":
     case "ADSET_PAUSED":
     case "AD_PAUSED":
     case "ARCHIVED":
-    case "DELETED": return "muted"
+    case "DELETED":
+      return "muted"
     case "DISAPPROVED":
-    case "WITH_ISSUES": return "error"
+    case "WITH_ISSUES":
+      return "error"
     case "PENDING_REVIEW":
     case "IN_PROCESS":
     case "PREAPPROVED":
-    case "PENDING_BILLING_INFO": return "warning"
-    default: return "neutral"
+    case "PENDING_BILLING_INFO":
+      return "warning"
+    default:
+      return "neutral"
   }
 }
 
@@ -54,7 +59,7 @@ export function budgetMinorToMajor(raw: string | number | null, currency: string
   const n = typeof raw === "string" ? parseFloat(raw) : raw
   if (!isFinite(n)) return null
   const exp = currencyExponent(currency)
-  return n / Math.pow(10, exp)
+  return n / 10 ** exp
 }
 
 export interface InsightRow {
@@ -196,7 +201,8 @@ export function toolRows<T = Record<string, unknown>>(result: unknown, field = "
  * outage. A resolved account is connected only when it carries an id.
  */
 export function metaArmStatus(read: ToolRead): ArmStatus {
-  if (!read.ok) return toolErrorCode(read.error) === "meta_not_connected" ? "not_connected" : "errored"
+  if (!read.ok)
+    return toolErrorCode(read.error) === "meta_not_connected" ? "not_connected" : "errored"
   // The kernel hands a not-connected envelope back as the tool's ANSWER (a
   // 200), so the resolved value can itself be `{ error: { code } }`: read the
   // code rather than only the absent account id, which would have called a
@@ -263,7 +269,10 @@ export function armConnections(arms: DashboardArms): {
 }
 
 /** Health chip for one arm: never "OK" for an arm that is not connected. */
-export function armChip(status: ArmStatus): { tone: "success" | "neutral" | "error"; label: string } {
+export function armChip(status: ArmStatus): {
+  tone: "success" | "neutral" | "error"
+  label: string
+} {
   if (status === "connected") return { tone: "success", label: "OK" }
   if (status === "not_connected") return { tone: "neutral", label: "not connected" }
   return { tone: "error", label: "error" }
@@ -312,8 +321,10 @@ export function zombieCampaigns(
   for (const row of spend) {
     const value = Number(row.spend ?? 0)
     const amount = Number.isFinite(value) ? value : 0
-    if (row.campaign_id) spendById.set(row.campaign_id, (spendById.get(row.campaign_id) ?? 0) + amount)
-    if (row.campaign_name) spendByName.set(row.campaign_name, (spendByName.get(row.campaign_name) ?? 0) + amount)
+    if (row.campaign_id)
+      spendById.set(row.campaign_id, (spendById.get(row.campaign_id) ?? 0) + amount)
+    if (row.campaign_name)
+      spendByName.set(row.campaign_name, (spendByName.get(row.campaign_name) ?? 0) + amount)
   }
   return campaigns.filter((c) => {
     if (c.effective_status !== "ACTIVE") return false
@@ -326,7 +337,10 @@ export function zombieCampaigns(
  * decision_date − today, in whole days. Negative when past-due. `null` when
  * decision_date is unset (undecided / no test in flight).
  */
-export function daysToDecision(decisionDate: string | null | undefined, today: string): number | null {
+export function daysToDecision(
+  decisionDate: string | null | undefined,
+  today: string,
+): number | null {
   if (!decisionDate) return null
   const decision = new Date(`${decisionDate}T00:00:00Z`).getTime()
   const now = new Date(`${today}T00:00:00Z`).getTime()
@@ -400,13 +414,20 @@ export function weeklySpendTotal(
 
 export function adFormatLabel(format: string): string {
   switch (format) {
-    case "DESKTOP_FEED_STANDARD": return "Desktop Feed"
-    case "MOBILE_FEED_STANDARD": return "Mobile Feed"
-    case "INSTAGRAM_STANDARD": return "Instagram Feed"
-    case "INSTAGRAM_STORY": return "Instagram Story"
+    case "DESKTOP_FEED_STANDARD":
+      return "Desktop Feed"
+    case "MOBILE_FEED_STANDARD":
+      return "Mobile Feed"
+    case "INSTAGRAM_STANDARD":
+      return "Instagram Feed"
+    case "INSTAGRAM_STORY":
+      return "Instagram Story"
     default: {
       // title-case fallback
-      return format.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+      return format
+        .toLowerCase()
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
     }
   }
 }
@@ -444,7 +465,13 @@ export function phoneCellClass(key: string, cols: TableColumn[], expanded: boole
 // Each is an answer with a plain next step, not a generic failure, so every
 // panel reads it through these two helpers and renders the same sentence.
 
-export type MetaIssueKind = "rate_limited" | "permission" | "invalid" | "auth" | "pending" | "failed"
+export type MetaIssueKind =
+  | "rate_limited"
+  | "permission"
+  | "invalid"
+  | "auth"
+  | "pending"
+  | "failed"
 
 export interface MetaIssue {
   kind: MetaIssueKind
@@ -485,8 +512,12 @@ function personSentence(message: unknown): string | null {
  * envelope. Always returns a readable sentence.
  */
 export function metaIssueFromError(err: unknown): MetaIssue {
-  const envelope = (err as { error?: { code?: unknown; message?: unknown } } | null | undefined)?.error
-  const source = envelope && typeof envelope === "object" ? envelope : (err as { code?: unknown; message?: unknown } | null)
+  const envelope = (err as { error?: { code?: unknown; message?: unknown } } | null | undefined)
+    ?.error
+  const source =
+    envelope && typeof envelope === "object"
+      ? envelope
+      : (err as { code?: unknown; message?: unknown } | null)
   const code = typeof source?.code === "string" ? source.code : undefined
   const sentence = personSentence(source?.message)
   switch (code) {
@@ -495,17 +526,25 @@ export function metaIssueFromError(err: unknown): MetaIssue {
     case "meta_permission_denied":
       return {
         kind: "permission",
-        text: sentence ?? "Meta did not allow this request. The Meta app may be missing a permission.",
+        text:
+          sentence ?? "Meta did not allow this request. The Meta app may be missing a permission.",
         retry: false,
         tone: "error",
       }
     case "meta_invalid_request":
     case "meta_rejected":
-      return { kind: "invalid", text: sentence ?? "Meta rejected this request.", retry: false, tone: "error" }
+      return {
+        kind: "invalid",
+        text: sentence ?? "Meta rejected this request.",
+        retry: false,
+        tone: "error",
+      }
     case "meta_auth_invalid":
       return {
         kind: "auth",
-        text: sentence ?? "Meta no longer accepts the saved access token. Reconnect Meta in the Ads settings.",
+        text:
+          sentence ??
+          "Meta no longer accepts the saved access token. Reconnect Meta in the Ads settings.",
         retry: false,
         tone: "error",
       }

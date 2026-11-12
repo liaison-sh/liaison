@@ -186,11 +186,6 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "human turn",
     why: "opens a view in the asking person's window",
   },
-  {
-    tool: "kernel:drive_picker",
-    reason: "human turn",
-    why: "shows the asking person the card where they pick Drive files",
-  },
   ...["google_setup", "mailbox_setup", "shopify_setup"].map((name) => ({
     tool: `kernel:${name}`,
     reason: "human turn" as const,

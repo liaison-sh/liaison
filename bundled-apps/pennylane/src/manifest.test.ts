@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { packageManifestSchema } from "@liaison/app-sdk"
@@ -149,7 +149,9 @@ describe("pennylane app.manifest.json", () => {
 
   it("declares the nine read tools (gated≠true, scoped pennylane:*:read) + gated upload", () => {
     const tools = (
-      load() as { tools: Record<string, { gated?: boolean; requiredScopes: string[]; handler: string }> }
+      load() as {
+        tools: Record<string, { gated?: boolean; requiredScopes: string[]; handler: string }>
+      }
     ).tools
     const reads = [
       "supplier_invoices_list",
@@ -252,10 +254,9 @@ describe("pennylane app.manifest.json", () => {
     for (const [name, tool] of gated) {
       expect(tool.summarizer, `${name} is gated but declares no summarizer`).toBeDefined()
       const fn = (handlers as Record<string, unknown>)[tool.summarizer as string]
-      expect(
-        typeof fn,
-        `${name}'s summarizer "${tool.summarizer}" is not exported`,
-      ).toBe("function")
+      expect(typeof fn, `${name}'s summarizer "${tool.summarizer}" is not exported`).toBe(
+        "function",
+      )
     }
   })
 })

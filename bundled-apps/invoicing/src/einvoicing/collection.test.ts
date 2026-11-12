@@ -12,11 +12,23 @@ import { createMockDb, type ManifestSchema } from "@liaison/test-helpers/mock-db
 import { COLLECTION_MANUAL_LABEL, collectionLabel, reportCollection } from "./collection"
 import { type EinvCtx, refreshStatus } from "./transmit"
 
-const SCHEMA = (JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8")) as { schema: ManifestSchema }).schema
+const SCHEMA = (
+  JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8")) as {
+    schema: ManifestSchema
+  }
+).schema
 type Row = Record<string, unknown>
 
 function world(opts: { implementsOp: boolean }) {
-  const db = createMockDb({}, { ids: "uuid", stampCreatedAt: true, bridgeWhereOperators: true, orderByManifestSchema: SCHEMA })
+  const db = createMockDb(
+    {},
+    {
+      ids: "uuid",
+      stampCreatedAt: true,
+      bridgeWhereOperators: true,
+      orderByManifestSchema: SCHEMA,
+    },
+  )
   const calls: Array<{ op: string; params: Row; grant: unknown }> = []
   const events: Array<{ action: string; data: Row }> = []
   const ctx: EinvCtx = {
@@ -24,10 +36,20 @@ function world(opts: { implementsOp: boolean }) {
     contracts: {
       call: async (_contract, op, params, o) => {
         if (op !== "report_collection" || !opts.implementsOp) {
-          return { status: "error", error: { code: "contract_op_unsupported", message: `pennylane does not implement op "${op}"` } } as ContractEnvelope<unknown>
+          return {
+            status: "error",
+            error: {
+              code: "contract_op_unsupported",
+              message: `pennylane does not implement op "${op}"`,
+            },
+          } as ContractEnvelope<unknown>
         }
         calls.push({ op, params, grant: o?.grant })
-        return { status: "completed", result: { state: "accepted" }, provider: "fakepa" } as ContractEnvelope<unknown>
+        return {
+          status: "completed",
+          result: { state: "accepted" },
+          provider: "fakepa",
+        } as ContractEnvelope<unknown>
       },
     },
     emit: async (e) => {
@@ -50,12 +72,39 @@ function world(opts: { implementsOp: boolean }) {
       ...over,
     })) as Row
     // Two rates: 100.00 at 20% and 50.00 at 10%.
-    await db.insert("document_lines", { document_id: d.id, position: 1, description: "Conseil", quantity: "1", unit_price_minor: "10000", subtotal_minor: "10000", tax_minor: "2000", tax_rate_bp: 2000 })
-    await db.insert("document_lines", { document_id: d.id, position: 2, description: "Formation", quantity: "1", unit_price_minor: "5000", subtotal_minor: "5000", tax_minor: "500", tax_rate_bp: 1000 })
-    await db.insert("einvoice_transmissions", { document_id: d.id, action: "send_einvoice", idempotency_key: `k-${String(d.id)}`, state: "sent", provider_app: "fakepa", provider_ref: "pa-77", attempts: 1 })
+    await db.insert("document_lines", {
+      document_id: d.id,
+      position: 1,
+      description: "Conseil",
+      quantity: "1",
+      unit_price_minor: "10000",
+      subtotal_minor: "10000",
+      tax_minor: "2000",
+      tax_rate_bp: 2000,
+    })
+    await db.insert("document_lines", {
+      document_id: d.id,
+      position: 2,
+      description: "Formation",
+      quantity: "1",
+      unit_price_minor: "5000",
+      subtotal_minor: "5000",
+      tax_minor: "500",
+      tax_rate_bp: 1000,
+    })
+    await db.insert("einvoice_transmissions", {
+      document_id: d.id,
+      action: "send_einvoice",
+      idempotency_key: `k-${String(d.id)}`,
+      state: "sent",
+      provider_app: "fakepa",
+      provider_ref: "pa-77",
+      attempts: 1,
+    })
     return d
   }
-  const one = async (id: unknown) => ((await db.findMany("documents", { where: { id }, limit: 1 })) as Row[])[0]
+  const one = async (id: unknown) =>
+    ((await db.findMany("documents", { where: { id }, limit: 1 })) as Row[])[0]
   return { db, ctx, calls, events, doc, one }
 }
 
@@ -85,15 +134,26 @@ describe("reporting a collection", () => {
     expect(w.calls[0]?.grant ?? null).toBeNull()
     expect(await w.one(d.id)).toMatchObject({ collection_state: "reported" })
     // A partial refund of 35.00 reports minus that share of each rate.
-    await reportCollection(w.ctx, String(d.id), { kind: "refund", amount_minor: 3500n, date: "2026-11-25", ref: "refund-1" })
+    await reportCollection(w.ctx, String(d.id), {
+      kind: "refund",
+      amount_minor: 3500n,
+      date: "2026-11-25",
+      ref: "refund-1",
+    })
     expect(w.calls).toHaveLength(2)
     expect(w.calls[1]?.params.amounts_by_vat_rate).toEqual([
       { rate_bp: 1000, net_minor: "-1000", vat_minor: "-100" },
       { rate_bp: 2000, net_minor: "-2000", vat_minor: "-400" },
     ])
-    for (const over of [{ vat_on_debits: true }, { tax_treatment: "eu_reverse_charge" }, { tax_treatment: "eu_export_non_eu" }]) {
+    for (const over of [
+      { vat_on_debits: true },
+      { tax_treatment: "eu_reverse_charge" },
+      { tax_treatment: "eu_export_non_eu" },
+    ]) {
       const other = await w.doc(over)
-      expect(await reportCollection(w.ctx, String(other.id), paid)).toMatchObject({ state: "not_needed" })
+      expect(await reportCollection(w.ctx, String(other.id), paid)).toMatchObject({
+        state: "not_needed",
+      })
       expect(collectionLabel((await w.one(other.id)) as Row)).toBe("Not needed")
     }
     expect(w.calls).toHaveLength(2)
@@ -102,7 +162,14 @@ describe("reporting a collection", () => {
   it("a provider without the op shows To report at your platform", async () => {
     w = world({ implementsOp: false })
     const d = await w.doc()
-    expect(await reportCollection(w.ctx, String(d.id), { kind: "paid", amount_minor: 17500n, date: "2026-11-20", ref: "paid" })).toMatchObject({ state: "collection_manual" })
+    expect(
+      await reportCollection(w.ctx, String(d.id), {
+        kind: "paid",
+        amount_minor: 17500n,
+        date: "2026-11-20",
+        ref: "paid",
+      }),
+    ).toMatchObject({ state: "collection_manual" })
     const row = (await w.one(d.id)) as Row
     expect(row).toMatchObject({ collection_state: "collection_manual" })
     expect(collectionLabel(row)).toBe(COLLECTION_MANUAL_LABEL)
@@ -119,15 +186,32 @@ describe("reporting a collection", () => {
       ...w.ctx,
       contracts: {
         call: async () =>
-          ({ status: "completed", result: { raw: "refusee", mapped: "refused", code: 210, provider_ts: null, reason_text: "Wrong purchase order" }, provider: "fakepa" }) as ContractEnvelope<unknown>,
+          ({
+            status: "completed",
+            result: {
+              raw: "refusee",
+              mapped: "refused",
+              code: 210,
+              provider_ts: null,
+              reason_text: "Wrong purchase order",
+            },
+            provider: "fakepa",
+          }) as ContractEnvelope<unknown>,
       },
     }
     const before = ((await w.db.findMany("documents", { limit: 100 })) as Row[]).length
-    const [tx] = (await w.db.findMany("einvoice_transmissions", { where: { document_id: d.id }, limit: 1 })) as Row[]
+    const [tx] = (await w.db.findMany("einvoice_transmissions", {
+      where: { document_id: d.id },
+      limit: 1,
+    })) as Row[]
     await refreshStatus(ctx, tx as Row, "webhook")
     const refused = w.events.filter((e) => e.action === "transmission_refused")
     expect(refused).toHaveLength(1)
-    expect(refused[0]?.data).toMatchObject({ document_id: d.id, state: "refused", reason: "Wrong purchase order" })
+    expect(refused[0]?.data).toMatchObject({
+      document_id: d.id,
+      state: "refused",
+      reason: "Wrong purchase order",
+    })
     // No invoice and no credit note is made by itself: a person decides.
     expect(((await w.db.findMany("documents", { limit: 100 })) as Row[]).length).toBe(before)
     expect(await w.one(d.id)).toMatchObject({ einvoice_state: "refused" })

@@ -15,16 +15,18 @@
 // the draft by `external_ref = recurring:<schedule>:<period_key>` (unique), the run by issuer and
 // issue day (unique), the item by schedule and period (unique), the card by a claim on the run.
 import { civilDateOf } from "../issue-date"
-import type { ErrorEnvelope } from "../mutations/shared"
 import { lineSubtotal } from "../money"
+import type { ErrorEnvelope } from "../mutations/shared"
+import { recipientOf } from "../recipient"
 import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
+import { rowIssuerHold, runItemState } from "./item-state"
 import {
+  currentItemHash,
   dayOf,
   draftLines,
-  endHold,
   draftTotals,
+  endHold,
   findOneWhere,
-  currentItemHash,
   jsonOf,
   previousInvoice,
   type Row,
@@ -32,9 +34,15 @@ import {
   runItems,
   stageRunCard,
 } from "./run-card"
-import { addDays, datesFrom, daysInMonth, latestIssueOn, periodKey, periodStart, type Repeats } from "./schedule"
-import { recipientOf } from "../recipient"
-import { rowIssuerHold, runItemState } from "./item-state"
+import {
+  addDays,
+  datesFrom,
+  daysInMonth,
+  latestIssueOn,
+  periodKey,
+  periodStart,
+  type Repeats,
+} from "./schedule"
 import { draftCandidates, type ScheduleLineInput, type ScheduleRow } from "./tools"
 
 export interface DraftJobResult {
@@ -62,7 +70,12 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /** Insert, or find what a concurrent run inserted first under the same unique key. */
-async function insertOnce(ctx: RunCtx, entity: string, where: Row, data: Row): Promise<{ row: Row; created: boolean }> {
+async function insertOnce(
+  ctx: RunCtx,
+  entity: string,
+  where: Row,
+  data: Row,
+): Promise<{ row: Row; created: boolean }> {
   const found = await findOneWhere(ctx, entity, where)
   if (found) return { row: found, created: false }
   try {
@@ -83,7 +96,12 @@ async function insertOnce(ctx: RunCtx, entity: string, where: Row, data: Row): P
  * it never reads details by an empty contact.
  */
 async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
-  return { ...(await recipientOf(ctx, { contactId: s.contact_id ?? null, companyId: s.company_id ?? null })) }
+  return {
+    ...(await recipientOf(ctx, {
+      contactId: s.contact_id ?? null,
+      companyId: s.company_id ?? null,
+    })),
+  }
 }
 
 function draftLineRows(lines: ScheduleLineInput[], label: string): Row[] {
@@ -113,7 +131,10 @@ export interface DraftWriteInput {
   lines: Row[]
 }
 
-const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+const fail = (code: string, message: string): ErrorEnvelope => ({
+  status: "error",
+  error: { code, message },
+})
 
 /**
  * Write one run draft and its lines in one commit (`ctx.db.batch`), so a failure on any line
@@ -123,22 +144,43 @@ const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error
 export async function recurringDraftWrite(
   ctx: RunCtx,
   input: DraftWriteInput,
-): Promise<{ status: "completed"; document_id: string; created: boolean; message: string } | ErrorEnvelope> {
+): Promise<
+  { status: "completed"; document_id: string; created: boolean; message: string } | ErrorEnvelope
+> {
   const ref = typeof input.document?.external_ref === "string" ? input.document.external_ref : ""
   if (!ref.startsWith("recurring:")) {
-    return fail("not_a_run_draft", "The draft has no recurring key (external_ref recurring:<schedule>:<period>), so nothing was written.")
+    return fail(
+      "not_a_run_draft",
+      "The draft has no recurring key (external_ref recurring:<schedule>:<period>), so nothing was written.",
+    )
   }
-  const data: Row = { ...input.document, type: "invoice", status: "draft", number: null, number_int: null, year_of_issue: null, issued_at: null }
+  const data: Row = {
+    ...input.document,
+    type: "invoice",
+    status: "draft",
+    number: null,
+    number_int: null,
+    year_of_issue: null,
+    issued_at: null,
+  }
   const existing = await findOneWhere(ctx, "documents", { external_ref: ref })
   const already = (row: Row) =>
-    ({ status: "completed", document_id: String(row.id), created: false, message: `Draft ${String(row.id)} for ${ref} already existed; nothing was written.` }) as const
+    ({
+      status: "completed",
+      document_id: String(row.id),
+      created: false,
+      message: `Draft ${String(row.id)} for ${ref} already existed; nothing was written.`,
+    }) as const
   if (existing) return already(existing)
   let id: string
   try {
     const committed = await ctx.db.batch({
       ops: [
         { insert: "documents", as: "draft", data },
-        ...input.lines.map((line) => ({ insert: "document_lines", data: { ...line, document_id: { $ref: "draft" } } })),
+        ...input.lines.map((line) => ({
+          insert: "document_lines",
+          data: { ...line, document_id: { $ref: "draft" } },
+        })),
       ],
     })
     id = String(committed.rows.draft?.id)
@@ -149,14 +191,28 @@ export async function recurringDraftWrite(
     if (!again) throw err
     return already(again)
   }
-  return { status: "completed", document_id: id, created: true, message: `Wrote draft ${id} for ${ref} with ${input.lines.length} line(s).` }
+  return {
+    status: "completed",
+    document_id: id,
+    created: true,
+    message: `Wrote draft ${id} for ${ref} with ${input.lines.length} line(s).`,
+  }
 }
 
 /** Write the draft through the atomic tool. Null when it was not written (the next tick tries again). */
-async function writeDraft(ctx: RunCtx, input: DraftWriteInput): Promise<{ id: string; created: boolean } | null> {
+async function writeDraft(
+  ctx: RunCtx,
+  input: DraftWriteInput,
+): Promise<{ id: string; created: boolean } | null> {
   if (!ctx.executeTool) return null
-  const env = await ctx.executeTool("invoicing:recurring_draft_write", input as unknown as Record<string, unknown>)
-  const res = env.status === "completed" ? (env.result as { status?: string; document_id?: string; created?: boolean } | null) : null
+  const env = await ctx.executeTool(
+    "invoicing:recurring_draft_write",
+    input as unknown as Record<string, unknown>,
+  )
+  const res =
+    env.status === "completed"
+      ? (env.result as { status?: string; document_id?: string; created?: boolean } | null)
+      : null
   if (res?.status !== "completed" || typeof res.document_id !== "string") return null
   return { id: res.document_id, created: res.created === true }
 }
@@ -179,7 +235,10 @@ function sameLines(found: Row[], expected: Row[]): boolean {
 }
 
 /** Draft one schedule's period. Returns the run it joined, or null when it was already drafted. */
-async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: string; drafted: boolean } | null> {
+async function draftSchedule(
+  ctx: RunCtx,
+  s: ScheduleRow,
+): Promise<{ runId: string; drafted: boolean } | null> {
   const issueOn = s.next_issue_on as string
   const key = periodKey(s.repeats, issueOn)
   const start = periodStart(s.repeats, issueOn)
@@ -193,7 +252,14 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
     ctx,
     "recurring_runs",
     { issuer_profile_id: s.issuer_profile_id, issue_on: issueOn },
-    { issuer_profile_id: s.issuer_profile_id, issue_on: issueOn, latest_issue_on: latestIssueOn(issueOn), status: "drafted", period_label: label, approval_request_id: null },
+    {
+      issuer_profile_id: s.issuer_profile_id,
+      issue_on: issueOn,
+      latest_issue_on: latestIssueOn(issueOn),
+      status: "drafted",
+      period_label: label,
+      approval_request_id: null,
+    },
   )
   const runId = String(run.row.id)
 
@@ -208,9 +274,23 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
     incoterm: "DAP",
     due_at: dueOn(s, issueOn),
     external_ref: externalRef,
-    external_refs: { recurring_schedule_id: s.id, period_key: key, period_start: start, period_end: end },
+    external_refs: {
+      recurring_schedule_id: s.id,
+      period_key: key,
+      period_start: start,
+      period_end: end,
+    },
     notes: s.notes ?? null,
-    lifecycle_log: [{ event: "drafted", actor: "recurring", ts: new Date().toISOString(), schedule_id: s.id, schedule_version: s.version, period_key: key }],
+    lifecycle_log: [
+      {
+        event: "drafted",
+        actor: "recurring",
+        ts: new Date().toISOString(),
+        schedule_id: s.id,
+        schedule_version: s.version,
+        period_key: key,
+      },
+    ],
     subtotal_minor: "0",
     tax_total_minor: "0",
     grand_total_minor: "0",
@@ -225,7 +305,9 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
   const written = await writeDraft(ctx, { document: docRow, lines: expected })
   if (!written) return null
   const draftId = written.id
-  const draftRow = written.created ? null : ((await ctx.db.findOne("documents", draftId)) as Row | null)
+  const draftRow = written.created
+    ? null
+    : ((await ctx.db.findOne("documents", draftId)) as Row | null)
 
   const lines = await draftLines(ctx, draftId)
   const differs = !written.created && !sameLines(lines, expected)
@@ -233,7 +315,11 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
   const current: CurrentDraft = { net_minor: totals.net, lines_signature: linesSignature(lines) }
   const flags = runItemFlags(await previousInvoice(ctx, s.last_document_id ?? null), current)
   // One rule for whether a row is ready (customer, address, total), the same the edits apply.
-  const rowState = runItemState(draftRow ?? docRow, lines, await rowIssuerHold(ctx, draftRow ?? docRow, s as unknown as Row))
+  const rowState = runItemState(
+    draftRow ?? docRow,
+    lines,
+    await rowIssuerHold(ctx, draftRow ?? docRow, s as unknown as Row),
+  )
   const missing = rowState.state === "needs_fix"
   const position = (await runItems(ctx, runId)).length + 1
   const item = await insertOnce(
@@ -251,18 +337,29 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
       document_id: draftId,
       position,
       state: missing || differs ? "needs_fix" : "ready",
-      note: [...flags, ...(rowState.state === "needs_fix" ? [rowState.reason] : []), ...(differs ? ["Lines differ from the schedule"] : [])].join(" · "),
+      note: [
+        ...flags,
+        ...(rowState.state === "needs_fix" ? [rowState.reason] : []),
+        ...(differs ? ["Lines differ from the schedule"] : []),
+      ].join(" · "),
     },
   )
   const refs = jsonOf<Row>(draftRow?.external_refs ?? docRow.external_refs, {})
   if (refs.recurring_run_item_id !== item.row.id) {
-    await ctx.db.update("documents", draftId, { external_refs: { ...refs, recurring_run_item_id: String(item.row.id), recurring_run_id: runId } })
+    await ctx.db.update("documents", draftId, {
+      external_refs: {
+        ...refs,
+        recurring_run_item_id: String(item.row.id),
+        recurring_run_id: runId,
+      },
+    })
   }
   // The schedule moves to its next period only from the period just drafted, so a second run of
   // the job finds it already moved and moves nothing.
   const next = datesFrom(s, addDays(issueOn, 1))
   const fresh = (await ctx.db.findOne("recurring_schedules", s.id)) as Row | null
-  if (fresh && dayOf(fresh.next_issue_on) === issueOn) await ctx.db.update("recurring_schedules", s.id, { ...next })
+  if (fresh && dayOf(fresh.next_issue_on) === issueOn)
+    await ctx.db.update("recurring_schedules", s.id, { ...next })
   return { runId, drafted: item.created }
 }
 
@@ -270,10 +367,15 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
 async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run || run.status !== "drafted" || run.approval_request_id) return false
-  const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(run.issuer_profile_id),
+  )) as Row | null
   const threshold = issuer?.invoice_approval_threshold_minor
   const limit = threshold === null || threshold === undefined ? null : BigInt(String(threshold))
-  const items = (await runItems(ctx, runId)).filter((i) => i.state !== "left_out" && i.state !== "issued")
+  const items = (await runItems(ctx, runId)).filter(
+    (i) => i.state !== "left_out" && i.state !== "issued",
+  )
   if (items.length === 0) return false
   let enabledBy: string | null = null
   const hashes: Array<[string, string]> = []
@@ -289,11 +391,22 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
     hashes.push([String(item.id), await currentItemHash(ctx, item, draft)])
   }
   const claim = await ctx.db.updateMany("recurring_runs", {
-    where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "drafted", approval_request_id: null },
-    data: { status: "approved", auto: true, approved_by: enabledBy, approved_at: new Date().toISOString() },
+    where: {
+      issuer_profile_id: run.issuer_profile_id,
+      issue_on: dayOf(run.issue_on),
+      status: "drafted",
+      approval_request_id: null,
+    },
+    data: {
+      status: "approved",
+      auto: true,
+      approved_by: enabledBy,
+      approved_at: new Date().toISOString(),
+    },
   })
   if (claim.count !== 1) return false
-  for (const [id, hash] of hashes) await ctx.db.update("recurring_run_items", id, { state: "approved", approved_hash: hash })
+  for (const [id, hash] of hashes)
+    await ctx.db.update("recurring_run_items", id, { state: "approved", approved_hash: hash })
   return true
 }
 
@@ -304,7 +417,9 @@ export async function recurringDraftJob(ctx: RunCtx): Promise<DraftJobResult> {
   for (const issuer of issuers) {
     const today = await civilDateOf(ctx, issuer as { timezone?: string | null })
     if (!today.ok) continue
-    const due = (await draftCandidates(ctx, today.date)).filter((s) => s.issuer_profile_id === issuer.id)
+    const due = (await draftCandidates(ctx, today.date)).filter(
+      (s) => s.issuer_profile_id === issuer.id,
+    )
     for (const s of due) {
       const res = await draftSchedule(ctx, s)
       if (!res) continue
@@ -319,13 +434,21 @@ export async function recurringDraftJob(ctx: RunCtx): Promise<DraftJobResult> {
     if (!run || run.status !== "drafted") continue
     await stageRunCard(ctx, runId)
     if (ctx.emit) {
-      await ctx.emit({ entity: "recurring_run", action: "drafted", entityId: runId, data: { run_id: runId, issue_on: dayOf(run.issue_on), period: run.period_label } })
+      await ctx.emit({
+        entity: "recurring_run",
+        action: "drafted",
+        entityId: runId,
+        data: { run_id: runId, issue_on: dayOf(run.issue_on), period: run.period_label },
+      })
     }
   }
   return {
     status: "ok",
     drafted,
     runs: [...runs],
-    message: drafted === 0 ? "No schedule was due for a draft." : `Drafted ${drafted} invoice${drafted === 1 ? "" : "s"} in ${runs.size} run${runs.size === 1 ? "" : "s"}.`,
+    message:
+      drafted === 0
+        ? "No schedule was due for a draft."
+        : `Drafted ${drafted} invoice${drafted === 1 ? "" : "s"} in ${runs.size} run${runs.size === 1 ? "" : "s"}.`,
   }
 }

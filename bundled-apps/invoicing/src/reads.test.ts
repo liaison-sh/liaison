@@ -4,6 +4,7 @@
 // surface the bridge exposes (Path B from the E2E debrief — no semantic mocks).
 
 import { describe, expect, test } from "bun:test"
+import { createMockDb as createBridgeMockDb } from "@liaison/test-helpers/mock-db"
 import {
   deferredList,
   documentsGet,
@@ -18,7 +19,6 @@ import {
   vatValidate,
   viewerAccess,
 } from "./reads"
-import { createMockDb as createBridgeMockDb } from "@liaison/test-helpers/mock-db"
 import { createMockDb } from "./test-db"
 
 interface SearchObservation {
@@ -138,7 +138,10 @@ const sampleDocs: Array<Record<string, unknown>> = [
 describe("documentsSearch (E5)", () => {
   test("ids filter: only the named documents, malformed ids dropped, none valid reads nothing", async () => {
     // The bridge's `{ in: [...] }` semantics (a set lookup), as db_findMany applies them.
-    const db = createBridgeMockDb({ seed: { documents: sampleDocs } }, { bridgeWhereOperators: true })
+    const db = createBridgeMockDb(
+      { seed: { documents: sampleDocs } },
+      { bridgeWhereOperators: true },
+    )
     const reads: string[] = []
     const ctx: ReadsCtx = {
       ...makeCtx().ctx,
@@ -150,17 +153,23 @@ describe("documentsSearch (E5)", () => {
         },
       },
     }
-    const rows = await documentsSearch(ctx, { ids: ["00000000-0000-4000-8000-000000000001", "not-a-uuid"] })
+    const rows = await documentsSearch(ctx, {
+      ids: ["00000000-0000-4000-8000-000000000001", "not-a-uuid"],
+    })
     expect(rows.map((r) => r.id)).toEqual(["00000000-0000-4000-8000-000000000001"])
     // countOnly never puts where.id on db_count (the bridge refuses it there).
-    expect(await documentsSearch(ctx, { ids: ["00000000-0000-4000-8000-000000000001"], countOnly: true })).toEqual({
+    expect(
+      await documentsSearch(ctx, {
+        ids: ["00000000-0000-4000-8000-000000000001"],
+        countOnly: true,
+      }),
+    ).toEqual({
       totalCount: 1,
     })
     reads.length = 0
     expect(await documentsSearch(ctx, { ids: ["nope"] })).toEqual([])
     expect(reads).toEqual([])
   })
-
 
   test("empty filters → returns first page", async () => {
     const { ctx } = makeCtx({ documents: sampleDocs })
@@ -323,12 +332,42 @@ describe("documentsSearch (E5)", () => {
   test("free-text query matching a PO number finds the quote, the invoice, the proforma and a credit note sharing it", async () => {
     const shared = "PO-9900"
     const docs = [
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-000000000021", type: "quote", number: "QUO-2026-0900", po_number: shared },
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-000000000022", type: "invoice", number: "INV-2026-0900", po_number: shared },
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-000000000023", type: "proforma", number: "PRO-2026-0900", po_number: shared },
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-000000000024", type: "credit_note", number: "CN-2026-0900", po_number: shared },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-000000000021",
+        type: "quote",
+        number: "QUO-2026-0900",
+        po_number: shared,
+      },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-000000000022",
+        type: "invoice",
+        number: "INV-2026-0900",
+        po_number: shared,
+      },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-000000000023",
+        type: "proforma",
+        number: "PRO-2026-0900",
+        po_number: shared,
+      },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-000000000024",
+        type: "credit_note",
+        number: "CN-2026-0900",
+        po_number: shared,
+      },
       // A different document must NOT match.
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-000000000025", type: "invoice", number: "INV-2026-0901", po_number: "PO-0000" },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-000000000025",
+        type: "invoice",
+        number: "INV-2026-0901",
+        po_number: "PO-0000",
+      },
     ]
     const { ctx } = makeCtx({ documents: docs })
     const rows = await documentsSearch(ctx, { query: shared })
@@ -455,13 +494,19 @@ describe("documentsSearch (E5)", () => {
       issued_at: `2026-03-1${n} 00:00:00+00`,
     }))
     const { ctx } = makeCtx({ documents: [...newer, ...older] })
-    const rows = await documentsSearch(ctx, { date_range: { from: "2026-03-01", to: "2026-03-31" } })
+    const rows = await documentsSearch(ctx, {
+      date_range: { from: "2026-03-01", to: "2026-03-31" },
+    })
     expect(rows.map((r) => r.number)).toEqual(["INV-2026-0903", "INV-2026-0902", "INV-2026-0901"])
     const oldestFirst = await documentsSearch(ctx, {
       date_range: { from: "2026-03-01", to: "2026-03-31" },
       sort: "oldest",
     })
-    expect(oldestFirst.map((r) => r.number)).toEqual(["INV-2026-0901", "INV-2026-0902", "INV-2026-0903"])
+    expect(oldestFirst.map((r) => r.number)).toEqual([
+      "INV-2026-0901",
+      "INV-2026-0902",
+      "INV-2026-0903",
+    ])
   })
 
   test("sort orders by issue date, then by number inside one day", async () => {
@@ -503,7 +548,11 @@ describe("documentsSearch (E5)", () => {
     // (single-day ranges returned nothing). The filter must compare on the date
     // portion only.
     const tsDocs = [
-      { ...sampleDocs[0], id: "00000000-0000-4000-8000-0000000000aa", issued_at: "2026-05-15 00:00:00+00" },
+      {
+        ...sampleDocs[0],
+        id: "00000000-0000-4000-8000-0000000000aa",
+        issued_at: "2026-05-15 00:00:00+00",
+      },
     ]
     const { ctx } = makeCtx({ documents: tsDocs })
     const rows = await documentsSearch(ctx, {
@@ -579,7 +628,9 @@ describe("documentsGet (E5)", () => {
     expect(result?.billing_country_code).toBe("FR")
     expect(result?.regime).toBe("e_invoice")
     expect(result?.regime_reasons).toEqual([{ code: "fr_business_with_siren", en: "e", fr: "f" }])
-    const bare = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, { id: "00000000-0000-4000-8000-000000000001" })
+    const bare = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, {
+      id: "00000000-0000-4000-8000-000000000001",
+    })
     expect(bare?.customer_kind).toBeNull()
     expect(bare?.regime_reasons).toEqual([])
   })
@@ -730,7 +781,9 @@ describe("vatValidate (VIES)", () => {
   function makeViesCtx(fetchImpl: ReadsFetch): {
     ctx: ReadsCtx
     calls: string[]
-    optsCalls: Array<{ method?: string; headers?: Record<string, string>; body?: string } | undefined>
+    optsCalls: Array<
+      { method?: string; headers?: Record<string, string>; body?: string } | undefined
+    >
   } {
     const calls: string[] = []
     const optsCalls: Array<
@@ -791,7 +844,11 @@ describe("vatValidate (VIES)", () => {
         JSON.stringify({
           status: 200,
           headers: {},
-          body: JSON.stringify({ isValid: true, name: "Tonwerk Audio GmbH", requestDate: "2026-06-09" }),
+          body: JSON.stringify({
+            isValid: true,
+            name: "Tonwerk Audio GmbH",
+            requestDate: "2026-06-09",
+          }),
         }) satisfies string,
     )
     const result = await vatValidate(ctx, { country_code: "DE", vat_number: "000000000" })
@@ -893,16 +950,36 @@ describe("vatValidate (VIES)", () => {
 describe("exportDocuments (BL-188 — full-RLS-set data export for the kernel export tool)", () => {
   const docs: Array<Record<string, unknown>> = [
     {
-      id: "00000000-0000-4000-8000-0000000000d1", number: "INV-2026-0001", type: "invoice", status: "issued",
-      counterparty_name: "Acme GmbH", counterparty_country: "DE", currency: "EUR",
-      subtotal_minor: "10000", tax_total_minor: "1900", grand_total_minor: "11900",
-      tax_treatment: "domestic", issued_at: "2026-05-01", due_at: "2026-05-31", created_at: "2026-05-01",
+      id: "00000000-0000-4000-8000-0000000000d1",
+      number: "INV-2026-0001",
+      type: "invoice",
+      status: "issued",
+      counterparty_name: "Acme GmbH",
+      counterparty_country: "DE",
+      currency: "EUR",
+      subtotal_minor: "10000",
+      tax_total_minor: "1900",
+      grand_total_minor: "11900",
+      tax_treatment: "domestic",
+      issued_at: "2026-05-01",
+      due_at: "2026-05-31",
+      created_at: "2026-05-01",
     },
     {
-      id: "00000000-0000-4000-8000-0000000000d2", number: "INV-2026-0002", type: "invoice", status: "issued",
-      counterparty_name: "Béta, S.A.", counterparty_country: "FR", currency: "EUR",
-      subtotal_minor: "5000", tax_total_minor: "0", grand_total_minor: "5000",
-      tax_treatment: "export", issued_at: "2026-06-01", due_at: "2026-06-30", created_at: "2026-06-01",
+      id: "00000000-0000-4000-8000-0000000000d2",
+      number: "INV-2026-0002",
+      type: "invoice",
+      status: "issued",
+      counterparty_name: "Béta, S.A.",
+      counterparty_country: "FR",
+      currency: "EUR",
+      subtotal_minor: "5000",
+      tax_total_minor: "0",
+      grand_total_minor: "5000",
+      tax_treatment: "export",
+      issued_at: "2026-06-01",
+      due_at: "2026-06-30",
+      created_at: "2026-06-01",
     },
   ]
 
@@ -996,8 +1073,14 @@ describe("shipment_ref exposure (per-shipment proformas)", () => {
     const { ctx } = makeCtx({ documents: [shipDoc, sampleDocs[0]!] })
     const rows = await documentsSearch(ctx)
     const byId = new Map(rows.map((d) => [d.id, d]))
-    expect((byId.get("00000000-0000-4000-8000-000000000077") as { shipment_ref: string | null }).shipment_ref).toBe("batch-2")
-    expect((byId.get("00000000-0000-4000-8000-000000000001") as { shipment_ref: string | null }).shipment_ref).toBeNull()
+    expect(
+      (byId.get("00000000-0000-4000-8000-000000000077") as { shipment_ref: string | null })
+        .shipment_ref,
+    ).toBe("batch-2")
+    expect(
+      (byId.get("00000000-0000-4000-8000-000000000001") as { shipment_ref: string | null })
+        .shipment_ref,
+    ).toBeNull()
   })
 })
 
@@ -1074,13 +1157,21 @@ describe("viewerAccess", () => {
 
   test("a ctx without hasScope, or one that throws, grants nothing", async () => {
     const { ctx } = makeCtx()
-    expect(await viewerAccess(ctx)).toEqual({ documents_write: false, settings_read: false, approve: false })
+    expect(await viewerAccess(ctx)).toEqual({
+      documents_write: false,
+      settings_read: false,
+      approve: false,
+    })
     const throwing = {
       ...ctx,
       hasScope: async () => {
         throw new Error("bridge down")
       },
     }
-    expect(await viewerAccess(throwing)).toEqual({ documents_write: false, settings_read: false, approve: false })
+    expect(await viewerAccess(throwing)).toEqual({
+      documents_write: false,
+      settings_read: false,
+      approve: false,
+    })
   })
 })

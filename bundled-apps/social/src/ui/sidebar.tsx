@@ -5,8 +5,17 @@
 // `views.tabTypes.<type>.sidebar`). Sections: Inbox (Findings + new badge,
 // Awaiting approval badge), Messages (open DMs badge), Watched, Admin (Settings).
 // Badge counts load from the app's own `counts` tool on mount + nav events.
-import { createEffect, createSignal, onCleanup, onMount, Show, type Component, type JSX } from "solid-js"
+
 import { app, currentPath } from "@liaison/host"
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 
 const NAV_EVENT = "liaison:social-sidebar:nav"
 let patched = false
@@ -73,7 +82,14 @@ function SectionHeader(p: { label: string }) {
   )
 }
 
-function Row(p: { href: string; label: string; slug: string; pathname: string; badge?: number; warn?: boolean }): JSX.Element {
+function Row(p: {
+  href: string
+  label: string
+  slug: string
+  pathname: string
+  badge?: number
+  warn?: boolean
+}): JSX.Element {
   const active = () => isActive(p.pathname, p.href)
   const showBadge = () => typeof p.badge === "number" && p.badge > 0
   return (
@@ -138,13 +154,33 @@ export const SocialSidebar: Component = () => {
       <div class="flex-1 overflow-y-auto px-2 pb-3">
         <SectionHeader label="Inbox" />
         <ul class="flex flex-col gap-0.5">
-          <Row href="/social/findings" label="Findings" slug="findings" pathname={pathname()} badge={findingsNew()} warn={findingsNew() > 0} />
-          <Row href="/social/findings?status=awaiting_approval" label="Awaiting approval" slug="awaiting" pathname={pathname()} badge={awaiting()} warn={awaiting() > 0} />
+          <Row
+            href="/social/findings"
+            label="Findings"
+            slug="findings"
+            pathname={pathname()}
+            badge={findingsNew()}
+            warn={findingsNew() > 0}
+          />
+          <Row
+            href="/social/findings?status=awaiting_approval"
+            label="Awaiting approval"
+            slug="awaiting"
+            pathname={pathname()}
+            badge={awaiting()}
+            warn={awaiting() > 0}
+          />
         </ul>
 
         <SectionHeader label="Messages" />
         <ul class="flex flex-col gap-0.5">
-          <Row href="/social/messages" label="Messages" slug="messages" pathname={pathname()} badge={openDms()} />
+          <Row
+            href="/social/messages"
+            label="Messages"
+            slug="messages"
+            pathname={pathname()}
+            badge={openDms()}
+          />
         </ul>
 
         <SectionHeader label="Monitoring" />
@@ -154,14 +190,23 @@ export const SocialSidebar: Component = () => {
 
         <SectionHeader label="Admin" />
         <ul class="flex flex-col gap-0.5">
-          <Row href="/settings/apps/social" label="Settings" slug="settings" pathname={pathname()} />
+          <Row
+            href="/settings/apps/social"
+            label="Settings"
+            slug="settings"
+            pathname={pathname()}
+          />
         </ul>
       </div>
 
       <div class="mt-auto border-t border-border-subtle px-4 py-2">
         <div class="flex items-center justify-between text-[10.5px] text-text-tertiary">
           <span>Social v0.1</span>
-          <span class="h-1.5 w-1.5 rounded-full bg-success" data-testid="social-sidebar-status-dot" aria-hidden="true" />
+          <span
+            class="h-1.5 w-1.5 rounded-full bg-success"
+            data-testid="social-sidebar-status-dot"
+            aria-hidden="true"
+          />
         </div>
       </div>
     </nav>

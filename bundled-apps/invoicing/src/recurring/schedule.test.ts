@@ -79,8 +79,12 @@ describe("issue day", () => {
   })
 
   test("a quarter bills in March, June, September and December and a year on its own date", () => {
-    expect(nextIssueOn({ repeats: "quarter", billing_day: "last" }, "2026-11-01")).toBe("2026-12-31")
-    expect(nextIssueOn({ repeats: "quarter", billing_day: "last" }, "2027-01-01")).toBe("2027-03-31")
+    expect(nextIssueOn({ repeats: "quarter", billing_day: "last" }, "2026-11-01")).toBe(
+      "2026-12-31",
+    )
+    expect(nextIssueOn({ repeats: "quarter", billing_day: "last" }, "2027-01-01")).toBe(
+      "2027-03-31",
+    )
     expect(nextIssueOn({ repeats: "year", billing_day: "03-15" }, "2026-11-01")).toBe("2027-03-15")
     expect(nextIssueOn({ repeats: "year", billing_day: "last" }, "2026-11-01")).toBe("2026-12-31")
   })
@@ -147,13 +151,33 @@ describe("saving a schedule", () => {
   })
 
   test("a missing customer, date or line is each named", () => {
-    expect(validateSchedule({ ...good, contact_id: "" }).map((e) => e.field)).toEqual(["contact_id"])
-    expect(validateSchedule({ ...good, billing_day: "" }).map((e) => e.field)).toEqual(["billing_day"])
-    expect(validateSchedule({ ...good, billing_day: "31" }).map((e) => e.field)).toEqual(["billing_day"])
-    expect(validateSchedule({ ...good, billing_day: "13-01" }).map((e) => e.field)).toEqual(["billing_day"])
+    expect(validateSchedule({ ...good, contact_id: "" }).map((e) => e.field)).toEqual([
+      "contact_id",
+    ])
+    expect(validateSchedule({ ...good, billing_day: "" }).map((e) => e.field)).toEqual([
+      "billing_day",
+    ])
+    expect(validateSchedule({ ...good, billing_day: "31" }).map((e) => e.field)).toEqual([
+      "billing_day",
+    ])
+    expect(validateSchedule({ ...good, billing_day: "13-01" }).map((e) => e.field)).toEqual([
+      "billing_day",
+    ])
     expect(validateSchedule({ ...good, lines: [] }).map((e) => e.field)).toEqual(["lines"])
-    expect(validateSchedule({ ...good, lines: [{ ...good.lines[0], description: " " }] }).map((e) => e.field)).toEqual(["lines"])
-    expect(validateSchedule({ ...good, lines: [{ ...good.lines[0], unit_price_minor: 12.5 }] }).map((e) => e.field)).toEqual(["lines"])
-    expect(validateSchedule({ ...good, lines: [{ ...good.lines[0], vat_bp: 20000 }] }).map((e) => e.field)).toEqual(["lines"])
+    expect(
+      validateSchedule({ ...good, lines: [{ ...good.lines[0], description: " " }] }).map(
+        (e) => e.field,
+      ),
+    ).toEqual(["lines"])
+    expect(
+      validateSchedule({ ...good, lines: [{ ...good.lines[0], unit_price_minor: 12.5 }] }).map(
+        (e) => e.field,
+      ),
+    ).toEqual(["lines"])
+    expect(
+      validateSchedule({ ...good, lines: [{ ...good.lines[0], vat_bp: 20000 }] }).map(
+        (e) => e.field,
+      ),
+    ).toEqual(["lines"])
   })
 })

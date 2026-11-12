@@ -54,12 +54,11 @@ const MAIL_PHRASE = "Mail is email send and receive."
 const TICKETS_PHRASE = "Tickets is the support inbox"
 const PROJECTS_PHRASE = "Projects tracks assignable work"
 const PENNYLANE_PHRASE = "Pennylane is the accounting system of record"
-// GAP 4 — the remaining host apps that ship authored `agentInstructions` and
-// auto-register for every org at boot (no install needed): contacts and the
-// google-drive headless connector. Asserting them at the assembled-prompt level
-// closes the hole where S1 only covered knowledge/mail/tickets/projects.
+// GAP 4 — the remaining host app that ships authored `agentInstructions` and
+// auto-registers for every org at boot (no install needed): contacts. Asserting it
+// at the assembled-prompt level closes the hole where S1 only covered
+// knowledge/mail/tickets/projects. (Google Drive is a catalog app now.)
 const CONTACTS_PHRASE = "Contacts is the people-and-companies directory"
-const GOOGLE_DRIVE_PHRASE = "Google Drive is a headless connector for working with Drive files"
 // GAP 4 — the remaining BUNDLED apps with authored `agentInstructions` that must
 // reach the `## Apps` block once installed/enabled for the org. Substrings taken
 // verbatim from each app's `app.manifest.json` `agentInstructions` (the registry
@@ -304,12 +303,10 @@ describe("Agent Instructions E2E — Module K (## Apps coverage + starter skills
     expectAppInPrompt(appsPart, "mail", MAIL_PHRASE)
     expectAppInPrompt(appsPart, "tickets", TICKETS_PHRASE)
     expectAppInPrompt(appsPart, "projects", PROJECTS_PHRASE)
-    // GAP 4 — contacts and the google-drive connector also auto-register for
-    // every org at boot (proven by `init.final-wiring.test.ts` /
-    // `discover-apps.test.ts`), so their authored instructions must be in the
-    // ## Apps block with no install — same standing as the four above.
+    // GAP 4 — contacts also auto-registers for every org at boot (proven by
+    // `init.final-wiring.test.ts` / `discover-apps.test.ts`), so its authored
+    // instructions must be in the ## Apps block with no install.
     expectAppInPrompt(appsPart, "contacts", CONTACTS_PHRASE)
-    expectAppInPrompt(appsPart, "google-drive", GOOGLE_DRIVE_PHRASE)
 
     // Pennylane is NOT yet installed — its block must be absent (proves the
     // block reflects the live registry, not a static list). S2 installs it.
@@ -519,7 +516,6 @@ describe("Agent Instructions E2E — Module K (## Apps coverage + starter skills
     // Install is additive, not a reset: the host apps + pennylane (S2) remain.
     expect(appsPart).toContain(KNOWLEDGE_PHRASE.slice(0, 60))
     expect(appsPart).toContain(CONTACTS_PHRASE.slice(0, 60))
-    expect(appsPart).toContain(GOOGLE_DRIVE_PHRASE.slice(0, 60))
     expect(appsPart).toContain(PENNYLANE_PHRASE.slice(0, 60))
   }, 180_000)
 })

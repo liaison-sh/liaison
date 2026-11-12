@@ -241,7 +241,10 @@ function planStackGroups(items: StackItem[], ladder: Ladder, warnings: string[])
   let remaining = items
   while (remaining.length > 0) {
     const geometry = stackGeometry(remaining)
-    if (geometry.height <= ladder.stackRawMax || ladder.tiers.some((t) => geometry.height <= t.stackMax)) {
+    if (
+      geometry.height <= ladder.stackRawMax ||
+      ladder.tiers.some((t) => geometry.height <= t.stackMax)
+    ) {
       groups.push({ items: remaining })
       break
     }
@@ -273,7 +276,10 @@ function planStackGroups(items: StackItem[], ladder: Ladder, warnings: string[])
 /** Fill one carton up to `maxHeight` of stacked thickness, thickest item first (ties by catalog
  *  ref), then let each beside product ride along, all its units at once, when the carton still has
  *  room for its height. */
-function fillCarton(items: StackItem[], maxHeight: number): { taken: StackItem[]; left: StackItem[] } {
+function fillCarton(
+  items: StackItem[],
+  maxHeight: number,
+): { taken: StackItem[]; left: StackItem[] } {
   // With nothing to sit beside, beside items are the stack itself and fill like any other item.
   const hasBase = items.some((i) => !i.beside)
   const base = items
@@ -452,7 +458,12 @@ export function resolvePackages(input: ResolveInput): ResolveResult {
     remaining.length = 0
     remaining.push(...kept)
     for (let i = 0; i < count; i++) {
-      masterParcels.push({ length: master.length, width: master.width, height: master.height, weight: master.weight })
+      masterParcels.push({
+        length: master.length,
+        width: master.width,
+        height: master.height,
+        weight: master.weight,
+      })
     }
   }
 
@@ -576,7 +587,13 @@ export function resolvePackages(input: ResolveInput): ResolveResult {
     const last = groups[groups.length - 1]
     if (last && !last.split && parcels.length > 0 && ladder.mergeEnabled) {
       for (let i = 0; i < parcels.length; i++) {
-        const merged = mergeStackIntoPackParcel(parcels[i]!, parcelCartonTares[i] ?? null, last.items, ladder, warnings)
+        const merged = mergeStackIntoPackParcel(
+          parcels[i]!,
+          parcelCartonTares[i] ?? null,
+          last.items,
+          ladder,
+          warnings,
+        )
         if (merged) {
           parcels[i] = merged.parcel
           parcelCartonTares[i] = merged.tare

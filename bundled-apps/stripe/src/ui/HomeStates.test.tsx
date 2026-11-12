@@ -4,8 +4,16 @@
 // right page and its next step; a revoked key shows rows as of their time and
 // held approvals with no working Approve.
 import { afterEach, describe, expect, it } from "bun:test"
-import { approveState, asOfLine, importingView, pageKind, stateCard, staleNotice, type HomeLoad } from "./home-model"
 import { HomeStates } from "./HomeStates"
+import {
+  approveState,
+  asOfLine,
+  type HomeLoad,
+  importingView,
+  pageKind,
+  staleNotice,
+  stateCard,
+} from "./home-model"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -15,16 +23,44 @@ const sync = (over: Record<string, unknown> = {}) => ({
   importing: false,
   partial: false,
   missing: [] as string[],
-  resources: [] as Array<{ resource: string; status: string; done: number; total: number | null; error: string | null }>,
+  resources: [] as Array<{
+    resource: string
+    status: string
+    done: number
+    total: number | null
+    error: string | null
+  }>,
   ...over,
 })
-const NO_ROWS = { customers: 0, subscriptions: 0, invoices: 0, payments: 0, refunds: 0, disputes: 0 }
+const NO_ROWS = {
+  customers: 0,
+  subscriptions: 0,
+  invoices: 0,
+  payments: 0,
+  refunds: 0,
+  disputes: 0,
+}
 const load = (state: string, over: Partial<HomeLoad> = {}): HomeLoad => {
   const [base, overlay] = state.split("+")
   return {
-    connection: { state, base: base ?? "", overlay: overlay ?? null, mode: "test", lastEventAt: "2026-11-10T07:42:00.000Z", lastEventType: "invoice.paid", connectedAt: "2026-11-01T08:00:00.000Z" },
+    connection: {
+      state,
+      base: base ?? "",
+      overlay: overlay ?? null,
+      mode: "test",
+      lastEventAt: "2026-11-10T07:42:00.000Z",
+      lastEventType: "invoice.paid",
+      connectedAt: "2026-11-01T08:00:00.000Z",
+    },
     sync: sync(),
-    counts: { customers: 214, subscriptions: 178, invoices: 1, payments: 1, refunds: 0, disputes: 0 },
+    counts: {
+      customers: 214,
+      subscriptions: 178,
+      invoices: 1,
+      payments: 1,
+      refunds: 0,
+      disputes: 0,
+    },
     attention: null,
     summary: "",
     ...over,
@@ -44,9 +80,13 @@ describe("every connection state shows the right page and the next step", () => 
     expect(pageKind(load("connected+key_invalid"))).toBe("revoked")
     expect(pageKind(load("connected+different_account"))).toBe("other_account")
     expect(pageKind(load("connected+stalled"))).toBe("stalled")
-    expect(pageKind(load("connected+partial", { sync: sync({ missing: ["invoices"] }) }))).toBe("partial")
+    expect(pageKind(load("connected+partial", { sync: sync({ missing: ["invoices"] }) }))).toBe(
+      "partial",
+    )
     // A revoked key wins over an import still running: the key is what a person fixes first.
-    expect(pageKind(load("connected+key_invalid", { sync: sync({ importing: true }) }))).toBe("revoked")
+    expect(pageKind(load("connected+key_invalid", { sync: sync({ importing: true }) }))).toBe(
+      "revoked",
+    )
   })
 
   it("every state but the healthy one carries a title, a next step and an action", () => {
@@ -54,7 +94,17 @@ describe("every connection state shows the right page and the next step", () => 
       ["not_connected", {}],
       ["key_stored", {}],
       ["waiting_first_event", {}],
-      ["importing", { sync: sync({ importing: true, resources: [{ resource: "customers", status: "running", done: 3, total: 10, error: null }] }) }],
+      [
+        "importing",
+        {
+          sync: sync({
+            importing: true,
+            resources: [
+              { resource: "customers", status: "running", done: 3, total: 10, error: null },
+            ],
+          }),
+        },
+      ],
       ["connected+key_invalid", {}],
       ["connected+different_account", {}],
       ["connected+stalled", {}],
@@ -75,18 +125,31 @@ describe("every connection state shows the right page and the next step", () => 
     const l = load("connected", { counts: NO_ROWS })
     const card = stateCard(l, "en", new Date())
     expect(card?.steps.join(" ")).toContain("rk_live_")
-    const live = stateCard({ ...l, connection: { ...l.connection, mode: "live" } }, "en", new Date())
+    const live = stateCard(
+      { ...l, connection: { ...l.connection, mode: "live" } },
+      "en",
+      new Date(),
+    )
     expect(live?.steps.join(" ")).not.toContain("rk_live_")
   })
 
   it("stalled says since when, and that Stripe resends for 72 hours", () => {
-    const card = stateCard(load("connected+stalled"), "en", new Date("2026-11-10T10:02:00.000Z"), "UTC")
+    const card = stateCard(
+      load("connected+stalled"),
+      "en",
+      new Date("2026-11-10T10:02:00.000Z"),
+      "UTC",
+    )
     expect(card?.title).toContain("07:42")
     expect(card?.steps.join(" ")).toContain("72 hours")
   })
 
   it("partial names the permission the key lost and the fix", () => {
-    const card = stateCard(load("connected+partial", { sync: sync({ missing: ["invoices"] }) }), "en", new Date())
+    const card = stateCard(
+      load("connected+partial", { sync: sync({ missing: ["invoices"] }) }),
+      "en",
+      new Date(),
+    )
     expect(card?.title).toContain("invoices")
     expect(card?.steps.join(" ")).toContain("Read")
   })
@@ -113,7 +176,14 @@ describe("importing", () => {
   })
 
   it("without a known subscriptions total the line does not invent one", () => {
-    const view = importingView(sync({ importing: true, resources: [{ resource: "subscriptions", status: "running", done: 4, total: null, error: null }] }))
+    const view = importingView(
+      sync({
+        importing: true,
+        resources: [
+          { resource: "subscriptions", status: "running", done: 4, total: null, error: null },
+        ],
+      }),
+    )
     expect(view.mrrLine).toBe("MRR shows once every subscription is read.")
   })
 })
@@ -121,7 +191,11 @@ describe("importing", () => {
 describe("a revoked key", () => {
   it("shows rows as of their time and Held approvals with no working Approve", () => {
     const l = load("connected+key_invalid")
-    const notice = staleNotice({ ...l, connection: { ...l.connection, lastEventAt: "2026-11-10T09:08:00.000Z" } }, "en", "UTC")
+    const notice = staleNotice(
+      { ...l, connection: { ...l.connection, lastEventAt: "2026-11-10T09:08:00.000Z" } },
+      "en",
+      "UTC",
+    )
     expect(notice).toMatch(/as of 09:08/i)
     expect(asOfLine("2026-11-10T09:08:00.000Z", "en", "UTC")).toContain("09:08")
     // The approval stays open for the person; its Approve cannot work until the key does.

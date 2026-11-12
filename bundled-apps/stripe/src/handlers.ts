@@ -3,17 +3,22 @@
 // Handler barrel: every handler the manifest names, by exact export name.
 import type { UpstreamProbeResult, WebhookResult } from "@liaison/app-sdk"
 import { handleStripeEvent, type IngestCtx } from "./dispatch"
+import { type MatchRunCtx, runCustomerMatch } from "./match"
 import { runMrrRebuild } from "./mrr-rebuild"
 import { holdWhileImporting, readInstall } from "./states"
-import { Budget, DEFAULT_BUDGET_MS, type SyncCtx } from "./sync/common"
 import { runBackfill } from "./sync/backfill"
+import { Budget, DEFAULT_BUDGET_MS, type SyncCtx } from "./sync/common"
 import { onDisconnect, type PurgeCtx, purgeMirror, runCatchup, runPrune } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
 import { runReconcile } from "./sync/reconcile"
-import { type StripeVerifyBridge, type StripeVerifyParams, type StripeVerifyResult, verifyStripeDelivery } from "./verify"
+import {
+  type StripeVerifyBridge,
+  type StripeVerifyParams,
+  type StripeVerifyResult,
+  verifyStripeDelivery,
+} from "./verify"
 
-import { type MatchRunCtx, runCustomerMatch } from "./match"
-
+export { summarizeRefundsCreate, summarizeSubscriptionCancel } from "./summarizers"
 export { homeLoad } from "./sync/home"
 export { activityRead } from "./tools/activity"
 export { connectionCheck, connectionPrecheck, settingsLoad } from "./tools/connection-check"
@@ -24,17 +29,16 @@ export { invoicesSearch } from "./tools/invoices"
 export { customerLink } from "./tools/link"
 export { cardUpdateLink } from "./tools/links"
 export { reconcileCandidates, refundsForCharge } from "./tools/money-reads"
-export { refundsCreate, refundsCreatePreflight } from "./tools/refunds"
-export { invoiceSendState } from "./tools/send-state"
-export { summarizeRefundsCreate, summarizeSubscriptionCancel } from "./summarizers"
 export { mrrQuery } from "./tools/mrr-query"
 export { paymentsSearch } from "./tools/payments"
+export { refundsCreate, refundsCreatePreflight } from "./tools/refunds"
 export {
   approvalRouteRead,
   billingStatusForCounterparty,
   invoiceDocumentLink,
   refundDocumentLink,
 } from "./tools/routes"
+export { invoiceSendState } from "./tools/send-state"
 export {
   subscriptionCancel,
   subscriptionCancelEffect,
@@ -56,7 +60,10 @@ export async function eventsHandler(payload: unknown, ctx: IngestCtx): Promise<W
 }
 
 /** Newer events upstream and none received for 2 hours: stalled, and the missed events played (sync/probe.ts). */
-export async function probeWebhookUpstreamJob(_params: unknown, ctx: SyncCtx): Promise<UpstreamProbeResult> {
+export async function probeWebhookUpstreamJob(
+  _params: unknown,
+  ctx: SyncCtx,
+): Promise<UpstreamProbeResult> {
   return runProbe(ctx)
 }
 
@@ -76,12 +83,18 @@ export const pruneWebhookDeliveriesJob = (_params: unknown, ctx: SyncCtx) => run
 export const purgeMirrorJob = (_params: unknown, ctx: PurgeCtx) => purgeMirror(ctx)
 
 /** The connection was removed: every mirror row goes, invoicing documents stay. */
-export async function onConnectionDisconnected(event: { data?: { appName?: unknown } | null }, ctx: PurgeCtx) {
+export async function onConnectionDisconnected(
+  event: { data?: { appName?: unknown } | null },
+  ctx: PurgeCtx,
+) {
   await onDisconnect(event, ctx)
 }
 
 /** A customer was created or changed in Stripe: match it to a contact and company (match.ts). */
-export async function matchCustomerOnUpdate(event: { entityId?: unknown } | null, ctx: MatchRunCtx) {
+export async function matchCustomerOnUpdate(
+  event: { entityId?: unknown } | null,
+  ctx: MatchRunCtx,
+) {
   await runCustomerMatch(event?.entityId, ctx)
 }
 

@@ -129,8 +129,10 @@ describe("carrier mark resolution", () => {
     expect(d.mark?.brand).toBe("chronopost")
     expect(d.name).toBe("Chronopost")
     for (const carrier of [null, undefined, "", "   ", "Zorg", "UPS"]) {
-      expect(carrierDisplay(carrier).name.length, `display name for ${String(carrier)}`)
-        .toBeGreaterThan(0)
+      expect(
+        carrierDisplay(carrier).name.length,
+        `display name for ${String(carrier)}`,
+      ).toBeGreaterThan(0)
     }
     expect(carrierDisplay("").name).toBe("Unknown carrier")
   })

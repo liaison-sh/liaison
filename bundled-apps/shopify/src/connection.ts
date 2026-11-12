@@ -17,10 +17,15 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { API_VERSION, SHOPIFY_DOMAIN_RE } from "./lib/constants"
 import { emitEvent } from "./lib/emit"
-import { ensureInstallMetadata, getShopifyClient, resolveShopConnection, shopFetchAuth } from "./lib/get-client"
+import {
+  ensureInstallMetadata,
+  getShopifyClient,
+  resolveShopConnection,
+  shopFetchAuth,
+} from "./lib/get-client"
 import { loadInstallMetadata } from "./lib/install-metadata"
-import { ShopifyClient, type ShopifyFetch } from "./lib/shopify-client"
 import { runOrgId } from "./lib/run-identity"
+import { ShopifyClient, type ShopifyFetch } from "./lib/shopify-client"
 
 /**
  * Map from kernel webhook endpoint slug (kebab, matches `app.manifest.json#webhooks` keys
@@ -163,7 +168,12 @@ async function buildShopifyClient(
   // The token stays host-side: the fetch names the account, the host adds it.
   const auth = shopFetchAuth(accountIdentifier)
   const fetchImpl: ShopifyFetch = async (req) => {
-    const res = await ctx.fetch(req.url, { method: req.method, headers: req.headers, body: req.body, auth })
+    const res = await ctx.fetch(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
+      auth,
+    })
     return { status: res.status, headers: res.headers, body: res.body }
   }
   // Bundled-app handlers run inside the QuickJS sandbox, where `process` is NOT
@@ -312,7 +322,9 @@ export async function subscribeShopifyTopics(
   if (listed) {
     const prefix = orgCallbackPrefix(base, args.orgId)
     const wanted = new Set(
-      TOPIC_ENDPOINT_TABLE.map(({ endpoint, shopifyTopic }) => `${enumOf(shopifyTopic)} ${prefix}${endpoint}`),
+      TOPIC_ENDPOINT_TABLE.map(
+        ({ endpoint, shopifyTopic }) => `${enumOf(shopifyTopic)} ${prefix}${endpoint}`,
+      ),
     )
     const kept = new Set<string>()
     const stale: ExistingSubscription[] = []
@@ -493,9 +505,7 @@ export async function onConnectionEstablished(
     return
   }
 
-  const grantedOAuthScopes = Array.isArray(data.grantedOAuthScopes)
-    ? data.grantedOAuthScopes
-    : []
+  const grantedOAuthScopes = Array.isArray(data.grantedOAuthScopes) ? data.grantedOAuthScopes : []
 
   const existing = (await ctx.db.findMany("install_metadata", {
     where: { shopDomain },
@@ -568,7 +578,9 @@ export async function onConnectionEstablished(
       ctx.logger?.warn?.("subscribeShopifyTopics top-level failure", { err: String(err) })
     }
   } else {
-    ctx.logger?.warn?.("kernelPublicBaseUrl missing on connected_account:create event; webhook subscription skipped")
+    ctx.logger?.warn?.(
+      "kernelPublicBaseUrl missing on connected_account:create event; webhook subscription skipped",
+    )
   }
 }
 
@@ -631,9 +643,12 @@ export async function onBeforeDisconnect(
   const shopDomain = event.identifier
   if (!SHOPIFY_DOMAIN_RE.test(shopDomain)) return out
   if (!event.kernelPublicBaseUrl) {
-    ctx.logger?.warn?.("beforeDisconnect: no callback base; webhook subscriptions left on the store", {
-      shopDomain,
-    })
+    ctx.logger?.warn?.(
+      "beforeDisconnect: no callback base; webhook subscriptions left on the store",
+      {
+        shopDomain,
+      },
+    )
     return out
   }
   const orgId = event.orgId ?? (await runOrgId(ctx))

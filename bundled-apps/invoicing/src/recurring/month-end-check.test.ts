@@ -21,8 +21,14 @@ const check = routines["month-end-check"]
 
 describe("the month-end check routine", () => {
   it("runs when a month-end run is drafted, off until someone turns it on", () => {
-    expect(check).toMatchObject({ kind: "event", event: "invoicing:recurring_run:drafted", enabledByDefault: false })
-    expect((manifest as { events: { emits: string[] } }).events.emits).toContain("recurring_run:drafted")
+    expect(check).toMatchObject({
+      kind: "event",
+      event: "invoicing:recurring_run:drafted",
+      enabledByDefault: false,
+    })
+    expect((manifest as { events: { emits: string[] } }).events.emits).toContain(
+      "recurring_run:drafted",
+    )
   })
 
   it("holds read scopes only, so no draft tool is in its reach", () => {
@@ -35,7 +41,9 @@ describe("the month-end check routine", () => {
       expect(needed.every((s) => check?.scopes.includes(s))).toBe(false)
     }
     // It can read the run it was woken for.
-    expect((tools.recurring_run_get?.requiredScopes ?? []).every((s) => check?.scopes.includes(s))).toBe(true)
+    expect(
+      (tools.recurring_run_get?.requiredScopes ?? []).every((s) => check?.scopes.includes(s)),
+    ).toBe(true)
   })
 
   it("asks for two sentences at most, naming what it read, in a short prompt", () => {

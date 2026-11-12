@@ -3,28 +3,34 @@
 // each blocker with the one tool that fixes it. Computed by the issue gate itself over what is on
 // file (the contact's identity, its latest document, its open drafts, the orders parked on it), so
 // the blocker codes are the gate's codes and the actions are the gate's own fix tools.
-import { type CustomerKind } from "./classify"
+
+import { issuerTimezoneUnset } from "../issue-date"
+import type { CustomerKind } from "./classify"
 import {
   type BuyerSnapshot,
+  EINVOICE_IDENTITY_PARK_KIND,
+  evaluateEinvoiceGate,
   GATE_BLOCKER_TOOLS,
   type GateCode,
   type GateIssuer,
   type MissingItem,
-  EINVOICE_IDENTITY_PARK_KIND,
-  evaluateEinvoiceGate,
   resolveBuyerFacts,
 } from "./gate"
 import { sirenFromFrVat } from "./identity"
 import { deriveKind } from "./identity-derive"
 import { readEinvoiceRowColumns } from "./issue-gate"
-import { issuerTimezoneUnset } from "../issue-date"
 
 type Row = Record<string, unknown>
 
 interface ReadDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; offset?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: {
+      where?: Record<string, unknown>
+      limit?: number
+      offset?: number
+      orderBy?: Record<string, "asc" | "desc">
+    },
   ): Promise<unknown[]>
 }
 
@@ -115,10 +121,19 @@ function docTime(d: Row): string {
   return typeof v === "string" ? v : ""
 }
 
-async function readAll(db: ReadDb, entity: string, where?: Record<string, unknown>): Promise<{ rows: Row[]; truncated: boolean }> {
+async function readAll(
+  db: ReadDb,
+  entity: string,
+  where?: Record<string, unknown>,
+): Promise<{ rows: Row[]; truncated: boolean }> {
   const rows: Row[] = []
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
-    const page = (await db.findMany(entity, { ...(where ? { where } : {}), orderBy: { id: "asc" }, limit: PAGE, offset })) as Row[]
+    const page = (await db.findMany(entity, {
+      ...(where ? { where } : {}),
+      orderBy: { id: "asc" },
+      limit: PAGE,
+      offset,
+    })) as Row[]
     rows.push(...page)
     if (page.length < PAGE) return { rows, truncated: false }
   }
@@ -132,7 +147,9 @@ function issuerOf(row: Row | undefined): GateIssuer | null {
 
 function taxonomyFor(code: GateCode, item: MissingItem): ReadinessBlockerType {
   return (
-    READINESS_TAXONOMY.find((t) => t.blocker_code === code && t.field === item.field && t.tool === item.fix_tool) ?? {
+    READINESS_TAXONOMY.find(
+      (t) => t.blocker_code === code && t.field === item.field && t.tool === item.fix_tool,
+    ) ?? {
       key: item.field,
       blocker_code: code,
       field: item.field,
@@ -161,7 +178,11 @@ async function blockersFor(args: {
       return row ? [row] : []
     },
   }
-  const buyer = await resolveBuyerFacts(idDb, { docType: "invoice", contact_id: args.contactId, snapshot: args.snapshot })
+  const buyer = await resolveBuyerFacts(idDb, {
+    docType: "invoice",
+    contact_id: args.contactId,
+    snapshot: args.snapshot,
+  })
   if (!buyer.customerKind) {
     const kind: CustomerKind | null = deriveKind({
       vat_id: buyer.vatId,
@@ -182,9 +203,12 @@ async function blockersFor(args: {
       }
     }
   }
-  const category = args.operationCategory === "goods" || args.operationCategory === "services" || args.operationCategory === "mixed"
-    ? args.operationCategory
-    : null
+  const category =
+    args.operationCategory === "goods" ||
+    args.operationCategory === "services" ||
+    args.operationCategory === "mixed"
+      ? args.operationCategory
+      : null
   const ev = evaluateEinvoiceGate({
     docType: "invoice",
     issuer: args.issuer,
@@ -217,7 +241,11 @@ function documentSnapshot(doc: Row): BuyerSnapshot {
   }
 }
 
-function parkSnapshot(payload: Row): { snapshot: BuyerSnapshot; company: string | null; label: string | null } {
+function parkSnapshot(payload: Row): {
+  snapshot: BuyerSnapshot
+  company: string | null
+  label: string | null
+} {
   const customer = (payload.customer ?? {}) as Row
   const billing = (customer.billing ?? {}) as Row
   const company = str(billing.company)
@@ -245,19 +273,30 @@ export async function einvoicingReadiness(
   input: { limit?: number | null } = {},
 ): Promise<Row> {
   const requested = Number(input?.limit ?? READINESS_DEFAULT_LIMIT)
-  const limit = Math.min(READINESS_MAX_LIMIT, Math.max(1, Number.isFinite(requested) ? Math.floor(requested) : READINESS_DEFAULT_LIMIT))
+  const limit = Math.min(
+    READINESS_MAX_LIMIT,
+    Math.max(1, Number.isFinite(requested) ? Math.floor(requested) : READINESS_DEFAULT_LIMIT),
+  )
 
   const issuerRows = (await ctx.db.findMany("issuer_profiles", { limit: 50 })) as Row[]
   const issuers = new Map(issuerRows.map((r) => [String(r.id), r]))
   const defaultIssuer = issuerOf(issuerRows.find((r) => !r.archived_at) ?? issuerRows[0])
   if (!defaultIssuer) {
-    return { status: "ok", items: [], count: 0, message: "No issuer profile is configured: nothing is invoiced yet." }
+    return {
+      status: "ok",
+      items: [],
+      count: 0,
+      message: "No issuer profile is configured: nothing is invoiced yet.",
+    }
   }
 
   const [docsRead, idsRead, parks] = await Promise.all([
     readAll(ctx.db, "documents"),
     readAll(ctx.db, "counterparty_identities"),
-    ctx.db.findMany("deferred_events", { where: { status: "awaiting_data" }, limit: PAGE }) as Promise<Row[]>,
+    ctx.db.findMany("deferred_events", {
+      where: { status: "awaiting_data" },
+      limit: PAGE,
+    }) as Promise<Row[]>,
   ])
   const identities = new Map<string, Row>()
   for (const r of idsRead.rows) if (str(r.contact_id)) identities.set(String(r.contact_id), r)
@@ -285,7 +324,8 @@ export async function einvoicingReadiness(
   ): ReadinessItem => {
     const t = taxonomyFor(b.code, b.item)
     const hint: Record<string, unknown> =
-      subject.document_id && (t.tool === "drafts_update" || t.tool === "documents_update" || !subject.contact_id)
+      subject.document_id &&
+      (t.tool === "drafts_update" || t.tool === "documents_update" || !subject.contact_id)
         ? { document_id: subject.document_id }
         : { contact_id: subject.contact_id }
     return {
@@ -299,12 +339,18 @@ export async function einvoicingReadiness(
 
   // Counterparties with documents: an invoice to them, as on file.
   for (const [contactId, docs] of byContact) {
-    const sorted = [...docs].sort((a, b) => (docTime(a) < docTime(b) ? 1 : docTime(a) > docTime(b) ? -1 : 0))
+    const sorted = [...docs].sort((a, b) =>
+      docTime(a) < docTime(b) ? 1 : docTime(a) > docTime(b) ? -1 : 0,
+    )
     const latest = sorted.find((d) => d.status !== "draft") ?? sorted[0]
     if (!latest) continue
     const issuer = issuerOf(issuers.get(String(latest.issuer_profile_id))) ?? defaultIssuer
     const idn = identities.get(contactId)
-    const label = str(idn?.registry_name) ?? str(latest.buyer_legal_name) ?? str(latest.counterparty_name) ?? undefined
+    const label =
+      str(idn?.registry_name) ??
+      str(latest.buyer_legal_name) ??
+      str(latest.counterparty_name) ??
+      undefined
     const lastDate = dateOf(latest.issued_at ?? latest.created_at)
     const drafts = sorted.filter((d) => d.status === "draft" && d.type === "invoice")
     const blockers = await blockersFor({
@@ -319,7 +365,17 @@ export async function einvoicingReadiness(
     for (const b of blockers) {
       // A gap fixed on a draft points at the open draft when there is one.
       const draft = b.item.fix_tool === "drafts_update" ? drafts[0] : undefined
-      push(itemFor(b, { contact_id: contactId, ...(draft ? { document_id: String(draft.id) } : {}), ...(label ? { label } : {}) }, lastDate))
+      push(
+        itemFor(
+          b,
+          {
+            contact_id: contactId,
+            ...(draft ? { document_id: String(draft.id) } : {}),
+            ...(label ? { label } : {}),
+          },
+          lastDate,
+        ),
+      )
     }
     // Each open draft's own gaps (operation type, billing): the identity's are listed above.
     for (const draft of drafts) {
@@ -334,7 +390,13 @@ export async function einvoicingReadiness(
       })
       for (const b of own) {
         if (b.item.fix_tool !== "drafts_update") continue
-        push(itemFor(b, { contact_id: contactId, document_id: String(draft.id), ...(label ? { label } : {}) }, dateOf(draft.created_at)))
+        push(
+          itemFor(
+            b,
+            { contact_id: contactId, document_id: String(draft.id), ...(label ? { label } : {}) },
+            dateOf(draft.created_at),
+          ),
+        )
       }
     }
   }
@@ -351,7 +413,14 @@ export async function einvoicingReadiness(
       operationCategory: str(draft.operation_category),
     })
     const label = str(draft.buyer_legal_name) ?? str(draft.counterparty_name) ?? undefined
-    for (const b of own) push(itemFor(b, { document_id: String(draft.id), ...(label ? { label } : {}) }, dateOf(draft.created_at)))
+    for (const b of own)
+      push(
+        itemFor(
+          b,
+          { document_id: String(draft.id), ...(label ? { label } : {}) },
+          dateOf(draft.created_at),
+        ),
+      )
   }
 
   // Buyers known only from an order parked on their identity (no document yet).
@@ -370,7 +439,8 @@ export async function einvoicingReadiness(
       origin: "shopify",
       operationCategory: "goods",
     })
-    for (const b of blockers) push(itemFor(b, { contact_id: contactId, ...(p.label ? { label: p.label } : {}) }, null))
+    for (const b of blockers)
+      push(itemFor(b, { contact_id: contactId, ...(p.label ? { label: p.label } : {}) }, null))
   }
 
   // Never a blocker: documents keep issuing. One line per live issuer, gone once a zone is chosen.

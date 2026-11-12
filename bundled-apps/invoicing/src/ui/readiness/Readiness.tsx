@@ -6,8 +6,8 @@
 // codes.
 import { app, navigate } from "@liaison/host"
 import { type Component, createResource, For, Show } from "solid-js"
-import { identityHref } from "../einvoicing/blockers"
 import { contactLabel, loadContact } from "../ContactPicker"
+import { identityHref } from "../einvoicing/blockers"
 import { tr } from "../i18n"
 
 export const READINESS_EMPTY =
@@ -26,7 +26,11 @@ const BLOCKER_TEXT: Record<string, string> = {
 }
 
 export interface ReadinessItem {
-  subject?: { contact_id?: string | null; document_id?: string | null; label?: string | null } | null
+  subject?: {
+    contact_id?: string | null
+    document_id?: string | null
+    label?: string | null
+  } | null
   blocker_code: string
   action?: { tool?: string | null; label?: string | null; params_hint?: unknown } | null
   last_document_date?: string | null
@@ -62,7 +66,8 @@ function rowAction(item: ReadinessItem): { href: string; label: string } {
   if (identity && (IDENTITY_TOOLS.has(tool) || contactId)) {
     return { href: identity, label: label ?? tr("Open the customer identity") }
   }
-  if (documentId) return { href: `/invoicing/document/${documentId}`, label: label ?? tr("Open the document") }
+  if (documentId)
+    return { href: `/invoicing/document/${documentId}`, label: label ?? tr("Open the document") }
   return { href: "/invoicing/documents/all", label: label ?? tr("Open the documents") }
 }
 
@@ -77,7 +82,9 @@ export function readinessLabel(item: ReadinessItem, names?: ContactNames): strin
   if (resolved) return resolved
   const stored = item.subject?.label?.trim()
   if (stored) return stored
-  return contactId ? tr("Customer (name not recorded)") : tr("Document {{id}}", { id: item.subject?.document_id ?? "?" })
+  return contactId
+    ? tr("Customer (name not recorded)")
+    : tr("Document {{id}}", { id: item.subject?.document_id ?? "?" })
 }
 
 export function readinessRows(
@@ -95,7 +102,9 @@ export function readinessRows(
       subjectKey,
       label,
       blocker: tr(BLOCKER_TEXT[item.blocker_code] ?? "E-invoicing data is missing."),
-      lastDocumentDate: item.last_document_date ? String(item.last_document_date).slice(0, 10) : null,
+      lastDocumentDate: item.last_document_date
+        ? String(item.last_document_date).slice(0, 10)
+        : null,
       action: rowAction(item),
     }
   })
@@ -116,7 +125,10 @@ export function readinessGroups(rows: ReadinessRow[]): ReadinessGroup[] {
     const g = groups.get(row.subjectKey)
     if (g) {
       g.rows.push(row)
-      if (row.lastDocumentDate && (!g.lastDocumentDate || row.lastDocumentDate > g.lastDocumentDate)) {
+      if (
+        row.lastDocumentDate &&
+        (!g.lastDocumentDate || row.lastDocumentDate > g.lastDocumentDate)
+      ) {
         g.lastDocumentDate = row.lastDocumentDate
       }
     } else {
@@ -132,14 +144,18 @@ export function readinessGroups(rows: ReadinessRow[]): ReadinessGroup[] {
 }
 
 async function loadReadiness(): Promise<ReadinessRow[]> {
-  const r = await app.invokeTool<{ items?: ReadinessItem[]; status?: string; error?: { message?: string } }>(
-    "einvoicing_readiness",
-    { limit: 200 },
-  )
-  if (r && r.status === "error") throw new Error(r.error?.message ?? tr("Readiness could not be loaded."))
+  const r = await app.invokeTool<{
+    items?: ReadinessItem[]
+    status?: string
+    error?: { message?: string }
+  }>("einvoicing_readiness", { limit: 200 })
+  if (r && r.status === "error")
+    throw new Error(r.error?.message ?? tr("Readiness could not be loaded."))
   // Resolve each contact as the signed-in user (kernel contacts, RLS applies); one that does not
   // resolve keeps its stored name.
-  const ids = [...new Set((r?.items ?? []).map((i) => i.subject?.contact_id).filter((x): x is string => !!x))]
+  const ids = [
+    ...new Set((r?.items ?? []).map((i) => i.subject?.contact_id).filter((x): x is string => !!x)),
+  ]
   const names = new Map<string, string>()
   await Promise.all(
     ids.map(async (id) => {
@@ -186,7 +202,10 @@ export const InvoicingReadiness: Component<{ entityId?: string }> = () => {
                   </div>
                   <For each={group.rows}>
                     {(row) => (
-                      <div data-testid={`readiness-row-${row.key}`} class="flex items-center justify-between gap-3">
+                      <div
+                        data-testid={`readiness-row-${row.key}`}
+                        class="flex items-center justify-between gap-3"
+                      >
                         <span class="text-text-secondary">{row.blocker}</span>
                         <a
                           data-testid="readiness-row-action"

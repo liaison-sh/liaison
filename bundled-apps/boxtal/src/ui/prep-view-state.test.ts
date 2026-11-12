@@ -5,6 +5,7 @@
 // cases so a regression in any of them fails a named test instead of only being catchable by
 // eyeballing a render (this app has no DOM harness).
 import { describe, expect, it } from "bun:test"
+import type { PrepListResult, PrepRow } from "./prep-row-logic"
 import {
   EXIT_TRANSITION_MS,
   gridViewState,
@@ -13,7 +14,6 @@ import {
   rowIsInteractive,
   toggleRowKey,
 } from "./prep-view-state"
-import type { PrepListResult, PrepRow } from "./prep-row-logic"
 
 function makeRow(overrides: Partial<PrepRow> = {}): PrepRow {
   return {
@@ -104,7 +104,12 @@ describe("the refreshing message is shown while the background refresh runs", ()
 
 describe("an empty cache during a refresh does not say nothing to prepare", () => {
   it("uses the loading empty state, never the nothing-to-prepare one", () => {
-    const state = gridViewState({ hasRows: false, refreshing: true, failed: false, lastSyncAt: null })
+    const state = gridViewState({
+      hasRows: false,
+      refreshing: true,
+      failed: false,
+      lastSyncAt: null,
+    })
     expect(state.empty).toBe("loading")
     expect(state.banner?.message.toLowerCase()).not.toContain("nothing to prepare")
     expect(state.banner?.message.toLowerCase()).not.toContain("shipped or excluded")
@@ -128,7 +133,12 @@ describe("a failed refresh keeps the cached rows and says the refresh failed", (
 
 describe("a failed refresh with no cached rows still shows the load error", () => {
   it("empty is load_error and there is no banner (the EmptyState carries the message)", () => {
-    const state = gridViewState({ hasRows: false, refreshing: false, failed: true, lastSyncAt: null })
+    const state = gridViewState({
+      hasRows: false,
+      refreshing: false,
+      failed: true,
+      lastSyncAt: null,
+    })
     expect(state.empty).toBe("load_error")
     expect(state.banner).toBeNull()
   })
@@ -136,7 +146,12 @@ describe("a failed refresh with no cached rows still shows the load error", () =
 
 describe("gridViewState on success", () => {
   it("no banner and no special empty state once neither refreshing nor failed", () => {
-    const state = gridViewState({ hasRows: true, refreshing: false, failed: false, lastSyncAt: null })
+    const state = gridViewState({
+      hasRows: true,
+      refreshing: false,
+      failed: false,
+      lastSyncAt: null,
+    })
     expect(state.banner).toBeNull()
     expect(state.empty).toBe("none")
   })

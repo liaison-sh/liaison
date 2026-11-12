@@ -8,7 +8,7 @@
 // (never rescale by 100 — that is the Meta minor-unit path).
 
 import { gaqlSearch, microsToMajor } from "./lib/google-client"
-import { getGoogleClient, GoogleConfigError } from "./lib/google-config"
+import { GoogleConfigError, getGoogleClient } from "./lib/google-config"
 
 interface GoogleReadCtx {
   connections: unknown
@@ -88,7 +88,10 @@ const CAMPAIGNS_GAQL =
   "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, " +
   "campaign_budget.amount_micros FROM campaign"
 
-export async function google_campaigns_list(params: CampaignsListParams, ctx: GoogleReadCtx): Promise<unknown> {
+export async function google_campaigns_list(
+  params: CampaignsListParams,
+  ctx: GoogleReadCtx,
+): Promise<unknown> {
   const { token, config } = await getGoogleClient(ctx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
@@ -114,7 +117,10 @@ interface AdGroupsListParams {
   campaign_id?: string
 }
 
-export async function google_adgroups_list(params: AdGroupsListParams, ctx: GoogleReadCtx): Promise<unknown> {
+export async function google_adgroups_list(
+  params: AdGroupsListParams,
+  ctx: GoogleReadCtx,
+): Promise<unknown> {
   const { token, config } = await getGoogleClient(ctx)
   let query = "SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id FROM ad_group"
   if (params.campaign_id) {
@@ -179,7 +185,10 @@ interface InsightsQueryParams {
   currency?: string
 }
 
-export async function google_insights_query(params: InsightsQueryParams, ctx: GoogleReadCtx): Promise<unknown> {
+export async function google_insights_query(
+  params: InsightsQueryParams,
+  ctx: GoogleReadCtx,
+): Promise<unknown> {
   const query = String(params.query ?? "")
   assertReadOnlyGaql(query)
 
@@ -243,7 +252,10 @@ const CONVERSION_ACTIONS_GAQL =
   "SELECT conversion_action.id, conversion_action.name, conversion_action.type, conversion_action.status " +
   "FROM conversion_action"
 
-export async function google_account_info(_params: Record<string, never>, ctx: GoogleReadCtx): Promise<unknown> {
+export async function google_account_info(
+  _params: Record<string, never>,
+  ctx: GoogleReadCtx,
+): Promise<unknown> {
   // Not-connected returns a structured envelope (see google_insights_query) —
   // the settings UI and agents branch on the code instead of a redacted throw.
   let client: Awaited<ReturnType<typeof getGoogleClient>>
@@ -293,7 +305,10 @@ const SEARCH_TERMS_GAQL =
   "SELECT search_term_view.search_term, metrics.clicks, metrics.cost_micros, metrics.conversions " +
   "FROM search_term_view"
 
-export async function google_search_terms(_params: Record<string, never>, ctx: GoogleReadCtx): Promise<unknown> {
+export async function google_search_terms(
+  _params: Record<string, never>,
+  ctx: GoogleReadCtx,
+): Promise<unknown> {
   const { token, config } = await getGoogleClient(ctx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,

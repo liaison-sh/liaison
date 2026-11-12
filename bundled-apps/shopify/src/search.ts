@@ -29,11 +29,7 @@
 // verbatim on the next-page call; the handler unpacks it and resumes each
 // source independently. `nextCursor` is `null` when no source has a next page.
 import type { AppContext } from "@liaison/app-sdk"
-import {
-  customers_search,
-  orders_search,
-  products_search,
-} from "./reads"
+import { customers_search, orders_search, products_search } from "./reads"
 
 interface SearchParams {
   query?: string
@@ -123,14 +119,20 @@ export async function searchHandler(
 
   // Email-shaped → customers only.
   if (EMAIL_RE.test(query)) {
-    const r = await customers_search({ query: qWithMarket, limit, cursor: cursors.customers ?? null }, ctx)
+    const r = await customers_search(
+      { query: qWithMarket, limit, cursor: cursors.customers ?? null },
+      ctx,
+    )
     return { results: r.results, nextCursor: packCursor({ customers: r.nextCursor }) }
   }
 
   // Order-number-shaped → orders only. Pass through the raw `#1234` token —
   // Shopify's order query syntax accepts `name:#1234` and bare `#1234`.
   if (ORDER_NUMBER_RE.test(query)) {
-    const r = await orders_search({ query: qWithMarket, limit, cursor: cursors.orders ?? null }, ctx)
+    const r = await orders_search(
+      { query: qWithMarket, limit, cursor: cursors.orders ?? null },
+      ctx,
+    )
     return { results: r.results, nextCursor: packCursor({ orders: r.nextCursor }) }
   }
 

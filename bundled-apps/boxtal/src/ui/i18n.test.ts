@@ -3,7 +3,10 @@
 // Every string this app's UI passes through tr() has a French entry (a missing one silently reads
 // in English), and the French entries are well formed.
 import { afterEach, describe, expect, it } from "bun:test"
-import { badFrenchEntries, trStringsWithoutFrench } from "../../../../packages/app-ui/test-support/ui-copy-guard"
+import {
+  badFrenchEntries,
+  trStringsWithoutFrench,
+} from "../../../../packages/app-ui/test-support/ui-copy-guard"
 import { tr } from "./i18n"
 import { FR } from "./i18n-fr"
 

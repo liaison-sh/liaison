@@ -33,7 +33,9 @@ function compare(a: Cursor, b: Cursor): number {
 
 function money(minor: unknown, currency: unknown): string {
   const n = Number(minor)
-  return Number.isFinite(n) ? `, ${(n / 100).toFixed(2)} ${String(currency ?? "").toUpperCase()}`.trimEnd() : ""
+  return Number.isFinite(n)
+    ? `, ${(n / 100).toFixed(2)} ${String(currency ?? "").toUpperCase()}`.trimEnd()
+    : ""
 }
 
 export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
@@ -44,25 +46,41 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
   const companyId = typeof v.companyId === "string" && UUID.test(v.companyId) ? v.companyId : null
   const b = v.before as { at?: unknown; id?: unknown } | null | undefined
   const before =
-    b && typeof b.at === "string" && typeof b.id === "string" ? { at: new Date(b.at).toISOString(), id: b.id } : null
+    b && typeof b.at === "string" && typeof b.id === "string"
+      ? { at: new Date(b.at).toISOString(), id: b.id }
+      : null
   const limit = Math.min(100, Math.max(1, Number(v.limit) || 30))
   const prefix = typeof v.prefix === "string" ? v.prefix : ""
 
   const customers: Obj[] = []
   if (contactIds.length > 0) {
     customers.push(
-      ...((await ctx.db.findMany("stripe_customers", { where: { contact_id: { in: contactIds } }, limit: 100 })) as Obj[]),
+      ...((await ctx.db.findMany("stripe_customers", {
+        where: { contact_id: { in: contactIds } },
+        limit: 100,
+      })) as Obj[]),
     )
   }
   if (companyId) {
-    customers.push(...((await ctx.db.findMany("stripe_customers", { where: { company_id: companyId }, limit: 100 })) as Obj[]))
+    customers.push(
+      ...((await ctx.db.findMany("stripe_customers", {
+        where: { company_id: companyId },
+        limit: 100,
+      })) as Obj[]),
+    )
   }
   const byId = new Map(customers.map((c) => [String(c.stripe_id), c]))
   if (byId.size === 0) return { rows: [] }
   const ids = [...byId.keys()]
 
   const rows: ActivityRow[] = []
-  const push = (customerId: string, id: string, at: string | null, title: string, entityId: string) => {
+  const push = (
+    customerId: string,
+    id: string,
+    at: string | null,
+    title: string,
+    entityId: string,
+  ) => {
     if (!at) return
     if (before && compare({ at, id: `${prefix}${id}` }, before) <= 0) return
     const c = byId.get(customerId)
@@ -79,7 +97,13 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
 
   for (const [customerId, c] of byId) {
     if (c.deleted_at) continue
-    push(customerId, `${customerId}:customer`, iso(c.created_at_stripe), "Customer created", customerId)
+    push(
+      customerId,
+      `${customerId}:customer`,
+      iso(c.created_at_stripe),
+      "Customer created",
+      customerId,
+    )
   }
 
   const payments = (await ctx.db.findMany("stripe_payments", {
@@ -102,19 +126,37 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
     )
   }
 
-  const subs = (await ctx.db.findMany("stripe_subscriptions", { where: { customer_id: { in: ids } }, limit: 1000 })) as Obj[]
+  const subs = (await ctx.db.findMany("stripe_subscriptions", {
+    where: { customer_id: { in: ids } },
+    limit: 1000,
+  })) as Obj[]
   for (const s of subs) {
     const plan = String(s.plan_name ?? "Subscription")
-    push(String(s.customer_id), `${String(s.stripe_id)}:started`, iso(s.started_at) ?? iso(s.created_at) ?? iso(s.current_period_start), `${plan} started`, String(s.stripe_id))
+    push(
+      String(s.customer_id),
+      `${String(s.stripe_id)}:started`,
+      iso(s.started_at) ?? iso(s.created_at) ?? iso(s.current_period_start),
+      `${plan} started`,
+      String(s.stripe_id),
+    )
     if (s.status === "canceled" || s.canceled_at) {
-      push(String(s.customer_id), `${String(s.stripe_id)}:cancelled`, iso(s.canceled_at), `${plan} cancelled`, String(s.stripe_id))
+      push(
+        String(s.customer_id),
+        `${String(s.stripe_id)}:cancelled`,
+        iso(s.canceled_at),
+        `${plan} cancelled`,
+        String(s.stripe_id),
+      )
     }
   }
 
   const paymentIds = payments.map((p) => String(p.stripe_id))
   const customerOf = new Map(payments.map((p) => [String(p.stripe_id), String(p.customer_id)]))
   if (paymentIds.length > 0) {
-    const refunds = (await ctx.db.findMany("stripe_refunds", { where: { payment_id: { in: paymentIds } }, limit: 1000 })) as Obj[]
+    const refunds = (await ctx.db.findMany("stripe_refunds", {
+      where: { payment_id: { in: paymentIds } },
+      limit: 1000,
+    })) as Obj[]
     for (const r of refunds) {
       push(
         customerOf.get(String(r.payment_id)) ?? "",
@@ -124,7 +166,10 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
         String(r.stripe_id),
       )
     }
-    const disputes = (await ctx.db.findMany("stripe_disputes", { where: { payment_id: { in: paymentIds } }, limit: 1000 })) as Obj[]
+    const disputes = (await ctx.db.findMany("stripe_disputes", {
+      where: { payment_id: { in: paymentIds } },
+      limit: 1000,
+    })) as Obj[]
     for (const d of disputes) {
       push(
         customerOf.get(String(d.payment_id)) ?? "",
@@ -135,6 +180,8 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
       )
     }
   }
-  rows.sort((a, b) => compare({ at: a.at, id: `${prefix}${a.id}` }, { at: b.at, id: `${prefix}${b.id}` }))
+  rows.sort((a, b) =>
+    compare({ at: a.at, id: `${prefix}${a.id}` }, { at: b.at, id: `${prefix}${b.id}` }),
+  )
   return { rows: rows.slice(0, limit) }
 }

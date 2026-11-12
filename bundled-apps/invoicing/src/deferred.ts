@@ -89,7 +89,11 @@ const DEAD_LETTERED_REASON_PREFIX = "dead-lettered"
  * order is never invoiced. They wait for a person instead: an attention row is raised once when
  * the park is created, and an operator resolves it through `deferred_tax_override`.
  */
-export const HUMAN_REVIEW_KINDS: ReadonlySet<string> = new Set(["tax_check", "tax_treatment", "tax_rate"])
+export const HUMAN_REVIEW_KINDS: ReadonlySet<string> = new Set([
+  "tax_check",
+  "tax_treatment",
+  "tax_rate",
+])
 
 export function needsHumanReview(blocked_on: Record<string, unknown> | null | undefined): boolean {
   return HUMAN_REVIEW_KINDS.has(String(blocked_on?.kind ?? ""))
@@ -127,7 +131,8 @@ export async function resolveParkAttention(
 ): Promise<void> {
   const blocked = row.blocked_on ?? {}
   if (isIdentityWait(blocked)) {
-    const contact = typeof blocked.contact_id === "string" && blocked.contact_id ? blocked.contact_id : null
+    const contact =
+      typeof blocked.contact_id === "string" && blocked.contact_id ? blocked.contact_id : null
     await resolveIdentityAttention(ctx, { parkId: row.id, contact_id: contact })
     return
   }
@@ -182,10 +187,7 @@ function toDeferredRow(row: unknown): DeferredRow {
   }
 }
 
-const TERMINAL_STATUSES: ReadonlySet<DeferredStatus> = new Set([
-  "resolved",
-  "permanent_failure",
-])
+const TERMINAL_STATUSES: ReadonlySet<DeferredStatus> = new Set(["resolved", "permanent_failure"])
 
 /**
  * Dedup identity for a park: same order + same blocker (and same target document, when the
@@ -238,7 +240,9 @@ export async function park(
     .find((r) => !TERMINAL_STATUSES.has(r.status) && parkDedupKey(r.blocked_on) === key)
   // The contact a park waits on, as a column: identity lookups filter on it (never a scan).
   const contactId =
-    typeof input.blocked_on?.contact_id === "string" && input.blocked_on.contact_id ? input.blocked_on.contact_id : null
+    typeof input.blocked_on?.contact_id === "string" && input.blocked_on.contact_id
+      ? input.blocked_on.contact_id
+      : null
   if (dup) {
     await ctx.db.update("deferred_events", dup.id, {
       event_payload_json: input.event_payload_json,
@@ -413,7 +417,11 @@ export async function retryEligible(
   }
   const source = opts?.identityChangedAt
   const changed: ReadonlyMap<string, Date> =
-    typeof source === "function" ? (waiting.size > 0 ? await source([...waiting]) : new Map()) : (source ?? new Map())
+    typeof source === "function"
+      ? waiting.size > 0
+        ? await source([...waiting])
+        : new Map()
+      : (source ?? new Map())
   const eligible = candidates.filter((r) => {
     if (backoffElapsed(r)) return true
     if (!isIdentityWait(r.blocked_on)) return false
@@ -433,10 +441,17 @@ export async function retryEligible(
 }
 
 /** The parks whose remaining step is a document's automatic mail. */
-export const AUTO_EMAIL_PARK_KINDS: ReadonlySet<string> = new Set(["email_send", "issuer_mail_account"])
+export const AUTO_EMAIL_PARK_KINDS: ReadonlySet<string> = new Set([
+  "email_send",
+  "issuer_mail_account",
+])
 /** A park's automatic mail whose outcome is unknown: the sweep never sends it again. */
 export const EMAIL_OUTCOME_UNKNOWN = "email_outcome_unknown"
-const AUTO_EMAIL_PARK_STATUSES: readonly DeferredStatus[] = ["email_failed", "awaiting_dependency", "awaiting_config"]
+const AUTO_EMAIL_PARK_STATUSES: readonly DeferredStatus[] = [
+  "email_failed",
+  "awaiting_dependency",
+  "awaiting_config",
+]
 
 /**
  * A person sent the document (documents_send_to_customer): every open park whose remaining step
@@ -452,11 +467,20 @@ export async function closeAutoEmailParks(
 ): Promise<number> {
   let closed = 0
   for (const status of AUTO_EMAIL_PARK_STATUSES) {
-    const rows = (await ctx.db.findMany("deferred_events", { where: { status }, limit: 500 })).map(toDeferredRow)
+    const rows = (await ctx.db.findMany("deferred_events", { where: { status }, limit: 500 })).map(
+      toDeferredRow,
+    )
     for (const row of rows) {
       const kind = String(row.blocked_on.kind ?? "")
-      if (!AUTO_EMAIL_PARK_KINDS.has(kind) || String(row.blocked_on.document_id ?? "") !== documentId) continue
-      await ctx.db.update("deferred_events", row.id, { status: "resolved", retried_at: now.toISOString() })
+      if (
+        !AUTO_EMAIL_PARK_KINDS.has(kind) ||
+        String(row.blocked_on.document_id ?? "") !== documentId
+      )
+        continue
+      await ctx.db.update("deferred_events", row.id, {
+        status: "resolved",
+        retried_at: now.toISOString(),
+      })
       await resolveParkAttention(ctx, row)
       closed += 1
     }

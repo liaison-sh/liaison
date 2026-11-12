@@ -3,57 +3,56 @@
 // Invoicing mutations: credit notes (create and issue, issue from a draft).
 
 import { readMinorAmount } from "@liaison/app-sdk"
-import { formatMoneyMinor } from "../money"
+import { asHandlerSummary, issueCard } from "../approval-cards"
+import type { Regime } from "../einvoicing/classify"
+import type { OperationCategory } from "../einvoicing/classify-operation"
+import {
+  checkEinvoiceGate,
+  type EinvoicingWarning,
+  einvoiceParamsError,
+} from "../einvoicing/issue-gate"
 import {
   type Counterparty,
+  counterpartyCompletenessError,
   type DraftLine,
   type DraftLineInput,
   type IssueInput,
   type IssueResult,
-  counterpartyCompletenessError,
   taxCountryOf,
 } from "../issue"
+import { type IssueDateParts, issueDateParts } from "../issue-date"
+import { formatMoneyMinor } from "../money"
 import type { ClassifyInput } from "../tax"
-import { ISSUED_INVOICE_STATUSES, creditedTotalMinor } from "./credit-coverage"
+import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
+import type { IssuerProfileRow } from "./db-helpers"
 import {
-  resolveIssuerProfileOrError,
-  findDocumentSummary,
-  getDraft,
-  findIssuerProfile,
   dateOnly,
+  findDocumentSummary,
+  findIssuerProfile,
+  getDraft,
+  resolveIssuerProfileOrError,
 } from "./db-helpers"
+import { issueWithFxRate } from "./fx-issue"
 import {
-  normaliseDraftLines,
+  buildIssueInputFromDraft,
   checkTwoEyes,
   computeLineFinancials,
   counterpartyFromRow,
-  buildIssueInputFromDraft,
+  normaliseDraftLines,
 } from "./lines"
 import {
   type DocumentRowSummary,
   type DraftRow,
   type ErrorEnvelope,
-  type MutationsCtx,
-  type MutationResult,
-  type PreflightResult,
-  normaliseNotes,
   lineAmountsError,
+  type MutationResult,
+  type MutationsCtx,
+  normaliseNotes,
+  type PreflightResult,
   toBigInt,
   toPreflightResult,
 } from "./shared"
-import type { IssuerProfileRow } from "./db-helpers"
-import { asHandlerSummary, issueCard } from "../approval-cards"
-
-import type { Regime } from "../einvoicing/classify"
-import type { OperationCategory } from "../einvoicing/classify-operation"
-import {
-  type EinvoicingWarning,
-  checkEinvoiceGate,
-  einvoiceParamsError,
-} from "../einvoicing/issue-gate"
-import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { statedIssueDate } from "./stated-issue-date"
-import { issueWithFxRate } from "./fx-issue"
 
 /** What the issue step needs to know of the original invoice: id, stored regime, transmission
  *  state and its stored buyer snapshot (a credit note follows its original's facts). */
@@ -83,10 +82,13 @@ export interface CreditNoteIssueOptions {
 }
 
 /** The gate inputs an automatic Shopify credit note carries (see `CreditNoteIssueOptions.source`). */
-function autoSourceGateFields(
-  opts: CreditNoteIssueOptions,
-): { operation_source?: "lines_authoritative"; origin?: "shopify" } {
-  return opts.source === "shopify" ? { operation_source: "lines_authoritative", origin: "shopify" } : {}
+function autoSourceGateFields(opts: CreditNoteIssueOptions): {
+  operation_source?: "lines_authoritative"
+  origin?: "shopify"
+} {
+  return opts.source === "shopify"
+    ? { operation_source: "lines_authoritative", origin: "shopify" }
+    : {}
 }
 
 // ── Credit notes (E-series parity) ────────────────────────────────────────
@@ -316,8 +318,15 @@ async function preflightCreditNoteCreateAndIssueParams(
   }
   const { grand: total } = computeLineFinancials(input.items, classifyInput)
   const absTotal = total < 0n ? -total : total
-  const originalForSign = originalDocumentUuid ? await findDocumentSummary(ctx.db, originalDocumentUuid) : null
-  const signErr = creditNoteSignError(input.items, total, originalForSign?.grand_total_minor ?? null, currency)
+  const originalForSign = originalDocumentUuid
+    ? await findDocumentSummary(ctx.db, originalDocumentUuid)
+    : null
+  const signErr = creditNoteSignError(
+    input.items,
+    total,
+    originalForSign?.grand_total_minor ?? null,
+    currency,
+  )
   if (signErr) return { ok: false, error: signErr }
 
   // Over-credit guard: a credit note against an invoice can never push the invoice's
@@ -514,7 +523,10 @@ export async function prepareCreditNoteCreateAndIssue(
       auto_approvable: true,
     })
     if (!approval.auto_approved) {
-      return { ok: false, result: { status: "pending_approval", approval_id: approval.approval_id } }
+      return {
+        ok: false,
+        result: { status: "pending_approval", approval_id: approval.approval_id },
+      }
     }
   }
 
@@ -762,7 +774,9 @@ export async function creditNoteIssuePreflight(
 export async function creditNoteIssue(
   ctx: MutationsCtx,
   input: { draft_id: string },
-): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
+): Promise<
+  MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
+> {
   const pre = await preflightCreditNoteIssueParams(ctx, input)
   if (!pre.ok) return pre.error
   const { draft, issuer, counterparty, classifyInput } = pre

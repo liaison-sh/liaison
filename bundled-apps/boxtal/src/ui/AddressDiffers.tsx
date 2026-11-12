@@ -15,13 +15,20 @@ function addressLines(a: PrepAddress | null | undefined): string[] {
   if (!a) return []
   const who = [a.company, a.name].filter((v) => v && v.trim()).join(" / ")
   const locality = [a.postalCode, a.city].filter((v) => v && v.trim()).join(" ")
-  return [who, a.street ?? "", locality, [a.state, a.countryIsoCode].filter((v) => v && v.trim()).join(" ")].filter(
-    (l) => l.trim() !== "",
-  )
+  return [
+    who,
+    a.street ?? "",
+    locality,
+    [a.state, a.countryIsoCode].filter((v) => v && v.trim()).join(" "),
+  ].filter((l) => l.trim() !== "")
 }
 
 /** The chip: a button that opens the fold. Warning tone until a person picks. */
-export const AddressDiffersChip: Component<{ row: PrepRow; open: boolean; onToggle: () => void }> = (props) => {
+export const AddressDiffersChip: Component<{
+  row: PrepRow
+  open: boolean
+  onToggle: () => void
+}> = (props) => {
   const picked = () => props.row.address_check?.choice?.pick ?? null
   return (
     <button
@@ -65,7 +72,9 @@ export const AddressDiffersFold: Component<{
       <p class="text-[11.5px] text-text-secondary">
         {picked()
           ? tr("A person picked the address below. It holds until either address changes.")
-          : tr("The order's address and the customer's verified address differ. Pick the one this parcel goes to.")}
+          : tr(
+              "The order's address and the customer's verified address differ. Pick the one this parcel goes to.",
+            )}
       </p>
       <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <For each={[side("order"), side("verified")]}>
@@ -78,7 +87,9 @@ export const AddressDiffersFold: Component<{
               data-testid={`boxtal-prep-address-${s.pick}-${props.row.order_key}`}
             >
               <span class="text-[11px] font-medium text-text-tertiary">{s.title}</span>
-              <For each={s.lines}>{(l) => <span class="text-[12px] leading-[1.35] text-text">{l}</span>}</For>
+              <For each={s.lines}>
+                {(l) => <span class="text-[12px] leading-[1.35] text-text">{l}</span>}
+              </For>
               <Show when={s.pick === "verified" && check()?.verified_address?.verified_at}>
                 <span class="text-[10.5px] text-text-tertiary">
                   {check()?.verified_address?.verified_by_name
@@ -86,7 +97,9 @@ export const AddressDiffersFold: Component<{
                         date: (check()?.verified_address?.verified_at ?? "").slice(0, 10),
                         who: check()?.verified_address?.verified_by_name ?? "",
                       })
-                    : tr("Verified {{date}}", { date: (check()?.verified_address?.verified_at ?? "").slice(0, 10) })}
+                    : tr("Verified {{date}}", {
+                        date: (check()?.verified_address?.verified_at ?? "").slice(0, 10),
+                      })}
                 </span>
               </Show>
               <div class="pt-1">

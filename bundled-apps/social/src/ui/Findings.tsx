@@ -10,8 +10,9 @@
 // tools: Approve & post → reply_to_finding, Reject → dismiss_finding, Like →
 // like_item. The [Like] action is greyed when the platform/relation is
 // unsupported (own-Page FB / own-media IG comments only).
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
+
 import { app, fetch as hostFetch } from "@liaison/host"
+import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import {
   Badge,
   type BadgeTone,
@@ -250,10 +251,17 @@ const FindingDetailBody: Component<{
     const pending = pendingApproval()
     void run(
       async () => {
-        const res = await app.invokeTool("reply_to_finding", { finding_id: props.findingId, reply_text: text })
+        const res = await app.invokeTool("reply_to_finding", {
+          finding_id: props.findingId,
+          reply_text: text,
+        })
         // Posted directly: the agent's drafted reply is superseded, so it can't be approved later.
         if (pending?.action === "reply" && !isParked(res)) {
-          await denyPendingApproval(hostFetch, pending.id, "Replied directly from the finding.").catch(() => null)
+          await denyPendingApproval(
+            hostFetch,
+            pending.id,
+            "Replied directly from the finding.",
+          ).catch(() => null)
         }
         return res
       },
@@ -265,7 +273,8 @@ const FindingDetailBody: Component<{
     let outcome: PendingDenyOutcome | null = null
     void run(
       async () => {
-        if (pending) outcome = await denyPendingApproval(hostFetch, pending.id, "Rejected from the finding.")
+        if (pending)
+          outcome = await denyPendingApproval(hostFetch, pending.id, "Rejected from the finding.")
         return app.invokeTool("dismiss_finding", { finding_id: props.findingId })
       },
       () => rejectNote(outcome),
@@ -289,17 +298,23 @@ const FindingDetailBody: Component<{
         </Badge>
         <Badge tone="neutral">{platformLabel(full()?.platform ?? "facebook")}</Badge>
         <Show when={isVideo()}>
-          <Badge tone="accent" testid="social-finding-video-badge">Video match</Badge>
+          <Badge tone="accent" testid="social-finding-video-badge">
+            Video match
+          </Badge>
         </Show>
         <span class="text-[11px] text-text-tertiary">{shortTime(full()?.occurred_at)}</span>
       </div>
       <Show
         when={isVideo()}
         fallback={
-          <SectionLabel>From {authorLabel(full()?.platform ?? "facebook", full()?.author_handle)}</SectionLabel>
+          <SectionLabel>
+            From {authorLabel(full()?.platform ?? "facebook", full()?.author_handle)}
+          </SectionLabel>
         }
       >
-        <SectionLabel>{authorLabel(full()?.platform ?? "youtube", full()?.author_handle)}'s video</SectionLabel>
+        <SectionLabel>
+          {authorLabel(full()?.platform ?? "youtube", full()?.author_handle)}'s video
+        </SectionLabel>
       </Show>
       <p class="text-[13px] text-text">{stripExternalFence(full()?.content_text) || "(no text)"}</p>
       <Show when={isVideo() && matchedTermsOf(full()).length > 0}>
@@ -360,7 +375,12 @@ const FindingDetailBody: Component<{
         </div>
       </Show>
 
-      <div class={cx("flex items-center gap-2", showReply() ? "" : "border-t border-border-subtle pt-3")}>
+      <div
+        class={cx(
+          "flex items-center gap-2",
+          showReply() ? "" : "border-t border-border-subtle pt-3",
+        )}
+      >
         <Button
           variant="ghost"
           testid="social-like"
@@ -461,7 +481,14 @@ export const Findings: Component = () => {
           )}
           data-testid="social-findings-list"
         >
-          <Show when={visible().length > 0} fallback={<EmptyState title="No findings yet">Connect an account to start monitoring.</EmptyState>}>
+          <Show
+            when={visible().length > 0}
+            fallback={
+              <EmptyState title="No findings yet">
+                Connect an account to start monitoring.
+              </EmptyState>
+            }
+          >
             <For each={visible()}>
               {(r) => {
                 const meta = findingStatusTone(r.status)
@@ -478,14 +505,22 @@ export const Findings: Component = () => {
                     )}
                   >
                     <span class="flex items-center gap-2">
-                      <Badge tone="neutral" class="shrink-0">{platformLabel(r.platform)}</Badge>
+                      <Badge tone="neutral" class="shrink-0">
+                        {platformLabel(r.platform)}
+                      </Badge>
                       <Show when={isVideo}>
-                        <Badge tone="accent" class="shrink-0">Video match</Badge>
+                        <Badge tone="accent" class="shrink-0">
+                          Video match
+                        </Badge>
                       </Show>
                       <span class="truncate text-[12.5px] text-text">
-                        {isVideo ? (stripExternalFence(r.content_text) || "(untitled video)") : authorLabel(r.platform, r.author_handle)}
+                        {isVideo
+                          ? stripExternalFence(r.content_text) || "(untitled video)"
+                          : authorLabel(r.platform, r.author_handle)}
                       </span>
-                      <span class="ml-auto shrink-0 text-[10.5px] text-text-tertiary">{shortTime(r.occurred_at)}</span>
+                      <span class="ml-auto shrink-0 text-[10.5px] text-text-tertiary">
+                        {shortTime(r.occurred_at)}
+                      </span>
                     </span>
                     <span class="flex items-center justify-between gap-2">
                       <span class="truncate text-[11.5px] text-text-tertiary">
@@ -493,10 +528,14 @@ export const Findings: Component = () => {
                           ? `by ${authorLabel(r.platform, r.author_handle)}`
                           : stripExternalFence(r.content_text)}
                       </span>
-                      <Badge tone={meta.tone} class="shrink-0">{meta.label}</Badge>
+                      <Badge tone={meta.tone} class="shrink-0">
+                        {meta.label}
+                      </Badge>
                     </span>
                     <Show when={excerpt} keyed>
-                      {(e) => <span class="truncate text-[10.5px] text-text-tertiary">on: {e}</span>}
+                      {(e) => (
+                        <span class="truncate text-[10.5px] text-text-tertiary">on: {e}</span>
+                      )}
                     </Show>
                   </button>
                 )

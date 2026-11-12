@@ -11,10 +11,24 @@ const OTHER = "55555555-5555-4555-8555-555555555555"
 
 const DOCS: Record<string, Array<Record<string, unknown>>> = {
   [LUMEN]: [
-    { id: "inv-lumen", type: "invoice", number: "INV-7", status: "issued", currency: "EUR", grand_total_minor: "120000" },
+    {
+      id: "inv-lumen",
+      type: "invoice",
+      number: "INV-7",
+      status: "issued",
+      currency: "EUR",
+      grand_total_minor: "120000",
+    },
   ],
   [OTHER]: [
-    { id: "inv-other", type: "invoice", number: "INV-8", status: "issued", currency: "EUR", grand_total_minor: "5000" },
+    {
+      id: "inv-other",
+      type: "invoice",
+      number: "INV-8",
+      status: "issued",
+      currency: "EUR",
+      grand_total_minor: "5000",
+    },
   ],
 }
 
@@ -60,8 +74,9 @@ describe("the company page's Money section", () => {
   })
 
   it("is declared on the company page's Money group for readers of documents", () => {
-    const slots = (manifest as { slots?: Record<string, { panels?: Array<Record<string, unknown>> }> })
-      .slots
+    const slots = (
+      manifest as { slots?: Record<string, { panels?: Array<Record<string, unknown>> }> }
+    ).slots
     const panel = slots?.company_detail?.panels?.find((p) => p.id === "invoicing-money")
     expect(panel).toMatchObject({
       component: "CompanyMoneyPanel",

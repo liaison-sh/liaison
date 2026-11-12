@@ -4,9 +4,10 @@
 // tests of the Shopify order handlers (shopify-order-cancelled.test.ts and
 // shopify-refund-credit-note.test.ts): they run the ACTUAL
 // creditNoteCreateAndIssue pipeline against the in-memory mock db.
-import { testTime } from "../test-time"
+
 import type { MutationsCtx } from "../mutations"
 import type { MockDb } from "../test-db"
+import { testTime } from "../test-time"
 
 export const ISSUER_ROW = {
   id: "iss-1",

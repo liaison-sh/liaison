@@ -74,9 +74,15 @@ function liveRoutes(over: Partial<Record<string, Route>> = {}): Record<string, R
     [`/${PAGE}/conversations`]: {
       body: {
         data: [
-          { messages: { data: [{ from: { id: "fan-1" }, created_time: "2026-10-19T10:00:00+0000" }] } },
+          {
+            messages: {
+              data: [{ from: { id: "fan-1" }, created_time: "2026-10-19T10:00:00+0000" }],
+            },
+          },
           // Our own reply is the newest event of this thread: Meta does not send it to us.
-          { messages: { data: [{ from: { id: PAGE }, created_time: "2026-10-19T23:00:00+0000" }] } },
+          {
+            messages: { data: [{ from: { id: PAGE }, created_time: "2026-10-19T23:00:00+0000" }] },
+          },
         ],
       },
     },
@@ -91,7 +97,11 @@ function liveRoutes(over: Partial<Record<string, Route>> = {}): Record<string, R
               ],
             },
           },
-          { comments: { data: [{ from: { id: "fan-3" }, created_time: "2026-10-18T09:00:00+0000" }] } },
+          {
+            comments: {
+              data: [{ from: { id: "fan-3" }, created_time: "2026-10-18T09:00:00+0000" }],
+            },
+          },
           {},
         ],
       },
@@ -105,7 +115,9 @@ describe("probeWebhookUpstreamJob", () => {
     const db = createMockDb()
     await seedFacebook(db)
     const ctx = ctxWith(db, liveRoutes())
-    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({ upstreamActivityAt: "2026-10-19T12:00:00+0000" })
+    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({
+      upstreamActivityAt: "2026-10-19T12:00:00+0000",
+    })
     // One account seeded under two source types is probed once.
     expect(ctx.__calls.filter((u) => u.includes("/me/accounts"))).toHaveLength(1)
     const feed = ctx.__calls.find((u) => u.includes("/feed"))!
@@ -118,9 +130,15 @@ describe("probeWebhookUpstreamJob", () => {
     await seedFacebook(db)
     const ctx = ctxWith(
       db,
-      liveRoutes({ [`/${PAGE}/subscribed_apps`]: { body: { data: [{ id: APP_ID, subscribed_fields: ["messages"] }] } } }),
+      liveRoutes({
+        [`/${PAGE}/subscribed_apps`]: {
+          body: { data: [{ id: APP_ID, subscribed_fields: ["messages"] }] },
+        },
+      }),
     )
-    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({ upstreamActivityAt: "2026-10-19T10:00:00+0000" })
+    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({
+      upstreamActivityAt: "2026-10-19T10:00:00+0000",
+    })
     expect(ctx.__calls.some((u) => u.includes("/feed"))).toBe(false)
   })
 
@@ -130,7 +148,9 @@ describe("probeWebhookUpstreamJob", () => {
     const ctx = ctxWith(
       db,
       liveRoutes({
-        [`/${PAGE}/subscribed_apps`]: { body: { data: [{ id: "someone-else", subscribed_fields: ["feed", "messages"] }] } },
+        [`/${PAGE}/subscribed_apps`]: {
+          body: { data: [{ id: "someone-else", subscribed_fields: ["feed", "messages"] }] },
+        },
       }),
     )
     expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({ upstreamActivityAt: null })
@@ -168,8 +188,14 @@ describe("probeWebhookUpstreamJob", () => {
   test("an active account whose token Meta refuses is no report", async () => {
     const db = createMockDb()
     await seedFacebook(db)
-    const refused: Route = { status: 401, body: { error: { message: "Session has expired", code: 190 } } }
-    const result = await probeWebhookUpstreamJob({}, ctxWith(db, liveRoutes({ "/app": refused, "/me/accounts": refused })))
+    const refused: Route = {
+      status: 401,
+      body: { error: { message: "Session has expired", code: 190 } },
+    }
+    const result = await probeWebhookUpstreamJob(
+      {},
+      ctxWith(db, liveRoutes({ "/app": refused, "/me/accounts": refused })),
+    )
     expect(result).toMatchObject({ probed: false })
     expect("upstreamActivityAt" in result).toBe(false)
   })
@@ -178,24 +204,48 @@ describe("probeWebhookUpstreamJob", () => {
     const db = createMockDb()
     await seedFacebook(db)
     expect(
-      await probeWebhookUpstreamJob({}, ctxWith(db, liveRoutes({ "/me/accounts": { body: { data: [] } } }))),
+      await probeWebhookUpstreamJob(
+        {},
+        ctxWith(db, liveRoutes({ "/me/accounts": { body: { data: [] } } })),
+      ),
     ).toEqual({ upstreamActivityAt: null })
     const ownOnly = liveRoutes({
       [`/${PAGE}/conversations`]: {
-        body: { data: [{ messages: { data: [{ from: { id: PAGE }, created_time: "2026-10-19T23:00:00+0000" }] } }] },
+        body: {
+          data: [
+            {
+              messages: {
+                data: [{ from: { id: PAGE }, created_time: "2026-10-19T23:00:00+0000" }],
+              },
+            },
+          ],
+        },
       },
       [`/${PAGE}/feed`]: {
-        body: { data: [{ comments: { data: [{ from: { id: PAGE }, created_time: "2026-10-19T22:00:00+0000" }] } }] },
+        body: {
+          data: [
+            {
+              comments: {
+                data: [{ from: { id: PAGE }, created_time: "2026-10-19T22:00:00+0000" }],
+              },
+            },
+          ],
+        },
       },
     })
-    expect(await probeWebhookUpstreamJob({}, ctxWith(db, ownOnly))).toEqual({ upstreamActivityAt: null })
+    expect(await probeWebhookUpstreamJob({}, ctxWith(db, ownOnly))).toEqual({
+      upstreamActivityAt: null,
+    })
   })
 
   test("Graph errors are no report, never a quiet Page", async () => {
     const failures: Array<[string, Route]> = [
       ["/me/accounts", { status: 500, body: { error: { message: "down", code: 2 } } }],
       ["/app", { status: 401, body: { error: { message: "expired", code: 190 } } }],
-      [`/${PAGE}/subscribed_apps`, { status: 403, body: { error: { message: "no perm", code: 200 } } }],
+      [
+        `/${PAGE}/subscribed_apps`,
+        { status: 403, body: { error: { message: "no perm", code: 200 } } },
+      ],
       [`/${PAGE}/conversations`, { status: 429, body: { error: { message: "limit", code: 32 } } }],
       // Graph sometimes answers 200 with an error envelope.
       [`/${PAGE}/feed`, { status: 200, body: { error: { message: "rate", code: 4 } } }],
@@ -215,7 +265,12 @@ describe("probeWebhookUpstreamJob", () => {
     const refused = liveRoutes({
       [`/${PAGE}/subscribed_apps`]: {
         status: 403,
-        body: { error: { message: "(#200) Requires pages_manage_metadata permission to manage the object", code: 200 } },
+        body: {
+          error: {
+            message: "(#200) Requires pages_manage_metadata permission to manage the object",
+            code: 200,
+          },
+        },
       },
     })
     const result = await probeWebhookUpstreamJob({}, ctxWith(db, refused))

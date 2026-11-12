@@ -4,7 +4,16 @@
 // whether the connection is healthy. Calm: green, amber or grey, never a count or an alarm.
 import { app, currentPath } from "@liaison/host"
 import { type Component, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { dashboardShown, dashboardUrl, dotTone, type DotTone, dotWord, type HomeLoad, pageKind, type PageKind } from "./home-model"
+import {
+  type DotTone,
+  dashboardShown,
+  dashboardUrl,
+  dotTone,
+  dotWord,
+  type HomeLoad,
+  type PageKind,
+  pageKind,
+} from "./home-model"
 import { tr } from "./i18n"
 
 export { dotTone }
@@ -19,9 +28,14 @@ export function sidebarRows(mode: string | undefined) {
   }
 }
 
-const DOT: Record<DotTone, string> = { success: "bg-success", warning: "bg-warning", muted: "bg-text-tertiary" }
+const DOT: Record<DotTone, string> = {
+  success: "bg-success",
+  warning: "bg-warning",
+  muted: "bg-text-tertiary",
+}
 
-const isActive = (path: string, href: string) => (href === "/stripe" ? path === href : path === href || path.startsWith(`${href}/`))
+const isActive = (path: string, href: string) =>
+  href === "/stripe" ? path === href : path === href || path.startsWith(`${href}/`)
 
 export const StripeSidebar: Component = () => {
   const [kind, setKind] = createSignal<PageKind>("not_connected")
@@ -46,7 +60,12 @@ export const StripeSidebar: Component = () => {
   return (
     <nav data-testid="stripe-sidebar" class="flex h-full min-h-0 flex-col">
       <div class="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-        <span data-testid="stripe-sidebar-dot" data-tone={dotTone(kind())} class={`h-1.5 w-1.5 rounded-full ${DOT[dotTone(kind())]}`} aria-hidden="true" />
+        <span
+          data-testid="stripe-sidebar-dot"
+          data-tone={dotTone(kind())}
+          class={`h-1.5 w-1.5 rounded-full ${DOT[dotTone(kind())]}`}
+          aria-hidden="true"
+        />
         <span class="text-[12.5px] font-semibold text-text">{tr("Stripe")}</span>
         <span data-testid="stripe-sidebar-state" class="ml-auto text-[11.5px] text-text-tertiary">
           {dotWord(kind())}
@@ -62,7 +81,9 @@ export const StripeSidebar: Component = () => {
                   data-testid={`stripe-sidebar-link-${r.id}`}
                   aria-current={isActive(path(), r.href) ? "page" : undefined}
                   class={`flex min-h-11 items-center rounded-md px-3 text-[12.5px] transition-colors md:min-h-8 ${
-                    isActive(path(), r.href) ? "bg-surface-active font-medium text-text" : "text-text-secondary hover:bg-surface-hover hover:text-text"
+                    isActive(path(), r.href)
+                      ? "bg-surface-active font-medium text-text"
+                      : "text-text-secondary hover:bg-surface-hover hover:text-text"
                   }`}
                 >
                   {r.label}
@@ -71,19 +92,19 @@ export const StripeSidebar: Component = () => {
             )}
           </For>
         </ul>
-<Show when={!standIn()}>
-                <div class="mt-3 border-t border-border-subtle pt-3">
-          <a
-            href={rows().external.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="stripe-sidebar-dashboard"
-            class="flex min-h-11 items-center justify-between rounded-md px-3 text-[12px] text-text-tertiary hover:bg-surface-hover hover:text-text md:min-h-8"
-          >
-            <span>{rows().external.label}</span>
-            <span aria-hidden="true">{"↗"}</span>
-          </a>
-        </div>
+        <Show when={!standIn()}>
+          <div class="mt-3 border-t border-border-subtle pt-3">
+            <a
+              href={rows().external.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="stripe-sidebar-dashboard"
+              class="flex min-h-11 items-center justify-between rounded-md px-3 text-[12px] text-text-tertiary hover:bg-surface-hover hover:text-text md:min-h-8"
+            >
+              <span>{rows().external.label}</span>
+              <span aria-hidden="true">{"↗"}</span>
+            </a>
+          </div>
         </Show>
       </div>
     </nav>

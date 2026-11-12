@@ -10,7 +10,7 @@
 // Stripe's own emails to customers cannot be read, so the block asks the person to check them
 // until a person says they did; the word Checked appears only after that click.
 import { app, fetch as hostFetch, onEntityChange } from "@liaison/host"
-import { createResource, createSignal, For, onCleanup, Show, type Component } from "solid-js"
+import { type Component, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { tr } from "./i18n"
 import { Badge, Button } from "./kit"
 
@@ -54,7 +54,8 @@ export function createStandingOff(deps: {
   clearTimer?: (id: unknown) => void
 }) {
   const setTimer = deps.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
-  const clearTimer = deps.clearTimer ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>))
+  const clearTimer =
+    deps.clearTimer ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>))
   let pending: { issuerProfileId: string; stream: StandingStream } | null = null
   let timer: unknown = null
   const cancel = () => {
@@ -80,7 +81,12 @@ export function createStandingOff(deps: {
 
 function dayOf(iso: string, locale?: string): string {
   // A date-only ISO string parses as UTC midnight, shown here in UTC.
-  return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+  return new Date(iso).toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
 }
 
 /** Off, or who turned it on, when, and until when. */
@@ -98,9 +104,12 @@ export interface IssuerStreamsView {
   name: string
   country: string | null
   streams: StreamView[]
-  stripe_emails: { state: "unknown" | "confirmed"; confirmedBy: string | null; confirmedAt: string | null } | null
+  stripe_emails: {
+    state: "unknown" | "confirmed"
+    confirmedBy: string | null
+    confirmedAt: string | null
+  } | null
 }
-
 
 const STREAM_LABEL: Record<StreamView["stream"], string> = {
   card: "Subscriptions paid by card",
@@ -112,16 +121,31 @@ const STREAM_LABEL: Record<StreamView["stream"], string> = {
 export function streamRow(s: StreamView): { name: string; who: string } {
   const name = tr(STREAM_LABEL[s.stream])
   if (s.stream !== "card") return { name, who: tr("Always: not billed from Stripe") }
-  const who = s.issuer === "liaison" ? tr("Liaison invoices") : s.issuer === "stripe" ? tr("Stripe invoices") : tr("Not decided yet")
+  const who =
+    s.issuer === "liaison"
+      ? tr("Liaison invoices")
+      : s.issuer === "stripe"
+        ? tr("Stripe invoices")
+        : tr("Not decided yet")
   return { name, who }
 }
 
 /** The emails line: a request to check until a person said they did, never the word Checked before. */
 export function emailsLine(e: IssuerStreamsView["stripe_emails"], locale?: string): string | null {
   if (!e) return null
-  if (e.state !== "confirmed" || !e.confirmedAt) return tr("Please check in Stripe, Settings, Billing: finalized invoices, credit notes and payment receipts should not email customers. Liaison cannot read this setting.")
-  const day = new Date(e.confirmedAt).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  return tr("Checked by a person on {{day}}. Liaison cannot read this setting, so check again if someone changes it.", { day })
+  if (e.state !== "confirmed" || !e.confirmedAt)
+    return tr(
+      "Please check in Stripe, Settings, Billing: finalized invoices, credit notes and payment receipts should not email customers. Liaison cannot read this setting.",
+    )
+  const day = new Date(e.confirmedAt).toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+  return tr(
+    "Checked by a person on {{day}}. Liaison cannot read this setting, so check again if someone changes it.",
+    { day },
+  )
 }
 
 async function loadStreams(): Promise<IssuerStreamsView[]> {
@@ -136,7 +160,9 @@ async function loadStreams(): Promise<IssuerStreamsView[]> {
 async function personName(id: string | null): Promise<string | null> {
   if (!id) return null
   try {
-    const p = await hostFetch<{ name?: string | null }>(`/api/users/${encodeURIComponent(id)}/preview`)
+    const p = await hostFetch<{ name?: string | null }>(
+      `/api/users/${encodeURIComponent(id)}/preview`,
+    )
     return p?.name ?? null
   } catch {
     return null
@@ -150,7 +176,10 @@ export const STANDING_ON_CONFIRM =
 /** Whether an e-invoicing platform is set: with none, there is nothing to send to. */
 async function loadPlatform(): Promise<string | null> {
   try {
-    const r = await app.invokeTool<{ settings?: { provider_app?: string | null } }>("einvoicing_settings_get", {})
+    const r = await app.invokeTool<{ settings?: { provider_app?: string | null } }>(
+      "einvoicing_settings_get",
+      {},
+    )
     return r?.settings?.provider_app ?? null
   } catch {
     return null
@@ -192,9 +221,15 @@ const StandingControl: Component<{
     off.undo()
   })
   return (
-    <div data-testid={`standing-${p.stream}`} class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3">
+    <div
+      data-testid={`standing-${p.stream}`}
+      class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3"
+    >
       <span class="text-sm font-medium">{tr(STANDING_LABEL[p.stream])}</span>
-      <p class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-line-${p.stream}`}>
+      <p
+        class="text-xs text-[var(--color-text-secondary)]"
+        data-testid={`standing-line-${p.stream}`}
+      >
         {standingLine(p.view, by() ?? null)}
       </p>
       <Show
@@ -206,8 +241,13 @@ const StandingControl: Component<{
               <Show
                 when={p.hasPlatform}
                 fallback={
-                  <p class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-needs-platform-${p.stream}`}>
-                    {tr("Choose an e-invoicing platform first, in E-invoicing on this page: with none set, there is nothing to send.")}
+                  <p
+                    class="text-xs text-[var(--color-text-secondary)]"
+                    data-testid={`standing-needs-platform-${p.stream}`}
+                  >
+                    {tr(
+                      "Choose an e-invoicing platform first, in E-invoicing on this page: with none set, there is nothing to send.",
+                    )}
                   </p>
                 }
               >
@@ -242,7 +282,10 @@ const StandingControl: Component<{
         }
       >
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-pending-${p.stream}`}>
+          <span
+            class="text-xs text-[var(--color-text-secondary)]"
+            data-testid={`standing-pending-${p.stream}`}
+          >
             {tr("Turning off in {{n}} seconds.", { n: left() })}
           </span>
           <Button
@@ -272,9 +315,13 @@ export const InvoicingIssuerStreams: Component = () => {
   const run = async (tool: string, params: Record<string, unknown>) => {
     setError(null)
     try {
-      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(tool, params)
+      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(
+        tool,
+        params,
+      )
       if (r?.status === "error") setError(r.error?.message ?? tr("Nothing was changed."))
-      else if (r && ("blocked" in r || r.status === "pending_approval")) setError(tr("Sent for approval."))
+      else if (r && ("blocked" in r || r.status === "pending_approval"))
+        setError(tr("Sent for approval."))
       refetch()
     } catch (e) {
       setError(e instanceof Error ? e.message : tr("Nothing was changed."))
@@ -282,7 +329,14 @@ export const InvoicingIssuerStreams: Component = () => {
   }
 
   const choose = (issuerProfileId: string, issuer: "liaison" | "stripe") => {
-    if (!window.confirm(tr("Starts with the next renewal, after you confirm. Invoices Liaison already issued stay as they are, with their numbers. Check the change with your accountant."))) return
+    if (
+      !window.confirm(
+        tr(
+          "Starts with the next renewal, after you confirm. Invoices Liaison already issued stay as they are, with their numbers. Check the change with your accountant.",
+        ),
+      )
+    )
+      return
     void run("issuer_stream_set", { issuerProfileId, stream: "card", issuer })
   }
 
@@ -290,7 +344,9 @@ export const InvoicingIssuerStreams: Component = () => {
     <div class="space-y-6" data-testid="invoicing-issuer-streams">
       <div>
         <h3 class="text-sm font-medium text-[var(--color-text)]">{tr("Who issues what")}</h3>
-        <p class="text-xs text-[var(--color-text-secondary)]">{tr("If both invoiced the same sale, it would be invoiced twice.")}</p>
+        <p class="text-xs text-[var(--color-text-secondary)]">
+          {tr("If both invoiced the same sale, it would be invoiced twice.")}
+        </p>
       </div>
       <Show when={error()}>
         <p class="text-xs text-[var(--color-text-secondary)]" data-testid="issuer-streams-error">
@@ -304,7 +360,9 @@ export const InvoicingIssuerStreams: Component = () => {
             <section class="space-y-3" data-testid={`issuer-streams-${issuer.issuerProfileId}`}>
               <p class="text-sm text-[var(--color-text)]">
                 {issuer.name}
-                <Show when={issuer.country}>{(c) => <span class="text-[var(--color-text-meta)]"> · {c()}</span>}</Show>
+                <Show when={issuer.country}>
+                  {(c) => <span class="text-[var(--color-text-meta)]"> · {c()}</span>}
+                </Show>
               </p>
               <table class="w-full text-sm">
                 <thead>
@@ -324,7 +382,11 @@ export const InvoicingIssuerStreams: Component = () => {
                   </For>
                 </tbody>
               </table>
-              <For each={issuer.streams.filter((s) => (s.stream === "card" || s.stream === "transfer") && s.standing)}>
+              <For
+                each={issuer.streams.filter(
+                  (s) => (s.stream === "card" || s.stream === "transfer") && s.standing,
+                )}
+              >
                 {(s) => (
                   <StandingControl
                     issuerProfileId={issuer.issuerProfileId}
@@ -337,7 +399,10 @@ export const InvoicingIssuerStreams: Component = () => {
               </For>
               <Show when={card()}>
                 {(c) => (
-                  <div class="space-y-2 rounded-lg border border-[var(--color-border)] p-3" data-testid="card-stream-panel">
+                  <div
+                    class="space-y-2 rounded-lg border border-[var(--color-border)] p-3"
+                    data-testid="card-stream-panel"
+                  >
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium">{tr("Subscriptions paid by card")}</span>
                       <Show when={c().issuer === "undecided"}>
@@ -345,7 +410,11 @@ export const InvoicingIssuerStreams: Component = () => {
                       </Show>
                     </div>
                     <Show when={c().suggested}>
-                      {(s) => <p class="text-xs text-[var(--color-text-secondary)]">{tr("Default for French companies")}: {s().why}</p>}
+                      {(s) => (
+                        <p class="text-xs text-[var(--color-text-secondary)]">
+                          {tr("Default for French companies")}: {s().why}
+                        </p>
+                      )}
                     </Show>
                     <div class="flex gap-2">
                       <Button
@@ -363,11 +432,21 @@ export const InvoicingIssuerStreams: Component = () => {
                         {tr("Stripe invoices, Liaison only shows you a copy")}
                       </Button>
                     </div>
-                    <p class="text-xs text-[var(--color-text-secondary)]" data-testid="stripe-emails-line">
+                    <p
+                      class="text-xs text-[var(--color-text-secondary)]"
+                      data-testid="stripe-emails-line"
+                    >
                       {emailsLine(issuer.stripe_emails)}
                     </p>
                     <Show when={issuer.stripe_emails?.state !== "confirmed"}>
-                      <Button data-testid="stripe-emails-confirm" onClick={() => void run("issuer_emails_confirm", { issuerProfileId: issuer.issuerProfileId })}>
+                      <Button
+                        data-testid="stripe-emails-confirm"
+                        onClick={() =>
+                          void run("issuer_emails_confirm", {
+                            issuerProfileId: issuer.issuerProfileId,
+                          })
+                        }
+                      >
                         {tr("I checked, they are off")}
                       </Button>
                     </Show>

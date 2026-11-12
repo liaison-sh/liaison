@@ -58,9 +58,16 @@ describe("social manifest (B1)", () => {
 
   test("every gated tool with a summarizer export declares it, with its context read", async () => {
     const handlers = (await import("../handlers")) as Record<string, unknown>
-    const exported = Object.keys(handlers).filter((k) => k.startsWith("summarize") && typeof handlers[k] === "function")
-    const tools = manifest.tools as Record<string, { summarizer?: string; summarizerContext?: { tool: string } }>
-    const declared = Object.values(tools).map((t) => t.summarizer).filter((s): s is string => typeof s === "string")
+    const exported = Object.keys(handlers).filter(
+      (k) => k.startsWith("summarize") && typeof handlers[k] === "function",
+    )
+    const tools = manifest.tools as Record<
+      string,
+      { summarizer?: string; summarizerContext?: { tool: string } }
+    >
+    const declared = Object.values(tools)
+      .map((t) => t.summarizer)
+      .filter((s): s is string => typeof s === "string")
     expect(exported.length).toBeGreaterThan(0)
     expect(declared.sort()).toEqual(exported.sort())
     for (const t of Object.values(tools)) {
@@ -69,7 +76,9 @@ describe("social manifest (B1)", () => {
   })
 
   test("judges its webhooks by the upstream probe job", () => {
-    expect((manifest as { webhookHealth?: unknown }).webhookHealth).toEqual({ probe: "probe-webhook-upstream" })
+    expect((manifest as { webhookHealth?: unknown }).webhookHealth).toEqual({
+      probe: "probe-webhook-upstream",
+    })
     expect(typeof manifest.jobs?.["probe-webhook-upstream"]?.schedule).toBe("string")
   })
 
@@ -100,11 +109,7 @@ describe("social manifest (B1)", () => {
   })
 
   test("tabTypes keys are findings/messages/watched (B9 ui.tsx must match)", () => {
-    expect(Object.keys(manifest.views.tabTypes).sort()).toEqual([
-      "findings",
-      "messages",
-      "watched",
-    ])
+    expect(Object.keys(manifest.views.tabTypes).sort()).toEqual(["findings", "messages", "watched"])
   })
 
   test("dm_message.conversation_id FK cascades on delete", () => {
@@ -153,7 +158,10 @@ describe("social declarative settings", () => {
 
   test("names each connection the connections block lists", () => {
     const purposes = Object.fromEntries(
-      Object.entries(manifest.connections as Record<string, { purpose?: string }>).map(([n, c]) => [n, c.purpose]),
+      Object.entries(manifest.connections as Record<string, { purpose?: string }>).map(([n, c]) => [
+        n,
+        c.purpose,
+      ]),
     )
     expect(purposes).toEqual({
       instagram: "Instagram account",
@@ -213,7 +221,9 @@ describe("instagram_unified connection (preview)", () => {
   })
 
   test("takes the Instagram account from the assigned accounts, never one of several silently", () => {
-    expect(conn.userinfoUrl).toBe("https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username")
+    expect(conn.userinfoUrl).toBe(
+      "https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username",
+    )
     expect(conn.identifierFromUserinfoPath).toBe("data[].id")
     expect(conn.accountNameField).toBe("username")
     // System-user token: no long-lived exchange, no refresh.
@@ -233,7 +243,12 @@ describe("instagram_unified connection (preview)", () => {
     expect(text).toContain("**Create new configuration**")
     expect(text).toContain("choose **Never**")
     expect(text).toContain("**Configuration ID**")
-    for (const step of conn.setupGuide.steps as Array<{ who: string; minutes?: number; url?: string; place?: string }>) {
+    for (const step of conn.setupGuide.steps as Array<{
+      who: string
+      minutes?: number
+      url?: string
+      place?: string
+    }>) {
       expect(typeof step.minutes).toBe("number")
       if (step.who === "human") expect(step.url ?? step.place).toBeTruthy()
     }
@@ -250,7 +265,9 @@ describe("instagram_unified connection (preview)", () => {
   })
 
   test("is read by no job: nothing syncs through it yet", () => {
-    for (const job of Object.values(manifest.jobs as Record<string, { runsFor?: { connection?: string[] } }>)) {
+    for (const job of Object.values(
+      manifest.jobs as Record<string, { runsFor?: { connection?: string[] } }>,
+    )) {
       expect(job.runsFor?.connection ?? []).not.toContain("instagram_unified")
     }
   })

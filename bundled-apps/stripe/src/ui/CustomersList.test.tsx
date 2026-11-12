@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { loadList, StripeCustomersList } from "./CustomersList"
 import {
   buildRows,
   type CustomerItem,
@@ -15,7 +16,6 @@ import {
   statusOf,
   whatHappensNext,
 } from "./customers-model"
-import { loadList, StripeCustomersList } from "./CustomersList"
 import type { MrrResult, SubItem } from "./home-model"
 
 afterEach(() => {
@@ -76,7 +76,10 @@ describe("the list reads the mirror", () => {
       },
     }
     const page = await loadList("claire@maison-arlon.example", "subscriptions")
-    expect(calls[0]).toEqual({ tool: "customers_search", args: { limit: 25, query: "claire@maison-arlon.example" } })
+    expect(calls[0]).toEqual({
+      tool: "customers_search",
+      args: { limit: 25, query: "claire@maison-arlon.example" },
+    })
     expect(page.customers.map((c) => c.id)).toEqual(["cus_a"])
     expect(typeof StripeCustomersList).toBe("function")
   })
@@ -96,13 +99,24 @@ describe("the list reads the mirror", () => {
             { plan: "Team", mrrMinor: 800000, count: 120 },
             { plan: "Starter", mrrMinor: 200000, count: 49 },
           ],
-          movements: { newMinor: 0, upgradeMinor: 0, downgradeMinor: 0, cancelledMinor: 0, netMinor: 0, startMinor: 0 },
+          movements: {
+            newMinor: 0,
+            upgradeMinor: 0,
+            downgradeMinor: 0,
+            cancelledMinor: 0,
+            netMinor: 0,
+            startMinor: 0,
+          },
           monthStart: "2026-11-01",
         },
       ],
     }
     // The page shows three customers; the totals still are the query's, never the page's sum.
-    const page = buildRows([cust("a"), cust("b"), cust("c")], { a: [sub("a")], b: [sub("b")], c: [sub("c")] }, true)
+    const page = buildRows(
+      [cust("a"), cust("b"), cust("c")],
+      { a: [sub("a")], b: [sub("b")], c: [sub("c")] },
+      true,
+    )
     expect(page.length).toBe(3)
     const totals = planTotals(mrr, "en")
     expect(totals[0]?.plans.map((p) => [p.plan, p.count])).toEqual([
@@ -129,7 +143,9 @@ describe("the list reads the mirror", () => {
     for (const email of ["nadia.ferrand@gmail.com", "x@outlook.fr", "y@hotmail.com"]) {
       expect(linkOffer({ email }, suggestion).kind).toBe("none")
     }
-    expect(linkOffer({ email: "compta@bistrot-garance.example" }, suggestion).kind).toBe("suggested")
+    expect(linkOffer({ email: "compta@bistrot-garance.example" }, suggestion).kind).toBe(
+      "suggested",
+    )
     expect(linkOffer({ email: "compta@bistrot-garance.example" }, null).kind).toBe("none")
     expect(linkOffer({ email: null }, suggestion).kind).toBe("none")
   })
@@ -137,7 +153,11 @@ describe("the list reads the mirror", () => {
 
 describe("rows", () => {
   it("the Subscriptions filter keeps only customers with a live subscription", () => {
-    const rows = buildRows([cust("a"), cust("b"), cust("c")], { a: [sub("a")], b: [sub("b", { status: "canceled" })], c: [] }, true)
+    const rows = buildRows(
+      [cust("a"), cust("b"), cust("c")],
+      { a: [sub("a")], b: [sub("b", { status: "canceled" })], c: [] },
+      true,
+    )
     expect(rows.map((r) => r.customer.id)).toEqual(["a"])
     expect(buildRows([cust("a"), cust("b")], { a: [sub("a")], b: [] }, false).length).toBe(2)
   })
@@ -156,7 +176,13 @@ describe("rows", () => {
     expect(statusOf(past, {}, "en")).toEqual({ label: "Past due", tone: "problem" })
     expect(whatHappensNext(past, null, "en")).toContain("No retry left")
     expect(whatHappensNext(past, "2026-11-12T00:00:00Z", "en")).toContain("retries")
-    expect(whatHappensNext(sub("t", { status: "trialing", trialEnd: "2026-11-12T00:00:00Z" }), null, "en")).toContain("Trial ends")
+    expect(
+      whatHappensNext(
+        sub("t", { status: "trialing", trialEnd: "2026-11-12T00:00:00Z" }),
+        null,
+        "en",
+      ),
+    ).toContain("Trial ends")
     expect(countLabel(50, true)).toBe("50+")
     expect(countLabel(3, false)).toBe("3")
   })
@@ -164,9 +190,19 @@ describe("rows", () => {
 
 describe("calm interface", () => {
   it("no alarm colour in the customers screens", () => {
-    for (const f of ["CustomersList.tsx", "CustomerDetail.tsx", "RefundCards.tsx", "panel-view.tsx", "customers-model.ts", "refund-model.ts", "panels-model.ts"]) {
+    for (const f of [
+      "CustomersList.tsx",
+      "CustomerDetail.tsx",
+      "RefundCards.tsx",
+      "panel-view.tsx",
+      "customers-model.ts",
+      "refund-model.ts",
+      "panels-model.ts",
+    ]) {
       const src = readFileSync(join(import.meta.dir, f), "utf8")
-      expect(src).not.toMatch(/\b(?:text|bg|border)-(?:red|rose|orange|danger|error)\b|animate-(?:pulse|ping|bounce)|tone="error"/)
+      expect(src).not.toMatch(
+        /\b(?:text|bg|border)-(?:red|rose|orange|danger|error)\b|animate-(?:pulse|ping|bounce)|tone="error"/,
+      )
     }
   })
 })

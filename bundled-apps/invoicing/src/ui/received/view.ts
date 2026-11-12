@@ -6,7 +6,14 @@
 // that forbids it, the supplier's XML never rendered (it is only downloadable).
 import { tr, uiLocale } from "../i18n"
 
-export type ReceivedStatus = "received" | "approved" | "in_dispute" | "refused" | "rejected" | "partially_collected" | "collected"
+export type ReceivedStatus =
+  | "received"
+  | "approved"
+  | "in_dispute"
+  | "refused"
+  | "rejected"
+  | "partially_collected"
+  | "collected"
 
 export const STATUS_LABEL: Record<ReceivedStatus, string> = {
   received: "Received",
@@ -169,7 +176,9 @@ export interface ReceivedDetailData {
     due_date: string | null
     currency: string | null
     totals: { before_tax: string | null; tax: string | null; total: string | null }
-    file_facts: { totals: { before_tax: string | null; tax: string | null; total: string | null } | null } | null
+    file_facts: {
+      totals: { before_tax: string | null; tax: string | null; total: string | null } | null
+    } | null
     totals_mismatch: string[]
     parse_status: string | null
     status: ReceivedStatus
@@ -217,10 +226,22 @@ export interface DetailView {
   facts: Array<{ label: string; value: string; testid: string }>
   totals: Array<{ label: string; value: string; file: string | null; testid: string }>
   mismatch: boolean
-  files: Array<{ kind: string; label: string; previewable: boolean; file_id: string; filename: string; testid: string }>
+  files: Array<{
+    kind: string
+    label: string
+    previewable: boolean
+    file_id: string
+    filename: string
+    testid: string
+  }>
   filesNote: string | null
   timeline: Array<{ at: string; text: string }>
-  actions: Array<{ action: string; label: string; reasons: Array<{ value: string; label: string; code: string }>; needsReason: boolean }>
+  actions: Array<{
+    action: string
+    label: string
+    reasons: Array<{ value: string; label: string; code: string }>
+    needsReason: boolean
+  }>
   pending: string | null
   noActionWhy: string | null
   canAct: boolean
@@ -243,7 +264,11 @@ function historyReason(e: HistoryEntry, offers: ReceivedOffer[]): string | null 
 /** The current status's reason, in words when the history or the offers know its slug. */
 function statusReason(reason: string, d: ReceivedDetailData): string {
   const entry = [...d.history].reverse().find((e) => !e.action && e.reason_text === reason)
-  return (entry ? historyReason(entry, d.actions) : historyReason({ observed_at: "", source: "", reason_text: reason }, d.actions)) ?? reason
+  return (
+    (entry
+      ? historyReason(entry, d.actions)
+      : historyReason({ observed_at: "", source: "", reason_text: reason }, d.actions)) ?? reason
+  )
 }
 
 export function detailView(d: ReceivedDetailData, opts: { timeZone?: string } = {}): DetailView {
@@ -282,7 +307,11 @@ export function detailView(d: ReceivedDetailData, opts: { timeZone?: string } = 
   const timeline = d.history.map((e) => {
     const at = localDateTime(e.provider_ts ?? e.observed_at ?? null, opts.timeZone)
     if (e.action) {
-      const what = tr(e.outcome === "sent" ? (ACTION_DONE[e.action ?? ""] ?? "Decision sent") : "The platform did not accept the decision")
+      const what = tr(
+        e.outcome === "sent"
+          ? (ACTION_DONE[e.action ?? ""] ?? "Decision sent")
+          : "The platform did not accept the decision",
+      )
       const why = historyReason(e, d.actions)
       return { at, text: why ? tr("{{what}}: {{why}}", { what, why }) : what }
     }
@@ -290,41 +319,68 @@ export function detailView(d: ReceivedDetailData, opts: { timeZone?: string } = 
     const why = historyReason(e, d.actions)
     return { at, text: why ? tr("{{what}}: {{why}}", { what: words, why }) : words }
   })
-  const pending = d.pending_action ? tr(ACTION_PENDING[d.pending_action.action] ?? "A decision awaits approval") : null
+  const pending = d.pending_action
+    ? tr(ACTION_PENDING[d.pending_action.action] ?? "A decision awaits approval")
+    : null
   const offered = d.actions.length > 0
-  const actions = pending || !canAct
-    ? []
-    : d.actions.map((a) => ({
-        action: a.action,
-        label: tr(ACTION_LABEL[a.action] ?? a.action),
-        reasons: a.reasons.map((r) => ({ value: r.reason, label: reasonLabel(r), code: r.afnor_code })),
-        needsReason: a.action !== "undispute",
-      }))
+  const actions =
+    pending || !canAct
+      ? []
+      : d.actions.map((a) => ({
+          action: a.action,
+          label: tr(ACTION_LABEL[a.action] ?? a.action),
+          reasons: a.reasons.map((r) => ({
+            value: r.reason,
+            label: reasonLabel(r),
+            code: r.afnor_code,
+          })),
+          needsReason: a.action !== "undispute",
+        }))
   let noActionWhy: string | null = null
   if (!pending && actions.length === 0) {
-    if (offered && !canAct) noActionWhy = tr("Refusing or disputing this invoice needs the permission to act on received invoices.")
-    else if (inv.status === "refused") noActionWhy = tr("This invoice was refused: nothing more can be done with it here.")
-    else if (inv.status === "rejected") noActionWhy = tr("The platform rejected this invoice: nothing more can be done with it here.")
-    else if (inv.payment_linked) noActionWhy = tr("A payment is linked to this invoice, so it can no longer be refused or disputed.")
+    if (offered && !canAct)
+      noActionWhy = tr(
+        "Refusing or disputing this invoice needs the permission to act on received invoices.",
+      )
+    else if (inv.status === "refused")
+      noActionWhy = tr("This invoice was refused: nothing more can be done with it here.")
+    else if (inv.status === "rejected")
+      noActionWhy = tr("The platform rejected this invoice: nothing more can be done with it here.")
+    else if (inv.payment_linked)
+      noActionWhy = tr(
+        "A payment is linked to this invoice, so it can no longer be refused or disputed.",
+      )
     else noActionWhy = tr("The platform offers no action on this invoice now.")
   }
   return {
     title: `${inv.supplier.name ?? tr("Unknown supplier")} · ${inv.invoice_number ?? tr("No number")}`,
     status: statusText(inv.status, inv.status_code),
-    statusNote: inv.status_reason ? tr("Reason given: {{reason}}", { reason: statusReason(inv.status_reason, d) }) : null,
+    statusNote: inv.status_reason
+      ? tr("Reason given: {{reason}}", { reason: statusReason(inv.status_reason, d) })
+      : null,
     facts: [
       { label: tr("Supplier"), value: inv.supplier.name ?? "-", testid: "received-fact-supplier" },
       { label: tr("SIREN"), value: inv.supplier.siren ?? "-", testid: "received-fact-siren" },
       { label: tr("VAT number"), value: inv.supplier.vat_id ?? "-", testid: "received-fact-vat" },
-      { label: tr("Invoice number"), value: inv.invoice_number ?? "-", testid: "received-fact-number" },
+      {
+        label: tr("Invoice number"),
+        value: inv.invoice_number ?? "-",
+        testid: "received-fact-number",
+      },
       { label: tr("Issue date"), value: shortDate(inv.issue_date), testid: "received-fact-issued" },
       { label: tr("Due date"), value: shortDate(inv.due_date), testid: "received-fact-due" },
-      { label: tr("Received"), value: shortDate(inv.received_at), testid: "received-fact-received" },
+      {
+        label: tr("Received"),
+        value: shortDate(inv.received_at),
+        testid: "received-fact-received",
+      },
     ],
     totals,
     mismatch: differs.size > 0,
     files,
-    filesNote: inv.files_pending ? tr("A file could not be fetched from the platform yet; it is retried on the next refresh.") : null,
+    filesNote: inv.files_pending
+      ? tr("A file could not be fetched from the platform yet; it is retried on the next refresh.")
+      : null,
     timeline,
     actions,
     pending,
@@ -337,9 +393,13 @@ export function detailView(d: ReceivedDetailData, opts: { timeZone?: string } = 
 export function confirmText(action: string, reasonLabelText: string | null): string {
   const lines = [
     action === "refuse"
-      ? tr("A refusal is final: once sent, the supplier's platform is told and the invoice is closed.")
+      ? tr(
+          "A refusal is final: once sent, the supplier's platform is told and the invoice is closed.",
+        )
       : action === "dispute"
-        ? tr("Once sent, the supplier's platform is told the invoice is disputed. The dispute can be withdrawn later.")
+        ? tr(
+            "Once sent, the supplier's platform is told the invoice is disputed. The dispute can be withdrawn later.",
+          )
         : tr("Once sent, the supplier's platform is told the dispute is over."),
   ]
   if (reasonLabelText) lines.push(tr("Reason: {{reason}}", { reason: reasonLabelText }))

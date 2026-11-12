@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
+import type { PennylaneLogger, PennylaneToolCtx } from "./ctx"
+import { PennylaneApiError, PennylaneRateLimitError } from "./lib/pennylane-client"
+import type { NotConnectedEnvelope } from "./reads"
 import {
-  supplierInvoicesList,
-  supplierInvoiceGet,
-  customerInvoicesList,
-  trialBalanceGet,
-  pnlSummary,
   cashPosition,
-  transactionsList,
-  spendByCategory,
-  runwayEstimate,
+  customerInvoicesList,
   homeLoad,
+  pnlSummary,
+  runwayEstimate,
+  spendByCategory,
+  supplierInvoiceGet,
+  supplierInvoicesList,
+  transactionsList,
+  trialBalanceGet,
 } from "./reads"
 import { REFRESH_PAGES_PER_CHUNK, type RefreshSnapshotsCtx, refreshSnapshotsJob } from "./snapshot"
-import { PennylaneApiError, PennylaneRateLimitError } from "./lib/pennylane-client"
 import type { Page } from "./types"
-import type { PennylaneLogger, PennylaneToolCtx } from "./ctx"
-import type { NotConnectedEnvelope } from "./reads"
 
 /**
  * Every read handler now returns `View | NotConnectedEnvelope` (structured
@@ -66,7 +66,11 @@ function makeCtx(opts: {
   /** `/trial_balance` answers 429 on this call number (1-based), once. */
   tbRateLimitOnCall?: number
 }): RefreshSnapshotsCtx {
-  const page = <T>(items: T[]): Page<T> => ({ items: items as T[], next_cursor: null, has_more: false })
+  const page = <T>(items: T[]): Page<T> => ({
+    items: items as T[],
+    next_cursor: null,
+    has_more: false,
+  })
   /**
    * Resolve one cursor page from a ListData dataset. Flat arrays return a single
    * terminal page (back-compat). Paged datasets emit `cursor=<n>` for page n and
@@ -107,7 +111,8 @@ function makeCtx(opts: {
       if (path.includes("/supplier_invoices")) return pageFor<T>(opts.supplierInvoices, cursor)
       if (path.includes("/customer_invoices")) return pageFor<T>(opts.customerInvoices, cursor)
       if (path.includes("/fiscal_years")) {
-        if (!opts.fiscalYears) throw new PennylaneApiError(403, '{"error":"missing scope","status":403}')
+        if (!opts.fiscalYears)
+          throw new PennylaneApiError(403, '{"error":"missing scope","status":403}')
         return page<T>(opts.fiscalYears as T[])
       }
       if (path.includes("/trial_balance")) {
@@ -117,9 +122,13 @@ function makeCtx(opts: {
           throw new PennylaneRateLimitError(Date.now() + 30_000)
         }
         // The live API answers 400 when either required date is missing or malformed.
-        const isDate = (v: string | undefined) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
+        const isDate = (v: string | undefined) =>
+          typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
         if (!isDate(q?.params?.period_start) || !isDate(q?.params?.period_end)) {
-          throw new PennylaneApiError(400, '{"message":"period_start is missing","code":"InvalidDateFormat"}')
+          throw new PennylaneApiError(
+            400,
+            '{"message":"period_start is missing","code":"InvalidDateFormat"}',
+          )
         }
         if (opts.trialBalanceStatus !== undefined) {
           const e = new Error("x") as Error & { status?: number }
@@ -341,7 +350,13 @@ describe("pennylane reads — projection + derivation", () => {
     const ctx = makeCtx({
       bankAccounts: [
         { id: "ba_1", name: "Main", balance: "2500.00", currency: "EUR", synced_at: "2026-06-10" },
-        { id: "ba_2", name: "USD ops", balance: "900.00", currency: "USD", synced_at: "2026-06-10" },
+        {
+          id: "ba_2",
+          name: "USD ops",
+          balance: "900.00",
+          currency: "USD",
+          synced_at: "2026-06-10",
+        },
       ],
     })
     const out = expectConnected(await cashPosition(ctx, {}))
@@ -360,7 +375,13 @@ describe("pennylane reads — projection + derivation", () => {
     // 300000 EUR cash, net burn = -(−30000) = 30000/mo → 10 months.
     const ctx = makeCtx({
       bankAccounts: [
-        { id: "ba_1", name: "Main EUR", balance: "3000.00", currency: "EUR", synced_at: "2026-06-10" },
+        {
+          id: "ba_1",
+          name: "Main EUR",
+          balance: "3000.00",
+          currency: "EUR",
+          synced_at: "2026-06-10",
+        },
       ],
       transactions: [{ id: "t1", amount: "-300.00", currency: "EUR", date: "2026-06-01" }],
     })
@@ -374,8 +395,20 @@ describe("pennylane reads — projection + derivation", () => {
     // EUR net burn (no FX). Only the EUR tx (−25000) drives burn → 12 months.
     const ctx = makeCtx({
       bankAccounts: [
-        { id: "ba_1", name: "Main EUR", balance: "3000.00", currency: "EUR", synced_at: "2026-06-10" },
-        { id: "ba_2", name: "USD ops", balance: "900.00", currency: "USD", synced_at: "2026-06-10" },
+        {
+          id: "ba_1",
+          name: "Main EUR",
+          balance: "3000.00",
+          currency: "EUR",
+          synced_at: "2026-06-10",
+        },
+        {
+          id: "ba_2",
+          name: "USD ops",
+          balance: "900.00",
+          currency: "USD",
+          synced_at: "2026-06-10",
+        },
       ],
       transactions: [
         { id: "t1", amount: "-250.00", currency: "EUR", date: "2026-06-01" },
@@ -390,7 +423,13 @@ describe("pennylane reads — projection + derivation", () => {
   it("runway_estimate returns months:null when net burn is ≤ 0 (cash-flow positive)", async () => {
     const ctx = makeCtx({
       bankAccounts: [
-        { id: "ba_1", name: "Main EUR", balance: "3000.00", currency: "EUR", synced_at: "2026-06-10" },
+        {
+          id: "ba_1",
+          name: "Main EUR",
+          balance: "3000.00",
+          currency: "EUR",
+          synced_at: "2026-06-10",
+        },
       ],
       transactions: [{ id: "t1", amount: "50.00", currency: "EUR", date: "2026-06-01" }],
     })
@@ -459,7 +498,9 @@ describe("pennylane reads — projection + derivation", () => {
           invoice_date: "2026-06-01",
         },
       ],
-      trialBalance: [{ account_code: "601000", label: "Parts", balance: "400.00", currency: "EUR" }],
+      trialBalance: [
+        { account_code: "601000", label: "Parts", balance: "400.00", currency: "EUR" },
+      ],
       transactions: [{ id: "t1", amount: "-30.00", currency: "EUR", date: "2026-06-01" }],
       mapping: { "60": "cogs" },
     })
@@ -530,7 +571,13 @@ describe("pennylane reads — projection + derivation", () => {
     for (let i = 0; i < txAll.length; i += 50) txPages.push(txAll.slice(i, i + 50))
     const ctx = makeCtx({
       bankAccounts: [
-        { id: "ba_1", name: "Main EUR", balance: "12000.00", currency: "EUR", synced_at: "2026-06-10" },
+        {
+          id: "ba_1",
+          name: "Main EUR",
+          balance: "12000.00",
+          currency: "EUR",
+          synced_at: "2026-06-10",
+        },
       ],
       transactions: txPages,
     })
@@ -592,7 +639,10 @@ describe("pennylane reads — projection + derivation", () => {
       tbRateLimitOnCall: 2,
     })
     expect((await refreshSnapshotsJob(ctx)).state).toBe("scheduled")
-    const saved = (await ctx.steps.get("refresh-snapshots"))?.cursor as { pnl: { cogs: string }; pages: number }
+    const saved = (await ctx.steps.get("refresh-snapshots"))?.cursor as {
+      pnl: { cogs: string }
+      pages: number
+    }
     expect(saved).toMatchObject({ pnl: { cogs: "10000" }, pages: 1 })
     expect((await refreshSnapshotsJob(ctx, { _steps: {} })).state).toBe("done")
     expect((await homeLoad(ctx, {})).pnl?.cogs_minor).toBe("30000")
@@ -652,16 +702,37 @@ describe("pennylane trial balance — required period window + live line shape",
     const tbCalls: Array<Record<string, string> | undefined> = []
     const ctx = makeCtx({ trialBalance: [], tbCalls })
     await refreshSnapshotsJob(ctx)
-    expect(tbCalls[0]).toMatchObject({ period_start: `${today.slice(0, 4)}-01-01`, period_end: today })
+    expect(tbCalls[0]).toMatchObject({
+      period_start: `${today.slice(0, 4)}-01-01`,
+      period_end: today,
+    })
   })
 
   it("reads the live line shape (number + debits/credits): revenue on the credit side, costs on the debit side", async () => {
     const ctx = makeCtx({
       mapping: { "70": "revenue", "60": "cogs", "62": "opex" },
       trialBalance: [
-        { number: "706", formatted_number: "70600000", label: "Sales", debits: "50.00", credits: "1050.00" },
-        { number: "601", formatted_number: "60100000", label: "Parts", debits: "400.00", credits: "0.00" },
-        { number: "622", formatted_number: "62200000", label: "Fees", debits: "120.50", credits: "20.50" },
+        {
+          number: "706",
+          formatted_number: "70600000",
+          label: "Sales",
+          debits: "50.00",
+          credits: "1050.00",
+        },
+        {
+          number: "601",
+          formatted_number: "60100000",
+          label: "Parts",
+          debits: "400.00",
+          credits: "0.00",
+        },
+        {
+          number: "622",
+          formatted_number: "62200000",
+          label: "Fees",
+          debits: "120.50",
+          credits: "20.50",
+        },
       ],
     })
     await refreshSnapshotsJob(ctx)
@@ -687,7 +758,11 @@ describe("pennylane trial balance — required period window + live line shape",
       expect.objectContaining({ period_start: "2026-02-01", period_end: "2026-02-28" }),
       expect.objectContaining({ period_start: "2026-03-15", period_end: "2026-04-15" }),
     ])
-    expect(pnl).toMatchObject({ period: "2026-Q2", period_start: "2026-04-01", period_end: "2026-06-30" })
+    expect(pnl).toMatchObject({
+      period: "2026-Q2",
+      period_start: "2026-04-01",
+      period_end: "2026-06-30",
+    })
     expect(tb).toMatchObject({ period_start: "2026-02-01", period_end: "2026-02-28" })
   })
 })

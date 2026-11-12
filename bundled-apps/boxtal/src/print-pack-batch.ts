@@ -15,8 +15,9 @@
 // Per-destination copy counts survive the merge: an invoice that needs three copies (export
 // outside the EU) is placed three times in the invoice document, in row order, so the stack comes
 // off the printer already collated per parcel.
-import { printPack } from "./print-pack"
+
 import type { BoxtalToolCtx } from "./ctx"
+import { printPack } from "./print-pack"
 
 export interface PrintPackBatchInput {
   shipment_ids?: unknown
@@ -26,7 +27,12 @@ export interface PrintPackBatchResult {
   /** The merged label document for the label printer, or null when no selected row had a label. */
   labels: { file_id: string; filename: string; shipment_count: number } | null
   /** The merged invoice document for A4, already collated to the per-destination copy counts. */
-  invoices: { file_id: string; filename: string; shipment_count: number; page_copies: number } | null
+  invoices: {
+    file_id: string
+    filename: string
+    shipment_count: number
+    page_copies: number
+  } | null
   /** Rows that contributed nothing, each with the reason, so the operator knows what to chase
    *  instead of discovering a missing parcel at the packing bench. */
   skipped: Array<{ shipment_id: string; what: "label" | "invoice" | "both"; reason: string }>
@@ -121,9 +127,17 @@ export async function printPackBatch(
         reason: pack.label_error ?? pack.invoice_error ?? "Neither document is available yet.",
       })
     } else if (noLabel) {
-      skipped.push({ shipment_id: id, what: "label", reason: pack.label_error ?? "Label not available yet." })
+      skipped.push({
+        shipment_id: id,
+        what: "label",
+        reason: pack.label_error ?? "Label not available yet.",
+      })
     } else if (noInvoice) {
-      skipped.push({ shipment_id: id, what: "invoice", reason: pack.invoice_error ?? "Invoice not available yet." })
+      skipped.push({
+        shipment_id: id,
+        what: "invoice",
+        reason: pack.invoice_error ?? "Invoice not available yet.",
+      })
     }
   }
 
@@ -179,7 +193,9 @@ export function printPackBatchSummary(res: PrintPackBatchResult): string {
   )
   if (res.skipped.length > 0) {
     const rows = new Set(res.skipped.map((s) => s.shipment_id))
-    parts.push(`${rows.size} ${rows.size === 1 ? "row" : "rows"} incomplete: ${res.skipped[0]!.reason}`)
+    parts.push(
+      `${rows.size} ${rows.size === 1 ? "row" : "rows"} incomplete: ${res.skipped[0]!.reason}`,
+    )
   }
   return `${parts.join(". ")}.`
 }

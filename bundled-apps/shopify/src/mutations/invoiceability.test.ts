@@ -39,7 +39,14 @@ function makeCtx(opts: {
   const issuerRows =
     opts.invoicingShop == null
       ? []
-      : [{ id: "iss-1", legal_name: "Seller SAS", country: "FR", shopify_shop_id: opts.invoicingShop }]
+      : [
+          {
+            id: "iss-1",
+            legal_name: "Seller SAS",
+            country: "FR",
+            shopify_shop_id: opts.invoicingShop,
+          },
+        ]
   const ctx = {
     userId: "u",
     orgId: "o",
@@ -60,7 +67,9 @@ function makeCtx(opts: {
     resolveContact: async () => ({}),
     connections: {
       shop: {
-        getAccounts: async () => [{ id: "ca1", ownerType: "org", ownerId: null, identifier: SHOP, displayName: null }],
+        getAccounts: async () => [
+          { id: "ca1", ownerType: "org", ownerId: null, identifier: SHOP, displayName: null },
+        ],
         getToken: async () => "test-token",
       },
     },
@@ -76,14 +85,20 @@ function makeCtx(opts: {
           executeTool: async (target: string, args: Record<string, unknown>) => {
             crossApp.push({ target, args })
             if (target !== INVOICEABILITY_CHECK_TOOL || opts.invoicingShop == null)
-              return { status: "error", error: { code: "TOOL_NOT_FOUND", message: `${target} not installed` } }
+              return {
+                status: "error",
+                error: { code: "TOOL_NOT_FOUND", message: `${target} not installed` },
+              }
             const db = {
               findMany: async (table: string, q: { where?: Record<string, unknown> }) =>
                 table === "issuer_profiles"
                   ? issuerRows.filter((r) => r.shopify_shop_id === q.where?.shopify_shop_id)
                   : [],
             }
-            return { status: "completed", result: await ordersInvoiceabilityCheck({ db: db as never }, args) }
+            return {
+              status: "completed",
+              result: await ordersInvoiceabilityCheck({ db: db as never }, args),
+            }
           },
         }),
   } as unknown as AppContext
@@ -114,33 +129,65 @@ const consumerLookup = { data: { customer: { id: CUSTOMER, companyContactProfile
 const createParams = (input: Record<string, unknown> = {}) => ({
   input: {
     purchasingEntity: { customerId: CUSTOMER },
-    shippingAddress: { firstName: "Giulia", lastName: "Rossi", address1: "Via Roma 1", city: "Milano", zip: "20100", countryCode: "IT" },
-    lineItems: [{ title: "Kestrel Field Preamp", quantity: 1, originalUnitPriceWithCurrency: { amount: "500.00", currencyCode: "EUR" }, requiresShipping: false }],
+    shippingAddress: {
+      firstName: "Giulia",
+      lastName: "Rossi",
+      address1: "Via Roma 1",
+      city: "Milano",
+      zip: "20100",
+      countryCode: "IT",
+    },
+    lineItems: [
+      {
+        title: "Kestrel Field Preamp",
+        quantity: 1,
+        originalUnitPriceWithCurrency: { amount: "500.00", currencyCode: "EUR" },
+        requiresShipping: false,
+      },
+    ],
     ...input,
   },
 })
 
 describe("draft_orders_create refuses an order Invoicing would not invoice", () => {
   it("preflight: a customer with no email and a tax exempt EU buyer with no VAT number, both named, nothing sent", async () => {
-    const { ctx, calls, crossApp } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], invoicingShop: SHOP })
+    const { ctx, calls, crossApp } = makeCtx({
+      fetchResponses: [consumerLookup, customerNode()],
+      invoicingShop: SHOP,
+    })
     const out = await draft_orders_create_preflight(createParams(), ctx)
     expect("error" in out).toBe(true)
     const err = (out as { error: { code: string; message: string } }).error
     expect(err.code).toBe("NOT_INVOICEABLE")
     expect(err.message).toContain("customers_update")
     expect(err.message).toContain("VAT number")
-    expect(crossApp[0]!.args).toMatchObject({ shop_id: SHOP, stage: "create", customer_id: CUSTOMER, email: null, tax_exempt: true })
+    expect(crossApp[0]!.args).toMatchObject({
+      shop_id: SHOP,
+      stage: "create",
+      customer_id: CUSTOMER,
+      email: null,
+      tax_exempt: true,
+    })
     expect(mutations(calls)).toHaveLength(0)
   })
 
   it("preflight: an email on the draft does not stand in for the linked customer's missing one", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode({ taxExempt: false })], invoicingShop: SHOP })
-    const out = await draft_orders_create_preflight(createParams({ email: "buyer@pretty-face.it" }), ctx)
+    const { ctx } = makeCtx({
+      fetchResponses: [consumerLookup, customerNode({ taxExempt: false })],
+      invoicingShop: SHOP,
+    })
+    const out = await draft_orders_create_preflight(
+      createParams({ email: "buyer@pretty-face.it" }),
+      ctx,
+    )
     expect((out as { error: { code: string } }).error.code).toBe("NOT_INVOICEABLE")
   })
 
   it("preflight: passes once the customer has an email and the VAT number rides as a custom attribute", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode({ email: "buyer@pretty-face.it" })], invoicingShop: SHOP })
+    const { ctx } = makeCtx({
+      fetchResponses: [consumerLookup, customerNode({ email: "buyer@pretty-face.it" })],
+      invoicingShop: SHOP,
+    })
     const out = await draft_orders_create_preflight(
       createParams({ customAttributes: [{ key: "VAT number", value: "IT01234567890" }] }),
       ctx,
@@ -149,13 +196,22 @@ describe("draft_orders_create refuses an order Invoicing would not invoice", () 
   })
 
   it("the handler refuses too (the customer can change before the approve), with no draftOrderCreate", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], invoicingShop: SHOP })
-    await expect(draft_orders_create(createParams(), ctx)).rejects.toThrow(/Invoicing would not invoice/)
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [consumerLookup, customerNode()],
+      invoicingShop: SHOP,
+    })
+    await expect(draft_orders_create(createParams(), ctx)).rejects.toThrow(
+      /Invoicing would not invoice/,
+    )
     expect(mutations(calls)).toHaveLength(0)
   })
 
   it("unchanged without Invoicing: not installed, mapped to another shop, or no cross-app dispatch", async () => {
-    for (const opts of [{ invoicingShop: null }, { invoicingShop: "other.myshopify.com" }, { invoicingShop: SHOP, noCrossApp: true }]) {
+    for (const opts of [
+      { invoicingShop: null },
+      { invoicingShop: "other.myshopify.com" },
+      { invoicingShop: SHOP, noCrossApp: true },
+    ]) {
       const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], ...opts })
       expect(await draft_orders_create_preflight(createParams(), ctx)).toEqual({ ok: true })
     }
@@ -182,13 +238,20 @@ const draftNode = (over: Record<string, unknown> = {}, customer: Record<string, 
 describe("draft_orders_complete refuses a draft Invoicing would not invoice, whoever made it", () => {
   it("preflight: refuses the incident's draft (no customer email, exempt, no VAT number), nothing completed", async () => {
     const { ctx, calls, crossApp } = makeCtx({ fetchResponses: [draftNode()], invoicingShop: SHOP })
-    const out = await draft_orders_complete_preflight({ id: "gid://shopify/DraftOrder/348", paymentPending: true }, ctx)
+    const out = await draft_orders_complete_preflight(
+      { id: "gid://shopify/DraftOrder/348", paymentPending: true },
+      ctx,
+    )
     const err = (out as { error: { code: string; message: string } }).error
     expect(err.code).toBe("NOT_INVOICEABLE")
     expect(err.message).toContain("Refusing to complete this draft order")
     expect(err.message).toContain("customers_update")
     expect(err.message).toContain("VAT number")
-    expect(crossApp[0]!.args).toMatchObject({ stage: "complete", draft_order_id: "gid://shopify/DraftOrder/348", total_tax: "0.00" })
+    expect(crossApp[0]!.args).toMatchObject({
+      stage: "complete",
+      draft_order_id: "gid://shopify/DraftOrder/348",
+      total_tax: "0.00",
+    })
     expect(mutations(calls)).toHaveLength(0)
   })
 
@@ -196,7 +259,10 @@ describe("draft_orders_complete refuses a draft Invoicing would not invoice, who
     const { ctx } = makeCtx({
       fetchResponses: [
         draftNode(
-          { totalTaxSet: { presentmentMoney: { amount: "110.00" } }, customAttributes: [{ key: "Partita IVA", value: "IT01234567890" }] },
+          {
+            totalTaxSet: { presentmentMoney: { amount: "110.00" } },
+            customAttributes: [{ key: "Partita IVA", value: "IT01234567890" }],
+          },
           { email: "buyer@pretty-face.it", taxExempt: false },
         ),
       ],
@@ -209,21 +275,30 @@ describe("draft_orders_complete refuses a draft Invoicing would not invoice, who
   it("preflight: passes an invoiceable draft", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        draftNode({ customAttributes: [{ key: "VAT number", value: "IT01234567890" }] }, { email: "buyer@pretty-face.it" }),
+        draftNode(
+          { customAttributes: [{ key: "VAT number", value: "IT01234567890" }] },
+          { email: "buyer@pretty-face.it" },
+        ),
       ],
       invoicingShop: SHOP,
     })
-    expect(await draft_orders_complete_preflight({ id: "gid://shopify/DraftOrder/348" }, ctx)).toEqual({ ok: true })
+    expect(
+      await draft_orders_complete_preflight({ id: "gid://shopify/DraftOrder/348" }, ctx),
+    ).toEqual({ ok: true })
   })
 
   it("the handler refuses before draftOrderComplete is sent", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [draftNode()], invoicingShop: SHOP })
-    await expect(draft_orders_complete({ id: "gid://shopify/DraftOrder/348" }, ctx)).rejects.toThrow(/NOT_INVOICEABLE|Invoicing would not invoice/)
+    await expect(
+      draft_orders_complete({ id: "gid://shopify/DraftOrder/348" }, ctx),
+    ).rejects.toThrow(/NOT_INVOICEABLE|Invoicing would not invoice/)
     expect(mutations(calls)).toHaveLength(0)
   })
 
   it("unchanged without Invoicing mapped to this shop", async () => {
     const { ctx } = makeCtx({ fetchResponses: [draftNode()], invoicingShop: null })
-    expect(await draft_orders_complete_preflight({ id: "gid://shopify/DraftOrder/348" }, ctx)).toEqual({ ok: true })
+    expect(
+      await draft_orders_complete_preflight({ id: "gid://shopify/DraftOrder/348" }, ctx),
+    ).toEqual({ ok: true })
   })
 })

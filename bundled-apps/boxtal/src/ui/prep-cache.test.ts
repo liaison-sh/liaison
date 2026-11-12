@@ -8,8 +8,8 @@ import {
   evictShippedRowFromCache,
   loadPrepCache,
   prepCacheKey,
-  savePrepCache,
   type StorageLike,
+  savePrepCache,
 } from "./prep-cache"
 import type { PrepListResult, PrepRow } from "./prep-row-logic"
 
@@ -80,7 +80,11 @@ function makeList(rows: PrepRow[]): PrepListResult {
 // irrelevant here, decodeOrgIdFromToken never verifies it.
 function fakeToken(payload: Record<string, unknown>): string {
   const b64url = (obj: unknown): string =>
-    Buffer.from(JSON.stringify(obj)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+    Buffer.from(JSON.stringify(obj))
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "")
   return `${b64url({ alg: "none" })}.${b64url(payload)}.sig`
 }
 
@@ -115,7 +119,13 @@ describe("the persisted cache survives a reload", () => {
   it("keys true and false includeExcluded separately", () => {
     const storage = fakeStorage()
     savePrepCache(storage, "org_1", false, makeList([makeRow({ order_key: "so:1" })]), 1)
-    savePrepCache(storage, "org_1", true, makeList([makeRow({ order_key: "so:1" }), makeRow({ order_key: "so:2", excluded: true })]), 2)
+    savePrepCache(
+      storage,
+      "org_1",
+      true,
+      makeList([makeRow({ order_key: "so:1" }), makeRow({ order_key: "so:2", excluded: true })]),
+      2,
+    )
 
     expect(loadPrepCache(storage, "org_1", false)?.value.rows).toHaveLength(1)
     expect(loadPrepCache(storage, "org_1", true)?.value.rows).toHaveLength(2)

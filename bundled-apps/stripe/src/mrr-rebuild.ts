@@ -47,7 +47,9 @@ export interface RebuildResult {
 }
 
 async function putMarker(ctx: SyncCtx, resource: string, cursor: string, now: Date): Promise<void> {
-  const rows = (await ctx.db.findMany("sync_state", { where: { resource }, limit: 1 })) as Array<{ id: string }>
+  const rows = (await ctx.db.findMany("sync_state", { where: { resource }, limit: 1 })) as Array<{
+    id: string
+  }>
   const data = { cursor, status: "done", updated: now.toISOString() }
   if (rows[0]) await ctx.db.update("sync_state", rows[0].id, data)
   else await ctx.db.insert("sync_state", { resource, done_count: 0, catchup_due: false, ...data })
@@ -65,7 +67,8 @@ export async function runMrrRebuild(
 ): Promise<RebuildResult> {
   const now = opts.now()
   const windowStart = new Date(now.getTime() - REBUILD_DAYS * DAY_MS)
-  const connected = typeof install.connected_at === "string" ? install.connected_at : now.toISOString()
+  const connected =
+    typeof install.connected_at === "string" ? install.connected_at : now.toISOString()
   const coverage = new Date((await marker(ctx, COVERAGE)) ?? connected)
   const result: RebuildResult = { appended: 0, complete: false, gapBefore: null }
   if (coverage.getTime() < windowStart.getTime()) {
@@ -81,18 +84,14 @@ export async function runMrrRebuild(
     if (opts.budget.spent) return result
     let body: unknown
     try {
-      body = await stripeFetch(
-        ctx,
-        "/v1/events",
-        {
-          params: {
-            limit: PAGE_SIZE,
-            types: TYPES,
-            created: { gte: Math.floor(from / 1000) },
-            ...(cursor ? { starting_after: cursor } : {}),
-          },
+      body = await stripeFetch(ctx, "/v1/events", {
+        params: {
+          limit: PAGE_SIZE,
+          types: TYPES,
+          created: { gte: Math.floor(from / 1000) },
+          ...(cursor ? { starting_after: cursor } : {}),
         },
-      )
+      })
     } catch (err) {
       if (err instanceof StripeApiError) return result
       throw err
@@ -104,17 +103,31 @@ export async function runMrrRebuild(
     cursor = last.id
   }
 
-  events.sort((a, b) => Number(a.created) - Number(b.created) || String(a.id).localeCompare(String(b.id)))
-  const state = new Map<string, { prev: number | null; lastAt: number; kept: ReturnType<typeof discountsOfRow> } | null>()
+  events.sort(
+    (a, b) => Number(a.created) - Number(b.created) || String(a.id).localeCompare(String(b.id)),
+  )
+  const state = new Map<
+    string,
+    { prev: number | null; lastAt: number; kept: ReturnType<typeof discountsOfRow> } | null
+  >()
   for (const e of events) {
     const obj = ((e.data as Obj | undefined)?.object ?? null) as Obj | null
     const subId = typeof obj?.id === "string" ? obj.id : null
     if (!obj || !subId || typeof e.id !== "string" || typeof e.created !== "number") continue
     let st = state.get(subId)
     if (st === undefined) {
-      const stored = ((await ctx.db.findMany("stripe_subscriptions", { where: { stripe_id: subId }, limit: 1 })) as Obj[])[0]
+      const stored = (
+        (await ctx.db.findMany("stripe_subscriptions", {
+          where: { stripe_id: subId },
+          limit: 1,
+        })) as Obj[]
+      )[0]
       const chain = await chainAfter(ctx.db, subId)
-      st = { prev: chain ? chain.after : null, lastAt: chain ? Date.parse(chain.at) : Number.NEGATIVE_INFINITY, kept: stored ? discountsOfRow(stored) : [] }
+      st = {
+        prev: chain ? chain.after : null,
+        lastAt: chain ? Date.parse(chain.at) : Number.NEGATIVE_INFINITY,
+        kept: stored ? discountsOfRow(stored) : [],
+      }
       state.set(subId, st)
     }
     if (!st) continue

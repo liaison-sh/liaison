@@ -12,15 +12,15 @@ import {
   DEAD_LETTER_MIN_AGE_MS,
   type DeferredCtx,
   type DeferredRow,
-  RETRY_BATCH_SIZE,
   defaultBackoffMs,
   manualRetry,
   markPermanentFailure,
   park,
+  RETRY_BATCH_SIZE,
   retryEligible,
 } from "./deferred"
-import { deferredRetryJob } from "./handlers/deferred-retry"
 import { raiseIdentityAttention } from "./einvoicing/gate"
+import { deferredRetryJob } from "./handlers/deferred-retry"
 import { createMockDb, type MockDb } from "./test-db"
 
 type SeedRow = Partial<DeferredRow> & { id: string }
@@ -258,7 +258,7 @@ describe("deferred queue (E3)", () => {
   test("deferredRetryJob: successfully dispatched row is marked resolved and excluded from subsequent sweeps", async () => {
     const now = new Date("2026-05-15T10:00:00Z")
     const { ctx, db } = makeCtx([{ id: "def-OK", retry_count: 0, retried_at: null }])
-    const dispatch = async () => ({ status: "ok" } as const)
+    const dispatch = async () => ({ status: "ok" }) as const
     // First sweep — dispatched successfully.
     const first = await deferredRetryJob(ctx, dispatch, { now })
     expect(first.succeeded).toBe(1)
@@ -294,7 +294,12 @@ describe("deferred queue (E3)", () => {
     const created = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const rows: SeedRow[] = []
     for (let i = 0; i < RETRY_BATCH_SIZE * 2 + 10; i++) {
-      rows.push({ id: `row-${String(i).padStart(4, "0")}`, retry_count: 0, retried_at: null, created_at: created })
+      rows.push({
+        id: `row-${String(i).padStart(4, "0")}`,
+        retry_count: 0,
+        retried_at: null,
+        created_at: created,
+      })
     }
     const { ctx } = makeCtx(rows)
 
@@ -302,7 +307,10 @@ describe("deferred queue (E3)", () => {
     const firstIds = new Set(first.map((r) => r.id))
     // Simulate the cron stamping retried_at=now on the batch it just handled.
     for (const r of first) {
-      await ctx.db.update("deferred_events", r.id, { retried_at: now.toISOString(), retry_count: 1 })
+      await ctx.db.update("deferred_events", r.id, {
+        retried_at: now.toISOString(),
+        retry_count: 1,
+      })
     }
     // Next sweep, same instant: retry_count=1 rows are inside the 5-min backoff,
     // so the never-tried rows sort first and none of the first batch repeats.
@@ -322,7 +330,13 @@ describe("deferred queue (E3)", () => {
         retried_at: null,
         created_at: created,
       },
-      { id: "def-live", status: "awaiting_data", reason: "customer_email_missing", retry_count: 0, created_at: created },
+      {
+        id: "def-live",
+        status: "awaiting_data",
+        reason: "customer_email_missing",
+        retry_count: 0,
+        created_at: created,
+      },
     ])
     const eligible = await retryEligible(ctx, { now })
     expect(eligible.map((r) => r.id)).toEqual(["def-live"])
@@ -352,7 +366,9 @@ describe("deferred queue (E3)", () => {
     expect(result.succeeded).toBe(1)
     expect(calls).toBe(2)
     expect(db.__all("deferred_events").find((r) => r.id === "def-1")?.status).toBe("resolved")
-    expect(db.__all("deferred_events").find((r) => r.id === "def-3")?.status).toBe("awaiting_config")
+    expect(db.__all("deferred_events").find((r) => r.id === "def-3")?.status).toBe(
+      "awaiting_config",
+    )
   })
 
   test("deferredRetryJob: a single dispatch throwing a non-tx error is isolated, remaining rows still processed", async () => {
@@ -372,7 +388,9 @@ describe("deferred queue (E3)", () => {
     expect(result.failed).toBe(1)
     // def-c was still processed despite def-b throwing.
     expect(db.__all("deferred_events").find((r) => r.id === "def-c")?.status).toBe("resolved")
-    expect(db.__all("deferred_events").find((r) => r.id === "def-b")?.reason).toBe("render exploded")
+    expect(db.__all("deferred_events").find((r) => r.id === "def-b")?.reason).toBe(
+      "render exploded",
+    )
   })
 
   test("deferredRetryJob: dispatch failure on a near-cap aged row → dead_lettered", async () => {
@@ -386,7 +404,7 @@ describe("deferred queue (E3)", () => {
         created_at: oldCreated,
       },
     ])
-    const dispatch = async () => ({ status: "still_blocked", reason: "x" } as const)
+    const dispatch = async () => ({ status: "still_blocked", reason: "x" }) as const
     const result = await deferredRetryJob(ctx, dispatch, { now })
     expect(result.dead_lettered).toBe(1)
     const row = db.__all("deferred_events").find((r) => r.id === "def-CAP")!
@@ -428,7 +446,8 @@ describe("identity parks (e-invoicing buyer identity)", () => {
     const after = await markPermanentFailure(ctx, row, { now })
     expect(after.status).toBe("awaiting_data")
 
-    const dispatch = async () => ({ status: "still_blocked", reason: "einvoice_data_missing" } as const)
+    const dispatch = async () =>
+      ({ status: "still_blocked", reason: "einvoice_data_missing" }) as const
     const result = await deferredRetryJob(ctx, dispatch, { now })
     expect(result.dead_lettered).toBe(0)
     expect(result.failed).toBe(1)
@@ -480,7 +499,11 @@ describe("identity park lookups stay correct at scale (filtered by contact, not 
         event_payload_json: {},
         status: "awaiting_data",
         reason: "customer_kind_missing",
-        blocked_on: { kind: "einvoice_identity", contact_id: `contact-${i}`, code: "customer_kind_missing" },
+        blocked_on: {
+          kind: "einvoice_identity",
+          contact_id: `contact-${i}`,
+          code: "customer_kind_missing",
+        },
       })
     }
     await park(ctx, {
@@ -488,14 +511,22 @@ describe("identity park lookups stay correct at scale (filtered by contact, not 
       event_payload_json: {},
       status: "awaiting_data",
       reason: "customer_kind_missing",
-      blocked_on: { kind: "einvoice_identity", contact_id: "contact-x", code: "customer_kind_missing" },
+      blocked_on: {
+        kind: "einvoice_identity",
+        contact_id: "contact-x",
+        code: "customer_kind_missing",
+      },
     })
     const second = await park(ctx, {
       event_id: "order-x-2",
       event_payload_json: {},
       status: "awaiting_data",
       reason: "customer_kind_missing",
-      blocked_on: { kind: "einvoice_identity", contact_id: "contact-x", code: "customer_kind_missing" },
+      blocked_on: {
+        kind: "einvoice_identity",
+        contact_id: "contact-x",
+        code: "customer_kind_missing",
+      },
     })
     const emitted: unknown[] = []
     const raised = await raiseIdentityAttention(
@@ -510,9 +541,26 @@ describe("identity park lookups stay correct at scale (filtered by contact, not 
     const now = new Date("2026-10-14T12:00:00Z")
     const triedAt = new Date(now.getTime() - 60_000)
     const { ctx } = makeCtx([
-      { id: "a", status: "awaiting_data", retry_count: 3, retried_at: triedAt, blocked_on: { kind: "einvoice_identity", contact_id: "c-wait" } },
-      { id: "b", status: "awaiting_data", retry_count: 0, blocked_on: { kind: "einvoice_identity", contact_id: "c-due" } },
-      { id: "c", status: "awaiting_data", retry_count: 3, retried_at: triedAt, blocked_on: { kind: "customer_email", contact_id: "c-mail" } },
+      {
+        id: "a",
+        status: "awaiting_data",
+        retry_count: 3,
+        retried_at: triedAt,
+        blocked_on: { kind: "einvoice_identity", contact_id: "c-wait" },
+      },
+      {
+        id: "b",
+        status: "awaiting_data",
+        retry_count: 0,
+        blocked_on: { kind: "einvoice_identity", contact_id: "c-due" },
+      },
+      {
+        id: "c",
+        status: "awaiting_data",
+        retry_count: 3,
+        retried_at: triedAt,
+        blocked_on: { kind: "customer_email", contact_id: "c-mail" },
+      },
     ])
     const asked: string[][] = []
     const due = await retryEligible(ctx, {

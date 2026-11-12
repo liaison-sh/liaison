@@ -7,7 +7,11 @@ import path from "node:path"
 import {
   acquireSlot,
   formatStatus,
+  type GateInput,
+  gateDecision,
   isDeadProcessState,
+  isLightCommand,
+  lightSlotCount,
   liveWaiters,
   type MemorySample,
   maxLoad,
@@ -24,6 +28,7 @@ import {
   releaseHeldBy,
   releaseOnFailure,
   slotDir,
+  starveMs,
 } from "./machine-slots"
 
 const created: string[] = []
@@ -38,6 +43,7 @@ function freshEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
     LIAISON_SLOT_MIN_IDLE: "off",
     LIAISON_SLOT_MIN_FREE_MB: "off",
     LIAISON_SLOT_MAX_SWAP_MB: "off",
+    LIAISON_SLOT_STARVE_SEC: "off",
     ...extra,
   }
 }
@@ -211,8 +217,9 @@ describe("FIFO tickets", () => {
 })
 
 describe("load gate", () => {
-  it("defaults to the core count on macOS, off elsewhere, and honours LIAISON_SLOT_MAX_LOAD", () => {
-    expect(maxLoad({}, "darwin", 10)).toBe(10)
+  it("defaults to 1.5x the core count on macOS, off elsewhere, and honours LIAISON_SLOT_MAX_LOAD", () => {
+    expect(maxLoad({}, "darwin", 10)).toBe(15)
+    expect(maxLoad({}, "darwin", 8)).toBe(12)
     expect(maxLoad({}, "darwin", 0)).toBe(1)
     expect(maxLoad({}, "linux")).toBe(0)
     expect(maxLoad({ LIAISON_SLOT_MAX_LOAD: "12" }, "darwin")).toBe(12)
@@ -572,11 +579,302 @@ describe("status", () => {
       memory: { availableMb: 5120.4, swapUsedMb: 1388.7 },
       platform: "darwin",
     })
-    expect(out).toContain("1/2 held, load 3.3 (new jobs wait at 8)")
+    expect(out).toContain("1/2 held, load 3.3 (new heavy jobs wait at 8)")
+    expect(out).toContain("light lane (tsgo, Biome; memory gate, no load gate): 0/2 held")
+    expect(out).toContain("light 0: free")
     expect(out).toContain("memory: available memory 5120 MB, swap used 1389 MB (no memory gate)")
     expect(out).toContain(`slot 0: pid 1, 10m, cwd ${process.cwd()}, test-run.ts unit`)
     expect(out).toContain("slot 1: free")
     expect(out).toContain("1. pid 9, 6m, cwd /w, tsc")
     a.release()
+  })
+})
+
+const base: GateInput = {
+  lane: "heavy",
+  position: 0,
+  freeSlots: 1,
+  load: 2,
+  maxLoad: 15,
+  idlePct: 10,
+  minIdlePct: 25,
+  waitedMs: 0,
+  starveMs: 600_000,
+  memHold: null,
+}
+
+describe("gate decision", () => {
+  it("admits the head of the queue when a slot is free, the load is under the gate and memory is fine", () => {
+    expect(gateDecision(base)).toEqual({ admit: true, reasons: [], starved: false })
+  })
+
+  it("keeps FIFO: a waiter behind as many waiters as there are free slots waits, with no gate reason", () => {
+    expect(gateDecision({ ...base, position: 1, freeSlots: 1 })).toEqual({
+      admit: false,
+      reasons: [],
+      starved: false,
+    })
+    expect(gateDecision({ ...base, position: 1, freeSlots: 2 }).admit).toBe(true)
+  })
+
+  it("holds a heavy job over the load gate while the CPUs are busy, and names the starvation limit", () => {
+    const d = gateDecision({ ...base, load: 16, waitedMs: 60_000 })
+    expect(d.admit).toBe(false)
+    expect(d.reasons[0]).toContain("load 16.0 is at or above LIAISON_SLOT_MAX_LOAD 15")
+    expect(d.reasons[0]).toContain("taken anyway after 600s of waiting")
+  })
+
+  it("lets the load through when the CPUs are idle (the load is I/O wait)", () => {
+    expect(gateDecision({ ...base, load: 30, idlePct: 60 }).admit).toBe(true)
+  })
+
+  it("anti-starvation: a waiter past the limit takes a free slot over the load gate", () => {
+    const d = gateDecision({ ...base, load: 30, waitedMs: 600_000 })
+    expect(d).toEqual({ admit: true, reasons: [], starved: true })
+  })
+
+  it("anti-starvation never overrides memory", () => {
+    const d = gateDecision({
+      ...base,
+      load: 30,
+      waitedMs: 3_600_000,
+      memHold: "macOS memory pressure is warn",
+    })
+    expect(d.admit).toBe(false)
+    expect(d.starved).toBe(false)
+    expect(d.reasons).toEqual(["macOS memory pressure is warn"])
+  })
+
+  it("anti-starvation never takes a slot that is not free", () => {
+    expect(gateDecision({ ...base, freeSlots: 0, load: 30, waitedMs: 3_600_000 }).admit).toBe(false)
+  })
+
+  it("with starvation off, the load gate holds however long the wait", () => {
+    const d = gateDecision({ ...base, load: 30, waitedMs: 86_400_000, starveMs: 0 })
+    expect(d.admit).toBe(false)
+    expect(d.reasons[0]).not.toContain("taken anyway")
+  })
+
+  it("the light lane has no load gate but keeps the memory gate", () => {
+    expect(gateDecision({ ...base, lane: "light", load: 99 }).admit).toBe(true)
+    expect(gateDecision({ ...base, lane: "light", load: 99, memHold: "low" }).admit).toBe(false)
+  })
+
+  it("reads LIAISON_SLOT_STARVE_SEC: 600 s by default, off or 0 for never", () => {
+    expect(starveMs({})).toBe(600_000)
+    expect(starveMs({ LIAISON_SLOT_STARVE_SEC: "120" })).toBe(120_000)
+    expect(starveMs({ LIAISON_SLOT_STARVE_SEC: "off" })).toBe(0)
+    expect(starveMs({ LIAISON_SLOT_STARVE_SEC: "0" })).toBe(0)
+    expect(starveMs({ LIAISON_SLOT_STARVE_SEC: "abc" })).toBe(600_000)
+  })
+})
+
+describe("anti-starvation in acquire", () => {
+  it("a waiter held by other work's load takes a free slot once it has waited the limit", async () => {
+    const env = freshEnv({ LIAISON_SLOT_MAX_LOAD: "10", LIAISON_SLOT_STARVE_SEC: "600" })
+    const procs = fakeProcs({ 1: "s1" })
+    const lines: string[] = []
+    const clock = fakeClock()
+    const lock = await acquireSlot({
+      cmd: "a",
+      env,
+      pid: 1,
+      probe: procs.probe,
+      // The 23:14 machine: load 11.2 on 10 cores, from other projects, all along.
+      loadAvg: () => 11.2,
+      cpuIdle: () => 5,
+      ...clock,
+      ...quiet,
+      pollMs: 30_000,
+      log: (m) => lines.push(m),
+    })
+    expect(clock.now() - 1_000_000).toBeGreaterThanOrEqual(600_000)
+    expect(clock.now() - 1_000_000).toBeLessThan(700_000)
+    expect(lines.join("\n")).toContain("with a slot free and memory fine: it takes slot 0")
+    lock.release()
+  })
+
+  it("a starved waiter still waits while memory is short", async () => {
+    const env = freshEnv({
+      LIAISON_SLOT_MAX_LOAD: "10",
+      LIAISON_SLOT_STARVE_SEC: "1",
+      LIAISON_SLOT_MIN_FREE_MB: "1024",
+      TEST_LOCK_WAIT_SEC: "5",
+    })
+    const procs = fakeProcs({ 1: "s1" })
+    await expect(
+      acquireSlot({
+        cmd: "a",
+        env,
+        pid: 1,
+        probe: procs.probe,
+        loadAvg: () => 30,
+        cpuIdle: () => 0,
+        memory: () => ({ availableMb: 300, swapUsedMb: 0 }),
+        ...fakeClock(),
+        ...quiet,
+      }),
+    ).rejects.toThrow(/available memory 300 MB is below LIAISON_SLOT_MIN_FREE_MB 1024/)
+  })
+
+  it("serves starved waiters in FIFO order: the second waits for the first", async () => {
+    const env = freshEnv({
+      LIAISON_SLOT_MAX_LOAD: "10",
+      LIAISON_SLOT_STARVE_SEC: "10",
+      LIAISON_TEST_SLOTS: "1",
+    })
+    const procs = fakeProcs({ 1: "s1", 2: "s2" })
+    const order: string[] = []
+    const clock = fakeClock()
+    const opts = {
+      env,
+      probe: procs.probe,
+      loadAvg: () => 30,
+      cpuIdle: () => 0,
+      ...clock,
+      ...quiet,
+    }
+    const first = acquireSlot({ ...opts, cmd: "a", pid: 1 }).then((l) => {
+      order.push("a")
+      return l
+    })
+    const second = acquireSlot({ ...opts, cmd: "b", pid: 2 }).then((l) => {
+      order.push("b")
+      return l
+    })
+    const a = await first
+    expect(order).toEqual(["a"])
+    a.release()
+    const b = await second
+    expect(order).toEqual(["a", "b"])
+    b.release()
+  })
+})
+
+describe("light lane", () => {
+  it("classifies tsgo and Biome commands as light, tsc and tests as heavy", () => {
+    expect(isLightCommand(["bunx", "tsgo", "--noEmit", "-p", "apps/api"])).toBe(true)
+    expect(isLightCommand(["node_modules/.bin/tsgo", "-p", "x"])).toBe(true)
+    expect(isLightCommand(["bunx", "biome", "check", "."])).toBe(true)
+    expect(
+      isLightCommand(["bun", "run", "scripts/ci-scope.ts", "typecheck", "--tool", "tsgo"]),
+    ).toBe(true)
+    expect(isLightCommand(["bunx", "tsc", "--noEmit", "-p", "apps/api"])).toBe(false)
+    expect(isLightCommand(["bun", "test", "a.test.ts"])).toBe(false)
+    expect(isLightCommand(["bash", "scripts/build-bundled-app.sh", "mail"])).toBe(false)
+  })
+
+  it("reads LIAISON_LIGHT_SLOTS, 2 by default", () => {
+    expect(lightSlotCount({})).toBe(2)
+    expect(lightSlotCount({ LIAISON_LIGHT_SLOTS: "3" })).toBe(3)
+    expect(lightSlotCount({ LIAISON_LIGHT_SLOTS: "0" })).toBe(2)
+  })
+
+  it("a light job starts while both heavy slots are held and heavy waiters queue", async () => {
+    const env = freshEnv({ TEST_LOCK_WAIT_SEC: "0" })
+    const procs = fakeProcs({ 1: "s1", 2: "s2", 3: "s3", 4: "s4" })
+    const h1 = await acquireSlot({ cmd: "suite 1", env, pid: 1, probe: procs.probe, ...quiet })
+    const h2 = await acquireSlot({ cmd: "suite 2", env, pid: 2, probe: procs.probe, ...quiet })
+    // A heavy waiter is queued ahead (its ticket is older than the light job's).
+    fs.writeFileSync(
+      path.join(slotDir(env), `ticket-${"1".padStart(15, "0")}-${"3".padStart(10, "0")}.wait`),
+      JSON.stringify({ pid: 3, startedAt: "", cmd: "suite 3" }),
+    )
+    const light = await acquireSlot({
+      cmd: "tsgo",
+      lane: "light",
+      env,
+      pid: 4,
+      probe: procs.probe,
+      ...quiet,
+    })
+    expect(path.basename(light.path as string)).toBe("light-0.lock")
+    expect(liveWaiters(env, procs.probe).map((w) => w.record.pid)).toEqual([3])
+    light.release()
+    h1.release()
+    h2.release()
+  })
+
+  it("ignores the load gate, keeps the memory gate", async () => {
+    const env = freshEnv({
+      LIAISON_SLOT_MAX_LOAD: "10",
+      LIAISON_SLOT_MIN_FREE_MB: "1024",
+      TEST_LOCK_WAIT_SEC: "0",
+    })
+    const procs = fakeProcs({ 1: "s1", 2: "s2" })
+    const ok = await acquireSlot({
+      cmd: "tsgo",
+      lane: "light",
+      env,
+      pid: 1,
+      probe: procs.probe,
+      loadAvg: () => 40,
+      cpuIdle: () => 0,
+      memory: () => ({ availableMb: 4000, swapUsedMb: 0 }),
+      ...quiet,
+    })
+    expect(ok.slot).toBe(0)
+    await expect(
+      acquireSlot({
+        cmd: "biome",
+        lane: "light",
+        env,
+        pid: 2,
+        probe: procs.probe,
+        loadAvg: () => 1,
+        memory: () => ({ availableMb: 200, swapUsedMb: 0 }),
+        ...quiet,
+      }),
+    ).rejects.toThrow(/available memory 200 MB/)
+    ok.release()
+  })
+
+  it("has its own FIFO queue and cap", async () => {
+    const env = freshEnv({ LIAISON_LIGHT_SLOTS: "1", TEST_LOCK_WAIT_SEC: "0" })
+    const procs = fakeProcs({ 1: "s1", 2: "s2", 3: "s3" })
+    const a = await acquireSlot({
+      cmd: "a",
+      lane: "light",
+      env,
+      pid: 1,
+      probe: procs.probe,
+      ...quiet,
+    })
+    await expect(
+      acquireSlot({ cmd: "b", lane: "light", env, pid: 2, probe: procs.probe, ...quiet }),
+    ).rejects.toThrow(/all 1 light slots held/)
+    // The heavy lane is untouched by the light one.
+    const h = await acquireSlot({ cmd: "h", env, pid: 3, probe: procs.probe, ...quiet })
+    expect(path.basename(h.path as string)).toBe("slot-0.lock")
+    a.release()
+    h.release()
+  })
+
+  it("frees a dead light holder and releases light files for a lease", async () => {
+    const env = freshEnv({ TEST_LOCK_WAIT_SEC: "0", LIAISON_LIGHT_SLOTS: "1" })
+    const procs = fakeProcs({ 1: "s1", 2: "s2" })
+    await acquireSlot({ cmd: "a", lane: "light", env, pid: 1, probe: procs.probe, ...quiet })
+    procs.table.delete(1)
+    const b = await acquireSlot({
+      cmd: "b",
+      lane: "light",
+      env,
+      pid: 2,
+      probe: procs.probe,
+      ...quiet,
+    })
+    expect(b.slot).toBe(0)
+    expect(releaseHeldBy(2, env)).toBe(1)
+    expect(fs.existsSync(path.join(slotDir(env), "light-0.lock"))).toBe(false)
+  })
+
+  it("a job inside a light holder's tree inherits its slot", async () => {
+    const env = freshEnv()
+    const parent = fakeProcs({ 77: "s77" })
+    await acquireSlot({ cmd: "tsgo", lane: "light", env, pid: 77, probe: parent.probe, ...quiet })
+    const child = fakeProcs({ 77: "s77" }, [77])
+    const lock = await acquireSlot({ cmd: "child", env, probe: child.probe, ...quiet })
+    expect(lock.inherited).toBe(true)
+    releaseHeldBy(77, env)
   })
 })

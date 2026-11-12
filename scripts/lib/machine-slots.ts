@@ -12,8 +12,21 @@
 //     that started waiting first is not overtaken by one polling at a luckier
 //     moment;
 //   - a load gate at ACQUIRE only: a new job waits while the 1-minute load
-//     average is at or above LIAISON_SLOT_MAX_LOAD. A job that holds its slot
-//     is never paused or revoked, whatever the load does after;
+//     average is at or above LIAISON_SLOT_MAX_LOAD (default 1.5x the cores on
+//     macOS). A job that holds its slot is never paused or revoked, whatever
+//     the load does after;
+//   - anti-starvation: the load on a shared machine is mostly NOT this
+//     semaphore's jobs (other projects' compilers, a VM, indexing), so a gate
+//     at the core count kept free slots idle while eight waiters aged past
+//     20 minutes. A waiter at the head of the queue that has waited
+//     LIAISON_SLOT_STARVE_SEC (default 600) takes a FREE slot over the load
+//     gate. Memory still holds it: the load cannot kill a run, memory can;
+//   - two lanes: the heavy lane (LIAISON_TEST_SLOTS, default 2: suites, full
+//     typechecks, builds, Playwright) and a light lane (LIAISON_LIGHT_SLOTS,
+//     default 2: tsgo, Biome and other jobs of a minute or less), each with its
+//     own slots and its own FIFO queue, so a 40-second tsgo check never waits
+//     behind two hour-long suites. The light lane has the memory gate but no
+//     load gate;
 //   - a memory gate, also at ACQUIRE only: a new job waits while available
 //     memory is below LIAISON_SLOT_MIN_FREE_MB or swap in use is above
 //     LIAISON_SLOT_MAX_SWAP_MB. The load average does not see memory: a CI
@@ -28,8 +41,10 @@
 // copied out of a checkout (a CI runner's job hook does) and still run.
 //
 // Files, all in slotDir() (TEST_SLOT_DIR, default <tmpdir>/liaison-test-slots):
-//   slot-<i>.lock             a held slot, i in [0, slots)
-//   ticket-<ms>-<pid>.wait    a waiter, in arrival order
+//   slot-<i>.lock             a held heavy slot, i in [0, slots)
+//   ticket-<ms>-<pid>.wait    a heavy waiter, in arrival order
+//   light-<i>.lock            a held light slot
+//   light-ticket-<ms>-<pid>.wait  a light waiter
 // The old exclusive lock (<tmpdir>/liaison-test.lock) is read, never written:
 // a live holder there counts as one occupied slot.
 
@@ -60,6 +75,8 @@ export interface ProcessProbe {
 export interface AcquireOptions {
   /** Identifies the holder in the lock file, the status and the waiting log lines. */
   cmd: string
+  /** Which lane to queue in; "heavy" when omitted. */
+  lane?: Lane
   /** The run namespace, recorded so a waiter can say who holds it. */
   ns?: string
   env?: NodeJS.ProcessEnv
@@ -101,6 +118,25 @@ export const DEFAULT_POLL_MS = 2_000
 export const DEFAULT_LOG_EVERY_MS = 60_000
 export const DEFAULT_WAIT_SEC = 3600
 export const DEFAULT_SLOTS = 2
+export const DEFAULT_LIGHT_SLOTS = 2
+/** The macOS load gate, per core. */
+export const DARWIN_LOAD_PER_CORE = 1.5
+/** A head-of-queue waiter older than this takes a free slot over the load gate. */
+export const DEFAULT_STARVE_SEC = 600
+
+/**
+ * heavy: test suites and files, full typechecks, builds, Playwright.
+ * light: tsgo, Biome and other jobs of about a minute that need no database.
+ */
+export type Lane = "heavy" | "light"
+export const LANES: readonly Lane[] = ["heavy", "light"]
+
+/** The file name prefixes of a lane's slots and tickets. */
+export function laneFiles(lane: Lane): { slot: string; ticket: string } {
+  return lane === "light"
+    ? { slot: "light-", ticket: "light-ticket-" }
+    : { slot: "slot-", ticket: "ticket-" }
+}
 /** A load at or above this idle share is I/O wait (indexing, disk), not CPU work: it does not hold a job back. */
 export const DEFAULT_MIN_IDLE_PCT = 25
 
@@ -118,11 +154,54 @@ export function slotCount(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isInteger(n) && n >= 1 ? n : DEFAULT_SLOTS
 }
 
+/** The light lane's slots: LIAISON_LIGHT_SLOTS, default 2. */
+export function lightSlotCount(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.LIAISON_LIGHT_SLOTS)
+  return Number.isInteger(n) && n >= 1 ? n : DEFAULT_LIGHT_SLOTS
+}
+
+export function laneSlotCount(lane: Lane, env: NodeJS.ProcessEnv = process.env): number {
+  return lane === "light" ? lightSlotCount(env) : slotCount(env)
+}
+
+/**
+ * How long (ms) a head-of-queue waiter waits on the load gate before it takes a
+ * free slot anyway; 0 means never. LIAISON_SLOT_STARVE_SEC ("off" or 0: never).
+ */
+export function starveMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.LIAISON_SLOT_STARVE_SEC
+  if (raw === "off") return 0
+  const n = Number(raw)
+  return (
+    (raw !== undefined && raw !== "" && Number.isFinite(n) && n >= 0 ? n : DEFAULT_STARVE_SEC) *
+    1000
+  )
+}
+
+/**
+ * Classifies a command for --slot-only: tsgo and Biome runs are light, anything
+ * else (tsc, builds, tests) is heavy. A caller can always ask for the light lane
+ * explicitly.
+ */
+export function isLightCommand(cmd: readonly string[]): boolean {
+  return (
+    cmd.some((token) => {
+      const base = path.basename(token)
+      return (
+        base === "tsgo" || base === "biome" || token === "@biomejs/biome" || token === "--tool=tsgo"
+      )
+    }) || cmd.some((token, i) => token === "--tool" && cmd[i + 1] === "tsgo")
+  )
+}
+
 /**
  * The load average at or above which a new job waits; 0 means no gate.
  *
- * Set: LIAISON_SLOT_MAX_LOAD (0 or "off" disables it). Unset: the core count on macOS, off
- * elsewhere. A developer Mac is where sessions, CI runners and the owner's own
+ * Set: LIAISON_SLOT_MAX_LOAD (0 or "off" disables it). Unset: 1.5x the core count on macOS,
+ * off elsewhere. The load is the whole machine's, and on a shared Mac most of it is other
+ * work (another project's compiler, a VM, indexing) that a waiting job neither caused nor can
+ * wait out: at 1x the cores, free slots sat idle for hours. Memory, not load, is what kills a
+ * run, and the memory gate guards that on its own. A developer Mac is where sessions, CI runners and the owner's own
  * work share one machine. On Linux the usual hosts are CI and containers, where
  * the load average is the whole host's (a container sees its neighbours' load)
  * and counts tasks blocked on I/O: a fixed threshold there would stall a run on
@@ -140,7 +219,7 @@ export function maxLoad(
     const n = Number(raw)
     if (Number.isFinite(n) && n >= 0) return n
   }
-  return platform === "darwin" ? Math.max(1, cores) : 0
+  return platform === "darwin" ? Math.max(1, Math.round(cores * DARWIN_LOAD_PER_CORE)) : 0
 }
 
 /**
@@ -376,6 +455,58 @@ function memoryGateText(env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): str
         : `swap > ${maxSwap} MB`,
     )
   return `new jobs wait at ${parts.join(" or ")}`
+}
+
+// ---------------------------------------------------------------------------
+// Admission
+
+export interface GateInput {
+  lane: Lane
+  /** This waiter's place in its lane's queue, 0 first. */
+  position: number
+  /** Free slots in the lane right now. */
+  freeSlots: number
+  load: number
+  /** The load gate, 0 for none. */
+  maxLoad: number
+  /** CPU idle share since the last poll, undefined until measured. */
+  idlePct: number | undefined
+  minIdlePct: number | null
+  /** How long this waiter has waited. */
+  waitedMs: number
+  /** The anti-starvation age, 0 for never. */
+  starveMs: number
+  /** Why memory holds a job back (memoryHold), or null. */
+  memHold: string | null
+}
+
+export interface GateDecision {
+  /** May claim a free slot now. */
+  admit: boolean
+  /** Why not, when this waiter's turn has come but a gate holds it. Empty when it is not its turn. */
+  reasons: string[]
+  /** Admitted over the load gate by the anti-starvation rule. */
+  starved: boolean
+}
+
+/**
+ * The admission rule, pure. A waiter may claim when its turn has come (FIFO: one of the first
+ * `freeSlots` in its lane's queue), memory is fine, and either the load is under the gate,
+ * the CPUs are idle enough that the load is I/O wait, the lane is light, or the waiter has
+ * starved past `starveMs`.
+ */
+export function gateDecision(g: GateInput): GateDecision {
+  if (g.position >= g.freeSlots) return { admit: false, reasons: [], starved: false }
+  const reasons: string[] = []
+  if (g.memHold !== null) reasons.push(g.memHold)
+  const idleOk = g.minIdlePct !== null && g.idlePct !== undefined && g.idlePct >= g.minIdlePct
+  const overLoad = g.lane === "heavy" && g.maxLoad > 0 && g.load >= g.maxLoad && !idleOk
+  const starved = overLoad && g.starveMs > 0 && g.waitedMs >= g.starveMs
+  if (overLoad && !starved)
+    reasons.push(
+      `load ${g.load.toFixed(1)} is at or above LIAISON_SLOT_MAX_LOAD ${g.maxLoad} and the CPUs are busy (${g.idlePct === undefined ? "idle not measured yet" : `${g.idlePct.toFixed(0)}% idle`})${g.starveMs > 0 ? `; a free slot is taken anyway after ${Math.round(g.starveMs / 1000)}s of waiting` : ""}`,
+    )
+  return { admit: reasons.length === 0, reasons, starved: starved && reasons.length === 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -622,11 +753,13 @@ export interface SlotHolder {
   record: LockRecord
 }
 
-/** Live slot holders. Dead holders' files are left for the next claimer to replace. */
+/** Live slot holders of a lane. Dead holders' files are left for the next claimer to replace. */
 export function liveHolders(
   env: NodeJS.ProcessEnv = process.env,
   probe: ProcessProbe = realProbe,
+  lane: Lane = "heavy",
 ): SlotHolder[] {
+  const slotRe = new RegExp(`^${laneFiles(lane).slot}(\\d+)\\.lock$`)
   const out: SlotHolder[] = []
   const dir = slotDir(env)
   let names: string[] = []
@@ -636,7 +769,7 @@ export function liveHolders(
     return out
   }
   for (const name of names) {
-    const m = /^slot-(\d+)\.lock$/.exec(name)
+    const m = slotRe.exec(name)
     if (!m) continue
     const file = path.join(dir, name)
     const record = readRecord(file)
@@ -650,12 +783,14 @@ export interface Waiter {
   record: LockRecord
 }
 
-/** Waiters in arrival order. A dead waiter's ticket is removed (except `keep`). */
+/** A lane's waiters in arrival order. A dead waiter's ticket is removed (except `keep`). */
 export function liveWaiters(
   env: NodeJS.ProcessEnv = process.env,
   probe: ProcessProbe = realProbe,
   keep?: string,
+  lane: Lane = "heavy",
 ): Waiter[] {
+  const ticketRe = new RegExp(`^${laneFiles(lane).ticket}\\d+-\\d+\\.wait$`)
   const dir = slotDir(env)
   let names: string[] = []
   try {
@@ -664,7 +799,7 @@ export function liveWaiters(
     return []
   }
   const out: Waiter[] = []
-  for (const name of names.filter((n) => /^ticket-\d+-\d+\.wait$/.test(n)).sort()) {
+  for (const name of names.filter((n) => ticketRe.test(n)).sort()) {
     const file = path.join(dir, name)
     const record = readRecord(file)
     if (file === keep || (record && holderAlive(record, probe))) {
@@ -689,7 +824,11 @@ export function describeSlots(
     typeof isAliveOrProbe === "function"
       ? resolveProbe({ isAlive: isAliveOrProbe })
       : isAliveOrProbe
-  const lines = liveHolders(env, probe).map((h) => `slot ${h.slot}: ${describeHolder(h.record)}`)
+  const lines = LANES.flatMap((lane) =>
+    liveHolders(env, probe, lane).map(
+      (h) => `${lane === "light" ? "light slot" : "slot"} ${h.slot}: ${describeHolder(h.record)}`,
+    ),
+  )
   const legacy = readRecord(legacyLockPath(env))
   if (legacy && holderAlive(legacy, probe))
     lines.push(`legacy exclusive lock: ${describeHolder(legacy)}`)
@@ -733,8 +872,9 @@ export function formatStatus(
     memory === null
       ? "memory unreadable"
       : `available memory ${Math.round(memory.availableMb)} MB, swap used ${Math.round(memory.swapUsedMb)} MB${memory.pressureLevel === undefined ? "" : `, pressure ${memory.pressureLevel >= 4 ? "critical" : memory.pressureLevel >= DARWIN_PRESSURE_WARN ? "warn" : "normal"}`}`
+  const starve = starveMs(env)
   const out: string[] = [
-    `machine slots: ${holders.length}/${slots} held, load ${load.toFixed(1)} (${gate > 0 ? `new jobs wait at ${gate}` : "no load gate"}), ${slotDir(env)}`,
+    `machine slots: ${holders.length}/${slots} held, load ${load.toFixed(1)} (${gate > 0 ? `new heavy jobs wait at ${gate}${starve > 0 ? `, or ${Math.round(starve / 1000)}s at most when a slot is free` : ""}` : "no load gate"}), ${slotDir(env)}`,
     `  memory: ${memLine} (${memoryGateText(env, opts.platform)})`,
   ]
   for (let i = 0; i < slots; i++) {
@@ -751,14 +891,28 @@ export function formatStatus(
   waiters.forEach((w, i) => {
     out.push(`    ${i + 1}. ${line(w.record, now)}`)
   })
+  const lightSlots = lightSlotCount(env)
+  const lightHolders = liveHolders(env, probe, "light")
+  out.push(
+    `light lane (tsgo, Biome; memory gate, no load gate): ${lightHolders.length}/${lightSlots} held`,
+  )
+  for (let i = 0; i < lightSlots; i++) {
+    const h = lightHolders.find((x) => x.slot === i)
+    out.push(`  light ${i}: ${h ? line(h.record, now) : "free"}`)
+  }
+  const lightWaiters = liveWaiters(env, probe, undefined, "light")
+  out.push(lightWaiters.length === 0 ? "  waiting: none" : `  waiting (served in this order):`)
+  lightWaiters.forEach((w, i) => {
+    out.push(`    ${i + 1}. ${line(w.record, now)}`)
+  })
   return out.join("\n")
 }
 
 // ---------------------------------------------------------------------------
 // Acquire / release
 
-function ticketName(ms: number, pid: number): string {
-  return `ticket-${String(ms).padStart(15, "0")}-${String(pid).padStart(10, "0")}.wait`
+function ticketName(ms: number, pid: number, lane: Lane): string {
+  return `${laneFiles(lane).ticket}${String(ms).padStart(15, "0")}-${String(pid).padStart(10, "0")}.wait`
 }
 
 /**
@@ -785,7 +939,10 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
       : DEFAULT_WAIT_SEC) * 1000
   const pid = opts.pid ?? process.pid
   const install = opts.installExitHandlers ?? true
-  const slots = slotCount(env)
+  const lane: Lane = opts.lane ?? "heavy"
+  const files = laneFiles(lane)
+  const slots = laneSlotCount(lane, env)
+  const starve = starveMs(env)
   const gate = maxLoad(env, opts.platform)
   const minIdle = minIdlePct(env)
   const minFree = minFreeMb(env, opts.platform)
@@ -809,7 +966,10 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
   if (opts.pid === undefined) {
     const above = new Set(probe.ancestors())
     if (above.size > 0) {
-      const covering = liveHolders(env, probe).find((h) => above.has(h.record.pid))
+      // Either lane: a tsgo step inside a suite's tree is inside that suite's slot.
+      const covering = LANES.flatMap((l) => liveHolders(env, probe, l)).find((h) =>
+        above.has(h.record.pid),
+      )
       if (covering) {
         return {
           path: null,
@@ -838,7 +998,7 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
   // Take a ticket: our place in the queue.
   let ticket = ""
   for (let ms = now(); ; ms++) {
-    ticket = path.join(dir, ticketName(ms, pid))
+    ticket = path.join(dir, ticketName(ms, pid, lane))
     if (tryCreate(ticket, record)) break
   }
   const dropTicket = releaser(ticket, pid, false)
@@ -849,7 +1009,7 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
   let lastLogged = start - logEveryMs
   try {
     for (;;) {
-      const queue = liveWaiters(env, probe, ticket)
+      const queue = liveWaiters(env, probe, ticket, lane)
       const position = Math.max(
         0,
         queue.findIndex((w) => w.file === ticket),
@@ -858,16 +1018,15 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
       // A live holder of the old exclusive lock is a run this semaphore cannot
       // see the size of: count it as one slot. Never touch its file.
       const legacy = readRecord(legacyLockPath(env))
-      const legacyHeld = legacy !== null && legacy.pid !== pid && holderAlive(legacy, probe)
+      const legacyHeld =
+        lane === "heavy" && legacy !== null && legacy.pid !== pid && holderAlive(legacy, probe)
       const capacity = Math.max(1, slots - (legacyHeld ? 1 : 0))
-      const held = new Set(liveHolders(env, probe).map((h) => h.slot))
+      const held = new Set(liveHolders(env, probe, lane).map((h) => h.slot))
       const free: number[] = []
       for (let i = 0; i < capacity; i++) if (!held.has(i)) free.push(i)
 
       const load = loadAvg()
       const idle = cpuIdle()
-      const idleOk = minIdle !== null && idle !== undefined && idle >= minIdle
-      const loadOk = gate <= 0 || load < gate || idleOk
       // Memory is read only when a gate is on, and once per poll.
       const sample = memGated && position < free.length ? memory() : null
       if (memGated && position < free.length && sample === null && !memUnreadableLogged) {
@@ -877,11 +1036,28 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
         )
       }
       const memHold = memoryHold(sample, minFree, maxSwap)
+      const waited = now() - start
       // FIFO: the first `free.length` waiters may claim; the rest wait their turn.
-      if (position < free.length && loadOk && memHold === null) {
+      const decision = gateDecision({
+        lane,
+        position,
+        freeSlots: free.length,
+        load,
+        maxLoad: gate,
+        idlePct: idle,
+        minIdlePct: minIdle,
+        waitedMs: waited,
+        starveMs: starve,
+        memHold,
+      })
+      if (decision.admit) {
         for (const i of free) {
-          const file = path.join(dir, `slot-${i}.lock`)
+          const file = path.join(dir, `${files.slot}${i}.lock`)
           if (claimOnce(file, record, probe, log) === null) {
+            if (decision.starved)
+              log(
+                `machine slots: load ${load.toFixed(1)} is over the gate ${gate}, but this job waited ${Math.round(waited / 1000)}s with a slot free and memory fine: it takes ${lane === "light" ? "light " : ""}slot ${i}`,
+              )
             dropTicket()
             if (install) process.off("exit", onExit)
             return {
@@ -896,18 +1072,11 @@ export async function acquireSlot(opts: AcquireOptions): Promise<TestLock> {
         }
       }
 
-      const waited = now() - start
       const holders = describeSlots(env, probe)
-      const gateReasons: string[] = []
-      if (!loadOk)
-        gateReasons.push(
-          `load ${load.toFixed(1)} is at or above LIAISON_SLOT_MAX_LOAD ${gate} and the CPUs are busy (${idle === undefined ? "idle not measured yet" : `${idle.toFixed(0)}% idle`})`,
-        )
-      if (memHold !== null) gateReasons.push(memHold)
       const why =
-        position < free.length && gateReasons.length > 0
-          ? gateReasons.join("; ")
-          : `all ${slots} slots held${position > 0 ? `, ${position} waiter(s) ahead` : ""}`
+        decision.reasons.length > 0
+          ? decision.reasons.join("; ")
+          : `${free.length === 0 ? `all ${slots} ${lane === "light" ? "light " : ""}slots held` : `${free.length} of ${slots} ${lane === "light" ? "light " : ""}slots free`}${position > 0 ? `, ${position} waiter(s) ahead` : ""}`
       if (waited >= waitMs) {
         throw new Error(
           `machine slots: no slot after ${Math.round(waited / 1000)}s (${why}). Held by:\n  ${holders.join("\n  ") || "nobody"}\nSee \`bun run slots\`. Wait, or set TEST_LOCK_SKIP=1 only if you are certain the holders are not running.`,
@@ -959,7 +1128,12 @@ export function releaseHeldBy(pid: number, env: NodeJS.ProcessEnv = process.env)
   }
   let n = 0
   for (const name of names) {
-    if (!/^(slot-\d+\.lock|ticket-\d+-\d+\.wait)$/.test(name)) continue
+    if (
+      !/^(slot-\d+\.lock|ticket-\d+-\d+\.wait|light-\d+\.lock|light-ticket-\d+-\d+\.wait)$/.test(
+        name,
+      )
+    )
+      continue
     const file = path.join(dir, name)
     if (readRecord(file)?.pid !== pid) continue
     try {

@@ -52,7 +52,7 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
   it("appends a Payment column to the flat List view without mutating ALL_SALES_COLUMNS", () => {
     expect(source).toContain('key: "payment"')
     expect(source).toContain('label: "Payment"')
-    expect(source).toContain("...ALL_SALES_COLUMNS, PAYMENT_COLUMN")
+    expect(source).toMatch(/\.\.\.ALL_SALES_COLUMNS,\s*PAYMENT_COLUMN\b/)
   })
 
   // red: drop the PO number column addition -> a document carrying a PO number is
@@ -60,7 +60,7 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
   it("appends a PO number column to the flat List view without mutating ALL_SALES_COLUMNS", () => {
     expect(source).toContain('key: "po_number"')
     expect(source).toContain('label: "PO number"')
-    expect(source).toContain("...ALL_SALES_COLUMNS, PAYMENT_COLUMN, PO_NUMBER_COLUMN")
+    expect(source).toMatch(/\.\.\.ALL_SALES_COLUMNS,\s*PAYMENT_COLUMN,\s*PO_NUMBER_COLUMN\b/)
   })
 
   it("only the flat group mode uses LIST_COLUMNS; customer/market keep their own column sets", () => {

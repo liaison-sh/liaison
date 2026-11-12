@@ -209,6 +209,6 @@ describe("incident ref and activity wiring", () => {
   it("keeps the row actions in a fixed 208px column whose labels and status tag never wrap", () => {
     expect(row).toContain("md:grid-cols-[16px_minmax(0,1fr)_96px_52px_84px_208px]")
     expect(row.match(/whitespace-nowrap/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
-    expect(read("StatusList.tsx")).toContain('cx("whitespace-nowrap rounded-[5px]')
+    expect(read("StatusList.tsx")).toMatch(/cx\(\s*"whitespace-nowrap rounded-\[5px\]/)
   })
 })

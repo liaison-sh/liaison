@@ -301,8 +301,10 @@ describe("guard: one door for the issue date", () => {
   })
 
   test("every builder of a draft takes both from issueDateParts", () => {
+    // A filter on an existing document's own year (`where: { ..., year_of_issue: doc.year_of_issue }`,
+    // one key per line once formatted) builds no draft.
     const yearSites = offenders(/^\s*year_of_issue:\s*[^,\s]/).filter(
-      (l) => !/year_of_issue:\s*(number|null)\b/.test(l),
+      (l) => !/year_of_issue:\s*(number|null|doc\.year_of_issue)\b/.test(l),
     )
     expect(yearSites.length).toBeGreaterThanOrEqual(6)
     for (const site of yearSites) expect(site).toContain("when.year_of_issue")

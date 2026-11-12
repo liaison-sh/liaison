@@ -1073,7 +1073,7 @@ describe("the generating invoice state: a rendering PDF is a wait, not a failure
       src.indexOf("onCleanup(() => clearInterval(pollTimer))"),
     )
     const timeout = poll.slice(poll.indexOf("timedOutKeys"))
-    expect(timeout).toContain("finishPdf(key,")
+    expect(timeout).toMatch(/finishPdf\(\s*key,/)
     expect(timeout).toContain("taking longer than a minute")
   })
 })

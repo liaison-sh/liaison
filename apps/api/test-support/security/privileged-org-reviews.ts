@@ -329,10 +329,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "asks whether the org of the config run may decide the server-wide Liaison team switches (canManageInstanceApps): the CLI's org (resolved by the operator's own command) or the org of the agent tool call (ctx.orgId from the kernel); the answer is one boolean about that same org",
   "apps/api/src/app.ts#GET /api/connections/callback":
     "the connection OAuth callback: the org is the flow state's own (peekOAuthStateApp reads the server-held state an authenticated connect start stored, keyed by the unguessable state); before the grant it asks only whether that org's deletion has started (isOrgDeletingAsync, a boolean that refuses the callback with 410), and everything after it runs on the same state",
-  "apps/api/src/apps/google-drive/picker-page.ts#drivePickerPage":
-    "the Picker page's one-time ticket: a 256-bit random id (createPickerTicket) under a Redis key only this server writes, taken once (getdel), minted by POST /api/google-drive/picker/ticket from the authenticated caller's own org, user and scopes; pickerAccount re-checks the account is that person's and in picked mode before any token is read",
-  "apps/api/src/apps/google-drive/picker-page.ts#drivePickerPageSave":
-    "the Picker page's save id: a 256-bit random id under a Redis key only this server writes, minted by drivePickerPage from a ticket that POST /api/google-drive/picker/ticket made from the authenticated caller's own org, user, scopes and an account pickerAccount checked they may pick on; updatePickedItems re-checks the account against that org and user",
   "apps/api/src/modules/apps/app-pages.ts#renderAppPage":
     "an app page's one-time ticket: a 256-bit random id under a Redis key only this server writes, taken once (getdel) and only on a host of that org (bindingAllowsOrg) or that app's frame host, minted by createAppPageLink for the authenticated caller's own org and user, or by openAppPageHandle for the signed-in person a bridge run's handle was bound to; the person is re-checked active in that org and holding the page's scope before a page session is minted for the same binding",
   "apps/api/src/modules/apps/app-pages.ts#appPageScript":
@@ -444,8 +440,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "sandbox bridge extension: ctx.orgId is the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/api-connector/bridge.ts#createApiConnectorBridgeExtension.connector_write_validate":
     "sandbox bridge extension: ctx.orgId is the run's bridge context org (rpc-bridge.ts)",
-  "apps/api/src/apps/google-drive/bridge.ts#createGoogleDriveBridgeExtension.drive_import":
-    "sandbox bridge extension: orgId is the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/knowledge/knowledge-jobs.ts#runSyncWorker":
     "knowledge sync job: the synced_sources row the job names, loaded in the job's org",
   "apps/api/src/apps/mail/manifest-descriptor.ts#gmail":

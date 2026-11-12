@@ -227,6 +227,7 @@ export type DemoRole =
   | "ops_lead"
   | "support"
   | "fulfillment"
+  | "engineering"
   | "finance"
   | "sales"
 
@@ -318,6 +319,7 @@ export const DEMO_DESK_TEAMS: Record<Exclude<DemoRole, "founder_admin">, readonl
   ops_lead: ["support", "operations", "sales"],
   support: ["support"],
   fulfillment: ["operations"],
+  engineering: ["support"],
   finance: ["finance"],
   sales: ["sales"],
 }

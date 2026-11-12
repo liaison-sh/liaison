@@ -181,6 +181,7 @@ const ROLE_NAMES: Record<DemoRole, string> = {
   ops_lead: "operations",
   support: "support",
   fulfillment: "fulfillment",
+  engineering: "engineering",
   finance: "finance",
   sales: "sales",
 }
@@ -189,6 +190,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   operations: "Runs the desk: support oversight, orders, shipping and the dealer queue",
   support: "Answers customer tickets and mail, and curates the knowledge base",
   fulfillment: "Prepares shipments and returns, and keeps stock accurate",
+  engineering: "Builds the product and fixes the bugs support hands over",
   finance: "Issues invoices and credit notes, and owns the month end close",
   sales: "Looks after dealers and education accounts, and writes the quotes",
 }

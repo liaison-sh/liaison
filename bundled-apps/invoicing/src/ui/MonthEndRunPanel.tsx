@@ -9,7 +9,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import { contactLabel, loadContact, pickedContactPatch } from "./ContactPicker"
 import { type DraftDocument, Editor, priceInputToMinor, rollupTotals } from "./Editor"
 import { tr } from "./i18n"
-import { formatMoneyMinor } from "./kit"
+import { formatMoneyMinor, isUserId } from "./kit"
 import {
   type Amounts,
   approveSummary,
@@ -59,16 +59,29 @@ async function loadDraft(id: string): Promise<DraftDocument | null> {
   return mapDocumentToDraft(d.document, d.lines)
 }
 
+/**
+ * Ids whose name could not be read (or that name no person): asked once per page, so a run's
+ * refreshes do not ask the host again for a name it cannot give.
+ */
+const unnamed = new Set<string>()
+
 /** Names of the people a run's rows mention, best effort: a name that cannot be read is left out. */
 async function loadNames(ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   for (const id of ids) {
+    if (unnamed.has(id)) continue
+    if (!isUserId(id)) {
+      unnamed.add(id)
+      continue
+    }
     try {
       const res = await hostFetch<{ data?: { name?: string }; name?: string }>(`/api/users/${encodeURIComponent(id)}/preview`)
       const name = res?.data?.name ?? res?.name
       if (name) out.set(id, name)
+      else unnamed.add(id)
     } catch {
       // Unknown here: the row says "a teammate".
+      unnamed.add(id)
     }
   }
   return out

@@ -19,7 +19,14 @@ const BACKFILLED_PAIRS: ReadonlyArray<readonly [have: string, add: string]> = [
   ["mail:accounts:admin", "mail:suppressions:write"],
 ]
 
-const ROLES: readonly DemoRole[] = ["ops_lead", "support", "fulfillment", "finance", "sales"]
+const ROLES: readonly DemoRole[] = [
+  "ops_lead",
+  "support",
+  "fulfillment",
+  "engineering",
+  "finance",
+  "sales",
+]
 
 function missingBackfills(scopes: readonly string[]): string[] {
   return BACKFILLED_PAIRS.filter(
@@ -75,5 +82,14 @@ describe("seeded desks and the payments connector", () => {
   it("no desk holds a payments write scope", () => {
     for (const role of ROLES)
       for (const s of writes) expect(demoScopesForRole(role)).not.toContain(s)
+  })
+})
+
+describe("a developer's desk", () => {
+  it("reads the bug reports and the projects, and no invoice, order or shipment", () => {
+    const scopes = demoScopesForRole("engineering")
+    expect(scopes).toContain("tickets:tickets:read")
+    expect(scopes).toContain("projects:tasks:write")
+    expect(scopes.filter((s) => /^(invoicing|shopify|boxtal|stripe):/.test(s))).toEqual([])
   })
 })

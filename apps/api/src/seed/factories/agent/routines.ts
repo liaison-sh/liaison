@@ -56,6 +56,11 @@ export interface RoutineSeed {
    * records it: a kernel template carries no app name.
    */
   template?: { appName: string; templateKey: string }
+  /**
+   * The template's follow-up mark (`followUp`): its run stages drafts and ends, never waiting
+   * for their decisions. Copied as enabling the template copies it.
+   */
+  followUp?: boolean
 }
 
 /**
@@ -101,6 +106,7 @@ export async function seedRoutine(
         }
       : {}),
     scopes: granted,
+    followUp: spec.followUp === true,
     // Shared, not personal: the whole org sees it under Shared.
     visibility: "shared" as const,
     enabled: input.enabled ?? false,

@@ -291,6 +291,28 @@ describe("the software world, seeded and read back", () => {
     expect(keys[0]?.title).toBe("Maison Arlon, 4 more hotels")
   })
 
+  it("routines made from a follow-up template stage their drafts and end, never waiting for a decision", async () => {
+    const routines = await rows(
+      world.orgId,
+      sql`SELECT name, follow_up FROM kernel.routines WHERE org_id = ${world.orgId} ORDER BY name`,
+    )
+    const followUp = routines.filter((r) => r.follow_up === true).map((r) => r.name)
+    expect(followUp).toEqual(["Deal follow-ups", "Failed payments"])
+  })
+
+  it("a developer holds a developer's role, which reads no invoice", async () => {
+    const developer = world.org.peopleByKey.baptiste?.userId as string
+    const held = await rows(
+      world.orgId,
+      sql`SELECT r.name, rs.scope FROM kernel.user_roles ur
+          JOIN kernel.roles r ON r.id = ur.role_id
+          LEFT JOIN kernel.role_scope_grants rs ON rs.role_id = r.id
+          WHERE ur.user_id = ${developer} AND ur.org_id = ${world.orgId}`,
+    )
+    expect([...new Set(held.map((h) => h.name))]).toContain("engineering")
+    expect(held.filter((h) => String(h.scope ?? "").startsWith("invoicing:"))).toEqual([])
+  })
+
   it("the agents, routines and channels exist and the seeded routines do not tick from seeded events", async () => {
     for (const handle of ["@support", "@sales", "@finance"]) {
       expect(world.org.agentsByHandle[handle]).toBeDefined()

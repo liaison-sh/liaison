@@ -13,6 +13,9 @@ const mounted: Array<Record<string, unknown>> = []
 let rows: Array<Record<string, unknown>> = []
 let schedules: Array<Record<string, unknown>> = []
 let toolAnswers: Record<string, unknown> = {}
+const previews: string[] = []
+const ELODIE = "0e1d0000-0000-4000-8000-000000000001"
+const SARA = "5a7a0000-0000-4000-8000-000000000002"
 
 const row = (id: string, customer: string, total: string, extra: Record<string, unknown> = {}) => ({
   item_id: id,
@@ -59,8 +62,9 @@ vi.mock("@liaison/host", () => ({
   navigate: () => {},
   onEntityChange: () => () => {},
   fetch: async (path: string) => {
-    if (path.includes("u-elodie")) return { data: { name: "Élodie Renard" } }
-    if (path.includes("u-sara")) return { data: { name: "Sara Benali" } }
+    if (path.endsWith("/preview")) previews.push(path)
+    if (path.includes(ELODIE)) return { data: { name: "Élodie Renard" } }
+    if (path.includes(SARA)) return { data: { name: "Sara Benali" } }
     if (path === "/api/contacts/c-belcour") return { id: "c-belcour", name: null, company: "Hôtels Belcour", email: null }
     if (path === "/api/contacts/c-arlon") return { id: "c-arlon", name: "Lea Arlon", company: "Maison Arlon", email: null }
     throw new Error("unknown")
@@ -128,7 +132,8 @@ describe("the month-end panel", () => {
     calls.length = 0
     decided.length = 0
     mounted.length = 0
-    rows = [row("a", "Hôtels Belcour", "58800", { account_manager: "u-elodie" }), row("b", "Le Comptoir Sud", "58800")]
+    previews.length = 0
+    rows = [row("a", "Hôtels Belcour", "58800", { account_manager: ELODIE }), row("b", "Le Comptoir Sud", "58800")]
     schedules = []
     toolAnswers = {}
   })
@@ -190,7 +195,7 @@ describe("the month-end panel", () => {
     await screen.findByTestId("month-end-row-open-a")
     expect(screen.queryByTestId("month-end-changed")).toBeNull()
     rows = [
-      row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: "u-sara", agent_id: "agent-1", fields: [] } }),
+      row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: SARA, agent_id: "agent-1", fields: [] } }),
       row("b", "Le Comptoir Sud", "58800"),
     ]
     setItems([item("a", "h-a2", "78000"), item("b", "h-b", "58800")])
@@ -209,7 +214,7 @@ describe("the month-end panel", () => {
     await screen.findByTestId("month-end-row-open-a")
     cleanup()
     // The host draws the card again with the rewritten payload.
-    rows = [row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: "u-sara", fields: [] } }), row("b", "Le Comptoir Sud", "58800")]
+    rows = [row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: SARA, fields: [] } }), row("b", "Le Comptoir Sud", "58800")]
     render(() => (
       <MonthEndRunPanel
         approvalId="appr-redraw"
@@ -234,6 +239,14 @@ describe("the month-end panel", () => {
     fireEvent.click(await screen.findByTestId("month-end-row-ask"))
     await waitFor(() => expect(mounted.at(-1)?.prefill).toBe("@Élodie Renard Hôtels Belcour: "))
     expect(calls.some((c) => c.tool.startsWith("threads") || c.tool.includes("reply"))).toBe(false)
+  })
+
+  it("a row whose schedule a seed or the system wrote asks the host for no name and says a teammate", async () => {
+    rows = [row("a", "Hôtels Belcour", "58800", { account_manager: "seed" }), row("b", "Le Comptoir Sud", "58800", { account_manager: ELODIE })]
+    renderPanel()
+    await waitFor(() => expect(screen.getByTestId("month-end-row-manager-b").textContent).toContain("Élodie Renard"))
+    expect(screen.getByTestId("month-end-row-manager-a").textContent).toContain("a teammate")
+    expect(previews.some((p) => p.includes("/seed/"))).toBe(false)
   })
 
   it.each([

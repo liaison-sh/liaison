@@ -445,6 +445,17 @@ export function rowApprovalId(toolCall: ToolCallState): string | null {
   return editedApprovalId(toolCall)
 }
 
+/** The codes a connector answers with when it has no connection to read. */
+const NOT_CONNECTED_CODES = new Set(["not_connected", "no_connection", "connection_missing"])
+
+/** A call its app answered with "not connected": nothing was read, and nothing failed. */
+export function answeredNotConnected(tc: ToolCallState): boolean {
+  const r = tc.result
+  if (r === null || typeof r !== "object") return false
+  const code = (r as { error?: { code?: unknown } | null }).error?.code
+  return typeof code === "string" && NOT_CONNECTED_CODES.has(code)
+}
+
 /**
  * Consecutive reads of apps, as one row: "Read 3 apps" with their names, or "Read 2 of 3 apps"
  * and which did not answer. While they run, one line per call, in order. Built from the calls'
@@ -458,6 +469,8 @@ function ReadRollup(props: ToolCallGroupProps) {
   const apps = () => {
     const seen: { label: string; failed: boolean }[] = []
     for (const tc of props.toolCalls) {
+      // An app with no connection was not read and did not fail: it is left out of the line.
+      if (answeredNotConnected(tc)) continue
       const label = callAppLabel(tc)
       const known = seen.find((a) => a.label === label)
       if (known) known.failed ||= toolCallFailed(tc)
@@ -506,33 +519,35 @@ function ReadRollup(props: ToolCallGroupProps) {
         </div>
       }
     >
-      <div class="text-[12px]" data-testid="tool-rollup">
-        <button
-          type="button"
-          data-testid="tool-rollup-toggle"
-          class="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-hover"
-          onClick={() => setExpanded((prev) => !prev)}
-        >
-          <span
-            class={`h-1.5 w-1.5 shrink-0 rounded-full ${statusStyle(failed().length > 0 ? "error" : "completed")}`}
-          />
-          <span class="shrink-0 font-medium text-text-secondary" data-testid="tool-rollup-title">
-            {title()}
-          </span>
-          <span class="min-w-0 truncate text-text-tertiary" data-testid="tool-rollup-summary">
-            {summary()}
-          </span>
-        </button>
-        <Show when={expanded()}>
-          <div class="ml-3 mt-0.5 border-l border-border-subtle pl-2">
-            <For each={props.toolCalls}>
-              {(tc) => (
-                <SingleToolCallRow toolCall={tc} turnId={props.turnId} askId={props.askId} />
-              )}
-            </For>
-          </div>
-        </Show>
-      </div>
+      <Show when={apps().length > 0}>
+        <div class="text-[12px]" data-testid="tool-rollup">
+          <button
+            type="button"
+            data-testid="tool-rollup-toggle"
+            class="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-hover"
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            <span
+              class={`h-1.5 w-1.5 shrink-0 rounded-full ${statusStyle(failed().length > 0 ? "error" : "completed")}`}
+            />
+            <span class="shrink-0 font-medium text-text-secondary" data-testid="tool-rollup-title">
+              {title()}
+            </span>
+            <span class="min-w-0 truncate text-text-tertiary" data-testid="tool-rollup-summary">
+              {summary()}
+            </span>
+          </button>
+          <Show when={expanded()}>
+            <div class="ml-3 mt-0.5 border-l border-border-subtle pl-2">
+              <For each={props.toolCalls}>
+                {(tc) => (
+                  <SingleToolCallRow toolCall={tc} turnId={props.turnId} askId={props.askId} />
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </Show>
   )
 }

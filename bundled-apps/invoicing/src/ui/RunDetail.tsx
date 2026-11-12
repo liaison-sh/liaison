@@ -8,7 +8,7 @@
 import { app, fetchBlob, navigate, openFile, fetch as hostFetch } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { tr } from "./i18n"
-import { Button, formatMoneyMinor } from "./kit"
+import { Button, formatMoneyMinor, isUserId } from "./kit"
 import { einvoiceStatusWord, LastDayNote } from "./RecurringStates"
 
 /** Phone-sized tap target that shrinks back on a desktop. */
@@ -153,7 +153,7 @@ interface RunRead {
 }
 
 async function personName(id: string | null): Promise<string | null> {
-  if (!id) return null
+  if (!isUserId(id)) return null
   try {
     const p = await hostFetch<{ name?: string | null; displayName?: string | null }>(`/api/users/${encodeURIComponent(id)}/preview`)
     return p?.name ?? p?.displayName ?? null

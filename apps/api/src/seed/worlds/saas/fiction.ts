@@ -116,21 +116,21 @@ export const SAAS_TEAM: DemoPerson[] = [
     "baptiste",
     "Baptiste Noël",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Works on the planning engine and the payroll exports.",
   ),
   person(
     "amel",
     "Amel Saïdi",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Builds the mobile app staff use to see and swap their shifts.",
   ),
   person(
     "jonas",
     "Jonas Keller",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Looks after integrations and the reliability of the rota bugs room's fixes.",
   ),
   person(
@@ -367,6 +367,7 @@ export const SAAS_DESK_TEAMS: Record<Exclude<DemoRole, "founder_admin">, readonl
   ops_lead: ["support", "sales"],
   support: ["support"],
   fulfillment: ["support"],
+  engineering: ["support"],
   finance: ["finance"],
   sales: ["sales"],
 }

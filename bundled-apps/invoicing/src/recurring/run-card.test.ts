@@ -97,6 +97,18 @@ describe("the month-end run card", () => {
     expect(runId).toBeTruthy()
   })
 
+  test("approving the run ends its waits-for-approval and late alerts", async () => {
+    const { h } = await drafted()
+    const emitted: Array<{ entity: string; action: string; data?: Record<string, unknown> }> = []
+    h.ctx.emit = async (e) => {
+      emitted.push(e as never)
+    }
+    const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } }).current_payload
+    await recurringRunIssue(h.ctx, payload)
+    const ends = emitted.filter((e) => e.entity === "recurring_run" && e.data?.resolved === true).map((e) => e.action)
+    expect(ends.sort()).toEqual(["due", "late"])
+  })
+
   test("undo before the first number returns the run to drafted; after it, it is refused naming what issued", async () => {
     const { h, runId } = await drafted()
     const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } }).current_payload

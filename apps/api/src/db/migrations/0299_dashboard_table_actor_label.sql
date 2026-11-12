@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
 -- A named agent's handle is stored with its "@" ("@logistics"), and the table history wrote one
 -- more in front ("@@logistics"). The writer no longer adds it (dashboards/tables/service.ts,
 -- writerOf); this rewrites the labels already written. Idempotent: a label written once has a

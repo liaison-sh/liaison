@@ -482,6 +482,12 @@ export interface FetchAuth {
   connection: string
   /** Which account, as for `getToken(identifier)`. */
   identifier?: string
+  /**
+   * oauth2: exactly this account, an id `ctx.accounts.list` gave (the organization's or
+   * the acting person's own). Use it when one identifier has both an organization and a
+   * personal account.
+   */
+  account?: string
   scheme: `header:${string}` | "bearer" | "basic"
   fields?: string[]
   exchange?: {

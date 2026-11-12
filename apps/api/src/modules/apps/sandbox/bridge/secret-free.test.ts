@@ -174,6 +174,37 @@ describe("ctx.fetch auth: the credential is added host-side", () => {
     expect(deps.tokenCalls).toEqual([["shop", "demo-store.myshopify.com"]])
   })
 
+  it("account names one oauth2 account exactly; any other shape is refused before a read", async () => {
+    const headers: Record<string, string> = {}
+    const deps = fakeDeps()
+    const ACCOUNT = "0b1e7a52-8c3d-4f6e-9a01-23456789abcd"
+    await injectFetchAuth(
+      "https://demo-store.myshopify.com/admin/api/2026-04/graphql.json",
+      headers,
+      parseFetchAuth({ connection: "shop", account: ACCOUNT.toUpperCase(), scheme: "bearer" })!,
+      deps,
+    )
+    expect(headers.Authorization).toBe(`Bearer ${SHOP_TOKEN}`)
+    expect(deps.accountCalls).toEqual([ACCOUNT])
+    expect(() => parseFetchAuth({ connection: "shop", account: "me", scheme: "bearer" })).toThrow(
+      /account must be a connected account id/,
+    )
+    await expect(
+      injectFetchAuth(
+        "https://api.carrier.test/v1/x",
+        {},
+        parseFetchAuth({
+          connection: "carrier",
+          account: ACCOUNT,
+          scheme: "header:X-Key",
+          fields: ["key"],
+        })!,
+        deps,
+      ),
+    ).rejects.toThrow(/account names an oauth2 account/)
+    expect(deps.accountCalls).toEqual([ACCOUNT])
+  })
+
   it("an oauth2 account that is a host sends its token to that host only, not another shop under the wildcard", async () => {
     const otherShop = "https://other-store.myshopify.com/admin/api/2026-04/graphql.json"
     const refusedWith = async (identifier: string | undefined) => {
@@ -570,15 +601,20 @@ describe("assertNoSecretsIn", () => {
   })
 })
 
-function fakeDeps(): FetchAuthDeps & { tokenCalls: Array<[string, string | undefined]> } {
+function fakeDeps(): FetchAuthDeps & {
+  tokenCalls: Array<[string, string | undefined]>
+  accountCalls: Array<string | undefined>
+} {
   const tokenCalls: Array<[string, string | undefined]> = []
+  const accountCalls: Array<string | undefined> = []
   return {
     manifest: MANIFEST,
     orgId: ORG,
     userId: USER,
     appName: "carrier",
-    readToken: async (c, id) => {
+    readToken: async (c, id, account) => {
       tokenCalls.push([c, id])
+      accountCalls.push(account)
       return { token: SHOP_TOKEN, identifier: id ?? "demo-store.myshopify.com" }
     },
     readCredentials: async () => CREDS,
@@ -587,5 +623,6 @@ function fakeDeps(): FetchAuthDeps & { tokenCalls: Array<[string, string | undef
       throw new Error("no exchange here")
     },
     tokenCalls,
+    accountCalls,
   }
 }

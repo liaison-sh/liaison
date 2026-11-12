@@ -128,7 +128,7 @@ describe("@liaison/host runtime", () => {
   })
 
   it("the host API is 1.3: the typed host calls are additions", () => {
-    expect(HOST_API_VERSION).toBe("1.3.0")
+    expect(HOST_API_VERSION).toBe("1.4.0")
   })
 
   it("navigate falls back to globalThis.location.assign when host.navigate is absent", () => {

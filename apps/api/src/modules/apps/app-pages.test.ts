@@ -223,6 +223,53 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     expect((await openHandle(userToken, minted.result.handle)).status).toBe(404)
   }, 60_000)
 
+  test("a page with connectionToken gets the person's own account token, never another's", async () => {
+    const { CryptoContext, encryptSecret } = await import("~/lib/crypto")
+    const account = async (owner: string | null, identifier: string, token: string) => {
+      const [row] = await sql<{ id: string }[]>`
+        INSERT INTO kernel.connected_accounts
+          (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
+           access_token_encrypted, status, created_by, updated_at)
+        VALUES (${orgId}, ${PAGE_FX_APP}, 'primary', ${owner ? "user" : "org"}, ${owner},
+                'oauth2', ${identifier},
+                ${encryptSecret(token, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
+                'active', ${userId}, now())
+        RETURNING id`
+      return row!.id
+    }
+    const reader = (
+      await sql<{ id: string }[]>`
+      SELECT id FROM kernel.users WHERE org_id = ${orgId} AND id <> ${userId} LIMIT 1`
+    )[0]!.id
+    const mine = await account(userId, "me@pages.test", "tok-mine")
+    const theirs = await account(reader, "them@pages.test", "tok-theirs")
+    const orgOwned = await account(null, "team@pages.test", "tok-org")
+    const pickerHandle = async (acc: string) => {
+      const res = await app.request(`/api/apps/${PAGE_FX_APP}/tools/picker.link`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${userToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ params: { account: acc } }),
+      })
+      const body = (await res.json()) as any
+      return (body.data?.result ?? body.data).handle as string
+    }
+    const render = async (acc: string) => {
+      const link = await openHandle(userToken, await pickerHandle(acc))
+      const res = await app.request(pathOf(link.body.data.url))
+      return { status: res.status, html: await res.text() }
+    }
+    const ok = await render(mine)
+    expect(ok.status).toBe(200)
+    expect(ok.html).toContain('connectionToken:Object.freeze({"token":"tok-mine"')
+    expect(ok.html).toContain('"identifier":"me@pages.test"')
+    // Another member's account, and the org's without the connection's admin scope: refused.
+    for (const acc of [theirs, orgOwned]) {
+      const refused = await render(acc)
+      expect(refused.status).toBe(403)
+      expect(refused.html).not.toContain("tok-")
+    }
+  }, 60_000)
+
   test("a link asked over HTTP takes no params: the opener cannot choose them", async () => {
     const r = await mintLink(userToken, { account: "someone-elses" })
     expect(r.status).toBe(400)

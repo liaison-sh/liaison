@@ -431,6 +431,12 @@ await ctx.fetch(`https://${shop}/admin/api/graphql.json`, {
 `scheme` is `"header:<Name>"` (the oauth2 token, or one credentials field named
 in `fields`), `"bearer"` (with `exchange`, a client-credentials token the host
 obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
+`identifier` picks the account by its identifier; for an oauth2 connection,
+`account` names exactly one account by the id `ctx.accounts.list` gave (the
+organization's, or the acting person's own; any other is refused with
+`unknown_account`), for when one identifier has both an organization and a
+personal account. `files_importFromUrl` takes the same `auth` to download a file
+with a connection's token the app never holds.
 `configSecrets: { "<placeholder>": "<config key>" }` writes a declared config
 secret where the manifest's `secrets` map places it (below), and `ctx.config.has(key)`
 tells whether a secret is set without reading it. For the non-secret part of a
@@ -930,6 +936,12 @@ it as a page, with the routes it calls:
   against what the person may read or change: the route acts as them. The page may
   call only the routes it lists, at most 60 calls a minute; bodies and answers are
   capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
+- A page that runs a provider widget in the person's browser with their own grant
+  (a file picker) declares `"connectionToken": { "connection": "<oauth2 connection>" }`.
+  Mint its link with `ctx.pages.link(page, { account: "<account id>" })`: the page
+  then reads `window.liaisonPage.connectionToken` (`{ token, identifier, account }`).
+  The account must be the person's own, or the organization's when they hold the
+  connection's admin scope; any other is refused (403) and the page does not open.
 - A route call carries the page session's key, which only the page's bootstrap
   holds (it is never in `liaisonPage` or the document), so a session id copied out of
   the page calls nothing.

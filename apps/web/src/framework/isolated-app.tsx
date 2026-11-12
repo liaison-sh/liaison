@@ -141,6 +141,7 @@ export interface IsolatedHost {
   openExternal?: (app: string, url: string) => Promise<void>
   openRecord?: (caller: string, app: string, entity: string, id: string) => void
   openApprovals?: () => void
+  openPage?: (app: string, handle: string) => Promise<unknown>
 }
 
 /**
@@ -469,6 +470,13 @@ export async function answerFrameCall(
     case "openApprovals": {
       host.openApprovals?.()
       return null
+    }
+    case "openPage": {
+      const [handle] = args
+      if (typeof handle !== "string" || !host.openPage)
+        throw new Error("openPage: a handle is required")
+      // The page is this app's own: the server opens a handle only for its app and person.
+      return host.openPage(app, handle)
     }
     case "openConnect": {
       const options = asRecord(args[0])

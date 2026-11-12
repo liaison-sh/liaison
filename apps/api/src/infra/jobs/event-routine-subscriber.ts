@@ -14,10 +14,13 @@ import {
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
+  isTableRowEvent,
+  isTableRowFilter,
   loadRoutineOwnerContext,
-  type MailSenderFilter,
   ownerCanSeeEventEntity,
   ownerMailSenderFilterMatches,
+  ownerTableRowFilterMatches,
+  type RoutineEventFilter,
   triggerEventOrigin,
 } from "~/infra/jobs/event-routine-gate"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
@@ -112,7 +115,7 @@ export interface EventRoutineSub {
    * enqueued. Every registration path passes it (boot, create/update/enable,
    * app resume), and an update re-registers, so a changed filter applies at once.
    */
-  filter?: MailSenderFilter | null
+  filter?: RoutineEventFilter
 }
 
 /**
@@ -257,7 +260,10 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // read as the owner under RLS, and both run BEFORE the suppression window opens,
   // so a dropped event never absorbs a later one.
   const filterApplies = isMailSenderFilterActive(sub.filter) && isMailSenderFilterEvent(evt)
-  if (isOwnerScopedEvent(evt) || filterApplies) {
+  // A table row routine's filter (0296): its table, column and the value it moves to, read from
+  // the change as the owner, before the window opens (a non-matching edit absorbs nothing).
+  const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
+  if (isOwnerScopedEvent(evt) || filterApplies || tableFilter) {
     try {
       const owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
       if (!owner) return
@@ -269,6 +275,7 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
         return
       }
       if (filterApplies && !(await ownerMailSenderFilterMatches(owner, sub.filter, evt))) return
+      if (tableFilter && !(await ownerTableRowFilterMatches(owner, tableFilter, evt))) return
     } catch (err) {
       // Fail closed: an event the gate could not judge never reaches the routine.
       log.error({ err, routineId: sub.routineId }, "event-routine owner gate failed; dropped")
@@ -366,7 +373,14 @@ async function disposeInTurn(routineId: string): Promise<void> {
 function subscriptionSignature(sub: EventRoutineSub): string {
   const contacts = [...(sub.filter?.fromContactIds ?? [])].sort()
   const groups = [...(sub.filter?.fromGroupIds ?? [])].sort()
-  return JSON.stringify([sub.orgId, sub.event, contacts, groups])
+  const table = isTableRowFilter(sub.filter)
+    ? [
+        sub.filter.tableId,
+        sub.filter.column ?? null,
+        sub.filter.to === undefined ? "<any>" : sub.filter.to,
+      ]
+    : null
+  return JSON.stringify([sub.orgId, sub.event, contacts, groups, table])
 }
 
 /** Register unless the same subscription is already in place here (decided in the routine's turn). */
@@ -636,7 +650,7 @@ export async function subscribeActiveEventRoutines(
     id: string
     orgId: string
     event: string | null
-    filter?: MailSenderFilter | null
+    filter?: RoutineEventFilter
   }>,
 ): Promise<void> {
   for (const r of routines) {

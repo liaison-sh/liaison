@@ -60,7 +60,6 @@ function memDb(seed: Record<string, Array<Record<string, unknown>>> = {}) {
   }
 }
 
-const noSleep = async () => {}
 const EXPECTED_CALLS = [
   ...PERMISSION_READS.map((r) => `GET ${r.path}`),
   "POST /v1/refunds",
@@ -70,7 +69,7 @@ describe("the key check", () => {
   it("the check makes one read per permission and writes nothing", async () => {
     const { fetch, calls } = fakeStripe()
     const { db } = memDb()
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(EXPECTED_CALLS)
     // The only POST is the probe on a charge that cannot exist; it answered 404.
     const posts = calls.filter((c) => c.method !== "GET")
@@ -86,7 +85,7 @@ describe("the key check", () => {
   it("a missing disputes read is one error row and the connection stays usable", async () => {
     const { fetch } = fakeStripe({ "GET /v1/disputes": { status: 403 } })
     const { db, tables } = memDb()
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     if ("status" in result) throw new Error("refused")
     const bad = result.checks.filter((c) => c.state !== "ok")
     expect(bad).toEqual([{ label: "Disputes", level: "Read", state: "missing", meta: "Missing: give Read to Disputes" }])
@@ -98,7 +97,7 @@ describe("the key check", () => {
   it("a refund probe answered 403 is a missing write row, and nothing was created", async () => {
     const { fetch } = fakeStripe({ "POST /v1/refunds": { status: 403 } })
     const { db } = memDb()
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     if ("status" in result) throw new Error("refused")
     expect(result.checks.at(-1)).toMatchObject({ label: "Refunds", level: "Write", state: "missing" })
   })
@@ -106,7 +105,7 @@ describe("the key check", () => {
   it("a key Stripe refuses is the typed key_invalid refusal with the next step", async () => {
     const { fetch, calls } = fakeStripe({ "GET /v1/customers": { status: 401 } })
     const { db, tables } = memDb({ install_metadata: [{ id: "i1", state: "connected", permissions: null }] })
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     expect(result).toMatchObject({ status: "error", error: { code: "key_invalid", refusal: true } })
     if (!("status" in result)) throw new Error("not refused")
     expect(result.error.message).toContain("Next step")
@@ -133,7 +132,7 @@ describe("the key check", () => {
       "GET /v1/subscriptions/sub_A": { status: 404 },
     })
     const { db, tables } = memDb(before)
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     expect(result).toMatchObject({ status: "error", error: { code: "different_account" } })
     // Up to 3 known ids, then nothing more: no permission read, no probe.
     expect(calls.map((c) => c.path)).toEqual(["/v1/customers/cus_A", "/v1/customers/cus_B", "/v1/subscriptions/sub_A"])
@@ -143,7 +142,7 @@ describe("the key check", () => {
   it("a key of the same account goes on when one known id answers", async () => {
     const { fetch } = fakeStripe({ "GET /v1/customers/cus_A": { status: 404 } })
     const { db } = memDb({ stripe_customers: [{ id: "c1", stripe_id: "cus_A" }, { id: "c2", stripe_id: "cus_B" }] })
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     expect("status" in result).toBe(false)
   })
 
@@ -155,7 +154,7 @@ describe("the key check", () => {
     }
     const { fetch } = fakeStripe({}, true)
     const { db, tables } = memDb(before)
-    const result = await runConnectionCheck({ fetch, db }, { sleep: noSleep })
+    const result = await runConnectionCheck({ fetch, db })
     expect(result).toMatchObject({ status: "error", error: { code: "mode_changed" } })
     if (!("status" in result)) throw new Error("not refused")
     expect(result.error.message).toContain("rk_test_")
@@ -167,13 +166,13 @@ describe("the check of a key before it is stored", () => {
   it("answers like the check and records nothing, even when Stripe refuses the key", async () => {
     const before = { install_metadata: [{ id: "i1", state: "connected", permissions: null }] }
     const ok = memDb(before)
-    const result = await runConnectionCheck({ fetch: fakeStripe().fetch, db: ok.db }, { sleep: noSleep, dryRun: true })
+    const result = await runConnectionCheck({ fetch: fakeStripe().fetch, db: ok.db }, { dryRun: true })
     expect("status" in result).toBe(false)
     expect(ok.tables).toEqual(before)
     const refused = memDb(before)
     const r401 = await runConnectionCheck(
       { fetch: fakeStripe({ "GET /v1/customers": { status: 401 } }).fetch, db: refused.db },
-      { sleep: noSleep, dryRun: true },
+      { dryRun: true },
     )
     expect(r401).toMatchObject({ status: "error", error: { code: "key_invalid" } })
     // Nothing was saved, so the refusal never speaks of "the saved key".

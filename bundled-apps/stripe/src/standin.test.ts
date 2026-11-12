@@ -94,7 +94,7 @@ describe("a stand-in install", () => {
           Object.assign(rows[0] as Record<string, unknown>, data)
         },
       }
-      await runConnectionCheck({ fetch: answer, db }, { sleep: async () => {}, now: NOW })
+      await runConnectionCheck({ fetch: answer, db }, { now: NOW })
       return rows[0]
     }
     expect(isStandInInstall(await run({ mode: "test", checks: [], [STANDIN_MARKER]: true }))).toBe(true)

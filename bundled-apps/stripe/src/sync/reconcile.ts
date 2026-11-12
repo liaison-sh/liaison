@@ -28,7 +28,6 @@ import {
   Budget,
   DEFAULT_BUDGET_MS,
   PAGE_SIZE,
-  pause,
   readAllSyncState,
   RESOURCES,
   type SyncCtx,
@@ -53,7 +52,6 @@ type Canary = "same" | "other" | "key_invalid" | "unknown" | "nothing_known"
 async function confirmAccount(
   ctx: SyncCtx,
   install: Install,
-  sleep: (ms: number) => Promise<void>,
 ): Promise<Canary> {
   const live = install.livemode === true
   const known: string[] = []
@@ -66,7 +64,7 @@ async function confirmAccount(
   let notFound = 0
   for (const path of known) {
     try {
-      const obj = await stripeFetch<Obj>(ctx, path, {}, { maxRetries: 2, sleep })
+      const obj = await stripeFetch<Obj>(ctx, path, {})
       if (obj?.livemode === live) return "same"
       notFound++
     } catch (err) {
@@ -87,7 +85,6 @@ function healed(ctx: SyncCtx, res: SyncResource, row: Obj) {
 
 export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promise<ReconcileResult> {
   const now = opts.now ?? (() => new Date())
-  const sleep = opts.sleep ?? pause
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
   const result: ReconcileResult = { outcome: "done", written: 0, deleted: 0 }
   const install = await readInstall(ctx.db)
@@ -97,7 +94,7 @@ export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promis
     return { ...result, outcome: "importing" }
   }
 
-  const canary = await confirmAccount(ctx, install, sleep)
+  const canary = await confirmAccount(ctx, install)
   if (canary === "key_invalid") {
     await moveState(ctx, install, [{ kind: "key_refused" }])
     return { ...result, outcome: "key_invalid" }
@@ -110,13 +107,13 @@ export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promis
   const mayDelete = canary === "same"
 
   // The movement log first: what the events of the last 30 days say, before a heal writes its own.
-  await runMrrRebuild(ctx, install, { now, sleep, budget })
+  await runMrrRebuild(ctx, install, { now, budget })
 
   for (const res of RESOURCES) {
-    const listed = await reconcileList(ctx, install, res, budget, sleep, result)
+    const listed = await reconcileList(ctx, install, res, budget, result)
     if (result.outcome !== "done") return result
     if (listed === null) continue
-    await readBackAbsent(ctx, res, listed, mayDelete, budget, sleep, now, result)
+    await readBackAbsent(ctx, res, listed, mayDelete, budget, now, result)
     if (result.outcome !== "done") return result
   }
   return result
@@ -128,7 +125,6 @@ async function reconcileList(
   install: Install,
   res: SyncResource,
   budget: Budget,
-  sleep: (ms: number) => Promise<void>,
   result: ReconcileResult,
 ): Promise<Set<string> | null> {
   const seen = new Set<string>()
@@ -145,7 +141,6 @@ async function reconcileList(
         ctx,
         res.list,
         { params: { limit: PAGE_SIZE, ...(res.params ?? {}), ...(cursor ? { starting_after: cursor } : {}) } },
-        { maxRetries: 3, sleep },
       )
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err
@@ -188,7 +183,6 @@ async function readBackAbsent(
   listed: Set<string>,
   mayDelete: boolean,
   budget: Budget,
-  sleep: (ms: number) => Promise<void>,
   now: () => Date,
   result: ReconcileResult,
 ): Promise<void> {
@@ -206,7 +200,7 @@ async function readBackAbsent(
     }
     const started = now().toISOString()
     try {
-      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts", "default_payment_method"] } } : {}, { maxRetries: 3, sleep })
+      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts", "default_payment_method"] } } : {})
       if (obj?.deleted === true) {
         if (res.entity === "stripe_customers" && mayDelete) await markDeleted(ctx, id, started, result)
       } else if (obj) {

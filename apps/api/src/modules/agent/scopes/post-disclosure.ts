@@ -49,6 +49,14 @@ import { untitledDmQuery } from "~/modules/threads/thread"
 /** Metadata key on a post written by an approved disclosure: the approval that decided it. */
 export const TAINT_DISCLOSURE_APPROVAL_KEY = "taintDisclosureApprovalId"
 
+/**
+ * Approval metadata key, written only by the dispatch that parks a post (rule 11): the post was
+ * requested by a person's own external client, with that connection's scopes. Read on the
+ * approved re-entry, whose frame is the approval's, so the written post keeps the external-client
+ * marker and wakes the agents it addresses exactly as the same post written inline would.
+ */
+export const TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY = "taintDisclosureExternalClient"
+
 export type PostDisclosureDecision =
   | { kind: "clear" }
   | { kind: "disclose"; via: "dm" | "standing"; disclosureList: string[] }

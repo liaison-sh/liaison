@@ -26,7 +26,6 @@ function fakeCtx(answers: Array<{ status: number; body: unknown }>): { ctx: Stri
   return { ctx, calls }
 }
 
-const noSleep = async () => {}
 
 describe("stripeFetch", () => {
   it("every request carries the pinned API version", async () => {
@@ -75,26 +74,13 @@ describe("stripeFetch", () => {
     expect([e2.code, e2.status, e2.resource]).toEqual(["permission_missing", 403, "disputes"])
   })
 
-  it("a 429 is retried, then answers rate_limited after the retries run out", async () => {
-    const ok = fakeCtx([{ status: 429, body: {} }, { status: 200, body: { id: "cus_1" } }])
-    expect(await stripeFetch(ok.ctx, "/v1/customers/cus_1", {}, { sleep: noSleep })).toEqual({ id: "cus_1" })
-    expect(ok.calls).toHaveLength(2)
-    const busy = fakeCtx(Array.from({ length: 5 }, () => ({ status: 429, body: {} })))
-    const e = (await stripeFetch(busy.ctx, "/v1/customers", {}, { sleep: noSleep, maxRetries: 2 }).catch((x) => x)) as StripeApiError
-    expect(e.code).toBe("rate_limited")
-    expect(busy.calls).toHaveLength(3)
-  })
-
-  it("a 429 is retried where the runtime has no timer", async () => {
-    const g = globalThis as { setTimeout?: unknown }
-    const saved = g.setTimeout
-    g.setTimeout = undefined
-    try {
-      const ok = fakeCtx([{ status: 429, body: {} }, { status: 200, body: { id: "cus_1" } }])
-      expect(await stripeFetch(ok.ctx, "/v1/customers/cus_1")).toEqual({ id: "cus_1" })
-      expect(ok.calls).toHaveLength(2)
-    } finally {
-      g.setTimeout = saved
-    }
+  it("a 429 answers rate_limited at once: one call, no wait and no retry inside the run", async () => {
+    const busy = fakeCtx([{ status: 429, body: {} }, { status: 200, body: { id: "cus_1" } }])
+    const started = Date.now()
+    const e = (await stripeFetch(busy.ctx, "/v1/customers/cus_1").catch((x) => x)) as StripeApiError
+    expect(e).toBeInstanceOf(StripeApiError)
+    expect([e.code, e.status, e.resource]).toEqual(["rate_limited", 429, "customers"])
+    expect(busy.calls).toHaveLength(1)
+    expect(Date.now() - started).toBeLessThan(100)
   })
 })

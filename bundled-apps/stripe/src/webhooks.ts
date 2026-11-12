@@ -10,11 +10,17 @@
 // delivery's transaction commits) and changes nothing. A row left `failed` is
 // claimed again, so a retry converges on the same row instead of adding one,
 // and so is a row still `processing` past its lease (`DELIVERY_LEASE_MS` after
-// its claim): the worker that claimed it died mid-dispatch, and without this
-// Stripe's retry would be told the event was handled. Taking a row up again is
-// a conditional update on its status and claim time, so of two retries at the
-// same time only one wins. No event body is stored, only its id, type and
-// outcome.
+// its claim): the run that claimed it was killed mid-dispatch. Taking a row up
+// again is a conditional update on its status and claim time, so of two retries
+// at the same time only one wins. No event body is stored, only its id, type
+// and outcome.
+//
+// ACKNOWLEDGED ONLY WHEN SETTLED. A row another run still holds (`processing`
+// within its lease, or a lost race) is `in_flight`, not a duplicate: the caller
+// answers 503, so the kernel's inbox replays the delivery until the claim
+// settles (then 200 as a duplicate) or lapses (then the replay takes it over).
+// Answering 200 there would let the inbox settle a delivery a killed run never
+// applied.
 
 export type DeliveryStatus =
   | "processing"
@@ -25,8 +31,13 @@ export type DeliveryStatus =
   | "different_account"
   | "not_connected"
 
-/** How long a claimed delivery may stay `processing` before a retry takes it up again. */
-export const DELIVERY_LEASE_MS = 5 * 60_000
+/**
+ * How long a claimed delivery may stay `processing` before a retry takes it up again: past
+ * any webhook run's wall clock (the request ceiling caps a run at about 29 s), so an older
+ * claim belongs to a run that was killed. Kept short: until it lapses, every replay of that
+ * event answers 503.
+ */
+export const DELIVERY_LEASE_MS = 45_000
 
 export interface LedgerDb {
   findMany(
@@ -62,7 +73,15 @@ function reclaimable(row: DeliveryRow, now: Date): boolean {
   return claimed !== null && now.getTime() - claimed >= DELIVERY_LEASE_MS
 }
 
-export type Claim = { kind: "new"; row: DeliveryRow } | { kind: "duplicate"; row: DeliveryRow }
+/**
+ * - `new`: this run holds the claim and handles the event;
+ * - `duplicate`: the event was already settled (handled, ignored, refused or held), nothing to do;
+ * - `in_flight`: another run's claim has not lapsed yet; the delivery is not acknowledged.
+ */
+export type Claim =
+  | { kind: "new"; row: DeliveryRow }
+  | { kind: "duplicate"; row: DeliveryRow }
+  | { kind: "in_flight"; row: DeliveryRow }
 
 async function read(db: LedgerDb, eventId: string): Promise<DeliveryRow | null> {
   const rows = (await db.findMany("webhook_deliveries", { where: { event_id: eventId }, limit: 1 })) as DeliveryRow[]
@@ -70,14 +89,15 @@ async function read(db: LedgerDb, eventId: string): Promise<DeliveryRow | null> 
 }
 
 async function reclaim(db: LedgerDb, row: DeliveryRow, now: Date): Promise<Claim> {
-  if (!reclaimable(row, now)) return { kind: "duplicate", row }
+  if (!reclaimable(row, now)) return { kind: row.status === "processing" ? "in_flight" : "duplicate", row }
   const claimedAt = now.toISOString()
   const won = await db.updateMany("webhook_deliveries", {
     // The event id is unique per org; the host refuses `id` in a bulk where.
     where: { event_id: row.event_id, status: row.status, claimed_at: row.claimed_at ?? null },
     data: { status: "processing", claimed_at: claimedAt },
   })
-  if (won.count !== 1) return { kind: "duplicate", row }
+  // Lost the conditional update: another retry holds a fresh claim now.
+  if (won.count !== 1) return { kind: "in_flight", row }
   return { kind: "new", row: { ...row, status: "processing", claimed_at: claimedAt } }
 }
 

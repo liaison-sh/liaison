@@ -74,7 +74,7 @@ export const CANCEL_PERMISSION_TEXT =
 /** Whether the key may write subscriptions, by a probe that changes nothing. */
 async function canWriteSubscriptions(ctx: MoneyCtx): Promise<boolean | ToolRefusal> {
   try {
-    await stripeFetch(ctx, `/v1/subscriptions/${SUBSCRIPTION_PROBE}`, { method: "POST", params: {} }, { maxRetries: 1 })
+    await stripeFetch(ctx, `/v1/subscriptions/${SUBSCRIPTION_PROBE}`, { method: "POST", params: {} })
     return true
   } catch (err) {
     if (err instanceof StripeApiError && (err.status === 404 || err.status === 400)) return true
@@ -146,7 +146,6 @@ export async function subscriptionCancel(params: Obj | undefined, ctx: MoneyCtx)
       atPeriodEnd
         ? { method: "POST", params: { cancel_at_period_end: true }, idempotencyKey: approval.approvalRequestId }
         : { method: "DELETE", idempotencyKey: approval.approvalRequestId },
-      { maxRetries: 0 },
     )
   } catch (err) {
     if (err instanceof StripeApiError && err.status < 500) {

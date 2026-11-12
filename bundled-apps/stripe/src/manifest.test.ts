@@ -21,8 +21,13 @@ function referencedHandlers(m: any): string[] {
 const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.28", () => {
-    expect(load().version).toBe("0.1.28")
+  it("is at version 0.1.29", () => {
+    expect(load().version).toBe("0.1.29")
+  })
+
+  it("paces Stripe calls with the connection's shared limits, never inside a run", () => {
+    // Under Stripe's test-mode rate (25 a second), so every mode stays clear of a 429.
+    expect(load().connections.stripe.limits).toEqual({ concurrency: 4, perSecond: 20, burst: 20 })
   })
 
   it("parses with the package manifest schema", () => {

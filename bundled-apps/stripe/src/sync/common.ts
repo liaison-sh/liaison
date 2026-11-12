@@ -38,10 +38,9 @@ export interface SyncCtx extends StripeHttpCtx {
   emit(event: { entity: string; action: string; entityId?: string; data?: unknown }): Promise<void>
 }
 
-/** Test seams: the clock and the pause before a rate-limited request is retried. */
+/** Test seams: the clock and the run's working time. */
 export interface SyncOptions {
   now?: () => Date
-  sleep?: (ms: number) => Promise<void>
   /** How long one run may work before it stops and leaves its place (ms). */
   budgetMs?: number
 }
@@ -78,8 +77,6 @@ export const RESOURCES: readonly SyncResource[] = [
 export const PAGE_SIZE = 100
 /** One run's working time; the jobs' `timeoutMs` leaves room above it. */
 export const DEFAULT_BUDGET_MS = 45_000
-
-export { pause } from "../http"
 
 export class Budget {
   private readonly end: number

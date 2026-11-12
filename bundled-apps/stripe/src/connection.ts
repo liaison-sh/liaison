@@ -210,14 +210,12 @@ async function probe(
   ctx: StripeHttpCtx,
   path: string,
   init: Parameters<typeof stripeFetch>[2],
-  sleep?: (ms: number) => Promise<void>,
 ): Promise<Probe> {
   try {
     const body = await stripeFetch<{ livemode?: unknown; data?: Array<{ livemode?: unknown }> }>(
       ctx,
       path,
       init,
-      { maxRetries: 2, sleep },
     )
     const lm = typeof body?.livemode === "boolean" ? body.livemode : body?.data?.[0]?.livemode
     return { status: 200, livemode: typeof lm === "boolean" ? lm : null }
@@ -238,7 +236,6 @@ export async function runConnectionCheck(
   ctx: ConnectionCtx,
   opts: {
     now?: Date
-    sleep?: (ms: number) => Promise<void>
     /** The check of a key not stored yet: answers the same, records nothing. */
     dryRun?: boolean
   } = {},
@@ -252,7 +249,7 @@ export async function runConnectionCheck(
   const known = await knownMirrorIds(ctx.db)
   if (known.length > 0) {
     const answers: Probe[] = []
-    for (const path of known) answers.push(await probe(ctx, path, {}, opts.sleep))
+    for (const path of known) answers.push(await probe(ctx, path, {}))
     if (answers.some((a) => a.status === 401)) return await keyRefused(ctx, install, current, opts.dryRun)
     if (answers.every((a) => a.status === 404)) {
       return refuseTool(
@@ -265,7 +262,7 @@ export async function runConnectionCheck(
   // 2. One read per permission, then the refund probe.
   const reads: Array<Probe & { resource: string; label: string }> = []
   for (const r of PERMISSION_READS) {
-    const p = await probe(ctx, r.path, { params: { limit: 1 } }, opts.sleep)
+    const p = await probe(ctx, r.path, { params: { limit: 1 } })
     if (p.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
     reads.push({ ...p, resource: r.resource, label: r.label })
   }
@@ -273,7 +270,6 @@ export async function runConnectionCheck(
     ctx,
     "/v1/refunds",
     { method: "POST", params: { charge: REFUND_PROBE_CHARGE } },
-    opts.sleep,
   )
   if (refund.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
 

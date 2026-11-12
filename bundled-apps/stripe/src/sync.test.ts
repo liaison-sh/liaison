@@ -153,7 +153,6 @@ let api: StripeApi
 let emitted: Array<{ entity: string; action: string; entityId?: string; data?: unknown }>
 let clock: number
 const now = () => new Date(clock)
-const noSleep = async () => {}
 
 function ctx(): SyncCtx {
   return {
@@ -219,14 +218,14 @@ describe("the first import", () => {
     emptyLists()
     // The worker dies after writing page 2, before its place is recorded (start, page 1, page 2).
     db.crashAt = { entity: "sync_state", n: 3 }
-    await expect(runBackfill(ctx(), { now, sleep: noSleep })).rejects.toThrow("the worker died")
+    await expect(runBackfill(ctx(), { now })).rejects.toThrow("the worker died")
     const stopped = db.one("sync_state", { resource: "customers" })
     expect(stopped?.cursor).toBe("cus_0099")
     expect(stopped?.done_count).toBe(100)
 
     db.crashAt = null
     api.calls = []
-    const res = await runBackfill(ctx(), { now, sleep: noSleep })
+    const res = await runBackfill(ctx(), { now })
     expect(res.outcome).toBe("done")
     // Mutation caught: restarting at zero sends no starting_after on the first page.
     expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain("starting_after=cus_0099")
@@ -236,12 +235,37 @@ describe("the first import", () => {
     expect(typed()).toEqual([])
   })
 
+  it("a 429 stops the run at once with its place kept, and the next run carries on from there", async () => {
+    install("waiting_first_event")
+    api.list("/v1/customers", customers(150))
+    emptyLists()
+    // Page 1 answers, page 2 is refused with 429.
+    api.beforeFetch = (path) => {
+      if (path === "/v1/customers" && db.one("sync_state", { resource: "customers" })?.cursor) api.forced.set("/v1/customers", 429)
+    }
+    const started = Date.now()
+    const first = await runBackfill(ctx(), { now })
+    // Mutation caught: a wait or a retry inside the run (one call for the refused page, no time spent).
+    expect(first).toMatchObject({ outcome: "paused", detail: "rate_limited" })
+    expect(api.calls.filter((c) => c.startsWith("/v1/customers?"))).toHaveLength(2)
+    expect(Date.now() - started).toBeLessThan(200)
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100, status: "running" })
+
+    api.beforeFetch = null
+    api.forced.delete("/v1/customers")
+    api.calls = []
+    const next = await runBackfill(ctx(), { now })
+    expect(next.outcome).toBe("done")
+    expect(api.calls.find((c) => c.startsWith("/v1/customers?"))).toContain("starting_after=cus_0099")
+    expect(new Set(db.rows("stripe_customers").map((r) => r.stripe_id)).size).toBe(150)
+  })
+
   it("two import runs at once write and count each object once", async () => {
     install("waiting_first_event")
     api.list("/v1/customers", customers(230))
     emptyLists()
-    await Promise.all([runBackfill(ctx(), { now, sleep: noSleep }), runBackfill(ctx(), { now, sleep: noSleep })])
-    await runBackfill(ctx(), { now, sleep: noSleep })
+    await Promise.all([runBackfill(ctx(), { now }), runBackfill(ctx(), { now })])
+    await runBackfill(ctx(), { now })
     expect(db.rows("stripe_customers").length).toBe(230)
     expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ status: "done", done_count: 230 })
   })
@@ -257,7 +281,7 @@ describe("the first import", () => {
       moved = true
       Object.assign(db.one("sync_state", { resource: "customers" }) as Row, { cursor: "cus_0099", done_count: 100, status: "running" })
     }
-    const res = await runBackfill(ctx(), { now, sleep: noSleep })
+    const res = await runBackfill(ctx(), { now })
     expect(res).toMatchObject({ outcome: "stopped", detail: "another run moved the import on" })
     expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100, status: "running" })
   })
@@ -280,7 +304,7 @@ describe("the first import", () => {
       { id: "in_new", object: "invoice", customer: "cus_1", status: "open", total: 100, currency: "eur", status_transitions: { finalized_at: 1793750400 } },
     ])
     emptyLists()
-    await runBackfill(ctx(), { now, sleep: noSleep })
+    await runBackfill(ctx(), { now })
     expect(db.one("stripe_invoices", { stripe_id: "in_old" })?.issuer).toBe("before_connection")
     expect(db.one("stripe_invoices", { stripe_id: "in_new" })?.issuer).toBeUndefined()
     expect(typed()).toEqual([])
@@ -306,7 +330,7 @@ describe("the first import", () => {
     // The import ends: the held delivery is played once through the dispatch.
     api.list("/v1/customers", [])
     emptyLists()
-    const res = await runBackfill(ctx(), { now, sleep: noSleep })
+    const res = await runBackfill(ctx(), { now })
     expect(res).toMatchObject({ outcome: "done", released: 1 })
     expect(typed().filter((e) => e.entity === "invoice" && e.action === "finalized")).toHaveLength(1)
     expect(db.one("webhook_deliveries", { event_id: "evt_W" })?.status).toBe("processed")
@@ -318,7 +342,7 @@ describe("the first import", () => {
     api.list("/v1/customers", customers(3))
     emptyLists()
     api.forced.set("/v1/charges", 403)
-    const res = await runBackfill(ctx(), { now, sleep: noSleep })
+    const res = await runBackfill(ctx(), { now })
     expect(res.outcome).toBe("done")
     expect(db.one("sync_state", { resource: "charges" })).toMatchObject({ status: "failed", last_error_code: "permission_missing" })
     expect(db.one("sync_state", { resource: "disputes" })?.status).toBe("done")
@@ -343,7 +367,7 @@ describe("the nightly reconcile", () => {
     api.list("/v1/customers", [{ id: "cus_A", object: "customer", email: "new@acme.example", created: 1767000000 }])
     api.list("/v1/subscriptions", [subscription("sub_A", "cus_A", "canceled")])
     emptyLists()
-    const res = await runReconcile(ctx(), { now, sleep: noSleep })
+    const res = await runReconcile(ctx(), { now })
     expect(res.outcome).toBe("done")
     expect(db.one("stripe_customers", { stripe_id: "cus_A" })?.email).toBe("new@acme.example")
     expect(db.one("stripe_subscriptions", { stripe_id: "sub_A" })).toMatchObject({ status: "canceled", mrr_minor: 0 })
@@ -361,7 +385,7 @@ describe("the nightly reconcile", () => {
     emptyLists()
     api.objects.set("/v1/customers/cus_CLOCK", { id: "cus_CLOCK", object: "customer", livemode: false, email: "clock@acme.example", test_clock: "clock_1", created: 1767000000 })
     api.objects.set("/v1/subscriptions/sub_CLOCK", { livemode: false, ...subscription("sub_CLOCK", "cus_CLOCK") })
-    await runReconcile(ctx(), { now, sleep: noSleep })
+    await runReconcile(ctx(), { now })
     // Mutation caught: soft-deleting rows absent from the page sets deleted_at / cancels.
     expect(db.one("stripe_customers", { stripe_id: "cus_CLOCK" })).toMatchObject({ deleted_at: null, email: "clock@acme.example" })
     expect(db.one("stripe_subscriptions", { stripe_id: "sub_CLOCK" })).toMatchObject({ status: "active", mrr_minor: 4900 })
@@ -369,7 +393,7 @@ describe("the nightly reconcile", () => {
     // Stripe not answering by id changes nothing either.
     api.forced.set("/v1/customers/cus_CLOCK", 500)
     api.forced.set("/v1/subscriptions/sub_CLOCK", 500)
-    await runReconcile(ctx(), { now, sleep: noSleep })
+    await runReconcile(ctx(), { now })
     expect(db.one("stripe_customers", { stripe_id: "cus_CLOCK" })?.deleted_at).toBeNull()
     expect(db.one("stripe_subscriptions", { stripe_id: "sub_CLOCK" })?.status).toBe("active")
   })
@@ -379,7 +403,7 @@ describe("the nightly reconcile", () => {
     mirrorRow("stripe_customers", { stripe_id: "cus_B" })
     api.list("/v1/customers", [{ id: "cus_B", object: "customer", created: 1767000000 }])
     emptyLists()
-    const res = await runReconcile(ctx(), { now, sleep: noSleep })
+    const res = await runReconcile(ctx(), { now })
     expect(res.deleted).toBe(1)
     expect(db.one("stripe_customers", { stripe_id: "cus_GONE" })?.deleted_at).toBeTruthy()
     expect(db.one("stripe_customers", { stripe_id: "cus_B" })?.deleted_at).toBeNull()
@@ -393,7 +417,7 @@ describe("the nightly reconcile", () => {
     api.list("/v1/subscriptions", [subscription("sub_OTHER", "cus_OTHER")])
     emptyLists()
     api.objects.delete("/v1/customers/cus_A")
-    const res = await runReconcile(ctx(), { now, sleep: noSleep })
+    const res = await runReconcile(ctx(), { now })
     expect(res).toMatchObject({ outcome: "different_account", written: 0, deleted: 0 })
     // Mutation caught: deleting on a 404 marks cus_A deleted.
     expect(db.one("stripe_customers", { stripe_id: "cus_A" })?.deleted_at).toBeNull()
@@ -405,7 +429,7 @@ describe("the nightly reconcile", () => {
   it("a 401 marks the key invalid, waiting approvals stay, and approving a refund fails with no effect and says why", async () => {
     mirrorRow("stripe_customers", { stripe_id: "cus_A", email: "a@acme.example" })
     api.all = 401
-    const res = await runReconcile(ctx(), { now, sleep: noSleep })
+    const res = await runReconcile(ctx(), { now })
     expect(res.outcome).toBe("key_invalid")
     expect(String(db.one("install_metadata", {})?.state)).toBe("connected+key_invalid")
     expect(emitted).toEqual([
@@ -420,7 +444,7 @@ describe("the nightly reconcile", () => {
     expect(JSON.stringify(hold)).toContain("stays waiting")
     expect(api.calls).toEqual([])
     // The jobs stop asking Stripe until a person fixes the key.
-    expect((await runReconcile(ctx(), { now, sleep: noSleep })).outcome).toBe("blocked")
+    expect((await runReconcile(ctx(), { now })).outcome).toBe("blocked")
     expect(api.calls).toEqual([])
   })
 })
@@ -434,7 +458,7 @@ describe("the upstream probe", () => {
     install("connected", { last_event_at: "2026-11-10T09:00:00.000Z" })
     api.objects.set("/v1/customers/cus_A", { id: "cus_A", object: "customer", livemode: false, email: "a@acme.example", created: 1767000000 })
     api.events.push(evt("evt_M1", "2026-11-10T09:30:00.000Z"))
-    const res = await runProbe(ctx(), { now, sleep: noSleep })
+    const res = await runProbe(ctx(), { now })
     expect(res).toMatchObject({ stalled: true, missed: 1, replayed: 1, upstreamActivityAt: "2026-11-10T09:30:00.000Z" })
     const inst = db.one("install_metadata", {})
     expect(String(inst?.state)).toBe("connected+stalled")
@@ -449,7 +473,7 @@ describe("the upstream probe", () => {
     emitted = []
     install("connected", { last_event_at: "2026-10-31T12:00:00.000Z" })
     api.events = [evt("evt_OLD", "2026-10-30T12:00:00.000Z")]
-    expect(await runProbe(ctx(), { now, sleep: noSleep })).toMatchObject({ stalled: false, missed: 0 })
+    expect(await runProbe(ctx(), { now })).toMatchObject({ stalled: false, missed: 0 })
     expect(String(db.one("install_metadata", {})?.state)).toBe("connected")
     expect(emitted).toEqual([])
   })
@@ -457,9 +481,9 @@ describe("the upstream probe", () => {
   it("one hour fifty-nine of silence with a newer event upstream is not yet stalled", async () => {
     install("connected", { last_event_at: "2026-11-10T10:01:00.000Z" })
     api.events.push(evt("evt_N", "2026-11-10T10:30:00.000Z"))
-    expect(await runProbe(ctx(), { now, sleep: noSleep })).toMatchObject({ stalled: false, missed: 1 })
+    expect(await runProbe(ctx(), { now })).toMatchObject({ stalled: false, missed: 1 })
     clock = Date.parse("2026-11-10T12:01:00.000Z")
-    expect(await runProbe(ctx(), { now, sleep: noSleep })).toMatchObject({ stalled: true })
+    expect(await runProbe(ctx(), { now })).toMatchObject({ stalled: true })
   })
 })
 
@@ -477,7 +501,7 @@ describe("catch-up and disconnect", () => {
     // A person saves a working key (the key check clears the overlay).
     api.forced.clear()
     db.one("install_metadata", {})!.state = "connected"
-    const res = await runCatchup(ctx(), { now, sleep: noSleep })
+    const res = await runCatchup(ctx(), { now })
     expect(res).toMatchObject({ replayed: 1, cleared: true })
     expect(db.one("webhook_deliveries", { event_id: "evt_K" })?.status).toBe("processed")
     expect(db.rows("stripe_invoices")).toHaveLength(1)

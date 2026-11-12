@@ -2,8 +2,9 @@
 //
 // One verified Stripe event, handled once.
 //
-//   1. Ledger claim on the event id (webhooks.ts): a duplicate answers 200 and
-//      changes nothing.
+//   1. Ledger claim on the event id (webhooks.ts): a settled duplicate answers
+//      200 and changes nothing; one another run still holds answers 503, so the
+//      inbox replays it until that claim settles or lapses.
 //   2. Mode: an event whose `livemode` differs from the install's is
 //      acknowledged, recorded as `mode_mismatch` and never dispatched.
 //   3. `invoice.created` is only a ledger row and always answers 200 at once:
@@ -224,7 +225,7 @@ async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: 
   const live = install.livemode === true
   try {
     if (typeof install.account_id === "string" && install.account_id) {
-      const account = await stripeFetch<Obj>(ctx, "/v1/account", {}, { maxRetries: 0 })
+      const account = await stripeFetch<Obj>(ctx, "/v1/account", {})
       if (account?.id !== install.account_id) return false
     }
     const known: string[] = []
@@ -238,7 +239,7 @@ async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: 
     }
     for (const path of known) {
       try {
-        const obj = await stripeFetch<Obj>(ctx, path, {}, { maxRetries: 0 })
+        const obj = await stripeFetch<Obj>(ctx, path, {})
         if (obj?.livemode === live) return true
       } catch {
         // This one did not resolve; try the next.
@@ -270,7 +271,7 @@ async function chargeOfRefund(ctx: IngestCtx, refund: Obj): Promise<{ id: string
   if (row && typeof row.invoice_id === "string" && row.invoice_id && chargedAt(row)) {
     return { id: chargeId, invoice: row.invoice_id, charged_at: chargedAt(row) }
   }
-  const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
+  const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {})
   const invoice = row && typeof row.invoice_id === "string" && row.invoice_id ? row.invoice_id : await invoiceOfCharge(ctx, charge ?? {})
   return { id: chargeId, invoice, charged_at: chargedAt(row, charge) }
 }
@@ -350,6 +351,9 @@ export async function handleStripeEvent(
     return { status: 500, body: "The delivery ledger could not be written; Stripe will deliver again." }
   }
   if (claim.kind === "duplicate") return { status: 200, body: `Event ${event.id} was already handled; nothing changed.` }
+  if (claim.kind === "in_flight") {
+    return { status: 503, body: `Event ${event.id} is being handled by another run; nothing changed yet, it will be delivered again.` }
+  }
   const row = claim.row
 
   try {
@@ -376,7 +380,6 @@ export async function handleStripeEvent(
         ctx,
         `${route.path}${encodeURIComponent(event.objectId)}`,
         route === SUBSCRIPTION ? { params: { expand: ["discounts", "default_payment_method"] } } : {},
-        { maxRetries: 0 },
       )
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err

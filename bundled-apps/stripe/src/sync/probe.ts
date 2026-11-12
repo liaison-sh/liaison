@@ -23,7 +23,7 @@ import { decodeState } from "../connection"
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
 import { blockedOverlay, importInProgress, type Install, moveState, readInstall } from "../states"
-import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx, type SyncOptions } from "./common"
+import { Budget, DEFAULT_BUDGET_MS, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
 
@@ -50,7 +50,6 @@ export async function runProbe(
   opts: SyncOptions = {},
 ): Promise<UpstreamProbeResult & Partial<ProbeOutcome>> {
   const now = opts.now ?? (() => new Date())
-  const sleep = opts.sleep ?? pause
   const install = await readInstall(ctx.db)
   if (!install || decodeState(install.state).base === "not_connected") return { upstreamActivityAt: null }
   if (blockedOverlay(install)) return { probed: false, reason: `the connection reads ${String(install.state)}` }
@@ -63,7 +62,6 @@ export async function runProbe(
       ctx,
       "/v1/events",
       { params: { limit: REPLAY_PER_RUN, ...(Number.isFinite(sinceMs) ? { "created[gt]": Math.floor(sinceMs / 1000) } : {}) } },
-      { maxRetries: 2, sleep },
     )
   } catch (err) {
     if (err instanceof StripeApiError && err.code === "key_invalid") {
@@ -89,7 +87,7 @@ export async function runProbe(
   // During the first import the objects come from the import itself.
   if (await importInProgress(ctx.db)) return { upstreamActivityAt, stalled: true, missed: missed.length, replayed: 0 }
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
-  const replayed = await replayEvents(ctx, install, [...missed].reverse(), budget, sleep)
+  const replayed = await replayEvents(ctx, install, [...missed].reverse(), budget)
   return { upstreamActivityAt, stalled: true, missed: missed.length, replayed }
 }
 
@@ -103,7 +101,6 @@ export async function replayEvents(
   _install: Install,
   events: Obj[],
   budget: Budget,
-  sleep: (ms: number) => Promise<void>,
 ): Promise<number> {
   let skipNextStateChange = false
   const replayCtx: IngestCtx = {

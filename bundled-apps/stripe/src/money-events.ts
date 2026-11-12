@@ -78,7 +78,6 @@ export async function invoiceOfCharge(ctx: StripeHttpCtx, charge: Obj): Promise<
       ctx,
       "/v1/invoice_payments",
       { params: { payment: { type: "payment_intent", payment_intent: intent }, limit: 1 } },
-      { maxRetries: 1 },
     )
     return idOf(list?.data?.[0]?.invoice)
   } catch (err) {
@@ -98,7 +97,7 @@ export function chargedAt(row: Obj | null | undefined, charge?: Obj | null): str
 
 /** Every refund of a charge, by id, newest first as Stripe lists them (at most 100). */
 export async function listRefunds(ctx: StripeHttpCtx, chargeId: string): Promise<Obj[]> {
-  const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/refunds", { params: { charge: chargeId, limit: 100 } }, { maxRetries: 1 })
+  const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/refunds", { params: { charge: chargeId, limit: 100 } })
   return Array.isArray(list?.data) ? list.data : []
 }
 
@@ -135,7 +134,7 @@ export async function customerOf(ctx: MoneyEventCtx, customerId: string | null, 
   const [row] = (await ctx.db.findMany("stripe_customers", { where: { stripe_id: customerId }, limit: 1 })) as Obj[]
   if (row) return row
   try {
-    const obj = await stripeFetch<Obj>(ctx, `/v1/customers/${encodeURIComponent(customerId)}`, { params: { expand: ["tax_ids"] } }, { maxRetries: 1 })
+    const obj = await stripeFetch<Obj>(ctx, `/v1/customers/${encodeURIComponent(customerId)}`, { params: { expand: ["tax_ids"] } })
     if (!obj || obj.deleted === true) return null
     const fresh = customerRow(obj, newTally())
     if (store) await writeMirror(ctx.db, "stripe_customers", fresh, stripeUpdated)
@@ -209,7 +208,7 @@ async function rateBp(ctx: StripeHttpCtx, rate: unknown, cache: RateCache): Prom
   if (cache.has(rate)) return cache.get(rate) ?? null
   let bp: number | null = null
   try {
-    const obj = await stripeFetch<Obj>(ctx, `/v1/tax_rates/${encodeURIComponent(rate)}`, {}, { maxRetries: 1 })
+    const obj = await stripeFetch<Obj>(ctx, `/v1/tax_rates/${encodeURIComponent(rate)}`, {})
     bp = typeof obj?.percentage === "number" ? Math.round(obj.percentage * 100) : null
   } catch (err) {
     if (!(err instanceof StripeApiError && err.status === 404)) throw err
@@ -279,7 +278,6 @@ export async function invoiceLines(ctx: StripeHttpCtx, invoice: Obj, tally: Mask
       ctx,
       `/v1/invoices/${encodeURIComponent(String(invoice.id))}/lines`,
       { params: { limit: 100, ...(last?.id ? { starting_after: String(last.id) } : {}) } },
-      { maxRetries: 1 },
     )
     lines.push(...(page?.data ?? []))
     more = page?.has_more === true && (page?.data?.length ?? 0) > 0

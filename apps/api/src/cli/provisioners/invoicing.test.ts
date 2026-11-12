@@ -37,16 +37,21 @@ import { reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball } from "~/modules/apps/install-service"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 // installAppFromTarball writes into LIAISON_APPS_DIR (default `/var/lib/liaison`,
 // not writable outside a container). Redirect it to a temp dir for this suite.
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
+
 let installRoot: string
 let prevAppsDir: string | undefined
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "invoicing-prov-install-root-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -55,6 +60,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 })
 

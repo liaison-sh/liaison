@@ -14,6 +14,7 @@ import { withAcquireTimeout } from "~/db/acquire-timeout"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { REDIS_PREFIX, redis } from "~/lib/redis"
+import { resetInstallTrustCache } from "~/modules/apps/install-trust"
 
 const log = rootLogger.child({ module: "route-test-setup" })
 
@@ -266,6 +267,14 @@ const RESET_ROOTS = [
   "kernel.agent_memory",
   "kernel.approval_requests",
   "kernel.system_config",
+  // The install registry. `apps_installed` already empties through its foreign
+  // key to the organizations; these two have none, so without them a reset left
+  // an active version with no install record behind, which the sandbox reads as
+  // "no outbound domain granted" and every later test of that app then failed
+  // with "Domain not in allowlist".
+  "kernel.apps_installed",
+  "kernel.apps_active_version",
+  "kernel.app_activation_events",
 ]
 
 /** 40P01 = deadlock_detected, 55P03 = lock_not_available (lock_timeout fired). */
@@ -384,6 +393,12 @@ async function fastReset(su: ReturnType<typeof postgres>): Promise<void> {
 }
 
 async function truncateTables(): Promise<void> {
+  await truncateTablesUncached()
+  // The install registry was just emptied: forget the grants read before it.
+  resetInstallTrustCache()
+}
+
+async function truncateTablesUncached(): Promise<void> {
   const su = superuserClient()
   if (su) {
     try {

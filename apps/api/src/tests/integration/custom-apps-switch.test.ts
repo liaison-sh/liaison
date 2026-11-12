@@ -15,8 +15,12 @@ import { APP_BUILDER_TOOL_NAMES, registerAppBuilderTools } from "~/modules/app-b
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { installAppFromBytes } from "~/modules/apps/install-service"
 import * as minimal from "~/seed/tiers/minimal"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 const saved = env.LIAISON_CUSTOM_APPS
 let orgId = ""
@@ -38,6 +42,7 @@ async function flags(): Promise<Record<string, boolean>> {
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   orgId = (await createTestOrg()).id
   adminId = (await minimal.orgAdmin(orgId)).id
   bearer = await minimal.token(adminId)
@@ -46,6 +51,7 @@ beforeAll(async () => {
 afterAll(async () => {
   env.LIAISON_CUSTOM_APPS = saved
   _setEdition(null)
+  await installs?.restore()
   await releaseTestLock()
 })
 

@@ -23,11 +23,16 @@ import { roles } from "~/db/schema/kernel"
 import { resetCatalogCache } from "~/modules/apps/catalog"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 let emptyCatalogDir: string
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   emptyCatalogDir = mkdtempSync(join(tmpdir(), "domain-access-empty-catalog-"))
   process.env.LIAISON_APP_CATALOG_DIR = emptyCatalogDir
   resetCatalogCache()
@@ -36,6 +41,7 @@ afterAll(async () => {
   rmSync(emptyCatalogDir, { recursive: true, force: true })
   delete process.env.LIAISON_APP_CATALOG_DIR
   resetCatalogCache()
+  await installs?.restore()
   await releaseTestLock()
 })
 

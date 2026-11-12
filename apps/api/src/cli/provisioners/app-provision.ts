@@ -36,7 +36,7 @@ export function assertProvisionValid(
   }
 }
 
-async function run(
+async function runProvisionBlock(
   ctx: ProvisionContext,
   appName: string,
   provision: Record<string, unknown>,
@@ -64,7 +64,7 @@ export async function planAppProvision(
   appName: string,
   provision: Record<string, unknown>,
 ): Promise<string[]> {
-  const changed = await run(ctx, appName, provision, true)
+  const changed = await runProvisionBlock(ctx, appName, provision, true)
   return changed.map((line) => `provision app '${appName}': ${line}`)
 }
 
@@ -73,7 +73,7 @@ export async function applyAppProvision(
   appName: string,
   provision: Record<string, unknown>,
 ): Promise<{ changed: string[]; unchanged: string[] }> {
-  const changed = await run(ctx, appName, provision, false)
+  const changed = await runProvisionBlock(ctx, appName, provision, false)
   const label = `apps.${appName}.provision`
   ctx.log(
     `app '${appName}': provision ${changed.length > 0 ? `applied (${changed.join(", ")})` : "already set"}`,

@@ -81,7 +81,12 @@ export type ProvisionExecutor = (args: {
   params: unknown
 }) => Promise<unknown>
 
-const defaultExecutor: ProvisionExecutor = async ({ surface, orgId, exportName, params }) => {
+const defaultProvisionExecutor: ProvisionExecutor = async ({
+  surface,
+  orgId,
+  exportName,
+  params,
+}) => {
   const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
   const { runApp } = await import("~/modules/apps/sandbox/run-app")
   const appName = surface.appName
@@ -113,11 +118,11 @@ const defaultExecutor: ProvisionExecutor = async ({ surface, orgId, exportName, 
   })
 }
 
-let executor: ProvisionExecutor = defaultExecutor
+let provisionExecutor: ProvisionExecutor = defaultProvisionExecutor
 
 export const AppProvisioningTestAccess = {
   setExecutor(fn: ProvisionExecutor | null): void {
-    executor = fn ?? defaultExecutor
+    provisionExecutor = fn ?? defaultProvisionExecutor
   },
 }
 
@@ -140,7 +145,7 @@ export async function runAppProvisioning(input: {
   if (errors.length > 0) {
     throw new ProvisioningError(`apps.${input.appName}.provision: ${errors.join("; ")}`)
   }
-  const result = await executor({
+  const result = await provisionExecutor({
     surface,
     exportName: surface.provisioning.handler,
     orgId: input.orgId,
@@ -158,7 +163,7 @@ export async function runAppProvisioningVerify(input: {
 }): Promise<ProvisionVerifyOutcome | null> {
   const surface = surfaceWithProvisioning(input.orgId, input.appName)
   if (!surface.provisioning.verify) return null
-  const result = (await executor({
+  const result = (await provisionExecutor({
     surface,
     exportName: surface.provisioning.verify,
     orgId: input.orgId,

@@ -209,3 +209,4 @@ Composer lists each contact recipient's basis, consumer or business, opt-out -> 
 A card number in an email is hidden before storage, with a note -> apps/api/src/modules/mail/page-write.ts:571, packages/shared/src/pan-scan.ts:290
 SIRET, SIREN, VAT, IMEI and order or invoice numbers stay as written -> packages/shared/src/pan-scan.ts:106, packages/shared/src/pan-scan.ts:170
 An encrypted mailbox is masked where the agent reads it -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:765
+MCP read of a private mailbox answered without asking while unlocked and the assistant switch is on -> apps/web/src/modules/mailbox/mcp-plaintext-responder.ts:106-121

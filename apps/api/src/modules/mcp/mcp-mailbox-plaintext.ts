@@ -16,12 +16,12 @@
 //     ephemeral `agent_stream` channel as the in-app protocol, on the MCP
 //     connection's thread, untagged, so only that user's sockets receive it.
 //     It carries ids only, never content.
-//   * CONSENT moves to the user. The in-app responder answers only for a turn
-//     its own browser started; here the browser asks the user in a dialog
-//     (allow once, allow this client for a while, or deny), because a server
-//     naming ids for an external caller is exactly what the turn nonce exists to
-//     refuse. Keys never leave the browser; the answer comes back over the
-//     existing authenticated `POST /api/agent/mailbox-plaintext/:requestId`.
+//   * CONSENT is the MCP connection itself: the user connected that app with
+//     their own login, and the ask reaches only their own sockets. The window
+//     answers without a prompt while the mailbox is unlocked and agent mail
+//     access is on, as any of the user's apps answers their own agent. Keys
+//     never leave the browser; the answer comes back over the existing
+//     authenticated `POST /api/agent/mailbox-plaintext/:requestId`.
 //   * NO WINDOW, NO WAIT. With no unlocked window the result says so in words
 //     the user can act on, immediately, instead of an empty body.
 //   * The decrypted text IS the tool result here: an MCP client has no context
@@ -31,9 +31,6 @@
 //     for any other read.
 
 import { randomUUID } from "node:crypto"
-import { and, eq } from "drizzle-orm"
-import { withSystemDb } from "~/db/privileged"
-import { mcpConnections } from "~/db/schema/kernel"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { getWsManager } from "~/infra/websocket"
 import type { MailboxUnlockEntry } from "~/infra/websocket-state/types"
@@ -53,26 +50,20 @@ import {
 
 const log = rootLogger.child({ module: "mcp-mailbox-plaintext" })
 
-/** Long enough for a person to see the prompt in the other window and answer. */
+/** Long enough for a window to load the conversation and open it. */
 export const MCP_MAILBOX_WAIT_MS = Number(process.env.MCP_MAILBOX_WAIT_MS ?? 60_000)
 /** Per message, so one huge mail cannot blow the client's tool-result cap. */
 export const MCP_MAILBOX_MAX_BODY_CHARS = 60_000
 
 /** The words the user reads when no window can answer. Actionable, never empty. */
 export const MCP_MAILBOX_OPEN_AND_UNLOCK =
-  "This mailbox is end-to-end encrypted: only the user's own Liaison window can read it, and none is open and unlocked right now. Ask the user to open Liaison (desktop app or browser) on any device, open Mail, unlock the mailbox and leave that window open, then call this tool again. Liaison will ask them there to allow this read."
+  "This mailbox is end-to-end encrypted: only the user's own Liaison window can read it, and none is open and unlocked right now. Ask the user to open Liaison (desktop app or browser) on any device, open Mail, unlock the mailbox and leave that window open, then call this tool again."
 
 export interface McpMailboxDeps {
   /** Server-side answer for a managed mailbox; absent = window path only. */
   answerManaged?: typeof answerManagedMarker
   getUnlock(userId: string): Promise<MailboxUnlockEntry | undefined>
   emit(action: string, data: Record<string, unknown>): Promise<void>
-  /**
-   * The connection as the SERVER knows it: the name shown and approved at the
-   * OAuth consent, and when that connection was created. The name alone is the
-   * client's own registration, so the window never trusts it by itself.
-   */
-  clientIdentity(): Promise<{ label: string; connectedAt: string | null }>
 }
 
 export interface McpMailboxInput {
@@ -115,27 +106,6 @@ function defaultDeps(input: McpMailboxInput): McpMailboxDeps {
         actorType: "mcp",
         data: { threadId: input.threadId, ...data },
       })
-    },
-    async clientIdentity() {
-      const fallback = { label: "An app connected to Liaison", connectedAt: null }
-      try {
-        const [row] = await withSystemDb("mcp-mailbox-client-identity", (db) =>
-          db
-            .select({ label: mcpConnections.label, createdAt: mcpConnections.createdAt })
-            .from(mcpConnections)
-            .where(
-              and(eq(mcpConnections.id, input.connectionId), eq(mcpConnections.orgId, input.orgId)),
-            )
-            .limit(1),
-        )
-        if (!row) return fallback
-        return {
-          label: row.label?.trim() || fallback.label,
-          connectedAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
-        }
-      } catch {
-        return fallback
-      }
     },
   }
 }
@@ -209,7 +179,7 @@ export async function fulfilMcpMailboxMarker(
   const waitMs = input.waitMs ?? MCP_MAILBOX_WAIT_MS
   const requestId = mintMailboxRequestId()
   // Minted HERE, not by a browser: this turn has no browser. It only binds the
-  // answer to this request; the consent is the user's answer in the window.
+  // answer to this request.
   const turnNonce = `mcp:${randomUUID()}`
   const pending = registerMailboxRequest({
     requestId,
@@ -221,17 +191,12 @@ export async function fulfilMcpMailboxMarker(
   })
   const action =
     marker.requestKind === "mail.search" ? "mailbox_search_request" : "mailbox_decrypt_request"
-  const identity = await deps.clientIdentity()
   try {
     await deps.emit(action, {
       requestId,
       turnNonce,
       origin: "mcp",
-      // The window keys any "allow for a while" on the CONNECTION, never on the
-      // name: a second client of this user can register under any name it likes.
       connectionId: input.connectionId,
-      client: identity.label,
-      clientConnectedAt: identity.connectedAt,
       requestKind: marker.requestKind,
       messageIds: marker.messageIds,
       purpose: marker.purpose,
@@ -258,7 +223,7 @@ export async function fulfilMcpMailboxMarker(
     return status(
       input.result,
       MAILBOX_LOCKED,
-      "The user's Liaison window did not answer in time, so the mail stays encrypted. Ask the user to look at their Liaison window (Mail open, mailbox unlocked), allow the read there, then call this tool again.",
+      "The user's Liaison window did not answer in time, so the mail stays encrypted. Ask the user to check that their Liaison window is open with the mailbox unlocked, then call this tool again.",
     )
   }
   return deliverMcpOutcome(outcome, marker, input)

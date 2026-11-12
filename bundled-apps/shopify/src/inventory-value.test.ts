@@ -27,7 +27,7 @@ describe("computeInventoryValue (BL-169 #2)", () => {
 
   it("excludes zero/negative on-hand (no stock → no value)", () => {
     const r = computeInventoryValue([
-      v({ sku: "ERT-FW", price: "799.00", inventoryQuantity: 0 }),
+      v({ sku: "RAL-TC", price: "799.00", inventoryQuantity: 0 }),
       v({ sku: "NEG", price: "10.00", inventoryQuantity: -3 }),
       v({ sku: "OK", price: "5.00", inventoryQuantity: 2 }),
     ])

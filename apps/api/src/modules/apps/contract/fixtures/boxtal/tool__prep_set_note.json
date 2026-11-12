@@ -1,0 +1,18 @@
+{
+  "entry": "tool:prep_set_note",
+  "params": {
+    "order_key": "so:5123456789",
+    "note": "Fragile: double box."
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:order_note_set",
+        "{\"order_id\":\"gid://shopify/Order/5123456789\",\"note\":\"Fragile: double box.\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_not_found\",\"message\":\"tool shopify:order_note_set not registered\",\"retryable\":false}}"
+    }
+  ]
+}

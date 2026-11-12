@@ -57,6 +57,21 @@ export interface RecordingStep<S extends RecordingState = RecordingState> {
 
 type Manifest = Record<string, unknown> & { name: string; version: string }
 
+/** The org a plan records in: the contract's own, or a seeded org whose ids the scrub maps to it. */
+export interface RecordingOrg {
+  orgId: string
+  userId: string
+}
+
+export const CONTRACT_RECORDING_ORG: RecordingOrg = {
+  orgId: CONTRACT_ORG_ID,
+  userId: CONTRACT_USER_ID,
+}
+
+function recordingActor(org: RecordingOrg): UserContext {
+  return { ...RECORDING_ACTOR, orgId: org.orgId, userId: org.userId }
+}
+
 export const RECORDING_ACTOR: UserContext = {
   actorType: "user",
   userId: CONTRACT_USER_ID,
@@ -78,15 +93,19 @@ export function readBundledManifest(app: string): Manifest {
 export async function installForRecording(
   app: string,
   config: Record<string, unknown>,
+  /** A seeded org that already exists; by default the contract's own, created here. */
+  org: RecordingOrg = CONTRACT_RECORDING_ORG,
 ): Promise<{ manifest: Manifest; bridgeManifest: unknown }> {
   const manifest = readBundledManifest(app)
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-  await sql`INSERT INTO ${K}.organizations (id, name, slug)
-    VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO ${K}.users (id, org_id, email, name, password_hash)
-    VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
-    ON CONFLICT DO NOTHING`
-  await ensureAppsForOrg(CONTRACT_ORG_ID)
+  if (org.orgId === CONTRACT_ORG_ID) {
+    await sql`INSERT INTO ${K}.organizations (id, name, slug)
+      VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
+    await sql`INSERT INTO ${K}.users (id, org_id, email, name, password_hash)
+      VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
+      ON CONFLICT DO NOTHING`
+  }
+  await ensureAppsForOrg(org.orgId)
   await registerApps(
     [
       {
@@ -97,16 +116,16 @@ export async function installForRecording(
         _bundlePath: join(BUNDLED_APPS_DIR, app, manifest.version, "bundle.js"),
       },
     ] as never,
-    CONTRACT_ORG_ID,
+    org.orgId,
   )
   const tools = Object.keys((manifest.tools as Record<string, unknown>) ?? {})
   const bridgeManifest = (
-    toolRegistry.get([CONTRACT_ORG_ID, app, tools[0] ?? ""]) as { _manifest?: unknown } | undefined
+    toolRegistry.get([org.orgId, app, tools[0] ?? ""]) as { _manifest?: unknown } | undefined
   )?._manifest
   if (!bridgeManifest) throw new Error(`${app} did not register`)
   await sql`INSERT INTO ${K}.apps (org_id, name, version, config)
-    VALUES (${CONTRACT_ORG_ID}, ${app}, ${manifest.version}, ${JSON.stringify(config)}::jsonb)
-    ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config`
+    VALUES (${org.orgId}, ${app}, ${manifest.version}, ${JSON.stringify(config)}::jsonb)
+    ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config, version = EXCLUDED.version`
   return { manifest, bridgeManifest }
 }
 
@@ -116,23 +135,27 @@ export async function connectCredentials(
   connection: string,
   identifier: string,
   fields: Record<string, string>,
+  org: RecordingOrg = CONTRACT_RECORDING_ORG,
 ): Promise<string> {
   await sql`DELETE FROM ${K}.connected_accounts
-    WHERE org_id = ${CONTRACT_ORG_ID} AND app_name = ${app}`
+    WHERE org_id = ${org.orgId} AND app_name = ${app}`
   const [row] = await sql<{ id: string }[]>`INSERT INTO ${K}.connected_accounts
     (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name,
      credentials_encrypted, status, created_by)
-    VALUES (${CONTRACT_ORG_ID}, ${app}, ${connection}, 'org', 'credentials', ${identifier},
+    VALUES (${org.orgId}, ${app}, ${connection}, 'org', 'credentials', ${identifier},
      ${identifier}, ${encryptSecret(JSON.stringify(fields), env.ENCRYPTION_KEY, CryptoContext.connectedAccountCredentials)},
-     'active', ${CONTRACT_USER_ID})
+     'active', ${org.userId})
     RETURNING id`
   return row!.id
 }
 
-export async function uninstallAfterRecording(app: string): Promise<void> {
-  await teardownAppRegistrations(CONTRACT_ORG_ID, app)
-  toolRegistry.deleteByPrefix([CONTRACT_ORG_ID])
-  initializedOrgRuntimes.delete(CONTRACT_ORG_ID)
+export async function uninstallAfterRecording(
+  app: string,
+  org: RecordingOrg = CONTRACT_RECORDING_ORG,
+): Promise<void> {
+  await teardownAppRegistrations(org.orgId, app)
+  toolRegistry.deleteByPrefix([org.orgId])
+  initializedOrgRuntimes.delete(org.orgId)
 }
 
 /** Run `plan` on the live bridge, writing one scrubbed, replay-checked fixture per recorded step. */
@@ -148,8 +171,19 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
   recordedFrom: string
   fixturesDir: string
   appConfig: Record<string, unknown>
+  /** Record in this org (default the contract's own); its ids are scrubbed to the contract's. */
+  org?: RecordingOrg
 }): Promise<string[]> {
   const { app, manifest } = opts
+  const org = opts.org ?? CONTRACT_RECORDING_ORG
+  const actor = recordingActor(org)
+  const orgIds: Replacement[] =
+    org.orgId === CONTRACT_ORG_ID
+      ? []
+      : [
+          { from: org.orgId, to: CONTRACT_ORG_ID },
+          { from: org.userId, to: CONTRACT_USER_ID },
+        ]
   const entries = new Map<string, ContractEntry>(contractEntries(manifest).map((e) => [e.entry, e]))
   const surface = bridgeSurfaceOf(app)
   const scripts = await bundledAppScripts(join(BUNDLED_APPS_DIR, app))
@@ -162,15 +196,15 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
   ): AppBridge =>
     createSessionRpcBridge(
       app,
-      CONTRACT_USER_ID,
-      CONTRACT_ORG_ID,
-      { run: (fn) => withRlsContext(RECORDING_ACTOR, fn) },
+      org.userId,
+      org.orgId,
+      { run: (fn) => withRlsContext(actor, fn) },
       opts.bridgeManifest as never,
       ["*"],
       "user",
       undefined,
       {
-        actor: RECORDING_ACTOR,
+        actor,
         ...extra,
         ...(job
           ? {
@@ -193,8 +227,14 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       const entry = entries.get(step.entry)
       if (!entry)
         throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
-      await step.before?.(opts.state)
-      const input = await step.input(opts.state)
+      let input: RecordInput
+      try {
+        await step.before?.(opts.state)
+        input = await step.input(opts.state)
+      } catch (err) {
+        report.push(`FAIL ${step.entry}: building its input failed: ${String(err)}`)
+        continue
+      }
       const params = input.params as Record<string, unknown> | undefined
       const job =
         entry.kind === "job" ? { name: entry.entry.slice(4), payload: params ?? {} } : undefined
@@ -202,7 +242,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       const entrySurface = verifier ? verifySurface() : surface
       const real = verifier
         ? (createWebhookVerifyBridge({
-            appOrgId: CONTRACT_ORG_ID,
+            appOrgId: org.orgId,
             appName: app,
             appConfig: opts.appConfig,
             manifestConnections: manifest.connections as never,
@@ -248,7 +288,12 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
         const token = (JSON.parse(c.reply) as { token?: unknown } | null)?.token
         return typeof token === "string" ? [{ from: token, to: "redacted" }] : []
       })
-      const scrubbed = scrubFixture(fixture, [...opts.replacements, ...stored, ...claims])
+      const scrubbed = scrubFixture(fixture, [
+        ...opts.replacements,
+        ...orgIds,
+        ...stored,
+        ...claims,
+      ])
       const problem = await verifyFixture({
         isolate,
         entry,

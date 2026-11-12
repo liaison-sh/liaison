@@ -516,6 +516,10 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "reindex source: called by the reindex sweep with each org from listOrgIds",
   "apps/api/src/modules/users/merge-placeholder-tools.ts#run":
     "admin tool: ctx is the run's tool context (refuseWithoutAdmin first)",
+  "apps/api/src/modules/users/sidebar-agent-tools.ts#handleSidebarAppsGet":
+    "sidebar tool: ctx is the run's tool context; another member's row only after resolveTarget checked kernel:users:admin and that the member is in ctx.orgId",
+  "apps/api/src/modules/users/sidebar-agent-tools.ts#handleSidebarAppsSet":
+    "sidebar tool: ctx is the run's tool context; another member's row only after resolveTarget checked kernel:users:admin and that the member is in ctx.orgId",
   "apps/api/src/modules/users/merge-placeholder.ts#mergePlaceholderIntoUser":
     "the org the merge runs in (its caller's org), passed to the re-index",
   "apps/api/src/modules/apps/sandbox/worker-pool.ts#SandboxWorkerPool.execute":

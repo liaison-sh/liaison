@@ -25,7 +25,7 @@ import { hasScope } from "~/modules/permissions/permissions"
 import { DatabaseConfigError } from "./credentials"
 
 // Registers the default liaison-self catalog into db-core's static registry.
-import "~/apps/database/adapters/liaison-self"
+import "./adapters/liaison-self"
 
 /**
  * The `liaison-self` catalog reads a Liaison database through a read-only login

@@ -30,6 +30,7 @@ import { closeAllQueues, JobsTestAccess } from "~/infra/jobs/jobs"
 import { reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball } from "~/modules/apps/install-service"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import {
   closeIsolationScans,
   fingerprintDiff,
@@ -42,6 +43,9 @@ import {
 } from "~/tests/helpers/org-isolation"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 const REPO = join(import.meta.dir, "..", "..", "..", "..", "..")
 const JOB_TIMEOUT_MS = 30_000
@@ -84,6 +88,7 @@ async function seedIncident(orgId: string, title: string): Promise<string> {
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "fanout-isolation-apps-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -124,6 +129,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

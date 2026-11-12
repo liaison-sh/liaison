@@ -47,6 +47,7 @@ import {
   salesEmailInjector,
 } from "~/modules/demo/world/sales-email"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { PROSPECT_SCENARIO_ROUTINE } from "./seed-agent-native"
 import { salesIssuerProfileId } from "./seed-commerce"
 import { type SeedDemoWorldResult, seedDemoWorld } from "./seed-demo"
@@ -58,6 +59,8 @@ const UNIT_PRICE_MINOR = 89900
 const DISCOUNT_MINOR = 1366480
 
 let appsDir: string | null = null
+// The catalog installs this file makes are instance-wide: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 type ReinvokePayload = { bundleId?: string; context?: string }
 const reinvoked: ReinvokePayload[] = []
@@ -76,6 +79,7 @@ beforeAll(async () => {
   }
   // A demo instance: the CRM is the in-process fixture and the reply to a
   // reserved-domain prospect is delivered as a fixture only there.
+  installs = await snapshotAppInstalls()
   DemoModeTestAccess.set(true)
   if (!process.env.LIAISON_APPS_DIR) {
     appsDir = mkdtempSync(path.join(tmpdir(), "sales-quote-bundle-"))
@@ -97,6 +101,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await shutdownSandboxPool()
+  await installs?.restore()
   registerDemoApiConnectorResponder(null)
   resetAppRegistries()
   DemoModeTestAccess.set(null)

@@ -14,7 +14,7 @@
 #
 # The grants file this script executes (`generated/readonly-grants.sql`) is
 # NOT a copy — it IS the single checked-in
-# `apps/api/src/apps/database/generated/readonly-grants.sql` file that
+# `apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql` file that
 # `scripts/db-readonly-role.ts` (the existing-cluster path) also executes,
 # bind-mounted read-only alongside this script by `deploy/docker-compose.yml`
 # (see that file's postgres `volumes:` comment). One generated SQL file, two
@@ -52,7 +52,7 @@ if [ ! -f "$GRANTS_FILE" ] && [ -f "$SCRIPT_DIR/generated/readonly-grants.sql" ]
 fi
 
 if [ ! -f "$GRANTS_FILE" ]; then
-  echo "postgres-init: $GRANTS_FILE not found — mount apps/api/src/apps/database/generated/ at $GRANTS_DIR (see deploy/docker-compose.yml), or run 'bun run scripts/db-readonly-role.ts --regenerate' to (re)create the canonical file" >&2
+  echo "postgres-init: $GRANTS_FILE not found — mount apps/api/src/modules/apps/connections/sql/generated/ at $GRANTS_DIR (see deploy/docker-compose.yml), or run 'bun run scripts/db-readonly-role.ts --regenerate' to (re)create the canonical file" >&2
   exit 1
 fi
 

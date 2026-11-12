@@ -1,0 +1,31 @@
+{
+  "entry": "tool:webhooks_repair",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": ["boxtalWebhookSecret"],
+      "reply": true
+    },
+    {
+      "method": "connections_getSettings",
+      "args": ["boxtal"],
+      "reply": "{\"values\":{\"environment\":\"sandbox\"},\"missing\":[]}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["subscription", "{\"limit\":100}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"webhook_status\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"1ae993c5-560f-4bfb-af57-77071f5859f2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:57:40.766129+00\",\"updated_at\":\"2026-11-12 09:01:46.334513+00\",\"key\":\"webhook_status\",\"value\":\"degraded\"}]"
+    },
+    {
+      "method": "db_update",
+      "args": ["app_config", "1ae993c5-560f-4bfb-af57-77071f5859f2", "{\"value\":\"degraded\"}"]
+    }
+  ]
+}

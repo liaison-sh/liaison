@@ -32,6 +32,7 @@ import {
   orgName,
 } from "~/modules/shell/branding-store"
 import { homeApprovalCount } from "~/modules/shell/home-action-count"
+import { isHiddenFromSidebar } from "~/modules/shell/sidebar-visibility"
 import { openTab } from "~/modules/shell/tab-store"
 import { ToursWorkRow } from "~/modules/tours/ToursMenu"
 import { PullToRefresh } from "~/ui/PullToRefresh"
@@ -164,9 +165,14 @@ export const Work: Component = () => {
     void ensureBrandingLoaded()
   })
 
+  // The apps the person hid from their sidebar are left out, as on the rail.
+  // The fixed seats stay; search and links still reach a hidden app.
   const rows = createMemo(() =>
     applyActivityBarOrder(
-      getActivityBarEntries().filter((entry) => entry.position !== "bottom" && !isSeated(entry)),
+      getActivityBarEntries().filter(
+        (entry) =>
+          entry.position !== "bottom" && !isSeated(entry) && !isHiddenFromSidebar(entry.id),
+      ),
     ),
   )
   const modules = createMemo(() => rows().filter((entry) => !entry.external))

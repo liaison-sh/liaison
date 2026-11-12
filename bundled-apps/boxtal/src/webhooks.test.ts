@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { documentCreatedHandler, trackingChangedHandler } from "./webhooks"
+import { CLAIM_TTL_MS, documentCreatedHandler, trackingChangedHandler } from "./webhooks"
 import { createMockDb } from "./test-db"
 import { buildLabelPdf, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
 
@@ -124,6 +124,70 @@ describe("trackingChangedHandler", () => {
     await trackingChangedHandler(payload, ctx, {})
     // Identical event → identical fallback key → one ledger row.
     expect(db.__all("webhook_delivery")).toHaveLength(1)
+  })
+})
+
+// No run holds a transaction across its bridge calls: a delivery's claim is an expiring lease.
+// A run killed between claiming and marking leaves a `processing` row; a redelivery after
+// CLAIM_TTL_MS takes it over (compare-and-set on its claim attempt), a fresh one stays in flight.
+describe("delivery claim lease", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
+  function seedClaim(db: ReturnType<typeof makeCtx>["db"], claimedAt: string, attempt: number | null = 1) {
+    return db.insert("webhook_delivery", {
+      delivery_id: "del-9",
+      event_type: "TRACKING_CHANGED",
+      status: "processing",
+      failure_count: 0,
+      received_at: claimedAt,
+      claimed_at: attempt ? claimedAt : null,
+      claim_attempt: attempt ?? 0,
+    })
+  }
+  const status = (db: ReturnType<typeof makeCtx>["db"]) =>
+    db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.tracking_status
+
+  it("a claim a killed run left behind is taken over once it expired, and the delivery is applied", async () => {
+    const { ctx, db } = makeCtx()
+    await seedClaim(db, ago(CLAIM_TTL_MS + 1_000))
+    const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    expect(r.status).toBe(200)
+    expect(status(db)).toBe("IN_TRANSIT")
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processed")
+  })
+
+  it("a claim from before the lease (no claim time) expires on its received time", async () => {
+    const { ctx, db } = makeCtx()
+    await seedClaim(db, ago(CLAIM_TTL_MS + 1_000), null)
+    await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    expect(status(db)).toBe("IN_TRANSIT")
+  })
+
+  it("a fresh claim is a delivery in flight: the redelivery is acknowledged and not applied twice", async () => {
+    const { ctx, db } = makeCtx()
+    await seedClaim(db, ago(1_000))
+    const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    expect(r.status).toBe(200)
+    expect(status(db)).toBeNull()
+  })
+
+  it("two redeliveries racing for an expired claim: only the one whose compare-and-set lands applies it", async () => {
+    const { ctx, db } = makeCtx()
+    await seedClaim(db, ago(CLAIM_TTL_MS + 1_000))
+    // Another run takes the claim over between this run's read and its compare-and-set.
+    const findMany = ctx.db.findMany.bind(ctx.db)
+    let raced = false
+    ctx.db.findMany = async (entity: string, opts: unknown) => {
+      const rows = await findMany(entity, opts)
+      if (entity === "webhook_delivery" && !raced) {
+        raced = true
+        const row = db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")!
+        await db.update("webhook_delivery", row.id as string, { claim_attempt: 2, claimed_at: ago(0) })
+      }
+      return rows
+    }
+    const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    expect(r.status).toBe(200)
+    expect(status(db)).toBeNull()
   })
 })
 

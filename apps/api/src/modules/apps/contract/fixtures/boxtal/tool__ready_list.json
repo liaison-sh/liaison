@@ -1,0 +1,70 @@
+{
+  "entry": "tool:ready_list",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["attention_rule", "{\"limit\":200}"],
+      "reply": "[{\"id\":\"c221d57e-7613-4ed5-945b-7b4dbff3bcc9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-05-19 12:00:00+00\",\"updated_at\":\"2026-05-19 12:00:00+00\",\"name\":\"Aluminium declaration for US imports\",\"enabled\":true,\"conditions\":[{\"op\":\"eq\",\"field\":\"destination\",\"value\":\"US\"}],\"documents\":[{\"name\":\"Smelt and cast declaration\",\"note\":\"Country of smelt for the chassis. Customs asks for it at the border, not before.\"},{\"name\":\"Commercial invoice, three copies\",\"note\":\"One in the pouch, two inside the carton.\"}],\"knowledge_ref\":null},{\"id\":\"bab56847-0d82-4b1e-bee4-58d3d7bd81dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-05-19 12:00:00+00\",\"updated_at\":\"2026-05-19 12:00:00+00\",\"name\":\"Two person lift over 15 kg\",\"enabled\":true,\"conditions\":[{\"op\":\"gte\",\"field\":\"weight\",\"value\":15}],\"documents\":[{\"name\":\"Heavy parcel label\",\"note\":\"Yellow label on the two long faces.\"}],\"knowledge_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"79cedecb-19e3-4a32-9e06-ad888a8d99f0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:09.106775+00\",\"updated_at\":\"2026-11-12 09:02:22.219899+00\",\"key\":\"product_code_aliases\",\"value\":{\"aliases\":{\"HARDCOVER\":\"HC\"},\"strip_prefixes\":[\"RAL-\"],\"strip_suffixes\":[\"-B2B\"]}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"order_status\":{\"in\":[\"PENDING\",\"REQUESTED\",\"CONFIRMED\"]},\"tracking_status\":{\"in\":[\"ANNOUNCED\",\"\"]}},\"orderBy\":{\"createdAt\":\"asc\",\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"3df36d87-f6a8-4c50-a5d3-6792ba565c9c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-12 22:00:00+00\",\"updated_at\":\"2026-09-12 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-cust-helena\",\"external_id\":\"INV-2026-0021\",\"document_ref\":\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\",\"contact_ref\":null,\"offer_code\":\"DHLE-Europlus\",\"tracking_number\":\"DEMO000000411\",\"boxtal_shipment_ref\":\"DEMO-SHP-ship-cust-helena\",\"queue_facts\":{\"items\":2,\"weight\":5.3,\"parcels\":[{\"width\":50,\"height\":22,\"length\":96,\"weight\":5.3}],\"category\":\"sale\",\"customer\":\"Helena Ritter\",\"products\":\"1xLXL, 1xSTAND\",\"order_name\":\"INV-2026-0021\",\"staff_note\":null,\"destination\":\"DE\",\"package_count\":1,\"order_created_at\":\"2026-09-11T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"PENDING\",\"tracking_status\":\"ANNOUNCED\",\"status_fetched_at\":\"2026-09-16 09:00:00+00\",\"polled_at\":\"2026-09-16 09:00:00+00\",\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":1711,\"label_cost_ttc\":21.4,\"currency\":\"EUR\",\"recipient_summary\":\"Helena Ritter, Leipzig, DE\",\"route_summary\":\"FR to DE\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":\"agent\",\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"order_status\":{\"in\":[\"PENDING\",\"REQUESTED\",\"CONFIRMED\"]},\"tracking_status\":null},\"orderBy\":{\"createdAt\":\"asc\",\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"07afb473-c38d-4544-89c5-cb5184b3cdf1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-19 22:00:00+00\",\"updated_at\":\"2026-07-19 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-return-de\",\"external_id\":\"CN-2026-0001\",\"document_ref\":\"4da92a37-d5dd-4407-a753-84c86fda324a\",\"contact_ref\":null,\"offer_code\":\"DHLE-Retour\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"DEMO-SHP-ship-return-de\",\"queue_facts\":{\"items\":1,\"weight\":3.6,\"parcels\":[{\"width\":44,\"height\":20,\"length\":62,\"weight\":3.6}],\"category\":\"return\",\"customer\":\"Klangwerk GmbH\",\"products\":\"1xLMC\",\"order_name\":\"CN-2026-0001\",\"staff_note\":null,\"destination\":\"DE\",\"package_count\":1,\"order_created_at\":\"2026-07-18T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"PENDING\",\"tracking_status\":null,\"status_fetched_at\":null,\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":899,\"label_cost_ttc\":13.9,\"currency\":\"EUR\",\"recipient_summary\":\"Klangwerk GmbH, Leipzig, DE\",\"route_summary\":\"FR to DE\",\"kind\":\"return\",\"return_reason\":\"Faulty sensor board, returned for credit\",\"created_by\":\"user\",\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null},{\"id\":\"b968e384-082f-4a93-a089-afe16c3196fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-10 22:00:00+00\",\"updated_at\":\"2026-09-10 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-cust-marta\",\"external_id\":\"INV-2026-0019\",\"document_ref\":\"ffacc36f-8a9a-43ea-823c-323fdcca0c1e\",\"contact_ref\":null,\"offer_code\":\"UPSE-Standard\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"DEMO-SHP-ship-cust-marta\",\"queue_facts\":{\"items\":1,\"weight\":1.9,\"parcels\":[{\"width\":34,\"height\":16,\"length\":46,\"weight\":1.9}],\"category\":\"sale\",\"customer\":\"Marta Nowak\",\"products\":\"1xLMI\",\"order_name\":\"INV-2026-0019\",\"staff_note\":null,\"destination\":\"PL\",\"package_count\":1,\"order_created_at\":\"2026-09-08T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"REQUESTED\",\"tracking_status\":null,\"status_fetched_at\":null,\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":675,\"label_cost_ttc\":16.2,\"currency\":\"EUR\",\"recipient_summary\":\"Marta Nowak, Gdansk, PL\",\"route_summary\":\"FR to PL\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":\"user\",\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null},{\"id\":\"99e8aa9f-2294-4f49-80dc-8127d28ddc21\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-14 22:00:00+00\",\"updated_at\":\"2026-09-14 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-cust-hiroshi\",\"external_id\":\"INV-2026-0022\",\"document_ref\":\"4c9821bd-1f49-4ffc-b351-4a981991a169\",\"contact_ref\":null,\"offer_code\":\"CHRP-International\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"DEMO-SHP-ship-cust-hiroshi\",\"queue_facts\":{\"items\":2,\"weight\":4.1,\"parcels\":[{\"width\":44,\"height\":20,\"length\":62,\"weight\":4.1}],\"category\":\"sale\",\"customer\":\"Hiroshi Kubo\",\"products\":\"1xLMC, 1xCASE\",\"order_name\":\"INV-2026-0022\",\"staff_note\":null,\"destination\":\"JP\",\"package_count\":1,\"order_created_at\":\"2026-09-13T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"CONFIRMED\",\"tracking_status\":null,\"status_fetched_at\":null,\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":1028,\"label_cost_ttc\":48.9,\"currency\":\"EUR\",\"recipient_summary\":\"Hiroshi Kubo, Yokohama, JP\",\"route_summary\":\"FR to JP\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":\"user\",\"fulfillment_synced\":true,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "prep_meta",
+        "{\"where\":{\"document_ref\":{\"in\":[\"4da92a37-d5dd-4407-a753-84c86fda324a\",\"ffacc36f-8a9a-43ea-823c-323fdcca0c1e\",\"4c9821bd-1f49-4ffc-b351-4a981991a169\",\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\"]}},\"limit\":1000}"
+      ],
+      "reply": "[{\"id\":\"6fc40c35-7345-495d-9706-b7d860f6825f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-19 22:00:00+00\",\"updated_at\":\"2026-07-19 22:00:00+00\",\"document_ref\":\"4da92a37-d5dd-4407-a753-84c86fda324a\",\"shopify_order_id\":null,\"order_name\":\"CN-2026-0001\",\"order_tags\":[\"return\"],\"order_created_at\":\"2026-07-18 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-07-19 22:00:00+00\",\"ship_to\":null},{\"id\":\"f73de2cb-ee50-4811-9734-00427d64e87a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-14 22:00:00+00\",\"updated_at\":\"2026-09-14 22:00:00+00\",\"document_ref\":\"4c9821bd-1f49-4ffc-b351-4a981991a169\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0022\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-13 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-14 22:00:00+00\",\"ship_to\":null},{\"id\":\"150195fe-e092-4769-a576-b7777ebedc5e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-12 22:00:00+00\",\"updated_at\":\"2026-09-12 22:00:00+00\",\"document_ref\":\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0021\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-11 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-12 22:00:00+00\",\"ship_to\":null},{\"id\":\"43223066-9ccc-4974-9434-41eb55d5437c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-10 22:00:00+00\",\"updated_at\":\"2026-09-10 22:00:00+00\",\"document_ref\":\"ffacc36f-8a9a-43ea-823c-323fdcca0c1e\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0019\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-08 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-10 22:00:00+00\",\"ship_to\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["prep_order_state", "{\"limit\":1000}"],
+      "reply": "[{\"id\":\"83aef90d-e37b-4859-8a79-5a2c5ad13f55\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:43.392899+00\",\"updated_at\":\"2026-11-12 09:01:30.033222+00\",\"order_key\":\"doc:4da92a37-d5dd-4407-a753-84c86fda324a\",\"shopify_order_id\":null,\"status\":\"validated\",\"status_note\":\"Waiting for the customer's door code.\",\"status_changed_at\":\"2026-01-01 00:00:00+00\",\"category\":\"sale\",\"excluded\":false,\"proforma_document_ref\":null,\"proforma_number\":null,\"proforma_pending_approval_id\":null,\"proforma_requested_at\":null,\"recipient\":null,\"items\":null,\"address_choice\":null}]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:document_rules_match",
+        "{\"recordType\":\"boxtal:shipment\",\"records\":[{\"id\":\"b968e384-082f-4a93-a089-afe16c3196fd\",\"countryIso2\":\"PL\",\"carrier_family\":\"ups\"},{\"id\":\"99e8aa9f-2294-4f49-80dc-8127d28ddc21\",\"countryIso2\":\"JP\",\"carrier_family\":\"chronopost\"},{\"id\":\"3df36d87-f6a8-4c50-a5d3-6792ba565c9c\",\"countryIso2\":\"DE\",\"carrier_family\":\"dhl\"}]}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"matches\":[]}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:document_rules_match",
+        "{\"recordType\":\"boxtal:order\",\"records\":[{\"id\":\"ffacc36f-8a9a-43ea-823c-323fdcca0c1e\",\"countryIso2\":\"PL\",\"carrier_family\":\"ups\"},{\"id\":\"4c9821bd-1f49-4ffc-b351-4a981991a169\",\"countryIso2\":\"JP\",\"carrier_family\":\"chronopost\"},{\"id\":\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\",\"countryIso2\":\"DE\",\"carrier_family\":\"dhl\"}]}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"matches\":[]}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "prep_state",
+        "{\"where\":{\"document_ref\":{\"in\":[\"ffacc36f-8a9a-43ea-823c-323fdcca0c1e\",\"4c9821bd-1f49-4ffc-b351-4a981991a169\",\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\"]}},\"limit\":1000}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

@@ -393,7 +393,23 @@ export interface KernelClient {
   findOne(entity: "users" | "contacts", id: string): Promise<Record<string, unknown> | null>
   /** Up to 200 ids; ids not visible are absent from the answer. */
   findByIds(entity: "users" | "contacts", ids: string[]): Promise<Record<string, unknown>[]>
+  /**
+   * Who the run acts for: the system (a job, a setup step), or a person with the
+   * ids of their roles. `holds` answers, for each scope asked (at most 20),
+   * whether the person (their own grants or the call's) holds it; the system
+   * holds every scope.
+   */
+  caller(scopes?: string[]): Promise<KernelCaller>
+  /** The org's roles (id and name), by name. */
+  roles(): Promise<Array<{ id: string; name: string }>>
+  /** The org's people with one of these emails (case-insensitive, up to 200), directory fields. */
+  findUsersByEmail(emails: string[]): Promise<Record<string, unknown>[]>
 }
+
+/** `ctx.kernel.caller()`: who the run acts for. */
+export type KernelCaller =
+  | { kind: "system"; holds: Record<string, boolean> }
+  | { kind: "person"; userId: string; roleIds: string[]; holds: Record<string, boolean> }
 
 export interface LimiterClient {
   /**

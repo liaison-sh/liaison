@@ -55,6 +55,6 @@ describe("ticket handle sites", () => {
   })
 
   it("the database app's raw SQL examples document the STORED form", () => {
-    expect(read("apps/database/adapters/liaison-self.ts")).toMatch(/stored handle/i)
+    expect(read("modules/apps/connections/sql/adapters/liaison-self.ts")).toMatch(/stored handle/i)
   })
 })

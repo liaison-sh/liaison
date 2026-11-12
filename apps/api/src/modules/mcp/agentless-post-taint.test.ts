@@ -8,7 +8,7 @@
 // handler refuses, never writes, a post that would be hidden. Visibility is asserted through the
 // real messages RLS policy, as each reader.
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
 import { eq } from "drizzle-orm"
 import { sql } from "~/db"
@@ -20,18 +20,24 @@ import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { handleThreadsCreate, handleThreadsReply } from "~/modules/agent/tools/chat-tools"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { decideApproval } from "~/modules/approvals/decide"
+import { updatePayload } from "~/modules/approvals/edit"
+import { approvalEditableFieldsRegistry } from "~/modules/apps/app-registries"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { connectionTaintWindowId, saveConnectionTurnTaint } from "~/modules/mcp/connection-service"
 import {
   cleanupSeededOrg,
   grantScope,
+  seedAgentForOrg,
   seedMcpConnection,
   seedOrgWithTicketsApp,
   userContextFor,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, type ToolCallCtx } from "~/modules/mcp/tool-call"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import * as dispatchGuardModule from "~/modules/threads/agent-dispatch-guard"
 import { insertThreadWithParticipants } from "~/modules/threads/thread"
 import { seedUserRow } from "~/seed/factories/org/rows"
+import { grantScopesThroughRole } from "~/seed/factories/people/scoped-role"
 
 const READ = "test:items:read"
 const THREADS = ["kernel:threads:read", "kernel:threads:write"]
@@ -644,6 +650,145 @@ describe("rule 14: posts from a connection bound to no agent", () => {
     expect(row?.metadata?.taintDisclosureApprovalId).toBe(id)
     expect(row?.metadata?.externalClientPost).toBeUndefined()
   }, 60_000)
+
+  it("editing a parked post keeps naming only what the lacking readers lack", async () => {
+    const w = await world()
+    // threads_reply declares no editable field today; the edit path is what is under test.
+    approvalEditableFieldsRegistry.set(
+      [w.orgId, "kernel", "threads_reply"],
+      [{ field: "content", label: "Message", widget: "text" }],
+    )
+    const conn = await connection(w)
+    await saveConnectionTurnTaint(
+      w.orgId,
+      connectionTaintWindowId({ connectionId: conn().connectionId }),
+      ["kernel:threads:read", READ],
+    )
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const id = parkedId(await reply(conn, group, "3 open items"))
+    const edited = await updatePayload({
+      orgId: w.orgId,
+      requestId: id,
+      fields: { content: "3 open items, edited" },
+      actor: userContextFor(w.orgId, w.ownerId, w.ownerScopes),
+      actingAgentId: null,
+    })
+    expect(edited.lastEdit).not.toBeNull()
+    const [card] = await sql<{ summary: unknown }[]>`
+      SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+    const text = JSON.stringify(card?.summary)
+    expect(text).toContain(
+      "2 people in this conversation cannot see test data this conversation read",
+    )
+    expect(text).not.toContain("test, threads")
+    expect(text).not.toContain("threads, test")
+    expect(text).not.toContain("Drafted after reading")
+  }, 60_000)
+
+  describe("an approved post that mentions an agent", () => {
+    type DispatchArgs = Parameters<typeof dispatchGuardModule.dispatchAgentMention>[1]
+    let spy: ReturnType<typeof spyOn> | null = null
+    const dispatched: DispatchArgs[] = []
+
+    function watchDispatch() {
+      dispatched.length = 0
+      spy = spyOn(dispatchGuardModule, "dispatchAgentMention").mockImplementation((async (
+        _runRls: unknown,
+        args: DispatchArgs,
+      ) => {
+        dispatched.push(args)
+        return { allowed: true }
+      }) as never)
+    }
+
+    afterEach(() => {
+      spy?.mockRestore()
+      spy = null
+    })
+
+    it("from a person's external client: none on park, exactly one on approval, as the requester with the connection's scopes", async () => {
+      const w = await world()
+      const agent = await seedAgentForOrg(w.orgId, { scopeCeiling: THREADS })
+      // A second decider with a dimension grant the requester lacks: approving delegates their
+      // authority to the handler, never to the turn the post wakes.
+      const dana = await person(w.orgId, "Dana", [...THREADS, READ])
+      await grantScopesThroughRole(w.orgId, {
+        adminUserId: w.ownerId,
+        userId: dana,
+        name: "Dana's desk",
+        scopes: [],
+        dimensions: { "test:team": ["dana-only-team"] },
+      })
+      const conn = await connection(w)
+      await read(conn)
+      const connectionScopes = conn().actor.scopes
+      const group = await thread(w, [w.ownerId, w.bob, w.carol, dana])
+      watchDispatch()
+      const id = parkedId(
+        await reply(conn, group, `@[MCP Test Agent](agent:${agent.agentId}) how many are open?`),
+      )
+      expect(dispatched).toHaveLength(0)
+      await approve(w, id, dana)
+      expect(dispatched).toHaveLength(1)
+      const [call] = dispatched
+      expect(call?.calleeAgentId).toBe(agent.agentId)
+      expect(call?.threadId).toBe(group)
+      expect(call?.callerAgentId).toBeNull()
+      expect(call?.actor.userId).toBe(w.ownerId)
+      expect([...(call?.actor.scopes ?? [])].sort()).toEqual([...connectionScopes].sort())
+      expect([...(call?.callerEffectiveScope ?? [])].sort()).toEqual([...connectionScopes].sort())
+      // The requester's own dimension grants, not widened by the decider's.
+      const owner = await withPrivilegedDb(w.orgId, "test-rule14-owner-perms", (tx) =>
+        loadEffectivePermissions(tx, w.ownerId, w.orgId),
+      )
+      expect(call?.actor.dimensionGrants ?? {}).toEqual(owner.dimensionGrants)
+      expect(JSON.stringify(call?.actor.dimensionGrants ?? {})).not.toContain("dana-only-team")
+    }, 60_000)
+
+    it("from an in-app agent: approving wakes no mentioned agent, as before", async () => {
+      const w = await world()
+      const agent = await seedAgentForOrg(w.orgId, { scopeCeiling: THREADS })
+      const group = await thread(w, [w.ownerId, w.bob, w.carol])
+      const { executeTool } = await import("~/modules/apps/execute-tool")
+      const { runContextStore } = await import("~/modules/agent/runtime/run-context")
+      const { createTurnScopeAccumulator } = await import(
+        "~/modules/agent/scopes/turn-scope-accumulator"
+      )
+      const accumulator = createTurnScopeAccumulator()
+      accumulator.recordInjected([READ])
+      const runId = crypto.randomUUID()
+      watchDispatch()
+      const res = await runContextStore.run(
+        {
+          runId,
+          parentRunId: null,
+          rootRunId: runId,
+          nestingDepth: 0,
+          humanTurn: true,
+          effectiveScope: w.ownerScopes,
+          turnScopeAccumulator: accumulator,
+        },
+        () =>
+          executeTool({
+            toolName: "kernel:threads_reply",
+            orgId: w.orgId,
+            actor: userContextFor(w.orgId, w.ownerId, w.ownerScopes),
+            params: {
+              threadId: group,
+              content: `@[MCP Test Agent](agent:${agent.agentId}) from the in-app agent`,
+            },
+            origin: "in-app-agent",
+            stepBundleId: null,
+          }),
+      )
+      const id = "blocked" in res ? (res.blocked?.approvalRequestId ?? "") : ""
+      expect(id).not.toBe("")
+      await approve(w, id)
+      const [row] = await rows(group)
+      expect(row?.content).toContain("from the in-app agent")
+      expect(dispatched).toHaveLength(0)
+    }, 60_000)
+  })
 
   describe("threads_create's first message", () => {
     async function create(ctx: () => ToolCallCtx, participantIds: string[], text: string) {

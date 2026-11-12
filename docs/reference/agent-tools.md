@@ -120,7 +120,6 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `document_template_update` | Change a document template: name, recordType, enabled, a rich_text body (the whole new body: read it with kernel__document_template_get first) or a PDF form's mapping. | yes | `kernel:org:admin` |
 | `document_templates_list` | List the organisation's document templates (letters, certificates, customs declarations, thank you notes, forms, any printable document): id, name, kind (rich_text or pdf_form), the record type it prints and whether it is turned on. |  | `kernel:files:read` |
 | `documents_print` | Print the documents for a record (a shipment, an order, any printable record) with the org's templates: pass app, entity, recordId and templateIds (from kernel__document_templates_list for that record type). |  | `kernel:files:read` |
-| `drive_picker` | Show the card where the person picks the Google Drive files Liaison can see (Drive in picked mode), with their Drive mode and what is picked. |  | `kernel:threads:read` |
 | `edit_role` | Edit an EXISTING org role — rename it, change its description, and/or ADD (grantScopes) and REMOVE (revokeScopes) scopes on it. | yes | `kernel:roles:admin` |
 | `enable_app` | Install an app from the catalog for the workspace (install intent: adds it to the workspace's enabled apps so the catalog installs and keeps it). | yes | `kernel:apps:admin` |
 | `enable_routine_template` | Instantiate a routine template as one of your routines (runs with your scopes). | yes | `kernel:routines:write` |
@@ -436,10 +435,14 @@ Search, read and import Google Drive files, and upload new reports.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `choose_shared_drives` | Choose the Shared Drives the organization's Google Drive connection shares with the team: REPLACES the chosen set with drives (each a Shared Drive id or exact name from shared_drives). | yes | `google-drive:accounts:admin` |
+| `drive_picker` | Show the person the card where they choose the Google Drive files Liaison may see (a Drive connected in picked mode sees only the files picked in Google's picker). |  | `google-drive:accounts:read` |
 | `import` | Pull a Google Drive file into Liaison as an attachable FILE. |  | `google-drive:accounts:read` |
+| `picker_remove` | Stop letting Liaison see one picked file or folder of one of the person's Drive accounts (the settings screen). |  | `google-drive:accounts:read` |
+| `picker_state` | The person's Drive accounts with their mode, picked files and the sync of the picked files into Knowledge (the settings screen). |  | `google-drive:accounts:read` |
 | `read` | Read a Google Drive file's TEXT content so you can work with it in-context (parse it, summarise it, extract rows/values). |  | `google-drive:accounts:read` |
 | `search` | Search the connected Google Drive for files by name or content. |  | `google-drive:accounts:read` |
 | `shared_drives` | List the organization's Google Drive connections and the Shared Drives each one shares with the team, plus (for an admin) every Shared Drive the connecting Google account is a member of, each marked chosen or not. |  | `google-drive:accounts:admin` |
+| `shared_drives_save` | Replace the shared drives the organization's Drive connection shares, from the settings screen of an admin (the agent's choose_shared_drives asks for approval instead). |  | `google-drive:accounts:admin` |
 | `upload` | Upload a NEW file to the connected Google Drive. |  | `google-drive:files:write` |
 
 ## invoicing

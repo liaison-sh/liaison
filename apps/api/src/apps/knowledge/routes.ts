@@ -941,24 +941,32 @@ knowledgeRoutes.post("/synced-sources", zValidator("json", syncedSourceCreateSch
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
-    if (input.sourceKind) {
+    const folderRef = input.folderRef ?? ""
+    // A folder of an app whose own `folder` source kind syncs it (no adapter here).
+    const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
+    const folderKind =
+      !input.sourceKind && folderRef
+        ? listAppSourceKinds(actor).find((k) => k.appName === input.appName && k.kind === "folder")
+        : undefined
+    if (input.sourceKind || folderKind) {
       // An app source: the kind's own checks replace the folder precheck.
-      const sourceKind = input.sourceKind
+      const sourceKind = input.sourceKind ?? "folder"
+      const sourceConfig = folderKind ? { ref: folderRef } : (input.sourceConfig ?? {})
+      const ref = typeof sourceConfig.ref === "string" ? sourceConfig.ref : null
       const row = await withRequestRls(c, (tx) =>
         createSyncedSource(
           tx,
           {
             ...input,
             sourceKind,
-            sourceConfig: input.sourceConfig ?? {},
-            folderRef: `app-source:${sourceKind}`,
+            sourceConfig,
+            folderRef: ref ?? `app-source:${sourceKind}`,
           },
           actor,
         ),
       )
       return success(c, row, undefined, 201)
     }
-    const folderRef = input.folderRef ?? ""
     const row = await withRequestRls(c, async (tx) => {
       const registry = registerDefaultKnowledgeSources({
         tx,

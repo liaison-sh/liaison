@@ -230,3 +230,28 @@ describe("a Drive pick made from the agent's picker card", () => {
     ).toBeNull()
   })
 })
+
+describe("a page result posted in the conversation the page came from", () => {
+  it("reaches the agent as an event, the app's words and data fenced", () => {
+    const line = systemEventLine({
+      content: "Picked 2 items in Google Drive: Plan, Leads.",
+      metadata: {
+        type: "app-page-result",
+        app: "google-drive",
+        page: "picker",
+        summary: "Picked 2 items in Google Drive: Plan, Leads.",
+        data: { items: [{ id: "doc00001", name: "Plan" }] },
+      },
+    })
+    expect(line).toContain(`google-drive app's "picker" page`)
+    expect(line).toContain("<external-content")
+    expect(line).toContain('"id":"doc00001"')
+    expect(line).toContain("carry on with it now")
+  })
+
+  it("a line without its app or summary stays out", () => {
+    expect(
+      systemEventLine({ content: "x", metadata: { type: "app-page-result", app: "a" } }),
+    ).toBeNull()
+  })
+})

@@ -50,7 +50,10 @@ import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 import type { SetupKickoffPayload } from "~/modules/provisioning/setup-kickoff"
 import type { ScopeDecisionTurnPayload } from "~/modules/scope-requests/announce"
-import type { SecretRequestTurnPayload } from "~/modules/secret-requests/announce"
+import type {
+  FollowUpTurnPayload,
+  SecretRequestTurnPayload,
+} from "~/modules/secret-requests/announce"
 import type { PostedMessageDispatchParams } from "~/modules/threads/posted-message-dispatch"
 
 /** How often the leader looks for turns whose process is gone (S10). */
@@ -1121,6 +1124,13 @@ export async function registerKernelJobs(): Promise<void> {
   registerJobWorker<SecretRequestTurnPayload>("kernel", "secret-request-turn", async (payload) => {
     const { runSecretRequestTurn } = await import("~/modules/secret-requests/announce")
     await runSecretRequestTurn(payload)
+  })
+
+  // A page opened from a conversation answered a result: the agent that showed
+  // the page carries on (modules/apps/page-result.ts).
+  registerJobWorker<FollowUpTurnPayload>("kernel", "app-page-result-turn", async (payload) => {
+    const { runPageResultTurn } = await import("~/modules/apps/page-result")
+    await runPageResultTurn(payload)
   })
 
   // A new workspace's first admin sign-in: the setup card in their agent

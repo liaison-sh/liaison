@@ -969,6 +969,13 @@ it as a page, with the routes it calls:
   against what the person may read or change: the route acts as them. The page may
   call only the routes it lists, at most 60 calls a minute; bodies and answers are
   capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
+- A route can tell the conversation the page was opened from what happened: add
+  `pageResult: { summary, data }` to its answer (`summary` 1 to 500 characters,
+  `data` a JSON object of at most 8 KiB). When a tool minted the page during an
+  agent's turn, Liaison posts `summary` in that conversation as a line from the
+  person, gives the agent `data`, and runs one turn of that agent so it carries
+  on. The page itself never receives `pageResult`; a page opened from Settings or
+  your panel posts nothing.
 - A page that needs a provider widget in the person's browser with their own grant
   (Google's file picker) ships no script: it declares
   `"widget": { "kind": "google-picker", "connection": "<oauth2 connection>", "route": "<its route>", "tokenScopes": [...] }`

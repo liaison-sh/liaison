@@ -147,6 +147,7 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
                 ? (p.config as Record<string, unknown>)
                 : {},
             folderRef: p.ref as string,
+            ...(typeof p.account === "string" && p.account ? { sourceAccount: p.account } : {}),
             displayName:
               typeof p.displayName === "string" && p.displayName ? p.displayName : appName,
             syncIntervalSeconds:
@@ -156,18 +157,6 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
           },
           actor,
         )
-        if (typeof p.account === "string" && p.account) {
-          const [{ withPrivilegedDb }, { knowledgeRel }] = await Promise.all([
-            import("~/db/privileged"),
-            import("~/apps/knowledge/schema-refs"),
-          ])
-          await withPrivilegedDb(orgId, "app-source-account", (tx) =>
-            tx.execute(drizzleSql`
-                UPDATE ${knowledgeRel("synced_sources")} SET source_account = ${p.account as string}
-                WHERE id = ${created.id}::uuid AND org_id = ${orgId}::uuid
-              `),
-          )
-        }
         const [row] = await rows(drizzleSql`s.id = ${created.id}::uuid`)
         return JSON.stringify(row ? view(row) : null)
       }

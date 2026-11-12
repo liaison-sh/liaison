@@ -128,6 +128,7 @@ export type {
   KnowledgeSyncResult,
   LimiterClient,
   Logger,
+  PageResult,
   PageRouteParams,
   PagesClient,
   ProvisionParams,

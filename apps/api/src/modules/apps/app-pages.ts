@@ -63,6 +63,7 @@ import {
   peekOrgAppState,
   primeOrgApps,
 } from "~/modules/apps/org-apps"
+import type { PageOrigin } from "~/modules/apps/page-result"
 import {
   grantBeyondWidget,
   type PageWidgetConfig,
@@ -105,6 +106,12 @@ export interface AppPageBinding {
   app: string
   page: string
   params: Record<string, unknown>
+  /**
+   * The conversation the page was opened from: bound by the platform when a run
+   * in that conversation minted the handle (pages bridge), never by the app or
+   * the browser. A route's `pageResult` is posted there (page-result.ts).
+   */
+  origin?: PageOrigin
   /** A page session only: the sha256 of its key (base64url). */
   keyHash?: string
 }
@@ -283,8 +290,12 @@ export async function createAppPageHandle(input: {
   app: string
   page: string
   params?: unknown
+  origin?: PageOrigin
 }): Promise<{ handle: string; app: string; page: string; expiresInSeconds: number }> {
-  const binding = await checkedBinding(input)
+  const binding: AppPageBinding = {
+    ...(await checkedBinding(input)),
+    ...(input.origin ? { origin: input.origin } : {}),
+  }
   await countMint(input.orgId, input.userId, input.app)
   const handle = `${HANDLE_PREFIX}${newId()}`
   await redis.set(handleKey(handle), JSON.stringify(binding), "EX", HANDLE_TTL_SECONDS)
@@ -326,7 +337,7 @@ export async function openAppPageHandle(input: {
     page: binding.page,
     params: binding.params,
   })
-  return mintTicket(fresh)
+  return mintTicket(binding.origin ? { ...fresh, origin: binding.origin } : fresh)
 }
 
 function parseBinding(raw: string | null): AppPageBinding | null {
@@ -730,11 +741,50 @@ export async function callAppPageRoute(
     actor,
     params: { body, params: binding.params, page: binding.page },
   })
-  const text = JSON.stringify(result ?? null)
+  const answer = await withoutPageResult(binding, decl.scope, actor, result)
+  const text = JSON.stringify(answer ?? null)
   if (Buffer.byteLength(text, "utf8") > PAGE_CALL_MAX_BYTES) {
     throw new AppPageError(413, "answer_too_large", "The route's answer is over 1 MiB")
   }
   return JSON.parse(text)
+}
+
+/**
+ * A route answer's `pageResult` (`{ summary, data? }`) is for the conversation
+ * the page came from, not for the page: it is taken out of the answer and, when
+ * the page has an origin, posted there with one turn of the agent that showed
+ * the page (page-result.ts). Best effort: the route's answer stands either way.
+ */
+async function withoutPageResult(
+  binding: AppPageBinding,
+  scope: string,
+  actor: ActorContext,
+  result: unknown,
+): Promise<unknown> {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result
+  if (!("pageResult" in result)) return result
+  const { pageResult, ...rest } = result as Record<string, unknown>
+  if (binding.origin) {
+    const { parsePageResult, announcePageResult } = await import("~/modules/apps/page-result")
+    const parsed = parsePageResult(pageResult)
+    if (parsed) {
+      await announcePageResult({
+        actor,
+        userId: binding.userId,
+        app: binding.app,
+        page: binding.page,
+        scope,
+        origin: binding.origin,
+        result: parsed,
+      })
+    } else {
+      log.warn(
+        { orgId: binding.orgId, app: binding.app, page: binding.page },
+        "page result ignored: pageResult needs a summary of 1 to 500 characters and data of at most 8 KiB",
+      )
+    }
+  }
+  return rest
 }
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────

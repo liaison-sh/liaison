@@ -67,7 +67,7 @@ Stripe tells Liaison about changes through a webhook. In **Developers → Webhoo
 
 - **Signed deliveries only.** Each delivery's signature is checked against your workspace's own signing secret, on the server. A delivery signed with another secret, with no secret saved yet, or signed more than 5 minutes before or after it arrives, is refused.
 - **Rolling the secret.** While you roll the secret in Stripe, the previous one keeps working for at most 24 hours.
-- **Once per event.** A redelivered event changes nothing. An event whose handling was cut off (a restart mid-delivery) is handled by Stripe's next retry once 5 minutes have passed. Events that arrive out of order still end in Stripe's current state: Liaison reads each object from Stripe again, and never uses the event's own copy.
+- **Once per event.** A redelivered event changes nothing. A delivery is acknowledged only once it has been handled: while another run still holds it, the delivery is answered as not done yet and comes again. An event whose handling was cut off (a restart mid-delivery) is taken up by a delivery that comes 45 seconds or more later. Events that arrive out of order still end in Stripe's current state: Liaison reads each object from Stripe again, and never uses the event's own copy.
 - **The first event** moves the connection to **connected** and records that event's name and time.
 - **When the key stops working**, an event is acknowledged and kept for the catch-up, and the connection reads `key_invalid` (or `partial` for one missing permission).
 - **When Stripe says an object does not exist** and Liaison cannot confirm it is still the same account, nothing is changed and the connection reads `different_account`.

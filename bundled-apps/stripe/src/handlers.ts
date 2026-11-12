@@ -5,7 +5,7 @@ import type { UpstreamProbeResult, WebhookResult } from "@liaison/app-sdk"
 import { handleStripeEvent, type IngestCtx } from "./dispatch"
 import { runMrrRebuild } from "./mrr-rebuild"
 import { holdWhileImporting, readInstall } from "./states"
-import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx } from "./sync/common"
+import { Budget, DEFAULT_BUDGET_MS, type SyncCtx } from "./sync/common"
 import { runBackfill } from "./sync/backfill"
 import { onDisconnect, type PurgeCtx, purgeMirror, runCatchup, runPrune } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
@@ -90,5 +90,5 @@ export async function mrrRebuildJob(_params: unknown, ctx: SyncCtx) {
   const install = await readInstall(ctx.db)
   if (!install) return { appended: 0, complete: false, gapBefore: null }
   const now = () => new Date()
-  return runMrrRebuild(ctx, install, { now, sleep: pause, budget: new Budget(now, DEFAULT_BUDGET_MS) })
+  return runMrrRebuild(ctx, install, { now, budget: new Budget(now, DEFAULT_BUDGET_MS) })
 }

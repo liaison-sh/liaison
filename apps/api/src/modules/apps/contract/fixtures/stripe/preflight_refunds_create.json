@@ -4,6 +4,12 @@
     "chargeId": "ch_contract_1",
     "amountMinor": "1500"
   },
+  "unrecorded": {
+    "reason": "hand-written, not recorded: a recording needs a restricted Stripe key, which the recording run does not have yet. Awaiting a recording against a Stripe test account."
+  },
+  "expectError": {
+    "reason": "the replayed install is not connected, so the entry refuses before it calls Stripe; the working path waits for a recording against a Stripe test account"
+  },
   "calls": [
     {
       "method": "db_findMany",

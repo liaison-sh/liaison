@@ -61,7 +61,7 @@ async function marker(ctx: SyncCtx, resource: string): Promise<string | null> {
 export async function runMrrRebuild(
   ctx: SyncCtx,
   install: Install,
-  opts: { now: () => Date; sleep: (ms: number) => Promise<void>; budget: Budget },
+  opts: { now: () => Date; budget: Budget },
 ): Promise<RebuildResult> {
   const now = opts.now()
   const windowStart = new Date(now.getTime() - REBUILD_DAYS * DAY_MS)
@@ -92,7 +92,6 @@ export async function runMrrRebuild(
             ...(cursor ? { starting_after: cursor } : {}),
           },
         },
-        { maxRetries: 3, sleep: opts.sleep },
       )
     } catch (err) {
       if (err instanceof StripeApiError) return result

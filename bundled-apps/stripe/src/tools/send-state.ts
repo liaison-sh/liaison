@@ -33,7 +33,7 @@ export async function invoiceSendState(params: Obj | undefined, ctx: SendStateCt
   if (hold) return unavailable(`Stripe cannot be asked about invoice ${id} (${hold.error.code}).`)
   let live: Obj
   try {
-    live = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, { timeoutMs: 1500 }, { maxRetries: 0 })
+    live = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, { timeoutMs: 1500 })
   } catch {
     return unavailable(`Stripe did not answer about invoice ${id}.`)
   }

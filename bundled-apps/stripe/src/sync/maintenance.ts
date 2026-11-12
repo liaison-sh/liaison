@@ -22,7 +22,7 @@
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
 import { blockedOverlay, holdWhileImporting, readInstall } from "../states"
-import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx, type SyncOptions } from "./common"
+import { Budget, DEFAULT_BUDGET_MS, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
 
@@ -33,7 +33,6 @@ export async function runCatchup(
   opts: SyncOptions = {},
 ): Promise<{ replayed: number; cleared: boolean; detail?: string }> {
   const now = opts.now ?? (() => new Date())
-  const sleep = opts.sleep ?? pause
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
   const install = await readInstall(ctx.db)
   if (!install) return { replayed: 0, cleared: false, detail: "not connected" }
@@ -50,7 +49,7 @@ export async function runCatchup(
     if (budget.spent) return { replayed, cleared: false, detail: "time budget spent" }
     let event: unknown
     try {
-      event = await stripeFetch(ctx, `/v1/events/${encodeURIComponent(d.event_id)}`, {}, { maxRetries: 3, sleep })
+      event = await stripeFetch(ctx, `/v1/events/${encodeURIComponent(d.event_id)}`, {})
     } catch (err) {
       if (err instanceof StripeApiError && err.status === 404) {
         // Older than Stripe keeps events: the nightly reconcile reads the object itself.

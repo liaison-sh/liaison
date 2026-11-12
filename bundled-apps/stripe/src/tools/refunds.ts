@@ -269,7 +269,7 @@ async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): 
     let invoice = typeof row?.invoice_id === "string" && row.invoice_id ? row.invoice_id : null
     let charged = chargedAt(row)
     if (!invoice || !charged) {
-      const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
+      const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {})
       invoice ??= await invoiceOfCharge(ctx, charge)
       charged ??= chargedAt(null, charge)
     }
@@ -397,7 +397,6 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
         },
         idempotencyKey: approval.approvalRequestId,
       },
-      { maxRetries: 0 },
     )
   } catch (err) {
     const definite = err instanceof StripeApiError && err.status < 500

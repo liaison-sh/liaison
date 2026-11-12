@@ -205,7 +205,7 @@ describe("movements", () => {
     db.rows("stripe_customers").push({ id: "m-c", stripe_id: "cus_sub_p", stripe_updated: "2026-11-01T00:00:00.000Z", deleted_at: null })
     api.list("/v1/subscriptions", [sub("sub_p", { unit: 9800 })])
     lists()
-    await runReconcile(syncCtx(), { now: () => new Date(clock), sleep: async () => {} })
+    await runReconcile(syncCtx(), { now: () => new Date(clock) })
     expect(log("sub_p")).toHaveLength(2)
     expect(log("sub_p")[1]).toMatchObject({ source: "reconcile", before_minor: 4900, after_minor: 9800 })
     // The webhook of that change arrives late: the stored amount is already 9800.
@@ -224,7 +224,7 @@ describe("movements", () => {
     db.rows("stripe_customers").push({ id: "m-c", stripe_id: "cus_sub_q", stripe_updated: "2026-11-01T00:00:00.000Z", deleted_at: null })
     api.list("/v1/subscriptions", [sub("sub_q", { unit: 9800 })])
     lists()
-    await runReconcile(syncCtx(), { now: () => new Date(clock), sleep: async () => {} })
+    await runReconcile(syncCtx(), { now: () => new Date(clock) })
     expect(log("sub_q")).toHaveLength(2)
     expect(log("sub_q")[1]).toMatchObject({ stripe_event_id: "evt_first", source: "webhook" })
   })
@@ -244,7 +244,7 @@ describe("the nightly rebuild", () => {
       { id: "evt_a", type: "customer.subscription.created", created: sec("2026-11-02T00:00:00.000Z"), data: { object: sub("sub_l", { unit: 4900 }) } },
       { id: "evt_b", type: "customer.subscription.updated", created: sec("2026-11-10T00:00:00.000Z"), data: { object: sub("sub_l", { unit: 9800 }) } },
     ]
-    const run = () => runReconcile(syncCtx(), { now: () => new Date(clock), sleep: async () => {} })
+    const run = () => runReconcile(syncCtx(), { now: () => new Date(clock) })
     await run()
     expect(log("sub_l")).toHaveLength(2)
     expect(log("sub_l")[1]).toMatchObject({ stripe_event_id: "evt_b", kind: "upgrade", delta_minor: 4900, at: "2026-11-10T00:00:00.000Z", source: "reconcile" })
@@ -288,7 +288,7 @@ describe("the rebuild leaves covered changes alone", () => {
       { id: "evt_2", type: "customer.subscription.updated", created: sec("2026-11-10T00:00:00.000Z"), data: { object: sub("sub_c", { unit: 7000 }) } },
       { id: "evt_3", type: "customer.subscription.updated", created: sec("2026-11-12T00:00:00.000Z"), data: { object: sub("sub_c", { unit: 9800 }) } },
     ]
-    await runReconcile(syncCtx(), { now: () => new Date(clock), sleep: async () => {} })
+    await runReconcile(syncCtx(), { now: () => new Date(clock) })
     expect(log("sub_c")).toHaveLength(2)
     expect(log("sub_c").reduce((s, r) => s + Number(r.delta_minor), 0)).toBe(9800)
   })

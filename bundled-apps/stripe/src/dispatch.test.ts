@@ -346,22 +346,54 @@ describe("stripe event dispatch", () => {
     expect(db.count("stripe_invoices")).toBe(1)
   })
 
-  it("a delivery left processing past its lease is taken up again by the retry, and one within it is not", async () => {
+  it("a delivery another run still holds is not acknowledged: the retry answers 503, and past the lease it is applied", async () => {
     connect("connected", { webhook_confirmed_at: "2026-11-02T00:00:00.000Z" })
     api.set("/v1/invoices/in_A1", invoice("paid"))
     const ev = event("evt_stuck", "invoice.paid", { id: "in_A1" })
-    // A worker died mid-dispatch a minute ago: Stripe's retry is told it was handled.
+    // A run claimed it 10 s ago and was killed before it settled the row.
     const t = now().getTime()
-    db.rows("webhook_deliveries").push({ id: "d-1", event_id: "evt_stuck", topic: "invoice.paid", status: "processing", failure_count: 0, received_at: new Date(t - 60_000).toISOString(), claimed_at: new Date(t - 60_000).toISOString() })
+    db.rows("webhook_deliveries").push({ id: "d-1", event_id: "evt_stuck", topic: "invoice.paid", status: "processing", failure_count: 0, received_at: new Date(t - 10_000).toISOString(), claimed_at: new Date(t - 10_000).toISOString() })
+    // Mutation caught: a held claim answered 200 (the inbox settles it done and it is never applied).
     const fresh = await handleStripeEvent(ev, ctx(), { now })
-    expect(fresh.body).toContain("already handled")
+    expect(fresh.status).toBe(503)
     expect(db.count("stripe_invoices")).toBe(0)
-    // Past the lease, the next retry handles it.
+    expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ id: "d-1", status: "processing" })])
+    // Past the lease, the next retry takes it over and applies it.
     clock += DELIVERY_LEASE_MS
     const late = await handleStripeEvent(ev, ctx(), { now })
     expect(late.status).toBe(200)
     expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ id: "d-1", status: "processed" })])
     expect(db.count("stripe_invoices")).toBe(1)
+  })
+
+  it("a run killed after its claim: the replays answer 503 until the lease lapses, then the event is applied exactly once", async () => {
+    connect("connected", { webhook_confirmed_at: "2026-11-02T00:00:00.000Z" })
+    api.set("/v1/invoices/in_A1", invoice("paid"))
+    const ev = event("evt_killed", "invoice.paid", { id: "in_A1" })
+    // The first run claims, then hangs in its re-fetch for ever: a killed run runs no catch.
+    const fetchOf = api.fetch.bind(api)
+    let hang = true
+    const killed: IngestCtx = { ...ctx(), fetch: (url, opts) => (hang ? ((hang = false), new Promise(() => {})) : fetchOf(url, opts)) }
+    void handleStripeEvent(ev, killed, { now })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ status: "processing" })])
+
+    const early = await handleStripeEvent(ev, ctx(), { now })
+    expect(early.status).toBe(503)
+    expect(db.count("stripe_invoices")).toBe(0)
+
+    clock += DELIVERY_LEASE_MS
+    const late = await handleStripeEvent(ev, ctx(), { now })
+    expect(late.status).toBe(200)
+    const again = await handleStripeEvent(ev, ctx(), { now })
+    expect(again.status).toBe(200)
+    expect(again.body).toContain("already handled")
+    expect(db.count("stripe_invoices")).toBe(1)
+    expect(emitted.filter((e) => e.entity === "invoice")).toHaveLength(1)
+  })
+
+  it("the lease outlasts any webhook run and stays short, so a takeover comes on an early replay", () => {
+    expect(DELIVERY_LEASE_MS).toBe(45_000)
   })
 
   it("two retries of one failed delivery at the same time: only one takes it up", async () => {
@@ -371,7 +403,7 @@ describe("stripe event dispatch", () => {
       claimDelivery(db as unknown as IngestCtx["db"], "evt_twice", "invoice.paid", at),
       claimDelivery(db as unknown as IngestCtx["db"], "evt_twice", "invoice.paid", at),
     ])
-    expect(claims.map((c) => c.kind).sort()).toEqual(["duplicate", "new"])
+    expect(claims.map((c) => c.kind).sort()).toEqual(["in_flight", "new"])
     expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ status: "processing", claimed_at: at.toISOString() })])
   })
 

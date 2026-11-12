@@ -37,7 +37,6 @@ import {
   DEFAULT_BUDGET_MS,
   ensureSyncState,
   PAGE_SIZE,
-  pause,
   readAllSyncState,
   RESOURCES,
   type SyncCtx,
@@ -64,7 +63,6 @@ function msOf(v: unknown): number {
 
 export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise<BackfillResult> {
   const now = opts.now ?? (() => new Date())
-  const sleep = opts.sleep ?? pause
   const budget = new Budget(now, opts.budgetMs ?? DEFAULT_BUDGET_MS)
   const install = await readInstall(ctx.db)
   if (!install) return { outcome: "not_connected", written: 0, released: 0 }
@@ -90,7 +88,6 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
           ctx,
           res.list,
           { params: { limit: PAGE_SIZE, ...(res.params ?? {}), ...(row.cursor ? { starting_after: row.cursor } : {}) } },
-          { maxRetries: 3, sleep },
         )
       } catch (err) {
         if (!(err instanceof StripeApiError)) throw err
@@ -103,7 +100,7 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
           await moveState(ctx, install, [{ kind: "permission_refused" }])
           break
         }
-        // 429 that persisted, a Stripe 5xx: the next tick carries on from the same place.
+        // A 429 (never waited out in the run), a Stripe 5xx: the next tick carries on from the same place.
         return { outcome: "paused", written, released: 0, detail: err.code }
       }
       const page = asPage(body)
@@ -132,7 +129,7 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
     return { outcome: "paused", written, released: 0 }
   }
   await finishImport(ctx, install)
-  const released = await releaseHeld(ctx, budget, sleep)
+  const released = await releaseHeld(ctx, budget)
   return { outcome: "done", written, released }
 }
 
@@ -172,7 +169,6 @@ async function finishImport(ctx: SyncCtx, install: Install): Promise<void> {
 export async function releaseHeld(
   ctx: SyncCtx,
   budget: Budget,
-  sleep: (ms: number) => Promise<void> = pause,
 ): Promise<number> {
   const held = (await ctx.db.findMany("webhook_deliveries", {
     where: { status: HELD },
@@ -184,7 +180,7 @@ export async function releaseHeld(
     if (budget.spent) break
     let event: unknown
     try {
-      event = await stripeFetch(ctx, `/v1/events/${encodeURIComponent(d.event_id)}`, {}, { maxRetries: 3, sleep })
+      event = await stripeFetch(ctx, `/v1/events/${encodeURIComponent(d.event_id)}`, {})
     } catch (err) {
       if (err instanceof StripeApiError && err.status === 404) {
         // Older than Stripe keeps events (30 days): the nightly reconcile has the object.

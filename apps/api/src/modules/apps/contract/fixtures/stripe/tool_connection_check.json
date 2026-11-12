@@ -1,6 +1,12 @@
 {
   "entry": "tool:connection_check",
   "params": {},
+  "unrecorded": {
+    "reason": "hand-written, not recorded: a recording needs a restricted Stripe key, which the recording run does not have yet. Awaiting a recording against a Stripe test account."
+  },
+  "expectError": {
+    "reason": "the replay holds no restricted key, so the host refuses the call before it reaches Stripe; the working path waits for a recording with a restricted key"
+  },
   "calls": [
     {
       "method": "db_findMany",

@@ -7,7 +7,12 @@
 //   - is authenticated by the HOST: the restricted key is added to the request
 //     by `ctx.fetch({ auth })` after the allow-list check, and never enters the
 //     sandbox (the app never reads the credential),
-//   - backs off on 429 and answers typed errors for 401 and 403.
+//   - never waits inside a run: a 429 is answered at once as `rate_limited`, so a
+//     job stops and its next run carries on from its stored place, and a tool
+//     reports it. Pacing is the connection's `limits` block in the manifest: the
+//     host spaces calls to one account across every run and process, and pauses
+//     the account on a 429 with `Retry-After`;
+//   - answers typed errors for 401 and 403.
 import type { FetchAuth } from "@liaison/app-sdk"
 
 /** The API version every request is pinned to. */
@@ -105,34 +110,15 @@ export interface StripeFetchInit {
   timeoutMs?: number
 }
 
-export interface StripeFetchOptions {
-  /** Retries after a 429 before `rate_limited` is thrown. */
-  maxRetries?: number
-  /** Waits between retries; injectable so tests do not sleep. */
-  sleep?: (ms: number) => Promise<void>
-}
-
-type TimerFn = (fn: () => void, ms: number) => unknown
-
-/** Pause when the runtime has a timer; one of the sandbox executors has none (pacing then comes from the round trip). */
-export function pause(ms: number): Promise<void> {
-  const timer = (globalThis as { setTimeout?: TimerFn }).setTimeout
-  if (typeof timer !== "function" || !(ms > 0)) return Promise.resolve()
-  return new Promise<void>((resolve) => {
-    timer(() => resolve(), ms)
-  })
-}
-
 /**
  * Call the Stripe API and return the parsed JSON body. Throws `StripeApiError`:
  * `key_invalid` on 401, `permission_missing` (with the resource) on 403,
- * `rate_limited` after the retries on 429, `stripe_error` otherwise.
+ * `rate_limited` on 429 (never retried in the run), `stripe_error` otherwise.
  */
 export async function stripeFetch<T = unknown>(
   ctx: StripeHttpCtx,
   path: string,
   init: StripeFetchInit = {},
-  opts: StripeFetchOptions = {},
 ): Promise<T> {
   const method = init.method ?? "GET"
   const encoded = init.params ? formEncode(init.params) : ""
@@ -144,54 +130,45 @@ export async function stripeFetch<T = unknown>(
   if (method !== "GET") headers["Content-Type"] = "application/x-www-form-urlencoded"
   if (method === "POST" && init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey
   const resource = resourceOf(path)
-  const maxRetries = opts.maxRetries ?? 3
-  const sleep = opts.sleep ?? pause
 
-  for (let attempt = 0; ; attempt++) {
-    const res = await ctx.fetch(url, {
-      method,
-      headers,
-      body: method === "GET" ? undefined : encoded,
-      timeoutMs: init.timeoutMs,
-      auth: STRIPE_AUTH,
-    })
-    if (res.status >= 200 && res.status < 300) return JSON.parse(res.body) as T
-    const detail = stripeMessage(res.body)
-    if (res.status === 429) {
-      if (attempt < maxRetries) {
-        // A short fixed pause: a run never waits long (3 retries stay under 2 s);
-        // past them `rate_limited` stops the run and its next wake-up resumes.
-        await sleep(500)
-        continue
-      }
-      throw new StripeApiError(
-        "rate_limited",
-        429,
-        resource,
-        `Stripe kept answering 429 (too many requests) for ${resource} after ${maxRetries} retries.`,
-      )
-    }
-    if (res.status === 401) {
-      throw new StripeApiError(
-        "key_invalid",
-        401,
-        resource,
-        "Stripe refused the restricted key (401): it was revoked, rolled or mistyped.",
-      )
-    }
-    if (res.status === 403) {
-      throw new StripeApiError(
-        "permission_missing",
-        403,
-        resource,
-        `The restricted key has no permission for ${resource} (403).`,
-      )
-    }
+  const res = await ctx.fetch(url, {
+    method,
+    headers,
+    body: method === "GET" ? undefined : encoded,
+    timeoutMs: init.timeoutMs,
+    auth: STRIPE_AUTH,
+  })
+  if (res.status >= 200 && res.status < 300) return JSON.parse(res.body) as T
+  const detail = stripeMessage(res.body)
+  if (res.status === 429) {
+    // No wait and no retry inside the run: a job's next run resumes from its stored place.
     throw new StripeApiError(
-      "stripe_error",
-      res.status,
+      "rate_limited",
+      429,
       resource,
-      `Stripe answered ${res.status} for ${resource}${detail ? `: ${detail}` : "."}`,
+      `Stripe answered 429 (too many requests) for ${resource}; nothing was retried in this run.`,
     )
   }
+  if (res.status === 401) {
+    throw new StripeApiError(
+      "key_invalid",
+      401,
+      resource,
+      "Stripe refused the restricted key (401): it was revoked, rolled or mistyped.",
+    )
+  }
+  if (res.status === 403) {
+    throw new StripeApiError(
+      "permission_missing",
+      403,
+      resource,
+      `The restricted key has no permission for ${resource} (403).`,
+    )
+  }
+  throw new StripeApiError(
+    "stripe_error",
+    res.status,
+    resource,
+    `Stripe answered ${res.status} for ${resource}${detail ? `: ${detail}` : "."}`,
+  )
 }

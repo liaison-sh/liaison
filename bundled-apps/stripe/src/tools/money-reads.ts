@@ -47,7 +47,7 @@ export async function refundsForCharge(params: Obj | undefined, ctx: MoneyReadCt
   let charge: Obj
   let refunds: Obj[]
   try {
-    charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
+    charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {})
     refunds = await listRefunds(ctx, chargeId)
   } catch (err) {
     return refuseTool(
@@ -120,7 +120,7 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   let unread = 0
   for (const r of missing) {
     try {
-      const obj = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(String(r.stripe_id))}`, {}, { maxRetries: 1 })
+      const obj = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(String(r.stripe_id))}`, {})
       invoices.push(await invoiceEventPayload(ctx, r, obj, newTally(), new Date(now).toISOString(), false))
     } catch {
       // Read again on the next run.

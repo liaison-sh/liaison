@@ -30,6 +30,8 @@ export interface ChartDataset {
   name?: string
   /** A comparison series: the comparison's own label at each place, named in the tooltip. */
   dayLabels?: Array<string | number | null>
+  /** A comparison that is a stack's total: one lighter bar per place, beside the stack. */
+  total?: boolean
 }
 
 export interface ChartProps {
@@ -61,6 +63,8 @@ export interface ChartProps {
   curve?: "smooth"
   /** The place of the bucket still filling (today's): drawn dotted. */
   inProgressIndex?: number
+  /** A stack's total in the tooltip ("Total: {value}"). */
+  totalLabel?: (value: string) => string
 }
 
 type ChartModule = typeof import("chart.js")
@@ -157,6 +161,17 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
   const smooth = props.curve === "smooth"
   const ip = props.inProgressIndex
   const partial = typeof ip === "number" && ip >= 0
+  // A stack of bars: the tooltip adds up the place, and the comparison's total reads under it.
+  const stackedBar = (d: ChartDataset) =>
+    stacked && !d.previous && !(combo && d.asLine === true) && !area
+  const stack = stacked && props.datasets.filter(stackedBar).length > 1
+  const totalLabel = props.totalLabel ?? ((value: string) => `Total: ${value}`)
+  const tipName = (d: ChartDataset | undefined, at: number | undefined, fallback?: string) => {
+    const day = at === undefined ? undefined : d?.dayLabels?.[at]
+    return day !== undefined && day !== null
+      ? formatAxisLabel(day, locale, props.timeZone)
+      : (d?.name ?? fallback ?? d?.label ?? "")
+  }
   let next = 0
   return {
     // An area is a filled line; a combo is bars with some datasets drawn as lines.
@@ -228,14 +243,36 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
               raw: unknown
             }) => {
               const d = c.datasetIndex === undefined ? undefined : props.datasets[c.datasetIndex]
-              const day = c.dataIndex === undefined ? undefined : d?.dayLabels?.[c.dataIndex]
-              const name =
-                day !== undefined && day !== null
-                  ? formatAxisLabel(day, locale, props.timeZone)
-                  : (d?.name ?? c.dataset?.label ?? "")
+              const name = tipName(d, c.dataIndex, c.dataset?.label)
               return `${name ? `${name}: ` : ""}${fmt(c.raw)}`
             },
+            ...(stack
+              ? {
+                  // The stack's total and the comparison's, under the series' own values.
+                  footer: (items: Array<{ dataIndex?: number }>) => {
+                    const at = items[0]?.dataIndex
+                    if (at === undefined) return []
+                    let sum: number | null = null
+                    for (const d of props.datasets) {
+                      const v = stackedBar(d) ? d.values[at] : null
+                      if (typeof v === "number") sum = (sum ?? 0) + v
+                    }
+                    const out = [totalLabel(fmt(sum))]
+                    for (const d of props.datasets) {
+                      if (!d.total) continue
+                      const v = d.values[at]
+                      if (v === null || v === undefined) continue
+                      const name = tipName(d, at)
+                      out.push(`${name ? `${name}: ` : ""}${fmt(v)}`)
+                    }
+                    return out
+                  },
+                }
+              : {}),
           },
+          // A stack's comparison total reads in the footer, beside the current total.
+          filter: (c: { datasetIndex?: number }) =>
+            c.datasetIndex === undefined || props.datasets[c.datasetIndex]?.total !== true,
         },
       },
       scales: horizontal
@@ -289,6 +326,7 @@ function pickOptions(props: ChartProps): Record<string, unknown> {
 
 export const Chart: Component<ChartProps> = (props) => {
   const i18n = useI18n()
+  const totalLabel = (value: string) => i18n.t("kernel.dashboards.chartTotal", { value })
   const locale = () => props.locale ?? i18n.locale()
   let canvas: HTMLCanvasElement | undefined
   let instance: { destroy: () => void } | null = null
@@ -317,7 +355,10 @@ export const Chart: Component<ChartProps> = (props) => {
         if (!m || mine !== run || !canvas) return
         instance?.destroy()
         // chart.js types its config per chart kind; chartConfig builds all three.
-        instance = new m.Chart(canvas, chartConfig(props, locale()) as any)
+        instance = new m.Chart(
+          canvas,
+          chartConfig({ ...props, totalLabel: props.totalLabel ?? totalLabel }, locale()) as any,
+        )
       },
     ),
   )

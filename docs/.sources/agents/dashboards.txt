@@ -258,6 +258,7 @@ Legend names the periods by their days -> apps/web/src/modules/dashboards/blocks
 Hover shows both days' values -> apps/web/src/modules/dashboards/blocks/Chart.tsx:221
 Today's bucket dotted, Today, still counting -> apps/web/src/modules/dashboards/blocks/Chart.tsx:190 ; apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:299 ; packages/shared/src/i18n/locales/en/kernel.json:6515
 Right axis named in the legend -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:260 ; packages/shared/src/i18n/locales/en/kernel.json:6514
+Stacked bars compare by their total, one legend entry; the tooltip shows both totals -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:74 ; apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:139 ; apps/web/src/modules/dashboards/blocks/Chart.tsx:252 ; packages/shared/src/i18n/locales/en/kernel.json:6519
 Smooth line drawn -> apps/web/src/modules/dashboards/blocks/Chart.tsx:200
 A failed source of a blended chart named under it -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:571
 Click on a blended chart opens that source's records -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:151

@@ -6513,6 +6513,7 @@
     "filtersReset": "Réinitialiser les filtres",
     "chartRightAxis": "{{name}} (axe de droite)",
     "chartInProgress": "Aujourd'hui, encore en cours",
+    "chartTotal": "Total : {{value}}",
     "chartVs": "comparé à {{range}}",
     "layerFailed": "{{layer}} : {{reason}}",
     "filterEditorAria": "Modifier les filtres",

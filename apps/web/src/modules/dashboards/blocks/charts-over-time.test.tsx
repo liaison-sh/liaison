@@ -173,6 +173,114 @@ describe("drawing over time", () => {
   })
 })
 
+describe("comparing a stack", () => {
+  const STACKED: SeriesData = {
+    kind: "bar",
+    x: ["2026-11-01", "2026-11-02"],
+    series: [
+      { name: "Lamp", values: [1, 2] },
+      { name: "Chair", values: [3, null] },
+      { name: "Desk", values: [0, 4] },
+    ],
+    previous: {
+      labels: ["2026-10-01", "2026-10-02"],
+      series: [
+        { name: "Lamp", values: [2, 1] },
+        { name: "Chair", values: [1, null] },
+        { name: "Desk", values: [null, 5] },
+      ],
+    },
+    display: { stacked: true },
+  }
+
+  it("draws one lighter bar per day holding the stack's total, named once in the legend", () => {
+    const sets = seriesDatasets(STACKED, "Oct 1 – 2, 2026", {
+      current: "Nov 1 – 2, 2026",
+      total: "Units",
+    })
+    expect(sets.map((s) => s.label)).toEqual(["Lamp", "Chair", "Desk", "Units · Oct 1 – 2, 2026"])
+    const ghost = sets[3]
+    expect(ghost).toMatchObject({ previous: true, total: true, values: [3, 6] })
+    const c: Any = chartConfig(
+      { type: "bar", labels: STACKED.x, datasets: sets, stacked: true },
+      "en",
+    )
+    // Beside the stack, not in it.
+    expect(c.data.datasets[3].stack).toBeUndefined()
+    expect(c.data.datasets.slice(0, 3).map((x: Any) => x.stack)).toEqual([
+      "current",
+      "current",
+      "current",
+    ])
+    const tip = c.options.plugins.tooltip
+    expect(tip.filter({ datasetIndex: 3 })).toBe(false)
+    expect(tip.filter({ datasetIndex: 0 })).toBe(true)
+    expect(tip.callbacks.footer([{ dataIndex: 1 }])).toEqual(["Total: 6", "Oct 2: 6"])
+    expect(tip.callbacks.footer([{ dataIndex: 0 }])).toEqual(["Total: 4", "Oct 1: 3"])
+    // A pick on the total asks for the comparison's rows of that day, every series.
+    expect(seriesPick(STACKED, 1, 3)).toEqual({ category: "2026-10-02", previous: true })
+  })
+
+  it("keeps one comparison per series when the bars do not stack", () => {
+    const d: SeriesData = {
+      ...STACKED,
+      series: STACKED.series.slice(0, 2),
+      previous: {
+        labels: ["2026-10-01", "2026-10-02"],
+        series: STACKED.previous?.series.slice(0, 2) ?? [],
+      },
+      display: {},
+    }
+    const sets = seriesDatasets(d, "Last year", { total: "Units" })
+    expect(sets.map((s) => s.label)).toEqual([
+      "Lamp",
+      "Chair",
+      "Lamp · Last year",
+      "Chair · Last year",
+    ])
+    expect(sets.some((s) => s.total)).toBe(false)
+    const c: Any = chartConfig({ type: "bar", labels: d.x, datasets: sets }, "en")
+    expect(c.options.plugins.tooltip.callbacks.footer).toBeUndefined()
+  })
+
+  it("a blended chart's stack compares by its layer's total, its line keeps its own", () => {
+    const d = parsed({
+      ...BLENDED,
+      previous: {
+        labels: ["2025-11-01", "2025-11-02"],
+        series: [
+          { name: "Alpha", values: [2, 2] },
+          { name: "Beta", values: [1, 0] },
+          { name: "Sessions", values: [5, 6] },
+        ],
+      },
+    })
+    const sets = seriesDatasets(d, "Nov 1 – 2, 2025", {
+      rightAxis: (n) => `${n} (right axis)`,
+    })
+    expect(sets.map((s) => s.label)).toEqual([
+      "Alpha",
+      "Beta",
+      "Sessions (right axis)",
+      "Units · Nov 1 – 2, 2025",
+      "Sessions (right axis) · Nov 1 – 2, 2025",
+    ])
+    expect(sets[3]?.values).toEqual([3, 2])
+    expect(sets[4]).toMatchObject({ asLine: true, axis: "right", values: [5, 6] })
+    const c: Any = chartConfig({ type: "combo", labels: d.x, datasets: sets, stacked: true }, "en")
+    expect(c.data.datasets[4].borderDash).toEqual([4, 4])
+    expect(c.data.datasets[4].yAxisID).toBe("y1")
+    // The current total adds the stacked bars only, never the line.
+    expect(c.options.plugins.tooltip.callbacks.footer([{ dataIndex: 0 }])[0]).toBe("Total: 1")
+    expect(seriesPick(d, 0, 3)).toEqual({ category: "2025-11-01", previous: true, layer: "units" })
+    expect(seriesPick(d, 0, 4)).toEqual({
+      category: "2025-11-01",
+      previous: true,
+      layer: "sessions",
+    })
+  })
+})
+
 describe("the headline", () => {
   it("reads a change calmly, with an arrow", () => {
     expect(headlineChange(-0.25, "en")).toBe("↓ 25%")

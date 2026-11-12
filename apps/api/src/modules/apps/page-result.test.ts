@@ -34,6 +34,7 @@ const { parsePageResult } = await import("~/modules/apps/page-result")
 const { registerApps } = await import("~/modules/apps/runtime")
 const { invalidateScopeCatalog } = await import("~/modules/permissions/scope-catalog")
 const minimal = await import("~/seed/tiers/minimal")
+const { seedBaseAgent } = await import("~/seed/factories/agent/agents")
 const { createTestOrg } = await import("~/tests/helpers/org")
 const { acquireTestLock, releaseTestLock } = await import("~/tests/route-test-setup")
 
@@ -82,12 +83,7 @@ describe("a page's result reaches the conversation it was opened from", () => {
     await minimal.grantScope(userId, "pagefx:items:write")
     token = await minimal.token(userId)
     threadId = await minimal.thread(orgId, userId)
-    const [agent] = await sql<{ id: string }[]>`
-      INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling)
-      VALUES (${orgId}, 'role', ${`@pr-${crypto.randomUUID().slice(0, 8)}`}, 'Helper',
-              '["*"]'::jsonb)
-      RETURNING id`
-    agentId = agent!.id
+    agentId = (await seedBaseAgent(orgId)).agentId
     // The route answers a result for the conversation beside its own answer.
     AppPagesTestAccess.setRouteExecutor(async ({ params }) => ({
       saved: true,

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { type AnalyticsSpecError, buildAnalyticsQuery } from "./lib/analytics-query-builder"
+import { timeSeriesRows } from "./analytics"
+import {
+  type AnalyticsSpecError,
+  buildAnalyticsQuery,
+  buildAnalyticsQuerySafe,
+} from "./lib/analytics-query-builder"
 
 describe("buildAnalyticsQuery — typed aggregate, injection-hardened", () => {
   it("builds a revenue-by-market ShopifyQL spec from allowlisted enums", () => {
@@ -123,5 +128,131 @@ describe("buildAnalyticsQuery — typed aggregate, injection-hardened", () => {
       code = (e as AnalyticsSpecError).code
     }
     expect(code).toBe("INVALID_PERIOD")
+  })
+
+  it("leaves a call without timeGrain unchanged (no TIMESERIES, sku stays one dimension)", () => {
+    const { query } = buildAnalyticsQuery({
+      metric: "units",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "sku",
+    })
+    expect(query).toContain(
+      "FROM sales SHOW net_items_sold GROUP BY product_variant_sku SINCE 2026-05-01 UNTIL 2026-05-31\")",
+    )
+  })
+
+  it("builds store sessions per day from the sessions dataset", () => {
+    const { query } = buildAnalyticsQuery({
+      metric: "sessions",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "none",
+      timeGrain: "day",
+    })
+    expect(query).toContain(
+      "FROM sessions SHOW sessions TIMESERIES day SINCE 2026-05-01 UNTIL 2026-05-31 ORDER BY day ASC",
+    )
+  })
+
+  it("builds conversion_rate per week from the sessions dataset", () => {
+    const { query } = buildAnalyticsQuery({
+      metric: "conversion_rate",
+      period: { since: "2026-05-01", until: "2026-06-30" },
+      groupBy: "none",
+      timeGrain: "week",
+    })
+    expect(query).toContain("FROM sessions SHOW conversion_rate TIMESERIES week")
+  })
+
+  it("builds units per SKU per day, labelled with the product title", () => {
+    const { query } = buildAnalyticsQuery({
+      metric: "units",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "sku",
+      timeGrain: "day",
+    })
+    expect(query).toContain(
+      "FROM sales SHOW net_items_sold GROUP BY product_variant_sku, product_title, day TIMESERIES day SINCE 2026-05-01 UNTIL 2026-05-31 ORDER BY day ASC",
+    )
+  })
+
+  it("builds net sales per product per month", () => {
+    const { query } = buildAnalyticsQuery({
+      metric: "net_sales",
+      period: { since: "2026-01-01", until: "2026-12-31" },
+      groupBy: "product",
+      timeGrain: "month",
+    })
+    expect(query).toContain("GROUP BY product_title, month TIMESERIES month")
+  })
+
+  it("rejects sessions grouped by sku with a message naming the allowed combination", () => {
+    const res = buildAnalyticsQuerySafe({
+      metric: "sessions",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "sku",
+      timeGrain: "day",
+    })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.code).toBe("UNSUPPORTED_COMBINATION")
+    expect(res.message).toContain("supports groupBy none only")
+    expect(res.message).toContain("timeGrain day, week or month")
+  })
+
+  it("rejects a timeGrain outside day, week, month", () => {
+    const res = buildAnalyticsQuerySafe({
+      metric: "orders",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "none",
+      timeGrain: "hour; DROP" as never,
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.code).toBe("INVALID_TIME_GRAIN")
+  })
+
+  it("rejects an inherited object key as a metric or groupBy (own keys only)", () => {
+    const metric = buildAnalyticsQuerySafe({
+      metric: "toString" as never,
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "none",
+    })
+    const groupBy = buildAnalyticsQuerySafe({
+      metric: "orders",
+      period: { since: "2026-05-01", until: "2026-05-31" },
+      groupBy: "constructor" as never,
+    })
+    expect(metric.ok ? null : metric.code).toBe("INVALID_METRIC")
+    expect(groupBy.ok ? null : groupBy.code).toBe("INVALID_GROUP_BY")
+  })
+})
+
+describe("timeSeriesRows — dashboard-ready rows", () => {
+  it("adds date (YYYY-MM-DD bucket start) to keyed rows", () => {
+    const rows = timeSeriesRows(
+      {
+        columns: [{ name: "product_variant_sku" }, { name: "product_title" }, { name: "day" }, { name: "net_items_sold" }],
+        rows: [
+          { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-01", net_items_sold: 3 },
+          { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-02T00:00:00Z", net_items_sold: 0 },
+        ],
+      },
+      "day",
+    )
+    expect(rows).toEqual([
+      { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-01", net_items_sold: 3, date: "2026-05-01" },
+      { product_variant_sku: "SKU-1", product_title: "Widget", day: "2026-05-02T00:00:00Z", net_items_sold: 0, date: "2026-05-02" },
+    ])
+  })
+
+  it("maps positional rows through columns", () => {
+    const rows = timeSeriesRows(
+      { columns: [{ name: "month" }, { name: "sessions" }], rowData: [["2026-04-01", 120]] },
+      "month",
+    )
+    expect(rows).toEqual([{ month: "2026-04-01", sessions: 120, date: "2026-04-01" }])
+  })
+
+  it("returns no rows for an empty table", () => {
+    expect(timeSeriesRows(null, "week")).toEqual([])
   })
 })

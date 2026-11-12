@@ -40,9 +40,9 @@ export type { WebhookResult }
 const OK: WebhookResult = { status: 200, body: "ok" }
 
 /**
- * Rows numbered by one creating delivery. The delivery runs under the sandbox's 5 s budget and
- * holds the org's ref lock until it commits, so a backlog (right after deploy) is left to the
- * `assign-refs` job. The new row is the newest un-numbered one: it gets a number only when
+ * Rows numbered by one creating delivery. The delivery runs under the sandbox's 5 s budget, so
+ * a backlog (right after deploy) is left to the `assign-refs` job, and so is the new row when
+ * another numberer holds the numbering lease. The new row is the newest un-numbered one: it gets a number only when
  * every older one fits in this batch (refs keep `first_seen_at` order), else it stays null.
  */
 export const CREATE_REF_BATCH = 10

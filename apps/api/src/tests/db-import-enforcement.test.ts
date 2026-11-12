@@ -32,6 +32,9 @@ describe("db import enforcement", () => {
     // Throughput bench harness, run by hand and never by a production build or
     // a test suite: it drives the raw pool to measure mail sync writes.
     "tests/bench/mail-sync-throughput.ts",
+    // The app contract fixture recorders' shared helper, run by hand against a provider's sandbox and never by a
+    // production build or a suite: they install the app for the contract org with raw SQL.
+    "modules/apps/contract/recording-run.test-helpers.ts",
   ])
 
   // Allowlist: only these files may import from ~/db/privileged

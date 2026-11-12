@@ -90,9 +90,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = kernel, pg_temp AS $fn$
      AND EXISTS (
        SELECT 1 FROM kernel.dashboards d
         WHERE d.id = _id
-          AND d.org_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid
+          AND d.org_id = NULLIF(rls_ctx.org_id(), '')::uuid
           AND (
-            d.owner_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+            d.owner_user_id = NULLIF(rls_ctx.user_id(), '')::uuid
             OR (d.org_access = 'editor' AND kernel.has_scope('kernel:dashboards:write'))
             OR (kernel.resource_grant_role('kernel.dashboard', d.id) = 'editor'
                 AND kernel.has_scope('kernel:dashboards:write'))
@@ -122,7 +122,8 @@ CREATE OR REPLACE FUNCTION kernel.recompute_search_acl(
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $fn$
 DECLARE
-  v_org uuid := COALESCE(NULLIF(current_setting('app.current_org_id', true), '')::uuid, p_org);
+  -- An untagged context reads as the all-zero org: fall back to p_org as 0178 did for an unset one.
+  v_org uuid := COALESCE(NULLIF(NULLIF(rls_ctx.org_id(), ''), '00000000-0000-0000-0000-000000000000')::uuid, p_org);
   v_table regclass;
   v_owner_cols text[];
   v_owner_union text;

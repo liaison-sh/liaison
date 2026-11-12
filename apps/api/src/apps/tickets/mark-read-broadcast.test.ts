@@ -5,16 +5,11 @@
 // every other open client (the reader's own phone included) kept the ticket
 // unread until its next reload. The handler now emits the flip as a ticket
 // update, which the web stores already patch rows from.
-import { beforeAll, describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
+import * as handlers from "~/apps/tickets/handlers"
 
 type Handler = (params: any, ctx: any) => Promise<any>
-let ticketsMarkRead: Handler
-
-beforeAll(async () => {
-  const handlersUrl = new URL("./handlers.ts", import.meta.url)
-  await import(handlersUrl.pathname)
-  ticketsMarkRead = (globalThis as any).ticketsMarkRead
-})
+const ticketsMarkRead = handlers.ticketsMarkRead as Handler
 
 const TICKET = "11111111-2222-4333-8444-555555555555"
 

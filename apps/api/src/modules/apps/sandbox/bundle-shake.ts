@@ -22,6 +22,7 @@
  * when its output does not define the export as a global) the caller gets the
  * full bundle, exactly what it ran before.
  */
+import { CORE_MODULE_SOURCE } from "~/modules/apps/core/registry"
 import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
 import { importAttributeIssue } from "~/modules/apps/sandbox/import-attributes"
 
@@ -106,6 +107,8 @@ export async function buildExportOnlyBundle(
  * once built, else the full `source` (and the build is started).
  */
 export function exportOnlyBundle(source: string, exportName: string): string {
+  // A core app's module is not a bundle (core/registry.ts): nothing to shake.
+  if (source === CORE_MODULE_SOURCE) return source
   const key = keyFor(source, exportName)
   const hit = cache.get(key)
   if (hit) {

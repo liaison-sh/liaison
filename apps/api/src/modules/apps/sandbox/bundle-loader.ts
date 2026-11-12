@@ -18,6 +18,7 @@
 
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
+import { CORE_MODULE_SOURCE, isCoreModulePath } from "~/modules/apps/core/registry"
 
 const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" })
 const cache = new Map<string, string>()
@@ -146,6 +147,8 @@ export function isBundleLoadError(err: unknown): boolean {
 }
 
 export async function loadBundle(bundlePath: string): Promise<string> {
+  // A core app's server module is imported where it runs (runApp), never transpiled here.
+  if (isCoreModulePath(bundlePath)) return CORE_MODULE_SOURCE
   try {
     return await loadBundleUnwrapped(bundlePath)
   } catch (err) {

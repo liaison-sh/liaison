@@ -47,6 +47,7 @@ import {
   NETWORK_FAULT,
   type WorkersFault,
 } from "./faults"
+import { ensureRunOwnerReachable } from "./run-owner"
 import { type RunBridge, type RunRegistry, runRegistry } from "./run-registry"
 import { signCellRequestV2 } from "./sign"
 import type { LoaderTimings } from "./timings"
@@ -231,6 +232,8 @@ export async function executeOnWorkers(
   const deadlineAt = now() + timeoutMs
   const info: WorkersRunInfo = { attempts: 0, bridgeCalls: 0 }
 
+  // Bridge calls come back through the public address: this process must be a reachable owner.
+  await ensureRunOwnerReachable()
   let release: (() => void) | undefined
   try {
     release = await admission.acquire({

@@ -397,6 +397,11 @@ export function executorParitySuite(target: ParityTarget): void {
         parentApp: "wparity",
         entry: "tool:echo",
       })
+      if (target === "workerd") {
+        // The nested run reached the sandbox service marked one level deep.
+        const recs = (loader as WorkerdLoader).supervisor.recent
+        expect(recs.some((r) => r.depth === 1)).toBe(true)
+      }
     })
 
     it("ctx.fetch outside allowedDomains is refused the same way", async () => {

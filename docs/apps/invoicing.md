@@ -199,7 +199,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 | `documents_send_to_customer` | Email a document | Always |
 | `documents_mark_paid`, `documents_record_refund` | Record a payment or a refund (payment status only) | Always |
 | `documents_retry_pdf` | Re-render a failed PDF | No |
-| `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts | Always |
+| `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts: the credit note and the replacement invoice are issued together or not at all | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |
 | `drafts_create`, `drafts_update`, `drafts_discard` | Legacy unnumbered drafts | No |
 | `einvoicing_classify`, `einvoicing_readiness`, `einvoicing_settings_get` | Explain e-invoicing status and blockers | No |

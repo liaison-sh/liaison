@@ -72,7 +72,7 @@ Platforms only allow a reply within 7 days of the person's last message. After t
 
 ## Follow posts and videos
 
-**Watched** lists the posts and videos whose new comments the app keeps polling. Active threads are added automatically. A watch that has slowed down shows **Resume**.
+**Watched** lists the posts and videos whose new comments the app keeps polling. Active threads are added automatically. A watch that has slowed down shows **Resume**. Starting a watch also links the comments already found on that post or video to it, in the same save.
 
 ## Set monitor terms
 

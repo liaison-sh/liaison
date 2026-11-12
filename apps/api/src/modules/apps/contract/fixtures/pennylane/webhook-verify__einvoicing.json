@@ -13,9 +13,7 @@
   "calls": [
     {
       "method": "config_get",
-      "args": [
-        "einvoicingWebhookSecret"
-      ],
+      "args": ["einvoicingWebhookSecret"],
       "reply": "contract-webhook-secret-not-real"
     },
     {

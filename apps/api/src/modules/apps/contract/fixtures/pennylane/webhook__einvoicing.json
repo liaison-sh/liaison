@@ -19,10 +19,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_inbox",
-        "{\"where\":{\"envelope_id\":\"evt_contract_1\"},\"limit\":1}"
-      ],
+      "args": ["einvoicing_inbox", "{\"where\":{\"envelope_id\":\"evt_contract_1\"},\"limit\":1}"],
       "reply": "[]"
     },
     {

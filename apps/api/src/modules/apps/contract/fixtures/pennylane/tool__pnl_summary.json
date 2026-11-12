@@ -7,25 +7,17 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "account_class_map",
-        "{\"limit\":1000}"
-      ],
+      "args": ["account_class_map", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {

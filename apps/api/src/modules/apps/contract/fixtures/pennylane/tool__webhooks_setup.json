@@ -7,17 +7,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"],
       "reply": "[{\"id\":\"0dbb367f-d426-4586-9a73-8887a7afd0e6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.87561+00\",\"updated_at\":\"2026-11-12 08:31:33.217332+00\",\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}]"
     },
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {
@@ -38,10 +33,7 @@
     },
     {
       "method": "config_setSecret",
-      "args": [
-        "einvoicingWebhookSecret",
-        "redacted"
-      ]
+      "args": ["einvoicingWebhookSecret", "redacted"]
     },
     {
       "method": "db_findMany",
@@ -61,10 +53,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"],
       "reply": "[{\"id\":\"0dbb367f-d426-4586-9a73-8887a7afd0e6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.87561+00\",\"updated_at\":\"2026-11-12 08:31:33.217332+00\",\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}]"
     },
     {

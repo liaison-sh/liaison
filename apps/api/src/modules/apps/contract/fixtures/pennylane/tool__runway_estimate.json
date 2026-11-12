@@ -5,17 +5,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {
@@ -28,9 +23,7 @@
     },
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {

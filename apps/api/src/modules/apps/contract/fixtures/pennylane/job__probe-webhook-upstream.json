@@ -13,9 +13,7 @@
     },
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {

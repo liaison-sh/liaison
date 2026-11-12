@@ -5,31 +5,22 @@
   "calls": [
     {
       "method": "connections_getCredentials",
-      "args": [
-        "pennylane"
-      ],
+      "args": ["pennylane"],
       "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
     },
     {
       "method": "steps_get",
-      "args": [
-        "refresh-snapshots"
-      ],
+      "args": ["refresh-snapshots"],
       "reply": "{\"cursor\":{\"pnl\":{\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\",\"revenue\":\"0\"},\"next\":null,\"pages\":0,\"phase\":\"write\",\"totals\":{},\"window\":{\"period_end\":\"2026-01-01\",\"period_start\":\"2026-01-01\"},\"cashStatus\":\"live\"},\"done\":true,\"running\":false,\"updatedAt\":\"2026-11-12T08:31:24.913Z\"}"
     },
     {
       "method": "steps_reset",
-      "args": [
-        "refresh-snapshots"
-      ],
+      "args": ["refresh-snapshots"],
       "reply": "{\"reset\":true}"
     },
     {
       "method": "_steps_begin",
-      "args": [
-        "refresh-snapshots",
-        "{}"
-      ],
+      "args": ["refresh-snapshots", "{}"],
       "reply": "{\"state\":\"run\",\"token\":\"redacted\",\"cursor\":null}"
     },
     {
@@ -42,18 +33,12 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "account_class_map",
-        "{\"limit\":1000}"
-      ],
+      "args": ["account_class_map", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
@@ -66,10 +51,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
@@ -82,10 +64,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "pnl_snapshot",
-        "{\"limit\":1}"
-      ],
+      "args": ["pnl_snapshot", "{\"limit\":1}"],
       "reply": "[{\"id\":\"4990ae7d-7966-4e6f-81a2-89417dd9af5e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.550891+00\",\"updated_at\":\"2026-11-12 08:31:24.893212+00\",\"period\":\"current\",\"revenue\":\"0\",\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\",\"gross_margin\":\"0\",\"refreshed_at\":\"2026-01-01 00:00:00+00\"}]"
     },
     {
@@ -98,10 +77,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "cash_snapshot",
-        "{\"limit\":1}"
-      ],
+      "args": ["cash_snapshot", "{\"limit\":1}"],
       "reply": "[{\"id\":\"73e794aa-b285-4b38-8c42-0e334ddcd4ec\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.563489+00\",\"updated_at\":\"2026-11-12 08:31:24.906973+00\",\"total_by_currency\":\"{}\",\"cash_status\":\"live\",\"refreshed_at\":\"2026-01-01 00:00:00+00\"}]"
     },
     {

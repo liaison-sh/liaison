@@ -20,7 +20,7 @@ mock.module("@liaison/host", () => ({
 }))
 
 const { lookupCustomer } = await import("./api")
-const { isConnectorWriteFor } = await import("./CustomerCard")
+const { isConnectorWriteFor } = await import("./customer-events")
 const { flattenRecord, formatValue, humanizeKey, rowParts, safeHttpUrl } = await import(
   "./customer-format"
 )

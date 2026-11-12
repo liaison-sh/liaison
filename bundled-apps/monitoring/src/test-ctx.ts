@@ -43,6 +43,39 @@ export interface CtxSpy {
   duringNextAllocate?: () => Promise<void>
   /** Every `ctx.logger.error(msg, data)` call. */
   errors: Array<{ msg: string; data?: unknown }>
+  /** `ctx.store` documents, by `<collection>/<id>`. */
+  store: Map<string, { data: Record<string, unknown>; version: number }>
+}
+
+function versionConflict(): Error {
+  return Object.assign(new Error("version_conflict"), { code: "version_conflict", status: 409 })
+}
+
+/** `ctx.store` over `docs`, with the bridge's `ifVersion` compare-and-set (0: must not exist). */
+function memoryStore(docs: CtxSpy["store"]) {
+  const key = (c: string, id: string) => `${c}/${id}`
+  const check = (cur: { version: number } | undefined, ifVersion?: number) => {
+    if (ifVersion === undefined) return
+    if ((cur?.version ?? 0) !== ifVersion) throw versionConflict()
+  }
+  return {
+    get: async (c: string, id: string) => {
+      const d = docs.get(key(c, id))
+      return d ? { id, data: structuredClone(d.data), version: d.version, updatedAt: "" } : null
+    },
+    set: async (c: string, id: string, data: Record<string, unknown>, opts?: { ifVersion?: number }) => {
+      const cur = docs.get(key(c, id))
+      check(cur, opts?.ifVersion)
+      const next = { data: structuredClone(data), version: (cur?.version ?? 0) + 1 }
+      docs.set(key(c, id), next)
+      return { id, data: structuredClone(data), version: next.version, updatedAt: "" }
+    },
+    delete: async (c: string, id: string, opts?: { ifVersion?: number }) => {
+      const cur = docs.get(key(c, id))
+      check(cur, opts?.ifVersion)
+      return { deleted: docs.delete(key(c, id)) }
+    },
+  }
 }
 
 type Where = Record<string, unknown>
@@ -119,6 +152,7 @@ export function makeCtx(overrides?: { config?: Record<string, unknown>; scopes?:
     sequences: new Map(),
     failNextAllocate: false,
     errors: [],
+    store: new Map(),
   }
   let nextId = 1000
   let tick = 0
@@ -136,6 +170,7 @@ export function makeCtx(overrides?: { config?: Record<string, unknown>; scopes?:
     userId: undefined,
     getUserId: async () => USER,
     logger,
+    store: memoryStore(spy.store),
     sequences: {
       allocate: async ({ key }: { key: string }) => {
         await runHook(spy.duringNextAllocate, () => {

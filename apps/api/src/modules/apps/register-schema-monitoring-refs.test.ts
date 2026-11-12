@@ -6,8 +6,8 @@
 //     `(org_id, ref_number)` unique index and the `incident_comments` table, and a
 //     later registration adds nothing twice;
 //   * `assignMissingRefs` numbers through the real bridge and allocator, oldest
-//     first, per org, and its lock-first protocol holds under a real overlapping
-//     second numberer (the advisory lock, not luck, decides who numbers);
+//     first, per org, and its leased protocol holds under a real overlapping
+//     second numberer (the store lease, not luck, decides who numbers);
 //   * the bridge refuses `where.id` on `updateMany`;
 //   * `incident_comments` is reachable under RLS by the actors that write it: a
 //     `monitoring:incidents:write` user, the system webhook actor that archives
@@ -30,7 +30,7 @@ import { sql } from "~/db/connection"
 import { type ActorContext, withRlsContext } from "~/db/rls"
 import { registerApps } from "~/modules/apps/runtime"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { releaseAppSchema, takeOverAppSchema } from "~/tests/helpers/app-schema-fixture"
 import {
   type AppSchemaLockHandle,
@@ -105,7 +105,11 @@ type Emitted = { action: string; entityId?: string; data?: Record<string, unknow
  * the parts the kernel owns (emit goes to the outbox, which is not under test here).
  */
 function handlerCtx(b: Bridge, actingUserId: string, emits: Emitted[]): HandlerCtx {
-  const base = adapter(b) as unknown as { db: Record<string, unknown>; sequences: unknown }
+  const base = adapter(b) as unknown as {
+    db: Record<string, unknown>
+    sequences: unknown
+    store: unknown
+  }
   return {
     db: {
       ...base.db,
@@ -114,6 +118,7 @@ function handlerCtx(b: Bridge, actingUserId: string, emits: Emitted[]): HandlerC
       },
     },
     sequences: base.sequences,
+    store: base.store,
     // The sandbox exposes the acting user through the bridge's getUserId(), not a ctx.userId field.
     getUserId: async () => actingUserId,
     emit: async (ev: Emitted) => {
@@ -149,6 +154,14 @@ function adapter(b: Bridge): RefsCtx {
     sequences: {
       allocate: async (p: unknown) => JSON.parse(await b.sequences_allocate(JSON.stringify(p))),
     },
+    // The ctx shim's structured-return store group: object arguments go as JSON text.
+    store: {
+      get: async (c: string, id: string) => JSON.parse(await b.store_get(c, id)),
+      set: async (c: string, id: string, d: unknown, o?: unknown) =>
+        JSON.parse(await b.store_set(c, id, JSON.stringify(d), o ? JSON.stringify(o) : undefined)),
+      delete: async (c: string, id: string, o?: unknown) =>
+        JSON.parse(await b.store_delete(c, id, o ? JSON.stringify(o) : undefined)),
+    },
   } as unknown as RefsCtx
 }
 
@@ -164,6 +177,27 @@ function inSystemTx<T>(
       return fn(adapter(bridge), bridge)
     },
   )
+}
+
+/**
+ * A run as the system webhook actor the way a sandboxed run goes now: no ambient transaction,
+ * every bridge call its own short one (createSessionRpcBridge).
+ */
+function inSystemSession<T>(orgId: string, fn: (ctx: RefsCtx) => Promise<T>): Promise<T> {
+  const bridge = createSessionRpcBridge(
+    "monitoring",
+    "system",
+    orgId,
+    {
+      run: (call) =>
+        withRlsContext(
+          { actorType: "system", orgId, purpose: "webhook", scopes: ["monitoring"] },
+          call,
+        ),
+    },
+    manifest040 as never,
+  )
+  return fn(adapter(bridge))
 }
 
 function actor(scopes: string[], org: { orgId: string; userId: string }): ActorContext {
@@ -264,23 +298,6 @@ async function indexDefs(table: string): Promise<Array<{ indexname: string; inde
       SELECT indexname, indexdef FROM pg_indexes
       WHERE schemaname = ${SCHEMA} AND tablename = ${table} ORDER BY indexname`),
   ].map((r) => ({ indexname: r.indexname, indexdef: r.indexdef }))
-}
-
-/**
- * Backends waiting on THIS org's ref-sequence lock (the allocator's
- * `pg_advisory_xact_lock(hashtextextended('<org>:monitoring:incident_ref', 0))`), not on any
- * other advisory lock in the database (a concurrent registration's DDL lock, say). A bigint
- * advisory key shows in pg_locks as classid = high 32 bits, objid = low 32 bits, objsubid = 1.
- */
-async function refLockWaiters(orgId: string): Promise<number> {
-  const key = `${orgId}:${SEQUENCE_KEY}`
-  const [row] = await sql<{ n: string }[]>`
-    SELECT count(*) AS n FROM pg_locks l
-    WHERE l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1
-      AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
-      AND l.classid = ((hashtextextended(${key}, 0) >> 32) & 4294967295)::oid
-      AND l.objid = (hashtextextended(${key}, 0) & 4294967295)::oid`
-  return Number(row!.n)
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -403,40 +420,43 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
     expect(await sequenceValue(orgA)).toBe(3)
   })
 
-  it("a second numberer overlapping an uncommitted one waits on the lock and renumbers nothing", async () => {
+  it("a second numberer overlapping a running one finds the lease held and renumbers nothing", async () => {
     incidentsA.push(await insertIncident(orgA, "fourth", "2026-07-02T01:00:00.000Z"))
     incidentsA.push(await insertIncident(orgA, "fifth", "2026-07-02T02:00:00.000Z"))
 
+    // No transaction spans a run: A's lease is committed the moment A takes it, so B (its
+    // probe still sees the NULL rows) finds it held instead of waiting on a lock.
     const allocatedA = deferred()
     const gate = deferred()
-    const txA = inSystemTx(orgA, async (ctx) => {
-      const r = await assignMissingRefs(ctx, BATCH)
-      allocatedA.resolve()
-      await gate.promise
-      return r
+    const runA = inSystemSession(orgA, async (ctx) => {
+      const allocate = ctx.sequences.allocate.bind(ctx.sequences)
+      let first = true
+      ;(ctx.sequences as { allocate: unknown }).allocate = async (p: never) => {
+        const r = await allocate(p)
+        if (first) {
+          first = false
+          allocatedA.resolve()
+          await gate.promise
+        }
+        return r
+      }
+      return assignMissingRefs(ctx, BATCH)
     })
     await allocatedA.promise
-
-    // A holds the org advisory lock, uncommitted: B's unlocked probe still sees
-    // NULL rows, so B must block in `allocate` until A commits.
-    const txB = inSystemTx(orgA, (ctx) => assignMissingRefs(ctx, BATCH))
-    const deadline = Date.now() + 10_000
-    while ((await refLockWaiters(orgA)) < 1) {
-      if (Date.now() > deadline) {
-        gate.resolve()
-        await Promise.allSettled([txA, txB])
-        throw new Error("the second numberer never waited on the advisory lock within 10 s")
-      }
-      await Bun.sleep(50)
-    }
+    const b = await inSystemSession(orgA, (ctx) => assignMissingRefs(ctx, BATCH))
     gate.resolve()
+    const a = await runA
 
-    const [a, b] = await Promise.all([txA, txB])
     expect(a).toEqual({ assigned: 2, remaining: false })
-    expect(b).toEqual({ assigned: 0, remaining: false })
+    expect(b).toEqual({ assigned: 0, remaining: true })
     expect(await refsByFirstSeen(orgA)).toEqual([1, 2, 3, 4, 5])
-    // A used 4 and 5; B allocated 6 under the lock, found nothing left and burned it.
-    expect(await sequenceValue(orgA)).toBe(6)
+    // A used 4 and 5; B allocated nothing.
+    expect(await sequenceValue(orgA)).toBe(5)
+    // A released its lease: the next numberer finds nothing to number and takes no lease.
+    expect(await inSystemSession(orgA, (ctx) => assignMissingRefs(ctx, BATCH))).toEqual({
+      assigned: 0,
+      remaining: false,
+    })
   })
 
   it("the bridge refuses where.id on updateMany", async () => {
@@ -460,7 +480,7 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
     })
     expect(await refsByFirstSeen(orgB)).toEqual([1])
     expect(await sequenceValue(orgB)).toBe(1)
-    expect(await sequenceValue(orgA)).toBe(6)
+    expect(await sequenceValue(orgA)).toBe(5)
 
     const byRef1 = (await inSystemTx(orgB, (ctx) =>
       ctx.db.findMany("incidents", { where: { ref_number: 1 } }),
@@ -612,13 +632,13 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
     const created = await deliver(alert)
     expect(created.res.status).toBe(200)
     expect(created.emits.map((e) => e.action)).toEqual(["created"])
-    // Every older incident of org A is numbered; the sequence stood at 6.
+    // Every older incident of org A is numbered; the sequence stood at 5.
     expect({
       ref: created.emits[0]!.data?.ref,
       refLabel: created.emits[0]!.data?.refLabel,
     }).toEqual({
-      ref: "INC-7",
-      refLabel: "[INC-7] ",
+      ref: "INC-6",
+      refLabel: "[INC-6] ",
     })
     const id = created.emits[0]!.entityId!
     await sql`
@@ -633,7 +653,7 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
       ts: "2026-07-05T05:00:00Z",
     })
     expect(reopened.res.status).toBe(200)
-    expect(reopened.emits.map((e) => [e.action, e.data?.ref])).toEqual([["reopened", "INC-7"]])
+    expect(reopened.emits.map((e) => [e.action, e.data?.ref])).toEqual([["reopened", "INC-6"]])
     const [live] = await sql<Record<string, unknown>[]>`
       SELECT status, severity, title, body, count, resolved_at, resolution_note, acknowledged_at, ref_number
       FROM app_monitoring.incidents WHERE id = ${id}`
@@ -646,7 +666,7 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
       resolved_at: null,
       resolution_note: null,
       acknowledged_at: null,
-      ref_number: 7,
+      ref_number: 6,
     })
     expect(await episodes(id)).toEqual([
       {
@@ -670,17 +690,17 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
     const emits: Emitted[] = []
     for (const body of ["vendor ticket 4821", "rolled back"]) {
       await asUser(["monitoring:incidents:write"], (b) =>
-        incidentsCommentHandler({ incidentId: "inc-7", body }, handlerCtx(b, userId, emits)),
+        incidentsCommentHandler({ incidentId: "inc-6", body }, handlerCtx(b, userId, emits)),
       )
     }
     expect(emits.map((e) => [e.action, e.data?.ref])).toEqual([
-      ["commented", "INC-7"],
-      ["commented", "INC-7"],
+      ["commented", "INC-6"],
+      ["commented", "INC-6"],
     ])
     const res = await asUser(["monitoring:incidents:read"], (b) =>
-      incidentsGetHandler({ incidentId: " INC-7 " }, handlerCtx(b, userId, [])),
+      incidentsGetHandler({ incidentId: " INC-6 " }, handlerCtx(b, userId, [])),
     )
-    expect(res.data.ref).toBe("INC-7")
+    expect(res.data.ref).toBe("INC-6")
     expect(
       res.data.comments.map((c) => [
         c.kind,
@@ -711,6 +731,6 @@ describe("monitoring 0.4.0: incident refs and comments on the real kernel", () =
       },
     )
     expect(result).toEqual({ assigned: 1, remaining: false })
-    expect(await sequenceValue(orgA)).toBe(8)
+    expect(await sequenceValue(orgA)).toBe(7)
   })
 })

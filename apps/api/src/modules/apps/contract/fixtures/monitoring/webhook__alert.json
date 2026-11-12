@@ -1,0 +1,86 @@
+{
+  "entry": "webhook:alert",
+  "params": {
+    "source": "watchdog",
+    "severity": "critical",
+    "title": "API health check failing on node a",
+    "body": "GET /healthz answered 503 three times in a row",
+    "dedupKey": "api-health-node-a",
+    "url": "https://status.example.com/checks/api-health",
+    "ts": "2026-01-01T00:00:00.000Z"
+  },
+  "extraArgs": [
+    {
+      "content-type": "application/json",
+      "x-monitoring-signature": "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY=",
+      "x-monitoring-delivery-id": "contract-delivery-1"
+    }
+  ],
+  "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"source\":\"watchdog\",\"dedup_key\":\"api-health-node-a\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "incidents",
+        "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01T00:00:00.000Z\",\"last_seen_at\":\"2026-01-01T00:00:00.000Z\",\"alert_ts\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:42:30.186602+00\",\"updated_at\":\"2026-11-12 08:42:30.186602+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":null}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["incidents", "{\"where\":{\"ref_number\":null},\"limit\":1}"],
+      "reply": "[{\"id\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:42:30.186602+00\",\"updated_at\":\"2026-11-12 08:42:30.186602+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":null}]"
+    },
+    {
+      "method": "store_get",
+      "args": ["leases", "incident-refs"],
+      "reply": "null"
+    },
+    {
+      "method": "store_set",
+      "args": ["leases", "incident-refs", "{\"until\":1767225660000}", "{\"ifVersion\":0}"],
+      "reply": "{\"id\":\"incident-refs\",\"data\":{\"until\":1767225660000},\"version\":1,\"updatedAt\":\"2026-11-12T08:42:30.220Z\"}"
+    },
+    {
+      "method": "sequences_allocate",
+      "args": ["{\"key\":\"monitoring:incident_ref\"}"],
+      "reply": "{\"value\":1}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"ref_number\":null},\"orderBy\":{\"first_seen_at\":\"asc\",\"id\":\"asc\"},\"limit\":10}"
+      ],
+      "reply": "[{\"id\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:42:30.186602+00\",\"updated_at\":\"2026-11-12 08:42:30.186602+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":null}]"
+    },
+    {
+      "method": "db_update",
+      "args": ["incidents", "5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103", "{\"ref_number\":1}"]
+    },
+    {
+      "method": "store_delete",
+      "args": ["leases", "incident-refs", "{\"ifVersion\":1}"],
+      "reply": "{\"deleted\":true}"
+    },
+    {
+      "method": "db_findOne",
+      "args": ["incidents", "5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103"],
+      "reply": "{\"id\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:42:30.186602+00\",\"updated_at\":\"2026-11-12 08:42:30.277565+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":1}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"incident\",\"action\":\"created\",\"entityId\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"data\":{\"id\":\"5ed6efd8-1e4b-4ef5-97f2-3b8da4b63103\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"url\":\"https://status.example.com/checks/api-health\",\"dedupKey\":\"api-health-node-a\",\"count\":1,\"ref\":\"INC-1\",\"refLabel\":\"[INC-1] \"},\"metadata\":{\"source\":\"watchdog\",\"severity\":\"critical\"}}"
+      ]
+    }
+  ]
+}

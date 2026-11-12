@@ -9,8 +9,10 @@ export interface DbBatchPreconditionFailure {
   matched: number
 }
 
+// Anchored, one way to match each part (entity names hold no space or paren; the expectation no
+// comma), so the match is linear in the message.
 const PRECONDITION =
-  /precondition_failed at ops\[(\d+)\] \((update|delete|updateMany) ([^)]+)\): .*, matched (\d+)$/
+  /^ctx\.db\.batch: precondition_failed at ops\[(\d+)\] \((update|delete|updateMany) ([^\s()]+)\): expected [^,]*, matched (\d+)$/
 
 /**
  * The guard failure a `ctx.db.batch` rejected with, or null for any other error.
@@ -25,7 +27,9 @@ const PRECONDITION =
 export function batchPreconditionFailure(err: unknown): DbBatchPreconditionFailure | null {
   const e = err as { code?: unknown; message?: unknown } | null | undefined
   if (e === null || typeof e !== "object" || e.code !== "precondition_failed") return null
-  const m = PRECONDITION.exec(String(e.message))
+  const message = String(e.message)
+  if (message.length > 1000) return null
+  const m = PRECONDITION.exec(message)
   if (!m) return null
   return {
     op: Number(m[1]),

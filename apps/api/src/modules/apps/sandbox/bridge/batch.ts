@@ -330,7 +330,7 @@ export function createBatchMethods(
           if (!isObject(op)) throw new BatchSpecError(`${where} is not an object`)
           const expected = checkExpect(op, where)
           /** The guard, on what the op matched. */
-          const guard = (kind: string, entity: string, matched: number) => {
+          const enforceBatchExpect = (kind: string, entity: string, matched: number) => {
             if (!expected) return
             if (
               (expected.minRows !== undefined && matched < expected.minRows) ||
@@ -377,10 +377,10 @@ export function createBatchMethods(
               append: resolve(append, where) as Record<string, unknown[]>,
               merge: resolve(merge, where) as Record<string, Row>,
             })
-            guard("update", op.update, matched ?? appended ?? 0)
+            enforceBatchExpect("update", op.update, matched ?? appended ?? 0)
           } else if (typeof op.delete === "string") {
             await db.db_delete(op.delete, idOf(op.id, where))
-            guard("delete", op.delete, lastRowCount)
+            enforceBatchExpect("delete", op.delete, lastRowCount)
           } else if (typeof op.updateMany === "string") {
             if (!isObject(op.data) || !isObject(op.where)) {
               throw new BatchSpecError(`${where} needs where and data`)
@@ -391,7 +391,7 @@ export function createBatchMethods(
                 JSON.stringify({ where: resolve(op.where, where), data: resolve(op.data, where) }),
               ),
             ) as { count?: number }
-            guard("updateMany", op.updateMany, Number(res.count ?? 0))
+            enforceBatchExpect("updateMany", op.updateMany, Number(res.count ?? 0))
           } else {
             throw new BatchSpecError(`${where} is none of insert, update, delete, updateMany`)
           }

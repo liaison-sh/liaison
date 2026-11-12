@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Calendar-date arithmetic on `YYYY-MM-DD` strings, in UTC so a server's own zone never shifts a day.
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const
+
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+export function isRealDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  const d = new Date(`${date}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date
+}
+
+/** ISO weekday of a date, Monday 1 to Sunday 7. */
+export function isoWeekdayOf(date: string): number {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
+  return day === 0 ? 7 : day
+}
+
+/** "Mon 7 Dec 2026": the form every result states a date in, so a misread date is seen at once. */
+export function dayLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  return `${DAY_NAMES[isoWeekdayOf(date) - 1]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+}
+
+/** The ISO year a date belongs to: the year of that week's Thursday. */
+export function isoYearOf(date: string): number {
+  return Number(addDays(date, 4 - isoWeekdayOf(date)).slice(0, 4))
+}
+
+function isoWeekMonday(year: number, week: number): string {
+  // 4 January is always in week 1.
+  const jan4 = `${year}-01-04`
+  return addDays(addDays(jan4, 1 - isoWeekdayOf(jan4)), (week - 1) * 7)
+}
+
+/** 52 or 53. */
+export function isoWeeksIn(year: number): number {
+  const monday1 = isoWeekMonday(year, 1)
+  return (
+    Math.floor(
+      (Date.parse(`${year}-12-28T00:00:00Z`) - Date.parse(`${monday1}T00:00:00Z`)) /
+        (7 * 86_400_000),
+    ) + 1
+  )
+}
+
+/** Monday to Sunday of an ISO week, or null when that year has no such week. */
+export function isoWeekRange(year: number, week: number): { from: string; to: string } | null {
+  if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1 || week > isoWeeksIn(year)) {
+    return null
+  }
+  const from = isoWeekMonday(year, week)
+  return { from, to: addDays(from, 6) }
+}

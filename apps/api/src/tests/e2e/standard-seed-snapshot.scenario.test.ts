@@ -46,6 +46,14 @@ const ROUND_MS = 5 * 60_000
  */
 const LOGIN_TABLES = /^kernel\.(sessions|refresh_tokens|auth_sessions|login_attempts)$/
 
+/**
+ * Derived state, not world: the apps' stored attention lists are recomputed
+ * from the world's rows by queued refresh jobs (attention-store.ts), so which
+ * of them exist when the lane is read is a matter of which jobs ran by then.
+ * The rows they are computed from are pinned in their own tables.
+ */
+const DERIVED_TABLES = /^kernel\.app_attention_items$/
+
 /** A sign-in's outbox event (`auth` / `login`): login state too. */
 function isSignIn(name: string, row: Record<string, unknown>): boolean {
   const p = row.payload as { entity?: string; action?: string } | null
@@ -158,7 +166,7 @@ async function snapshotLane(
     const snapshot: Snapshot = {}
     for (const { schema, table } of tables) {
       const name = `${schema.slice(schemaPrefix.length)}.${table}`
-      if (LOGIN_TABLES.test(name)) continue
+      if (LOGIN_TABLES.test(name) || DERIVED_TABLES.test(name)) continue
       const rows = (await db.sql.unsafe(
         `SELECT to_jsonb(x) AS r FROM "${schema}"."${table}" x`,
       )) as unknown as Array<{ r: Record<string, unknown> }>
@@ -192,7 +200,8 @@ function diff(expected: Snapshot, actual: Snapshot): string[] {
     if (!e) out.push(`${name}: new (${a?.rows} rows)`)
     else if (!a) out.push(`${name}: gone (was ${e.rows} rows)`)
     else if (e.rows !== a.rows) out.push(`${name}: ${e.rows} -> ${a.rows} rows`)
-    else if (e.digest !== a.digest) out.push(`${name}: content changed (${a.rows} rows)`)
+    else if (e.digest !== a.digest)
+      out.push(`${name}: content changed (${a.rows} rows, ${e.digest} -> ${a.digest})`)
   }
   return out
 }

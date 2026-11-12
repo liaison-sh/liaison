@@ -24,8 +24,8 @@ import {
   TRIVIAL_PASSES_PATH,
 } from "./expected"
 
-const BASELINE_SHA256 = "f4c942d6ace7f22544b9f47cf296fbf39d8e5ee2eff5dbbb2168f4429c16931c"
-const TRIVIAL_BASELINE_SHA256 = "07b5f781fef1e1addf725ca6a2daaec9dfa938a1279fa37e8dde6cb7c997e980"
+const BASELINE_SHA256 = "b30ce18829fdcb71e3ce4b12882448c1af8451f07d773b2641371bead11e72b2"
+const TRIVIAL_BASELINE_SHA256 = "3393fbafa1f582589f8231e94b5213bc0b340e5c1fa9aaf7747ee6eaebfd6aad"
 const REASONS = new Set(["module-state", "wait", "budget", "no-fixture", "missing-export", "load"])
 
 describe("contract expected-failure list", () => {

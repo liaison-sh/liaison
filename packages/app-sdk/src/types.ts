@@ -170,15 +170,17 @@ export interface TimersClient {
 
 export interface PagesClient {
   /**
-   * A one-time link (15 minutes) to one of this app's own pages (manifest `pages`) for the
-   * person this run acts for. `params` (a JSON object, up to 16 KiB) reach the page as
-   * `liaisonPage.params` and every route it calls as `params`. Refused in a run that acts for
-   * no person (a job, a webhook).
+   * A handle (5 minutes, used once) to one of this app's own pages (manifest `pages`) for the
+   * person this run acts for. Not a URL: return it to the person (a tool's answer); only their
+   * signed-in app opens it (`POST /api/apps/<app>/pages/open`), so the app's code can never use
+   * it as them. `params` (a JSON object, up to 16 KiB) reach the page as `liaisonPage.params`
+   * and every route it calls as `params`; a route still re-checks every id against the person's
+   * rights. Refused in a run that acts for no person (a job, a webhook).
    */
   link(
     page: string,
     params?: Record<string, unknown>,
-  ): Promise<{ url: string; expiresInSeconds: number }>
+  ): Promise<{ handle: string; app: string; page: string; expiresInSeconds: number }>
 }
 
 /** What a route handler (manifest `pageRoutes`) receives as its params. */

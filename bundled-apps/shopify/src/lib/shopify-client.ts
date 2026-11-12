@@ -3,12 +3,18 @@
 // Thin Shopify Admin GraphQL client.
 //
 // Hardening dimensions (each pinned by a test in shopify-client.test.ts):
+// - The client never waits inside a run. Pacing belongs to the platform's
+//   shared per-connection limiter (manifest `connections.shop.limits`): every
+//   call waits there for its turn, across runs and processes.
 // - Bucket-aware throttle: when `extensions.cost.throttleStatus.currentlyAvailable`
-//   drops below `throttleLowWatermark` (default 100), the next call sleeps
-//   `throttlePauseMs` (default 1000 ms) so we don't burn the cost bucket.
-//   Malformed/missing `extensions.cost` is treated as "no throttle".
-// - 429 retry: up to 3 retries with the `Retry-After` header (in seconds);
-//   throws after the 4th try.
+//   drops below `throttleLowWatermark` (default 100), the client reports a pause
+//   long enough for the bucket to refill to the watermark at its `restoreRate`
+//   (`onThrottle`, wired to `ctx.limiter.pause`), so the NEXT call to this shop,
+//   from any run, waits in the limiter. Malformed/missing `extensions.cost` is
+//   treated as "no throttle".
+// - 429 retry: up to 3 retries, sent at once: the limiter holds them for the
+//   `Retry-After` the 429 carried (it pauses the connection itself); throws after
+//   the 4th try.
 // - 401 → CONNECTION_LOST (no retry — connection needs admin re-auth).
 // - 403 → SCOPE_DENIED (no retry — a Liaison-side scope-grant gap, not a
 //   token failure; see decisions.md §0.3d).
@@ -16,8 +22,6 @@
 //
 // The client is constructor-injected with `fetch` to keep it host-free —
 // tests stub the network; production wires `globalThis.fetch`.
-
-import { sleep } from "./timers"
 
 export interface ShopifyFetchResponse {
   status: number
@@ -50,30 +54,25 @@ export interface ShopifyClientOptions {
    * to a Bun mock instead of real Shopify, and by future multi-region setups.
    */
   baseUrlOverride?: string
-  /** Pause forced after a low-throttle response, in ms. Default 1000. */
-  throttlePauseMs?: number
-  /** Below this, the next call is paused. Default 100. */
-  throttleLowWatermark?: number
-  /** Base delay between 429 retries (multiplied by retry-after). Default 1000. */
-  retryDelayMs?: number
   /**
-   * A caller on a deadline (a guard with a few seconds of budget): a 429 or a low throttle bucket
-   * throws RATE_LIMIT at once instead of waiting and retrying. Default false.
+   * The pause reported for a low cost bucket when the response names no
+   * `restoreRate`, in ms. Default 1000.
+   */
+  throttlePauseMs?: number
+  /** Below this many available cost points, a pause is reported. Default 100. */
+  throttleLowWatermark?: number
+  /**
+   * A caller on a deadline (a guard with a few seconds of budget): a 429 throws
+   * RATE_LIMIT at once instead of retrying. Default false.
    */
   failFast?: boolean
   /**
-   * Seed the bucket-aware throttle watermark (epoch-ms of the earliest next
-   * call), restored from a previous short-lived client for the same shop so
-   * back-pressure survives across tool invocations. Default 0 (no pause).
+   * Told how long every call to this shop should hold off (ms, at most 60 s)
+   * after a response reported a low cost bucket. Wired to `ctx.limiter.pause`,
+   * which holds the shop's next calls from every run and process. A failure
+   * here never fails the call that reported it.
    */
-  initialThrottleAt?: number
-  /**
-   * Called with the new watermark (epoch-ms) whenever a response updates the
-   * bucket-aware throttle state. A factory uses this to persist back-pressure
-   * across client instances without caching the whole client (which would pin a
-   * stale per-invocation `fetch` closure and an un-rotated token).
-   */
-  onThrottleChange?: (nextEarliestCallAt: number) => void
+  onThrottle?: (pauseMs: number) => unknown
 }
 
 export interface ShopifyError extends Error {
@@ -99,10 +98,8 @@ export class ShopifyClient {
   private readonly fetchImpl: ShopifyFetch
   private readonly throttlePauseMs: number
   private readonly throttleLowWatermark: number
-  private readonly retryDelayMs: number
   private readonly failFast: boolean
-  private readonly onThrottleChange?: (nextEarliestCallAt: number) => void
-  private nextEarliestCallAt = 0
+  private readonly onThrottle?: (pauseMs: number) => unknown
 
   constructor(opts: ShopifyClientOptions) {
     this.shop = opts.shop
@@ -111,18 +108,12 @@ export class ShopifyClient {
     this.fetchImpl = opts.fetch ?? defaultFetch
     this.throttlePauseMs = opts.throttlePauseMs ?? 1000
     this.throttleLowWatermark = opts.throttleLowWatermark ?? 100
-    this.retryDelayMs = opts.retryDelayMs ?? 1000
     this.failFast = opts.failFast === true
-    this.nextEarliestCallAt = opts.initialThrottleAt ?? 0
-    this.onThrottleChange = opts.onThrottleChange
+    this.onThrottle = opts.onThrottle
   }
 
   /** Run a GraphQL query/mutation against the shop's Admin API. */
   async query<T = unknown>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-    const wait = this.nextEarliestCallAt - Date.now()
-    if (wait > 0 && this.failFast) throw makeError("RATE_LIMIT", "Shopify throttle bucket low (fail fast)", 429)
-    if (wait > 0) await sleep(wait)
-
     const base = this.baseUrlOverride ?? `https://${this.shop}.myshopify.com`
     const url = `${base}/admin/api/${this.apiVersion}/graphql.json`
     // `effectiveVars`/`reqBody` are mutable so a single malformed-cursor retry can
@@ -152,8 +143,8 @@ export class ShopifyClient {
         if (attempt >= 3 || this.failFast) {
           throw makeError("RATE_LIMIT", "Shopify 429 (rate limit) after 3 retries", 429)
         }
-        const retryAfter = parseFloat(res.headers["retry-after"] ?? "1") || 1
-        await sleep(Math.max(retryAfter * this.retryDelayMs, 0))
+        // No wait here: the connection's limiter paused this shop for the
+        // 429's Retry-After, so the retry waits there for its turn.
         attempt++
         continue
       }
@@ -162,20 +153,16 @@ export class ShopifyClient {
       }
 
       const parsed = safeJsonParse(res.body)
-      // Bucket-aware throttle: schedule the next call's earliest start.
-      // Only update the watermark when Shopify includes the cost extension —
-      // absence of the header does not mean "bucket is full", so we must not
-      // reset a previously-set delay in that case.
-      const available = parsed?.extensions?.cost?.throttleStatus?.currentlyAvailable
-      if (typeof available === "number") {
-        if (available < this.throttleLowWatermark) {
-          this.nextEarliestCallAt = Date.now() + this.throttlePauseMs
-        } else {
-          this.nextEarliestCallAt = 0
+      // Bucket-aware throttle: a low bucket pauses the shop's next calls (in
+      // the limiter, for every run) until it has refilled to the watermark.
+      const throttle = parsed?.extensions?.cost?.throttleStatus
+      const pauseMs = throttlePauseFor(throttle, this.throttleLowWatermark, this.throttlePauseMs)
+      if (pauseMs > 0 && this.onThrottle) {
+        try {
+          await this.onThrottle(pauseMs)
+        } catch {
+          // Pacing is best effort: the provider's own 429 stays the backstop.
         }
-        // Persist the new watermark so a factory can carry back-pressure across
-        // short-lived client instances for the same shop (see get-client.ts).
-        this.onThrottleChange?.(this.nextEarliestCallAt)
       }
 
       if (parsed?.errors && Array.isArray(parsed.errors) && parsed.errors.length > 0) {
@@ -232,6 +219,30 @@ export class ShopifyClient {
 }
 
 // — helpers —
+
+/** The longest pause the limiter takes (`ctx.limiter.pause` caps it there too). */
+export const MAX_THROTTLE_PAUSE_MS = 60_000
+
+/**
+ * How long the shop's next calls should hold off after a response reported
+ * `throttle`: 0 while at least `lowWatermark` cost points are available, else
+ * the time the bucket needs to refill to the watermark at its `restoreRate`
+ * (points per second), `fallbackMs` when the rate is missing, at most 60 s.
+ */
+export function throttlePauseFor(
+  throttle: { currentlyAvailable?: number; restoreRate?: number } | undefined,
+  lowWatermark: number,
+  fallbackMs: number,
+): number {
+  const available = throttle?.currentlyAvailable
+  if (typeof available !== "number" || available >= lowWatermark) return 0
+  const rate = throttle?.restoreRate
+  const ms =
+    typeof rate === "number" && rate > 0
+      ? Math.ceil(((lowWatermark - available) / rate) * 1000)
+      : fallbackMs
+  return Math.min(Math.max(ms, 1), MAX_THROTTLE_PAUSE_MS)
+}
 
 function makeError(
   code: ShopifyError["code"],

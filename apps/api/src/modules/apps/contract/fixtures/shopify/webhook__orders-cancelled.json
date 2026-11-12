@@ -1,0 +1,437 @@
+{
+  "entry": "webhook:orders-cancelled",
+  "params": {
+    "id": 19010985230502,
+    "admin_graphql_api_id": "gid://shopify/Order/19010985230502",
+    "app_id": 372991328257,
+    "browser_ip": "2a01:e0a:1195:af60:6567:df3a:4e86:d968",
+    "buyer_accepts_marketing": false,
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "cart_token": null,
+    "checkout_id": 72924888760486,
+    "checkout_token": "redacted",
+    "client_details": {
+      "accept_language": null,
+      "browser_height": null,
+      "browser_ip": "2a01:e0a:1195:af60:6567:df3a:4e86:d968",
+      "browser_width": null,
+      "session_hash": null,
+      "user_agent": "Bun/1.4.4"
+    },
+    "closed_at": null,
+    "company": null,
+    "confirmation_number": "U8H77XG9V",
+    "confirmed": true,
+    "contact_email": "marie@example.com",
+    "created_at": "2026-11-12T03:18:25-05:00",
+    "currency": "USD",
+    "current_subtotal_price": "885.95",
+    "current_subtotal_price_set": {
+      "shop_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      }
+    },
+    "current_total_additional_fees_set": null,
+    "current_total_discounts": "0.00",
+    "current_total_discounts_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "current_total_duties_set": null,
+    "current_total_price": "885.95",
+    "current_total_price_set": {
+      "shop_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      }
+    },
+    "current_total_tax": "0.00",
+    "current_total_tax_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "customer_locale": "en",
+    "device_id": null,
+    "discount_codes": [],
+    "duties_included": false,
+    "email": "marie@example.com",
+    "estimated_taxes": false,
+    "financial_status": "paid",
+    "fulfillment_status": null,
+    "landing_site": null,
+    "landing_site_ref": null,
+    "location_id": null,
+    "merchant_business_entity_id": "33610432678",
+    "merchant_of_record_app_id": null,
+    "name": "#2803",
+    "note": "Contract recorder order",
+    "note_attributes": [],
+    "number": 1803,
+    "order_number": 2803,
+    "order_status_url": "https://contract-shop.myshopify.com/74673684646/orders/redacted-2/authenticate?key=redacted",
+    "original_total_additional_fees_set": null,
+    "original_total_duties_set": null,
+    "payment_gateway_names": ["manual"],
+    "phone": null,
+    "po_number": null,
+    "presentment_currency": "USD",
+    "processed_at": "2026-11-12T03:18:25-05:00",
+    "reference": null,
+    "referring_site": null,
+    "source_identifier": null,
+    "source_name": "372991328257",
+    "source_url": null,
+    "subtotal_price": "885.95",
+    "subtotal_price_set": {
+      "shop_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      }
+    },
+    "tags": "contract-fixture",
+    "tax_exempt": false,
+    "tax_lines": [],
+    "taxes_included": false,
+    "test": false,
+    "token": "redacted-2",
+    "total_cash_rounding_payment_adjustment_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "total_cash_rounding_refund_adjustment_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "total_discounts": "0.00",
+    "total_discounts_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "total_line_items_price": "885.95",
+    "total_line_items_price_set": {
+      "shop_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      }
+    },
+    "total_outstanding": "0.00",
+    "total_price": "885.95",
+    "total_price_set": {
+      "shop_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "885.95",
+        "currency_code": "USD"
+      }
+    },
+    "total_shipping_price_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "total_tax": "0.00",
+    "total_tax_set": {
+      "shop_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      },
+      "presentment_money": {
+        "amount": "0.00",
+        "currency_code": "USD"
+      }
+    },
+    "total_tip_received": "0.00",
+    "total_weight": 0,
+    "updated_at": "2026-11-12T03:18:30-05:00",
+    "user_id": null,
+    "billing_address": null,
+    "customer": {
+      "id": 24929659846822,
+      "created_at": "2026-05-26T18:50:38-04:00",
+      "updated_at": "2026-11-12T03:18:26-05:00",
+      "first_name": "Marie",
+      "last_name": "Dupont",
+      "state": "disabled",
+      "note": null,
+      "verified_email": true,
+      "multipass_identifier": null,
+      "tax_exempt": false,
+      "email_marketing_consent": {
+        "state": "not_subscribed",
+        "opt_in_level": "single_opt_in",
+        "consent_updated_at": null
+      },
+      "sms_marketing_consent": null,
+      "tags": "liaison-seed, liaison-seed-cust-001, market:canada",
+      "email": "marie@example.com",
+      "phone": null,
+      "currency": "USD",
+      "tax_exemptions": [],
+      "admin_graphql_api_id": "gid://shopify/Customer/24929659846822",
+      "default_address": {
+        "id": 36147297386662,
+        "customer_id": 24929659846822,
+        "first_name": "Marie",
+        "last_name": "Dupont",
+        "company": null,
+        "address1": "12 Rue de Rivoli",
+        "address2": null,
+        "city": "Paris",
+        "province": null,
+        "country": "France",
+        "zip": "75004",
+        "phone": null,
+        "name": "Marie Dupont",
+        "province_code": null,
+        "country_code": "FR",
+        "country_name": "France",
+        "default": true
+      }
+    },
+    "discount_applications": [],
+    "fulfillments": [
+      {
+        "id": 8148356038822,
+        "admin_graphql_api_id": "gid://shopify/Fulfillment/8148356038822",
+        "created_at": "2026-11-12T03:18:27-05:00",
+        "location_id": 83457310886,
+        "name": "#2803.1",
+        "order_id": 19010985230502,
+        "origin_address": {},
+        "receipt": {},
+        "service": "manual",
+        "shipment_status": null,
+        "status": "cancelled",
+        "tracking_company": "UPS",
+        "tracking_number": "1Z999AA10123456784",
+        "tracking_numbers": ["1Z999AA10123456784"],
+        "tracking_url": "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456784",
+        "tracking_urls": [
+          "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456784"
+        ],
+        "updated_at": "2026-11-12T03:18:30-05:00",
+        "line_items": [
+          {
+            "id": 50929466769574,
+            "admin_graphql_api_id": "gid://shopify/LineItem/50929466769574",
+            "attributed_staffs": [],
+            "current_quantity": 1,
+            "fulfillable_quantity": 1,
+            "fulfillment_service": "manual",
+            "fulfillment_status": null,
+            "gift_card": false,
+            "grams": 0,
+            "name": "The Minimal Snowboard",
+            "price": "885.95",
+            "price_set": {
+              "shop_money": {
+                "amount": "885.95",
+                "currency_code": "USD"
+              },
+              "presentment_money": {
+                "amount": "885.95",
+                "currency_code": "USD"
+              }
+            },
+            "product_exists": true,
+            "product_id": 15332593336486,
+            "properties": [],
+            "quantity": 1,
+            "requires_shipping": true,
+            "sku": null,
+            "taxable": true,
+            "title": "The Minimal Snowboard",
+            "total_discount": "0.00",
+            "total_discount_set": {
+              "shop_money": {
+                "amount": "0.00",
+                "currency_code": "USD"
+              },
+              "presentment_money": {
+                "amount": "0.00",
+                "currency_code": "USD"
+              }
+            },
+            "variant_id": 56534760784038,
+            "variant_inventory_management": "shopify",
+            "variant_title": null,
+            "vendor": "Contract Shop",
+            "tax_lines": [],
+            "duties": [],
+            "discount_allocations": []
+          }
+        ]
+      }
+    ],
+    "line_items": [
+      {
+        "id": 50929466769574,
+        "admin_graphql_api_id": "gid://shopify/LineItem/50929466769574",
+        "attributed_staffs": [],
+        "current_quantity": 1,
+        "fulfillable_quantity": 1,
+        "fulfillment_service": "manual",
+        "fulfillment_status": null,
+        "gift_card": false,
+        "grams": 0,
+        "name": "The Minimal Snowboard",
+        "price": "885.95",
+        "price_set": {
+          "shop_money": {
+            "amount": "885.95",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "885.95",
+            "currency_code": "USD"
+          }
+        },
+        "product_exists": true,
+        "product_id": 15332593336486,
+        "properties": [],
+        "quantity": 1,
+        "requires_shipping": true,
+        "sku": null,
+        "taxable": true,
+        "title": "The Minimal Snowboard",
+        "total_discount": "0.00",
+        "total_discount_set": {
+          "shop_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          }
+        },
+        "variant_id": 56534760784038,
+        "variant_inventory_management": "shopify",
+        "variant_title": null,
+        "vendor": "Contract Shop",
+        "tax_lines": [],
+        "duties": [],
+        "discount_allocations": []
+      }
+    ],
+    "payment_terms": null,
+    "refunds": [],
+    "shipping_address": {
+      "first_name": "Marie",
+      "address1": "1 Contract Street",
+      "phone": null,
+      "city": "Lyon",
+      "zip": "69002",
+      "province": null,
+      "country": "France",
+      "last_name": "Dupont",
+      "address2": null,
+      "company": null,
+      "latitude": 45.7477113,
+      "longitude": 4.8240999,
+      "name": "Marie Dupont",
+      "country_code": "FR",
+      "province_code": null
+    },
+    "shipping_lines": []
+  },
+  "extraArgs": [
+    {
+      "x-shopify-hmac-sha256": "mc5Z13o9efCZQiCM7PkHu7pfexsG/WI/8XtJIgwk6D4=",
+      "x-shopify-webhook-id": "contract-orders-cancelled-4",
+      "x-shopify-topic": "orders/cancelled",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    }
+  ],
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "webhook_deliveries",
+        "{\"where\":{\"webhookId\":\"contract-orders-cancelled-4\"},\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"order\",\"action\":\"cancelled\",\"entityId\":\"19010985230502\",\"data\":{\"orderId\":\"19010985230502\",\"name\":\"#2803\",\"customer\":{\"id\":\"24929659846822\",\"email\":\"marie@example.com\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"country\":\"FR\",\"external_ids\":{\"shopify\":\"24929659846822\"}},\"customerId\":\"24929659846822\",\"poNumber\":null,\"buyerTaxId\":null,\"note\":\"Contract recorder order\",\"totalPrice\":{\"amount\":\"885.95\",\"currencyCode\":\"USD\"},\"taxesIncluded\":false,\"billingAddress\":null,\"shippingAddress\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"zip\":\"69002\",\"city\":\"Lyon\",\"province\":null,\"country_code\":\"FR\",\"phone\":null},\"lineItems\":[{\"id\":\"50929466769574\",\"title\":\"The Minimal Snowboard\",\"quantity\":1,\"priceSet\":{\"amount\":\"885.95\",\"currencyCode\":\"USD\"},\"requiresShipping\":true,\"taxLines\":[],\"discountAllocations\":[],\"variant\":{\"id\":\"56534760784038\",\"title\":null,\"sku\":null}}],\"shippingLines\":[],\"fulfillmentStatus\":null,\"financialStatus\":\"paid\",\"marketId\":null,\"shopDomain\":\"contract-shop.myshopify.com\"},\"metadata\":{\"shopify_webhook_id\":\"contract-orders-cancelled-4\"}}"
+      ]
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "webhook_deliveries",
+        "{\"webhookId\":\"contract-orders-cancelled-4\",\"topic\":\"orders/cancelled\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"97a4148a-6fd9-4be2-8c7a-9c2beae184c4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:34.305733+00\",\"updated_at\":\"2026-11-12 08:18:34.305733+00\",\"webhook_id\":\"contract-orders-cancelled-4\",\"topic\":\"orders/cancelled\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+    }
+  ]
+}

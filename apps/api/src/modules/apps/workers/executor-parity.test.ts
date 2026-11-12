@@ -718,14 +718,15 @@ describe("ctx.store on every executor", () => {
 })
 
 describe("ctx.pages on every executor", () => {
-  it("a link for the run's person, and an unknown page refused: equal answers", async () => {
+  it("a handle for the run's person (never a URL), and an unknown page refused: equal answers", async () => {
     const answers: Record<string, unknown> = {}
     for (const ex of STORE_EXECUTORS) {
       answers[ex] = await runStore(ex, "wparity", "pageLink", {})
     }
     expect(answers.inprocess).toEqual({
-      url: true,
-      expiresInSeconds: 900,
+      handle: true,
+      url: false,
+      expiresInSeconds: 300,
       missing: { thrown: true, code: "page_not_found", status: 404 },
     })
     expect(answers.pool).toEqual(answers.inprocess)

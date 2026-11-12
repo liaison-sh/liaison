@@ -8293,6 +8293,7 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.filtersReset": "Réinitialiser les filtres",
   "kernel.dashboards.chartRightAxis": "{{name}} (axe de droite)",
   "kernel.dashboards.chartInProgress": "Aujourd'hui, encore en cours",
+  "kernel.dashboards.chartTotal": "Total : {{value}}",
   "kernel.dashboards.chartVs": "comparé à {{range}}",
   "kernel.dashboards.layerFailed": "{{layer}} : {{reason}}",
   "kernel.dashboards.filterEditorAria": "Modifier les filtres",

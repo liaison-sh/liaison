@@ -105,6 +105,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "no product caller yet (an app's own retention will call it, tests only today): the org of the thread the caller names, matched again on every message row it reads and writes (messages.org_id = orgId)",
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
     "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today): writes only the (orgId, app, feature) row it is given",
+  "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
+    "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
   "apps/api/src/apps/knowledge/app-sources.ts#applyAppSourcePage":
@@ -667,8 +669,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the user the single-use challenge token names (verified first), in that user's org",
   "apps/api/src/modules/mailbox-crypto/backfill-job.ts#runMailboxBackfillSweep":
     "backfill sweep: users needing a backfill, each in its own row's org",
-  "apps/api/src/apps/database/bridge.ts#createDatabaseBridgeExtension.resolveCredentials":
-    "sandbox bridge extension: the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/tickets/jobs.ts#runSlaCheck":
     "tickets cron sweep: the orgId of the run's bridge context (sandbox/bridge/tickets.ts tickets_runJob), one org per fan-out run",
   "apps/api/src/modules/api-connector/routes.ts#<module>":

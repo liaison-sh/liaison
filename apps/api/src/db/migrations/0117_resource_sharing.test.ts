@@ -98,6 +98,7 @@ describe("0117 resource sharing", () => {
         expect(types.map((t) => t.resource_type)).toEqual([
           "kernel.company",
           "kernel.contact",
+          "kernel.dashboard",
           "knowledge.document",
         ])
         checked = true

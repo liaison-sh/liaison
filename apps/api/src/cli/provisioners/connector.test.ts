@@ -415,64 +415,62 @@ describe("generic connector (Task 11)", () => {
       connectionConfigRegistry.set([...key], decl!)
     }
   })
-  // A connection declaring a URL beside its secret (the database connector's gate
-  // mode: `gateUrl` is a text field, `gateToken` a password field). A host rename
-  // changes only the URL: apply must write it and say WHICH fields moved, naming
+  // A connection declaring a URL beside its secret (GitLab's default
+  // group: `group` is a text field, `token` a password field). A rename
+  // changes only the group: apply must write it and say WHICH fields moved, naming
   // the secret fields without ever printing a value.
   test("a changed non-secret setting (the URL) is written and reported by field name", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const logs: string[] = []
     ctx.log = (line: string) => logs.push(line)
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    const base = { name: "database", identifier, ownerType: "org" as const }
-    await provisionConnection(ctx, "database", {
+    const base = { name: "gitlab", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+      credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
 
-    const same = await provisionConnection(ctx, "database", {
+    const same = await provisionConnection(ctx, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+      credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
-    expect(same.unchanged).toEqual(["apps.database.connection"])
+    expect(same.unchanged).toEqual(["apps.gitlab.connection"])
     expect(same.changed).toBeUndefined()
 
-    const moved = await provisionConnection(ctx, "database", {
+    const moved = await provisionConnection(ctx, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-1" },
+      credentials: { group: "team-new", token: "tok-SECRET-1" },
     })
     expect(moved.connected).toBe(true)
     expect(moved.unchanged).toBeUndefined()
-    expect(moved.changed).toEqual(["apps.database.connection.gateUrl"])
-    expect(await countActive(orgId, "database", "database", identifier)).toBe(1)
+    expect(moved.changed).toEqual(["apps.gitlab.connection.group"])
+    expect(await countActive(orgId, "gitlab", "gitlab", identifier)).toBe(1)
     const stored = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
         actorType: "system",
       }),
     )
-    expect(stored.gateUrl).toBe("https://gate-new.example.com")
-    expect(stored.gateToken).toBe("tok-SECRET-1")
-    expect(logs.join("\n")).toContain("gateUrl")
+    expect(stored.group).toBe("team-new")
+    expect(stored.token).toBe("tok-SECRET-1")
+    expect(logs.join("\n")).toContain("group")
 
-    const rotated = await provisionConnection(ctx, "database", {
+    const rotated = await provisionConnection(ctx, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-2" },
+      credentials: { group: "team-new", token: "tok-SECRET-2" },
     })
-    expect(rotated.changed).toEqual(["apps.database.connection.gateToken"])
+    expect(rotated.changed).toEqual(["apps.gitlab.connection.token"])
     // The non-secret setting shows old -> new; the secret is named only.
     expect(moved.fieldChanges).toEqual([
       {
-        field: "gateUrl",
+        field: "group",
         secret: false,
-        from: "https://gate-old.example.com",
-        to: "https://gate-new.example.com",
+        from: "team-old",
+        to: "team-new",
       },
     ])
-    expect(logs.join("\n")).toContain(
-      'gateUrl "https://gate-old.example.com" -> "https://gate-new.example.com"',
-    )
-    expect(rotated.fieldChanges).toEqual([{ field: "gateToken", secret: true }])
-    expect(logs.join("\n")).toContain("gateToken (secret)")
+    expect(logs.join("\n")).toContain('group "team-old" -> "team-new"')
+    expect(rotated.fieldChanges).toEqual([{ field: "token", secret: true }])
+    expect(logs.join("\n")).toContain("token (secret)")
     // Field names only for secrets: no secret value in the report or the log.
     const everything = JSON.stringify([moved, rotated]) + logs.join("\n")
     expect(everything).not.toContain("tok-SECRET")
@@ -483,78 +481,78 @@ describe("generic connector (Task 11)", () => {
   test("planConnection reports drift of an existing connection without writing", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    const base = { name: "database", identifier, ownerType: "org" as const }
-    await provisionConnection(ctx, "database", {
+    const base = { name: "gitlab", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+      credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
 
     expect(
-      await planConnection(ctx, orgId, "database", {
+      await planConnection(ctx, orgId, "gitlab", {
         ...base,
-        credentials: { gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" },
+        credentials: { group: "team-old", token: "tok-SECRET-1" },
       }),
-    ).toEqual(["app 'database' connection 'database' unchanged"])
+    ).toEqual(["app 'gitlab' connection 'gitlab' unchanged"])
 
-    const lines = await planConnection(ctx, orgId, "database", {
+    const lines = await planConnection(ctx, orgId, "gitlab", {
       ...base,
-      credentials: { gateUrl: "https://gate-new.example.com", gateToken: "tok-SECRET-2" },
+      credentials: { group: "team-new", token: "tok-SECRET-2" },
     })
     expect(lines).toEqual([
-      `update app 'database' connection 'database': gateToken (secret), gateUrl "https://gate-old.example.com" -> "https://gate-new.example.com"`,
+      `update app 'gitlab' connection 'gitlab': group "team-old" -> "team-new", token (secret)`,
     ])
     expect(lines.join("\n")).not.toContain("tok-SECRET")
 
     // Nothing written: the stored row still holds the old values.
     const stored = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
         actorType: "system",
       }),
     )
-    expect(stored).toEqual({ gateUrl: "https://gate-old.example.com", gateToken: "tok-SECRET-1" })
+    expect(stored).toEqual({ group: "team-old", token: "tok-SECRET-1" })
     // A new org (none yet) or a new connection plans nothing beyond "connect".
-    expect(await planConnection(ctx, "", "database", base)).toEqual([])
+    expect(await planConnection(ctx, "", "gitlab", base)).toEqual([])
   })
 
   test("checkConnectionHealth runs the app's probe on the stored row; no probe is SKIPPED", async () => {
     const { ctx } = await freshOrgWithAdmin()
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    await provisionConnection(ctx, "database", {
-      name: "database",
+    await provisionConnection(ctx, "gitlab", {
+      name: "gitlab",
       identifier,
       ownerType: "org",
-      credentials: { gateUrl: "https://gate.example.com", gateToken: "tok-SECRET-1" },
+      credentials: { group: "team", token: "tok-SECRET-1" },
     })
     const seen: Record<string, string>[] = []
     const pass = await checkConnectionHealth(
       ctx,
       {
-        database: async (creds) => {
+        gitlab: async (creds) => {
           seen.push(creds)
           return { identity: "gate ok" }
         },
       },
-      "database",
-      "database",
+      "gitlab",
+      "gitlab",
       identifier,
     )
     expect(pass).toEqual({ status: "PASS", identity: "gate ok" })
-    expect(seen[0]?.gateUrl).toBe("https://gate.example.com")
+    expect(seen[0]?.group).toBe("team")
 
     const fail = await checkConnectionHealth(
       ctx,
       {
-        database: async () => {
+        gitlab: async () => {
           throw new Error("HTTP 404 from gate.example.com")
         },
       },
-      "database",
-      "database",
+      "gitlab",
+      "gitlab",
       identifier,
     )
     expect(fail).toEqual({ status: "FAIL", error: "HTTP 404 from gate.example.com" })
 
-    const skipped = await checkConnectionHealth(ctx, {}, "database", "database", identifier)
+    const skipped = await checkConnectionHealth(ctx, {}, "gitlab", "gitlab", identifier)
     expect(skipped.status).toBe("SKIPPED")
   })
 })

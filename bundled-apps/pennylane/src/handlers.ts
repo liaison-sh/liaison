@@ -20,7 +20,7 @@ import {
   trialBalanceGet,
 } from "./reads"
 import { minorAmountsRefusal, supplierInvoiceUpload, type UploadInput } from "./upload"
-import { refreshSnapshotsJob } from "./snapshot"
+import { type RefreshSnapshotsCtx, refreshSnapshotsJob } from "./snapshot"
 import { probeWebhookUpstream } from "./einvoicing/probe-webhook-upstream"
 import type { PennylaneToolCtx } from "./ctx"
 import type { Filter } from "./types"
@@ -62,8 +62,10 @@ export const supplier_invoice_upload_preflight = (params: UploadInput) => {
 export { onConnectionDisconnected, onConnectionEstablished } from "./connection"
 
 // — refresh job (kernel-shaped `(payload, ctx)`) —
-export const refreshSnapshotsJobHandler = (_payload: unknown, ctx: Ctx) =>
-  refreshSnapshotsJob(ctx)
+export const refreshSnapshotsJobHandler = (
+  payload: Record<string, unknown> | undefined,
+  ctx: RefreshSnapshotsCtx,
+) => refreshSnapshotsJob(ctx, payload ?? {})
 
 // — webhook upstream probe (named by `webhookHealth.probe`): evidence for the webhook health check —
 export const probeWebhookUpstreamJob = (_payload: unknown, ctx: Ctx) => probeWebhookUpstream(ctx)

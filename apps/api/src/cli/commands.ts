@@ -83,7 +83,7 @@ export const COMMANDS = [
         name: "--only",
         arg: "<path>",
         summary:
-          "Apply and check just this path or section (e.g. `apps.database.domainAccess`); repeatable. The rest of the file is ignored.",
+          "Apply and check just this path or section (e.g. `apps.mail.enable`); repeatable. The rest of the file is ignored.",
       },
       {
         name: "--prefer",

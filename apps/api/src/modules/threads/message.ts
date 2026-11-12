@@ -191,16 +191,20 @@ export class ReplyThreadError extends Error {
  * derived row is never readable by somebody the source hides from; the
  * disclosure list NARROWS (the intersection when both carry one, the source's
  * when only it does), so a disclosure never reaches further than the source's.
+ * `sourceReaders`: people who read the source by holding its scopes, not by its list; one of them
+ * on the derived row's own list keeps it (it cannot reach further than the source for them), so
+ * an approved reply is not hidden from a member who joined after the root's disclosure.
  */
 export function inheritVisibility(
   own: { requiredScopes: string[]; disclosureList: string[] | null },
   source: { requiredScopes: string[] | null; disclosureList: string[] | null },
+  sourceReaders: ReadonlySet<string> = new Set(),
 ): { requiredScopes: string[]; disclosureList: string[] | null } {
   const requiredScopes = [...new Set([...own.requiredScopes, ...(source.requiredScopes ?? [])])]
   let disclosureList: string[] | null
   if (own.disclosureList && source.disclosureList) {
     const allowed = new Set(source.disclosureList)
-    disclosureList = own.disclosureList.filter((id) => allowed.has(id))
+    disclosureList = own.disclosureList.filter((id) => allowed.has(id) || sourceReaders.has(id))
   } else {
     disclosureList = source.disclosureList ?? own.disclosureList
   }
@@ -600,8 +604,24 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
   // A2: a reply is readable by exactly who can read its root, never more.
   // The tag is a set: a repeated scope asks nothing more of the reader, and
   // the read policy checks every entry, so it is stored once.
+  // Who on this reply's own list reads the root by its scopes rather than its list.
+  let rootReaders: ReadonlySet<string> = new Set()
+  if (root && disclosureList && root.disclosureList) {
+    const rootList = root.disclosureList
+    const outside = disclosureList.filter((u) => !rootList.includes(u))
+    if (outside.length > 0) {
+      const { holdsEveryScope, loadOrgMemberGrants } = await import(
+        "~/modules/agent/scopes/taint-approval-audience"
+      )
+      const rootScopes = expandWildcardStamp(root.requiredScopes ?? [], orgId)
+      const members = await loadOrgMemberGrants(orgId, { userIds: outside })
+      rootReaders = new Set(
+        members.filter((m) => holdsEveryScope(m.scopes, rootScopes)).map((m) => m.id),
+      )
+    }
+  }
   const visibility = root
-    ? inheritVisibility({ requiredScopes, disclosureList }, root)
+    ? inheritVisibility({ requiredScopes, disclosureList }, root, rootReaders)
     : { requiredScopes: [...new Set(requiredScopes)], disclosureList }
   const hiddenFromChannel = replyRootId !== null && !alsoInChannel
 

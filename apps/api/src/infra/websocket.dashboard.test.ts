@@ -142,6 +142,26 @@ describe("kernel/dashboard frames", () => {
     expect(member.send).toHaveBeenCalledTimes(1)
   })
 
+  it("a restricted dashboard's frames reach the people it is shared with, never an admin", async () => {
+    const owner = socket()
+    const shared = socket()
+    const admin = socket()
+    manager.addConnection("owner", owner, READ, "org-1")
+    manager.addConnection("shared", shared, READ, "org-1")
+    manager.addConnection("admin", admin, ["*"], "org-1")
+    const restricted = frame("updated", "personal")
+    Object.assign(restricted.data, { orgWide: false, userIds: ["owner", "shared"] })
+    await manager.bufferAndBroadcast(restricted)
+    expect(owner.send).toHaveBeenCalledTimes(1)
+    expect(shared.send).toHaveBeenCalledTimes(1)
+    expect(admin.send).not.toHaveBeenCalled()
+    // Made org-wide: everyone reading dashboards hears it.
+    const opened = frame("updated", "org", "personal")
+    Object.assign(opened.data, { orgWide: true, userIds: ["owner"] })
+    await manager.bufferAndBroadcast(opened)
+    expect(admin.send).toHaveBeenCalledTimes(1)
+  })
+
   it("a frame without a visibility reaches only its owner (fail closed)", async () => {
     const owner = socket()
     const member = socket()

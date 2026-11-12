@@ -174,7 +174,8 @@
 //         CRM record, quote and reply could never form one request, since a routine tick is
 //         always tainted). Otherwise it is refused. Reads into the messages sink and the
 //         per-reader message filtering are unchanged (an AGENT POST some other reader could
-//         not see parks since 2026-11-03, rule 11, as does a new thread's title or references),
+//         not see parks since 2026-11-03, rule 11, as does a new thread's title or references;
+//         rule 14 covers direct messages and standing disclosures),
 //         and the human-typed-turn and untrusted-content rules (taint.ts) are untouched.
 //      g. Rewriting a PENDING approval is not itself a disclosure: the edited payload stays
 //         pending and is decided by that same approval. So `kernel__approval_update_payload`
@@ -334,6 +335,59 @@
 //         by 13a), `requesterAlways` for the user's own notification settings and thread mutes.
 //         Skills are not one's own resource in this sense: a personal skill is still decided by
 //         `kernel:skills:approve` (a governance decision), narrowed by 13a.
+//
+// A POST IS NEVER WRITTEN HIDDEN FROM THE PEOPLE IT ADDRESSES, WHATEVER CLIENT MADE IT (2026-11-12,
+// owner decision). A person signed in on an external client (an MCP connection bound to no agent)
+// posted to a teammate. The gateway opened no frame for such a connection, so the post was stamped
+// with the caller's whole grant (`*` expanded onto every catalogued read scope), rule 11 saw no
+// taint and never ran, and the message was written hidden from the teammate it was addressed to.
+//
+//  14. a. A connection bound to no agent gets the gateway frame (`mcpGateway`, no `agentId` nor
+//         `agentCeiling`), its accumulator and the persisted sliding window of what it read
+//         THROUGH LIAISON, like an agent-bound one; rules 6, 8, 11 and 13 judge its writes. Its
+//         window is keyed by the CONNECTION (`connectionTaintWindowId`), never by the person, so
+//         one login's reads never stamp another login's posts; an agent-bound connection keeps
+//         its per-agent key. For every "is the person asking" check the frame reads as no frame
+//         did (`isPersonClientFrame`): its posts stay the person's external-client posts, and a
+//         sandboxed app's `ctx.messages.post` from it is stamped [] as before (`personClient`).
+//         Only a requester who holds every scope of a post's stamp may disclose it: a routine or
+//         agent turn can read past its owner's grants, and such a post is refused (audience
+//         "poster"), in a direct message too, never parked for nobody and never written hidden.
+//      b. Its posts, memory and knowledge writes are stamped with what the window read, never with
+//         the caller's grant.
+//      c. A DIRECT MESSAGE never parks: a post acting for the requester into a plain conversation
+//         (not titled, discoverable, pinned or created from an entity) of the requester and exactly
+//         one other person (agents do not count), or an untitled threads_create of one participant,
+//         is the requester's own choice to tell that person. It is written inline
+//         with both of them on its disclosure list, its stamp unchanged; someone who joins later
+//         and lacks the taint does not read it (the list is fixed at write time).
+//      d. ONE APPROVAL IS ENOUGH. An approved rule-11 post is a standing disclosure of the
+//         requester for that thread: the post carries its approval (`metadata.
+//         taintDisclosureApprovalId`). The grant is PER PERSON (post-disclosure.ts): an approved
+//         post with stamp T disclosed to people P grants each of them T. A later post of the SAME
+//         requester into the SAME thread, from any surface, is written inline only when every
+//         reader lacking its stamp was granted all of it, by posts disclosed to that reader, with
+//         them on its disclosure list. A scope a reader was not granted, or a newcomer lacking the
+//         taint, parks again; approving that widens the grant of the people it was disclosed to,
+//         never anyone else's (A shown to X and B to Y never shows A+B to Y). Another
+//         requester's posts never inherit it, and a removed participant drops out because the
+//         list is the thread's people at write time. Only posts into kernel threads (threads_reply, threads_create's message,
+//         title and references) use it; other writes keep their per-call approvals. A new thread's
+//         title and references (unstamped, read by every later member) never take the direct-message
+//         or standing shortcut: only an approval discloses them. A titled or forced create writes a
+//         thread of its own, so no other thread's standing disclosure applies to it. Only approved,
+//         live (not deleted) posts count.
+//      e. Defense in depth, in the handlers (`resolvePostVisibility`, chat-tools.ts): a post that
+//         reaches threads_reply or threads_create without an approved disclosure, whose stamp
+//         would hide it from another person of the conversation that neither 14c nor 14d covers,
+//         or whose taint is unknown, is REFUSED with `post_would_be_hidden`, never written. An
+//         approved re-entry is refused the same way when someone who joined after the post parked
+//         lacks what it carries (they were not part of the decision; sending again asks again). A
+//         reply in a reply thread keeps, on its disclosure list, the approved readers who read its
+//         root by scope rather than by the root's list (inheritVisibility). A
+//         contact discussion keeps rule 11c. The parked result tells the model, in plain words,
+//         that the post is not sent, why, that the requester decides on the card, and that one
+//         approval covers later posts of the same kind (postDisclosureRelay).
 
 // A BUG REPORT ABOUT LIAISON IS NEVER JUDGED (2026-11-09, owner ruling: no friction on internal
 // actions; gate only outbound data, money and customer sends). `kernel:report_bug` files into
@@ -473,6 +527,8 @@ export type ScopeTaintBlockedError = {
  *              request, so the bundle's audience cannot be narrowed by this turn (rule 8f)
  *   readers    the target table's declared readers (`sinkReadScope`): one of them lacks them
  *   participants  a new thread's title or references, read by its participants: one lacks them
+ *   poster     a post made for the requester, who does not hold them (rule 14a): nobody entitled
+ *              can share it, and it is never written hidden
  */
 export type ScopeTaintAudience =
   | "sink"
@@ -481,6 +537,7 @@ export type ScopeTaintAudience =
   | "unbounded"
   | "readers"
   | "participants"
+  | "poster"
 
 function describeTaintScopes(taintScopes: readonly string[]): string {
   const real = taintScopes.filter((s) => !UNKNOWN_TURN_TAINT.includes(s))
@@ -505,6 +562,8 @@ function describeAudience(
       return "the approval this gated action would create would surface in this conversation, and at least one human member of it does not hold all of those scopes"
     case "participants":
       return "the title and references of the new thread are shown to every participant (you and the people you added), and at least one of them does not hold all of those scopes"
+    case "poster":
+      return "this message is posted for you, and you do not hold all of those scopes yourself, so nobody entitled can share it with this conversation and it is never written where its readers could not see it"
     case "unbounded":
       return "this gated action cites an earlier action (@ref) that is not your own pending request, so its approval cannot be limited to people who hold those scopes"
     default:
@@ -519,6 +578,7 @@ function lackingNoun(audience: ScopeTaintAudience, n: number): string {
   const one = n === 1
   switch (audience) {
     case "requester":
+    case "poster":
       return one ? "person (you)" : "people"
     case "member":
       return one ? "member of this conversation" : "members of this conversation"
@@ -659,10 +719,22 @@ export function taintPostDisclosureLine(
   const apps = taintSourceApps(taintScopes)
   const from = apps.length > 0 ? `${apps.join(", ")} data` : "data"
   const who = hidden === null ? "Some people" : hidden === 1 ? "1 person" : `${hidden} people`
-  const line = `${who} in this conversation cannot see ${from} this conversation read: approving shares this message with them.`
+  const line = `${who} in this conversation cannot see ${from} this conversation read: approving shares this message, and later ones like it here, with them.`
   return line.length <= 200
     ? line
-    : `${who} in this conversation cannot see data this conversation read: approving shares this message with them.`
+    : `${who} in this conversation cannot see data this conversation read: approving shares this message, and later ones like it here, with them.`
+}
+
+/**
+ * What the model is told about a post parked by rule 11 (rule 14): it is not sent, why, who
+ * decides and where, and that one approval covers later posts of the same kind in this
+ * conversation. Plain words, read by small models.
+ */
+export function postDisclosureRelay(taintScopes: readonly string[], hidden: number | null): string {
+  const apps = taintSourceApps(taintScopes)
+  const from = apps.length > 0 ? `${apps.join(", ")} data` : "data"
+  const who = hidden === null ? "Some people" : hidden === 1 ? "1 person" : `${hidden} people`
+  return `This message is NOT sent yet. ${who} in this conversation cannot see ${from} read in this session, so posting it would share that data with them. The user you act for decides: they approve or decline it on the approval card (approvalHandle). Tell them that. Once they approve, it is posted, and later posts with the same kind of data in this conversation go through without asking again. Nothing is ever posted hidden. Do not retry the call.`
 }
 
 export function toScopeTaintBlockedError(

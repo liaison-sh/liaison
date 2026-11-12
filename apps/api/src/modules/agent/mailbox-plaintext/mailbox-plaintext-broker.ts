@@ -65,7 +65,11 @@ import {
   mintMailboxRequestId,
   registerMailboxRequest,
 } from "~/modules/agent/mailbox-plaintext/mailbox-plaintext-registry"
-import type { MailboxTurnState, RunContext } from "~/modules/agent/runtime/run-context"
+import {
+  isPersonClientFrame,
+  type MailboxTurnState,
+  type RunContext,
+} from "~/modules/agent/runtime/run-context"
 import { recordAgentStreamEvent } from "~/modules/agent/runtime/stream-registry"
 
 const log = rootLogger.child({ module: "mailbox-broker" })
@@ -426,7 +430,7 @@ export async function fulfilMailboxMarker(
   if (!input.threadId || !input.userId) {
     return { result: lockedResult(input.result, "this turn cannot reach an unlocked mailbox") }
   }
-  if (!frame) {
+  if (!frame || isPersonClientFrame(frame)) {
     return { result: lockedResult(input.result, "this turn cannot reach an unlocked mailbox") }
   }
   // The nonce is minted by the CLIENT when the user submits a turn. A turn with

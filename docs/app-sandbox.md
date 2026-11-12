@@ -567,14 +567,14 @@ if ("error" in out) return out             // { error: { code, message } }
 return out.rows                            // { rows, truncated, durationMs }
 ```
 
-- `sql.catalog: "instance"` gives the connection the deployment's read catalog (`LIAISON_DATABASE_ADAPTER_PATH` or `LIAISON_DATABASE_ADAPTER`): `ctx.sql.query(name, { read, params })` runs a named read and `ctx.sql.reads(name)` lists them. The catalog is the deployment's, never the app's.
+- `sql.catalog: "instance"` gives the connection the deployment's read catalog (`LIAISON_DATABASE_ADAPTER_PATH` or `LIAISON_DATABASE_ADAPTER`): `ctx.sql.query(name, { read, params })` runs a named read and `ctx.sql.reads(name)` lists them, with `domains`: the access tier each catalog domain declares (a domain absent from it is internal). The catalog is the deployment's, never the app's.
 - `sql.rawQuery.scope` allows a read-only `SELECT` of the app's own (`{ sql, params }`, `params` bind `$1`, `$2`, ...; a db-gate takes none). The person the run acts for must hold the scope. A deployment turns raw queries off with `LIAISON_DATABASE_ALLOW_RAW_QUERY=false`.
 - `sql.modes` (`["direct"]` or `["gate"]`) limits the credential modes the connection takes.
 - Every call runs in a read-only transaction, with a statement timeout set on the database (`timeoutMs`, default 10 s, at most 120 s) and cancelled there past it. It returns at most `maxRows` rows (default 500, at most 2000) and says `truncated` when more matched.
 - The credentials never reach the run: a failure is answered as `{ error: { code, message } }`, with no DSN or token in it (`not_connected`, `forbidden`, `unknown_read`, `invalid_params`, `statement_timeout`, `config_error`, ...). Every call writes an audit line (`sql.query`, `sql.schema`, `sql.probe`, `sql.reads`) with a hash of the SQL, never the SQL.
 - The account used is the organization's, never a member's personal one. The pool is per organization, connection and account. It is opened on first use, replaced when the credentials change, and closed when the account is disconnected, after 10 minutes unused, or past `LIAISON_SQL_POOLS_MAX` pools (32) per server process.
 - The `liaison-self` catalog reads this instance's own database through a login that bypasses row-level security. Its reads always take the caller's organization as `orgId`, whatever the app sends, and a read over tickets, knowledge, mail or the audit log needs that app's read scope. Raw SQL over it is refused outside the instance operator's organization.
-- `ctx.sql.schema(name, { table? })` lists readable tables and columns (secret columns removed; it needs the raw-query scope when the connection has one). `ctx.sql.probe(name)` reports write grants and catalog reads a gate is missing.
+- `ctx.sql.schema(name, { table? })` lists readable tables and columns (secret columns removed; it needs `sql.schema.scope` when the connection names one, else the raw-query scope when it has one). `ctx.sql.probe(name)` reports write grants and catalog reads a gate is missing.
 
 ### Read your own accounts (`ctx.accounts`)
 

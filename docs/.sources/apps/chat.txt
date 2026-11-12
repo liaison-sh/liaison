@@ -100,3 +100,4 @@ A newer request while the agent still answers shows both turns -> apps/web/src/m
 A message holding a key is not sent, and the box says why -> apps/web/src/modules/threads/ComposeBar.tsx:243, packages/shared/src/i18n/locales/en/kernel.json:875
 Key shapes: rk_/sk_ with live_/test_, whsec_, 10 or more characters -> packages/shared/src/pan-scan.ts:250
 A key or card number reaching the server is stored masked with a note -> apps/api/src/modules/threads/message.ts:506, packages/shared/src/pan-scan.ts:290
+Group post waits for approval once per conversation; DM always posted; never hidden -> apps/api/src/modules/apps/execute-tool.ts:4131 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/tools/chat-tools.ts:160

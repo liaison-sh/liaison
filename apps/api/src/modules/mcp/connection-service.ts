@@ -305,6 +305,16 @@ export async function resolveConnectionFromToken(token: string): Promise<{
  * by an undeclared write in the next would then be judged as two untainted
  * turns, which is exactly the laundering path the in-app bridge refuses.
  */
+/**
+ * The id the taint window of a gateway call is kept under: its agent for an agent-bound
+ * connection (the decision above), the connection itself for one bound to no agent
+ * (scope-taint.ts, rule 14). Prefixed so it can never equal an agent id. Every window helper
+ * below takes it where it says `agentId`.
+ */
+export function connectionTaintWindowId(ctx: { agentId?: string; connectionId: string }): string {
+  return ctx.agentId ?? `connection:${ctx.connectionId}`
+}
+
 export function mcpTurnTaintKey(orgId: string, agentId: string): string {
   return `mcp:turn-taint:${orgId}:${agentId}`
 }

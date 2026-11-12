@@ -64,10 +64,12 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
       listed[m] = original
     }
     guardAtomicJobEgress(unlisted, "monitoring", "assign-refs")
-    guardAtomicJobEgress(listed, "pennylane", "refresh-snapshots")
+    // Any listed row (the list only shrinks: once it is empty there is nothing left to leave alone).
+    const row = read(ALLOWLIST_PATH)[0]
+    if (row) guardAtomicJobEgress(listed, row.app, row.job)
     expect(unlisted.db_findMany).toBe(original)
     for (const m of ATOMIC_REFUSED_EGRESS_METHODS) {
-      expect(listed[m]).toBe(original)
+      if (row) expect(listed[m]).toBe(original)
       const err = await (unlisted[m] as () => Promise<unknown>)().catch((e: unknown) => e)
       expect((err as { code?: string }).code).toBe("atomic_run_egress_refused")
     }

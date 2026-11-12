@@ -86,7 +86,9 @@ describe("threads_create: an agent asks before opening a new conversation", () =
     expect(createdThread(toDm)?.id).toBe(dm?.id as string)
 
     for (const origin of ["in-app-agent", "mcp"] as const) {
-      const toGroup = await create({ participantIds: [bob, alice], initialMessage: "Hi" }, origin)
+      // No initial message: a frameless call stamps a post with the caller's whole grant, which
+      // these people lack, so it is refused (rule 14). The landing is what this case pins.
+      const toGroup = await create({ participantIds: [bob, alice] }, origin)
       expect("blocked" in toGroup).toBe(false)
       expect(createdThread(toGroup)?.id).toBe(group?.id as string)
     }

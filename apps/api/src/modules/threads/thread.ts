@@ -48,6 +48,8 @@ interface InitialMessageInput {
   /** People who read it whatever they hold: an agent post whose disclosure the requester
    *  approved (scope-taint.ts, rule 11). Null or absent: none. */
   disclosureList?: string[] | null
+  /** Extra row metadata (the approval an approved disclosure came from, rule 14). */
+  metadata?: Record<string, unknown>
   /** The speaking agent (A8), when the caller knows it. See
    *  `resolveActingAgentIdForWrite`: an agent-authored row always names one. */
   agentId?: string | null
@@ -413,8 +415,8 @@ export async function insertThreadWithParticipants(
         mentions: mentionsList.length > 0 ? mentionsList : null,
         metadata:
           initialAuthorType === "agent" && initialMessage.agentAuthorLabel
-            ? { agentAuthorLabel: initialMessage.agentAuthorLabel }
-            : null,
+            ? { ...initialMessage.metadata, agentAuthorLabel: initialMessage.agentAuthorLabel }
+            : (initialMessage.metadata ?? null),
         // Never a grant wildcard (scope-taint.ts, rule 10b), as sendMessage stamps.
         requiredScopes: expandWildcardStamp(initialMessage.requiredScopes, orgId),
         disclosureList: initialMessage.disclosureList ?? null,
@@ -506,7 +508,8 @@ async function findPlainThreadForParticipants(
  * `allIds`, sorted): what an untitled plain create lands in instead of opening
  * a new thread. Shared by createThread's dedup and the agent gate.
  */
-function untitledDmQuery(orgId: string, allIds: string[]) {
+/** The untitled plain thread of exactly these people (an untitled create lands in it). */
+export function untitledDmQuery(orgId: string, allIds: string[]) {
   const sch = drizzleSql.raw(schemaRef("kernel"))
   const idList = drizzleSql.join(
     allIds.map((id) => drizzleSql`${id}::uuid`),
@@ -520,6 +523,8 @@ function untitledDmQuery(orgId: string, allIds: string[]) {
       AND t.title IS NULL
       AND t.created_from IS NULL
       AND t.is_pinned = false
+      -- A discoverable room is no direct message, whoever sits in it (scope-taint.ts, 14c).
+      AND t.discoverable = false
       AND (
         SELECT COUNT(*) FROM ${sch}.thread_participants tp
         WHERE tp.thread_id = t.id AND tp.participant_type = 'user'
@@ -753,6 +758,7 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
           agentId: initialMessage.agentId,
           requiredScopes: initialMessage.requiredScopes,
           disclosureList: initialMessage.disclosureList ?? null,
+          ...(initialMessage.metadata ? { metadata: initialMessage.metadata } : {}),
         })
       }
 

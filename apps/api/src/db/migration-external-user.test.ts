@@ -27,8 +27,8 @@ import { runMigrations } from "~/db/migrate"
 import { insertSql } from "~/seed/factories/org/test-rows"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
-const FIRST_NEW_TAG = "0295_mail_inbound_sender_index"
-const LAST_NEW_TAG = "0301_portal_role_and_schema"
+const FIRST_NEW_TAG = "0296_mail_inbound_sender_index"
+const LAST_NEW_TAG = "0302_portal_role_and_schema"
 
 function superuserUrl(): string {
   if (process.env.MIGRATION_DATABASE_URL) return process.env.MIGRATION_DATABASE_URL

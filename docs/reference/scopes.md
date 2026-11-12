@@ -36,10 +36,10 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:contacts:export` | Export the contact registry |
 | `kernel:contacts:read` | Read contacts |
 | `kernel:contacts:write` | Write contacts |
-| `kernel:dashboards:admin` | Manage every dashboard shared with the org |
+| `kernel:dashboards:admin` | Manage every dashboard the whole org sees (never a restricted one not shared with you) |
 | `kernel:dashboards:read` | List and open the dashboards you can see: yours and the org's |
-| `kernel:dashboards:share` | Create and edit dashboards shared with the org |
-| `kernel:dashboards:write` | Create and edit your own personal dashboards |
+| `kernel:dashboards:share` | Choose who sees a dashboard you can edit, and create dashboards for the org |
+| `kernel:dashboards:write` | Create and edit your own dashboards, and those shared with you to edit |
 | `kernel:data_subject:export` | Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin) |
 | `kernel:data_subject:export:self` | Export everything the organization holds about yourself as a member (every active member holds it) |
 | `kernel:data:read` | Read app data store documents through the agent's data tools |
@@ -155,10 +155,10 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
+| `database:access:admin` | manifest scopes; role admin; settings section report-access; tools report_access_find_people, report_access_get, report_access_set |  |
 | `database:approve` | approver scope | Decide (approve, edit, or deny) database approvals raised by its gated tools |
-| `database:query:read` | role admin; tool db_query |  |
-| `database:reads:read` | role member; tools db_describe, db_list_reads, db_probe, db_read |  |
-| `kernel:apps:admin` | settings section report-access |  |
+| `database:query:read` | manifest scopes; role admin; tool db_query |  |
+| `database:reads:read` | manifest scopes; role member; tools db_describe, db_list_reads, db_probe, db_read |  |
 
 ## gitlab
 

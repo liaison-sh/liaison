@@ -35,7 +35,7 @@ const sizes = (p: ReturnType<typeof planPools>) => [
 
 describe("planPools", () => {
   it("compose default (200, 2 api + 1 worker, split): api 26, worker 34, overlap 172 fits", () => {
-    expect(PINNED_JOBS_WANTED).toBe(10)
+    expect(PINNED_JOBS_WANTED).toBe(5)
     const api = planPools(input({ role: "api" }))
     const worker = planPools(input({ role: "worker" }))
     // The api's jobs pool: its event handlers (2) plus one for short transactions.
@@ -60,11 +60,11 @@ describe("planPools", () => {
     const worker = planPools(input({ role: "worker", cellMax: 400 }))
     expect(sizes(api)).toEqual([5, 25, 20, 3, 2])
     expect(api.perProcess).toBe(55)
-    expect(sizes(worker)).toEqual([5, 7, 15, 12, 10])
-    expect(worker.perProcess).toBe(49)
-    expect(worker.pinnedJobSlots).toBe(10)
+    expect(sizes(worker)).toEqual([5, 7, 15, 7, 5])
+    expect(worker.perProcess).toBe(39)
+    expect(worker.pinnedJobSlots).toBe(5)
     expect(api.pinnedJobSlots).toBe(API_EVENT_HANDLER_SLOTS)
-    expect(api.unallocated).toBe(27)
+    expect(api.unallocated).toBe(37)
   })
 
   it("unsplit logins count three physical pools", () => {
@@ -72,14 +72,14 @@ describe("planPools", () => {
     const worker = planPools(input({ role: "worker", split: false }))
     expect(api.physical).toEqual(["main", "privileged", "jobs"])
     // Unsplit, a handler and its privileged twin share the jobs pool: 2 x 2 + 1.
-    expect([api.pools.main, api.pools.privileged, api.pools.jobs]).toEqual([6, 10, 5])
+    expect([api.pools.main, api.pools.privileged, api.pools.jobs]).toEqual([9, 12, 5])
     expect(api.pinnedJobSlots).toBe(API_EVENT_HANDLER_SLOTS)
     expect(api.pools.request).toBe(api.pools.main)
     expect(api.pools.privilegedJobs).toBe(api.pools.jobs)
-    expect(api.perProcess).toBe(21)
-    expect([worker.pools.main, worker.pools.privileged, worker.pools.jobs]).toEqual([7, 15, 22])
-    expect(worker.perProcess).toBe(44)
-    expect(worker.pinnedJobSlots).toBe(10)
+    expect(api.perProcess).toBe(26)
+    expect([worker.pools.main, worker.pools.privileged, worker.pools.jobs]).toEqual([7, 15, 12])
+    expect(worker.perProcess).toBe(34)
+    expect(worker.pinnedJobSlots).toBe(5)
   })
 
   it("unsplit, an api's request growth lands on the main pool it is", () => {

@@ -62,6 +62,8 @@ export interface SqlConnectionDeclaration {
   catalog?: "instance"
   /** Read-only SELECTs of the app's own; the caller must hold `scope`. */
   rawQuery?: { scope: string }
+  /** The scope `ctx.sql.schema` needs (default: `rawQuery.scope`). */
+  schema?: { scope: string }
   /** The credential modes the connection accepts (default both). */
   modes?: Array<"direct" | "gate">
 }
@@ -243,12 +245,22 @@ async function credentialsOf(
   if (declaration.catalog === "instance") {
     // On the public demo box a demo org's stored DSN is a sentinel that
     // resolves to the demo warehouse's own login (null everywhere else).
-    const { resolveDemoWarehouseHandle } = await import("~/modules/demo/warehouse/resolve")
-    const demo = await resolveDemoWarehouseHandle(ctx.orgId, {
-      connectionString: stored.connectionString,
-      gateUrl: stored.gateUrl,
-      gateToken: stored.gateToken,
-    })
+    const { DemoWarehouseRefused, resolveDemoWarehouseHandle } = await import(
+      "~/modules/demo/warehouse/resolve"
+    )
+    let demo: Awaited<ReturnType<typeof resolveDemoWarehouseHandle>>
+    try {
+      demo = await resolveDemoWarehouseHandle(ctx.orgId, {
+        connectionString: stored.connectionString,
+        gateUrl: stored.gateUrl,
+        gateToken: stored.gateToken,
+      })
+    } catch (err) {
+      // A demo org holding anything but the sentinel (or a sentinel outside a
+      // demo org) has no usable connection: said so, with the reason.
+      if (err instanceof DemoWarehouseRefused) refuse("not_connected", err.message)
+      throw err
+    }
     if (demo) return { connectionString: demo.connectionString, sharedPool: demo.sharedPool }
   }
   return stored
@@ -448,11 +460,14 @@ export async function sqlQuery(
 export async function sqlReads(
   ctx: SqlCallContext,
   connection: string,
-): Promise<{ adapter: string; reads: Record<string, unknown> } | SqlErrorAnswer> {
+): Promise<
+  | { adapter: string; reads: Record<string, unknown>; domains: Record<string, { tier: string }> }
+  | SqlErrorAnswer
+> {
   return audited(ctx, "sql.reads", { connection }, async () => {
     const declaration = declarationOf(ctx, connection)
     const catalog = await catalogOf(ctx, declaration)
-    if (!catalog) return { adapter: "none", reads: {} }
+    if (!catalog) return { adapter: "none", reads: {}, domains: {} }
     const reads = Object.fromEntries(
       Object.entries(catalog.reads).map(([name, read]) => [
         name,
@@ -467,7 +482,11 @@ export async function sqlReads(
         },
       ]),
     )
-    return { adapter: catalog.adapter, reads }
+    // The access tier each domain declares by default (internal when absent).
+    const domains = Object.fromEntries(
+      Object.entries(catalog.domains ?? {}).map(([name, d]) => [name, { tier: d.tier }]),
+    )
+    return { adapter: catalog.adapter, reads, domains }
   })
 }
 
@@ -485,10 +504,11 @@ export async function sqlSchema(
     const req = parseRequest(sqlSchemaRequestSchema, rawRequest)
     if (req.table) meta.table = req.table
     // The schema of a database is what a raw query needs, so it takes the
-    // same scope; a connection of named reads only describes its catalog.
-    const rawScope = rawQueryScopeOf(declaration)
-    if (rawScope !== null && !hasScope(rawScope, ctx.callerScopes)) {
-      refuse("forbidden", `The schema of "${connection}" needs the ${rawScope} scope`)
+    // same scope unless the manifest names its own (`sql.schema.scope`); a
+    // connection of named reads only describes its catalog.
+    const schemaScope = declaration.schema?.scope ?? rawQueryScopeOf(declaration)
+    if (schemaScope !== null && !hasScope(schemaScope, ctx.callerScopes)) {
+      refuse("forbidden", `The schema of "${connection}" needs the ${schemaScope} scope`)
     }
     const catalog = (await catalogOf(ctx, declaration)) ?? { adapter: connection, reads: {} }
     const creds = await credentialsOf(ctx, connection, declaration, req.identifier)

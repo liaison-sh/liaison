@@ -57,3 +57,4 @@ device approval labels -> packages/shared/src/i18n/locales/en/kernel.json:1155-1
 emailed code purpose and email copy -> apps/api/src/modules/auth/step-up.ts:31-38 ; apps/api/src/modules/auth/step-up.ts:165-178
 503 org_moving with Retry-After while the org moves (MCP middleware gate) -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:65 ; apps/api/src/modules/org/transfer-state/gate.ts:33
 MCP tool schemas omit __mailbox parameters; a call that sets them has them dropped -> apps/api/src/modules/agent/tools/tool-bridge.ts:335 ; apps/api/src/modules/mcp/tool-call.ts:310 ; apps/api/src/modules/agent/tools/host-only-params.ts:15
+A connection with no agent keeps its own taint window, per connection, judged like an agent's -> apps/api/src/modules/mcp/tool-call.ts:510 ; apps/api/src/modules/mcp/connection-service.ts:307

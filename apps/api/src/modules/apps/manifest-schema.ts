@@ -409,6 +409,14 @@ const connectionSchema = {
           required: ["scope"],
           additionalProperties: false,
         },
+        // The scope `ctx.sql.schema` needs (default: the raw query scope, or none
+        // for a connection of named reads only).
+        schema: {
+          type: "object",
+          properties: { scope: { type: "string", minLength: 3 } },
+          required: ["scope"],
+          additionalProperties: false,
+        },
         // The credential modes the connection takes (default both).
         modes: {
           type: "array",

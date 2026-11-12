@@ -1,0 +1,38 @@
+{
+  "entry": "tool:runway_estimate",
+  "params": {},
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/bank_accounts?limit=50",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/transactions?limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    }
+  ]
+}

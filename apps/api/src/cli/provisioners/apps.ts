@@ -21,8 +21,6 @@
  *    (`app-config.ts`); a refused key is a usage error, an equal value unchanged.
  *  - `settings` → org fields of the app's settings page (`app-settings.ts`), the
  *    same checks as the settings page's own write.
- *  - `database` with `domainAccess` → who may run each catalog domain's reads
- *    (`database-domain-access.ts`); without it, the stored map is untouched.
  *
  * Handles: `installCatalogApp` + `enableApp` (own withSystemDb); the connector
  * uses `ctx.rls` / `ctx.priv` internally.
@@ -50,10 +48,6 @@ import {
   planConnection,
   provisionConnection,
 } from "~/cli/provisioners/connector"
-import {
-  applyDatabaseDomainAccess,
-  planDatabaseDomainAccess,
-} from "~/cli/provisioners/database-domain-access"
 import { applyDriveSharedDrives } from "~/cli/provisioners/drive-shared-drives"
 import {
   applyMailProviders,
@@ -153,9 +147,6 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
           checkAppSettings(ctx.orgId, app.name, app.settings)
         }
         actions.push(`set app '${app.name}' settings: ${Object.keys(app.settings).join(", ")}`)
-      }
-      if (app.domainAccess) {
-        actions.push(...(await planDatabaseDomainAccess(ctx, config, app.domainAccess)))
       }
       if (app.provision) {
         // Checked here when the app is registered; one this run installs, in apply.
@@ -262,9 +253,6 @@ async function planAppsAgainstStore(
       } else {
         lines.push(`set app '${app.name}' settings: ${Object.keys(app.settings).join(", ")}`)
       }
-    }
-    if (app.domainAccess) {
-      lines.push(...(await planDatabaseDomainAccess(ctx, config, app.domainAccess)))
     }
     if (app.provision) lines.push(...(await planAppProvision(ctx, app.name, app.provision)))
     changes += lines.length
@@ -410,14 +398,6 @@ async function applyApps(
 
     if (app.settings) {
       const r = await applyAppSettings(ctx, app.name, app.settings)
-      changed.push(...r.changed)
-      unchanged.push(...r.unchanged)
-    }
-
-    // Database app only (the schema refuses it elsewhere); omitted, the stored
-    // map stays as it is.
-    if (app.domainAccess) {
-      const r = await applyDatabaseDomainAccess(ctx, app.domainAccess)
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
     }

@@ -613,7 +613,8 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
         // unknown taint: fail closed to the turn's effective scope, then the
         // caller's scopes, and refuse the post when neither is known.
         let requiredScopes: string[]
-        if (bridgeSpawnParentFrame === null) {
+        // A person's own external client's frame (rule 14) posts here as it did with no frame.
+        if (bridgeSpawnParentFrame === null || bridgeSpawnParentFrame.personClient === true) {
           requiredScopes = []
         } else {
           const known =

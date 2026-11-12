@@ -12,8 +12,8 @@ import {
   runwayEstimate,
   homeLoad,
 } from "./reads"
-import { refreshSnapshotsJob } from "./snapshot"
-import { PennylaneApiError } from "./lib/pennylane-client"
+import { REFRESH_PAGES_PER_CHUNK, type RefreshSnapshotsCtx, refreshSnapshotsJob } from "./snapshot"
+import { PennylaneApiError, PennylaneRateLimitError } from "./lib/pennylane-client"
 import type { Page } from "./types"
 import type { PennylaneLogger, PennylaneToolCtx } from "./ctx"
 import type { NotConnectedEnvelope } from "./reads"
@@ -61,7 +61,11 @@ function makeCtx(opts: {
   mapping?: Record<string, string>
   snapshot?: Record<string, unknown>
   logger?: PennylaneLogger
-}): PennylaneToolCtx {
+  /** Chunks one `ctx.steps.run` takes before it hands the rest to a later run (default: all). */
+  chunksPerRun?: number
+  /** `/trial_balance` answers 429 on this call number (1-based), once. */
+  tbRateLimitOnCall?: number
+}): RefreshSnapshotsCtx {
   const page = <T>(items: T[]): Page<T> => ({ items: items as T[], next_cursor: null, has_more: false })
   /**
    * Resolve one cursor page from a ListData dataset. Flat arrays return a single
@@ -93,6 +97,7 @@ function makeCtx(opts: {
     pnl_snapshot: opts.snapshot?.pnl ? [opts.snapshot.pnl as Record<string, unknown>] : [],
     cash_snapshot: opts.snapshot?.cash ? [opts.snapshot.cash as Record<string, unknown>] : [],
   }
+  let tbCallCount = 0
   const client = {
     list: async <T>(
       path: string,
@@ -107,6 +112,10 @@ function makeCtx(opts: {
       }
       if (path.includes("/trial_balance")) {
         opts.tbCalls?.push(q?.params)
+        tbCallCount++
+        if (tbCallCount === opts.tbRateLimitOnCall) {
+          throw new PennylaneRateLimitError(Date.now() + 30_000)
+        }
         // The live API answers 400 when either required date is missing or malformed.
         const isDate = (v: string | undefined) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
         if (!isDate(q?.params?.period_start) || !isDate(q?.params?.period_end)) {
@@ -156,6 +165,7 @@ function makeCtx(opts: {
     },
     logger: opts.logger,
     __client: client,
+    steps: memorySteps(opts.chunksPerRun ?? Number.POSITIVE_INFINITY),
     db: {
       async findMany(entity: string, o?: { where?: Record<string, unknown>; limit?: number }) {
         const rows = store[entity] ?? []
@@ -176,7 +186,48 @@ function makeCtx(opts: {
       },
     },
   }
-  return ctx as unknown as PennylaneToolCtx
+  return ctx as unknown as RefreshSnapshotsCtx
+}
+
+/**
+ * `ctx.steps` in memory: the cursor goes through JSON between chunks (as the data store keeps
+ * it), a run takes at most `chunksPerRun` chunks, and a chunk's `wakeIn` ends the run.
+ */
+function memorySteps(chunksPerRun: number) {
+  const steps = new Map<string, { cursor: unknown; done: boolean }>()
+  const json = (v: unknown) => (v === undefined ? null : JSON.parse(JSON.stringify(v)))
+  return {
+    runs: 0,
+    async run<C>(
+      name: string,
+      _opts: { budgetMs?: number },
+      chunk: (c: C | null) => Promise<{ done: boolean; cursor?: C | null; wakeIn?: number }>,
+    ) {
+      this.runs++
+      const st = steps.get(name) ?? { cursor: null, done: false }
+      steps.set(name, st)
+      if (st.done) return { state: "done" as const, cursor: st.cursor as C, chunks: 0 }
+      let chunks = 0
+      while (chunks < chunksPerRun) {
+        const res = await chunk(json(st.cursor) as C | null)
+        chunks++
+        st.cursor = json(res.cursor ?? null)
+        if (res.done) {
+          st.done = true
+          return { state: "done" as const, cursor: st.cursor as C, chunks }
+        }
+        if (res.wakeIn !== undefined) break
+      }
+      return { state: "scheduled" as const, cursor: st.cursor as C, chunks }
+    },
+    async get(name: string) {
+      const st = steps.get(name)
+      return st ? { cursor: st.cursor, done: st.done, running: false, updatedAt: "" } : null
+    },
+    async reset(name: string) {
+      return { reset: steps.delete(name) }
+    },
+  }
 }
 
 describe("pennylane reads — projection + derivation", () => {
@@ -492,6 +543,55 @@ describe("pennylane reads — projection + derivation", () => {
     expect(out.cash?.total_by_currency).toEqual({ EUR: "300000" })
   })
 
+  it("refresh_snapshots_job runs as a resumable step: one chunk per run, totals carried in the cursor, written once at the end", async () => {
+    // 12 trial-balance pages of 10 cogs lines (1000.00 each) and 2 bank pages.
+    const ctx = makeCtx({
+      mapping: { "60": "cogs" },
+      trialBalance: tbPages(120, 10),
+      bankAccounts: [
+        [{ id: "ba_1", balance: "10.00", currency: "EUR" }],
+        [{ id: "ba_2", balance: "5.50", currency: "USD" }],
+      ],
+      chunksPerRun: 1,
+    })
+    const states: string[] = []
+    // 12 + 2 pages at REFRESH_PAGES_PER_CHUNK pages per chunk, one chunk per run.
+    const runs = Math.ceil(14 / REFRESH_PAGES_PER_CHUNK)
+    for (let i = 0; i < runs; i++) {
+      states.push((await refreshSnapshotsJob(ctx, i === 0 ? {} : { _steps: {} })).state)
+      if (i < runs - 1) expect((await homeLoad(ctx, {})).pnl).toBeNull()
+    }
+    expect(states).toEqual([...Array(runs - 1).fill("scheduled"), "done"])
+    const out = await homeLoad(ctx, {})
+    expect(out.pnl?.cogs_minor).toBe("120000")
+    expect(out.cash?.total_by_currency).toEqual({ EUR: "1000", USD: "550" })
+  })
+
+  it("a rate limit mid-refresh ends the run with a wake, keeps the pages already read, and the next run finishes", async () => {
+    const ctx = makeCtx({
+      mapping: { "60": "cogs" },
+      trialBalance: tbPages(30, 10),
+      tbRateLimitOnCall: 2,
+    })
+    expect((await refreshSnapshotsJob(ctx)).state).toBe("scheduled")
+    const saved = (await ctx.steps.get("refresh-snapshots"))?.cursor as { pnl: { cogs: string }; pages: number }
+    expect(saved).toMatchObject({ pnl: { cogs: "10000" }, pages: 1 })
+    expect((await refreshSnapshotsJob(ctx, { _steps: {} })).state).toBe("done")
+    expect((await homeLoad(ctx, {})).pnl?.cogs_minor).toBe("30000")
+  })
+
+  it("a fresh cron trigger of a finished refresh starts over; a continuation of it does not", async () => {
+    const tbCalls: Array<Record<string, string> | undefined> = []
+    const ctx = makeCtx({ mapping: { "60": "cogs" }, trialBalance: tbPages(10, 10), tbCalls })
+    expect((await refreshSnapshotsJob(ctx)).state).toBe("done")
+    expect(tbCalls.length).toBe(1)
+    expect((await refreshSnapshotsJob(ctx, { _steps: {} })).state).toBe("done")
+    expect(tbCalls.length).toBe(1)
+    expect((await refreshSnapshotsJob(ctx)).state).toBe("done")
+    expect(tbCalls.length).toBe(2)
+    expect((await homeLoad(ctx, {})).pnl?.cogs_minor).toBe("10000")
+  })
+
   it("an over-long response is capped (not infinite) and the truncation is surfaced via logger.warn", async () => {
     // 60 pages of 1 line each exceeds the 50-page cap. The aggregation stops at
     // the cap (50 lines, not 60) AND emits a warning — never a silent loop.
@@ -586,7 +686,7 @@ describe("refresh-snapshots without a Pennylane connection", () => {
         info: (msg) => logged.push(`info:${msg}`),
         error: (msg) => logged.push(`error:${msg}`),
       },
-    }) as PennylaneToolCtx & { __client?: unknown }
+    }) as RefreshSnapshotsCtx & { __client?: unknown }
     delete ctx.__client
     ;(ctx as unknown as { connections: unknown }).connections = { pennylane: { getCredentials } }
     return { ctx, logged }
@@ -596,7 +696,7 @@ describe("refresh-snapshots without a Pennylane connection", () => {
     const { ctx, logged } = unconnectedCtx(async () => {
       throw new Error('No connected account for connection "pennylane"')
     })
-    await expect(refreshSnapshotsJob(ctx)).resolves.toBeUndefined()
+    await expect(refreshSnapshotsJob(ctx)).resolves.toEqual({ state: "skipped" })
     expect(await ctx.db.findMany("pnl_snapshot")).toEqual([])
     expect(logged.filter((l) => l.startsWith("error:"))).toEqual([])
   })

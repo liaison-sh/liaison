@@ -1,0 +1,101 @@
+{
+  "entry": "job:refresh-snapshots",
+  "params": {},
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "steps_get",
+      "args": ["refresh-snapshots"],
+      "reply": "{\"cursor\":{\"pnl\":{\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\",\"revenue\":\"0\"},\"next\":null,\"pages\":0,\"phase\":\"write\",\"totals\":{},\"window\":{\"period_end\":\"2026-01-01\",\"period_start\":\"2026-01-01\"},\"cashStatus\":\"live\"},\"done\":true,\"running\":false,\"updatedAt\":\"2026-11-12T08:31:24.913Z\"}"
+    },
+    {
+      "method": "steps_reset",
+      "args": ["refresh-snapshots"],
+      "reply": "{\"reset\":true}"
+    },
+    {
+      "method": "_steps_begin",
+      "args": ["refresh-snapshots", "{}"],
+      "reply": "{\"state\":\"run\",\"token\":\"redacted\",\"cursor\":null}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/fiscal_years?limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[{\\\"id\\\":60646014976,\\\"start\\\":\\\"2028-01-01\\\",\\\"finish\\\":\\\"2028-12-31\\\",\\\"status\\\":\\\"open\\\",\\\"created_at\\\":\\\"2026-10-14T14:14:28.332148Z\\\",\\\"updated_at\\\":\\\"2026-10-14T14:14:28.330306Z\\\"},{\\\"id\\\":60646010880,\\\"start\\\":\\\"2027-01-01\\\",\\\"finish\\\":\\\"2027-12-31\\\",\\\"status\\\":\\\"open\\\",\\\"created_at\\\":\\\"2026-10-14T14:14:28.332148Z\\\",\\\"updated_at\\\":\\\"2026-10-14T14:14:28.330306Z\\\"},{\\\"id\\\":60646006784,\\\"start\\\":\\\"2026-01-01\\\",\\\"finish\\\":\\\"2026-12-31\\\",\\\"status\\\":\\\"open\\\",\\\"created_at\\\":\\\"2026-10-14T14:14:28.332148Z\\\",\\\"updated_at\\\":\\\"2026-10-14T14:14:28.330306Z\\\"},{\\\"id\\\":60646002688,\\\"start\\\":\\\"2025-01-01\\\",\\\"finish\\\":\\\"2025-12-31\\\",\\\"status\\\":\\\"open\\\",\\\"created_at\\\":\\\"2026-10-14T14:14:28.332148Z\\\",\\\"updated_at\\\":\\\"2026-10-14T14:14:28.330306Z\\\"}],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["account_class_map", "{\"limit\":1000}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2026-01-01&period_end=2026-01-01&limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"connection_scope\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/bank_accounts?limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["pnl_snapshot", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"4990ae7d-7966-4e6f-81a2-89417dd9af5e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.550891+00\",\"updated_at\":\"2026-11-12 08:31:24.893212+00\",\"period\":\"current\",\"revenue\":\"0\",\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\",\"gross_margin\":\"0\",\"refreshed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "pnl_snapshot",
+        "4990ae7d-7966-4e6f-81a2-89417dd9af5e",
+        "{\"period\":\"current\",\"revenue\":\"0\",\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\",\"gross_margin\":\"0\",\"refreshed_at\":\"2026-01-01T00:00:00.000Z\"}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": ["cash_snapshot", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"73e794aa-b285-4b38-8c42-0e334ddcd4ec\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.563489+00\",\"updated_at\":\"2026-11-12 08:31:24.906973+00\",\"total_by_currency\":\"{}\",\"cash_status\":\"live\",\"refreshed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "cash_snapshot",
+        "73e794aa-b285-4b38-8c42-0e334ddcd4ec",
+        "{\"total_by_currency\":\"{}\",\"cash_status\":\"live\",\"refreshed_at\":\"2026-01-01T00:00:00.000Z\"}"
+      ]
+    },
+    {
+      "method": "_steps_save",
+      "args": [
+        "refresh-snapshots",
+        "redacted",
+        "{\"result\":{\"done\":true,\"cursor\":{\"phase\":\"write\",\"window\":{\"period_start\":\"2026-01-01\",\"period_end\":\"2026-01-01\"},\"next\":null,\"pages\":0,\"pnl\":{\"revenue\":\"0\",\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\"},\"totals\":{},\"cashStatus\":\"live\"}}}"
+      ],
+      "reply": "{\"state\":\"done\",\"cursor\":{\"phase\":\"write\",\"window\":{\"period_start\":\"2026-01-01\",\"period_end\":\"2026-01-01\"},\"next\":null,\"pages\":0,\"pnl\":{\"revenue\":\"0\",\"cogs\":\"0\",\"opex\":\"0\",\"other\":\"0\"},\"totals\":{},\"cashStatus\":\"live\"}}"
+    }
+  ]
+}

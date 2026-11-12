@@ -1,0 +1,22 @@
+{
+  "entry": "tool:einvoicing_find_booking",
+  "params": {
+    "idempotency_key": "book-mwdanmvb"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customer_invoices?limit=2&filter=%5B%7B%22field%22%3A%22external_reference%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22book-mwdanmvb%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    }
+  ]
+}

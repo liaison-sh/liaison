@@ -116,9 +116,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/api-connector/**", pages: ["api-connector", "sales/connect-your-crm"] },
   { glob: "apps/web/src/modules/api-connector/**", pages: ["api-connector", "sales/connect-your-crm"] },
   { glob: "packages/api-connector-core/**", pages: ["api-connector"] },
-  { glob: "apps/api/src/apps/database/**", pages: ["database-connector", "sales/sales-data"] },
-  { glob: "apps/api/src/modules/database/**", pages: ["database-connector", "sales/sales-data"] },
-  { glob: "apps/web/src/modules/database/**", pages: ["database-connector", "sales/sales-data"] },
+  { glob: "bundled-apps/database/**", pages: ["database-connector", "sales/sales-data"] },
   { glob: "packages/db-core/**", pages: ["database-connector"] },
   { glob: "apps/db-gate/**", pages: ["database-connector"] },
   { glob: "apps/api/src/apps/example/**", pages: ["app-development"] },
@@ -239,6 +237,18 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   {
     glob: "apps/api/src/modules/setup-guides/**",
     reason: "former path of modules/connection-guides (renamed); the new path is mapped",
+  },
+  {
+    glob: "apps/api/src/apps/database/**",
+    reason: "former path of the database app (moved to bundled-apps/database, which is mapped)",
+  },
+  {
+    glob: "apps/api/src/modules/database/**",
+    reason: "former kernel routes of the database app (now its own tools); bundled-apps/database is mapped",
+  },
+  {
+    glob: "apps/web/src/modules/database/**",
+    reason: "former web module of the database app (now its own ui.tsx); bundled-apps/database is mapped",
   },
   { glob: "**/__snapshots__/**", reason: "test snapshots" },
   { glob: "**/fixtures/**", reason: "test fixtures" },

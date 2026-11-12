@@ -333,7 +333,7 @@ export function demoScopesForRole(role: DemoRole): string[] {
 /**
  * Which roles run the demo warehouse's confidential domains (the catalog marks
  * revenue, dealers and customers confidential, modules/demo/warehouse/catalog.ts).
- * Seeded as the demo org's `settings.database.domainAccess`. `founder_admin` is
+ * Applied as the database app's `domainAccess` provision block. `founder_admin` is
  * an admin and passes every domain without being listed; support, fulfillment
  * and sales do not run these reads.
  */

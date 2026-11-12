@@ -136,6 +136,7 @@ const KERNEL_TABLE_WRITES = new Set([
   "knowledge:synced_sources.archive", // archives a synced source (knowledge's own table)
   "knowledge:synced_sources.run_now", // a kernel job row (the forced harvest)
   "mail:providers.set", // kernel.apps (the mail app's provider config)
+  "database:report_access_set", // the app's own store document (Report access rules)
   "mail:suppression_add", // a kernel.suppressions row (an opt-out)
 ])
 

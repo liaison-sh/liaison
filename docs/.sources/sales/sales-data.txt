@@ -10,31 +10,31 @@ repeat_rate share with more than one order, sample, no cohort split -> bundled-a
 repeat_rate scope -> bundled-apps/shopify/app.manifest.json:1523
 Report coverage as N of totalCount -> bundled-apps/shopify/app.manifest.json:1168
 customers_tag shopify:customers:write -> bundled-apps/shopify/app.manifest.json:3684-3685
-Read-only, writes impossible, secret columns not granted -> apps/api/src/apps/database/README.md:8-10
+Read-only, writes impossible, secret columns not granted -> bundled-apps/database/README.md:8-10
 Connector name Database in Settings -> packages/shared/src/i18n/locales/en/kernel.json:1591
 Settings label resolution (nav.app key) -> apps/web/src/framework/define-app.ts:703-719
 Connector cards on Settings > Connectors -> apps/web/src/modules/settings/connectors/ConnectorsPage.tsx:59-67
-scripts/db-readonly-role.ts --create, paste DSN -> apps/api/src/apps/database/app.manifest.json:45
-Direct (connectionString) or gate (gateUrl + gateToken), never both -> apps/api/src/apps/database/README.md:34-41
-TLS required for a public host -> apps/api/src/apps/database/app.manifest.json:45
-db-gate with catalog.yaml and bearer token -> apps/api/src/apps/database/README.md:71
-Probe runs after connecting, review warnings -> apps/api/src/apps/database/app.manifest.json:45
-warehouse connection: connectionString, dialect, statementTimeoutMs -> apps/api/src/apps/database/app.manifest.json:51-72
-Tools db_list_reads, db_read, db_describe, db_probe, db_query -> apps/api/src/apps/database/README.md:16-22
-db_* scopes database:reads:read / database:query:read -> apps/api/src/apps/database/app.manifest.json:85-166
-LIAISON_DATABASE_ALLOW_RAW_QUERY=false disables db_query -> apps/api/src/apps/database/README.md:22
-Roles member (curated reads) and admin (raw query) -> apps/api/src/apps/database/app.manifest.json:187-196
-Warehouse calls need database:query:read -> apps/api/src/apps/database/app.manifest.json:76
+scripts/db-readonly-role.ts --create, paste DSN -> bundled-apps/database/app.manifest.json:57-69
+Direct (connectionString) or gate (gateUrl + gateToken), never both -> bundled-apps/database/README.md:34-41
+TLS required for a public host -> bundled-apps/database/app.manifest.json:57-69
+db-gate with catalog.yaml and bearer token -> bundled-apps/database/README.md:71
+Probe runs after connecting, review warnings -> bundled-apps/database/app.manifest.json:57-69
+warehouse connection: connectionString, dialect, statementTimeoutMs -> bundled-apps/database/app.manifest.json:84-120
+Tools db_list_reads, db_read, db_describe, db_probe, db_query -> bundled-apps/database/README.md:16-22
+db_* scopes database:reads:read / database:query:read -> bundled-apps/database/app.manifest.json:145-290
+LIAISON_DATABASE_ALLOW_RAW_QUERY=false disables db_query -> bundled-apps/database/README.md:22
+Roles member (curated reads) and admin (raw query) -> bundled-apps/database/app.manifest.json:351-366
+Warehouse calls need database:query:read -> bundled-apps/database/app.manifest.json:137
 Calls: transcripts into one knowledge doc per call, Appel — <callRef> -> bundled-apps/calls/README.md:3-8
 Only the signed webhook ingests transcripts -> bundled-apps/calls/README.md:25-26
 calls_list, calls_segments_since, calls_set_links, webhook_info -> bundled-apps/calls/README.md:18-23
 calls_set_links contactId and dealTaskId, writes the Liens block -> bundled-apps/calls/app.manifest.json:101-110
 Calls scopes -> bundled-apps/calls/app.manifest.json:88-130
 database:approve is the derived approver scope; any tool can be gated by an org policy -> apps/api/src/modules/permissions/scope-catalog.ts:253
-database member/admin roles hold only reads:read and query:read -> apps/api/src/apps/database/app.manifest.json:187
-Report access section of the Database settings, tiers Internal / Confidential / Restricted -> packages/shared/src/i18n/locales/en/database.json:5-16 ; apps/api/src/apps/database/app.manifest.json:261-275
-Admins and members who can run raw queries see every report -> apps/api/src/apps/database/domain-access.ts:117-120
-Hidden reports are not listed; asked by name, the read is refused as restricted -> apps/api/src/apps/database/bridge.ts:460 ; apps/api/src/apps/database/bridge.ts:530
+database member/admin roles hold only reads:read and query:read -> bundled-apps/database/app.manifest.json:351
+Report access section of the Database settings, tiers Internal / Confidential / Restricted -> packages/shared/src/i18n/locales/en/database.json:5-16 ; bundled-apps/database/app.manifest.json:395-410
+Admins and members who can run raw queries see every report -> bundled-apps/database/src/access.ts:88-97
+Hidden reports are not listed; asked by name, the read is refused as restricted -> bundled-apps/database/src/tools.ts:122-125 ; bundled-apps/database/src/tools.ts:160-166
 Raw SQL queries (admins only) are not limited by these tiers -> packages/shared/src/i18n/locales/en/database.json:8
 Deals live on a pipeline in Projects with an amount, a company and a contact -> apps/api/src/apps/projects/service/deals.ts:447-478
 deals_search and deals_rollup -> apps/api/src/apps/projects/app.manifest.json:1324 ; apps/api/src/apps/projects/app.manifest.json:1397

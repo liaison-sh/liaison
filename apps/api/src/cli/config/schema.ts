@@ -308,14 +308,6 @@ export const mailProvidersSchema = z
     return out
   })
 
-// One domain's rule in config: the settings route's rule, with roles named and
-// people given by email instead of ids.
-const domainAccessRuleConfigSchema = z.strictObject({
-  tier: databaseDomainTierSchema,
-  roles: z.array(z.string().min(1)).max(200).optional(),
-  users: z.array(z.string().email()).max(500).optional(),
-})
-
 const appSchema = z
   .object({
     name: z.string().min(1),
@@ -331,11 +323,9 @@ const appSchema = z
     // field path, written like `PATCH /api/apps/:app/settings/org`: each path must be
     // an org field the manifest declares, and the value must pass its type.
     settings: z.record(z.string().min(1), z.unknown()).optional(),
-    // Database app only: who may run each catalog domain's curated reads
-    // (`organizations.settings.database.domainAccess`). Roles by name, people by
-    // email, resolved to ids at apply. Replaces the stored map when present;
-    // omitted, the stored map is left as it is.
-    domainAccess: z.record(databaseDomainNameSchema, domainAccessRuleConfigSchema).optional(),
+    // Refused with where it went (the database app's own provisioning), so a
+    // file that still carries it fails instead of being silently ignored.
+    domainAccess: z.unknown().optional(),
     // The app's own setup as data (manifest `provisioning`): validated against the
     // schema the app declares and applied by the app's provisioning handler.
     provision: z.record(z.string().min(1), z.unknown()).optional(),
@@ -364,12 +354,9 @@ const appSchema = z
     message: "provision requires enable: true (a disabled app entry is skipped)",
     path: ["provision"],
   })
-  .refine((a) => a.domainAccess === undefined || a.name === "database", {
-    message: "domainAccess is only supported on the 'database' app",
-    path: ["domainAccess"],
-  })
-  .refine((a) => a.domainAccess === undefined || a.enable, {
-    message: "domainAccess requires enable: true (a disabled app entry is skipped)",
+  .refine((a) => a.domainAccess === undefined, {
+    message:
+      "domainAccess moved into the app's provisioning: write it as provision: { domainAccess: ... }",
     path: ["domainAccess"],
   })
 

@@ -61,8 +61,9 @@ export function scopeUnknownError(what: string): Error & { code: string } {
  * handler). Same ladder as the agent message post: the snapshot from before the
  * running tool call recorded its own scope (a write tool's own scope is not a
  * data read), then the accumulator, then the turn's effective scope, then the
- * caller's scopes (a call with no frame at all, such as the MCP gateway, acts
- * with those). `null` means nothing knew: fail closed.
+ * caller's scopes (a direct call with no frame at all acts with those; every
+ * MCP gateway call, agentless included, has a frame since rule 14). `null`
+ * means nothing knew: fail closed.
  */
 export function currentTurnWriteScopes(fallbackScopes?: string[]): string[] | null {
   const frame = currentRunContext()
@@ -102,8 +103,8 @@ export function capturedFrameWriteScopes(
  * readers who may read but not write.
  *
  * Three answers, all meaningful:
- *   `[]`   no frame at all, so no turn proposed this (a human, a job, the MCP
- *          gateway). The re-entry writes untagged, which is what the call would
+ *   `[]`   no frame at all, so no turn proposed this (a human, a job). The MCP
+ *          gateway always has one (rule 14). The re-entry writes untagged, which is what the call would
  *          have done inline.
  *   scopes the turn's accumulated scopes, seeded back on re-entry.
  *   `null` a turn whose taint is not knowable. Stored as SQL NULL so the

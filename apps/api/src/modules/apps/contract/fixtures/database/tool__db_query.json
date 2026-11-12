@@ -1,0 +1,17 @@
+{
+  "entry": "tool:db_query",
+  "params": {
+    "sql": "SELECT status, count(*) AS n FROM contract_shop.orders GROUP BY status ORDER BY status"
+  },
+  "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
+  "calls": [
+    {
+      "method": "sql_query",
+      "args": [
+        "database",
+        "{\"sql\":\"SELECT status, count(*) AS n FROM contract_shop.orders GROUP BY status ORDER BY status\",\"timeoutMs\":55000,\"maxRows\":2000}"
+      ],
+      "reply": "{\"rows\":[{\"status\":\"open\",\"n\":\"2\"},{\"status\":\"shipped\",\"n\":\"1\"}],\"truncated\":false,\"durationMs\":3}"
+    }
+  ]
+}

@@ -103,6 +103,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `dashboards_list` | List the dashboards you can see: yours and the organisation's, with their ids and visibility. |  | `kernel:dashboards:read` |
 | `dashboards_pdf` | Print a dashboard as a PDF for a period and filters, computed with your access (title, period and filters in the header, then each block), staged as a file only you can read: attach its fileId to a reply or a mail. |  | `kernel:dashboards:read` |
 | `dashboards_preview_block` | Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. |  | `kernel:dashboards:write` |
+| `dashboards_share` | Change who sees a dashboard, as in a shared drive: orgAccess is what everyone in the organisation gets (none: only the owner and the people or roles it is shared with; viewer; editor), people and roles add, change or remove one person's or role's access (viewer, editor, or none to remove it). | yes | `kernel:dashboards:write` |
 | `dashboards_snapshot` | Read a whole dashboard at once for a period and filters, computed with your access: each block's key figures (a metric's value, its compared value and change, its target; a chart's totals per series with their change and its top labels; a table's first rows), the period and the filters. |  | `kernel:dashboards:read` |
 | `dashboards_sources` | List the read tools you can put on a dashboard (each block reads one), with their params and the fields of their result when declared. |  | `kernel:dashboards:write` |
 | `dashboards_update` | Replace a dashboard's whole spec (and its title or visibility): for a wholesale rebuild only. |  | `kernel:dashboards:write` |
@@ -418,6 +419,9 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 | `db_probe` | Run the connect-time safety probe on demand: reports unexpected write grants, dangerous EXECUTE grants, and catalog drift (gate mode). |  | `database:reads:read` |
 | `db_query` | Run a raw, single-statement, SELECT-only SQL query against the connected database. |  | `database:query:read` |
 | `db_read` | Run a named, parameterized curated read from the catalog (see db_list_reads). |  | `database:reads:read` |
+| `report_access_find_people` | Find people of the organization by email, for naming them in a Report access rule. |  | `database:access:admin` |
+| `report_access_get` | The Report access settings: each domain of the connected catalog with its reads, the catalog default, the organization rule, and the roles and people a rule can name. |  | `database:access:admin` |
+| `report_access_set` | Replace the organization's Report access rules (one map of domain to tier, roles and people). |  | `database:access:admin` |
 
 ## gitlab
 

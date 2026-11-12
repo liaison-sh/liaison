@@ -8,7 +8,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { appSettingsSchema } from "@liaison/app-sdk"
-import databaseManifest from "~/apps/database/app.manifest.json"
+import databaseManifest from "../../../../../bundled-apps/database/app.manifest.json"
 import monitoringManifest from "../../../../../bundled-apps/monitoring/app.manifest.json"
 import shopifyManifest from "../../../../../bundled-apps/shopify/app.manifest.json"
 import { materialiseSections } from "./settings-schema-from-manifest"

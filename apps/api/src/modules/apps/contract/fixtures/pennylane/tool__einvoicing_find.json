@@ -1,0 +1,23 @@
+{
+  "entry": "tool:einvoicing_find",
+  "params": {
+    "invoice_number": "CT-mwdanmvb",
+    "issue_date": "2026-10-15"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customer_invoices?limit=5&filter=%5B%7B%22field%22%3A%22invoice_number%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22CT-mwdanmvb%22%7D%2C%7B%22field%22%3A%22date%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%222026-10-15%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    }
+  ]
+}

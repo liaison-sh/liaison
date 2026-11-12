@@ -21,7 +21,11 @@ import type { SetupStepInput } from "~/modules/connection-guides/connection-setu
 import type { WebhookVerificationResult } from "~/modules/webhooks/verification"
 
 /** Who reads an agent post: an existing thread's participants, or a new thread's people. */
-export type TaintPostAudience = { threadId: string } | { participantIds: string[] }
+export type TaintPostAudience =
+  | { threadId: string }
+  /** `newThread`: a titled or forced create (a thread of its own). `noShortcut`: it also writes
+   *  unstamped text (title, references) that only an approval may disclose (scope-taint.ts, 14). */
+  | { participantIds: string[]; newThread?: boolean; noShortcut?: boolean }
 
 export type ManifestHandlerRef = {
   bundlePath: string

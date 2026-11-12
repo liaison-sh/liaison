@@ -29,7 +29,7 @@ const config = {
       enable: true,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: a literal ${VAR} config ref, not a JS template.
       config: { region: "eu", apiKey: "${DB_KEY:-}" },
-      domainAccess: { orders: { tier: "read", roles: ["support"] } },
+      settings: { mode: "strict" },
     },
     { name: "tickets", enable: true, connection: { name: "gmail", credentials: { token: "x" } } },
   ],
@@ -54,7 +54,7 @@ describe("trackedFields", () => {
     expect(paths).toContain("roles.support")
     expect(paths).toContain("apps.database.enable")
     expect(paths).toContain("apps.database.config.region")
-    expect(paths).toContain("apps.database.domainAccess")
+    expect(paths).toContain("apps.database.settings.mode")
     expect(paths).toContain("agents.support.scopes")
     expect(paths).toContain("agents.support.purpose")
     // Secrets and untracked sections are never tracked.
@@ -76,7 +76,7 @@ describe("trackedFields", () => {
           name: "database",
           enable: true,
           connection: { name: "gate" },
-          domainAccess: { support: { tier: "confidential", roles: ["ops"] } },
+          settings: { mode: "strict" },
         },
         {
           name: "database",
@@ -97,13 +97,11 @@ describe("trackedFields", () => {
     // The apply writes the entries in order, so the last one that sets a key wins.
     expect(getAt(twice, at("apps.database.enable"))).toBe(false)
     expect(getAt(twice, at("apps.database.config.region"))).toBe("eu")
-    expect(getAt(twice, at("apps.database.domainAccess"))).toEqual({
-      support: { tier: "confidential", roles: ["ops"] },
-    })
+    expect(getAt(twice, at("apps.database.settings.mode"))).toBe("strict")
     // A write lands in the entry that already holds the key.
-    setAt(twice, at("apps.database.domainAccess"), { support: { tier: "restricted", roles: [] } })
-    expect(twice.apps[0]?.domainAccess).toEqual({ support: { tier: "restricted", roles: [] } })
-    expect("domainAccess" in (twice.apps[1] ?? {})).toBe(false)
+    setAt(twice, at("apps.database.settings.mode"), "loose")
+    expect(twice.apps[0]?.settings).toEqual({ mode: "loose" })
+    expect("settings" in (twice.apps[1] ?? {})).toBe(false)
   })
 })
 
@@ -255,24 +253,24 @@ describe("--prefer / --only parsing and matching", () => {
   })
 
   test("inScope matches the path, its parents and its parts", () => {
-    expect(inScope("apps.database.domainAccess", [])).toBe(true)
-    expect(inScope("apps.database.domainAccess", ["apps.database.domainAccess"])).toBe(true)
-    expect(inScope("apps.database.domainAccess", ["apps"])).toBe(true)
+    expect(inScope("apps.database.settings.mode", [])).toBe(true)
+    expect(inScope("apps.database.settings.mode", ["apps.database.settings.mode"])).toBe(true)
+    expect(inScope("apps.database.settings.mode", ["apps"])).toBe(true)
     expect(inScope("roles.support", ["roles.support.scopes"])).toBe(true)
     expect(inScope("apps.databases.enable", ["apps.database"])).toBe(false)
-    expect(inScope("org.timezone", ["apps.database.domainAccess"])).toBe(false)
+    expect(inScope("org.timezone", ["apps.database.settings.mode"])).toBe(false)
   })
 })
 
 describe("pruneConfig", () => {
   test("keeps org + admin and only the selected part of an entry, with its required keys", () => {
-    const pruned = pruneConfig(config, ["apps.database.domainAccess"])
+    const pruned = pruneConfig(config, ["apps.database.settings.mode"])
     expect(Object.keys(pruned).sort()).toEqual(["admin", "apps", "org"])
     expect(pruned.apps).toEqual([
       {
         name: "database",
         enable: true,
-        domainAccess: { orders: { tier: "read", roles: ["support"] } },
+        settings: { mode: "strict" },
       },
     ])
   })

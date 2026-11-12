@@ -16,8 +16,8 @@
 // resource's grants, ask the database for the actor's role, and keep the
 // search ACL projection (org_wide / acl_user_ids / acl_role_ids) current.
 //
-// Users of it: Knowledge documents (apps/knowledge/service.ts) and contacts
-// (modules/contacts/sharing.ts). A new shareable resource adds its columns, a
+// Users of it: Knowledge documents (apps/knowledge/service.ts), contacts
+// (modules/contacts/sharing.ts) and dashboards (modules/dashboards/sharing.ts). A new shareable resource adds its columns, a
 // can_manage function and a row in kernel.shareable_resource_types, plus an
 // entry in SHAREABLE_RESOURCES below.
 
@@ -70,8 +70,9 @@ export const SHAREABLE_RESOURCES: Record<string, ShareableResource> = {
     aclUserColumns: ["owner_user_id", "created_by"],
   },
   "kernel.contact": { schema: "kernel", table: "contacts", aclUserColumns: ["owner_user_id"] },
-  // A company's sharing follows its creator, never its account manager (0293).
+  // A company's sharing follows its creator, never its account manager (0303).
   "kernel.company": { schema: "kernel", table: "companies", aclUserColumns: ["created_by"] },
+  "kernel.dashboard": { schema: "kernel", table: "dashboards", aclUserColumns: ["owner_user_id"] },
 }
 
 function resourceFor(type: string): ShareableResource {

@@ -1258,8 +1258,12 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         (typeof p.title === "string" && p.title !== "") ||
         (Array.isArray(p.references) && p.references.length > 0)
       if (!posts || !Array.isArray(p.participantIds)) return null
+      const titled = typeof p.title === "string" && p.title !== ""
+      const referenced = Array.isArray(p.references) && p.references.length > 0
       return {
         participantIds: p.participantIds.filter((id): id is string => typeof id === "string"),
+        newThread: titled || (p as { forceCreate?: unknown }).forceCreate === true,
+        noShortcut: titled || referenced,
       }
     },
     // No externalEffect: a post lands in an internal thread, attributed to the agent
@@ -1297,7 +1301,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         .min(1)
         .max(THREAD_MESSAGE_MAX_CHARS)
         .describe(
-          "The message body. Post it directly when the task calls for it: no user confirmation step is required.",
+          "The message body. Post it directly when the task calls for it. A direct message (one other person) always goes through. In a group where some members cannot see data you read this session, it waits for the user's one-time approval for that conversation; later posts with the same kind of data then go through. Nothing is ever silently hidden.",
         ),
       attachments: z
         .array(z.string())

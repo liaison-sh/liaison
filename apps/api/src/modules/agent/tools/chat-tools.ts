@@ -12,13 +12,26 @@ import {
   captureActingAgentId,
   currentRunContext,
   currentToolCallScopesBefore,
+  isPersonClientFrame,
 } from "~/modules/agent/runtime/run-context"
-import { toScopeTaintBlockedError, UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
+import {
+  decidePostDisclosure,
+  type PostTarget,
+  TAINT_DISCLOSURE_APPROVAL_KEY,
+} from "~/modules/agent/scopes/post-disclosure"
+import {
+  SCOPE_TAINT_BLOCKED_MESSAGE,
+  SINK_KERNEL_MESSAGES,
+  toScopeTaintBlockedError,
+  UNKNOWN_TURN_TAINT,
+} from "~/modules/agent/scopes/scope-taint"
 import {
   holdsEveryScope,
   loadOrgMemberGrants,
+  peopleTaintGap,
   threadPeopleIds,
 } from "~/modules/agent/scopes/taint-approval-audience"
+import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import { attachFilesToParent, FileServiceError } from "~/modules/files/attach"
 import {
@@ -96,7 +109,10 @@ const SINK_KERNEL_THREADS = "kernel.threads"
  */
 function isHumanActor(ctx: ChatToolContext): boolean {
   if (ctx.actorType !== "mcp") return false
-  return (ctx.actingAgentId ?? captureActingAgentId()) === null && currentRunContext() === undefined
+  if ((ctx.actingAgentId ?? captureActingAgentId()) !== null) return false
+  // Its gateway frame (scope-taint.ts, rule 14) is the person's own, as no frame was before it.
+  const frame = currentRunContext()
+  return frame === undefined || isPersonClientFrame(frame)
 }
 
 /**
@@ -104,8 +120,11 @@ function isHumanActor(ctx: ChatToolContext): boolean {
  * read. The turn's taint when the frame carries it (what it read before this
  * call; the reply tool's own write scope is not data). Otherwise fail closed
  * like the sandbox bridge's messages.post: the frame's effective scope, then
- * the caller's scopes (a call with no frame at all, such as the MCP gateway,
- * acts with those), and null (refuse with scope_unknown) when none is known.
+ * the caller's scopes (a direct call with no frame at all acts with those), and
+ * null (refuse with scope_unknown) when none is known. Every MCP gateway call,
+ * an agentless one included, runs under a frame with an accumulator (rule 14),
+ * and a stamp that would hide the post from someone it addresses is refused by
+ * the handler, never written (resolvePostVisibility).
  */
 export function agentPostRequiredScopes(ctx: { scopes?: string[] }): string[] | null {
   const frame = currentRunContext()
@@ -119,6 +138,102 @@ export function agentPostRequiredScopes(ctx: { scopes?: string[] }): string[] | 
 
 const SCOPE_UNKNOWN_ERROR =
   "scope_unknown: this agent turn's scope taint is unknown, so the message was not posted"
+
+/** The handler's refusal of a post that would be written hidden (scope-taint.ts, rule 14). */
+export const POST_WOULD_BE_HIDDEN_CODE = "post_would_be_hidden"
+
+function postWouldBeHiddenError(gap: { missingScopes: string[]; lacking: number | null }): {
+  code: string
+  message: string
+} {
+  const apps = [...new Set(gap.missingScopes.map((s) => s.split(":")[0]).filter(Boolean))]
+  const what = apps.length > 0 ? `${apps.join(", ")} data` : "data"
+  const who =
+    gap.lacking === null
+      ? "Some people in this conversation may not be able to see what this session read (it could not be checked)"
+      : `${gap.lacking} ${gap.lacking === 1 ? "person" : "people"} in this conversation cannot see ${what} this session read`
+  return {
+    code: POST_WOULD_BE_HIDDEN_CODE,
+    message: `NOT POSTED. ${who}, so they would not see this message, and a message is never written hidden from the people it is meant for. Nothing was sent, and no approval was created. Tell the user it was not posted and why. You may post a version that leaves that data out; otherwise a person who can see that data shares it with these people themselves, or an admin adjusts their access. Do not retry the same message.`,
+  }
+}
+
+type PostVisibility =
+  | { disclosureList: string[] | null; metadata?: Record<string, unknown> }
+  | { error: { code: string; message: string } }
+
+/**
+ * Who a post stamped `stamp` is written for (scope-taint.ts, rules 11 and 14). An approved
+ * disclosure (rule 11b) reaches the people it was approved for who are still there, and marks
+ * the row with its approval: that is the requester's standing disclosure for this thread. Without
+ * one, the post is written only when nobody else in the conversation would lose it, or when a
+ * direct message or the standing disclosure covers them (post-disclosure.ts); otherwise it is
+ * refused, never written hidden.
+ */
+async function resolvePostVisibility(
+  ctx: ChatToolContext,
+  stamp: readonly string[],
+  target: PostTarget,
+  people: () => Promise<string[]>,
+): Promise<PostVisibility> {
+  const snapshot = await approvedPostDisclosure(ctx)
+  if (snapshot !== null) {
+    const now = await people()
+    // Someone who joined after the post parked was not part of the decision. Writing it would
+    // hide it from them when they lack what it carries, so it is not written (rule 14e).
+    const newcomers = now.filter((u) => !snapshot.includes(u))
+    if (newcomers.length > 0) {
+      const gap = await peopleTaintGap({
+        orgId: ctx.orgId,
+        userIds: newcomers,
+        taintScopes: expandWildcardStamp(stamp, ctx.orgId),
+      })
+      if (gap !== null) {
+        return {
+          error: {
+            code: POST_WOULD_BE_HIDDEN_CODE,
+            message: `NOT POSTED. Since this message was approved, ${gap.lacking === null ? "someone" : gap.lacking === 1 ? "1 person" : `${gap.lacking} people`} joined this conversation who cannot see the data it carries, so they would not see it. Nothing was sent. Tell the user: to share it with everyone now in the conversation, send it again; it will ask for their approval once more.`,
+          },
+        }
+      }
+    }
+    return {
+      disclosureList: now.filter((u) => snapshot.includes(u)),
+      ...(ctx.approvalRequestId
+        ? { metadata: { [TAINT_DISCLOSURE_APPROVAL_KEY]: ctx.approvalRequestId } }
+        : {}),
+    }
+  }
+  const decision = await decidePostDisclosure({
+    orgId: ctx.orgId,
+    requesterUserId: ctx.userId,
+    stamp,
+    target,
+  })
+  if (decision.kind === "clear") return { disclosureList: null }
+  if (decision.kind === "disclose") return { disclosureList: decision.disclosureList }
+  if (decision.kind === "requester_lacks") {
+    return {
+      error: {
+        code: POST_WOULD_BE_HIDDEN_CODE,
+        message: SCOPE_TAINT_BLOCKED_MESSAGE(
+          SINK_KERNEL_MESSAGES,
+          stamp,
+          "poster",
+          undefined,
+          decision,
+        ),
+      },
+    }
+  }
+  rootLogger
+    .child({ module: "chat-tools" })
+    .warn(
+      { orgId: ctx.orgId, lacking: decision.lacking },
+      "agent post refused: it would be written hidden from people in the conversation",
+    )
+  return { error: postWouldBeHiddenError(decision) }
+}
 
 /**
  * Resolve the attributed author label for an agent thread post. A named agent
@@ -597,11 +712,24 @@ export async function handleThreadsCreate(
   // the turn read. The participant list itself is the thread's membership, not data.
   // An approved disclosure (rule 11) was decided by the requester for exactly these people.
   const snapshot = await approvedPostDisclosure(ctx)
-  const disclosed = snapshot !== null
-  if (!disclosed && (params.title || (params.references?.length ?? 0) > 0)) {
+  // A titled or forced create writes into a thread of its own: no DM by dedupe, no standing
+  // disclosure of another thread applies to it (rule 14).
+  const target = {
+    participantIds: participantIds,
+    newThread: !!params.title || params.forceCreate === true,
+  }
+  const audience = async () => [...new Set([ctx.userId, ...participantIds])]
+  // The title and references are unstamped and read by every later member: only an approval
+  // discloses them, never the direct-message or standing shortcut of the message body.
+  if (snapshot === null && (params.title || (params.references?.length ?? 0) > 0)) {
     const refusal = await participantTaintRefusal(ctx, participantIds)
     if (refusal) return { error: refusal }
   }
+  // Never written hidden (rule 14): the first message reaches every participant it addresses.
+  const visibility = params.initialMessage
+    ? await resolvePostVisibility(ctx, initialScopes, target, audience)
+    : ({ disclosureList: null } as const)
+  if ("error" in visibility) return { error: visibility.error }
   const agentAuthorLabel = await resolveAgentAuthorLabel(ctx)
   const result = await createThread(ctx.db, {
     orgId: ctx.orgId,
@@ -615,12 +743,9 @@ export async function handleThreadsCreate(
           authorType: "agent",
           agentAuthorLabel,
           requiredScopes: initialScopes,
-          ...(snapshot !== null
-            ? {
-                disclosureList: [...new Set([ctx.userId, ...participantIds])].filter((u) =>
-                  snapshot.includes(u),
-                ),
-              }
+          ...(visibility.disclosureList ? { disclosureList: visibility.disclosureList } : {}),
+          ...("metadata" in visibility && visibility.metadata
+            ? { metadata: visibility.metadata }
             : {}),
         }
       : undefined,
@@ -822,7 +947,10 @@ export async function handleThreadsReply(
     }
     threadId = opened.threadId
   }
-  const posted = await postThreadReply({ ...params, threadId: threadId as string }, ctx)
+  const posted = await postThreadReply(
+    { ...params, threadId: threadId as string, contactDiscussion: !!params.contactId },
+    ctx,
+  )
   // Where it went, in the result the agent reports from: a post here is not a
   // write to the org's CRM, and with one connected the two read alike.
   return params.contactId && "message" in posted
@@ -834,7 +962,14 @@ export async function handleThreadsReply(
 }
 
 async function postThreadReply(
-  params: { threadId: string; content: string; attachments?: string[]; replyRootId?: string },
+  params: {
+    threadId: string
+    content: string
+    attachments?: string[]
+    replyRootId?: string
+    /** Posted into a contact's discussion (contactId), whose readers are the contact's. */
+    contactDiscussion?: boolean
+  },
   ctx: ChatToolContext,
 ): Promise<ThreadsReplyResult> {
   // ONE REPLY ROW PER TURN. The turn's OWN answer is already persisted by the
@@ -866,13 +1001,15 @@ async function postThreadReply(
   const requiredScopes = agentPostRequiredScopes(ctx)
   if (requiredScopes === null) return { error: SCOPE_UNKNOWN_ERROR }
   // Rule 11b: the people the post would have reached when it parked, still in the thread now.
-  const snapshot = await approvedPostDisclosure(ctx)
-  const disclosedTo =
-    snapshot === null
-      ? null
-      : await threadPeopleIds(ctx.orgId, params.threadId).then((now) =>
-          snapshot.filter((u) => now.includes(u)),
-        )
+  // Without an approval, never written hidden (rule 14). A contact discussion is read by the
+  // contact's readers, not judged here (rule 11c).
+  const visibility = params.contactDiscussion
+    ? ({ disclosureList: null } as PostVisibility)
+    : await resolvePostVisibility(ctx, requiredScopes, { threadId: params.threadId }, () =>
+        threadPeopleIds(ctx.orgId, params.threadId),
+      )
+  if ("error" in visibility) return { error: visibility.error }
+  const disclosedTo = visibility.disclosureList
   const human = isHumanActor(ctx)
   const agentAuthorLabel = await resolveAgentAuthorLabel(ctx)
   // A18: a reply-thread post names a live root of this thread that is not a
@@ -902,7 +1039,14 @@ async function postThreadReply(
     // them; storing its words as a `user` row showed them as the person's own.
     authorType: "agent" as const,
     agentAuthorLabel,
-    ...(human ? { metadata: { [EXTERNAL_CLIENT_POST_KEY]: true } } : {}),
+    ...(human || visibility.metadata
+      ? {
+          metadata: {
+            ...(human ? { [EXTERNAL_CLIENT_POST_KEY]: true } : {}),
+            ...visibility.metadata,
+          },
+        }
+      : {}),
     requiredScopes,
     // Rule 11: an approved disclosure is read by the thread's people, whatever they hold.
     ...(disclosedTo ? { disclosureList: disclosedTo } : {}),

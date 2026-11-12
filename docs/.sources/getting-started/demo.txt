@@ -166,7 +166,7 @@ Tell me when the hosted version opens -> packages/shared/src/i18n/locales/en/ker
 Last scenario opens the dialog in place of the end card -> apps/web/src/modules/demo/DemoScenarioRunner.tsx:124
 Keep exploring shows the budget left -> packages/shared/src/i18n/locales/en/kernel.json:1067
 Warehouse revenue, dealers and customers reports are confidential -> apps/api/src/modules/demo/warehouse/catalog.ts:146-150
-Granted to finance and operations; the CEO is an admin and passes -> apps/api/src/seed/tiers/demo/role-scopes.ts:287-299 ; apps/api/src/apps/database/domain-access.ts:117-120
+Granted to finance and operations; the CEO is an admin and passes -> apps/api/src/seed/tiers/demo/role-scopes.ts:287-299 ; bundled-apps/database/src/access.ts:88-97
 Leads stay on the instance; LIAISON_TEAM_FORWARD_DEMO_LEADS off by default copies them only when registered, never opted-out or .invalid -> apps/api/src/lib/env.ts:935 ; apps/api/src/modules/liaison-team/lead-forwarding.ts:40-53 ; apps/api/src/lib/load-harness.ts:172-178
 Warehouse part only with LIAISON_DEMO_WAREHOUSE on, off by default, needs the warehouse DSN -> apps/api/src/lib/env.ts:305-315 ; apps/api/src/seed/tiers/demo/demo-apps.ts:60-95 ; apps/api/src/seed/tiers/demo/seed-warehouse.ts:70-78
 Off parts logged as opt-in parts off on this deployment -> apps/api/src/seed/tiers/demo/seed-demo.ts:261-269

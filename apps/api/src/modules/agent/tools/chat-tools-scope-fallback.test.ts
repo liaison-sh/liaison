@@ -4,6 +4,9 @@
 // turn read. When the turn's taint is not on the frame, they fail closed like
 // the sandbox bridge's messages.post: the frame's effective scope, then the
 // caller's scopes, and a refusal (scope_unknown) when none is known. Never `[]`.
+// The room here is a direct message (the author and one other person): since rule 14
+// (2026-11-12) such a post is written with both of them on its disclosure list, so the person it
+// addresses reads it whatever the stamp; the stamp itself is unchanged.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
@@ -73,6 +76,11 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
       await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status)
         VALUES (${id}, ${ORG}, ${`ctf-${name}-${tag}@test.com`}, ${name}, 'x', 'active')`
     }
+    // The author holds what it posts (rule 14a: a requester lacking it cannot disclose it).
+    for (const scope of CALLER_SCOPES) {
+      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+        VALUES (${AUTHOR}, ${ORG}, ${scope})`
+    }
     await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
       VALUES (${ROOM}, ${ORG}, ${`ctf-room-${tag}`}, 'thread', ${AUTHOR})`
     for (const userId of [AUTHOR, LACKER]) {
@@ -87,17 +95,18 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
     await releaseTestLock()
   })
 
-  it("threads_reply with no frame is tagged with the caller's scopes: hidden from a lacker, seen by a holder", async () => {
+  it("threads_reply with no frame is tagged with the caller's scopes, and its DM addressee reads it", async () => {
     const result = await reply("Deal 42 closes Friday (no frame)", CALLER_SCOPES)
     expect((result as { message?: unknown }).message).toBeDefined()
     const row = await rowFor("Deal 42 closes Friday (no frame)")
     expect(row?.required_scopes).toEqual([...CALLER_SCOPES].sort())
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
     expect(await visibleIds(AUTHOR, CALLER_SCOPES)).toContain(row?.id)
   })
 
@@ -109,7 +118,7 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     )
     const row = await rowFor("Deal 42 closes Friday (effective)")
     expect(row?.required_scopes).toEqual([SECRET])
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
   })
 
   it("threads_reply refuses with scope_unknown when neither the frame nor the caller says", async () => {
@@ -122,10 +131,9 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     const result = await withRlsContext(actor(AUTHOR, CALLER_SCOPES), (tx) =>
       handleThreadsCreate(
         {
+          // Untitled, one person: the direct message (a titled room of two is no DM, rule 14c).
           participantIds: [LACKER],
-          title: "ctf create",
           initialMessage: "Deal 42 closes Friday (create)",
-          forceCreate: true,
         },
         { userId: AUTHOR, orgId: ORG, db: tx, scopes: CALLER_SCOPES } as never,
       ),
@@ -133,6 +141,6 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     expect((result as { thread?: unknown }).thread).toBeDefined()
     const row = await rowFor("Deal 42 closes Friday (create)")
     expect(row?.required_scopes).toEqual([...CALLER_SCOPES].sort())
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
   })
 })

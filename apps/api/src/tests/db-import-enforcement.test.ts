@@ -59,10 +59,6 @@ describe("db import enforcement", () => {
     // Deal board: the org's time zone (the organizations table is closed to row-level readers)
     // is read in a privileged transaction of the org the caller passes, one column, no person.
     "apps/projects/service/deals.ts",
-    // Knowledge sync of a connected database run by a job (no request transaction):
-    // the org-owned connection's credentials are read in a short privileged
-    // transaction of the source's own org; the database read itself holds no slot.
-    "apps/database/knowledge-read-runner.ts",
     "modules/security/security-events.ts", // security signals: the org comes from the event the auth path raised; writes the outbox event and reads the account it names
     // Magic-wand proofread/polish assist service — reads org model config + agent
     // keys via system-db (no per-request RLS context), like other host services.
@@ -443,12 +439,6 @@ describe("db import enforcement", () => {
     // The customer resolver's domain fallback excludes the org's own mailbox
     // and inbox domains: configuration, read org-scoped, only ever to exclude.
     "apps/api-connector/customer.ts",
-    // Database connector report access: the org's domainAccess setting (one
-    // jsonb key, org-scoped by id) and the caller's own role memberships, read
-    // for the per-domain read check; written only after the route checks
-    // kernel:apps:admin and every named role and person belongs to the org.
-    "apps/database/domain-access-store.ts",
-    "modules/database/routes.ts",
     "apps/tickets/admin.ts",
     // Close silent tickets: the per-org scan of inboxes with the option on, the
     // acting person's active row and permissions, and the cancel of a pending
@@ -1096,7 +1086,6 @@ describe("db import enforcement", () => {
     "seed/factories/org/apps.ts",
     "seed/factories/org/org.ts",
     "seed/factories/people/people.ts",
-    "seed/factories/people/role-grants.ts",
     // Bare rows for tests (an org, a user, a role, an audit entry; a connected
     // account, an MCP connection, a pending event; an org's billing state and
     // credit rows) written over the system connection as the provisioning and
@@ -1340,6 +1329,10 @@ describe("db import enforcement", () => {
     // Knowledge pointers are an agent-asset table (privileged-write by design,
     // migration 0050), stamped after the knowledge write already passed RLS.
     "modules/agent/knowledge/knowledge-pointers.ts",
+    // A restricted dashboard's audience: the people and role members its grants
+    // name, read only to address its realtime frames (the acting editor may not
+    // see every role membership); org-scoped, read-only, no row content.
+    "modules/dashboards/service.ts",
     // Mention picker secondary labels: one fact per exact id the picker already
     // resolved; the rows themselves are not one actor's own.
     "modules/search/mention-secondary.ts",
@@ -1478,6 +1471,11 @@ describe("db import enforcement", () => {
     // Readers' gaps and room floors: every org member's (or participant's)
     // effective grants, which no single caller's context can read.
     "modules/agent/scopes/taint-approval-audience.ts",
+    // Whether an agent post reaches its readers (rule 14): the thread's shape, the
+    // untitled conversation an untitled create lands in, and the requester's approved
+    // post disclosures in that thread (approval rows the caller's context may not read),
+    // each bound to the post's org. Reads only.
+    "modules/agent/scopes/post-disclosure.ts",
     // The holder's live grants, the agent's checkpoints (agent-asset table,
     // privileged by design) and the recall audit rows kept for the thread.
     "modules/agent/local-sessions/local-context-scopes.ts",

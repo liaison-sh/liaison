@@ -1104,6 +1104,57 @@ describe("erase-user cascade (G2–G6)", () => {
     })
   })
 
+  // The webhook inbox keeps a delivery's payload while it waits for a retry
+  // and, briefly, when it is dead. A payload naming the erased person (their
+  // id or email) does not outlive the erasure: it is cleared, and an
+  // unsettled delivery carrying it is dropped rather than run later.
+  test("clears webhook inbox payloads that name the erased user, and leaves the others", async () => {
+    const email = extractRows<{ email: string }>(
+      await withSystemDb("erase-inbox-email", (tx) =>
+        tx.execute(drizzleSql`SELECT email FROM kernel.users WHERE id = ${userId}`),
+      ),
+    )[0]!.email
+    const insert = (status: string, payload: unknown, headers: unknown = null) =>
+      withSystemDb(
+        "erase-inbox-seed",
+        async (tx) =>
+          extractRows<{ id: string }>(
+            await tx.execute(drizzleSql`
+            INSERT INTO kernel.webhook_inbox (org_id, app_name, endpoint_name, delivery_hash,
+              dedup_until, payload, headers, status, attempts, settled_at)
+            VALUES (${orgId}, 'inboxapp', 'orders', ${crypto.randomUUID()}, now() + interval '1 hour',
+              ${JSON.stringify(payload)}::jsonb, ${headers === null ? null : JSON.stringify(headers)}::jsonb,
+              ${status}, 1, ${status === "dead" ? drizzleSql`now()` : null})
+            RETURNING id::text AS id`),
+          )[0]!.id,
+      )
+    const pendingByEmail = await insert("pending", { customer: { email: email.toUpperCase() } })
+    const deadById = await insert("dead", { assignee: userId })
+    const byHeader = await insert("pending", { order: 1 }, { "x-user": email })
+    const other = await insert("pending", { customer: { email: "someone-else@example.com" } })
+
+    const r = await eraseUser(userId)
+    expect(r.exitCode).toBe(0)
+    const rows = extractRows<{ id: string; status: string; payload: unknown; headers: unknown }>(
+      await withSystemDb("erase-inbox-read", (tx) =>
+        tx.execute(drizzleSql`SELECT id::text AS id, status, payload, headers
+          FROM kernel.webhook_inbox WHERE org_id = ${orgId}`),
+      ),
+    )
+    const byId = new Map(rows.map((x) => [x.id, x]))
+    expect(byId.get(pendingByEmail)).toMatchObject({
+      status: "dropped",
+      payload: null,
+      headers: null,
+    })
+    expect(byId.get(deadById)).toMatchObject({ status: "dead", payload: null, headers: null })
+    expect(byId.get(byHeader)).toMatchObject({ status: "dropped", payload: null, headers: null })
+    expect(byId.get(other)).toMatchObject({
+      status: "pending",
+      payload: { customer: { email: "someone-else@example.com" } },
+    })
+  })
+
   test("every kernel user column the sweep can discover has a disposition, whether or not any row holds a user", async () => {
     // The sweep only refuses for a column that carries the erased user's id,
     // so an unmapped column stays latent until the first user with such a row

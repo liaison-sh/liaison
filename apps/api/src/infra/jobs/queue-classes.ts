@@ -16,6 +16,8 @@
 //   agent  LLM loops (sub-runs, re-invocations, routine ticks, consolidation)
 //   media  file work (thumbnails, object deletion, link ingest, media analysis)
 //   bulk   background volume (search indexing, reindex, backfills, purges)
+//   webhook  the webhook inbox: replays of stored deliveries, their sweep and
+//          retention (a burst of replays must not hold the cron lane)
 //
 // Within a class, BullMQ `priority` orders the jobs: a job without a priority
 // runs before any prioritized one, and a larger number runs later. It is used
@@ -39,7 +41,7 @@
 // each job by its name, and `legacy-kernel-queue.ts` moves its schedulers and
 // delayed jobs to their class queues at boot.
 
-export type KernelQueueClass = "cron" | "agent" | "media" | "bulk"
+export type KernelQueueClass = "cron" | "agent" | "media" | "bulk" | "webhook"
 
 export interface QueueClassSpec {
   /** Physical BullMQ queue name. Not `app-` prefixed, so it can never collide with an app's queue. */
@@ -53,7 +55,9 @@ export interface QueueClassSpec {
 }
 
 export const KERNEL_QUEUE_CLASSES: Readonly<Record<KernelQueueClass, QueueClassSpec>> = {
-  cron: { queueName: "kernel-cron", concurrency: 3, alertAfterSec: 120, shedAtSoftMemory: false },
+  // cron: two slots; its third went to `webhook` with the inbox's replays,
+  // the one cron tenant that ran an app's handler for up to its wall clock.
+  cron: { queueName: "kernel-cron", concurrency: 2, alertAfterSec: 120, shedAtSoftMemory: false },
   // agent: a sub-agent chain holds one slot per waiting level. Rooted in a job of
   // this class (a routine tick or a re-invocation), a full chain (root plus
   // MAX_NESTING_DEPTH = 2 sub-runs, spawn-agent.ts) holds three, so four slots
@@ -63,6 +67,18 @@ export const KERNEL_QUEUE_CLASSES: Readonly<Record<KernelQueueClass, QueueClassS
   // bulk: backlog tolerant by design (alert after an hour; the live search
   // flusher has its own queue), so it gave its second slot to agent.
   bulk: { queueName: "kernel-bulk", concurrency: 1, alertAfterSec: 3600, shedAtSoftMemory: true },
+  // webhook: a replay runs an app's handler (up to its wall clock, holding a
+  // pinned jobs slot); the minute sweep wakes every due row, and at UTC
+  // midnight every delivery held at a day cap comes due at once. Its own lane,
+  // so such a burst waits behind itself only; never shed (a refused wake is
+  // only re-woken by the next sweep). The slot came from cron: the kernel's
+  // total is unchanged (THE SLOT BUDGET below).
+  webhook: {
+    queueName: "kernel-webhook",
+    concurrency: 1,
+    alertAfterSec: 600,
+    shedAtSoftMemory: false,
+  },
 }
 
 /** Slots of the legacy `app-kernel` drain worker: leftovers only, one at a time. */
@@ -115,12 +131,8 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "app-cron-fanout": { queueClass: "cron" },
   "agent-side-thread-reaper": { queueClass: "cron" },
   "routine-event-reconcile": { queueClass: "cron" },
+  // The previous release's webhook retries; drained into the inbox.
   "retry-webhook": { queueClass: "cron" },
-  // The webhook inbox (modules/webhooks/inbox.ts): one row's replay, the
-  // minute sweep that wakes due rows, and the daily retention.
-  "webhook-inbox-replay": { queueClass: "cron" },
-  "webhook-inbox-sweep": { queueClass: "cron" },
-  "webhook-inbox-retention": { queueClass: "cron", priority: YIELD },
   "mailbox-backfill": { queueClass: "cron", priority: YIELD },
   // Daily/weekly maintenance: still crons, but they yield to the sweeps above.
   "cleanup-expired-sessions": { queueClass: "cron", priority: YIELD },
@@ -199,6 +211,12 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "org-export": { queueClass: "bulk" },
   // An operator's org deletion: legal archive + purge (modules/org/delete/job.ts).
   "org-delete": { queueClass: "bulk" },
+
+  // webhook: the webhook inbox (modules/webhooks/inbox.ts): one row's replay,
+  // the minute sweep that wakes due rows, and the hourly retention.
+  "webhook-inbox-replay": { queueClass: "webhook" },
+  "webhook-inbox-sweep": { queueClass: "webhook" },
+  "webhook-inbox-retention": { queueClass: "webhook", priority: YIELD },
 }
 
 /** Thrown when a kernel job is registered or enqueued without a class. */
@@ -277,8 +295,8 @@ export function parseConcurrencyOverrides(
 // one privileged connection held, and the kernel as a whole must leave room
 // for the request path: every kernel slot (all classes plus the legacy drain)
 // adds up to at most the privileged pool minus PRIVILEGED_POOL_HEADROOM. With
-// production's pool of 15 that is 11: the defaults above (3 + 4 + 2 + 1) plus
-// the legacy drain (1). Most handlers hold a connection only for their short
+// production's pool of 15 that is 11: the defaults above (2 + 4 + 2 + 1 + 1)
+// plus the legacy drain (1). Most handlers hold a connection only for their short
 // transactions, not their whole run, so this is a worst case, and the four
 // connections left over are the request path's. (The one shared queue this
 // replaces had 5 slots, and a single search burst took all of them.) An override
@@ -299,7 +317,9 @@ export function kernelSlotsWanted(overrides: Partial<Record<KernelQueueClass, nu
   const classes = Object.keys(KERNEL_QUEUE_CLASSES) as KernelQueueClass[]
   return {
     total: classes.reduce((n, c) => n + slot(c), LEGACY_DRAIN_CONCURRENCY),
-    requestSlots: slot("agent") + slot("cron"),
+    // webhook counts as cron did when the replays ran there (its slot came
+    // from cron): a replay's handler may write through the request login.
+    requestSlots: slot("agent") + slot("cron") + slot("webhook"),
   }
 }
 

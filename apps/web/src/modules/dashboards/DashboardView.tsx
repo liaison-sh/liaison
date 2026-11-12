@@ -94,6 +94,7 @@ import {
 } from "./dashboards-store"
 import { dropTarget, gridColumns, type MoveDirection, moveTarget, UNDO_DEPTH } from "./edit-mode"
 import { FilterBar } from "./FilterBar"
+import { FilterEditor } from "./FilterEditor"
 import {
   defaultOf,
   effectiveFilters,
@@ -855,6 +856,24 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
               </p>
             </div>
           </Show>
+        )}
+      </Show>
+      <Show when={editing() && loaded()}>
+        {(d) => (
+          <FilterEditor
+            spec={d().spec}
+            busy={saving()}
+            apply={(operations) => applyEdit(operations)}
+            loadFields={async (target) => {
+              const out = await getBlockRows(api, d().id, target.blockId, {
+                ...(target.layerId ? { target: { layer: target.layerId } } : {}),
+                limit: 1,
+                ...(usesRange() ? { range: choice() } : {}),
+                filters: filterValues(),
+              })
+              return out.ok ? out.page.fields : null
+            }}
+          />
         )}
       </Show>
       <Show when={scheduleHint() && loaded()}>

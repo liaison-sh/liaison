@@ -1181,6 +1181,7 @@ function project(read: SourceRows, fields: Set<string> | null): SourceRows {
   if (!fields || !read.rows) return read
   return {
     ...read,
+    fieldNames: rowFieldsOf(read.rows),
     rows: read.rows.map((r) => {
       const o: Record<string, unknown> = {}
       for (const k of fields) if (k in r) o[k] = r[k]
@@ -1692,6 +1693,8 @@ export type BlockRowsResponse =
       blockId: string
       ok: true
       columns: DrillColumn[]
+      /** The fields the source's rows carry (what a person can filter on), names only. */
+      fields: string[]
       rows: Record<string, string | number | boolean | null>[]
       links: (RecordLink | null)[] | null
       total: number
@@ -1706,6 +1709,24 @@ export type BlockRowsResponse =
   | { blockId: string; ok: false; error: BlockErrorCode; message: string; window?: BlockWindow }
 
 /** What a drill-down shows per row: drillColumns, a table's columns, else the fields it uses. */
+/** How many source rows rowFieldsOf looks at. */
+const FIELD_SAMPLE_ROWS = 50
+
+/**
+ * The fields a source's rows carry, sorted: the top-level keys that hold a plain value (text,
+ * number, true/false) in at least one of the first rows. Names only, never values: the dashboard
+ * editor offers them when a person adds a filter.
+ */
+export function rowFieldsOf(rows: Record<string, unknown>[] | undefined): string[] {
+  const out = new Set<string>()
+  for (const r of (rows ?? []).slice(0, FIELD_SAMPLE_ROWS)) {
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out.add(k)
+    }
+  }
+  return [...out].sort((a, b) => a.localeCompare(b))
+}
+
 function drillColumnsOf(
   block: DashboardBlock,
   sample: Record<string, unknown> | undefined,
@@ -1846,6 +1867,7 @@ export async function getBlockRows(
     blockId,
     ok: true,
     columns,
+    fields: read.read.fieldNames ?? rowFieldsOf(read.read.rows),
     rows: page.map((r) => projectRow(r, columns)),
     links: m.link ? page.map((r) => recordLink(r, m.link, linkApp)) : null,
     total: rows.length,

@@ -82,6 +82,7 @@ Your own changes save at once, never held for approval: your scopes decide (the 
 - Each block's title becomes a field: rename it the same way.
 - Move a block by dragging it onto another one: it takes that block's place, just before or after it. From the keyboard, the arrows beside its title do the same: **Move earlier** and **Move later** move it one place, **Move up a row** and **Move down a row** to the block above or below it in the grid as it is drawn, whatever the blocks' widths (one place on a phone).
 - A block's menu (the three dots) sets its **Width** (1, 2 or 3 columns) and its **Height** (**Normal**, or **Tall (2 rows)**), and has **Duplicate** (a copy right after it, named "<title> (copy)") and **Delete**, which asks first.
+- **Filters**, under the description, lists the dashboard's filters. Each name is a field: rename a filter the same way. Beside it, **Blocks: 2** says how many blocks it narrows, and the cross removes it from the dashboard and from those blocks. See [Add a filter](#add-a-filter).
 - **Undo** takes back your last change, then the one before, as many as you made since the dashboard opened. If someone else saved the dashboard after your last change, Undo saves nothing, since it would erase their change: it says so and opens the version history, where you choose the version yourself.
 
 Each change goes through the same checks as the agent's: either it is saved, or nothing is. If someone saved the dashboard in the meantime, your change is not saved: the dashboard reloads and says "Someone else changed this dashboard. It is reloaded: make your change again." A change you make while it reloads waits for it and is saved on the new version. On a phone the dashboard keeps one column, and edit mode works the same way.
@@ -145,6 +146,24 @@ How each one reads on the dashboard:
 - A **funnel** shows its stages top to bottom, each bar as wide as its share of the first stage, and between two stages the share that went on, for example "25% of the step before". It uses calm colours, never red or green.
 - A **combo** chart draws its bars and its lines together; when the lines have their own axis, it is on the right. When its bars are stacked, its lines always have their own axis on the right, so a line is never drawn on top of the bars' total.
 - A **text** note shows its formatting (bold, lists, links). Any HTML written in it shows as plain text. A link to a web page opens in a new tab; a link to a page of Liaison (such as `/projects`) opens it in place.
+
+## Add a filter
+
+In edit mode, **Add filter** (in **Filters**, at the top of the dashboard) opens a short form in place:
+
+1. **Field**: pick one of the fields the blocks' rows hold, for example `market` or `channel`. The list is read from the blocks' own data when the form opens.
+2. **Name**: what the filter's button says. It starts as the field's name.
+3. **Kind**: **Choose one value**, **Choose several values**, or **Type text** (the blocks keep the rows whose field holds what you type).
+4. **Applies to**: every block (or every source of a blended chart) whose rows hold that field, ticked. Untick the ones the filter should leave alone.
+5. **Save filter** adds it. **Cancel** closes the form.
+
+A filter that offers values lists the values the field holds in a block's own data, so it needs a block whose data reads no other filter; when none fits, the form says so: pick **Type text**, or other blocks. Adding, renaming or removing a filter is a change like any other: saved at once, in the version history, and **Undo** takes it back. Everyone who opens the dashboard then picks their own value in the filter row, remembered for them alone.
+
+## Read a chart over time
+
+A chart with a headline shows the period's figure above it, large, with its change against the compared period beside it: "54 ↓ 25%", then "vs Oct 1 – 12, 2026" under it, naming the compared days. The change is an arrow and a percentage in the text's own colour, never red or green. A blended chart shows one figure per source and per worked out figure (units per session), side by side.
+
+When the dashboard compares, the legend names both periods by their real days, for example "Nov 1 – 12, 2026" for the current line and "Oct 1 – 12, 2026" for the compared one, drawn lighter and dashed on the same days. Hover a day to read both values: "Nov 6", "sessions: 7", "Oct 6: 6". The day that holds today is drawn dotted (a faint bar for a bar chart), with **Today, still counting** under the chart: its figure grows until the day ends. A line on the right axis says so in the legend, for example "Sessions (right axis)". When one source of a blended chart cannot be read, a line under the chart names it and says why. Clicking a bar or a point of a blended chart opens the records of the source it comes from.
 
 ## Charts over time
 
@@ -256,7 +275,7 @@ Signed-in requests, with the person's own access:
 | `GET /api/dashboards/:id/export.pdf` | The dashboard as a PDF (range, compare and filters as for the data). |
 | `DELETE /api/dashboards/:id` | Delete it. |
 | `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. `?range=<preset>` (`last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`), or `?from=YYYY-MM-DD&to=YYYY-MM-DD`, and `?compare=lastYear\|previousPeriod\|none` set the range; without them, the dashboard's default. `?f.<filterId>=<value>` (repeated for several values) sets a filter; an absent filter takes its default, an empty one means all. |
-| `GET /api/dashboards/:id/blocks/:blockId/rows` | The rows behind a figure, read-only: `?category=<label>` (and `?series=<name>`) for a chart, `?row=<index>` for a table row, nothing for a metric; `?offset=` and `?limit=` (at most 200) page them. Range and filters as for the data. Answers `columns`, `rows`, `links` (where each row leads), `total` and `nextOffset`. |
+| `GET /api/dashboards/:id/blocks/:blockId/rows` | The rows behind a figure, read-only: `?category=<label>` (and `?series=<name>`) for a chart, `?row=<index>` for a table row, nothing for a metric; `?offset=` and `?limit=` (at most 200) page them. Range and filters as for the data. Answers `columns`, `rows`, `links` (where each row leads), `total`, `nextOffset` and `fields` (the names of the fields the source's rows hold). A blended chart takes `?layer=<id>`. |
 | `GET /api/dashboards/:id/filters/:filterId/options` | A filter's choices: its list, or the values found in its data (at most 200, `?q=` narrows them). |
 | `GET /api/dashboards/:id/viewer-state` | The range and filter values you last chose on this dashboard, or `null`. |
 | `PUT /api/dashboards/:id/viewer-state` | Remember your choice: any of `{ timeRange: { preset, from?, to? }, compare, filters: { <filterId>: [values] } }`. Filter values over 16 KB in all answer 400. |

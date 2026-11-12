@@ -6,6 +6,11 @@
 // so after such a read it parks; in a person's clean own turn it runs. The
 // tools are registered with the marks the shipped manifest carries, so
 // dropping `taintSource` or `externalEffect` from an entry fails here.
+//
+// A connection bound to no agent also keeps a record of the scopes its session
+// read, and an outside send after any read waits for approval (scope taint
+// rule 14). The readers here leave no scope in that record, so what parks the
+// link is the outside-text mark alone; one case pins the scope rule with them.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -22,6 +27,7 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import {
   cleanupSeededOrg,
+  grantScope,
   seedMcpConnection,
   seedOrgWithTicketsApp,
   userContextFor,
@@ -68,8 +74,15 @@ async function threadTainted(threadId: string): Promise<boolean> {
   return row?.tainted === true
 }
 
-/** Each tool as the shipped manifest marks it; `customer_link` counts its runs. */
-function register(orgId: string): { linkRuns: number } {
+/**
+ * Each tool as the shipped manifest marks it; `customer_link` counts its runs. By default a
+ * reader leaves no scope in the session's read record (`taintFree`), so only its outside text
+ * can park the link; `recordsRead` keeps the scope, and `found: false` answers with no row.
+ */
+function register(
+  orgId: string,
+  opts: { recordsRead?: boolean; found?: boolean } = {},
+): { linkRuns: number } {
   const counter = { linkRuns: 0 }
   for (const [name, payload] of READERS) {
     const shipped = MANIFEST.tools[name] as Shipped
@@ -78,10 +91,14 @@ function register(orgId: string): { linkRuns: number } {
       name,
       description: name,
       requiredScopes: ["test:items:read"],
+      ...(opts.recordsRead === true ? {} : { taintFree: true }),
       ...(shipped.readOnly === true ? { readOnly: true } : {}),
       ...(shipped.taintSource === true ? { taintSource: true } : {}),
       params: z.object({}).passthrough(),
-      handler: async () => payload,
+      handler: async () =>
+        opts.found === false
+          ? { error: { code: "not_found", message: "No such record" } }
+          : payload,
     } as never)
   }
   const link = MANIFEST.tools.customer_link as Shipped
@@ -208,6 +225,25 @@ describe("Stripe reads of outside text", () => {
     expect(runs.linkRuns).toBe(1)
     expect(await threadTainted(clean.seed.threadId)).toBe(false)
   }, 120_000)
+
+  it("over MCP, a reader's scope then customer_link: the link waits for approval even when the read handed back no outside text", async () => {
+    const { seed, ctx } = await seeded()
+    // The approver holds the scope the session read, so the link parks rather than being refused.
+    await grantScope(seed.orgId, seed.ownerId, "stripe:approve")
+    const runs = register(seed.orgId, { recordsRead: true, found: false })
+    const read = await handleToolCall(ctx, "stripe__customers_search", {})
+    expect(read.content.map((b) => b.text)).not.toContain(EXTERNAL_CONTENT_NOTICE)
+    expect(await threadTainted(ctx.connectionThreadId!)).toBe(false)
+    const parked = (await handleToolCall(ctx, "stripe__customer_link", {})).structuredContent as {
+      gated?: boolean
+      executed?: boolean
+    }
+    expect({ gated: parked.gated, executed: parked.executed }).toEqual({
+      gated: true,
+      executed: false,
+    })
+    expect(runs.linkRuns).toBe(0)
+  }, 60_000)
 
   it("the six readers and the link load on demand, and their seven schemas stay within 1,500 tokens", () => {
     const names = [...READERS.map(([n]) => n), "customer_link"]

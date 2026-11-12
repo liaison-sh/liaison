@@ -8,6 +8,11 @@
 // turn and a later outbound call parks; a read that hands back no row (refused or not found)
 // leaves the turn clean and the outbound call runs. Removing a tool's declaration turns its case
 // red.
+//
+// A connection bound to no agent also keeps a record of the scopes its session read, and an
+// outside send after any read waits for approval (scope taint rule 14). The reads here leave no
+// scope in that record, so only their outside text decides whether the send parks; one case
+// pins the scope rule with a read that keeps its scope.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -465,8 +470,16 @@ async function threadTainted(threadId: string | null): Promise<boolean> {
 
 const texts = (res: { content: Array<{ text?: string }> }) => res.content.map((b) => b.text)
 
-/** The read under test, as its manifest declares it, handing back `answer()`'s result. */
-function registerRead(orgId: string, c: Case, answer: () => unknown): string {
+/**
+ * The read under test, as its manifest declares it, handing back `answer()`'s result. It leaves
+ * no scope in the session's read record (`taintFree`) unless `recordsRead` is set.
+ */
+function registerRead(
+  orgId: string,
+  c: Case,
+  answer: () => unknown,
+  opts: { recordsRead?: boolean } = {},
+): string {
   const declared =
     c.app === "kernel" ? kernelTool(orgId, c.tool) : manifestTool(c.dir, c.app, c.tool)
   const name = `${c.app}_${c.tool}`.replace(/[^a-zA-Z0-9_]/g, "_")
@@ -475,6 +488,7 @@ function registerRead(orgId: string, c: Case, answer: () => unknown): string {
     name,
     description: `The ${c.app} read ${c.tool}`,
     requiredScopes: ["test:items:read"],
+    ...(opts.recordsRead === true ? {} : { taintFree: true }),
     readOnly: declared.readOnly === true,
     ...(declared.taintSource === true ? { taintSource: true } : {}),
     ...(declared.taintSourceWhen ? { taintSourceWhenRow: declared.taintSourceWhen } : {}),
@@ -589,4 +603,31 @@ describe("reads that hand back outside text mark the turn", () => {
       }
     }, 120_000)
   }
+
+  it("a read that hands back no row but keeps its scope in the session: a later outbound waits for approval", async () => {
+    const seed = await seedOrgWithTicketsApp()
+    orgs.push(seed.orgId)
+    const outbound = registerOutbound(seed.orgId)
+    const c = CASES[0]!
+    const ctx = await freshConnection(seed)
+    const tool = registerRead(
+      seed.orgId,
+      c,
+      () => ({ error: { code: "not_found", message: "No such record" } }),
+      { recordsRead: true },
+    )
+
+    const empty = await handleToolCall(ctx, tool, {})
+    expect(texts(empty)).not.toContain(EXTERNAL_CONTENT_NOTICE)
+    expect(await threadTainted(ctx.connectionThreadId)).toBe(false)
+    const parked = (await handleToolCall(ctx, "test__sendOut", {})).structuredContent as {
+      gated?: boolean
+      executed?: boolean
+    }
+    expect({ gated: parked.gated, executed: parked.executed }).toEqual({
+      gated: true,
+      executed: false,
+    })
+    expect(outbound.runs).toBe(0)
+  }, 60_000)
 })

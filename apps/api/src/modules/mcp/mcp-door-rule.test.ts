@@ -217,6 +217,9 @@ describe("the rule for tools called over MCP", () => {
       name: "notesList",
       description: "List notes",
       requiredScopes: ["test:items:read"],
+      // The session's read record keeps no scope from this read (scope taint rule 14 would park
+      // any outside send after it): only the row condition decides whether the send parks here.
+      taintFree: true,
       readOnly: true,
       taintSource: true,
       taintSourceWhenRow: { field: "origin", equals: "outside" },
@@ -239,6 +242,27 @@ describe("the rule for tools called over MCP", () => {
     expect(await threadTainted(ctx.connectionThreadId!)).toBe(true)
     expectParked(await handleToolCall(ctx, "test__sendOut", {}))
     expect(outbound.runs).toBe(1)
+  }, 30_000)
+
+  it("a clean read whose scope the session keeps, then an outbound call: the call waits for approval", async () => {
+    const { seed, ctx } = await seeded()
+    toolRegistry.set([seed.orgId, "test", "notesList"], {
+      appName: "test",
+      name: "notesList",
+      description: "List notes",
+      requiredScopes: ["test:items:read"],
+      readOnly: true,
+      taintSource: true,
+      taintSourceWhenRow: { field: "origin", equals: "outside" },
+      handler: async () => ({ items: [{ id: "n1", origin: "member", text: "Call back" }] }),
+    })
+    const outbound = registerOutbound(seed.orgId)
+
+    const clean = await handleToolCall(ctx, "test__notesList", {})
+    expect(texts(clean)).not.toContain(EXTERNAL_CONTENT_NOTICE)
+    expect(await threadTainted(ctx.connectionThreadId!)).toBe(false)
+    expectParked(await handleToolCall(ctx, "test__sendOut", {}))
+    expect(outbound.runs).toBe(0)
   }, 30_000)
 })
 

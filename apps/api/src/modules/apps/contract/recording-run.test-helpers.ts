@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The shared half of an app's fixture recorder (`record-<app>.recorder.ts`):
+// The shared half of an app's fixture recorder (`record-<app>.recorder.test.ts`):
 // install the bundled app for the contract's own org and user
 // (replay-bridge.ts ids), give it a connection, then run a recording plan,
 // step by step, on the live bridge (recorder.ts): each step names a contract
 // entry, builds its input from what earlier steps found or created, and may
 // read the answer for later steps. A fixture is scrubbed, replayed twice and
-// checked for the given secrets before it is written. Not part of any suite: a
+// checked for the given secrets before it is written. Recorders skip unless CONTRACT_RECORD=1: a
 // developer runs the app's recorder by path against the provider's sandbox
 // account, reads what it wrote and commits it.
 
@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
@@ -64,6 +65,9 @@ export const RECORDING_ACTOR: UserContext = {
   dimensionGrants: { "*": ["*"] },
 }
 
+/** The kernel schema of this run's namespace. */
+const K = sql(schemaRef("kernel"))
+
 export function readBundledManifest(app: string): Manifest {
   return JSON.parse(
     readFileSync(join(BUNDLED_APPS_DIR, app, "app.manifest.json"), "utf8"),
@@ -77,9 +81,9 @@ export async function installForRecording(
 ): Promise<{ manifest: Manifest; bridgeManifest: unknown }> {
   const manifest = readBundledManifest(app)
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
+  await sql`INSERT INTO ${K}.organizations (id, name, slug)
     VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
+  await sql`INSERT INTO ${K}.users (id, org_id, email, name, password_hash)
     VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
     ON CONFLICT DO NOTHING`
   await ensureAppsForOrg(CONTRACT_ORG_ID)
@@ -100,7 +104,7 @@ export async function installForRecording(
     toolRegistry.get([CONTRACT_ORG_ID, app, tools[0] ?? ""]) as { _manifest?: unknown } | undefined
   )?._manifest
   if (!bridgeManifest) throw new Error(`${app} did not register`)
-  await sql`INSERT INTO kernel.apps (org_id, name, version, config)
+  await sql`INSERT INTO ${K}.apps (org_id, name, version, config)
     VALUES (${CONTRACT_ORG_ID}, ${app}, ${manifest.version}, ${JSON.stringify(config)}::jsonb)
     ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config`
   return { manifest, bridgeManifest }
@@ -113,9 +117,9 @@ export async function connectCredentials(
   identifier: string,
   fields: Record<string, string>,
 ): Promise<string> {
-  await sql`DELETE FROM kernel.connected_accounts
+  await sql`DELETE FROM ${K}.connected_accounts
     WHERE org_id = ${CONTRACT_ORG_ID} AND app_name = ${app}`
-  const [row] = await sql<{ id: string }[]>`INSERT INTO kernel.connected_accounts
+  const [row] = await sql<{ id: string }[]>`INSERT INTO ${K}.connected_accounts
     (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name,
      credentials_encrypted, status, created_by)
     VALUES (${CONTRACT_ORG_ID}, ${app}, ${connection}, 'org', 'credentials', ${identifier},

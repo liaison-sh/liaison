@@ -3,16 +3,17 @@
 // Records the monitoring app's contract fixtures (fixtures/monitoring/*.json).
 // The app has no provider: an alert is a signed delivery from the org's own
 // watchdog, so the plan signs its deliveries with a stand-in secret. Not part of
-// any suite: run it by path when the app's bridge calls change, read what it
-// wrote, commit it.
+// any suite run (it skips unless CONTRACT_RECORD=1): run it by path when
+// the app's bridge calls change, read what it wrote, commit it.
 //
-//   (cd apps/api && set -a && source ../../.env.test && set +a && \
+//   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-monitoring.recorder.ts)
+//     bun test ./src/modules/apps/contract/record-monitoring.recorder.test.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
+import { schemaRef } from "~/db/schema-ref"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   installForRecording,
@@ -20,7 +21,7 @@ import {
   type RecordingStep,
   runRecordingPlan,
   uninstallAfterRecording,
-} from "./recording-run"
+} from "./recording-run.test-helpers"
 import { CONTRACT_ORG_ID } from "./replay-bridge"
 
 const APP = "monitoring"
@@ -103,7 +104,7 @@ const PLAN: RecordingStep[] = [
   },
 ]
 
-describe("record monitoring contract fixtures", () => {
+describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record monitoring contract fixtures", () => {
   let installed: Awaited<ReturnType<typeof installForRecording>>
 
   beforeAll(async () => {
@@ -111,7 +112,7 @@ describe("record monitoring contract fixtures", () => {
     installed = await installForRecording(APP, CONFIG)
     await sql`DELETE FROM app_monitoring.incident_comments WHERE org_id = ${CONTRACT_ORG_ID}`
     await sql`DELETE FROM app_monitoring.incidents WHERE org_id = ${CONTRACT_ORG_ID}`
-    await sql`DELETE FROM kernel.app_sequences WHERE org_id = ${CONTRACT_ORG_ID}`.catch(
+    await sql`DELETE FROM ${sql(schemaRef("kernel"))}.app_sequences WHERE org_id = ${CONTRACT_ORG_ID}`.catch(
       () => undefined,
     )
   }, 300_000)

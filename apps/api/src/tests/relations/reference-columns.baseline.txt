@@ -145,6 +145,7 @@ kernel.agent_turns.thread_id
 kernel.agent_turns.user_message_id
 kernel.agents.owner_user_id
 kernel.app_activation_events.actor_id
+kernel.app_attention_items.user_id
 kernel.app_scope_grant_audit.target_user_id
 kernel.app_sequences.app_id
 kernel.approval_policies.created_by
@@ -195,6 +196,10 @@ kernel.contacts.owner_user_id
 kernel.control_plane_outbox.message_id
 kernel.credit_transactions.cycle_id
 kernel.credit_transactions.user_id
+kernel.dashboard_versions.dashboard_id
+kernel.dashboard_versions.saved_by
+kernel.dashboard_viewer_states.dashboard_id
+kernel.dashboard_viewer_states.user_id
 kernel.demo_leads.demo_org_id
 kernel.demo_world_marks.beat_id
 kernel.demo_world_marks.tour_id

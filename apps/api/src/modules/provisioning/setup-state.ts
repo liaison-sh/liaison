@@ -26,7 +26,7 @@ import {
   API_CONNECTOR_APP,
   API_CONNECTOR_CONNECTION,
   listAdapterRows,
-} from "~/apps/api-connector/store"
+} from "~/modules/apps/connections/api/store"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"

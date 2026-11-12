@@ -128,6 +128,8 @@ export type {
   ProvisionParams,
   ProvisionResult,
   SqlClient,
+  ApiAnswer,
+  ApiConnectionsClient,
   SqlError,
   SqlQueryRequest,
   SqlReadInfo,

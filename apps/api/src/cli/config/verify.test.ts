@@ -8,7 +8,8 @@
 import { describe, expect, test } from "bun:test"
 import type { Operation, RoleName } from "@liaison/api-connector-core"
 import type { ProvisioningConfig } from "~/cli/config/schema"
-import { runConfigVerify, verifyProbeOperation } from "~/cli/config/verify"
+import { runConfigVerify } from "~/cli/config/verify"
+import { verifyProbeOperation } from "~/modules/apps/connections/api/bridge"
 import type { VerifyProbe } from "~/cli/provisioners/verify-probes"
 
 const SECRET_TOKEN = "glpat-super-secret-do-not-print-9f3a"

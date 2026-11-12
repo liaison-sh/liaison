@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/authoring-tools"
+import { apiDeclarationOf } from "~/modules/apps/connections/api/bridge"
+import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import { createHash, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -4494,6 +4497,11 @@ async function registerSingleApp(
       // every re-registration brings them back.
       const registerHostTools: ((orgId: string) => void) | undefined = desc._registerHostTools
       if (typeof registerHostTools === "function") registerHostTools(orgId)
+      // An app that declares a platform-held API connection gets the platform's
+      // adapter save and restore (decided by the connection's admin scope).
+      if (apiDeclarationOf(desc as AppManifestForBridge, desc.name)) {
+        registerAdapterAuthoringTools(orgId)
+      }
 
       registeredApps.add(registrationKey)
       registeredAppVersions.set(registrationKey, desc.version)

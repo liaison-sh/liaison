@@ -12,14 +12,14 @@
  */
 
 import { MAX_PAGES_PER_CALL, type Operation } from "@liaison/api-connector-core"
-import { runConnectorOperation } from "~/apps/api-connector/service"
-import { getAdapterRow } from "~/apps/api-connector/store"
+import { runConnectorOperation } from "~/modules/apps/connections/api/service"
+import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import {
   API_CONNECTOR_PAGES_BUDGET_MS,
   API_CONNECTOR_REQUEST_TIMEOUT_MS,
   ApiConnectorError,
   describeRequest,
-} from "~/apps/api-connector/transport"
+} from "~/modules/apps/connections/api/transport"
 import type { CliRunResult } from "~/cli/api-connector/validate"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 

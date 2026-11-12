@@ -31,7 +31,7 @@
 
 import { createHash } from "node:crypto"
 import { and, desc, sql as drizzleSql, eq, isNotNull } from "drizzle-orm"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/apps/api-connector/store"
+import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/modules/apps/connections/api/store"
 import { ticketsRel } from "~/apps/tickets/schema-refs"
 import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"

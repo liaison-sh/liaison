@@ -1,0 +1,116 @@
+{
+  "card": {
+    "title": "Customer",
+    "loading": "Looking up the customer",
+    "unnamed": "Unnamed record",
+    "error": "The customer could not be loaded.",
+    "noMatch": "No customer found for {{email}}",
+    "noMatchIn": "No customer found in {{system}} for {{email}}",
+    "severalMatches": "{{count}} records match",
+    "matchedByDomain": "Matched by company domain",
+    "openIn": "Open in {{system}}",
+    "list": {
+      "orders": "Recent orders",
+      "invoices": "Invoices",
+      "deals": "Deals"
+    }
+  },
+  "settings": {
+    "connectionsTitle": "Connections",
+    "description": "Connections to your own CRM or ERP, each described by an adapter. Agents read through them, and the customer card on tickets and mail uses the ones that fill the customer roles.",
+    "add": "Add connection",
+    "addTitle": "New connection",
+    "replaceTitle": "Replace the adapter of {{identifier}}",
+    "slugLabel": "Connection name",
+    "slugHint": "Lowercase letters, digits and dashes, for example crm or erp-eu.",
+    "slugInvalid": "Use 1 to 40 lowercase letters, digits or dashes, starting with a letter or digit.",
+    "adapterLabel": "Adapter (YAML or JSON)",
+    "adapterFile": "Or load a file",
+    "adapterEmpty": "Paste an adapter or load a file.",
+    "issueDocument": "adapter",
+    "saveAdapter": "Save adapter",
+    "saveFailed": "The adapter could not be saved. Try again.",
+    "demoReadOnly": "This is a demo workspace: connections are read-only, and only the sample connection is available.",
+    "loading": "Loading connections",
+    "loadFailed": "The connections could not be loaded.",
+    "empty": "No connection yet. Add one with its adapter.",
+    "roles": "Roles: {{roles}}",
+    "noRoles": "No customer roles filled",
+    "credentials": "Credentials",
+    "test": "Test",
+    "replace": "Replace adapter",
+    "deleteConfirm": "Delete {{name}}? Its adapter and its credentials are removed.",
+    "deleteFailed": "The connection could not be deleted.",
+    "status": {
+      "ok": "Connected",
+      "needs_credentials": "Needs credentials",
+      "error": "Error"
+    },
+    "authApiKeyHeader": "This system takes an API key, sent in the {{name}} header.",
+    "authApiKeyQuery": "This system takes an API key, sent as the {{name}} query parameter.",
+    "auth": {
+      "bearer": "This system takes a bearer token.",
+      "basic": "This system takes a username and a password.",
+      "oauth2ClientCredentials": "This system takes an OAuth client id and secret; the token address comes from the adapter."
+    },
+    "authUnknown": "The adapter does not say how this system authenticates.",
+    "credField": {
+      "apiKey": "API key",
+      "token": "Token",
+      "username": "Username",
+      "password": "Password",
+      "clientId": "Client id",
+      "clientSecret": "Client secret"
+    },
+    "credMissing": "Fill in every field.",
+    "credFailed": "The credentials could not be saved.",
+    "credSaved": "Credentials saved. They are stored encrypted and never shown again.",
+    "credSave": "Save credentials",
+    "testNoReads": "This adapter has no read operation to test.",
+    "testOperation": "Operation",
+    "testRun": "Run",
+    "paramListHint": "Comma separated values",
+    "paramError": {
+      "required": "Required",
+      "number": "Enter a number",
+      "integer": "Enter a whole number",
+      "enum": "Pick one of the listed values"
+    },
+    "testStatus": "HTTP {{status}}",
+    "testMs": "{{ms}} ms",
+    "testCount": {
+      "one": "{{count}} item",
+      "other": "{{count}} items"
+    },
+    "testUpstreamHttp": "The system answered HTTP {{status}}.",
+    "testError": {
+      "upstream_status": "The system answered with an error.",
+      "timeout": "The system did not answer in time.",
+      "too_large": "The answer was too large.",
+      "invalid_response": "The system's answer could not be read.",
+      "host_refused": "The adapter's address is not allowed.",
+      "not_configured": "This connection has no credentials yet.",
+      "write_not_testable": "Write operations cannot be tested here.",
+      "failed": "The test could not run."
+    },
+    "slugPlaceholder": "crm",
+    "history": {
+      "open": "History",
+      "title": "Earlier versions of this adapter",
+      "loading": "Loading the history",
+      "loadFailed": "The history could not be loaded.",
+      "empty": "No earlier version yet: each save keeps the one it replaces.",
+      "version": "Version {{version}}",
+      "saved": "Saved {{when}} by {{who}}",
+      "unknownSaver": "someone no longer in the workspace",
+      "restore": "Restore",
+      "wipeWarning": "This version points at {{target}}. Restoring it deletes the stored credentials, which must be entered again.",
+      "restoreAnyway": "Restore and delete credentials",
+      "restored": "Version {{version}} restored.",
+      "restoredCleared": "Version {{version}} restored. Enter the credentials again.",
+      "restoreFailed": "The version could not be restored."
+    },
+    "wipeWarning": "This adapter moves the connection from {{from}} to {{to}}. Saving it deletes the stored credentials, which must be entered again.",
+    "saveAnyway": "Save and delete credentials"
+  }
+}

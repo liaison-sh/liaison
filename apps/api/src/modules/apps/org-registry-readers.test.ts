@@ -31,7 +31,7 @@ const WEBHOOK =
 const CLI = "CLI: registers every org itself (initAppsForOrg) before reading"
 
 const READERS: Record<string, string> = {
-  "apps/api-connector/authoring-tools.ts": AGENT,
+  "modules/apps/connections/api/authoring-tools.ts": AGENT,
   "apps/mcp-manager/routes.ts": REQUEST,
   "cli/search/reindex.ts": CLI,
   "infra/jobs/webhook-inbox-jobs.ts": JOB,

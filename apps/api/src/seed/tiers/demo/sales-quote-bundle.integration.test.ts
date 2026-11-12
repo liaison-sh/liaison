@@ -27,7 +27,7 @@ import { sql } from "drizzle-orm"
 import {
   type DemoApiConnectorResponder,
   registerDemoApiConnectorResponder,
-} from "~/apps/api-connector/transport"
+} from "~/modules/apps/connections/api/transport"
 import { withPrivilegedDb } from "~/db/privileged"
 import { isJobWorkerRegistered, registerJobWorker } from "~/infra/jobs/jobs"
 import { resolveRoutineOwnerDimensionGrants } from "~/infra/jobs/kernel-jobs"

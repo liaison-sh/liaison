@@ -60,9 +60,20 @@ export interface ConnectDialogResult {
  * `{ connected: false, redirected: true }` just before the browser leaves for
  * the provider.
  */
+/**
+ * `identifier` and `fields`: one org account of a multiInstance credentials
+ * connection (its slug) and the declared credential fields to ask for (all of
+ * them when absent), for an app whose accounts each need a different subset.
+ */
+export interface ConnectDialogOptions {
+  connectionName?: string
+  identifier?: string
+  fields?: string[]
+}
+
 export type OpenConnectDialog = (
   appName: string,
-  opts?: { connectionName?: string },
+  opts?: ConnectDialogOptions,
 ) => Promise<ConnectDialogResult>
 
 /** Reactive accessor for the current auth token. */
@@ -503,7 +514,7 @@ export const app = {
    * `{ connected: false, redirected: true }` when an OAuth sign-in leaves the
    * page. Rejects when the host predates the primitive.
    */
-  openConnectDialog: async (opts?: { connectionName?: string }): Promise<ConnectDialogResult> => {
+  openConnectDialog: async (opts?: ConnectDialogOptions): Promise<ConnectDialogResult> => {
     const host = getHost()
     if (!host.openConnectDialog) {
       throw new Error("@liaison/host: host.openConnectDialog is not available")

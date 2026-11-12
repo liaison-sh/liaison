@@ -6,7 +6,7 @@
 // a step itself, outside the fence, from an enumerated code that only a
 // registered host tool can name. No text from any result is lifted.
 import { describe, expect, it } from "bun:test"
-import { registerAdapterAuthoringTools, saveFollowUp } from "~/apps/api-connector/authoring-tools"
+import { registerAdapterAuthoringTools, saveFollowUp } from "~/modules/apps/connections/api/authoring-tools"
 import { convertToCoreMessages } from "~/modules/agent/context/context"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerRequiredStepEmitter, requiredStepLine, requiredStepOf } from "./required-step"

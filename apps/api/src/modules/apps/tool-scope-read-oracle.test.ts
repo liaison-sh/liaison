@@ -936,7 +936,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   ["apps/api/src/apps/gitlab/tools.ts", "scope: params.scope,", REASONS.GITLAB],
   [
-    "apps/api/src/apps/api-connector/transport.ts",
+    "apps/api/src/modules/apps/connections/api/transport.ts",
     "const tokenScope = auth.scope",
     REASONS.API_CONNECTOR,
   ],

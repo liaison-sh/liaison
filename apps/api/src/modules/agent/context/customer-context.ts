@@ -35,8 +35,8 @@ import { type Adapter, promptSafeName, type RoleName } from "@liaison/api-connec
 import { isStrictEmail } from "@liaison/api-connector-core/contract"
 import { firstExternalInboundSender } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { resolveCustomer } from "~/apps/api-connector/customer"
-import { listAdapterRows } from "~/apps/api-connector/store"
+import { resolveCustomer } from "~/modules/apps/connections/api/customer"
+import { listAdapterRows } from "~/modules/apps/connections/api/store"
 import { loadTicketParticipantEmail } from "~/apps/tickets/participants"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -99,7 +99,7 @@ async function orgMailboxAddresses(orgId: string): Promise<string[]> {
  * one of the org's mailboxes (`firstExternalInboundSender`). Read under the
  * actor's RLS. A plain addr-spec only.
  */
-async function participantEmail(
+export async function participantEmail(
   currentView: { tabType: string; entityId: string },
   actor: UserContext,
 ): Promise<string | null> {

@@ -23,7 +23,7 @@
  * `promptSafeName`), never data read from the upstream system.
  */
 import { promptSafeName } from "@liaison/api-connector-core"
-import { listAdapterRows } from "~/apps/api-connector/store"
+import { listAdapterRows } from "~/modules/apps/connections/api/store"
 import { rootLogger } from "~/lib/logger"
 import { CONNECTOR_APP } from "~/modules/agent/tools/tool-rank"
 import { toolRegistry } from "~/modules/apps/app-registries"

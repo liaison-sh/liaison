@@ -769,8 +769,8 @@ async function openApiConnection(
   identifier: string,
 ): Promise<ApiConnectionClient> {
   const [{ getAdapterRow, resolveConnectionCredentials }, transport] = await Promise.all([
-    import("~/apps/api-connector/store"),
-    import("~/apps/api-connector/transport"),
+    import("~/modules/apps/connections/api/store"),
+    import("~/modules/apps/connections/api/transport"),
   ])
   const row = await getAdapterRow(orgId, identifier)
   if (!row) {
@@ -809,7 +809,7 @@ export async function apiConnectionFacts(
   userId: string,
   identifier: string,
 ): Promise<{ adapter: string | null; adapterSavedAt: string | null; credentials: string | null }> {
-  const { getAdapterRow, resolveConnectionCredentials } = await import("~/apps/api-connector/store")
+  const { getAdapterRow, resolveConnectionCredentials } = await import("~/modules/apps/connections/api/store")
   const row = await getAdapterRow(orgId, identifier)
   const creds = row ? await resolveConnectionCredentials(orgId, userId, identifier) : null
   return {

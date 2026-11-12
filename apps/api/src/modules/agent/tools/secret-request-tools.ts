@@ -20,7 +20,7 @@
 // is under a call that ran in the turn.
 
 import { isGmailAddress } from "@liaison/shared"
-import { getAdapterRow, listAdapterRows } from "~/apps/api-connector/store"
+import { getAdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
 import type { RlsClient } from "~/db"
 import {
   captureActingAgentId,

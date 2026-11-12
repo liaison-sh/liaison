@@ -121,7 +121,7 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     ) => {
       await call("openConnect", [opts ?? {}])
     },
-    openConnectDialog: (_app: string, opts?: { connectionName?: string }) =>
+    openConnectDialog: (_app: string, opts?: { connectionName?: string; identifier?: string; fields?: string[] }) =>
       call("openConnectDialog", [opts ?? {}]),
     // The frame never holds the user's token.
     accessToken: () => null,

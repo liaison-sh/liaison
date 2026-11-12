@@ -38,7 +38,7 @@ import {
   type UpdateTourRequest,
 } from "@liaison/shared"
 import { and, eq, isNull, sql } from "drizzle-orm"
-import { customerLookupConfigured } from "~/apps/api-connector/customer"
+import { customerLookupConfigured } from "~/modules/apps/connections/api/customer"
 import type { RlsClient } from "~/db"
 import { type TourProgressRow, tourProgress } from "~/db/schema/kernel"
 import type { AppEvent } from "~/infra/events/event-bus"

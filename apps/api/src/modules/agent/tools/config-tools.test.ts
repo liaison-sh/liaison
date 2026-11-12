@@ -375,11 +375,6 @@ describe("config tools: the approver's scopes, per section", () => {
     { section: "tickets", data: { approveRepliesFromHome: true }, scope: "tickets:settings:admin" },
     { section: "apps", data: [{ name: "projects", enable: true }], scope: "kernel:apps:admin" },
     {
-      section: "apiConnectors",
-      data: [{ identifier: "crm", adapter: {} }],
-      scope: "api-connector:admin",
-    },
-    {
       section: "knowledge",
       data: { collections: [{ name: "M" }] },
       scope: "knowledge:collections:manage",

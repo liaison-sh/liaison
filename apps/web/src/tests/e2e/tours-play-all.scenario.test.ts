@@ -28,11 +28,11 @@ import {
 } from "@liaison/shared"
 import { api } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
-import { loadFixtureCrmAdapter } from "../../../../api/src/apps/api-connector/__fixtures__/fixture-crm/adapter"
+import { loadFixtureCrmAdapter } from "../../../../api/src/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import {
   type FixtureCrm,
   startFixtureCrm,
-} from "../../../../api/src/apps/api-connector/__fixtures__/fixture-crm/server"
+} from "../../../../api/src/modules/apps/connections/api/__fixtures__/fixture-crm/server"
 import {
   type GmailHttpFixture,
   startGmailHttpFixture,

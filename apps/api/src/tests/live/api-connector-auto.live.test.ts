@@ -14,13 +14,13 @@
  */
 import { afterAll, beforeAll, expect } from "bun:test"
 import { app } from "~/app"
-import { loadFixtureCrmAdapter } from "~/apps/api-connector/__fixtures__/fixture-crm/adapter"
+import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import {
   type FixtureCrm,
   startFixtureCrm,
-} from "~/apps/api-connector/__fixtures__/fixture-crm/server"
-import { invalidateConnectionCaches } from "~/apps/api-connector/cache"
-import { upsertAdapterRow } from "~/apps/api-connector/store"
+} from "~/modules/apps/connections/api/__fixtures__/fixture-crm/server"
+import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"

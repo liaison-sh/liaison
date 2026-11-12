@@ -76,6 +76,30 @@ describe("catalog CRUD", () => {
     expect(comps[0]!.quantity).toBe(3)
   })
 
+  it("pack_upsert commits the pack with its components: a failing component leaves nothing", async () => {
+    const { ctx, db } = makeCtx()
+    const insert = db.insert.bind(db)
+    db.insert = async (entity, data) => {
+      if (entity === "pack_component" && data.product_id === "V2") throw new Error("component refused")
+      return insert(entity, data)
+    }
+    await expect(
+      packUpsert(ctx, {
+        name: "box-b",
+        length: 40,
+        width: 30,
+        height: 20,
+        gross_weight: 5,
+        components: [
+          { product_source: "shopify", product_id: "V1", quantity: 1 },
+          { product_source: "shopify", product_id: "V2", quantity: 1 },
+        ],
+      }),
+    ).rejects.toThrow("component refused")
+    expect(db.__all("pack")).toEqual([])
+    expect(db.__all("pack_component")).toEqual([])
+  })
+
   it("pack_upsert persists carton_tare when sent, and null when omitted", async () => {
     const { ctx, db } = makeCtx()
     const { id: tared } = await packUpsert(ctx, {

@@ -4,6 +4,9 @@
     "order_number": "#1042"
   },
   "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "expectError": {
+    "reason": "an order number the store does not know is refused (order_not_found); the prefill path reads the order through the Shopify app, which this recording org does not have"
+  },
   "calls": [
     {
       "method": "executeTool",

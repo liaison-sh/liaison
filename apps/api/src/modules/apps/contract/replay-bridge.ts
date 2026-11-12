@@ -34,18 +34,35 @@ export interface EgressFixture {
   calls: RecordedCall[]
   /** Where and when it was recorded (free text: never a secret or a customer name). */
   recordedFrom?: string
+  /**
+   * A deliberate negative case: the recorded run ENDS in an error or a refusal on purpose (a
+   * missing configuration the entry must refuse, a provider error it must surface), and `reason`
+   * says why that is the path worth pinning. Without it, a fixture whose replay ends in an error
+   * fails the contract (harness.ts, `error-outcome`), and a recorder refuses to write it.
+   */
+  expectError?: { reason: string }
+  /**
+   * The approval a gated tool's run re-entered with (its `ctx.approval`), for an entry whose
+   * real path runs only once a person approved it. Absent: a first entry, no approval.
+   */
+  approval?: Record<string, unknown>
 }
 
 export const CONTRACT_ORG_ID = "00000000-0000-4000-8000-00000000c0de"
 export const CONTRACT_USER_ID = "00000000-0000-4000-8000-00000000c0df"
 
-/** Methods answered without a fixture. */
-function freeAnswer(method: string): { answer: unknown } | null {
+/** Methods answered without a fixture (the approval envelope from the fixture's `approval`). */
+function freeAnswer(
+  method: string,
+  fixture?: Pick<EgressFixture, "approval"> | null,
+): { answer: unknown } | null {
   if (method.startsWith("log_")) return { answer: undefined }
   if (method === "getOrgId") return { answer: CONTRACT_ORG_ID }
   if (method === "getUserId") return { answer: CONTRACT_USER_ID }
   if (method === "getCallerApp" || method === "getIngestionCallerApp") return { answer: null }
-  if (method === "_approvalContext_get") return { answer: undefined }
+  if (method === "_approvalContext_get") {
+    return { answer: fixture?.approval ? JSON.stringify(fixture.approval) : undefined }
+  }
   return null
 }
 
@@ -102,7 +119,7 @@ export function createReplayBridge(
   let inflight = 0
   const answer = (method: string, args: unknown[]): RecordedCall | { free: unknown } => {
     stats.calls++
-    const free = freeAnswer(method)
+    const free = freeAnswer(method, fixture)
     if (free) return { free: free.answer }
     const q = queues.get(keyOf(method, args))
     if (!q || q.length === 0) {
@@ -151,7 +168,14 @@ export function createReplayBridge(
  */
 export function createRecordingBridge(
   real: AppBridge,
-  entry: { entry: string; params?: unknown; extraArgs?: unknown[]; recordedFrom?: string },
+  entry: {
+    entry: string
+    params?: unknown
+    extraArgs?: unknown[]
+    recordedFrom?: string
+    expectError?: { reason: string }
+    approval?: Record<string, unknown>
+  },
   surface?: ReadonlyArray<readonly [string, "sync" | "async"]>,
 ): { bridge: AppBridge; finish: () => EgressFixture } {
   const calls: RecordedCall[] = []

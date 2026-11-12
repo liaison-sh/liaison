@@ -1,7 +1,7 @@
 {
   "entry": "preflight:settings_issuer_profile_delete",
   "params": {
-    "id": "99444731-e2a2-460c-ab40-a9348f2a7121"
+    "id": "faa725e0-b8ce-44d3-8d3e-431b0f07c029"
   },
   "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
@@ -14,9 +14,9 @@
       "method": "db_count",
       "args": [
         "documents",
-        "{\"where\":{\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\"}}"
+        "{\"where\":{\"issuer_profile_id\":\"faa725e0-b8ce-44d3-8d3e-431b0f07c029\"}}"
       ],
-      "reply": "11"
+      "reply": "0"
     }
   ]
 }

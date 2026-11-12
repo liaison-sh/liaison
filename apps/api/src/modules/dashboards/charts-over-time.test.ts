@@ -291,13 +291,19 @@ describe("the approval card", () => {
       [{ op: "addBlock", block: SPEC.blocks[1] as Record<string, unknown> }],
       { timeZone: "UTC", now: NOW },
     )
+    // The block on one line, each layer on its own numbered line under it.
+    expect(lines).toHaveLength(3)
     const line = lines[0]!
-    expect(line).toContain("blending 2 layers joined on their date bucket")
     expect(line).toContain(
-      `"Units" (bars, sum of units by day per day, split by product, stacked, headline: the period's total`,
+      `blending 2 layers joined on their date bucket ("Units", "Sessions"), each on its own line below`,
     )
-    expect(line).toContain(`"Sessions" (a line on the right axis`)
-    expect(line).toContain("reading the shared dataset 'sessions'")
     expect(line).toContain(`smooth curve, headline figure "Units per session" = units / sessions`)
+    expect(lines[1]).toStartWith(
+      `   1.1. Layer "Units": bars, sum of units by day per day, split by product, stacked, headline: the period's total`,
+    )
+    expect(lines[2]).toStartWith(`   1.2. Layer "Sessions": a line on the right axis`)
+    // The dataset is on the dashboard, unchanged, and not on this card: its tool, no params.
+    expect(lines[2]).toContain(`reading the shared dataset 'sessions' (${APP}:sessions_read).`)
+    for (const l of lines) expect(l.length).toBeLessThanOrEqual(500)
   })
 })

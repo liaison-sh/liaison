@@ -1509,7 +1509,10 @@ describe("invoicing manifest", () => {
     //   resume-interrupted-issues wakes only while a document waits for its PDF.
     // 0.21.2: an order's invoice carries a per-order, per-scope dedup key, so the same order event
     //   run twice at once issues one invoice.
-    expect(m.version).toBe("0.21.2")
+    // 0.21.3: no tool holds a transaction across its run: credit notes and convert-to-invoice commit
+    //   their writes with the document, and order_reissue_apply issues the credit note and its
+    //   replacement in one commit (both or neither).
+    expect(m.version).toBe("0.21.3")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

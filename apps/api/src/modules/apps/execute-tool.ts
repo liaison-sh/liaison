@@ -42,6 +42,7 @@ import {
   type ManifestHandlerRef,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { guardAtomicToolEgress } from "~/modules/apps/atomic-egress"
 import type { BulkToolMeta } from "~/modules/apps/bulk-agent-tools"
 import {
   CONNECTION_CREDENTIALS_MISSING,
@@ -171,11 +172,15 @@ import {
   captureActingAgentId,
   currentRunContext,
   currentToolCallScopesBefore,
+  isPersonExternalClientCall,
   runHasPerson,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
-import { decidePostDisclosure } from "~/modules/agent/scopes/post-disclosure"
+import {
+  decidePostDisclosure,
+  TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY,
+} from "~/modules/agent/scopes/post-disclosure"
 import { checkToolScopes, resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
 import {
   carriesNoTurnContent,
@@ -708,6 +713,9 @@ interface CreateApprovalRequestOpts {
   /** An agent post parked by rule 11: the people of its thread when it parked. Approving it
    *  discloses the post to them, never to anyone who joined since. */
   taintDisclosureAudience?: string[]
+  /** With it: the post was a person's own external-client request, with that connection's
+   *  scopes (post-disclosure.ts). Server-written here only; read on the approved re-entry. */
+  taintDisclosureExternalClientScopes?: string[]
   /**
    * FX18: the acting agent, forwarded by a caller that crossed the same
    * frame-losing hop. Absent means an in-frame caller; see
@@ -1760,6 +1768,13 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
             ...(opts.taintDisclosedToReaders === true ? { taintDisclosedToReaders: true } : {}),
             ...(opts.taintDisclosureAudience
               ? { taintDisclosureAudience: opts.taintDisclosureAudience }
+              : {}),
+            ...(opts.taintDisclosureAudience && opts.taintDisclosureExternalClientScopes
+              ? {
+                  [TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY]: {
+                    scopes: opts.taintDisclosureExternalClientScopes,
+                  },
+                }
               : {}),
           },
         })
@@ -3190,25 +3205,24 @@ export async function executeToolHandler(
     }
     if (session) {
       // `atomic: true` tool: legacy whole-run ambient transaction, materialized
-      // from the session (its failure paths rely on whole-run rollback).
-      return session.run((liveTx) =>
-        runManifest(
-          inlinePgCauseOnBridge(
-            createSandboxRpcBridge(
-              tool.appName,
-              userId,
-              orgId,
-              liveTx,
-              manifest,
-              actorScopes,
-              bridgeActorType,
-              approvalContext,
-              handlerBridgeOptions,
-            ),
-          ),
-          true,
-        ),
-      )
+      // from the session (its failure paths rely on whole-run rollback). It
+      // holds that transaction for its whole run, so every bridge method that
+      // reaches outside the database is refused (atomic-egress.ts).
+      return session.run((liveTx) => {
+        const atomicBridge = createSandboxRpcBridge(
+          tool.appName,
+          userId,
+          orgId,
+          liveTx,
+          manifest,
+          actorScopes,
+          bridgeActorType,
+          approvalContext,
+          handlerBridgeOptions,
+        )
+        guardAtomicToolEgress(atomicBridge as Record<string, unknown>, tool.appName, tool.name)
+        return runManifest(inlinePgCauseOnBridge(atomicBridge), true)
+      })
     }
     return runManifest(
       inlinePgCauseOnBridge(
@@ -3811,6 +3825,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   let taintPostHiddenFrom: number | null | undefined
   // With it, the people the post would reach when it parked (rule 11b): its disclosure audience.
   let taintPostSnapshot: string[] | undefined
+  // The readers' gap of that post: the scopes at least one of them lacks, which its card and
+  // relay name (never the whole taint, most of which they may hold).
+  let taintPostMissingScopes: string[] | undefined
+  // With it, when a person's own external client asked for the post: that connection's scopes,
+  // recorded on the approval because its re-entry runs without the client's frame.
+  let taintPostExternalClientScopes: string[] | undefined
   // What a judged tainted turn read, whatever the sink check answered (rule 13, 2026-11-03): a
   // write the taint lets through (an enforcing sink such as memory, readers who hold it, the
   // same-resource allowance) can still park for another reason (the outside-content hold, a host
@@ -4180,6 +4200,15 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         taintForcedApprovalScopes = [...new Set(knownTaint)].sort()
         taintDisclosedToReaders = true
         taintPostHiddenFrom = postGap.lacking
+        taintPostMissingScopes = [...postGap.missingScopes]
+        if (
+          isPersonExternalClientCall({
+            mcp: opts.origin === "mcp",
+            actingAgentId: resolveActingAgentId(opts.actingAgentId),
+          })
+        ) {
+          taintPostExternalClientScopes = [...(opts.actor.scopes ?? [])]
+        }
         taintPostSnapshot =
           "threadId" in postAudience
             ? await threadPeopleIds(opts.orgId, postAudience.threadId)
@@ -4895,7 +4924,10 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           lines: [
             ...s.lines.slice(0, 7),
             taintPostHiddenFrom !== undefined
-              ? taintPostDisclosureLine(taintForcedApprovalScopes ?? [], taintPostHiddenFrom)
+              ? taintPostDisclosureLine(
+                  taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
+                  taintPostHiddenFrom,
+                )
               : taintDisclosureLine(
                   taintForcedApprovalScopes ?? [],
                   taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable),
@@ -5007,6 +5039,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             audienceMustHold: parkTaint,
             taintDisclosedToReaders,
             ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
+            ...(taintPostExternalClientScopes
+              ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
+              : {}),
           }
         : {}),
       actingAgentId,
@@ -5404,6 +5439,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
                 audienceMustHold: parkTaint,
                 taintDisclosedToReaders,
                 ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
+                ...(taintPostExternalClientScopes
+                  ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
+                  : {}),
               }
             : {}),
           actingAgentId,
@@ -5506,7 +5544,10 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         envelope.blocked.agentNotes = {
           ...envelope.blocked.agentNotes,
           postDisclosure: {
-            relay: postDisclosureRelay(taintForcedApprovalScopes ?? [], taintPostHiddenFrom),
+            relay: postDisclosureRelay(
+              taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
+              taintPostHiddenFrom,
+            ),
           },
         }
       }

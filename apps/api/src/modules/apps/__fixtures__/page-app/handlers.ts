@@ -15,6 +15,10 @@ async function pageLink(p: { tag?: string }, ctx: Ctx) {
   return ctx.pages.link("hello", { tag: p.tag ?? "none" })
 }
 
+async function pickerLink(p: { account?: string }, ctx: Ctx) {
+  return ctx.pages.link("picker", { account: p.account ?? "" })
+}
+
 /** The page's route: answers with what it was given and who it ran as, and records it. */
 async function greetRoute(
   p: { body: { name?: string } | null; params: Record<string, unknown>; page: string },

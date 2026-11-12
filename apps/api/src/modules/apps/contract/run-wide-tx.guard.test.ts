@@ -71,8 +71,10 @@ describe("handlers that hold a transaction for their whole run (shrink-only allo
   })
 
   it("a listed handler holds the transaction, an unlisted sandboxed one does not, a core one does", () => {
+    // Any listed row (the list only shrinks: once it is empty no sandboxed handler holds one).
     const [row] = read(ALLOWLIST_PATH)
-    expect(handlerRunHoldsTx({ trusted: false, app: row!.app, entry: row!.entry })).toBe(true)
+    if (row)
+      expect(handlerRunHoldsTx({ trusted: false, app: row.app, entry: row.entry })).toBe(true)
     expect(
       handlerRunHoldsTx({
         trusted: false,

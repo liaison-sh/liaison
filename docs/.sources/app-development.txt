@@ -124,3 +124,4 @@ ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPr
 
 Page widget: a page declares widget {kind, connection, route, tokenScopes}; the platform serves its script, the app gets only the picks; grant must be inside tokenScopes; org origin only; audited -> apps/api/src/modules/apps/page-widgets.ts:1 ; apps/api/src/modules/apps/app-pages.ts:378 ; apps/api/src/modules/apps/app-surface.ts:120
 Install screen lists widget pages -> apps/web/src/modules/settings/InstallAppDialog.tsx:105
+The page script is deferred; a widget's script waits for DOMContentLoaded -> apps/api/src/modules/apps/app-pages.ts:551 ; apps/api/src/modules/apps/page-widgets.ts:150

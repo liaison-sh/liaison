@@ -1281,16 +1281,16 @@
       "schema": 3
     },
     "kernel__dashboards_pdf": {
-      "desc": 254,
-      "schema": 6
+      "desc": 417,
+      "schema": 15
     },
     "kernel__dashboards_preview_block": {
       "desc": 272,
       "schema": 255
     },
     "kernel__dashboards_snapshot": {
-      "desc": 555,
-      "schema": 52
+      "desc": 647,
+      "schema": 20
     },
     "kernel__dashboards_sources": {
       "desc": 257,

@@ -47,6 +47,64 @@ describe("ticket-detail-store", () => {
     expect(getTicket("t1")?.status).toBe("open")
   })
 
+  it("a read in flight when a live summary event lands never puts the old summary back", async () => {
+    // The page reads the ticket (and asks for its summary) while the summary
+    // changes on the server: the live event arrives first, the older answers
+    // after it. They used to overwrite the new summary with the old one.
+    let releaseGet: (v: unknown) => void = () => {}
+    const base = { id: "t-sum", subject: "Hi", status: "open", priority: "normal" }
+    let gets = 0
+    const post = vi.fn().mockImplementation(async (_path: string, body: any) => {
+      if (body?.toolName !== "tickets:get") return null
+      gets++
+      if (gets === 1) return { ticket: { ...base, summaryText: null, summaryStatus: "idle" } }
+      return new Promise((resolve) => {
+        releaseGet = resolve
+      })
+    })
+    const {
+      applyTicketSummaryResult,
+      handleTicketEvent,
+      loadTicket,
+      getTicket,
+      resetTicketDetailStore,
+      ticketSummaryVersion,
+    } = await import("~/modules/tickets/ticket-detail-store")
+    resetTicketDetailStore()
+    await loadTicket({ post } as any, "t-sum")
+    const before = ticketSummaryVersion("t-sum")
+    const reload = loadTicket({ post } as any, "t-sum")
+    await Promise.resolve()
+    handleTicketEvent("summary_updated", {
+      id: "t-sum",
+      ticketId: "t-sum",
+      summaryText: "The new summary",
+      summaryStatus: "idle",
+    })
+    releaseGet({
+      ticket: { ...base, subject: "Renamed", summaryText: null, summaryStatus: "error" },
+    })
+    await reload
+    expect(getTicket("t-sum")?.summaryText).toBe("The new summary")
+    expect(getTicket("t-sum")?.summaryStatus).toBe("idle")
+    // The rest of the answer still lands.
+    expect(getTicket("t-sum")?.subject).toBe("Renamed")
+    // An ensureSummary answer started before the event is dropped too.
+    expect(
+      applyTicketSummaryResult("t-sum", { summary: null, summaryStatus: "error" }, before),
+    ).toBe(false)
+    expect(getTicket("t-sum")?.summaryText).toBe("The new summary")
+    // One started after it applies.
+    expect(
+      applyTicketSummaryResult(
+        "t-sum",
+        { summary: "Later", summaryStatus: "idle" },
+        ticketSummaryVersion("t-sum"),
+      ),
+    ).toBe(true)
+    expect(getTicket("t-sum")?.summaryText).toBe("Later")
+  })
+
   it("loadTicket fetches via tickets:get and stores the ticket", async () => {
     const post = vi.fn().mockImplementation(async (_path: string, body: any) => {
       if (body?.toolName === "tickets:get") {

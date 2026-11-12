@@ -32,6 +32,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "one-row",
     "checks that configured ids exist in the org",
   ],
+  "apps/knowledge/app-sources.ts": [
+    "member-filter",
+    "a source owner's scopes, read only for an active member",
+  ],
   "apps/knowledge/import-kind.ts": ["by-address", "an imported document's author"],
   "apps/projects/import-kind.ts": [
     "by-address",

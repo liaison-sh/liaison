@@ -232,6 +232,7 @@ export async function items_create(
 | `ctx.connections` | Per-connection OAuth/credential tokens |
 | `ctx.sql` | Query a database the platform holds the connection to: named reads or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
 | `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
+| `ctx.kernel` | Directory reads of the caller's organization: a user or contact by id, who the run acts for and which scopes they hold (`caller`), the roles, people by email, for access rules of your own ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |

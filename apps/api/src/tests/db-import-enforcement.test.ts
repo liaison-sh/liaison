@@ -1506,6 +1506,10 @@ describe("db import enforcement", () => {
     // (resolveEffectivePermissions, privileged like token issuance), read only
     // after the caller's RLS read of that user's identity succeeded.
     "modules/users/service.ts",
+    // The sidebar agent tools: another member's hidden-apps list (their own
+    // user_preferences row, RLS self-only) only after the caller's
+    // kernel:users:admin scope and the member's org are checked.
+    "modules/users/sidebar-agent-tools.ts",
   ])
 
   // Allowlist: only these files may import { sql } from ~/db

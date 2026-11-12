@@ -289,7 +289,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/modules/apps/connections/sql/catalog.ts:185` |
-| `LIAISON_DATABASE_ALLOW_RAW_QUERY` | `apps/api/src/modules/apps/connections/sql/service.ts:406` |
+| `LIAISON_DATABASE_ALLOW_RAW_QUERY` | `apps/api/src/modules/apps/connections/sql/service.ts:416` |
 | `LIAISON_DATABASE_ALLOWED_HOSTS` | `apps/api/src/modules/apps/connections/sql/credentials.ts:109` |
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |

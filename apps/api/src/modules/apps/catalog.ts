@@ -52,6 +52,8 @@ export interface CatalogEntry {
   scopes: string[]
   /** Connection ids the app declares -- granted in full on install. */
   connections: string[]
+  /** sha256 of the package's worker.js (its Worker module): the install refuses other bytes. */
+  workerSha256?: string
   /** Present when `file` is the signed release artifact (build-app-catalog verified it):
    *  its statement and signature files, relative to the catalog dir. */
   signed?: { statement: string; signature: string }
@@ -379,6 +381,8 @@ export async function installCatalogApp(opts: {
     // First-party, in-image: trust boundary is the image itself (see file header).
     requireSignature: false,
     sourceUrl: catalogSourceUrl(entry.name, entry.version),
+    // The image's index pins the package's Worker module: other bytes are refused.
+    ...(entry.workerSha256 ? { workerSha256: entry.workerSha256 } : {}),
     ...(opts.actor ? { actor: opts.actor } : {}),
     ...(opts.repair ? { storeBestEffort: true } : {}),
   })

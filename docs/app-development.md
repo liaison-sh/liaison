@@ -650,12 +650,11 @@ before; its name cannot carry an organization key. The rules:
   that the call is refused with 429 `custom_app_busy` and `Retry-After`. Its
   webhooks accept 120 deliveries a minute each; past that they answer 429
   `custom_app_rate_limited` with `Retry-After` before any of its code runs.
-- On a server that runs apps on a remote isolate loader with
-  `LIAISON_WORKERS_CUSTOM_APPS=1`, an app built with the app builder runs
-  there too, as the Worker module its publish built (recorded with the
-  install, no `LIAISON_WORKERS_BUNDLES` entry). The loader fetches that
-  module from the server with a signed request when it has no copy. An app
-  installed from a package file stays on the local sandbox.
+- On a server that runs apps on a remote isolate loader, an app built with
+  the app builder runs there too, as the Worker module its publish built:
+  the package carries it as `worker.js`, and the install checks it against
+  the sha256 the publish approved and records it. The loader fetches that
+  module from the server with a signed request when it has no copy.
 - `ctx.bulk.fetchToBlob` keeps its downloads apart from your organization's
   other apps: 256 MiB per custom app, a shared limit for all custom apps on the
   server, and a download not used for an hour is deleted.

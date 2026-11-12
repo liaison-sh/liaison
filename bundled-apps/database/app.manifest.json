@@ -1,6 +1,6 @@
 {
   "name": "database",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "kind": "connector",
   "iconName": "database",
   "description": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",

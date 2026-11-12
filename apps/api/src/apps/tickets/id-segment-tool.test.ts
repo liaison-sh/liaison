@@ -125,6 +125,12 @@ describe("tickets idSegment tools", () => {
 
     const get = await op(orgId, "idSegmentGet", {}, ["*"])
     expect(get.idSegment).toEqual({ by: "audience", codes: { b2b: "B2B", b2c: "B2C" } })
+    // One row per value with its code and example handle, for a dashboard block.
+    expect(get.rows).toEqual([
+      { key: "b2b", code: "B2B", example: get.examples.b2b },
+      { key: "b2c", code: "B2C", example: get.examples.b2c },
+      { key: "withoutCode", code: null, example: get.examples.withoutCode },
+    ])
 
     const off = await op(orgId, "idSegmentSet", { by: "none" }, ["tickets:settings:admin"])
     expect(off.idSegment).toEqual({ by: "none", codes: {} })

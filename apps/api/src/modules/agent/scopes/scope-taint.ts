@@ -344,7 +344,8 @@
 //
 //  14. a. A connection bound to no agent gets the gateway frame (`mcpGateway`, no `agentId` nor
 //         `agentCeiling`), its accumulator and the persisted sliding window of what it read
-//         THROUGH LIAISON, like an agent-bound one; rules 6, 8, 11 and 13 judge its writes. Its
+//         THROUGH LIAISON, like an agent-bound one; rules 6, 8, 11 and 13 judge its posts (only
+//         its posts since 14f). Its
 //         window is keyed by the CONNECTION (`connectionTaintWindowId`), never by the person, so
 //         one login's reads never stamp another login's posts; an agent-bound connection keeps
 //         its per-agent key. For every "is the person asking" check the frame reads as no frame
@@ -353,8 +354,8 @@
 //         Only a requester who holds every scope of a post's stamp may disclose it: a routine or
 //         agent turn can read past its owner's grants, and such a post is refused (audience
 //         "poster"), in a direct message too, never parked for nobody and never written hidden.
-//      b. Its posts, memory and knowledge writes are stamped with what the window read, never with
-//         the caller's grant.
+//      b. Its posts are stamped with what the window read, never with the caller's grant (its
+//         other writes carry the empty stamp, 14f).
 //      c. A DIRECT MESSAGE never parks: a post acting for the requester into a plain conversation
 //         (not titled, discoverable, pinned or created from an entity) of the requester and exactly
 //         one other person (agents do not count), or an untitled threads_create of one participant,
@@ -388,6 +389,17 @@
 //         contact discussion keeps rule 11c. The parked result tells the model, in plain words,
 //         that the post is not sent, why, that the requester decides on the card, and that one
 //         approval covers later posts of the same kind (postDisclosureRelay).
+//      f. A PERSON'S OWN CLIENT IS JUDGED ON ITS POSTS ONLY (2026-11-12, owner ruling). Judging
+//         every write of a connection bound to no agent parked the person's own dashboard edits
+//         (create, share, edit, delete) for approval, which never happened before rule 14: such a
+//         client is the person acting, as in the web UI. So for a person-client frame
+//         (`isPersonClientFrame`, or a sandbox hop captured from one) every write OTHER than a post
+//         into a kernel thread (a tool without `taintPostAudience`) is not judged
+//         (`personClientWriteUnjudged`): no rule 6/8b parking or refusal, no rule-13 narrowing of
+//         its approvals, and what it writes into scope-tagged sinks (memory, knowledge, files,
+//         config) carries the empty stamp a UI write carries, never the window, so nothing it
+//         writes is hidden. A gated tool keeps its own gate and deciding scope. The window is
+//         still RECORDED (reads accumulate) so its posts are judged by 14a-e unchanged.
 
 // A BUG REPORT ABOUT LIAISON IS NEVER JUDGED (2026-11-09, owner ruling: no friction on internal
 // actions; gate only outbound data, money and customer sends). `kernel:report_bug` files into
@@ -1057,6 +1069,19 @@ export function taintOriginOf(
   const returned = new Set(resultRowIds(toolDef, result))
   const rowIds = [...named].filter((id) => returned.has(id))
   return rowIds.length > 0 ? { table, rowIds } : null
+}
+
+/**
+ * Rule 14f: true when a write of a person's own external client (`personClient`, a frame bound to
+ * no agent) is not judged by the scope taint at all, because it is not an agent post into a
+ * kernel thread (the tools that declare `taintPostAudience`). The single predicate the dispatch,
+ * the MCP gateway and the stamp ladders read.
+ */
+export function personClientWriteUnjudged(
+  personClient: boolean,
+  tool: { taintPostAudience?: unknown },
+): boolean {
+  return personClient && tool.taintPostAudience === undefined
 }
 
 /**

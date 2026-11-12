@@ -92,6 +92,7 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
     bridgeSpawnParentFrame,
     bridgeTaintOriginStore,
     bridgeTurnTaintScopes,
+    bridgePersonClient,
     callerScopes,
     errorEnvelope,
     inheritedActor,
@@ -461,6 +462,8 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
         // this hop has lost, so a tainted turn's write through a sandboxed app
         // would otherwise be judged as a write from no turn at all.
         turnTaintScopes: bridgeTurnTaintScopes,
+        // Judged on a kernel-thread post only when a person's own client called (rule 14f).
+        personClientTurn: bridgePersonClient,
         // With the store the rows it came from live in, so a write back to a row the
         // turn read is allowed here exactly as it is in frame, and a read made here
         // files its origin into the calling turn exactly as an in-frame read does

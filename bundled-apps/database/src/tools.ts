@@ -135,7 +135,9 @@ export async function dbListReads(_params: unknown, ctx: Ctx): Promise<Answer> {
         },
       ]),
   )
-  return { adapter: catalog.adapter, reads }
+  // `rows`: one per read (`name` and its declaration), the list a dashboard block charts.
+  const rows = Object.entries(reads).map(([name, read]) => ({ name, ...read }))
+  return { adapter: catalog.adapter, reads, rows }
 }
 
 export async function dbRead(
@@ -256,7 +258,25 @@ export async function dbProbe(params: { connection?: unknown } | undefined, ctx:
     timeoutMs: STATEMENT_TIMEOUT_MS,
   })
   if (isSqlError(answer)) return explain(answer, "probe")
-  return answer
+  return { ...answer, rows: probeRows(answer) }
+}
+
+/** The probe's checks as rows (`key` = the report's field, `value` = its answer, a count for a
+ *  list), the list a dashboard block charts. */
+function probeRows(report: {
+  ok: boolean
+  writeGrantsDetected?: boolean
+  missingReads?: string[]
+  warnings: string[]
+}): Array<{ key: string; value: boolean | number }> {
+  const dangerous = (report as { dangerousExecuteGrantsDetected?: boolean }).dangerousExecuteGrantsDetected
+  return [
+    { key: "ok", value: report.ok },
+    { key: "writeGrantsDetected", value: report.writeGrantsDetected === true },
+    { key: "dangerousExecuteGrantsDetected", value: dangerous === true },
+    { key: "missingReads", value: report.missingReads?.length ?? 0 },
+    { key: "warnings", value: report.warnings.length },
+  ]
 }
 
 export async function dbQuery(params: { sql?: unknown; connection?: unknown }, ctx: Ctx) {

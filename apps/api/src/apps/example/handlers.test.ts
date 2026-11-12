@@ -27,6 +27,8 @@ describe("example app — demonstrates every SDK surface", () => {
     })
     const res = await handlers.external_fetch({}, ctx)
     expect(res.ok).toBe(true)
+    // The check as one row, for a dashboard block.
+    expect(res.rows).toEqual([{ key: "ping", ok: true, status: 200 }])
   })
 
   it("nightly_summary counts items and emits a summary:computed event (scheduled-job surface)", async () => {

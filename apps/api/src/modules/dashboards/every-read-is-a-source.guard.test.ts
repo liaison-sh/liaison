@@ -12,7 +12,9 @@
 // items / rows / data / its only list, or one a block names by `rowsPath`) or one record or
 // set of figures a metric reads by path (transform.ts `extractRows`); the reads made sources
 // with this rule each have a test that a block saves and runs on them
-// (every-read-sources.test.ts).
+// (every-read-sources.test.ts). A read whose answer is a set of figures, a keyed map or one
+// figure carries them as a top-level `rows` list too, so a block charts it; each such read's
+// stand-in (__fixtures__/read-rows.ts) must give a block rows, checked here.
 //
 // An exclusion names one of the reasons a read may stay off dashboards, and nothing else:
 //   human turn        it acts on the turn or the window of the person asking (a picker, a guide)
@@ -24,7 +26,8 @@
 //   spec rule         the dashboard spec keeps it off a page (a block never reads another
 //                     block's output; a figure the spec keeps in chat)
 // A flag set for convenience is not a reason: the read becomes a source instead. Every
-// exclusion is also refused at run time (its declaration, the kernel list, or SECRET_READS),
+// exclusion is also refused at run time (its declaration, the kernel list, SECRET_READS or
+// DOCUMENT_TEXT_READS),
 // so the list documents the refusals and cannot hide a source.
 //
 // The catalog is read where it lives: kernel and in-tree app tools from the registry of an
@@ -38,7 +41,13 @@ import { defineAppBuilderTools } from "~/modules/app-builder/tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
-import { KERNEL_DASHBOARD_SOURCES, SECRET_READS } from "~/modules/dashboards/sources"
+import { READ_ROWS_STAND_INS } from "~/modules/dashboards/__fixtures__/read-rows"
+import {
+  DOCUMENT_TEXT_READS,
+  KERNEL_DASHBOARD_SOURCES,
+  SECRET_READS,
+} from "~/modules/dashboards/sources"
+import { extractRows, unfenceSourceResult } from "~/modules/dashboards/transform"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -80,6 +89,21 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "contract-only op" as const,
     why: "an e-invoicing provider op the invoicing app calls through its contract; marked contractOnly and internal",
   })),
+  {
+    tool: "gitlab:gitlab_read_file",
+    reason: "trust boundary",
+    why: "one repository file's text: outside text, fenced for the agent that asked for it, with no rows a block can chart",
+  },
+  {
+    tool: "google-drive:read",
+    reason: "trust boundary",
+    why: "one Drive file's text (a sheet as CSV, a doc as plain text): outside text, fenced for the agent that asked for it",
+  },
+  {
+    tool: "api-connector:connector_adapter_reference",
+    reason: "human turn",
+    why: "the connector authoring guide, one section of reference text the adapter's author reads in their own turn; a guide, not records",
+  },
   // ── Kernel reads ──
   {
     tool: "kernel:call_tool",
@@ -233,7 +257,7 @@ afterAll(async () => {
 
 /** Is `full` a source by the rule checkToolSource applies (the viewer's scopes aside)? */
 function isSource(full: string, tool: Tool): boolean {
-  if (SECRET_READS.has(full)) return false
+  if (SECRET_READS.has(full) || DOCUMENT_TEXT_READS.has(full)) return false
   if (full.startsWith("kernel:") && !KERNEL_DASHBOARD_SOURCES.has(full.slice("kernel:".length)))
     return false
   return dashboardSourceRefusal(tool) === null
@@ -266,6 +290,7 @@ describe("every read is a dashboard source", () => {
     // The kernel list names kernel reads only: never a write, never a tool that is gone.
     expect([...KERNEL_DASHBOARD_SOURCES].filter((n) => !reads.has(`kernel:${n}`))).toEqual([])
     expect([...SECRET_READS].filter((t) => !reads.has(t))).toEqual([])
+    expect([...DOCUMENT_TEXT_READS.keys()].filter((t) => !reads.has(t))).toEqual([])
   })
 
   it("an exclusion names an allowed reason and says why", () => {
@@ -289,6 +314,29 @@ describe("every read is a dashboard source", () => {
         full,
         reason: t.contractOnly ? "contract-only op" : "trust boundary",
       })
+    }
+  })
+})
+
+describe("a source's answer has rows a block can use", () => {
+  it("each stand-in names a read that is a source", () => {
+    for (const st of READ_ROWS_STAND_INS) {
+      const full = `${st.app}:${st.tool}`
+      const tool = reads.get(full)
+      expect({ full, read: tool !== undefined }).toEqual({ full, read: true })
+      if (tool) expect({ full, source: isSource(full, tool) }).toEqual({ full, source: true })
+    }
+  })
+
+  it("each stand-in gives a block its rows, read the way a block reads them", () => {
+    for (const st of READ_ROWS_STAND_INS) {
+      const { rows } = extractRows(unfenceSourceResult(st.result))
+      expect({
+        read: `${st.app}:${st.tool}`,
+        variant: st.variant,
+        rows: rows?.length ?? null,
+      }).toEqual({ read: `${st.app}:${st.tool}`, variant: st.variant, rows: st.rows })
+      expect(st.rows).toBeGreaterThan(0)
     }
   })
 })

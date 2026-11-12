@@ -61,6 +61,16 @@ describe("metrics_run", () => {
     expect(result.value).toBe("4.0000") // 10000 / 2500
     expect(Array.isArray(result.caveats)).toBe(true)
     expect(result.lineage).toBeTruthy()
+    // The figure is also one row, for a dashboard block.
+    expect((result as unknown as { rows: unknown[] }).rows).toEqual([
+      {
+        key: "blended_mer_dtc",
+        value: "4.0000",
+        period_start: "2026-07-01",
+        period_end: "2026-07-31",
+        degraded: false,
+      },
+    ])
   })
 
   it("byte-identical repeat call against the SAME mocked backend (SC 5)", async () => {

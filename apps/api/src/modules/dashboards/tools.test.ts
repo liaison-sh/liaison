@@ -657,8 +657,7 @@ describe("dashboards_edit", () => {
         return { id, res }
       }
       const result = async (requestId: string) => {
-        const [row] =
-          await sql`SELECT status, result, error FROM kernel.approved_handler_executions
+        const [row] = await sql`SELECT status, result, error FROM kernel.approved_handler_executions
             WHERE approval_request_id = ${requestId}`
         return row as { status: string; result: unknown; error: unknown }
       }

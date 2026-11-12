@@ -85,7 +85,9 @@ describe("POST /api/dashboards/:id/edit, versions, duplicate", () => {
 
     const versions = await req(other, "GET", `/api/dashboards/${id}/versions`)
     expect(versions.status).toBe(200)
-    expect(versions.body.data.versions.map((v: { version: number }) => v.version)).toEqual([3, 2, 1])
+    expect(versions.body.data.versions.map((v: { version: number }) => v.version)).toEqual([
+      3, 2, 1,
+    ])
     const one = await req(other, "GET", `/api/dashboards/${id}/versions/1`)
     expect(one.body.data.spec.blocks[0].id).toBe("a")
     expect((await req(other, "GET", `/api/dashboards/${id}/versions/7`)).status).toBe(404)

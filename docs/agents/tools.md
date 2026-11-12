@@ -52,7 +52,7 @@ A tool marked **No** can still wait. After an agent has read outside text, such 
 
 When an agent chains actions into one request (a mail reply that attaches the PDF of a proforma it just prepared) and reads more data before the next step, the whole request waits for a person who holds everything it read: it is never refused for that. When the steps act on your own things, such as your own mailbox, you decide it.
 
-When an agent posts into another conversation, or starts one, after reading data that some people there may not see, the message waits for your approval instead of being posted where they could not read it. Its card says how many people in that conversation cannot see the data: approving shares the message with them. A message everyone there may read is posted right away.
+When an agent posts into another conversation, or starts one, after reading data that some people there may not see, the message waits for your approval instead of being posted where they could not read it. Its card says how many people in that conversation cannot see the data: approving shares the message with them, and later messages your agent posts there with the same kind of data are then posted right away. A message everyone there may read is posted right away, and so is a direct message to one person: telling them is your choice. Someone who joins later and cannot see the data does not read those messages. This holds the same way for an app such as Claude Code connected to Liaison as you.
 
 ## Kernel tools
 

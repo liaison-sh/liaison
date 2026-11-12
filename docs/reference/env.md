@@ -300,7 +300,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1382` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
-| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
+| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:105` |
 | `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:174`, `apps/api/src/middleware/maintenance.ts:23` |
 | `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:181`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:54` |

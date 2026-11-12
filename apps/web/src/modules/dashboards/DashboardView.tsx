@@ -126,6 +126,18 @@ import { VersionHistoryPanel } from "./VersionHistoryPanel"
 
 /** "Updated N min ago" moves on this often. */
 const CLOCK_TICK_MS = 30_000
+/** The longest a change waits for the dashboard reloaded after a conflict. */
+const RELOAD_WAIT_MS = 5_000
+
+/** The day `at` falls on in `timeZone` (YYYY-MM-DD), or null for a zone Intl does not know. */
+function dayIn(at: number, timeZone: string | undefined): string | null {
+  if (!timeZone) return null
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone }).format(at)
+  } catch {
+    return null
+  }
+}
 
 /** A dashboard's range as the server sent it, when it is one the web can use. */
 function serverChoice(c: RangeChoice | undefined): RangeChoice | null {
@@ -248,6 +260,8 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   const reads = new AbortController()
   onCleanup(() => reads.abort())
   let shown: Dashboard | null = null
+  /** The org's day when the dashboard was read: its `today` goes stale once the day turns. */
+  let loadedDay: string | null = null
 
   // Keyed on the read revision too: an agent's open after a change, or Refresh all, reads the
   // spec again, and blocks added, removed or remapped show at once.
@@ -256,6 +270,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     async ([id]) => {
       try {
         const d = await getDashboard(api, id)
+        loadedDay = dayIn(Date.now(), d.timeZone)
         rememberDashboard(d)
         const saved = serverChoice(d.range)
         setRemembered({
@@ -290,8 +305,11 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   // ── edit mode ──────────────────────────────────────────────────────────────
   const [editing, setEditing] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
-  /** The versions before each change made here, newest last: Undo reverts to them. */
-  const [undoStack, setUndoStack] = createSignal<number[]>([])
+  /**
+   * Each change made here, newest last: the version before it (Undo reverts to it) and the
+   * version it produced (Undo applies only while that one is still the version shown).
+   */
+  const [undoStack, setUndoStack] = createSignal<{ before: number; produced: number }[]>([])
   const [historyOpen, setHistoryOpen] = createSignal(false)
   const [scheduleHint, setScheduleHint] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
@@ -309,6 +327,34 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   let pendingEdits = 0
   /** Bumped by a conflict: the changes queued before it are dropped. */
   let editGeneration = 0
+  /** Set while a conflict waits for the reloaded dashboard: told each version that loads. */
+  let onVersion: ((v: number | undefined) => void) | null = null
+  createEffect(() => {
+    const v = loaded()?.version
+    onVersion?.(v)
+  })
+  /** Reloads the dashboard and waits (at most a few seconds) until a version other than `from` shows. */
+  const reloadPast = (id: string, from: number) =>
+    new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        onVersion = null
+        resolve()
+      }
+      const timer = setTimeout(done, RELOAD_WAIT_MS)
+      onVersion = (v) => {
+        if (v !== from) done()
+      }
+      reloadDashboard(id)
+    })
+
+  /** Undo would erase someone else's later change: nothing is sent, the history is offered. */
+  const undoOverridden = () => {
+    setUndoStack([])
+    addToast({ type: "info", message: i18n.t("kernel.dashboards.undoOverridden") })
+    setDrill(null)
+    setHistoryOpen(true)
+  }
 
   /**
    * Saves `operations` on the version shown, after any change still being saved. A newer
@@ -322,10 +368,25 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     const run = async (): Promise<boolean> => {
       const d = loaded()
       if (!d || generation !== editGeneration) return false
+      if (opts.undo && undoStack().at(-1)?.produced !== d.version) {
+        undoOverridden()
+        return false
+      }
       try {
         const next = await editDashboard(api, d.id, d.version, operations)
-        if (opts.undo) setUndoStack((s) => s.slice(0, -1))
-        else setUndoStack((s) => [...s, d.version].slice(-UNDO_DEPTH))
+        if (opts.undo) {
+          // The revert is a new version with the same content: the change below it now
+          // stands on that one.
+          setUndoStack((s) => {
+            const rest = s.slice(0, -1)
+            const top = rest.at(-1)
+            return top ? [...rest.slice(0, -1), { ...top, produced: next.version }] : rest
+          })
+        } else {
+          setUndoStack((s) =>
+            [...s, { before: d.version, produced: next.version }].slice(-UNDO_DEPTH),
+          )
+        }
         show(next)
         void loadDashboards(api)
         return true
@@ -333,8 +394,9 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
         if (isVersionConflict(err)) {
           editGeneration++
           setUndoStack([])
-          reloadDashboard(d.id)
           addToast({ type: "info", message: i18n.t("kernel.dashboards.editConflict") })
+          // Changes made from now on wait for the new version, so they are not sent stale.
+          await reloadPast(d.id, d.version)
         } else {
           addToast({
             type: "error",
@@ -354,8 +416,10 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     return queue
   }
   const undo = () => {
-    const to = undoStack().at(-1)
-    if (to !== undefined) void applyEdit([{ op: "revert", toVersion: to }], { undo: true })
+    const top = undoStack().at(-1)
+    if (!top) return
+    if (top.produced !== loaded()?.version) undoOverridden()
+    else void applyEdit([{ op: "revert", toVersion: top.before }], { undo: true })
   }
   const restore = async (version: number) => {
     if (await applyEdit([{ op: "revert", toVersion: version }])) {
@@ -492,6 +556,14 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     const window = resolveTimeRange(c.timeRange, d?.today ?? localToday(new Date(now())))
     return { key, window, compareWindow: compareWindowOf(c.timeRange.preset, window, c.compare) }
   })
+  // A tab left open past the org's midnight reads the dashboard again, once, for the new today.
+  createEffect(() => {
+    const d = loaded()
+    const day = d ? dayIn(now(), d.timeZone) : null
+    if (!d || !day || !loadedDay || day === loadedDay) return
+    loadedDay = day
+    reloadDashboard(d.id)
+  })
   const rangeLabel = () => {
     const w = windows()
     const locale = i18n.locale()
@@ -585,7 +657,11 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   const onScreen = () => pageVisible() && (!tab() || tabStore.activeTabId === tab()?.id)
 
   return (
-    <section data-testid="dashboard-view" class="flex h-full min-h-0 min-w-0 flex-col">
+    <section
+      data-testid="dashboard-view"
+      data-version={loaded()?.version}
+      class="flex h-full min-h-0 min-w-0 flex-col"
+    >
       <header
         data-testid="dashboard-toolbar"
         data-editing={editing() ? "true" : undefined}

@@ -136,6 +136,8 @@ Per-fetch read 10 s (env up to 120 s), write up to 30 s -> apps/api/src/modules/
 Contract: each entry twice in one reused isolate, recorded answers, production limits -> apps/api/src/modules/apps/contract/harness.ts:71 ; apps/api/src/modules/apps/contract/harness.ts:88
 Waits over 2 s and the source scan -> apps/api/src/modules/apps/contract/wait-lint.ts:20 ; apps/api/src/modules/apps/contract/wait-lint.ts:111
 Expected failures only shrink -> apps/api/src/modules/apps/contract/expected-failures.guard.test.ts:1
+A knowledge source sync page: 60 s unless its kind declares timeoutMs (at most 120 s) -> apps/api/src/modules/apps/run-limits.ts ("knowledge-sync" row) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeSources.timeoutMs)
+Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:360 ; apps/api/src/modules/apps/connection-limits.ts:1
 SQL connections: manifest `sql` block (catalog, rawQuery.scope, modes) -> apps/api/src/modules/apps/manifest-schema.ts:357 ; apps/api/src/modules/apps/connections/sql/service.ts:51
 ctx.sql.query / reads / schema / probe -> apps/api/src/modules/apps/connections/sql/service.ts:339 ; apps/api/src/modules/apps/connections/sql/service.ts:448 ; apps/api/src/modules/apps/connections/sql/service.ts:475 ; apps/api/src/modules/apps/connections/sql/service.ts:508 ; apps/api/src/modules/apps/sandbox/bridge/sql.ts:60
 Raw queries need the declared scope, pass the read-only guard, LIAISON_DATABASE_ALLOW_RAW_QUERY=false turns them off -> apps/api/src/modules/apps/connections/sql/service.ts:401 ; apps/api/src/modules/apps/connections/sql/service.ts:404
@@ -162,3 +164,7 @@ ctx.db.batch runs ops in one savepoint, sequence allocated inside it, $seq/$ref 
 ctx.db.batch read-only refusal before the first op -> apps/api/src/modules/apps/sandbox/bridge/batch.ts:126
 ctx.db.batch no gap, no shared value under concurrency (real database) -> apps/api/src/tests/integration/sandbox-bridge-batch.test.ts:1
 DbClient.batch type -> packages/app-sdk/src/types.ts:46
+WebCrypto on every executor; the local sandbox installs crypto.subtle digest/HMAC/random/uuid backed by the server -> apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:37 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:91 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:101 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:276 ; apps/api/src/modules/apps/sandbox/pool.ts:159 ; apps/api/src/modules/apps/sandbox/sandbox-worker.ts:162
+Random values at most 65,536 per call; other methods reject NotSupportedError -> apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:45 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:253
+No typed arrays in the local sandbox; bytes are arrays of numbers -> apps/api/src/modules/apps/sandbox/pool.ts:131 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:56
+@liaison/app-sdk/bytes converts text and bytes the same on every executor -> packages/app-sdk/src/bytes.ts:48 ; packages/app-sdk/src/bytes.ts:80 ; packages/app-sdk/src/bytes.ts:91 ; packages/app-sdk/src/bytes.ts:96

@@ -15,6 +15,7 @@ import {
   BlockCacheTestAccess,
   CUSTOM_WINDOW_RUNS,
 } from "~/modules/dashboards/cache"
+import { checkRecipients } from "~/modules/dashboards/export"
 import {
   createDashboard,
   type DashboardError,
@@ -195,6 +196,41 @@ describe("shared datasets", () => {
     // Refresh all: the second block's refresh reuses the first's run.
     await getBlockData(viewer, id, "count", { refresh: true })
     await getBlockData(viewer, id, "list", { refresh: true })
+    expect(runs).toHaveLength(2)
+  })
+
+  it("a layout or title edit never runs the source again; a map that reads a new field does", async () => {
+    BlockCacheTestAccess.setStore(fakeStore())
+    const id = await dashboard()
+    const viewer = as(owner, [WRITE, READ])
+    runs.length = 0
+    await getBlockData(viewer, id, "count")
+    expect(runs).toHaveLength(1)
+    let version = (await getDashboard(viewer, id)).version
+    for (const operations of [
+      [{ op: "resizeBlock", blockId: "by-market", width: 2, height: 2 }],
+      [{ op: "moveBlock", blockId: "list", position: 0 }],
+      [{ op: "setTitle", title: "Renamed" }],
+      [{ op: "updateBlock", blockId: "count", changes: { title: "All orders" } }],
+    ] as const) {
+      version = (
+        await editDashboard(viewer, id, { ifVersion: version, operations: [...operations] })
+      ).version
+      expect(await getBlockData(viewer, id, "count")).toMatchObject({ ok: true, cached: true })
+    }
+    expect(runs).toHaveLength(1)
+    // A map reading a field the cached rows do not keep is a new read.
+    await editDashboard(viewer, id, {
+      ifVersion: version,
+      operations: [
+        {
+          op: "updateBlock",
+          blockId: "list",
+          changes: { map: { columns: [{ field: "secret", label: "S" }] } },
+        },
+      ],
+    })
+    await getBlockData(viewer, id, "list")
     expect(runs).toHaveLength(2)
   })
 
@@ -425,5 +461,23 @@ describe("editing datasets and filters", () => {
       operations: [{ op: "removeDataset", id: "orders" }],
     }).catch((e: unknown) => e)
     expect((err as DashboardError).code).toBe("INVALID_SPEC")
+  })
+})
+
+describe("snapshot recipients (step-3 review MED 4)", () => {
+  it("refuses a recipient whose row access is narrower than the caller's; the same access passes", async () => {
+    const author = as(owner, [WRITE, "kernel:dashboards:share"])
+    const { id } = await createDashboard(author, {
+      title: "Shared note",
+      visibility: "org",
+      spec: { v: 1, blocks: [{ id: "n", type: "text", title: "N", text: "hello" }] },
+    })
+    const wide: UserContext = { ...as(owner, []), dimensionGrants: { "*": ["*"] } }
+    const [narrow] = await checkRecipients(wide, id, [other])
+    expect(narrow).toMatchObject({ userId: other, mayReceive: false })
+    expect(narrow?.reason).toMatch(/sees fewer rows/)
+    const plain: UserContext = { ...as(owner, []), dimensionGrants: {}, roles: [] }
+    const [same] = await checkRecipients(plain, id, [other])
+    expect(same).toMatchObject({ userId: other, mayReceive: true })
   })
 })

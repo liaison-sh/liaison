@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
 import { audience_erasure_sweep } from "./audience-erasure-consumer"
 import { createMockDb } from "../test-db"
-import { hashIdentifier } from "../lib/sha256"
+import { hashIdentifier } from "../lib/hash-identifier"
 
 interface Envelope {
   status: "completed" | "pending_approval" | "error"
@@ -29,7 +30,7 @@ function makeFetch(responses: Array<{ status: number; body: string }>) {
 }
 
 const EMAIL = "erase-me@example.com"
-const EMAIL_SHA256 = hashIdentifier("email", EMAIL)
+const EMAIL_SHA256 = await hashIdentifier("email", EMAIL)
 
 function makeExecuteTool(
   pendingErasures: Array<{ emailSha256: string; reason: string; erasedAt: string }>,
@@ -43,8 +44,8 @@ function makeExecuteTool(
 }
 
 describe("audience_erasure_sweep", () => {
-  it("hashIdentifier('email', raw) agrees with the record's emailSha256 (hash-agreement cross-check with P3)", () => {
-    expect(hashIdentifier("email", EMAIL)).toBe(EMAIL_SHA256)
+  it("hashIdentifier('email', raw) agrees with the record's emailSha256 (hash-agreement cross-check with P3)", async () => {
+    expect(await hashIdentifier("email", EMAIL)).toBe(createHash("sha256").update(EMAIL).digest("hex"))
   })
 
   it("fires Meta remove-users with the matching emailSha256 for each managed audience", async () => {
@@ -220,7 +221,7 @@ describe("audience_erasure_sweep", () => {
 
   it("a mid-batch failure for one erasure record does not abort the sweep of subsequent records", async () => {
     const db = createMockDb()
-    const email2 = hashIdentifier("email", "second@example.com")
+    const email2 = await hashIdentifier("email", "second@example.com")
     let dbCallCount = 0
     const brokenDb = {
       ...db,

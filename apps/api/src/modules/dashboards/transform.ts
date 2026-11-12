@@ -32,7 +32,7 @@
 // Date buckets are calendar days in the org's zone (`timeZone`), quarter `2026-Q4`, year `2026`.
 
 import { unwrapExternalContent } from "~/lib/external-content"
-import { evaluateExpr } from "~/modules/dashboards/expr"
+import { evaluateExpr, exprNames } from "~/modules/dashboards/expr"
 import { applyWhere, type ResolvedWhere, resolveWhere } from "~/modules/dashboards/filters"
 import { dayIn, parseDay } from "~/modules/dashboards/relative-dates"
 import {
@@ -103,7 +103,8 @@ export type BlockData =
   | {
       kind: ChartKind
       labels: string[]
-      series: { name: string; values: number[] }[]
+      /** null: a value that cannot be worked out (a computed measure dividing by 0): a gap. */
+      series: { name: string; values: (number | null)[] }[]
       meta: BlockMeta
       previous?: PreviousSeries
       display?: ChartDisplay
@@ -163,13 +164,27 @@ export function toDate(v: unknown): Date | null {
 const pad = (n: number) => String(n).padStart(2, "0")
 
 /**
- * The calendar day a value falls on in `timeZone` (YYYY-MM-DD): a date-only string is that day
- * as written; a timestamp (ISO string, epoch, Date) is converted to the zone first. Null when
- * the value is not a date.
+ * A date-only value as some sources send it: midnight UTC exactly (a Postgres `date` read into
+ * a Date and sent as JSON, "2026-11-01T00:00:00.000Z"), or a wall time with no offset
+ * ("2026-11-07 23:30:00", a naive timestamp, already the org's own clock).
+ */
+const MIDNIGHT_UTC = /^(\d{4}-\d{2}-\d{2})T00:00(?::00(?:\.0+)?)?(?:Z|[+-]00:?00)$/
+const NO_OFFSET = /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/
+
+/**
+ * The calendar day a value falls on in `timeZone` (YYYY-MM-DD): a date-only value is that day
+ * as written, whatever the zone (a date string, midnight UTC exactly, a Date at midnight UTC,
+ * a timestamp with no offset); a timestamp with an offset or an epoch is converted to the zone
+ * first. Null when the value is not a date.
  */
 export function calendarDayOf(v: unknown, timeZone = "UTC"): string | null {
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
-    return parseDay(v.trim()) ? v.trim() : null
+  if (typeof v === "string") {
+    const t = v.trim()
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : (MIDNIGHT_UTC.exec(t) ?? NO_OFFSET.exec(t))?.[1]
+    if (day) return parseDay(day) ? day : null
+  }
+  if (v instanceof Date && !Number.isNaN(v.getTime()) && v.getTime() % 86_400_000 === 0) {
+    return v.toISOString().slice(0, 10)
   }
   const d = toDate(v)
   if (!d) return null
@@ -583,12 +598,17 @@ export function transformBlock(
 
   const seriesField = type === "pie" || type === "funnel" ? undefined : map.series
   const series = measures
-    ? measureSeries(measures, kept, {
-        keyField,
-        bucket,
-        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
-        ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
-      })
+    ? measureSeries(
+        measures,
+        kept,
+        {
+          keyField,
+          bucket,
+          ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+          ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
+        },
+        meta,
+      )
     : seriesField
       ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
       : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
@@ -606,17 +626,22 @@ function scaled(n: number | null, scale: number | undefined): number | null {
 
 /** A chart's values after map.scale, then map.percentOfTotal (each value / its series' total). */
 function finishSeries(
-  series: { name: string; values: number[] }[],
+  series: { name: string; values: (number | null)[] }[],
   map: BlockMap,
-): { name: string; values: number[] }[] {
+): { name: string; values: (number | null)[] }[] {
   let out = series
   if (map.scale !== undefined) {
-    out = out.map((s) => ({ ...s, values: s.values.map((v) => scaled(v, map.scale)!) }))
+    out = out.map((s) => ({ ...s, values: s.values.map((v) => scaled(v, map.scale)) }))
   }
   if (map.percentOfTotal) {
     out = out.map((s) => {
-      const total = s.values.reduce((a, b) => a + b, 0)
-      return { ...s, values: s.values.map((v) => (total === 0 ? 0 : round((v / total) * 100))) }
+      const total = s.values.reduce<number>((a, b) => a + (b ?? 0), 0)
+      return {
+        ...s,
+        values: s.values.map((v) =>
+          v === null ? null : total === 0 ? 0 : round((v / total) * 100),
+        ),
+      }
     })
   }
   return out
@@ -625,7 +650,10 @@ function finishSeries(
 /**
  * One series per measure over the kept categories: an aggregation of the block's rows, of
  * another dataset's rows grouped by the same category (measure.dataset), or a computation over
- * the other measures of the same category (measure.expr, by name; no value is 0).
+ * the other measures of the same category (measure.expr, by name), in dependency order whatever
+ * the order they are listed in (the spec refuses a cycle). A value that cannot be worked out (a
+ * division by 0, a missing value) stays null: the chart draws a gap, never a 0. A dataset cut
+ * at MAX_SOURCE_ROWS marks the block truncated.
  */
 function measureSeries(
   measures: NonNullable<BlockMap["measures"]>,
@@ -636,7 +664,8 @@ function measureSeries(
     timeZone?: string | undefined
     datasetRows?: Record<string, Row[] | null>
   },
-): { name: string; values: number[] }[] {
+  meta: BlockMeta,
+): { name: string; values: (number | null)[] }[] {
   const byName: Record<string, (number | null)[]> = {}
   const groupsOf = new Map<string, Map<string, Row[]>>()
   const otherGroups = (m: NonNullable<BlockMap["measures"]>[number]) => {
@@ -656,6 +685,7 @@ function measureSeries(
         ).map((g) => [g.key, g.rows]),
       )
       groupsOf.set(key, groups)
+      if (rows.length > MAX_SOURCE_ROWS || scratch.truncated) meta.truncated = true
     }
     return groups
   }
@@ -668,17 +698,38 @@ function measureSeries(
     if (m.name) byName[m.name] = values
     return { m, values }
   })
-  for (const o of out) {
-    if (!o.m.expr) continue
-    const expr = o.m.expr
-    o.values = kept.map((_g, i) => {
-      const named: Record<string, number | null> = {}
-      for (const [name, vals] of Object.entries(byName)) named[name] = vals[i] ?? null
-      return evaluateExpr(expr, named)
-    })
-    if (o.m.name) byName[o.m.name] = o.values
+  // Computed measures once every name they read is known: a pass computes those it can, until
+  // none is left (a cycle, refused by the spec, would leave its measures null).
+  let pending = out.filter((o) => o.m.expr)
+  while (pending.length) {
+    const ready = pending.filter((o) =>
+      namesRead(o.m.expr!).every((n) => n in byName || !pending.some((p) => p.m.name === n)),
+    )
+    if (ready.length === 0) {
+      for (const o of pending) o.values = kept.map(() => null)
+      break
+    }
+    for (const o of ready) {
+      const expr = o.m.expr!
+      o.values = kept.map((_g, i) => {
+        const named: Record<string, number | null> = {}
+        for (const [name, vals] of Object.entries(byName)) named[name] = vals[i] ?? null
+        return evaluateExpr(expr, named)
+      })
+      if (o.m.name) byName[o.m.name] = o.values
+    }
+    pending = pending.filter((o) => !ready.includes(o))
   }
-  return out.map((o) => ({ name: o.m.label, values: o.values.map((v) => v ?? 0) }))
+  return out.map((o) => ({ name: o.m.label, values: o.values }))
+}
+
+/** The names an expression reads ([] when it does not parse: evaluating it gives null). */
+function namesRead(expr: string): string[] {
+  try {
+    return exprNames(expr)
+  } catch {
+    return []
+  }
 }
 
 /** The field a chart's categories come from (groupBy, else x, else a pie's label). */

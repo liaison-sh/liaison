@@ -23,6 +23,14 @@ const [hidden, setHidden] = createSignal<string[]>([])
 let hydration: Promise<void> | null = null
 let changedLocally = false
 let boundApi: PreferencesApi | undefined
+// Bumped at teardown: an answer started under a previous session is dropped.
+let epoch = 0
+// Saves go out one at a time, each carrying the list as it is when it leaves,
+// so the last one stored is the last change made. `confirmed` is the list the
+// server last stored, which a failed save falls back to.
+let saveChain: Promise<unknown> = Promise.resolve()
+let pendingSaves = 0
+let confirmed: string[] = []
 
 function readList(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null
@@ -44,11 +52,13 @@ export function hydrateSidebarVisibility(api: PreferencesApi | undefined): Promi
   if (!api) return Promise.resolve()
   boundApi = api
   if (hydration) return hydration
+  const started = epoch
   hydration = api
     .get<{ hiddenSidebarApps?: unknown }>("/user/preferences")
     .then((prefs) => {
-      if (changedLocally) return
-      setHidden(readList(prefs?.hiddenSidebarApps) ?? [])
+      if (started !== epoch || changedLocally) return
+      confirmed = readList(prefs?.hiddenSidebarApps) ?? []
+      setHidden(confirmed)
     })
     .catch(() => {
       // Non-critical: nothing hidden for now, the next session retries.
@@ -59,19 +69,37 @@ export function hydrateSidebarVisibility(api: PreferencesApi | undefined): Promi
 /**
  * Replace the whole list. Optimistic; the PUT carries the full list. `api`
  * defaults to the client the session hydrated with. Resolves false when the
- * save failed: the local list is kept (the next change retries the PUT) and
- * the caller may say so.
+ * save failed: the list goes back to what the server last stored (unless a
+ * newer change is already on its way) and the caller says so.
  */
 export function setHiddenSidebarApps(list: string[], api?: PreferencesApi): Promise<boolean> {
-  const next = [...new Set(list)]
   changedLocally = true
-  setHidden(next)
+  setHidden([...new Set(list)])
   const client = api ?? boundApi
   if (!client) return Promise.resolve(false)
-  return client
-    .put("/user/preferences/hidden-apps", { hiddenSidebarApps: next })
-    .then(() => true)
-    .catch(() => false)
+  const started = epoch
+  pendingSaves += 1
+  const save = saveChain.then(() => {
+    if (started !== epoch) return false
+    return client
+      .put("/user/preferences/hidden-apps", { hiddenSidebarApps: hidden() })
+      .then((res) => {
+        if (started !== epoch) return true
+        const stored = readList(
+          (res as { hiddenSidebarApps?: unknown } | null | undefined)?.hiddenSidebarApps,
+        )
+        confirmed = stored ?? [...hidden()]
+        return true
+      })
+      .catch(() => {
+        if (started === epoch && pendingSaves === 1) setHidden(confirmed)
+        return false
+      })
+  })
+  saveChain = save
+  return save.finally(() => {
+    if (started === epoch) pendingSaves -= 1
+  })
 }
 
 export function hideFromSidebar(id: string, api?: PreferencesApi): Promise<boolean> {
@@ -87,19 +115,27 @@ export function showInSidebar(id: string, api?: PreferencesApi): Promise<boolean
   )
 }
 
-/** A change made elsewhere, relayed over the socket: the list as stored. */
+/** A change made elsewhere, relayed over the socket: the list as stored. While
+ *  one of this window's own saves is on its way, the frame is (or is older
+ *  than) its echo and the local list already holds the newer state. */
 export function applyRemoteSidebarVisibility(data: Record<string, unknown>): void {
   const list = readList(data.hiddenSidebarApps)
   if (!list) return
+  confirmed = list
+  if (pendingSaves > 0) return
   changedLocally = true
   setHidden(list)
 }
 
 /** Session teardown: the next login reads its own list. */
 export function resetSidebarVisibility(): void {
+  epoch += 1
   hydration = null
   changedLocally = false
   boundApi = undefined
+  saveChain = Promise.resolve()
+  pendingSaves = 0
+  confirmed = []
   setHidden([])
 }
 onSessionTeardown(resetSidebarVisibility)

@@ -88,4 +88,59 @@ describe("sidebar visibility store", () => {
     await hydrateSidebarVisibility(api)
     expect(api.getMock).toHaveBeenCalledTimes(2)
   })
+
+  it("sends quick changes one at a time, the last change stored last", async () => {
+    const api = fakeApi({ hiddenSidebarApps: [] })
+    await hydrateSidebarVisibility(api)
+    const releases: Array<() => void> = []
+    api.put.mockImplementation(
+      (_path: string, body: unknown) =>
+        new Promise((resolve) => releases.push(() => resolve(body))),
+    )
+    const first = hideFromSidebar("sessions")
+    const second = hideFromSidebar("dashboards")
+    await Promise.resolve()
+    expect(api.put).toHaveBeenCalledTimes(1)
+    releases[0]?.()
+    await first
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(2))
+    expect(api.put).toHaveBeenLastCalledWith("/user/preferences/hidden-apps", {
+      hiddenSidebarApps: ["sessions", "dashboards"],
+    })
+    releases[1]?.()
+    await second
+  })
+
+  it("falls back to the stored list when a save fails", async () => {
+    const api = fakeApi({ hiddenSidebarApps: ["monitoring"] })
+    await hydrateSidebarVisibility(api)
+    api.put.mockRejectedValueOnce(new Error("offline"))
+    expect(await hideFromSidebar("sessions")).toBe(false)
+    expect(hiddenSidebarApps()).toEqual(["monitoring"])
+  })
+
+  it("ignores the echo of its own save while it is on its way", async () => {
+    const api = fakeApi({ hiddenSidebarApps: [] })
+    await hydrateSidebarVisibility(api)
+    let release: (() => void) | undefined
+    api.put.mockImplementation(
+      (_path: string, body: unknown) => new Promise((resolve) => (release = () => resolve(body))),
+    )
+    const saving = hideFromSidebar("sessions")
+    applyRemoteSidebarVisibility({ hiddenSidebarApps: [] })
+    expect(hiddenSidebarApps()).toEqual(["sessions"])
+    await vi.waitFor(() => expect(release).toBeDefined())
+    release?.()
+    await saving
+  })
+
+  it("drops a first read that answers after the session ended", async () => {
+    let answer: ((v: unknown) => void) | undefined
+    const api = fakeApi(() => new Promise((resolve) => (answer = resolve)))
+    const hydrating = hydrateSidebarVisibility(api)
+    resetSidebarVisibility()
+    answer?.({ hiddenSidebarApps: ["sessions"] })
+    await hydrating
+    expect(hiddenSidebarApps()).toEqual([])
+  })
 })

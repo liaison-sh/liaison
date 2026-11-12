@@ -48,6 +48,7 @@ import { attentionStore } from "~/modules/shell/attention-store"
 import { hideFromSidebar, isHiddenFromSidebar } from "~/modules/shell/sidebar-visibility"
 import { openTab, tabStore } from "~/modules/shell/tab-store"
 import { toggleTabletSidebar } from "~/modules/shell/tablet-sidebar-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { useWs } from "~/modules/shell/WsContext"
 import { ToursHelpButton } from "~/modules/tours/ToursMenu"
 import { PopupMenu } from "~/ui/PopupMenu"
@@ -74,11 +75,10 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
   // The apps the person hid from their sidebar are left out here (and on the
   // phone Work list): "+N", drag-reorder and the fit all work on what shows.
   // They still open from search, the command palette and links.
-  const topEntries = createMemo(() =>
-    applyActivityBarOrder(
-      getActivityBarEntries().filter((e) => e.position !== "bottom" && !isHiddenFromSidebar(e.id)),
-    ),
+  const orderedTopEntries = createMemo(() =>
+    applyActivityBarOrder(getActivityBarEntries().filter((e) => e.position !== "bottom")),
   )
+  const topEntries = createMemo(() => orderedTopEntries().filter((e) => !isHiddenFromSidebar(e.id)))
 
   const [draggedId, setDraggedId] = createSignal<string | null>(null)
   const [dropTargetId, setDropTargetId] = createSignal<string | null>(null)
@@ -93,8 +93,10 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
   const handleDrop = (targetId: string) => {
     const dragged = draggedId()
     if (dragged) {
+      // The saved order keeps the hidden apps in place, so one shown again
+      // comes back where it was.
       moveActivityBarEntry(
-        topEntries().map((e) => e.id),
+        orderedTopEntries().map((e) => e.id),
         dragged,
         targetId,
       )
@@ -788,7 +790,11 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
             data-testid="activity-entry-hide"
             onSelect={() => {
               const id = entryMenu()?.id
-              if (id) void hideFromSidebar(id)
+              if (!id) return
+              void hideFromSidebar(id).then((saved) => {
+                if (!saved)
+                  addToast({ message: i18n.t("kernel.sidebarSettings.saveFailed"), type: "error" })
+              })
             }}
           >
             {i18n.t("kernel.nav.hideFromSidebar")}

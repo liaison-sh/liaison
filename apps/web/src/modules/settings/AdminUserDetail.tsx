@@ -205,15 +205,34 @@ const AdminUserDetail: Component = () => {
     },
   )
 
-  async function handleSidebarChange(next: string[]): Promise<void> {
-    const before = sidebarHidden() ?? []
-    setSidebarHidden(next)
-    try {
-      await api.put(`/admin/users/${userId()}/hidden-apps`, { hiddenSidebarApps: next })
-    } catch {
-      setSidebarHidden(before)
-      addToast({ message: i18n.t("kernel.sidebarSettings.saveFailed"), type: "error" })
+  // Saves go out one at a time, each with the list as it is when it leaves, so
+  // quick toggles store the last one. A failure falls back to what the server
+  // last stored, unless a newer toggle is already queued.
+  let sidebarSaves: Promise<void> = Promise.resolve()
+  let sidebarPending = 0
+  let sidebarStored: string[] | null = null
+  let sidebarStoredFor: string | null = null
+  function handleSidebarChange(next: string[]): Promise<void> {
+    const target = userId()
+    if (sidebarStoredFor !== target) {
+      sidebarStored = sidebarHidden() ?? []
+      sidebarStoredFor = target
     }
+    setSidebarHidden(next)
+    sidebarPending += 1
+    sidebarSaves = sidebarSaves.then(async () => {
+      const list = target === userId() ? (sidebarHidden() ?? []) : next
+      try {
+        await api.put(`/admin/users/${target}/hidden-apps`, { hiddenSidebarApps: list })
+        if (sidebarStoredFor === target) sidebarStored = list
+      } catch {
+        if (sidebarPending === 1 && target === userId()) setSidebarHidden(sidebarStored ?? [])
+        addToast({ message: i18n.t("kernel.sidebarSettings.saveFailed"), type: "error" })
+      } finally {
+        sidebarPending -= 1
+      }
+    })
+    return sidebarSaves
   }
 
   function grantState(): Record<string, DimensionGrantState> {

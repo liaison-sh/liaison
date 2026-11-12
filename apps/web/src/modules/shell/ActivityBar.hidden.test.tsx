@@ -10,6 +10,10 @@ import { getActivityBarEntries, resetRegistry } from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
 import { ActivityBar } from "~/modules/shell/ActivityBar"
 import {
+  customActivityBarOrder,
+  resetActivityBarOrderStore,
+} from "~/modules/shell/activity-bar-order-store"
+import {
   applyRemoteSidebarVisibility,
   hiddenSidebarApps,
   hydrateSidebarVisibility,
@@ -52,6 +56,7 @@ describe("ActivityBar hidden apps", () => {
   afterEach(() => {
     cleanup()
     resetSidebarVisibility()
+    resetActivityBarOrderStore()
     vi.restoreAllMocks()
   })
 
@@ -65,6 +70,20 @@ describe("ActivityBar hidden apps", () => {
     expect(screen.getByLabelText("Settings")).toBeInTheDocument()
     applyRemoteSidebarVisibility({ hiddenSidebarApps: [] })
     expect(railEntry("dashboards")).not.toBeNull()
+  })
+
+  it("keeps a hidden app in the saved order when the visible ones are dragged", () => {
+    renderBar()
+    applyRemoteSidebarVisibility({ hiddenSidebarApps: ["dashboards"] })
+    const sessions = railEntry("sessions")
+    const messages = railEntry("messages")
+    if (!sessions || !messages) throw new Error("rail entries missing")
+    fireEvent.dragStart(sessions)
+    fireEvent.dragOver(messages)
+    fireEvent.drop(messages)
+    const order = customActivityBarOrder()
+    expect(order).toContain("dashboards")
+    expect(order.indexOf("sessions")).toBeLessThan(order.indexOf("messages"))
   })
 
   it("hides an app from its right-click menu and saves the list", async () => {

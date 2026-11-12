@@ -954,8 +954,9 @@ apps:
 An `oauth2` connection's client is found by its key, `<app>:<connection>`:
 the workspace's own client first (Settings, or `config apply`), then one the
 server provides in `LIAISON_OAUTH_<KEY>_CLIENT_ID` and `LIAISON_OAUTH_<KEY>_CLIENT_SECRET`
-(the key upper-cased, other characters as `_`: `my-app:crm` reads
-`LIAISON_OAUTH_MY_APP_CRM_CLIENT_ID`). Two connections share one client by naming
+(the key upper-cased, `-` and `_` as `_`, the `:` as `__`: `my-app:crm` reads
+`LIAISON_OAUTH_MY_APP__CRM_CLIENT_ID`; a key with an uppercase letter, a doubled
+separator or a separator at either end of a part has no such pair). Two connections share one client by naming
 the same key, in your app's own namespace:
 
 ```json

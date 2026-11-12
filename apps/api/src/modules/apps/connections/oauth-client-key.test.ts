@@ -21,7 +21,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
-const NAMES = instanceClientEnvNames("pagefx:shared")
+const NAMES = instanceClientEnvNames("pagefx:shared")!
 
 describe("manifest-declared OAuth client key", () => {
   let orgId: string
@@ -40,13 +40,34 @@ describe("manifest-declared OAuth client key", () => {
 
   test("the convention names, and the key of both connections", () => {
     expect(NAMES).toEqual({
-      id: "LIAISON_OAUTH_PAGEFX_SHARED_CLIENT_ID",
-      secret: "LIAISON_OAUTH_PAGEFX_SHARED_CLIENT_SECRET",
+      id: "LIAISON_OAUTH_PAGEFX__SHARED_CLIENT_ID",
+      secret: "LIAISON_OAUTH_PAGEFX__SHARED_CLIENT_SECRET",
     })
     expect(oauthClientKey(orgId, PAGE_FX_APP, "primary")).toBe("pagefx:shared")
     expect(oauthClientKey(orgId, PAGE_FX_APP, "secondary")).toBe("pagefx:shared")
     // Undeclared: the default key.
     expect(oauthClientKey(orgId, PAGE_FX_APP, "other")).toBe("pagefx:other")
+  })
+
+  test("two apps whose keys differ only in where the `:` sits read different pairs", () => {
+    const short = instanceClientEnvNames("api:connector-crm")
+    const long = instanceClientEnvNames("api-connector:crm")
+    expect(short?.id).toBe("LIAISON_OAUTH_API__CONNECTOR_CRM_CLIENT_ID")
+    expect(long?.id).toBe("LIAISON_OAUTH_API_CONNECTOR__CRM_CLIENT_ID")
+    expect(short?.id).not.toBe(long?.id)
+    // A key the one-to-one mapping cannot carry has no convention pair at all.
+    for (const key of ["api-:crm", "api:-crm", "api--x:crm", "api:crm__x", "Api:crm", "a:b:c"]) {
+      expect({ key, names: instanceClientEnvNames(key) }).toEqual({ key, names: null })
+    }
+    process.env.LIAISON_OAUTH_API__CONNECTOR_CRM_CLIENT_ID = "id-short"
+    process.env.LIAISON_OAUTH_API__CONNECTOR_CRM_CLIENT_SECRET = "secret-short"
+    try {
+      expect(instanceOAuthClient("api-connector:crm")).toBeNull()
+      expect(instanceOAuthClient("api:connector-crm")?.clientId).toBe("id-short")
+    } finally {
+      delete process.env.LIAISON_OAUTH_API__CONNECTOR_CRM_CLIENT_ID
+      delete process.env.LIAISON_OAUTH_API__CONNECTOR_CRM_CLIENT_SECRET
+    }
   })
 
   test("a key outside the app's own namespace is refused by the manifest validator", () => {

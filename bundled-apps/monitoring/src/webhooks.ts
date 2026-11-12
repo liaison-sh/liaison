@@ -47,6 +47,13 @@ const OK: WebhookResult = { status: 200, body: "ok" }
  */
 export const CREATE_REF_BATCH = 10
 
+/**
+ * How long a new incident's own run may still be sending its incident:created: past any webhook
+ * run's wall clock (the request ceiling caps a run at about 29 s), so a row still marked
+ * `created_pending` after this belongs to a run that was killed after its insert.
+ */
+export const CREATED_LEASE_MS = 45_000
+
 interface IncidentRow {
   id: string
   source: string
@@ -111,7 +118,23 @@ async function createIncident(ctx: AppContext, alert: AlertEnvelope): Promise<{ 
     first_seen_at: now,
     last_seen_at: now,
     alert_ts: alert.ts.toISOString(),
+    // Cleared once incident:created went out (the event that pages): a run killed between this
+    // insert and that emit leaves it set, and the redelivery that folds into the row pages then.
+    created_pending: true,
   })
+}
+
+/**
+ * Clear `created_pending` after incident:created went out. Best effort: the page is already
+ * sent, so a failure here is logged and never fails the delivery (a later delivery folding into
+ * the row would page once more, never zero times).
+ */
+async function markCreatedSent(ctx: AppContext, id: string): Promise<void> {
+  try {
+    await ctx.db.update("incidents", id, { created_pending: null })
+  } catch (err) {
+    ctx.logger.error("monitoring: could not clear created_pending", { incidentId: id, err: errSummary(err) })
+  }
 }
 
 /**
@@ -146,6 +169,7 @@ async function createAndEmit(ctx: AppContext, alert: AlertEnvelope): Promise<{ i
     }
     throw createErr
   }
+  await markCreatedSent(ctx, id)
   return { id }
 }
 
@@ -384,6 +408,17 @@ export async function alertWebhookHandler(
     }
 
     let row = await findByDedupKey(ctx, alert.source, alert.dedupKey)
+    // The row's incident:created has not gone out yet. Within the lease the run that inserted it
+    // may still be sending it: answer 503 so this delivery is retried and folds once that run is
+    // done. Past the lease that run was killed, and this delivery sends the page (below).
+    let sendCreated = false
+    if (row && row.created_pending === true && row.status !== "resolved") {
+      const insertedAt = timeMs(row.first_seen_at)
+      if (Number.isFinite(insertedAt) && Date.now() - insertedAt <= CREATED_LEASE_MS) {
+        return { status: 503, body: "incident creation in progress" }
+      }
+      sendCreated = true
+    }
     if (!row) {
       let insertErr: unknown = null
       try {
@@ -401,6 +436,21 @@ export async function alertWebhookHandler(
     }
 
     const fold = await foldIntoExisting(ctx, row, alert, alert.dedupKey)
+    // The row's own incident:created never went out (its run was killed after the insert): this
+    // delivery sends it now instead of a repeat or escalation, so the incident still pages.
+    if (sendCreated) {
+      await assignMissingRefs(ctx, { limit: CREATE_REF_BATCH })
+      const numbered = ((await ctx.db.findOne("incidents", fold.row.id)) as IncidentRow | null) ?? fold.row
+      await ctx.emit({
+        entity: "incident",
+        action: "created",
+        entityId: fold.row.id,
+        data: eventData(numbered, alert, fold.severity, fold.count),
+        metadata: axes(alert, fold.severity),
+      })
+      await markCreatedSent(ctx, fold.row.id)
+      return OK
+    }
     await ctx.emit({
       entity: "incident",
       action: fold.action,
@@ -408,6 +458,8 @@ export async function alertWebhookHandler(
       data: eventData(fold.row, alert, fold.severity, fold.count),
       metadata: axes(alert, fold.severity),
     })
+    // A reopen pages on its own event: a created that never went out is moot now.
+    if (fold.action === "reopened" && row.created_pending === true) await markCreatedSent(ctx, fold.row.id)
     return OK
   } catch (err) {
     ctx.logger.error("monitoring alert webhook failed", {

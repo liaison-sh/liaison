@@ -129,6 +129,29 @@ describe("teardownAppRegistrations", () => {
     expect(eventSubscriptionDisposers.get([ORG_A, APP])).toBeUndefined()
   })
 
+  it("a registry reset disposes the event subscriptions it forgets", () => {
+    let disposed = 0
+    eventSubscriptionDisposers.set(
+      [ORG_A, APP],
+      [
+        async () => {
+          disposed++
+        },
+      ],
+    )
+    eventSubscriptionDisposers.set(
+      [ORG_B, APP],
+      [
+        async () => {
+          disposed++
+        },
+      ],
+    )
+    resetAppRegistries()
+    expect(disposed).toBe(2)
+    expect(eventSubscriptionDisposers.get([ORG_A, APP])).toBeUndefined()
+  })
+
   it("is idempotent — a second teardown is a no-op", async () => {
     populate(ORG_A, APP)
     await teardownAppRegistrations(ORG_A, APP)

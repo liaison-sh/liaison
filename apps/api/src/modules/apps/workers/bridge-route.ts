@@ -27,7 +27,7 @@ import { getClientIp } from "~/lib/request-context"
 import { ownerInstanceOf } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { answerBridgeCall } from "./bridge-call"
 import { type BridgeForwarder, createBridgeForwarder } from "./bridge-forward"
-import { workersConfigured } from "./config"
+import { appBridgeEnabled } from "./config"
 import { type RunRegistry, runRegistry } from "./run-registry"
 
 /** The route's mount point; app.ts exempts it from the generic timeout, body cap and IP limiter. */
@@ -48,7 +48,7 @@ function bearer(header: string | undefined): string | undefined {
 
 export function createAppBridgeRoutes(deps: AppBridgeRouteDeps = {}) {
   const registry = deps.registry ?? runRegistry
-  const isConfigured = deps.isConfigured ?? workersConfigured
+  const isConfigured = deps.isConfigured ?? appBridgeEnabled
   const forwarder = deps.forwarder ?? createBridgeForwarder()
 
   return new Hono().post("/:runId", async (c) => {

@@ -1,36 +1,45 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The one door app code runs through. Every site that runs an app's handler
-// (tools, webhooks, jobs, event handlers, polls, search, attention providers,
-// before-disconnect hooks, exports) calls `runApp`, and the choice of executor
-// is made here, in `selectExecutor`, and nowhere else:
+// The one door app code runs through. Every site that runs sandboxed code
+// (tools, preflights, webhooks, jobs, event handlers, polls, reconciles,
+// search, attention providers, before-disconnect hooks, exports, import kinds,
+// import transforms, PDF templates, approval summarizers, app-builder
+// previews, the mail send bundle) calls `runApp`, and the choice of executor is
+// made here, in `selectExecutor`, and nowhere else (one-door.test.ts fails on a
+// site that calls an executor itself):
 //
-//   inprocess  trusted code, on the host's in-process QuickJS pool (executeInSandbox)
+//   inprocess  trusted code, or a site that keeps its QuickJS run in process
+//              (`quickjs.inProcess`), on the host's in-process QuickJS pool
 //   workers    an untrusted app whose installed version recorded a Worker
 //              module (the package's worker.js, install-service.ts), when
 //              the app loader is configured (workers/config.ts), in any role
-//   workerd    the same run on this instance's own sandbox service, when the
-//              loader cannot take it and that service is configured
-//              (workers/config.ts readFallbackTarget)
-//   pool       everything else, on the out-of-process worker pool
+//   workerd    the same run on this instance's own sandbox service
+//              (LIAISON_SANDBOX_URL): every such run when no loader is
+//              configured (a self-hosted instance), else the loader's
+//              fallbacks (workers/fallback.ts)
+//   pool       everything else, on the out-of-process worker pool (or the
+//              site's own pool, `quickjs.workerPool`)
 //
-// An app that cannot run on Workers (its installed version came from a
-// package without a Worker module) runs on the pool with a warning per run.
+//   LIAISON_APP_RUNTIME=quickjs  every run on QuickJS (this release only)
+//   trusted                      inprocess
+//   loader + Worker module       workers; a loader fault before any bridge
+//                                call, an open breaker or an app fallback:
+//                                workerd when the sandbox service is set,
+//                                else QuickJS
+//   sandbox service + module     workerd
+//   no module, or neither set    QuickJS (a version without a Worker module
+//                                warns per run; code with no installed
+//                                version, `installed: null`, stays silent)
+//
 // A run is decided, then its bridge is built for that executor, then it
-// runs: a Workers run gets a secret-free bridge (the site's `workersBridge`, or a marked copy of
-// `bridge`), a QuickJS run `bridge` itself, which runApp never changes. A
-// Workers run whose attempts end on a loader-level fault before any bridge
-// call runs once more on the fallback target (`fallback: "loader_fault"`,
-// workers/fallback.ts): the instance's sandbox service on a secret-free bridge
-// when configured, else QuickJS on `bridge`; never after a bridge call. Every run raises one
-// run-settled event (workers/run-settled.ts) once it has settled, tagged with
-// the executor that ran it; the run timing records (workers/timings.ts, kind
-// "run") are one of its subscribers.
+// runs: a remote run gets a secret-free bridge (the site's `workersBridge`, or a marked copy of
+// `bridge`), a QuickJS run `bridge` itself, which runApp never changes. Every
+// run raises one run-settled event (workers/run-settled.ts) once it has
+// settled, tagged with the executor that ran it; the run timing records
+// (workers/timings.ts, kind "run") and the usage rows are its subscribers.
 //
 // A new executor is one more arm of `selectExecutor` and of the switch in
-// `runApp`; no call site changes. The sandboxes that do not run app handlers
-// (tool summarizers, imports transforms, PDF templates, the mail sync bundle)
-// stay outside this door.
+// `runApp`; no call site changes.
 
 import { createHash } from "node:crypto"
 import { dirname } from "node:path"
@@ -48,15 +57,18 @@ import {
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool } from "~/modules/apps/sandbox/pool"
+import { getSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
 import {
   type ExecPriority,
   getWorkerPool,
   initWorkerPool,
+  type SandboxWorkerPool,
   type WorkerExecOptions,
 } from "~/modules/apps/sandbox/worker-pool"
 import {
+  quickjsForced,
   readFallbackTarget,
+  readSandboxConfig,
   readWorkersConfig,
   type WorkersConfig,
 } from "~/modules/apps/workers/config"
@@ -145,6 +157,21 @@ export interface RunAppOptions {
    * An executor whose bridge calls cannot reach that transaction must not take it.
    */
   holdsTx: boolean
+  /**
+   * Where this site's QuickJS run goes when it is not where its trust puts it
+   * (the remote executors ignore it): `inProcess` keeps an untrusted run on
+   * the in-process pool (a pure function on an empty bridge: an approval
+   * summarizer, a PDF template), `inProcessPool` names that pool (a bare unit
+   * test), `workerPool` is the site's own out-of-process pool (import
+   * transforms), with its heap limit and heap report.
+   */
+  quickjs?: {
+    inProcess?: boolean
+    inProcessPool?: SandboxPool
+    workerPool?: SandboxWorkerPool
+    memoryLimitBytes?: number
+    onHeapReport?: WorkerExecOptions["onHeapReport"]
+  }
 }
 
 export type AppBridge = Record<string, (...args: any[]) => any>
@@ -153,20 +180,23 @@ export type AppBridge = Record<string, (...args: any[]) => any>
 export type AppExecutor = "inprocess" | "pool" | "workers" | "workerd"
 
 /**
- * THE executor choice: trusted code in-process; an untrusted run with a Workers
- * bundle (resolved by `resolveWorkersTarget`) on Workers; everything else in
- * the worker pool. A further executor is added here (and in `runApp`'s switch)
- * only.
+ * THE executor choice (the table at the top of this file). `workersBundleSha`:
+ * the loader takes this run (`resolveWorkersTarget`, `planWorkersRun`);
+ * `sandboxService`: the instance's sandbox service takes it instead.
  */
 export function selectExecutor(opts: {
   trusted: boolean
+  /** The site keeps its QuickJS run on the in-process pool. */
+  inProcess?: boolean
   workersBundleSha?: string | undefined
-  /** The loader cannot take this run and the instance's sandbox service is configured. */
-  fallbackService?: boolean
+  sandboxService?: boolean
+  /** LIAISON_APP_RUNTIME=quickjs. */
+  quickjsForced?: boolean
 }): AppExecutor {
-  if (opts.trusted) return "inprocess"
+  const quickjs = opts.trusted || opts.inProcess ? "inprocess" : "pool"
+  if (opts.trusted || opts.quickjsForced) return quickjs
   if (opts.workersBundleSha) return "workers"
-  return opts.fallbackService ? "workerd" : "pool"
+  return opts.sandboxService ? "workerd" : quickjs
 }
 
 /** Where a Workers run goes: the configuration, the installed version and its bundle. */
@@ -177,17 +207,20 @@ export interface WorkersTarget {
 }
 
 /**
- * The Workers target of a run, or null (QuickJS). Every untrusted app runs
- * there when the loader is configured, on the Worker module its installed row
- * names (the package's worker.js, recorded at install). A version whose
- * package had none warns (every run) and runs on the pool.
+ * The remote target of a run, or null (QuickJS): the loader when it is
+ * configured, else the instance's sandbox service, on the Worker module the
+ * run's installed version recorded (the package's worker.js, recorded at
+ * install). A version whose package had none warns (every run) and runs on
+ * QuickJS; code with no installed version (`installed: null`: a draft
+ * preview, an import transform, a PDF template) runs there silently.
  */
 export async function resolveWorkersTarget(
   opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
 ): Promise<WorkersTarget | null> {
-  if (opts.trusted) return null
-  const config = readWorkersConfig()
+  if (opts.trusted || quickjsForced()) return null
+  const config = readWorkersConfig() ?? readSandboxConfig(null)
   if (!config) return null
+  if (opts.installed === null) return null
   let identity =
     opts.installed !== undefined
       ? opts.installed
@@ -208,21 +241,23 @@ export async function resolveWorkersTarget(
 
 /**
  * Where this run goes, decided once, before the run's bridge is built: the
- * Workers target, or none with the reason it falls back (workers/fallback.ts):
- * `app` while this org's app@version is under an app-level fallback,
- * `breaker` while the loader breaker is open (or another run holds the
- * half-open probe). `probe` marks the run the half-open breaker lets through.
+ * loader (`target`), the instance's sandbox service (`sandboxTarget`), or
+ * neither (QuickJS). With the loader configured, `sandboxTarget` is where the
+ * run goes when it falls back (workers/fallback.ts), and `fallback` says why
+ * the loader does not take it: `app` while this org's app@version is under an
+ * app-level fallback, `breaker` while the loader breaker is open (or another
+ * run holds the half-open probe). `probe` marks the run the half-open breaker
+ * lets through. Without a loader, `sandboxTarget` is simply where it runs.
  */
 export interface WorkersPlan {
   target: WorkersTarget | null
   fallback?: WorkersFallback
   probe?: boolean
-  /** Where the run goes instead, when it falls back and the sandbox service is configured. */
-  fallbackTarget?: WorkersTarget
+  sandboxTarget?: WorkersTarget
 }
 
 /** The same run on the instance's sandbox service, or none (QuickJS) when it is not configured. */
-export function fallbackTargetOf(target: WorkersTarget): WorkersTarget | undefined {
+export function sandboxTargetOf(target: WorkersTarget): WorkersTarget | undefined {
   const fb = readFallbackTarget(target.config)
   return fb.kind === "workerd" ? { ...target, config: fb.config } : undefined
 }
@@ -232,8 +267,10 @@ export async function planWorkersRun(
 ): Promise<WorkersPlan> {
   const target = await resolveWorkersTarget(opts)
   if (!target) return { target: null }
-  const instead = fallbackTargetOf(target)
-  const elsewhere = instead ? { fallbackTarget: instead } : {}
+  // No loader: the target is the sandbox service itself (a self-hosted instance).
+  if (!readWorkersConfig()) return { target: null, sandboxTarget: target }
+  const instead = sandboxTargetOf(target)
+  const elsewhere = instead ? { sandboxTarget: instead } : {}
   if (appFallbacks.active(AppFallbacks.key(opts.orgId, opts.appName, target.version))) {
     return { target: null, fallback: "app", ...elsewhere }
   }
@@ -263,7 +300,10 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   }
   let info: WorkersRunInfo = {}
   let ok = false
-  let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
+  let executor: AppExecutor = selectExecutor({
+    trusted: opts.trusted,
+    inProcess: opts.quickjs?.inProcess === true,
+  })
   let fallback: WorkersFallback | undefined
   try {
     // Decide, then build the bridge for that executor (runOnExecutor), then run.
@@ -271,8 +311,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     fallback = plan.fallback
     executor = selectExecutor({
       trusted: opts.trusted,
+      inProcess: opts.quickjs?.inProcess === true,
       workersBundleSha: plan.target?.sha256,
-      fallbackService: plan.fallbackTarget !== undefined,
+      sandboxService: plan.sandboxTarget !== undefined,
     })
     let result: unknown
     try {
@@ -285,7 +326,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       // once to the fallback target (the sandbox service on a secret-free
       // bridge, else QuickJS on the bridge built for it), within what is left
       // of its budget.
-      const fallbackTarget = plan.target ? fallbackTargetOf(plan.target) : undefined
+      const sandboxTarget = plan.target ? sandboxTargetOf(plan.target) : undefined
       const budget = opts.timeoutMs ?? runLimits(runEntryKind(opts)).wallMs
       const remaining = Math.max(MIN_FALLBACK_BUDGET_MS, budget - (Date.now() - started))
       log.warn(
@@ -297,20 +338,21 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
           attempts: info.attempts,
           remainingMs: remaining,
         },
-        fallbackTarget
+        sandboxTarget
           ? "App loader fault before any bridge call; running this run on the sandbox service"
           : "App loader fault before any bridge call; running this run on QuickJS",
       )
       fallback = "loader_fault"
       executor = selectExecutor({
         trusted: opts.trusted,
-        fallbackService: fallbackTarget !== undefined,
+        inProcess: opts.quickjs?.inProcess === true,
+        sandboxService: sandboxTarget !== undefined,
       })
       const loaderAttempts = info
       result = await runOnExecutor(
         { ...opts, timeoutMs: remaining },
         executor,
-        { target: null, ...(fallbackTarget ? { fallbackTarget } : {}) },
+        { target: null, ...(sandboxTarget ? { sandboxTarget } : {}) },
         // The sandbox service's run (its id, bridge calls, logs) with the
         // loader's attempts and fault, which are why it ran there.
         (i) => {
@@ -389,7 +431,7 @@ async function runOnExecutor(
   plan: WorkersPlan,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
-  const workersTarget = executor === "workerd" ? plan.fallbackTarget : plan.target
+  const workersTarget = executor === "workerd" ? plan.sandboxTarget : plan.target
   // A custom app's code never holds a secret, on any executor. Its bridge
   // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
   // before any call.
@@ -435,9 +477,9 @@ async function runOnExecutor(
         ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
         ...(plan.probe ? { probe: true } : {}),
         runDepth: runDepthOf(opts),
-        // The fallback target's runs leave the loader's breaker and app
-        // fallbacks alone, and have nothing further to fall back to. The
-        // sandbox service holds no key to fetch a module: it is pushed.
+        // The sandbox service's runs leave the loader's breaker and app
+        // fallbacks alone, and have nothing further to fall back to. It
+        // holds no key to fetch a module: the module is pushed.
         ...(executor === "workerd"
           ? {
               ...fallbackTargetRunState(),
@@ -453,7 +495,7 @@ async function runOnExecutor(
   switch (executor) {
     case "inprocess":
       return executeInSandbox({
-        pool: getSandboxPool(),
+        pool: opts.quickjs?.inProcessPool ?? getSandboxPool(),
         bundleSource,
         exportName: opts.exportName,
         params: opts.params,
@@ -463,7 +505,8 @@ async function runOnExecutor(
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
       })
     case "pool": {
-      await initWorkerPool()
+      const own = opts.quickjs?.workerPool
+      if (!own) await initWorkerPool()
       const exec: WorkerExecOptions = {
         bundleSource,
         exportName: opts.exportName,
@@ -480,7 +523,11 @@ async function runOnExecutor(
       if (opts.signal !== undefined) exec.signal = opts.signal
       if (opts.appId !== undefined) exec.appId = opts.appId
       if (opts.toolName !== undefined) exec.toolName = opts.toolName
-      return getWorkerPool().execute(exec)
+      if (opts.quickjs?.memoryLimitBytes !== undefined) {
+        exec.memoryLimitBytes = opts.quickjs.memoryLimitBytes
+      }
+      if (opts.quickjs?.onHeapReport !== undefined) exec.onHeapReport = opts.quickjs.onHeapReport
+      return (own ?? getWorkerPool()).execute(exec)
     }
     case "workers":
     case "workerd":

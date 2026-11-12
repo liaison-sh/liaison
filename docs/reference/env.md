@@ -164,7 +164,10 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_APP_LOADER_URL` | `string (URL)` |  | no | Running sandboxed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are all set: every installed sandboxed app then runs there (any LIAISON_ROLE: a bridge call on another process is forwarded to the run's own), on the Worker module its package carried, which the loader fetches from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with LIAISON_APP_LOADER_KEY) when it has no copy. Unset by default: every app runs on QuickJS and /api/app-bridge answers 404. The loader's base URL (it is called at `<url>/run`). |
 | `LIAISON_APP_LOADER_CELL_ID` | `string` |  | no | This instance's id at the loader; it picks the signing key and the bridge origin the loader accepts. |
 | `LIAISON_APP_LOADER_KEY` | `string` |  | no | The shared key that signs this instance's requests to the loader. |
-| `LIAISON_APP_FALLBACK_LOADER_URL` | `string (URL)` |  | no | Where a run meant for the loader goes when the loader cannot take it (its breaker open, an app-level fallback, a loader fault before any bridge call): the base URL of this instance's own sandbox service, which speaks the loader's protocol (`<url>/run`, signed with the same cell id and key). Unset: those runs fall back to the local QuickJS sandbox. |
+| `LIAISON_SANDBOX_URL` | `string (URL)` |  | no | This instance's own sandbox service (workerd under gVisor, the `sandbox` compose service): its base URL (`<url>/run`). Set, every sandboxed app runs there when no loader is configured, and a run the loader cannot take (its breaker open, an app-level fallback, a loader fault before any bridge call) goes there instead of the local QuickJS sandbox. Unset: sandboxed apps run on QuickJS (modules/apps/workers/config.ts). |
+| `LIAISON_SANDBOX_BRIDGE_URL` | `string (URL)` |  | no | The origin the sandbox service's runs call back on: the app's bridge-only listener as the sandbox network reaches it (`http://<app>:<port>`, see LIAISON_APP_BRIDGE_PORT). Unset, the loader's bridge address. |
+| `LIAISON_APP_BRIDGE_PORT` | `number` |  | no | A second listener serving `/api/app-bridge/<runId>` and nothing else, for the sandbox network: the sandbox service reaches this port only. Unset: no such listener. |
+| `LIAISON_APP_RUNTIME` | `"quickjs"` |  | no | `quickjs` runs every app on the local QuickJS sandbox again, whatever the loader and sandbox settings say: the way back for an instance moving to the sandbox service, for this release only. Unset: the settings above. |
 | `LIAISON_APP_BRIDGE_BASE_URL` | `string (URL)` |  | no | The public base URL the loader's isolates call back on (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL. |
 | `LIAISON_APP_BRIDGE_TIMINGS_FILE` | `string` |  | no | A JSONL file that receives one timing line per /api/app-bridge call (run, app, method, duration, status). Unset, the timings stay in memory only. |
 | `LIAISON_READY_WARM_MS` | `number` | `30000` | no | How long a serving process may spend, before /readyz answers 200, registering the apps of the orgs with a live socket in the cell (the orgs a deploy's reconnecting sockets bring it first). Past it the process turns ready and the rest register on demand. 0 skips it. |
@@ -291,7 +294,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1662` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1678` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1387` |
@@ -323,7 +326,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:73` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:419` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:426` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |

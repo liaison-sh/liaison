@@ -10,6 +10,9 @@
 #                    Non-zero when a migration or a catalog app install fails.
 #                    Both refuse an image older than the database's schema
 #                    (src/db/schema-guard.ts), with or without the migration.
+#   sandbox          the app sandbox service (packages/sandbox-supervisor): a
+#                    supervised pool of workerd processes, the compose
+#                    `sandbox` service. No database, no secret.
 #   anything else    run as given (one-off CLI containers: `docker compose run
 #                    app bun ...`).
 #
@@ -70,6 +73,9 @@ reconcile() {
 }
 
 case "${1:-serve}" in
+  sandbox)
+    exec bun "$APP_DIR/packages/sandbox-supervisor/src/main.ts"
+    ;;
   migrate)
     migrate
     cd "$APP_DIR/apps/api"

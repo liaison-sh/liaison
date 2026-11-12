@@ -512,31 +512,33 @@ describe("apps provisioner (Task 11)", () => {
     expect(afterApply.group).toBe("team-new")
   })
 
-  test("oauth2 connection (google-drive/drive): pending, no write", async () => {
+  test("oauth2 connection (calendar/google-calendar): pending, no write", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const config: ProvisioningConfig = {
       org: { slug: "x", name: "X" },
       apps: [
         {
-          name: "google-drive",
+          name: "calendar",
           enable: true,
-          connection: { name: "drive", identifier: "drive-account", ownerType: "org" },
+          connection: { name: "google-calendar", identifier: "calendar-account", ownerType: "org" },
         },
       ],
     }
 
     const r = await appsProvisioner.apply(ctx, { actions: [] }, config)
-    const e = findApp(r, "google-drive")
+    const e = findApp(r, "calendar")
     expect(e.enabled).toBe(true)
     expect(e.connected).toBeFalsy()
 
     const pending = r.pending ?? []
-    expect(pending.find((p) => p.app === "google-drive" && p.connection === "drive")).toBeDefined()
+    expect(
+      pending.find((p) => p.app === "calendar" && p.connection === "google-calendar"),
+    ).toBeDefined()
 
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'google-drive'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'calendar'
       `),
     )
     expect(extractRows(rows).length).toBe(0)

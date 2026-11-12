@@ -172,10 +172,10 @@ Search, read and import Google Drive files, and upload new reports.
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `google-drive:accounts:admin` | role admin; tools choose_shared_drives, shared_drives |  |
-| `google-drive:accounts:read` | role member; tools import, read, search |  |
+| `google-drive:accounts:admin` | manifest scopes; role admin; settings section shared-drives; tools choose_shared_drives, shared_drives, shared_drives_save |  |
+| `google-drive:accounts:read` | manifest scopes; role member; tools drive_picker, import, picker_remove, picker_state, read, search |  |
 | `google-drive:approve` | approver scope | Decide (approve, edit, or deny) google-drive approvals raised by its gated tools |
-| `google-drive:files:write` | role member; tool upload |  |
+| `google-drive:files:write` | manifest scopes; role member; tool upload |  |
 
 ## invoicing
 

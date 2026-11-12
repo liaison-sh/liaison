@@ -394,6 +394,14 @@ Each app can declare:
 
 Each app gets its own Postgres schema (`app_<name>`) and its tool/export handlers run within an RLS context.
 
+### Core apps (server code)
+
+A core app's handlers are server code, not a sandboxed bundle. Its `apps/<name>/handlers.ts` is an ordinary module: every handler its manifest names (tools, preflights, jobs, event handlers, webhooks and their verifiers, the export, the attention provider) is a named export `(params, ctx, ...extra)`. The app is listed in `CORE_APP_MODULES` (`apps/api/src/modules/apps/core/registry.ts`) under its name and the module path its descriptor declares as `_bundlePath`; `runApp` then imports the module and calls the export in the API process (`core/run-core.ts`). No sandbox, ctx shim or bundle transform is involved, whatever the call site.
+
+`ctx` is a `CoreCtx<Methods>` (`core/ctx.ts`): the run's bridge, called directly, so a core handler and a sandboxed app share one implementation of every host method, with the same actor, scopes and transaction. `ctx.approval` is the approval a re-entry runs under. Work that must land together runs in `ctx.transaction(fn)`: one database transaction, committed or rolled back as a whole (a run that already holds one runs `fn` on it). Core apps declare no `atomic` flag; that flag is for sandboxed runs only.
+
+Moving another core app means: turn its `handlers.ts` into a module with named exports and a typed `CoreCtx` interface of the methods it uses, add its row to `CORE_APP_MODULES`, and replace any `atomic` tool with `ctx.transaction`. The registry test (`core/run-core.test.ts`) checks that every handler the manifest names is an export.
+
 ### Sandbox Execution (Manifest Apps)
 
 Manifest app handlers run inside **QuickJS** compiled to WebAssembly (`quickjs-emscripten`). Each handler is routed to one of two execution paths based on its trust level:
@@ -574,7 +582,7 @@ To port to a different runtime (e.g., Node.js), you'd replace `Bun.serve()` with
 Knowledge is a first-party app for local documents, curated source links, and federated search across remote sources.
 
 - **Local Knowledge documents** live in `app_knowledge.documents`, are indexed by MeiliSearch through the existing permission-filter pipeline, and use participant + dimension (`team`, `sensitivity`) RLS. Personal-scoped documents require `owner_user_id = current_setting('app.user_id')`; organization-scoped documents require scope + dimension grants.
-- **Remote sources** (currently Google Drive) participate in a Knowledge-specific federated search service (`apps/knowledge/federated-search.ts`), not the generic `modules/search` fanout. Each source adapter implements `KnowledgeSourceAdapter` and is registered via `apps/knowledge/source-registry.ts`.
+- **Remote sources** participate in a Knowledge-specific federated search service (`apps/knowledge/federated-search.ts`), not the generic `modules/search` fanout. Each source adapter implements `KnowledgeSourceAdapter` and is registered via `apps/knowledge/source-registry.ts`. A catalog app syncs its folders through its manifest's `knowledgeSources` instead (Google Drive: `bundled-apps/google-drive/src/knowledge.ts`).
 - **Lazy retrieval**: agent tools (`knowledge_search`, `knowledge_get`) never bulk-ingest remote content. Drive defaults to the `drive.file` OAuth scope, `remote_search` policy, and **zero remote cache** (`cachedBytes`, `cachedChunks`, `cachedDays` all 0). The cache invariant is asserted via `GET /api/knowledge/sources/:source` telemetry.
 - **Attachments** attach only to local Knowledge documents — file parents are wired through the manifest's `entities.document.fileParent` block; linked source identities do not get Liaison attachments.
 - **Agent tools** use lazy retrieval and return remote content as `untrusted: true` citation blocks to mitigate prompt injection. When `knowledge_search` returns zero authorized hits or `knowledge_get` resolves to an unavailable target, a deduped `knowledge_review` attention item with `reason: "agent_requested"` is emitted for curator review.

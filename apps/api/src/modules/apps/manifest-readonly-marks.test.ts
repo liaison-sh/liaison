@@ -85,7 +85,7 @@ const READ_ONLY: Record<string, string[]> = {
   ],
   // shared_drives lists the org Drive connections and (for an admin) the Shared Drives the
   // connecting account is a member of (drives.list); only the token cache is touched.
-  "google-drive": ["search", "read", "shared_drives"],
+  "google-drive": ["search", "read", "shared_drives", "picker_state"],
   // Every call writes one audit row (read name, outcome, row count, SQL hash); the target is
   // reached through a read-only role, so nothing else is written anywhere. The two Report
   // access reads only read the app's own store, the catalog and the org's directory.

@@ -263,7 +263,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | Name | Read in |
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:139` |
-| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:781` |
+| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:771` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:74` |
 | `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:32`, `apps/api/src/modules/apps/workers/admission.ts:33` |
@@ -275,8 +275,6 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAMAV_HOST` | `apps/api/src/lib/clamav.ts:38` |
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
-| `DRIVE_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:33` |
-| `DRIVE_UPLOAD_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:37` |
 | `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5081` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
@@ -285,7 +283,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:77`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
 | `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:213` |
-| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
+| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:52` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/modules/apps/connections/sql/catalog.ts:185` |
@@ -320,12 +318,12 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:561`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:559`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
-| `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:69` |
-| `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:73` |
+| `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:66` |
+| `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:426` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |

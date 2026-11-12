@@ -217,6 +217,21 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "add_folder_source's own `scope` param (personal or organization), not a tool definition",
   ],
   [
+    "apps/api/src/modules/apps/sandbox/bridge/app-sources.ts",
+    "const owner = ownerOf(p.scope)",
+    "knowledge_appSource's own `scope` param (personal or organization), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/sandbox/bridge/app-sources.ts",
+    'const scope = p.scope === "organization" ? "organization" : "personal"',
+    "knowledge_appSource's own `scope` param (personal or organization), not a tool definition",
+  ],
+  [
+    "bundled-apps/google-drive/src/knowledge.ts",
+    'const account = await sourceAccount(ctx, input.scope === "personal", identifier)',
+    "a knowledge sync input's `scope` (a person's source or the organization's), not a tool definition",
+  ],
+  [
     "apps/api/src/modules/mcp-client/call.ts",
     'return err.challenge.scope ?? ""',
     REASONS.MCP_OAUTH,

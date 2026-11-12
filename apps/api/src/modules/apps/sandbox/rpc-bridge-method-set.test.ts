@@ -143,6 +143,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["kernel_roles", "async"],
   ["knowledge_addFolderSource", "async"],
   ["knowledge_add_to_collection", "async"],
+  ["knowledge_appSource", "async"],
+  ["knowledge_appSourceWrite", "async"],
   ["knowledge_archive", "async"],
   ["knowledge_attentionItems", "async"],
   ["knowledge_collection_create", "async"],

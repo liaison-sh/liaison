@@ -171,7 +171,6 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "agent-turn-resume": { queueClass: "agent" },
   "scope-request-decision-turn": { queueClass: "agent" },
   "secret-request-turn": { queueClass: "agent" },
-  "drive-picker-turn": { queueClass: "agent" },
   "setup-kickoff": { queueClass: "agent" },
   "approval-result-turn": { queueClass: "agent" },
   "approval-reminder-turn": { queueClass: "agent" },

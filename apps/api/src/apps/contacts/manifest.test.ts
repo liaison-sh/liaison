@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { exportContacts } from "~/apps/contacts/export"
 import { contactsAppManifest } from "~/apps/contacts/manifest-descriptor"
 import { validateAppManifest } from "~/modules/apps/contract"
+import { CORE_EXPORT_HANDLERS } from "~/modules/apps/core/exports"
 import contactsManifest from "./app.manifest.json"
 
 describe("contacts manifest", () => {
@@ -48,5 +50,11 @@ describe("getDefaultApps", () => {
     const { getDefaultApps } = await import("~/modules/apps/init")
     const apps = await getDefaultApps()
     expect(apps.some((app) => app.name === "contacts")).toBe(true)
+  })
+
+  it("is server code: no handler bundle, its export is the app's own module", () => {
+    expect("_bundlePath" in contactsAppManifest).toBe(false)
+    expect(contactsManifest.export.handler).toBe("exportContacts")
+    expect(CORE_EXPORT_HANDLERS.contacts).toBe(exportContacts)
   })
 })

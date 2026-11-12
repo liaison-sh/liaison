@@ -5,7 +5,7 @@ import { Hono } from "hono"
  * Mock Google Drive REST v3 server for E2E tests.
  *
  * Routes mounted under /drive/v3 mirroring the production endpoints used by
- * `apps/api/src/apps/google-drive/drive-rest.ts`:
+ * the google-drive app (`bundled-apps/google-drive/src/drive.ts`):
  *   - GET /drive/v3/files                     — list / search
  *   - GET /drive/v3/files/:id                 — metadata (no `alt`)
  *   - GET /drive/v3/files/:id?alt=media       — binary download (production

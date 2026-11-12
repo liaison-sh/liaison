@@ -28,7 +28,7 @@ const TAINT_SOURCES: Array<[string, string[]]> = [
       "gitlab_search",
     ],
   ],
-  [join(API_APPS, "google-drive", "app.manifest.json"), ["search", "read"]],
+  [join(BUNDLED, "google-drive", "app.manifest.json"), ["search", "read"]],
   [join(BUNDLED, "database", "app.manifest.json"), ["db_read", "db_query"]],
   [
     join(BUNDLED, "shopify", "app.manifest.json"),
@@ -54,7 +54,7 @@ describe("tools with an outward channel", () => {
     expect(
       tools(join(API_APPS, "tickets", "app.manifest.json"))["csat.request"]?.externalEffect,
     ).toBe(true)
-    expect(tools(join(API_APPS, "google-drive", "app.manifest.json")).upload?.externalEffect).toBe(
+    expect(tools(join(BUNDLED, "google-drive", "app.manifest.json")).upload?.externalEffect).toBe(
       true,
     )
   })

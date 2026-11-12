@@ -58,6 +58,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_calendar.sync_log": { exempt: "system", reason: "calendar sync log" },
   "app_example.items": { exempt: "system", reason: "development scaffold app" },
   "app_example.summaries": { exempt: "system", reason: "development scaffold app" },
+  "app_google_drive.imports": {
+    exempt: "sync",
+    reason:
+      "the record of Drive files imported into Liaison files (the files themselves are kernel files)",
+  },
   "app_invoicing.contact_primary_thread": {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",

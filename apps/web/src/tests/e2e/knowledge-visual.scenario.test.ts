@@ -10,7 +10,6 @@
 
 import { expect, test } from "./fixtures/test"
 import { createKnowledgeDocument, searchKnowledge } from "./helpers/knowledge-seed"
-import { seedDriveConnection } from "./helpers/seed"
 
 async function waitForIndex(
   env: Parameters<typeof searchKnowledge>[0],
@@ -86,53 +85,6 @@ test("visual: knowledge search results (local-only)", async ({ authenticatedPage
   })
 })
 
-test("visual: knowledge search results (drive-only)", async ({
-  authenticatedPage,
-  env,
-  qa,
-  world,
-}) => {
-  test.skip(!env.mockDrive, "mock Drive server did not start in this worker")
-  if (!env.mockDrive) return
-
-  const page = authenticatedPage
-  const suffix = env.schemaPrefix.replace(/_$/, "")
-  const driveTitle = `V1 Drive Doc ${suffix}`
-
-  env.mockDrive.resetFixtures()
-  env.mockDrive.resetRequestLog()
-  env.mockDrive.addFixture({
-    id: `v1-drive-${suffix}`,
-    name: driveTitle,
-    mimeType: "application/vnd.google-apps.document",
-    exportBody: "v1 drive body",
-    webViewLink: `${env.mockDrive.url}/preview/v1-drive-${suffix}`,
-  })
-
-  await seedDriveConnection(env, world.org.id, qa.admin.id)
-  const policyRes = await fetch(`${env.serverUrl}/api/knowledge/sources/google-drive`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${qa.admin.token}`,
-    },
-    body: JSON.stringify({ broadSearchEnabled: true }),
-  })
-  expect(policyRes.status).toBe(200)
-
-  await page.goto(`http://localhost:${env.ports[1]}/knowledge`)
-  await page.getByTestId("knowledge-sidebar-search-input").fill(driveTitle)
-  // Drive hits return via the same inline-search path.
-  await expect(page.locator("[data-search-hit]").first()).toBeVisible({
-    timeout: 15_000,
-  })
-
-  // Full viewport: sidebar with inline Drive hits
-  await expect(page).toHaveScreenshot("phase11-knowledge-search-drive-full.png", {
-    maxDiffPixelRatio: 0.02,
-  })
-})
-
 test("visual: knowledge document view (personal)", async ({ authenticatedPage, env, qa }) => {
   const page = authenticatedPage
   const suffix = env.schemaPrefix.replace(/_$/, "")
@@ -167,71 +119,3 @@ test("visual: knowledge document view (personal)", async ({ authenticatedPage, e
 // in-Knowledge source-settings surface is gone — connector auth/config now
 // lives in `AdminIntegrations` (settings), and visual coverage for that
 // surface belongs in a settings-scenario test rather than here.
-
-test("visual: knowledge linked source view", async ({ authenticatedPage, env, qa, world }) => {
-  test.skip(!env.mockDrive, "mock Drive server did not start in this worker")
-  if (!env.mockDrive) return
-
-  const page = authenticatedPage
-  const suffix = env.schemaPrefix.replace(/_$/, "")
-  const driveTitle = `V1 Linked Source ${suffix}`
-  const fixtureId = `v1-link-${suffix}`
-
-  env.mockDrive.resetFixtures()
-  env.mockDrive.addFixture({
-    id: fixtureId,
-    name: driveTitle,
-    mimeType: "application/vnd.google-apps.document",
-    exportBody: "linked source body",
-    webViewLink: `${env.mockDrive.url}/preview/${fixtureId}`,
-  })
-  await seedDriveConnection(env, world.org.id, qa.admin.id)
-  // Linking requires the adapter to verify the remote file is visible —
-  // enable broad search so `getRemoteMetadata` reaches the mock.
-  await fetch(`${env.serverUrl}/api/knowledge/sources/google-drive`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${qa.admin.token}`,
-    },
-    body: JSON.stringify({ broadSearchEnabled: true }),
-  })
-
-  // Create the source-link directly via API.
-  const linkRes = await fetch(`${env.serverUrl}/api/knowledge/source-links`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${qa.admin.token}`,
-    },
-    body: JSON.stringify({
-      source: "google-drive",
-      externalId: fixtureId,
-      title: driveTitle,
-      url: `${env.mockDrive.url}/preview/${fixtureId}`,
-    }),
-  })
-  expect(linkRes.status, await linkRes.clone().text()).toBe(201)
-  const linkJson = (await linkRes.json()) as { data: { id: string } }
-  const linkId = linkJson.data.id
-
-  // Wait for the indexer to surface the new source_link.
-  await waitForIndex(env, qa.admin.token, linkId, driveTitle)
-
-  await page.goto(`http://localhost:${env.ports[1]}/knowledge`)
-  // Phase 11.2: inline sidebar search emits both document and source_link
-  // hits with the legacy entity-typed testid.
-  await page.getByTestId("knowledge-sidebar-search-input").fill(driveTitle)
-  const row = page.locator(`[data-testid="knowledge-search-result-source_link-${linkId}"]`).first()
-  await row.waitFor({ state: "visible", timeout: 15_000 })
-  await row.click()
-  await expect(page.getByTestId("knowledge-linked-source-view")).toBeVisible({
-    timeout: 10_000,
-  })
-  await expect(page.getByTestId("knowledge-linked-title")).toHaveText(driveTitle)
-
-  // Full viewport: sidebar + linked source view
-  await expect(page).toHaveScreenshot("phase11-knowledge-linked-source-full.png", {
-    maxDiffPixelRatio: 0.02,
-  })
-})

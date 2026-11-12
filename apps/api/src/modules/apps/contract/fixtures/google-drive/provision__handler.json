@@ -1,0 +1,30 @@
+{
+  "entry": "provision:handler",
+  "params": {
+    "config": {
+      "sharedDrives": [
+        {
+          "account": "team@example.com",
+          "drives": ["Team"]
+        }
+      ]
+    },
+    "dryRun": false
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive"],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.846Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id%2Cname)%2CnextPageToken",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d002\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"drives\\\":[{\\\"id\\\":\\\"DRIVE_TEAM\\\",\\\"name\\\":\\\"Team\\\"}]}\"}"
+    }
+  ]
+}

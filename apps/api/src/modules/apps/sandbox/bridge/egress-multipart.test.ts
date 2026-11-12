@@ -168,6 +168,58 @@ describe("ctx.fetch multipart upload", () => {
     expect(new TextDecoder().decode(parts[2]!.bytes)).toBe("42")
   })
 
+  it("related: a JSON metadata part then the file's bytes, each with only its Content-Type", async () => {
+    const seen = transport()
+    await withPrivilegedDb(ORG, "test:multipart-related", async (tx) =>
+      upload(tx, {
+        method: "POST",
+        body: {
+          related: true,
+          multipart: [
+            { name: "metadata", value: '{"name":"FA-1.pdf"}', contentType: "application/json" },
+            { name: "media", fileId: FILE, contentType: "application/pdf", expectSha256: SHA },
+          ],
+        },
+      }),
+    )
+    expect(seen[0]!.contentType).toMatch(/^multipart\/related; boundary=/)
+    const parts = partsOf(seen[0]!)
+    expect(parts.map((p) => p.head)).toEqual([
+      "Content-Type: application/json",
+      "Content-Type: application/pdf",
+    ])
+    expect(new TextDecoder().decode(parts[0]!.bytes)).toBe('{"name":"FA-1.pdf"}')
+    expect(createHash("sha256").update(parts[1]!.bytes).digest("hex")).toBe(SHA)
+  })
+
+  it("a base64 part is decoded host-side; bad base64 is refused before anything is sent", async () => {
+    const seen = transport()
+    await withPrivilegedDb(ORG, "test:multipart-base64", async (tx) =>
+      upload(tx, {
+        method: "POST",
+        body: {
+          related: true,
+          multipart: [
+            {
+              name: "media",
+              base64: Buffer.from(BYTES).toString("base64"),
+              contentType: "image/png",
+            },
+          ],
+        },
+      }),
+    )
+    const [part] = partsOf(seen[0]!)
+    expect(part!.head).toBe("Content-Type: image/png")
+    expect(createHash("sha256").update(part!.bytes).digest("hex")).toBe(SHA)
+    await expect(
+      withPrivilegedDb(ORG, "test:multipart-base64-bad", async (tx) =>
+        upload(tx, { method: "POST", body: { multipart: [{ name: "m", base64: "%%%" }] } }),
+      ),
+    ).rejects.toThrow(/not valid base64/)
+    expect(seen).toHaveLength(1)
+  })
+
   it("a pinned fingerprint that does not match refuses before anything is sent", async () => {
     const seen = transport()
     const err = await withPrivilegedDb(ORG, "test:multipart", (tx) =>

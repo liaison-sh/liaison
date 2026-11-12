@@ -161,7 +161,7 @@ Type `object[]`, optional.
 | `apps[].connection.oauthClient` | `object` | no |  | OAuth2 connections only: the per-connection OAuth client (app id/secret from the provider -- Shopify app, Meta app, Google client). Provisioned headlessly so `liaison connect <app>/<conn>` can then run the browser consent. Ignored for credentials connections. Empty strings are allowed on purpose: a client declared via an unset `${ENV:-}` ref is treated as "not configured yet" and SKIPPED by the connector (incremental setup), not rejected here. |
 | `apps[].connection.oauthClient.clientId` | `string` | yes |  |  |
 | `apps[].connection.oauthClient.clientSecret` | `string` | yes |  |  |
-| `apps[].connection.sharedDrives` | `string[]` | no |  | google-drive only: the Shared Drives (ids or names) the organization's Drive connection shares with the team. It reads nothing until they are chosen; no one's My Drive is ever read through the org connection. |
+| `apps[].connection.sharedDrives` | `unknown` | no |  | Moved: refused below with where it went (the app's provisioning). |
 | `apps[].connections` | `object[]` | no |  | More accounts of a multiInstance credentials connection, each by its `identifier` (an API connection per slug, for one). Applied after the app's `provision`, which may set up what an account needs first. |
 | `apps[].connections[].name` | `string` | yes |  |  |
 | `apps[].connections[].identifier` | `string` | no |  |  |
@@ -170,7 +170,7 @@ Type `object[]`, optional.
 | `apps[].connections[].oauthClient` | `object` | no |  | OAuth2 connections only: the per-connection OAuth client (app id/secret from the provider -- Shopify app, Meta app, Google client). Provisioned headlessly so `liaison connect <app>/<conn>` can then run the browser consent. Ignored for credentials connections. Empty strings are allowed on purpose: a client declared via an unset `${ENV:-}` ref is treated as "not configured yet" and SKIPPED by the connector (incremental setup), not rejected here. |
 | `apps[].connections[].oauthClient.clientId` | `string` | yes |  |  |
 | `apps[].connections[].oauthClient.clientSecret` | `string` | yes |  |  |
-| `apps[].connections[].sharedDrives` | `string[]` | no |  | google-drive only: the Shared Drives (ids or names) the organization's Drive connection shares with the team. It reads nothing until they are chosen; no one's My Drive is ever read through the org connection. |
+| `apps[].connections[].sharedDrives` | `unknown` | no |  | Moved: refused below with where it went (the app's provisioning). |
 | `apps[].providers` | `map of object` | no |  | Mail app only: which mail providers are switched on for the org. |
 | `apps[].providers.<key>.enabled` | `boolean` | yes |  |  |
 | `apps[].config` | `map of unknown` | no |  | Non-secret app config keys (`kernel.apps.config`), written through the same allowlist as `PUT /api/apps/:app/config/:key`: each key must be declared in the app manifest's `configKeys`. A null value clears the key. |

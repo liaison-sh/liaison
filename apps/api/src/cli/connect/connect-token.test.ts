@@ -102,7 +102,7 @@ async function accounts() {
       provider_type: string
       access_token_encrypted: string | null
       oauth_client_source: string | null
-      metadata: { grantedOAuthScopes?: string[] } | null
+      metadata: Record<string, unknown> | null
     }>(
       await tx.execute(drizzleSql`
         SELECT id, identifier, status, owner_type, provider_type, access_token_encrypted,
@@ -194,6 +194,16 @@ describe("connect --token-env", () => {
     expect(lines.join("\n")).not.toContain(SECRET)
     expect(lines.join("\n")).toContain("acme-store.myshopify.com")
 
+    // What the app keeps on the account (ctx.accounts.setMetadata) follows a reconnect of
+    // the same account by the same owner; the kernel's own keys are the new grant's.
+    await withPrivilegedDb(orgId, "test-token-app-metadata", (tx) =>
+      tx.execute(drizzleSql`
+        UPDATE ${kernelRel("connected_accounts")}
+        SET metadata = metadata || ${JSON.stringify({ sharedDrives: [{ id: "D1", name: "Team" }], note: "kept" })}::jsonb
+        WHERE id = ${row.id}::uuid
+      `),
+    )
+
     // A second connect of the same account replaces the row, as an OAuth reconnect does.
     const second = await run({
       ref: `${APP}/shop`,
@@ -205,6 +215,7 @@ describe("connect --token-env", () => {
     const after = await accounts()
     expect(after.map((r) => r.status)).toEqual(["disconnected", "active"])
     expect(after[0]!.access_token_encrypted).toBeNull()
+    expect(after[1]!.metadata).toEqual({ sharedDrives: [{ id: "D1", name: "Team" }], note: "kept" })
     // Without --client-secret-env the operator is told what it means.
     expect(lines.some((l) => l.includes("no --client-secret-env"))).toBe(true)
   })

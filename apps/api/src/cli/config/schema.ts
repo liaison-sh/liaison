@@ -258,10 +258,8 @@ const connectionSchema = z.object({
   // declared via an unset `${ENV:-}` ref is treated as "not configured yet" and
   // SKIPPED by the connector (incremental setup), not rejected here.
   oauthClient: z.object({ clientId: z.string(), clientSecret: z.string() }).optional(),
-  // google-drive only: the Shared Drives (ids or names) the organization's Drive
-  // connection shares with the team. It reads nothing until they are chosen; no
-  // one's My Drive is ever read through the org connection.
-  sharedDrives: z.array(z.string().min(1)).max(100).optional(),
+  // Moved: refused below with where it went (the app's provisioning).
+  sharedDrives: z.unknown().optional(),
 })
 
 /**
@@ -338,9 +336,15 @@ const appSchema = z
     message: "config requires enable: true (a disabled app entry is skipped)",
     path: ["config"],
   })
-  .refine((a) => a.connection?.sharedDrives === undefined || a.name === "google-drive", {
-    message: "sharedDrives is only supported on the 'google-drive' connection",
+  .refine((a) => a.connection?.sharedDrives === undefined, {
+    message:
+      "connection.sharedDrives moved into the google-drive app's provisioning: write it as provision: { sharedDrives: [{ account: <the org connection's Google account>, drives: [...] }] }",
     path: ["connection", "sharedDrives"],
+  })
+  .refine((a) => (a.connections ?? []).every((c) => c.sharedDrives === undefined), {
+    message:
+      "connections[].sharedDrives moved into the google-drive app's provisioning: write it as provision: { sharedDrives: [{ account: <the org connection's Google account>, drives: [...] }] }",
+    path: ["connections"],
   })
   .refine((a) => a.settings === undefined || a.enable, {
     message: "settings requires enable: true (a disabled app entry is skipped)",

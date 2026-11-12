@@ -615,7 +615,9 @@ describe("Boxtal app.manifest.json", () => {
     //   as the merchant's SKU with its product attributes; countries print as their English name.
     // 0.24.6: no catalog tool holds a transaction across its run: a profile write, link, unlink or
     // merge commits with its old-table mirror in one batch, a pack with its components.
-    expect(m.version).toBe("0.24.6")
+    // 0.24.7: a shipment declares `pick` (the search tool), so a dashboard table's link cell
+    // can pick one.
+    expect(m.version).toBe("0.24.7")
     expect(m.packageFormat).toBe(1)
   })
 

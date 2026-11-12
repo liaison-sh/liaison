@@ -16,6 +16,7 @@ import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
+import { createBatchMethods } from "~/modules/apps/sandbox/bridge/batch"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
 import {
   type ActorType,
@@ -97,6 +98,7 @@ export function createRpcBridge(
     rpcBridge,
     createIdentityMethods(ctx),
     createDbMethods(ctx),
+    createBatchMethods(ctx, (tx) => createDbMethods({ ...ctx, txDb: tx })),
     createPlatformMethods(ctx),
     createAgentMethods(ctx),
     createEgressMethods(ctx),
@@ -216,7 +218,7 @@ function secretConfigKeyResolver(
  * fails on any method that is neither refused, self-guarding nor a reviewed read.
  *
  * NOT here, and deliberately: `db_insert`, `db_update`, `db_updateMany`,
- * `db_delete` and `messages_post` guard themselves with their real write target,
+ * `db_delete`, `db_batch` (each op runs through those) and `messages_post` guard themselves with their real write target,
  * and `executeTool` forwards the mark so a nested READ still runs.
  *
  * KNOWN BOUND: `fetch` stays callable. It is how an app reads an external API,

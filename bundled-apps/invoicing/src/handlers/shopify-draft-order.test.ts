@@ -155,16 +155,6 @@ function makeCtx(opts?: {
     approval: null,
     db,
     time: testTime(),
-    sequences: {
-      async allocate({ key }) {
-        const existing = await db.findMany("__sequences", { where: { key }, limit: 1 })
-        const current = existing[0] as { value?: number; id?: string } | undefined
-        const next = (current?.value ?? 0) + 1
-        if (current?.id) await db.update("__sequences", String(current.id), { value: next })
-        else await db.insert("__sequences", { key, value: next })
-        return { value: next }
-      },
-    },
     pdf: {
       async render() {
         idSeq += 1
@@ -979,7 +969,7 @@ describe("a draft order refused for its zone", () => {
     })
     expect(res).toMatchObject({ status: "deferred", reason: "issuer_timezone_invalid" })
     expect(await db.findMany("documents", {})).toEqual([])
-    expect(await db.findMany("__sequences", {})).toEqual([])
+    expect(db.__sequences.size).toBe(0)
     const [park, ...others] = await parks(db)
     expect(others).toEqual([])
     expect(park).toMatchObject({

@@ -122,18 +122,6 @@ function makeCtx(db: MockDb): { ctx: RefundCtx & OrderCancelledCtx; emitted: Emi
       emitted.push(e)
     },
     time: testTime(),
-    sequences: {
-      async allocate(p: { key: string }) {
-        const ex = (await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })) as Array<
-          Record<string, unknown>
-        >
-        const cur = ex[0]
-        const next = (Number(cur?.value ?? 0) || 0) + 1
-        if (cur) await db.update("__sequences", String(cur.id), { value: next })
-        else await db.insert("__sequences", { key: p.key, value: next })
-        return { value: next }
-      },
-    },
     pdf: {
       async render() {
         return { file_id: `pdf-${++seq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }

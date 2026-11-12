@@ -13,6 +13,8 @@
 //              loader cannot take it and that service is configured
 //              (workers/config.ts readFallbackTarget)
 //   pool       everything else, on the out-of-process worker pool
+//   core       a core app's server module (core/registry.ts), called in this
+//              process with a typed host ctx (core/run-core.ts); never a sandbox
 //
 // An app that cannot run on Workers (its installed version came from a
 // package without a Worker module) runs on the pool with a warning per run.
@@ -39,6 +41,8 @@ import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { rootLogger } from "~/lib/logger"
 import { flushRunLogs } from "~/modules/app-builder/logs"
+import { coreModuleFor } from "~/modules/apps/core/registry"
+import { runCoreHandler } from "~/modules/apps/core/run-core"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { entryKindOf, type RunEntryKind, runLimits } from "~/modules/apps/run-limits"
 import {
@@ -150,7 +154,7 @@ export interface RunAppOptions {
 export type AppBridge = Record<string, (...args: any[]) => any>
 
 /** Which executor runs this call. */
-export type AppExecutor = "inprocess" | "pool" | "workers" | "workerd"
+export type AppExecutor = "core" | "inprocess" | "pool" | "workers" | "workerd"
 
 /**
  * THE executor choice: trusted code in-process; an untrusted run with a Workers
@@ -266,6 +270,25 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
   let fallback: WorkersFallback | undefined
   try {
+    // A core app's handler is server code: called here, whatever the site asked.
+    const core = coreModuleFor(opts.appName, opts.bundlePath)
+    if (core) {
+      executor = "core"
+      const result = await runCoreHandler({
+        module: core,
+        appName: opts.appName,
+        exportName: opts.exportName,
+        params: opts.params,
+        ...(opts.extraArgs !== undefined ? { extraArgs: opts.extraArgs } : {}),
+        bridge: opts.bridge,
+        holdsTx: opts.holdsTx,
+        approval: opts.syncContext?.approval ?? null,
+        ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+      })
+      ok = true
+      return result
+    }
     // Decide, then build the bridge for that executor (runOnExecutor), then run.
     const plan = await planWorkersRun(opts)
     fallback = plan.fallback
@@ -344,7 +367,8 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       app: opts.appName,
       orgId: opts.orgId,
       entry: opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
-      executor: executor === "pool" ? "quickjs" : executor,
+      // A core run is platform code, recorded like trusted in-process code.
+      executor: executor === "pool" ? "quickjs" : executor === "core" ? "inprocess" : executor,
       nested: opts.nested === true,
       ...(parentApp ? { parentApp } : {}),
       ms: Date.now() - started,
@@ -482,6 +506,7 @@ async function runOnExecutor(
       if (opts.toolName !== undefined) exec.toolName = opts.toolName
       return getWorkerPool().execute(exec)
     }
+    case "core":
     case "workers":
     case "workerd":
       throw new Error(

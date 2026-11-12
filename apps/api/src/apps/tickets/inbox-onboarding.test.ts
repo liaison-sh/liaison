@@ -4,6 +4,7 @@
 import { beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import ticketsManifest from "~/apps/tickets/app.manifest.json"
+import * as handlers from "~/apps/tickets/handlers"
 import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 
@@ -36,9 +37,7 @@ describe("tickets.inbox.onConnected.creates-row", () => {
     // Direct unit invocation of the handler with a mock ctx that mirrors the
     // sandbox bridge surface. We don't go through the event bus; we exercise
     // the handler's branching directly so its semantics are pinned.
-    const handlersUrl = new URL("../tickets/handlers.ts", import.meta.url)
-    await import(handlersUrl.pathname)
-    const fn = (globalThis as any).ticketsOnAccountConnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountConnected as unknown as TicketAccountHandler
     expect(typeof fn).toBe("function")
 
     const inserted: any[] = []
@@ -89,7 +88,7 @@ describe("tickets.inbox.onConnected.creates-row", () => {
   })
 
   it("ignores connected_account:create when appName is not tickets", async () => {
-    const fn = (globalThis as any).ticketsOnAccountConnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountConnected as unknown as TicketAccountHandler
     let called = 0
     const ctx = {
       db_findMany: async () => {
@@ -112,7 +111,7 @@ describe("tickets.inbox.onConnected.creates-row", () => {
   })
 
   it("enqueues imap-initial-sync when connectionName='imap'", async () => {
-    const fn = (globalThis as any).ticketsOnAccountConnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountConnected as unknown as TicketAccountHandler
     const enqueued: any[] = []
     const ctx = {
       db_findMany: async () => "[]",
@@ -137,7 +136,7 @@ describe("tickets.inbox.onConnected.creates-row", () => {
   // account-id-only lookup and a DUPLICATE inbox created -- leaving the original orphaned on a
   // dead account (still "active") and sync never resuming on the inbox the user sees.
   it("rebinds the existing mailbox inbox by email on reconnect instead of creating a duplicate", async () => {
-    const fn = (globalThis as any).ticketsOnAccountConnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountConnected as unknown as TicketAccountHandler
     const inserted: any[] = []
     const updates: any[] = []
     const enqueued: any[] = []
@@ -194,7 +193,7 @@ describe("tickets.inbox.onConnected.creates-row", () => {
 
 describe("tickets.inbox.onDisconnected.archives", () => {
   it("invokes ticketsOnAccountDisconnected handler and archives the matching inbox", async () => {
-    const fn = (globalThis as any).ticketsOnAccountDisconnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountDisconnected as unknown as TicketAccountHandler
     expect(typeof fn).toBe("function")
     const updates: any[] = []
     const emitted: any[] = []
@@ -214,7 +213,7 @@ describe("tickets.inbox.onDisconnected.archives", () => {
   })
 
   it("ignores connected_account:disconnect when appName is not tickets", async () => {
-    const fn = (globalThis as any).ticketsOnAccountDisconnected as TicketAccountHandler
+    const fn = handlers.ticketsOnAccountDisconnected as unknown as TicketAccountHandler
     let called = 0
     const ctx = {
       db_findMany: async () => {

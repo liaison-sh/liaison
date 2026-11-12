@@ -1259,7 +1259,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "assign",
       "params": {
@@ -1355,7 +1354,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "setCategory",
       "params": {
@@ -1384,7 +1382,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "setLanguage",
       "params": {
@@ -1413,7 +1410,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "setTeam",
       "params": {
@@ -1442,7 +1438,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "setAudience",
       "params": {
@@ -2680,7 +2675,6 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "targetRowParam": "ticketId",
-      "atomic": true,
       "trustBoundary": "user",
       "handler": "convertToMail",
       "params": {

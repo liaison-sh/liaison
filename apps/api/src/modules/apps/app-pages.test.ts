@@ -225,18 +225,24 @@ describe("app pages: a sandboxed app's page, served and called through the platf
 
   test("a page with connectionToken gets the person's own account token, never another's", async () => {
     const { CryptoContext, encryptSecret } = await import("~/lib/crypto")
-    const account = async (owner: string | null, identifier: string, token: string) => {
-      const [row] = await sql<{ id: string }[]>`
-        INSERT INTO kernel.connected_accounts
-          (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-           access_token_encrypted, status, created_by, updated_at)
-        VALUES (${orgId}, ${PAGE_FX_APP}, 'primary', ${owner ? "user" : "org"}, ${owner},
-                'oauth2', ${identifier},
-                ${encryptSecret(token, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
-                'active', ${userId}, now())
-        RETURNING id`
-      return row!.id
-    }
+    const { seedConnectedAccountRow } = await import("~/seed/factories/org/platform-rows")
+    const account = (owner: string | null, identifier: string, token: string) =>
+      seedConnectedAccountRow({
+        orgId,
+        appName: PAGE_FX_APP,
+        connectionName: "primary",
+        ownerType: owner ? "user" : "org",
+        ownerId: owner,
+        providerType: "oauth2",
+        identifier,
+        accessTokenEncrypted: encryptSecret(
+          token,
+          env.ENCRYPTION_KEY,
+          CryptoContext.connectedAccountAccessToken,
+        ),
+        status: "active",
+        createdBy: userId,
+      })
     const reader = (
       await sql<{ id: string }[]>`
       SELECT id FROM kernel.users WHERE org_id = ${orgId} AND id <> ${userId} LIMIT 1`

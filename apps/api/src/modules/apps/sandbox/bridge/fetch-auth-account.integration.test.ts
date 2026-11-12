@@ -5,13 +5,13 @@
 // the acting person's own; never another member's, never another org's.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "drizzle-orm"
-import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -40,17 +40,22 @@ async function oauthAccount(
   identifier: string,
   token: string,
 ): Promise<string> {
-  const [row] = extractRows<{ id: string }>(
-    await db.execute(sql`INSERT INTO kernel.connected_accounts
-        (org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-         access_token_encrypted, status, created_by, updated_at)
-      VALUES (${org}::uuid, ${APP}, 'files', ${owner.type},
-              ${owner.type === "user" ? owner.id : null}::uuid, 'oauth2', ${identifier},
-              ${encryptSecret(token, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
-              'active', ${createdBy}::uuid, now())
-      RETURNING id`),
-  )
-  return row!.id
+  return seedConnectedAccountRow({
+    orgId: org,
+    appName: APP,
+    connectionName: "files",
+    ownerType: owner.type,
+    ownerId: owner.type === "user" ? owner.id : null,
+    providerType: "oauth2",
+    identifier,
+    accessTokenEncrypted: encryptSecret(
+      token,
+      env.ENCRYPTION_KEY,
+      CryptoContext.connectedAccountAccessToken,
+    ),
+    status: "active",
+    createdBy,
+  })
 }
 
 /** One authenticated call as `user` (a person) or as the app itself ("system"). */

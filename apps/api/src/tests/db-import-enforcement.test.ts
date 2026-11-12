@@ -608,6 +608,8 @@ describe("db import enforcement", () => {
     "tests/security/seeds.ts",
     // Test fixture: deactivates the instance-wide active app versions a test seeded.
     "tests/helpers/seeded-app-rows.ts",
+    // Test fixture: snapshots and restores the instance-wide app install rows of a test file.
+    "tests/helpers/app-install-state.ts",
     // S19 boot-flat seed: sets up hundreds of orgs through the seed factories, outside any request context.
     "tests/e2e/cell/boot-flat-seed.ts",
     // Phase 14 — integration test for the permissionVersion-bump contract reads

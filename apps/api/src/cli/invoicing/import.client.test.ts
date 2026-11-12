@@ -15,8 +15,12 @@ import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { undoImportRun } from "~/modules/imports/undo"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 let installRoot = ""
 let prevAppsDir: string | undefined
@@ -25,6 +29,7 @@ const tag = () => crypto.randomUUID().slice(0, 8)
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "invoicing-cli-install-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -35,6 +40,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   for (const d of [installRoot, ...tmpDirs]) rmSync(d, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

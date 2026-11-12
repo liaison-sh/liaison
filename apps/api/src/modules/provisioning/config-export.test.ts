@@ -20,8 +20,12 @@ import { setOrgAppStatus } from "~/modules/apps/org-app-service"
 import { exportOrgConfig } from "~/modules/provisioning/config-export"
 import { applySections, buildActorProvisionContext } from "~/modules/provisioning/config-sections"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 const DIFFING = ["roles", "email", "apps", "agents", "knowledge", "invoicing"] as const
 type Diffing = (typeof DIFFING)[number]
@@ -40,6 +44,7 @@ function handler(name: string): Handler {
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "config-export-install-root-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -81,6 +86,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 })
 

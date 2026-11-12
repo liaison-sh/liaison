@@ -28,9 +28,8 @@ export const appCodeModules = kernel.table(
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("app_code_modules_org_source_idx")
-      .on(table.orgId, table.sourceKey)
-      .nullsNotDistinct(),
+    // NULLS NOT DISTINCT in the migration: one row per source for the instance (org NULL) too.
+    uniqueIndex("app_code_modules_org_source_idx").on(table.orgId, table.sourceKey),
     index("app_code_modules_sha256_idx").on(table.sha256),
     index("app_code_modules_last_used_idx").on(table.lastUsedAt),
   ],

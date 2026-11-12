@@ -339,6 +339,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "an app page's session: a 256-bit random id under a Redis key only this server writes, minted by renderAppPage from a ticket bound to the authenticated caller's own org and user; personActor re-checks that person is active in that org and loads their own permissions, and the route's handler runs as exactly that person in that org",
   "apps/api/src/modules/tours/consumer.ts#registerTourProgressConsumer":
     "an agent turn ended: settleTurnsEndedBeats runs for the org of that turn (the stream registry's snapshot.orgId, set by the turn's own run), and reads and moves only that org's tour rows",
+  "apps/api/src/modules/apps/app-provisioning.ts#provisionBridge":
+    "a provisioning run's bridge: the org is the one runAppProvisioning / runAppProvisioningVerify were given (the operator's config apply or verify for its resolved org, or the config tool's own ctx.orgId), and the actor is the app itself as a system actor of that org with only its own scopes; its options ({ readOnlyRunOverride } on a dry run or a verify) carry no actor, so the bridge builds it from those ids (bridge/context.ts inheritedActor), which the tracer cannot follow past the options literal",
   "apps/api/src/modules/imports/runner.ts#checkBundledBatch":
     "a preview's check bridge: the org and user are the run's own (opts.orgId, opts.actor), exactly as writeBundledBatch passes them, from the authenticated preview or the run row's job; its options ({ readOnlyRunOverride }) carry no actor, so the bridge builds it from those ids (bridge/context.ts inheritedActor), which the tracer cannot follow past the options literal",
   "apps/api/src/modules/agent/tools/config-tools.ts#configSectionSummarizer":

@@ -133,13 +133,38 @@ const INSTANCE_CLIENT_ENV: Readonly<Record<string, EnvPair>> = {
 /** The connections an instance can provide a client for (docs, tests). */
 export const INSTANCE_CLIENT_CONNECTIONS: readonly string[] = Object.keys(INSTANCE_CLIENT_ENV)
 
+/** The app part of a key with a convention pair: lowercase words joined by single `-`. */
+const CONVENTION_KEY_APP = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+/** The rest of the key: lowercase words joined by single `-` or `_`. */
+const CONVENTION_KEY_REST = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/
+
 /**
  * The convention pair of a key the table does not name: `LIAISON_OAUTH_<KEY>_CLIENT_ID`
- * and `_CLIENT_SECRET`, the key upper-cased with every other character as `_`
- * (`acme:crm` -> `LIAISON_OAUTH_ACME_CRM_CLIENT_ID`).
+ * and `_CLIENT_SECRET`, the key upper-cased with `-` and `_` as `_` and the `:`
+ * between the app and the rest as `__` (`my-app:crm` ->
+ * `LIAISON_OAUTH_MY_APP__CRM_CLIENT_ID`). The mapping is one to one: a part never
+ * holds `__` (single separators only), so `__` only ever comes from the `:`, and
+ * app `api` with key `api:connector-crm` reads a different pair than app
+ * `api-connector` with key `api-connector:crm`. A key outside that shape (an
+ * uppercase letter, a doubled or edge separator, a second `:`) has no convention
+ * pair: null.
  */
-export function instanceClientEnvNames(connectionKey: string): { id: string; secret: string } {
-  const norm = connectionKey.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+export function instanceClientEnvNames(
+  connectionKey: string,
+): { id: string; secret: string } | null {
+  const parts = connectionKey.split(":")
+  const [app, rest] = parts
+  if (
+    parts.length !== 2 ||
+    !CONVENTION_KEY_APP.test(app ?? "") ||
+    !CONVENTION_KEY_REST.test(rest ?? "")
+  ) {
+    return null
+  }
+  // `-` and `_` both become `_`. The app part holds no `_`, so it maps one to
+  // one; in the rest, `crm-x` and `crm_x` share a pair, but both are keys of
+  // the same app (a key is always in its app's own namespace).
+  const norm = parts.map((p) => p.toUpperCase().replace(/[-_]/g, "_")).join("__")
   return { id: `LIAISON_OAUTH_${norm}_CLIENT_ID`, secret: `LIAISON_OAUTH_${norm}_CLIENT_SECRET` }
 }
 
@@ -151,6 +176,7 @@ export function instanceOAuthClient(
   const pair = INSTANCE_CLIENT_ENV[connectionKey]
   if (pair?.managedOnly && !isManagedEdition()) return null
   const names = pair ?? instanceClientEnvNames(connectionKey)
+  if (!names) return null
   // The table's pairs are parsed env (lib/env.ts); a convention pair is read raw.
   const from = (source ?? (pair ? env : process.env)) as Record<string, unknown>
   const clientId = from[names.id]

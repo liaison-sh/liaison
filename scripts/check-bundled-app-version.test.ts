@@ -85,6 +85,55 @@ describe("check-bundled-app-version", () => {
     expect(await checkBundledAppVersions(root, "base")).toEqual([])
   })
 
+  it("asks no bump when the app's own change leaves its package byte for byte the same", async () => {
+    const root = repo()
+    write(
+      root,
+      "bundled-apps/demo/handlers.ts",
+      "// a comment the bundler drops\nexport const a = 1\n",
+    )
+    commit(root)
+    const calls: string[] = []
+    const samePackage: FreezePackage = async (_root, app, overrides) => {
+      calls.push(`${app}${overrides ? "+base" : ""}`)
+      return { bytes: new Uint8Array([1, 2, 3]), sources: ["bundled-apps/demo/handlers.ts"] }
+    }
+    expect(await checkBundledAppVersions(root, "base", samePackage)).toEqual([])
+    expect(calls).toEqual(["demo", "demo+base"])
+  })
+
+  it("still asks a bump when the own change reaches the package", async () => {
+    const root = repo()
+    write(root, "bundled-apps/demo/handlers.ts", "export const a = 2\n")
+    commit(root)
+    const byContents: FreezePackage = async (root2, _app, overrides) => {
+      const path = "bundled-apps/demo/handlers.ts"
+      const text = overrides?.get(path) ?? readFileSync(join(root2, path), "utf8")
+      return { bytes: new TextEncoder().encode(text), sources: [path] }
+    }
+    expect((await checkBundledAppVersions(root, "base", byContents)).map((i) => i.app)).toEqual([
+      "demo",
+    ])
+  })
+
+  it("asks a bump for a manifest change or a verbatim copy whatever the bytes", async () => {
+    const root = repo()
+    write(root, "bundled-apps/demo/README.md", "base readme\n")
+    commit(root)
+    git(root, "checkout", "-q", "base")
+    git(root, "merge", "-q", "work")
+    git(root, "checkout", "-q", "work")
+    write(root, "bundled-apps/demo/README.md", "new readme\n")
+    commit(root)
+    const same: FreezePackage = async () => ({
+      bytes: new Uint8Array([1]),
+      sources: ["bundled-apps/demo/README.md"],
+    })
+    expect((await checkBundledAppVersions(root, "base", same)).map((i) => i.files)).toEqual([
+      ["README.md"],
+    ])
+  })
+
   it("is skipped without a base", async () => {
     expect(await main([], {}, "/nonexistent")).toBe(0)
   })

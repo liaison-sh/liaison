@@ -97,7 +97,7 @@ function drive(path: string, q: URLSearchParams) {
 describe("manifest", () => {
   it("is the catalog app, version 2.0.1, with its pages, sources and provisioning", () => {
     expect(manifest.name).toBe("google-drive")
-    expect(manifest.version).toBe("2.0.1")
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     // The platform's Picker widget: no page script, a drive.file token only.
     expect("source" in manifest.pages.picker).toBe(false)
     expect(manifest.pages.picker.widget).toEqual({

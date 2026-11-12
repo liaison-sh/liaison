@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, test } from "bun:test"
-import { compare, rawInsertFiles } from "./check-raw-insert"
+import { compare, formatBaseline, rawInsertFiles, readBaseline } from "./check-raw-insert"
 
 // Built from parts so this file is not itself one of the files it counts.
 const INS = ["INSERT", "INTO"].join(" ")
@@ -24,10 +24,21 @@ describe("check:raw-insert", () => {
     ])
   })
 
-  test("fails above the baseline and below it, passes at it", () => {
-    expect(compare(11, { files: 10 }).exitCode).toBe(1)
-    expect(compare(9, { files: 10 }).exitCode).toBe(1)
-    expect(compare(9, { files: 10 }).message).toContain("--write")
-    expect(compare(10, { files: 10 }).exitCode).toBe(0)
+  test("fails a file the list does not name and a listed file that is clean, passes on an exact list", () => {
+    const added = compare(["a.test.ts", "b.test.ts"], { files: ["a.test.ts"] })
+    expect(added.exitCode).toBe(1)
+    expect(added.message).toContain("b.test.ts")
+    const cleaned = compare(["a.test.ts"], { files: ["a.test.ts", "b.test.ts"] })
+    expect(cleaned.exitCode).toBe(1)
+    expect(cleaned.message).toContain("--write")
+    expect(cleaned.message).toContain("b.test.ts")
+    expect(compare(["a.test.ts"], { files: ["a.test.ts"] }).exitCode).toBe(0)
+  })
+
+  test("reads and writes one path per line, in name order", () => {
+    const text = formatBaseline(["b.test.ts", "a.test.ts"])
+    expect(text).toBe('{\n  "files": [\n    "a.test.ts",\n    "b.test.ts"\n  ]\n}\n')
+    expect(readBaseline(text).files).toEqual(["a.test.ts", "b.test.ts"])
+    expect(() => readBaseline('{"files": 3}')).toThrow()
   })
 })

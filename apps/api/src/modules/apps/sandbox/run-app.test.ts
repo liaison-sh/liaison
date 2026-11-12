@@ -10,6 +10,7 @@ import * as sandboxPool from "~/modules/apps/sandbox/pool"
 import {
   clearInstalledIdentityCache,
   resolveInstalledIdentity,
+  resolveWorkersTarget,
   runApp,
   selectExecutor,
 } from "~/modules/apps/sandbox/run-app"
@@ -148,12 +149,9 @@ describe("runApp", () => {
 
 describe("runApp: a loader fault before any bridge call", () => {
   const KEYS = [
-    "LIAISON_WORKERS_APPS",
     "LIAISON_APP_LOADER_URL",
     "LIAISON_APP_LOADER_CELL_ID",
     "LIAISON_APP_LOADER_KEY",
-    "LIAISON_WORKERS_BUNDLES",
-    "LIAISON_WORKERS_CUSTOM_APPS",
   ] as const
   type Mutable = Record<string, string | undefined>
   const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
@@ -165,12 +163,9 @@ describe("runApp: a loader fault before any bridge call", () => {
 
   function workersOn() {
     const e = env as unknown as Mutable
-    e.LIAISON_WORKERS_APPS = "lf"
     e.LIAISON_APP_LOADER_URL = "http://loader.invalid"
     e.LIAISON_APP_LOADER_CELL_ID = "cell-lf"
     e.LIAISON_APP_LOADER_KEY = "lf-cell-key-0123456789abcdef"
-    e.LIAISON_WORKERS_BUNDLES = JSON.stringify({ "lf@1.0.0": "b".repeat(64) })
-    e.LIAISON_WORKERS_CUSTOM_APPS = undefined
     ;(env as unknown as Mutable).LIAISON_ROLE = "all"
   }
 
@@ -198,7 +193,7 @@ describe("runApp: a loader fault before any bridge call", () => {
       ...base,
       appName: "lf",
       trusted: false,
-      installed: { version: "1.0.0", sha256: "c".repeat(64) },
+      installed: { version: "1.0.0", sha256: "c".repeat(64), workerSha256: "b".repeat(64) },
       bridge,
       timeoutMs: 4_000,
     })
@@ -265,6 +260,69 @@ describe("runApp: a loader fault before any bridge call", () => {
     failingWorkers({ attempts: 1, bridgeCalls: 0, fault: { class: "app", kind: "load" } })
     await expect(run(quickjsBridge())).rejects.toThrow()
     expect(execute).not.toHaveBeenCalled()
+  })
+})
+
+describe("resolveWorkersTarget: every sandboxed app once a loader is configured", () => {
+  const KEYS = [
+    "LIAISON_APP_LOADER_URL",
+    "LIAISON_APP_LOADER_CELL_ID",
+    "LIAISON_APP_LOADER_KEY",
+  ] as const
+  type Mutable = Record<string, string | undefined>
+  const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
+  afterEach(() => {
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = saved[k]
+  })
+  const loaderOn = () => {
+    const e = env as unknown as Mutable
+    e.LIAISON_APP_LOADER_URL = "http://loader.invalid"
+    e.LIAISON_APP_LOADER_CELL_ID = "cell-sel"
+    e.LIAISON_APP_LOADER_KEY = "sel-cell-key-0123456789abcdef"
+  }
+  const WORKER = "d".repeat(64)
+  const at = (installed: { version: string; sha256: string; workerSha256: string | null }) => ({
+    trusted: false,
+    appName: "any-catalog-app",
+    orgId: base.orgId,
+    installed,
+  })
+
+  it("runs nothing on Workers without a loader", async () => {
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = undefined
+    expect(
+      await resolveWorkersTarget(
+        at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: WORKER }),
+      ),
+    ).toBeNull()
+  })
+
+  it("runs any untrusted app on its recorded Worker module, no allowlist", async () => {
+    loaderOn()
+    const target = await resolveWorkersTarget(
+      at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: WORKER }),
+    )
+    expect(target?.sha256).toBe(WORKER)
+    expect(target?.version).toBe("1.0.0")
+    expect(target?.config.cellId).toBe("cell-sel")
+    // Trusted code never goes there.
+    expect(
+      await resolveWorkersTarget({
+        ...at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: WORKER }),
+        trusted: true,
+      }),
+    ).toBeNull()
+  })
+
+  it("keeps a version installed without a Worker module on QuickJS", async () => {
+    loaderOn()
+    expect(
+      await resolveWorkersTarget(
+        at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: null }),
+      ),
+    ).toBeNull()
   })
 })
 

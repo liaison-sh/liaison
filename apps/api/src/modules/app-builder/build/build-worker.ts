@@ -30,6 +30,7 @@ import {
   reproducibleTarGz,
   UI_EXTERNALS,
   WORKER_ENTRY,
+  WORKER_MODULE_FILE,
   webhookExportError,
   workerEntrySource,
   workerNodeImport,
@@ -260,9 +261,12 @@ async function build(req: WorkerRequest, dir: string, appDir: string): Promise<W
 
   const stage = join(dir, "pkg")
   mkdirSync(stage)
-  const packaged = ["app.manifest.json", "bundle.js"]
+  // worker.js rides in the package beside bundle.js, as in every `.liaisonapp`
+  // (scripts/freeze-app.ts): the install records its sha256 from the package.
+  const packaged = ["app.manifest.json", "bundle.js", WORKER_MODULE_FILE]
   writeFileSync(join(stage, "app.manifest.json"), req.files["app.manifest.json"])
   writeFileSync(join(stage, "bundle.js"), bundle)
+  writeFileSync(join(stage, WORKER_MODULE_FILE), worker)
   if (ui !== undefined) {
     writeFileSync(join(stage, "ui.js"), ui)
     packaged.push("ui.js")

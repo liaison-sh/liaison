@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, describe, expect, it } from "bun:test"
-import { env } from "~/lib/env"
 import { emitRunSettled, onRunSettled, type RunSettledInfo } from "./run-settled"
 import { clearBridgeTimings, recentRunTimings } from "./timings"
 
@@ -15,11 +14,7 @@ const base: RunSettledInfo = {
   at: 1,
 }
 
-const savedApps = env.LIAISON_WORKERS_APPS
-afterEach(() => {
-  ;(env as { LIAISON_WORKERS_APPS?: string }).LIAISON_WORKERS_APPS = savedApps
-  clearBridgeTimings()
-})
+afterEach(() => clearBridgeTimings())
 
 describe("onRunSettled", () => {
   it("hands every subscriber the event, in order, until it unsubscribes", () => {
@@ -47,10 +42,10 @@ describe("onRunSettled", () => {
     expect(seen).toEqual([12, 12])
   })
 
-  it("the run timing records are one subscriber: listed apps only, fallback fields kept", () => {
-    ;(env as { LIAISON_WORKERS_APPS?: string }).LIAISON_WORKERS_APPS = "rs-app"
+  it("the run timing records are one subscriber: sandboxed runs only, fallback fields kept", () => {
     emitRunSettled({ ...base, executor: "quickjs", fallback: "breaker", errorKind: "network" })
-    emitRunSettled({ ...base, app: "not-listed" })
+    // Trusted code in-process is not a sandboxed run.
+    emitRunSettled({ ...base, app: "trusted-app", executor: "inprocess" })
     const runs = recentRunTimings()
     expect(runs).toHaveLength(1)
     expect(runs[0]).toMatchObject({

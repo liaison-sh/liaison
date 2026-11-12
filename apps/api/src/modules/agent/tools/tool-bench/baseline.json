@@ -248,6 +248,30 @@
       "desc": 1285,
       "schema": 147
     },
+    "api-connector__customer_lookup": {
+      "desc": 139,
+      "schema": 57
+    },
+    "api-connector__settings_adapter_delete": {
+      "desc": 69,
+      "schema": 38
+    },
+    "api-connector__settings_adapter_restore": {
+      "desc": 79,
+      "schema": 59
+    },
+    "api-connector__settings_adapter_save": {
+      "desc": 87,
+      "schema": 103
+    },
+    "api-connector__settings_adapter_test": {
+      "desc": 96,
+      "schema": 59
+    },
+    "api-connector__settings_connections": {
+      "desc": 104,
+      "schema": 9
+    },
     "boxtal__attention_rule_delete": {
       "desc": 174,
       "schema": 19
@@ -660,9 +684,21 @@
       "desc": 416,
       "schema": 34
     },
+    "google-drive__drive_picker": {
+      "desc": 477,
+      "schema": 15
+    },
     "google-drive__import": {
       "desc": 1263,
       "schema": 23
+    },
+    "google-drive__picker_remove": {
+      "desc": 111,
+      "schema": 30
+    },
+    "google-drive__picker_state": {
+      "desc": 128,
+      "schema": 9
     },
     "google-drive__read": {
       "desc": 878,
@@ -675,6 +711,10 @@
     "google-drive__shared_drives": {
       "desc": 551,
       "schema": 15
+    },
+    "google-drive__shared_drives_save": {
+      "desc": 168,
+      "schema": 34
     },
     "google-drive__upload": {
       "desc": 1620,
@@ -1124,10 +1164,6 @@
       "desc": 175,
       "schema": 7
     },
-    "kernel__config_apiConnectors": {
-      "desc": 201,
-      "schema": 7
-    },
     "kernel__config_apps": {
       "desc": 206,
       "schema": 7
@@ -1411,10 +1447,6 @@
     "kernel__documents_print": {
       "desc": 514,
       "schema": 8
-    },
-    "kernel__drive_picker": {
-      "desc": 184,
-      "schema": 3
     },
     "kernel__edit_role": {
       "desc": 1636,

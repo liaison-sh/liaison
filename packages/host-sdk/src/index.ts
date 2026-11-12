@@ -319,8 +319,6 @@ export interface HostServices {
   openRecord?: (appName: string, app: string, entity: string, id: string) => void
   /** Open the approvals queue. */
   openApprovals?: () => void
-  /** Open one of the app's own pages from a handle its code minted (Host API 1.4). */
-  openPage?: (appName: string, handle: string) => Promise<unknown>
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -646,18 +644,6 @@ export const app = {
     )
   },
   /** Open the approvals queue. */
-  /**
-   * Open one of this app's own pages from the handle a tool of the app answered
-   * (`ctx.pages.link`): a window on the web, the system browser in a shell. Call it
-   * in a click. Resolves "opened", "blocked" (a pop-up blocker) or "failed" (an
-   * expired or used handle); "failed" on a host older than 1.4.
-   */
-  openPage: async (handle: string): Promise<"opened" | "blocked" | "failed"> => {
-    const host = optionalHost()
-    if (!host?.openPage) return "failed"
-    const outcome = await host.openPage(getAppName(), handle)
-    return outcome === "opened" || outcome === "blocked" ? outcome : "failed"
-  },
   openApprovals: (): void => {
     const host = getHost()
     if (host.openApprovals) host.openApprovals()

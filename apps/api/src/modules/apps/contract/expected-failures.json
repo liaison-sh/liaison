@@ -1,11 +1,6 @@
 [
   {
     "app": "ads",
-    "entry": "lint:src/lib/meta-client.ts",
-    "reason": "wait"
-  },
-  {
-    "app": "ads",
     "entry": "tool:account_info",
     "reason": "no-fixture"
   },

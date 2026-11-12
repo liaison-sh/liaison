@@ -117,6 +117,7 @@ export type {
   JobsClient,
   KernelClient,
   KnowledgeSyncDocument,
+  KnowledgeSyncFolder,
   KnowledgeSyncInput,
   KnowledgeSyncResult,
   LimiterClient,

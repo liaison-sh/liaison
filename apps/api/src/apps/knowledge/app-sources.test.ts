@@ -205,6 +205,95 @@ describe("parseSyncResult", () => {
   })
 })
 
+describe("parseSyncResult: folders", () => {
+  it("keeps declared folders and turns a document's folderPath into folders", () => {
+    const page = parseSyncResult({
+      done: true,
+      folders: {
+        upsert: [
+          { externalId: "f-guides", name: "Guides" },
+          { externalId: "f-setup", name: "Setup", parentExternalId: "f-guides" },
+          { externalId: "a", name: "Area A" },
+        ],
+        delete: ["f-old"],
+      },
+      documents: {
+        upsert: [
+          { externalId: "d1", title: "D1", body: "", folderId: "f-setup" },
+          { externalId: "d2", title: "D2", body: "", folderPath: "/a/b/c/" },
+          { externalId: "d3", title: "D3", body: "", folderPath: "a/b" },
+          { externalId: "d4", title: "D4", body: "" },
+        ],
+      },
+    })
+    expect(page.folders).toEqual([
+      { externalId: "f-guides", name: "Guides", parentExternalId: null },
+      { externalId: "f-setup", name: "Setup", parentExternalId: "f-guides" },
+      // A declared id wins over the path's own folder: "a" keeps its name.
+      { externalId: "a", name: "Area A", parentExternalId: null },
+      { externalId: "a/b", name: "b", parentExternalId: "a" },
+      { externalId: "a/b/c", name: "c", parentExternalId: "a/b" },
+    ])
+    expect(page.folderDeletes).toEqual(["f-old"])
+    expect(page.upserts.map((d) => d.folderId)).toEqual(["f-setup", "a/b/c", "a/b", undefined])
+  })
+
+  it("refuses folders that break the contract", () => {
+    const bad =
+      (raw: Record<string, unknown>, limits = APP_SOURCE_LIMITS) =>
+      () =>
+        parseSyncResult({ done: true, ...raw }, limits)
+    const doc = (over: Record<string, unknown>) => ({
+      documents: { upsert: [{ externalId: "d", title: "D", body: "", ...over }] },
+    })
+    expect(bad({ folders: [] })).toThrow("folders must be an object")
+    expect(bad({ folders: { upsert: [{ externalId: "f" }] } })).toThrow("name")
+    expect(
+      bad({
+        folders: {
+          upsert: [
+            { externalId: "f", name: "F" },
+            { externalId: "f", name: "G" },
+          ],
+        },
+      }),
+    ).toThrow("appears twice")
+    expect(
+      bad({ folders: { upsert: [{ externalId: "f", name: "F", parentExternalId: "f" }] } }),
+    ).toThrow("its own parent")
+    expect(bad({ folders: { upsert: [{ externalId: "f", name: "F" }], delete: ["f"] } })).toThrow(
+      "both declared and deleted",
+    )
+    expect(
+      bad({
+        folders: { upsert: [{ externalId: "g", name: "G", parentExternalId: "f" }], delete: ["f"] },
+      }),
+    ).toThrow("which the page deletes")
+    expect(bad({ folders: { delete: ["f"] }, ...doc({ folderId: "f" }) })).toThrow(
+      "which the page deletes",
+    )
+    expect(bad({ folders: { delete: ["a"] }, ...doc({ folderPath: "a/b" }) })).toThrow(
+      'folder "a" is both declared and deleted',
+    )
+    expect(bad(doc({ folderId: "f", folderPath: "f" }))).toThrow("both folderId and folderPath")
+    expect(bad(doc({ folderPath: "a//b" }))).toThrow("non-empty folder names")
+    expect(bad(doc({ folderPath: "a/../b" }))).toThrow("non-empty folder names")
+    expect(bad(doc({ folderPath: "/" }))).toThrow("non-empty folder names")
+    expect(bad(doc({ folderId: 3 }))).toThrow("folderId must be a string")
+    const small = { ...APP_SOURCE_LIMITS, maxFolderUpserts: 2, maxFolderDepth: 2 }
+    expect(bad(doc({ folderPath: "a/b/c" }), small)).toThrow("3 folders deep, at most 2")
+    expect(
+      bad(
+        {
+          folders: { upsert: [{ externalId: "x", name: "X" }] },
+          ...doc({ folderPath: "a/b" }),
+        },
+        small,
+      ),
+    ).toThrow("declares 3 folders (paths included), at most 2")
+  })
+})
+
 describe("runAppSourceSync", () => {
   it("syncs N pages over several jobs, the cursor persisted after each page", async () => {
     const { db, store } = memoryStore()

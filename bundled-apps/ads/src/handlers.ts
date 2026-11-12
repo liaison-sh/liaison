@@ -14,6 +14,7 @@
 import { withMetaConnectionEnvelope } from "./lib/get-client"
 import { withGoogleConnectionEnvelope } from "./lib/google-config"
 import * as reads from "./reads"
+import * as insightsReport from "./insights-report"
 import * as writes from "./writes"
 import * as pauseHandlers from "./pause"
 import * as googleReads from "./google-reads"
@@ -36,7 +37,9 @@ export const ad_preview = withMetaConnectionEnvelope(reads.ad_preview)
 export const counts = withMetaConnectionEnvelope(reads.counts)
 // pending_approvals_list reads the kernel approvals surface, never Meta.
 export const pending_approvals_list = reads.pending_approvals_list
-export const __resetCountsCache = reads.__resetCountsCache
+
+// The `insights-report` job: resumes a stored async insights report run.
+export const insightsReportJob = insightsReport.insightsReportJob
 
 // ─── Meta writes (writes.ts) ─────────────────────────────────────────────────
 export const create_campaign = withMetaConnectionEnvelope(writes.create_campaign)

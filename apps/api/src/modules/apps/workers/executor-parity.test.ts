@@ -928,6 +928,22 @@ describe("a knowledge source kind on every executor: N pages over several jobs",
         SELECT last_sync_status AS status, sync_cursor AS cursor, sync_generation AS generation
         FROM app_knowledge.synced_sources WHERE id = ${source.id}`
       expect(state).toEqual({ status: "ok", cursor: 4, generation: 4 })
+      const folders = await sql.unsafe<{ name: string; parent: string | null; notes: number }[]>(
+        `SELECT c.name, p.name AS parent,
+                (SELECT count(*)::int FROM app_knowledge.collection_memberships cm
+                 JOIN app_knowledge.documents d ON d.id = cm.target_id AND d.archived_at IS NULL
+                 WHERE cm.collection_id = c.id AND cm.target_type = 'document') AS notes
+         FROM app_knowledge.collections c
+         LEFT JOIN app_knowledge.collections p
+           ON p.id = c.parent_collection_id AND p.description LIKE 'synced:%'
+         WHERE c.description LIKE $1 AND c.archived_at IS NULL ORDER BY c.name`,
+        [`synced:${source.id}:%`],
+      )
+      expect([...folders]).toEqual([
+        { name: "even", parent: "notes", notes: 1 },
+        { name: "notes", parent: null, notes: 0 },
+        { name: "odd", parent: "notes", notes: 2 },
+      ])
       answers[ex] = rows
     }
     expect(answers.pool).toEqual(answers.inprocess)

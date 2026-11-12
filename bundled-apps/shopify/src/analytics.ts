@@ -10,7 +10,12 @@
 // Bundle-pure: only @liaison/app-sdk + sibling bundle modules.
 
 import type { AppContext } from "@liaison/app-sdk"
-import { type AnalyticsSpec, buildAnalyticsQuerySafe } from "./lib/analytics-query-builder"
+import {
+  type AnalyticsSpec,
+  type AnalyticsTimeGrain,
+  buildAnalyticsQuerySafe,
+  isSessionsMetric,
+} from "./lib/analytics-query-builder"
 import { getShopifyClient } from "./lib/get-client"
 import { orders_search } from "./reads"
 
@@ -61,6 +66,7 @@ export async function analytics_query(
     // failed"). Degrade to the same bounded tally the parse-error path uses,
     // carrying the real reason so the agent reports the limitation honestly.
     if (/access denied|ACCESS_DENIED|read_reports|protected customer data/i.test(message)) {
+      if (isSessionsMetric(params.metric)) return sessionsUnavailable(params, message)
       ctx.logger.warn("analytics_query: ShopifyQL access denied — degrading to bounded tally", {
         reason: message,
       })
@@ -78,16 +84,74 @@ export async function analytics_query(
   }
   const parseErrors = data.shopifyqlQuery?.parseErrors ?? []
   if (parseErrors.length > 0) {
+    // Sessions have no order-based fallback: say so instead of tallying orders.
+    if (isSessionsMetric(params.metric)) return sessionsUnavailable(params, parseErrors.join("; "))
     // ShopifyQL unavailable on this plan → bounded degrade over orders_search.
     return degradeToBoundedTally(params, ctx)
+  }
+  const table = data.shopifyqlQuery?.tableData ?? null
+  const grain = params.timeGrain ?? null
+  if (!grain) {
+    return {
+      source: "shopifyql",
+      metric: params.metric,
+      period: params.period,
+      groupBy: params.groupBy,
+      table,
+    }
   }
   return {
     source: "shopifyql",
     metric: params.metric,
     period: params.period,
     groupBy: params.groupBy,
-    table: data.shopifyqlQuery?.tableData ?? null,
+    timeGrain: grain,
+    rows: timeSeriesRows(table, grain),
+    table,
   }
+}
+
+function sessionsUnavailable(params: AnalyticsSpec, reason: string): Record<string, unknown> {
+  return {
+    error: {
+      code: "sessions_unavailable",
+      message:
+        `Shopify ShopifyQL could not return ${params.metric} for this store (${reason}). ` +
+        "Sessions come only from Shopify's sessions dataset (read_reports scope); there is no order-based estimate for them.",
+    },
+  }
+}
+
+/**
+ * Flattens a ShopifyQL table into one object per row keyed by column name, and adds `date`:
+ * the bucket's start as YYYY-MM-DD (the day itself, or the first day of the week or month).
+ * Accepts both row shapes Shopify has used: objects keyed by column (API 2026-01 `rows`) and
+ * positional arrays matched to `columns`.
+ */
+export function timeSeriesRows(
+  table: unknown,
+  grain: AnalyticsTimeGrain,
+): Array<Record<string, unknown>> {
+  if (!table || typeof table !== "object") return []
+  const t = table as { rows?: unknown; rowData?: unknown; columns?: Array<{ name?: string }> }
+  const raw = Array.isArray(t.rows) ? t.rows : Array.isArray(t.rowData) ? t.rowData : []
+  const names = Array.isArray(t.columns) ? t.columns.map((c) => String(c?.name ?? "")) : []
+  const out: Array<Record<string, unknown>> = []
+  for (const r of raw) {
+    let row: Record<string, unknown>
+    if (Array.isArray(r)) {
+      row = {}
+      for (let i = 0; i < names.length; i++) row[names[i] as string] = r[i]
+    } else if (r && typeof r === "object") {
+      row = { ...(r as Record<string, unknown>) }
+    } else {
+      continue
+    }
+    const bucket = row[grain]
+    row.date = typeof bucket === "string" ? bucket.slice(0, 10) : null
+    out.push(row)
+  }
+  return out
 }
 
 /**
@@ -135,6 +199,7 @@ async function degradeToBoundedTally(
     note:
       (reason ??
         "ShopifyQL is unavailable on this plan; this is a bounded in-context count over orders in the requested period, not an authoritative aggregate.") +
-      " The tally is capped; totalCount is the server-side order count for the period.",
+      " The tally is capped; totalCount is the server-side order count for the period." +
+      (params.timeGrain ? ` It is one figure for the whole period, not split by ${params.timeGrain}.` : ""),
   }
 }

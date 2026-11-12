@@ -182,36 +182,6 @@ const THROTTLE_WARN_THRESHOLD = 75 // percent
  *   - flat object:   X-App-Usage = {"call_count":85,"total_time":30,...}
  *   - nested arrays: X-Business-Use-Case-Usage = {"<id>":[{"call_count":80,...}]}
  */
-/**
- * The highest usage percentage any Meta usage header reports (call_count,
- * total_cputime, total_time; flat or per-business-use-case shape), or 0 when
- * none is present or parseable. Meta throttles once a figure reaches 100.
- */
-export function metaUsagePercent(headers: Record<string, string>): number {
-  let max = 0
-  const consider = (o: unknown) => {
-    if (typeof o !== "object" || o === null) return
-    for (const k of ["call_count", "total_cputime", "total_time"]) {
-      const v = (o as Record<string, unknown>)[k]
-      if (typeof v === "number" && v > max) max = v
-    }
-  }
-  for (const header of ["x-business-use-case-usage", "x-ad-account-usage", "x-app-usage"]) {
-    const val = headers[header]
-    if (!val) continue
-    try {
-      const parsed = JSON.parse(val) as Record<string, unknown>
-      consider(parsed)
-      for (const v of Object.values(parsed)) {
-        if (Array.isArray(v)) for (const item of v) consider(item)
-      }
-    } catch {
-      // An unexpected header shape never breaks a read.
-    }
-  }
-  return max
-}
-
 function checkThrottleHeaders(headers: Record<string, string>): string | null {
   for (const header of [
     "x-business-use-case-usage",
@@ -278,8 +248,6 @@ export interface MetaFetchOptions {
   method?: "GET" | "POST" | "DELETE"
   params?: Record<string, unknown>
   accessToken: string
-  /** Receives the usage percentage of a successful answer (metaUsagePercent). */
-  onUsage?: (percent: number) => void
 }
 
 interface FetchResult {
@@ -337,7 +305,6 @@ export async function metaFetch(
 
   // Successful 2xx: NEVER throw on throttle headers — returning the completed
   // read is correct even on a busy-but-OK account. Surface a warning only.
-  opts.onUsage?.(metaUsagePercent(result.headers ?? {}))
   const throttleWarning = checkThrottleHeaders(result.headers ?? {})
   if (throttleWarning) {
     console.warn(`[ads] ${throttleWarning}`)
@@ -436,13 +403,12 @@ export async function metaFetchPage(
 }
 
 // ─── Async insights report-run ────────────────────────────────────────────────
-
-// QuickJS sandbox does NOT expose `setTimeout` ("not defined" at runtime),
-// so we cannot sleep between polls. Instead we poll immediately — each fetch
-// round-trip provides natural spacing, just as shopify's pollBulkCreation does.
-const INSIGHTS_POLL_MAX_ATTEMPTS = 20
-// Usage percentage (metaUsagePercent) past which a still-running poll stops.
-const INSIGHTS_POLL_STOP_USAGE_PCT = 90
+//
+// A large insights pull is a Meta report run: POST creates it, GET /<run id>
+// tells its status, GET /<run id>/insights extracts it once complete. A run
+// never waits for it: `createInsightsReport` starts one, `checkInsightsReport`
+// asks ONCE and answers rows, "still running" or "throttled". The caller keeps
+// the run id and asks again in a later run (insights-report.ts).
 
 interface InsightsJobStatus {
   id: string
@@ -450,18 +416,15 @@ interface InsightsJobStatus {
   async_percent_completion?: number
 }
 
-// Meta's terminal failure states for an async report run — fail fast rather than
-// polling all attempts and masking the failure behind a generic timeout.
+// Meta's terminal failure states for an async report run.
 const INSIGHTS_FAILURE_STATES = new Set(["Job Failed", "Job Skipped"])
 
 // Meta Graph error code for "the report job hasn't finished yet, check the async
 // status before extracting" (surfaced in the account language, e.g. French). It
 // is a transient race, NOT a failure: the status edge can flip to "Job
-// Completed" a beat before the results edge has materialised, or the extraction
-// GET can win a poll race. Treat it as "still running" and keep polling rather
-// than throwing it out to the caller as a hard error.
-// Graph delivers it as `error_subcode` under a generic top-level code (#100),
-// so match either field.
+// Completed" a beat before the results edge has materialised. Treat it as
+// "still running". Graph delivers it as `error_subcode` under a generic
+// top-level code (#100), so match either field.
 const INSIGHTS_NOT_READY_CODE = 1815005
 
 function isInsightsNotReady(err: unknown): boolean {
@@ -480,10 +443,10 @@ function isInsightsJobDone(status: InsightsJobStatus): boolean {
 }
 
 /**
- * A bounded async insights poll returned without completing — either it exhausted
- * its poll budget still in a running/not-ready state, or the extraction edge kept
- * racing ahead of materialisation. Callers surface this as a structured "data not
- * ready yet" result the UI can render, never as a thrown 500.
+ * An insights report that is not extractable yet: still running, racing its
+ * extraction, or throttled. Callers surface it as a structured "data not ready
+ * yet" result the UI can render, never as a thrown 500; `report_run_id` is the
+ * run a later call resumes (insights-report.ts keeps it).
  */
 export interface InsightsPending {
   _pending: true
@@ -495,106 +458,68 @@ export function isInsightsPending(v: unknown): v is InsightsPending {
   return typeof v === "object" && v !== null && (v as { _pending?: unknown })._pending === true
 }
 
-/**
- * POST to the /insights edge → poll until "Job Completed" → GET results paged under 1 MB.
- * Fails fast on Meta's terminal failure states ("Job Failed"/"Job Skipped").
- * Never uses ctx.bulk — Meta returns JSON envelopes, not JSONL.
- *
- * Polling is immediate (no sleep) — the QuickJS sandbox does not expose
- * `setTimeout`, so we rely on the natural round-trip latency of each fetch
- * call for spacing, exactly as shopify's pollBulkCreation does.
- */
-export async function runInsightsAsync(
+/** Start an async insights report run (POST to the /insights edge); its run id. */
+export async function createInsightsReport(
   fetch: MetaFetch,
   opts: { path: string; params: Record<string, unknown>; accessToken: string },
-): Promise<unknown[] | InsightsPending> {
-  // POST to trigger async job
-  const jobResult = await metaFetch(fetch, {
+): Promise<string> {
+  const jobResult = (await metaFetch(fetch, {
     path: opts.path,
     method: "POST",
     params: { ...opts.params, async: "true" },
     accessToken: opts.accessToken,
-  }) as { report_run_id?: string }
-
+  })) as { report_run_id?: string }
   const reportRunId = jobResult.report_run_id
   if (!reportRunId) {
     throw new MetaApiError("No report_run_id in async insights response", 0)
   }
+  return reportRunId
+}
 
-  // A throttle answer while polling a job that already exists is a signal to
-  // stop calling, not a failure: every further poll only deepens the throttle.
-  // Hand back the pending marker so the caller retries later.
-  const rateLimited = (): InsightsPending => ({
+/**
+ * Ask a report run once: its rows when complete and extractable (paged under
+ * 1 MB, never ctx.bulk: Meta answers JSON envelopes, not JSONL), else a pending
+ * marker. A throttle answer is pending too: asking again only deepens it.
+ * Throws on Meta's terminal failure states ("Job Failed", "Job Skipped") and
+ * on any other Meta error.
+ */
+export async function checkInsightsReport(
+  fetch: MetaFetch,
+  opts: { reportRunId: string; accessToken: string },
+): Promise<unknown[] | InsightsPending> {
+  const { reportRunId, accessToken } = opts
+  const pending = (reason: InsightsPending["reason"]): InsightsPending => ({
     _pending: true,
     report_run_id: reportRunId,
-    reason: "rate_limited",
+    reason,
   })
-
-  // Meta counts every status poll against the same insights budget. Polling
-  // is back to back (no sleep in QuickJS), so once Meta reports the budget
-  // nearly spent, stop and hand back the pending marker instead of polling
-  // straight into the throttle.
-  let usage = 0
-  const onUsage = (pct: number) => {
-    usage = pct
+  let status: InsightsJobStatus
+  try {
+    status = (await metaFetch(fetch, {
+      path: `/${reportRunId}`,
+      method: "GET",
+      accessToken,
+    })) as InsightsJobStatus
+  } catch (err) {
+    if (err instanceof RateLimitError) return pending("rate_limited")
+    throw err
   }
-
-  // Poll until completed (no sleep — QuickJS lacks setTimeout)
-  let attempts = 0
-  let lastReason: InsightsPending["reason"] = "still_running"
-  while (attempts < INSIGHTS_POLL_MAX_ATTEMPTS) {
-    let status: InsightsJobStatus
-    try {
-      status = await metaFetch(fetch, {
-        path: `/${reportRunId}`,
-        method: "GET",
-        accessToken: opts.accessToken,
-        onUsage,
-      }) as InsightsJobStatus
-    } catch (err) {
-      if (err instanceof RateLimitError) return rateLimited()
-      throw err
-    }
-
-    if (isInsightsJobDone(status)) {
-      // GET results paged. Even after the status edge reports "Job Completed",
-      // the results edge can still race ahead of materialisation and answer
-      // with code 1815005 ("report job not finished, check status before
-      // extracting"). That is transient — swallow it and poll again rather than
-      // surfacing a hard 500. If we never win the race within the poll budget,
-      // fall through to the bounded "pending" return below.
-      try {
-        return await metaFetchPaged(fetch, {
-          path: `/${reportRunId}/insights`,
-          method: "GET",
-          accessToken: opts.accessToken,
-        })
-      } catch (err) {
-        if (isInsightsNotReady(err)) {
-          lastReason = "not_ready"
-          attempts++
-          continue
-        }
-        if (err instanceof RateLimitError) return rateLimited()
-        throw err
-      }
-    }
-
-    // Fail fast on terminal failure — do NOT poll all attempts into a timeout.
-    if (status.async_status && INSIGHTS_FAILURE_STATES.has(status.async_status)) {
-      throw new MetaApiError(
-        `Async insights job ${reportRunId} reported terminal state "${status.async_status}", not retrying.`,
-        0,
-      )
-    }
-
-    if (usage >= INSIGHTS_POLL_STOP_USAGE_PCT) return rateLimited()
-    attempts++
+  if (status.async_status && INSIGHTS_FAILURE_STATES.has(status.async_status)) {
+    throw new MetaApiError(
+      `Async insights job ${reportRunId} reported terminal state "${status.async_status}", not retrying.`,
+      0,
+    )
   }
-
-  // Poll budget exhausted while still running / racing extraction. Return a
-  // structured pending marker the caller surfaces as "data not ready yet"
-  // instead of throwing — a transient Meta async race must degrade a tile, not
-  // crash the tab.
-  return { _pending: true, report_run_id: reportRunId, reason: lastReason }
+  if (!isInsightsJobDone(status)) return pending("still_running")
+  try {
+    return await metaFetchPaged(fetch, {
+      path: `/${reportRunId}/insights`,
+      method: "GET",
+      accessToken,
+    })
+  } catch (err) {
+    if (isInsightsNotReady(err)) return pending("not_ready")
+    if (err instanceof RateLimitError) return pending("rate_limited")
+    throw err
+  }
 }

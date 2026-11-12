@@ -1181,6 +1181,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         : [
             "src/ui-tool-closure.test.ts",
             "src/reads.test.ts",
+            "src/insights-report.test.ts",
             "src/meta-client.test.ts",
             "src/meta-upstream-errors.test.ts",
             "src/not-connected-envelope.test.ts",

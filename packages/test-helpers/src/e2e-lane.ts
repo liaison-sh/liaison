@@ -57,6 +57,15 @@ export interface E2eLaneOptions {
    * JSON; every attach hands it back (a Playwright lane's QA world).
    */
   seed?: (env: OwnedWorkerEnv) => Promise<unknown>
+  /**
+   * Keep the server's scheduled ticks held after the snapshot, until `close()`.
+   * For a caller that reads the built world back itself (the seed snapshot
+   * test): with the ticks let go, a minute sweep that fires between the build
+   * and the read (a seeded request past its deadline expiring, an urgent
+   * digest mailed) lands in what it reads, on whichever side of the minute the
+   * build's speed puts it. Files never attach to such a lane.
+   */
+  keepScheduledTicksHeld?: boolean
 }
 
 export interface E2eLane {
@@ -139,7 +148,7 @@ export async function createE2eLane(
   // ── snapshot ──────────────────────────────────────────────────────────────
   await snapshotWorkerData(sql, workerId)
   const appsAtSnapshot = await installedAppsFingerprint(sql, workerId)
-  await redis.del(ticksHeldKey)
+  if (!options.keepScheduledTicksHeld) await redis.del(ticksHeldKey)
 
   async function scanLaneKeys(): Promise<string[]> {
     const keys: string[] = []
@@ -150,7 +159,8 @@ export async function createE2eLane(
       // BullMQ's queues belong to the running server (repeatable jobs are
       // registered at boot); a file's leftover jobs fail harmlessly against
       // the reset data.
-      for (const k of page) if (!k.startsWith(bullPrefix)) keys.push(k)
+      // The tick hold is the lane's, not the world's: a reset never puts it back.
+      for (const k of page) if (!k.startsWith(bullPrefix) && k !== ticksHeldKey) keys.push(k)
     } while (cursor !== "0")
     return keys
   }
@@ -413,6 +423,7 @@ export async function createE2eLane(
     seed: seedResult,
     async close() {
       control.stop(true)
+      await redis.del(ticksHeldKey).catch(() => {})
       await dropWorkerSnapshot(sql, workerId).catch(() => {})
       await env.teardown()
     },

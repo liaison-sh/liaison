@@ -28,8 +28,16 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
         note: "UK export — post-Brexit customs, commercial invoice required",
         purchasingEntity: { customerId: "gid://shopify/Customer/42" },
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" } },
-          { variantId: "gid://shopify/ProductVariant/2", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" },
+          },
+          {
+            variantId: "gid://shopify/ProductVariant/2",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" },
+          },
         ],
       },
     })
@@ -45,7 +53,11 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
     const s = await summarizeDraftOrderCreate({
       input: {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" },
+          },
           { variantId: "gid://shopify/ProductVariant/2", quantity: 8 },
         ],
       },
@@ -67,8 +79,16 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
     const s = await summarizeDraftOrderCreate({
       input: {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 10, appliedDiscount: { value: 30, valueType: "PERCENTAGE", title: "Dealer" } },
-          { variantId: "gid://shopify/ProductVariant/2", quantity: 2, appliedDiscount: { value: 10, valueType: "PERCENTAGE", title: "Accessory" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 10,
+            appliedDiscount: { value: 30, valueType: "PERCENTAGE", title: "Dealer" },
+          },
+          {
+            variantId: "gid://shopify/ProductVariant/2",
+            quantity: 2,
+            appliedDiscount: { value: 10, valueType: "PERCENTAGE", title: "Accessory" },
+          },
         ],
       },
     })
@@ -81,7 +101,13 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
   it("a single-line draft keeps its discount shown on the line (not lifted)", async () => {
     const s = await summarizeDraftOrderCreate({
       input: {
-        lineItems: [{ variantId: "gid://shopify/ProductVariant/9", quantity: 25, appliedDiscount: { value: 40, valueType: "PERCENTAGE", title: "Dealer" } }],
+        lineItems: [
+          {
+            variantId: "gid://shopify/ProductVariant/9",
+            quantity: 25,
+            appliedDiscount: { value: 40, valueType: "PERCENTAGE", title: "Dealer" },
+          },
+        ],
       },
     })
     const joined = s.lines.join("\n")
@@ -99,7 +125,11 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
           email: "jeff@example-buyer.com",
           billingAddress: { firstName: "Jeff", lastName: "Cross" },
           lineItems: [
-            { variantId: "gid://shopify/ProductVariant/9", quantity: 1, appliedDiscount: { value: 100, valueType: "PERCENTAGE", title: "Comp" } },
+            {
+              variantId: "gid://shopify/ProductVariant/9",
+              quantity: 1,
+              appliedDiscount: { value: 100, valueType: "PERCENTAGE", title: "Comp" },
+            },
           ],
         },
       },
@@ -108,7 +138,13 @@ describe("summarizeDraftOrderCreate — order-level discount in the gated approv
         connectionIdentifier: "demo.myshopify.com",
         context: {
           variants: [
-            { id: "gid://shopify/ProductVariant/9", title: "Tessera Sound", sku: "EMB-SOUND", price: "79.00", requiresShipping: false },
+            {
+              id: "gid://shopify/ProductVariant/9",
+              title: "Tessera Sound",
+              sku: "EMB-SOUND",
+              price: "79.00",
+              requiresShipping: false,
+            },
           ],
         },
       },
@@ -205,7 +241,11 @@ describe("summarizeRefundsCreate — gid shortening + notifyCustomer subtitle", 
   })
 
   it("notify:false -> subtitle says no customer notification", async () => {
-    const s = await summarizeRefundsCreate({ orderId: "gid://shopify/Order/1", amount: "10.00", notify: false })
+    const s = await summarizeRefundsCreate({
+      orderId: "gid://shopify/Order/1",
+      amount: "10.00",
+      notify: false,
+    })
     expect(s.subtitle).toBe("No customer notification")
   })
 
@@ -222,10 +262,14 @@ describe("summarizeRefundsCreate — gid shortening + notifyCustomer subtitle", 
 
 describe("summarizeFulfillmentsCreate / summarizeFulfillmentsUpdateTracking — notifyCustomer honesty", () => {
   it("fulfillments_create: no notifyCustomer, no policy set -> 'No customer notification' (API default false)", async () => {
-    const s = await summarizeFulfillmentsCreate({ orderId: "gid://shopify/Order/1", fulfillment: {} }, undefined, {
-      connectionIdentifier: null,
-      context: { shippingEmailPolicy: "caller" },
-    })
+    const s = await summarizeFulfillmentsCreate(
+      { orderId: "gid://shopify/Order/1", fulfillment: {} },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: { shippingEmailPolicy: "caller" },
+      },
+    )
     expect(s.subtitle).toBe("No customer notification")
   })
 
@@ -260,7 +304,12 @@ describe("summarizeFulfillmentsCreate / summarizeFulfillmentsUpdateTracking — 
 describe("summarizeProductsCreate — human-legible product fields", () => {
   it("names the title, status, vendor and tags", async () => {
     const s = await summarizeProductsCreate({
-      input: { title: "Kestrel 6 Recorder", status: "ACTIVE", vendor: "Fabrikam", tags: ["synth", "controller"] },
+      input: {
+        title: "Kestrel 6 Recorder",
+        status: "ACTIVE",
+        vendor: "Fabrikam",
+        tags: ["synth", "controller"],
+      },
     })
     expect(s.title).toBe("Create product: Kestrel 6 Recorder")
     const joined = s.lines.join("\n")
@@ -277,7 +326,11 @@ describe("summarizeInventoryAdjust — reason + per-line deltas", () => {
         reason: "correction",
         name: "available",
         changes: [
-          { inventoryItemId: "gid://shopify/InventoryItem/1", locationId: "gid://shopify/Location/9", delta: -3 },
+          {
+            inventoryItemId: "gid://shopify/InventoryItem/1",
+            locationId: "gid://shopify/Location/9",
+            delta: -3,
+          },
         ],
       },
     })
@@ -292,7 +345,11 @@ describe("summarizeReturnsRequest — return line items with reasons", () => {
       input: {
         orderId: "gid://shopify/Order/5",
         returnLineItems: [
-          { fulfillmentLineItemId: "gid://shopify/FulfillmentLineItem/1", quantity: 1, returnReason: "DEFECTIVE" },
+          {
+            fulfillmentLineItemId: "gid://shopify/FulfillmentLineItem/1",
+            quantity: 1,
+            returnReason: "DEFECTIVE",
+          },
         ],
       },
     })
@@ -305,7 +362,12 @@ describe("summarizeCustomersEmailMarketingConsentUpdate — consent state change
   it("shows the new marketing state and opt-in level", async () => {
     const s = await summarizeCustomersEmailMarketingConsentUpdate({
       customerId: "gid://shopify/Customer/42",
-      input: { emailMarketingConsent: { marketingState: "SUBSCRIBED", marketingOptInLevel: "CONFIRMED_OPT_IN" } },
+      input: {
+        emailMarketingConsent: {
+          marketingState: "SUBSCRIBED",
+          marketingOptInLevel: "CONFIRMED_OPT_IN",
+        },
+      },
     })
     const joined = s.lines.join("\n")
     expect(joined).toMatch(/New state: SUBSCRIBED/)
@@ -396,12 +458,18 @@ describe("summarizeFulfillmentsCreate — rich card from summarizerContext (orde
       { connectionIdentifier: "fabrikam.myshopify.com", context: ORDER_CONTEXT_FIXTURE },
     )
     expect((s.links ?? []).filter((l) => "url" in l)).toEqual([
-      { label: "Open order in Shopify", url: "https://fabrikam.myshopify.com/admin/orders/12390079529291" },
+      {
+        label: "Open order in Shopify",
+        url: "https://fabrikam.myshopify.com/admin/orders/12390079529291",
+      },
     ])
   })
 
   it("degrades gracefully to the params-only title/lines when meta is absent", async () => {
-    const s = await summarizeFulfillmentsCreate({ orderId: "gid://shopify/Order/1", fulfillment: {} })
+    const s = await summarizeFulfillmentsCreate({
+      orderId: "gid://shopify/Order/1",
+      fulfillment: {},
+    })
     expect(s.title).toBe("Fulfill order 1")
     expect((s.links ?? []).filter((l) => "url" in l)).toEqual([])
   })
@@ -430,12 +498,18 @@ describe("summarizeRefundsCreate — rich card from summarizerContext (orders_ge
     expect(s.title).toBe("Refund 50.00 on order #2830 for Quinn US")
     expect(s.lines.join("\n")).toMatch(/Flat goodwill refund: 50\.00/)
     expect((s.links ?? []).filter((l) => "url" in l)).toEqual([
-      { label: "Open order in Shopify", url: "https://fabrikam.myshopify.com/admin/orders/12390079529291" },
+      {
+        label: "Open order in Shopify",
+        url: "https://fabrikam.myshopify.com/admin/orders/12390079529291",
+      },
     ])
   })
 
   it("degrades to the shortened-gid title when meta/context is absent", async () => {
-    const s = await summarizeRefundsCreate({ orderId: "gid://shopify/Order/12390079529291", amount: "50.00" })
+    const s = await summarizeRefundsCreate({
+      orderId: "gid://shopify/Order/12390079529291",
+      amount: "50.00",
+    })
     expect(s.title).toBe("Refund 50.00 on order 12390079529291")
   })
 })
@@ -466,7 +540,10 @@ describe("summarizeCustomersUpdate / summarizeCustomersTag — rich card from su
     expect(joined).toMatch(/Customer since: 2024-11-02/)
     expect(joined).toMatch(/Lifetime spend: 4200\.00 USD/)
     expect((s.links ?? []).filter((l) => "url" in l)).toEqual([
-      { label: "Open customer in Shopify", url: "https://fabrikam.myshopify.com/admin/customers/555" },
+      {
+        label: "Open customer in Shopify",
+        url: "https://fabrikam.myshopify.com/admin/customers/555",
+      },
     ])
   })
 
@@ -493,12 +570,22 @@ describe("summarizeProductsUpdate — rich card from summarizerContext (products
       undefined,
       {
         connectionIdentifier: "fabrikam.myshopify.com",
-        context: { id: "gid://shopify/Product/100", entity: "product", title: "Kestrel 6 Recorder", market: null, currency: null, attributes: {} },
+        context: {
+          id: "gid://shopify/Product/100",
+          entity: "product",
+          title: "Kestrel 6 Recorder",
+          market: null,
+          currency: null,
+          attributes: {},
+        },
       },
     )
     expect(s.title).toBe("Update product Kestrel 6 Recorder")
     expect((s.links ?? []).filter((l) => "url" in l)).toEqual([
-      { label: "Open product in Shopify", url: "https://fabrikam.myshopify.com/admin/products/100" },
+      {
+        label: "Open product in Shopify",
+        url: "https://fabrikam.myshopify.com/admin/products/100",
+      },
     ])
   })
 
@@ -555,7 +642,11 @@ describe("update summarizers never claim 'no changes' while payload fields exist
 
   it("variants_update: an unknown extra field still renders as a humanized line", async () => {
     const s = await summarizeVariantsUpdate({
-      input: { id: "gid://shopify/ProductVariant/1", taxable: false, inventoryItem: { tracked: true } },
+      input: {
+        id: "gid://shopify/ProductVariant/1",
+        taxable: false,
+        inventoryItem: { tracked: true },
+      },
     })
     const joined = s.lines.join("\n")
     expect(joined).toMatch(/Taxable -> no/)
@@ -592,12 +683,20 @@ describe("summarizeDraftOrderCreate -- computed effective prices (anti-fabricati
             {
               quantity: 10,
               variantId: "gid://shopify/ProductVariant/2",
-              appliedDiscount: { value: 14, valueType: "FIXED_AMOUNT", description: "PO unit price 53.00 vs list 67.00" },
+              appliedDiscount: {
+                value: 14,
+                valueType: "FIXED_AMOUNT",
+                description: "PO unit price 53.00 vs list 67.00",
+              },
             },
             {
               quantity: 10,
               variantId: "gid://shopify/ProductVariant/3",
-              appliedDiscount: { value: 7, valueType: "FIXED_AMOUNT", description: "PO unit price 27.00 vs list 34.00" },
+              appliedDiscount: {
+                value: 7,
+                valueType: "FIXED_AMOUNT",
+                description: "PO unit price 27.00 vs list 34.00",
+              },
             },
           ],
         },
@@ -608,7 +707,11 @@ describe("summarizeDraftOrderCreate -- computed effective prices (anti-fabricati
         context: {
           variants: [
             { id: "gid://shopify/ProductVariant/1", title: "Retail - Tessera", price: "599.00" },
-            { id: "gid://shopify/ProductVariant/2", title: "Retail - Mounting Plate", price: "67.00" },
+            {
+              id: "gid://shopify/ProductVariant/2",
+              title: "Retail - Mounting Plate",
+              price: "67.00",
+            },
             { id: "gid://shopify/ProductVariant/3", title: "Retail - Hard Cover", price: "34.00" },
           ],
         },
@@ -648,7 +751,11 @@ describe("summarizeProductsPublish / Unpublish: the card names the channels the 
   const meta = { connectionIdentifier: "resonant-audio.myshopify.com", context }
 
   it("publish lists each target channel by name", async () => {
-    const s = await summarizeProductsPublish({ id: "gid://shopify/Product/16099791012171" }, undefined, meta)
+    const s = await summarizeProductsPublish(
+      { id: "gid://shopify/Product/16099791012171" },
+      undefined,
+      meta,
+    )
     expect(s.title).toBe("Publish product Kestrel 6")
     expect(s.lines).toContain("Sales channel: Headless")
     expect(s.lines).toContain("Sales channel: Point of Sale")
@@ -656,13 +763,20 @@ describe("summarizeProductsPublish / Unpublish: the card names the channels the 
   })
 
   it("publish without hydrated context never claims a default sales channel", async () => {
-    const s = await summarizeProductsPublish({ id: "gid://shopify/Product/1" }, undefined, { connectionIdentifier: null, context: null })
+    const s = await summarizeProductsPublish({ id: "gid://shopify/Product/1" }, undefined, {
+      connectionIdentifier: null,
+      context: null,
+    })
     expect(s.lines.join("\n")).not.toContain("default sales channel")
     expect(s.lines.join("\n")).toContain("every channel this product is not on yet")
   })
 
   it("unpublish lists the channels it takes the product off", async () => {
-    const s = await summarizeProductsUnpublish({ id: "gid://shopify/Product/16099791012171" }, undefined, meta)
+    const s = await summarizeProductsUnpublish(
+      { id: "gid://shopify/Product/16099791012171" },
+      undefined,
+      meta,
+    )
     expect(s.lines).toContain("Sales channel: Online Store")
     expect(s.lines.join("\n")).not.toContain("default sales channel")
   })
@@ -682,59 +796,110 @@ describe("fulfilment cards say exactly what the shipping email policy will do", 
 
   const tracked = (notifyCustomer?: boolean) => ({
     orderId: "gid://shopify/Order/1",
-    fulfillment: { trackingInfo: { company: "UPS", trackingNumber: "1Z999" }, ...(notifyCustomer === undefined ? {} : { notifyCustomer }) },
+    fulfillment: {
+      trackingInfo: { company: "UPS", trackingNumber: "1Z999" },
+      ...(notifyCustomer === undefined ? {} : { notifyCustomer }),
+    },
   })
 
   it("retail_only: a retail order with tracking says the customer will be notified, whatever the caller passed", async () => {
-    const s = await summarizeFulfillmentsCreate(tracked(false), undefined, META({ shippingEmailPolicy: "retail_only", b2bOrder: retail }))
+    const s = await summarizeFulfillmentsCreate(
+      tracked(false),
+      undefined,
+      META({ shippingEmailPolicy: "retail_only", b2bOrder: retail }),
+    )
     expect(s.subtitle).toBe("Customer will be notified: retail order")
   })
 
   it("retail_only and all: a create without a tracking number says no email yet (the handler's no_tracking)", async () => {
-    for (const ctx of [{ shippingEmailPolicy: "retail_only", b2bOrder: retail }, { shippingEmailPolicy: "all" }]) {
+    for (const ctx of [
+      { shippingEmailPolicy: "retail_only", b2bOrder: retail },
+      { shippingEmailPolicy: "all" },
+    ]) {
       const s = await summarizeFulfillmentsCreate(create(true), undefined, META(ctx))
       expect(s.subtitle).toBe("Customer will not be notified: no tracking number yet")
     }
-    const all = await summarizeFulfillmentsCreate(tracked(), undefined, META({ shippingEmailPolicy: "all" }))
+    const all = await summarizeFulfillmentsCreate(
+      tracked(),
+      undefined,
+      META({ shippingEmailPolicy: "all" }),
+    )
     expect(all.subtitle).toBe("Customer will be notified (policy: every order)")
   })
 
   it("retail_only: a B2B order says the customer will not be notified, even when the caller asks", async () => {
-    const s = await summarizeFulfillmentsCreate(create(true), undefined, META({ shippingEmailPolicy: "retail_only", b2bOrder: b2b }))
+    const s = await summarizeFulfillmentsCreate(
+      create(true),
+      undefined,
+      META({ shippingEmailPolicy: "retail_only", b2bOrder: b2b }),
+    )
     expect(s.subtitle).toBe("Customer will not be notified: B2B order")
   })
 
   it("policy unset (caller): the caller's flag, as before", async () => {
-    const yes = await summarizeFulfillmentsCreate(create(true), undefined, META({ shippingEmailPolicy: "caller", b2bOrder: b2b }))
+    const yes = await summarizeFulfillmentsCreate(
+      create(true),
+      undefined,
+      META({ shippingEmailPolicy: "caller", b2bOrder: b2b }),
+    )
     expect(yes.subtitle).toBe("Customer WILL be notified")
-    const no = await summarizeFulfillmentsCreate(create(), undefined, META({ shippingEmailPolicy: "caller" }))
+    const no = await summarizeFulfillmentsCreate(
+      create(),
+      undefined,
+      META({ shippingEmailPolicy: "caller" }),
+    )
     expect(no.subtitle).toBe("No customer notification")
   })
 
   it("not knowable at staging (no read, no policy, no verdict): decided at execution", async () => {
-    for (const meta of [undefined, META(null), META({ name: "#1" }), META({ shippingEmailPolicy: "retail_only" })]) {
+    for (const meta of [
+      undefined,
+      META(null),
+      META({ name: "#1" }),
+      META({ shippingEmailPolicy: "retail_only" }),
+    ]) {
       const s = await summarizeFulfillmentsCreate(create(true), undefined, meta)
       expect(s.subtitle).toBe("Notification decided at execution (store shipping email policy)")
     }
   })
 
   it("the tracking card reads the fulfilment's verdict and tracking: one email, with the first number only", async () => {
-    const p = (info: Record<string, unknown>) => ({ fulfillmentId: "gid://shopify/Fulfillment/1", trackingInfoInput: info, notifyCustomer: true })
+    const p = (info: Record<string, unknown>) => ({
+      fulfillmentId: "gid://shopify/Fulfillment/1",
+      trackingInfoInput: info,
+      notifyCustomer: true,
+    })
     const attrs = (b2bOrder: unknown, numbers: string[], policy = "retail_only") =>
-      META({ attributes: { shippingEmailPolicy: policy, b2bOrder, trackingInfo: numbers.map((number) => ({ number })) } })
+      META({
+        attributes: {
+          shippingEmailPolicy: policy,
+          b2bOrder,
+          trackingInfo: numbers.map((number) => ({ number })),
+        },
+      })
     const card = async (info: Record<string, unknown>, meta: ReturnType<typeof META>) =>
       (await summarizeFulfillmentsUpdateTracking(p(info), undefined, meta)).subtitle
-    expect(await card({ number: "1Z" }, attrs(b2b, []))).toBe("Customer will not be notified: B2B order")
-    expect(await card({ number: "1Z" }, attrs(retail, []))).toBe("Customer will be notified: retail order")
-    expect(await card({ number: "1Z" }, attrs(null, [], "all"))).toBe("Customer will be notified (policy: every order)")
+    expect(await card({ number: "1Z" }, attrs(b2b, []))).toBe(
+      "Customer will not be notified: B2B order",
+    )
+    expect(await card({ number: "1Z" }, attrs(retail, []))).toBe(
+      "Customer will be notified: retail order",
+    )
+    expect(await card({ number: "1Z" }, attrs(null, [], "all"))).toBe(
+      "Customer will be notified (policy: every order)",
+    )
     const already = "Customer will not be notified: the fulfillment already has a tracking number"
     expect(await card({ number: "1Z" }, attrs(retail, ["OLD"]))).toBe(already)
     expect(await card({ number: "1Z" }, attrs(retail, ["1Z"]))).toBe(already)
     expect(await card({ number: "1Z" }, attrs(null, ["OLD"], "all"))).toBe(already)
-    expect(await card({ company: "DHL", url: "https://track.example.com/1Z" }, attrs(retail, []))).toBe(
+    expect(
+      await card({ company: "DHL", url: "https://track.example.com/1Z" }, attrs(retail, [])),
+    ).toBe("Customer will not be notified: no tracking number yet")
+    expect(await card({ company: "DHL" }, attrs(retail, ["OLD"]))).toBe(
       "Customer will not be notified: no tracking number yet",
     )
-    expect(await card({ company: "DHL" }, attrs(retail, ["OLD"]))).toBe("Customer will not be notified: no tracking number yet")
-    expect(await card({ number: "1Z" }, META(null))).toBe("Notification decided at execution (store shipping email policy)")
+    expect(await card({ number: "1Z" }, META(null))).toBe(
+      "Notification decided at execution (store shipping email policy)",
+    )
   })
 })

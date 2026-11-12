@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, describe, expect, it } from "bun:test"
 import { env } from "~/lib/env"
-import { bridgeUrlFor, readWorkersConfig, readWorkersSelection } from "./config"
+import { bridgeUrlFor, readFallbackTarget, readWorkersConfig, readWorkersSelection } from "./config"
 
 const KEYS = [
   "LIAISON_APP_LOADER_URL",
   "LIAISON_APP_LOADER_CELL_ID",
   "LIAISON_APP_LOADER_KEY",
   "LIAISON_APP_BRIDGE_BASE_URL",
+  "LIAISON_APP_FALLBACK_LOADER_URL",
 ] as const
 const saved = Object.fromEntries(KEYS.map((k) => [k, env[k]]))
 const savedRole = env.LIAISON_ROLE
@@ -74,6 +75,27 @@ describe("workers config", () => {
     expect(readWorkersSelection()).toEqual({
       kind: "invalid",
       reason: "missing LIAISON_APP_LOADER_CELL_ID, LIAISON_APP_LOADER_KEY",
+    })
+  })
+})
+
+describe("fallback target", () => {
+  it("is the local QuickJS sandbox while no sandbox service is configured", () => {
+    setLoader()
+    env.LIAISON_APP_FALLBACK_LOADER_URL = undefined
+    const primary = readWorkersConfig()
+    if (!primary) throw new Error("loader not configured")
+    expect(readFallbackTarget(primary)).toEqual({ kind: "quickjs" })
+  })
+
+  it("is the instance's sandbox service once its URL is set: same cell, key and bridge", () => {
+    setLoader()
+    env.LIAISON_APP_FALLBACK_LOADER_URL = "http://sandbox.internal:8790/"
+    const primary = readWorkersConfig()
+    if (!primary) throw new Error("loader not configured")
+    expect(readFallbackTarget(primary)).toEqual({
+      kind: "workerd",
+      config: { ...primary, loaderUrl: "http://sandbox.internal:8790" },
     })
   })
 })

@@ -106,7 +106,8 @@ export function packagingPolicyProblems(p: PackagingPolicy): string[] {
       for (const f of ["max_stack_height", "length", "width", "height"] as const) {
         if (!positive(c[f])) problems.push(`${at}.${f} must be a positive number`)
       }
-      if (!nonNegative(c.tare_weight)) problems.push(`${at}.tare_weight must be a number of kg, 0 or more`)
+      if (!nonNegative(c.tare_weight))
+        problems.push(`${at}.tare_weight must be a number of kg, 0 or more`)
       if (c.tare_assumed !== undefined && typeof c.tare_assumed !== "boolean") {
         problems.push(`${at}.tare_assumed must be true or false`)
       }
@@ -146,7 +147,8 @@ export function packagingPolicyProblems(p: PackagingPolicy): string[] {
       } else {
         seen.add(m.short_code.trim().toUpperCase())
       }
-      if (!(Number.isInteger(m.units) && m.units >= 1)) problems.push(`${at}.units must be a whole number, 1 or more`)
+      if (!(Number.isInteger(m.units) && m.units >= 1))
+        problems.push(`${at}.units must be a whole number, 1 or more`)
       for (const f of ["length", "width", "height", "weight"] as const) {
         if (!positive(m[f])) problems.push(`${at}.${f} must be a positive number`)
       }
@@ -156,7 +158,9 @@ export function packagingPolicyProblems(p: PackagingPolicy): string[] {
     p.nominal_proforma_value_minor !== null &&
     !(Number.isInteger(p.nominal_proforma_value_minor) && p.nominal_proforma_value_minor > 0)
   ) {
-    problems.push("nominal_proforma_value_minor must be a positive whole number of minor units, or null")
+    problems.push(
+      "nominal_proforma_value_minor must be a positive whole number of minor units, or null",
+    )
   }
   return problems
 }

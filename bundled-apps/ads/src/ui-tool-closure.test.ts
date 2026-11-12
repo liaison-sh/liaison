@@ -8,9 +8,10 @@
 //
 // Mirrors the philosophy of apps/api/src/modules/apps/detail-view-closure.test.ts:
 // scan the REAL shipped artifacts (UI source + manifest), not hand-built fixtures.
-import { readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+
 import { describe, expect, it } from "bun:test"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 
 const UI_DIR = join(import.meta.dir, "ui")
 const MANIFEST_PATH = join(import.meta.dir, "..", "app.manifest.json")
@@ -33,7 +34,9 @@ function collectUiToolCalls(): Set<string> {
 }
 
 function manifestToolNames(): Set<string> {
-  const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { tools?: Record<string, unknown> }
+  const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+    tools?: Record<string, unknown>
+  }
   return new Set(Object.keys(manifest.tools ?? {}))
 }
 
@@ -46,7 +49,10 @@ describe("ads UI tool-call closure", () => {
     const declared = manifestToolNames()
     const called = collectUiToolCalls()
     const unregistered = [...called].filter((name) => !declared.has(name))
-    expect(unregistered, `UI calls tools missing from the manifest: ${unregistered.join(", ")}`).toEqual([])
+    expect(
+      unregistered,
+      `UI calls tools missing from the manifest: ${unregistered.join(", ")}`,
+    ).toEqual([])
   })
 
   it("registers pending_approvals_list (the widget the dashboard reads)", () => {

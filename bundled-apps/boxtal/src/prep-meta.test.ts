@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { warmPrepMetaForDocument } from "./prep-meta"
 import type { BoxtalToolCtx } from "./ctx"
+import { warmPrepMetaForDocument } from "./prep-meta"
 import { createMockDb } from "./test-db"
 
 const ORDER = {
@@ -82,7 +82,10 @@ describe("warmPrepMetaForDocument", () => {
       order: { ...ORDER, name: "#9999" },
     })
     expect(await warmPrepMetaForDocument(ctx, "doc-1")).toBe(false)
-    expect(await metaRow(ctx)).toMatchObject({ order_name: "#3445", staff_note: "call before delivery" })
+    expect(await metaRow(ctx)).toMatchObject({
+      order_name: "#3445",
+      staff_note: "call before delivery",
+    })
   })
 
   it("is a no-op for a document with no linked Shopify order", async () => {

@@ -224,7 +224,8 @@ describe("grossOfExcludedTax (reconstructs netOfIncludedTax's input, the Editor'
     for (let gross = 1n; gross <= 500n; gross++) {
       const net = netOfIncludedTax(gross, 2000)
       const reconstructedGross = grossOfExcludedTax(net, 2000)
-      const drift = gross > reconstructedGross ? gross - reconstructedGross : reconstructedGross - gross
+      const drift =
+        gross > reconstructedGross ? gross - reconstructedGross : reconstructedGross - gross
       expect(drift <= 1n).toBe(true)
       if (drift !== 0n) driftCount++
     }

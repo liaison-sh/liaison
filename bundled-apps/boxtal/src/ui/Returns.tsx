@@ -8,19 +8,20 @@
 // Composes only the shared Boxtal kit (kit.tsx) and the kernel charcoal theme
 // tokens — visually identical to the invoicing app. Data flows through the
 // host bridge (app.invokeTool) wrapped in a safe empty shape.
-import { type Component, Show } from "solid-js"
-import { app } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app } from "@liaison/host"
+import { type Component, Show } from "solid-js"
 import {
   Badge,
   Button,
+  CategoryBadge,
   cx,
   EmptyState,
   formatQueueDate,
   formatQueueParcels,
   formatQueueTimestamp,
   formatWeight,
-  CategoryBadge,
   OrderStatusBadge,
   PageHeader,
   TrackingStatusBadge,
@@ -119,7 +120,10 @@ export const Returns: Component = () => {
         role: "meta",
         cell: (row) => (
           <span class="flex flex-wrap items-center gap-1.5">
-            <OrderStatusBadge status={row.order_status} testid={`boxtal-return-order-status-${row.id}`} />
+            <OrderStatusBadge
+              status={row.order_status}
+              testid={`boxtal-return-order-status-${row.id}`}
+            />
             <TrackingStatusBadge
               status={row.tracking_status}
               testid={`boxtal-return-tracking-status-${row.id}`}
@@ -213,7 +217,9 @@ export const Returns: Component = () => {
         key: "category",
         header: "Type",
         role: "fold",
-        cell: (row) => <CategoryBadge category={row.category} testid={`boxtal-return-${row.id}-category`} />,
+        cell: (row) => (
+          <CategoryBadge category={row.category} testid={`boxtal-return-${row.id}-category`} />
+        ),
       },
       {
         key: "items",

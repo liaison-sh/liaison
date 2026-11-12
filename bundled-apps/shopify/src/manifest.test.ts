@@ -452,10 +452,7 @@ describe("Shopify app.manifest.json", () => {
 
   it("declares the Phase-16 webhook topics with verifier + bodyLimitBytes", () => {
     const m = loadManifest() as {
-      webhooks: Record<
-        string,
-        { handler: string; verify: string; bodyLimitBytes: number }
-      >
+      webhooks: Record<string, { handler: string; verify: string; bodyLimitBytes: number }>
     }
     // Shopify topics are slugified to kebab-case because the kernel
     // manifest-schema constrains webhook keys to ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$.
@@ -497,13 +494,21 @@ describe("Shopify app.manifest.json", () => {
     // is absent, ask the requesting user rather than assume a percentage. No tier number ships in the text.
     // The escalation intent (over-tier → the org's escalation contact, must-flag, no self-approve) is
     // asserted by the clauses below.
-    expect(ai).toMatch(/kernel skill_read the org skill 'escalation-contacts' and use the tier schedule it documents/)
-    expect(ai).toMatch(/never assume a number: ask the requesting user for the applicable tier and the discount limit above which approval is needed/)
+    expect(ai).toMatch(
+      /kernel skill_read the org skill 'escalation-contacts' and use the tier schedule it documents/,
+    )
+    expect(ai).toMatch(
+      /never assume a number: ask the requesting user for the applicable tier and the discount limit above which approval is needed/,
+    )
     expect(ai).not.toMatch(/tier-3|40% off/)
     expect(ai).toMatch(/exceeds a sales rep's own authority/)
     // Who escalates is organisation data: the org skill, with an ask-the-user fallback when it is absent.
-    expect(ai).toMatch(/escalation contact for over-tier discounts, kept in its org skill 'escalation-contacts'/)
-    expect(ai).toMatch(/if the organisation has no such skill, say it needs someone with approval authority above the requester and ask the requesting user who that is/)
+    expect(ai).toMatch(
+      /escalation contact for over-tier discounts, kept in its org skill 'escalation-contacts'/,
+    )
+    expect(ai).toMatch(
+      /if the organisation has no such skill, say it needs someone with approval authority above the requester and ask the requesting user who that is/,
+    )
     expect(ai).toMatch(/applieddiscount percentage/)
     expect(ai).toMatch(/must explicitly flag that it is above the standard tier/)
     expect(ai).toMatch(/needs escalated approval/)
@@ -533,10 +538,14 @@ describe("Shopify app.manifest.json", () => {
   it("routes the BUSINESS-PULSE orders lane to analytics_query (not home_load, not a hand-paged orders_search)", () => {
     const ai = guideText(loadManifest()).toLowerCase()
     expect(ai).toMatch(/business pulse \/ 'how is the business doing right now'/)
-    expect(ai).toMatch(/the authoritative read is analytics_query, not home_load and not a hand-paged orders_search/)
+    expect(ai).toMatch(
+      /the authoritative read is analytics_query, not home_load and not a hand-paged orders_search/,
+    )
     expect(ai).toMatch(/analytics_query\(metric=orders, period=/)
     expect(ai).toMatch(/do not answer the orders lane from home_load/)
-    expect(ai).toMatch(/do not claim you 'cannot compute revenue\/aov': analytics_query computes it/)
+    expect(ai).toMatch(
+      /do not claim you 'cannot compute revenue\/aov': analytics_query computes it/,
+    )
     // ZERO-RESULT GUARD: a 0/empty analytics aggregate on a store with recent orders is a finalization-lag
     // artifact, not a fact — the clause must mandate the orders_search cross-check, never report a false 0.
     expect(ai).toMatch(/zero-result guard/)
@@ -557,11 +566,15 @@ describe("Shopify app.manifest.json", () => {
     const ai = guideText(loadManifest()).toLowerCase()
     expect(ai).toMatch(/analytics-unavailable \/ not-reachable fallback/)
     // The fallback fires on the unavailable / not-in-toolset case (not just an empty result).
-    expect(ai).toMatch(/when analytics_query is unavailable, errors, returns partial:true, or is not reachable/)
+    expect(ai).toMatch(
+      /when analytics_query is unavailable, errors, returns partial:true, or is not reachable/,
+    )
     expect(ai).toMatch(/shopify:orders:read but not shopify:analytics:read/)
     expect(ai).toMatch(/do not report 'analytics unavailable'/)
     // For order VOLUME / count, a bounded orders_search count framed as a bounded tally is the honest answer.
-    expect(ai).toMatch(/read a bounded orders_search recent cursor page directly and report the order count/)
+    expect(ai).toMatch(
+      /read a bounded orders_search recent cursor page directly and report the order count/,
+    )
     expect(ai).toMatch(/clearly labeled a bounded in-context recent-order tally/)
     // AUTHORING a recurring digest's order-volume section: use orders_search as the PRIMARY read, NOT
     // analytics_query (which needs shopify:analytics:read, unreachable in an orders-only routine ceiling).
@@ -691,7 +704,9 @@ describe("Shopify app.manifest.json", () => {
     expect(ai).toMatch(/survivortitle \+ duplicatetitle/)
     // (c) Gated + anti-fabrication: it lands as an approval; never claim 'merged' before it clears.
     expect(ai).toMatch(/products_merge is gated/)
-    expect(ai).toMatch(/do not claim you already 'merged' the products before the gated approval clears/)
+    expect(ai).toMatch(
+      /do not claim you already 'merged' the products before the gated approval clears/,
+    )
     // (d) The data-loss caveat — reviews + metafields do NOT carry over.
     expect(ai).toMatch(/data-loss caveat/)
     expect(ai).toMatch(/reviews and metafields do not carry over/)
@@ -745,12 +760,21 @@ describe("Shopify app.manifest.json", () => {
     const m = loadManifest() as {
       tools: Record<
         string,
-        { params?: { properties?: Record<string, { properties?: Record<string, { pattern?: string; description?: string }> }> } }
+        {
+          params?: {
+            properties?: Record<
+              string,
+              { properties?: Record<string, { pattern?: string; description?: string }> }
+            >
+          }
+        }
       >
     }
     const idProp = m.tools.products_update?.params?.properties?.input?.properties?.id
     expect(idProp, "products_update input.id must be declared").toBeDefined()
-    expect(idProp?.pattern, "input.id must carry an entity pattern").toBe("^(gid://shopify/Product/.+|[0-9]+)$")
+    expect(idProp?.pattern, "input.id must carry an entity pattern").toBe(
+      "^(gid://shopify/Product/.+|[0-9]+)$",
+    )
     expect((idProp?.description ?? "").toLowerCase()).toContain("order_update")
   })
 
@@ -931,15 +955,27 @@ describe("Shopify app.manifest.json", () => {
     // groupBy product, and an optional timeGrain (day, week, month) whose rows carry `date`.
     // 0.4.23: the OAuth request adds write_online_store_navigation, which products_merge's redirect
     // needs; a merge whose connection lacks it is refused before its first write.
-    expect(m.version).toBe("0.4.25")
+    expect(m.version).toBe("0.4.26")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {
     const m = loadManifest() as {
-      tools: Record<string, { params: { properties: Record<string, unknown>; additionalProperties?: unknown } }>
+      tools: Record<
+        string,
+        { params: { properties: Record<string, unknown>; additionalProperties?: unknown } }
+      >
     }
     const expected: Record<string, string[]> = {
-      orders_search: ["query", "created_at_min", "created_at_max", "total_min", "total_max", "limit", "timeout_ms", "cursor"],
+      orders_search: [
+        "query",
+        "created_at_min",
+        "created_at_max",
+        "total_min",
+        "total_max",
+        "limit",
+        "timeout_ms",
+        "cursor",
+      ],
       variants_search: ["query", "product_status", "min_quantity", "limit", "cursor"],
     }
     for (const [tool, keys] of Object.entries(expected)) {
@@ -955,7 +991,11 @@ describe("Shopify app.manifest.json", () => {
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {
     const m = loadManifest() as {
       connections: {
-        shop: { scopes: string[]; optionalScopes?: string[]; protectedScopes?: Array<{ scope: string; setting: string }> }
+        shop: {
+          scopes: string[]
+          optionalScopes?: string[]
+          protectedScopes?: Array<{ scope: string; setting: string }>
+        }
       }
       settings: { sections: Array<{ scope: string; blocks: Array<Record<string, unknown>> }> }
     }
@@ -963,7 +1003,9 @@ describe("Shopify app.manifest.json", () => {
     // Shopify refuses a release listing it until it approved the app, so it is never required.
     expect(shop.scopes).not.toContain("read_all_orders")
     expect(shop.optionalScopes ?? []).not.toContain("read_all_orders")
-    expect(shop.protectedScopes).toEqual([{ scope: "read_all_orders", setting: "fullOrderHistory" }])
+    expect(shop.protectedScopes).toEqual([
+      { scope: "read_all_orders", setting: "fullOrderHistory" },
+    ])
     const field = m.settings.sections
       .filter((s) => s.scope === "org")
       .flatMap((s) => s.blocks)
@@ -979,7 +1021,10 @@ describe("Shopify app.manifest.json", () => {
     // connection (and no Reconnect) can ever grant it.
     const m = loadManifest() as {
       connections: { shop: { scopes: string[] } }
-      tools: Record<string, { gated?: boolean; summarizerContext?: { tool: string; params: Record<string, string> } }>
+      tools: Record<
+        string,
+        { gated?: boolean; summarizerContext?: { tool: string; params: Record<string, string> } }
+      >
     }
     expect(m.connections.shop.scopes).toContain("read_publications")
     expect(m.connections.shop.scopes).toContain("write_publications")
@@ -1017,7 +1062,10 @@ describe("Shopify app.manifest.json", () => {
   })
 
   it("the dev-store token script checks the token against the manifest's scopes, not a copy", () => {
-    const script = readFileSync(join(import.meta.dir, "..", "scripts", "acquire-offline-token.ts"), "utf8")
+    const script = readFileSync(
+      join(import.meta.dir, "..", "scripts", "acquire-offline-token.ts"),
+      "utf8",
+    )
     expect(script).toContain('"app.manifest.json"')
     expect(script).toContain("connections.shop.scopes")
     expect(script).not.toMatch(/"read_orders"/)
@@ -1026,27 +1074,52 @@ describe("Shopify app.manifest.json", () => {
   it("declares its settings page: the store connection, the diagnostics block and the shipping emails fields", () => {
     const m = loadManifest() as {
       views: { settings?: unknown }
-      settings: { sections: Array<{ id: string; adminScope?: string; blocks: Array<Record<string, unknown>> }> }
+      settings: {
+        sections: Array<{ id: string; adminScope?: string; blocks: Array<Record<string, unknown>> }>
+      }
     }
     expect(m.views.settings).toBeUndefined()
-    expect(m.settings.sections.map((s) => s.id)).toEqual(["connection", "diagnostics", "shipping-emails"])
+    expect(m.settings.sections.map((s) => s.id)).toEqual([
+      "connection",
+      "diagnostics",
+      "shipping-emails",
+    ])
     // The shipping email policy, the B2B order tags and the (legacy) B2B sku suffixes live in
     // declared config keys (ctx.config.get), edited on the settings page.
     expect(m.settings.sections[2]?.blocks).toEqual([
-      expect.objectContaining({ block: "field", key: "customerShippingEmail", type: "select", source: "config" }),
-      expect.objectContaining({ block: "field", key: "b2bOrderTags", type: "text", source: "config" }),
-      expect.objectContaining({ block: "field", key: "b2bSkuSuffixes", type: "text", source: "config" }),
+      expect.objectContaining({
+        block: "field",
+        key: "customerShippingEmail",
+        type: "select",
+        source: "config",
+      }),
+      expect.objectContaining({
+        block: "field",
+        key: "b2bOrderTags",
+        type: "text",
+        source: "config",
+      }),
+      expect.objectContaining({
+        block: "field",
+        key: "b2bSkuSuffixes",
+        type: "text",
+        source: "config",
+      }),
     ])
-    const keys = (loadManifest() as { configKeys?: Array<{ key: string; type: string }> }).configKeys
-    expect(keys).toContainEqual(expect.objectContaining({ key: "customerShippingEmail", type: "string" }))
+    const keys = (loadManifest() as { configKeys?: Array<{ key: string; type: string }> })
+      .configKeys
+    expect(keys).toContainEqual(
+      expect.objectContaining({ key: "customerShippingEmail", type: "string" }),
+    )
     expect(keys).toContainEqual(expect.objectContaining({ key: "b2bOrderTags", type: "string" }))
     expect(keys).toContainEqual(expect.objectContaining({ key: "b2bSkuSuffixes", type: "string" }))
     expect(m.settings.sections[0]?.blocks.map((b) => b.block)).toEqual(["connections", "field"])
     expect(m.settings.sections[0]?.blocks[0]).toEqual({ block: "connections", names: ["shop"] })
     expect(m.settings.sections[0]?.blocks[1]?.key).toBe("fullOrderHistory")
-    expect((loadManifest() as { connections: Record<string, { purpose?: string }> }).connections.shop?.purpose).toBe(
-      "Shopify store",
-    )
+    expect(
+      (loadManifest() as { connections: Record<string, { purpose?: string }> }).connections.shop
+        ?.purpose,
+    ).toBe("Shopify store")
     expect(m.settings.sections[1]?.blocks.map((b) => b.component)).toEqual(["ShopifyDiagnostics"])
     // settings_load (the block's one data read) needs this scope.
     expect(m.settings.sections[1]?.adminScope).toBe("shopify:admin:identity-map")
@@ -1125,7 +1198,9 @@ describe("stage-time preflights on the gated Shopify tools", () => {
     const m = loadManifest() as { tools: Record<string, { preflight?: string }> }
     for (const [tool, decl] of Object.entries(m.tools)) {
       if (!decl.preflight) continue
-      expect(typeof handlers[decl.preflight], `${tool}.preflight -> ${decl.preflight}`).toBe("function")
+      expect(typeof handlers[decl.preflight], `${tool}.preflight -> ${decl.preflight}`).toBe(
+        "function",
+      )
     }
   })
 })

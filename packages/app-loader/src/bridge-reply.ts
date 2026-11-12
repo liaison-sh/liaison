@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// One app bridge call as the app loader makes it, shared byte for byte by the
-// loader and any stand-in for it (a test fake loader), so both send the same
-// request and turn the cell's answer into the same reply. Standalone: no
-// imports, no platform APIs beyond fetch and crypto.randomUUID.
+// One app bridge call as the app loader makes it: the request it sends and how
+// the cell's answer becomes the isolate's reply. Every loader host (Workers,
+// workerd, the test stand-in) runs this one module. Standalone: no imports, no
+// platform APIs beyond fetch and crypto.randomUUID.
 //
 // Request: POST props.bridgeUrl with `authorization: Bearer <runToken>`,
 // `x-exec-nonce: <execNonce>`, body `{callId, method, args}`. A method outside
@@ -18,7 +18,7 @@
 //   errorCode "unknown_method"      404     method not listed for the run
 //   errorCode "bridge_bad_response" status  anything else (502 when status < 400)
 //   errorCode "bridge_unreachable"  502     the request itself failed
-// Vectors: bridge-reply-vectors.json beside the tests (same cases, both sides).
+// Vectors: test/bridge-reply-vectors.json.
 
 export const BRIDGE_REPLY_VERSION = 1
 
@@ -72,7 +72,11 @@ export function unknownMethodReply(method: unknown): BridgeReply {
 
 export function bridgeUnreachableReply(err: unknown): BridgeReply {
   const message = err instanceof Error ? err.message : String(err)
-  return { error: `Bridge unreachable: ${message}`, errorStatus: 502, errorCode: "bridge_unreachable" }
+  return {
+    error: `Bridge unreachable: ${message}`,
+    errorStatus: 502,
+    errorCode: "bridge_unreachable",
+  }
 }
 
 /** The cell's HTTP answer (status + body text) as the isolate's reply. */

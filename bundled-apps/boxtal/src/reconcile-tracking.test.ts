@@ -9,28 +9,35 @@
 // operator's Ready-to-ship queue. These tests pin the job that makes the local
 // index converge on Boxtal regardless of whether a single webhook ever lands.
 import { describe, expect, it } from "bun:test"
+import { BoxtalApiError } from "./lib/boxtal-v3-client"
+import { applyTrackingChanged, reserveCreate } from "./link-store"
 import {
+  boxtalOrderProbe,
   byStalestFirst,
   isReconcilable,
-  boxtalOrderProbe,
+  ORPHAN_REPORT_INTERVAL_MS,
   type OrphanRow,
   reconcileOrphanedCreates,
   reconcileTracking,
   reconcileTrackingJobHandler,
-  ORPHAN_REPORT_INTERVAL_MS,
   settleOrphanedCreate,
   settleOrphanedCreatePreflight,
 } from "./reconcile-tracking"
-import { BoxtalApiError } from "./lib/boxtal-v3-client"
 import { createMockDb } from "./test-db"
-import { applyTrackingChanged, reserveCreate } from "./link-store"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
 /** Per-order canned live state, keyed by boxtal_order_id. */
 interface LiveState {
   order: string
-  tracking?: { status: string; number?: string; history?: Array<{ status: string; trackingDateTime: string }> } | "not_ready" | "boom"
+  tracking?:
+    | {
+        status: string
+        number?: string
+        history?: Array<{ status: string; trackingDateTime: string }>
+      }
+    | "not_ready"
+    | "boom"
 }
 
 function makeCtx(opts: {
@@ -50,13 +57,21 @@ function makeCtx(opts: {
   const fetch = async (url: string, o?: { method?: string }) => {
     calls.push(`${o?.method ?? "GET"} ${url}`)
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     const id = orderIdOf(url)
     const state = opts.live[id]
     if (url.includes("/tracking")) {
       if (!state || state.tracking === undefined) {
-        return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [] }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ status: 200, timestamp: "t", content: [] }),
+        }
       }
       if (state.tracking === "not_ready") {
         // The real Boxtal "tracking not generated yet" shape isBoxtalNotReady matches.
@@ -79,7 +94,11 @@ function makeCtx(opts: {
               // A real payload carries the checkpoint history; the EVENT timestamp in it is
               // what the replay watermark must be stamped from (never a wall clock).
               history: state.tracking.history ?? [
-                { status: state.tracking.status, trackingDateTime: "2026-07-31T00:00:00Z", message: "ok" },
+                {
+                  status: state.tracking.status,
+                  trackingDateTime: "2026-07-31T00:00:00Z",
+                  message: "ok",
+                },
               ],
             },
           ],
@@ -97,7 +116,11 @@ function makeCtx(opts: {
         }),
       }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const ctx = {
     orgId: "org-1",
@@ -106,7 +129,18 @@ function makeCtx(opts: {
     connections:
       opts.connected === false
         ? {}
-        : { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+        : {
+            boxtal: {
+              getSettings: async () => ({
+                values: { environment: CREDS.environment },
+                missing: [],
+              }),
+              getToken: async () => {
+                throw new Error("no")
+              },
+              getAccounts: async () => [],
+            },
+          },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
@@ -115,15 +149,36 @@ function makeCtx(opts: {
 
 describe("isReconcilable", () => {
   it("polls in-flight rows and skips terminal / cancelled / order-less ones", () => {
-    const inFlight = { id: "1", boxtal_order_id: "o1", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT" }
+    const inFlight = {
+      id: "1",
+      boxtal_order_id: "o1",
+      order_status: "CONFIRMED",
+      tracking_status: "IN_TRANSIT",
+    }
     expect(isReconcilable(inFlight)).toBe(true)
     // Never-tracked is the MOST important case: it is the silent-webhook signature.
-    expect(isReconcilable({ id: "2", boxtal_order_id: "o2", order_status: "PENDING", tracking_status: null })).toBe(true)
+    expect(
+      isReconcilable({
+        id: "2",
+        boxtal_order_id: "o2",
+        order_status: "PENDING",
+        tracking_status: null,
+      }),
+    ).toBe(true)
     // Terminal — the journey is over, re-polling forever is pure waste.
     for (const t of ["DELIVERED", "RETURNED", "LOST"]) {
-      expect(isReconcilable({ id: "3", boxtal_order_id: "o3", order_status: "CONFIRMED", tracking_status: t })).toBe(false)
+      expect(
+        isReconcilable({
+          id: "3",
+          boxtal_order_id: "o3",
+          order_status: "CONFIRMED",
+          tracking_status: t,
+        }),
+      ).toBe(false)
     }
-    expect(isReconcilable({ id: "4", boxtal_order_id: "o4", order_status: "CANCELLED" })).toBe(false)
+    expect(isReconcilable({ id: "4", boxtal_order_id: "o4", order_status: "CANCELLED" })).toBe(
+      false,
+    )
     // A local draft with no Boxtal order has nothing to ask about.
     expect(isReconcilable({ id: "5", order_status: "PENDING" })).toBe(false)
     expect(isReconcilable({ id: "6", boxtal_order_id: "", order_status: "PENDING" })).toBe(false)
@@ -147,8 +202,20 @@ describe("reconcileTracking", () => {
     // has long since moved them on.
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "PENDING", tracking_status: null, tracking_number: null },
-        { id: "s2", boxtal_order_id: "o2", order_status: "CONFIRMED", tracking_status: "ANNOUNCED", tracking_number: "T2" },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "PENDING",
+          tracking_status: null,
+          tracking_number: null,
+        },
+        {
+          id: "s2",
+          boxtal_order_id: "o2",
+          order_status: "CONFIRMED",
+          tracking_status: "ANNOUNCED",
+          tracking_number: "T2",
+        },
       ],
       live: {
         o1: { order: "CONFIRMED", tracking: { status: "DELIVERED", number: "T1" } },
@@ -171,7 +238,13 @@ describe("reconcileTracking", () => {
   it("stamps polled_at but writes no status change when nothing moved", async () => {
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT", tracking_number: "T1" },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "CONFIRMED",
+          tracking_status: "IN_TRANSIT",
+          tracking_number: "T1",
+        },
       ],
       live: { o1: { order: "CONFIRMED", tracking: { status: "IN_TRANSIT", number: "T1" } } },
     })
@@ -193,7 +266,13 @@ describe("reconcileTracking", () => {
   it("a poll does not silence the tracking webhooks for the rest of the day", async () => {
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "CONFIRMED", tracking_status: null, tracking_number: null },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "CONFIRMED",
+          tracking_status: null,
+          tracking_number: null,
+        },
       ],
       // Nothing has moved yet: the poll writes no status, only its own timestamp.
       live: { o1: { order: "CONFIRMED", tracking: "not_ready" } },
@@ -217,7 +296,13 @@ describe("reconcileTracking", () => {
     // event is still correctly ignored — the guard keeps working, it just stops over-reaching.
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "CONFIRMED", tracking_status: null, tracking_number: null },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "CONFIRMED",
+          tracking_status: null,
+          tracking_number: null,
+        },
       ],
       live: { o1: { order: "CONFIRMED", tracking: { status: "IN_TRANSIT", number: "T1" } } },
     })
@@ -235,7 +320,13 @@ describe("reconcileTracking", () => {
     // which moves the replay guard backwards.
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "CONFIRMED", tracking_status: null, tracking_number: null },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "CONFIRMED",
+          tracking_status: null,
+          tracking_number: null,
+        },
       ],
       live: {
         o1: {
@@ -261,9 +352,19 @@ describe("reconcileTracking", () => {
   it("skips terminal and cancelled rows entirely (no Boxtal call for them)", async () => {
     const { ctx, calls } = makeCtx({
       shipments: [
-        { id: "done", boxtal_order_id: "o-done", order_status: "CONFIRMED", tracking_status: "DELIVERED" },
+        {
+          id: "done",
+          boxtal_order_id: "o-done",
+          order_status: "CONFIRMED",
+          tracking_status: "DELIVERED",
+        },
         { id: "void", boxtal_order_id: "o-void", order_status: "CANCELLED" },
-        { id: "live", boxtal_order_id: "o-live", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT" },
+        {
+          id: "live",
+          boxtal_order_id: "o-live",
+          order_status: "CONFIRMED",
+          tracking_status: "IN_TRANSIT",
+        },
       ],
       live: { "o-live": { order: "CONFIRMED", tracking: { status: "OUT_FOR_DELIVERY" } } },
     })
@@ -279,7 +380,13 @@ describe("reconcileTracking", () => {
     // normal state, not a failure, and must not blank an existing tracking value.
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "PENDING", tracking_status: null, tracking_number: null },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "PENDING",
+          tracking_status: null,
+          tracking_number: null,
+        },
       ],
       live: { o1: { order: "CONFIRMED", tracking: "not_ready" } },
     })
@@ -293,8 +400,18 @@ describe("reconcileTracking", () => {
   it("one failing shipment does not abort the batch", async () => {
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "bad", boxtal_order_id: "o-bad", order_status: "CONFIRMED", tracking_status: "ANNOUNCED" },
-        { id: "good", boxtal_order_id: "o-good", order_status: "CONFIRMED", tracking_status: "ANNOUNCED" },
+        {
+          id: "bad",
+          boxtal_order_id: "o-bad",
+          order_status: "CONFIRMED",
+          tracking_status: "ANNOUNCED",
+        },
+        {
+          id: "good",
+          boxtal_order_id: "o-good",
+          order_status: "CONFIRMED",
+          tracking_status: "ANNOUNCED",
+        },
       ],
       live: {
         "o-bad": { order: "CONFIRMED", tracking: "boom" },
@@ -311,8 +428,19 @@ describe("reconcileTracking", () => {
   it("bounds one run and round-robins the stalest rows first", async () => {
     const { ctx } = makeCtx({
       shipments: [
-        { id: "fresh", boxtal_order_id: "o-fresh", order_status: "CONFIRMED", tracking_status: "ANNOUNCED", status_fetched_at: "2026-07-31T12:00:00Z" },
-        { id: "never", boxtal_order_id: "o-never", order_status: "CONFIRMED", tracking_status: null },
+        {
+          id: "fresh",
+          boxtal_order_id: "o-fresh",
+          order_status: "CONFIRMED",
+          tracking_status: "ANNOUNCED",
+          status_fetched_at: "2026-07-31T12:00:00Z",
+        },
+        {
+          id: "never",
+          boxtal_order_id: "o-never",
+          order_status: "CONFIRMED",
+          tracking_status: null,
+        },
       ],
       live: {
         "o-never": { order: "CONFIRMED", tracking: { status: "IN_TRANSIT" } },
@@ -344,7 +472,9 @@ describe("reconcileTracking", () => {
 
   it("exposes a kernel-shaped (payload, ctx) job handler", async () => {
     const { ctx } = makeCtx({
-      shipments: [{ id: "s1", boxtal_order_id: "o1", order_status: "PENDING", tracking_status: null }],
+      shipments: [
+        { id: "s1", boxtal_order_id: "o1", order_status: "PENDING", tracking_status: null },
+      ],
       live: { o1: { order: "CONFIRMED", tracking: { status: "DELIVERED" } } },
     })
     const res = await reconcileTrackingJobHandler(undefined, ctx)
@@ -362,14 +492,38 @@ describe("reconcileTracking", () => {
 // reports the rest. It can never buy, re-buy or cancel anything.
 // The label reader is a download plus a decode: reconcile must not repeat it on every 15 minute run.
 describe("reconcileTracking: the label-read tracking number", () => {
-  const labelled = { order_status: "CONFIRMED", tracking_status: null, documents: [{ type: "LABEL", format: "PDF_A4" }] }
+  const labelled = {
+    order_status: "CONFIRMED",
+    tracking_status: null,
+    documents: [{ type: "LABEL", format: "PDF_A4" }],
+  }
 
   it("never re-downloads the label of a row whose number is already held, already marked to confirm, or of a carrier it cannot read", async () => {
     const { ctx, calls } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", ...labelled, offer_code: "FEDX-FedexRegionalEconomy", tracking_number: "877740925574", tracking_from_label: true },
-        { id: "s2", boxtal_order_id: "o2", ...labelled, offer_code: "UPSE-Standard", tracking_number: null, tracking_to_confirm: true },
-        { id: "s3", boxtal_order_id: "o3", ...labelled, offer_code: "MONR-CpourToi", tracking_number: null },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          ...labelled,
+          offer_code: "FEDX-FedexRegionalEconomy",
+          tracking_number: "877740925574",
+          tracking_from_label: true,
+        },
+        {
+          id: "s2",
+          boxtal_order_id: "o2",
+          ...labelled,
+          offer_code: "UPSE-Standard",
+          tracking_number: null,
+          tracking_to_confirm: true,
+        },
+        {
+          id: "s3",
+          boxtal_order_id: "o3",
+          ...labelled,
+          offer_code: "MONR-CpourToi",
+          tracking_number: null,
+        },
       ],
       live: {
         o1: { order: "CONFIRMED", tracking: { status: "ANNOUNCED" } },
@@ -384,7 +538,14 @@ describe("reconcileTracking: the label-read tracking number", () => {
   it("a tracking read without a number keeps the label-read one", async () => {
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", ...labelled, offer_code: "FEDX-FedexRegionalEconomy", tracking_number: "877740925574", tracking_from_label: true },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          ...labelled,
+          offer_code: "FEDX-FedexRegionalEconomy",
+          tracking_number: "877740925574",
+          tracking_from_label: true,
+        },
       ],
       live: { o1: { order: "CONFIRMED", tracking: { status: "ANNOUNCED" } } },
     })
@@ -397,9 +558,18 @@ describe("reconcileTracking: the label-read tracking number", () => {
   it("the carrier's own number, found by polling, clears the label flag", async () => {
     const { ctx, db } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", ...labelled, offer_code: "FEDX-FedexRegionalEconomy", tracking_number: "877740925574", tracking_from_label: true },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          ...labelled,
+          offer_code: "FEDX-FedexRegionalEconomy",
+          tracking_number: "877740925574",
+          tracking_from_label: true,
+        },
       ],
-      live: { o1: { order: "CONFIRMED", tracking: { status: "IN_TRANSIT", number: "877740925574" } } },
+      live: {
+        o1: { order: "CONFIRMED", tracking: { status: "IN_TRANSIT", number: "877740925574" } },
+      },
     })
     await reconcileTracking(ctx)
     const s1 = (await db.findOne("shipment", "s1")) as Record<string, unknown>
@@ -419,7 +589,10 @@ describe("reconcileOrphanedCreates", () => {
   }
 
   /** A probe client that would SPEND money if the sweep ever called it. */
-  function probeClient(opts: { byId?: Record<string, string>; byExternalId?: Record<string, string> }) {
+  function probeClient(opts: {
+    byId?: Record<string, string>
+    byExternalId?: Record<string, string>
+  }) {
     const spend: string[] = []
     const client = {
       v3: {
@@ -447,10 +620,22 @@ describe("reconcileOrphanedCreates", () => {
 
   it("resolves a stale create_in_flight row whose Boxtal order matches by external_id", async () => {
     const { ctx, db } = sweepCtx([
-      { id: "o1", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, external_id: "#1042", document_ref: "doc-1", created_at: STALE },
+      {
+        id: "o1",
+        link_state: "create_in_flight",
+        order_status: null,
+        boxtal_order_id: null,
+        external_id: "#1042",
+        document_ref: "doc-1",
+        created_at: STALE,
+      },
     ])
     const { client, spend } = probeClient({ byExternalId: { "#1042": "BX-RECOVERED" } })
-    const res = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], boxtalOrderProbe(client))
+    const res = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      boxtalOrderProbe(client),
+    )
     expect(res).toMatchObject({ candidates: 1, checked: 1, resolved: 1, unresolved: 0, failed: 0 })
     const row = db.__all("shipment")[0]!
     expect(row.link_state).toBe("created")
@@ -462,10 +647,20 @@ describe("reconcileOrphanedCreates", () => {
 
   it("resolves a stale create_uncertain row by reading its order id back", async () => {
     const { ctx, db } = sweepCtx([
-      { id: "o2", link_state: "create_uncertain", order_status: null, boxtal_order_id: "BX-7", created_at: STALE },
+      {
+        id: "o2",
+        link_state: "create_uncertain",
+        order_status: null,
+        boxtal_order_id: "BX-7",
+        created_at: STALE,
+      },
     ])
     const { client, spend } = probeClient({ byId: { "BX-7": "PENDING" } })
-    const res = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], boxtalOrderProbe(client))
+    const res = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      boxtalOrderProbe(client),
+    )
     expect(res.resolved).toBe(1)
     expect(db.__all("shipment")[0]!.link_state).toBe("created")
     expect(spend).toEqual([])
@@ -473,10 +668,21 @@ describe("reconcileOrphanedCreates", () => {
 
   it("REPORTS, never guesses, when Boxtal has no match: the row is left exactly as it is", async () => {
     const { ctx, db } = sweepCtx([
-      { id: "o3", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, external_id: "#NOPE", created_at: STALE },
+      {
+        id: "o3",
+        link_state: "create_in_flight",
+        order_status: null,
+        boxtal_order_id: null,
+        external_id: "#NOPE",
+        created_at: STALE,
+      },
     ])
     const { client, spend } = probeClient({})
-    const res = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], boxtalOrderProbe(client))
+    const res = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      boxtalOrderProbe(client),
+    )
     expect(res).toMatchObject({ candidates: 1, checked: 1, resolved: 0, unresolved: 1, failed: 0 })
     const row = db.__all("shipment")[0]!
     expect(row.link_state).toBe("create_in_flight")
@@ -487,13 +693,24 @@ describe("reconcileOrphanedCreates", () => {
 
   it("leaves a FRESH in-flight reservation completely alone (never probed, never written)", async () => {
     const { ctx, db } = sweepCtx([
-      { id: "o4", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, external_id: "#LIVE", created_at: FRESH },
+      {
+        id: "o4",
+        link_state: "create_in_flight",
+        order_status: null,
+        boxtal_order_id: null,
+        external_id: "#LIVE",
+        created_at: FRESH,
+      },
     ])
     let probed = 0
-    const res = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => {
-      probed++
-      return null
-    })
+    const res = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      async () => {
+        probed++
+        return null
+      },
+    )
     expect(res).toMatchObject({ candidates: 0, checked: 0, resolved: 0, unresolved: 0, failed: 0 })
     expect(probed).toBe(0)
     expect(db.__all("shipment")[0]!.link_state).toBe("create_in_flight")
@@ -501,13 +718,23 @@ describe("reconcileOrphanedCreates", () => {
 
   it("never touches finished, cancelled, or age-unknown rows", async () => {
     const { ctx, db } = sweepCtx([
-      { id: "d1", link_state: "created", order_status: "PENDING", boxtal_order_id: "BX-OK", created_at: STALE },
+      {
+        id: "d1",
+        link_state: "created",
+        order_status: "PENDING",
+        boxtal_order_id: "BX-OK",
+        created_at: STALE,
+      },
       { id: "d2", link_state: "create_in_flight", order_status: "CANCELLED", created_at: STALE },
       { id: "d3", link_state: "create_in_flight", order_status: null, created_at: null },
     ])
-    const res = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => {
-      throw new Error("must not probe")
-    })
+    const res = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      async () => {
+        throw new Error("must not probe")
+      },
+    )
     expect(res.candidates).toBe(0)
     expect(res.checked).toBe(0)
   })
@@ -515,8 +742,22 @@ describe("reconcileOrphanedCreates", () => {
   it("rides along on the reconcile-tracking cron and issues no POST or DELETE to Boxtal", async () => {
     const { ctx, db, calls } = makeCtx({
       shipments: [
-        { id: "s1", boxtal_order_id: "o1", order_status: "PENDING", tracking_status: null, link_state: "created", created_at: STALE },
-        { id: "s2", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, external_id: "#ORPHAN", created_at: STALE },
+        {
+          id: "s1",
+          boxtal_order_id: "o1",
+          order_status: "PENDING",
+          tracking_status: null,
+          link_state: "created",
+          created_at: STALE,
+        },
+        {
+          id: "s2",
+          link_state: "create_in_flight",
+          order_status: null,
+          boxtal_order_id: null,
+          external_id: "#ORPHAN",
+          created_at: STALE,
+        },
       ],
       live: { o1: { order: "CONFIRMED", tracking: { status: "IN_TRANSIT", number: "TRK" } } },
     })
@@ -527,7 +768,9 @@ describe("reconcileOrphanedCreates", () => {
     expect(db.__all("shipment").find((r) => r.id === "s2")!.link_state).toBe("create_in_flight")
     // Read-only: no create POST, no cancel DELETE anywhere in the run.
     // (the only POST in a healthy run is the /iam token exchange)
-    const writes = calls.filter((c) => /^(POST|DELETE|PUT|PATCH) /.test(c) && c.includes("/shipping-order"))
+    const writes = calls.filter(
+      (c) => /^(POST|DELETE|PUT|PATCH) /.test(c) && c.includes("/shipping-order"),
+    )
     expect(writes).toEqual([])
   })
 })
@@ -542,12 +785,31 @@ describe("reconcileOrphanedCreates: log cadence", () => {
 
   it("logs an unresolved orphan once, stays quiet on later ticks, and logs again after the interval", async () => {
     const db = createMockDb({
-      seed: { shipment: [{ id: "q1", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, created_at: STALE }] },
+      seed: {
+        shipment: [
+          {
+            id: "q1",
+            link_state: "create_in_flight",
+            order_status: null,
+            boxtal_order_id: null,
+            created_at: STALE,
+          },
+        ],
+      },
     })
     const warns: string[] = []
-    const ctx = { orgId: "org-1", db, logger: { info() {}, warn: (m: string) => warns.push(m) } } as any
+    const ctx = {
+      orgId: "org-1",
+      db,
+      logger: { info() {}, warn: (m: string) => warns.push(m) },
+    } as any
     const tick = async (atMs: number) =>
-      reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => null, { now: () => atMs })
+      reconcileOrphanedCreates(
+        ctx,
+        db.__all("shipment") as unknown as OrphanRow[],
+        async () => null,
+        { now: () => atMs },
+      )
     const r1 = await tick(T0)
     expect(r1.unresolved).toBe(1)
     expect(warns).toHaveLength(1)
@@ -595,14 +857,38 @@ describe("settleOrphanedCreate", () => {
     return { ctx, db, client, spend, reads }
   }
 
-  const orphan = { id: "x1", link_state: "create_in_flight", order_status: null, boxtal_order_id: null, document_ref: "doc-9", kind: "outbound", batch_seq: 1, created_at: STALE }
+  const orphan = {
+    id: "x1",
+    link_state: "create_in_flight",
+    order_status: null,
+    boxtal_order_id: null,
+    document_ref: "doc-9",
+    kind: "outbound",
+    batch_seq: 1,
+    created_at: STALE,
+  }
 
   it("adopt: reads the named order back and links it, the sweep's own write", async () => {
     const { ctx, db, client, spend, reads } = settleCtx([orphan], { "BX-FOUND": "CONFIRMED" })
-    const res = await settleOrphanedCreate(ctx, { id: "x1", outcome: "adopt", boxtal_order_id: " BX-FOUND ", note: "seen in dashboard" }, { now, client })
-    expect(res).toMatchObject({ id: "x1", outcome: "adopt", link_state: "created", boxtal_order_id: "BX-FOUND", order_status: "CONFIRMED" })
+    const res = await settleOrphanedCreate(
+      ctx,
+      { id: "x1", outcome: "adopt", boxtal_order_id: " BX-FOUND ", note: "seen in dashboard" },
+      { now, client },
+    )
+    expect(res).toMatchObject({
+      id: "x1",
+      outcome: "adopt",
+      link_state: "created",
+      boxtal_order_id: "BX-FOUND",
+      order_status: "CONFIRMED",
+    })
     const row = db.__all("shipment")[0]!
-    expect(row).toMatchObject({ link_state: "created", boxtal_order_id: "BX-FOUND", order_status: "CONFIRMED", orphan_settle_note: "seen in dashboard" })
+    expect(row).toMatchObject({
+      link_state: "created",
+      boxtal_order_id: "BX-FOUND",
+      order_status: "CONFIRMED",
+      orphan_settle_note: "seen in dashboard",
+    })
     expect(row.orphan_settled_at).toBe(new Date(T0).toISOString())
     expect(reads).toEqual(["BX-FOUND"])
     expect(spend).toEqual([])
@@ -610,19 +896,52 @@ describe("settleOrphanedCreate", () => {
 
   it("adopt: refuses an order id Boxtal does not know, and one already linked to another row", async () => {
     const { ctx, db, client } = settleCtx(
-      [orphan, { id: "other", link_state: "created", order_status: "PENDING", boxtal_order_id: "BX-TAKEN", document_ref: "doc-2", created_at: STALE }],
+      [
+        orphan,
+        {
+          id: "other",
+          link_state: "created",
+          order_status: "PENDING",
+          boxtal_order_id: "BX-TAKEN",
+          document_ref: "doc-2",
+          created_at: STALE,
+        },
+      ],
       { "BX-TAKEN": "PENDING" },
     )
-    await expect(settleOrphanedCreate(ctx, { id: "x1", outcome: "adopt", boxtal_order_id: "BX-NOPE" }, { now, client })).rejects.toMatchObject({ code: "order_not_found" })
-    await expect(settleOrphanedCreate(ctx, { id: "x1", outcome: "adopt", boxtal_order_id: "BX-TAKEN" }, { now, client })).rejects.toMatchObject({ code: "already_linked" })
-    await expect(settleOrphanedCreate(ctx, { id: "x1", outcome: "adopt" }, { now, client })).rejects.toMatchObject({ code: "invalid_input" })
+    await expect(
+      settleOrphanedCreate(
+        ctx,
+        { id: "x1", outcome: "adopt", boxtal_order_id: "BX-NOPE" },
+        { now, client },
+      ),
+    ).rejects.toMatchObject({ code: "order_not_found" })
+    await expect(
+      settleOrphanedCreate(
+        ctx,
+        { id: "x1", outcome: "adopt", boxtal_order_id: "BX-TAKEN" },
+        { now, client },
+      ),
+    ).rejects.toMatchObject({ code: "already_linked" })
+    await expect(
+      settleOrphanedCreate(ctx, { id: "x1", outcome: "adopt" }, { now, client }),
+    ).rejects.toMatchObject({ code: "invalid_input" })
     expect(db.__all("shipment").find((r) => r.id === "x1")!.link_state).toBe("create_in_flight")
   })
 
   it("release: closes the reservation locally, writes no Boxtal status, never calls Boxtal", async () => {
     const { ctx, db, client, spend, reads } = settleCtx([orphan])
-    const res = await settleOrphanedCreate(ctx, { id: "x1", outcome: "release", note: "no order in the dashboard" }, { now, client })
-    expect(res).toMatchObject({ outcome: "release", link_state: "create_abandoned", boxtal_order_id: null, order_status: null })
+    const res = await settleOrphanedCreate(
+      ctx,
+      { id: "x1", outcome: "release", note: "no order in the dashboard" },
+      { now, client },
+    )
+    expect(res).toMatchObject({
+      outcome: "release",
+      link_state: "create_abandoned",
+      boxtal_order_id: null,
+      order_status: null,
+    })
     const row = db.__all("shipment")[0]!
     expect(row.link_state).toBe("create_abandoned")
     // Never a fake CANCELLED: order_status stays what Boxtal never set.
@@ -634,7 +953,10 @@ describe("settleOrphanedCreate", () => {
 
   it("release frees the slot: a new reservation for the same document succeeds, and the row is never swept again", async () => {
     const { ctx, db, client } = settleCtx([orphan])
-    expect(await reserveCreate(ctx, { document_ref: "doc-9" })).toEqual({ ok: false, reason: "duplicate" })
+    expect(await reserveCreate(ctx, { document_ref: "doc-9" })).toEqual({
+      ok: false,
+      reason: "duplicate",
+    })
     await settleOrphanedCreate(ctx, { id: "x1", outcome: "release" }, { now, client })
     const again = await reserveCreate(ctx, { document_ref: "doc-9" })
     expect(again.ok).toBe(true)
@@ -642,10 +964,15 @@ describe("settleOrphanedCreate", () => {
     expect(fresh.batch_seq).toBe(2)
     // The sweep no longer sees the released row (the fresh reservation is young, so nothing at all).
     let probed = 0
-    const sweep = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => {
-      probed++
-      return null
-    }, { now: () => T0 + 60 * 60 * 1000, staleMs: 15 * 60 * 1000 })
+    const sweep = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      async () => {
+        probed++
+        return null
+      },
+      { now: () => T0 + 60 * 60 * 1000, staleMs: 15 * 60 * 1000 },
+    )
     // The released row is out of the sweep for good; the fresh reservation is not yet stale.
     expect(sweep.candidates).toBe(0)
     expect(probed).toBe(0)
@@ -653,27 +980,49 @@ describe("settleOrphanedCreate", () => {
   })
 
   it("release is refused on a row that already carries a Boxtal order id", async () => {
-    const { ctx, client } = settleCtx([{ ...orphan, link_state: "create_uncertain", boxtal_order_id: "BX-HELD" }])
-    await expect(settleOrphanedCreate(ctx, { id: "x1", outcome: "release" }, { now, client })).rejects.toMatchObject({ code: "has_order_id" })
+    const { ctx, client } = settleCtx([
+      { ...orphan, link_state: "create_uncertain", boxtal_order_id: "BX-HELD" },
+    ])
+    await expect(
+      settleOrphanedCreate(ctx, { id: "x1", outcome: "release" }, { now, client }),
+    ).rejects.toMatchObject({ code: "has_order_id" })
   })
 
   it("refuses non-orphan rows: young, created, cancelled, already released, unknown", async () => {
     const { ctx, db, client } = settleCtx([
       { ...orphan, id: "young", created_at: YOUNG },
-      { id: "done", link_state: "created", order_status: "PENDING", boxtal_order_id: "BX-1", created_at: STALE },
+      {
+        id: "done",
+        link_state: "created",
+        order_status: "PENDING",
+        boxtal_order_id: "BX-1",
+        created_at: STALE,
+      },
       { id: "gone", link_state: "create_in_flight", order_status: "CANCELLED", created_at: STALE },
       { ...orphan, id: "released", link_state: "create_abandoned" },
     ])
     for (const id of ["young", "done", "gone", "released"]) {
-      await expect(settleOrphanedCreate(ctx, { id, outcome: "release" }, { now, client })).rejects.toMatchObject({ code: "not_orphan" })
+      await expect(
+        settleOrphanedCreate(ctx, { id, outcome: "release" }, { now, client }),
+      ).rejects.toMatchObject({ code: "not_orphan" })
     }
-    await expect(settleOrphanedCreate(ctx, { id: "missing", outcome: "release" }, { now, client })).rejects.toMatchObject({ code: "not_found" })
+    await expect(
+      settleOrphanedCreate(ctx, { id: "missing", outcome: "release" }, { now, client }),
+    ).rejects.toMatchObject({ code: "not_found" })
     expect(db.__all("shipment").find((r) => r.id === "young")!.link_state).toBe("create_in_flight")
     expect(db.__all("shipment").find((r) => r.id === "done")!.link_state).toBe("created")
   })
 
   it("preflight returns the refusal as a typed error instead of parking a doomed approval", async () => {
-    const { ctx } = settleCtx([{ id: "done", link_state: "created", order_status: "PENDING", boxtal_order_id: "BX-1", created_at: STALE }])
+    const { ctx } = settleCtx([
+      {
+        id: "done",
+        link_state: "created",
+        order_status: "PENDING",
+        boxtal_order_id: "BX-1",
+        created_at: STALE,
+      },
+    ])
     const pre = await settleOrphanedCreatePreflight(ctx, { id: "done", outcome: "release" })
     expect(pre).toMatchObject({ error: { code: "not_orphan" } })
   })

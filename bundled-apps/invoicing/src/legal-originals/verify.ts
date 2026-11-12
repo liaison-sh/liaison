@@ -27,11 +27,19 @@ type Row = Record<string, unknown>
 
 export async function legalOriginalsVerify(ctx: VerifyCtx, params: VerifyParams = {}) {
   if (!ctx.files_getAttachmentBytes) {
-    return { status: "error" as const, error: { code: "unsupported", message: "The file bridge is not available in this runtime." } }
+    return {
+      status: "error" as const,
+      error: { code: "unsupported", message: "The file bridge is not available in this runtime." },
+    }
   }
-  const limit = Math.min(Math.max(Number(params.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1), MAX_LIMIT)
+  const limit = Math.min(
+    Math.max(Number(params.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1),
+    MAX_LIMIT,
+  )
   const offset = Math.max(Number(params.offset ?? 0) || 0, 0)
-  const where: Record<string, unknown> = params.document_id ? { document_id: String(params.document_id) } : {}
+  const where: Record<string, unknown> = params.document_id
+    ? { document_id: String(params.document_id) }
+    : {}
   const rows = (await ctx.db.findMany("legal_originals", {
     where,
     orderBy: { recorded_at: "asc" },
@@ -40,8 +48,17 @@ export async function legalOriginalsVerify(ctx: VerifyCtx, params: VerifyParams 
   })) as Row[]
   const page = rows.slice(0, limit)
   const intact: string[] = []
-  const mismatched: Array<{ legal_original_id: string; document_id: string | null; recorded_sha256: string; actual_sha256: string }> = []
-  const unreadable: Array<{ legal_original_id: string; document_id: string | null; reason: string }> = []
+  const mismatched: Array<{
+    legal_original_id: string
+    document_id: string | null
+    recorded_sha256: string
+    actual_sha256: string
+  }> = []
+  const unreadable: Array<{
+    legal_original_id: string
+    document_id: string | null
+    reason: string
+  }> = []
   let bytes = 0
   let checked = 0
   let consumed = 0
@@ -65,17 +82,31 @@ export async function legalOriginalsVerify(ctx: VerifyCtx, params: VerifyParams 
       ) as { bytesBase64?: string }
       b64 = file.bytesBase64 ?? ""
     } catch (err) {
-      unreadable.push({ legal_original_id: id, document_id: documentId, reason: (err as Error)?.message ?? String(err) })
+      unreadable.push({
+        legal_original_id: id,
+        document_id: documentId,
+        reason: (err as Error)?.message ?? String(err),
+      })
       continue
     }
     if (!b64) {
-      unreadable.push({ legal_original_id: id, document_id: documentId, reason: "the stored file is empty or missing" })
+      unreadable.push({
+        legal_original_id: id,
+        document_id: documentId,
+        reason: "the stored file is empty or missing",
+      })
       continue
     }
     const { sha256, byteLength } = sha256OfBase64(b64)
     bytes += byteLength
     if (sha256 === String(r.sha256)) intact.push(id)
-    else mismatched.push({ legal_original_id: id, document_id: documentId, recorded_sha256: String(r.sha256), actual_sha256: sha256 })
+    else
+      mismatched.push({
+        legal_original_id: id,
+        document_id: documentId,
+        recorded_sha256: String(r.sha256),
+        actual_sha256: sha256,
+      })
   }
   const more = rows.length > limit || consumed < page.length
   return {

@@ -181,7 +181,11 @@ export function rowIsInteractive(exiting: boolean): boolean {
  * object for it. The row's DOM is then rebuilt and any signal created inside it starts over: a
  * fold the person had just opened snapped shut under their pointer when the refresh landed.
  */
-export function toggleRowKey(keys: ReadonlySet<string>, orderKey: string, open?: boolean): Set<string> {
+export function toggleRowKey(
+  keys: ReadonlySet<string>,
+  orderKey: string,
+  open?: boolean,
+): Set<string> {
   const next = new Set(keys)
   const want = open ?? !next.has(orderKey)
   if (want) next.add(orderKey)

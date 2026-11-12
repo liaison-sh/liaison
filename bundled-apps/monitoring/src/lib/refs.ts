@@ -41,7 +41,10 @@ export function parseRef(s: unknown): number | null {
 
 /** Allocate the next value of the org's incident sequence (the first value is 1). */
 export async function allocateRef(ctx: RefsCtx): Promise<number> {
-  const r = (await ctx.sequences.allocate({ key: SEQUENCE_KEY })) as { value?: number; error?: unknown }
+  const r = (await ctx.sequences.allocate({ key: SEQUENCE_KEY })) as {
+    value?: number
+    error?: unknown
+  }
   if (typeof r?.value !== "number") throw new Error(`ref_allocation_failed: ${JSON.stringify(r)}`)
   return r.value
 }
@@ -93,7 +96,10 @@ export async function assignMissingRefs(
  * Resolve an incident from its UUID or its `INC-<n>` ref. No UUID check in app code: the
  * bridge answers `null` for a non-UUID id. Org scoping comes from the bridge.
  */
-export async function resolveIncident(ctx: Pick<AppContext, "db">, input: string): Promise<IncidentRecord> {
+export async function resolveIncident(
+  ctx: Pick<AppContext, "db">,
+  input: string,
+): Promise<IncidentRecord> {
   const trimmed = String(input ?? "").trim()
   const n = parseRef(trimmed)
   const found =

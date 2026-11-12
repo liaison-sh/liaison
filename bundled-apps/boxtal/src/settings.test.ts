@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
+import { NEUTRAL_PACKAGING_POLICY } from "./packaging-policy"
 import {
   loadCarrierAllowlist,
   loadExcludePickupPointServices,
   loadLabelFormat,
   loadPackagingPolicy,
   loadProductCodeConfig,
-  settingsPackagingPolicyGet,
-  settingsPackagingPolicySet,
-  settingsLabelFormatGet,
-  settingsLabelFormatSet,
   settingsCarrierAllowlistGet,
   settingsCarrierAllowlistSet,
-  settingsSenderAddressGet,
-  settingsProductCodesGet,
-  settingsProductCodesSet,
-  settingsSenderAddressSet,
   settingsFormGet,
   settingsFormSet,
+  settingsLabelFormatGet,
+  settingsLabelFormatSet,
+  settingsPackagingPolicyGet,
+  settingsPackagingPolicySet,
+  settingsProductCodesGet,
+  settingsProductCodesSet,
+  settingsSenderAddressGet,
+  settingsSenderAddressSet,
   settingsSenderFormGet,
 } from "./settings"
 import { createMockDb } from "./test-db"
-import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
-import { NEUTRAL_PACKAGING_POLICY } from "./packaging-policy"
 
 function makeCtx(seed?: Array<Record<string, unknown>>) {
   const db = createMockDb({ seed: seed ? { app_config: seed } : {} })
@@ -70,7 +70,9 @@ describe("settingsSenderAddress", () => {
   it("set flags missing structured fields", async () => {
     const { ctx } = makeCtx()
     const res = await settingsSenderAddressSet(ctx, { name: "X" })
-    expect(res.missing).toEqual(expect.arrayContaining(["phone", "street", "city", "postalCode", "countryIsoCode"]))
+    expect(res.missing).toEqual(
+      expect.arrayContaining(["phone", "street", "city", "postalCode", "countryIsoCode"]),
+    )
   })
 })
 
@@ -79,15 +81,17 @@ describe("settingsCarrierAllowlist", () => {
     const { ctx } = makeCtx()
     const res = await settingsCarrierAllowlistGet(ctx)
     expect(res.allowed).toEqual([])
-    expect(res.available.map((b) => b.key)).toEqual(
-      expect.arrayContaining(["ups", "fedex", "dhl"]),
-    )
+    expect(res.available.map((b) => b.key)).toEqual(expect.arrayContaining(["ups", "fedex", "dhl"]))
   })
 
   it("set persists canonical keys and get reads them back", async () => {
     const { ctx, db } = makeCtx()
     const res = await settingsCarrierAllowlistSet(ctx, { carriers: ["ups", "fedex", "dhl"] })
-    expect(res).toEqual({ ok: true, allowed: ["ups", "fedex", "dhl"], exclude_pickup_point_services: true })
+    expect(res).toEqual({
+      ok: true,
+      allowed: ["ups", "fedex", "dhl"],
+      exclude_pickup_point_services: true,
+    })
     expect(db.__all("app_config").filter((r) => r.key === "carrier_allowlist")).toHaveLength(1)
     expect(await loadCarrierAllowlist(ctx)).toEqual(["ups", "fedex", "dhl"])
   })
@@ -100,9 +104,9 @@ describe("settingsCarrierAllowlist", () => {
 
   it("rejects an unknown carrier rather than silently dropping it", async () => {
     const { ctx } = makeCtx()
-    await expect(
-      settingsCarrierAllowlistSet(ctx, { carriers: ["ups", "acme"] }),
-    ).rejects.toThrow(/Unknown carrier/)
+    await expect(settingsCarrierAllowlistSet(ctx, { carriers: ["ups", "acme"] })).rejects.toThrow(
+      /Unknown carrier/,
+    )
     // Nothing persisted on rejection.
     expect(await loadCarrierAllowlist(ctx)).toEqual([])
   })
@@ -142,7 +146,9 @@ describe("exclude_pickup_point_services policy", () => {
     expect(res.allowed).toEqual(["ups", "fedex"]) // allowlist unchanged by the toggle
     expect(await loadExcludePickupPointServices(ctx)).toBe(false)
     expect(await loadCarrierAllowlist(ctx)).toEqual(["ups", "fedex"])
-    expect(db.__all("app_config").filter((r) => r.key === "exclude_pickup_point_services")).toHaveLength(1)
+    expect(
+      db.__all("app_config").filter((r) => r.key === "exclude_pickup_point_services"),
+    ).toHaveLength(1)
   })
 
   it("toggling the policy alone does not create a carrier_allowlist row", async () => {
@@ -155,7 +161,9 @@ describe("exclude_pickup_point_services policy", () => {
     const { ctx, db } = makeCtx()
     await settingsCarrierAllowlistSet(ctx, { exclude_pickup_point_services: false })
     await settingsCarrierAllowlistSet(ctx, { exclude_pickup_point_services: true })
-    expect(db.__all("app_config").filter((r) => r.key === "exclude_pickup_point_services")).toHaveLength(1)
+    expect(
+      db.__all("app_config").filter((r) => r.key === "exclude_pickup_point_services"),
+    ).toHaveLength(1)
     expect(await loadExcludePickupPointServices(ctx)).toBe(true)
   })
 
@@ -206,8 +214,17 @@ describe("label format (ticket-10201)", () => {
 describe("settingsProductCodes", () => {
   it("reads the empty default when unset, so skus are shown as they are", async () => {
     const { ctx } = makeCtx()
-    expect(await settingsProductCodesGet(ctx)).toEqual({ strip_prefixes: [], strip_suffixes: [], aliases: [], ranks: [] })
-    expect(await loadProductCodeConfig(ctx)).toEqual({ strip_prefixes: [], strip_suffixes: [], aliases: {} })
+    expect(await settingsProductCodesGet(ctx)).toEqual({
+      strip_prefixes: [],
+      strip_suffixes: [],
+      aliases: [],
+      ranks: [],
+    })
+    expect(await loadProductCodeConfig(ctx)).toEqual({
+      strip_prefixes: [],
+      strip_suffixes: [],
+      aliases: {},
+    })
   })
 
   it("persists one row, upper-cases alias keys, and replaces only the fields sent", async () => {
@@ -230,7 +247,12 @@ describe("settingsProductCodes", () => {
   it("rejects a malformed alias with the entry named, writing nothing", async () => {
     const { ctx, db } = makeCtx()
     await expect(
-      settingsProductCodesSet(ctx, { aliases: [{ sku: "K1", code: "" }, { sku: "K2", code: "WAY-TOO-LONG-CODE" }] }),
+      settingsProductCodesSet(ctx, {
+        aliases: [
+          { sku: "K1", code: "" },
+          { sku: "K2", code: "WAY-TOO-LONG-CODE" },
+        ],
+      }),
     ).rejects.toThrow(/Invalid alias\(es\).*"K1".*"K2"/)
     expect(db.__all("app_config")).toHaveLength(0)
   })
@@ -238,13 +260,25 @@ describe("settingsProductCodes", () => {
   it("round-trips display ranks, upper-cased and sorted, and keeps them when other fields change", async () => {
     const { ctx } = makeCtx([
       // A value stored before ranks existed keeps working.
-      { id: "c1", key: "product_code_aliases", value: { strip_prefixes: [], strip_suffixes: [], aliases: { PLATE: "MP" } } },
+      {
+        id: "c1",
+        key: "product_code_aliases",
+        value: { strip_prefixes: [], strip_suffixes: [], aliases: { PLATE: "MP" } },
+      },
     ])
     expect((await settingsProductCodesGet(ctx)).ranks).toEqual([])
     const after = await settingsProductCodesSet(ctx, {
-      ranks: [{ code: "sound", rank: 1000 }, { code: "ET2", rank: 1 }, { code: "MP", rank: 2 }],
+      ranks: [
+        { code: "sound", rank: 1000 },
+        { code: "ET2", rank: 1 },
+        { code: "MP", rank: 2 },
+      ],
     })
-    expect(after.ranks).toEqual([{ code: "ET2", rank: 1 }, { code: "MP", rank: 2 }, { code: "SOUND", rank: 1000 }])
+    expect(after.ranks).toEqual([
+      { code: "ET2", rank: 1 },
+      { code: "MP", rank: 2 },
+      { code: "SOUND", rank: 1000 },
+    ])
     expect(after.aliases).toEqual([{ sku: "PLATE", code: "MP" }])
     const kept = await settingsProductCodesSet(ctx, { strip_suffixes: ["-B2B"] })
     expect(kept.ranks).toEqual(after.ranks)
@@ -257,14 +291,23 @@ describe("settingsProductCodes", () => {
   it("rejects a malformed rank with the entry named, writing nothing", async () => {
     const { ctx, db } = makeCtx()
     await expect(
-      settingsProductCodesSet(ctx, { ranks: [{ code: "ET2", rank: 1.5 }, { code: "", rank: 1 }] }),
+      settingsProductCodesSet(ctx, {
+        ranks: [
+          { code: "ET2", rank: 1.5 },
+          { code: "", rank: 1 },
+        ],
+      }),
     ).rejects.toThrow(/Invalid rank\(s\).*"ET2"/)
     expect(db.__all("app_config")).toHaveLength(0)
   })
 
   it("degrades a corrupt stored value to the empty default instead of throwing", async () => {
     const { ctx } = makeCtx([{ id: "c1", key: "product_code_aliases", value: "not an object" }])
-    expect(await loadProductCodeConfig(ctx)).toEqual({ strip_prefixes: [], strip_suffixes: [], aliases: {} })
+    expect(await loadProductCodeConfig(ctx)).toEqual({
+      strip_prefixes: [],
+      strip_suffixes: [],
+      aliases: {},
+    })
   })
 })
 
@@ -272,7 +315,10 @@ describe("settingsPackagingPolicy", () => {
   it("reads the neutral default when unset: no cartons, no merge, no nominal value", async () => {
     const { ctx } = makeCtx()
     expect(await loadPackagingPolicy(ctx)).toEqual(NEUTRAL_PACKAGING_POLICY)
-    expect(await settingsPackagingPolicyGet(ctx)).toEqual({ ...NEUTRAL_PACKAGING_POLICY, configured: false })
+    expect(await settingsPackagingPolicyGet(ctx)).toEqual({
+      ...NEUTRAL_PACKAGING_POLICY,
+      configured: false,
+    })
   })
 
   it("persists one row that reads back as the policy sent, and replaces only the fields sent", async () => {
@@ -280,15 +326,26 @@ describe("settingsPackagingPolicy", () => {
     await settingsPackagingPolicySet(ctx, HOUSE_PACKAGING_POLICY)
     expect(await loadPackagingPolicy(ctx)).toEqual(HOUSE_PACKAGING_POLICY)
     const after = await settingsPackagingPolicySet(ctx, { nominal_proforma_value_minor: 250 })
-    expect(after).toEqual({ ...HOUSE_PACKAGING_POLICY, nominal_proforma_value_minor: 250, configured: true })
+    expect(after).toEqual({
+      ...HOUSE_PACKAGING_POLICY,
+      nominal_proforma_value_minor: 250,
+      configured: true,
+    })
     expect(db.__all("app_config").filter((r) => r.key === "packaging_policy")).toHaveLength(1)
   })
 
   it("reset starts from the neutral default", async () => {
     const { ctx } = makeCtx()
     await settingsPackagingPolicySet(ctx, HOUSE_PACKAGING_POLICY)
-    const after = await settingsPackagingPolicySet(ctx, { reset: true, nominal_proforma_value_minor: 100 })
-    expect(after).toEqual({ ...NEUTRAL_PACKAGING_POLICY, nominal_proforma_value_minor: 100, configured: true })
+    const after = await settingsPackagingPolicySet(ctx, {
+      reset: true,
+      nominal_proforma_value_minor: 100,
+    })
+    expect(after).toEqual({
+      ...NEUTRAL_PACKAGING_POLICY,
+      nominal_proforma_value_minor: 100,
+      configured: true,
+    })
   })
 
   it("refuses an out-of-order ladder with every problem named, writing nothing", async () => {
@@ -301,7 +358,9 @@ describe("settingsPackagingPolicy", () => {
           { max_stack_height: 22, length: 60, width: 40, height: 20, tare_weight: -1 },
         ],
       }),
-    ).rejects.toThrow(/cartons\[1\]\.tare_weight.*cartons\[1\]\.max_stack_height must be above the previous threshold \(26\)/)
+    ).rejects.toThrow(
+      /cartons\[1\]\.tare_weight.*cartons\[1\]\.max_stack_height must be above the previous threshold \(26\)/,
+    )
     expect(db.__all("app_config")).toHaveLength(0)
   })
 
@@ -316,7 +375,11 @@ describe("settingsPackagingPolicy", () => {
 
   it("degrades a corrupt stored value to the neutral default instead of half applying it", async () => {
     const { ctx } = makeCtx([
-      { id: "c1", key: "packaging_policy", value: { raw_stack_max_height: 16, cartons: [{ max_stack_height: "x" }] } },
+      {
+        id: "c1",
+        key: "packaging_policy",
+        value: { raw_stack_max_height: 16, cartons: [{ max_stack_height: "x" }] },
+      },
     ])
     expect(await loadPackagingPolicy(ctx)).toEqual(NEUTRAL_PACKAGING_POLICY)
   })
@@ -326,9 +389,31 @@ describe("ship-from address approval card", () => {
   it("shows each changed field as old -> new", async () => {
     const { summarizeSenderAddressSet } = await import("./summarizers")
     const s = await summarizeSenderAddressSet(
-      { name: "Ops", company: "Acme", street: "2 New St", city: "Lyon", postalCode: "69001", countryIsoCode: "FR", email: "o@a.example", phone: "1" },
+      {
+        name: "Ops",
+        company: "Acme",
+        street: "2 New St",
+        city: "Lyon",
+        postalCode: "69001",
+        countryIsoCode: "FR",
+        email: "o@a.example",
+        phone: "1",
+      },
       undefined,
-      { context: { sender: { name: "Ops", company: "Acme", street: "1 Old St", city: "Lyon", postalCode: "69001", countryIsoCode: "FR", email: "o@a.example", phone: "1" } } } as never,
+      {
+        context: {
+          sender: {
+            name: "Ops",
+            company: "Acme",
+            street: "1 Old St",
+            city: "Lyon",
+            postalCode: "69001",
+            countryIsoCode: "FR",
+            email: "o@a.example",
+            phone: "1",
+          },
+        },
+      } as never,
     )
     expect(s.lines).toEqual(["street: 1 Old St -> 2 New St"])
   })
@@ -343,12 +428,16 @@ describe("settingsSenderFormGet (the settings page's read of the ship-from addre
   it("returns only the stored, non-empty fields, flat: the shape settings_sender_address_set takes", async () => {
     const { ctx } = makeCtx()
     expect(await settingsSenderFormGet(ctx)).toEqual({})
-    const seeded = makeCtx([{ id: "c1", key: "sender_address", value: { ...FULL, company: " ", type: "BUSINESS" } }])
+    const seeded = makeCtx([
+      { id: "c1", key: "sender_address", value: { ...FULL, company: " ", type: "BUSINESS" } },
+    ])
     expect(await settingsSenderFormGet(seeded.ctx)).toEqual(FULL)
   })
 
   it("handed back with one field changed, the gated set writes the whole address", async () => {
-    const { ctx } = makeCtx([{ id: "c1", key: "sender_address", value: { ...FULL, type: "BUSINESS" } }])
+    const { ctx } = makeCtx([
+      { id: "c1", key: "sender_address", value: { ...FULL, type: "BUSINESS" } },
+    ])
     await settingsSenderAddressSet(ctx, { ...(await settingsSenderFormGet(ctx)), city: "Lyon" })
     const got = await settingsSenderAddressGet(ctx)
     expect(got.sender).toMatchObject({ ...FULL, city: "Lyon" })
@@ -370,7 +459,9 @@ describe("settingsForm (the settings page pair)", () => {
     const form = await settingsFormGet(ctx)
     await settingsFormSet(ctx, { ...form, label_format: "PDF_10x15" })
     expect(await loadLabelFormat(ctx)).toBe("PDF_10x15")
-    expect(db.__all("app_config").some((r) => r.key === "exclude_pickup_point_services")).toBe(false)
+    expect(db.__all("app_config").some((r) => r.key === "exclude_pickup_point_services")).toBe(
+      false,
+    )
   })
 
   it("turns the pickup-point exclusion off without touching the carrier allowlist", async () => {
@@ -384,6 +475,8 @@ describe("settingsForm (the settings page pair)", () => {
   it("refuses an unknown label format", async () => {
     const { ctx } = makeCtx()
     const form = await settingsFormGet(ctx)
-    await expect(settingsFormSet(ctx, { ...form, label_format: "ZPL" })).rejects.toThrow("format must be one of")
+    await expect(settingsFormSet(ctx, { ...form, label_format: "ZPL" })).rejects.toThrow(
+      "format must be one of",
+    )
   })
 })

@@ -2,24 +2,30 @@
 //
 // Invoicing mutations: documents.update (post-issue editing in place).
 
-import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
-import { type DraftLine, type DraftLineInput, enrichLineCustoms, type IssueBatchOp, readRefString } from "../issue"
-import { type ClassifyInput, classify } from "../tax"
-import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
-import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, isCalendarDate } from "./db-helpers"
+import {
+  type DraftLine,
+  type DraftLineInput,
+  enrichLineCustoms,
+  type IssueBatchOp,
+  readRefString,
+} from "../issue"
 import { issueDateParts } from "../issue-date"
-import { liftMisplacedCountry, normaliseDraftLine, netLinesForIssuer } from "./lines"
+import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
+import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
+import { type ClassifyInput, classify } from "../tax"
+import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, isCalendarDate } from "./db-helpers"
+import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLine } from "./lines"
 import { ensureDocumentPdf } from "./pdf"
 import {
-  type MutationsCtx,
-  type MutationResult,
   type ErrorEnvelope,
-  type PreflightResult,
   lineAmountsError,
-  toPreflightResult,
+  type MutationResult,
+  type MutationsCtx,
   normaliseCustomerReference,
   normaliseNotes,
+  type PreflightResult,
+  toPreflightResult,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -145,7 +151,9 @@ async function recomputeLines(
   for (const [idx, l] of lines.entries()) {
     const enriched = await enrichLineCustoms(ctx, l, classification.requires_hs_code)
     const tax_rate_bp =
-      typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : classification.default_rate_bp
+      typeof l.tax_rate_bp_override === "number"
+        ? l.tax_rate_bp_override
+        : classification.default_rate_bp
     // Discount is subtracted from the line subtotal and carried on the row,
     // exactly as the issue path does it (issue.ts). It used to be dropped here:
     // `recomputeLines` never read `discount_minor` and the document_lines insert
@@ -206,7 +214,12 @@ interface LineInsertLike {
 /** documents_update columns that are internal/rendering bookkeeping, never lifecycle-meaningful
  *  to a human reading the kernel audit trail — excluded from document:updated's changed_fields
  *  gate. */
-const DOCUMENT_UPDATED_NOISE_FIELDS = new Set(["pdf_status", "pdf_file_id", "lifecycle_log", "updated_at"])
+const DOCUMENT_UPDATED_NOISE_FIELDS = new Set([
+  "pdf_status",
+  "pdf_file_id",
+  "lifecycle_log",
+  "updated_at",
+])
 /** Columns whose VALUE must never reach the audit trail (line items / PII) even though the field
  *  NAME is fine to list in changed_fields. */
 const DOCUMENT_UPDATED_DIFF_EXCLUDED_FIELDS = new Set([
@@ -236,7 +249,10 @@ type DocumentsUpdateResult = MutationResult<{
   lines: Array<Record<string, unknown>>
 }>
 
-export async function documentsUpdate(ctx: MutationsCtx, rawInput: DocumentsUpdateInput): Promise<DocumentsUpdateResult> {
+export async function documentsUpdate(
+  ctx: MutationsCtx,
+  rawInput: DocumentsUpdateInput,
+): Promise<DocumentsUpdateResult> {
   const r = await documentsUpdateRun(ctx, rawInput, false)
   if ("ok" in r) throw new Error("documents_update: the preflight result reached the executed call")
   return r
@@ -247,7 +263,10 @@ export async function documentsUpdate(ctx: MutationsCtx, rawInput: DocumentsUpda
  * business-buyer guard included, and no write, so a call the handler would refuse is refused
  * BEFORE an approval card is parked for a person to decide in vain.
  */
-export async function documentsUpdatePreflight(ctx: MutationsCtx, rawInput: DocumentsUpdateInput): Promise<PreflightResult> {
+export async function documentsUpdatePreflight(
+  ctx: MutationsCtx,
+  rawInput: DocumentsUpdateInput,
+): Promise<PreflightResult> {
   const r = await documentsUpdateRun(ctx, rawInput, true)
   if ("ok" in r) return toPreflightResult(r)
   if (r.status === "error") return { error: r.error }
@@ -263,7 +282,9 @@ export async function documentsUpdatePreflight(ctx: MutationsCtx, rawInput: Docu
 export async function documentsUpdatePreview(
   ctx: MutationsCtx & ReadsCtx,
   rawInput: DocumentsUpdateInput,
-): Promise<Partial<DocumentFull> & { buyer_preview: BuyerVatFacts | null; buyer_refusal: string | null }> {
+): Promise<
+  Partial<DocumentFull> & { buyer_preview: BuyerVatFacts | null; buyer_refusal: string | null }
+> {
   const doc = await documentsGet(ctx, { id: String(rawInput?.id ?? "") })
   const r = await documentsUpdateRun(ctx, rawInput, true)
   const buyerPreview = "ok" in r ? r.buyer : null
@@ -300,7 +321,11 @@ async function neighbouringNumbers(
   let previous: Record<string, unknown> | null = null
   for (let offset = 0; ; offset += PAGE) {
     const rows = (await ctx.db.findMany("documents", {
-      where: { issuer_profile_id: doc.issuer_profile_id, type: doc.type, year_of_issue: doc.year_of_issue },
+      where: {
+        issuer_profile_id: doc.issuer_profile_id,
+        type: doc.type,
+        year_of_issue: doc.year_of_issue,
+      },
       orderBy: { number_int: "asc" },
       limit: PAGE,
       offset,
@@ -508,9 +533,17 @@ async function documentsUpdateRun(
   if (doc.legal_original_id) {
     const current = (k: string): unknown => doc[k] ?? null
     const norm = (v: unknown): string =>
-      v == null ? "" : v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === "object" ? JSON.stringify(v) : String(v).slice(0, k10(v)).trim()
+      v == null
+        ? ""
+        : v instanceof Date
+          ? v.toISOString().slice(0, 10)
+          : typeof v === "object"
+            ? JSON.stringify(v)
+            : String(v).slice(0, k10(v)).trim()
     const attempted = LEGAL_ORIGINAL_LOCKED_FIELDS.filter(
-      (f) => f in rawInput && norm((rawInput as unknown as Record<string, unknown>)[f]) !== norm(current(f)),
+      (f) =>
+        f in rawInput &&
+        norm((rawInput as unknown as Record<string, unknown>)[f]) !== norm(current(f)),
     )
     if (attempted.length > 0) {
       return {
@@ -528,14 +561,19 @@ async function documentsUpdateRun(
   }
 
   if ("issued_at" in rawInput && currentStatus !== "draft") {
-    const refused = await issuedDateChangeRefusal(ctx, doc, rawInput.issued_at, isAccountingDocument)
+    const refused = await issuedDateChangeRefusal(
+      ctx,
+      doc,
+      rawInput.issued_at,
+      isAccountingDocument,
+    )
     if (refused) return refused
   }
 
   const { counterparty_country, tax_treatment } = liftMisplacedCountry({
     counterparty_country:
-      "counterparty_country" in rawInput ? rawInput.counterparty_country ?? null : undefined,
-    tax_treatment: "tax_treatment" in rawInput ? rawInput.tax_treatment ?? null : undefined,
+      "counterparty_country" in rawInput ? (rawInput.counterparty_country ?? null) : undefined,
+    tax_treatment: "tax_treatment" in rawInput ? (rawInput.tax_treatment ?? null) : undefined,
   }) as { counterparty_country?: string | null; tax_treatment?: string | null }
 
   const update: Record<string, unknown> = {}
@@ -630,24 +668,41 @@ async function documentsUpdateRun(
   const buyerTouched =
     rawInput.lines !== undefined ||
     rawInput.buyer_is_consumer !== undefined ||
-    ["counterparty_vat_id", "counterparty_country", "counterparty_name", "counterparty_email", "counterparty_address", "counterparty_contact_id", "tax_treatment"].some(
-      (k) => k in rawInput,
-    )
+    [
+      "counterparty_vat_id",
+      "counterparty_country",
+      "counterparty_name",
+      "counterparty_email",
+      "counterparty_address",
+      "counterparty_contact_id",
+      "tax_treatment",
+    ].some((k) => k in rawInput)
   const buyerDocType = String(doc.type ?? "")
   let buyerFacts: BuyerVatFacts | null = null
-  if (buyerTouched && !rawInput.lines_are_net && buyerDocType !== "credit_note" && buyerDocType !== "purchase_order") {
+  if (
+    buyerTouched &&
+    !rawInput.lines_are_net &&
+    buyerDocType !== "credit_note" &&
+    buyerDocType !== "purchase_order"
+  ) {
     const merged = (col: string): string | null => {
       const v = col in update ? update[col] : doc[col]
       return typeof v === "string" && v.trim() !== "" ? v : null
     }
     const refs = {
-      ...(((update.external_refs ?? doc.external_refs) as Record<string, unknown> | null | undefined) ?? {}),
+      ...(((update.external_refs ?? doc.external_refs) as
+        | Record<string, unknown>
+        | null
+        | undefined) ?? {}),
     }
     const consumer =
-      rawInput.buyer_is_consumer !== undefined ? rawInput.buyer_is_consumer === true : refs.buyer_is_consumer === true
+      rawInput.buyer_is_consumer !== undefined
+        ? rawInput.buyer_is_consumer === true
+        : refs.buyer_is_consumer === true
     const buyerIssuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id))
     if (buyerIssuer) {
-      const storedTax = typeof refs.tax_country === "string" && refs.tax_country.trim() ? refs.tax_country : null
+      const storedTax =
+        typeof refs.tax_country === "string" && refs.tax_country.trim() ? refs.tax_country : null
       const r = await checkBuyerVat(ctx, {
         issuerCountry: buyerIssuer.country,
         taxCountry: storedTax ?? merged("counterparty_country"),
@@ -666,14 +721,16 @@ async function documentsUpdateRun(
       buyerFacts = r.facts
       if (r.facts.vat_id && !merged("counterparty_vat_id")) {
         update.counterparty_vat_id = r.facts.vat_id
-        if (!changedFields.includes("counterparty_vat_id")) changedFields.push("counterparty_vat_id")
+        if (!changedFields.includes("counterparty_vat_id"))
+          changedFields.push("counterparty_vat_id")
       }
     }
     if (rawInput.buyer_is_consumer !== undefined) {
       if (consumer) refs.buyer_is_consumer = true
       else delete refs.buyer_is_consumer
       // The evidence a person approved the declaration against (buyer-vat.ts).
-      if (consumer && consumerDeclaredAgainstEvidence(buyerFacts)) refs.buyer_is_consumer_evidence = buyerFacts?.consumer_override_evidence ?? []
+      if (consumer && consumerDeclaredAgainstEvidence(buyerFacts))
+        refs.buyer_is_consumer_evidence = buyerFacts?.consumer_override_evidence ?? []
       else delete refs.buyer_is_consumer_evidence
       update.external_refs = refs
       changedFields.push("buyer_is_consumer")
@@ -698,7 +755,9 @@ async function documentsUpdateRun(
     const classifyInput: ClassifyInput = {
       issuer_country: issuer?.country ?? null,
       counterparty_country: effectiveCountry,
-      has_vat_id: !!((update.counterparty_vat_id as string | null | undefined) ?? doc.counterparty_vat_id),
+      has_vat_id: !!(
+        (update.counterparty_vat_id as string | null | undefined) ?? doc.counterparty_vat_id
+      ),
     }
     // Typed prices on a documents_update line replacement are typed input exactly like
     // drafts_create/drafts_update: under an issuer with `prices_include_tax`, net the gross
@@ -733,23 +792,26 @@ async function documentsUpdateRun(
     })) as Array<Record<string, unknown>>
     for (const old of oldLines) lineOps.push({ delete: "document_lines", id: String(old.id) })
     for (const row of lineRows) {
-      lineOps.push({ insert: "document_lines", data: {
-        document_id: id,
-        position: row.position,
-        description: row.description,
-        quantity: row.quantity,
-        unit_price_minor: row.unit_price_minor.toString(),
-        discount_minor: (row.discount_minor ?? 0n).toString(),
-        tax_rate_bp: row.tax_rate_bp,
-        subtotal_minor: row.subtotal_minor.toString(),
-        tax_minor: row.tax_minor.toString(),
-        total_minor: row.total_minor.toString(),
-        hs_code: row.hs_code,
-        country_of_origin: row.country_of_origin,
-        customs_description: row.customs_description,
-        product_source: row.product_source,
-        external_id: row.external_id,
-      } })
+      lineOps.push({
+        insert: "document_lines",
+        data: {
+          document_id: id,
+          position: row.position,
+          description: row.description,
+          quantity: row.quantity,
+          unit_price_minor: row.unit_price_minor.toString(),
+          discount_minor: (row.discount_minor ?? 0n).toString(),
+          tax_rate_bp: row.tax_rate_bp,
+          subtotal_minor: row.subtotal_minor.toString(),
+          tax_minor: row.tax_minor.toString(),
+          total_minor: row.total_minor.toString(),
+          hs_code: row.hs_code,
+          country_of_origin: row.country_of_origin,
+          customs_description: row.customs_description,
+          product_source: row.product_source,
+          external_id: row.external_id,
+        },
+      })
     }
     update.subtotal_minor = rollup.subtotal_minor.toString()
     update.tax_total_minor = rollup.tax_total_minor.toString()
@@ -757,8 +819,7 @@ async function documentsUpdateRun(
     changedFields.push("lines")
   }
 
-  const existingLog =
-    (doc.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? []
+  const existingLog = (doc.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? []
   const editActor = await ctx.getUserId()
   const editTs = new Date().toISOString()
   const newLog = [
@@ -786,7 +847,10 @@ async function documentsUpdateRun(
 
   if (lineOps.length > 0 || Object.keys(update).length > 0) {
     await ctx.db.batch({
-      ops: [...lineOps, ...(Object.keys(update).length > 0 ? [{ update: "documents", id, data: update }] : [])],
+      ops: [
+        ...lineOps,
+        ...(Object.keys(update).length > 0 ? [{ update: "documents", id, data: update }] : []),
+      ],
     })
   }
 
@@ -795,9 +859,7 @@ async function documentsUpdateRun(
   // call that touches nothing a human cares about (or nothing at all) does not spam the audit
   // trail. `pdf_status`/`pdf_file_id`/`lifecycle_log`/`updated_at` never actually land in
   // changedFields today (this handler never sets them there), but are excluded defensively.
-  const meaningfulChangedFields = changedFields.filter(
-    (f) => !DOCUMENT_UPDATED_NOISE_FIELDS.has(f),
-  )
+  const meaningfulChangedFields = changedFields.filter((f) => !DOCUMENT_UPDATED_NOISE_FIELDS.has(f))
   if (meaningfulChangedFields.length > 0) {
     // Bounded before/after per field — never the whole row, never line items, never an address
     // or email (PII).

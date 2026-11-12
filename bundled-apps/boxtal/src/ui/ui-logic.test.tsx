@@ -4,24 +4,24 @@
 // that each component module imports cleanly under the host shim and that the
 // extracted pure helpers cover their branches.
 import { describe, expect, it } from "bun:test"
+import { AddShipmentPanel, catalogOptionsFrom, missingRecipientFields } from "./AddShipmentPanel"
 import { Catalog, profileHasWeight } from "./Catalog"
-import { canSubmit, CreateDraft, recipientAddressComplete } from "./CreateDraft"
+import { CreateDraft, canSubmit, recipientAddressComplete } from "./CreateDraft"
+import { openPreparingTab } from "./file-open"
+import { BoxtalAppIcon } from "./icon"
+import { formatQueueDate, formatQueueParcels, formatQueueTimestamp } from "./kit"
+import { PrepGrid } from "./PrepGrid"
 import { resolveQueueId } from "./Queues"
 import { printPackSummary } from "./ReadyRows"
-import { formatQueueDate, formatQueueParcels, formatQueueTimestamp } from "./kit"
 import {
   matchesStatusFilter,
   resolveSelectedShipmentId,
-  shipmentColumns,
   resolveStatusFilter,
-  shipmentsHrefForStatus,
-  Shipments,
   ShipmentDetailPanel,
+  Shipments,
+  shipmentColumns,
+  shipmentsHrefForStatus,
 } from "./Shipments"
-import { AddShipmentPanel, catalogOptionsFrom, missingRecipientFields } from "./AddShipmentPanel"
-import { openPreparingTab } from "./file-open"
-import { PrepGrid } from "./PrepGrid"
-import { BoxtalAppIcon } from "./icon"
 import { isActive } from "./sidebar"
 
 describe("standalone surfaces import cleanly as Components", () => {
@@ -61,7 +61,10 @@ describe("AddShipmentPanel: what the label still needs", () => {
   })
 
   it("names each missing field in the operator's words, in the order they are asked for", () => {
-    expect(missingRecipientFields({ ...full, city: "", countryIsoCode: "" })).toEqual(["city", "country"])
+    expect(missingRecipientFields({ ...full, city: "", countryIsoCode: "" })).toEqual([
+      "city",
+      "country",
+    ])
     expect(missingRecipientFields({ ...full, name: "  " })).toEqual(["name"])
   })
 
@@ -83,17 +86,23 @@ describe("catalogOptionsFrom: packages_list shaped into pickable item options", 
     const opts = catalogOptionsFrom({
       profiles: [{ product_source: "shopify", product_id: "SKU-1", short_code: "ES" }],
     })
-    expect(opts).toEqual([{ value: "shopify:SKU-1", product_source: "shopify", product_id: "SKU-1", label: "ES" }])
+    expect(opts).toEqual([
+      { value: "shopify:SKU-1", product_source: "shopify", product_id: "SKU-1", label: "ES" },
+    ])
   })
 
   it("falls back to the key itself as the label when a profile has no short_code", () => {
-    const opts = catalogOptionsFrom({ profiles: [{ product_source: "shopify", product_id: "SKU-2" }] })
+    const opts = catalogOptionsFrom({
+      profiles: [{ product_source: "shopify", product_id: "SKU-2" }],
+    })
     expect(opts[0]!.label).toBe("shopify:SKU-2")
   })
 
   it("turns local products into local: options labelled by name", () => {
     const opts = catalogOptionsFrom({ local_products: [{ sku: "RAL-44", label: "Hard Cover" }] })
-    expect(opts).toEqual([{ value: "local:RAL-44", product_source: "local", product_id: "RAL-44", label: "Hard Cover" }])
+    expect(opts).toEqual([
+      { value: "local:RAL-44", product_source: "local", product_id: "RAL-44", label: "Hard Cover" },
+    ])
   })
 
   it("a local product's human label wins over a bare profile for the same source:id", () => {
@@ -111,7 +120,10 @@ describe("catalogOptionsFrom: packages_list shaped into pickable item options", 
         { product_source: "shopify", product_id: "Z9", short_code: "ZZ" },
         { product_source: "shopify", product_id: null },
       ],
-      local_products: [{ sku: "A1", label: "AA Widget" }, { sku: null, label: "no sku" }],
+      local_products: [
+        { sku: "A1", label: "AA Widget" },
+        { sku: null, label: "no sku" },
+      ],
     })
     expect(opts.map((o) => o.label)).toEqual(["AA Widget", "ZZ"])
   })
@@ -144,11 +156,24 @@ describe("canSubmit", () => {
     expect(canSubmit(ok as any, null)).toBe(false)
     expect(canSubmit(null, "CHRP-Chrono18")).toBe(false)
     expect(canSubmit({ ...ok, unresolved: [{ reason: "no_profile" }] } as any, "x")).toBe(false)
-    expect(canSubmit({ ...ok, customsArticles: [{ ...ok.customsArticles[0], blocked: true }] } as any, "x")).toBe(false)
+    expect(
+      canSubmit(
+        { ...ok, customsArticles: [{ ...ok.customsArticles[0], blocked: true }] } as any,
+        "x",
+      ),
+    ).toBe(false)
   })
 
   it("with a recipient arg, requires a complete recipient address (B1)", () => {
-    const full = { name: "Acme", phone: "+12125550100", email: "", street: "350 5th Ave", city: "New York", postalCode: "10118", countryIsoCode: "US" }
+    const full = {
+      name: "Acme",
+      phone: "+12125550100",
+      email: "",
+      street: "350 5th Ave",
+      city: "New York",
+      postalCode: "10118",
+      countryIsoCode: "US",
+    }
     expect(canSubmit(ok as any, "CHRP-Chrono18", full)).toBe(true)
     expect(canSubmit(ok as any, "CHRP-Chrono18", { ...full, phone: "" })).toBe(false)
     expect(canSubmit(ok as any, "CHRP-Chrono18", { ...full, street: "" })).toBe(false)
@@ -156,7 +181,15 @@ describe("canSubmit", () => {
 })
 
 describe("recipientAddressComplete", () => {
-  const full = { name: "Acme", phone: "+12125550100", email: "", street: "350 5th Ave", city: "New York", postalCode: "10118", countryIsoCode: "US" }
+  const full = {
+    name: "Acme",
+    phone: "+12125550100",
+    email: "",
+    street: "350 5th Ave",
+    city: "New York",
+    postalCode: "10118",
+    countryIsoCode: "US",
+  }
   it("true only when name/phone/street/city/postal/country are all present", () => {
     expect(recipientAddressComplete(full)).toBe(true)
     for (const k of ["name", "phone", "street", "city", "postalCode", "countryIsoCode"] as const) {
@@ -284,10 +317,12 @@ describe("resolveQueueId (queue tab routing)", () => {
 
 describe("formatQueueDate (the shared worklist date column)", () => {
   it("formats a real ISO date", () => {
-    expect(formatQueueDate("2026-08-21T08:00:00.000Z")).toBe(new Date("2026-08-21T08:00:00.000Z").toLocaleDateString())
+    expect(formatQueueDate("2026-08-21T08:00:00.000Z")).toBe(
+      new Date("2026-08-21T08:00:00.000Z").toLocaleDateString(),
+    )
   })
 
-  it("renders a dash for a missing or unparseable date, never \"Invalid Date\"", () => {
+  it('renders a dash for a missing or unparseable date, never "Invalid Date"', () => {
     expect(formatQueueDate(null)).toBe("-")
     expect(formatQueueDate(undefined)).toBe("-")
     expect(formatQueueDate("")).toBe("-")
@@ -348,7 +383,6 @@ describe("printPackSummary (two separate print jobs, copy count spelled out)", (
     ).toBe("No shipment row matches")
   })
 })
-
 
 // The desktop list cut the declared value mid-number ("918.0", "3 988.0") and
 // showed the Order and Tracking headers over empty cells: five columns squeezed

@@ -30,7 +30,11 @@ export const LABEL_MISSING_RECHECK_MS = 60 * 60 * 1000
 export const LABEL_MISSING_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000
 
 /** The attention event this check emits (manifest `attention.translations`). */
-export const LABEL_MISSING_EVENT = { entity: "queue", action: "labels_missing", entityId: "ready" } as const
+export const LABEL_MISSING_EVENT = {
+  entity: "queue",
+  action: "labels_missing",
+  entityId: "ready",
+} as const
 
 /** Most orders named in the attention summary; the rest are counted. */
 const NAMED_ORDERS_MAX = 5
@@ -66,7 +70,9 @@ function orderLabel(r: LabelRow): string {
  *  label is there now (and stored on the row). */
 async function healFromBoxtal(
   ctx: BoxtalToolCtx,
-  client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } } | null,
+  client: {
+    v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> }
+  } | null,
   row: LabelRow,
 ): Promise<boolean> {
   if (!client || !row.boxtal_order_id) return false
@@ -108,12 +114,17 @@ export async function checkMissingLabels(
     if (now - bought > LABEL_MISSING_MAX_AGE_MS) continue
     // A row already in the alert is re-read only every LABEL_MISSING_RECHECK_MS, not every pass.
     const checked = r.label_missing_checked_at ? Date.parse(r.label_missing_checked_at) : Number.NaN
-    const due = !r.label_missing_alerted || !Number.isFinite(checked) || now - checked >= LABEL_MISSING_RECHECK_MS
+    const due =
+      !r.label_missing_alerted ||
+      !Number.isFinite(checked) ||
+      now - checked >= LABEL_MISSING_RECHECK_MS
     if (client && due) {
       if (await healFromBoxtal(ctx, client, r)) continue
       r.label_missing_checked_at = new Date(now).toISOString()
       if (r.label_missing_alerted) {
-        await ctx.db.update("shipment", String(r.id), { label_missing_checked_at: r.label_missing_checked_at })
+        await ctx.db.update("shipment", String(r.id), {
+          label_missing_checked_at: r.label_missing_checked_at,
+        })
       }
     }
     missing.push(r)
@@ -122,7 +133,8 @@ export async function checkMissingLabels(
 
   // Flags whose label has arrived, or whose order left play: their part of the alert is over.
   const done = flagged.filter((r) => !missingIds.has(String(r.id)))
-  for (const r of done) await ctx.db.update("shipment", String(r.id), { label_missing_alerted: false })
+  for (const r of done)
+    await ctx.db.update("shipment", String(r.id), { label_missing_alerted: false })
 
   const fresh = missing.filter((r) => !r.label_missing_alerted)
   // New parcels in the alert, or some left it while others remain: the item shows the set as it is.
@@ -140,7 +152,9 @@ export async function checkMissingLabels(
     for (const r of fresh) {
       await ctx.db.update("shipment", String(r.id), {
         label_missing_alerted: true,
-        ...(r.label_missing_checked_at ? { label_missing_checked_at: r.label_missing_checked_at } : {}),
+        ...(r.label_missing_checked_at
+          ? { label_missing_checked_at: r.label_missing_checked_at }
+          : {}),
       })
     }
     return { missing: missing.length, alerted: fresh.length > 0, resolved: false }

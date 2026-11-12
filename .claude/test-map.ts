@@ -148,6 +148,9 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "packages/control-plane-contract/**",
     suites: ["workspace-packages", "unit", "integration"],
   },
+  // The app loader every loader host runs; the api's Workers executor and its
+  // test stand-in (unit, integration) import it.
+  { glob: "packages/app-loader/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/db-core/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/test-helpers/src/{role-processes,cell-clients}*", suites: ["cell"] },
   // The lane attach handle (TestWorld) and the standard world every lane reads.

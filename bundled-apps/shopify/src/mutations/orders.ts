@@ -5,13 +5,13 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
 import {
-  type PreflightResult,
-  resolveMutationInput,
   makeMutationError,
+  type PreflightResult,
   preflightRefusal,
-  runMutation,
-  requireTargetId,
   readGatedTarget,
+  requireTargetId,
+  resolveMutationInput,
+  runMutation,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,14 @@ const ORDER_UPDATE = `
 // shippingAddress / lineItems — Shopify SILENTLY IGNORES unknown fields, so the gated approval looked
 // legit + the agent falsely told the customer the address would change (BL-112). REJECT unsupported
 // fields with a clear capability boundary so the agent reports honestly + proposes the real workaround.
-const ORDER_UPDATE_SUPPORTED_FIELDS = new Set(["id", "tags", "note", "email", "customAttributes", "metafields"])
+const ORDER_UPDATE_SUPPORTED_FIELDS = new Set([
+  "id",
+  "tags",
+  "note",
+  "email",
+  "customAttributes",
+  "metafields",
+])
 /** Build + validate the OrderInput an order_update call resolves to. PURE (no network). Shared by the
  *  handler and its stage-time preflight so the capability-boundary refusal cannot drift. */
 function buildOrderUpdateInput(params: Record<string, unknown>): Record<string, unknown> {
@@ -65,9 +72,19 @@ export async function order_update_preflight(
   return { ok: true }
 }
 
-export async function order_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function order_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = buildOrderUpdateInput(params)
-  return runMutation(ctx, { query: ORDER_UPDATE, variables: { input }, dataKey: "orderUpdate", eventEntity: "order", eventAction: "edited", entityIdPath: "order.id" })
+  return runMutation(ctx, {
+    query: ORDER_UPDATE,
+    variables: { input },
+    dataKey: "orderUpdate",
+    eventEntity: "order",
+    eventAction: "edited",
+    entityIdPath: "order.id",
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -139,7 +156,7 @@ export async function order_note_set(
     throw makeMutationError("BAD_PARAM", "note must be a string or null")
   }
   const orderId = normalizeOrderGid(rawId)
-  const hasExpectedNote = Object.prototype.hasOwnProperty.call(params, "expected_note")
+  const hasExpectedNote = Object.hasOwn(params, "expected_note")
   const expectedNote = params.expected_note
 
   let previousNote: string | null = null
@@ -202,7 +219,10 @@ export async function order_cancel_preflight(
   return { ok: true }
 }
 
-export async function order_cancel(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function order_cancel(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   requireTargetId(params, "orderId")
   return runMutation(ctx, {
     query: ORDER_CANCEL,

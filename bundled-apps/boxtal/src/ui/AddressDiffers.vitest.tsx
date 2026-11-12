@@ -32,17 +32,37 @@ function row(extra: Partial<Row> = {}): Row {
     status: "to_prepare",
     status_note: null,
     staff_note: null,
-    quote: { cheapest: null, alternates: [], offers: [], selected_offer_code: null, selected: null, quoted_at: null, stale: false },
+    quote: {
+      cheapest: null,
+      alternates: [],
+      offers: [],
+      selected_offer_code: null,
+      selected: null,
+      quoted_at: null,
+      stale: false,
+    },
     state: "ready",
     excluded: false,
     validated: false,
-    invoice: { state: "issued", document_id: "doc-42", number: "INV-42", approval_id: null, kind: "invoice" },
+    invoice: {
+      state: "issued",
+      document_id: "doc-42",
+      number: "INV-42",
+      approval_id: null,
+      kind: "invoice",
+    },
     shipment: null,
     recipient: null,
     address_check: {
       state: "differs",
       used: { source: "order" },
-      order_address: { name: "Lena Brandt", street: "Werkstr. 6", city: "Remagen", postalCode: "53424", countryIsoCode: "DE" },
+      order_address: {
+        name: "Lena Brandt",
+        street: "Werkstr. 6",
+        city: "Remagen",
+        postalCode: "53424",
+        countryIsoCode: "DE",
+      },
       verified_address: {
         id: "addr-1",
         street: "Industriepark 3",
@@ -79,7 +99,9 @@ describe("Address differs chip", () => {
     expect(chip.textContent).toContain("Address differs")
     expect(screen.queryByTestId("boxtal-prep-address-fold-so:42")).toBeNull()
     fireEvent.click(chip)
-    expect(screen.getByTestId("boxtal-prep-address-order-so:42").textContent).toContain("Werkstr. 6")
+    expect(screen.getByTestId("boxtal-prep-address-order-so:42").textContent).toContain(
+      "Werkstr. 6",
+    )
     const verified = screen.getByTestId("boxtal-prep-address-verified-so:42").textContent ?? ""
     expect(verified).toContain("Industriepark 3")
     expect(verified).toContain("Verified 2026-10-20 by Sam Operator")
@@ -95,7 +117,9 @@ describe("Address differs chip", () => {
     const chip = screen.getByTestId("boxtal-prep-address-differs-so:42")
     expect(chip.textContent).toContain("order's")
     fireEvent.click(chip)
-    expect((screen.getByTestId("boxtal-prep-address-use-order-so:42") as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      (screen.getByTestId("boxtal-prep-address-use-order-so:42") as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it("is shown only when both addresses are known and differ", () => {

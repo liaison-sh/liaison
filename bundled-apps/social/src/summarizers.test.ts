@@ -31,7 +31,10 @@ describe("social approval summaries", () => {
           // findings_get fences third-party text for the agent.
           content_text: `<external-content source="untrusted">\n${"Is the blue one in stock? ".repeat(20)}\n</external-content>`,
           permalink: "https://www.facebook.com/111/posts/222?comment_id=333",
-          metadata: { postExcerpt: "New arrivals this week", postPermalink: "https://www.facebook.com/111/posts/222" },
+          metadata: {
+            postExcerpt: "New arrivals this week",
+            postPermalink: "https://www.facebook.com/111/posts/222",
+          },
         },
       }),
     )
@@ -46,7 +49,9 @@ describe("social approval summaries", () => {
       'Under the post: <external-content source="untrusted">\nNew arrivals this week\n</external-content>',
     )
     expect(s.lines).toContain("Reply: Yes, in stock.")
-    expect(s.links).toEqual([{ label: "Open on Facebook", url: "https://www.facebook.com/111/posts/222?comment_id=333" }])
+    expect(s.links).toEqual([
+      { label: "Open on Facebook", url: "https://www.facebook.com/111/posts/222?comment_id=333" },
+    ])
   })
 
   it("links the post when the comment has no permalink, and builds a Facebook link when neither has one", async () => {
@@ -60,9 +65,16 @@ describe("social approval summaries", () => {
     const post = await summarizeReplyToFinding(
       { finding_id: "f-1", reply_text: "Hi" },
       undefined,
-      meta({ finding: { ...finding, metadata: { postPermalink: "https://www.facebook.com/111/posts/222" } } }),
+      meta({
+        finding: {
+          ...finding,
+          metadata: { postPermalink: "https://www.facebook.com/111/posts/222" },
+        },
+      }),
     )
-    expect(post.links).toEqual([{ label: "Open the post on Facebook", url: "https://www.facebook.com/111/posts/222" }])
+    expect(post.links).toEqual([
+      { label: "Open the post on Facebook", url: "https://www.facebook.com/111/posts/222" },
+    ])
     const built = await summarizeReplyToFinding(
       { finding_id: "f-1", reply_text: "Hi" },
       undefined,
@@ -135,7 +147,11 @@ describe("social approval summaries", () => {
       meta({ conversation: { participant_display_name: "Jo Doe", platform: "facebook" } }),
     )
     expect(named.title).toBe("Send a direct message to Jo Doe")
-    const bare = await summarizeSendDm({ conversation_id: "c-1", body: "Hi" }, undefined, meta(null))
+    const bare = await summarizeSendDm(
+      { conversation_id: "c-1", body: "Hi" },
+      undefined,
+      meta(null),
+    )
     expect(bare.title).toBe("Send a direct message")
   })
 

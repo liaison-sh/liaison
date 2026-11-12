@@ -15,7 +15,9 @@ interface SettingsReader {
 
 /** The org's CIBS switch date (YYYY-MM-DD): the settings row's value, else 2027-01-01. */
 export async function readCibsSwitchDate(db: SettingsReader): Promise<string> {
-  const rows = (await db.findMany("einvoicing_settings", { limit: 1 })) as Array<Record<string, unknown>>
+  const rows = (await db.findMany("einvoicing_settings", { limit: 1 })) as Array<
+    Record<string, unknown>
+  >
   const raw = rows[0]?.cibs_switch_date
   const text = raw instanceof Date ? raw.toISOString() : typeof raw === "string" ? raw : ""
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : DEFAULT_CIBS_SWITCH_DATE
@@ -28,5 +30,8 @@ export async function documentLegalMention(
   language: MentionLanguage,
   opts: Omit<LegalMentionOptions, "cibsSwitchDate">,
 ): Promise<string> {
-  return resolveLegalMention(treatment, language, { ...opts, cibsSwitchDate: await readCibsSwitchDate(db) })
+  return resolveLegalMention(treatment, language, {
+    ...opts,
+    cibsSwitchDate: await readCibsSwitchDate(db),
+  })
 }

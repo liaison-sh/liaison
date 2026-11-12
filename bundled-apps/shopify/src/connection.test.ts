@@ -60,7 +60,9 @@ function makeMockCtx(): { ctx: AppContext; spy: MockCtx } {
         const all = spy.rows.get(entity) ?? []
         if (!opts?.where) return all
         return all.filter((r) =>
-          Object.entries(opts.where ?? {}).every(([k, v]) => (r as Record<string, unknown>)[k] === v),
+          Object.entries(opts.where ?? {}).every(
+            ([k, v]) => (r as Record<string, unknown>)[k] === v,
+          ),
         )
       },
       findOne: async (entity: string, id: string) => {
@@ -375,7 +377,10 @@ describe("subscribeShopifyTopics", () => {
     const { ctx, spy } = makeMockCtx()
     const fetches: Array<{ url: string; body?: string }> = []
     let createCount = 0
-    const shopFetch = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+    const shopFetch = async (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string>; body?: string },
+    ) => {
       fetches.push({ url, body: init?.body })
       const body = init?.body ?? ""
       if (body.includes("WebhookSubscriptionList")) {
@@ -466,9 +471,15 @@ describe("subscribeShopifyTopics", () => {
     // Every create URL points back at the kernel webhook route with the kebab
     // endpoint. Cluster-2: the kernel mounts webhooks at `/webhooks` (NO `/api`
     // prefix), so the callback path is `${base}/webhooks/${orgId}/shopify/...`.
-    const createBodies = fetches.filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate")).map((f) => f.body ?? "")
-    expect(createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/orders-create"))).toBe(true)
-    expect(createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/customers-delete"))).toBe(true)
+    const createBodies = fetches
+      .filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate"))
+      .map((f) => f.body ?? "")
+    expect(
+      createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/orders-create")),
+    ).toBe(true)
+    expect(
+      createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/customers-delete")),
+    ).toBe(true)
     // The wrong `/api/webhooks/...` path must NOT appear anywhere — that was the
     // 404 bug that killed every real Shopify delivery.
     expect(createBodies.some((b) => b.includes("/api/webhooks/"))).toBe(false)
@@ -503,9 +514,9 @@ describe("subscribeShopifyTopics", () => {
     const createBodies = fetches
       .filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate"))
       .map((f) => f.body ?? "")
-    expect(createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/orders-create"))).toBe(
-      true,
-    )
+    expect(
+      createBodies.some((b) => b.includes("/webhooks/" + ORG + "/shopify/orders-create")),
+    ).toBe(true)
     expect(createBodies.some((b) => b.includes(`"topic":"ORDERS_CREATE"`))).toBe(true)
   })
 
@@ -545,7 +556,10 @@ describe("subscribeShopifyTopics", () => {
     const { ctx, fetches } = makeCtxWithShopifyFetch({
       existingSubs: [
         { topic: "ORDERS_CREATE", callbackUrl: `${base}/webhooks/${ORG}/shopify/orders-create` },
-        { topic: "CUSTOMERS_CREATE", callbackUrl: `${base}/webhooks/${ORG}/shopify/customers-create` },
+        {
+          topic: "CUSTOMERS_CREATE",
+          callbackUrl: `${base}/webhooks/${ORG}/shopify/customers-create`,
+        },
       ],
     })
     const result = await subscribeShopifyTopics(ctx, {
@@ -557,7 +571,9 @@ describe("subscribeShopifyTopics", () => {
     expect(result.skipped.length).toBe(2)
     expect(result.created.length).toBe(15) // 17 declared − 2 already subscribed
     // Verify no create was issued for the already-subscribed topics.
-    const createBodies = fetches.filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate")).map((f) => f.body ?? "")
+    const createBodies = fetches
+      .filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate"))
+      .map((f) => f.body ?? "")
     expect(createBodies.some((b) => b.includes(`"topic":"ORDERS_CREATE"`))).toBe(false)
     expect(createBodies.some((b) => b.includes(`"topic":"CUSTOMERS_CREATE"`))).toBe(false)
   })
@@ -655,7 +671,9 @@ describe("webhooksRepairHandler", () => {
       return { status: 200, headers: {}, body: "{}" }
     }
     ;(ctx as { fetch: typeof shopFetch }).fetch = shopFetch
-    const accounts = [{ id: ACCOUNT_ID, ownerType: "org", ownerId: null, identifier: SHOP, displayName: SHOP }]
+    const accounts = [
+      { id: ACCOUNT_ID, ownerType: "org", ownerId: null, identifier: SHOP, displayName: SHOP },
+    ]
     ;(ctx as { connections: Record<string, unknown> }).connections = {
       shop: {
         getToken: async () => "shpat_TEST",
@@ -669,7 +687,10 @@ describe("webhooksRepairHandler", () => {
   it("derives the callback base URL from an existing subscription and only creates the missing topics", async () => {
     const { ctx, fetches } = makeRepairCtx({
       existingSubs: [
-        { topic: "ORDERS_CREATE", callbackUrl: `${KERNEL_BASE}/webhooks/${ORG}/shopify/orders-create` },
+        {
+          topic: "ORDERS_CREATE",
+          callbackUrl: `${KERNEL_BASE}/webhooks/${ORG}/shopify/orders-create`,
+        },
       ],
     })
     const result = await webhooksRepairHandler({}, ctx)
@@ -682,21 +703,36 @@ describe("webhooksRepairHandler", () => {
     expect(result.failed.length).toBe(0)
     // The recovered base must be used for every newly-created subscription —
     // never a re-derived or malformed URL.
-    const createBodies = fetches.filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate")).map((f) => f.body ?? "")
-    expect(createBodies.every((b) => b.includes(`${KERNEL_BASE}/webhooks/${ORG}/shopify/`))).toBe(true)
+    const createBodies = fetches
+      .filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate"))
+      .map((f) => f.body ?? "")
+    expect(createBodies.every((b) => b.includes(`${KERNEL_BASE}/webhooks/${ORG}/shopify/`))).toBe(
+      true,
+    )
     expect(createBodies.some((b) => b.includes(`"topic":"DRAFT_ORDERS_CREATE"`))).toBe(true)
   })
 
   it("uses an explicitly passed callback_base_url instead of deriving one", async () => {
     const { ctx, fetches } = makeRepairCtx({ existingSubs: [] })
-    const result = await webhooksRepairHandler({ callback_base_url: "https://explicit.example.com/" }, ctx)
+    const result = await webhooksRepairHandler(
+      { callback_base_url: "https://explicit.example.com/" },
+      ctx,
+    )
     expect(result.status).toBe("completed")
     if (result.status !== "completed") throw new Error("unreachable")
     expect(result.created.length).toBe(17)
-    const createBodies = fetches.filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate")).map((f) => f.body ?? "")
+    const createBodies = fetches
+      .filter((f) => (f.body ?? "").includes("WebhookSubscriptionCreate"))
+      .map((f) => f.body ?? "")
     // Trailing slash on the passed URL must be normalised away (no double slash).
-    expect(createBodies.every((b) => b.includes(`https://explicit.example.com/webhooks/${ORG}/shopify/`))).toBe(true)
-    expect(createBodies.some((b) => b.includes("https://explicit.example.com//webhooks"))).toBe(false)
+    expect(
+      createBodies.every((b) =>
+        b.includes(`https://explicit.example.com/webhooks/${ORG}/shopify/`),
+      ),
+    ).toBe(true)
+    expect(createBodies.some((b) => b.includes("https://explicit.example.com//webhooks"))).toBe(
+      false,
+    )
   })
 
   it("returns a shop_not_connected error when no shop is installed", async () => {
@@ -756,7 +792,10 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
       // The host adds the token named by `auth`; with none stored it refuses the call.
       store.auths.push(init?.auth ?? null)
       if (opts.token === "missing") throw new Error("No access token stored")
-      const req = JSON.parse(init?.body ?? "{}") as { query?: string; variables?: Record<string, unknown> }
+      const req = JSON.parse(init?.body ?? "{}") as {
+        query?: string
+        variables?: Record<string, unknown>
+      }
       const q = req.query ?? ""
       if (q.includes("WebhookSubscriptionList")) {
         store.listCalls += 1
@@ -788,17 +827,27 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
           })
         }
         store.subs = store.subs.filter((s) => s.id !== id)
-        return json({ webhookSubscriptionDelete: { deletedWebhookSubscriptionId: id, userErrors: [] } })
+        return json({
+          webhookSubscriptionDelete: { deletedWebhookSubscriptionId: id, userErrors: [] },
+        })
       }
       if (q.includes("WebhookSubscriptionCreate")) {
         store.creates += 1
         const v = req.variables as { topic: string; webhookSubscription: { callbackUrl: string } }
-        store.subs.push({ id: `gid://new/${nextId++}`, topic: v.topic, callbackUrl: v.webhookSubscription.callbackUrl })
-        return json({ webhookSubscriptionCreate: { webhookSubscription: { id: "x" }, userErrors: [] } })
+        store.subs.push({
+          id: `gid://new/${nextId++}`,
+          topic: v.topic,
+          callbackUrl: v.webhookSubscription.callbackUrl,
+        })
+        return json({
+          webhookSubscriptionCreate: { webhookSubscription: { id: "x" }, userErrors: [] },
+        })
       }
       return { status: 200, headers: {}, body: "{}" }
     }
-    const accounts = [{ id: ACCOUNT_ID, ownerType: "org", ownerId: null, identifier: SHOP, displayName: SHOP }]
+    const accounts = [
+      { id: ACCOUNT_ID, ownerType: "org", ownerId: null, identifier: SHOP, displayName: SHOP },
+    ]
     ;(ctx as { connections: unknown }).connections = {
       getAccounts: async () => accounts,
     }
@@ -812,7 +861,9 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
     return { ctx, store, warns }
   }
 
-  const hookEvent = (overrides: Partial<{ appName: string; kernelPublicBaseUrl: string }> = {}) => ({
+  const hookEvent = (
+    overrides: Partial<{ appName: string; kernelPublicBaseUrl: string }> = {},
+  ) => ({
     id: ACCOUNT_ID,
     orgId: ORG,
     appName: overrides.appName ?? "shopify",
@@ -827,9 +878,21 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
   it("deletes only this org's subscriptions on this host, across pages", async () => {
     const subs: FakeSub[] = [
       { id: "a1", topic: "ORDERS_CREATE", callbackUrl: ours("orders-create") },
-      { id: "x1", topic: "ORDERS_CREATE", callbackUrl: `${BASE}/webhooks/${OTHER_ORG}/shopify/orders-create` },
-      { id: "x2", topic: "ORDERS_CREATE", callbackUrl: `https://retired.example.com/webhooks/${ORG}/shopify/orders-create` },
-      { id: "x3", topic: "ORDERS_CREATE", callbackUrl: "https://another-app.example.com/hooks/orders" },
+      {
+        id: "x1",
+        topic: "ORDERS_CREATE",
+        callbackUrl: `${BASE}/webhooks/${OTHER_ORG}/shopify/orders-create`,
+      },
+      {
+        id: "x2",
+        topic: "ORDERS_CREATE",
+        callbackUrl: `https://retired.example.com/webhooks/${ORG}/shopify/orders-create`,
+      },
+      {
+        id: "x3",
+        topic: "ORDERS_CREATE",
+        callbackUrl: "https://another-app.example.com/hooks/orders",
+      },
       { id: "a2", topic: "APP_UNINSTALLED", callbackUrl: ours("app-uninstalled") },
       { id: "a3", topic: "CUSTOMERS_UPDATE", callbackUrl: ours("customers-update") },
     ]
@@ -845,7 +908,10 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
     const { ctx, store } = makeStore({
       subs: [{ id: "a1", topic: "ORDERS_CREATE", callbackUrl: ours("orders-create") }],
     })
-    expect(await onBeforeDisconnect(hookEvent({ appName: "mail" }), ctx)).toEqual({ deleted: 0, failed: 0 })
+    expect(await onBeforeDisconnect(hookEvent({ appName: "mail" }), ctx)).toEqual({
+      deleted: 0,
+      failed: 0,
+    })
     expect(store.listCalls).toBe(0)
     expect(store.deleteCalls).toHaveLength(0)
   })
@@ -880,7 +946,11 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
     await onBeforeDisconnect(hookEvent(), ctx)
     expect(store.auths.length).toBeGreaterThan(0)
     for (const auth of store.auths) {
-      expect(auth).toEqual({ connection: "shop", identifier: SHOP, scheme: "header:X-Shopify-Access-Token" })
+      expect(auth).toEqual({
+        connection: "shop",
+        identifier: SHOP,
+        scheme: "header:X-Shopify-Access-Token",
+      })
     }
   })
 
@@ -900,8 +970,16 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
       // this org, a route no longer declared
       { id: "s1", topic: "RETURNS_REQUEST", callbackUrl: ours("returns-request-old") },
       // another org and another host: untouched
-      { id: "x1", topic: "ORDERS_CREATE", callbackUrl: `${BASE}/webhooks/${OTHER_ORG}/shopify/orders-create` },
-      { id: "x2", topic: "ORDERS_CREATE", callbackUrl: `https://retired.example.com/webhooks/${ORG}/shopify/orders-create` },
+      {
+        id: "x1",
+        topic: "ORDERS_CREATE",
+        callbackUrl: `${BASE}/webhooks/${OTHER_ORG}/shopify/orders-create`,
+      },
+      {
+        id: "x2",
+        topic: "ORDERS_CREATE",
+        callbackUrl: `https://retired.example.com/webhooks/${ORG}/shopify/orders-create`,
+      },
     ]
     const { ctx, store } = makeStore({ subs, pageSize: 2 })
     const result = await subscribeShopifyTopics(ctx, {
@@ -913,7 +991,9 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
     expect(store.deleteCalls.sort()).toEqual(["d1", "s1"])
     expect(result.skipped).toEqual(["orders/create"])
     expect(result.created.length).toBe(16)
-    const mine = store.subs.filter((s) => s.callbackUrl.startsWith(`${BASE}/webhooks/${ORG}/shopify/`))
+    const mine = store.subs.filter((s) =>
+      s.callbackUrl.startsWith(`${BASE}/webhooks/${ORG}/shopify/`),
+    )
     expect(mine).toHaveLength(17)
     expect(new Set(mine.map((s) => `${s.topic} ${s.callbackUrl}`)).size).toBe(17)
     expect(store.subs.some((s) => s.id === "x1")).toBe(true)
@@ -923,7 +1003,11 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
   it("webhooks_repair derives the base from THIS org's subscriptions, not another instance's", async () => {
     const { ctx, store } = makeStore({
       subs: [
-        { id: "x2", topic: "ORDERS_CREATE", callbackUrl: `https://retired.example.com/webhooks/${OTHER_ORG}/shopify/orders-create` },
+        {
+          id: "x2",
+          topic: "ORDERS_CREATE",
+          callbackUrl: `https://retired.example.com/webhooks/${OTHER_ORG}/shopify/orders-create`,
+        },
         { id: "k1", topic: "ORDERS_CREATE", callbackUrl: ours("orders-create") },
       ],
     })
@@ -937,6 +1021,8 @@ describe("webhook subscription cleanup (beforeDisconnect hook + connect)", () =>
     expect(result.status).toBe("completed")
     const created = store.subs.filter((s) => s.id.startsWith("gid://new/"))
     expect(created).toHaveLength(16)
-    expect(created.every((s) => s.callbackUrl.startsWith(`${BASE}/webhooks/${ORG}/shopify/`))).toBe(true)
+    expect(created.every((s) => s.callbackUrl.startsWith(`${BASE}/webhooks/${ORG}/shopify/`))).toBe(
+      true,
+    )
   })
 })

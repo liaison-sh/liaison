@@ -75,10 +75,7 @@ export interface ReconcileCrossAppEnvelope {
 
 export interface ReconcileCtx extends TimeSurface {
   db: ReconcileDb
-  executeTool(
-    target: string,
-    args: Record<string, unknown>,
-  ): Promise<ReconcileCrossAppEnvelope>
+  executeTool(target: string, args: Record<string, unknown>): Promise<ReconcileCrossAppEnvelope>
   /** PDF render bridge (present on the kernel-injected job ctx). Used to re-render a late-settled
    *  invoice inline so it reads "Amount paid". Optional so the pure unit ctx can omit it. */
   pdf?: IssueCtx["pdf"]
@@ -166,9 +163,13 @@ function extractOrderFacts(result: unknown): OrderFacts {
   const r = (result as Record<string, unknown>) ?? {}
   const attrs = (r.attributes as Record<string, unknown> | undefined) ?? {}
   const financialStatus =
-    (r.financialStatus as string | undefined) ?? (attrs.financialStatus as string | undefined) ?? null
+    (r.financialStatus as string | undefined) ??
+    (attrs.financialStatus as string | undefined) ??
+    null
   const fulfillmentStatus =
-    (r.fulfillmentStatus as string | undefined) ?? (attrs.fulfillmentStatus as string | undefined) ?? null
+    (r.fulfillmentStatus as string | undefined) ??
+    (attrs.fulfillmentStatus as string | undefined) ??
+    null
   const processedAt =
     (r.processedAt as string | undefined) ?? (attrs.processedAt as string | undefined) ?? null
   const createdAt =
@@ -314,7 +315,10 @@ export async function reconcileShopifyPayments(
         facts.processedAt || facts.createdAt || now.toISOString(),
       )
       if (!paid.ok) {
-        result.errors.push({ order_id: orderId, message: paid.error.error.message ?? paid.error.error.code ?? "" })
+        result.errors.push({
+          order_id: orderId,
+          message: paid.error.error.message ?? paid.error.error.code ?? "",
+        })
         continue
       }
 
@@ -366,15 +370,21 @@ export async function reconcileShopifyPayments(
       if (paymentChanged && ctx.pdf) {
         renderBudget -= 1
         try {
-          const rendered = await ensureDocumentPdf(
-            { db: ctx.db, pdf: ctx.pdf },
-            doc.id,
-            { force: true, link: false },
-          )
+          const rendered = await ensureDocumentPdf({ db: ctx.db, pdf: ctx.pdf }, doc.id, {
+            force: true,
+            link: false,
+          })
           if (rendered.ok) result.pdf_rerendered += 1
-          else result.errors.push({ order_id: orderId, message: `pdf re-render failed for ${doc.id}: ${rendered.error.code}` })
+          else
+            result.errors.push({
+              order_id: orderId,
+              message: `pdf re-render failed for ${doc.id}: ${rendered.error.code}`,
+            })
         } catch (err) {
-          result.errors.push({ order_id: orderId, message: `pdf re-render threw for ${doc.id}: ${err instanceof Error ? err.message : String(err)}` })
+          result.errors.push({
+            order_id: orderId,
+            message: `pdf re-render threw for ${doc.id}: ${err instanceof Error ? err.message : String(err)}`,
+          })
         }
       }
     }

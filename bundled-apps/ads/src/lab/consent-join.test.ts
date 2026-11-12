@@ -18,22 +18,34 @@ interface Envelope {
  */
 function makeExecuteTool(
   byNameAndEmail: Record<string, Record<string, Envelope>>,
-  fallback: Envelope = { status: "error", error: { code: "not_mocked", message: "no mock for this name+email" } },
+  fallback: Envelope = {
+    status: "error",
+    error: { code: "not_mocked", message: "no mock for this name+email" },
+  },
 ) {
   return async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
     if (target !== "database:db_read") return fallback
     const name = String(args.name ?? "")
-    const email = String((args.params as Record<string, unknown> | undefined)?.email ?? args.email ?? "")
+    const email = String(
+      (args.params as Record<string, unknown> | undefined)?.email ?? args.email ?? "",
+    )
     return byNameAndEmail[name]?.[email] ?? fallback
   }
 }
 
-const CUSTOMERS = [{ email: "granted@example.com" }, { email: "denied@example.com" }, { email: "nosource@example.com" }]
+const CUSTOMERS = [
+  { email: "granted@example.com" },
+  { email: "denied@example.com" },
+  { email: "nosource@example.com" },
+]
 
 describe("filterByBuyerConsent", () => {
   it("dispatches the db_read call with name=purchase_attribution_by_email (not the newsletter read)", async () => {
     const seen: string[] = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target === "database:db_read") seen.push(String(args.name ?? ""))
       return { status: "completed", result: [{ ad_consent: "granted" }] }
     }
@@ -59,8 +71,14 @@ describe("filterByBuyerConsent", () => {
   it("reads the database app's { rows, truncated } envelope, the shape db_read and db_query answer", async () => {
     const executeTool = makeExecuteTool({
       purchase_attribution_by_email: {
-        "granted@example.com": { status: "completed", result: { rows: [{ ad_consent: "granted" }], truncated: false } },
-        "denied@example.com": { status: "completed", result: { rows: [{ ad_consent: "denied" }], truncated: false } },
+        "granted@example.com": {
+          status: "completed",
+          result: { rows: [{ ad_consent: "granted" }], truncated: false },
+        },
+        "denied@example.com": {
+          status: "completed",
+          result: { rows: [{ ad_consent: "denied" }], truncated: false },
+        },
         "nosource@example.com": { status: "completed", result: { rows: [], truncated: false } },
       },
     })
@@ -81,7 +99,9 @@ describe("filterByBuyerConsent", () => {
         "swap-check@example.com": { status: "completed", result: [{ marketing_consent: true }] },
       },
     })
-    const result = await filterByBuyerConsent([{ email: "swap-check@example.com" }], { executeTool })
+    const result = await filterByBuyerConsent([{ email: "swap-check@example.com" }], {
+      executeTool,
+    })
     expect(result.allowed.length).toBe(0)
   })
 
@@ -98,13 +118,18 @@ describe("filterByBuyerConsent", () => {
 
   it("skips customers with no email entirely (nothing to join)", async () => {
     const executeTool = makeExecuteTool({})
-    const result = await filterByBuyerConsent([{ email: undefined }, { email: "" }], { executeTool })
+    const result = await filterByBuyerConsent([{ email: undefined }, { email: "" }], {
+      executeTool,
+    })
     expect(result.allowed.length).toBe(0)
   })
 
   it("falls back to database:db_query (parameterized SELECT) when the curated db_read errors", async () => {
     const seenQueries: Array<{ sql: string; params: unknown[] }> = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target === "database:db_read") {
         return { status: "error", error: { code: "not_found", message: "no such read" } }
       }
@@ -135,7 +160,10 @@ describe("filterByBuyerConsent", () => {
 describe("filterByNewsletterConsent", () => {
   it("dispatches the db_read call with name=subscribers_marketing_consent (not the buyer read)", async () => {
     const seen: string[] = []
-    const executeTool = async (target: string, args: Record<string, unknown>): Promise<Envelope> => {
+    const executeTool = async (
+      target: string,
+      args: Record<string, unknown>,
+    ): Promise<Envelope> => {
       if (target === "database:db_read") seen.push(String(args.name ?? ""))
       return { status: "completed", result: [{ marketing_consent: true }] }
     }
@@ -164,7 +192,9 @@ describe("filterByNewsletterConsent", () => {
         "swap-check@example.com": { status: "completed", result: [{ ad_consent: "granted" }] },
       },
     })
-    const result = await filterByNewsletterConsent([{ email: "swap-check@example.com" }], { executeTool })
+    const result = await filterByNewsletterConsent([{ email: "swap-check@example.com" }], {
+      executeTool,
+    })
     expect(result.allowed.length).toBe(0)
   })
 
@@ -189,7 +219,9 @@ describe("consent domains do not cross", () => {
         "buyer-only@example.com": { status: "completed", result: [] },
       },
     })
-    const result = await filterByNewsletterConsent([{ email: "buyer-only@example.com" }], { executeTool })
+    const result = await filterByNewsletterConsent([{ email: "buyer-only@example.com" }], {
+      executeTool,
+    })
     expect(result.allowed.length).toBe(0)
   })
 })

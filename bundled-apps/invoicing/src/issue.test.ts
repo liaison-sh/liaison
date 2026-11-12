@@ -9,13 +9,13 @@
 // `findMany / findOne / insert / update` calls in tests as it does in
 // real runtime.
 
-import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
-import { issueDocument, type IssueCtx, type IssueInput } from "./issue"
-import { createMockDb, type MockDb } from "./test-db"
-import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
-import { EinvoiceGateRefusal } from "./einvoicing/gate"
 import { FxRateUnavailableError } from "./einvoicing/fx"
+import { EinvoiceGateRefusal } from "./einvoicing/gate"
+import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
+import { type IssueCtx, type IssueInput, issueDocument } from "./issue"
+import { createMockDb, type MockDb } from "./test-db"
+import { testTime } from "./test-time"
 
 // ── In-memory ctx scaffold ──────────────────────────────────────────────
 
@@ -399,8 +399,20 @@ describe("issueDocument (D7)", () => {
         ...baseDraft(),
         // Agent create-and-issue items carry no `position` (only DB-loaded draft lines do).
         lines: [
-          { description: "Kestrel 6 demo unit", quantity: "6", unit_price_minor: 120000n, product_source: null, external_id: null },
-          { description: "Travel case", quantity: "1", unit_price_minor: 12900n, product_source: null, external_id: null },
+          {
+            description: "Kestrel 6 demo unit",
+            quantity: "6",
+            unit_price_minor: 120000n,
+            product_source: null,
+            external_id: null,
+          },
+          {
+            description: "Travel case",
+            quantity: "1",
+            unit_price_minor: 12900n,
+            product_source: null,
+            external_id: null,
+          },
         ],
       },
     })
@@ -409,7 +421,9 @@ describe("issueDocument (D7)", () => {
     // Pre-fix: position was undefined → NULL INSERT → 23502 NOT-NULL violation aborted the whole
     // gated issuance (422). Each line must now carry a non-null, sequential position.
     expect(lines.every((l) => typeof l.position === "number")).toBe(true)
-    expect(lines.map((l) => l.position).sort((a, b) => (a as number) - (b as number))).toEqual([0, 1])
+    expect(lines.map((l) => l.position).sort((a, b) => (a as number) - (b as number))).toEqual([
+      0, 1,
+    ])
   })
 
   test("export Shopify line (HS codes required), empty overlay — fetches customs live at issue time and caches it", async () => {
@@ -976,7 +990,12 @@ describe("issueDocument e-invoicing backstop (enforce)", () => {
   describe("foreign-currency snapshot", () => {
     test("issue snapshots fx when cached", async () => {
       const { ctx, db } = makeCtx()
-      await db.insert("fx_rates", { currency: "USD", rate_date: "2026-05-14", rate: "1.1225", fetched_at: new Date("2026-05-14T15:00:00Z") })
+      await db.insert("fx_rates", {
+        currency: "USD",
+        rate_date: "2026-05-14",
+        rate: "1.1225",
+        fetched_at: new Date("2026-05-14T15:00:00Z"),
+      })
       await issueDocument(ctx, {
         type: "invoice",
         operation_category: "goods",
@@ -1033,7 +1052,13 @@ describe("issueDocument e-invoicing backstop (enforce)", () => {
 
     test("a EUR document carries no rate", async () => {
       const { ctx, db } = makeCtx()
-      await issueDocument(ctx, { type: "invoice", operation_category: "goods", issuer: issuerFR, counterparty: counterpartyFR, draft: baseDraft() })
+      await issueDocument(ctx, {
+        type: "invoice",
+        operation_category: "goods",
+        issuer: issuerFR,
+        counterparty: counterpartyFR,
+        draft: baseDraft(),
+      })
       expect(db.__all("documents")[0]!.fx_rate ?? null).toBeNull()
     })
   })
@@ -1051,7 +1076,9 @@ describe("issueDocument commits number, document and lines in one batch", () => 
 
   test("one batch carries the number, the document, its lines and the caller's writes", async () => {
     const { ctx, db } = makeCtx()
-    db.__seed("documents", [{ id: "00000000-0000-4000-8000-0000000d0a1f", type: "invoice", status: "draft" }])
+    db.__seed("documents", [
+      { id: "00000000-0000-4000-8000-0000000d0a1f", type: "invoice", status: "draft" },
+    ])
     const specs: Array<Parameters<MockDb["batch"]>[0]> = []
     const batch = db.batch.bind(db)
     db.batch = async (spec) => {
@@ -1071,7 +1098,10 @@ describe("issueDocument commits number, document and lines in one batch", () => 
   test("a failing write of the batch persists nothing and consumes no number", async () => {
     const { ctx, db } = makeCtx()
     await expect(
-      issueDocument(ctx, { ...input(), commit_with: [{ update: "documents", id: "missing", data: {} }] }),
+      issueDocument(ctx, {
+        ...input(),
+        commit_with: [{ update: "documents", id: "missing", data: {} }],
+      }),
     ).rejects.toThrow()
     expect(db.__all("documents")).toHaveLength(0)
     expect(db.__all("document_lines")).toHaveLength(0)

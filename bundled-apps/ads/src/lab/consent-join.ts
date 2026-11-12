@@ -24,7 +24,10 @@ export interface ConsentJoinResult<T extends CustomerIdentifier> {
 }
 
 interface ConsentJoinCtx {
-  executeTool?: (target: string, args: Record<string, unknown>) => Promise<{
+  executeTool?: (
+    target: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
     status: "completed" | "pending_approval" | "error"
     result?: unknown
     error?: { code: string; message: string; retryable?: boolean }
@@ -66,7 +69,10 @@ async function checkConsent(
   }
 
   try {
-    const envelope = await ctx.executeTool("database:db_read", { name: readName, params: { email } })
+    const envelope = await ctx.executeTool("database:db_read", {
+      name: readName,
+      params: { email },
+    })
     if (envelope.status === "completed") {
       return evaluate(envelope.result)
     }
@@ -105,7 +111,9 @@ async function joinConsent<T extends CustomerIdentifier>(
   readName: string,
   isGranted: (row: Record<string, unknown>) => boolean,
 ): Promise<ConsentJoinResult<T>> {
-  const withEmail = customers.filter((c): c is T & { email: string } => typeof c.email === "string" && c.email.length > 0)
+  const withEmail = customers.filter(
+    (c): c is T & { email: string } => typeof c.email === "string" && c.email.length > 0,
+  )
   // Customers with NO email (e.g. phone-only identifiers) have no joinable
   // consent record at all under this email-keyed join — default-deny drops
   // them too (counted as "no consent source", never silently passed
@@ -138,8 +146,12 @@ async function joinConsent<T extends CustomerIdentifier>(
   // surface a clear connect-error rather than a silent all-denied result.
   // (No-email customers are excluded from this check — they never reach a
   // consent lookup at all, so they can't signal "source unreachable".)
-  const sourceUnreachable = anyChecked && anyUnreachable && allowed.length === 0 &&
-    droppedNoConsent === 0 && droppedNoConsentSource === withEmail.length + noEmailCount
+  const sourceUnreachable =
+    anyChecked &&
+    anyUnreachable &&
+    allowed.length === 0 &&
+    droppedNoConsent === 0 &&
+    droppedNoConsentSource === withEmail.length + noEmailCount
 
   return { allowed, droppedNoConsent, droppedNoConsentSource, sourceUnreachable }
 }
@@ -154,7 +166,12 @@ export async function filterByBuyerConsent<T extends CustomerIdentifier>(
   customers: T[],
   ctx: ConsentJoinCtx,
 ): Promise<ConsentJoinResult<T>> {
-  return joinConsent(customers, ctx, "purchase_attribution_by_email", (row) => row.ad_consent === "granted")
+  return joinConsent(
+    customers,
+    ctx,
+    "purchase_attribution_by_email",
+    (row) => row.ad_consent === "granted",
+  )
 }
 
 /**
@@ -166,5 +183,10 @@ export async function filterByNewsletterConsent<T extends CustomerIdentifier>(
   customers: T[],
   ctx: ConsentJoinCtx,
 ): Promise<ConsentJoinResult<T>> {
-  return joinConsent(customers, ctx, "subscribers_marketing_consent", (row) => row.marketing_consent === true)
+  return joinConsent(
+    customers,
+    ctx,
+    "subscribers_marketing_consent",
+    (row) => row.marketing_consent === true,
+  )
 }

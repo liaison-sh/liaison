@@ -5,7 +5,10 @@ import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
 import { pruneWebhookDeliveriesJob } from "./prune-webhook-deliveries"
 
-interface Row { id: string; receivedAt: Date }
+interface Row {
+  id: string
+  receivedAt: Date
+}
 
 function makeCtx(rows: Row[]): { ctx: AppContext; deleted: string[] } {
   // The store is the canonical source; findMany returns it oldest-first when

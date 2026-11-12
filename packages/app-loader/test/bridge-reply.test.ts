@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-//
-// The bridge call module the fake loader shares byte for byte with the app
-// loader (__fixtures__/bridge-reply.ts), against the same vectors.
+// The bridge call module against its vectors.
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BRIDGE_REPLY_VERSION, bridgeCall } from "./__fixtures__/bridge-reply"
+import { BRIDGE_REPLY_VERSION, bridgeCall } from "../src/bridge-reply"
 
 const V = JSON.parse(
   readFileSync(join(import.meta.dir, "__fixtures__", "bridge-reply-vectors.json"), "utf8"),

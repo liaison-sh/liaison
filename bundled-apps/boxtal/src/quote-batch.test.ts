@@ -10,10 +10,10 @@
 //     SUMS the selected prices into one authoritative aggregate, and reports the
 //     honest covered/total bound when the wall exceeds the cap.
 import { describe, expect, it } from "bun:test"
+import { makeOrderScanStub } from "./__fixtures__/order-scan"
+import type { Offer } from "./lib/boxtal-v1-client"
 import { businessDaysBetween, pickCheapestWithinEta, quoteBatch } from "./quote-batch"
 import { createMockDb } from "./test-db"
-import type { Offer } from "./lib/boxtal-v1-client"
-import { makeOrderScanStub } from "./__fixtures__/order-scan"
 
 // The international cotation fixture the boxtal mock serves for an EXPORT route
 // (FR→US). Three offers encoding the cheapest-vs-ETA trap, collection Tue 2026-06-02:
@@ -75,19 +75,36 @@ function makeCtx(invoices: Array<ReturnType<typeof usInvoice>>) {
   const db = createMockDb({
     seed: {
       shipping_profile: [
-        { id: "p-ral44", product_source: "shopify", product_id: "RAL-44", unit_weight: 2.5, solo_length: 30, solo_width: 25, solo_height: 20, content_category: "content:v1:10250" },
+        {
+          id: "p-ral44",
+          product_source: "shopify",
+          product_id: "RAL-44",
+          unit_weight: 2.5,
+          solo_length: 30,
+          solo_width: 25,
+          solo_height: 20,
+          content_category: "content:v1:10250",
+        },
       ],
       app_config: [{ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY }],
     },
   })
   const fetch = async (url: string, o?: { method?: string; body?: string }) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/cotation")) {
       return { status: 200, headers: {}, body: INTERNATIONAL_XML }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   // The worklist is ORDER-driven: the fixture invoices reach it as the documents of synthetic
   // open Shopify orders (see __fixtures__/order-scan.ts).
@@ -105,8 +122,8 @@ function makeCtx(invoices: Array<ReturnType<typeof usInvoice>>) {
       const ref =
         typeof args === "string"
           ? args
-          : (args as { id?: string; document_ref?: string }).id ??
-            (args as { document_ref?: string }).document_ref
+          : ((args as { id?: string; document_ref?: string }).id ??
+            (args as { document_ref?: string }).document_ref)
       return { status: "completed", result: (ref && byId.get(ref)) ?? null }
     }
     return { status: "error", error: { code: "unmocked", message: target } }
@@ -116,7 +133,15 @@ function makeCtx(invoices: Array<ReturnType<typeof usInvoice>>) {
     db,
     fetch,
     executeTool,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as never
@@ -137,7 +162,10 @@ describe("businessDaysBetween", () => {
   })
 })
 
-function offer(partial: Partial<Offer> & Pick<Offer, "offer_code" | "carrier" | "price_ht" | "collection_date" | "delivery_date">): Offer {
+function offer(
+  partial: Partial<Offer> &
+    Pick<Offer, "offer_code" | "carrier" | "price_ht" | "collection_date" | "delivery_date">,
+): Offer {
   return {
     carrier_code: partial.carrier_code ?? "X",
     service: partial.service ?? "svc",
@@ -154,9 +182,27 @@ function offer(partial: Partial<Offer> & Pick<Offer, "offer_code" | "carrier" | 
 
 describe("pickCheapestWithinEta", () => {
   const OFFERS: Offer[] = [
-    offer({ offer_code: "UPSE-x", carrier: "UPS", price_ht: 48.9, collection_date: "2026-06-02", delivery_date: "2026-06-05" }), // 3 biz days
-    offer({ offer_code: "FEDX-x", carrier: "FedEx", price_ht: 54.2, collection_date: "2026-06-02", delivery_date: "2026-06-04" }), // 2 biz days
-    offer({ offer_code: "DPDI-x", carrier: "DPD", price_ht: 41.3, collection_date: "2026-06-02", delivery_date: "2026-06-12" }), // 8 biz days
+    offer({
+      offer_code: "UPSE-x",
+      carrier: "UPS",
+      price_ht: 48.9,
+      collection_date: "2026-06-02",
+      delivery_date: "2026-06-05",
+    }), // 3 biz days
+    offer({
+      offer_code: "FEDX-x",
+      carrier: "FedEx",
+      price_ht: 54.2,
+      collection_date: "2026-06-02",
+      delivery_date: "2026-06-04",
+    }), // 2 biz days
+    offer({
+      offer_code: "DPDI-x",
+      carrier: "DPD",
+      price_ht: 41.3,
+      collection_date: "2026-06-02",
+      delivery_date: "2026-06-12",
+    }), // 8 biz days
   ]
 
   it("picks the CHEAPEST offer WITHIN the ETA — UPS (48.90), not the absolute-cheaper-but-too-slow DPD (41.30)", () => {
@@ -180,8 +226,20 @@ describe("pickCheapestWithinEta", () => {
 
   it("breaks a price tie by the faster ETA", () => {
     const tied: Offer[] = [
-      offer({ offer_code: "A", carrier: "A", price_ht: 30, collection_date: "2026-06-02", delivery_date: "2026-06-05" }), // 3 biz
-      offer({ offer_code: "B", carrier: "B", price_ht: 30, collection_date: "2026-06-02", delivery_date: "2026-06-04" }), // 2 biz
+      offer({
+        offer_code: "A",
+        carrier: "A",
+        price_ht: 30,
+        collection_date: "2026-06-02",
+        delivery_date: "2026-06-05",
+      }), // 3 biz
+      offer({
+        offer_code: "B",
+        carrier: "B",
+        price_ht: 30,
+        collection_date: "2026-06-02",
+        delivery_date: "2026-06-04",
+      }), // 2 biz
     ]
     expect(pickCheapestWithinEta(tied, 5)?.carrier).toBe("B")
   })
@@ -238,7 +296,11 @@ describe("quoteBatch (end-to-end fan-out)", () => {
   it("honestly bounds a wall bigger than `limit`: priced N of M via covered/total counts", async () => {
     const invoices = Array.from({ length: 5 }, (_, i) => usInvoice(`inv-${i}`, `Customer ${i}`))
     const ctx = makeCtx(invoices)
-    const res = await quoteBatch(ctx, { destination_country: "US", max_eta_business_days: 5, limit: 2 })
+    const res = await quoteBatch(ctx, {
+      destination_country: "US",
+      max_eta_business_days: 5,
+      limit: 2,
+    })
 
     expect(res.aggregate.covered_count).toBe(2) // only 2 priced
     expect(res.aggregate.total_count).toBe(5) // 5 in scope
@@ -262,7 +324,10 @@ describe("quoteBatch (end-to-end fan-out)", () => {
   })
 
   it("prices explicit order_refs directly (bypassing the to-prepare worklist)", async () => {
-    const ctx = makeCtx([usInvoice("inv-1", "Brad Whitfield"), usInvoice("inv-2", "Denise Carrington")])
+    const ctx = makeCtx([
+      usInvoice("inv-1", "Brad Whitfield"),
+      usInvoice("inv-2", "Denise Carrington"),
+    ])
     const res = await quoteBatch(ctx, { order_refs: ["inv-1", "inv-2"], max_eta_business_days: 5 })
     expect(res.aggregate.covered_count).toBe(2)
     expect(res.aggregate.total_count).toBe(2)
@@ -274,13 +339,25 @@ describe("quoteBatch (end-to-end fan-out)", () => {
     // Today every order is EUR (FR ship-from), so this is inert — but the guard must
     // not silently sum minor units across currencies and stamp whichever currency came
     // last. Serve EUR cotation for the first order, USD for the second.
-    const usdXml = INTERNATIONAL_XML.replace(/<currency>EUR<\/currency>/g, "<currency>USD</currency>")
+    const usdXml = INTERNATIONAL_XML.replace(
+      /<currency>EUR<\/currency>/g,
+      "<currency>USD</currency>",
+    )
     const invoices = [usInvoice("inv-1", "Brad Whitfield"), usInvoice("inv-2", "Denise Carrington")]
     const byId = new Map(invoices.map((d) => [d.id, d]))
     const db = createMockDb({
       seed: {
         shipping_profile: [
-          { id: "p-ral44", product_source: "shopify", product_id: "RAL-44", unit_weight: 2.5, solo_length: 30, solo_width: 25, solo_height: 20, content_category: "content:v1:10250" },
+          {
+            id: "p-ral44",
+            product_source: "shopify",
+            product_id: "RAL-44",
+            unit_weight: 2.5,
+            solo_length: 30,
+            solo_width: 25,
+            solo_height: 20,
+            content_category: "content:v1:10250",
+          },
         ],
         app_config: [{ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY }],
       },
@@ -288,14 +365,22 @@ describe("quoteBatch (end-to-end fan-out)", () => {
     let cotationCalls = 0
     const fetch = async (url: string) => {
       if (url.includes("/iam/account-app/token")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+        }
       }
       if (url.includes("/cotation")) {
         cotationCalls += 1
         // First priced order EUR, second order USD.
         return { status: 200, headers: {}, body: cotationCalls === 1 ? INTERNATIONAL_XML : usdXml }
       }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+      }
     }
     const executeTool = async (target: string, args: unknown) => {
       if (target === "invoicing:documents_search") return { status: "completed", result: invoices }
@@ -303,8 +388,8 @@ describe("quoteBatch (end-to-end fan-out)", () => {
         const ref =
           typeof args === "string"
             ? args
-            : (args as { id?: string; document_ref?: string }).id ??
-              (args as { document_ref?: string }).document_ref
+            : ((args as { id?: string; document_ref?: string }).id ??
+              (args as { document_ref?: string }).document_ref)
         return { status: "completed", result: (ref && byId.get(ref)) ?? null }
       }
       return { status: "error", error: { code: "unmocked", message: target } }
@@ -314,7 +399,15 @@ describe("quoteBatch (end-to-end fan-out)", () => {
       db,
       fetch,
       executeTool,
-      connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+      connections: {
+        boxtal: {
+          getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+          getToken: async () => {
+            throw new Error("no")
+          },
+          getAccounts: async () => [],
+        },
+      },
       config: { get: async () => "whsecret", has: async () => true },
       logger: { info() {}, warn() {}, error() {}, debug() {} },
     } as never

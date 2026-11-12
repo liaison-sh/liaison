@@ -31,7 +31,13 @@
 // never creates one. A resolve older than the incident's latest alert is
 // stale (an out-of-order delivery must not close a fresh episode).
 import type { AppContext, WebhookResult } from "@liaison/app-sdk"
-import { type AlertEnvelope, parseEnvelope, type ResolveEnvelope, type Severity, severityRank } from "./envelope"
+import {
+  type AlertEnvelope,
+  parseEnvelope,
+  type ResolveEnvelope,
+  type Severity,
+  severityRank,
+} from "./envelope"
 import { assignMissingRefs, refFields } from "./lib/refs"
 import { errSummary } from "./lib/values"
 
@@ -96,7 +102,11 @@ function axes(alert: AlertEnvelope, severity: Severity): Record<string, unknown>
   return { source: alert.source, severity }
 }
 
-async function findByDedupKey(ctx: AppContext, source: string, dedupKey: string): Promise<IncidentRow | null> {
+async function findByDedupKey(
+  ctx: AppContext,
+  source: string,
+  dedupKey: string,
+): Promise<IncidentRow | null> {
   const rows = (await ctx.db.findMany("incidents", {
     where: { source, dedup_key: dedupKey },
     limit: 1,
@@ -133,7 +143,10 @@ async function markCreatedSent(ctx: AppContext, id: string): Promise<void> {
   try {
     await ctx.db.update("incidents", id, { created_pending: null })
   } catch (err) {
-    ctx.logger.error("monitoring: could not clear created_pending", { incidentId: id, err: errSummary(err) })
+    ctx.logger.error("monitoring: could not clear created_pending", {
+      incidentId: id,
+      err: errSummary(err),
+    })
   }
 }
 
@@ -161,11 +174,14 @@ async function createAndEmit(ctx: AppContext, alert: AlertEnvelope): Promise<{ i
     try {
       await ctx.db.delete("incidents", id)
     } catch (rollbackErr) {
-      ctx.logger.error("monitoring: created path failed AND rollback failed, feed item may be lost", {
-        incidentId: id,
-        createErr: errSummary(createErr),
-        rollbackErr: errSummary(rollbackErr),
-      })
+      ctx.logger.error(
+        "monitoring: created path failed AND rollback failed, feed item may be lost",
+        {
+          incidentId: id,
+          createErr: errSummary(createErr),
+          rollbackErr: errSummary(rollbackErr),
+        },
+      )
     }
     throw createErr
   }
@@ -191,7 +207,10 @@ async function archiveEpisode(ctx: AppContext, previous: IncidentRow): Promise<v
       author_id: null,
     })
   } catch (err) {
-    ctx.logger.error("monitoring: episode archive failed", { incidentId: previous.id, err: errSummary(err) })
+    ctx.logger.error("monitoring: episode archive failed", {
+      incidentId: previous.id,
+      err: errSummary(err),
+    })
   }
 }
 
@@ -255,7 +274,11 @@ async function tryReopen(
  * Fold a delivery into a live (open/acknowledged) incident: "escalated" when the severity went
  * up, else "repeated" (the no-attention path). Severity only ratchets UP on a live incident.
  */
-async function foldLive(ctx: AppContext, row: IncidentRow, alert: AlertEnvelope): Promise<FoldResult> {
+async function foldLive(
+  ctx: AppContext,
+  row: IncidentRow,
+  alert: AlertEnvelope,
+): Promise<FoldResult> {
   const count = (row.count ?? 0) + 1
   const escalated = severityRank(alert.severity) > severityRank(row.severity)
   const severity = escalated ? alert.severity : row.severity
@@ -311,12 +334,16 @@ function timeMs(v: unknown): number {
  * (503) finds the incident still live and resolves it again; the restore is a
  * compare-and-set, so it never undoes a write that landed in between.
  */
-async function resolveFromSource(ctx: AppContext, resolve: ResolveEnvelope): Promise<WebhookResult> {
+async function resolveFromSource(
+  ctx: AppContext,
+  resolve: ResolveEnvelope,
+): Promise<WebhookResult> {
   const row = await findByDedupKey(ctx, resolve.source, resolve.dedupKey)
   if (!row || row.status === "resolved") return json({ resolved: false })
 
   const latest = timeMs(row.alert_ts ?? row.last_seen_at)
-  if (Number.isFinite(latest) && resolve.ts.getTime() < latest) return json({ resolved: false, stale: true })
+  if (Number.isFinite(latest) && resolve.ts.getTime() < latest)
+    return json({ resolved: false, stale: true })
 
   const note = `cleared by ${resolve.source} at ${resolve.ts.toISOString()}`
   const previous = {
@@ -356,7 +383,12 @@ async function resolveFromSource(ctx: AppContext, resolve: ResolveEnvelope): Pro
       // Restore only while the row still carries exactly what this resolve wrote; the
       // (source, dedup_key) pair is unique, and the note embeds this resolve's own ts.
       await ctx.db.updateMany("incidents", {
-        where: { source: row.source, dedup_key: resolve.dedupKey, status: "resolved", resolution_note: note },
+        where: {
+          source: row.source,
+          dedup_key: resolve.dedupKey,
+          status: "resolved",
+          resolution_note: note,
+        },
         data: previous,
       })
     } catch (restoreErr) {
@@ -440,7 +472,8 @@ export async function alertWebhookHandler(
     // delivery sends it now instead of a repeat or escalation, so the incident still pages.
     if (sendCreated) {
       await assignMissingRefs(ctx, { limit: CREATE_REF_BATCH })
-      const numbered = ((await ctx.db.findOne("incidents", fold.row.id)) as IncidentRow | null) ?? fold.row
+      const numbered =
+        ((await ctx.db.findOne("incidents", fold.row.id)) as IncidentRow | null) ?? fold.row
       await ctx.emit({
         entity: "incident",
         action: "created",
@@ -459,7 +492,8 @@ export async function alertWebhookHandler(
       metadata: axes(alert, fold.severity),
     })
     // A reopen pages on its own event: a created that never went out is moot now.
-    if (fold.action === "reopened" && row.created_pending === true) await markCreatedSent(ctx, fold.row.id)
+    if (fold.action === "reopened" && row.created_pending === true)
+      await markCreatedSent(ctx, fold.row.id)
     return OK
   } catch (err) {
     ctx.logger.error("monitoring alert webhook failed", {

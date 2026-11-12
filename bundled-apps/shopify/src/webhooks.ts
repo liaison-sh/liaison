@@ -22,8 +22,8 @@
 import type { AppContext, WebhookResult } from "@liaison/app-sdk"
 import {
   normalizeDraftOrderWebhook,
-  toPoNumber,
   type ShopifyDraftOrderWebhookPayload,
+  toPoNumber,
 } from "./lib/draft-order"
 import { emitEvent } from "./lib/emit"
 import { connectedShopDomains, ensureInstallMetadata } from "./lib/get-client"
@@ -287,7 +287,11 @@ interface ShopifyInventoryLevelPayload {
   available?: number
 }
 
-function pickMoneyBag(set: ShopifyMoneyBag | undefined, fallbackAmount: string, fallbackCurrency: string): { amount: string; currencyCode: string } {
+function pickMoneyBag(
+  set: ShopifyMoneyBag | undefined,
+  fallbackAmount: string,
+  fallbackCurrency: string,
+): { amount: string; currencyCode: string } {
   const money = set?.presentment_money ?? set?.shop_money
   return {
     amount: money?.amount ?? fallbackAmount,
@@ -412,7 +416,8 @@ export function buyerTaxIdFromNoteAttributes(
   for (const a of attrs ?? []) {
     const name = (a?.name ?? "").trim()
     const value = (a?.value ?? "").trim()
-    if (name !== "" && value !== "" && BUYER_TAX_ID_ATTRIBUTE_KEYS.has(attributeKey(name))) return value
+    if (name !== "" && value !== "" && BUYER_TAX_ID_ATTRIBUTE_KEYS.has(attributeKey(name)))
+      return value
   }
   return null
 }
@@ -561,7 +566,9 @@ function normalizeOrder(p: ShopifyOrderPayload, headers: WebhookHeaders | undefi
 async function validateShopDomain(
   ctx: AppContext,
   claimedShopDomain: string | undefined,
-): Promise<{ ok: true; installedShop: string } | { ok: false; reason: string; installedShop: string | null }> {
+): Promise<
+  { ok: true; installedShop: string } | { ok: false; reason: string; installedShop: string | null }
+> {
   if (!claimedShopDomain) {
     return { ok: false, reason: "missing shop domain", installedShop: null }
   }
@@ -581,7 +588,13 @@ async function runTopic<P>(
   topic: string,
   payload: P,
   headers: WebhookHeaders | undefined,
-  fn: () => Promise<{ entity: string; action: string; entityId: string; data: unknown; metadata: Record<string, unknown> } | null>,
+  fn: () => Promise<{
+    entity: string
+    action: string
+    entityId: string
+    data: unknown
+    metadata: Record<string, unknown>
+  } | null>,
 ): Promise<WebhookResult> {
   const webhookId = header(headers, "x-shopify-webhook-id")
   const claimedShopDomain = header(headers, "x-shopify-shop-domain")
@@ -932,7 +945,9 @@ export async function returnsRequestedHandler(
         id: String(p.id),
         orderId: p.order_id == null ? null : String(p.order_id),
         orderName: p.name ?? null,
-        itemSummary: (p.return_line_items ?? []).map((li) => `${li.quantity ?? 1}×${li.line_item_id ?? ""}`).join(", "),
+        itemSummary: (p.return_line_items ?? [])
+          .map((li) => `${li.quantity ?? 1}×${li.line_item_id ?? ""}`)
+          .join(", "),
       },
       // Attention axis metadata: the return-requested card filters on
       // market/currency. The returns/request_created payload carries neither,

@@ -8,7 +8,7 @@ import manifest from "../app.manifest.json"
 // bundled-manifests-valid.test.ts); these pin what the app means.
 describe("api-connector manifest", () => {
   it("is version 2.0.0, the catalog app that replaced the in-tree one", () => {
-    expect(manifest.version).toBe("2.0.0")
+    expect(manifest.version).toBe("2.0.1")
   })
 
   it("declares the connection as a platform-held API connection with the app's own scopes", () => {
@@ -59,7 +59,9 @@ describe("api-connector manifest", () => {
     expect(api.credentialFields.map((f: { name: string }) => f.name).sort()).toEqual(
       [...ALL_CREDENTIAL_FIELDS].sort(),
     )
-    expect(api.credentialFields.every((f: { required?: boolean }) => f.required === false)).toBe(true)
+    expect(api.credentialFields.every((f: { required?: boolean }) => f.required === false)).toBe(
+      true,
+    )
   })
 
   it("grants read/write to members and admin/accounts:admin to admins", () => {

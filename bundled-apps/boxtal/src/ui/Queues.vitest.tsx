@@ -123,7 +123,9 @@ async function mount(filter: "all" | "packed" = "all") {
 
 /** The ready rows' ids, in the order the table shows them. */
 function shownOrder(): string[] {
-  return screen.getAllByTestId(/^boxtal-ready-country-\d+$/).map((el) => el.getAttribute("data-testid")!.replace("boxtal-ready-country-", ""))
+  return screen
+    .getAllByTestId(/^boxtal-ready-country-\d+$/)
+    .map((el) => el.getAttribute("data-testid")!.replace("boxtal-ready-country-", ""))
 }
 
 afterEach(() => cleanup())
@@ -161,7 +163,9 @@ describe("Bought labels: Country column", () => {
 
   it("a row whose label read gave no number says tracking to confirm", async () => {
     await mount()
-    expect(screen.getByTestId("boxtal-ready-tracking-to-confirm-2").textContent).toContain("Tracking to confirm")
+    expect(screen.getByTestId("boxtal-ready-tracking-to-confirm-2").textContent).toContain(
+      "Tracking to confirm",
+    )
     expect(screen.queryByTestId("boxtal-ready-tracking-to-confirm-1")).toBeNull()
   })
 
@@ -188,11 +192,15 @@ describe("Bought labels: Country column", () => {
     await mount("packed")
     expect(screen.queryByTestId("boxtal-ready-empty")).toBeNull()
     const filter = screen.getByTestId("boxtal-prep-country") as HTMLSelectElement
-    expect(screen.getByTestId("boxtal-worklist-no-match").textContent).toContain("No rows match these filters")
+    expect(screen.getByTestId("boxtal-worklist-no-match").textContent).toContain(
+      "No rows match these filters",
+    )
     filter.value = "FR"
     fireEvent.change(filter)
     fireEvent.click(screen.getByTestId("boxtal-worklist-clear-filters"))
-    expect(screen.getByTestId("boxtal-worklist-filter-all").getAttribute("aria-pressed")).toBe("true")
+    expect(screen.getByTestId("boxtal-worklist-filter-all").getAttribute("aria-pressed")).toBe(
+      "true",
+    )
     expect((screen.getByTestId("boxtal-prep-country") as HTMLSelectElement).value).toBe("")
     expect(shownOrder()).toEqual(["1", "2", "3", "4"])
   })
@@ -216,8 +224,12 @@ describe("Bought labels: Print documents control", () => {
     await flush()
     expect(screen.getByTestId("boxtal-print-documents-1-panel")).toBeTruthy()
     expect(hostFetch).toHaveBeenCalledWith("/api/documents/templates?app=boxtal&entity=shipment")
-    expect((screen.getByTestId("boxtal-print-documents-1-check-tpl-tsca") as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByTestId("boxtal-print-documents-1-check-tpl-thanks") as HTMLInputElement).checked).toBe(false)
+    expect(
+      (screen.getByTestId("boxtal-print-documents-1-check-tpl-tsca") as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(
+      (screen.getByTestId("boxtal-print-documents-1-check-tpl-thanks") as HTMLInputElement).checked,
+    ).toBe(false)
     expect(screen.getByTestId("boxtal-print-documents-1-needed-tpl-tsca")).toBeTruthy()
     expect(screen.queryByTestId("boxtal-print-documents-1-needed-tpl-thanks")).toBeNull()
   })

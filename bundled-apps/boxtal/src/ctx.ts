@@ -32,10 +32,7 @@ export interface BoxtalToolCtx {
   fetch: BoxtalFetch
   connections: unknown
   config: { get(key: string): Promise<unknown>; has(key: string): Promise<boolean> }
-  executeTool: (
-    target: string,
-    args: string | Record<string, unknown>,
-  ) => Promise<CrossAppEnvelope>
+  executeTool: (target: string, args: string | Record<string, unknown>) => Promise<CrossAppEnvelope>
   logger?: BoxtalLogger
   /** Emit one of the app's declared events (manifest `events.emits`); the attention
    *  translations turn some of them into attention items. */

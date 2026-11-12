@@ -16,9 +16,20 @@ vi.mock("@liaison/host", () => ({
     invokeTool: async (tool: string, params: Record<string, unknown>) => {
       calls.push({ tool, params })
       if (tool === "settings_issuer_profile_list") {
-        return { items: [{ id: "iss-1", legal_name: "Issuer", country: "FR", is_default: true, today: "2026-11-06" }] }
+        return {
+          items: [
+            {
+              id: "iss-1",
+              legal_name: "Issuer",
+              country: "FR",
+              is_default: true,
+              today: "2026-11-06",
+            },
+          ],
+        }
       }
-      if (tool.endsWith("_create_and_issue")) return { status: "completed", document_id: "d-1", number: "QUO-2026-0001" }
+      if (tool.endsWith("_create_and_issue"))
+        return { status: "completed", document_id: "d-1", number: "QUO-2026-0001" }
       return { status: "ok" }
     },
   },
@@ -51,8 +62,12 @@ describe("the editor's issue date on a new quote", () => {
 
   it("a date the person picked reaches the create tool", async () => {
     render(() => <Editor initial={quote() as never} />)
-    await waitFor(() => expect(calls.some((c) => c.tool === "settings_issuer_profile_list")).toBe(true))
-    fireEvent.input(screen.getByTestId("editor-field-issued-at"), { target: { value: "2026-10-30" } })
+    await waitFor(() =>
+      expect(calls.some((c) => c.tool === "settings_issuer_profile_list")).toBe(true),
+    )
+    fireEvent.input(screen.getByTestId("editor-field-issued-at"), {
+      target: { value: "2026-10-30" },
+    })
     fireEvent.click(await screen.findByTestId("editor-button-issue"))
     await waitFor(() => expect(created()).toBeDefined())
     expect(created()?.params.issued_at).toBe("2026-10-30")
@@ -60,7 +75,9 @@ describe("the editor's issue date on a new quote", () => {
 
   it("a field left on its default sends no date", async () => {
     render(() => <Editor initial={quote() as never} />)
-    await waitFor(() => expect(calls.some((c) => c.tool === "settings_issuer_profile_list")).toBe(true))
+    await waitFor(() =>
+      expect(calls.some((c) => c.tool === "settings_issuer_profile_list")).toBe(true),
+    )
     fireEvent.click(await screen.findByTestId("editor-button-issue"))
     await waitFor(() => expect(created()).toBeDefined())
     expect(created()?.params).not.toHaveProperty("issued_at")

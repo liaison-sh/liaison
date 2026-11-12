@@ -54,7 +54,10 @@ function ctxFor(
       const method = init?.method ?? "GET"
       rec.calls.push({ url, method, body: init?.body, timeoutMs: init?.timeoutMs })
       if (url.includes("/me/accounts")) {
-        return { status: 200, body: JSON.stringify({ data: [{ id: PAGE, access_token: "page-token" }] }) }
+        return {
+          status: 200,
+          body: JSON.stringify({ data: [{ id: PAGE, access_token: "page-token" }] }),
+        }
       }
       if (method === "GET" && url.includes("/comments")) {
         if (opts.replies === "error") return { status: 500, body: "{}" }
@@ -158,7 +161,10 @@ describe("own replies are evidence, never findings", () => {
   test("webhook: a customer's comment is still a finding", async () => {
     const db = createMockDb()
     await seed(db)
-    const res = await parseWebhookJob(ctxFor(db), { platform: "facebook", body: echo("customer-7", "Where can I buy it?") })
+    const res = await parseWebhookJob(ctxFor(db), {
+      platform: "facebook",
+      body: echo("customer-7", "Where can I buy it?"),
+    })
     expect(res.ingested).toBe(1)
     expect(await db.count("finding", { where: { external_id: OUR_REPLY } })).toBe(1)
     expect((await finding(db)).status).toBe("triaged")
@@ -180,7 +186,10 @@ describe("own replies are evidence, never findings", () => {
     await parseWebhookJob(ctxFor(db), { platform: "facebook", body: echo() })
     const f = await finding(db)
     expect(f.status).toBe("handled")
-    expect(f.metadata.reply_intent).toMatchObject({ outcome: "landed", reply_external_id: OUR_REPLY })
+    expect(f.metadata.reply_intent).toMatchObject({
+      outcome: "landed",
+      reply_external_id: OUR_REPLY,
+    })
     expect((await finding(db, "self-1")).status).toBe("dismissed")
   })
 
@@ -244,7 +253,10 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
     expect(ctx.protocol.map((p) => p.step)).toEqual(["started", "landed", "succeeded"])
     const f = await finding(db)
     expect(f.status).toBe("handled")
-    expect(f.metadata.reply_intent).toMatchObject({ approval_request_id: "appr-1", outcome: "landed" })
+    expect(f.metadata.reply_intent).toMatchObject({
+      approval_request_id: "appr-1",
+      outcome: "landed",
+    })
   })
 
   test("a retry whose earlier post went through finds the reply and does not post again", async () => {
@@ -264,7 +276,9 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
     const db = createMockDb()
     await seed(db, { reply_intent: { approval_request_id: "appr-1", reply_text: REPLY } })
     const ctx = ctxFor(db, { approvalRequestId: "appr-1", replies: "error" })
-    await expect(replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })).rejects.toThrow(/send_outcome_unknown/)
+    await expect(replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })).rejects.toThrow(
+      /send_outcome_unknown/,
+    )
     expect(ctx.calls.filter((c) => c.method === "POST").length).toBe(0)
     expect(ctx.protocol.map((p) => p.step)).toEqual(["started"])
   })
@@ -282,15 +296,23 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
     const db = createMockDb()
     await seed(db)
     const ctx = ctxFor(db, { approvalRequestId: "appr-1", post: "timeout" })
-    await expect(replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })).rejects.toThrow(/timed out/)
+    await expect(replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })).rejects.toThrow(
+      /timed out/,
+    )
     expect(ctx.protocol.map((p) => p.step)).toEqual(["started"])
-    expect((await finding(db)).metadata.reply_intent).toMatchObject({ approval_request_id: "appr-1", reply_text: REPLY })
+    expect((await finding(db)).metadata.reply_intent).toMatchObject({
+      approval_request_id: "appr-1",
+      reply_text: REPLY,
+    })
   })
 
   test("a refused POST records failed (no effect)", async () => {
     const db = createMockDb()
     await seed(db)
-    const ctx = ctxFor(db, { approvalRequestId: "appr-1", post: { status: 400, body: { error: { message: "nope" } } } })
+    const ctx = ctxFor(db, {
+      approvalRequestId: "appr-1",
+      post: { status: 400, body: { error: { message: "nope" } } },
+    })
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })
     expect(res).toMatchObject({ status: "failed" })
     expect(ctx.protocol.map((p) => p.step)).toEqual(["started", "failed_no_effect"])
@@ -301,18 +323,24 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
   test("a rate-limited POST records failed (no effect) and leaves the approval to be approved again", async () => {
     const db = createMockDb()
     await seed(db)
-    const ctx = ctxFor(db, { approvalRequestId: "appr-1", post: { status: 429, body: { error: { message: "slow down" } } } })
+    const ctx = ctxFor(db, {
+      approvalRequestId: "appr-1",
+      post: { status: 429, body: { error: { message: "slow down" } } },
+    })
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })
     expect(res).toMatchObject({ status: "failed", reason: "rate_limited" })
     expect(ctx.protocol[1]?.step).toBe("failed_no_effect")
-    expect((ctx.protocol[1]?.ref as Record<string, unknown>).final).toBeUndefined()
+    expect((ctx.protocol[1]!.ref as Record<string, unknown>).final).toBeUndefined()
   })
 
   test("reconcile: the echo after a timed-out post settles the approval as executed, without a Graph read", async () => {
     const db = createMockDb()
     await seed(db)
     await expect(
-      replyToFinding(ctxFor(db, { approvalRequestId: "appr-1", post: "timeout" }), { finding_id: "f1", reply_text: REPLY }),
+      replyToFinding(ctxFor(db, { approvalRequestId: "appr-1", post: "timeout" }), {
+        finding_id: "f1",
+        reply_text: REPLY,
+      }),
     ).rejects.toThrow()
     // Meta echoes the comment a few seconds later.
     await parseWebhookJob(ctxFor(db), { platform: "facebook", body: echo() })
@@ -321,7 +349,10 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
       approval_request_id: "appr-1",
       payload: { finding_id: "f1", reply_text: REPLY },
     })
-    expect(out).toMatchObject({ outcome: "executed", ref: { reply_external_id: OUR_REPLY, source: "recorded" } })
+    expect(out).toMatchObject({
+      outcome: "executed",
+      ref: { reply_external_id: OUR_REPLY, source: "recorded" },
+    })
     expect(ctx.calls.length).toBe(0)
   })
 
@@ -332,7 +363,10 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
       ctxFor(db, { replies: [{ id: OUR_REPLY, message: REPLY, from: { id: PAGE } }] }),
       { approval_request_id: "appr-1", payload: { finding_id: "f1", reply_text: REPLY } },
     )
-    expect(out).toMatchObject({ outcome: "executed", ref: { reply_external_id: OUR_REPLY, source: "platform_read" } })
+    expect(out).toMatchObject({
+      outcome: "executed",
+      ref: { reply_external_id: OUR_REPLY, source: "platform_read" },
+    })
     expect((await finding(db)).status).toBe("handled")
   })
 

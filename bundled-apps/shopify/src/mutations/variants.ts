@@ -5,12 +5,12 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
 import {
-  type PreflightResult,
+  idempotencyKey,
   makeMutationError,
+  type PreflightResult,
+  preflightRefusal,
   resolveMutationInput,
   runMutation,
-  idempotencyKey,
-  preflightRefusal,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -32,7 +32,11 @@ async function resolveProductIdForVariant(ctx: AppContext, variantId: string): P
     { id: variantId },
   )
   const pid = data.productVariant?.product?.id
-  if (!pid) throw makeMutationError("NOT_FOUND", `variant ${variantId} not found (cannot resolve productId)`)
+  if (!pid)
+    throw makeMutationError(
+      "NOT_FOUND",
+      `variant ${variantId} not found (cannot resolve productId)`,
+    )
   return pid
 }
 
@@ -113,14 +117,21 @@ export const VARIANTS_BULK_CREATE = `
     }
   }
 `
-export async function variants_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function variants_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = resolveMutationInput(params)
   const productId = (input.productId ?? params.productId) as string | undefined
   if (!productId) throw makeMutationError("BAD_PARAM", "productId is required")
   const variant = normalizeVariantBulkInput(stripProductId(input))
   return runMutation(ctx, {
     query: VARIANTS_BULK_CREATE,
-    variables: { productId, variants: [variant], key: idempotencyKey("variants-create", { productId, variant }) },
+    variables: {
+      productId,
+      variants: [variant],
+      key: idempotencyKey("variants-create", { productId, variant }),
+    },
     dataKey: "productVariantsBulkCreate",
     eventEntity: "variant",
     eventAction: "created",
@@ -167,12 +178,19 @@ export async function variants_update_preflight(
   return { ok: true }
 }
 
-export async function variants_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function variants_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const { input, productId } = await resolveVariantsUpdateTarget(params, ctx)
   const variant = normalizeVariantBulkInput(stripProductId(input))
   return runMutation(ctx, {
     query: VARIANTS_BULK_UPDATE,
-    variables: { productId, variants: [variant], key: idempotencyKey("variants-update", { productId, variant }) },
+    variables: {
+      productId,
+      variants: [variant],
+      key: idempotencyKey("variants-update", { productId, variant }),
+    },
     dataKey: "productVariantsBulkUpdate",
     eventEntity: "variant",
     eventAction: "updated",
@@ -218,7 +236,10 @@ export async function variants_delete_preflight(
   return { ok: true }
 }
 
-export async function variants_delete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function variants_delete(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const { variantId, productId } = await resolveVariantsDeleteTarget(params, ctx)
   return runMutation(ctx, {
     query: VARIANTS_BULK_DELETE,

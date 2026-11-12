@@ -12,9 +12,9 @@ import {
   generateOrderDocuments,
   moneyText,
   ORDER_RECORD_TYPE,
+  type OrderDraftView,
   orderDocumentsByRef,
   orderPrintRecordGet,
-  type OrderDraftView,
   readOrderDocuments,
   recordFingerprint,
 } from "./customs-documents"
@@ -40,7 +40,15 @@ const DRAFT: OrderDraftView = {
       hs_code: "0000.00.0000",
       country_of_origin: "FR",
     },
-    { line_id: "l2", external_id: null, description: "Shipping", line_kind: "shipping", quantity: 1, unit_price_minor: 900, currency: "USD" },
+    {
+      line_id: "l2",
+      external_id: null,
+      description: "Shipping",
+      line_kind: "shipping",
+      quantity: 1,
+      unit_price_minor: 900,
+      currency: "USD",
+    },
   ],
   customsArticles: [],
   recipient_address: {
@@ -77,7 +85,10 @@ function harness(
   const matches: Array<Record<string, unknown>> = []
   const briefs: Array<Record<string, unknown>> = []
   let n = 0
-  const executeTool = async (target: string, params: Record<string, unknown>): Promise<CrossAppEnvelope> => {
+  const executeTool = async (
+    target: string,
+    params: Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> => {
     if (target === "kernel:product_attributes_list") {
       const asked = new Set((params.skus as string[]) ?? [])
       return {
@@ -92,17 +103,30 @@ function harness(
     }
     if (target === "shopify:variants_brief") {
       briefs.push(params)
-      if (opts.variants === null) return { status: "error", error: { code: "unavailable", message: "store down" } }
+      if (opts.variants === null)
+        return { status: "error", error: { code: "unavailable", message: "store down" } }
       const known = opts.variants ?? {}
       return {
         status: "completed",
-        result: { variants: ((params.ids as string[]) ?? []).flatMap((id) => (known[id] ? [{ id, sku: known[id] }] : [])) },
+        result: {
+          variants: ((params.ids as string[]) ?? []).flatMap((id) =>
+            known[id] ? [{ id, sku: known[id] }] : [],
+          ),
+        },
       }
     }
     if (target === "invoicing:documents_get")
       return {
         status: "completed",
-        result: { id: REF, number: "INV-T-0001", incoterm: "DAP", currency: "USD", counterparty_country: "US", status: "issued", external_refs: { po_number: "PO-T-1" } },
+        result: {
+          id: REF,
+          number: "INV-T-0001",
+          incoterm: "DAP",
+          currency: "USD",
+          counterparty_country: "US",
+          status: "issued",
+          external_refs: { po_number: "PO-T-1" },
+        },
       }
     if (target === "kernel:document_rules_match") {
       matches.push(params)
@@ -110,7 +134,14 @@ function harness(
       return {
         status: "completed",
         result: {
-          matches: opts.needs === false ? [] : records.map((r) => ({ recordId: r.id, rules: [{ id: "r1", name: "US" }], templates: [TEMPLATE] })),
+          matches:
+            opts.needs === false
+              ? []
+              : records.map((r) => ({
+                  recordId: r.id,
+                  rules: [{ id: "r1", name: "US" }],
+                  templates: [TEMPLATE],
+                })),
         },
       }
     }
@@ -130,7 +161,8 @@ function harness(
         },
       }
     }
-    if (target === "invoicing:documents_download_pdf") return { status: "completed", result: { file_id: "invoice-file" } }
+    if (target === "invoicing:documents_download_pdf")
+      return { status: "completed", result: { file_id: "invoice-file" } }
     return { status: "error", error: { code: "unmocked", message: target } }
   }
   const ctx: BoxtalToolCtx = {
@@ -158,14 +190,32 @@ describe("formatting", () => {
 describe("order print record", () => {
   it("before a label: the invoice, the delivery address and the goods lines, no carrier, no tracking", async () => {
     const { ctx } = harness()
-    const rec = await orderPrintRecordGet(ctx, { document_ref: REF }, { today: "2026-11-09", readDraft })
+    const rec = await orderPrintRecordGet(
+      ctx,
+      { document_ref: REF },
+      { today: "2026-11-09", readDraft },
+    )
     if ("error" in rec) throw new Error(rec.error.message)
-    expect(rec.invoice).toEqual({ number: "INV-T-0001", date: "2026-11-01", date_text: "1 November 2026" })
-    expect(rec.order.address_lines).toEqual(["Test Store", "1 Test Street", "Testville, TX 00001", "United States"])
+    expect(rec.invoice).toEqual({
+      number: "INV-T-0001",
+      date: "2026-11-01",
+      date_text: "1 November 2026",
+    })
+    expect(rec.order.address_lines).toEqual([
+      "Test Store",
+      "1 Test Street",
+      "Testville, TX 00001",
+      "United States",
+    ])
     expect(rec.order.phone).toBeNull() // never invented
     expect(rec.order.po_number).toBe("PO-T-1")
     expect(rec.order.incoterm).toBe("DAP")
-    expect(rec.shipment).toMatchObject({ has_label: false, carrier_name: null, tracking_number: null, reference: null })
+    expect(rec.shipment).toMatchObject({
+      has_label: false,
+      carrier_name: null,
+      tracking_number: null,
+      reference: null,
+    })
     expect(rec.lines).toHaveLength(1) // goods only
     expect(rec.lines[0]).toMatchObject({
       sku: "SKU-WIDGET",
@@ -188,7 +238,11 @@ describe("order print record", () => {
     }
     try {
       const { ctx } = harness()
-      const rec = await orderPrintRecordGet(ctx, { document_ref: REF }, { today: "2026-11-09", readDraft })
+      const rec = await orderPrintRecordGet(
+        ctx,
+        { document_ref: REF },
+        { today: "2026-11-09", readDraft },
+      )
       if ("error" in rec) throw new Error(rec.error.message)
       expect(rec.destination).toEqual({ iso2: "US", name: "United States" })
       expect(rec.lines[0]?.origin_name).toBe("France")
@@ -200,8 +254,17 @@ describe("order print record", () => {
 
   it("a line keyed by a store variant id prints the variant's SKU and its product attributes", async () => {
     const h = harness({ variants: { [VARIANT]: "SKU-A" } })
-    const draft = { ...DRAFT, lineSummaries: DRAFT.lineSummaries?.map((l) => (l.line_id === "l1" ? { ...l, external_id: VARIANT } : l)) }
-    const rec = await orderPrintRecordGet(h.ctx, { document_ref: REF }, { today: "2026-11-09", readDraft: async () => draft })
+    const draft = {
+      ...DRAFT,
+      lineSummaries: DRAFT.lineSummaries?.map((l) =>
+        l.line_id === "l1" ? { ...l, external_id: VARIANT } : l,
+      ),
+    }
+    const rec = await orderPrintRecordGet(
+      h.ctx,
+      { document_ref: REF },
+      { today: "2026-11-09", readDraft: async () => draft },
+    )
     if ("error" in rec) throw new Error(rec.error.message)
     expect(h.briefs).toEqual([{ ids: [VARIANT] }]) // one call for every line
     expect(rec.lines[0]).toMatchObject({ sku: "SKU-A", attributes: { metal: "steel" } })
@@ -209,23 +272,48 @@ describe("order print record", () => {
     // The rules match on the same SKU, so SKU and product-attribute rules find the order.
     const [r] = await generateOrderDocuments(h.ctx, [REF], { readDraft: async () => draft })
     expect(r?.error).toBeUndefined()
-    expect((h.matches[0]?.records as Array<Record<string, unknown>>)[0]).toMatchObject({ skus: ["SKU-A"] })
+    expect((h.matches[0]!.records as Array<Record<string, unknown>>)[0]).toMatchObject({
+      skus: ["SKU-A"],
+    })
   })
 
   it("a variant whose SKU cannot be read keeps its id and the record still reads", async () => {
     const h = harness({ variants: null })
-    const draft = { ...DRAFT, lineSummaries: DRAFT.lineSummaries?.map((l) => (l.line_id === "l1" ? { ...l, external_id: VARIANT } : l)) }
-    const rec = await orderPrintRecordGet(h.ctx, { document_ref: REF }, { today: "2026-11-09", readDraft: async () => draft })
+    const draft = {
+      ...DRAFT,
+      lineSummaries: DRAFT.lineSummaries?.map((l) =>
+        l.line_id === "l1" ? { ...l, external_id: VARIANT } : l,
+      ),
+    }
+    const rec = await orderPrintRecordGet(
+      h.ctx,
+      { document_ref: REF },
+      { today: "2026-11-09", readDraft: async () => draft },
+    )
     if ("error" in rec) throw new Error(rec.error.message)
     expect(rec.lines[0]).toMatchObject({ sku: VARIANT, attributes: {} })
   })
 
   it("the issue date does not make a record stale; a tracking number does", () => {
     const snapshot = buildPrintSnapshot(DRAFT, { offerCode: "FEDX-InternationalEconomy" })
-    const base = { documentRef: REF, snapshot, invoice: null, attributes: new Map(), today: "2026-11-09" }
-    const row = { id: "s1", offer_code: "FEDX-InternationalEconomy", created_at: "2026-11-10T08:00:00Z" }
+    const base = {
+      documentRef: REF,
+      snapshot,
+      invoice: null,
+      attributes: new Map(),
+      today: "2026-11-09",
+    }
+    const row = {
+      id: "s1",
+      offer_code: "FEDX-InternationalEconomy",
+      created_at: "2026-11-10T08:00:00Z",
+    }
     const a = composeOrderRecord({ ...base, shipment: { ...row, tracking_number: null } })
-    const b = composeOrderRecord({ ...base, today: "2026-11-10", shipment: { ...row, tracking_number: null } })
+    const b = composeOrderRecord({
+      ...base,
+      today: "2026-11-10",
+      shipment: { ...row, tracking_number: null },
+    })
     const c = composeOrderRecord({ ...base, shipment: { ...row, tracking_number: "TRK123" } })
     expect(recordFingerprint(a)).toBe(recordFingerprint(b))
     expect(recordFingerprint(a)).not.toBe(recordFingerprint(c))
@@ -239,12 +327,27 @@ describe("generation", () => {
     const h = harness()
     // 1. To prepare: no label yet.
     const [first] = await generateOrderDocuments(h.ctx, [REF], { readDraft })
-    expect(first).toMatchObject({ document_ref: REF, needed: [TEMPLATE.id], printed: [TEMPLATE.id] })
+    expect(first).toMatchObject({
+      document_ref: REF,
+      needed: [TEMPLATE.id],
+      printed: [TEMPLATE.id],
+    })
     expect(h.matches[0]).toMatchObject({ recordType: ORDER_RECORD_TYPE })
-    expect((h.matches[0]?.records as Array<Record<string, unknown>>)[0]).toMatchObject({ id: REF, skus: ["SKU-WIDGET"], countryIso2: "US" })
-    expect(h.prints[0]).toEqual({ app: "boxtal", entity: "order", recordId: REF, templateIds: [TEMPLATE.id] })
+    expect((h.matches[0]!.records as Array<Record<string, unknown>>)[0]).toMatchObject({
+      id: REF,
+      skus: ["SKU-WIDGET"],
+      countryIso2: "US",
+    })
+    expect(h.prints[0]).toEqual({
+      app: "boxtal",
+      entity: "order",
+      recordId: REF,
+      templateIds: [TEMPLATE.id],
+    })
     let docs = (await orderDocumentsByRef(h.ctx, [REF])).get(REF) ?? []
-    expect(docs.map((d) => [d.file_id, d.tracking_number, d.blanks])).toEqual([["file-1", null, ["Delivery phone"]]])
+    expect(docs.map((d) => [d.file_id, d.tracking_number, d.blanks])).toEqual([
+      ["file-1", null, ["Delivery phone"]],
+    ])
 
     // 2. Next pass, nothing changed: nothing reprinted.
     const [second] = await generateOrderDocuments(h.ctx, [REF], { readDraft, today: "2026-11-12" })
@@ -254,7 +357,10 @@ describe("generation", () => {
     // 3. The label is bought and the tracking number is known: printed again, the new file replaces the old.
     const snapshot = buildPrintSnapshot(DRAFT, {
       offerCode: "FEDX-InternationalEconomy",
-      customer: { contact: { firstName: "Test", lastName: "Person" }, location: { countryIsoCode: "US", city: "Testville" } },
+      customer: {
+        contact: { firstName: "Test", lastName: "Person" },
+        location: { countryIsoCode: "US", city: "Testville" },
+      },
     })
     await h.ctx.db.insert("shipment", {
       id: "ship-1",
@@ -268,7 +374,9 @@ describe("generation", () => {
     })
     const [third] = await generateOrderDocuments(h.ctx, [REF], { readDraft })
     expect(third?.printed).toEqual([TEMPLATE.id])
-    expect((h.matches[2]?.records as Array<Record<string, unknown>>)[0]).toMatchObject({ carrier_family: "fedex" })
+    expect((h.matches[2]!.records as Array<Record<string, unknown>>)[0]).toMatchObject({
+      carrier_family: "fedex",
+    })
     docs = (await orderDocumentsByRef(h.ctx, [REF])).get(REF) ?? []
     expect(docs.map((d) => [d.file_id, d.tracking_number])).toEqual([["file-2", "TRK123"]])
   })
@@ -283,10 +391,13 @@ describe("generation", () => {
 
   it("reports a print failure instead of throwing", async () => {
     const h = harness()
-    const ctx = { ...h.ctx, executeTool: (async (target: string, params: Record<string, unknown>) =>
-      target === "kernel:documents_print"
-        ? { status: "error", error: { code: "template_invalid", message: "bad template" } }
-        : h.ctx.executeTool(target, params)) as BoxtalToolCtx["executeTool"] }
+    const ctx = {
+      ...h.ctx,
+      executeTool: (async (target: string, params: Record<string, unknown>) =>
+        target === "kernel:documents_print"
+          ? { status: "error", error: { code: "template_invalid", message: "bad template" } }
+          : h.ctx.executeTool(target, params)) as BoxtalToolCtx["executeTool"],
+    }
     const [r] = await generateOrderDocuments(ctx, [REF], { readDraft })
     expect(r?.error).toContain("bad template")
   })
@@ -294,6 +405,8 @@ describe("generation", () => {
   it("reads stored papers defensively", () => {
     expect(readOrderDocuments(null)).toEqual([])
     expect(readOrderDocuments("not json")).toEqual([])
-    expect(readOrderDocuments([{ template_id: "t" }, { template_id: "t", file_id: "f" }])).toHaveLength(1)
+    expect(
+      readOrderDocuments([{ template_id: "t" }, { template_id: "t", file_id: "f" }]),
+    ).toHaveLength(1)
   })
 })

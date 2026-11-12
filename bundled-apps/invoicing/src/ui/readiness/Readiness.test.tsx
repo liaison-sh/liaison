@@ -13,7 +13,9 @@ describe("readiness", () => {
   it("empty state explains that nothing blocks", () => {
     expect(readinessRows({ items: [] })).toEqual([])
     expect(readinessRows(null)).toEqual([])
-    expect(READINESS_EMPTY).toBe("Nothing blocks e-invoicing: every French business customer has what an e-invoice needs.")
+    expect(READINESS_EMPTY).toBe(
+      "Nothing blocks e-invoicing: every French business customer has what an e-invoice needs.",
+    )
     expect(source).toContain("READINESS_EMPTY")
   })
 
@@ -53,9 +55,24 @@ describe("readiness", () => {
   it("a customer with two blockers is one card with two lines, each with its own action", () => {
     const rows = readinessRows({
       items: [
-        { subject: { contact_id: "c-1", label: "Atelier Fictif" }, blocker_code: "einvoice_data_missing", action: { tool: "counterparty_identity_lookup", label: "Look up the SIREN" }, last_document_date: "2026-10-01" },
-        { subject: { contact_id: "c-2", label: "Maison Inventée" }, blocker_code: "customer_kind_missing", action: { tool: "counterparty_identity_set", label: "Record the customer type" }, last_document_date: null },
-        { subject: { contact_id: "c-1", label: "Atelier Fictif" }, blocker_code: "einvoice_data_missing", action: { tool: "drafts_update", label: "Add the billing postcode and city" }, last_document_date: "2026-10-04" },
+        {
+          subject: { contact_id: "c-1", label: "Atelier Fictif" },
+          blocker_code: "einvoice_data_missing",
+          action: { tool: "counterparty_identity_lookup", label: "Look up the SIREN" },
+          last_document_date: "2026-10-01",
+        },
+        {
+          subject: { contact_id: "c-2", label: "Maison Inventée" },
+          blocker_code: "customer_kind_missing",
+          action: { tool: "counterparty_identity_set", label: "Record the customer type" },
+          last_document_date: null,
+        },
+        {
+          subject: { contact_id: "c-1", label: "Atelier Fictif" },
+          blocker_code: "einvoice_data_missing",
+          action: { tool: "drafts_update", label: "Add the billing postcode and city" },
+          last_document_date: "2026-10-04",
+        },
       ],
     })
     // Two blockers with the same code for one customer stay two rows with distinct keys.
@@ -65,12 +82,21 @@ describe("readiness", () => {
       ["Atelier Fictif", 2, "2026-10-04"],
       ["Maison Inventée", 1, null],
     ])
-    expect(groups[0]!.rows.map((r) => r.action.label)).toEqual(["Look up the SIREN", "Add the billing postcode and city"])
+    expect(groups[0]!.rows.map((r) => r.action.label)).toEqual([
+      "Look up the SIREN",
+      "Add the billing postcode and city",
+    ])
   })
 
   it("a blocker with an unknown tool still opens its subject", () => {
     const [row] = readinessRows({
-      items: [{ subject: { contact_id: "c-9" }, blocker_code: "einvoice_data_missing", action: { tool: "something_new" } }],
+      items: [
+        {
+          subject: { contact_id: "c-9" },
+          blocker_code: "einvoice_data_missing",
+          action: { tool: "something_new" },
+        },
+      ],
     })
     expect(row!.action.href).toBe("/invoicing/identity/c-9")
     expect(row!.label).toBe("Customer (name not recorded)")
@@ -79,11 +105,19 @@ describe("readiness", () => {
 
   it("shows the contact's name, else the stored customer name, never the raw id", () => {
     const items = [
-      { subject: { contact_id: "c-1", label: "Stored Name" }, blocker_code: "einvoice_data_missing" },
-      { subject: { contact_id: "c-2", label: "Stored Two" }, blocker_code: "einvoice_data_missing" },
+      {
+        subject: { contact_id: "c-1", label: "Stored Name" },
+        blocker_code: "einvoice_data_missing",
+      },
+      {
+        subject: { contact_id: "c-2", label: "Stored Two" },
+        blocker_code: "einvoice_data_missing",
+      },
       { subject: { contact_id: "c-3" }, blocker_code: "einvoice_data_missing" },
     ]
-    const labels = readinessRows({ items }, new Map([["c-1", "Atelier Fictif"]])).map((r) => r.label)
+    const labels = readinessRows({ items }, new Map([["c-1", "Atelier Fictif"]])).map(
+      (r) => r.label,
+    )
     expect(labels).toEqual(["Atelier Fictif", "Stored Two", "Customer (name not recorded)"])
     for (const l of labels) expect(l).not.toMatch(/c-\d/)
   })

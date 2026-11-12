@@ -62,7 +62,7 @@ export interface RunTiming {
   app: string
   /** `<kind>:<name>`: tool:<tool>, webhook:<export>, job:<job>, event:<export>, ... */
   entry: string
-  executor: "workers" | "quickjs" | "inprocess"
+  executor: RunSettledInfo["executor"]
   nested: boolean
   parentApp?: string
   /** Wall time of the whole run as runApp saw it (admission and loader included). */

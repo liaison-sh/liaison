@@ -149,7 +149,11 @@ export class ShopifyClient {
         continue
       }
       if (res.status >= 400) {
-        throw makeError("HTTP_ERROR", `Shopify HTTP ${res.status}: ${res.body.slice(0, 200)}`, res.status)
+        throw makeError(
+          "HTTP_ERROR",
+          `Shopify HTTP ${res.status}: ${res.body.slice(0, 200)}`,
+          res.status,
+        )
       }
 
       const parsed = safeJsonParse(res.body)
@@ -205,7 +209,10 @@ export class ShopifyClient {
       const vars: Record<string, unknown> = { ...(opts.variables ?? {}), first, after: cursor }
       const data = await this.query<Record<string, unknown>>(opts.query, vars)
       const conn = (data as Record<string, unknown>)[opts.path] as
-        | { edges?: Array<{ node: TNode }>; pageInfo?: { hasNextPage: boolean; endCursor: string | null } }
+        | {
+            edges?: Array<{ node: TNode }>
+            pageInfo?: { hasNextPage: boolean; endCursor: string | null }
+          }
         | undefined
       if (!conn?.edges) return
       for (const edge of conn.edges) {
@@ -244,11 +251,7 @@ export function throttlePauseFor(
   return Math.min(Math.max(ms, 1), MAX_THROTTLE_PAUSE_MS)
 }
 
-function makeError(
-  code: ShopifyError["code"],
-  message: string,
-  status?: number,
-): ShopifyError {
+function makeError(code: ShopifyError["code"], message: string, status?: number): ShopifyError {
   const err = new Error(message) as ShopifyError
   err.code = code
   if (typeof status === "number") err.status = status

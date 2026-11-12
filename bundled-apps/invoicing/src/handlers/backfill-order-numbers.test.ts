@@ -6,11 +6,11 @@
 import { describe, expect, test } from "bun:test"
 import { createMockDb, type MockDb } from "../test-db"
 import {
+  type BackfillCrossAppEnvelope,
+  type BackfillCtx,
   backfillOrderNumbers,
   backfillOrderNumbersJobHandler,
   ORDER_NUMBER_BACKFILL_MARKER,
-  type BackfillCrossAppEnvelope,
-  type BackfillCtx,
 } from "./backfill-order-numbers"
 
 interface SeedDocOptions {
@@ -90,7 +90,9 @@ describe("backfillOrderNumbers (one-time, v0.9.0)", () => {
 
   test("uses external_refs when the importer already recorded the number — no Shopify call", async () => {
     const { ctx, db, calls } = makeCtx({
-      docs: [seedDoc({ external_refs: { shopify_order_number: "#2677", import_source: "sufio.csv" } })],
+      docs: [
+        seedDoc({ external_refs: { shopify_order_number: "#2677", import_source: "sufio.csv" } }),
+      ],
     })
     const r = await backfillOrderNumbers(ctx)
     expect(r.filled_from_refs).toBe(1)

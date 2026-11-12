@@ -50,7 +50,16 @@ export function goldenCtx(c: GoldenCase) {
   const db = createMockDb({
     seed: {
       shipping_profile: [
-        { id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.5, solo_length: 30, solo_width: 20, solo_height: 10, content_category: "content:v1:10120" },
+        {
+          id: "p1",
+          product_source: "shopify",
+          product_id: "V1",
+          unit_weight: 0.5,
+          solo_length: 30,
+          solo_width: 20,
+          solo_height: 10,
+          content_category: "content:v1:10120",
+        },
       ],
       app_config: [{ id: "cfg-sender", key: "sender_address", value: SENDER }],
       ...(c.doc.shopify_order_id
@@ -64,9 +73,15 @@ export function goldenCtx(c: GoldenCase) {
                 ...(c.cachedShipTo && c.order
                   ? {
                       ship_to: c.order.shippingAddress
-                        ? { source: "order", address: { ...c.order.shippingAddress, email: c.order.email ?? null } }
+                        ? {
+                            source: "order",
+                            address: { ...c.order.shippingAddress, email: c.order.email ?? null },
+                          }
                         : c.order.customerAddress
-                          ? { source: "customer", address: { ...c.order.customerAddress, email: c.order.email ?? null } }
+                          ? {
+                              source: "customer",
+                              address: { ...c.order.customerAddress, email: c.order.email ?? null },
+                            }
                           : null,
                     }
                   : {}),
@@ -75,11 +90,23 @@ export function goldenCtx(c: GoldenCase) {
           }
         : {}),
       ...(c.prepRecipient
-        ? { prep_order_state: [{ id: `pos-${c.id}`, order_key: `proforma:${id}`, proforma_document_ref: id, recipient: c.prepRecipient }] }
+        ? {
+            prep_order_state: [
+              {
+                id: `pos-${c.id}`,
+                order_key: `proforma:${id}`,
+                proforma_document_ref: id,
+                recipient: c.prepRecipient,
+              },
+            ],
+          }
         : {}),
     },
   })
-  const executeTool = async (target: string, _args: string | Record<string, unknown>): Promise<CrossAppEnvelope> => {
+  const executeTool = async (
+    target: string,
+    _args: string | Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> => {
     calls.push(target)
     if (target === "invoicing:documents_get") return { status: "completed", result: doc }
     if (target === "kernel:contacts_read") {
@@ -145,4 +172,3 @@ export function goldenCtx(c: GoldenCase) {
   }
   return { ctx, calls, id }
 }
-

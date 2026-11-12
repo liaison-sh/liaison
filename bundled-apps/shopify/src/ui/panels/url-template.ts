@@ -62,9 +62,7 @@ export function renderUrlTemplate(template: string, vars: TemplateVars): string 
   // link still points at a real (if less specific) admin page.
   const safeTemplate =
     vars.orderId === undefined || vars.orderId === ""
-      ? template
-          .replace("orders/{{orderId}}", "refunds")
-          .replace("#refund-{{id}}", "/{{id}}")
+      ? template.replace("orders/{{orderId}}", "refunds").replace("#refund-{{id}}", "/{{id}}")
       : template
   return safeTemplate.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
     const v = (vars as unknown as Record<string, string | undefined>)[key]

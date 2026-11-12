@@ -23,16 +23,17 @@
 // Design language mirrors InvoicingSidebar: small uppercase eyebrow, column of
 // section links with a 2px accent rail on the active row, 14px stroked SVG
 // icons inline (no lucide dep). Styles only with kernel theme tokens.
+
+import { app, currentPath } from "@liaison/host"
 import {
+  type Component,
   createEffect,
   createSignal,
+  type JSX,
   onCleanup,
   onMount,
   Show,
-  type Component,
-  type JSX,
 } from "solid-js"
-import { app, currentPath } from "@liaison/host"
 import { Button } from "./kit"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -85,7 +86,16 @@ const baseSvg = "h-3.5 w-3.5 shrink-0"
 
 function TruckIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M1 3h13v13H1z" />
       <path d="M14 8h4l3 3v5h-7z" />
       <circle cx="5.5" cy="18.5" r="1.5" />
@@ -96,7 +106,16 @@ function TruckIcon(p: IconProps) {
 
 function ReturnIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M9 14L4 9l5-5" />
       <path d="M4 9h10a6 6 0 0 1 6 6v2" />
     </svg>
@@ -105,7 +124,16 @@ function ReturnIcon(p: IconProps) {
 
 function BoxIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M21 8l-9-5-9 5 9 5 9-5z" />
       <path d="M3 8v8l9 5 9-5V8" />
       <path d="M12 13v8" />
@@ -115,7 +143,16 @@ function BoxIcon(p: IconProps) {
 
 function GearIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 9 3.09V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
@@ -209,7 +246,8 @@ export function createNavRefreshController(opts: {
 }): NavRefreshController {
   const debounceMs = opts.debounceMs ?? 250
   const schedule = opts.schedule ?? ((cb, ms) => setTimeout(cb, ms) as unknown as number)
-  const cancel = opts.cancel ?? ((id: number) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>))
+  const cancel =
+    opts.cancel ?? ((id: number) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>))
 
   let lastFetchedPathname: string | null = null
   let inFlight = false
@@ -338,9 +376,7 @@ function Row(p: {
           <span
             data-testid={`boxtal-sidebar-badge-${p.slug}`}
             class={`rounded px-1.5 py-0.5 text-[10.5px] font-medium ${
-              p.warn
-                ? "bg-warning-glow text-warning"
-                : "bg-surface text-text-secondary"
+              p.warn ? "bg-warning-glow text-warning" : "bg-surface text-text-secondary"
             }`}
           >
             {p.badge}

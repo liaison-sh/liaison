@@ -25,6 +25,7 @@
 // bundle the cell cannot serve), and must never take the other orgs off
 // Workers.
 
+import { APP_LEVEL_KINDS, FINAL_KINDS, LOADER_LEVEL_KINDS } from "@liaison/app-loader"
 import type { WorkersFaultClass } from "./run-settled"
 import { WORKER_MODULE_ERROR_CODES } from "./worker-core"
 
@@ -34,9 +35,10 @@ export interface WorkersFault {
   kind: string
 }
 
-const LOADER_KINDS = new Set(["auth", "loader_internal"])
-const APP_KINDS = new Set(["load", "bundle_missing", "bundle_fetch_failed"])
-const FINAL_KINDS = new Set(["limit", "handler", "timeout"])
+// The loader's own kind classes (@liaison/app-loader protocol.ts).
+const LOADER_KINDS = new Set<string>(LOADER_LEVEL_KINDS)
+const APP_KINDS = new Set<string>(APP_LEVEL_KINDS)
+const FINAL_KIND_SET = new Set<string>(FINAL_KINDS)
 const MODULE_ERROR_CODES = new Set<string>(WORKER_MODULE_ERROR_CODES)
 
 /**
@@ -56,7 +58,7 @@ export function classifyLoaderAnswer(
   if (kind === "handler" && typeof code === "string" && MODULE_ERROR_CODES.has(code)) {
     return { class: "app", kind: "load" }
   }
-  if (FINAL_KINDS.has(kind)) return { class: "final", kind }
+  if (FINAL_KIND_SET.has(kind)) return { class: "final", kind }
   if (APP_KINDS.has(kind)) return { class: "app", kind }
   if (LOADER_KINDS.has(kind)) return { class: "loader", kind }
   // A kind newer than this cell: the loader answered, but not in a way this

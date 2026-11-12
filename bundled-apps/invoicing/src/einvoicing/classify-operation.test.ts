@@ -8,29 +8,49 @@ describe("operationCategory", () => {
       category: "goods",
       source: "lines_authoritative",
     })
-    expect(operationCategory([{ line_kind: "goods" }, { line_kind: "shipping" }], { authoritative: false })).toEqual({
+    expect(
+      operationCategory([{ line_kind: "goods" }, { line_kind: "shipping" }], {
+        authoritative: false,
+      }),
+    ).toEqual({
       category: "goods",
       source: "lines_default",
     })
-    expect(operationCategory([{ line_kind: "shipping" }], { authoritative: true }).category).toBe("goods")
+    expect(operationCategory([{ line_kind: "shipping" }], { authoritative: true }).category).toBe(
+      "goods",
+    )
   })
   test("software is services", () => {
-    expect(operationCategory([{ line_kind: "software" }], { authoritative: true }).category).toBe("services")
+    expect(operationCategory([{ line_kind: "software" }], { authoritative: true }).category).toBe(
+      "services",
+    )
   })
   test("mixed", () => {
-    expect(operationCategory([{ line_kind: "software" }, { line_kind: "goods" }], { authoritative: true }).category).toBe(
-      "mixed",
-    )
     expect(
-      operationCategory([{ line_kind: "software" }, { line_kind: "shipping" }], { authoritative: true }).category,
+      operationCategory([{ line_kind: "software" }, { line_kind: "goods" }], {
+        authoritative: true,
+      }).category,
+    ).toBe("mixed")
+    expect(
+      operationCategory([{ line_kind: "software" }, { line_kind: "shipping" }], {
+        authoritative: true,
+      }).category,
     ).toBe("mixed")
   })
   test("empty -> null", () => {
-    expect(operationCategory([], { authoritative: true })).toEqual({ category: null, source: "lines_authoritative" })
-    expect(operationCategory([], { authoritative: false })).toEqual({ category: null, source: "lines_default" })
+    expect(operationCategory([], { authoritative: true })).toEqual({
+      category: null,
+      source: "lines_authoritative",
+    })
+    expect(operationCategory([], { authoritative: false })).toEqual({
+      category: null,
+      source: "lines_default",
+    })
   })
   test("a missing line_kind is the goods default", () => {
-    expect(operationCategory([{ line_kind: null }], { authoritative: false }).category).toBe("goods")
+    expect(operationCategory([{ line_kind: null }], { authoritative: false }).category).toBe(
+      "goods",
+    )
   })
 })
 

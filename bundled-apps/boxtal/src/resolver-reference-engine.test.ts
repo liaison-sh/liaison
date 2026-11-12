@@ -18,8 +18,8 @@ import {
   PRODUCTS,
   type ProductCode,
   RAW_STACK_MAX_HEIGHT,
-  SMALL_ACCESSORIES,
   computeParcels as referenceComputeParcels,
+  SMALL_ACCESSORIES,
 } from "./__fixtures__/reference-packing-engine"
 import type { PackagingPolicy } from "./packaging-policy"
 import { type CatalogProfile, type Parcel, type ResolverLine, resolvePackages } from "./resolver"
@@ -45,7 +45,13 @@ function policy(opts: { standardCarton30Tare?: number } = {}): PackagingPolicy {
   return {
     raw_stack_max_height: RAW_STACK_MAX_HEIGHT,
     cartons: [
-      { max_stack_height: CARTON_20_MAX_STACK, length: 60, width: 40, height: 20, tare_weight: CARTON_20_TARE },
+      {
+        max_stack_height: CARTON_20_MAX_STACK,
+        length: 60,
+        width: 40,
+        height: 20,
+        tare_weight: CARTON_20_TARE,
+      },
       {
         max_stack_height: CARTON_30_MAX_STACK,
         length: 60,
@@ -80,12 +86,23 @@ function linesFor(lines: CodeLine[]): ResolverLine[] {
   return lines.map((l, i) => {
     const product = PRODUCTS[l.code as ProductCode]
     const variant = product ? product.variantIds[l.variant ?? 0] : `unknown-${l.code}`
-    return { id: `L${i}`, product_source: "shopify", external_id: gid(variant!), quantity: l.quantity }
+    return {
+      id: `L${i}`,
+      product_source: "shopify",
+      external_id: gid(variant!),
+      quantity: l.quantity,
+    }
   })
 }
 
 function computeParcels(lines: CodeLine[], opts: { standardCarton30Tare?: number } = {}) {
-  return resolvePackages({ lines: linesFor(lines), profiles: PROFILES, packs: [], components: [], policy: policy(opts) })
+  return resolvePackages({
+    lines: linesFor(lines),
+    profiles: PROFILES,
+    packs: [],
+    components: [],
+    policy: policy(opts),
+  })
 }
 
 const dims = (p: Parcel) => ({ l: p.length, w: p.width, h: p.height, kg: p.weight })
@@ -174,7 +191,9 @@ describe("reference packing rules: standard cartons", () => {
   })
 
   it("3 Tessera 2 stack to 24 cm and take the 60x40x30 carton", () => {
-    const { parcels, warnings } = computeParcels([{ code: "ET2", quantity: 3 }], { standardCarton30Tare: 0.5 })
+    const { parcels, warnings } = computeParcels([{ code: "ET2", quantity: 3 }], {
+      standardCarton30Tare: 0.5,
+    })
     expect(parcels.map(dims)).toEqual([{ l: 60, w: 40, h: 30, kg: 12.5 }])
     expect(warnings).toEqual([])
   })
@@ -185,7 +204,9 @@ describe("reference packing rules: standard cartons", () => {
   })
 
   it("4 Tessera 2 exceed one carton: it splits deterministically, never silently", () => {
-    const { parcels } = computeParcels([{ code: "ET2", quantity: 4 }], { standardCarton30Tare: 0.5 })
+    const { parcels } = computeParcels([{ code: "ET2", quantity: 4 }], {
+      standardCarton30Tare: 0.5,
+    })
     expect(parcels.map(dims)).toEqual([
       { l: 60, w: 40, h: 30, kg: 12.5 },
       { l: 59, w: 38, h: 8, kg: 4 },
@@ -231,8 +252,12 @@ describe("reference packing rules: master cartons take priority", () => {
   })
 
   it("12 hard covers and 4 mounting plates each hit their master carton", () => {
-    expect(computeParcels([{ code: "HC", quantity: 12 }]).parcels.map(dims)).toEqual([{ l: 51, w: 41, h: 35, kg: 13.4 }])
-    expect(computeParcels([{ code: "MP", quantity: 4 }]).parcels.map(dims)).toEqual([{ l: 50, w: 41, h: 35, kg: 13.2 }])
+    expect(computeParcels([{ code: "HC", quantity: 12 }]).parcels.map(dims)).toEqual([
+      { l: 51, w: 41, h: 35, kg: 13.4 },
+    ])
+    expect(computeParcels([{ code: "MP", quantity: 4 }]).parcels.map(dims)).toEqual([
+      { l: 50, w: 41, h: 35, kg: 13.2 },
+    ])
   })
 
   it("20 fabric skins and 20 silicone skins have their own master weights", () => {
@@ -245,7 +270,12 @@ describe("reference packing rules: the absolute rule, no margin ever", () => {
   it("NO dimension is ever a reference value + 1 cm", () => {
     for (const product of Object.values(PRODUCTS)) {
       const p = computeParcels([{ code: product.code, quantity: 1 }]).parcels[0]!
-      expect(dims(p)).toEqual({ l: product.length, w: product.width, h: product.height, kg: product.grossWeight })
+      expect(dims(p)).toEqual({
+        l: product.length,
+        w: product.width,
+        h: product.height,
+        kg: product.grossWeight,
+      })
     }
   })
 
@@ -271,7 +301,9 @@ describe("reference packing rules: the absolute rule, no margin ever", () => {
 
 describe("reference packing rules: guard rails", () => {
   it("an oversized stack splits into cartons, never an invented carton", () => {
-    const { parcels } = computeParcels([{ code: "HC", quantity: 11 }], { standardCarton30Tare: 0.5 })
+    const { parcels } = computeParcels([{ code: "HC", quantity: 11 }], {
+      standardCarton30Tare: 0.5,
+    })
     expect(parcels.length).toBeGreaterThanOrEqual(2)
     expect(parcels.every((p) => p.height <= 30)).toBe(true)
   })
@@ -308,12 +340,38 @@ describe("reference packing rules: guard rails", () => {
 const WORKLIST: Array<{ order: string; lines: CodeLine[] }> = [
   { order: "3346", lines: [{ code: "ET2", quantity: 1 }] },
   { order: "3338", lines: [{ code: "ET2", quantity: 1 }] },
-  { order: "3358", lines: [{ code: "ET2", quantity: 1 }, { code: "DS", quantity: 1 }] },
+  {
+    order: "3358",
+    lines: [
+      { code: "ET2", quantity: 1 },
+      { code: "DS", quantity: 1 },
+    ],
+  },
   { order: "3357", lines: [{ code: "BS", quantity: 1 }] },
-  { order: "3355", lines: [{ code: "BS", quantity: 2 }, { code: "PS", quantity: 1 }, { code: "USBC", quantity: 2 }] },
+  {
+    order: "3355",
+    lines: [
+      { code: "BS", quantity: 2 },
+      { code: "PS", quantity: 1 },
+      { code: "USBC", quantity: 2 },
+    ],
+  },
   { order: "3356", lines: [{ code: "ET2", quantity: 1 }] },
-  { order: "3351", lines: [{ code: "DS", quantity: 1 }, { code: "ET2", quantity: 1 }] },
-  { order: "3360", lines: [{ code: "PS", quantity: 1 }, { code: "USBC", quantity: 1 }, { code: "ET2", quantity: 1 }] },
+  {
+    order: "3351",
+    lines: [
+      { code: "DS", quantity: 1 },
+      { code: "ET2", quantity: 1 },
+    ],
+  },
+  {
+    order: "3360",
+    lines: [
+      { code: "PS", quantity: 1 },
+      { code: "USBC", quantity: 1 },
+      { code: "ET2", quantity: 1 },
+    ],
+  },
   {
     order: "3344",
     lines: [
@@ -323,9 +381,29 @@ const WORKLIST: Array<{ order: string; lines: CodeLine[] }> = [
       { code: "ET2", quantity: 1 },
     ],
   },
-  { order: "3335", lines: [{ code: "BS", quantity: 2 }, { code: "ET2", quantity: 5 }, { code: "DS", quantity: 1 }] },
-  { order: "3315", lines: [{ code: "BS", quantity: 2 }, { code: "ET2", quantity: 6 }] },
-  { order: "3365", lines: [{ code: "MP", quantity: 1 }, { code: "PS", quantity: 1 }, { code: "ET2", quantity: 1 }] },
+  {
+    order: "3335",
+    lines: [
+      { code: "BS", quantity: 2 },
+      { code: "ET2", quantity: 5 },
+      { code: "DS", quantity: 1 },
+    ],
+  },
+  {
+    order: "3315",
+    lines: [
+      { code: "BS", quantity: 2 },
+      { code: "ET2", quantity: 6 },
+    ],
+  },
+  {
+    order: "3365",
+    lines: [
+      { code: "MP", quantity: 1 },
+      { code: "PS", quantity: 1 },
+      { code: "ET2", quantity: 1 },
+    ],
+  },
 ]
 
 function reference(lines: CodeLine[], opts: { standardCarton30Tare?: number } = {}) {
@@ -343,8 +421,10 @@ function reference(lines: CodeLine[], opts: { standardCarton30Tare?: number } = 
       (p) =>
         p.kind === "standard_carton" &&
         Object.keys(p.contents).every((c) => SMALL_ACCESSORIES.includes(c as ProductCode)) &&
-        Object.entries(p.contents).reduce((h, [c, q]) => h + PRODUCTS[c as ProductCode].height * (q ?? 0), 0) >
-          p.height,
+        Object.entries(p.contents).reduce(
+          (h, [c, q]) => h + PRODUCTS[c as ProductCode].height * (q ?? 0),
+          0,
+        ) > p.height,
     ),
   }
 }
@@ -359,7 +439,10 @@ describe("reference packing rules: differential replay", () => {
     for (const c of WORKLIST) {
       const { overfilled, ...expected } = reference(c.lines, { standardCarton30Tare: 0.5 })
       expect(overfilled).toBe(false)
-      expect({ order: c.order, ...ours(c.lines, { standardCarton30Tare: 0.5 }) }).toEqual({ order: c.order, ...expected })
+      expect({ order: c.order, ...ours(c.lines, { standardCarton30Tare: 0.5 }) }).toEqual({
+        order: c.order,
+        ...expected,
+      })
     }
   })
 
@@ -403,7 +486,9 @@ describe("reference packing rules: differential replay", () => {
 
   it("accessories alone deeper than the biggest carton fill it and carry the rest, never overfill it", () => {
     // 13 power supplies stack to 39 cm: the 60x40x30 takes 10 (30 cm), the other 3 travel raw.
-    const { parcels } = computeParcels([{ code: "PS", quantity: 13 }], { standardCarton30Tare: 0.5 })
+    const { parcels } = computeParcels([{ code: "PS", quantity: 13 }], {
+      standardCarton30Tare: 0.5,
+    })
     expect(parcels.map(dims)).toEqual([
       { l: 60, w: 40, h: 30, kg: 2.5 },
       { l: 20, w: 15, h: 9, kg: 0.6 },

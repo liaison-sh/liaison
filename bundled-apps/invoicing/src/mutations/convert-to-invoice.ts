@@ -3,35 +3,39 @@
 // Invoicing mutations: documents.convert_to_invoice (quote to invoice, including the
 // Shopify draft order completion path).
 
-import { type Counterparty, type DraftLine, counterpartyCompletenessError } from "../issue"
-import { type EinvoicingWarning, checkEinvoiceGate, einvoiceParamsError } from "../einvoicing/issue-gate"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import type { OperationSource } from "../einvoicing/gate"
-import { transition } from "../state"
+import {
+  checkEinvoiceGate,
+  type EinvoicingWarning,
+  einvoiceParamsError,
+} from "../einvoicing/issue-gate"
 // Cycle note: the draft-order sync imports the mutations index back (it calls quoteCreateAndIssue
 // and documentsUpdate). Both directions are function-level only -- nothing runs at module init --
 // so the bundle resolves it through hoisting.
 import { shopifyOrderIdFromGid } from "../handlers/shopify-draft-order"
+import { type Counterparty, counterpartyCompletenessError, type DraftLine } from "../issue"
+import { issueDateParts } from "../issue-date"
+import { transition } from "../state"
 import {
-  type IssuerProfileRow,
   findDocumentSummary,
   findIssuerProfile,
+  type IssuerProfileRow,
   loadDraftLines,
   readDraftOrderId,
 } from "./db-helpers"
+import { issueWithFxRate } from "./fx-issue"
 import { counterpartyFromRow } from "./lines"
 import {
+  type DocumentRowSummary,
+  type DocumentType,
+  type ErrorEnvelope,
   type MutationResult,
   type MutationsCtx,
-  type DocumentRowSummary,
-  type ErrorEnvelope,
-  type DocumentType,
-  type PreflightResult,
   normaliseNotes,
+  type PreflightResult,
   toPreflightResult,
 } from "./shared"
-import { issueDateParts } from "../issue-date"
-import { issueWithFxRate } from "./fx-issue"
 
 // ── documents.convert_to_invoice ──────────────────────────────────────────
 
@@ -107,10 +111,7 @@ async function preflightConvertToInvoiceParams(
     }
   }
   const status = source.status ?? "draft"
-  const trans = transition(
-    { type: source.type as DocumentType, status },
-    "convert_to_invoice",
-  )
+  const trans = transition({ type: source.type as DocumentType, status }, "convert_to_invoice")
   if (trans.status !== "ok") {
     return {
       ok: false,
@@ -164,7 +165,11 @@ async function preflightConvertToInvoiceParams(
     counterparty,
     lines: sourceLines,
     operation_category: cat.category,
-    operation_source: cat.category ? cat.source : readDraftOrderId(source) ? "lines_authoritative" : null,
+    operation_source: cat.category
+      ? cat.source
+      : readDraftOrderId(source)
+        ? "lines_authoritative"
+        : null,
   })
   if (!gate.ok) return { ok: false, error: gate.error }
   return { ok: true, source, issuer, counterparty, notes, nextStatus: trans.next, sourceLines }
@@ -252,7 +257,11 @@ export async function documentsConvertToInvoice(
         data: { status: trans.next },
         append: {
           lifecycle_log: [
-            { event: "converted_to_invoice", actor: await ctx.getUserId(), ts: new Date().toISOString() },
+            {
+              event: "converted_to_invoice",
+              actor: await ctx.getUserId(),
+              ts: new Date().toISOString(),
+            },
           ],
         },
       },
@@ -294,8 +303,7 @@ async function convertViaShopifyDraftOrder(
       status: "error",
       error: {
         code: envelope.error?.code ?? "draft_order_complete_failed",
-        message:
-          envelope.error?.message ?? "shopify:draft_orders_complete returned an error",
+        message: envelope.error?.message ?? "shopify:draft_orders_complete returned an error",
       },
     }
   }
@@ -308,7 +316,8 @@ async function convertViaShopifyDraftOrder(
     const draft = (fetched.result as { draftOrder?: Record<string, unknown> } | null)?.draftOrder
     const o = draft as { orderId?: unknown; orderName?: unknown } | undefined
     // Numeric handle, like the invoice the order:created flow writes (see shopifyOrderIdFromGid).
-    orderId = typeof o?.orderId === "string" && o.orderId !== "" ? shopifyOrderIdFromGid(o.orderId) : null
+    orderId =
+      typeof o?.orderId === "string" && o.orderId !== "" ? shopifyOrderIdFromGid(o.orderId) : null
     orderNumber = typeof o?.orderName === "string" && o.orderName !== "" ? o.orderName : null
   }
   const actor = await ctx.getUserId()

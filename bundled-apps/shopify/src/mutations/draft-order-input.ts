@@ -5,27 +5,27 @@
 // create and update tools.
 
 import type { AppContext } from "@liaison/app-sdk"
-import { getShopifyClient } from "../lib/get-client"
 import { toCountryCode, toProvinceCode } from "../lib/address-aliases"
-import { type ShopClient, isRec, makeMutationError, gidFrom } from "./shared"
+import { getShopifyClient } from "../lib/get-client"
 import {
   type B2bContext,
-  type PriceException,
-  type VerifiedCompanyBuyer,
   cleanPurchasingCompany,
   companyAddressToMailingInput,
   companyRequiredError,
   noCatalogPriceError,
   nonCatalogPriceFields,
+  type PriceException,
   parsePriceException,
   priceNotCatalogError,
   readLocationCatalogs,
   rememberVerifiedBuyer,
   resolveB2bContext,
+  type VerifiedCompanyBuyer,
   variantsWithFixedCatalogPrice,
   verifyPurchasingCompany,
   withPriceExceptionAttribute,
 } from "./draft-order-b2b"
+import { gidFrom, isRec, makeMutationError, type ShopClient } from "./shared"
 
 // The authoritative DraftOrderInput / DraftOrderLineItemInput field sets (Shopify Admin API
 // 2026-01, from schema introspection). A weak model invents fields outside these — `customer`,
@@ -33,16 +33,48 @@ import {
 // `id` on a line — so the gated draftOrderCreate 422s. We MAP the known aliases (below) then STRIP
 // anything still outside the allowlist, so an unknown/hallucinated field can never reach Shopify.
 const DRAFT_ORDER_INPUT_FIELDS = new Set([
-  "acceptAutomaticDiscounts", "allowDiscountCodesInCheckout", "appliedDiscount", "billingAddress",
-  "customAttributes", "discountCodes", "email", "lineItems", "localizedFields", "metafields",
-  "note", "paymentTerms", "phone", "poNumber", "presentmentCurrencyCode", "purchasingEntity",
-  "reserveInventoryUntil", "sessionToken", "shippingAddress", "shippingLine", "sourceName", "tags",
-  "taxExempt", "transformerFingerprint", "useCustomerDefaultAddress", "visibleToCustomer",
+  "acceptAutomaticDiscounts",
+  "allowDiscountCodesInCheckout",
+  "appliedDiscount",
+  "billingAddress",
+  "customAttributes",
+  "discountCodes",
+  "email",
+  "lineItems",
+  "localizedFields",
+  "metafields",
+  "note",
+  "paymentTerms",
+  "phone",
+  "poNumber",
+  "presentmentCurrencyCode",
+  "purchasingEntity",
+  "reserveInventoryUntil",
+  "sessionToken",
+  "shippingAddress",
+  "shippingLine",
+  "sourceName",
+  "tags",
+  "taxExempt",
+  "transformerFingerprint",
+  "useCustomerDefaultAddress",
+  "visibleToCustomer",
 ])
 const DRAFT_ORDER_LINE_FIELDS = new Set([
-  "appliedDiscount", "components", "customAttributes", "generatePriceOverride",
-  "originalUnitPriceWithCurrency", "priceOverride", "quantity", "requiresShipping", "sku",
-  "taxable", "title", "uuid", "variantId", "weight",
+  "appliedDiscount",
+  "components",
+  "customAttributes",
+  "generatePriceOverride",
+  "originalUnitPriceWithCurrency",
+  "priceOverride",
+  "quantity",
+  "requiresShipping",
+  "sku",
+  "taxable",
+  "title",
+  "uuid",
+  "variantId",
+  "weight",
 ])
 
 function stripToAllowlist(obj: Record<string, unknown>, allow: Set<string>): void {
@@ -101,8 +133,16 @@ export function normalizeEmailInput(v: unknown): Record<string, unknown> | null 
 // as DRAFT_ORDER_INPUT_FIELDS. A draft QUOTE needs no address, so over-stripping is harmless and an
 // invented field can never reach Shopify.
 const MAILING_ADDRESS_FIELDS = new Set([
-  "address1", "address2", "city", "company", "countryCode",
-  "firstName", "lastName", "phone", "provinceCode", "zip",
+  "address1",
+  "address2",
+  "city",
+  "company",
+  "countryCode",
+  "firstName",
+  "lastName",
+  "phone",
+  "provinceCode",
+  "zip",
 ])
 /** Normalise a MailingAddressInput a weak model malforms (the observed 422 is a single `name`).
  *  Returns undefined if nothing usable remains → the caller drops the address (a quote needs none). */
@@ -133,7 +173,8 @@ function normaliseMailingAddress(v: unknown): Record<string, unknown> | undefine
   // guard then refused a draft whose address was in fact complete
   // (ticket-10280). Fold the aliases onto the codes first; an unrecognised
   // country still resolves to nothing, so the guard keeps its teeth.
-  const countryCode = (text(a.countryCode) && toCountryCode(a.countryCode)) ||
+  const countryCode =
+    (text(a.countryCode) && toCountryCode(a.countryCode)) ||
     toCountryCode(a.country ?? a.countryCodeV2 ?? a.country_code)
   if (countryCode) a.countryCode = countryCode
   const provinceCode =
@@ -230,7 +271,10 @@ async function lookupGidTitle(client: ShopClient, gid: string): Promise<string |
   }
 }
 
-async function resolveDefaultVariantId(client: ShopClient, productGid: string): Promise<string | undefined> {
+async function resolveDefaultVariantId(
+  client: ShopClient,
+  productGid: string,
+): Promise<string | undefined> {
   try {
     const data = await client.query<{ product?: { variants?: { nodes?: Array<{ id: string }> } } }>(
       `query($id: ID!){ product(id:$id){ variants(first:1){ nodes{ id } } } }`,
@@ -244,7 +288,9 @@ async function resolveDefaultVariantId(client: ShopClient, productGid: string): 
 
 async function shopCurrencyCode(client: ShopClient): Promise<string> {
   try {
-    const data = await client.query<{ shop?: { currencyCode?: string } }>(`query{ shop{ currencyCode } }`)
+    const data = await client.query<{ shop?: { currencyCode?: string } }>(
+      `query{ shop{ currencyCode } }`,
+    )
     return data.shop?.currencyCode ?? "EUR"
   } catch {
     return "EUR"
@@ -274,7 +320,10 @@ async function lookupVariantPrice(client: ShopClient, variantGid: string): Promi
 // demanded a shipping address for a digital license — the bug that wedged a live approval). Variants
 // that don't resolve are simply absent from the map (caller defaults them to physical: we would rather
 // demand an address than silently ship blind).
-async function variantsRequireShipping(client: ShopClient, variantGids: string[]): Promise<Map<string, boolean>> {
+async function variantsRequireShipping(
+  client: ShopClient,
+  variantGids: string[],
+): Promise<Map<string, boolean>> {
   const out = new Map<string, boolean>()
   const ids = [...new Set(variantGids)]
   if (ids.length === 0) return out
@@ -309,11 +358,17 @@ function lineIsPhysical(li: unknown, shipMap: Map<string, boolean>): boolean {
 }
 
 /** A MoneyInput from an agent's priceOverride: a number/string amount, or {amount, currencyCode}. */
-async function toMoneyInput(v: unknown, getCurrency: () => Promise<string>): Promise<Record<string, unknown> | undefined> {
+async function toMoneyInput(
+  v: unknown,
+  getCurrency: () => Promise<string>,
+): Promise<Record<string, unknown> | undefined> {
   const amountRaw = isRec(v) ? v.amount : v
   const n = Number(amountRaw)
   if (amountRaw == null || amountRaw === "" || !Number.isFinite(n) || n < 0) return undefined
-  const currency = isRec(v) && typeof v.currencyCode === "string" && v.currencyCode.trim() !== "" ? v.currencyCode.trim().toUpperCase() : await getCurrency()
+  const currency =
+    isRec(v) && typeof v.currencyCode === "string" && v.currencyCode.trim() !== ""
+      ? v.currencyCode.trim().toUpperCase()
+      : await getCurrency()
   return { amount: String(amountRaw), currencyCode: currency }
 }
 
@@ -321,7 +376,10 @@ async function normaliseDraftOrderLine(
   li: unknown,
   client: ShopClient,
   getCurrency: () => Promise<string>,
-  pricing: { b2b: boolean; exception: PriceException | undefined } = { b2b: false, exception: undefined },
+  pricing: { b2b: boolean; exception: PriceException | undefined } = {
+    b2b: false,
+    exception: undefined,
+  },
 ): Promise<unknown> {
   if (!isRec(li)) return li
   const l: Record<string, unknown> = { ...li }
@@ -360,7 +418,10 @@ async function normaliseDraftOrderLine(
     // the variant kept: priceOverride sets the price with no discount on the line.
     const money = await toMoneyInput(priceRaw, getCurrency)
     if (!money)
-      throw makeMutationError("BAD_PARAM", `draft order line: price ${JSON.stringify(priceRaw)} is not a valid amount.`)
+      throw makeMutationError(
+        "BAD_PARAM",
+        `draft order line: price ${JSON.stringify(priceRaw)} is not a valid amount.`,
+      )
     l.priceOverride = money
     delete l.price
     delete l.unitPrice
@@ -393,13 +454,19 @@ async function normaliseDraftOrderLine(
       } else if (!hasRealPrice) {
         if (l.title == null)
           l.title = (await lookupGidTitle(client, String(l.variantId))) ?? "Custom item"
-        l.originalUnitPriceWithCurrency = { amount: String(priceRaw), currencyCode: await getCurrency() }
+        l.originalUnitPriceWithCurrency = {
+          amount: String(priceRaw),
+          currencyCode: await getCurrency(),
+        }
         delete l.variantId // can't discount-off-list → custom line carries no variant
       }
     } else if (!hasRealPrice) {
       // No variant at all → honour the exact price as a custom line item.
       if (l.title == null) l.title = "Custom item"
-      l.originalUnitPriceWithCurrency = { amount: String(priceRaw), currencyCode: await getCurrency() }
+      l.originalUnitPriceWithCurrency = {
+        amount: String(priceRaw),
+        currencyCode: await getCurrency(),
+      }
     }
     delete l.price
     delete l.unitPrice
@@ -420,7 +487,8 @@ async function normaliseDraftOrderLine(
     l.priceOverride = money
   }
   // The reason for a non-catalog price travels with the line: the approval card and the order show it.
-  if (pricing.exception) l.customAttributes = withPriceExceptionAttribute(l.customAttributes, pricing.exception)
+  if (pricing.exception)
+    l.customAttributes = withPriceExceptionAttribute(l.customAttributes, pricing.exception)
   if (l.quantity != null) {
     const q = Math.trunc(Number(l.quantity))
     if (Number.isFinite(q) && q > 0) l.quantity = q
@@ -491,7 +559,8 @@ export async function normalizeDraftOrderInput(
     isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string"
       ? input.purchasingEntity.customerId
       : undefined
-  const touchesPrices = input.lineItems != null || input.appliedDiscount != null || input.lineItemsDiscount != null
+  const touchesPrices =
+    input.lineItems != null || input.appliedDiscount != null || input.lineItemsDiscount != null
   let client: ShopClient | undefined
   let b2b: B2bContext = { b2b: false, existingCompany: null, contactCompanies: [] }
   let verified: VerifiedCompanyBuyer | undefined
@@ -502,7 +571,8 @@ export async function normalizeDraftOrderInput(
       customerId: buyerCustomerId,
       draftId: input.purchasingEntity == null ? opts?.draftId : undefined,
     })
-    if (b2b.b2b && !purchasingCompany && !b2b.existingCompany) throw companyRequiredError(b2b.contactCompanies)
+    if (b2b.b2b && !purchasingCompany && !b2b.existingCompany)
+      throw companyRequiredError(b2b.contactCompanies)
     if (purchasingCompany) verified = await verifyPurchasingCompany(client, purchasingCompany)
   }
   const orderException = parsePriceException(input.priceException, "order")
@@ -524,10 +594,15 @@ export async function normalizeDraftOrderInput(
       )
     }
   })
-  if (b2b.b2b && !orderException && (input.appliedDiscount != null || input.lineItemsDiscount != null))
+  if (
+    b2b.b2b &&
+    !orderException &&
+    (input.appliedDiscount != null || input.lineItemsDiscount != null)
+  )
     offences.push("the order-level appliedDiscount")
   if (offences.length > 0) throw priceNotCatalogError(offences)
-  if (orderException) input.customAttributes = withPriceExceptionAttribute(input.customAttributes, orderException)
+  if (orderException)
+    input.customAttributes = withPriceExceptionAttribute(input.customAttributes, orderException)
   // The company location's own addresses are the draft's, unless the caller set them.
   if (verified && input.useCustomerDefaultAddress !== true) {
     if (input.shippingAddress == null) {
@@ -535,7 +610,9 @@ export async function normalizeDraftOrderInput(
       if (a) input.shippingAddress = a
     }
     if (input.billingAddress == null) {
-      const a = companyAddressToMailingInput(verified.location.billingAddress ?? verified.location.shippingAddress)
+      const a = companyAddressToMailingInput(
+        verified.location.billingAddress ?? verified.location.shippingAddress,
+      )
       if (a) input.billingAddress = a
     }
   }
@@ -555,10 +632,12 @@ export async function normalizeDraftOrderInput(
     const c = client
     let currency: string | undefined
     const presentment =
-      typeof input.presentmentCurrencyCode === "string" && input.presentmentCurrencyCode.trim() !== ""
+      typeof input.presentmentCurrencyCode === "string" &&
+      input.presentmentCurrencyCode.trim() !== ""
         ? input.presentmentCurrencyCode.trim().toUpperCase()
         : undefined
-    const getCurrency = async (): Promise<string> => (currency ??= presentment ?? (await shopCurrencyCode(c)))
+    const getCurrency = async (): Promise<string> =>
+      (currency ??= presentment ?? (await shopCurrencyCode(c)))
     const normalisedLines = await Promise.all(
       input.lineItems.map((li, i) =>
         normaliseDraftOrderLine(li, c, getCurrency, { b2b: b2b.b2b, exception: lineExceptions[i] }),
@@ -569,9 +648,13 @@ export async function normalizeDraftOrderInput(
     // applies to the company location; otherwise Shopify falls back to an adjusted retail price.
     const locationId = verified?.location.id ?? b2b.existingCompany?.locationId ?? null
     if (b2b.b2b && locationId) {
-      const locationLabel = verified?.location.name ?? b2b.existingCompany?.locationName ?? locationId
+      const locationLabel =
+        verified?.location.name ?? b2b.existingCompany?.locationName ?? locationId
       const catalogLines = normalisedLines.flatMap((li, i) =>
-        isRec(li) && typeof li.variantId === "string" && !lineExceptions[i] && li.priceOverride == null
+        isRec(li) &&
+        typeof li.variantId === "string" &&
+        !lineExceptions[i] &&
+        li.priceOverride == null
           ? [{ index: i, variantId: li.variantId }]
           : [],
       )
@@ -586,7 +669,10 @@ export async function normalizeDraftOrderInput(
         const missing = catalogLines.filter((l) => !fixed.has(l.variantId))
         if (missing.length > 0) {
           const labelled = await Promise.all(
-            missing.map(async (m) => ({ ...m, label: (await lookupGidTitle(c, m.variantId)) ?? null })),
+            missing.map(async (m) => ({
+              ...m,
+              label: (await lookupGidTitle(c, m.variantId)) ?? null,
+            })),
           )
           throw noCatalogPriceError(labelled, catalogs, locationLabel)
         }
@@ -617,7 +703,12 @@ export async function normalizeDraftOrderInput(
   // for PHYSICAL goods there must be somewhere to ship. So refuse to CREATE either kind without the
   // identity it needs, rather than dropping it and producing an order that quietly does the wrong
   // thing (the exact failure that let a comp software order issue no license).
-  if (opts?.enforceBuyerIdentity && client && Array.isArray(input.lineItems) && input.lineItems.length > 0) {
+  if (
+    opts?.enforceBuyerIdentity &&
+    client &&
+    Array.isArray(input.lineItems) &&
+    input.lineItems.length > 0
+  ) {
     const lines = input.lineItems
     const variantIds = lines
       .map((li) => (isRec(li) && typeof li.variantId === "string" ? li.variantId : undefined))
@@ -630,14 +721,16 @@ export async function normalizeDraftOrderInput(
     // A company draft's contact is its customer (name + email on its own record).
     const hasLinkedCustomer =
       isRec(input.purchasingEntity) &&
-      (typeof input.purchasingEntity.customerId === "string" || isRec(input.purchasingEntity.purchasingCompany))
+      (typeof input.purchasingEntity.customerId === "string" ||
+        isRec(input.purchasingEntity.purchasingCompany))
     const nameOn = (a: unknown): boolean =>
       isRec(a) &&
       ((typeof a.firstName === "string" && a.firstName.trim() !== "") ||
         (typeof a.lastName === "string" && a.lastName.trim() !== ""))
     // A linked customer already carries a name + email on its record; otherwise the draft must carry
     // both itself (a usable email, and a name on billing/shipping).
-    const hasBuyerName = hasLinkedCustomer || nameOn(input.billingAddress) || nameOn(input.shippingAddress)
+    const hasBuyerName =
+      hasLinkedCustomer || nameOn(input.billingAddress) || nameOn(input.shippingAddress)
     const hasBuyerEmail = hasLinkedCustomer || isUsableEmail(input.email)
 
     if (hasDigital) {
@@ -667,7 +760,9 @@ export async function normalizeDraftOrderInput(
         typeof a.countryCode === "string" &&
         a.countryCode.trim() !== ""
       const hasShipTo =
-        input.useCustomerDefaultAddress === true || addrOk(input.shippingAddress) || addrOk(input.billingAddress)
+        input.useCustomerDefaultAddress === true ||
+        addrOk(input.shippingAddress) ||
+        addrOk(input.billingAddress)
       if (!hasShipTo)
         throw makeMutationError(
           "MISSING_SHIPPING_ADDRESS",
@@ -692,7 +787,8 @@ export async function normalizeDraftOrderInput(
   // Shopify rejects its domain, so a bogus address can no longer fail the whole gated create.
   const hasLinkedCustomer =
     isRec(input.purchasingEntity) &&
-    (typeof input.purchasingEntity.customerId === "string" || isRec(input.purchasingEntity.purchasingCompany))
+    (typeof input.purchasingEntity.customerId === "string" ||
+      isRec(input.purchasingEntity.purchasingCompany))
   const keepEmail = !hasLinkedCustomer && isUsableEmail(input.email)
   if (input.email != null && !keepEmail) delete input.email
 

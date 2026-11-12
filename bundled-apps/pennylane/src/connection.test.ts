@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { runConnectProbe } from "./connection"
 import { PennylaneApiError } from "./lib/pennylane-client"
 import type { Page } from "./types"

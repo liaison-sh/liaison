@@ -84,7 +84,15 @@ describe("boxtal.pack", () => {
     ])
     const again = await importPacks(
       batch([
-        { externalRef: "KIT-1", name: "Renamed", length: 1, width: 1, height: 1, grossWeight: 1, components: [] },
+        {
+          externalRef: "KIT-1",
+          name: "Renamed",
+          length: 1,
+          width: 1,
+          height: 1,
+          grossWeight: 1,
+          components: [],
+        },
       ]),
       ctx,
     )
@@ -169,11 +177,21 @@ describe("boxtal.pack: a write that fails midway", () => {
 describe("boxtal.shipping-profile", () => {
   it("creates a product's profile; an existing one is skipped untouched", async () => {
     const { db, ctx } = setup()
-    await db.insert("shipping_profile", { product_source: "shopify", product_id: "V1", unit_weight: 1.5 })
+    await db.insert("shipping_profile", {
+      product_source: "shopify",
+      product_id: "V1",
+      unit_weight: 1.5,
+    })
     const out = await importShippingProfiles(
       batch([
         { productSource: "shopify", productId: "V1", unitWeight: 9 },
-        { productSource: "local", productId: "PSU-12", unitWeight: 0.4, shortCode: "PS", accessory: true },
+        {
+          productSource: "local",
+          productId: "PSU-12",
+          unitWeight: 0.4,
+          shortCode: "PS",
+          accessory: true,
+        },
         { productSource: "shopify", productId: "V2", unitWeight: 0 },
       ]),
       ctx,
@@ -181,14 +199,20 @@ describe("boxtal.shipping-profile", () => {
     expect(out.map((r) => r.status)).toEqual(["skipped", "created", "failed"])
     // The existing per-variant row is untouched; the new one is a shared profile + its link, and
     // its values are mirrored onto a stamped per-variant row for the previous release.
-    expect(db.__all("shipping_profile").map((r) => [r.product_id, r.unit_weight, r.migrated_profile_id ?? null])).toEqual([
+    expect(
+      db
+        .__all("shipping_profile")
+        .map((r) => [r.product_id, r.unit_weight, r.migrated_profile_id ?? null]),
+    ).toEqual([
       ["V1", 1.5, null],
       ["PSU-12", 0.4, db.__all("product_profile")[0]!.id],
     ])
     const profiles = db.__all("product_profile")
-    expect(profiles.map((r) => [r.unit_weight, r.short_code ?? null, r.accessory ?? null])).toEqual([[0.4, "PS", true]])
-    expect(db.__all("product_profile_link").map((r) => [r.product_source, r.product_id, r.profile_id])).toEqual([
-      ["local", "PSU-12", profiles[0]!.id],
-    ])
+    expect(profiles.map((r) => [r.unit_weight, r.short_code ?? null, r.accessory ?? null])).toEqual(
+      [[0.4, "PS", true]],
+    )
+    expect(
+      db.__all("product_profile_link").map((r) => [r.product_source, r.product_id, r.profile_id]),
+    ).toEqual([["local", "PSU-12", profiles[0]!.id]])
   })
 })

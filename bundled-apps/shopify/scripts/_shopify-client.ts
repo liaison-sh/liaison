@@ -31,7 +31,10 @@ function ensureEnvLoaded(): void {
     const key = line.slice(0, eq).trim()
     let value = line.slice(eq + 1).trim()
     // Strip simple surrounding quotes.
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1)
     }
     if (process.env[key] === undefined) {
@@ -80,7 +83,9 @@ export function loadShopifyEnv(opts?: { requireToken?: boolean }): ShopifyEnv {
 export interface GraphqlResponse<T> {
   data?: T
   errors?: Array<{ message: string; path?: string[]; extensions?: Record<string, unknown> }>
-  extensions?: { cost?: { actualQueryCost?: number; throttleStatus?: { currentlyAvailable?: number } } }
+  extensions?: {
+    cost?: { actualQueryCost?: number; throttleStatus?: { currentlyAvailable?: number } }
+  }
 }
 
 export async function graphql<T = unknown>(

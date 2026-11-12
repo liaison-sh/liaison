@@ -63,7 +63,8 @@ export function planTax(input: TaxPlanInput): TaxPlan {
   let netted = false
   let anyTax = false
   for (const l of input.lines) {
-    const rate = typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : c.default_rate_bp
+    const rate =
+      typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : c.default_rate_bp
     let unit = minor(l.unit_price_minor)
     let discount = minor(l.discount_minor)
     let lineTyped = 0n
@@ -80,14 +81,21 @@ export function planTax(input: TaxPlanInput): TaxPlan {
     }
     if (rate > 0) anyTax = true
     try {
-      const amounts = lineAmounts({ quantity: qty(l.quantity), unit_price_minor: unit, discount_minor: discount }, rate)
+      const amounts = lineAmounts(
+        { quantity: qty(l.quantity), unit_price_minor: unit, discount_minor: discount },
+        rate,
+      )
       subtotal += amounts.subtotal_minor
       tax += amounts.tax_minor
     } catch {
       // A quantity that cannot be read is refused at issue; it adds nothing here.
     }
   }
-  const price_basis: PriceBasis = netted ? "gross_netted" : anyTax || input.lines.length === 0 ? "net" : "no_tax"
+  const price_basis: PriceBasis = netted
+    ? "gross_netted"
+    : anyTax || input.lines.length === 0
+      ? "net"
+      : "no_tax"
   return {
     treatment: c.treatment,
     rate_bp: c.default_rate_bp,
@@ -106,7 +114,11 @@ export function ratePercent(bp: number): string {
 }
 
 /** The treatment in words, with the rate it charges. */
-export function treatmentWords(treatment: TaxTreatment, rateBp: number, taxCountry: string | null | undefined): string {
+export function treatmentWords(
+  treatment: TaxTreatment,
+  rateBp: number,
+  taxCountry: string | null | undefined,
+): string {
   const cc = (taxCountry ?? "").toUpperCase()
   switch (treatment) {
     case "eu_domestic":

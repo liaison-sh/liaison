@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { getGoogleConfig, getGoogleToken, getGoogleClient, getMerchantToken, GoogleConfigError } from "./google-config"
+import {
+  GoogleConfigError,
+  getGoogleClient,
+  getGoogleConfig,
+  getGoogleToken,
+  getMerchantToken,
+} from "./google-config"
 
 // ─── FLAT shape (sandbox bridge group) ───────────────────────────────────────
 

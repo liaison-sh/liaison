@@ -16,24 +16,19 @@
 // persisted `documents` row, not against the helper in isolation, so a future refactor that
 // reintroduces a stub anywhere in that chain fails here.
 
-import { testTime } from "./test-time"
 import { describe, expect, test } from "bun:test"
 import {
+  type Counterparty,
   CounterpartyIncompleteError,
   counterpartyCompletenessError,
-  issueDocument,
-  type Counterparty,
   type IssueCtx,
   type IssueInput,
   type IssuerProfile,
+  issueDocument,
 } from "./issue"
-import {
-  draftsCreate,
-  invoiceCreateAndIssue,
-  invoiceIssue,
-  type MutationsCtx,
-} from "./mutations"
+import { draftsCreate, invoiceCreateAndIssue, invoiceIssue, type MutationsCtx } from "./mutations"
 import { createMockDb, type MockDb } from "./test-db"
+import { testTime } from "./test-time"
 
 const issuer: IssuerProfile = {
   id: "iss-1",
@@ -106,7 +101,13 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     time: testTime(),
     pdf: {
       async render() {
-        return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+        return {
+          file_id: `pdf-${++idSeq}`,
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
       },
     },
     messages: {
@@ -179,7 +180,13 @@ describe("issueDocument recipient backstop", () => {
       time: testTime(),
       pdf: {
         async render() {
-          return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+          return {
+            file_id: `pdf-${++idSeq}`,
+            byte_size: 1024,
+            page_count: 1,
+            sha256: "0".repeat(64),
+            parent_entity_id: crypto.randomUUID(),
+          }
         },
       },
       messages: {
@@ -212,14 +219,17 @@ describe("issueDocument recipient backstop", () => {
   test("throws CounterpartyIncompleteError and persists NOTHING when the recipient is incomplete", async () => {
     const db = createMockDb({ seed: {} })
     await expect(
-      issueDocument(issueCtx(db), input({
-        contact_id: null,
-        legal_name: "",
-        country: "FR",
-        vat_id: null,
-        address: null,
-        email: null,
-      })),
+      issueDocument(
+        issueCtx(db),
+        input({
+          contact_id: null,
+          legal_name: "",
+          country: "FR",
+          vat_id: null,
+          address: null,
+          email: null,
+        }),
+      ),
     ).rejects.toBeInstanceOf(CounterpartyIncompleteError)
     // The refusal must come BEFORE number allocation and the document insert: a rejected
     // issuance may not burn a gap-free invoice number nor leave a half-written row.
@@ -280,7 +290,12 @@ describe("draft-based issuance carries the draft's recipient", () => {
     ctx.fetch = async () => ({
       status: 200,
       headers: {},
-      body: JSON.stringify({ isValid: true, userError: "VALID", name: "KLANGWERK GMBH", address: "---" }),
+      body: JSON.stringify({
+        isValid: true,
+        userError: "VALID",
+        name: "KLANGWERK GMBH",
+        address: "---",
+      }),
     })
     const created = await draftsCreate(ctx, {
       type: "invoice",

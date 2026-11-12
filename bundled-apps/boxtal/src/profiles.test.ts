@@ -48,8 +48,22 @@ const PRODUCTS: Product[] = [
   { code: "SKB", variants: 3, weight: 0.3, dims: [40, 25, 1], category: "content:v1:10120" },
   { code: "CV", variants: 3, weight: 0.9, dims: [50, 32, 4], category: "content:v1:10150" },
   { code: "MT", variants: 3, weight: 0.6, dims: [30, 20, 3], category: "content:v1:10150" },
-  { code: "PS", variants: 3, weight: 0.4, dims: [15, 10, 6], category: "content:v1:10130", accessory: true },
-  { code: "UC", variants: 2, weight: 0.1, dims: [12, 8, 3], category: "content:v1:10130", accessory: true },
+  {
+    code: "PS",
+    variants: 3,
+    weight: 0.4,
+    dims: [15, 10, 6],
+    category: "content:v1:10130",
+    accessory: true,
+  },
+  {
+    code: "UC",
+    variants: 2,
+    weight: 0.1,
+    dims: [12, 8, 3],
+    category: "content:v1:10130",
+    accessory: true,
+  },
   { code: "SKC", variants: 2, weight: 0.3, dims: [40, 25, 1], category: "content:v1:10120" },
   { code: "ST", variants: 1, weight: 1.1, dims: [60, 15, 15], category: "content:v1:10150" },
   { code: "CB", variants: 1, weight: 0.2, dims: [20, 15, 5], category: "content:v1:10130" },
@@ -81,8 +95,26 @@ function legacyRows(): Array<Record<string, unknown>> {
 
 // Packs name ONE variant of each component product (the first), as a real catalog does.
 const PACKS: CatalogPack[] = [
-  { id: "pk-bundle", name: "Bundle", length: 55, width: 38, height: 14, gross_weight: 3.9, content_category: null, carton_tare: 0.5 },
-  { id: "pk-skins", name: "Skin pair", length: 42, width: 27, height: 3, gross_weight: 0.7, content_category: null, carton_tare: null },
+  {
+    id: "pk-bundle",
+    name: "Bundle",
+    length: 55,
+    width: 38,
+    height: 14,
+    gross_weight: 3.9,
+    content_category: null,
+    carton_tare: 0.5,
+  },
+  {
+    id: "pk-skins",
+    name: "Skin pair",
+    length: 42,
+    width: 27,
+    height: 3,
+    gross_weight: 0.7,
+    content_category: null,
+    carton_tare: null,
+  },
 ]
 const COMPONENTS: CatalogPackComponent[] = [
   { pack_id: "pk-bundle", product_source: "shopify", product_id: variantId("DV2", 0), quantity: 1 },
@@ -90,14 +122,21 @@ const COMPONENTS: CatalogPackComponent[] = [
   { pack_id: "pk-skins", product_source: "shopify", product_id: variantId("SKA", 0), quantity: 2 },
 ]
 
-const ALL_VARIANTS = PRODUCTS.flatMap((p) => Array.from({ length: p.variants }, (_, i) => variantId(p.code, i)))
+const ALL_VARIANTS = PRODUCTS.flatMap((p) =>
+  Array.from({ length: p.variants }, (_, i) => variantId(p.code, i)),
+)
 const UNPROFILED = "gid://shopify/ProductVariant/UNPROFILED-1"
 
 /** Deterministic orders: every variant alone at 1-3 units, every pair, and 300 seeded mixes (some
  *  with an unprofiled variant or a line with no ref). */
 function orders(): ResolverLine[][] {
   const out: ResolverLine[][] = []
-  const line = (i: number, id: string | null, q: number, source: string | null = "shopify"): ResolverLine => ({
+  const line = (
+    i: number,
+    id: string | null,
+    q: number,
+    source: string | null = "shopify",
+  ): ResolverLine => ({
     id: `l${i}`,
     product_source: source,
     external_id: id,
@@ -105,7 +144,8 @@ function orders(): ResolverLine[][] {
   })
   for (const v of ALL_VARIANTS) for (const q of [1, 2, 3]) out.push([line(0, v, q)])
   for (let a = 0; a < ALL_VARIANTS.length; a++)
-    for (let b = a + 1; b < ALL_VARIANTS.length; b++) out.push([line(0, ALL_VARIANTS[a]!, 1), line(1, ALL_VARIANTS[b]!, 1)])
+    for (let b = a + 1; b < ALL_VARIANTS.length; b++)
+      out.push([line(0, ALL_VARIANTS[a]!, 1), line(1, ALL_VARIANTS[b]!, 1)])
   let seed = 20261103
   const rnd = () => {
     seed = (Math.imul(seed, 1103515245) + 12345) >>> 0
@@ -116,7 +156,12 @@ function orders(): ResolverLine[][] {
     const lines: ResolverLine[] = []
     for (let i = 0; i < n; i++) {
       const r = rnd()
-      const id = r < 0.04 ? UNPROFILED : r < 0.06 ? null : ALL_VARIANTS[Math.floor(rnd() * ALL_VARIANTS.length)]!
+      const id =
+        r < 0.04
+          ? UNPROFILED
+          : r < 0.06
+            ? null
+            : ALL_VARIANTS[Math.floor(rnd() * ALL_VARIANTS.length)]!
       lines.push(line(i, id, 1 + Math.floor(rnd() * 3), id === null ? null : "shopify"))
     }
     out.push(lines)
@@ -131,7 +176,10 @@ function resolveWith(profiles: VariantProfile[], lines: ResolverLine[]) {
 /** What a variant reads as, minus the row identities (link id / profile id) that are new. */
 function variantView(profiles: VariantProfile[]) {
   return Object.fromEntries(
-    profiles.map(({ id: _id, profile_id: _pid, ...rest }) => [`${rest.product_source}:${rest.product_id}`, rest]),
+    profiles.map(({ id: _id, profile_id: _pid, ...rest }) => [
+      `${rest.product_source}:${rest.product_id}`,
+      rest,
+    ]),
   )
 }
 
@@ -151,10 +199,17 @@ async function mergeDuplicates(db: MockDb) {
   for (const ids of byCode.values()) {
     if (ids.length < 2) continue
     const [target, ...sources] = ids as [string, ...string[]]
-    const preview = await mergeProfiles(ctxOf(db), { target_profile_id: target, source_profile_ids: sources })
+    const preview = await mergeProfiles(ctxOf(db), {
+      target_profile_id: target,
+      source_profile_ids: sources,
+    })
     expect(preview.preview).toBe(true)
     expect(preview.differences).toEqual([])
-    await mergeProfiles(ctxOf(db), { target_profile_id: target, source_profile_ids: sources, confirm: true })
+    await mergeProfiles(ctxOf(db), {
+      target_profile_id: target,
+      source_profile_ids: sources,
+      confirm: true,
+    })
   }
 }
 
@@ -168,7 +223,9 @@ describe("zero-difference proof: migration and merge keep every resolution", () 
     expect(migrated).toBe(30)
     expect(db.__all(PROFILE_TABLE)).toHaveLength(30)
     expect(db.__all(LINK_TABLE)).toHaveLength(30)
-    expect(db.__all(LEGACY_TABLE).every((r) => typeof r.migrated_profile_id === "string")).toBe(true)
+    expect(db.__all(LEGACY_TABLE).every((r) => typeof r.migrated_profile_id === "string")).toBe(
+      true,
+    )
     // Idempotent: a second run migrates nothing.
     expect((await migrateLegacyProfiles(ctxOf(db))).migrated).toBe(0)
 
@@ -188,7 +245,9 @@ describe("zero-difference proof: migration and merge keep every resolution", () 
     const all = orders()
     expect(all.length).toBeGreaterThan(700)
     for (const lines of all) {
-      expect(JSON.stringify(resolveWith(after, lines))).toBe(JSON.stringify(resolveWith(before, lines)))
+      expect(JSON.stringify(resolveWith(after, lines))).toBe(
+        JSON.stringify(resolveWith(before, lines)),
+      )
     }
   })
 
@@ -202,9 +261,13 @@ describe("zero-difference proof: migration and merge keep every resolution", () 
     expect(variantView(after)).toEqual(variantView(before))
 
     // canon(): each line's variant replaced by the variant the pack bills name for that product.
-    const packVariants = new Map(COMPONENTS.map((c) => [c.product_id.replace(/-\d+$/, ""), c.product_id]))
-    const canonId = (id: string | null) => (id ? (packVariants.get(id.replace(/-\d+$/, "")) ?? id) : id)
-    const touchesSibling = (lines: ResolverLine[]) => lines.some((l) => canonId(l.external_id) !== l.external_id)
+    const packVariants = new Map(
+      COMPONENTS.map((c) => [c.product_id.replace(/-\d+$/, ""), c.product_id]),
+    )
+    const canonId = (id: string | null) =>
+      id ? (packVariants.get(id.replace(/-\d+$/, "")) ?? id) : id
+    const touchesSibling = (lines: ResolverLine[]) =>
+      lines.some((l) => canonId(l.external_id) !== l.external_id)
 
     let identical = 0
     let shared = 0
@@ -254,29 +317,76 @@ async function seeded() {
   const db = createMockDb({
     seed: {
       [LEGACY_TABLE]: [
-        { id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1, solo_length: 10, solo_width: 10, solo_height: 10, content_category: "c", short_code: "AA" },
-        { id: "l2", product_source: "shopify", product_id: "V2", unit_weight: 1, solo_length: 10, solo_width: 10, solo_height: 10, content_category: "c", short_code: "AA" },
-        { id: "l3", product_source: "shopify", product_id: "V3", unit_weight: 2, solo_length: 10, solo_width: 10, solo_height: 10, content_category: "c", short_code: "BB" },
+        {
+          id: "l1",
+          product_source: "shopify",
+          product_id: "V1",
+          unit_weight: 1,
+          solo_length: 10,
+          solo_width: 10,
+          solo_height: 10,
+          content_category: "c",
+          short_code: "AA",
+        },
+        {
+          id: "l2",
+          product_source: "shopify",
+          product_id: "V2",
+          unit_weight: 1,
+          solo_length: 10,
+          solo_width: 10,
+          solo_height: 10,
+          content_category: "c",
+          short_code: "AA",
+        },
+        {
+          id: "l3",
+          product_source: "shopify",
+          product_id: "V3",
+          unit_weight: 2,
+          solo_length: 10,
+          solo_width: 10,
+          solo_height: 10,
+          content_category: "c",
+          short_code: "BB",
+        },
       ],
     },
   })
   await migrateLegacyProfiles(ctxOf(db))
-  const byVariant = Object.fromEntries((await loadVariantProfiles(db)).map((p) => [p.product_id, p.profile_id!]))
+  const byVariant = Object.fromEntries(
+    (await loadVariantProfiles(db)).map((p) => [p.product_id, p.profile_id!]),
+  )
   return { db, ctx: ctxOf(db), p1: byVariant.V1!, p2: byVariant.V2!, p3: byVariant.V3! }
 }
 
 describe("product_profile_link / unlink", () => {
   it("links an unprofiled variant to an existing profile; it then resolves with that profile", async () => {
     const { db, ctx, p1 } = await seeded()
-    const res = await linkVariant(ctx, { product_source: "shopify", product_id: "V9", profile_id: p1 })
-    expect(res).toEqual({ ok: true, preview: false, profile_id: p1, previous_profile_id: null, differences: [] })
+    const res = await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V9",
+      profile_id: p1,
+    })
+    expect(res).toEqual({
+      ok: true,
+      preview: false,
+      profile_id: p1,
+      previous_profile_id: null,
+      differences: [],
+    })
     const v9 = (await loadVariantProfiles(db)).find((p) => p.product_id === "V9")
     expect(v9).toMatchObject({ profile_id: p1, unit_weight: 1, short_code: "AA" })
   })
 
   it("moves a linked variant to another profile and reports where it came from", async () => {
     const { ctx, p1, p3 } = await seeded()
-    const res = await linkVariant(ctx, { product_source: "shopify", product_id: "V1", profile_id: p3, confirm: true })
+    const res = await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V1",
+      profile_id: p3,
+      confirm: true,
+    })
     expect(res.previous_profile_id).toBe(p1)
   })
 
@@ -289,17 +399,28 @@ describe("product_profile_link / unlink", () => {
 
   it("migrates old per-variant rows before linking (no legacy row is left unmigrated)", async () => {
     const db = createMockDb({
-      seed: { [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }] },
+      seed: {
+        [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }],
+      },
     })
     const target = await db.insert(PROFILE_TABLE, { unit_weight: 3 })
-    await linkVariant(ctxOf(db), { product_source: "shopify", product_id: "V9", profile_id: target.id })
+    await linkVariant(ctxOf(db), {
+      product_source: "shopify",
+      product_id: "V9",
+      profile_id: target.id,
+    })
     expect(db.__all(LEGACY_TABLE)[0]!.migrated_profile_id).toBeTruthy()
     expect(db.__all(LINK_TABLE)).toHaveLength(2)
   })
 
   it("unlinks a variant: it has no profile any more, its profile stays for the others", async () => {
     const { db, ctx, p1 } = await seeded()
-    await linkVariant(ctx, { product_source: "shopify", product_id: "V2", profile_id: p1, confirm: true })
+    await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V2",
+      profile_id: p1,
+      confirm: true,
+    })
     const res = await unlinkVariant(ctx, { product_source: "shopify", product_id: "V1" })
     expect(res).toEqual({ ok: true, profile_id: p1, remaining_variants: 1 })
     const profiles = await loadVariantProfiles(db)
@@ -316,7 +437,9 @@ describe("product_profile_link / unlink", () => {
 
   it("refuses to unlink a variant that has no link", async () => {
     const { ctx } = await seeded()
-    await expect(unlinkVariant(ctx, { product_source: "shopify", product_id: "V9" })).rejects.toThrow(/not linked/)
+    await expect(
+      unlinkVariant(ctx, { product_source: "shopify", product_id: "V9" }),
+    ).rejects.toThrow(/not linked/)
   })
 })
 
@@ -338,10 +461,9 @@ describe("product_profile_merge", () => {
     const { db, ctx, p1, p2 } = await seeded()
     await mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p2], confirm: true })
     expect(db.__all(PROFILE_TABLE).map((p) => p.id)).not.toContain(p2)
-    expect((await loadVariantProfiles(db)).filter((p) => p.profile_id === p1).map((p) => p.product_id)).toEqual([
-      "V1",
-      "V2",
-    ])
+    expect(
+      (await loadVariantProfiles(db)).filter((p) => p.profile_id === p1).map((p) => p.product_id),
+    ).toEqual(["V1", "V2"])
   })
 
   it("refuses to merge differing profiles unless told whose fields win", async () => {
@@ -356,18 +478,34 @@ describe("product_profile_merge", () => {
     ).rejects.toThrow(/differ on unit_weight, short_code/)
     expect(db.__all(PROFILE_TABLE)).toHaveLength(3)
 
-    await mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p3], confirm: true, fields_from: p3 })
+    await mergeProfiles(ctx, {
+      target_profile_id: p1,
+      source_profile_ids: [p3],
+      confirm: true,
+      fields_from: p3,
+    })
     const v1 = (await loadVariantProfiles(db)).find((p) => p.product_id === "V1")
     expect(v1).toMatchObject({ profile_id: p1, unit_weight: 2, short_code: "BB" })
   })
 
   it("refuses a target that is also a source, an unknown profile, an empty source list, a foreign fields_from", async () => {
     const { ctx, p1, p2 } = await seeded()
-    await expect(mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p1] })).rejects.toThrow(/cannot also be a source/)
-    await expect(mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: ["nope"] })).rejects.toThrow(/No shipping profile/)
-    await expect(mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [] })).rejects.toThrow(/at least one/)
     await expect(
-      mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p2], confirm: true, fields_from: "other" }),
+      mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p1] }),
+    ).rejects.toThrow(/cannot also be a source/)
+    await expect(
+      mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: ["nope"] }),
+    ).rejects.toThrow(/No shipping profile/)
+    await expect(
+      mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [] }),
+    ).rejects.toThrow(/at least one/)
+    await expect(
+      mergeProfiles(ctx, {
+        target_profile_id: p1,
+        source_profile_ids: [p2],
+        confirm: true,
+        fields_from: "other",
+      }),
     ).rejects.toThrow(/fields_from/)
   })
 })
@@ -375,7 +513,9 @@ describe("product_profile_merge", () => {
 describe("product_profile_delete", () => {
   it("is refused while a variant links to the profile, and deletes it once none does", async () => {
     const { db, ctx, p1 } = await seeded()
-    await expect(deleteProfile(ctx, { profile_id: p1 })).rejects.toThrow(/still used by 1 variant\(s\): shopify:V1/)
+    await expect(deleteProfile(ctx, { profile_id: p1 })).rejects.toThrow(
+      /still used by 1 variant\(s\): shopify:V1/,
+    )
     await unlinkVariant(ctx, { product_source: "shopify", product_id: "V1" })
     expect(await deleteProfile(ctx, { profile_id: p1 })).toEqual({ ok: true })
     expect(db.__all(PROFILE_TABLE).map((p) => p.id)).not.toContain(p1)
@@ -390,7 +530,12 @@ describe("product_profile_delete", () => {
 describe("product_profile_upsert on shared profiles", () => {
   it("editing one variant of a shared profile changes it for every variant on it", async () => {
     const { db, ctx, p1 } = await seeded()
-    await linkVariant(ctx, { product_source: "shopify", product_id: "V2", profile_id: p1, confirm: true })
+    await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V2",
+      profile_id: p1,
+      confirm: true,
+    })
     const res = await productProfileUpsert(ctx, {
       product_source: "shopify",
       product_id: "V1",
@@ -398,15 +543,25 @@ describe("product_profile_upsert on shared profiles", () => {
       apply_to_shared: true,
     })
     expect(res).toEqual({ id: p1, shared_with: [{ product_source: "shopify", product_id: "V2" }] })
-    const weights = (await loadVariantProfiles(db)).filter((p) => p.profile_id === p1).map((p) => p.unit_weight)
+    const weights = (await loadVariantProfiles(db))
+      .filter((p) => p.profile_id === p1)
+      .map((p) => p.unit_weight)
     expect(weights).toEqual([1.7, 1.7])
   })
 
   it("an unlinked variant gets a new profile of its own", async () => {
     const { db, ctx } = await seeded()
-    const res = await productProfileUpsert(ctx, { product_source: "shopify", product_id: "V7", unit_weight: 0.5, short_code: "CC" })
+    const res = await productProfileUpsert(ctx, {
+      product_source: "shopify",
+      product_id: "V7",
+      unit_weight: 0.5,
+      short_code: "CC",
+    })
     expect(res.shared_with).toEqual([])
-    expect((await loadVariantProfiles(db)).find((p) => p.product_id === "V7")).toMatchObject({ profile_id: res.id, short_code: "CC" })
+    expect((await loadVariantProfiles(db)).find((p) => p.product_id === "V7")).toMatchObject({
+      profile_id: res.id,
+      short_code: "CC",
+    })
   })
 })
 
@@ -414,13 +569,27 @@ describe("packages_list", () => {
   it("returns shared profiles with their variants, and unprofiled variants from resolved rows", async () => {
     const { db, ctx, p1 } = await seeded()
     db.__seed("prep_draft_cache", [
-      { id: "c1", document_ref: "d1", unresolved_refs: [{ product_source: "shopify", product_id: "V9", description: "Cable, retail" }] },
-      { id: "c2", document_ref: "d2", unresolved_refs: [{ product_source: "shopify", product_id: "V9", description: "Cable, retail" }] },
+      {
+        id: "c1",
+        document_ref: "d1",
+        unresolved_refs: [
+          { product_source: "shopify", product_id: "V9", description: "Cable, retail" },
+        ],
+      },
+      {
+        id: "c2",
+        document_ref: "d2",
+        unresolved_refs: [
+          { product_source: "shopify", product_id: "V9", description: "Cable, retail" },
+        ],
+      },
       { id: "c3", document_ref: "d3" },
     ])
     let list = await packagesList(ctx, {})
     expect(list.shared_profiles).toHaveLength(3)
-    expect(list.shared_profiles.find((p) => p.id === p1)?.variants).toEqual([{ product_source: "shopify", product_id: "V1" }])
+    expect(list.shared_profiles.find((p) => p.id === p1)?.variants).toEqual([
+      { product_source: "shopify", product_id: "V1" },
+    ])
     expect(list.profiles).toHaveLength(3)
     expect(list.unprofiled_variants).toEqual([
       { product_source: "shopify", product_id: "V9", description: "Cable, retail", rows: 2 },
@@ -436,7 +605,9 @@ describe("packages_list", () => {
 describe("shipping-profile import kind on shared profiles", () => {
   it("creates a profile + link, and skips a variant that already has a profile (linked or legacy)", async () => {
     const db = createMockDb({
-      seed: { [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }] },
+      seed: {
+        [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }],
+      },
     })
     const res = await importShippingProfiles(
       {
@@ -444,9 +615,18 @@ describe("shipping-profile import kind on shared profiles", () => {
         kind: "shipping-profile",
         sourceLabel: "t",
         records: [
-          { record: { productSource: "shopify", productId: "V1", unitWeight: 2 }, dedupValue: "V1" },
-          { record: { productSource: "shopify", productId: "V2", unitWeight: 2 }, dedupValue: "V2" },
-          { record: { productSource: "shopify", productId: "V2", unitWeight: 3 }, dedupValue: "V2" },
+          {
+            record: { productSource: "shopify", productId: "V1", unitWeight: 2 },
+            dedupValue: "V1",
+          },
+          {
+            record: { productSource: "shopify", productId: "V2", unitWeight: 2 },
+            dedupValue: "V2",
+          },
+          {
+            record: { productSource: "shopify", productId: "V2", unitWeight: 3 },
+            dedupValue: "V2",
+          },
         ],
       },
       { db },
@@ -482,7 +662,10 @@ function oldReader(db: MockDb): Record<string, Record<string, unknown>> {
 
 /** The previous release's product_profile_upsert, verbatim in effect: update the variant's old row
  *  in place (dims and category replaced, short code only when sent) or insert one. */
-async function oldReleaseUpsert(db: MockDb, input: { product_id: string; unit_weight: number; solo_length?: number }) {
+async function oldReleaseUpsert(
+  db: MockDb,
+  input: { product_id: string; unit_weight: number; solo_length?: number },
+) {
   const data = {
     product_source: "shopify",
     product_id: input.product_id,
@@ -510,7 +693,9 @@ function uniqueDb(db: MockDb): MockDb {
         .__all(entity)
         .some((r) => r.product_source === data.product_source && r.product_id === data.product_id)
       if (clash) {
-        throw new Error(`db_insert: duplicate key value violates unique constraint "${entity}_org_id_product_source_product_id_key" (23505)`)
+        throw new Error(
+          `db_insert: duplicate key value violates unique constraint "${entity}_org_id_product_source_product_id_key" (23505)`,
+        )
       }
     }
     return insert(entity, data)
@@ -527,7 +712,11 @@ describe("rolling deploy: writes are mirrored onto the old per-variant table", (
       return insert(entity, data)
     }
     await expect(
-      productProfileUpsert(ctxOf(db), { product_source: "shopify", product_id: "V5", unit_weight: 1 }),
+      productProfileUpsert(ctxOf(db), {
+        product_source: "shopify",
+        product_id: "V5",
+        unit_weight: 1,
+      }),
     ).rejects.toThrow("mirror refused")
     expect(db.__all(PROFILE_TABLE)).toEqual([])
     expect(db.__all(LINK_TABLE)).toEqual([])
@@ -540,13 +729,25 @@ describe("rolling deploy: writes are mirrored onto the old per-variant table", (
     db.findMany = async (entity, opts) => {
       const rows = await findMany(entity, opts)
       // Right after this call read the variant's (missing) old row, the previous release writes it.
-      if (entity === LEGACY_TABLE && !raced && (opts?.where as { product_id?: string } | undefined)?.product_id === "V6") {
+      if (
+        entity === LEGACY_TABLE &&
+        !raced &&
+        (opts?.where as { product_id?: string } | undefined)?.product_id === "V6"
+      ) {
         raced = true
-        await db.insert(LEGACY_TABLE, { product_source: "shopify", product_id: "V6", unit_weight: 9 })
+        await db.insert(LEGACY_TABLE, {
+          product_source: "shopify",
+          product_id: "V6",
+          unit_weight: 9,
+        })
       }
       return rows
     }
-    const res = await productProfileUpsert(ctxOf(db), { product_source: "shopify", product_id: "V6", unit_weight: 1.5 })
+    const res = await productProfileUpsert(ctxOf(db), {
+      product_source: "shopify",
+      product_id: "V6",
+      unit_weight: 1.5,
+    })
     expect(raced).toBe(true)
     expect(db.__all(PROFILE_TABLE).map((p) => p.id)).toEqual([res.id])
     expect(db.__all(LINK_TABLE)).toHaveLength(1)
@@ -565,8 +766,18 @@ describe("rolling deploy: writes are mirrored onto the old per-variant table", (
       apply_to_shared: true,
     })
     const old = oldReader(db)
-    expect(old.V1).toMatchObject({ unit_weight: 1.7, solo_length: 10, content_category: "c", short_code: "AA" })
-    expect(old.V2).toMatchObject({ unit_weight: 1.7, solo_length: 10, content_category: "c", short_code: "AA" })
+    expect(old.V1).toMatchObject({
+      unit_weight: 1.7,
+      solo_length: 10,
+      content_category: "c",
+      short_code: "AA",
+    })
+    expect(old.V2).toMatchObject({
+      unit_weight: 1.7,
+      solo_length: 10,
+      content_category: "c",
+      short_code: "AA",
+    })
     expect(old.V3!.unit_weight).toBe(2)
   })
 
@@ -575,28 +786,54 @@ describe("rolling deploy: writes are mirrored onto the old per-variant table", (
     await linkVariant(ctx, { product_source: "shopify", product_id: "V9", profile_id: p1 })
     expect(oldReader(db).V9).toMatchObject({ unit_weight: 1, short_code: "AA" })
 
-    await linkVariant(ctx, { product_source: "shopify", product_id: "V9", profile_id: p3, confirm: true })
+    await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V9",
+      profile_id: p3,
+      confirm: true,
+    })
     expect(oldReader(db).V9).toMatchObject({ unit_weight: 2, short_code: "BB" })
 
-    await mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p3], confirm: true, fields_from: p3 })
+    await mergeProfiles(ctx, {
+      target_profile_id: p1,
+      source_profile_ids: [p3],
+      confirm: true,
+      fields_from: p3,
+    })
     expect(oldReader(db).V1).toMatchObject({ unit_weight: 2, short_code: "BB" })
     expect(oldReader(db).V9).toMatchObject({ unit_weight: 2, short_code: "BB" })
 
-    await productProfileUpsert(ctx, { product_source: "shopify", product_id: "V7", unit_weight: 0.5, short_code: "CC" })
-    expect(oldReader(db).V7).toMatchObject({ unit_weight: 0.5, short_code: "CC", solo_length: null })
+    await productProfileUpsert(ctx, {
+      product_source: "shopify",
+      product_id: "V7",
+      unit_weight: 0.5,
+      short_code: "CC",
+    })
+    expect(oldReader(db).V7).toMatchObject({
+      unit_weight: 0.5,
+      short_code: "CC",
+      solo_length: null,
+    })
 
     await importShippingProfiles(
       {
         runId: "r",
         kind: "shipping-profile",
         sourceLabel: "t",
-        records: [{ record: { productSource: "shopify", productId: "V8", unitWeight: 4 }, dedupValue: "V8" }],
+        records: [
+          {
+            record: { productSource: "shopify", productId: "V8", unitWeight: 4 },
+            dedupValue: "V8",
+          },
+        ],
       },
       { db },
     )
     expect(oldReader(db).V8).toMatchObject({ unit_weight: 4 })
     // Every old row now carries the profile it mirrors, so none of them is migrated again.
-    expect(db.__all(LEGACY_TABLE).every((r) => typeof r.migrated_profile_id === "string")).toBe(true)
+    expect(db.__all(LEGACY_TABLE).every((r) => typeof r.migrated_profile_id === "string")).toBe(
+      true,
+    )
     expect((await migrateLegacyProfiles(ctx)).migrated).toBe(0)
   })
 
@@ -611,13 +848,25 @@ describe("rolling deploy: writes are mirrored onto the old per-variant table", (
 describe("rolling deploy: the previous release's writes after the migration are picked up", () => {
   it("an old-release edit of one variant of a shared profile reads at once and splits it off on roll-forward", async () => {
     const { db, ctx, p1 } = await seeded()
-    await linkVariant(ctx, { product_source: "shopify", product_id: "V2", profile_id: p1, confirm: true })
+    await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V2",
+      profile_id: p1,
+      confirm: true,
+    })
     await oldReleaseUpsert(db, { product_id: "V2", unit_weight: 5, solo_length: 12 })
 
     // Read before any migration runs: the old release's write is what V2 reads; V1 is untouched.
     let profiles = await loadVariantProfiles(db)
-    expect(profiles.find((p) => p.product_id === "V2")).toMatchObject({ unit_weight: 5, solo_length: 12 })
-    expect(profiles.find((p) => p.product_id === "V1")).toMatchObject({ profile_id: p1, unit_weight: 1, solo_length: 10 })
+    expect(profiles.find((p) => p.product_id === "V2")).toMatchObject({
+      unit_weight: 5,
+      solo_length: 12,
+    })
+    expect(profiles.find((p) => p.product_id === "V1")).toMatchObject({
+      profile_id: p1,
+      unit_weight: 1,
+      solo_length: 10,
+    })
 
     const res = await migrateLegacyProfiles(ctx)
     expect(res.remigrated).toBe(1)
@@ -625,7 +874,10 @@ describe("rolling deploy: the previous release's writes after the migration are 
     const v2 = profiles.find((p) => p.product_id === "V2")!
     expect(v2.profile_id).not.toBe(p1)
     expect(v2).toMatchObject({ unit_weight: 5, solo_length: 12, solo_width: null })
-    expect(profiles.find((p) => p.product_id === "V1")).toMatchObject({ profile_id: p1, unit_weight: 1 })
+    expect(profiles.find((p) => p.product_id === "V1")).toMatchObject({
+      profile_id: p1,
+      unit_weight: 1,
+    })
     // Idempotent: nothing diverges any more.
     expect((await migrateLegacyProfiles(ctx)).remigrated).toBe(0)
   })
@@ -635,7 +887,12 @@ describe("rolling deploy: the previous release's writes after the migration are 
     await oldReleaseUpsert(db, { product_id: "V3", unit_weight: 7 })
     await migrateShippingProfilesJobHandler({}, ctx)
     const v3 = (await loadVariantProfiles(db)).find((p) => p.product_id === "V3")
-    expect(v3).toMatchObject({ profile_id: p3, unit_weight: 7, solo_length: null, short_code: "BB" })
+    expect(v3).toMatchObject({
+      profile_id: p3,
+      unit_weight: 7,
+      solo_length: null,
+      short_code: "BB",
+    })
   })
 
   it("an old-release insert of a new variant after the migration is migrated by the next write", async () => {
@@ -651,7 +908,12 @@ describe("rolling deploy: the previous release's writes after the migration are 
 describe("product_profile_upsert: shared edits are explicit, partial updates keep what was not sent", () => {
   it("refuses to change a shared profile from one variant unless apply_to_shared is passed, naming the siblings", async () => {
     const { db, ctx, p1 } = await seeded()
-    await linkVariant(ctx, { product_source: "shopify", product_id: "V2", profile_id: p1, confirm: true })
+    await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V2",
+      profile_id: p1,
+      confirm: true,
+    })
     await linkVariant(ctx, { product_source: "shopify", product_id: "V9", profile_id: p1 })
     await expect(
       productProfileUpsert(ctx, { product_source: "shopify", product_id: "V1", unit_weight: 9 }),
@@ -661,16 +923,36 @@ describe("product_profile_upsert: shared edits are explicit, partial updates kee
 
   it("a variant alone on its profile needs no flag", async () => {
     const { ctx, p3 } = await seeded()
-    const res = await productProfileUpsert(ctx, { product_source: "shopify", product_id: "V3", unit_weight: 2.5 })
+    const res = await productProfileUpsert(ctx, {
+      product_source: "shopify",
+      product_id: "V3",
+      unit_weight: 2.5,
+    })
     expect(res).toEqual({ id: p3, shared_with: [] })
   })
 
   it("keeps solo dims, category and code that were not sent; null clears one", async () => {
     const { db, ctx } = await seeded()
-    await productProfileUpsert(ctx, { product_source: "shopify", product_id: "V3", unit_weight: 2.5 })
+    await productProfileUpsert(ctx, {
+      product_source: "shopify",
+      product_id: "V3",
+      unit_weight: 2.5,
+    })
     let v3 = (await loadVariantProfiles(db)).find((p) => p.product_id === "V3")
-    expect(v3).toMatchObject({ unit_weight: 2.5, solo_length: 10, solo_width: 10, solo_height: 10, content_category: "c", short_code: "BB" })
-    await productProfileUpsert(ctx, { product_source: "shopify", product_id: "V3", unit_weight: 2.5, solo_length: null })
+    expect(v3).toMatchObject({
+      unit_weight: 2.5,
+      solo_length: 10,
+      solo_width: 10,
+      solo_height: 10,
+      content_category: "c",
+      short_code: "BB",
+    })
+    await productProfileUpsert(ctx, {
+      product_source: "shopify",
+      product_id: "V3",
+      unit_weight: 2.5,
+      solo_length: null,
+    })
     v3 = (await loadVariantProfiles(db)).find((p) => p.product_id === "V3")
     expect(v3).toMatchObject({ solo_length: null, solo_width: 10 })
     expect(oldReader(db).V3).toMatchObject({ solo_length: null, solo_width: 10 })
@@ -680,7 +962,11 @@ describe("product_profile_upsert: shared edits are explicit, partial updates kee
 describe("product_profile_link: moving a profiled variant is previewed", () => {
   it("previews the field differences and writes nothing without confirm; moves it with confirm", async () => {
     const { db, ctx, p1, p3 } = await seeded()
-    const preview = await linkVariant(ctx, { product_source: "shopify", product_id: "V1", profile_id: p3 })
+    const preview = await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V1",
+      profile_id: p3,
+    })
     expect(preview).toMatchObject({
       ok: false,
       preview: true,
@@ -693,8 +979,18 @@ describe("product_profile_link: moving a profiled variant is previewed", () => {
     })
     expect(preview.note).toMatch(/packs/)
     expect((await loadVariantProfiles(db)).find((p) => p.product_id === "V1")!.profile_id).toBe(p1)
-    const done = await linkVariant(ctx, { product_source: "shopify", product_id: "V1", profile_id: p3, confirm: true })
-    expect(done).toMatchObject({ ok: true, preview: false, profile_id: p3, previous_profile_id: p1 })
+    const done = await linkVariant(ctx, {
+      product_source: "shopify",
+      product_id: "V1",
+      profile_id: p3,
+      confirm: true,
+    })
+    expect(done).toMatchObject({
+      ok: true,
+      preview: false,
+      profile_id: p3,
+      previous_profile_id: p1,
+    })
     expect((await loadVariantProfiles(db)).find((p) => p.product_id === "V1")!.profile_id).toBe(p3)
   })
 })
@@ -704,7 +1000,15 @@ describe("migration edge cases", () => {
     const db = createMockDb()
     const p = await db.insert(PROFILE_TABLE, { unit_weight: 3, short_code: "NEW" })
     await db.insert(LINK_TABLE, { product_source: "shopify", product_id: "V1", profile_id: p.id })
-    db.__seed(LEGACY_TABLE, [{ id: "old-1", product_source: "shopify", product_id: "V1", unit_weight: 1, short_code: "OLD" }])
+    db.__seed(LEGACY_TABLE, [
+      {
+        id: "old-1",
+        product_source: "shopify",
+        product_id: "V1",
+        unit_weight: 1,
+        short_code: "OLD",
+      },
+    ])
 
     const before = await loadVariantProfiles(db)
     expect(before).toHaveLength(1)
@@ -712,7 +1016,11 @@ describe("migration edge cases", () => {
 
     expect((await migrateLegacyProfiles(ctxOf(db))).migrated).toBe(0)
     expect(db.__all(PROFILE_TABLE)).toHaveLength(1)
-    expect(db.__all(LEGACY_TABLE)[0]).toMatchObject({ migrated_profile_id: p.id, unit_weight: 3, short_code: "NEW" })
+    expect(db.__all(LEGACY_TABLE)[0]).toMatchObject({
+      migrated_profile_id: p.id,
+      unit_weight: 3,
+      short_code: "NEW",
+    })
     expect(await loadVariantProfiles(db)).toEqual(before)
   })
 
@@ -725,7 +1033,9 @@ describe("migration edge cases", () => {
     expect((await migrateLegacyProfiles(ctx)).migrated).toBe(2)
     expect(db.__all(PROFILE_TABLE)).toHaveLength(5)
     expect(db.__all(LINK_TABLE)).toHaveLength(5)
-    expect((await loadVariantProfiles(db)).map((p) => [p.product_id, Number(p.unit_weight)])).toEqual([
+    expect(
+      (await loadVariantProfiles(db)).map((p) => [p.product_id, Number(p.unit_weight)]),
+    ).toEqual([
       ["V1", 1],
       ["V2", 1],
       ["V3", 2],
@@ -735,7 +1045,15 @@ describe("migration edge cases", () => {
   })
 
   it("a concurrent migrator that links the variant first wins: the loser drops its profile and adopts the winner's", async () => {
-    const db = uniqueDb(createMockDb({ seed: { [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }] } }))
+    const db = uniqueDb(
+      createMockDb({
+        seed: {
+          [LEGACY_TABLE]: [
+            { id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 },
+          ],
+        },
+      }),
+    )
     const winner = await db.insert(PROFILE_TABLE, { unit_weight: 1 })
     const insert = db.insert
     let raced = false
@@ -744,7 +1062,11 @@ describe("migration edge cases", () => {
       // Right after this run made its profile, another run links the variant first.
       if (entity === PROFILE_TABLE && !raced) {
         raced = true
-        await insert(LINK_TABLE, { product_source: "shopify", product_id: "V1", profile_id: winner.id })
+        await insert(LINK_TABLE, {
+          product_source: "shopify",
+          product_id: "V1",
+          profile_id: winner.id,
+        })
       }
       return row
     }
@@ -757,7 +1079,11 @@ describe("migration edge cases", () => {
   })
 
   it("the hourly job never recreates a link the user removed while it ran", async () => {
-    const db = createMockDb({ seed: { [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }] } })
+    const db = createMockDb({
+      seed: {
+        [LEGACY_TABLE]: [{ id: "l1", product_source: "shopify", product_id: "V1", unit_weight: 1 }],
+      },
+    })
     const ctx = ctxOf(db)
     const findMany = db.findMany.bind(db)
     let interleaved = false

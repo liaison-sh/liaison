@@ -14,14 +14,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import manifest from "../../app.manifest.json"
 import {
   ContactDocumentsPanel,
+  type DocumentRow,
   displayTotal,
   loadPanel,
   RELATIONSHIP_OPTIONS,
-  type DocumentRow,
 } from "./ContactDocumentsPanel"
-import manifest from "../../app.manifest.json"
 
 const source = readFileSync(join(import.meta.dir, "ContactDocumentsPanel.tsx"), "utf-8")
 
@@ -131,9 +131,33 @@ describe("ContactDocumentsPanel loadPanel — reads the bare documents_search ar
 // ─────────────────────────────────────────────────────────────────────────
 describe("ContactDocumentsPanel loadPanel — requests lines only for draft rows", () => {
   const FULL_PAGE = [
-    { id: "d1", type: "invoice", number: "INV-1", status: "issued", counterparty_name: "Acme", grand_total_minor: "5000", currency: "EUR" },
-    { id: "d2", type: "quote", number: null, status: "draft", counterparty_name: "Acme", grand_total_minor: "0", currency: "EUR" },
-    { id: "d3", type: "invoice", number: "INV-3", status: "issued", counterparty_name: "Acme", grand_total_minor: "7000", currency: "EUR" },
+    {
+      id: "d1",
+      type: "invoice",
+      number: "INV-1",
+      status: "issued",
+      counterparty_name: "Acme",
+      grand_total_minor: "5000",
+      currency: "EUR",
+    },
+    {
+      id: "d2",
+      type: "quote",
+      number: null,
+      status: "draft",
+      counterparty_name: "Acme",
+      grand_total_minor: "0",
+      currency: "EUR",
+    },
+    {
+      id: "d3",
+      type: "invoice",
+      number: "INV-3",
+      status: "issued",
+      counterparty_name: "Acme",
+      grand_total_minor: "7000",
+      currency: "EUR",
+    },
   ]
   const DRAFT_ROWS_WITH_LINES = [
     {

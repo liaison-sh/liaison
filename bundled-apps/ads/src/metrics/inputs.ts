@@ -25,8 +25,8 @@
 import {
   DEFAULT_SKU_CLASSING_CONFIG,
   orderHitIsB2b,
-  shopifyOrderKey,
   type SkuClassingConfig,
+  shopifyOrderKey,
 } from "./sku-classing"
 
 export interface SourceLineage {
@@ -47,7 +47,10 @@ export interface GatheredValue<T> {
 }
 
 interface ExecuteToolCtx {
-  executeTool?: (target: string, args: Record<string, unknown>) => Promise<{
+  executeTool?: (
+    target: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
     status: "completed" | "pending_approval" | "error"
     result?: unknown
     error?: { code: string; message: string; retryable?: boolean }
@@ -153,7 +156,10 @@ async function callCrossAppNow(
       return { ok: false, note: `${target} failed: ${envelope.error?.message ?? "unknown error"}` }
     }
     if (envelope.status === "pending_approval") {
-      return { ok: false, note: `${target} requires approval, so this input cannot be gathered right now` }
+      return {
+        ok: false,
+        note: `${target} requires approval, so this input cannot be gathered right now`,
+      }
     }
     return { ok: true, result: envelope.result }
   } catch (e) {
@@ -249,7 +255,12 @@ export async function gatherShopifyRevenueSplit(
   const calls = [
     `shopify:orders_search(created_at_min:${period.start}, created_at_max:${period.end}, cursor-paginated)`,
   ]
-  const both = (lineage: SourceLineage, dtc: number | null, b2b: number | null, ids: string[]): ShopifyRevenueSplit => ({
+  const both = (
+    lineage: SourceLineage,
+    dtc: number | null,
+    b2b: number | null,
+    ids: string[],
+  ): ShopifyRevenueSplit => ({
     dtc: { value: dtc, lineage },
     b2b: { value: b2b, lineage },
     b2bOrderIds: { value: ids, lineage },
@@ -268,7 +279,10 @@ export async function gatherShopifyRevenueSplit(
   const dtcHits: OrderHit[] = []
   const b2bHits: OrderHit[] = []
   for (const hit of ordersResp.hits) (orderHitIsB2b(hit, config) ? b2bHits : dtcHits).push(hit)
-  const b2bOrderIds = b2bHits.map((h) => shopifyOrderKey(h.id)).filter((k): k is string => k !== null).sort()
+  const b2bOrderIds = b2bHits
+    .map((h) => shopifyOrderKey(h.id))
+    .filter((k): k is string => k !== null)
+    .sort()
   const dtc = sumOrderTotals(dtcHits)
   const b2b = sumOrderTotals(b2bHits)
   const all = sumOrderTotals(ordersResp.hits)
@@ -280,8 +294,7 @@ export async function gatherShopifyRevenueSplit(
         calls,
         period,
         unavailable: true,
-        note:
-          "Order rows spanned more than one currency. A MIXED-currency sum is not a real amount, so this input degrades to unavailable rather than quoting a currency-corrupted figure; verify currency alignment before re-running.",
+        note: "Order rows spanned more than one currency. A MIXED-currency sum is not a real amount, so this input degrades to unavailable rather than quoting a currency-corrupted figure; verify currency alignment before re-running.",
       },
       null,
       null,
@@ -348,7 +361,13 @@ export async function gatherManualSpendTotal(
   if (!ctx.db) {
     return {
       value: 0,
-      lineage: { source: "manual_spend", calls: [], period, unavailable: true, note: "app DB not available" },
+      lineage: {
+        source: "manual_spend",
+        calls: [],
+        period,
+        unavailable: true,
+        note: "app DB not available",
+      },
     }
   }
   const rows = (await ctx.db.findMany("manual_spend", {})) as ManualSpendRow[]
@@ -356,7 +375,10 @@ export async function gatherManualSpendTotal(
     if (!r.period_start || !r.period_end) return false
     return r.period_start <= period.end && r.period_end >= period.start
   })
-  const sum = overlapping.reduce((acc, r) => acc + (Number.isFinite(r.amount) ? Number(r.amount) : 0), 0)
+  const sum = overlapping.reduce(
+    (acc, r) => acc + (Number.isFinite(r.amount) ? Number(r.amount) : 0),
+    0,
+  )
 
   return {
     value: sum,
@@ -364,7 +386,10 @@ export async function gatherManualSpendTotal(
       source: "manual_spend",
       calls: [`manual_spend_list(period_start<=${period.end}, period_end>=${period.start})`],
       period,
-      note: rows.length === 0 ? "manual_spend ledger is unseeded (empty), so the total is 0 by absence, not by measurement." : undefined,
+      note:
+        rows.length === 0
+          ? "manual_spend ledger is unseeded (empty), so the total is 0 by absence, not by measurement."
+          : undefined,
     },
   }
 }
@@ -412,12 +437,20 @@ export async function gatherPlatformSpend(
   })
   const meta: GatheredValue<number | null> = metaResp.ok
     ? { value: sumCost(metaResp.result), lineage: { source: "meta:insights_query", calls, period } }
-    : { value: null, lineage: { source: "meta:insights_query", calls, period, unavailable: true, note: metaResp.note } }
+    : {
+        value: null,
+        lineage: {
+          source: "meta:insights_query",
+          calls,
+          period,
+          unavailable: true,
+          note: metaResp.note,
+        },
+      }
 
   const googleCalls = [`google_insights_query(${period.start}..${period.end})`]
   const googleResp = await callCrossApp(ctx, "ads:google_insights_query", {
-    query:
-      `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${period.start}' AND '${period.end}'`,
+    query: `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${period.start}' AND '${period.end}'`,
   })
   // A NOT-CONNECTED Google arm is 0 spend BY ABSENCE (the app manages no
   // Google account, so it has no platform spend to count) — mirroring the
@@ -518,7 +551,10 @@ export async function gatherAttributionRows(
     if (result && typeof result === "object") {
       const env = result as { rows?: unknown; error?: { code?: string; message?: string } }
       if (env.error) {
-        return { ok: false, note: `${env.error.code ?? "error"}: ${env.error.message ?? "unknown"}` }
+        return {
+          ok: false,
+          note: `${env.error.code ?? "error"}: ${env.error.message ?? "unknown"}`,
+        }
       }
       if (Array.isArray(env.rows)) return { ok: true, rows: env.rows.map(normalizeRow) }
     }
@@ -535,13 +571,17 @@ export async function gatherAttributionRows(
     name: "purchase_attribution_for_period",
     params: { period_start: period.start, period_end: periodEndTs },
   })
-  const curatedRows = curated.ok ? unwrapDbRows(curated.result) : { ok: false as const, note: curated.note }
+  const curatedRows = curated.ok
+    ? unwrapDbRows(curated.result)
+    : { ok: false as const, note: curated.note }
   if (curatedRows.ok) {
     return {
       value: curatedRows.rows,
       lineage: {
         source: "database:db_read(purchase_attribution_for_period)",
-        calls: [`database:db_read(purchase_attribution_for_period, ${period.start}..${period.end})`],
+        calls: [
+          `database:db_read(purchase_attribution_for_period, ${period.start}..${period.end})`,
+        ],
         period,
       },
     }
@@ -607,7 +647,10 @@ export interface MetricsInputs {
 }
 
 /** Gather every input a registry formula might need, for one period, in one call. */
-export async function gatherAllInputs(ctx: MetricsInputCtx, period: Period): Promise<MetricsInputs> {
+export async function gatherAllInputs(
+  ctx: MetricsInputCtx,
+  period: Period,
+): Promise<MetricsInputs> {
   const [shopify, manualSpendTotal, platformSpend, attribution] = await Promise.all([
     gatherShopifyRevenueSplit(ctx, period),
     gatherManualSpendTotal(ctx, period),

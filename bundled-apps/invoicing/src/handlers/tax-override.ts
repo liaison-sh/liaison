@@ -17,9 +17,9 @@
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
 import { needsHumanReview } from "../deferred"
 import {
-  onShopifyOrderPaid,
   type OrderPaidCtx,
   type OrderPaidPayload,
+  onShopifyOrderPaid,
   type TaxOverrideMode,
 } from "./shopify-order-paid"
 
@@ -100,7 +100,10 @@ export async function deferredTaxOverride(
   if (!check.ok) return check.error
   const { id, mode, row } = check
   const payload = row.event_payload_json as OrderPaidPayload
-  const result = await onShopifyOrderPaid({ ...payload, tax_override: { mode, deferred_id: id } }, ctx)
+  const result = await onShopifyOrderPaid(
+    { ...payload, tax_override: { mode, deferred_id: id } },
+    ctx,
+  )
   if (result.status === "deferred" || result.status === "pending_approval") {
     return err(
       "still_blocked",
@@ -122,7 +125,14 @@ export async function deferredTaxOverride(
     await ctx.db.update("documents", d.document_id, {
       lifecycle_log: [
         ...log,
-        { event: "tax_override", actor, ts: now, mode, deferred_id: id, park_reason: row.reason ?? null },
+        {
+          event: "tax_override",
+          actor,
+          ts: now,
+          mode,
+          deferred_id: id,
+          park_reason: row.reason ?? null,
+        },
       ],
     })
   }
@@ -132,13 +142,23 @@ export async function deferredTaxOverride(
       entity: "deferred",
       action: "tax_review",
       entityId: id,
-      data: { deferred_id: id, order_id: payload.id, order_label: payload.order_number ?? payload.id, reason: row.reason ?? null, resolved: true },
+      data: {
+        deferred_id: id,
+        order_id: payload.id,
+        order_label: payload.order_number ?? payload.id,
+        reason: row.reason ?? null,
+        resolved: true,
+      },
     })
   }
   return {
     status: "completed",
     deferred_id: id,
     mode,
-    documents: documents.map((d) => ({ document_id: d.document_id, number: d.number, scope: d.scope })),
+    documents: documents.map((d) => ({
+      document_id: d.document_id,
+      number: d.number,
+      scope: d.scope,
+    })),
   }
 }

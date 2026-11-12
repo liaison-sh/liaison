@@ -2,55 +2,55 @@
 //
 // Invoicing mutations: invoice issuance (issue, create and issue) and their preflights.
 
+import { asHandlerSummary, issueCard } from "../approval-cards"
+import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
+import type { OperationCategory } from "../einvoicing/classify-operation"
+import {
+  checkEinvoiceGate,
+  type EinvoicingWarning,
+  einvoiceParamsError,
+} from "../einvoicing/issue-gate"
 import {
   type Counterparty,
+  counterpartyCompletenessError,
   type DraftLine,
   type DraftLineInput,
   type IssueInput,
-  counterpartyCompletenessError,
   taxCountryOf,
 } from "../issue"
+import { issueDateParts } from "../issue-date"
 import type { ClassifyInput } from "../tax"
-import type { OperationCategory } from "../einvoicing/classify-operation"
-import {
-  type EinvoicingWarning,
-  checkEinvoiceGate,
-  einvoiceParamsError,
-} from "../einvoicing/issue-gate"
-import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
-import { asHandlerSummary, issueCard } from "../approval-cards"
-import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
 import { planTax } from "../tax-plan"
+import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
-  type IssuerProfileRow,
-  getDraft,
   findIssuerProfile,
-  updateDraftRow,
+  getDraft,
+  type IssuerProfileRow,
   rejectDraftOrderId,
   resolveIssuerProfileOrError,
+  updateDraftRow,
 } from "./db-helpers"
+import { issueWithFxRate } from "./fx-issue"
 import {
-  checkTwoEyes,
-  counterpartyFromRow,
-  computeLineFinancials,
   buildIssueInputFromDraft,
-  normaliseDraftLines,
+  checkTwoEyes,
+  computeLineFinancials,
+  counterpartyFromRow,
   netLinesForIssuer,
+  normaliseDraftLines,
 } from "./lines"
+import { checkDraftBuyer } from "./quote-proforma-po"
 import {
-  type MutationsCtx,
   type DraftRow,
   type ErrorEnvelope,
-  type PreflightResult,
-  type MutationResult,
-  toPreflightResult,
-  toBigInt,
-  normaliseNotes,
   lineAmountsError,
+  type MutationResult,
+  type MutationsCtx,
+  normaliseNotes,
+  type PreflightResult,
+  toBigInt,
+  toPreflightResult,
 } from "./shared"
-import { issueDateParts } from "../issue-date"
-import { issueWithFxRate } from "./fx-issue"
-import { checkDraftBuyer } from "./quote-proforma-po"
 
 /**
  * Read-only validation shared by `invoiceIssue` and its stage-time preflight export: the draft
@@ -149,7 +149,14 @@ async function preflightInvoiceIssueParams(
     operation_category: draft.operation_category ?? null,
   })
   if (!gate.ok) return { ok: false, error: gate.error }
-  return { ok: true, draft, issuer, counterparty: issuedCounterparty, warning: gate.warning, buyer: buyer.buyer }
+  return {
+    ok: true,
+    draft,
+    issuer,
+    counterparty: issuedCounterparty,
+    warning: gate.warning,
+    buyer: buyer.buyer,
+  }
 }
 
 /**
@@ -168,7 +175,9 @@ export async function invoiceIssuePreflight(
 export async function invoiceIssue(
   ctx: MutationsCtx,
   input: { draft_id: string; due_at?: string | null },
-): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
+): Promise<
+  MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
+> {
   const pre = await preflightInvoiceIssueParams(ctx, input)
   if (!pre.ok) return pre.error
   let { draft } = pre
@@ -476,7 +485,10 @@ export async function prepareInvoiceCreateAndIssue(
       : null
   // A consumer the agent declared against business evidence is decided by a person, whatever the
   // threshold says (buyer-vat.ts).
-  if (!ctx.approval && ((threshold != null && total > threshold) || needsHumanBuyerDecision(buyer))) {
+  if (
+    !ctx.approval &&
+    ((threshold != null && total > threshold) || needsHumanBuyerDecision(buyer))
+  ) {
     const approval = await ctx.requestApproval({
       tool_name: "invoicing:invoice_create_and_issue",
       ...asHandlerSummary(
@@ -508,7 +520,10 @@ export async function prepareInvoiceCreateAndIssue(
     })
     // Granted inline (a person's own call holding the deciding scope): issue now.
     if (!approval.auto_approved) {
-      return { ok: false, result: { status: "pending_approval", approval_id: approval.approval_id } }
+      return {
+        ok: false,
+        result: { status: "pending_approval", approval_id: approval.approval_id },
+      }
     }
   }
 
@@ -527,9 +542,7 @@ export async function prepareInvoiceCreateAndIssue(
       due_at: input.due_at ?? null,
       external_refs: {
         ...(input.shopify_order_id ? { shopify_order_id: input.shopify_order_id } : {}),
-        ...(input.shopify_order_number
-          ? { shopify_order_number: input.shopify_order_number }
-          : {}),
+        ...(input.shopify_order_number ? { shopify_order_number: input.shopify_order_number } : {}),
         ...(input.po_number ? { po_number: input.po_number } : {}),
         ...(buyer?.buyer_is_consumer ? { buyer_is_consumer: true } : {}),
       },

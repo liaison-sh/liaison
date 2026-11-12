@@ -77,9 +77,7 @@ export interface ReserveInput {
   line_quantities?: Array<{ line_id: string; external_id: string | null; quantity: number }> | null
 }
 
-export type ReserveResult =
-  | { ok: true; id: string }
-  | { ok: false; reason: "duplicate" }
+export type ReserveResult = { ok: true; id: string } | { ok: false; reason: "duplicate" }
 
 async function findByOrderId(
   ctx: LinkStoreCtx,
@@ -125,9 +123,7 @@ export async function reserveCreate(
     if (hasLiveFull || !isPartial) return { ok: false, reason: "duplicate" }
   }
   const nextBatchSeq =
-    keyHolders.length === 0
-      ? 1
-      : Math.max(...existing.map((r) => Number(r.batch_seq ?? 1))) + 1
+    keyHolders.length === 0 ? 1 : Math.max(...existing.map((r) => Number(r.batch_seq ?? 1))) + 1
   const insertNow = committedNow(ctx, "insertNow")
   try {
     const { id } = await insertNow("shipment", {
@@ -283,11 +279,7 @@ export async function applyTrackingChanged(
   if (storedAt) {
     const incoming = Date.parse(evt.at)
     const stored = Date.parse(storedAt)
-    if (
-      !Number.isNaN(incoming) &&
-      !Number.isNaN(stored) &&
-      incoming <= stored
-    ) {
+    if (!Number.isNaN(incoming) && !Number.isNaN(stored) && incoming <= stored) {
       return { applied: false }
     }
   }

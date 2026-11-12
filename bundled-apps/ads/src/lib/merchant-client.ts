@@ -22,10 +22,7 @@ import { parseGoogleAdsError } from "./google-error"
 
 export const MERCHANT_API_BASE = "https://merchantapi.googleapis.com"
 
-export type MerchantFetch = (
-  url: string,
-  opts?: Record<string, unknown>,
-) => Promise<unknown>
+export type MerchantFetch = (url: string, opts?: Record<string, unknown>) => Promise<unknown>
 
 interface FetchResult {
   status: number
@@ -46,7 +43,10 @@ export interface MerchantFetchOptions {
 }
 
 /** Single outbound HTTP path to the Merchant API. Bearer token only — no Ads headers. */
-export async function merchantFetch(fetch: MerchantFetch, opts: MerchantFetchOptions): Promise<unknown> {
+export async function merchantFetch(
+  fetch: MerchantFetch,
+  opts: MerchantFetchOptions,
+): Promise<unknown> {
   const prefix = opts.subApi ? `/${opts.subApi}/${opts.version ?? "v1"}` : ""
   const url = `${MERCHANT_API_BASE}${prefix}${opts.path}`
   const result = (await fetch(url, {

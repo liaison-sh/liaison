@@ -6,12 +6,18 @@
 // and a parse-webhook job is queued; a synchronous handler would already have
 // written the finding here.
 
-import { createHmac, timingSafeEqual } from "node:crypto"
 import { describe, expect, test } from "bun:test"
+import { createHmac, timingSafeEqual } from "node:crypto"
 import { parseJsonCursor } from "./adapters/cursor"
 import type { SocialToolCtx } from "./ctx"
+import {
+  discoverySyncJob,
+  dmSyncJob,
+  metaWebhook,
+  metaWebhookVerifier,
+  watchPollerJob,
+} from "./handlers"
 import { parseWebhookJob } from "./ingest"
-import { discoverySyncJob, dmSyncJob, metaWebhook, metaWebhookVerifier, watchPollerJob } from "./handlers"
 import type { SocialWebhookBridge } from "./lib/hmac"
 import { createMockDb, type MockDb } from "./test-db"
 
@@ -49,7 +55,12 @@ function ctxWith(db: MockDb): TestCtx {
   return {
     orgId: "org-1",
     db,
-    fetch: (async () => ({ status: 200, ok: true, json: async () => ({}), text: async () => "" })) as never,
+    fetch: (async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({}),
+      text: async () => "",
+    })) as never,
     connections: {},
     config: { get: async (k: string) => (k === "socialMetaAppSecret" ? SECRET : null) },
     async emit(e) {
@@ -65,7 +76,9 @@ function ctxWith(db: MockDb): TestCtx {
 
 const FEED_BODY = {
   object: "page",
-  entry: [{ changes: [{ field: "feed", value: { comment_id: "c-1", post_id: "p-1", message: "hi" } }] }],
+  entry: [
+    { changes: [{ field: "feed", value: { comment_id: "c-1", post_id: "p-1", message: "hi" } }] },
+  ],
 }
 
 describe("metaWebhook fast-ack (B5)", () => {
@@ -230,22 +243,24 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
       object: "page",
       entry: [
         {
-          messaging: [
-            { sender: { id: "PSID_1" }, message: { mid: "m-1", text: "hello brand" } },
-          ],
+          messaging: [{ sender: { id: "PSID_1" }, message: { mid: "m-1", text: "hello brand" } }],
         },
       ],
     }
     const res = await parseWebhookJob(ctx, { platform: "facebook", body })
     expect(res.messagesIngested).toBe(1)
     // The conversation was created and the message landed.
-    const convos = (await db.findMany("dm_conversation", { where: { external_id: "PSID_1" } })) as Array<{
+    const convos = (await db.findMany("dm_conversation", {
+      where: { external_id: "PSID_1" },
+    })) as Array<{
       id: string
       last_inbound_at: string | null
     }>
     expect(convos.length).toBe(1)
     expect(convos[0]!.last_inbound_at).not.toBeNull()
-    const msgs = (await db.findMany("dm_message", { where: { conversation_id: convos[0]!.id } })) as Array<{
+    const msgs = (await db.findMany("dm_message", {
+      where: { conversation_id: convos[0]!.id },
+    })) as Array<{
       direction: string
       body: string
     }>
@@ -266,7 +281,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     }
     await parseWebhookJob(ctx, { platform: "facebook", body })
     await parseWebhookJob(ctx, { platform: "facebook", body })
-    const convo = (await db.findMany("dm_conversation", { where: { external_id: "PSID_2" } }))[0] as { id: string }
+    const convo = (
+      await db.findMany("dm_conversation", { where: { external_id: "PSID_2" } })
+    )[0] as { id: string }
     expect(await db.count("dm_message", { where: { conversation_id: convo.id } })).toBe(1)
   })
 
@@ -282,7 +299,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
       active: true,
     })
     await dmSyncJob({}, ctx)
-    const ss = (await db.findMany("sync_state", { where: { id: "dm-ss" } }))[0] as { cursor: string }
+    const ss = (await db.findMany("sync_state", { where: { id: "dm-ss" } }))[0] as {
+      cursor: string
+    }
     expect(ss.cursor).toBe("old")
   })
 
@@ -317,7 +336,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
   function dmSyncCtx(
     db: MockDb,
     fetchImpl: (url: string) => { status: number; body: string },
-  ): TestCtx & { __logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }> } {
+  ): TestCtx & {
+    __logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }>
+  } {
     const logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }> = []
     const ctx = ctxWith(db) as TestCtx & {
       __logged: Array<{ level: string; msg: string; fields?: Record<string, unknown> }>
@@ -408,7 +429,12 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
             data: [
               {
                 id: "conv-1",
-                participants: { data: [{ id: "page-1", name: "Us" }, { id: "cust-1", name: "Jamie" }] },
+                participants: {
+                  data: [
+                    { id: "page-1", name: "Us" },
+                    { id: "cust-1", name: "Jamie" },
+                  ],
+                },
                 updated_time: "2026-06-01T10:00:00+0000",
               },
             ],
@@ -421,7 +447,12 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
         status: 200,
         body: JSON.stringify({
           data: [
-            { id: "m1", from: { id: "cust-1" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" },
+            {
+              id: "m1",
+              from: { id: "cust-1" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
           ],
         }),
       }
@@ -441,12 +472,16 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     }
     // Per-page newest-first state: the high-water mark is the newest thread's
     // updated_time; the legacy `after` token is dropped, not walked further.
-    expect(parseJsonCursor(ss.cursor)).toEqual({ pages: { "page-1": { hw: "2026-06-01T10:00:00.000Z", bf: null } } })
+    expect(parseJsonCursor(ss.cursor)).toEqual({
+      pages: { "page-1": { hw: "2026-06-01T10:00:00.000Z", bf: null } },
+    })
     expect(ss.last_synced_at ?? null).not.toBeNull()
     // The conversation + inbound message landed, and the conversation's
     // metadata carries the owning page id (for a later send_dm to resolve
     // the right page token).
-    const convos = (await db.findMany("dm_conversation", { where: { external_id: "conv-1" } })) as Array<{
+    const convos = (await db.findMany("dm_conversation", {
+      where: { external_id: "conv-1" },
+    })) as Array<{
       id: string
       metadata?: Record<string, unknown>
       last_inbound_at?: string | null
@@ -478,7 +513,12 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
             data: [
               {
                 id: "conv-2",
-                participants: { data: [{ id: "page-1", name: "Us" }, { id: "cust-2", name: "Jamie" }] },
+                participants: {
+                  data: [
+                    { id: "page-1", name: "Us" },
+                    { id: "cust-2", name: "Jamie" },
+                  ],
+                },
               },
             ],
           }),
@@ -490,9 +530,24 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
         status: 200,
         body: JSON.stringify({
           data: [
-            { id: "m1", from: { id: "cust-2" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" },
-            { id: "m2", from: { id: "cust-2" }, message: "still there?", created_time: "2026-06-01T10:00:00+0000" },
-            { id: "m3", from: { id: "page-1" }, message: "yes!", created_time: "2026-06-01T11:00:00+0000" },
+            {
+              id: "m1",
+              from: { id: "cust-2" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+            {
+              id: "m2",
+              from: { id: "cust-2" },
+              message: "still there?",
+              created_time: "2026-06-01T10:00:00+0000",
+            },
+            {
+              id: "m3",
+              from: { id: "page-1" },
+              message: "yes!",
+              created_time: "2026-06-01T11:00:00+0000",
+            },
           ],
         }),
       }
@@ -506,7 +561,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
       active: true,
     })
     await dmSyncJob({}, ctx)
-    const convos = (await db.findMany("dm_conversation", { where: { external_id: "conv-2" } })) as Array<{
+    const convos = (await db.findMany("dm_conversation", {
+      where: { external_id: "conv-2" },
+    })) as Array<{
       last_inbound_at?: string | null
     }>
     expect(convos.length).toBe(1)
@@ -548,7 +605,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
       active: true,
     })
     await dmSyncJob({}, ctx)
-    const convos = (await db.findMany("dm_conversation", { where: { external_id: "conv-3" } })) as Array<{
+    const convos = (await db.findMany("dm_conversation", {
+      where: { external_id: "conv-3" },
+    })) as Array<{
       last_inbound_at?: string | null
     }>
     expect(convos.length).toBe(1)
@@ -575,7 +634,11 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     // never be requested.
     ctx.fetch = (async (url: string) => {
       if (url.includes("/me/accounts")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }),
+        }
       }
       if (url.includes("/conversations")) {
         return {
@@ -604,7 +667,9 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     })
     await dmSyncJob({}, ctx)
     // No throw means /messages was never fetched for the unchanged conversation.
-    const convos = await db.findMany("dm_conversation", { where: { external_id: "conv-unchanged" } })
+    const convos = await db.findMany("dm_conversation", {
+      where: { external_id: "conv-unchanged" },
+    })
     expect(convos.length).toBe(1)
   })
 
@@ -620,7 +685,11 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const ctx = dmSyncCtx(db, () => ({ status: 200, body: JSON.stringify({ data: [] }) }))
     ctx.fetch = (async (url: string) => {
       if (url.includes("/me/accounts")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }),
+        }
       }
       if (url.includes("/conversations") && !url.includes("/messages")) {
         return {
@@ -657,18 +726,30 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
   test("one conversation's DB upsert failure does not lose the rest of the batch or abort the tick", async () => {
     const db = createMockDb()
     const originalUpdate = db.update.bind(db)
-    ;(db as { update: unknown }).update = async (entity: string, id: string, patch: Record<string, unknown>) => {
+    ;(db as { update: unknown }).update = async (
+      entity: string,
+      id: string,
+      patch: Record<string, unknown>,
+    ) => {
       if (entity === "dm_conversation" && id === "boom-id") {
         throw new Error("deadlock detected (40P01)")
       }
       return originalUpdate(entity, id, patch)
     }
     // Seed one conversation that will fail its update, plus a fresh one that inserts cleanly.
-    await db.insert("dm_conversation", { id: "boom-id", platform: "facebook", external_id: "conv-boom" })
+    await db.insert("dm_conversation", {
+      id: "boom-id",
+      platform: "facebook",
+      external_id: "conv-boom",
+    })
     const ctx = dmSyncCtx(db, () => ({ status: 200, body: JSON.stringify({ data: [] }) }))
     ctx.fetch = (async (url: string) => {
       if (url.includes("/me/accounts")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ data: [{ id: "page-1", access_token: "tok" }] }),
+        }
       }
       if (url.includes("/conversations") && !url.includes("/messages")) {
         return {
@@ -728,7 +809,8 @@ describe("inbound DM ingestion (I2 — §1 #6 / §4.1)", () => {
     const ctx = ctxWith(db) as TestCtx
     ctx.connections = { getToken: async () => "tok" } as never
     ctx.logger = {
-      error: (msg: string, fields?: unknown) => logged.push({ msg, fields: fields as Record<string, unknown> | undefined }),
+      error: (msg: string, fields?: unknown) =>
+        logged.push({ msg, fields: fields as Record<string, unknown> | undefined }),
     }
     ctx.fetch = (async (url: string) => {
       if (url.includes("page-throws") || (url.includes("/me/accounts") && !url.includes("ig"))) {
@@ -854,7 +936,10 @@ describe("webhook DMs and polled threads share one conversation", () => {
   }
   const pollRoutes = (url: string) => {
     if (url.includes("/me/accounts")) {
-      return { status: 200, body: JSON.stringify({ data: [{ id: "page-1", access_token: "page-1-token" }] }) }
+      return {
+        status: 200,
+        body: JSON.stringify({ data: [{ id: "page-1", access_token: "page-1-token" }] }),
+      }
     }
     if (url.includes("/conversations")) {
       return {
@@ -863,7 +948,12 @@ describe("webhook DMs and polled threads share one conversation", () => {
           data: [
             {
               id: "t_thread-9",
-              participants: { data: [{ id: "page-1", name: "Us" }, { id: PSID, name: "Jamie" }] },
+              participants: {
+                data: [
+                  { id: "page-1", name: "Us" },
+                  { id: PSID, name: "Jamie" },
+                ],
+              },
               updated_time: "2026-06-01T10:00:00+0000",
             },
           ],
@@ -873,7 +963,14 @@ describe("webhook DMs and polled threads share one conversation", () => {
     return {
       status: 200,
       body: JSON.stringify({
-        data: [{ id: "m_polled", from: { id: PSID }, message: "polled hi", created_time: "2026-06-01T09:00:00+0000" }],
+        data: [
+          {
+            id: "m_polled",
+            from: { id: PSID },
+            message: "polled hi",
+            created_time: "2026-06-01T09:00:00+0000",
+          },
+        ],
       }),
     }
   }
@@ -906,7 +1003,9 @@ describe("webhook DMs and polled threads share one conversation", () => {
     })
   }
   async function assertOneConversation(db: MockDb) {
-    const convs = (await db.findMany("dm_conversation", { where: { platform: "facebook" } })) as Array<{
+    const convs = (await db.findMany("dm_conversation", {
+      where: { platform: "facebook" },
+    })) as Array<{
       id: string
       external_id: string
       participant_external_id: string
@@ -914,13 +1013,17 @@ describe("webhook DMs and polled threads share one conversation", () => {
     expect(convs).toHaveLength(1)
     expect(convs[0]!.external_id).toBe("t_thread-9")
     expect(convs[0]!.participant_external_id).toBe(PSID)
-    const msgs = (await db.findMany("dm_message", { where: { conversation_id: convs[0]!.id } })) as Array<{
+    const msgs = (await db.findMany("dm_message", {
+      where: { conversation_id: convs[0]!.id },
+    })) as Array<{
       external_id: string
       occurred_at: string
     }>
     expect(msgs.map((m) => m.external_id).sort()).toEqual(["m_hooked", "m_polled"])
     // The webhook message carries Meta's timestamp, not the arrival time.
-    expect(msgs.find((m) => m.external_id === "m_hooked")!.occurred_at).toBe(new Date(WEBHOOK_AT_MS).toISOString())
+    expect(msgs.find((m) => m.external_id === "m_hooked")!.occurred_at).toBe(
+      new Date(WEBHOOK_AT_MS).toISOString(),
+    )
   }
 
   test("polled thread first, then a webhook message from the same person", async () => {
@@ -935,7 +1038,9 @@ describe("webhook DMs and polled threads share one conversation", () => {
     const db = createMockDb()
     await seedDmState(db)
     await parseWebhookJob(ctxWith(db), { platform: "facebook", body: delivery })
-    const webhookConv = (await db.findMany("dm_conversation", { where: { platform: "facebook" } })) as Array<{
+    const webhookConv = (await db.findMany("dm_conversation", {
+      where: { platform: "facebook" },
+    })) as Array<{
       metadata?: Record<string, unknown>
     }>
     expect(webhookConv[0]!.metadata).toEqual({ pageId: "page-1" })
@@ -962,7 +1067,9 @@ describe("webhook DMs and polled threads share one conversation", () => {
       ],
     }
     await parseWebhookJob(ctxWith(db), { platform: "facebook", body: echo })
-    const convs = (await db.findMany("dm_conversation", {})) as Array<{ participant_external_id: string }>
+    const convs = (await db.findMany("dm_conversation", {})) as Array<{
+      participant_external_id: string
+    }>
     expect(convs.map((c) => c.participant_external_id)).toEqual([PSID])
     const msgs = (await db.findMany("dm_message", {})) as Array<{ direction: string }>
     expect(msgs.map((m) => m.direction)).toEqual(["outbound"])
@@ -978,12 +1085,24 @@ describe("webhook DMs and polled threads share one conversation", () => {
         entry: [
           {
             id: "page-1",
-            changes: [{ field: "feed", value: { comment_id: "c-ts", post_id: "p-1", message: "hey", created_time: createdSec } }],
+            changes: [
+              {
+                field: "feed",
+                value: {
+                  comment_id: "c-ts",
+                  post_id: "p-1",
+                  message: "hey",
+                  created_time: createdSec,
+                },
+              },
+            ],
           },
         ],
       },
     })
-    const f = (await db.findMany("finding", { where: { external_id: "c-ts" } }))[0] as { occurred_at: string }
+    const f = (await db.findMany("finding", { where: { external_id: "c-ts" } }))[0] as {
+      occurred_at: string
+    }
     expect(f.occurred_at).toBe(new Date(createdSec * 1000).toISOString())
   })
 })

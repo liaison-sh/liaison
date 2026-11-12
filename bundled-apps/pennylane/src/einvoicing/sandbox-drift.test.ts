@@ -9,7 +9,7 @@
 // Runs only with PENNYLANE_SANDBOX_TOKEN and PENNYLANE_SANDBOX_DRIFT=1 (never a production token).
 import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
-import { type PennylaneFetch, PennylaneClient } from "../lib/pennylane-client"
+import { PennylaneClient, type PennylaneFetch } from "../lib/pennylane-client"
 import { PennylaneFake } from "./fake/server"
 
 // The Factur-X builder (invoicing app) and the kernel PDF/A renderer make a real file to import.
@@ -40,16 +40,25 @@ function shape(v: unknown): unknown {
 /** Keys present in one shape and not the other, as dotted paths (types are not compared:
  *  nullable fields legitimately differ in value between runs). */
 function keyDiff(a: unknown, b: unknown, path = ""): string[] {
-  if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+  if (
+    a &&
+    b &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
     const out: string[] = []
     const ka = Object.keys(a as object)
     const kb = Object.keys(b as object)
     for (const k of ka) if (!kb.includes(k)) out.push(`only-fake ${path}${k}`)
     for (const k of kb) if (!ka.includes(k)) out.push(`only-sandbox ${path}${k}`)
-    for (const k of ka) if (kb.includes(k)) out.push(...keyDiff((a as any)[k], (b as any)[k], `${path}${k}.`))
+    for (const k of ka)
+      if (kb.includes(k)) out.push(...keyDiff((a as any)[k], (b as any)[k], `${path}${k}.`))
     return out
   }
-  if (Array.isArray(a) && Array.isArray(b) && a.length && b.length) return keyDiff(a[0], b[0], `${path}[].`)
+  if (Array.isArray(a) && Array.isArray(b) && a.length && b.length)
+    return keyDiff(a[0], b[0], `${path}[].`)
   return []
 }
 
@@ -61,7 +70,12 @@ async function facturx(number: string): Promise<Uint8Array> {
   const xml = buildCii(fxDocument({ number, issue_date: "2026-10-15", due_date: "2026-10-15" }))
   return replayDrawCommands(
     [
-      { op: "setMetadata", title: `Invoice ${number}`, producer: "Liaison Invoicing", creator: "Liaison Invoicing" },
+      {
+        op: "setMetadata",
+        title: `Invoice ${number}`,
+        producer: "Liaison Invoicing",
+        creator: "Liaison Invoicing",
+      },
       { op: "embedFont", ref: "f1", standardFont: "Helvetica" },
       { op: "addPage", width: 595, height: 842 },
       { op: "drawText", page: 0, text: `Facture ${number}`, x: 40, y: 800, size: 12, font: "f1" },
@@ -69,7 +83,15 @@ async function facturx(number: string): Promise<Uint8Array> {
     {
       pdfa: {
         level: "3b",
-        attachments: [{ name: "factur-x.xml", mime: "text/xml", bytes: new TextEncoder().encode(xml), afRelationship: "Data", description: "Factur-X invoice" }],
+        attachments: [
+          {
+            name: "factur-x.xml",
+            mime: "text/xml",
+            bytes: new TextEncoder().encode(xml),
+            afRelationship: "Data",
+            description: "Factur-X invoice",
+          },
+        ],
         xmpExtensions: [facturxXmpExtension()],
         now: new Date(),
       },
@@ -91,7 +113,12 @@ function liveFetch(files: Map<string, { bytes: Uint8Array; filename: string }>):
       for (const p of opts.body.multipart) {
         if ("fileId" in p) {
           const f = files.get(p.fileId)!
-          fd.append(p.name, new File([new Uint8Array(f.bytes)], p.filename ?? f.filename, { type: p.contentType ?? "application/pdf" }))
+          fd.append(
+            p.name,
+            new File([new Uint8Array(f.bytes)], p.filename ?? f.filename, {
+              type: p.contentType ?? "application/pdf",
+            }),
+          )
         } else fd.append(p.name, p.value)
       }
       body = fd
@@ -128,8 +155,20 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
       ])
       const fake = new PennylaneFake()
       fake.directory[FX_BUYER.siren] = [FX_BUYER.siren]
-      fake.files.set(fileId, { sha256: sha, invoice_number: number, date: "2026-10-15", buyer_siren: FX_BUYER.siren, valid: true })
-      fake.files.set(plainId, { sha256: createHash("sha256").update(plain).digest("hex"), invoice_number: null, date: null, buyer_siren: null, valid: false })
+      fake.files.set(fileId, {
+        sha256: sha,
+        invoice_number: number,
+        date: "2026-10-15",
+        buyer_siren: FX_BUYER.siren,
+        valid: true,
+      })
+      fake.files.set(plainId, {
+        sha256: createHash("sha256").update(plain).digest("hex"),
+        invoice_number: null,
+        date: null,
+        buyer_siren: null,
+        valid: false,
+      })
       const clients = {
         fake: new PennylaneClient({ fetch: fake.sandboxFetch, apiToken: "tok" }),
         sandbox: new PennylaneClient({ fetch: liveFetch(files), apiToken: TOKEN! }),
@@ -141,7 +180,10 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
           try {
             out[k] = await fn(c)
           } catch (e) {
-            out[k] = { __error: (e as { status?: number }).status ?? String(e), body: JSON.parse((e as { body?: string }).body || "{}") }
+            out[k] = {
+              __error: (e as { status?: number }).status ?? String(e),
+              body: JSON.parse((e as { body?: string }).body || "{}"),
+            }
           }
         }
         return { label, diff: keyDiff(shape(out.fake), shape(out.sandbox)), out }
@@ -149,7 +191,13 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
 
       const ext = `drift-${run}`
       const results = []
-      results.push(await both("customers filter (empty)", (c) => c.list("/customers", { filter: [{ field: "external_reference", operator: "eq", value: ext }] })))
+      results.push(
+        await both("customers filter (empty)", (c) =>
+          c.list("/customers", {
+            filter: [{ field: "external_reference", operator: "eq", value: ext }],
+          }),
+        ),
+      )
       const created: Record<string, number> = {}
       results.push(
         await both("customer create", async (c) => {
@@ -158,7 +206,12 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
             name: FX_BUYER.legal_name,
             reg_no: FX_BUYER.siren,
             external_reference: ext,
-            billing_address: { address: "2 avenue du Test", postal_code: "69002", city: "Lyon", country_alpha2: "FR" },
+            billing_address: {
+              address: "2 avenue du Test",
+              postal_code: "69002",
+              city: "Lyon",
+              country_alpha2: "FR",
+            },
           })
           created[c === clients.fake ? "fake" : "sandbox"] = r.data.id
           return r.data
@@ -166,11 +219,30 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
       )
       results.push(
         await both("customer duplicate reference (422)", (c) =>
-          c.post("/customers", { customer_type: "company", name: "x", external_reference: ext, billing_address: { address: "x", postal_code: "1", city: "x", country_alpha2: "FR" } }),
+          c.post("/customers", {
+            customer_type: "company",
+            name: "x",
+            external_reference: ext,
+            billing_address: { address: "x", postal_code: "1", city: "x", country_alpha2: "FR" },
+          }),
         ),
       )
-      results.push(await both("routing addresses", (c) => c.list(`/customers/${created[c === clients.fake ? "fake" : "sandbox"]}/electronic_billing_addresses`)))
-      results.push(await both("routing set", (c) => c.put(`/customers/${created[c === clients.fake ? "fake" : "sandbox"]}`, { electronic_billing_address: FX_BUYER.siren }).then((r) => r.data)))
+      results.push(
+        await both("routing addresses", (c) =>
+          c.list(
+            `/customers/${created[c === clients.fake ? "fake" : "sandbox"]}/electronic_billing_addresses`,
+          ),
+        ),
+      )
+      results.push(
+        await both("routing set", (c) =>
+          c
+            .put(`/customers/${created[c === clients.fake ? "fake" : "sandbox"]}`, {
+              electronic_billing_address: FX_BUYER.siren,
+            })
+            .then((r) => r.data),
+        ),
+      )
       const inv: Record<string, number> = {}
       results.push(
         await both("e-invoice import", async (c) => {
@@ -185,7 +257,11 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
         }),
       )
       await Bun.sleep(3000)
-      results.push(await both("invoice get", (c) => c.get(`/customer_invoices/${inv[c === clients.fake ? "fake" : "sandbox"]}`)))
+      results.push(
+        await both("invoice get", (c) =>
+          c.get(`/customer_invoices/${inv[c === clients.fake ? "fake" : "sandbox"]}`),
+        ),
+      )
       results.push(
         await both("list by invoice_number + date", (c) =>
           c.list("/customer_invoices", {
@@ -196,16 +272,31 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
           }),
         ),
       )
-      results.push(await both("update_imported", (c) => c.put(`/customer_invoices/${inv[c === clients.fake ? "fake" : "sandbox"]}/update_imported`, { external_reference: `k-${run}` }).then((r) => r.data)))
+      results.push(
+        await both("update_imported", (c) =>
+          c
+            .put(
+              `/customer_invoices/${inv[c === clients.fake ? "fake" : "sandbox"]}/update_imported`,
+              { external_reference: `k-${run}` },
+            )
+            .then((r) => r.data),
+        ),
+      )
       results.push(
         await both("re-import same bytes (409)", (c) =>
-          c.postMultipart("/customer_invoices/e_invoices/imports", [{ name: "file", fileId, filename: `${number}.pdf` }, { name: "send_to_pa", value: "false" }]),
+          c.postMultipart("/customer_invoices/e_invoices/imports", [
+            { name: "file", fileId, filename: `${number}.pdf` },
+            { name: "send_to_pa", value: "false" },
+          ]),
         ),
       )
       const att: Record<string, number> = {}
       results.push(
         await both("file attachment", async (c) => {
-          const r = await c.postMultipart<{ id: number }>("/file_attachments", [{ name: "file", fileId: plainId, filename: `B-${run}.pdf` }, { name: "filename", value: `B-${run}.pdf` }])
+          const r = await c.postMultipart<{ id: number }>("/file_attachments", [
+            { name: "file", fileId: plainId, filename: `B-${run}.pdf` },
+            { name: "filename", value: `B-${run}.pdf` },
+          ])
           att[c === clients.fake ? "fake" : "sandbox"] = r.data.id
           return r.data
         }),
@@ -221,14 +312,49 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
         currency_amount_before_tax: "100.00",
         currency_amount: "120.00",
         currency_tax: "20.00",
-        invoice_lines: [{ label: "Item", currency_amount: "120.00", currency_tax: "20.00", quantity: 1, raw_currency_unit_price: "100.00", unit: "piece", vat_rate: "FR_200" }],
+        invoice_lines: [
+          {
+            label: "Item",
+            currency_amount: "120.00",
+            currency_tax: "20.00",
+            quantity: 1,
+            raw_currency_unit_price: "100.00",
+            unit: "piece",
+            vat_rate: "FR_200",
+          },
+        ],
       })
-      results.push(await both("booking import", (c) => c.post("/customer_invoices/import", booking(c === clients.fake ? "fake" : "sandbox")).then((r) => r.data)))
-      results.push(await both("booking duplicate reference (422)", (c) => c.post("/customer_invoices/import", booking(c === clients.fake ? "fake" : "sandbox"))))
-      results.push(await both("booking find by external_reference", (c) => c.list("/customer_invoices", { filter: [{ field: "external_reference", operator: "eq", value: `book-${run}` }] })))
+      results.push(
+        await both("booking import", (c) =>
+          c
+            .post("/customer_invoices/import", booking(c === clients.fake ? "fake" : "sandbox"))
+            .then((r) => r.data),
+        ),
+      )
+      results.push(
+        await both("booking duplicate reference (422)", (c) =>
+          c.post("/customer_invoices/import", booking(c === clients.fake ? "fake" : "sandbox")),
+        ),
+      )
+      results.push(
+        await both("booking find by external_reference", (c) =>
+          c.list("/customer_invoices", {
+            filter: [{ field: "external_reference", operator: "eq", value: `book-${run}` }],
+          }),
+        ),
+      )
 
-      const drift = results.filter((r) => r.diff.length > 0).map((r) => `${r.label}: ${r.diff.join(", ")}`)
-      if (drift.length) console.log(JSON.stringify(results.filter((r) => r.diff.length > 0), null, 1).slice(0, 4000))
+      const drift = results
+        .filter((r) => r.diff.length > 0)
+        .map((r) => `${r.label}: ${r.diff.join(", ")}`)
+      if (drift.length)
+        console.log(
+          JSON.stringify(
+            results.filter((r) => r.diff.length > 0),
+            null,
+            1,
+          ).slice(0, 4000),
+        )
       expect(drift).toEqual([])
     },
     { timeout: 120_000 },

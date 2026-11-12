@@ -155,7 +155,10 @@ export async function provisionApiConnector(
     const refused = failure(plan)
     if (refused) throw new Error(`connectors[${entry.identifier}]: ${refused}`)
     if (plan.unchanged === true) continue
-    const wipe = plan.wipesCredentials === true ? " (its API address or auth changed: stored credentials deleted)" : ""
+    const wipe =
+      plan.wipesCredentials === true
+        ? " (its API address or auth changed: stored credentials deleted)"
+        : ""
     const line = `connection '${entry.identifier}': adapter ${plan.created === true ? "created" : "updated"}${wipe}`
     if (!params.dryRun) {
       const saved = await ctx.api.adapterPut({

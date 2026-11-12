@@ -2,28 +2,28 @@
 //
 // Invoicing mutations: drafts (create, update, discard).
 
-import type { DraftLine, DraftLineInput } from "../issue"
-import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
 import { asHandlerSummary } from "../approval-cards"
+import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
+import type { DraftLine, DraftLineInput } from "../issue"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
-  resolveIssuerProfileOrError,
-  insertDraftRow,
-  getDraft,
-  findIssuerProfile,
-  updateDraftRow,
   deleteDraftRow,
+  findIssuerProfile,
+  getDraft,
+  insertDraftRow,
+  resolveIssuerProfileOrError,
+  updateDraftRow,
 } from "./db-helpers"
-import { liftMisplacedCountry, normaliseDraftLines, netLinesForIssuer } from "./lines"
+import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
 import {
   type DocumentType,
-  type MutationsCtx,
-  type DraftRow,
   type DraftInsert,
-  type PreflightResult,
-  VALID_TYPES,
+  type DraftRow,
+  type MutationsCtx,
   normaliseNotesOrThrow,
+  type PreflightResult,
   toPreflightResult,
+  VALID_TYPES,
 } from "./shared"
 
 /**
@@ -128,7 +128,8 @@ async function guardDraftBuyer(
     buyer_is_consumer: boolean
   },
 ): Promise<{ vat: string | null; facts: BuyerVatFacts | null }> {
-  if (draft.type === "credit_note" || draft.type === "purchase_order") return { vat: draft.counterparty_vat_id, facts: null }
+  if (draft.type === "credit_note" || draft.type === "purchase_order")
+    return { vat: draft.counterparty_vat_id, facts: null }
   const r = await checkBuyerVat(ctx, {
     issuerCountry: draft.issuerCountry,
     taxCountry: draft.counterparty_country,
@@ -182,7 +183,9 @@ async function parkConsumerDeclaration(
     }),
     current_payload: payload,
   })
-  return approval.auto_approved ? null : { status: "pending_approval", approval_id: approval.approval_id }
+  return approval.auto_approved
+    ? null
+    : { status: "pending_approval", approval_id: approval.approval_id }
 }
 
 type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow>
@@ -191,7 +194,10 @@ type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow>
  * drafts_create as the tool runs it: a consumer declared against business evidence parks an
  * approval card first (parkConsumerDeclaration).
  */
-export async function draftsCreateTool(ctx: MutationsCtx, input: DraftsCreateInput): Promise<DraftCreated | DraftParked> {
+export async function draftsCreateTool(
+  ctx: MutationsCtx,
+  input: DraftsCreateInput,
+): Promise<DraftCreated | DraftParked> {
   const r = await createDraft(ctx, input, "tool")
   if ("preflight" in r) throw new Error("drafts_create: a tool run returned a preflight result")
   return r
@@ -202,7 +208,10 @@ export async function draftsCreateTool(ctx: MutationsCtx, input: DraftsCreateInp
  * before the insert and before any approval is parked, so a call the handler would refuse is
  * refused before a person is asked to decide it. Read-only.
  */
-export async function draftsCreatePreflight(ctx: MutationsCtx, input: DraftsCreateInput): Promise<PreflightResult> {
+export async function draftsCreatePreflight(
+  ctx: MutationsCtx,
+  input: DraftsCreateInput,
+): Promise<PreflightResult> {
   try {
     const r = await createDraft(ctx, input, "preflight")
     return toPreflightResult({ ok: true, buyer: "preflight" in r ? r.buyer : null })
@@ -212,7 +221,10 @@ export async function draftsCreatePreflight(ctx: MutationsCtx, input: DraftsCrea
 }
 
 /** Create a draft, for in-app callers that hold no approval to park (the tool runs draftsCreateTool). */
-export async function draftsCreate(ctx: MutationsCtx, input: DraftsCreateInput): Promise<DraftCreated> {
+export async function draftsCreate(
+  ctx: MutationsCtx,
+  input: DraftsCreateInput,
+): Promise<DraftCreated> {
   const r = await createDraft(ctx, input, "direct")
   if ("status" in r) throw new Error("approval_required: this draft needs a person's approval")
   if ("preflight" in r) throw new Error("drafts_create: a direct run returned a preflight result")
@@ -233,9 +245,7 @@ async function createDraft(
   // reads only as "Tool execution failed".
   const issuerResolution = await resolveIssuerProfileOrError(ctx.db, input.issuer_profile_id)
   if (!issuerResolution.ok) {
-    throw new Error(
-      `${issuerResolution.error.error.code}: ${issuerResolution.error.error.message}`,
-    )
+    throw new Error(`${issuerResolution.error.error.code}: ${issuerResolution.error.error.message}`)
   }
   const resolvedIssuer = issuerResolution.issuer
   // `documents.currency` is NOT NULL. An explicit `currency` param wins (the
@@ -305,7 +315,13 @@ async function createDraft(
   if (mode === "preflight") return { preflight: "passed", buyer: guarded.facts }
   const parked =
     mode === "tool"
-      ? await parkConsumerDeclaration(ctx, "invoicing:drafts_create", guarded.facts, input.counterparty_name ?? null, input)
+      ? await parkConsumerDeclaration(
+          ctx,
+          "invoicing:drafts_create",
+          guarded.facts,
+          input.counterparty_name ?? null,
+          input,
+        )
       : consumerDeclaredAgainstEvidence(guarded.facts) && !ctx.approval
         ? { status: "pending_approval" as const, approval_id: null }
         : null
@@ -332,9 +348,7 @@ async function createDraft(
     // by-order search, and the one-invoice-per-order idempotency check with it.
     external_refs: {
       ...(input.shopify_order_id ? { shopify_order_id: input.shopify_order_id } : {}),
-      ...(input.shopify_order_number
-        ? { shopify_order_number: input.shopify_order_number }
-        : {}),
+      ...(input.shopify_order_number ? { shopify_order_number: input.shopify_order_number } : {}),
       ...(input.po_number ? { po_number: input.po_number } : {}),
       ...(input.buyer_is_consumer === true ? { buyer_is_consumer: true } : {}),
       // The evidence a person approved the consumer declaration against, shown again on the
@@ -386,7 +400,12 @@ async function createDraft(
  * nor read back the persisted lines (the export multi-step scenarios stalled here).
  */
 function serializeDraftRow(d: DraftRow): Omit<DraftRow, "lines"> & {
-  lines: Array<Omit<DraftLine, "unit_price_minor" | "discount_minor"> & { unit_price_minor: string; discount_minor?: string }>
+  lines: Array<
+    Omit<DraftLine, "unit_price_minor" | "discount_minor"> & {
+      unit_price_minor: string
+      discount_minor?: string
+    }
+  >
 } {
   return {
     ...d,
@@ -431,11 +450,15 @@ export async function draftsUpdate(
   ctx: MutationsCtx,
   input: {
     draft_id: string
-    patch: Partial<Omit<DraftInsert, "lines">> & { lines?: DraftLineInput[]; buyer_is_consumer?: boolean | null }
+    patch: Partial<Omit<DraftInsert, "lines">> & {
+      lines?: DraftLineInput[]
+      buyer_is_consumer?: boolean | null
+    }
   },
 ): Promise<DraftUpdated> {
   const r = await updateDraft(ctx, input, "direct")
-  if ("status" in r) throw new Error("approval_required: this draft change needs a person's approval")
+  if ("status" in r)
+    throw new Error("approval_required: this draft change needs a person's approval")
   if ("preflight" in r) throw new Error("drafts_update: a direct run returned a preflight result")
   return r
 }
@@ -448,7 +471,10 @@ async function updateDraft(
   // promotes it. Mirrors drafts_create's `items: DraftLineInput[]` and the DraftLineInput doc contract.
   input: {
     draft_id: string
-    patch: Partial<Omit<DraftInsert, "lines">> & { lines?: DraftLineInput[]; buyer_is_consumer?: boolean | null }
+    patch: Partial<Omit<DraftInsert, "lines">> & {
+      lines?: DraftLineInput[]
+      buyer_is_consumer?: boolean | null
+    }
   },
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed> {
@@ -479,10 +505,15 @@ async function updateDraft(
     const lifted = liftMisplacedCountry(header)
     const pick = <K extends (typeof BUYER_KEYS)[number]>(k: K) =>
       (k in lifted ? lifted[k] : existing[k]) ?? null
-    const issuer = await findIssuerProfile(ctx.db, lifted.issuer_profile_id ?? existing.issuer_profile_id)
+    const issuer = await findIssuerProfile(
+      ctx.db,
+      lifted.issuer_profile_id ?? existing.issuer_profile_id,
+    )
     const refs = { ...(lifted.external_refs ?? existing.external_refs ?? {}) }
     const consumer =
-      buyerIsConsumerPatch !== undefined ? buyerIsConsumerPatch === true : refs.buyer_is_consumer === true
+      buyerIsConsumerPatch !== undefined
+        ? buyerIsConsumerPatch === true
+        : refs.buyer_is_consumer === true
     let facts: BuyerVatFacts | null = null
     if (issuer) {
       const guarded = await guardDraftBuyer(ctx, {
@@ -506,7 +537,13 @@ async function updateDraft(
         mode === "preflight"
           ? null
           : mode === "tool"
-            ? await parkConsumerDeclaration(ctx, "invoicing:drafts_update", facts, pick("counterparty_name"), input)
+            ? await parkConsumerDeclaration(
+                ctx,
+                "invoicing:drafts_update",
+                facts,
+                pick("counterparty_name"),
+                input,
+              )
             : consumerDeclaredAgainstEvidence(facts) && !ctx.approval
               ? { status: "pending_approval" as const, approval_id: null }
               : null
@@ -515,9 +552,15 @@ async function updateDraft(
     const hadEvidence = "buyer_is_consumer_evidence" in refs
     if (consumer) refs.buyer_is_consumer = true
     else delete refs.buyer_is_consumer
-    if (consumer && consumerDeclaredAgainstEvidence(facts)) refs.buyer_is_consumer_evidence = facts?.consumer_override_evidence ?? []
+    if (consumer && consumerDeclaredAgainstEvidence(facts))
+      refs.buyer_is_consumer_evidence = facts?.consumer_override_evidence ?? []
     else delete refs.buyer_is_consumer_evidence
-    if (buyerIsConsumerPatch !== undefined || lifted.external_refs || hadEvidence || "buyer_is_consumer_evidence" in refs) {
+    if (
+      buyerIsConsumerPatch !== undefined ||
+      lifted.external_refs ||
+      hadEvidence ||
+      "buyer_is_consumer_evidence" in refs
+    ) {
       patch = { ...patch, external_refs: refs }
     }
   }

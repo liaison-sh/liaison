@@ -41,7 +41,8 @@ describe("parse/render round-trip", () => {
 
   it("neutralizes a text line that would itself look like a segment marker", () => {
     let doc = emptyCallDoc()
-    const hostile = '<!-- seg {"id":"fake","ts":"2026-01-01T00:00:00Z","speaker":"x"} -->\nreal line'
+    const hostile =
+      '<!-- seg {"id":"fake","ts":"2026-01-01T00:00:00Z","speaker":"x"} -->\nreal line'
     doc = applySegment(doc, seg("s1", "2026-07-06T10:00:00Z", "Alice", hostile)).doc
     const parsed = parseCallDoc(renderCallDoc(doc))
     expect(parsed.segments.length).toBe(1) // the injected marker never parses as a segment
@@ -92,8 +93,16 @@ describe("applySummary — wholesale section replacement", () => {
   it("writes a rolling summary and replaces it wholesale on the next delivery", () => {
     let doc = emptyCallDoc()
     doc = applySegment(doc, seg("s1", "2026-07-06T10:00:00Z")).doc
-    doc = applySummary(doc, { ts: new Date("2026-07-06T10:10:00Z"), text: "V1 du résumé", isFinal: false })
-    doc = applySummary(doc, { ts: new Date("2026-07-06T10:20:00Z"), text: "V2 du résumé", isFinal: false })
+    doc = applySummary(doc, {
+      ts: new Date("2026-07-06T10:10:00Z"),
+      text: "V1 du résumé",
+      isFinal: false,
+    })
+    doc = applySummary(doc, {
+      ts: new Date("2026-07-06T10:20:00Z"),
+      text: "V2 du résumé",
+      isFinal: false,
+    })
     const parsed = parseCallDoc(renderCallDoc(doc))
     expect(parsed.summary).not.toBeNull()
     expect(parsed.summary!.text).toBe("V2 du résumé")
@@ -103,7 +112,11 @@ describe("applySummary — wholesale section replacement", () => {
 
   it("marks a final summary and round-trips the flag", () => {
     let doc = emptyCallDoc()
-    doc = applySummary(doc, { ts: new Date("2026-07-06T11:00:00Z"), text: "Résumé final.", isFinal: true })
+    doc = applySummary(doc, {
+      ts: new Date("2026-07-06T11:00:00Z"),
+      text: "Résumé final.",
+      isFinal: true,
+    })
     const parsed = parseCallDoc(renderCallDoc(doc))
     expect(parsed.summary!.isFinal).toBe(true)
     expect(parsed.summary!.ts.toISOString()).toBe("2026-07-06T11:00:00.000Z")
@@ -112,7 +125,11 @@ describe("applySummary — wholesale section replacement", () => {
   it("renders the summary under a '## Résumé' heading before the transcription", () => {
     let doc = emptyCallDoc()
     doc = applySegment(doc, seg("s1", "2026-07-06T10:00:00Z")).doc
-    doc = applySummary(doc, { ts: new Date("2026-07-06T10:10:00Z"), text: "Résumé.", isFinal: false })
+    doc = applySummary(doc, {
+      ts: new Date("2026-07-06T10:10:00Z"),
+      text: "Résumé.",
+      isFinal: false,
+    })
     const body = renderCallDoc(doc)
     expect(body.indexOf("## Résumé")).toBeGreaterThanOrEqual(0)
     expect(body.indexOf("## Résumé")).toBeLessThan(body.indexOf("## Transcription"))
@@ -130,13 +147,13 @@ describe("applyLinks: contact/deal-task metadata", () => {
   })
 
   it("supports a contactId-only link (no deal task yet)", () => {
-    let doc = applyLinks(emptyCallDoc(), { contactId: "contact-123", dealTaskId: null })
+    const doc = applyLinks(emptyCallDoc(), { contactId: "contact-123", dealTaskId: null })
     const parsed = parseCallDoc(renderCallDoc(doc))
     expect(parsed.links).toEqual({ contactId: "contact-123", dealTaskId: null })
   })
 
   it("supports a dealTaskId-only link (no contact resolved yet)", () => {
-    let doc = applyLinks(emptyCallDoc(), { contactId: null, dealTaskId: "task-456" })
+    const doc = applyLinks(emptyCallDoc(), { contactId: null, dealTaskId: "task-456" })
     const parsed = parseCallDoc(renderCallDoc(doc))
     expect(parsed.links).toEqual({ contactId: null, dealTaskId: "task-456" })
   })

@@ -3,30 +3,30 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
-  create_campaign,
-  create_adset,
-  create_ad,
-  create_creative,
-  upload_image,
-  update_budget,
-  set_status,
-  create_custom_audience,
-  create_lookalike_audience,
-  add_users_to_audience,
-  type CrossAppEnvelope,
-} from "./writes"
-import {
-  summarizeCampaign,
-  summarizeAdset,
   summarizeAd,
-  summarizeCreative,
-  summarizeUploadImage,
+  summarizeAddUsers,
+  summarizeAdset,
   summarizeBudget,
-  summarizeSetStatus,
+  summarizeCampaign,
+  summarizeCreative,
   summarizeCustomAudience,
   summarizeLookalike,
-  summarizeAddUsers,
+  summarizeSetStatus,
+  summarizeUploadImage,
 } from "./summarizers"
+import {
+  add_users_to_audience,
+  type CrossAppEnvelope,
+  create_ad,
+  create_adset,
+  create_campaign,
+  create_creative,
+  create_custom_audience,
+  create_lookalike_audience,
+  set_status,
+  update_budget,
+  upload_image,
+} from "./writes"
 
 // ─── makeCtx helper ───────────────────────────────────────────────────────────
 
@@ -43,10 +43,7 @@ interface MockResponse {
   body: string
 }
 
-function makeCtx(
-  fetchResponses: MockResponse[],
-  executeToolResponses?: CrossAppEnvelope[],
-) {
+function makeCtx(fetchResponses: MockResponse[], executeToolResponses?: CrossAppEnvelope[]) {
   const calls: FetchCall[] = []
   let fetchIdx = 0
   let executeToolIdx = 0
@@ -63,7 +60,10 @@ function makeCtx(
   }
 
   const executeToolCalls: Array<{ target: string; args: Record<string, unknown> }> = []
-  const executeTool = async (target: string, args: Record<string, unknown>): Promise<CrossAppEnvelope> => {
+  const executeTool = async (
+    target: string,
+    args: Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> => {
     executeToolCalls.push({ target, args })
     // Consent-join reads (database:db_read) are on a SEPARATE default lane
     // from the caller-supplied executeToolResponses queue (which existing
@@ -108,16 +108,16 @@ describe("create_campaign", () => {
 
   it("rejects legacy objectives with a clear error message", async () => {
     const { ctx } = makeCtx([])
-    await expect(
-      create_campaign({ name: "Test", objective: "CONVERSIONS" }, ctx),
-    ).rejects.toThrow(/OUTCOME_/)
+    await expect(create_campaign({ name: "Test", objective: "CONVERSIONS" }, ctx)).rejects.toThrow(
+      /OUTCOME_/,
+    )
   })
 
   it("rejects TRAFFIC (legacy)", async () => {
     const { ctx } = makeCtx([])
-    await expect(
-      create_campaign({ name: "Test", objective: "TRAFFIC" }, ctx),
-    ).rejects.toThrow(/OUTCOME_/)
+    await expect(create_campaign({ name: "Test", objective: "TRAFFIC" }, ctx)).rejects.toThrow(
+      /OUTCOME_/,
+    )
   })
 
   it("accepts OUTCOME_SALES", async () => {
@@ -224,7 +224,9 @@ describe("create_adset", () => {
         name: "Geo Adset",
         targeting: {
           geo_locations: {
-            custom_locations: [{ latitude: 48.8566, longitude: 2.3522, radius: 40, distance_unit: "kilometer" }],
+            custom_locations: [
+              { latitude: 48.8566, longitude: 2.3522, radius: 40, distance_unit: "kilometer" },
+            ],
           },
         },
         optimization_goal: "REACH",
@@ -327,14 +329,16 @@ describe("upload_image", () => {
   })
 
   it("accepts image within limit and returns image_hash", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 200,
-      body: JSON.stringify({ images: { "banner.jpg": { hash: "abc123", url: "https://..." } } }),
-    }])
-    const result = await upload_image(
+    const { ctx, calls } = makeCtx([
+      {
+        status: 200,
+        body: JSON.stringify({ images: { "banner.jpg": { hash: "abc123", url: "https://..." } } }),
+      },
+    ])
+    const result = (await upload_image(
       { image_bytes: "A".repeat(100), filename: "banner.jpg" },
       ctx,
-    ) as { image_hash: string }
+    )) as { image_hash: string }
     expect(calls.length).toBe(1)
     expect(calls[0]?.url).toContain("/act_123456/adimages")
     expect(result.image_hash).toBe("abc123")
@@ -380,10 +384,14 @@ describe("update_budget", () => {
   })
 
   it("BudgetCapError (613+1487632) is surfaced without retrying — calls.length===1", async () => {
-    const { ctx, calls } = makeCtx([{
-      status: 400,
-      body: JSON.stringify({ error: { code: 613, error_subcode: 1487632, message: "Budget cap", fbtrace_id: "X" } }),
-    }])
+    const { ctx, calls } = makeCtx([
+      {
+        status: 400,
+        body: JSON.stringify({
+          error: { code: 613, error_subcode: 1487632, message: "Budget cap", fbtrace_id: "X" },
+        }),
+      },
+    ])
     const err = await update_budget(
       { level: "adset", object_id: "adset_1", daily_budget: "50", currency: "EUR" },
       ctx,
@@ -394,7 +402,12 @@ describe("update_budget", () => {
   })
 
   it("summarizeBudget produces editableFields-compatible output with widget:'text' label in major units", () => {
-    const summary = summarizeBudget({ level: "adset", object_id: "adset_1", daily_budget: "50", currency: "EUR" })
+    const summary = summarizeBudget({
+      level: "adset",
+      object_id: "adset_1",
+      daily_budget: "50",
+      currency: "EUR",
+    })
     expect(summary.kind).toBe("update_budget")
     // Title or lines mention major units not minor
     const allText = [summary.title, summary.subtitle ?? "", ...(summary.lines ?? [])].join(" ")
@@ -402,7 +415,12 @@ describe("update_budget", () => {
   })
 
   it("P1.6: summarizeBudget echoes major + computed minor + currency (auditable conversion, no hardcoded €)", () => {
-    const summary = summarizeBudget({ level: "adset", object_id: "adset_1", daily_budget: "50", currency: "USD" })
+    const summary = summarizeBudget({
+      level: "adset",
+      object_id: "adset_1",
+      daily_budget: "50",
+      currency: "USD",
+    })
     const allText = [summary.title, summary.subtitle ?? "", ...(summary.lines ?? [])].join(" ")
     expect(allText).toContain("50.00 USD") // major + real currency, not €
     expect(allText).toContain("5000") // computed minor units (USD: 50 → 5000)
@@ -410,14 +428,24 @@ describe("update_budget", () => {
   })
 
   it("P1.6: summarizeAdset (the A/B card) echoes major + computed minor + currency", () => {
-    const summary = summarizeAdset({ name: "AdSet A", campaign_id: "c1", daily_budget: "50", currency: "USD" })
+    const summary = summarizeAdset({
+      name: "AdSet A",
+      campaign_id: "c1",
+      daily_budget: "50",
+      currency: "USD",
+    })
     const allText = [summary.title, summary.subtitle ?? "", ...(summary.lines ?? [])].join(" ")
     expect(allText).toContain("50.00 USD")
     expect(allText).toContain("5000")
   })
 
   it("P1.6: zero-decimal currency (JPY) — minor echo is NOT ×100", () => {
-    const summary = summarizeBudget({ level: "adset", object_id: "adset_1", daily_budget: "500", currency: "JPY" })
+    const summary = summarizeBudget({
+      level: "adset",
+      object_id: "adset_1",
+      daily_budget: "500",
+      currency: "JPY",
+    })
     const allText = [summary.title, summary.subtitle ?? "", ...(summary.lines ?? [])].join(" ")
     expect(allText).toContain("500.00 JPY")
     expect(allText).toContain("500 minor units") // 500 JPY → 500 minor, never 50000
@@ -449,8 +477,11 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
   it("calls executeTool with a PLAIN OBJECT arg (not a stringified JSON string)", async () => {
     const { ctx, executeToolCalls } = makeCtx(
       [
-        { status: 200, body: JSON.stringify({ id: "aud_1" }) },  // create audience
-        { status: 200, body: JSON.stringify({ audience_id: "aud_1", num_received: 1, num_invalid_entries: 0 }) }, // upload users
+        { status: 200, body: JSON.stringify({ id: "aud_1" }) }, // create audience
+        {
+          status: 200,
+          body: JSON.stringify({ audience_id: "aud_1", num_received: 1, num_invalid_entries: 0 }),
+        }, // upload users
       ],
       [
         {
@@ -480,7 +511,10 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
     const { ctx, calls } = makeCtx(
       [
         { status: 200, body: JSON.stringify({ id: "aud_2" }) },
-        { status: 200, body: JSON.stringify({ audience_id: "aud_2", num_received: 1, num_invalid_entries: 0 }) },
+        {
+          status: 200,
+          body: JSON.stringify({ audience_id: "aud_2", num_received: 1, num_invalid_entries: 0 }),
+        },
       ],
       [
         {
@@ -510,9 +544,7 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
 
   it("phone-only customer (no email) → dropped by consent-join default-deny (no email to join consent on); reported, not silently uploaded", async () => {
     const { ctx, calls } = makeCtx(
-      [
-        { status: 200, body: JSON.stringify({ id: "aud_ph" }) },
-      ],
+      [{ status: 200, body: JSON.stringify({ id: "aud_ph" }) }],
       [
         {
           status: "completed",
@@ -520,7 +552,7 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
         },
       ],
     )
-    const result = await create_custom_audience(
+    const result = (await create_custom_audience(
       {
         subtype: "CUSTOMER_LIST",
         name: "Phone List",
@@ -529,7 +561,7 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
         audience_purpose: "buyer",
       },
       ctx,
-    ) as { schema: string[]; users_hashed: number; dropped_no_consent_source: number }
+    )) as { schema: string[]; users_hashed: number; dropped_no_consent_source: number }
     // Phone-only identifiers have no email to consent-join on — default-deny
     // drops them rather than uploading un-joined. No /users upload call fires.
     expect(result.users_hashed).toBe(0)
@@ -541,15 +573,24 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
   })
 
   it("WEBSITE subtype: sends pixel_id + rule + retention_days", async () => {
-    const { ctx, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ id: "aud_3" }) },
-    ])
+    const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ id: "aud_3" }) }])
     await create_custom_audience(
       {
         subtype: "WEBSITE",
         name: "Website Visitors",
         pixel_id: "px_42",
-        rule: { inclusions: { operator: "or", rules: [{ event_sources: [{ id: "px_42", type: "pixel" }], retention_seconds: 2592000, filter: {} }] } },
+        rule: {
+          inclusions: {
+            operator: "or",
+            rules: [
+              {
+                event_sources: [{ id: "px_42", type: "pixel" }],
+                retention_seconds: 2592000,
+                filter: {},
+              },
+            ],
+          },
+        },
         retention_days: 30,
       },
       ctx,
@@ -561,9 +602,7 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
   })
 
   it("ENGAGEMENT subtype: sends object_type + source_id + engagement_type + retention_days", async () => {
-    const { ctx, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ id: "aud_4" }) },
-    ])
+    const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ id: "aud_4" }) }])
     await create_custom_audience(
       {
         subtype: "ENGAGEMENT",
@@ -584,7 +623,9 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
   it("audience summarizer includes population/match-latency disclosure", () => {
     const summary = summarizeCustomAudience({ subtype: "CUSTOMER_LIST", name: "Dealers" })
     const text = [summary.title, ...(summary.lines ?? [])].join(" ")
-    expect(text.toLowerCase()).toMatch(/populate|match.*latency|not immediately usable|must populate/i)
+    expect(text.toLowerCase()).toMatch(
+      /populate|match.*latency|not immediately usable|must populate/i,
+    )
   })
 
   it("refuses without audience_purpose (default-deny — never guesses the consent domain)", async () => {
@@ -608,7 +649,8 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
     const ctx = {
       fetch: async (url: string, opts?: Record<string, unknown>) => {
         fetchCalls.push({ url, body: typeof opts?.body === "string" ? opts.body : undefined })
-        if (fetchCalls.length === 1) return { status: 200, headers: {}, body: JSON.stringify({ id: "aud_unconsented" }) }
+        if (fetchCalls.length === 1)
+          return { status: 200, headers: {}, body: JSON.stringify({ id: "aud_unconsented" }) }
         throw new Error("no second Meta call expected — nothing should be uploaded")
       },
       connections: {
@@ -617,7 +659,10 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
       executeTool: async (target: string, args: Record<string, unknown>) => {
         executeToolCalls.push({ target, args })
         if (target === "shopify:customers_search") {
-          return { status: "completed" as const, result: { customers: [{ email: "unconsented@example.com" }] } }
+          return {
+            status: "completed" as const,
+            result: { customers: [{ email: "unconsented@example.com" }] },
+          }
         }
         if (target === "database:db_read") {
           // No record at all for this email — default-deny.
@@ -653,12 +698,18 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
       },
       executeTool: async (target: string) => {
         if (target === "shopify:customers_search") {
-          return { status: "completed" as const, result: { customers: [{ email: "someone@example.com" }] } }
+          return {
+            status: "completed" as const,
+            result: { customers: [{ email: "someone@example.com" }] },
+          }
         }
         // Every consent-source call (curated db_read AND the db_query
         // fallback) errors — the source itself is down, not merely
         // "no record".
-        return { status: "error" as const, error: { code: "connect_error", message: "database app not connected" } }
+        return {
+          status: "error" as const,
+          error: { code: "connect_error", message: "database app not connected" },
+        }
       },
     }
     const result = (await create_custom_audience(
@@ -682,11 +733,16 @@ describe("create_lookalike_audience", () => {
   it("value_based with no source value field → Meta declines (100), falls back to similarity + honest-decline", async () => {
     const { ctx, calls } = makeCtx([
       // 1st call: value_based attempt → Meta rejects (ParamError, code 100)
-      { status: 400, body: JSON.stringify({ error: { code: 100, message: "Source audience has no value data", fbtrace_id: "v1" } }) },
+      {
+        status: 400,
+        body: JSON.stringify({
+          error: { code: 100, message: "Source audience has no value data", fbtrace_id: "v1" },
+        }),
+      },
       // 2nd call: similarity fallback → succeeds
       { status: 200, body: JSON.stringify({ id: "lal_fallback" }) },
     ])
-    const result = await create_lookalike_audience(
+    const result = (await create_lookalike_audience(
       {
         source_audience_id: "aud_1",
         country: "FR",
@@ -694,7 +750,7 @@ describe("create_lookalike_audience", () => {
         value_based: true,
       },
       ctx,
-    ) as { honest_decline?: string; audience_id?: string; value_based?: boolean }
+    )) as { honest_decline?: string; audience_id?: string; value_based?: boolean }
     // The value-based attempt was made, failed, then fell back to a plain lookalike.
     expect(calls.length).toBe(2)
     expect(result.value_based).toBe(false)
@@ -709,10 +765,10 @@ describe("create_lookalike_audience", () => {
     const { ctx, calls } = makeCtx([
       { status: 200, body: JSON.stringify({ id: "lal_value" }) }, // value_based attempt succeeds
     ])
-    const result = await create_lookalike_audience(
+    const result = (await create_lookalike_audience(
       { source_audience_id: "aud_1", country: "FR", ratio: 2, value_based: true },
       ctx,
-    ) as { value_based?: boolean; honest_decline?: string; audience_id?: string }
+    )) as { value_based?: boolean; honest_decline?: string; audience_id?: string }
     // Honored — one call, value_based:true, no honest-decline.
     expect(calls.length).toBe(1)
     expect(calls[0]?.body ?? "").toContain("value_based")
@@ -723,10 +779,10 @@ describe("create_lookalike_audience", () => {
 
   it("plain (non-value) lookalike → similarity spec, value_based:false, no honest-decline", async () => {
     const { ctx, calls } = makeCtx([{ status: 200, body: JSON.stringify({ id: "lal_plain" }) }])
-    const result = await create_lookalike_audience(
+    const result = (await create_lookalike_audience(
       { source_audience_id: "aud_1", country: "FR", ratio: 1 },
       ctx,
-    ) as { value_based?: boolean; honest_decline?: string }
+    )) as { value_based?: boolean; honest_decline?: string }
     expect(calls.length).toBe(1)
     expect(calls[0]?.body ?? "").toContain("similarity")
     expect(result.value_based).toBe(false)
@@ -736,7 +792,9 @@ describe("create_lookalike_audience", () => {
   it("lookalike summarizer includes population/match-latency disclosure", () => {
     const summary = summarizeLookalike({ source_audience_id: "aud_1", country: "FR", ratio: 1 })
     const text = [summary.title, ...(summary.lines ?? [])].join(" ")
-    expect(text.toLowerCase()).toMatch(/populate|match.*latency|not immediately usable|must populate/i)
+    expect(text.toLowerCase()).toMatch(
+      /populate|match.*latency|not immediately usable|must populate/i,
+    )
   })
 })
 
@@ -749,7 +807,11 @@ describe("add_users_to_audience", () => {
       [{ status: "completed", result: { customers: [{ email: "carol@example.com" }] } }],
     )
     await add_users_to_audience(
-      { audience_id: "aud_1", shopify_customer_query: { tag: "premium" }, audience_purpose: "buyer" },
+      {
+        audience_id: "aud_1",
+        shopify_customer_query: { tag: "premium" },
+        audience_purpose: "buyer",
+      },
       ctx,
     )
     const postUrl = calls[0]?.url ?? ""
@@ -763,7 +825,11 @@ describe("add_users_to_audience", () => {
       [{ status: "completed", result: { customers: [{ email: "dave@example.com" }] } }],
     )
     await add_users_to_audience(
-      { audience_id: "aud_1", shopify_customer_query: { tag: "premium" }, audience_purpose: "buyer" },
+      {
+        audience_id: "aud_1",
+        shopify_customer_query: { tag: "premium" },
+        audience_purpose: "buyer",
+      },
       ctx,
     )
     const allText = calls.map((c) => (c.url ?? "") + (c.body ?? "")).join(" ")
@@ -787,7 +853,9 @@ describe("add_users_to_audience", () => {
   it("add_users summarizer includes population/match-latency disclosure", () => {
     const summary = summarizeAddUsers({ audience_id: "aud_1" })
     const text = [summary.title, ...(summary.lines ?? [])].join(" ")
-    expect(text.toLowerCase()).toMatch(/populate|match.*latency|not immediately usable|must populate/i)
+    expect(text.toLowerCase()).toMatch(
+      /populate|match.*latency|not immediately usable|must populate/i,
+    )
   })
 
   it("refuses without audience_purpose (default-deny)", async () => {
@@ -809,7 +877,10 @@ describe("add_users_to_audience", () => {
       },
       executeTool: async (target: string, args: Record<string, unknown>) => {
         if (target === "shopify:customers_search") {
-          return { status: "completed" as const, result: { customers: [{ email: "no-newsletter-consent@example.com" }] } }
+          return {
+            status: "completed" as const,
+            result: { customers: [{ email: "no-newsletter-consent@example.com" }] },
+          }
         }
         if (target === "database:db_read") {
           return { status: "completed" as const, result: [{ marketing_consent: false }] }
@@ -818,7 +889,11 @@ describe("add_users_to_audience", () => {
       },
     }
     const result = (await add_users_to_audience(
-      { audience_id: "aud_1", shopify_customer_query: { tag: "x" }, audience_purpose: "newsletter" },
+      {
+        audience_id: "aud_1",
+        shopify_customer_query: { tag: "x" },
+        audience_purpose: "newsletter",
+      },
       ctx,
     )) as { users_added: number; dropped_no_consent: number }
     expect(result.users_added).toBe(0)
@@ -832,14 +907,17 @@ describe("add_users_to_audience", () => {
 describe("manifest write-tool invariants (raw JSON)", () => {
   const MANIFEST_PATH = join(import.meta.dir, "..", "app.manifest.json")
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
-    tools: Record<string, {
-      gated?: boolean
-      trustBoundary?: string
-      approvalCard?: { summary?: string }
-      summarizer?: string
-      handler?: string
-      editableFields?: Array<{ widget: string }>
-    }>
+    tools: Record<
+      string,
+      {
+        gated?: boolean
+        trustBoundary?: string
+        approvalCard?: { summary?: string }
+        summarizer?: string
+        handler?: string
+        editableFields?: Array<{ widget: string }>
+      }
+    >
   }
 
   const WRITE_TOOLS = [
@@ -897,13 +975,19 @@ describe("summarizers — pure functions return {kind,title,subtitle?,lines[]}",
     [summarizeBudget, { level: "adset", object_id: "a1", daily_budget: "50" }, "update_budget"],
     [summarizeSetStatus, { object_id: "o1", status: "ACTIVE" }, "set_status"],
     [summarizeCustomAudience, { subtype: "WEBSITE", name: "Visitors" }, "create_custom_audience"],
-    [summarizeLookalike, { source_audience_id: "s1", country: "FR", ratio: 1 }, "create_lookalike_audience"],
+    [
+      summarizeLookalike,
+      { source_audience_id: "s1", country: "FR", ratio: 1 },
+      "create_lookalike_audience",
+    ],
     [summarizeAddUsers, { audience_id: "a1" }, "add_users_to_audience"],
   ] as const
 
   for (const [fn, params, expectedKind] of cases) {
     it(`${String(fn.name)} returns {kind:'${expectedKind}', title, lines[]}`, () => {
-      const result = (fn as (p: unknown) => { kind: string; title: string; lines?: string[] })(params)
+      const result = (fn as (p: unknown) => { kind: string; title: string; lines?: string[] })(
+        params,
+      )
       expect(result.kind).toBe(expectedKind)
       expect(typeof result.title).toBe("string")
       expect(result.title.length).toBeGreaterThan(0)

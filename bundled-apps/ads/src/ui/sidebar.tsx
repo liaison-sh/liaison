@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { createSignal, onCleanup, onMount, Show, type Component, type JSX } from "solid-js"
+
 import { app, currentPath } from "@liaison/host"
+import { type Component, createSignal, type JSX, onCleanup, onMount, Show } from "solid-js"
 import { APP_VERSION_LABEL } from "./ui-logic"
 
 // Shared global history patch guard — prevents social + meta-ads double-wrapping pushState.
@@ -60,7 +61,13 @@ function SectionHeader(p: { label: string }): JSX.Element {
   )
 }
 
-function Row(p: { href: string; label: string; slug: string; pathname: string; badge?: number }): JSX.Element {
+function Row(p: {
+  href: string
+  label: string
+  slug: string
+  pathname: string
+  badge?: number
+}): JSX.Element {
   const active = () => isActive(p.pathname, p.href)
   const showBadge = () => typeof p.badge === "number" && p.badge > 0
   return (
@@ -144,7 +151,13 @@ export const MetaAdsSidebar: Component = () => {
 
         <SectionHeader label="Campaigns" />
         <ul class="flex flex-col gap-0.5">
-          <Row href="/ads/campaigns" label="Campaigns" slug="campaigns" pathname={pathname()} badge={total()} />
+          <Row
+            href="/ads/campaigns"
+            label="Campaigns"
+            slug="campaigns"
+            pathname={pathname()}
+            badge={total()}
+          />
         </ul>
 
         <SectionHeader label="Creatives" />
@@ -156,13 +169,16 @@ export const MetaAdsSidebar: Component = () => {
         <ul class="flex flex-col gap-0.5">
           <Row href="/ads/audiences" label="Audiences" slug="audiences" pathname={pathname()} />
         </ul>
-
       </div>
 
       <div class="mt-auto border-t border-border-subtle px-4 py-2">
         <div class="flex items-center justify-between text-[10.5px] text-text-tertiary">
           <span data-testid="ads-sidebar-version">{APP_VERSION_LABEL}</span>
-          <span class="h-1.5 w-1.5 rounded-full bg-success" data-testid="ads-sidebar-status-dot" aria-hidden="true" />
+          <span
+            class="h-1.5 w-1.5 rounded-full bg-success"
+            data-testid="ads-sidebar-status-dot"
+            aria-hidden="true"
+          />
         </div>
       </div>
     </nav>

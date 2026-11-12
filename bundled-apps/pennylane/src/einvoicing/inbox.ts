@@ -21,10 +21,18 @@ export interface InboxRow {
 
 export async function recordStatusChange(
   ctx: Pick<PennylaneToolCtx, "db">,
-  row: { provider_ref: string; kind: "customer_invoice" | "supplier_invoice"; event_type: string | null; envelope_id: string | null },
+  row: {
+    provider_ref: string
+    kind: "customer_invoice" | "supplier_invoice"
+    event_type: string | null
+    envelope_id: string | null
+  },
 ): Promise<void> {
   if (row.envelope_id) {
-    const seen = await ctx.db.findMany("einvoicing_inbox", { where: { envelope_id: row.envelope_id }, limit: 1 })
+    const seen = await ctx.db.findMany("einvoicing_inbox", {
+      where: { envelope_id: row.envelope_id },
+      limit: 1,
+    })
     if (seen.length > 0) return
   }
   await ctx.db.insert("einvoicing_inbox", {
@@ -43,9 +51,18 @@ export async function listStatusChanges(
   ctx: Pick<PennylaneToolCtx, "db">,
   p: { cursor?: string | null; kind?: string | null },
 ): Promise<{
-  items: Array<{ provider_ref: string; kind: string; event_type: string | null; received_at: string | null; ack: string }>
+  items: Array<{
+    provider_ref: string
+    kind: string
+    event_type: string | null
+    received_at: string | null
+    ack: string
+  }>
 }> {
-  const ack = typeof p?.cursor === "string" && p.cursor !== "" ? p.cursor.split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x)) : []
+  const ack =
+    typeof p?.cursor === "string" && p.cursor !== ""
+      ? p.cursor.split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x))
+      : []
   const now = new Date().toISOString()
   for (const id of ack) await ctx.db.update("einvoicing_inbox", id, { delivered_at: now })
   const kind = typeof p?.kind === "string" && p.kind !== "" ? p.kind : null
@@ -54,12 +71,28 @@ export async function listStatusChanges(
     orderBy: { createdAt: "asc" },
     limit: BATCH,
   })) as InboxRow[]
-  const byKey = new Map<string, { provider_ref: string; kind: string; event_type: string | null; received_at: string | null; ids: string[] }>()
+  const byKey = new Map<
+    string,
+    {
+      provider_ref: string
+      kind: string
+      event_type: string | null
+      received_at: string | null
+      ids: string[]
+    }
+  >()
   for (const r of rows) {
     const key = `${r.kind}:${r.provider_ref}`
     const item = byKey.get(key)
     if (item) item.ids.push(r.id)
-    else byKey.set(key, { provider_ref: r.provider_ref, kind: r.kind, event_type: r.event_type, received_at: r.received_at, ids: [r.id] })
+    else
+      byKey.set(key, {
+        provider_ref: r.provider_ref,
+        kind: r.kind,
+        event_type: r.event_type,
+        received_at: r.received_at,
+        ids: [r.id],
+      })
   }
   return {
     items: [...byKey.values()].map(({ ids, ...item }) => ({ ...item, ack: ids.join(",") })),

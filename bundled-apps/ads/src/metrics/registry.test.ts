@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import type { AttributionRow, MetricsInputs, SourceLineage } from "./inputs"
 import {
-  METRIC_FORMULAS,
   blended_mer_dtc,
   blended_mer_total,
-  total_vs_dtc_mer_gap,
   cpa_by_sku_class,
+  METRIC_FORMULAS,
   revenue_by_channel,
+  total_vs_dtc_mer_gap,
 } from "./registry"
-import type { AttributionRow, MetricsInputs, SourceLineage } from "./inputs"
 import { DEFAULT_SKU_CLASSING_CONFIG } from "./sku-classing"
 
 function lineage(source: string, extra: Partial<SourceLineage> = {}): SourceLineage {
@@ -54,14 +54,18 @@ describe("blended_mer_dtc", () => {
   })
 
   it("excludes B2B — computed purely from DTC orders' net revenue, the B2B orders' revenue left out", () => {
-    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") },
+    })
     const dtc = blended_mer_dtc.compute(inputs, PERIOD)
     const total = blended_mer_total.compute(inputs, PERIOD)
     expect(Number(total.value)).toBeGreaterThan(Number(dtc.value))
   })
 
   it("degrades to 'unavailable' with a degraded flag when a required input is missing (never fabricates)", () => {
-    const inputs = makeInputs({ shopifyNetRevenue: { value: null, lineage: lineage("shopify", { unavailable: true }) } })
+    const inputs = makeInputs({
+      shopifyNetRevenue: { value: null, lineage: lineage("shopify", { unavailable: true }) },
+    })
     const result = blended_mer_dtc.compute(inputs, PERIOD)
     expect(result.value).toBe("unavailable")
     expect(result.degraded).toBe(true)
@@ -78,7 +82,9 @@ describe("blended_mer_dtc", () => {
 
 describe("blended_mer_total", () => {
   it("includes the B2B orders' net revenue in the numerator", () => {
-    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") },
+    })
     const result = blended_mer_total.compute(inputs, PERIOD)
     // (10000 + 5000) / 3000 = 5.0
     expect(result.value).toBe("5.0000")
@@ -88,20 +94,27 @@ describe("blended_mer_total", () => {
   it("ignores the attribution b2b bucket, so a B2B order is never counted twice", () => {
     const inputs = makeInputs({
       shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") },
-      attribution: { value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })], lineage: lineage("database") },
+      attribution: {
+        value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })],
+        lineage: lineage("database"),
+      },
     })
     expect(blended_mer_total.compute(inputs, PERIOD).value).toBe("5.0000")
   })
 
   it("degrades to unavailable when the B2B revenue cannot be read", () => {
-    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: null, lineage: lineage("shopify", { unavailable: true }) } })
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: null, lineage: lineage("shopify", { unavailable: true }) },
+    })
     const result = blended_mer_total.compute(inputs, PERIOD)
     expect(result.value).toBe("unavailable")
     expect(result.degraded).toBe(true)
   })
 
   it("byte-identical repeat call (SC 5)", () => {
-    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 1_000, lineage: lineage("shopify") } })
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: 1_000, lineage: lineage("shopify") },
+    })
     const r1 = blended_mer_total.compute(inputs, PERIOD)
     const r2 = blended_mer_total.compute(inputs, PERIOD)
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2))
@@ -120,7 +133,9 @@ describe("total_vs_dtc_mer_gap", () => {
   })
 
   it("computes total MER minus DTC MER", () => {
-    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") },
+    })
     const dtc = blended_mer_dtc.compute(inputs, PERIOD)
     const total = blended_mer_total.compute(inputs, PERIOD)
     const gap = total_vs_dtc_mer_gap.compute(inputs, PERIOD)
@@ -128,7 +143,9 @@ describe("total_vs_dtc_mer_gap", () => {
   })
 
   it("degrades to unavailable when the underlying MERs cannot compute", () => {
-    const inputs = makeInputs({ metaSpend: { value: null, lineage: lineage("meta", { unavailable: true }) } })
+    const inputs = makeInputs({
+      metaSpend: { value: null, lineage: lineage("meta", { unavailable: true }) },
+    })
     const result = total_vs_dtc_mer_gap.compute(inputs, PERIOD)
     expect(result.value).toBe("unavailable")
     expect(result.degraded).toBe(true)
@@ -139,7 +156,10 @@ describe("revenue_by_channel", () => {
   it("has an explicit unattributed bucket even when all rows are unattributed", () => {
     const inputs = makeInputs({
       attribution: {
-        value: [attributionRow({ conversion_value_minor: 5000 }), attributionRow({ conversion_value_minor: 3000 })],
+        value: [
+          attributionRow({ conversion_value_minor: 5000 }),
+          attributionRow({ conversion_value_minor: 3000 }),
+        ],
         lineage: lineage("database"),
       },
     })
@@ -177,7 +197,10 @@ describe("revenue_by_channel", () => {
 
   it("byte-identical repeat call (SC 5)", () => {
     const inputs = makeInputs({
-      attribution: { value: [attributionRow({ gclid: "gc1", conversion_value_minor: 10000 })], lineage: lineage("database") },
+      attribution: {
+        value: [attributionRow({ gclid: "gc1", conversion_value_minor: 10000 })],
+        lineage: lineage("database"),
+      },
     })
     const r1 = revenue_by_channel.compute(inputs, PERIOD)
     const r2 = revenue_by_channel.compute(inputs, PERIOD)
@@ -228,8 +251,14 @@ describe("cpa_by_sku_class", () => {
       b2bOrderIds: { value: ["2002"], lineage: lineage("shopify") },
       attribution: {
         value: [
-          attributionRow({ shopify_order_id: "2002", sku_class_breakdown: { hardware: 40000, accessory: 5000 } }),
-          attributionRow({ shopify_order_id: "gid://shopify/Order/2003", sku_class_breakdown: { hardware: 40000 } }),
+          attributionRow({
+            shopify_order_id: "2002",
+            sku_class_breakdown: { hardware: 40000, accessory: 5000 },
+          }),
+          attributionRow({
+            shopify_order_id: "gid://shopify/Order/2003",
+            sku_class_breakdown: { hardware: 40000 },
+          }),
         ],
         lineage: lineage("database"),
       },
@@ -243,16 +272,25 @@ describe("cpa_by_sku_class", () => {
 
   it("a legacy order whose breakdown is all b2b (suffixed skus) stays b2b", () => {
     const inputs = makeInputs({
-      attribution: { value: [attributionRow({ sku_class_breakdown: { b2b: 90000 } })], lineage: lineage("database") },
+      attribution: {
+        value: [attributionRow({ sku_class_breakdown: { b2b: 90000 } })],
+        lineage: lineage("database"),
+      },
     })
-    const parsed = JSON.parse(cpa_by_sku_class.compute(inputs, PERIOD).value) as Record<string, { orders: number }>
+    const parsed = JSON.parse(cpa_by_sku_class.compute(inputs, PERIOD).value) as Record<
+      string,
+      { orders: number }
+    >
     expect(parsed.b2b?.orders).toBe(1)
   })
 
   it("says so and degrades when the store's orders could not be read", () => {
     const inputs = makeInputs({
       b2bOrderIds: { value: [], lineage: lineage("shopify", { unavailable: true }) },
-      attribution: { value: [attributionRow({ sku_class_breakdown: { hardware: 40000 } })], lineage: lineage("database") },
+      attribution: {
+        value: [attributionRow({ sku_class_breakdown: { hardware: 40000 } })],
+        lineage: lineage("database"),
+      },
     })
     const result = cpa_by_sku_class.compute(inputs, PERIOD)
     expect(result.degraded).toBe(true)
@@ -280,8 +318,14 @@ describe("cpa_by_sku_class", () => {
     ]
     const rowsOrderB = [...rowsOrderA].reverse()
 
-    const r1 = cpa_by_sku_class.compute(makeInputs({ attribution: { value: rowsOrderA, lineage: lineage("database") } }), PERIOD)
-    const r2 = cpa_by_sku_class.compute(makeInputs({ attribution: { value: rowsOrderB, lineage: lineage("database") } }), PERIOD)
+    const r1 = cpa_by_sku_class.compute(
+      makeInputs({ attribution: { value: rowsOrderA, lineage: lineage("database") } }),
+      PERIOD,
+    )
+    const r2 = cpa_by_sku_class.compute(
+      makeInputs({ attribution: { value: rowsOrderB, lineage: lineage("database") } }),
+      PERIOD,
+    )
     expect(r1.value).toBe(r2.value)
   })
 })

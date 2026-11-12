@@ -65,9 +65,10 @@ export async function parkInterruptedIssues(
       },
     )
     if (autoEmailedOrderInvoice(doc)) {
-      const issuer = (await ctx.db.findOne("issuer_profiles", String(doc.issuer_profile_id))) as
-        | Row
-        | null
+      const issuer = (await ctx.db.findOne(
+        "issuer_profiles",
+        String(doc.issuer_profile_id),
+      )) as Row | null
       if (
         issuer?.auto_email_enabled &&
         typeof issuer.shopify_shop_id === "string" &&

@@ -8,12 +8,23 @@
 
 import type { DbBatchOp, DbBatchResult, DbBatchSpec } from "@liaison/app-sdk"
 import { codeSyncByProfile, type ProfileCodeSync } from "./product-attributes"
-import { listSharedProfiles, loadVariantProfiles, type SharedProfileView, upsertVariantProfile, type VariantProfile, type VariantRef } from "./profiles"
+import {
+  listSharedProfiles,
+  loadVariantProfiles,
+  type SharedProfileView,
+  upsertVariantProfile,
+  type VariantProfile,
+  type VariantRef,
+} from "./profiles"
 
 export interface CatalogDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number },
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
@@ -121,7 +132,12 @@ export async function packUpsert(
   for (const c of components) {
     ops.push({
       insert: "pack_component",
-      data: { pack_id: packRef, product_source: c.product_source, product_id: c.product_id, quantity: c.quantity },
+      data: {
+        pack_id: packRef,
+        product_source: c.product_source,
+        product_id: c.product_id,
+        quantity: c.quantity,
+      },
     })
   }
   const committed = await ctx.db.batch({ ops })
@@ -148,7 +164,10 @@ export async function packDelete(ctx: CatalogCtx, input: { id: string }): Promis
     limit: MAX,
   })) as Array<{ id: string }>
   await ctx.db.batch({
-    ops: [...comps.map((c) => ({ delete: "pack_component", id: c.id })), { delete: "pack", id: input.id }],
+    ops: [
+      ...comps.map((c) => ({ delete: "pack_component", id: c.id })),
+      { delete: "pack", id: input.id },
+    ],
   })
   return { ok: true }
 }
@@ -215,10 +234,14 @@ export async function packagesList(
     sharedProfiles.map((p) => ({ id: String(p.id), variants: p.variants })),
   ).catch(() => new Map<string, ProfileCodeSync>())
   const profileRefs = new Set(profiles.map((p) => `${p.product_source}:${p.product_id}`))
-  const localProducts = (await ctx.db.findMany("local_product", { limit: MAX })) as Array<Record<string, unknown>>
+  const localProducts = (await ctx.db.findMany("local_product", { limit: MAX })) as Array<
+    Record<string, unknown>
+  >
   const localBySku = new Map(localProducts.map((l) => [String(l.sku), String(l.label)]))
   const packRows = (await ctx.db.findMany("pack", { limit: MAX })) as Array<Record<string, unknown>>
-  const allComponents = (await ctx.db.findMany("pack_component", { limit: MAX })) as Array<Record<string, unknown>>
+  const allComponents = (await ctx.db.findMany("pack_component", { limit: MAX })) as Array<
+    Record<string, unknown>
+  >
 
   const packs: PackView[] = packRows.map((p) => {
     const comps = allComponents.filter((c) => c.pack_id === p.id)
@@ -256,7 +279,10 @@ export async function packagesList(
 
   return {
     profiles,
-    shared_profiles: sharedProfiles.map((p) => ({ ...p, short_code_sync: codeSync.get(String(p.id)) ?? null })),
+    shared_profiles: sharedProfiles.map((p) => ({
+      ...p,
+      short_code_sync: codeSync.get(String(p.id)) ?? null,
+    })),
     unprofiled_variants: await unprofiledVariants(ctx, profileRefs),
     packs,
     local_products: localProducts,
@@ -273,10 +299,15 @@ export interface UnprofiledVariant extends VariantRef {
 /** Variants a cached draft resolution reported without a profile (`unresolved_refs`) that still
  *  have none: what the catalog offers to "Link to existing profile". A reader without access to the
  *  draft cache sees none. */
-async function unprofiledVariants(ctx: CatalogCtx, profiled: Set<string>): Promise<UnprofiledVariant[]> {
+async function unprofiledVariants(
+  ctx: CatalogCtx,
+  profiled: Set<string>,
+): Promise<UnprofiledVariant[]> {
   let rows: Array<{ unresolved_refs?: unknown }>
   try {
-    rows = (await ctx.db.findMany("prep_draft_cache", { limit: MAX })) as Array<{ unresolved_refs?: unknown }>
+    rows = (await ctx.db.findMany("prep_draft_cache", { limit: MAX })) as Array<{
+      unresolved_refs?: unknown
+    }>
   } catch {
     return []
   }
@@ -287,7 +318,8 @@ async function unprofiledVariants(ctx: CatalogCtx, profiled: Set<string>): Promi
     for (const raw of refs) {
       if (!raw || typeof raw !== "object") continue
       const { product_source, product_id, description } = raw as Record<string, unknown>
-      if (typeof product_source !== "string" || typeof product_id !== "string" || !product_id) continue
+      if (typeof product_source !== "string" || typeof product_id !== "string" || !product_id)
+        continue
       const key = `${product_source}:${product_id}`
       if (profiled.has(key) || seen.has(key)) continue
       seen.add(key)
@@ -301,5 +333,7 @@ async function unprofiledVariants(ctx: CatalogCtx, profiled: Set<string>): Promi
       out.set(key, entry)
     }
   }
-  return [...out.values()].sort((a, b) => b.rows - a.rows || a.product_id.localeCompare(b.product_id))
+  return [...out.values()].sort(
+    (a, b) => b.rows - a.rows || a.product_id.localeCompare(b.product_id),
+  )
 }

@@ -45,7 +45,13 @@ export class GitlabHttpError extends Error {
   readonly code: string
   readonly gitlabMessage?: string
   readonly retryAfter?: number
-  constructor(status: number, code: string, message: string, gitlabMessage?: string, retryAfter?: number) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    gitlabMessage?: string,
+    retryAfter?: number,
+  ) {
     super(message)
     this.name = "GitlabHttpError"
     this.status = status
@@ -85,11 +91,26 @@ function errorFor(answer: FetchAnswer): GitlabHttpError {
   // message as the source's last error.
   switch (answer.status) {
     case 401:
-      return new GitlabHttpError(401, "AUTH_REVOKED", "GitLab authentication failed (AUTH_REVOKED)", gitlabMessage)
+      return new GitlabHttpError(
+        401,
+        "AUTH_REVOKED",
+        "GitLab authentication failed (AUTH_REVOKED)",
+        gitlabMessage,
+      )
     case 403:
-      return new GitlabHttpError(403, "FORBIDDEN", "GitLab access forbidden (FORBIDDEN)", gitlabMessage)
+      return new GitlabHttpError(
+        403,
+        "FORBIDDEN",
+        "GitLab access forbidden (FORBIDDEN)",
+        gitlabMessage,
+      )
     case 404:
-      return new GitlabHttpError(404, "NOT_FOUND", "GitLab resource not found (NOT_FOUND)", gitlabMessage)
+      return new GitlabHttpError(
+        404,
+        "NOT_FOUND",
+        "GitLab resource not found (NOT_FOUND)",
+        gitlabMessage,
+      )
     case 429: {
       const ra = Number(header(answer.headers, "retry-after"))
       return new GitlabHttpError(
@@ -173,7 +194,10 @@ export function nextLink(answer: FetchAnswer): string | null {
 
 /** The connected group (a readable field of the connection), or not connected. */
 export async function connectedGroup(ctx: GitlabCtx): Promise<string> {
-  const read = await readConnectionSettings(ctx.connections, CONNECTION, ["token", "group"] as const)
+  const read = await readConnectionSettings(ctx.connections, CONNECTION, [
+    "token",
+    "group",
+  ] as const)
   if (!read.ok) {
     if (read.reason === "incomplete") {
       throw new GitlabNotConnectedError(
@@ -229,7 +253,12 @@ export function utf8Text(bytes: number[]): string {
         if ((c & 0xc0) !== 0x80) ok = false
         else v = (v << 6) | (c & 0x3f)
       }
-      if (ok && v >= [0, 0, 0x80, 0x800, 0x10000][len]! && v <= 0x10ffff && (v < 0xd800 || v > 0xdfff)) {
+      if (
+        ok &&
+        v >= [0, 0, 0x80, 0x800, 0x10000][len]! &&
+        v <= 0x10ffff &&
+        (v < 0xd800 || v > 0xdfff)
+      ) {
         cp = v
       } else {
         len = 1

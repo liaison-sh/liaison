@@ -43,7 +43,7 @@ describe("calls app.manifest.json", () => {
     // 0.2.17: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.2.18: the same number (0.2.17) carried different content on two lines of work; this one has both.
-    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.21")
+    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.22")
   })
 
   // Settings overhaul P2: a connector without a UI bundle; the kernel renders
@@ -73,9 +73,11 @@ describe("calls app.manifest.json", () => {
   // Settings > Apps labels each connection with its purpose and demotes the
   // optional ones (a bare "Connect" made a working app look uninstalled).
   it("declares what each connection connects, and which ones are optional", () => {
-    const c = (MANIFEST as unknown as {
-      connections: Record<string, { purpose?: string; optional?: boolean }>
-    }).connections
+    const c = (
+      MANIFEST as unknown as {
+        connections: Record<string, { purpose?: string; optional?: boolean }>
+      }
+    ).connections
     expect(c["transcript-source"]?.purpose).toBe("Transcript webhook")
     expect(c["transcript-source"]?.optional === true).toBe(true)
   })

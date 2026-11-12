@@ -65,7 +65,10 @@ export interface ProductCode {
  * Everything else is left alone: a free-text token, a Shopify gid or an already-short code comes
  * back unchanged apart from surrounding whitespace.
  */
-export function normalizeProductSku(raw: string, config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG): string {
+export function normalizeProductSku(
+  raw: string,
+  config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG,
+): string {
   let s = raw.trim()
   if (s === "") return s
   const upper = () => s.toUpperCase()
@@ -81,7 +84,10 @@ export function normalizeProductSku(raw: string, config: ProductCodeConfig = EMP
  * word) has one, else the normalized sku itself. Never returns an empty string for a non-empty
  * input: an unknown sku degrades to a shorter, readable form rather than disappearing.
  */
-export function shortProductCode(raw: string, config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG): string {
+export function shortProductCode(
+  raw: string,
+  config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG,
+): string {
   const normalized = normalizeProductSku(raw, config)
   if (normalized === "") return raw.trim()
   const key = normalized.toUpperCase()
@@ -137,7 +143,10 @@ function hasRanks(config: ProductCodeConfig): boolean {
  * DEFAULT_PRODUCT_CODE_RANK), then the code alphabetically. With no rank declared at all the input
  * order is returned untouched, so nothing changes for an org until it sets one.
  */
-export function sortByProductRank<T extends { code: string }>(entries: T[], config: ProductCodeConfig): T[] {
+export function sortByProductRank<T extends { code: string }>(
+  entries: T[],
+  config: ProductCodeConfig,
+): T[] {
   if (!hasRanks(config)) return entries
   const ranks = config.ranks ?? {}
   const rankOf = (code: string) => ranks[code.toUpperCase()] ?? DEFAULT_PRODUCT_CODE_RANK
@@ -156,9 +165,15 @@ export function sortByProductRank<T extends { code: string }>(entries: T[], conf
  * a stored summary follows a rank set after it was written. A string that is not a quantity list
  * ("-", "2 parcels"), or an org with no rank, comes back unchanged.
  */
-export function orderProductsSummary(summary: string, config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG): string {
+export function orderProductsSummary(
+  summary: string,
+  config: ProductCodeConfig = EMPTY_PRODUCT_CODE_CONFIG,
+): string {
   if (!hasRanks(config)) return summary
-  const parts = summary.split(",").map((p) => p.trim()).filter((p) => p !== "")
+  const parts = summary
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p !== "")
   const entries: Array<{ code: string; text: string }> = []
   for (const text of parts) {
     const m = QTY_PREFIX.exec(text)
@@ -166,18 +181,23 @@ export function orderProductsSummary(summary: string, config: ProductCodeConfig 
     entries.push({ code: shortProductCode((m[2] ?? "").trim(), config), text })
   }
   if (entries.length < 2) return summary
-  return sortByProductRank(entries, config).map((e) => e.text).join(", ")
+  return sortByProductRank(entries, config)
+    .map((e) => e.text)
+    .join(", ")
 }
 
 const stringList = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) : []
+  Array.isArray(v)
+    ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim())
+    : []
 
 /**
  * Coerce a stored `app_config.value` into a config. Junk degrades to the empty default (skus shown
  * as they are), never to a crash: a corrupt setting must not take the worklist down.
  */
 export function productCodeConfigFromValue(value: unknown): ProductCodeConfig {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return EMPTY_PRODUCT_CODE_CONFIG
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return EMPTY_PRODUCT_CODE_CONFIG
   const v = value as Record<string, unknown>
   const aliases: Record<string, string> = {}
   if (typeof v.aliases === "object" && v.aliases !== null && !Array.isArray(v.aliases)) {
@@ -199,7 +219,8 @@ export function productCodeConfigFromValue(value: unknown): ProductCodeConfig {
     const ranks: Record<string, number> = {}
     for (const [k, rank] of Object.entries(v.ranks as Record<string, unknown>)) {
       const key = k.trim().toUpperCase()
-      if (key !== "" && key.length <= MAX_PRODUCT_CODE_LENGTH && Number.isInteger(rank)) ranks[key] = rank as number
+      if (key !== "" && key.length <= MAX_PRODUCT_CODE_LENGTH && Number.isInteger(rank))
+        ranks[key] = rank as number
     }
     if (Object.keys(ranks).length > 0) out.ranks = ranks
   }

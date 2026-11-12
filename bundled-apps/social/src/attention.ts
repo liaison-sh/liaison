@@ -13,8 +13,8 @@
 // by the kernel at runtime.
 
 import type { SocialToolCtx } from "./ctx"
-import { pendingFindingApprovals, withLiveApprovalState } from "./pending"
 import { dmWindowTag } from "./dm-window"
+import { pendingFindingApprovals, withLiveApprovalState } from "./pending"
 
 type AttentionAction =
   | { type: "open_entity"; tabType: string; entityId: string }
@@ -83,7 +83,9 @@ export async function computeSocialAttention(
       limit: ITEM_CAP,
     }) as Promise<FindingRow[]>,
     pending
-      ? Promise.all([...pending.keys()].slice(0, ITEM_CAP).map((id) => ctx.db.findOne("finding", id))).then((rows) =>
+      ? Promise.all(
+          [...pending.keys()].slice(0, ITEM_CAP).map((id) => ctx.db.findOne("finding", id)),
+        ).then((rows) =>
           (rows.filter((r) => !!r && typeof r === "object") as FindingRow[])
             .map((r) => withLiveApprovalState(r, pending))
             .filter((r) => r.status === "awaiting_approval")
@@ -104,7 +106,9 @@ export async function computeSocialAttention(
       entity: "finding",
       entityId: f.id,
       kind: "mention",
-      summary: f.content_text ? `Reply suggested: ${f.content_text.slice(0, 80)}` : "A finding needs a reply",
+      summary: f.content_text
+        ? `Reply suggested: ${f.content_text.slice(0, 80)}`
+        : "A finding needs a reply",
       urgency: f.urgency ?? 50,
       occurredAt: f.occurred_at ?? now.toISOString(),
       action: { type: "open_entity", tabType: "findings", entityId: f.id },
@@ -129,7 +133,9 @@ export async function computeSocialAttention(
     })
   }
 
-  const conversations = (await ctx.db.findMany("dm_conversation", { where: { status: "open" } })) as ConversationRow[]
+  const conversations = (await ctx.db.findMany("dm_conversation", {
+    where: { status: "open" },
+  })) as ConversationRow[]
   for (const c of conversations) {
     if (!c.last_inbound_at) continue
     const tag = dmWindowTag(c.last_inbound_at, now)

@@ -19,7 +19,9 @@ const ROUTINES_DIR = import.meta.dir
 
 describe("gen-manifest-routines: frontmatter parsing", () => {
   it("lists exactly the two generated .md files, sorted", () => {
-    expect(listRoutineFiles()).toEqual([...GENERATED_ROUTINE_FILES].sort((a, b) => a.localeCompare(b)))
+    expect(listRoutineFiles()).toEqual(
+      [...GENERATED_ROUTINE_FILES].sort((a, b) => a.localeCompare(b)),
+    )
   })
 
   for (const file of GENERATED_ROUTINE_FILES) {

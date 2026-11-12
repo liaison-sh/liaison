@@ -18,7 +18,9 @@ const K = [
 
 /** Incremental SHA-256 over bytes (numbers 0..255). */
 class Sha256 {
-  private h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+  private h = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]
   private block: number[] = new Array(64).fill(0)
   private w: number[] = new Array(64).fill(0)
   private fill = 0
@@ -89,7 +91,8 @@ class Sha256 {
     while (this.fill !== 56) this.push(0)
     const hi = Math.floor(len / 0x20000000)
     const lo = (len * 8) >>> 0
-    for (const v of [hi >>> 24, hi >>> 16, hi >>> 8, hi, lo >>> 24, lo >>> 16, lo >>> 8, lo]) this.push(v)
+    for (const v of [hi >>> 24, hi >>> 16, hi >>> 8, hi, lo >>> 24, lo >>> 16, lo >>> 8, lo])
+      this.push(v)
     return this.h.map((x) => x.toString(16).padStart(8, "0")).join("")
   }
 }

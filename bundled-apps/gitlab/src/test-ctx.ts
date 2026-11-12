@@ -14,11 +14,23 @@ export interface FakeCall {
 
 export type Route = FetchAnswer | ((url: string) => FetchAnswer)
 
-export function json(body: unknown, headers: Record<string, string> = {}, status = 200): FetchAnswer {
-  return { status, headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }
+export function json(
+  body: unknown,
+  headers: Record<string, string> = {},
+  status = 200,
+): FetchAnswer {
+  return {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  }
 }
 
-export function fileAnswer(text: string, blobId = "blob-1", lastCommitId = "commit-1"): FetchAnswer {
+export function fileAnswer(
+  text: string,
+  blobId = "blob-1",
+  lastCommitId = "commit-1",
+): FetchAnswer {
   const bytes = new TextEncoder().encode(text)
   let bin = ""
   for (const b of bytes) bin += String.fromCharCode(b)

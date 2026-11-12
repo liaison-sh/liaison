@@ -76,7 +76,9 @@ function makeCtx(opts: {
 
 describe("ensureInstallMetadata — connected-but-uninitialised self-heal", () => {
   it("returns the existing row without inserting when metadata is present", async () => {
-    const { ctx, spy } = makeCtx({ seedMetadata: { shop_domain: SHOP, connection_status: "connected" } })
+    const { ctx, spy } = makeCtx({
+      seedMetadata: { shop_domain: SHOP, connection_status: "connected" },
+    })
     const meta = await ensureInstallMetadata(ctx)
     expect(meta?.shopDomain).toBe(SHOP)
     expect(spy.inserts).toHaveLength(0)
@@ -168,7 +170,10 @@ describe("throttle: a low cost bucket pauses the shop in the shared limiter", ()
   const OK_BUCKET = JSON.stringify({ data: { ok: true } })
   const SHARED = "shared-shop.myshopify.com"
 
-  function ctxFor(body: string, pauses: Array<[string, number, string | undefined]> | null): AppContext {
+  function ctxFor(
+    body: string,
+    pauses: Array<[string, number, string | undefined]> | null,
+  ): AppContext {
     const { ctx } = makeCtx({
       seedMetadata: { shop_domain: SHARED, connection_status: "connected" },
       accounts: [{ id: ACCOUNT_ID, identifier: SHARED }],
@@ -198,15 +203,17 @@ describe("throttle: a low cost bucket pauses the shop in the shared limiter", ()
   it("a full bucket pauses nothing, and no state carries to the next client", async () => {
     const pauses: Array<[string, number, string | undefined]> = []
     await (await getShopifyClient(ctxFor(LOW_BUCKET, pauses))).query("query { ok }")
-    const r = await (await getShopifyClient(ctxFor(OK_BUCKET, pauses), { timeoutMs: 1_000 })).query<{ ok: boolean }>(
-      "query { ok }",
-    )
+    const r = await (
+      await getShopifyClient(ctxFor(OK_BUCKET, pauses), { timeoutMs: 1_000 })
+    ).query<{ ok: boolean }>("query { ok }")
     expect(r.ok).toBe(true)
     expect(pauses).toHaveLength(1)
   })
 
   it("a run whose ctx has no limiter still answers", async () => {
-    const r = await (await getShopifyClient(ctxFor(LOW_BUCKET, null))).query<{ ok: boolean }>("query { ok }")
+    const r = await (await getShopifyClient(ctxFor(LOW_BUCKET, null))).query<{ ok: boolean }>(
+      "query { ok }",
+    )
     expect(r.ok).toBe(true)
   })
 })

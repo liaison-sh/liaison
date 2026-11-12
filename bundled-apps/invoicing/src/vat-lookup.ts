@@ -24,8 +24,8 @@
 //
 // Read-only. The result carries no page text, only the numbers, what VIES says and the page URL.
 
-import { compatibleNames, nameCovers, viesCheck } from "./buyer-vat"
 import { addressMatch, normaliseAddress } from "./address-match"
+import { compatibleNames, nameCovers, viesCheck } from "./buyer-vat"
 import type { CrossAppExecuteTool } from "./cross-app"
 import type { ReadsFetch } from "./reads"
 import { isEuCountry } from "./tax"
@@ -76,35 +76,36 @@ export interface VatLookupResult {
  * National VAT number formats of the EU member states, as VIES knows them: the prefix and the
  * body after it (compact, no separators). Greece registers as EL.
  */
-export const VAT_FORMATS: Readonly<Record<string, { prefix: string; body: string; term: string }>> = {
-  AT: { prefix: "AT", body: "U\\d{8}", term: "UID-Nummer" },
-  BE: { prefix: "BE", body: "[01]\\d{9}", term: "numéro de TVA BTW" },
-  BG: { prefix: "BG", body: "\\d{9,10}", term: "ДДС VAT number" },
-  CY: { prefix: "CY", body: "\\d{8}[A-Z]", term: "VAT number" },
-  CZ: { prefix: "CZ", body: "\\d{8,10}", term: "DIČ" },
-  DE: { prefix: "DE", body: "\\d{9}", term: "USt-IdNr" },
-  DK: { prefix: "DK", body: "\\d{8}", term: "CVR moms" },
-  EE: { prefix: "EE", body: "\\d{9}", term: "KMKR" },
-  EL: { prefix: "EL", body: "\\d{9}", term: "ΑΦΜ VAT" },
-  ES: { prefix: "ES", body: "[A-Z0-9]\\d{7}[A-Z0-9]", term: "CIF NIF IVA" },
-  FI: { prefix: "FI", body: "\\d{8}", term: "ALV Y-tunnus" },
-  FR: { prefix: "FR", body: "[A-HJ-NP-Z0-9]{2}\\d{9}", term: "numéro de TVA intracommunautaire" },
-  HR: { prefix: "HR", body: "\\d{11}", term: "OIB PDV" },
-  HU: { prefix: "HU", body: "\\d{8}", term: "adószám" },
-  IE: { prefix: "IE", body: "\\d{7}[A-W][A-I]?|\\d[A-Z+*]\\d{5}[A-W]", term: "VAT number" },
-  IT: { prefix: "IT", body: "\\d{11}", term: "partita IVA" },
-  LT: { prefix: "LT", body: "\\d{12}|\\d{9}", term: "PVM kodas" },
-  LU: { prefix: "LU", body: "\\d{8}", term: "numéro TVA" },
-  LV: { prefix: "LV", body: "\\d{11}", term: "PVN numurs" },
-  MT: { prefix: "MT", body: "\\d{8}", term: "VAT number" },
-  NL: { prefix: "NL", body: "\\d{9}B\\d{2}", term: "btw-nummer" },
-  PL: { prefix: "PL", body: "\\d{10}", term: "NIP" },
-  PT: { prefix: "PT", body: "\\d{9}", term: "NIF contribuinte" },
-  RO: { prefix: "RO", body: "\\d{2,10}", term: "CUI cod fiscal" },
-  SE: { prefix: "SE", body: "\\d{12}", term: "momsregistreringsnummer" },
-  SI: { prefix: "SI", body: "\\d{8}", term: "ID za DDV" },
-  SK: { prefix: "SK", body: "\\d{10}", term: "IČ DPH" },
-}
+export const VAT_FORMATS: Readonly<Record<string, { prefix: string; body: string; term: string }>> =
+  {
+    AT: { prefix: "AT", body: "U\\d{8}", term: "UID-Nummer" },
+    BE: { prefix: "BE", body: "[01]\\d{9}", term: "numéro de TVA BTW" },
+    BG: { prefix: "BG", body: "\\d{9,10}", term: "ДДС VAT number" },
+    CY: { prefix: "CY", body: "\\d{8}[A-Z]", term: "VAT number" },
+    CZ: { prefix: "CZ", body: "\\d{8,10}", term: "DIČ" },
+    DE: { prefix: "DE", body: "\\d{9}", term: "USt-IdNr" },
+    DK: { prefix: "DK", body: "\\d{8}", term: "CVR moms" },
+    EE: { prefix: "EE", body: "\\d{9}", term: "KMKR" },
+    EL: { prefix: "EL", body: "\\d{9}", term: "ΑΦΜ VAT" },
+    ES: { prefix: "ES", body: "[A-Z0-9]\\d{7}[A-Z0-9]", term: "CIF NIF IVA" },
+    FI: { prefix: "FI", body: "\\d{8}", term: "ALV Y-tunnus" },
+    FR: { prefix: "FR", body: "[A-HJ-NP-Z0-9]{2}\\d{9}", term: "numéro de TVA intracommunautaire" },
+    HR: { prefix: "HR", body: "\\d{11}", term: "OIB PDV" },
+    HU: { prefix: "HU", body: "\\d{8}", term: "adószám" },
+    IE: { prefix: "IE", body: "\\d{7}[A-W][A-I]?|\\d[A-Z+*]\\d{5}[A-W]", term: "VAT number" },
+    IT: { prefix: "IT", body: "\\d{11}", term: "partita IVA" },
+    LT: { prefix: "LT", body: "\\d{12}|\\d{9}", term: "PVM kodas" },
+    LU: { prefix: "LU", body: "\\d{8}", term: "numéro TVA" },
+    LV: { prefix: "LV", body: "\\d{11}", term: "PVN numurs" },
+    MT: { prefix: "MT", body: "\\d{8}", term: "VAT number" },
+    NL: { prefix: "NL", body: "\\d{9}B\\d{2}", term: "btw-nummer" },
+    PL: { prefix: "PL", body: "\\d{10}", term: "NIP" },
+    PT: { prefix: "PT", body: "\\d{9}", term: "NIF contribuinte" },
+    RO: { prefix: "RO", body: "\\d{2,10}", term: "CUI cod fiscal" },
+    SE: { prefix: "SE", body: "\\d{12}", term: "momsregistreringsnummer" },
+    SI: { prefix: "SI", body: "\\d{8}", term: "ID za DDV" },
+    SK: { prefix: "SK", body: "\\d{10}", term: "IČ DPH" },
+  }
 
 /** Words that announce a VAT or tax number in a page ("P.IVA 01234567890", "USt-IdNr.: DE…"). */
 const LABEL_RE =
@@ -117,11 +118,14 @@ function str(v: unknown): string | null {
 /** A body pattern that tolerates one space, dot or dash between its characters ("DE 123 456 789"). */
 function spacedBody(body: string): string {
   // Insert an optional separator after every single-character token of the pattern.
-  return body.replace(/(\\d|\[[^\]]+\]|[A-Z])(\{\d+(?:,\d+)?\}|\?)?/g, (_m, tok: string, q: string | undefined) => {
-    if (!q) return `${tok}[ .-]?`
-    if (q === "?") return `(?:${tok}[ .-]?)?`
-    return `(?:${tok}[ .-]?)${q}`
-  })
+  return body.replace(
+    /(\\d|\[[^\]]+\]|[A-Z])(\{\d+(?:,\d+)?\}|\?)?/g,
+    (_m, tok: string, q: string | undefined) => {
+      if (!q) return `${tok}[ .-]?`
+      if (q === "?") return `(?:${tok}[ .-]?)?`
+      return `(?:${tok}[ .-]?)${q}`
+    },
+  )
 }
 
 /** The VIES country prefix for a country code (GR registers as EL). */
@@ -157,7 +161,8 @@ export function extractVatCandidates(text: string, country: string): string[] {
   for (const m of upper.matchAll(LABEL_RE)) {
     const at = (m.index ?? 0) + m[0].length
     const hit = bare.exec(upper.slice(at, at + 40))
-    if (hit && !/[A-Z0-9]/.test(upper.slice(at - m[0].length - 1, at - m[0].length))) add(at, hit[1] ?? "")
+    if (hit && !/[A-Z0-9]/.test(upper.slice(at - m[0].length - 1, at - m[0].length)))
+      add(at, hit[1] ?? "")
   }
   return found.sort((a, b) => a.at - b.at).map((f) => f.vat)
 }
@@ -172,7 +177,8 @@ type SearchOutcome = { ok: true; hits: SearchHit[] } | { ok: false; reason: stri
 
 /** One web search through the host's web_search. */
 async function webSearch(ctx: VatLookupCtx, query: string): Promise<SearchOutcome> {
-  if (!ctx.executeTool) return { ok: false, reason: "this app cannot reach the host's web search here" }
+  if (!ctx.executeTool)
+    return { ok: false, reason: "this app cannot reach the host's web search here" }
   let env: Awaited<ReturnType<CrossAppExecuteTool>>
   try {
     env = await ctx.executeTool("kernel:web_search", { query, numResults: RESULTS_PER_SEARCH })
@@ -187,7 +193,8 @@ async function webSearch(ctx: VatLookupCtx, query: string): Promise<SearchOutcom
         : (env.error?.message ?? code)
     return { ok: false, reason }
   }
-  if (env.status !== "completed") return { ok: false, reason: "web search is waiting for an approval" }
+  if (env.status !== "completed")
+    return { ok: false, reason: "web search is waiting for an approval" }
   const r = (env.result ?? {}) as { results?: unknown; error?: unknown }
   if (typeof r.error === "string") return { ok: false, reason: r.error }
   const list = Array.isArray(r.results) ? r.results : []
@@ -205,7 +212,12 @@ async function webSearch(ctx: VatLookupCtx, query: string): Promise<SearchOutcom
 
 /** How well VIES's name and address match what the caller gave: a score and strong/weak. */
 function rank(
-  input: { legal_name: string; city: string | null; postcode: string | null; street: string | null },
+  input: {
+    legal_name: string
+    city: string | null
+    postcode: string | null
+    street: string | null
+  },
   viesName: string | null,
   viesAddress: string | null,
 ): { score: number; match: "strong" | "weak" } {
@@ -215,11 +227,17 @@ function rank(
   const addr = ` ${normaliseAddress(viesAddress)} `
   const cityOk = !!input.city && addr.includes(` ${normaliseAddress(input.city)} `)
   const postcodeOk = !!input.postcode && addr.includes(` ${normaliseAddress(input.postcode)} `)
-  const given = [input.street, input.postcode, input.city].filter((s): s is string => !!s).join(", ")
+  const given = [input.street, input.postcode, input.city]
+    .filter((s): s is string => !!s)
+    .join(", ")
   const streetHow = input.street ? addressMatch(given, viesAddress) : null
   const placeGiven = !!(input.city || input.postcode || input.street)
   const placeOk = cityOk || postcodeOk || streetHow !== null
-  const score = (nameOk ? 4 : nameNear ? 1 : 0) + (streetHow === "full" ? 3 : streetHow === "street" ? 2 : 0) + (postcodeOk ? 1 : 0) + (cityOk ? 1 : 0)
+  const score =
+    (nameOk ? 4 : nameNear ? 1 : 0) +
+    (streetHow === "full" ? 3 : streetHow === "street" ? 2 : 0) +
+    (postcodeOk ? 1 : 0) +
+    (cityOk ? 1 : 0)
   return { score, match: nameOk && (placeOk || !placeGiven) ? "strong" : "weak" }
 }
 
@@ -235,7 +253,11 @@ export async function vatLookup(ctx: VatLookupCtx, raw: VatLookupInput): Promise
   const street = str(raw?.street)
   const empty = { candidates: [], rejected: [], searches: [] }
   if (!legalName) {
-    return { status: "invalid_input", ...empty, message: "Pass the company's legal_name (e.g. the name on its earlier invoice)." }
+    return {
+      status: "invalid_input",
+      ...empty,
+      message: "Pass the company's legal_name (e.g. the name on its earlier invoice).",
+    }
   }
   const prefix = vatPrefixOf(country)
   const fmt = VAT_FORMATS[prefix]
@@ -280,7 +302,8 @@ export async function vatLookup(ctx: VatLookupCtx, raw: VatLookupInput): Promise
     const fresh: Array<{ vat: string; url: string | null }> = []
     for (const h of s.hits) {
       for (const vat of extractVatCandidates(`${h.title}\n${h.snippet}`, prefix)) {
-        if (!tried.has(vat) && !fresh.some((f) => f.vat === vat)) fresh.push({ vat, url: h.url || null })
+        if (!tried.has(vat) && !fresh.some((f) => f.vat === vat))
+          fresh.push({ vat, url: h.url || null })
       }
     }
     for (const f of fresh) {
@@ -333,7 +356,9 @@ export async function vatLookup(ctx: VatLookupCtx, raw: VatLookupInput): Promise
         `With that link: use it as counterparty.vat_id, with the VIES name as counterparty.legal_name, and call the refused tool again. ` +
         `Without one: ask the user for the VAT number; never guess.`
       : `Found ${ranked.map((c) => c.vat_id).join(", ")}, but none is a sure match (${
-          best.vies_valid === null ? "VIES could not be reached" : "VIES's name or address differs from the buyer's"
+          best.vies_valid === null
+            ? "VIES could not be reached"
+            : "VIES's name or address differs from the buyer's"
         }). Show the user the candidates with their VIES name and address and ask which one is the buyer's; never pick one yourself.`
   return { status: "found", candidates: ranked, rejected, searches, message }
 }

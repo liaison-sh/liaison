@@ -76,6 +76,23 @@ export function workersConfigured(): boolean {
   return readWorkersConfig() !== null
 }
 
+/**
+ * Where a run meant for the loader goes when the loader cannot take it (its
+ * breaker open, an app-level fallback, a loader fault before any bridge call;
+ * fallback.ts). One value decides it: LIAISON_APP_FALLBACK_LOADER_URL, the
+ * base URL of this instance's own sandbox service (workerd), which speaks the
+ * loader's protocol (the same `@liaison/app-loader` handler), knows this cell
+ * by the same id and key, and is called back on the same bridge. Unset: the
+ * local QuickJS sandbox.
+ */
+export type FallbackTarget = { kind: "quickjs" } | { kind: "workerd"; config: WorkersConfig }
+
+export function readFallbackTarget(primary: WorkersConfig): FallbackTarget {
+  const url = env.LIAISON_APP_FALLBACK_LOADER_URL
+  if (blank(url)) return { kind: "quickjs" }
+  return { kind: "workerd", config: { ...primary, loaderUrl: (url ?? "").replace(/\/+$/, "") } }
+}
+
 /** `<bridgeBaseUrl>/api/app-bridge/<runId>`: where a run's isolate calls back. */
 export function bridgeUrlFor(config: WorkersConfig, runId: string): string {
   return `${config.bridgeBaseUrl}/api/app-bridge/${encodeURIComponent(runId)}`

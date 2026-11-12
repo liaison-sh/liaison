@@ -32,7 +32,10 @@ function encodeStream(text: string): string {
 
 export function buildLabelPdf(lines: string[]): string {
   const content = lines
-    .map((l, i) => `BT\n/F1 8 Tf\n75 Tz\n 1 0 0 1 7.08 ${400 - i * 12} Tm\n (${l.replace(/[()\\]/g, (c) => `\\${c}`)})Tj\nET`)
+    .map(
+      (l, i) =>
+        `BT\n/F1 8 Tf\n75 Tz\n 1 0 0 1 7.08 ${400 - i * 12} Tm\n (${l.replace(/[()\\]/g, (c) => `\\${c}`)})Tj\nET`,
+    )
     .join("\n")
   const image = encodeStream("\u0000ÿ".repeat(64))
   const body = encodeStream(content)

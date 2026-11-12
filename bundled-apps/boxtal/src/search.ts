@@ -11,14 +11,20 @@
 // the earlier "fetch MAX_LIMIT+1 then filter the cursor client-side" approach
 // capped total reachable matches at ~101 (M2).
 
-import { documentNumbersById, type DocumentNumbersCtx } from "./document-numbers"
+import { type DocumentNumbersCtx, documentNumbersById } from "./document-numbers"
 import { TRACKING_NOT_SCANNED_NOTE } from "./reads"
 
 interface SearchCtx {
   db: {
     findMany(
       entity: string,
-      opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number; offset?: number; search?: { fields: string[]; query: string } },
+      opts?: {
+        where?: Record<string, unknown>
+        orderBy?: Record<string, "asc" | "desc">
+        limit?: number
+        offset?: number
+        search?: { fields: string[]; query: string }
+      },
     ): Promise<unknown[]>
     // COUNT of all matching rows (the whole fleet for a bare query) — the coverage DENOMINATOR. Without
     // a real total the agent reading one offset page has no tool-backed way to say "I read N of M

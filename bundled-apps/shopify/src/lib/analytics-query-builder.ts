@@ -125,7 +125,7 @@ function isIsoDate(v: unknown): boolean {
 // An own-key check, not `in`: `"toString" in METRIC_COLUMN` is true through the prototype, which
 // would let an inherited name past the allowlist.
 function isOwnKey(table: object, key: unknown): boolean {
-  return typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key)
+  return typeof key === "string" && Object.hasOwn(table, key)
 }
 
 /** True when the metric reads the sessions dataset (no bounded order-tally fallback exists). */

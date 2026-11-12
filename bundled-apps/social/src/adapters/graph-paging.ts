@@ -44,7 +44,9 @@ export interface GraphPage<T> {
  *  the source is skipped this tick with its state kept, never read as empty. */
 export type ListError = GraphError | "UNAVAILABLE"
 
-export type GraphPageFetch<T> = (after: string | null) => Promise<GraphPage<T> | { error: ListError }>
+export type GraphPageFetch<T> = (
+  after: string | null,
+) => Promise<GraphPage<T> | { error: ListError }>
 
 /** Graph error codes that mean "throttled", whatever the HTTP status says
  *  (Meta answers most rate limits with a 400 or 403, not a 429): app, user,
@@ -85,7 +87,8 @@ export function usageThrottled(headers: Record<string, string> | undefined): boo
   let max = 0
   for (const [k, v] of Object.entries(headers)) {
     const key = k.toLowerCase()
-    if (key !== "x-app-usage" && key !== "x-business-use-case-usage" && key !== "x-page-usage") continue
+    if (key !== "x-app-usage" && key !== "x-business-use-case-usage" && key !== "x-page-usage")
+      continue
     max = Math.max(max, maxPercent(safeJson(v)))
   }
   return max >= USAGE_THROTTLE_PERCENT
@@ -104,7 +107,10 @@ function maxPercent(v: unknown): number {
   if (v && typeof v === "object") {
     let m = 0
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-      if ((k === "call_count" || k === "total_time" || k === "total_cputime") && typeof x === "number") {
+      if (
+        (k === "call_count" || k === "total_time" || k === "total_cputime") &&
+        typeof x === "number"
+      ) {
         m = Math.max(m, x)
       } else if (typeof x === "object") {
         m = Math.max(m, maxPercent(x))
@@ -130,7 +136,8 @@ export function readListState(v: unknown): ListState | null {
   let bf: ListState["bf"] = null
   if (o.bf && typeof o.bf === "object") {
     const b = o.bf as { after?: unknown; floor?: unknown }
-    if (typeof b.after === "string" && b.after) bf = { after: b.after, floor: typeof b.floor === "string" ? b.floor : null }
+    if (typeof b.after === "string" && b.after)
+      bf = { after: b.after, floor: typeof b.floor === "string" ? b.floor : null }
   }
   return { hw, bf }
 }
@@ -164,7 +171,9 @@ export interface WalkResult<T> {
  * the head page fails the walk (the caller keeps its cursor); a failure on a
  * later page ends the walk early with what was read.
  */
-export async function walkNewestFirst<T>(opts: WalkOptions<T>): Promise<WalkResult<T> | { error: ListError }> {
+export async function walkNewestFirst<T>(
+  opts: WalkOptions<T>,
+): Promise<WalkResult<T> | { error: ListError }> {
   const prior = opts.state ?? { hw: null, bf: null }
   const hwMs = graphTime(prior.hw)
   const items: T[] = []
@@ -232,7 +241,12 @@ export async function walkNewestFirst<T>(opts: WalkOptions<T>): Promise<WalkResu
       let done = false
       for (const item of page.items) {
         const t = opts.timeOf(item)
-        if (opts.mode === "watermark" && !Number.isNaN(floorMs) && !Number.isNaN(t) && t <= floorMs) {
+        if (
+          opts.mode === "watermark" &&
+          !Number.isNaN(floorMs) &&
+          !Number.isNaN(t) &&
+          t <= floorMs
+        ) {
           done = true
           break
         }
@@ -241,7 +255,10 @@ export async function walkNewestFirst<T>(opts: WalkOptions<T>): Promise<WalkResu
       if (done || !page.next) {
         // A watermark list's history is complete; a rotating one wraps back to
         // just below the newest page.
-        bf = opts.mode === "rotating" && firstNext && firstNext !== bf.after ? { after: firstNext, floor: null } : null
+        bf =
+          opts.mode === "rotating" && firstNext && firstNext !== bf.after
+            ? { after: firstNext, floor: null }
+            : null
         break
       }
       bf = { after: page.next, floor: bf.floor }

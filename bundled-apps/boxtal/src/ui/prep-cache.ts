@@ -152,6 +152,12 @@ export function evictShippedRowFromCache(
     if (!entry) continue
     const rows = entry.value.rows.filter((row) => row.order_key !== orderKey)
     if (rows.length === entry.value.rows.length) continue
-    savePrepCache(storage, orgId, includeExcluded, { ...entry.value, rows, total: rows.length }, now)
+    savePrepCache(
+      storage,
+      orgId,
+      includeExcluded,
+      { ...entry.value, rows, total: rows.length },
+      now,
+    )
   }
 }

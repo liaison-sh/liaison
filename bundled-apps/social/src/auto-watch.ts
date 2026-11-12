@@ -56,13 +56,15 @@ export function adaptCadence(
   if (activitySeen) {
     // A decayed watch that sees fresh activity resurrects to WARM (not straight
     // to hot) so a single late comment doesn't over-poll a long-dead thread.
-    if (currentStatus === "decayed") return { status: "active", cadenceSeconds: CADENCE_WARM_SECONDS }
+    if (currentStatus === "decayed")
+      return { status: "active", cadenceSeconds: CADENCE_WARM_SECONDS }
     return { status: "active", cadenceSeconds: CADENCE_HOT_SECONDS }
   }
   const last = lastActivityAt ? Date.parse(lastActivityAt) : Number.NaN
   const idleMs = Number.isNaN(last) ? Number.POSITIVE_INFINITY : now.getTime() - last
   const idleDays = idleMs / (24 * 3600_000)
-  if (idleDays >= DECAY_IDLE_DAYS) return { status: "decayed", cadenceSeconds: CADENCE_COOL_SECONDS }
+  if (idleDays >= DECAY_IDLE_DAYS)
+    return { status: "decayed", cadenceSeconds: CADENCE_COOL_SECONDS }
   if (idleDays >= 1) return { status: "active", cadenceSeconds: CADENCE_COOL_SECONDS }
   return { status: "active", cadenceSeconds: CADENCE_WARM_SECONDS }
 }
@@ -85,7 +87,10 @@ export const OWN_WATCH_CAP_PER_PLATFORM = 20
 export const META_POLLS_PER_TICK = 10
 
 /** Age bands (upper bound in hours, cadence in seconds), youngest first. */
-export const OWN_POST_CADENCE_BANDS: ReadonlyArray<{ maxAgeHours: number; cadenceSeconds: number }> = [
+export const OWN_POST_CADENCE_BANDS: ReadonlyArray<{
+  maxAgeHours: number
+  cadenceSeconds: number
+}> = [
   { maxAgeHours: 6, cadenceSeconds: 300 }, // 5 min while the post is fresh
   { maxAgeHours: 24, cadenceSeconds: 900 }, // 15 min on day one
   { maxAgeHours: 72, cadenceSeconds: 3600 }, // hourly to day three
@@ -100,7 +105,11 @@ export const OWN_POST_CADENCE_BANDS: ReadonlyArray<{ maxAgeHours: number; cadenc
  * unknown creation time is treated as past the cutoff: without it the watch
  * could never age out.
  */
-export function ownPostCadence(postedAt: string | null | undefined, activitySeen: boolean, now: Date): number | null {
+export function ownPostCadence(
+  postedAt: string | null | undefined,
+  activitySeen: boolean,
+  now: Date,
+): number | null {
   const posted = postedAt ? Date.parse(postedAt) : Number.NaN
   if (Number.isNaN(posted)) return null
   const ageHours = Math.max(0, now.getTime() - posted) / 3600_000

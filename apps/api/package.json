@@ -30,6 +30,7 @@
     "@google/genai": "^2.24.0",
     "@hono/zod-validator": "^0.9.1",
     "@liaison/api-connector-core": "workspace:*",
+    "@liaison/app-loader": "workspace:*",
     "@liaison/control-plane-contract": "workspace:*",
     "@liaison/db-core": "workspace:*",
     "@liaison/host": "workspace:*",

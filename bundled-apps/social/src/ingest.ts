@@ -8,13 +8,18 @@
 // drives the Component-A event-triage routine (Task A7). `parseWebhookJob` is
 // the deferred work the webhook handler enqueues after its fast-ack 200.
 
-import { META_PAGE_IDS_KEY, livePagesOnly } from "./meta-pages"
 import { facebookAdapter, sameReplyText } from "./adapters/facebook"
 import type { NormalizedFinding, NormalizedMessage, Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
+import { livePagesOnly, META_PAGE_IDS_KEY } from "./meta-pages"
 
 /** Adapters that can parse a verified webhook body. */
-const WEBHOOK_PARSERS: Partial<Record<Platform, (body: unknown) => { findings: NormalizedFinding[]; messages: NormalizedMessage[] }>> = {
+const WEBHOOK_PARSERS: Partial<
+  Record<
+    Platform,
+    (body: unknown) => { findings: NormalizedFinding[]; messages: NormalizedMessage[] }
+  >
+> = {
   facebook: (body) => facebookAdapter.parseWebhook?.(body) ?? { findings: [], messages: [] },
   // IG webhook change-notifications share Meta's envelope; reuse the FB parser
   // shape for comment events (the relation is overridden to the IG platform).
@@ -141,7 +146,11 @@ export async function upsertFinding(ctx: SocialToolCtx, f: FindingUpsert): Promi
   // contact's social history is joinable (best-effort — never block ingest on
   // a contact-resolution failure).
   if (f.authorExternalId && row.contact_id == null) {
-    row.contact_id = await resolveAuthorContact(ctx, f.authorExternalId, f.authorHandle ?? undefined)
+    row.contact_id = await resolveAuthorContact(
+      ctx,
+      f.authorExternalId,
+      f.authorHandle ?? undefined,
+    )
   }
   try {
     const inserted = await ctx.db.insert("finding", { ...row, status: "new" })
@@ -194,7 +203,10 @@ const OPEN_FINDING_STATUSES = new Set(["new", "triaged", "drafted", "awaiting_ap
 
 /** The ids the org's own accounts on `platform` are known by: the connected
  *  account of each `sync_state` row and, for Facebook, the Page ids it routes. */
-async function ownAccountIds(ctx: SocialToolCtx, platform: FindingUpsert["platform"]): Promise<Set<string>> {
+async function ownAccountIds(
+  ctx: SocialToolCtx,
+  platform: FindingUpsert["platform"],
+): Promise<Set<string>> {
   // Read once per invocation (a sync batch checks every finding it lands).
   let perCtx = OWN_IDS_CACHE.get(ctx)
   if (!perCtx) {
@@ -211,7 +223,10 @@ async function ownAccountIds(ctx: SocialToolCtx, platform: FindingUpsert["platfo
 
 const OWN_IDS_CACHE = new WeakMap<object, Map<string, Promise<Set<string>>>>()
 
-async function readOwnAccountIds(ctx: SocialToolCtx, platform: FindingUpsert["platform"]): Promise<Set<string>> {
+async function readOwnAccountIds(
+  ctx: SocialToolCtx,
+  platform: FindingUpsert["platform"],
+): Promise<Set<string>> {
   const rows = (await ctx.db.findMany("sync_state", { where: { platform } })) as Array<{
     account_external_id?: string | null
     metadata?: unknown
@@ -288,14 +303,18 @@ export async function recordOwnReply(
   const metadata = asRecord(target.metadata)
   const intent = asRecord(metadata.reply_intent) as ReplyIntent
   const intentLanded =
-    metadata.reply_intent !== undefined && intent.outcome !== "landed" && sameReplyText(intent.reply_text, f.contentText)
+    metadata.reply_intent !== undefined &&
+    intent.outcome !== "landed" &&
+    sameReplyText(intent.reply_text, f.contentText)
   const open = OPEN_FINDING_STATUSES.has(target.status)
   if (!open && !intentLanded) return { repliedFindingId: target.id }
   const patch: Record<string, unknown> = {
     metadata: {
       ...metadata,
       own_reply: { external_id: f.externalId, at: f.occurredAt ?? new Date().toISOString() },
-      ...(intentLanded ? { reply_intent: { ...intent, outcome: "landed", reply_external_id: f.externalId } } : {}),
+      ...(intentLanded
+        ? { reply_intent: { ...intent, outcome: "landed", reply_external_id: f.externalId } }
+        : {}),
     },
   }
   if (open) patch.status = "handled"
@@ -453,7 +472,10 @@ interface StoredMessageRow {
 }
 
 /** The later of two timestamps, null only when both are absent or unparsable. */
-export function laterIso(a: string | Date | null | undefined, b: string | Date | null | undefined): string | null {
+export function laterIso(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): string | null {
   const ms = (v: string | Date | null | undefined) =>
     v == null ? Number.NaN : typeof v === "string" ? Date.parse(v) : v.getTime()
   const ta = ms(a)
@@ -479,7 +501,8 @@ export function nextConversationStatus(
   reopen = false,
 ): string {
   const status = current ?? "open"
-  if (reopen && latestDirection === "inbound" && (status === "handled" || status === "archived")) return "open"
+  if (reopen && latestDirection === "inbound" && (status === "handled" || status === "archived"))
+    return "open"
   if (latestDirection === "outbound" && status === "open") return "handled"
   return status
 }
@@ -518,11 +541,14 @@ export async function refreshConversationState(
 
   const patch: Record<string, unknown> = {}
   const lastInbound = laterIso(conv.last_inbound_at, latestInbound?.occurred_at)
-  if (lastInbound !== null && !sameInstant(lastInbound, conv.last_inbound_at)) patch.last_inbound_at = lastInbound
+  if (lastInbound !== null && !sameInstant(lastInbound, conv.last_inbound_at))
+    patch.last_inbound_at = lastInbound
   const lastMessage = laterIso(conv.last_message_at, latest.occurred_at)
-  if (lastMessage !== null && !sameInstant(lastMessage, conv.last_message_at)) patch.last_message_at = lastMessage
+  if (lastMessage !== null && !sameInstant(lastMessage, conv.last_message_at))
+    patch.last_message_at = lastMessage
   const snippet = dmSnippet(latest.body)
-  if (snippet !== null && snippet !== conv.last_message_snippet) patch.last_message_snippet = snippet
+  if (snippet !== null && snippet !== conv.last_message_snippet)
+    patch.last_message_snippet = snippet
   const status = nextConversationStatus(conv.status, latest.direction, opts.reopen === true)
   if (status !== (conv.status ?? "open")) patch.status = status
   if (Object.keys(patch).length === 0) return false
@@ -530,7 +556,10 @@ export async function refreshConversationState(
   return true
 }
 
-function sameInstant(a: string | Date | null | undefined, b: string | Date | null | undefined): boolean {
+function sameInstant(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): boolean {
   if (a == null || b == null) return a == null && b == null
   const ta = typeof a === "string" ? Date.parse(a) : a.getTime()
   const tb = typeof b === "string" ? Date.parse(b) : b.getTime()
@@ -579,8 +608,14 @@ export async function repairDmConversationState(
     if (await refreshConversationState(ctx, row)) repaired += 1
   }
   const done = rows.length < DM_STATE_REPAIR_BATCH
-  const progress: RepairProgress = { version: DM_STATE_REPAIR_VERSION, offset: offset + rows.length, done }
-  await ctx.db.update("sync_state", syncState.id, { metadata: { ...metadata, dmStateRepair: progress } })
+  const progress: RepairProgress = {
+    version: DM_STATE_REPAIR_VERSION,
+    offset: offset + rows.length,
+    done,
+  }
+  await ctx.db.update("sync_state", syncState.id, {
+    metadata: { ...metadata, dmStateRepair: progress },
+  })
   if (repaired > 0 || done) {
     ctx.logger?.info?.("social: DM state repair step", {
       platform: syncState.platform,
@@ -606,7 +641,8 @@ export async function parseWebhookJob(
   if (!parser) return { ingested: 0, messagesIngested: 0 }
   // A server-wide Meta callback routes by stored Page ids: only Pages this
   // workspace still manages are ingested (meta-pages.ts).
-  const body = payload.platform === "facebook" ? await livePagesOnly(ctx, payload.body) : payload.body
+  const body =
+    payload.platform === "facebook" ? await livePagesOnly(ctx, payload.body) : payload.body
   const { findings, messages } = parser(body)
   let ingested = 0
   for (const f of findings) {

@@ -14,28 +14,31 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { APP_VERSION, APP_VERSION_LABEL, CAMPAIGN_COLUMNS, phoneCellClass } from "./ui-logic"
-import { StatusBadge, ConfirmDialog, AdPreviewDrawer } from "./kit"
 import { AdsDashboard } from "./index"
+import { AdPreviewDrawer, ConfirmDialog, StatusBadge } from "./kit"
 import {
-  budgetMinorToMajor,
-  effectiveStatusTone,
-  flattenInsights,
-  audienceCountLabel,
+  APP_VERSION,
+  APP_VERSION_LABEL,
   adFormatLabel,
-  formatMoney,
-  deriveDashboardState,
-  zombieCampaigns,
-  daysToDecision,
-  healthFlags,
-  weeklySpendTotal,
-  dashboardCardError,
-  type ToolRead,
   armChip,
   armConnections,
+  audienceCountLabel,
+  budgetMinorToMajor,
+  CAMPAIGN_COLUMNS,
+  dashboardCardError,
+  daysToDecision,
+  deriveDashboardState,
+  effectiveStatusTone,
+  flattenInsights,
+  formatMoney,
   googleArmStatus,
+  healthFlags,
   merchantArmStatus,
   metaArmStatus,
+  phoneCellClass,
+  type ToolRead,
+  weeklySpendTotal,
+  zombieCampaigns,
 } from "./ui-logic"
 
 // ─── budgetMinorToMajor ────────────────────────────────────────────────────────
@@ -303,7 +306,9 @@ const resolved = (value: unknown): ToolRead => ({ ok: true, value })
 
 describe("platform arm status follows the real tool contracts", () => {
   test("Meta: an account with an id is connected", () => {
-    expect(metaArmStatus(resolved({ id: "act_1", name: "Shop", currency: "EUR" }))).toBe("connected")
+    expect(metaArmStatus(resolved({ id: "act_1", name: "Shop", currency: "EUR" }))).toBe(
+      "connected",
+    )
   })
 
   test("Meta: a meta_not_connected rejection is not connected, not an outage", () => {
@@ -316,24 +321,38 @@ describe("platform arm status follows the real tool contracts", () => {
   })
 
   test("Google: customer_id is connected; an object without it is not", () => {
-    expect(googleArmStatus(resolved({ customer_id: "1234567890", currency: "EUR" }))).toBe("connected")
+    expect(googleArmStatus(resolved({ customer_id: "1234567890", currency: "EUR" }))).toBe(
+      "connected",
+    )
     expect(googleArmStatus(resolved({ id: "1234567890", currency: "EUR" }))).toBe("not_connected")
   })
 
   test("Google: the google_not_connected envelope is not connected; another envelope or a rejection is an outage", () => {
-    expect(googleArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } }))).toBe("not_connected")
-    expect(googleArmStatus(resolved({ error: { code: "PERMISSION_DENIED", message: "x" } }))).toBe("errored")
+    expect(
+      googleArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } })),
+    ).toBe("not_connected")
+    expect(googleArmStatus(resolved({ error: { code: "PERMISSION_DENIED", message: "x" } }))).toBe(
+      "errored",
+    )
     expect(googleArmStatus(rejectedWith("tool_error"))).toBe("errored")
   })
 
   test("Merchant: a feed summary is connected; a not-set-up envelope is NOT connected", () => {
-    expect(merchantArmStatus(resolved({ approved: 4, disapproved: 0, pending: 0, expiring: 0 }))).toBe("connected")
-    expect(merchantArmStatus(resolved({ error: { code: "merchant_not_configured", message: "x" } }))).toBe("not_connected")
-    expect(merchantArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } }))).toBe("not_connected")
+    expect(
+      merchantArmStatus(resolved({ approved: 4, disapproved: 0, pending: 0, expiring: 0 })),
+    ).toBe("connected")
+    expect(
+      merchantArmStatus(resolved({ error: { code: "merchant_not_configured", message: "x" } })),
+    ).toBe("not_connected")
+    expect(
+      merchantArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } })),
+    ).toBe("not_connected")
   })
 
   test("Merchant: an unexpected envelope or a rejection is an outage", () => {
-    expect(merchantArmStatus(resolved({ error: { code: "UNAUTHENTICATED", message: "x" } }))).toBe("errored")
+    expect(merchantArmStatus(resolved({ error: { code: "UNAUTHENTICATED", message: "x" } }))).toBe(
+      "errored",
+    )
     expect(merchantArmStatus(rejectedWith())).toBe("errored")
   })
 
@@ -341,17 +360,33 @@ describe("platform arm status follows the real tool contracts", () => {
     const arms = armConnections({
       meta: metaArmStatus(rejectedWith("meta_not_connected")),
       google: googleArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } })),
-      merchant: merchantArmStatus(resolved({ error: { code: "google_not_connected", message: "x" } })),
+      merchant: merchantArmStatus(
+        resolved({ error: { code: "google_not_connected", message: "x" } }),
+      ),
     })
     expect(
-      deriveDashboardState({ connected: arms.connected, loading: false, hasError: false, connectionErrored: arms.anyErrored }),
+      deriveDashboardState({
+        connected: arms.connected,
+        loading: false,
+        hasError: false,
+        connectionErrored: arms.anyErrored,
+      }),
     ).toBe("empty")
   })
 
   test("nothing connected and one arm in outage resolves to error, never empty", () => {
-    const arms = armConnections({ meta: "errored", google: "not_connected", merchant: "not_connected" })
+    const arms = armConnections({
+      meta: "errored",
+      google: "not_connected",
+      merchant: "not_connected",
+    })
     expect(
-      deriveDashboardState({ connected: arms.connected, loading: false, hasError: false, connectionErrored: arms.anyErrored }),
+      deriveDashboardState({
+        connected: arms.connected,
+        loading: false,
+        hasError: false,
+        connectionErrored: arms.anyErrored,
+      }),
     ).toBe("error")
   })
 
@@ -467,21 +502,27 @@ describe("zombieCampaigns — ACTIVE effective_status × near-zero spend", () =>
   })
 
   test("ACTIVE campaign with real spend is NOT flagged (both-directions)", () => {
-    const campaigns: CampaignRow[] = [{ id: "c2", name: "Healthy Camp", effective_status: "ACTIVE" }]
+    const campaigns: CampaignRow[] = [
+      { id: "c2", name: "Healthy Camp", effective_status: "ACTIVE" },
+    ]
     const spend: SpendRow[] = [{ campaign_id: "c2", spend: "154.20" }]
     const result = zombieCampaigns(campaigns, spend)
     expect(result).toEqual([])
   })
 
   test("PAUSED campaign with zero spend is NOT a zombie (zombie requires ACTIVE effective_status)", () => {
-    const campaigns: CampaignRow[] = [{ id: "c3", name: "Paused Camp", effective_status: "CAMPAIGN_PAUSED" }]
+    const campaigns: CampaignRow[] = [
+      { id: "c3", name: "Paused Camp", effective_status: "CAMPAIGN_PAUSED" },
+    ]
     const spend: SpendRow[] = [{ campaign_id: "c3", spend: "0" }]
     const result = zombieCampaigns(campaigns, spend)
     expect(result).toEqual([])
   })
 
   test("ACTIVE campaign with no matching spend row at all is treated as zero spend (zombie)", () => {
-    const campaigns: CampaignRow[] = [{ id: "c4", name: "No Data Camp", effective_status: "ACTIVE" }]
+    const campaigns: CampaignRow[] = [
+      { id: "c4", name: "No Data Camp", effective_status: "ACTIVE" },
+    ]
     const spend: SpendRow[] = []
     const result = zombieCampaigns(campaigns, spend)
     expect(result.map((r) => r.id)).toEqual(["c4"])
@@ -524,7 +565,10 @@ describe("healthFlags — aggregation incl. per-connection error", () => {
         { id: "c1", name: "Zombie", effective_status: "ACTIVE" },
         { id: "c2", name: "Learning", effective_status: "ACTIVE", learning: true },
       ],
-      spend: [{ campaign_id: "c1", spend: "0" }, { campaign_id: "c2", spend: "50" }],
+      spend: [
+        { campaign_id: "c1", spend: "0" },
+        { campaign_id: "c2", spend: "50" },
+      ],
       merchantDisapprovedCount: 3,
       connectionErrors: { meta: false, google: true, merchant: false },
     })
@@ -622,7 +666,12 @@ describe("dashboard per-widget isolation — a single widget failure keeps the t
 
   test("one insights tile errored, siblings fine, an account connected -> renders (populated), no banner", () => {
     // A single metaSpend/insights failure among four header tiles.
-    const hasError = dashboardCardError([/* merDtc */ false, /* merTotal */ false, /* metaSpend */ true, /* googleSpend */ false])
+    const hasError = dashboardCardError([
+      /* merDtc */ false,
+      /* merTotal */ false,
+      /* metaSpend */ true,
+      /* googleSpend */ false,
+    ])
     expect(hasError).toBe(false) // global banner stays hidden
     const state = deriveDashboardState({
       connected: { meta: true, google: false, merchant: false },
@@ -680,7 +729,9 @@ describe("campaigns phone columns", () => {
   })
 
   test("renders the campaigns table through the shared CardTable, which handles the phone card story itself", () => {
-    expect(campaignsSource).toContain('import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"')
+    expect(campaignsSource).toContain(
+      'import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"',
+    )
     expect(campaignsSource).toContain("<CardTable")
   })
 })

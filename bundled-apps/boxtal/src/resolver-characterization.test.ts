@@ -12,15 +12,15 @@
 // none gained a parcel and 76 lost one.
 
 import { describe, expect, it } from "bun:test"
-import golden from "./__fixtures__/resolver-characterization.golden.json"
 import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
 import {
   CHARACTERIZATION_PROFILES,
+  characterizationCases,
   NOMINAL_ITEM_SETS,
   PACK_CONFIGS,
-  characterizationCases,
   renderResult,
 } from "./__fixtures__/resolver-characterization"
+import golden from "./__fixtures__/resolver-characterization.golden.json"
 import { buildNominalLines } from "./proforma"
 import { type CatalogProfile, type ResolverLine, resolvePackages } from "./resolver"
 
@@ -42,7 +42,8 @@ describe("resolver characterization: house packaging policy loaded as org data",
           policy: HOUSE_PACKAGING_POLICY,
         }),
       )
-      if (got !== GOLDEN.resolver[c.key]) diffs.push(`${c.key}: want ${GOLDEN.resolver[c.key]} got ${got}`)
+      if (got !== GOLDEN.resolver[c.key])
+        diffs.push(`${c.key}: want ${GOLDEN.resolver[c.key]} got ${got}`)
     }
     expect(diffs).toEqual([])
   })
@@ -52,7 +53,11 @@ describe("resolver characterization: house packaging policy loaded as org data",
     for (const items of NOMINAL_ITEM_SETS) {
       for (const category of ["repair", "gift"] as const) {
         const value = HOUSE_PACKAGING_POLICY.nominal_proforma_value_minor!
-        got.push({ category, declared_value_minor: value, lines: buildNominalLines(items, category, value) })
+        got.push({
+          category,
+          declared_value_minor: value,
+          lines: buildNominalLines(items, category, value),
+        })
       }
     }
     expect(got).toEqual(GOLDEN.nominal)
@@ -60,7 +65,9 @@ describe("resolver characterization: house packaging policy loaded as org data",
 })
 
 describe("resolver characterization: no packaging policy (neutral default)", () => {
-  const byRef = new Map<string, CatalogProfile>(CHARACTERIZATION_PROFILES.map((p) => [`${p.product_source}:${p.product_id}`, p]))
+  const byRef = new Map<string, CatalogProfile>(
+    CHARACTERIZATION_PROFILES.map((p) => [`${p.product_source}:${p.product_id}`, p]),
+  )
 
   // Independent oracle for the neutral rule, built from the lines alone for orders no pack covers:
   // every resolvable unit stacks into ONE raw parcel, max footprint, summed thickness and weight.
@@ -83,9 +90,17 @@ describe("resolver characterization: no packaging policy (neutral default)", () 
   it("never invents a carton: with no pack, every order is one raw stacked parcel", () => {
     const diffs: string[] = []
     for (const c of characterizationCases().filter((x) => x.packConfig === "none")) {
-      const res = resolvePackages({ lines: c.lines, profiles: CHARACTERIZATION_PROFILES, packs: [], components: [] })
-      const parcels = res.parcels.map((p) => `${p.length}x${p.width}x${p.height}@${p.weight}`).join(";")
-      if (parcels !== neutralOracle(c.lines)) diffs.push(`${c.key}: want ${neutralOracle(c.lines)} got ${parcels}`)
+      const res = resolvePackages({
+        lines: c.lines,
+        profiles: CHARACTERIZATION_PROFILES,
+        packs: [],
+        components: [],
+      })
+      const parcels = res.parcels
+        .map((p) => `${p.length}x${p.width}x${p.height}@${p.weight}`)
+        .join(";")
+      if (parcels !== neutralOracle(c.lines))
+        diffs.push(`${c.key}: want ${neutralOracle(c.lines)} got ${parcels}`)
     }
     expect(diffs).toEqual([])
   })

@@ -18,17 +18,13 @@ import { type DeferredRow, EMAIL_OUTCOME_UNKNOWN } from "../deferred"
 import { isParkedCreditNote, retryParkedCreditNote } from "../einvoicing/parked-credit-note"
 import { deliveryFileId } from "../legal-originals/delivery"
 import { documentsRetryPdf, type MutationsCtx } from "../mutations"
-import {
-  type DeferredDispatch,
-  deferredRetryJob,
-  type DeferredRetryResult,
-} from "./deferred-retry"
+import { type DeferredDispatch, type DeferredRetryResult, deferredRetryJob } from "./deferred-retry"
 import { isParkedDraftOrderQuote, retryParkedDraftOrderQuote } from "./shopify-draft-order"
 import {
   findIssuerByShopId,
-  onShopifyOrderPaid,
   type OrderPaidCtx,
   type OrderPaidPayload,
+  onShopifyOrderPaid,
 } from "./shopify-order-paid"
 
 // The cron ctx is the full bundled-app bridge, so it satisfies both the
@@ -48,13 +44,17 @@ function blockedField(row: DeferredRow, key: string): string {
  * re-driving the order handler would no-op at the duplicate-document guard —
  * the email is the only thing left to do).
  */
-async function retryAutoEmail(ctx: DeferredDispatchCtx, row: DeferredRow): Promise<DispatchOutcome> {
+async function retryAutoEmail(
+  ctx: DeferredDispatchCtx,
+  row: DeferredRow,
+): Promise<DispatchOutcome> {
   const documentId = blockedField(row, "document_id")
   if (!documentId) return { status: "still_blocked", reason: "missing_document_id" }
   // Once its outcome was found unknown, the automatic mail is never sent by this job again,
   // even after the ledger's retention dropped the unknown key: a person decides (they check
   // the sent folder and send the document with documents_send_to_customer, which closes this park).
-  if (row.reason === EMAIL_OUTCOME_UNKNOWN) return { status: "still_blocked", reason: EMAIL_OUTCOME_UNKNOWN }
+  if (row.reason === EMAIL_OUTCOME_UNKNOWN)
+    return { status: "still_blocked", reason: EMAIL_OUTCOME_UNKNOWN }
   const docRows = await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })
   const doc = docRows[0] as Record<string, unknown> | undefined
   if (!doc) return { status: "still_blocked", reason: "document_missing" }
@@ -196,5 +196,8 @@ export async function deferredRetryJobHandler(
       : { status: "ok" }
   }
 
-  return deferredRetryJob(ctx, dispatch, { ...opts, identityChangedAt: identityChangedAtLoader(ctx) })
+  return deferredRetryJob(ctx, dispatch, {
+    ...opts,
+    identityChangedAt: identityChangedAtLoader(ctx),
+  })
 }

@@ -11,7 +11,13 @@ export const SELLER = {
   siren: "732829320",
   routing_address: "732829320",
   vat_id: "FR44732829320",
-  address: { line1: "1 rue de l'Exemple", line2: null, postcode: "75011", city: "Paris", country_code: "FR" },
+  address: {
+    line1: "1 rue de l'Exemple",
+    line2: null,
+    postcode: "75011",
+    city: "Paris",
+    country_code: "FR",
+  },
 }
 
 export const BUYER = {
@@ -19,10 +25,23 @@ export const BUYER = {
   siren: "356000000",
   routing_address: "356000000",
   vat_id: "FR39356000000",
-  address: { line1: "2 avenue du Test", line2: "Bâtiment B", postcode: "69002", city: "Lyon", country_code: "FR" },
+  address: {
+    line1: "2 avenue du Test",
+    line2: "Bâtiment B",
+    postcode: "69002",
+    city: "Lyon",
+    country_code: "FR",
+  },
 }
 
-export function fxLine(position: number, description: string, quantity: string, unitMinor: bigint, rateBp = 2000, discount = 0n): FacturxLine {
+export function fxLine(
+  position: number,
+  description: string,
+  quantity: string,
+  unitMinor: bigint,
+  rateBp = 2000,
+  discount = 0n,
+): FacturxLine {
   const subtotal = lineSubtotal({ quantity, unit_price_minor: unitMinor }) - discount
   return {
     position,
@@ -36,7 +55,9 @@ export function fxLine(position: number, description: string, quantity: string, 
   }
 }
 
-export function fxDocument(over: Partial<FacturxInput> & { lines?: FacturxLine[] } = {}): FacturxInput {
+export function fxDocument(
+  over: Partial<FacturxInput> & { lines?: FacturxLine[] } = {},
+): FacturxInput {
   const lines = over.lines ?? [
     fxLine(0, "Contrôleur MIDI", "2", 34999n),
     fxLine(1, "Câble USB-C", "3", 1250n, 2000, 250n),
@@ -101,11 +122,21 @@ export function conformanceMatrix(): MatrixCase[] {
               paid_date: payment_state === "paid" ? "2026-11-02" : null,
               due_date: payment_state === "paid" ? null : base.due_date,
               vat_on_debits: operation_category !== "goods",
-              original: type === "credit_note" ? { number: "FA-2026-0042", issue_date: "2026-11-03" } : null,
-              tax_total_eur_minor: currency === "EUR" ? null : (base.tax_total_minor * 1000n) / 1085n,
+              original:
+                type === "credit_note"
+                  ? { number: "FA-2026-0042", issue_date: "2026-11-03" }
+                  : null,
+              tax_total_eur_minor:
+                currency === "EUR" ? null : (base.tax_total_minor * 1000n) / 1085n,
               delivery:
                 operation_category === "goods"
-                  ? { name: "Entrepôt Client", line1: "9 quai des Livraisons", postcode: "13002", city: "Marseille", country_code: "FR" }
+                  ? {
+                      name: "Entrepôt Client",
+                      line1: "9 quai des Livraisons",
+                      postcode: "13002",
+                      city: "Marseille",
+                      country_code: "FR",
+                    }
                   : null,
             },
           })
@@ -119,7 +150,11 @@ export function conformanceMatrix(): MatrixCase[] {
 
 /** Credit notes as the product stores them: negative lines mirroring what is reversed. */
 export function negativeCreditNotes(): MatrixCase[] {
-  const cn = (name: string, lines: FacturxLine[], over: Partial<FacturxInput> = {}): MatrixCase => ({
+  const cn = (
+    name: string,
+    lines: FacturxLine[],
+    over: Partial<FacturxInput> = {},
+  ): MatrixCase => ({
     name: `credit_note ${name}`,
     input: fxDocument({
       type: "credit_note",
@@ -155,9 +190,15 @@ export function negativeCreditNotes(): MatrixCase[] {
     ]),
     // Non-EUR refund: BT-111 is negative as stored too.
     (() => {
-      const lines = [fxLine(0, "Contrôleur MIDI", "2", -34999n), fxLine(1, "Livre technique", "1", -4200n, 550)]
+      const lines = [
+        fxLine(0, "Contrôleur MIDI", "2", -34999n),
+        fxLine(1, "Livre technique", "1", -4200n, 550),
+      ]
       const tax = lines.reduce((t, l) => t + l.tax_minor, 0n)
-      return cn("USD goods refund (negative unit prices)", lines, { currency: "USD", tax_total_eur_minor: (tax * 1000n) / 1085n })
+      return cn("USD goods refund (negative unit prices)", lines, {
+        currency: "USD",
+        tax_total_eur_minor: (tax * 1000n) / 1085n,
+      })
     })(),
   ]
 }

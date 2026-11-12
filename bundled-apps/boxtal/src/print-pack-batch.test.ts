@@ -5,8 +5,8 @@
 // into one another, that per-destination copy counts survive the merge, and that a row whose
 // documents are not ready is REPORTED rather than silently dropped.
 import { describe, expect, it } from "bun:test"
-import { printPackBatch, printPackBatchSummary } from "./print-pack-batch"
 import type { BoxtalToolCtx } from "./ctx"
+import { printPackBatch, printPackBatchSummary } from "./print-pack-batch"
 import { createMockDb } from "./test-db"
 
 interface Call {
@@ -84,7 +84,9 @@ describe("printPackBatch input guards", () => {
 
   it("refuses a selection past the batch cap rather than melting the print queue", async () => {
     const { ctx } = makeCtx({})
-    const res = await printPackBatch(ctx, { shipment_ids: Array.from({ length: 21 }, (_, i) => `s${i}`) })
+    const res = await printPackBatch(ctx, {
+      shipment_ids: Array.from({ length: 21 }, (_, i) => `s${i}`),
+    })
     expect(res.error?.code).toBe("too_many")
   })
 
@@ -116,7 +118,9 @@ describe("printPackBatchSummary", () => {
     const line = printPackBatchSummary({
       labels: { file_id: "f1", filename: "labels.pdf", shipment_count: 1 },
       invoices: null,
-      skipped: [{ shipment_id: "s2", what: "invoice", reason: "The invoice has no rendered PDF yet." }],
+      skipped: [
+        { shipment_id: "s2", what: "invoice", reason: "The invoice has no rendered PDF yet." },
+      ],
     })
     expect(line).toContain("1 row incomplete")
     expect(line).toContain("no rendered PDF")
@@ -128,7 +132,11 @@ describe("printPackBatchSummary", () => {
         labels: null,
         invoices: null,
         skipped: [],
-        error: { code: "too_many", message: "A batch prints at most 20 shipments at once; 21 were selected. Print them in two batches." },
+        error: {
+          code: "too_many",
+          message:
+            "A batch prints at most 20 shipments at once; 21 were selected. Print them in two batches.",
+        },
       }),
     ).toContain("at most 20")
   })

@@ -10,7 +10,10 @@
 import { tr, uiLocale } from "./i18n"
 import type { BadgeTone } from "./kit"
 
-export function severityMeta(severity: string | null | undefined): { tone: BadgeTone; label: string } {
+export function severityMeta(severity: string | null | undefined): {
+  tone: BadgeTone
+  label: string
+} {
   switch (severity) {
     case "critical":
       return { tone: "error", label: tr("Critical") }
@@ -144,7 +147,10 @@ export function liveIncidentsLabel(open: number, acknowledged: number): string {
 // ─────────────────────────────────────────────────────────────────────────
 
 /** Who wrote an activity entry: the system (no author), a known member, or an unknown one. */
-export function activityAuthorLabel(authorId: string | null, names: Map<string, string> | undefined): string {
+export function activityAuthorLabel(
+  authorId: string | null,
+  names: Map<string, string> | undefined,
+): string {
   if (authorId === null) return tr("System")
   return names?.get(authorId) ?? tr("a teammate")
 }
@@ -158,6 +164,7 @@ export function isLongText(text: string | null | undefined): boolean {
 /** The server's comment error codes as sentences; any other message is shown as is. */
 export function commentErrorText(message: string): string {
   if (message.includes("empty_comment")) return tr("Write a comment before adding it.")
-  if (message.includes("comment_too_long")) return tr("The comment is too long (4000 characters at most).")
+  if (message.includes("comment_too_long"))
+    return tr("The comment is too long (4000 characters at most).")
   return message
 }

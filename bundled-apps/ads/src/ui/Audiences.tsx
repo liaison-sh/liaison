@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { type Component, Show } from "solid-js"
-import { app } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app } from "@liaison/host"
+import { type Component, Show } from "solid-js"
 import { Badge, type BadgeTone, EmptyState, PageHeader } from "./kit"
 import { audienceCountLabel, toolRows } from "./ui-logic"
 
@@ -41,14 +42,17 @@ function humanRuleSummary(audience: AudienceRow): string {
 
 export const AudiencesTab: Component = () => {
   const [result] = app.createResource(() =>
-    app.invokeTool<{ data: AudienceRow[] }>("audiences_list", {})
+    app.invokeTool<{ data: AudienceRow[] }>("audiences_list", {}),
   )
 
   const rows = () => toolRows<AudienceRow>(result())
 
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <PageHeader title="Audiences" subtitle="Custom audiences with delivery and size information" />
+      <PageHeader
+        title="Audiences"
+        subtitle="Custom audiences with delivery and size information"
+      />
       <Show when={result.error}>
         <div class="p-4 text-[12.5px] text-error">Failed to load audiences.</div>
       </Show>

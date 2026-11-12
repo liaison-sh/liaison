@@ -37,11 +37,19 @@ const SAVED = (note: string | null): CrossAppEnvelope => ({
 describe("prep_set_note", () => {
   it("writes through shopify:order_note_set with the order gid and the compare-and-set guard", async () => {
     const { ctx, calls } = makeCtx(() => SAVED("Ship Friday"))
-    const res = await prepSetNote(ctx, { order_key: "so:5001", note: " Ship Friday ", expected_note: null })
+    const res = await prepSetNote(ctx, {
+      order_key: "so:5001",
+      note: " Ship Friday ",
+      expected_note: null,
+    })
     expect(res).toEqual({ ok: true, order_key: "so:5001", note: "Ship Friday" })
     expect(calls).toHaveLength(1)
     expect(calls[0]!.target).toBe("shopify:order_note_set")
-    expect(calls[0]!.args).toEqual({ order_id: "gid://shopify/Order/5001", note: "Ship Friday", expected_note: null })
+    expect(calls[0]!.args).toEqual({
+      order_id: "gid://shopify/Order/5001",
+      note: "Ship Friday",
+      expected_note: null,
+    })
   })
 
   it("omits expected_note when the caller did not pass one (unconditional overwrite)", async () => {
@@ -54,12 +62,26 @@ describe("prep_set_note", () => {
     const { ctx, db } = makeCtx(
       () => ({
         status: "completed",
-        result: { ok: false, reason: "conflict", order_id: "gid://shopify/Order/5001", current_note: "Changed in admin" },
+        result: {
+          ok: false,
+          reason: "conflict",
+          order_id: "gid://shopify/Order/5001",
+          current_note: "Changed in admin",
+        },
       }),
-      { prep_meta: [{ id: "m1", document_ref: "inv-1", shopify_order_id: "5001", staff_note: "old" }] },
+      {
+        prep_meta: [
+          { id: "m1", document_ref: "inv-1", shopify_order_id: "5001", staff_note: "old" },
+        ],
+      },
     )
     const res = await prepSetNote(ctx, { order_key: "so:5001", note: "mine", expected_note: "old" })
-    expect(res).toEqual({ ok: false, reason: "conflict", order_key: "so:5001", current_note: "Changed in admin" })
+    expect(res).toEqual({
+      ok: false,
+      reason: "conflict",
+      order_key: "so:5001",
+      current_note: "Changed in admin",
+    })
     // The cache is not touched by a refused write.
     expect(db.__all("prep_meta")[0]!.staff_note).toBe("old")
   })
@@ -79,15 +101,26 @@ describe("prep_set_note", () => {
 
   it("refuses an order-less row and a malformed key without calling Shopify", async () => {
     const { ctx, calls } = makeCtx(() => SAVED(null))
-    await expect(prepSetNote(ctx, { order_key: "doc:inv-1", note: "x" })).rejects.toThrow(/order-less/)
-    await expect(prepSetNote(ctx, { order_key: "nope", note: "x" })).rejects.toThrow(/not a prep row key/)
+    await expect(prepSetNote(ctx, { order_key: "doc:inv-1", note: "x" })).rejects.toThrow(
+      /order-less/,
+    )
+    await expect(prepSetNote(ctx, { order_key: "nope", note: "x" })).rejects.toThrow(
+      /not a prep row key/,
+    )
     expect(calls).toHaveLength(0)
   })
 
   it("never reports a parked or failed write as saved", async () => {
     const parked = makeCtx(() => ({ status: "pending_approval", approval_id: "ap-1" }))
-    await expect(prepSetNote(parked.ctx, { order_key: "so:5001", note: "x" })).rejects.toThrow(/not saved/)
-    const failed = makeCtx(() => ({ status: "error", error: { code: "upstream", message: "boom" } }))
-    await expect(prepSetNote(failed.ctx, { order_key: "so:5001", note: "x" })).rejects.toThrow(/boom/)
+    await expect(prepSetNote(parked.ctx, { order_key: "so:5001", note: "x" })).rejects.toThrow(
+      /not saved/,
+    )
+    const failed = makeCtx(() => ({
+      status: "error",
+      error: { code: "upstream", message: "boom" },
+    }))
+    await expect(prepSetNote(failed.ctx, { order_key: "so:5001", note: "x" })).rejects.toThrow(
+      /boom/,
+    )
   })
 })

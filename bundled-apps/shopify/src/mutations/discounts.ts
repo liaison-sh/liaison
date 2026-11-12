@@ -6,19 +6,19 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
 import {
-  type PreflightResult,
-  type ShopClient,
-  isRec,
-  gidFrom,
-  runMutation,
-  requireTargetId,
-  readGatedTarget,
-  preflightRefusal,
-  makeMutationError,
-  markExternalEffect,
   assertNoUserErrors,
   emitMutationEvent,
+  gidFrom,
+  isRec,
+  makeMutationError,
+  markExternalEffect,
+  type PreflightResult,
+  preflightRefusal,
+  readGatedTarget,
   recordAwaitingOutput,
+  requireTargetId,
+  runMutation,
+  type ShopClient,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -37,15 +37,25 @@ import {
 // executes, then STRIPS anything still outside the known top-level field set so a
 // hallucinated field can never reach Shopify. Mirrors `normaliseDraftOrderInput`.
 const DISCOUNT_BASIC_INPUT_FIELDS = new Set([
-  "title", "code", "startsAt", "endsAt", "customerSelection", "customerGets",
-  "appliesOncePerCustomer", "usageLimit", "combinesWith", "recurringCycleLimit",
+  "title",
+  "code",
+  "startsAt",
+  "endsAt",
+  "customerSelection",
+  "customerGets",
+  "appliesOncePerCustomer",
+  "usageLimit",
+  "combinesWith",
+  "recurringCycleLimit",
 ])
 
 /** Parse a percentage into Shopify's 0-1 fraction, or return an error: ambiguous input is REJECTED,
  *  never guessed. Accepted: a fraction 0 < p < 1 ("0.15"), a whole percent 1 < p <= 100 ("15", 100),
  *  and an explicit percent string with a "%" sign for 0 < p <= 100 ("1%" is 1 percent, "100%" is all).
  *  Rejected: <= 0, > 100, non-numeric, and a bare 1 (1 percent or 100 percent: it cannot be told). */
-export function parsePercent(v: unknown): { ok: true; fraction: number } | { ok: false; reason: string } {
+export function parsePercent(
+  v: unknown,
+): { ok: true; fraction: number } | { ok: false; reason: string } {
   let n: number
   let explicitPercent = false
   if (typeof v === "number") n = v
@@ -54,10 +64,15 @@ export function parsePercent(v: unknown): { ok: true; fraction: number } | { ok:
     n = Number(v.replace(/[%\s]/g, ""))
   } else return { ok: false, reason: "the percentage is not a number" }
   if (!Number.isFinite(n)) return { ok: false, reason: "the percentage is not a number" }
-  if (n <= 0 || n > 100) return { ok: false, reason: `the percentage ${String(v)} is outside 0 < p <= 100` }
+  if (n <= 0 || n > 100)
+    return { ok: false, reason: `the percentage ${String(v)} is outside 0 < p <= 100` }
   if (explicitPercent) return { ok: true, fraction: n / 100 }
   if (n === 1) {
-    return { ok: false, reason: 'a bare 1 is ambiguous (1 percent or 100 percent): send "1%" or 0.01 for 1 percent, "100%" for all' }
+    return {
+      ok: false,
+      reason:
+        'a bare 1 is ambiguous (1 percent or 100 percent): send "1%" or 0.01 for 1 percent, "100%" for all',
+    }
   }
   return { ok: true, fraction: n > 1 ? n / 100 : n }
 }
@@ -72,7 +87,8 @@ function toPercentFraction(v: unknown): number | undefined {
 /** A usage/recurring limit must be a POSITIVE WHOLE NUMBER, or be absent (= unlimited). A weak model
  *  emitting `usageLimit: 0` meaning "unlimited" is REJECTED, not silently turned into an unlimited code. */
 function toPositiveIntLimit(v: unknown, field: string): number {
-  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN
+  const n =
+    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN
   if (!Number.isInteger(n) || n < 1) {
     throw makeMutationError(
       "BAD_PARAM",
@@ -86,11 +102,15 @@ function toPositiveIntLimit(v: unknown, field: string): number {
  *  count — usageLimit, quantity — can never be mistaken for the discount). Returns a 0-1 fraction or
  *  undefined. Bounded recursion (depth ≤ 5) over plain objects/arrays. The anti-422 backstop for the
  *  "customerGets.value: Value can't be blank" class when the percent is parked under an unanticipated key. */
-const PERCENT_KEY_RE = /percent|percentage|discountrate|discountpct|^rate$|^off$|^discount$|pctoff|percentoff/i
+const PERCENT_KEY_RE =
+  /percent|percentage|discountrate|discountpct|^rate$|^off$|^discount$|pctoff|percentoff/i
 function deepFindPercent(node: unknown, depth = 0): number | undefined {
   if (depth > 5 || node == null) return undefined
   if (Array.isArray(node)) {
-    for (const e of node) { const f = deepFindPercent(e, depth + 1); if (f != null) return f }
+    for (const e of node) {
+      const f = deepFindPercent(e, depth + 1)
+      if (f != null) return f
+    }
     return undefined
   }
   if (!isRec(node)) return undefined
@@ -124,14 +144,22 @@ function normaliseCustomerGets(src: Record<string, unknown>): Record<string, unk
   const evBareNum = typeof existing.value === "number" || typeof existing.value === "string"
   const pctRaw =
     (ev ? (ev.percentage ?? ev.percentageValue ?? ev.percent) : undefined) ??
-    src.percentage ?? src.percent ?? src.percentageOff ?? src.percentOff ?? src.discountValue ??
-    existing.percentage ?? existing.percent ?? existing.percentageValue ??
+    src.percentage ??
+    src.percent ??
+    src.percentageOff ??
+    src.percentOff ??
+    src.discountValue ??
+    existing.percentage ??
+    existing.percent ??
+    existing.percentageValue ??
     (evBareNum ? existing.value : undefined) ??
     src.value
-  const frac = typeof pctRaw === "number" || typeof pctRaw === "string" ? toPercentFraction(pctRaw) : undefined
+  const frac =
+    typeof pctRaw === "number" || typeof pctRaw === "string" ? toPercentFraction(pctRaw) : undefined
   if (frac != null) value = { percentage: frac }
   else {
-    const amt = (ev && isRec(ev.discountAmount) ? ev.discountAmount : undefined) ??
+    const amt =
+      (ev && isRec(ev.discountAmount) ? ev.discountAmount : undefined) ??
       (isRec(existing.discountAmount) ? existing.discountAmount : undefined) ??
       (isRec(src.discountAmount) ? src.discountAmount : undefined)
     if (isRec(amt)) value = { discountAmount: amt }
@@ -186,7 +214,8 @@ function normaliseCustomerGets(src: Record<string, unknown>): Record<string, unk
       pushGids(p.productsToAdd)
       pushGids(p.productVariantsToAdd, true)
     }
-    if (ei.all === true && productGids.length === 0 && variantGids.length === 0) items = { all: true }
+    if (ei.all === true && productGids.length === 0 && variantGids.length === 0)
+      items = { all: true }
   }
   if (productGids.length > 0 || variantGids.length > 0) {
     const products: Record<string, unknown> = {}
@@ -246,16 +275,28 @@ export function canonicaliseBasicCodeDiscount(input: unknown): Record<string, un
   const out: Record<string, unknown> = {}
 
   // Pass through the known scalar/date fields verbatim.
-  for (const k of ["title", "code", "startsAt", "endsAt", "appliesOncePerCustomer", "combinesWith"]) {
+  for (const k of [
+    "title",
+    "code",
+    "startsAt",
+    "endsAt",
+    "appliesOncePerCustomer",
+    "combinesWith",
+  ]) {
     if (src[k] != null) out[k] = src[k]
   }
   // `code` is REQUIRED by Shopify ("Code can't be blank" 422) — a weak model sometimes omits the top-level
   // `code` and parks the coupon string under an alias (discountCode/couponCode/promoCode/name) or only in
   // the title. Recover it from any of those so the approved gated create doesn't fail blank.
   if (typeof out.code !== "string" || out.code === "") {
-    const alias = [src.discountCode, src.couponCode, src.promoCode, src.code_string, src.name, src.title].find(
-      (v): v is string => typeof v === "string" && v.length > 0,
-    )
+    const alias = [
+      src.discountCode,
+      src.couponCode,
+      src.promoCode,
+      src.code_string,
+      src.name,
+      src.title,
+    ].find((v): v is string => typeof v === "string" && v.length > 0)
     if (alias != null) out.code = alias
   }
   // usageLimit / recurringCycleLimit must be POSITIVE INTEGERS or absent. 0 / negative / fractional is
@@ -279,7 +320,10 @@ export function canonicaliseBasicCodeDiscount(input: unknown): Record<string, un
 
 /** Validate a discount create/bulk-create/update input exactly as the handler will read it. Throws
  *  BAD_PARAM on an ambiguous or invalid value. Shared by the stage-time preflights and the handlers. */
-export function validateDiscountInput(params: Record<string, unknown>, mode: "create" | "update"): void {
+export function validateDiscountInput(
+  params: Record<string, unknown>,
+  mode: "create" | "update",
+): void {
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   if (mode === "create") canonicaliseBasicCodeDiscount(raw)
   else canonicaliseBasicCodeDiscountPartial(raw)
@@ -297,7 +341,10 @@ export function describeDiscountInput(
   }
   let d: Record<string, unknown>
   try {
-    d = mode === "update" ? canonicaliseBasicCodeDiscountPartial(raw0) : canonicaliseBasicCodeDiscount(raw0)
+    d =
+      mode === "update"
+        ? canonicaliseBasicCodeDiscountPartial(raw0)
+        : canonicaliseBasicCodeDiscount(raw0)
   } catch (err) {
     return [`REJECTED, this will not run: ${err instanceof Error ? err.message : String(err)}`]
   }
@@ -312,10 +359,24 @@ export function describeDiscountInput(
     lines.push(`Discount: fixed amount ${String(value.discountAmount.amount ?? "?")}`)
   }
   const items = gets && isRec(gets.items) ? gets.items : undefined
-  if (items) lines.push(items.all === true ? "Applies to: everything (storewide)" : "Applies to: selected products or collections only")
-  if (isRec(d.customerSelection)) lines.push(d.customerSelection.all === true ? "Available to: all customers" : "Available to: selected customers only")
+  if (items)
+    lines.push(
+      items.all === true
+        ? "Applies to: everything (storewide)"
+        : "Applies to: selected products or collections only",
+    )
+  if (isRec(d.customerSelection))
+    lines.push(
+      d.customerSelection.all === true
+        ? "Available to: all customers"
+        : "Available to: selected customers only",
+    )
   if (mode !== "update" || d.usageLimit != null) {
-    lines.push(d.usageLimit != null ? `Usage limit: ${String(d.usageLimit)} use(s) per code` : "Usage limit: NONE (unlimited uses)")
+    lines.push(
+      d.usageLimit != null
+        ? `Usage limit: ${String(d.usageLimit)} use(s) per code`
+        : "Usage limit: NONE (unlimited uses)",
+    )
   }
   if (d.appliesOncePerCustomer === true) lines.push("Limit: once per customer")
   if (typeof d.startsAt === "string") lines.push(`Starts: ${d.startsAt}`)
@@ -323,7 +384,9 @@ export function describeDiscountInput(
   return lines
 }
 
-export async function discounts_create_preflight(params: Record<string, unknown>): Promise<PreflightResult> {
+export async function discounts_create_preflight(
+  params: Record<string, unknown>,
+): Promise<PreflightResult> {
   try {
     validateDiscountInput(params, "create")
   } catch (err) {
@@ -340,10 +403,20 @@ const DISCOUNT_CREATE = `
     }
   }
 `
-export async function discounts_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function discounts_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscount(raw)
-  return runMutation(ctx, { query: DISCOUNT_CREATE, variables: { basicCodeDiscount }, dataKey: "discountCodeBasicCreate", eventEntity: "discount", eventAction: "created", entityIdPath: "codeDiscountNode.id" })
+  return runMutation(ctx, {
+    query: DISCOUNT_CREATE,
+    variables: { basicCodeDiscount },
+    dataKey: "discountCodeBasicCreate",
+    eventEntity: "discount",
+    eventAction: "created",
+    entityIdPath: "codeDiscountNode.id",
+  })
 }
 
 const DISCOUNT_UPDATE = `
@@ -360,7 +433,14 @@ const DISCOUNT_UPDATE = `
 export function canonicaliseBasicCodeDiscountPartial(input: unknown): Record<string, unknown> {
   const src = isRec(input) ? input : {}
   const out: Record<string, unknown> = {}
-  for (const k of ["title", "code", "startsAt", "endsAt", "appliesOncePerCustomer", "combinesWith"]) {
+  for (const k of [
+    "title",
+    "code",
+    "startsAt",
+    "endsAt",
+    "appliesOncePerCustomer",
+    "combinesWith",
+  ]) {
     if (src[k] != null) out[k] = src[k]
   }
   // usageLimit / recurringCycleLimit: positive int or absent; invalid is rejected — see create path.
@@ -371,8 +451,14 @@ export function canonicaliseBasicCodeDiscountPartial(input: unknown): Record<str
     out.customerSelection = normaliseCustomerSelection(src)
   }
   if (
-    src.customerGets != null || src.value != null || src.percentage != null || src.percent != null ||
-    src.productIds != null || src.productId != null || src.products != null || src.variantConditions != null ||
+    src.customerGets != null ||
+    src.value != null ||
+    src.percentage != null ||
+    src.percent != null ||
+    src.productIds != null ||
+    src.productId != null ||
+    src.products != null ||
+    src.variantConditions != null ||
     src.discountAmount != null
   ) {
     const gets = normaliseCustomerGets(src)
@@ -407,11 +493,21 @@ export async function discounts_update_preflight(
   return { ok: true }
 }
 
-export async function discounts_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function discounts_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   requireTargetId(params, "id")
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscountPartial(raw)
-  return runMutation(ctx, { query: DISCOUNT_UPDATE, variables: { id: params.id, basicCodeDiscount }, dataKey: "discountCodeBasicUpdate", eventEntity: "discount", eventAction: "updated", entityIdPath: "codeDiscountNode.id" })
+  return runMutation(ctx, {
+    query: DISCOUNT_UPDATE,
+    variables: { id: params.id, basicCodeDiscount },
+    dataKey: "discountCodeBasicUpdate",
+    eventEntity: "discount",
+    eventAction: "updated",
+    entityIdPath: "codeDiscountNode.id",
+  })
 }
 
 const DISCOUNT_DELETE = `
@@ -437,9 +533,19 @@ export async function discounts_delete_preflight(
   return { ok: true }
 }
 
-export async function discounts_delete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function discounts_delete(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   requireTargetId(params, "id")
-  return runMutation(ctx, { query: DISCOUNT_DELETE, variables: { id: params.id }, dataKey: "discountCodeDelete", eventEntity: "discount", eventAction: "deleted", entityIdPath: "deletedCodeDiscountId" })
+  return runMutation(ctx, {
+    query: DISCOUNT_DELETE,
+    variables: { id: params.id },
+    dataKey: "discountCodeDelete",
+    eventEntity: "discount",
+    eventAction: "deleted",
+    entityIdPath: "deletedCodeDiscountId",
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -506,8 +612,13 @@ const BULK_CODE_MAX = 200
  *  `numberOfCodes`, or nested under basicCodeDiscount). Must be 1..BULK_CODE_MAX: out of range is rejected. */
 function readBulkCount(params: Record<string, unknown>, raw: Record<string, unknown>): number {
   const candidate =
-    params.count ?? params.quantity ?? params.numberOfCodes ?? params.codeCount ??
-    raw.count ?? raw.quantity ?? raw.numberOfCodes
+    params.count ??
+    params.quantity ??
+    params.numberOfCodes ??
+    params.codeCount ??
+    raw.count ??
+    raw.quantity ??
+    raw.numberOfCodes
   if (candidate == null) return 1
   const n = Number(candidate)
   if (!Number.isInteger(n) || n < 1 || n > BULK_CODE_MAX) {
@@ -529,7 +640,11 @@ function bulkCodeToken(): string {
 /** Generate `count` UNIQUE codes from a prefix (e.g. "SYNTH-SUMMIT" → "SYNTH-SUMMIT-A1B2C3D"). The prefix
  *  is sanitised to the [A-Z0-9-] code charset; an empty prefix falls back to "PRESS". */
 function generateUniqueCodes(prefix: string, count: number): string[] {
-  const clean = (prefix || "PRESS").toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/-+$/g, "") || "PRESS"
+  const clean =
+    (prefix || "PRESS")
+      .toUpperCase()
+      .replace(/[^A-Z0-9-]/g, "")
+      .replace(/-+$/g, "") || "PRESS"
   const seen = new Set<string>()
   while (seen.size < count) seen.add(`${clean}-${bulkCodeToken()}`)
   return Array.from(seen)
@@ -544,7 +659,10 @@ interface BulkCreationStatus {
 }
 
 /** One look at the async bulk-creation job (never a wait): the tool and its `pollHandler` both ask once. */
-async function bulkCreationStatus(client: ShopClient, jobId: string): Promise<BulkCreationStatus | null> {
+async function bulkCreationStatus(
+  client: ShopClient,
+  jobId: string,
+): Promise<BulkCreationStatus | null> {
   const data = await client.query<{ discountRedeemCodeBulkCreation: BulkCreationStatus | null }>(
     DISCOUNT_BULK_CREATION_STATUS,
     { id: jobId },
@@ -565,7 +683,12 @@ interface BulkCreateResult {
 async function finishBulkCreate(
   ctx: AppContext,
   client: ShopClient,
-  args: { discountId: string; requestedCount: number; fallbackTitle: string; status: BulkCreationStatus | null },
+  args: {
+    discountId: string
+    requestedCount: number
+    fallbackTitle: string
+    status: BulkCreationStatus | null
+  },
 ): Promise<BulkCreateResult> {
   if ((args.status?.failedCount ?? 0) > 0)
     throw makeMutationError(
@@ -579,7 +702,9 @@ async function finishBulkCreate(
       codeDiscount: { __typename: string; title?: string; codes?: { nodes: { code: string }[] } }
     } | null
   }>(DISCOUNT_NODE_CODES, { id: args.discountId, first: Math.min(args.requestedCount + 5, 250) })
-  const persistedCodes = (back.codeDiscountNode?.codeDiscount?.codes?.nodes ?? []).map((n) => n.code)
+  const persistedCodes = (back.codeDiscountNode?.codeDiscount?.codes?.nodes ?? []).map(
+    (n) => n.code,
+  )
   const title = back.codeDiscountNode?.codeDiscount?.title ?? args.fallbackTitle
 
   await emitMutationEvent(ctx, "discount", "bulk_created", args.discountId, {
@@ -621,7 +746,9 @@ interface BulkCreateRef {
  */
 /** STAGE-TIME preflight for discounts_bulk_create: rejects an ambiguous percentage, a zero usage limit and
  *  an out-of-range count before the approval exists. */
-export async function discounts_bulk_create_preflight(params: Record<string, unknown>): Promise<PreflightResult> {
+export async function discounts_bulk_create_preflight(
+  params: Record<string, unknown>,
+): Promise<PreflightResult> {
   try {
     const raw = isRec(params.basicCodeDiscount) ? { ...params.basicCodeDiscount } : { ...params }
     readBulkCount(params, raw)
@@ -632,7 +759,10 @@ export async function discounts_bulk_create_preflight(params: Record<string, unk
   return { ok: true }
 }
 
-export async function discounts_bulk_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function discounts_bulk_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const raw = isRec(params.basicCodeDiscount) ? { ...params.basicCodeDiscount } : { ...params }
   const count = readBulkCount(params, raw)
 
@@ -659,7 +789,11 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
 
   // The code discount is created carrying the FIRST code; canonicaliseBasicCodeDiscount maps the weak-model
   // shape (percentage/scope/window/single-use flags) into Shopify's nested DiscountCodeBasicInput.
-  const basicCodeDiscount = canonicaliseBasicCodeDiscount({ ...raw, code: codes[0], title: raw.title ?? prefix })
+  const basicCodeDiscount = canonicaliseBasicCodeDiscount({
+    ...raw,
+    code: codes[0],
+    title: raw.title ?? prefix,
+  })
   const client = await getShopifyClient(ctx)
   markExternalEffect(ctx) // direct mutation send (bypasses runMutation's marking)
   const created = await client.query<{
@@ -668,9 +802,17 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
       userErrors: { field?: string[] | null; message: string }[]
     }
   }>(DISCOUNT_CREATE, { basicCodeDiscount })
-  assertNoUserErrors(created.discountCodeBasicCreate as Record<string, unknown>, "discountCodeBasicCreate")
+  assertNoUserErrors(
+    created.discountCodeBasicCreate as Record<string, unknown>,
+    "discountCodeBasicCreate",
+  )
   const discountId = created.discountCodeBasicCreate.codeDiscountNode?.id
-  if (!discountId) throw makeMutationError("SHOPIFY_EMPTY_PAYLOAD", "discounts_bulk_create: no codeDiscountNode id returned", 502)
+  if (!discountId)
+    throw makeMutationError(
+      "SHOPIFY_EMPTY_PAYLOAD",
+      "discounts_bulk_create: no codeDiscountNode id returned",
+      502,
+    )
 
   // Bulk-add the REMAINING codes (the discount already carries codes[0]) via the async mutation, then poll.
   const remaining = codes.slice(1)
@@ -685,9 +827,17 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
       discountId,
       codes: remaining.map((code) => ({ code })),
     })
-    assertNoUserErrors(added.discountRedeemCodeBulkAdd as Record<string, unknown>, "discountRedeemCodeBulkAdd")
+    assertNoUserErrors(
+      added.discountRedeemCodeBulkAdd as Record<string, unknown>,
+      "discountRedeemCodeBulkAdd",
+    )
     const jobId = added.discountRedeemCodeBulkAdd.bulkCreation?.id
-    if (!jobId) throw makeMutationError("SHOPIFY_EMPTY_PAYLOAD", "discounts_bulk_create: bulk-add returned no job id", 502)
+    if (!jobId)
+      throw makeMutationError(
+        "SHOPIFY_EMPTY_PAYLOAD",
+        "discounts_bulk_create: bulk-add returned no job id",
+        502,
+      )
     // ONE look, never a wait in the run: Shopify usually finishes a batch this size at once.
     const status = await bulkCreationStatus(client, jobId)
     if (!status?.done) {
@@ -713,10 +863,20 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
           : "Shopify is still adding the codes: read them with discounts_search in a moment.",
       }
     }
-    const done = await finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status })
+    const done = await finishBulkCreate(ctx, client, {
+      discountId,
+      requestedCount: count,
+      fallbackTitle: String(raw.title ?? prefix),
+      status,
+    })
     return { ...done, bulkCreationId: jobId }
   }
-  return finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status: null })
+  return finishBulkCreate(ctx, client, {
+    discountId,
+    requestedCount: count,
+    fallbackTitle: String(raw.title ?? prefix),
+    status: null,
+  })
 }
 
 /**

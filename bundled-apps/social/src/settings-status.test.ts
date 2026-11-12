@@ -73,7 +73,11 @@ describe("connections_status", () => {
   })
 
   test("a kernel without describe answers available false, never a fake Not connected", async () => {
-    const res = await connectionsStatus({}, makeCtx(createMockDb(), { getToken: async () => "t" }), NOW)
+    const res = await connectionsStatus(
+      {},
+      makeCtx(createMockDb(), { getToken: async () => "t" }),
+      NOW,
+    )
     expect(res.available).toBe(false)
   })
 })
@@ -89,30 +93,37 @@ describe("deriveConnectionState", () => {
   })
   test("error row, expired token and near expiry", () => {
     expect(deriveConnectionState([account({ status: "error" })], NOW).state).toBe("needs_reconnect")
-    expect(deriveConnectionState([account({ tokenExpiresAt: "2026-10-19T00:00:00Z" })], NOW).state).toBe(
-      "needs_reconnect",
-    )
-    expect(deriveConnectionState([account({ tokenExpiresAt: "2026-10-23T00:00:00Z" })], NOW).state).toBe("expiring")
-    expect(deriveConnectionState([account({ tokenExpiresAt: "2026-12-23T00:00:00Z" })], NOW).state).toBe("connected")
+    expect(
+      deriveConnectionState([account({ tokenExpiresAt: "2026-10-19T00:00:00Z" })], NOW).state,
+    ).toBe("needs_reconnect")
+    expect(
+      deriveConnectionState([account({ tokenExpiresAt: "2026-10-23T00:00:00Z" })], NOW).state,
+    ).toBe("expiring")
+    expect(
+      deriveConnectionState([account({ tokenExpiresAt: "2026-12-23T00:00:00Z" })], NOW).state,
+    ).toBe("connected")
     expect(deriveConnectionState([], NOW).state).toBe("not_connected")
   })
   test("a stored refresh token renews access: an expired or near expiry access token is still connected", () => {
     const past = "2026-10-19T00:00:00Z"
     const soon = "2026-10-23T00:00:00Z"
-    expect(deriveConnectionState([account({ tokenExpiresAt: past, hasRefreshToken: true })], NOW).state).toBe(
-      "connected",
-    )
-    expect(deriveConnectionState([account({ tokenExpiresAt: soon, hasRefreshToken: true })], NOW).state).toBe(
-      "connected",
-    )
+    expect(
+      deriveConnectionState([account({ tokenExpiresAt: past, hasRefreshToken: true })], NOW).state,
+    ).toBe("connected")
+    expect(
+      deriveConnectionState([account({ tokenExpiresAt: soon, hasRefreshToken: true })], NOW).state,
+    ).toBe("connected")
   })
   test("without a refresh token an expired access token needs a reconnect, and a failed refresh always does", () => {
     const past = "2026-10-19T00:00:00Z"
-    expect(deriveConnectionState([account({ tokenExpiresAt: past, hasRefreshToken: false })], NOW).state).toBe(
-      "needs_reconnect",
-    )
     expect(
-      deriveConnectionState([account({ status: "error", tokenExpiresAt: past, hasRefreshToken: true })], NOW).state,
+      deriveConnectionState([account({ tokenExpiresAt: past, hasRefreshToken: false })], NOW).state,
+    ).toBe("needs_reconnect")
+    expect(
+      deriveConnectionState(
+        [account({ status: "error", tokenExpiresAt: past, hasRefreshToken: true })],
+        NOW,
+      ).state,
     ).toBe("needs_reconnect")
   })
 })
@@ -120,9 +131,32 @@ describe("deriveConnectionState", () => {
 describe("quota_status", () => {
   test("YouTube: sums today's units across the discovery and watch rows (quota ledger read)", async () => {
     const db = createMockDb()
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "discovery", active: true, units_consumed_today: 6069, units_window_date: "2026-10-20", metadata: {} })
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "watch", active: true, units_consumed_today: 2000, units_window_date: "2026-10-20", metadata: {} })
-    await db.insert("sync_state", { platform: "facebook", account_external_id: "fb", source_type: "dm", active: true, units_consumed_today: 0, metadata: {} })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "discovery",
+      active: true,
+      units_consumed_today: 6069,
+      units_window_date: "2026-10-20",
+      metadata: {},
+    })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "watch",
+      active: true,
+      units_consumed_today: 2000,
+      units_window_date: "2026-10-20",
+      metadata: {},
+    })
+    await db.insert("sync_state", {
+      platform: "facebook",
+      account_external_id: "fb",
+      source_type: "dm",
+      active: true,
+      units_consumed_today: 0,
+      metadata: {},
+    })
     const res = await quotaStatus({}, makeCtx(db, {}), NOW)
     expect(res.youtube).not.toBeNull()
     expect(res.youtube!.consumed).toBe(8069)
@@ -139,8 +173,24 @@ describe("quota_status", () => {
 
   test("YouTube: units from an older quota day are not counted as today's", async () => {
     const db = createMockDb()
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "discovery", active: true, units_consumed_today: 50, units_window_date: "2026-10-20", metadata: {} })
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "watch", active: true, units_consumed_today: 9000, units_window_date: "2026-10-19", metadata: {} })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "discovery",
+      active: true,
+      units_consumed_today: 50,
+      units_window_date: "2026-10-20",
+      metadata: {},
+    })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "watch",
+      active: true,
+      units_consumed_today: 9000,
+      units_window_date: "2026-10-19",
+      metadata: {},
+    })
     const res = await quotaStatus({}, makeCtx(db, {}), NOW)
     expect(res.youtube!.consumed).toBe(50)
   })
@@ -149,8 +199,24 @@ describe("quota_status", () => {
     const db = createMockDb()
     // NOW is 2026-10-20 05:00 Pacific: Google refused for quota until the next Pacific midnight.
     const exhaustedUntil = "2026-10-21T07:00:00.000Z"
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "discovery", active: true, units_consumed_today: 4000, units_window_date: "2026-10-20", metadata: { youtube_quota: { exhausted_until: exhaustedUntil } } })
-    await db.insert("sync_state", { platform: "youtube", account_external_id: "ch", source_type: "watch", active: true, units_consumed_today: 100, units_window_date: "2026-10-20", metadata: { youtube_quota: { deferred: 7 } } })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "discovery",
+      active: true,
+      units_consumed_today: 4000,
+      units_window_date: "2026-10-20",
+      metadata: { youtube_quota: { exhausted_until: exhaustedUntil } },
+    })
+    await db.insert("sync_state", {
+      platform: "youtube",
+      account_external_id: "ch",
+      source_type: "watch",
+      active: true,
+      units_consumed_today: 100,
+      units_window_date: "2026-10-20",
+      metadata: { youtube_quota: { deferred: 7 } },
+    })
     const res = await quotaStatus({}, makeCtx(db, {}), NOW)
     expect(res.youtube).not.toBeNull()
     expect(res.youtube!.source).toBe("ledger")
@@ -165,9 +231,17 @@ describe("quota_status", () => {
 
   test("Meta appears only with a stored rate-limit state; no YouTube row means no YouTube entry", async () => {
     const db = createMockDb()
-    await db.insert("sync_state", { platform: "instagram", account_external_id: "ig", source_type: "dm", active: true, metadata: { rate_limited_until: "2026-10-20T13:00:00Z", cursor_hint: "x" } })
+    await db.insert("sync_state", {
+      platform: "instagram",
+      account_external_id: "ig",
+      source_type: "dm",
+      active: true,
+      metadata: { rate_limited_until: "2026-10-20T13:00:00Z", cursor_hint: "x" },
+    })
     const res = await quotaStatus({}, makeCtx(db, {}), NOW)
     expect(res.youtube).toBeNull()
-    expect(res.rateLimits).toEqual([{ platform: "instagram", rateLimit: { rate_limited_until: "2026-10-20T13:00:00Z" } }])
+    expect(res.rateLimits).toEqual([
+      { platform: "instagram", rateLimit: { rate_limited_until: "2026-10-20T13:00:00Z" } },
+    ])
   })
 })

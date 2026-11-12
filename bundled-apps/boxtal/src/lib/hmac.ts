@@ -133,7 +133,9 @@ export async function boxtalWebhookVerifier(
   // the same work whichever encoding arrived.
   let valid = false
   for (const encoding of ["base64", "hex"] as const) {
-    if (await bridge.crypto_verifyHmacForConfig(BOXTAL_WEBHOOK_SECRET_KEY, params.body, sig, encoding)) {
+    if (
+      await bridge.crypto_verifyHmacForConfig(BOXTAL_WEBHOOK_SECRET_KEY, params.body, sig, encoding)
+    ) {
       valid = true
     }
   }

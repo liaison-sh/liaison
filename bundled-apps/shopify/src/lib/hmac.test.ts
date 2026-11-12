@@ -19,9 +19,7 @@ describe("hmacSha256Verifier", () => {
   })
 
   it("returns false on mismatch", () => {
-    expect(
-      hmacSha256Verifier('{"x":1}', { "x-shopify-hmac-sha256": "garbage" }, "s"),
-    ).toBe(false)
+    expect(hmacSha256Verifier('{"x":1}', { "x-shopify-hmac-sha256": "garbage" }, "s")).toBe(false)
   })
 
   it("returns false when header missing", () => {
@@ -30,9 +28,7 @@ describe("hmacSha256Verifier", () => {
 
   it("returns false when body tampered", () => {
     const sig = sign('{"x":1}', "s")
-    expect(
-      hmacSha256Verifier('{"x":2}', { "x-shopify-hmac-sha256": sig }, "s"),
-    ).toBe(false)
+    expect(hmacSha256Verifier('{"x":2}', { "x-shopify-hmac-sha256": sig }, "s")).toBe(false)
   })
 })
 
@@ -63,7 +59,9 @@ describe("shopifyWebhookVerifier (manifest-format)", () => {
     )
     expect(r.ok).toBe(true)
     // The webhook-id header is unsigned, so the key is the digest of the signed body.
-    expect(r.replayKey).toBe(createHmac("sha256", "shopify-delivery").update(body, "utf8").digest("base64"))
+    expect(r.replayKey).toBe(
+      createHmac("sha256", "shopify-delivery").update(body, "utf8").digest("base64"),
+    )
     const reId = await shopifyWebhookVerifier(
       {
         body,
@@ -123,7 +121,10 @@ describe("shopifyWebhookVerifier (manifest-format)", () => {
       ['{"x":1}', { "x-shopify-hmac-sha256": "short", "x-shopify-webhook-id": "wh1" }],
       ['{"x":1}', { "x-shopify-webhook-id": "wh1" }],
     ] as const) {
-      const r = await shopifyWebhookVerifier({ body, method: "POST", query: {}, headers }, bridge("s"))
+      const r = await shopifyWebhookVerifier(
+        { body, method: "POST", query: {}, headers },
+        bridge("s"),
+      )
       expect(r.ok).toBe(false)
       expect(r.reason).toBe("signature_mismatch")
     }

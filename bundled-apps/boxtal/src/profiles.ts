@@ -41,7 +41,11 @@ import type { CatalogProfile } from "./resolver"
 export interface ProfileDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number },
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
@@ -124,7 +128,11 @@ function profileFields(src: object): Record<ProfileField, unknown> {
   return out
 }
 
-async function all<T>(db: ProfileReader, entity: string, where?: Record<string, unknown>): Promise<T[]> {
+async function all<T>(
+  db: ProfileReader,
+  entity: string,
+  where?: Record<string, unknown>,
+): Promise<T[]> {
   return (await db.findMany(entity, { ...(where ? { where } : {}), limit: MAX })) as T[]
 }
 
@@ -250,7 +258,11 @@ async function writeLegacy(db: ProfileDb, ref: VariantRef, profile: ProfileRow):
     return
   }
   try {
-    await db.insert(LEGACY_TABLE, { product_source: ref.product_source, product_id: ref.product_id, ...data })
+    await db.insert(LEGACY_TABLE, {
+      product_source: ref.product_source,
+      product_id: ref.product_id,
+      ...data,
+    })
   } catch (err) {
     // The previous release inserted the variant's row meanwhile: overwrite it with the link's truth.
     if (!isUniqueViolation(err)) throw err
@@ -275,7 +287,10 @@ async function legacyMirrorOps(
     ops.push(
       row
         ? { update: LEGACY_TABLE, id: row.id, data }
-        : { insert: LEGACY_TABLE, data: { product_source: ref.product_source, product_id: ref.product_id, ...data } },
+        : {
+            insert: LEGACY_TABLE,
+            data: { product_source: ref.product_source, product_id: ref.product_id, ...data },
+          },
     )
   }
   return ops
@@ -309,7 +324,9 @@ async function commitProfileWrites(
  * whose variant already has a link (written by the new model) is stamped with that link's profile
  * and takes its values, so the previous release reads what this one does.
  */
-export async function migrateLegacyProfiles(ctx: ProfileCtx): Promise<{ migrated: number; remigrated: number }> {
+export async function migrateLegacyProfiles(
+  ctx: ProfileCtx,
+): Promise<{ migrated: number; remigrated: number }> {
   const [legacy, links, profiles] = await Promise.all([
     all<LegacyRow>(ctx.db, LEGACY_TABLE),
     all<LinkRow>(ctx.db, LINK_TABLE),
@@ -326,7 +343,8 @@ export async function migrateLegacyProfiles(ctx: ProfileCtx): Promise<{ migrated
     }
     const link = linkByRef.get(refOf(row))
     const profile = link ? profileById.get(String(link.profile_id)) : undefined
-    if (profile && rewrittenByPreviousRelease(row, profile)) remigrated += await remigrateRow(ctx.db, row.id)
+    if (profile && rewrittenByPreviousRelease(row, profile))
+      remigrated += await remigrateRow(ctx.db, row.id)
   }
   return { migrated, remigrated }
 }
@@ -353,7 +371,11 @@ async function migrateRow(db: ProfileDb, rowId: string): Promise<number> {
     return 0
   }
   try {
-    await db.insert(LINK_TABLE, { product_source: row.product_source, product_id: row.product_id, profile_id: id })
+    await db.insert(LINK_TABLE, {
+      product_source: row.product_source,
+      product_id: row.product_id,
+      profile_id: id,
+    })
     return 1
   } catch (err) {
     if (!isUniqueViolation(err)) throw err
@@ -457,7 +479,11 @@ export async function upsertVariantProfile(
     { insert: PROFILE_TABLE, as: "profile", data },
     {
       insert: LINK_TABLE,
-      data: { product_source: input.product_source, product_id: input.product_id, profile_id: { $ref: "profile" } },
+      data: {
+        product_source: input.product_source,
+        product_id: input.product_id,
+        profile_id: { $ref: "profile" },
+      },
     },
     ...(await legacyMirrorOps(ctx.db, [input], data, { $ref: "profile" })),
   ])
@@ -494,7 +520,8 @@ export interface LinkResult {
  *  first (the field differences) and applied only with `confirm: true`. Drafts already resolved are
  *  NOT re-resolved: they pick the profile up at their next sync. Mirrored onto the old table. */
 export async function linkVariant(ctx: ProfileCtx, input: LinkInput): Promise<LinkResult> {
-  if (!input.product_source || !input.product_id) throw new Error("product_source and product_id are required")
+  if (!input.product_source || !input.product_id)
+    throw new Error("product_source and product_id are required")
   await migrateLegacyProfiles(ctx)
   const profile = await findProfile(ctx.db, input.profile_id)
   if (!profile) throw new Error(`No shipping profile with id ${input.profile_id}.`)
@@ -513,7 +540,13 @@ export async function linkVariant(ctx: ProfileCtx, input: LinkInput): Promise<Li
     }
     const note = `Moving ${refOf(input)} from profile ${link.profile_id} to ${input.profile_id}: it takes that profile's values${differences.length > 0 ? ` (${differences.map((d) => d.field).join(", ")} change)` : ""} and enters that profile's packs (a pack whose bill names any variant of it can take this variant), and leaves the packs of its current profile.`
     if (input.confirm !== true) {
-      return { ok: false, preview: true, ...base, differences, note: `${note} Call again with confirm: true to apply.` }
+      return {
+        ok: false,
+        preview: true,
+        ...base,
+        differences,
+        note: `${note} Call again with confirm: true to apply.`,
+      }
     }
     await commitProfileWrites(ctx.db, async () => [
       { update: LINK_TABLE, id: link.id, data: { profile_id: input.profile_id } },
@@ -524,7 +557,11 @@ export async function linkVariant(ctx: ProfileCtx, input: LinkInput): Promise<Li
   await commitProfileWrites(ctx.db, async () => [
     {
       insert: LINK_TABLE,
-      data: { product_source: input.product_source, product_id: input.product_id, profile_id: input.profile_id },
+      data: {
+        product_source: input.product_source,
+        product_id: input.product_id,
+        profile_id: input.profile_id,
+      },
     },
     ...(await legacyMirrorOps(ctx.db, [input], profile, input.profile_id)),
   ])
@@ -543,7 +580,10 @@ export async function unlinkVariant(
   if (!link) throw new Error(`Variant ${refOf(input)} is not linked to any shipping profile.`)
   const legacy = await findLegacy(ctx.db, input)
   await ctx.db.batch({
-    ops: [{ delete: LINK_TABLE, id: link.id }, ...(legacy ? [{ delete: LEGACY_TABLE, id: legacy.id }] : [])],
+    ops: [
+      { delete: LINK_TABLE, id: link.id },
+      ...(legacy ? [{ delete: LEGACY_TABLE, id: legacy.id }] : []),
+    ],
   })
   const rest = await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: link.profile_id })
   return { ok: true, profile_id: link.profile_id, remaining_variants: rest.length }
@@ -552,7 +592,10 @@ export async function unlinkVariant(
 // — delete —
 
 /** Delete a profile no variant uses. Refused while any variant links to it. */
-export async function deleteProfile(ctx: ProfileCtx, input: { profile_id: string }): Promise<{ ok: true }> {
+export async function deleteProfile(
+  ctx: ProfileCtx,
+  input: { profile_id: string },
+): Promise<{ ok: true }> {
   await migrateLegacyProfiles(ctx)
   const profile = await findProfile(ctx.db, input.profile_id)
   if (!profile) throw new Error(`No shipping profile with id ${input.profile_id}.`)
@@ -603,7 +646,8 @@ function same(a: unknown, b: unknown): boolean {
  */
 export async function mergeProfiles(ctx: ProfileCtx, input: MergeInput): Promise<MergeResult> {
   const sources = [...new Set(input.source_profile_ids ?? [])]
-  if (sources.length === 0) throw new Error("source_profile_ids must name at least one profile to merge.")
+  if (sources.length === 0)
+    throw new Error("source_profile_ids must name at least one profile to merge.")
   if (sources.includes(input.target_profile_id)) {
     throw new Error("The target profile cannot also be a source.")
   }
@@ -619,14 +663,21 @@ export async function mergeProfiles(ctx: ProfileCtx, input: MergeInput): Promise
   const differences: MergeDifference[] = []
   for (const field of PROFILE_FIELDS) {
     if (rows.every((r) => same(r[field], target[field]))) continue
-    differences.push({ field, values: Object.fromEntries(rows.map((r) => [String(r.id), r[field] ?? null])) })
+    differences.push({
+      field,
+      values: Object.fromEntries(rows.map((r) => [String(r.id), r[field] ?? null])),
+    })
   }
   const moves: MergeResult["moves"] = []
   const movingLinks: LinkRow[] = []
   for (const id of sources) {
     for (const l of await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: id })) {
       movingLinks.push(l)
-      moves.push({ product_source: l.product_source, product_id: l.product_id, from_profile_id: id })
+      moves.push({
+        product_source: l.product_source,
+        product_id: l.product_id,
+        from_profile_id: id,
+      })
     }
   }
   const result: MergeResult = {
@@ -656,10 +707,18 @@ export async function mergeProfiles(ctx: ProfileCtx, input: MergeInput): Promise
   // The target's new fields, the moved links, the deleted sources and every mirrored old row of
   // the merged profile commit together: a merge never leaves variants half moved.
   await commitProfileWrites(ctx.db, async () => {
-    const targetLinks = await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: input.target_profile_id })
+    const targetLinks = await all<LinkRow>(ctx.db, LINK_TABLE, {
+      profile_id: input.target_profile_id,
+    })
     return [
-      ...(targetData ? [{ update: PROFILE_TABLE, id: input.target_profile_id, data: targetData }] : []),
-      ...movingLinks.map((l) => ({ update: LINK_TABLE, id: l.id, data: { profile_id: input.target_profile_id } })),
+      ...(targetData
+        ? [{ update: PROFILE_TABLE, id: input.target_profile_id, data: targetData }]
+        : []),
+      ...movingLinks.map((l) => ({
+        update: LINK_TABLE,
+        id: l.id,
+        data: { profile_id: input.target_profile_id },
+      })),
       ...sources.map((id) => ({ delete: PROFILE_TABLE, id })),
       ...(await legacyMirrorOps(
         ctx.db,
@@ -680,7 +739,10 @@ export interface SharedProfileView extends ProfileRow {
 
 /** Every profile with the variants that use it (a profile no variant uses lists none). */
 export async function listSharedProfiles(db: ProfileReader): Promise<SharedProfileView[]> {
-  const [profiles, links] = await Promise.all([all<ProfileRow>(db, PROFILE_TABLE), all<LinkRow>(db, LINK_TABLE)])
+  const [profiles, links] = await Promise.all([
+    all<ProfileRow>(db, PROFILE_TABLE),
+    all<LinkRow>(db, LINK_TABLE),
+  ])
   return profiles.map((p) => ({
     ...p,
     variants: links

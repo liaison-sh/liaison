@@ -122,7 +122,10 @@ function parseMoneyAmount(v: unknown): number | null {
  *     the money actually moves.) The caller may still pass a fully-formed `transactions` entry for a true
  *     partial — we fill only the missing fields, never override an explicit value.
  */
-export async function refunds_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function refunds_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.orderId) throw makeMutationError("BAD_PARAM", "orderId is required")
   const orderId = String(params.orderId)
 
@@ -131,14 +134,17 @@ export async function refunds_create(params: Record<string, unknown>, ctx: AppCo
     id: orderId,
   })
   const order = ctxData.order
-  if (!order) throw makeMutationError("ORDER_NOT_FOUND", `refunds_create: order ${orderId} not found`)
+  if (!order)
+    throw makeMutationError("ORDER_NOT_FOUND", `refunds_create: order ${orderId} not found`)
 
   const orderLines = order.lineItems.edges
     .map((e) => e.node)
     .filter((n) => n.refundableQuantity > 0)
   const byId = new Map(orderLines.map((n) => [n.id, n]))
-  const skuOf = (n: { variant: { sku: string | null } | null; sku: string | null }): string | null =>
-    n.variant?.sku ?? n.sku ?? null
+  const skuOf = (n: {
+    variant: { sku: string | null } | null
+    sku: string | null
+  }): string | null => n.variant?.sku ?? n.sku ?? null
 
   // The order's parent SALE/CAPTURE transaction — every derived REFUND transaction threads through it.
   const parentTxn = order.transactions.find(
@@ -186,7 +192,11 @@ export async function refunds_create(params: Record<string, unknown>, ctx: AppCo
           "NO_REFUNDABLE_LINE",
           `refunds_create: order ${orderId} has no refundable line items`,
         )
-      return { lineItemId: match.id, quantity: Math.min(qty, match.refundableQuantity), restockType }
+      return {
+        lineItemId: match.id,
+        quantity: Math.min(qty, match.refundableQuantity),
+        restockType,
+      }
     })
   }
   if (refundLineItems.length === 0 && !isFlatGoodwill)
@@ -271,8 +281,7 @@ export async function refunds_create(params: Record<string, unknown>, ctx: AppCo
   // that failure. The execution id is minted once per decide and stable across the
   // kernel's transient-retry re-invocations, so same-execution retries still dedupe
   // while each fresh approval gets a fresh key.
-  const executionSalt =
-    (ctx as unknown as ApprovalBridges).approval?.approvalExecutionId ?? ""
+  const executionSalt = (ctx as unknown as ApprovalBridges).approval?.approvalExecutionId ?? ""
   const idempotencyKey =
     typeof params.idempotencyKey === "string" && params.idempotencyKey.length > 0
       ? params.idempotencyKey
@@ -285,7 +294,14 @@ export async function refunds_create(params: Record<string, unknown>, ctx: AppCo
             executionSalt,
           }),
         )}`
-  return runMutation(ctx, { query: REFUND_CREATE, variables: { input, idempotencyKey }, dataKey: "refundCreate", eventEntity: "refund", eventAction: "created", entityIdPath: "refund.id" })
+  return runMutation(ctx, {
+    query: REFUND_CREATE,
+    variables: { input, idempotencyKey },
+    dataKey: "refundCreate",
+    eventEntity: "refund",
+    eventAction: "created",
+    entityIdPath: "refund.id",
+  })
 }
 
 /**
@@ -318,7 +334,12 @@ export async function refunds_create_preflight(
   ctx: AppContext,
 ): Promise<{ ok: true } | { error: { code: string; message: string } }> {
   if (typeof params.orderId !== "string" || params.orderId.length === 0) {
-    return { error: { code: "BAD_PARAM", message: "refunds_create: orderId is required (the order's gid)." } }
+    return {
+      error: {
+        code: "BAD_PARAM",
+        message: "refunds_create: orderId is required (the order's gid).",
+      },
+    }
   }
   const orderId = String(params.orderId)
   // Resolve the order EXACTLY as the handler will — same query, same `$id: ID!` binding. A malformed

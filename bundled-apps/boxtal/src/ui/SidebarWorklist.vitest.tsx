@@ -5,7 +5,7 @@
 import { cleanup, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-let path = "/boxtal/shipments"
+const path = "/boxtal/shipments"
 vi.mock("@liaison/host", () => ({
   currentPath: () => path,
   navigate: () => {},

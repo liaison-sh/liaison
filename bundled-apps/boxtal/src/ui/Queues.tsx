@@ -16,13 +16,19 @@
 //
 // It composes ONLY the shared Boxtal kit (kit.tsx) and styles with the kernel's charcoal theme
 // tokens, so it reads pixel-for-pixel like invoicing.
-import { type Component, createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
+
 import { currentPath } from "@liaison/host"
+import { type Component, createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { cx } from "./kit"
 import { PrepGrid } from "./PrepGrid"
 import { createReadyWorklist, ReadyUnpackDialog } from "./ReadyRows"
 import { usePathname } from "./sidebar"
-import { WORKLIST_FILTERS, type WorklistFilter, worklistFilterCounts, worklistFilterForRoute } from "./worklist-logic"
+import {
+  WORKLIST_FILTERS,
+  type WorklistFilter,
+  worklistFilterCounts,
+  worklistFilterForRoute,
+} from "./worklist-logic"
 
 // ── Router — pick the queue from props.queueId or the URL last segment ─────────
 function queueIdFromLocation(): string {
@@ -88,7 +94,9 @@ export const ShippingWorklist: Component<{ initialFilter: WorklistFilter }> = (p
             class={cx(
               "rounded-md px-2 py-1 text-[12px] transition-colors outline-none",
               "focus-visible:ring-2 focus-visible:ring-accent-tint",
-              filter() === f.id ? "bg-surface-active text-text" : "text-text-secondary hover:bg-surface-hover",
+              filter() === f.id
+                ? "bg-surface-active text-text"
+                : "text-text-secondary hover:bg-surface-hover",
             )}
           >
             {f.label}
@@ -103,7 +111,12 @@ export const ShippingWorklist: Component<{ initialFilter: WorklistFilter }> = (p
   return (
     <div data-testid="boxtal-worklist" class="flex h-full min-h-0 flex-col">
       <ReadyUnpackDialog ready={ready} />
-      <PrepGrid ready={ready} filter={filter()} filterBar={filterBar} onClearFilter={() => setFilter("all")} />
+      <PrepGrid
+        ready={ready}
+        filter={filter()}
+        filterBar={filterBar}
+        onClearFilter={() => setFilter("all")}
+      />
     </div>
   )
 }

@@ -153,7 +153,10 @@ describe("invoicing manifest", () => {
     const statusEnum = new Set(m.schema.documents.fields.status.enum)
     const producible = [...new Set(Object.values(TRANSITION_TABLE))]
     const missing = producible.filter((s) => !statusEnum.has(s))
-    expect(missing, `state-machine targets missing from documents.status enum: ${missing.join(", ")}`).toEqual([])
+    expect(
+      missing,
+      `state-machine targets missing from documents.status enum: ${missing.join(", ")}`,
+    ).toEqual([])
   })
 
   // Regression — documents_search advertised "date range" in its description but the params block
@@ -167,8 +170,7 @@ describe("invoicing manifest", () => {
     expect(ds, "documents_search tool must exist").toBeDefined()
     if (!ds) return
     expect(ds.description ?? "").toContain("date range")
-    const props =
-      isObj(ds.params) && isObj(ds.params.properties) ? ds.params.properties : undefined
+    const props = isObj(ds.params) && isObj(ds.params.properties) ? ds.params.properties : undefined
     const dr = props && isObj(props.date_range) ? props.date_range : undefined
     expect(dr, "documents_search must expose a date_range param").toBeDefined()
     const drProps = dr && isObj(dr.properties) ? dr.properties : undefined
@@ -197,14 +199,28 @@ describe("invoicing manifest", () => {
       }
     }
     expectProps("drafts_create", [
-      "type", "counterparty_contact_id", "counterparty_name", "counterparty_address",
-      "counterparty_vat_id", "counterparty_email", "issuer_profile_id", "currency",
-      "incoterm", "due_at", "shopify_order_id", "items",
+      "type",
+      "counterparty_contact_id",
+      "counterparty_name",
+      "counterparty_address",
+      "counterparty_vat_id",
+      "counterparty_email",
+      "issuer_profile_id",
+      "currency",
+      "incoterm",
+      "due_at",
+      "shopify_order_id",
+      "items",
     ])
     expectProps("drafts_update", ["draft_id", "patch"])
     for (const t of ["invoice", "quote", "proforma", "po"]) {
       expectProps(t + "_create_and_issue", [
-        "counterparty", "items", "issuer_profile_id", "currency", "incoterm", "due_at",
+        "counterparty",
+        "items",
+        "issuer_profile_id",
+        "currency",
+        "incoterm",
+        "due_at",
       ])
       expectProps(t + "_issue", ["draft_id"])
     }
@@ -212,33 +228,66 @@ describe("invoicing manifest", () => {
     // Nullability: the editor legitimately sends null for these (mutation
     // input types are string | null) — a plain "string" schema rejects them.
     const dc = propsOf("drafts_create")
-    for (const k of ["counterparty_contact_id", "counterparty_country", "tax_treatment", "shopify_order_id", "due_at"]) {
+    for (const k of [
+      "counterparty_contact_id",
+      "counterparty_country",
+      "tax_treatment",
+      "shopify_order_id",
+      "due_at",
+    ]) {
       const ty = (dc[k] as { type?: unknown })?.type
-      expect(Array.isArray(ty) && (ty as unknown[]).includes("null"), "drafts_create." + k + " must allow null").toBe(true)
+      expect(
+        Array.isArray(ty) && (ty as unknown[]).includes("null"),
+        "drafts_create." + k + " must allow null",
+      ).toBe(true)
     }
   })
 
   it("e-invoicing: credit-note tools declare preflights and issuing tools accept kind, category and structured billing", () => {
     const tools = (manifest as { tools: Record<string, Record<string, unknown>> }).tools
-    expect(tools.credit_note_create_and_issue?.preflight).toBe("creditNoteCreateAndIssuePreflightHandler")
+    expect(tools.credit_note_create_and_issue?.preflight).toBe(
+      "creditNoteCreateAndIssuePreflightHandler",
+    )
     expect(tools.credit_note_issue?.preflight).toBe("creditNoteIssuePreflightHandler")
-    expect(typeof (handlers as Record<string, unknown>).creditNoteCreateAndIssuePreflightHandler).toBe("function")
-    expect(typeof (handlers as Record<string, unknown>).creditNoteIssuePreflightHandler).toBe("function")
+    expect(
+      typeof (handlers as Record<string, unknown>).creditNoteCreateAndIssuePreflightHandler,
+    ).toBe("function")
+    expect(typeof (handlers as Record<string, unknown>).creditNoteIssuePreflightHandler).toBe(
+      "function",
+    )
     const props = (name: string, path: string[] = []): Record<string, { enum?: unknown[] }> => {
       let node = (tools[name]?.params as Record<string, unknown>) ?? {}
-      for (const key of path) node = ((node.properties as Record<string, unknown>)?.[key] as Record<string, unknown>) ?? {}
+      for (const key of path)
+        node =
+          ((node.properties as Record<string, unknown>)?.[key] as Record<string, unknown>) ?? {}
       return (node.properties ?? {}) as Record<string, { enum?: unknown[] }>
     }
-    const billing = ["billing_line1", "billing_line2", "billing_postcode", "billing_city", "billing_country_code"]
+    const billing = [
+      "billing_line1",
+      "billing_line2",
+      "billing_postcode",
+      "billing_city",
+      "billing_country_code",
+    ]
     for (const tool of ["invoice_create_and_issue", "credit_note_create_and_issue"]) {
       const cp = props(tool, ["counterparty"])
-      expect(cp.customer_kind?.enum).toEqual(["business", "individual", "public_entity", "non_registered_entity", null])
+      expect(cp.customer_kind?.enum).toEqual([
+        "business",
+        "individual",
+        "public_entity",
+        "non_registered_entity",
+        null,
+      ])
       for (const f of billing) expect(cp[f], `${tool}.counterparty.${f}`).toBeDefined()
       expect(props(tool).operation_category?.enum).toEqual(["goods", "services", "mixed", null])
     }
-    for (const [tool, path] of [["drafts_create", []], ["drafts_update", ["patch"]]] as const) {
+    for (const [tool, path] of [
+      ["drafts_create", []],
+      ["drafts_update", ["patch"]],
+    ] as const) {
       const p = props(tool, [...path])
-      for (const f of ["customer_kind", "operation_category", ...billing]) expect(p[f], `${tool} ${f}`).toBeDefined()
+      for (const f of ["customer_kind", "operation_category", ...billing])
+        expect(p[f], `${tool} ${f}`).toBeDefined()
     }
     expect(props("documents_convert_to_invoice").operation_category).toBeDefined()
   })
@@ -389,7 +438,9 @@ describe("invoicing manifest", () => {
       }
       if (isObj(schema.items)) walk(schema.items, `${path}[]`)
     }
-    for (const [name, tool] of Object.entries((manifest as { tools: Record<string, unknown> }).tools)) {
+    for (const [name, tool] of Object.entries(
+      (manifest as { tools: Record<string, unknown> }).tools,
+    )) {
       if (!isObj(tool) || tool.agentVisible === false) continue
       const params = isObj(tool.params) ? tool.params : undefined
       if (params) walk(params, name)
@@ -459,7 +510,9 @@ describe("invoicing manifest", () => {
     expect(ai).toContain("in order") // enumerate the retrieved numbers
     expect(ai).toMatch(/gap-free by construction|gap-free at issue/) // explain the semantics
     expect(ai).toMatch(/drafts? (never consume|are excluded)/) // drafts don't consume numbers
-    expect(ai).toMatch(/prove the set is complete|smaller than the page limit|re-running the same query never proves/) // completeness-proof, not re-run-and-reassert
+    expect(ai).toMatch(
+      /prove the set is complete|smaller than the page limit|re-running the same query never proves/,
+    ) // completeness-proof, not re-run-and-reassert
   })
 
   // Regression (claire-day-finance journey S8) — NUMBERING anti-fabrication. In the shared finance-day
@@ -506,7 +559,9 @@ describe("invoicing manifest", () => {
     expect(ai).toMatch(/never send a dunning .* email for a not-yet-due invoice/) // don't dun a current invoice
     // tier mapping from real days-overdue against the organisation's own reminder bands (org skill)
     expect(ai).toMatch(/map the tier by days-overdue using the organisation's reminder bands/)
-    expect(ai).toMatch(/if the organisation has no such skill or it gives no bands, ask the requesting user for the bands before drafting any reminder, never assume day counts/)
+    expect(ai).toMatch(
+      /if the organisation has no such skill or it gives no bands, ask the requesting user for the bands before drafting any reminder, never assume day counts/,
+    )
     expect(ai).not.toMatch(/\+7 band/)
     expect(ai).toMatch(/no automated multi-stage dunning-sequence primitive/) // no sequence scheduler
   })
@@ -521,7 +576,9 @@ describe("invoicing manifest", () => {
   it("forbids AR-aging FABRICATION — every aging row must be a returned invoice; paginate, never invent rows", () => {
     const ai = guideText(manifest).toLowerCase()
     expect(ai).toMatch(/ar anti-fabrication/) // a dedicated AR anti-fabrication directive
-    expect(ai).toMatch(/every row in your aging table must be an invoice that appears in your actual documents_search result/)
+    expect(ai).toMatch(
+      /every row in your aging table must be an invoice that appears in your actual documents_search result/,
+    )
     expect(ai).toMatch(/never invent invoice rows/) // ban inventing rows/numbers/counterparties
     expect(ai).toMatch(/paginate \(advance the offset\)/) // page to the overdue invoices, don't fabricate
   })
@@ -537,7 +594,9 @@ describe("invoicing manifest", () => {
     expect(ai).toMatch(/hold the line under pushback/) // a dedicated anti-cave directive
     expect(ai).toMatch(/do not .* drop or delete a real invoice/) // never drop a real invoice to match a round number
     expect(ai).toMatch(/that caveat must remain in every restatement/) // the caveat survives every turn
-    expect(ai).toMatch(/never let user pressure turn an honest sampled tally into a falsely-authoritative round number/)
+    expect(ai).toMatch(
+      /never let user pressure turn an honest sampled tally into a falsely-authoritative round number/,
+    )
   })
 
   // Regression — refund-proposal guidance. The partial-refund scenario went non-green despite a
@@ -669,10 +728,16 @@ describe("invoicing manifest", () => {
     expect(ai).toMatch(/never fabricate a link \/ button \/ markdown url/) // do not fabricate an approval link/button
     expect(ai).toMatch(/cite the relevant policy \+ approver/) // cite the gate's policy + approver
     // the approver is organisation data (the org skill), with an ask-the-user fallback when absent
-    expect(ai).toMatch(/both the threshold and the approver from the organisation's escalation contacts: kernel skill_read the org skill 'escalation-contacts'/)
-    expect(ai).toMatch(/if the organisation has no such skill, say it needs a second person with approval authority and ask the requesting user who that is, never invent a name/)
+    expect(ai).toMatch(
+      /both the threshold and the approver from the organisation's escalation contacts: kernel skill_read the org skill 'escalation-contacts'/,
+    )
+    expect(ai).toMatch(
+      /if the organisation has no such skill, say it needs a second person with approval authority and ask the requesting user who that is, never invent a name/,
+    )
     // the two-eyes threshold amount is organisation policy too: no number in the product text
-    expect(ai).toMatch(/never assume a threshold amount: before any refund that could need approval, ask the requesting user/)
+    expect(ai).toMatch(
+      /never assume a threshold amount: before any refund that could need approval, ask the requesting user/,
+    )
     expect(ai).not.toMatch(/200\s?(€|eur)/)
     // VIES: validate via vat_validate, report accurately, never web_fetch / fabricate / infer
     expect(ai).toMatch(/use the vat_validate tool/)
@@ -686,7 +751,9 @@ describe("invoicing manifest", () => {
     expect(ai).toMatch(/correcting a contact's vat/)
     expect(ai).toMatch(/write the corrected number to the contact with contacts_write/)
     expect(ai).toMatch(/do not issue the invoice until that write has succeeded/)
-    expect(ai).toMatch(/never report a validation or correction as done unless the underlying tool call actually succeeded/)
+    expect(ai).toMatch(
+      /never report a validation or correction as done unless the underlying tool call actually succeeded/,
+    )
   })
 
   // Regression — the send_to_customer recipient-resolution bridge. The handler resolves the recipient
@@ -770,8 +837,11 @@ describe("invoicing manifest", () => {
   // schema regression (a dropped param, or a plain "string" that rejects the editor's legitimate
   // null) fails here instead of in production.
   describe("documents_update tool", () => {
-    const tool = (manifest as { tools: Record<string, { params?: unknown; requiredScopes?: string[]; handler?: string }> })
-      .tools.documents_update
+    const tool = (
+      manifest as {
+        tools: Record<string, { params?: unknown; requiredScopes?: string[]; handler?: string }>
+      }
+    ).tools.documents_update
 
     it("exists, is scoped invoicing:documents:write, and resolves its handler", () => {
       expect(tool, "documents_update tool must exist").toBeDefined()
@@ -822,7 +892,9 @@ describe("invoicing manifest", () => {
 
     it("lines items use the same per-line shape as drafts_update (unit_price_minor accepts the string read-back form)", () => {
       const params = tool?.params as {
-        properties?: { lines?: { items?: { properties?: Record<string, unknown>; required?: string[] } } }
+        properties?: {
+          lines?: { items?: { properties?: Record<string, unknown>; required?: string[] } }
+        }
       }
       const lineProps = params.properties?.lines?.items?.properties ?? {}
       for (const key of [
@@ -860,7 +932,10 @@ describe("invoicing manifest", () => {
       // biome-ignore lint/suspicious/noExplicitAny: walking a JSON-schema-shaped manifest object.
       let node: any = tools[toolName]?.params
       for (const p of path) node = node?.[p]
-      expect(node, `${toolName}: could not resolve line-item properties at ${path.join(".")}`).toBeDefined()
+      expect(
+        node,
+        `${toolName}: could not resolve line-item properties at ${path.join(".")}`,
+      ).toBeDefined()
       return (node ?? {}) as Record<string, unknown>
     }
     const targets: Array<[string, string[]]> = [
@@ -900,7 +975,8 @@ describe("invoicing manifest", () => {
     it("drafts_create declares all four counterparty snapshot params, each nullable", () => {
       const dc = (manifest as { tools: Record<string, { params?: unknown }> }).tools.drafts_create
       expect(dc, "drafts_create tool must exist").toBeDefined()
-      const props = isObj(dc?.params) && isObj(dc.params.properties) ? dc.params.properties : undefined
+      const props =
+        isObj(dc?.params) && isObj(dc.params.properties) ? dc.params.properties : undefined
       expect(props, "drafts_create must declare params.properties").toBeDefined()
       for (const key of COUNTERPARTY_SNAPSHOT_KEYS) {
         const p = props?.[key] as { type?: unknown } | undefined
@@ -917,7 +993,10 @@ describe("invoicing manifest", () => {
       const du = (manifest as { tools: Record<string, { params?: unknown }> }).tools.drafts_update
       expect(du, "drafts_update tool must exist").toBeDefined()
       const patchProps =
-        isObj(du?.params) && isObj(du.params.properties) && isObj(du.params.properties.patch) && isObj(du.params.properties.patch.properties)
+        isObj(du?.params) &&
+        isObj(du.params.properties) &&
+        isObj(du.params.properties.patch) &&
+        isObj(du.params.properties.patch.properties)
           ? du.params.properties.patch.properties
           : undefined
       expect(patchProps, "drafts_update.patch must declare properties").toBeDefined()
@@ -940,7 +1019,16 @@ describe("invoicing manifest", () => {
     const m = manifest as {
       entities?: Record<
         string,
-        { tableName?: string; fileParent?: { tableName?: string; schemaRef?: string; joinOn?: string; readScope?: string; writeScope?: string } }
+        {
+          tableName?: string
+          fileParent?: {
+            tableName?: string
+            schemaRef?: string
+            joinOn?: string
+            readScope?: string
+            writeScope?: string
+          }
+        }
       >
     }
     const entity = m.entities?.issuer_profile
@@ -958,11 +1046,16 @@ describe("invoicing manifest", () => {
   // pin that logo_file_id specifically round-trips through the whitelist by checking the handler
   // module exports a symbol that mutations.ts's ISSUER_WRITE_COLUMNS test (mutations.test.ts) covers.
   it("settings_issuer_profile_update params are an explicit list that still reaches logo_file_id", () => {
-    const t = (manifest as { tools: Record<string, { params?: unknown; required?: string[] } | undefined> }).tools
-      .settings_issuer_profile_update
+    const t = (
+      manifest as { tools: Record<string, { params?: unknown; required?: string[] } | undefined> }
+    ).tools.settings_issuer_profile_update
     expect(t, "settings_issuer_profile_update tool must exist").toBeDefined()
     const params = t?.params as
-      | { additionalProperties?: unknown; required?: string[]; properties?: Record<string, unknown> }
+      | {
+          additionalProperties?: unknown
+          required?: string[]
+          properties?: Record<string, unknown>
+        }
       | undefined
     expect(params?.additionalProperties).toBe(false)
     expect(Object.keys(params?.properties ?? {})).toContain("logo_file_id")
@@ -974,9 +1067,11 @@ describe("invoicing manifest", () => {
   // be BOTH a real column (the handler persists it) and a declared, described param on the two
   // settings tools, or the agent cannot see it exists and will never set it to match the shop.
   it("issuer_profiles declares the prices_include_tax boolean column, defaulting to off", () => {
-    const schema = (manifest as unknown as {
-      schema: Record<string, { fields?: Record<string, unknown> } | undefined>
-    }).schema
+    const schema = (
+      manifest as unknown as {
+        schema: Record<string, { fields?: Record<string, unknown> } | undefined>
+      }
+    ).schema
     const col = schema.issuer_profiles?.fields?.prices_include_tax as
       | { type?: string; default?: unknown }
       | undefined
@@ -986,9 +1081,14 @@ describe("invoicing manifest", () => {
   })
 
   it("settings_issuer_profile_create/update declare prices_include_tax with the Shopify-mirror explanation", () => {
-    const tools = (manifest as unknown as {
-      tools: Record<string, { params?: { properties?: Record<string, { type?: string; description?: string }> } }>
-    }).tools
+    const tools = (
+      manifest as unknown as {
+        tools: Record<
+          string,
+          { params?: { properties?: Record<string, { type?: string; description?: string }> } }
+        >
+      }
+    ).tools
     for (const name of ["settings_issuer_profile_create", "settings_issuer_profile_update"]) {
       const prop = tools[name]?.params?.properties?.prices_include_tax
       expect(prop, `${name} must declare prices_include_tax`).toBeDefined()
@@ -1006,8 +1106,8 @@ describe("invoicing manifest", () => {
   })
 
   it("quote_create_and_issue points custom lines at the prices_include_tax setting", () => {
-    const desc = (manifest as unknown as { tools: Record<string, { description?: string }> })
-      .tools.quote_create_and_issue?.description
+    const desc = (manifest as unknown as { tools: Record<string, { description?: string }> }).tools
+      .quote_create_and_issue?.description
     expect(desc).toContain("prices_include_tax")
   })
 
@@ -1021,11 +1121,15 @@ describe("invoicing manifest", () => {
     type ManifestTools = {
       tools: Record<
         string,
-        { params?: { properties?: Record<string, { properties?: Record<string, { description?: string }> }> } }
+        {
+          params?: {
+            properties?: Record<string, { properties?: Record<string, { description?: string }> }>
+          }
+        }
       >
     }
-    const desc = (manifest as unknown as ManifestTools).tools.drafts_update?.params?.properties?.patch
-      ?.properties?.lines?.description
+    const desc = (manifest as unknown as ManifestTools).tools.drafts_update?.params?.properties
+      ?.patch?.properties?.lines?.description
     expect(desc).toContain("GROSS")
     expect(desc).toContain("ALREADY NET")
     expect(desc).toMatch(/never echo|not echo/)
@@ -1035,8 +1139,8 @@ describe("invoicing manifest", () => {
     type ManifestTools = {
       tools: Record<string, { params?: { properties?: Record<string, { description?: string }> } }>
     }
-    const desc = (manifest as unknown as ManifestTools).tools.documents_update?.params?.properties?.lines
-      ?.description
+    const desc = (manifest as unknown as ManifestTools).tools.documents_update?.params?.properties
+      ?.lines?.description
     expect(desc).toContain("GROSS")
     expect(desc).toContain("ALREADY NET")
     expect(desc).toMatch(/never echo|not echo/)
@@ -1064,28 +1168,37 @@ describe("invoicing manifest", () => {
     expect(entity, "manifest.entities.document must exist").toBeDefined()
     expect(entity?.searchable).toBe(true)
     expect(entity?.tableName).toBe("documents")
-    expect(entity?.readScope, "document entity must be scoped to the read grant, not an org wide scope").toBe(
-      "invoicing:documents:read",
+    expect(
+      entity?.readScope,
+      "document entity must be scoped to the read grant, not an org wide scope",
+    ).toBe("invoicing:documents:read")
+    expect(entity?.indexFields?.title, "document entity must declare indexFields.title").toBe(
+      "number",
     )
-    expect(entity?.indexFields?.title, "document entity must declare indexFields.title").toBe("number")
   })
 
   it("a document's handle is its number: ours, and the reference the agent reads (A37)", () => {
-    const fields = (manifest as unknown as {
-      entities: Record<string, { indexFields?: { handle?: string; bodyFields?: string[] } }>
-    }).entities.document?.indexFields
+    const fields = (
+      manifest as unknown as {
+        entities: Record<string, { indexFields?: { handle?: string; bodyFields?: string[] } }>
+      }
+    ).entities.document?.indexFields
     expect(fields?.handle).toBe("number")
     // A PO number is the customer's text, so it never names the record. Search still finds it.
     expect(fields?.bodyFields).toContain("po_number")
   })
 
   it("documents table indexes include po_number for the document search entity", () => {
-    const schema = (manifest as unknown as {
-      schema: Record<string, { indexes?: unknown[][] } | undefined>
-    }).schema
+    const schema = (
+      manifest as unknown as {
+        schema: Record<string, { indexes?: unknown[][] } | undefined>
+      }
+    ).schema
     const indexes = schema.documents?.indexes ?? []
-    const hasPoNumberIndex = indexes.some((idx) => Array.isArray(idx) && idx.length === 1 && idx[0] === "po_number")
-    expect(hasPoNumberIndex, "documents.indexes must include [\"po_number\"]").toBe(true)
+    const hasPoNumberIndex = indexes.some(
+      (idx) => Array.isArray(idx) && idx.length === 1 && idx[0] === "po_number",
+    )
+    expect(hasPoNumberIndex, 'documents.indexes must include ["po_number"]').toBe(true)
   })
 
   // Guard: an emitted event action not declared in events.emits throws at runtime. Scan the app's
@@ -1122,16 +1235,25 @@ describe("invoicing manifest", () => {
   // assertKnownParams rejects the call before the handler runs, so the field is unreachable
   // from the agent surface even though mutations.ts persists it.
   it("declares documents.notes as an optional text column", () => {
-    const schema = (manifest as unknown as {
-      schema: Record<string, { fields?: Record<string, unknown> } | undefined>
-    }).schema
-    expect(schema.documents?.fields?.notes, "schema.documents.fields.notes must be \"text?\"").toBe("text?")
+    const schema = (
+      manifest as unknown as {
+        schema: Record<string, { fields?: Record<string, unknown> } | undefined>
+      }
+    ).schema
+    expect(schema.documents?.fields?.notes, 'schema.documents.fields.notes must be "text?"').toBe(
+      "text?",
+    )
   })
 
   it("exposes an optional notes param on every tool that creates or edits a document", () => {
-    const tools = (manifest as unknown as {
-      tools: Record<string, { params?: { properties?: Record<string, unknown>; required?: string[] } }>
-    }).tools
+    const tools = (
+      manifest as unknown as {
+        tools: Record<
+          string,
+          { params?: { properties?: Record<string, unknown>; required?: string[] } }
+        >
+      }
+    ).tools
     const direct = [
       "drafts_create",
       "documents_update",
@@ -1149,10 +1271,9 @@ describe("invoicing manifest", () => {
       const notes = props?.notes as { type?: unknown; description?: string } | undefined
       expect(notes, `${name} must expose a notes param`).toBeDefined()
       expect(notes?.type, `${name}.notes must accept a string or null`).toEqual(["string", "null"])
-      expect(
-        notes?.description,
-        `${name}.notes must document the 2000 character cap`,
-      ).toContain("2000")
+      expect(notes?.description, `${name}.notes must document the 2000 character cap`).toContain(
+        "2000",
+      )
       expect(tools[name]?.params?.required ?? []).not.toContain("notes")
     }
     // drafts_update takes its fields under `patch`, not at the top level.
@@ -1163,16 +1284,21 @@ describe("invoicing manifest", () => {
   })
 
   it("documents_update's description lists notes among the fields editable after issue", () => {
-    const desc = (manifest as unknown as {
-      tools: Record<string, { description?: string }>
-    }).tools.documents_update?.description ?? ""
+    const desc =
+      (
+        manifest as unknown as {
+          tools: Record<string, { description?: string }>
+        }
+      ).tools.documents_update?.description ?? ""
     expect(desc).toContain("po_number, notes) stays editable post-issue")
   })
 
   it("the documents export schema carries notes", () => {
-    const exportSchema = (manifest as unknown as {
-      export?: { schema?: Record<string, string> }
-    }).export?.schema
+    const exportSchema = (
+      manifest as unknown as {
+        export?: { schema?: Record<string, string> }
+      }
+    ).export?.schema
     expect(exportSchema?.notes).toBe("string")
   })
 
@@ -1512,14 +1638,24 @@ describe("invoicing manifest", () => {
     // 0.21.3: no tool holds a transaction across its run: credit notes and convert-to-invoice commit
     //   their writes with the document, and order_reissue_apply issues the credit note and its
     //   replacement in one commit (both or neither).
-    expect(m.version).toBe("0.21.5")
-    const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
+    expect(m.version).toBe("0.21.6")
+    const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
+      "overdue-scan"
+    ]
     expect(overdue?.runsFor).toEqual({
-      rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },
+      rows: {
+        entity: "documents",
+        where: { status: "issued", type: "invoice", due_at: { not: null } },
+      },
     })
-    const hosts = (manifest as unknown as { network: { allowedDomains: string[] } }).network.allowedDomains
+    const hosts = (manifest as unknown as { network: { allowedDomains: string[] } }).network
+      .allowedDomains
     expect(hosts).toEqual(
-      expect.arrayContaining(["ec.europa.eu", "recherche-entreprises.api.gouv.fr", "data-api.ecb.europa.eu"]),
+      expect.arrayContaining([
+        "ec.europa.eu",
+        "recherche-entreprises.api.gouv.fr",
+        "data-api.ecb.europa.eu",
+      ]),
     )
   })
 })
@@ -1528,15 +1664,22 @@ describe("fx rates are fetched at issue, never on a schedule", () => {
   // The rate is needed once, at issue. A scheduled job would set every workspace up in the
   // worker each tick for documents that may never be issued in a foreign currency.
   it("no job fetches rates", () => {
-    const jobs = (manifest as unknown as { jobs?: Record<string, { handler?: string; schedule?: string }> }).jobs ?? {}
-    const fx = Object.entries(jobs).filter(([name, j]) => /fx|rate/i.test(name) || /fx/i.test(j.handler ?? ""))
+    const jobs =
+      (manifest as unknown as { jobs?: Record<string, { handler?: string; schedule?: string }> })
+        .jobs ?? {}
+    const fx = Object.entries(jobs).filter(
+      ([name, j]) => /fx|rate/i.test(name) || /fx/i.test(j.handler ?? ""),
+    )
     expect(fx).toEqual([])
   })
 })
 
 describe("e-invoicing agent guide", () => {
-  const sections = (manifest as unknown as { agentInstructions: { sections: Array<{ tools: string[]; text: string }> } })
-    .agentInstructions.sections
+  const sections = (
+    manifest as unknown as {
+      agentInstructions: { sections: Array<{ tools: string[]; text: string }> }
+    }
+  ).agentInstructions.sections
   const section = sections.find((s) => s.tools.includes("einvoicing_classify"))
 
   // red: no section -> the agent meets a gate refusal with no fix loop, and guesses the regime.
@@ -1562,13 +1705,22 @@ describe("e-invoicing agent guide", () => {
 
   it("states the regimes in plain words and the classify-first rule", () => {
     const t = section!.text
-    for (const r of ["e_invoice", "e_reporting", "out_of_scope", "needs_review"]) expect(t).toContain(r)
+    for (const r of ["e_invoice", "e_reporting", "out_of_scope", "needs_review"])
+      expect(t).toContain(r)
     expect(t).toContain("einvoicing_classify")
   })
 
   it("states the fix loop: registry, then the web as a pointer, then set, then retry the same issue call", () => {
     const t = section!.text
-    for (const w of ["counterparty_identity_lookup", "web_search", "web_fetch", "counterparty_identity_set", "agent_web", "source_url", "fix_tool"]) {
+    for (const w of [
+      "counterparty_identity_lookup",
+      "web_search",
+      "web_fetch",
+      "counterparty_identity_set",
+      "agent_web",
+      "source_url",
+      "fix_tool",
+    ]) {
       expect(t).toContain(w)
     }
     expect(t).toMatch(/same arguments/i)
@@ -1641,9 +1793,18 @@ describe("e-invoicing identity, classify and settings tools", () => {
   })
 
   it("reads are read only with the read scopes", () => {
-    expect(tools.einvoicing_classify).toMatchObject({ readOnly: true, requiredScopes: ["invoicing:documents:read"] })
-    expect(tools.counterparty_identity_get).toMatchObject({ readOnly: true, requiredScopes: ["invoicing:contacts:read"] })
-    expect(tools.counterparty_identity_lookup).toMatchObject({ readOnly: true, requiredScopes: ["invoicing:contacts:read"] })
+    expect(tools.einvoicing_classify).toMatchObject({
+      readOnly: true,
+      requiredScopes: ["invoicing:documents:read"],
+    })
+    expect(tools.counterparty_identity_get).toMatchObject({
+      readOnly: true,
+      requiredScopes: ["invoicing:contacts:read"],
+    })
+    expect(tools.counterparty_identity_lookup).toMatchObject({
+      readOnly: true,
+      requiredScopes: ["invoicing:contacts:read"],
+    })
   })
 
   // red: make identity_set ungated or plainly gated -> an unconfirmed SIREN writes without a human,
@@ -1655,7 +1816,9 @@ describe("e-invoicing identity, classify and settings tools", () => {
       requiredScopes: ["invoicing:contacts:write"],
     })
     expect(tools.counterparty_identity_set!.gated).toBeUndefined()
-    expect((tools.counterparty_identity_set!.approvalCard as { summary: string }).summary).toBeTruthy()
+    expect(
+      (tools.counterparty_identity_set!.approvalCard as { summary: string }).summary,
+    ).toBeTruthy()
     expect(tools.counterparty_territory_set).toMatchObject({
       gated: true,
       approvalImpact: "internal",
@@ -1673,18 +1836,27 @@ describe("e-invoicing identity, classify and settings tools", () => {
       properties: Record<string, unknown>
       additionalProperties?: unknown
     }
-    for (const forbidden of ["confirmed_via", "approval_request_id", "verified_by", "registry_status", "registry_name"]) {
+    for (const forbidden of [
+      "confirmed_via",
+      "approval_request_id",
+      "verified_by",
+      "registry_status",
+      "registry_name",
+    ]) {
       expect(Object.keys(setParams.properties)).not.toContain(forbidden)
     }
     expect(setParams.additionalProperties).not.toBe(true)
-    const source = (tools.counterparty_identity_set!.params as { properties: Record<string, { enum?: string[] }> })
-      .properties.source
+    const source = (
+      tools.counterparty_identity_set!.params as { properties: Record<string, { enum?: string[] }> }
+    ).properties.source
     expect(source!.enum).toEqual(["registry", "vat_derived", "agent_web", "manual"])
   })
 })
 
 describe("received supplier e-invoices in the agent text", () => {
-  const raw = JSON.stringify((manifest as unknown as { agentInstructions: unknown }).agentInstructions)
+  const raw = JSON.stringify(
+    (manifest as unknown as { agentInstructions: unknown }).agentInstructions,
+  )
 
   // red: the guide said "there is no received-invoice concept" and sent every supplier bill to pennylane.
   it("no instruction denies the Received mirror; routing names it and forbids a re-upload", () => {

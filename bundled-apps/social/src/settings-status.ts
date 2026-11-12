@@ -22,7 +22,11 @@ import type { YoutubeQuotaStatus } from "./quota"
 import { readYoutubeQuotaStatus } from "./sync"
 
 /** The app's connections, in the order the Settings page lists them. */
-export const SOCIAL_CONNECTIONS: ReadonlyArray<{ name: string; label: string; platform: Platform }> = [
+export const SOCIAL_CONNECTIONS: ReadonlyArray<{
+  name: string
+  label: string
+  platform: Platform
+}> = [
   { name: "facebook", label: "Facebook Page", platform: "facebook" },
   { name: "instagram", label: "Instagram", platform: "instagram" },
   { name: "google", label: "Google (YouTube)", platform: "youtube" },
@@ -71,10 +75,15 @@ type DescribeFn = (connectionName: string) => Promise<unknown>
 function describeAccessor(connections: unknown): DescribeFn | null {
   const flat = connections as { describe?: (name: string) => Promise<unknown> } | null | undefined
   if (flat && typeof flat.describe === "function") return (name) => flat.describe!(name)
-  const record = connections as Record<string, { describe?: () => Promise<unknown> } | undefined> | null
+  const record = connections as Record<
+    string,
+    { describe?: () => Promise<unknown> } | undefined
+  > | null
   if (record && typeof record === "object") {
     const any = SOCIAL_CONNECTIONS.some((c) => typeof record[c.name]?.describe === "function")
-    if (any) return async (name) => (typeof record[name]?.describe === "function" ? record[name]!.describe!() : [])
+    if (any)
+      return async (name) =>
+        typeof record[name]?.describe === "function" ? record[name]!.describe!() : []
   }
   return null
 }
@@ -126,7 +135,12 @@ export async function connectionsStatus(
   if (!describe) {
     return {
       available: false,
-      connections: SOCIAL_CONNECTIONS.map((c) => ({ ...c, state: "not_connected", primary: null, accounts: [] })),
+      connections: SOCIAL_CONNECTIONS.map((c) => ({
+        ...c,
+        state: "not_connected",
+        primary: null,
+        accounts: [],
+      })),
     }
   }
   const connections = await Promise.all(
@@ -211,13 +225,19 @@ export async function quotaStatus(
   ctx: SocialToolCtx,
   now: Date = new Date(),
 ): Promise<QuotaStatusResult> {
-  const rows = (await ctx.db.findMany("sync_state", { where: { active: true }, limit: 200 })) as SyncStateQuotaRow[]
+  const rows = (await ctx.db.findMany("sync_state", {
+    where: { active: true },
+    limit: 200,
+  })) as SyncStateQuotaRow[]
   const ledger = await readYoutubeQuotaStatus(ctx, now)
   const youtube = ledger ? fromLedger(ledger) : null
 
   const rateLimits: PlatformRateLimit[] = []
   for (const platform of ["facebook", "instagram"] as const) {
-    const states = rows.filter((r) => r.platform === platform).map(rateLimitOf).filter((x) => x !== null)
+    const states = rows
+      .filter((r) => r.platform === platform)
+      .map(rateLimitOf)
+      .filter((x) => x !== null)
     if (states.length > 0) rateLimits.push({ platform, rateLimit: Object.assign({}, ...states) })
   }
   return { youtube, rateLimits }

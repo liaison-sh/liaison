@@ -123,7 +123,11 @@ export const PAYMENT_NOTES = {
 } as const
 
 const CATEGORY_LETTER: Record<OperationCategory, string> = { goods: "B", services: "S", mixed: "M" }
-const PAYMENT_DIGIT: Record<PaymentState, string> = { due: "1", paid: "2", final_after_deposit: "4" }
+const PAYMENT_DIGIT: Record<PaymentState, string> = {
+  due: "1",
+  paid: "2",
+  final_after_deposit: "4",
+}
 
 /** BT-23: one of B1 S1 M1 B2 S2 M2 B4 S4 M4. */
 export function businessProcessCode(category: OperationCategory, state: PaymentState): string {
@@ -156,7 +160,8 @@ function percent(bp: number): string {
 
 function quantity(q: string): string {
   const t = q.trim()
-  if (!/^-?\d+(\.\d+)?$/.test(t)) throw new FacturxBuildError("facturx_totals_inconsistent", `quantity ${q} is not a decimal`)
+  if (!/^-?\d+(\.\d+)?$/.test(t))
+    throw new FacturxBuildError("facturx_totals_inconsistent", `quantity ${q} is not a decimal`)
   return t
 }
 
@@ -186,7 +191,11 @@ export function normalizeSigns(input: FacturxInput): FacturxInput {
         }
       : { ...l }
     if (line.unit_price_minor < 0n) {
-      line = { ...line, unit_price_minor: -line.unit_price_minor, quantity: negateQuantity(line.quantity) }
+      line = {
+        ...line,
+        unit_price_minor: -line.unit_price_minor,
+        quantity: negateQuantity(line.quantity),
+      }
     }
     return line
   })
@@ -211,17 +220,24 @@ export function normalizeSigns(input: FacturxInput): FacturxInput {
 function assertPreconditions(input: FacturxInput): void {
   for (const l of input.lines) {
     if (l.unit_price_minor < 0n) {
-      throw new FacturxBuildError("facturx_totals_inconsistent", `BR-27: line ${l.position + 1} has a negative item net price`)
+      throw new FacturxBuildError(
+        "facturx_totals_inconsistent",
+        `BR-27: line ${l.position + 1} has a negative item net price`,
+      )
     }
   }
   if (input.type === "credit_note" && input.grand_total_minor < 0n) {
-    throw new FacturxBuildError("facturx_totals_inconsistent", "BT-3: a credit note must carry a positive total once normalised")
+    throw new FacturxBuildError(
+      "facturx_totals_inconsistent",
+      "BT-3: a credit note must carry a positive total once normalised",
+    )
   }
 }
 
 function date102(iso: string): string {
   const d = iso.slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new FacturxBuildError("facturx_totals_inconsistent", `date ${iso} is not YYYY-MM-DD`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d))
+    throw new FacturxBuildError("facturx_totals_inconsistent", `date ${iso} is not YYYY-MM-DD`)
   return d.replace(/-/g, "")
 }
 
@@ -267,7 +283,11 @@ function party(p: FacturxParty): string {
   )
 }
 
-function checkParty(p: FacturxParty, code: "facturx_seller_incomplete" | "facturx_buyer_incomplete", who: string): void {
+function checkParty(
+  p: FacturxParty,
+  code: "facturx_seller_incomplete" | "facturx_buyer_incomplete",
+  who: string,
+): void {
   const missing: string[] = []
   if (blank(p.legal_name)) missing.push("legal name")
   if (blank(p.siren) || !/^\d{9}$/.test((p.siren ?? "").trim())) missing.push("SIREN")
@@ -316,26 +336,37 @@ export function buildCii(raw: FacturxInput): string {
   }
   for (const l of raw.lines) quantity(l.quantity)
   const input = normalizeSigns(raw)
-  if (input.lines.length === 0) throw new FacturxBuildError("facturx_no_lines", "a Factur-X needs at least one line")
+  if (input.lines.length === 0)
+    throw new FacturxBuildError("facturx_no_lines", "a Factur-X needs at least one line")
   checkParty(input.seller, "facturx_seller_incomplete", "The seller (issuer profile)")
   checkParty(input.buyer, "facturx_buyer_incomplete", "The buyer")
   const currency = input.currency.toUpperCase()
   const exp = currencyExponent(currency)
   const nonEur = currency !== "EUR"
-  if (nonEur && (input.tax_total_eur_minor == null)) {
+  if (nonEur && input.tax_total_eur_minor == null) {
     throw new FacturxBuildError(
       "facturx_fx_missing",
       `A ${currency} e-invoice needs its VAT total in EUR at the ECB rate, and no rate is stored on the document.`,
     )
   }
-  if (input.type === "credit_note" && (!input.original || blank(input.original.number) || blank(input.original.issue_date))) {
-    throw new FacturxBuildError("facturx_original_missing", "A credit note needs the number and issue date of the invoice it corrects.")
+  if (
+    input.type === "credit_note" &&
+    (!input.original || blank(input.original.number) || blank(input.original.issue_date))
+  ) {
+    throw new FacturxBuildError(
+      "facturx_original_missing",
+      "A credit note needs the number and issue date of the invoice it corrects.",
+    )
   }
 
   const groups = vatBreakdown(input.lines, input.tax_treatment)
   const lineTotal = input.lines.reduce((s, l) => s + l.subtotal_minor, 0n)
   const taxTotal = groups.reduce((s, g) => s + g.tax_minor, 0n)
-  if (lineTotal !== input.subtotal_minor || taxTotal !== input.tax_total_minor || lineTotal + taxTotal !== input.grand_total_minor) {
+  if (
+    lineTotal !== input.subtotal_minor ||
+    taxTotal !== input.tax_total_minor ||
+    lineTotal + taxTotal !== input.grand_total_minor
+  ) {
     throw new FacturxBuildError(
       "facturx_totals_inconsistent",
       `document totals (${input.subtotal_minor}/${input.tax_total_minor}/${input.grand_total_minor}) do not match its lines (${lineTotal}/${taxTotal})`,
@@ -359,7 +390,12 @@ export function buildCii(raw: FacturxInput): string {
         "</ram:SpecifiedLineTradeAgreement>" +
         `<ram:SpecifiedLineTradeDelivery><ram:BilledQuantity unitCode="C62">${quantity(l.quantity)}</ram:BilledQuantity></ram:SpecifiedLineTradeDelivery>` +
         "<ram:SpecifiedLineTradeSettlement>" +
-        taxGroup({ category: cat, rate_bp: l.tax_rate_bp, basis_minor: 0n, tax_minor: 0n }, exp, input, false) +
+        taxGroup(
+          { category: cat, rate_bp: l.tax_rate_bp, basis_minor: 0n, tax_minor: 0n },
+          exp,
+          input,
+          false,
+        ) +
         (l.discount_minor > 0n
           ? "<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>" +
             `<ram:ActualAmount>${amount(l.discount_minor, exp)}</ram:ActualAmount><ram:Reason>Remise</ram:Reason></ram:SpecifiedTradeAllowanceCharge>`
@@ -374,18 +410,23 @@ export function buildCii(raw: FacturxInput): string {
     })
     .join("")
 
-  const delivery = input.delivery && !blank(input.delivery.line1)
-    ? "<ram:ShipToTradeParty>" + el("ram:Name", input.delivery.name ?? input.buyer.legal_name) + address(input.delivery) + "</ram:ShipToTradeParty>"
-    : ""
+  const delivery =
+    input.delivery && !blank(input.delivery.line1)
+      ? "<ram:ShipToTradeParty>" +
+        el("ram:Name", input.delivery.name ?? input.buyer.legal_name) +
+        address(input.delivery) +
+        "</ram:ShipToTradeParty>"
+      : ""
 
-  const paymentMeans = input.iban && input.iban.trim()
-    ? "<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>" +
-      `<ram:PayeePartyCreditorFinancialAccount><ram:IBANID>${xmlEscape(input.iban.replace(/\s+/g, "").toUpperCase())}</ram:IBANID></ram:PayeePartyCreditorFinancialAccount>` +
-      (input.bic && input.bic.trim()
-        ? `<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>${xmlEscape(input.bic.replace(/\s+/g, "").toUpperCase())}</ram:BICID></ram:PayeeSpecifiedCreditorFinancialInstitution>`
-        : "") +
-      "</ram:SpecifiedTradeSettlementPaymentMeans>"
-    : ""
+  const paymentMeans =
+    input.iban && input.iban.trim()
+      ? "<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>" +
+        `<ram:PayeePartyCreditorFinancialAccount><ram:IBANID>${xmlEscape(input.iban.replace(/\s+/g, "").toUpperCase())}</ram:IBANID></ram:PayeePartyCreditorFinancialAccount>` +
+        (input.bic && input.bic.trim()
+          ? `<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>${xmlEscape(input.bic.replace(/\s+/g, "").toUpperCase())}</ram:BICID></ram:PayeeSpecifiedCreditorFinancialInstitution>`
+          : "") +
+        "</ram:SpecifiedTradeSettlementPaymentMeans>"
+      : ""
 
   const header =
     '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -405,7 +446,9 @@ export function buildCii(raw: FacturxInput): string {
     note("PMT", PAYMENT_NOTES.PMT) +
     note("PMD", PAYMENT_NOTES.PMD) +
     note("AAB", PAYMENT_NOTES.AAB) +
-    (input.vat_on_debits ? note("TXD", "Option pour le paiement de la taxe d'après les débits") : "") +
+    (input.vat_on_debits
+      ? note("TXD", "Option pour le paiement de la taxe d'après les débits")
+      : "") +
     "</rsm:ExchangedDocument>"
 
   const agreement =
@@ -427,7 +470,9 @@ export function buildCii(raw: FacturxInput): string {
     `<ram:LineTotalAmount>${amount(lineTotal, exp)}</ram:LineTotalAmount>` +
     `<ram:TaxBasisTotalAmount>${amount(lineTotal, exp)}</ram:TaxBasisTotalAmount>` +
     `<ram:TaxTotalAmount currencyID="${currency}">${amount(taxTotal, exp)}</ram:TaxTotalAmount>` +
-    (nonEur ? `<ram:TaxTotalAmount currencyID="EUR">${amount(input.tax_total_eur_minor as bigint, 2)}</ram:TaxTotalAmount>` : "") +
+    (nonEur
+      ? `<ram:TaxTotalAmount currencyID="EUR">${amount(input.tax_total_eur_minor as bigint, 2)}</ram:TaxTotalAmount>`
+      : "") +
     `<ram:GrandTotalAmount>${amount(input.grand_total_minor, exp)}</ram:GrandTotalAmount>` +
     `<ram:TotalPrepaidAmount>${amount(prepaid, exp)}</ram:TotalPrepaidAmount>` +
     `<ram:DuePayableAmount>${amount(duePayable, exp)}</ram:DuePayableAmount>` +

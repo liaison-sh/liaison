@@ -4,14 +4,14 @@
 // staleness signal per spec §3.7's failure-mode line), calls_list (recent call
 // docs), webhook_info (operator setup read, monitoring convention).
 import { describe, expect, it } from "bun:test"
+import { parseCallDoc } from "./doc-format"
+import { makeCtx } from "./test-ctx"
 import {
   callsListHandler,
   callsSegmentsSinceHandler,
   callsSetLinksHandler,
   webhookInfoHandler,
 } from "./tools"
-import { parseCallDoc } from "./doc-format"
-import { makeCtx } from "./test-ctx"
 import { segmentWebhookHandler } from "./webhooks"
 
 function callsOf(spy: ReturnType<typeof makeCtx>["spy"], target: string): number {
@@ -48,7 +48,10 @@ describe("calls_segments_since", () => {
   it("returns only segments STRICTLY after since (document boundary semantics)", async () => {
     const { ctx } = makeCtx()
     await seed(ctx)
-    const out = await callsSegmentsSinceHandler({ callRef: CALL, since: "2026-07-06T10:00:20Z" }, ctx)
+    const out = await callsSegmentsSinceHandler(
+      { callRef: CALL, since: "2026-07-06T10:00:20Z" },
+      ctx,
+    )
     expect(out.data.segments.map((s) => s.segmentId)).toEqual(["s3"])
     // lastSegmentTs reports the DOC's last segment, not the filtered window —
     // that is the staleness signal ("MCP tool reports last-segment ts").
@@ -67,7 +70,13 @@ describe("calls_segments_since", () => {
     const { ctx } = makeCtx()
     await seed(ctx)
     await segmentWebhookHandler(
-      { callRef: CALL, kind: "summary", ts: "2026-07-06T10:10:00Z", text: "résumé", isFinal: false },
+      {
+        callRef: CALL,
+        kind: "summary",
+        ts: "2026-07-06T10:10:00Z",
+        text: "résumé",
+        isFinal: false,
+      },
       ctx,
     )
     const out = await callsSegmentsSinceHandler({ callRef: CALL }, ctx)
@@ -76,7 +85,9 @@ describe("calls_segments_since", () => {
 
   it("throws call_not_found for an unknown callRef", async () => {
     const { ctx } = makeCtx()
-    await expect(callsSegmentsSinceHandler({ callRef: "nope" }, ctx)).rejects.toThrow(/call_not_found/)
+    await expect(callsSegmentsSinceHandler({ callRef: "nope" }, ctx)).rejects.toThrow(
+      /call_not_found/,
+    )
   })
 
   // U5.8: resolves callRef→doc via knowledge:find_by_title FIRST (DB-backed, never lags), never
@@ -121,7 +132,9 @@ describe("calls_segments_since", () => {
   it("still throws call_not_found when BOTH find_by_title (no match) and search (index-lag) miss", async () => {
     const { ctx, spy } = makeCtx()
     spy.searchReturnsNothing = true
-    await expect(callsSegmentsSinceHandler({ callRef: "nope" }, ctx)).rejects.toThrow(/call_not_found/)
+    await expect(callsSegmentsSinceHandler({ callRef: "nope" }, ctx)).rejects.toThrow(
+      /call_not_found/,
+    )
   })
 })
 
@@ -150,7 +163,10 @@ describe("calls_set_links: contact/deal-task metadata", () => {
   it("clears a link when explicitly passed null (deal task reassigned away)", async () => {
     const { ctx } = makeCtx()
     await seed(ctx)
-    await callsSetLinksHandler({ callRef: CALL, contactId: "contact-123", dealTaskId: "task-456" }, ctx)
+    await callsSetLinksHandler(
+      { callRef: CALL, contactId: "contact-123", dealTaskId: "task-456" },
+      ctx,
+    )
     await callsSetLinksHandler({ callRef: CALL, dealTaskId: null }, ctx)
     const out = await callsSegmentsSinceHandler({ callRef: CALL }, ctx)
     expect(out.data.links).toEqual({ contactId: "contact-123", dealTaskId: null })
@@ -158,9 +174,9 @@ describe("calls_set_links: contact/deal-task metadata", () => {
 
   it("throws call_not_found for an unknown callRef — never silently creates a doc from a links write", async () => {
     const { ctx } = makeCtx()
-    await expect(
-      callsSetLinksHandler({ callRef: "nope", contactId: "c1" }, ctx),
-    ).rejects.toThrow(/call_not_found/)
+    await expect(callsSetLinksHandler({ callRef: "nope", contactId: "c1" }, ctx)).rejects.toThrow(
+      /call_not_found/,
+    )
   })
 
   it("retries on REVISION_CONFLICT (same CAS discipline as the segment webhook)", async () => {
@@ -173,7 +189,13 @@ describe("calls_set_links: contact/deal-task metadata", () => {
       // Race a competing write in behind our read — forces exactly one
       // REVISION_CONFLICT on our first knowledge:update attempt.
       await segmentWebhookHandler(
-        { callRef: CALL, segmentId: "s4", ts: "2026-07-06T10:01:00Z", speaker: "Bob", text: "quatre" },
+        {
+          callRef: CALL,
+          segmentId: "s4",
+          ts: "2026-07-06T10:01:00Z",
+          speaker: "Bob",
+          text: "quatre",
+        },
         ctx,
       )
     }
@@ -197,7 +219,13 @@ describe("calls_list", () => {
     const { ctx } = makeCtx()
     await seed(ctx)
     await segmentWebhookHandler(
-      { callRef: "other-call", segmentId: "x1", ts: "2026-07-06T11:00:00Z", speaker: "C", text: "y" },
+      {
+        callRef: "other-call",
+        segmentId: "x1",
+        ts: "2026-07-06T11:00:00Z",
+        speaker: "C",
+        text: "y",
+      },
       ctx,
     )
     const out = await callsListHandler({}, ctx)
@@ -277,14 +305,25 @@ describe("legacy-titled call documents (pre-rename title)", () => {
   it("the segment webhook appends to the legacy document instead of creating a second one", async () => {
     const { ctx, spy, docId } = await seedLegacy()
     const res = await segmentWebhookHandler(
-      { callRef: CALL, segmentId: "s4", ts: "2026-07-06T10:01:00Z", speaker: "Bob", text: "quatre" },
+      {
+        callRef: CALL,
+        segmentId: "s4",
+        ts: "2026-07-06T10:01:00Z",
+        speaker: "Bob",
+        text: "quatre",
+      },
       ctx,
     )
     expect(res.status).toBe(200)
     expect(spy.docs.size).toBe(1)
     const doc = spy.docs.get(docId)!
     expect(doc.title).toBe(LEGACY_TITLE)
-    expect(parseCallDoc(doc.body).segments.map((s) => s.segmentId)).toEqual(["s1", "s2", "s3", "s4"])
+    expect(parseCallDoc(doc.body).segments.map((s) => s.segmentId)).toEqual([
+      "s1",
+      "s2",
+      "s3",
+      "s4",
+    ])
   })
 
   it("resolves the legacy document through the search fallback when find_by_title is unavailable", async () => {

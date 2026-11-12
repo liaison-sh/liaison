@@ -14,11 +14,8 @@ import {
   type ConnectionSummary,
 } from "@liaison/api-connector-core/contract"
 import { type Component, createSignal, For, Show } from "solid-js"
-import { useI18n } from "./kit"
-import { useApi } from "./api"
-import { Button } from "./kit"
-import { Input } from "./kit"
-import { putAdapter } from "./api"
+import { putAdapter, useApi } from "./api"
+import { Button, Input, useI18n } from "./kit"
 
 export const AdapterForm: Component<{
   /** Replacing this connection's adapter; absent when adding a new one. */

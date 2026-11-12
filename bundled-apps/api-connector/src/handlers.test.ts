@@ -28,7 +28,11 @@ function fakeApi(answers: Record<string, (request: unknown) => Record<string, un
 describe("the tools", () => {
   it("hand the platform the call as given", async () => {
     const { ctx, calls } = fakeApi()
-    const read = { connection: "crm", operation: "find_customers", params: { email: "a@b.example" } }
+    const read = {
+      connection: "crm",
+      operation: "find_customers",
+      params: { email: "a@b.example" },
+    }
     await handlers.connectorRead(read, ctx)
     await handlers.connectorWrite({ ...read, target: { method: "POST" } }, ctx)
     await handlers.connectorWritePreflight(read, ctx)
@@ -58,10 +62,9 @@ describe("the tools", () => {
       { identifier: "crm", document: "id: x", confirmCredentialWipe: true },
       ctx,
     )
-    expect(calls.map((c) => (c.request as { confirmCredentialWipe: boolean }).confirmCredentialWipe)).toEqual([
-      false,
-      true,
-    ])
+    expect(
+      calls.map((c) => (c.request as { confirmCredentialWipe: boolean }).confirmCredentialWipe),
+    ).toEqual([false, true])
   })
 })
 
@@ -92,7 +95,10 @@ describe("provisioning", () => {
   it("a dry run writes nothing and reports what would change", async () => {
     const { ctx, calls } = fakeApi({ adapterPlan: () => ({ ok: true, created: true }) })
     const out = await handlers.provisionApiConnector({ config, dryRun: true }, ctx)
-    expect(out.changed).toEqual(["connection 'crm': adapter created", "connection 'erp': adapter created"])
+    expect(out.changed).toEqual([
+      "connection 'crm': adapter created",
+      "connection 'erp': adapter created",
+    ])
     expect(calls.some((c) => c.method === "adapterPut")).toBe(false)
   })
 
@@ -113,7 +119,9 @@ describe("provisioning", () => {
 describe("verify", () => {
   it("passes with each connection's identity, fails with each problem", async () => {
     const ok = fakeApi({
-      verify: () => ({ results: [{ connection: "crm", status: "PASS", identity: "list: HTTP 200" }] }),
+      verify: () => ({
+        results: [{ connection: "crm", status: "PASS", identity: "list: HTTP 200" }],
+      }),
     })
     expect(await handlers.verifyApiConnector({}, ok.ctx)).toEqual({
       ok: true,

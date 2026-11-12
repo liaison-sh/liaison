@@ -51,9 +51,7 @@ const FALLBACK_STATUS = "new"
  * no `approvals.pendingFor` (an older kernel): the live state is then unknown and
  * reads show stored statuses unchanged.
  */
-export async function pendingFindingApprovals(
-  ctx: SocialToolCtx,
-): Promise<PendingFindingIndex> {
+export async function pendingFindingApprovals(ctx: SocialToolCtx): Promise<PendingFindingIndex> {
   const pendingFor = ctx.approvals?.pendingFor
   if (!pendingFor) return null
   const out = new Map<string, PendingFindingApproval>()
@@ -70,7 +68,11 @@ export async function pendingFindingApprovals(
   for (const r of raw as PendingRow[]) {
     if (typeof r?.id !== "string" || typeof r.target_id !== "string") continue
     const action: PendingFindingAction | null =
-      r.tool_name === "social:reply_to_finding" ? "reply" : r.tool_name === "social:like_item" ? "like" : null
+      r.tool_name === "social:reply_to_finding"
+        ? "reply"
+        : r.tool_name === "social:like_item"
+          ? "like"
+          : null
     if (!action) continue
     const existing = out.get(r.target_id)
     if (existing && (existing.action === "reply" || action === "like")) continue
@@ -78,7 +80,8 @@ export async function pendingFindingApprovals(
     out.set(r.target_id, {
       approval_id: r.id,
       action,
-      draft: action === "reply" && typeof payload.reply_text === "string" ? payload.reply_text : null,
+      draft:
+        action === "reply" && typeof payload.reply_text === "string" ? payload.reply_text : null,
       created_at: typeof r.created_at === "string" ? r.created_at : null,
     })
   }
@@ -99,7 +102,10 @@ interface FindingLike {
  * Without one: the stored status, except a stale stored `awaiting_approval`,
  * which falls back to `new` and drops its dead approval id.
  */
-export function deriveFindingApprovalState<T>(row: T, pending: PendingFindingApproval | undefined): T {
+export function deriveFindingApprovalState<T>(
+  row: T,
+  pending: PendingFindingApproval | undefined,
+): T {
   if (!row || typeof row !== "object") return row
   const f = row as T & FindingLike
   const stored = typeof f.status === "string" ? f.status : null
@@ -127,7 +133,10 @@ export function withLiveApprovalState<T>(row: T, index: PendingFindingIndex): T 
 }
 
 /** The status a finding reads as, given the live approvals. */
-export function derivedFindingStatus(row: { id?: unknown; status?: unknown }, index: PendingFindingIndex): string | null {
+export function derivedFindingStatus(
+  row: { id?: unknown; status?: unknown },
+  index: PendingFindingIndex,
+): string | null {
   const d = withLiveApprovalState(row, index)
   return typeof d.status === "string" ? d.status : null
 }

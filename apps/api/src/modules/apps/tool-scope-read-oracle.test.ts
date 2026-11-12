@@ -1451,11 +1451,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     'const fallback = docs.find((d) => d.scope === "goods" || d.scope === null) ?? docs[0]!',
     REASONS.DOC,
   ],
-  [
-    "bundled-apps/invoicing/src/handlers/tax-override.ts",
-    "documents: documents.map((d) => ({ document_id: d.document_id, number: d.number, scope: d.scope })),",
-    REASONS.DOC,
-  ],
+  ["bundled-apps/invoicing/src/handlers/tax-override.ts", "scope: d.scope,", REASONS.DOC],
   [
     "apps/api/src/modules/node-sessions/agent-tools.ts",
     'scope: request.type === "permission_request" ? (params.scope ?? "once") : "once",',

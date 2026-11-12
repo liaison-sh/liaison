@@ -113,7 +113,12 @@ export function shipToCacheOf(value: unknown): ShipToCacheEntry {
       return { known: false }
     }
   }
-  if (v != null && typeof v === "object" && !Array.isArray(v) && (v as { source?: unknown }).source === "none") {
+  if (
+    v != null &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    (v as { source?: unknown }).source === "none"
+  ) {
     const at = (v as { fetched_at?: unknown }).fetched_at
     return { known: true, shipTo: null, fetched_at: typeof at === "string" ? at : null }
   }
@@ -164,7 +169,6 @@ export function cachedShipToOf(value: unknown): CachedShipTo | null {
   }
 }
 
-
 function locationOf(a: ShopifyOrderAddress) {
   return {
     street: [a.address1, a.address2].filter((v) => v && v.trim()).join(", ") || null,
@@ -191,7 +195,10 @@ export async function fetchShopifyOrderMeta(
 }
 
 /** The order meta out of a `shopify:orders_get` envelope already in hand, or null. */
-export function shopifyOrderMetaOf(env: { status?: string; result?: unknown }): ShopifyOrderMetaRead | null {
+export function shopifyOrderMetaOf(env: {
+  status?: string
+  result?: unknown
+}): ShopifyOrderMetaRead | null {
   try {
     if (env.status !== "completed" || env.result == null) return null
     const order = env.result as ShopifyOrderMeta & {
@@ -223,7 +230,17 @@ export function shopifyOrderMetaOf(env: { status?: string; result?: unknown }): 
       custAddr != null &&
       sameLocation(locationOf(shipAddr), locationOf(custAddr))
     const shipTo: CachedShipTo | null = shipAddr
-      ? { source: "order", address: { ...shipAddr, phone: blankField(shipAddr.phone) && samePlace ? (custAddr?.phone ?? null) : (shipAddr.phone ?? null), email } }
+      ? {
+          source: "order",
+          address: {
+            ...shipAddr,
+            phone:
+              blankField(shipAddr.phone) && samePlace
+                ? (custAddr?.phone ?? null)
+                : (shipAddr.phone ?? null),
+            email,
+          },
+        }
       : custAddr
         ? { source: "customer", address: { ...custAddr, email } }
         : null
@@ -259,7 +276,10 @@ export async function upsertPrepMeta(
     ship_to?: StoredShipTo | null
   },
 ): Promise<void> {
-  const rows = (await ctx.db.findMany("prep_meta", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+  const rows = (await ctx.db.findMany("prep_meta", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as Array<{
     id: string
   }>
   const patch = { ...data, fetched_at: new Date().toISOString() }
@@ -344,7 +364,10 @@ export async function cacheShipToIfStale(
   budget?: ShipToRefreshBudget,
 ): Promise<boolean> {
   try {
-    const rows = (await ctx.db.findMany("prep_meta", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+    const rows = (await ctx.db.findMany("prep_meta", {
+      where: { document_ref: documentRef },
+      limit: 1,
+    })) as Array<{
       id: string
       ship_to?: unknown
     }>
@@ -354,7 +377,8 @@ export async function cacheShipToIfStale(
     // not read again on every sync.
     const cached = shipToCacheOf(row.ship_to)
     const at = cached.known && cached.fetched_at ? Date.parse(cached.fetched_at) : Number.NaN
-    if (cached.known && !Number.isNaN(at) && Date.now() - at < shipToTtlMs(documentRef)) return false
+    if (cached.known && !Number.isNaN(at) && Date.now() - at < shipToTtlMs(documentRef))
+      return false
     if (cached.known && budget) {
       if (budget.remaining <= 0) return false
       budget.remaining--
@@ -379,7 +403,10 @@ export async function refreshCachedShipTo(
   shopifyOrderId: string,
 ): Promise<boolean> {
   try {
-    const rows = (await ctx.db.findMany("prep_meta", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+    const rows = (await ctx.db.findMany("prep_meta", {
+      where: { document_ref: documentRef },
+      limit: 1,
+    })) as Array<{
       id: string
     }>
     if (!rows[0]) return false
@@ -472,7 +499,9 @@ export async function backfillContactShippingAddress(
       })
       return env.status === "completed"
     }
-    const street = [address.address1, address.address2].filter((v) => v && String(v).trim()).join(", ")
+    const street = [address.address1, address.address2]
+      .filter((v) => v && String(v).trim())
+      .join(", ")
     const env = await ctx.executeTool("kernel:contacts_write", {
       contactId,
       metadata: {

@@ -11,7 +11,10 @@ describe("run identity", () => {
   })
 
   it("awaits a getter that answers through a bridge call (the Workers executor)", async () => {
-    const ctx = { getOrgId: async () => "org-2", getUserId: async () => "user-2" } as unknown as AppContext
+    const ctx = {
+      getOrgId: async () => "org-2",
+      getUserId: async () => "user-2",
+    } as unknown as AppContext
     expect(await runOrgId(ctx)).toBe("org-2")
     expect(await runUserId(ctx)).toBe("user-2")
   })

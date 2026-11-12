@@ -12,12 +12,9 @@ import type {
   TestOperationResult,
 } from "@liaison/api-connector-core/contract"
 import { type Component, createMemo, createSignal, For, Show } from "solid-js"
-import { ApiError } from "./api"
-import { useI18n } from "./kit"
-import { useApi } from "./api"
-import { Button } from "./kit"
-import { testOperation } from "./api"
+import { ApiError, testOperation, useApi } from "./api"
 import { flattenRecord } from "./customer-format"
+import { Button, useI18n } from "./kit"
 import {
   buildParams,
   type ParamError,

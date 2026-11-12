@@ -5,13 +5,13 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
 import {
-  type PreflightResult,
-  isRec,
-  resolveMutationInput,
-  preflightRefusal,
-  runMutation,
   idempotencyKey,
+  isRec,
   makeMutationError,
+  type PreflightResult,
+  preflightRefusal,
+  resolveMutationInput,
+  runMutation,
 } from "./shared"
 
 // Inventory input normalisation (weak-model API drift). Both mutations expect a precise Shopify
@@ -22,11 +22,20 @@ import {
 // here so a correct tool call from a weak model executes, mirroring `normalizeDraftOrderInput`.
 const invNum = (v: unknown): number | undefined => {
   if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v)
-  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Math.trunc(Number(v))
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)))
+    return Math.trunc(Number(v))
   return undefined
 }
 // Absolute-quantity field synonyms a weak model uses for "set the count to N".
-const INV_ABSOLUTE_KEYS = ["quantity", "newQuantity", "onHand", "onHandQuantity", "available", "availableQuantity", "setQuantity"] as const
+const INV_ABSOLUTE_KEYS = [
+  "quantity",
+  "newQuantity",
+  "onHand",
+  "onHandQuantity",
+  "available",
+  "availableQuantity",
+  "setQuantity",
+] as const
 // Relative-delta field synonyms for "change by ±N".
 const INV_DELTA_KEYS = ["delta", "availableDelta", "adjustment", "change", "quantityDelta"] as const
 const invPick = (o: Record<string, unknown>, keys: readonly string[]): number | undefined => {
@@ -40,14 +49,30 @@ const invPick = (o: Record<string, unknown>, keys: readonly string[]): number | 
 // invents free-text reasons ("physical_count", "stocktake", "reconciliation") which 422 the gated
 // write; map anything outside the enum to the always-valid "correction".
 const SHOPIFY_INVENTORY_REASONS = new Set([
-  "correction", "cycle_count_available", "damaged", "movement_canceled", "movement_created",
-  "movement_received", "movement_updated", "other", "promotion", "quality_control", "received",
-  "reservation_created", "reservation_deleted", "reservation_updated", "restock", "safety_stock",
+  "correction",
+  "cycle_count_available",
+  "damaged",
+  "movement_canceled",
+  "movement_created",
+  "movement_received",
+  "movement_updated",
+  "other",
+  "promotion",
+  "quality_control",
+  "received",
+  "reservation_created",
+  "reservation_deleted",
+  "reservation_updated",
+  "restock",
+  "safety_stock",
   "shrinkage",
 ])
 const validInventoryReason = (v: unknown): string =>
   typeof v === "string" && SHOPIFY_INVENTORY_REASONS.has(v) ? v : "correction"
-const invRows = (raw: Record<string, unknown>, arrKey: "setQuantities" | "changes"): Record<string, unknown>[] => {
+const invRows = (
+  raw: Record<string, unknown>,
+  arrKey: "setQuantities" | "changes",
+): Record<string, unknown>[] => {
   const src = Array.isArray(raw[arrKey])
     ? raw[arrKey]
     : Array.isArray(raw.quantities)
@@ -55,7 +80,9 @@ const invRows = (raw: Record<string, unknown>, arrKey: "setQuantities" | "change
       : [raw]
   return (src as unknown[]).filter(isRec)
 }
-export function normalizeInventorySetOnHandInput(raw: Record<string, unknown>): Record<string, unknown> {
+export function normalizeInventorySetOnHandInput(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
   const setQuantities = invRows(raw, "setQuantities").map((r) => {
     const out: Record<string, unknown> = {}
     if (typeof r.inventoryItemId === "string") out.inventoryItemId = r.inventoryItemId
@@ -68,10 +95,13 @@ export function normalizeInventorySetOnHandInput(raw: Record<string, unknown>): 
     reason: validInventoryReason(raw.reason),
     setQuantities,
   }
-  if (typeof raw.referenceDocumentUri === "string") input.referenceDocumentUri = raw.referenceDocumentUri
+  if (typeof raw.referenceDocumentUri === "string")
+    input.referenceDocumentUri = raw.referenceDocumentUri
   return input
 }
-export function normalizeInventoryAdjustInput(raw: Record<string, unknown>): Record<string, unknown> {
+export function normalizeInventoryAdjustInput(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
   const changes = invRows(raw, "changes").map((r) => {
     const delta = invPick(r, INV_DELTA_KEYS)
     if (delta === undefined && invPick(r, INV_ABSOLUTE_KEYS) !== undefined) {
@@ -93,7 +123,8 @@ export function normalizeInventoryAdjustInput(raw: Record<string, unknown>): Rec
     name: typeof raw.name === "string" && raw.name ? raw.name : "available",
     changes,
   }
-  if (typeof raw.referenceDocumentUri === "string") input.referenceDocumentUri = raw.referenceDocumentUri
+  if (typeof raw.referenceDocumentUri === "string")
+    input.referenceDocumentUri = raw.referenceDocumentUri
   return input
 }
 
@@ -128,7 +159,10 @@ export async function inventory_adjust_preflight(
   return { ok: true }
 }
 
-export async function inventory_adjust(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function inventory_adjust(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = normalizeInventoryAdjustInput(resolveMutationInput(params))
   // 2026-04 ALSO requires changeFromQuantity per change (optimistic concurrency, like
   // inventorySetQuantities) — InventoryChangeInput 422s "must include changeFromQuantity" without it.
@@ -143,12 +177,22 @@ export async function inventory_adjust(params: Record<string, unknown>, ctx: App
         typeof r.locationId === "string" &&
         invNum(r.changeFromQuantity) === undefined
       ) {
-        return { ...r, changeFromQuantity: await currentQuantity(client, r.inventoryItemId, r.locationId, name) }
+        return {
+          ...r,
+          changeFromQuantity: await currentQuantity(client, r.inventoryItemId, r.locationId, name),
+        }
       }
       return r
     }),
   )
-  return runMutation(ctx, { query: INVENTORY_ADJUST, variables: { input, key: idempotencyKey("inventory-adjust", input) }, dataKey: "inventoryAdjustQuantities", eventEntity: "inventory", eventAction: "adjusted", entityIdPath: "inventoryAdjustmentGroup.id" })
+  return runMutation(ctx, {
+    query: INVENTORY_ADJUST,
+    variables: { input, key: idempotencyKey("inventory-adjust", input) },
+    dataKey: "inventoryAdjustQuantities",
+    eventEntity: "inventory",
+    eventAction: "adjusted",
+    entityIdPath: "inventoryAdjustmentGroup.id",
+  })
 }
 
 // Set the ABSOLUTE on-hand count. Admin API 2026-04 REMOVED `inventorySetOnHandQuantities`; the
@@ -180,7 +224,9 @@ async function currentOnHand(
   locationId: string,
 ): Promise<number | null> {
   const data = await client.query<{
-    inventoryItem: { inventoryLevel: { quantities: { name: string; quantity: number }[] } | null } | null
+    inventoryItem: {
+      inventoryLevel: { quantities: { name: string; quantity: number }[] } | null
+    } | null
   }>(INVENTORY_LEVEL_READ, { id: inventoryItemId, loc: locationId })
   const q = data.inventoryItem?.inventoryLevel?.quantities?.find((x) => x.name === "on_hand")
   return typeof q?.quantity === "number" ? q.quantity : null
@@ -201,7 +247,9 @@ async function currentQuantity(
   name: string,
 ): Promise<number> {
   const data = await client.query<{
-    inventoryItem: { inventoryLevel: { quantities: { name: string; quantity: number }[] } | null } | null
+    inventoryItem: {
+      inventoryLevel: { quantities: { name: string; quantity: number }[] } | null
+    } | null
   }>(INVENTORY_LEVEL_READ_NAMED, { id: inventoryItemId, loc: locationId, names: [name] })
   const q = data.inventoryItem?.inventoryLevel?.quantities?.find((x) => x.name === name)
   return typeof q?.quantity === "number" ? q.quantity : 0
@@ -217,8 +265,12 @@ async function resolveInventorySetOnHandQuantities(
 ): Promise<{ norm: Record<string, unknown>; quantities: Record<string, unknown>[] }> {
   const norm = normalizeInventorySetOnHandInput(resolveMutationInput(params))
   const client = await getShopifyClient(ctx)
-  const rawRows = Array.isArray(norm.setQuantities) ? (norm.setQuantities as Record<string, unknown>[]) : []
-  if (!rawRows.some((r) => typeof r.inventoryItemId === "string" && typeof r.locationId === "string")) {
+  const rawRows = Array.isArray(norm.setQuantities)
+    ? (norm.setQuantities as Record<string, unknown>[])
+    : []
+  if (
+    !rawRows.some((r) => typeof r.inventoryItemId === "string" && typeof r.locationId === "string")
+  ) {
     throw makeMutationError(
       "BAD_PARAM",
       "inventory_set_on_hand needs an inventoryItemId and a locationId on every row (read them with inventory_levels_list).",
@@ -266,18 +318,25 @@ export async function inventory_set_on_hand_preflight(
   return { ok: true }
 }
 
-export async function inventory_set_on_hand(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function inventory_set_on_hand(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const { norm, quantities } = await resolveInventorySetOnHandQuantities(params, ctx)
   const input: Record<string, unknown> = {
     reason: typeof norm.reason === "string" && norm.reason ? norm.reason : "correction",
     name: "on_hand",
     quantities,
   }
-  if (typeof norm.referenceDocumentUri === "string") input.referenceDocumentUri = norm.referenceDocumentUri
+  if (typeof norm.referenceDocumentUri === "string")
+    input.referenceDocumentUri = norm.referenceDocumentUri
   // Deterministic idempotency key (no randomness → sandbox-safe + retry-correct): a true retry of the
   // SAME set dedupes; distinct sets get distinct keys. Bounded to Shopify's String length.
   const key = `set-on-hand:${quantities
-    .map((q) => `${String(q.inventoryItemId)}@${String(q.locationId)}=${String(q.quantity)}<${String(q.changeFromQuantity)}`)
+    .map(
+      (q) =>
+        `${String(q.inventoryItemId)}@${String(q.locationId)}=${String(q.quantity)}<${String(q.changeFromQuantity)}`,
+    )
     .join("|")}`.slice(0, 250)
   return runMutation(ctx, {
     query: INVENTORY_SET_QUANTITIES,

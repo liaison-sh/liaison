@@ -63,7 +63,12 @@ function memoryStore(docs: CtxSpy["store"]) {
       const d = docs.get(key(c, id))
       return d ? { id, data: structuredClone(d.data), version: d.version, updatedAt: "" } : null
     },
-    set: async (c: string, id: string, data: Record<string, unknown>, opts?: { ifVersion?: number }) => {
+    set: async (
+      c: string,
+      id: string,
+      data: Record<string, unknown>,
+      opts?: { ifVersion?: number },
+    ) => {
       const cur = docs.get(key(c, id))
       check(cur, opts?.ifVersion)
       const next = { data: structuredClone(data), version: (cur?.version ?? 0) + 1 }
@@ -85,7 +90,11 @@ type Where = Record<string, unknown>
 // and insert/update keys must be declared fields. Value types (uuid, enum) are NOT checked:
 // the double's ids are `row-N`, not UUIDs.
 const SCHEMA = manifest.schema as Record<string, { fields: Record<string, unknown> }>
-const BASE_FIELDS: Record<string, string> = { id: "id", createdAt: "created_at", updatedAt: "updated_at" }
+const BASE_FIELDS: Record<string, string> = {
+  id: "id",
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+}
 
 function declared(entity: string): Record<string, unknown> {
   const table = SCHEMA[entity]
@@ -96,7 +105,8 @@ function declared(entity: string): Record<string, unknown> {
 function checkKeys(kind: "where" | "orderBy", entity: string, keys: string[]): void {
   const fields = declared(entity)
   for (const k of keys) {
-    if (!(k in BASE_FIELDS) && !(k in fields)) throw new Error(`Unknown ${kind} field "${k}" on entity "${entity}"`)
+    if (!(k in BASE_FIELDS) && !(k in fields))
+      throw new Error(`Unknown ${kind} field "${k}" on entity "${entity}"`)
   }
 }
 
@@ -104,7 +114,8 @@ function checkKeys(kind: "where" | "orderBy", entity: string, keys: string[]): v
 function checkWhere(entity: string, where: Where): void {
   checkKeys("where", entity, Object.keys(where))
   for (const [k, v] of Object.entries(where)) {
-    if (v !== null && typeof v === "object") throw new Error(`where.${k}: operators are not supported by the test double`)
+    if (v !== null && typeof v === "object")
+      throw new Error(`where.${k}: operators are not supported by the test double`)
   }
 }
 
@@ -204,7 +215,9 @@ export function makeCtx(overrides?: { config?: Record<string, unknown>; scopes?:
         const orderBy = opts?.orderBy
         if (orderBy) {
           checkKeys("orderBy", entity, Object.keys(orderBy))
-          const keys = Object.entries(orderBy).map(([k, dir]) => [BASE_FIELDS[k] ?? k, dir] as const)
+          const keys = Object.entries(orderBy).map(
+            ([k, dir]) => [BASE_FIELDS[k] ?? k, dir] as const,
+          )
           filtered = [...filtered].sort((a, b) => {
             for (const [col, dir] of keys) {
               const cmp = compareCells(a[col], b[col])
@@ -317,7 +330,9 @@ export function makeCtx(overrides?: { config?: Record<string, unknown>; scopes?:
     // a trailing-`*` wildcard) over the caller's scopes.
     hasScope: async (scope: string) =>
       (overrides?.scopes ?? []).some((g) =>
-        g.endsWith("*") ? scope.startsWith(g.slice(0, -1)) : scope === g || scope.startsWith(`${g}:`),
+        g.endsWith("*")
+          ? scope.startsWith(g.slice(0, -1))
+          : scope === g || scope.startsWith(`${g}:`),
       ),
   } as unknown as AppContext
   return { ctx, spy }

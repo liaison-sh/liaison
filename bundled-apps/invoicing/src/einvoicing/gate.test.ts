@@ -6,10 +6,10 @@ import { createMockDb } from "../test-db"
 import {
   type BuyerSnapshot,
   EinvoiceGateRefusal,
-  GATE_CODE_STATUS,
-  type GateInput,
   einvoiceGateError,
   evaluateEinvoiceGate,
+  GATE_CODE_STATUS,
+  type GateInput,
   gateErrorEnvelope,
   gatePreflight,
   gateWarning,
@@ -56,11 +56,17 @@ async function buyerFrom(snapshot: BuyerSnapshot, contact_id: string | null = nu
 
 describe("einvoiceGateError (enforce)", () => {
   test("business FR buyer without SIREN → einvoice_data_missing, fix lookup, retryable, 422", async () => {
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, buyer_siren: null, buyer_siren_confirmed_via: null })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      buyer_siren: null,
+      buyer_siren_confirmed_via: null,
+    })
     const r = einvoiceGateError(input({ buyer }))
     expect(r?.code).toBe("einvoice_data_missing")
     expect(r?.status).toBe(422)
-    expect(r?.missing.find((m) => m.field === "buyer_siren")?.fix_tool).toBe("counterparty_identity_lookup")
+    expect(r?.missing.find((m) => m.field === "buyer_siren")?.fix_tool).toBe(
+      "counterparty_identity_lookup",
+    )
     const env = gateErrorEnvelope(r!)
     expect(env.status).toBe("error")
     expect(env.error.retryable).toBe(true)
@@ -106,7 +112,11 @@ describe("einvoiceGateError (enforce)", () => {
   test("a caller-sourced snapshot never confirms a SIREN: registry_unconfirmed, and no confirmation is recorded", async () => {
     // Contactless: the confirmation can only be the caller's claim.
     const db = createMockDb()
-    const buyer = await resolveBuyerFacts(db, { docType: "invoice", contact_id: null, snapshot: FR_BUSINESS_CONFIRMED })
+    const buyer = await resolveBuyerFacts(db, {
+      docType: "invoice",
+      contact_id: null,
+      snapshot: FR_BUSINESS_CONFIRMED,
+    })
     expect(buyer.sirenConfirmed).toBe(false)
     expect(buyer.confirmedVia).toBeNull()
     const gi = input({ buyer, mode: "warn" })
@@ -133,7 +143,11 @@ describe("einvoiceGateError (enforce)", () => {
   })
 
   test("e_invoice without structured billing → billing_address missing", async () => {
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, billing_postcode: null, billing_city: null })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      billing_postcode: null,
+      billing_city: null,
+    })
     const r = einvoiceGateError(input({ buyer }))
     expect(r?.code).toBe("einvoice_data_missing")
     const item = r?.missing.find((m) => m.field === "billing_address")
@@ -148,13 +162,22 @@ describe("einvoiceGateError (enforce)", () => {
     expect(r?.code).toBe("operation_category_missing")
     expect(r?.missing[0]?.field).toBe("operation_category")
     expect(r?.missing[0]?.fix_hint).toContain("operation_category")
-    expect(einvoiceGateError(input({ buyer, operationCategory: "services", operationSource: "explicit" }))).toBeNull()
+    expect(
+      einvoiceGateError(
+        input({ buyer, operationCategory: "services", operationSource: "explicit" }),
+      ),
+    ).toBeNull()
   })
 
   test("authoritative (Shopify) line kinds pass without an explicit category", async () => {
     const buyer = await buyerFrom(FR_BUSINESS_CONFIRMED)
     const ev = evaluateEinvoiceGate(
-      input({ buyer, operationCategory: null, operationSource: "lines_authoritative", lines: [{ line_kind: "software" }] }),
+      input({
+        buyer,
+        operationCategory: null,
+        operationSource: "lines_authoritative",
+        lines: [{ line_kind: "software" }],
+      }),
     )
     expect(ev.refusal).toBeNull()
     expect(ev.operationCategory).toBe("services")
@@ -162,7 +185,12 @@ describe("einvoiceGateError (enforce)", () => {
   })
 
   test("Réunion buyer without a territory treatment → einvoice_needs_review", async () => {
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, billing_postcode: "97400", billing_city: "Saint-Denis", billing_country_code: "RE" })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      billing_postcode: "97400",
+      billing_city: "Saint-Denis",
+      billing_country_code: "RE",
+    })
     const r = einvoiceGateError(input({ buyer }))
     expect(r?.code).toBe("einvoice_needs_review")
     expect(r?.regime).toBe("needs_review")
@@ -172,8 +200,15 @@ describe("einvoiceGateError (enforce)", () => {
   })
 
   test("individual buyer in Germany → no refusal", async () => {
-    const buyer = await buyerFrom({ ...FR_INDIVIDUAL, billing_country_code: "DE", billing_postcode: "10115", billing_city: "Berlin" })
-    expect(einvoiceGateError(input({ buyer, operationCategory: null, operationSource: null }))).toBeNull()
+    const buyer = await buyerFrom({
+      ...FR_INDIVIDUAL,
+      billing_country_code: "DE",
+      billing_postcode: "10115",
+      billing_city: "Berlin",
+    })
+    expect(
+      einvoiceGateError(input({ buyer, operationCategory: null, operationSource: null })),
+    ).toBeNull()
   })
 
   test("credit note against an e_invoice original with null buyer_siren → einvoice_data_missing", async () => {
@@ -187,15 +222,28 @@ describe("einvoiceGateError (enforce)", () => {
       billing_city: "Paris",
       billing_country_code: "FR",
     }
-    const buyer = await resolveBuyerFacts(db, { docType: "credit_note", contact_id: null, snapshot: {}, original })
-    const r = einvoiceGateError(input({ docType: "credit_note", buyer, original: { id: original.id, regime: "e_invoice" } }))
+    const buyer = await resolveBuyerFacts(db, {
+      docType: "credit_note",
+      contact_id: null,
+      snapshot: {},
+      original,
+    })
+    const r = einvoiceGateError(
+      input({ docType: "credit_note", buyer, original: { id: original.id, regime: "e_invoice" } }),
+    )
     expect(r?.code).toBe("einvoice_data_missing")
     expect(r?.missing.some((m) => m.field === "buyer_siren")).toBe(true)
   })
 
   test("credit note ignores a later identity change (the original snapshot wins)", async () => {
     const db = createMockDb()
-    await seedConfirmedIdentity(db, { contact_id: "c-cn", siren: "903000008", name: "Démo Conseil SARL", postcode: "33000", city: "Bordeaux" })
+    await seedConfirmedIdentity(db, {
+      contact_id: "c-cn",
+      siren: "903000008",
+      name: "Démo Conseil SARL",
+      postcode: "33000",
+      city: "Bordeaux",
+    })
     const original = {
       id: "doc-orig-2",
       regime: "e_invoice" as const,
@@ -208,16 +256,29 @@ describe("einvoiceGateError (enforce)", () => {
       billing_city: "Paris",
       billing_country_code: "FR",
     }
-    const buyer = await resolveBuyerFacts(db, { docType: "credit_note", contact_id: "c-cn", snapshot: {}, original })
+    const buyer = await resolveBuyerFacts(db, {
+      docType: "credit_note",
+      contact_id: "c-cn",
+      snapshot: {},
+      original,
+    })
     expect(buyer.source).toBe("original")
     expect(buyer.siren).toBe("900000001")
-    const r = einvoiceGateError(input({ docType: "credit_note", buyer, original: { id: original.id, regime: "e_invoice" } }))
+    const r = einvoiceGateError(
+      input({ docType: "credit_note", buyer, original: { id: original.id, regime: "e_invoice" } }),
+    )
     expect(r).toBeNull()
   })
 
   test("credit note against a legacy original (no regime) uses the identity", async () => {
     const db = createMockDb()
-    await seedConfirmedIdentity(db, { contact_id: "c-leg", siren: "903000008", name: "Démo Conseil SARL", postcode: "33000", city: "Bordeaux" })
+    await seedConfirmedIdentity(db, {
+      contact_id: "c-leg",
+      siren: "903000008",
+      name: "Démo Conseil SARL",
+      postcode: "33000",
+      city: "Bordeaux",
+    })
     const original = { id: "doc-legacy", regime: null, counterparty_contact_id: "c-leg" }
     const buyer = await resolveBuyerFacts(db, {
       docType: "credit_note",
@@ -230,14 +291,23 @@ describe("einvoiceGateError (enforce)", () => {
   })
 
   test("the message names every fix_tool", async () => {
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, buyer_siren: null, buyer_siren_confirmed_via: null, billing_city: null })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      buyer_siren: null,
+      buyer_siren_confirmed_via: null,
+      billing_city: null,
+    })
     const r = einvoiceGateError(input({ buyer, operationCategory: null, operationSource: null }))!
     expect(r.missing.length).toBe(3)
     for (const m of r.missing) expect(r.message).toContain(m.fix_tool)
   })
 
   test("warn mode returns a warning, not an error", async () => {
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, buyer_siren: null, buyer_siren_confirmed_via: null })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      buyer_siren: null,
+      buyer_siren_confirmed_via: null,
+    })
     const r = einvoiceGateError(input({ buyer, mode: "warn" }))
     expect(r?.mode).toBe("warn")
     const w = gateWarning(r!)
@@ -276,10 +346,16 @@ describe("einvoiceGateError (enforce)", () => {
 
   test("a missing-SIREN refusal says the buyer's kind is never the way past it", async () => {
     // red: without it a weak agent re-issued a French company as a non-registered entity.
-    const buyer = await buyerFrom({ ...FR_BUSINESS_CONFIRMED, buyer_siren: null, buyer_siren_confirmed_via: null })
+    const buyer = await buyerFrom({
+      ...FR_BUSINESS_CONFIRMED,
+      buyer_siren: null,
+      buyer_siren_confirmed_via: null,
+    })
     const r = einvoiceGateError(input({ buyer }))!
     expect(r.message).toMatch(/never change it to get past this refusal/)
-    const kindOnly = einvoiceGateError(input({ buyer: await buyerFrom({ ...FR_INDIVIDUAL, customer_kind: null }) }))!
+    const kindOnly = einvoiceGateError(
+      input({ buyer: await buyerFrom({ ...FR_INDIVIDUAL, customer_kind: null }) }),
+    )!
     expect(kindOnly.message).not.toMatch(/never change it/)
   })
 
@@ -322,7 +398,13 @@ describe("regimeSnapshot", () => {
       evaluation: ev,
       input: gi,
       issuedAt: "2026-11-02",
-      delivery: { name: "Entrepôt", line1: "9 quai du Test", postcode: "13002", city: "Marseille", country_code: "FR" },
+      delivery: {
+        name: "Entrepôt",
+        line1: "9 quai du Test",
+        postcode: "13002",
+        city: "Marseille",
+        country_code: "FR",
+      },
     })
     expect(s.delivery_city).toBe("Marseille")
     expect(s.delivery_name).toBe("Entrepôt")
@@ -359,7 +441,9 @@ describe("regimeSnapshot", () => {
     const s = regimeSnapshot({ evaluation: ev, input: gi, issuedAt: "2026-11-02", delivery: null })
     expect(s.regime).toBe("needs_review")
     expect(s.customer_kind).toBeNull()
-    expect((s.regime_reasons as Array<{ code: string }>).some((r) => r.code === "gate_warning")).toBe(true)
+    expect(
+      (s.regime_reasons as Array<{ code: string }>).some((r) => r.code === "gate_warning"),
+    ).toBe(true)
   })
 
   test("warn snapshot keeps the classifier's verdict when it had one", async () => {
@@ -369,7 +453,9 @@ describe("regimeSnapshot", () => {
     const s = regimeSnapshot({ evaluation: ev, input: gi, issuedAt: "2026-11-02", delivery: null })
     expect(s.regime).toBe("e_invoice")
     expect(s.operation_category).toBeNull()
-    expect((s.regime_reasons as Array<{ code: string }>).some((r) => r.code === "gate_warning")).toBe(true)
+    expect(
+      (s.regime_reasons as Array<{ code: string }>).some((r) => r.code === "gate_warning"),
+    ).toBe(true)
   })
 
   test("credit note snapshot links the original and flags an internal cancellation", async () => {
@@ -383,8 +469,17 @@ describe("regimeSnapshot", () => {
       billing_city: "Paris",
       billing_country_code: "FR",
     }
-    const buyer = await resolveBuyerFacts(db, { docType: "credit_note", contact_id: null, snapshot: {}, original })
-    const gi = input({ docType: "credit_note", buyer, original: { id: original.id, regime: "e_invoice", transmissionStatus: "rejected" } })
+    const buyer = await resolveBuyerFacts(db, {
+      docType: "credit_note",
+      contact_id: null,
+      snapshot: {},
+      original,
+    })
+    const gi = input({
+      docType: "credit_note",
+      buyer,
+      original: { id: original.id, regime: "e_invoice", transmissionStatus: "rejected" },
+    })
     const ev = evaluateEinvoiceGate(gi)
     const s = regimeSnapshot({ evaluation: ev, input: gi, issuedAt: "2026-11-03", delivery: null })
     expect(s.original_document_id).toBe("doc-orig-3")
@@ -395,7 +490,11 @@ describe("regimeSnapshot", () => {
 describe("resolveGateMode", () => {
   test("pre-P1 issued documents → warn (materialised as upgrade_default)", async () => {
     const db = createMockDb({
-      seed: { documents: [{ id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null }] },
+      seed: {
+        documents: [
+          { id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null },
+        ],
+      },
     })
     expect(await resolveGateMode(db, { materialise: true })).toBe("warn")
     const rows = db.__all("einvoicing_settings")
@@ -413,21 +512,32 @@ describe("resolveGateMode", () => {
       regime: null,
     }))
     const db = createMockDb({
-      seed: { documents: [...drafts, { id: "d-old", type: "invoice", status: "paid", number: "F-2025-0042", regime: null }] },
+      seed: {
+        documents: [
+          ...drafts,
+          { id: "d-old", type: "invoice", status: "paid", number: "F-2025-0042", regime: null },
+        ],
+      },
     })
     expect(await resolveGateMode(db, { materialise: false })).toBe("warn")
   })
 
   test("a numbered quote alone (never issued as an invoice status) → enforce", async () => {
     const db = createMockDb({
-      seed: { documents: [{ id: "q1", type: "quote", status: "sent", number: "Q-2026-0001", regime: null }] },
+      seed: {
+        documents: [
+          { id: "q1", type: "quote", status: "sent", number: "Q-2026-0001", regime: null },
+        ],
+      },
     })
     expect(await resolveGateMode(db, { materialise: false })).toBe("enforce")
   })
 
   test("drafts without a number do not count as pre-P1 issued documents", async () => {
     const db = createMockDb({
-      seed: { documents: [{ id: "d0", type: "invoice", status: "draft", number: null, regime: null }] },
+      seed: {
+        documents: [{ id: "d0", type: "invoice", status: "draft", number: null, regime: null }],
+      },
     })
     expect(await resolveGateMode(db, { materialise: false })).toBe("enforce")
   })
@@ -442,7 +552,9 @@ describe("resolveGateMode", () => {
     const db = createMockDb({
       seed: {
         einvoicing_settings: [{ id: "s1", gate_mode: "enforce", gate_mode_source: "config" }],
-        documents: [{ id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null }],
+        documents: [
+          { id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null },
+        ],
       },
     })
     expect(await resolveGateMode(db, { materialise: true })).toBe("enforce")
@@ -451,7 +563,11 @@ describe("resolveGateMode", () => {
 
   test("the read path does not write", async () => {
     const db = createMockDb({
-      seed: { documents: [{ id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null }] },
+      seed: {
+        documents: [
+          { id: "d1", type: "invoice", status: "issued", number: "F-2026-0001", regime: null },
+        ],
+      },
     })
     expect(await resolveGateMode(db, { materialise: false })).toBe("warn")
     expect(db.__all("einvoicing_settings").length).toBe(0)

@@ -2,9 +2,15 @@
 //
 // Invoicing mutations: Settings issuer-profile CRUD.
 
-import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
 import { readMinorAmount } from "@liaison/app-sdk"
-import { type ErrorEnvelope, type MutationsCtx, type MutationResult, type PreflightResult, invalidAmountError } from "./shared"
+import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
+import {
+  type ErrorEnvelope,
+  invalidAmountError,
+  type MutationResult,
+  type MutationsCtx,
+  type PreflightResult,
+} from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Task F — Settings issuer-profile CRUD + PDF retry. Back the Settings page
@@ -123,7 +129,9 @@ function issuerAdminRequired(what: string): ErrorEnvelope {
 /** Refuse unless the caller holds ISSUER_ADMIN_SCOPE. No scope check on the ctx (a caller outside
  *  the kernel bridge) refuses: the default is the safe side. */
 async function holdsIssuerAdmin(ctx: MutationsCtx): Promise<boolean> {
-  return typeof ctx.hasScope === "function" ? (await ctx.hasScope(ISSUER_ADMIN_SCOPE)) === true : false
+  return typeof ctx.hasScope === "function"
+    ? (await ctx.hasScope(ISSUER_ADMIN_SCOPE)) === true
+    : false
 }
 
 /** The authority check shared by the handlers and their stage-time preflights, so an agent call
@@ -139,7 +147,10 @@ async function checkIssuerWriteAuthority(
   const data = pickIssuerWrite(input)
   const before =
     action === "update" && input.id
-      ? ((await ctx.db.findOne("issuer_profiles", String(input.id))) as Record<string, unknown> | null)
+      ? ((await ctx.db.findOne("issuer_profiles", String(input.id))) as Record<
+          string,
+          unknown
+        > | null)
       : null
   const touched = sensitiveColumnsTouched(data, action === "update" ? (before ?? {}) : null)
   if (touched.length === 0 || (await holdsIssuerAdmin(ctx))) return null
@@ -231,7 +242,8 @@ export async function settingsIssuerProfileCreate(
     }
   }
   const refused =
-    (await checkIssuerWriteAuthority(ctx, "create", input)) ?? (await checkWrittenFields(ctx, input))
+    (await checkIssuerWriteAuthority(ctx, "create", input)) ??
+    (await checkWrittenFields(ctx, input))
   if (refused) return refused
   const row = (await ctx.db.insert("issuer_profiles", data)) as Record<string, unknown>
   await emitIssuerProfileChange(ctx, "created", String(row.id), null, data)
@@ -265,7 +277,8 @@ export async function settingsIssuerProfileUpdate(
     }
   }
   const refused =
-    (await checkIssuerWriteAuthority(ctx, "update", input)) ?? (await checkWrittenFields(ctx, input))
+    (await checkIssuerWriteAuthority(ctx, "update", input)) ??
+    (await checkWrittenFields(ctx, input))
   if (refused) return refused
   const before = (await ctx.db.findOne("issuer_profiles", id)) as Record<string, unknown> | null
   await ctx.db.update("issuer_profiles", id, data)

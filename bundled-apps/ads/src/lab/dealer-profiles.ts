@@ -10,14 +10,12 @@
 // All handlers use (params, ctx) — the kernel convention.
 
 import type { AppCtx } from "../lib/ctx-types"
-import {
-  type PreflightOutcome,
-  refuse,
-  throwIfRefused,
-  toPreflightResult,
-} from "../lib/preflight"
+import { type PreflightOutcome, refuse, throwIfRefused, toPreflightResult } from "../lib/preflight"
 
-function checkString(p: Record<string, unknown>, field: string): PreflightOutcome<{ value: string }> {
+function checkString(
+  p: Record<string, unknown>,
+  field: string,
+): PreflightOutcome<{ value: string }> {
   const v = p[field]
   if (typeof v !== "string" || !v) {
     return refuse("invalid_params", `${field} is required`)

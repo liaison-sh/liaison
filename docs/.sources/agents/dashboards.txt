@@ -213,3 +213,20 @@ Periods start from today in the org's time zone -> apps/web/src/modules/dashboar
 Month, quarter (Q4 2026, T4 2026) and year labels -> apps/web/src/modules/dashboards/blocks/format.ts:66
 Percentage of total read as a percent -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:40
 Metric read from a single record has no rows button -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:253
+In a shared conversation, dashboard reads use the conversation's narrower access -> apps/api/src/modules/dashboards/tools.ts:126 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45
+Date charts that follow the period get every bucket -> apps/api/src/modules/dashboards/transform.ts:627
+At most 400 buckets filled -> apps/api/src/modules/dashboards/transform.ts:1044
+Quiet day is 0, average/lowest/highest an empty gap -> apps/api/src/modules/dashboards/transform.ts:724
+Compared period laid out day for day over its own window -> apps/api/src/modules/dashboards/service.ts:1639
+Bucket holding today marked in progress -> apps/api/src/modules/dashboards/transform.ts:704
+Headline: period figure over every row, or one per series -> apps/api/src/modules/dashboards/transform.ts:735
+Smooth line -> apps/api/src/modules/dashboards/transform.ts:990
+Blended chart: 2 or 3 sources in a combo -> apps/api/src/modules/dashboards/spec.ts:780
+Blended sources join on the same date bucket only -> apps/api/src/modules/dashboards/spec.ts:641
+Blended figures from the sources' totals (units per session) -> apps/api/src/modules/dashboards/spec.ts:348
+One source failing shows its reason, the others still draw -> apps/api/src/modules/dashboards/transform.ts:1184
+Records behind a blended chart read one source at a time -> apps/api/src/modules/dashboards/service.ts:1752
+An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
+Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
+A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257
+A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853

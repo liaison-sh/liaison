@@ -1,0 +1,14 @@
+{
+  "entry": "tool:prep_order_prefill",
+  "params": {
+    "order_number": "#1042"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": ["shopify:orders_search", "{\"query\":\"name:\\\"#1042\\\"\",\"limit\":5}"],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_not_found\",\"message\":\"tool shopify:orders_search not registered\",\"retryable\":false}}"
+    }
+  ]
+}

@@ -35,7 +35,7 @@ beforeAll(async () => {
   // internal helper by re-executing the same file the CLI would).
   const { readFileSync } = await import("node:fs")
   const grantsPath = new URL(
-    "../apps/api/src/apps/database/generated/readonly-grants.sql",
+    "../apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql",
     import.meta.url,
   ).pathname
   const grants = readFileSync(grantsPath, "utf-8")
@@ -52,7 +52,7 @@ describe("db-readonly-role — idempotence", () => {
   test("running the generated grants twice does not error", async () => {
     const { readFileSync } = await import("node:fs")
     const grantsPath = new URL(
-      "../apps/api/src/apps/database/generated/readonly-grants.sql",
+      "../apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql",
       import.meta.url,
     ).pathname
     const grants = readFileSync(grantsPath, "utf-8")

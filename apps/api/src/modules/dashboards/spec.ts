@@ -72,6 +72,12 @@ export const MAX_WHERE = 10
 export const MAX_TEXT_LENGTH = 4_000
 export const MAX_MEASURES = 6
 export const MAX_FUNNEL_STAGES = 12
+/** Sources one layered (blended) chart reads, each its own run. */
+export const MAX_LAYERS = 3
+/** Headline figures a layered chart computes from its layers' totals. */
+export const MAX_HEADLINE_CALCS = 3
+export const CURVES = ["smooth", "linear"] as const
+export const HEADLINE_MODES = ["total", "series"] as const
 /** A dashboard's description (plain text under its title). */
 export const MAX_DESCRIPTION_LENGTH = 500
 
@@ -334,6 +340,16 @@ export const blockMapSchema = z
       .optional(),
     /** bar, line, area, pie, funnel: each value as a percentage of its series' total. */
     percentOfTotal: z.boolean().optional(),
+    /** line, area, combo: how the line is drawn between points (default linear). */
+    curve: z.enum(CURVES).optional(),
+    /** bar, line, area, combo: the period's figure(s) over all rows, with the comparison's. */
+    headline: z.enum(HEADLINE_MODES).optional(),
+    /** A layered chart: figures computed from its layers' totals ("units / sessions"). */
+    headlineCalc: z
+      .array(z.object({ label: z.string().min(1).max(80), expr: exprText }).strict())
+      .min(1)
+      .max(MAX_HEADLINE_CALCS)
+      .optional(),
   })
   .strict()
 
@@ -514,6 +530,137 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
   if ((map.stages || map.order) && type !== "funnel") {
     out.push("map.stages and map.order are for a funnel")
   }
+  if (map.curve && type !== "line" && type !== "area" && type !== "combo") {
+    out.push("map.curve is for a line, area or combo chart")
+  }
+  if (map.headline) {
+    if (!chart) out.push("map.headline is for a bar, line, area or combo chart")
+    if (map.percentOfTotal) {
+      out.push("map.headline shows totals: it does not go with map.percentOfTotal")
+    }
+    if (map.headline === "total" && map.measures) {
+      out.push(
+        'map.headline "total" sums one value: with map.measures use "series" (one per measure)',
+      )
+    }
+  }
+  if (map.headlineCalc) {
+    out.push("map.headlineCalc is for a layered combo block (block.layers)")
+  }
+  return out
+}
+
+/** The keys a layered block's own map takes (the rest goes in each layer's map). */
+const LAYERED_MAP_KEYS = new Set(["curve", "headlineCalc", "format", "currency"])
+/** The keys a layer's map never takes. */
+const LAYER_MAP_REFUSED = [
+  "x",
+  "curve",
+  "lineSeries",
+  "secondaryAxis",
+  "horizontal",
+  "headlineCalc",
+]
+
+/**
+ * A layered (blended) chart's problems, each with the path it is about: a combo whose layers each
+ * read their own source and join on the same date bucket.
+ */
+function layeredProblems(block: {
+  type: BlockType
+  map: BlockMap
+  layers: Layer[]
+  timeRange?: BlockRangeMode | undefined
+  source?: unknown
+  dataset?: unknown
+  text?: unknown
+}): { path: (string | number)[]; message: string }[] {
+  const out: { path: (string | number)[]; message: string }[] = []
+  if (block.type !== "combo") {
+    out.push({ path: ["type"], message: 'a block with layers is a "combo" block' })
+  }
+  if (block.source !== undefined || block.dataset !== undefined || block.text !== undefined) {
+    out.push({
+      path: ["source"],
+      message:
+        "a block with layers reads its sources in its layers: no block source, dataset or text",
+    })
+  }
+  const extra = Object.keys(block.map).filter((k) => !LAYERED_MAP_KEYS.has(k))
+  if (extra.length) {
+    out.push({
+      path: ["map"],
+      message: `a layered block's map takes curve, headlineCalc, format and currency: ${extra.join(", ")} go in each layer's map`,
+    })
+  }
+  const ids = new Set<string>()
+  const buckets = new Set<string>()
+  block.layers.forEach((layer, i) => {
+    const at = (...p: (string | number)[]) => ["layers", i, ...p]
+    if (ids.has(layer.id))
+      out.push({ path: at("id"), message: `layer id '${layer.id}' is used twice` })
+    ids.add(layer.id)
+    if (!layer.source === !layer.dataset) {
+      out.push({
+        path: at("source"),
+        message: "a layer reads either its own source or a dataset (one of source, dataset)",
+      })
+    }
+    for (const message of mapProblems(layer.as, layer.map)) out.push({ path: at("map"), message })
+    for (const k of LAYER_MAP_REFUSED) {
+      if (layer.map[k as keyof BlockMap] !== undefined) {
+        out.push({
+          path: at("map"),
+          message:
+            k === "x"
+              ? "layers join on a date bucket: give map.groupBy {field, bucket}, not map.x"
+              : `a layer's map takes no ${k} (${k === "curve" || k === "headlineCalc" ? "it goes in the block's map" : "a layer is drawn by its as and axis"})`,
+        })
+      }
+    }
+    if (!layer.map.groupBy?.bucket) {
+      out.push({
+        path: at("map"),
+        message: "layers join on a date bucket: give map.groupBy {field, bucket}",
+      })
+    } else buckets.add(layer.map.groupBy.bucket)
+    if (layer.source) {
+      const field = layer.source.kind === "tool" ? "params" : "query"
+      const value = sourceValue(layer.source)
+      for (const message of dateTokenProblems(value, "")) {
+        out.push({ path: at("source", field), message })
+      }
+      for (const message of rangeModeProblems(block.timeRange, value, field)) {
+        out.push({ path: ["timeRange"], message: `layer '${layer.id}': ${message}` })
+      }
+    }
+  })
+  if (buckets.size > 1) {
+    out.push({
+      path: ["layers"],
+      message: `every layer uses the same bucket (${[...buckets].join(", ")}): the layers join on it`,
+    })
+  }
+  for (const [i, calc] of (block.map.headlineCalc ?? []).entries()) {
+    for (const p of exprProblems(calc.expr, [...ids])) {
+      out.push({ path: ["map", "headlineCalc", i], message: `"${calc.label}" expr: ${p}` })
+    }
+    let names: string[] = []
+    try {
+      names = exprNames(calc.expr)
+    } catch {
+      // reported above
+    }
+    for (const n of names) {
+      const layer = block.layers.find((l) => l.id === n)
+      if (layer && layer.map.headline !== "total") {
+        out.push({
+          path: ["map", "headlineCalc", i],
+          message: `"${calc.label}" reads the layer '${n}''s total: give that layer map.headline "total"`,
+        })
+      }
+    }
+  }
   return out
 }
 
@@ -588,6 +735,24 @@ export function sourceValue(source: BlockSource): Record<string, unknown> {
   return source.kind === "tool" ? source.params : source.query
 }
 
+export const LAYER_ID = EXPR_NAME
+export const layerSchema = z
+  .object({
+    /** Unique in the block; a headlineCalc expr reads the layer's total by it. */
+    id: z
+      .string()
+      .regex(LAYER_ID, "a layer id is a letter or _ then up to 39 letters, digits or _"),
+    /** The name of an unsplit layer's series and of its headline figure (default the id). */
+    label: z.string().min(1).max(80).optional(),
+    as: z.enum(["bar", "line"]),
+    axis: z.enum(["left", "right"]).optional(),
+    source: blockSourceSchema.optional(),
+    dataset: datasetId.optional(),
+    map: blockMapSchema,
+  })
+  .strict()
+export type Layer = z.infer<typeof layerSchema>
+
 export const dashboardBlockSchema = z
   .object({
     id: z
@@ -611,9 +776,17 @@ export const dashboardBlockSchema = z
      * range token, else "fixed" (every block saved before ranges existed).
      */
     timeRange: z.enum(BLOCK_RANGE_MODES).optional(),
+    /** A blended chart (combo): 2-3 sources, each drawn as bars or a line, joined on the date bucket. */
+    layers: z.array(layerSchema).min(2).max(MAX_LAYERS).optional(),
   })
   .strict()
   .superRefine((block, ctx) => {
+    if (block.layers) {
+      for (const p of layeredProblems({ ...block, layers: block.layers })) {
+        ctx.addIssue({ code: "custom", path: p.path, message: p.message })
+      }
+      return
+    }
     for (const message of mapProblems(block.type, block.map)) {
       ctx.addIssue({ code: "custom", path: ["map"], message })
     }
@@ -750,6 +923,51 @@ export const dashboardSpecSchema = z
     }
     const used = new Set<string>()
     spec.blocks.forEach((block, i) => {
+      for (const [l, layer] of (block.layers ?? []).entries()) {
+        const at = ["blocks", i, "layers", l]
+        if (layer.source) unknownFilters(sourceValue(layer.source), [...at, "source"])
+        for (const [w, clause] of (layer.map.where ?? []).entries()) {
+          const v = clause.value
+          if (v && typeof v === "object" && !Array.isArray(v) && !filterIds.has(v.filter)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...at, "map", "where", w],
+              message: `names no filter '${v.filter}' in spec.filters`,
+            })
+          }
+        }
+        for (const id of calcDatasets(layer)) {
+          if (!datasets[id]) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...at, "map"],
+              message: `a measure reads no dataset '${id}' in spec.datasets`,
+            })
+          }
+        }
+        if (!layer.dataset) continue
+        const source = datasets[layer.dataset]
+        if (!source) {
+          ctx.addIssue({
+            code: "custom",
+            path: [...at, "dataset"],
+            message: `no dataset '${layer.dataset}' in spec.datasets`,
+          })
+          continue
+        }
+        const field = source.kind === "tool" ? "params" : "query"
+        for (const message of rangeModeProblems(
+          block.timeRange,
+          sourceValue(source),
+          `(dataset ${layer.dataset}) ${field}`,
+        )) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["blocks", i, "timeRange"],
+            message: `layer '${layer.id}': ${message}`,
+          })
+        }
+      }
       if (block.source) unknownFilters(sourceValue(block.source), ["blocks", i, "source"])
       for (const [w, clause] of (block.map.where ?? []).entries()) {
         const v = clause.value
@@ -814,11 +1032,19 @@ export function calcDatasets(block: Pick<DashboardBlock, "map">): string[] {
 
 /** How a block takes its dates (see dashboardBlockSchema.timeRange). */
 export function blockRangeMode(
-  block: Pick<DashboardBlock, "timeRange" | "source" | "dataset" | "type">,
+  block: Pick<DashboardBlock, "timeRange" | "source" | "dataset" | "type"> & {
+    layers?: DashboardBlock["layers"]
+  },
   datasets: DashboardSpec["datasets"] = undefined,
 ): BlockRangeMode {
   if (block.type === "text") return "fixed"
   if (block.timeRange) return block.timeRange
+  if (block.layers) {
+    // A layered block follows the range when one of its layers does.
+    return block.layers.some((l) => blockRangeMode({ type: l.as, ...l }, datasets) === "dashboard")
+      ? "dashboard"
+      : "fixed"
+  }
   const source = blockSourceOf(block, datasets)
   return source && hasRangeTokens(sourceValue(source)) ? "dashboard" : "fixed"
 }
@@ -842,4 +1068,31 @@ export function dashboardDefaultRange(spec: Pick<DashboardSpec, "timeRange" | "c
     timeRange: spec.timeRange ?? DEFAULT_TIME_RANGE,
     compare: spec.compare ?? DEFAULT_COMPARE,
   }
+}
+
+/** The separator between a layered block's id and a layer's id in its run's block id. */
+export const LAYER_SEP = "~"
+
+/**
+ * A layered block's layers as plain blocks (one source, one map each), id `<block>~<layer>`:
+ * each runs, caches and is checked exactly as a block would be. Any other block: itself.
+ */
+export function layerBlocks(block: DashboardBlock): DashboardBlock[] {
+  if (!block.layers) return [block]
+  return block.layers.map((layer) => ({
+    id: `${block.id}${LAYER_SEP}${layer.id}`,
+    type: layer.as,
+    title: layer.label ?? layer.id,
+    width: block.width,
+    map: layer.map,
+    ...(layer.source ? { source: layer.source } : {}),
+    ...(layer.dataset ? { dataset: layer.dataset } : {}),
+    ...(block.refreshSec !== undefined ? { refreshSec: block.refreshSec } : {}),
+    ...(block.timeRange ? { timeRange: block.timeRange } : {}),
+  }))
+}
+
+/** Every block of a spec with its layers spread out (see layerBlocks). */
+export function runnableBlocks(blocks: DashboardBlock[]): DashboardBlock[] {
+  return blocks.flatMap(layerBlocks)
 }

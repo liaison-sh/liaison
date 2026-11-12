@@ -3,6 +3,7 @@ import {
   agentMailAccessSchema,
   dictationPreferenceSchema,
   favoriteEmojiSchema,
+  hiddenSidebarAppsSchema,
   homeCardLayoutSchema,
   magicWandInstructionsSchema,
   SHIPPED_LOCALES,
@@ -22,6 +23,7 @@ import {
   updateAgentMailAccess,
   updateDictationAutoClean,
   updateFavoriteEmoji,
+  updateHiddenSidebarApps,
   updateHomeCardLayout,
   updateLanguage,
   updateMagicWandInstructions,
@@ -133,6 +135,24 @@ preferencesRoutes.put("/favorite-emoji", zValidator("json", favoriteEmojiSchema)
   const result = await withRequestRls(c, (rlsTx) =>
     updateFavoriteEmoji(userId, orgId, favoriteEmoji, { rlsTx }),
   )
+  return success(c, result)
+})
+
+// The rail entries the caller hid from their own sidebar (0293). Like
+// /favorite-emoji: the rail menu and Settings > Sidebar hold only this list.
+// A display preference: it changes no access. Committed, the caller's other
+// open apps re-apply it at once.
+preferencesRoutes.put("/hidden-apps", zValidator("json", hiddenSidebarAppsSchema), async (c) => {
+  const userId = c.get("userId")
+  const orgId = c.get("orgId")
+  const { hiddenSidebarApps } = c.req.valid("json")
+  const result = await withRequestRls(c, (rlsTx) =>
+    updateHiddenSidebarApps(userId, orgId, hiddenSidebarApps, { rlsTx }),
+  )
+  await broadcastReadState(orgId, userId, {
+    kind: "hidden_sidebar_apps",
+    hiddenSidebarApps: result.hiddenSidebarApps,
+  })
   return success(c, result)
 })
 

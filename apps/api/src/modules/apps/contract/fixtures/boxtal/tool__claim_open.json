@@ -1,0 +1,24 @@
+{
+  "entry": "tool:claim_open",
+  "params": {
+    "shipment_id": "b290f1e3-1544-4237-827a-e20b19217792",
+    "type": "damaged",
+    "amount": 120
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["shipment", "b290f1e3-1544-4237-827a-e20b19217792"],
+      "reply": "{\"id\":\"b290f1e3-1544-4237-827a-e20b19217792\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-01 22:00:00+00\",\"updated_at\":\"2026-08-01 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-cust-daniel\",\"external_id\":\"INV-2026-0006\",\"document_ref\":\"dce60d81-cd48-4504-9177-c9bcbdeda965\",\"contact_ref\":null,\"offer_code\":\"UPSE-Express\",\"tracking_number\":\"DEMO000000147\",\"boxtal_shipment_ref\":\"DEMO-SHP-ship-cust-daniel\",\"queue_facts\":{\"items\":1,\"weight\":2.4,\"parcels\":[{\"width\":34,\"height\":16,\"length\":46,\"weight\":2.4}],\"category\":\"sale\",\"customer\":\"Daniel Okafor\",\"products\":\"1xPSP\",\"order_name\":\"INV-2026-0006\",\"staff_note\":\"Held at customs, missing a commercial invoice copy.\",\"destination\":\"GB\",\"package_count\":1,\"order_created_at\":\"2026-07-31T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"CONFIRMED\",\"tracking_status\":\"EXCEPTION\",\"status_fetched_at\":\"2026-09-16 09:00:00+00\",\"polled_at\":\"2026-09-16 09:00:00+00\",\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":399,\"label_cost_ttc\":33.6,\"currency\":\"EUR\",\"recipient_summary\":\"Daniel Okafor, Bristol, GB\",\"route_summary\":\"FR to GB\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":\"user\",\"fulfillment_synced\":true,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "claim",
+        "{\"shipment_id\":\"b290f1e3-1544-4237-827a-e20b19217792\",\"type\":\"damaged\",\"amount\":120,\"status\":\"open\",\"submitted_to_carrier\":false}"
+      ],
+      "reply": "{\"id\":\"90535b65-dfd6-48cb-ad0b-3de0e8301cc7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:39.26331+00\",\"updated_at\":\"2026-11-12 09:02:39.26331+00\",\"shipment_id\":\"b290f1e3-1544-4237-827a-e20b19217792\",\"type\":\"damaged\",\"amount\":120,\"status\":\"open\",\"evidence_file_ids\":[],\"submitted_to_carrier\":false}"
+    }
+  ]
+}

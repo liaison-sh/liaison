@@ -16,7 +16,7 @@
 // source the author cannot read is refused at save. The same check runs again
 // on every view, as the viewer.
 
-import { and, desc, eq, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
@@ -70,6 +70,7 @@ import {
   resolveWhere,
   sanitizeSavedFilterValues,
 } from "~/modules/dashboards/filters"
+import { type RebaseVersion, rebaseConflict } from "~/modules/dashboards/rebase"
 import {
   type CompareMode,
   compareWindow,
@@ -96,8 +97,11 @@ import {
   type DashboardSpec,
   dashboardDefaultRange,
   dashboardSpecSchema,
+  LAYER_SEP,
+  layerBlocks,
   MAX_SOURCE_ROWS,
   MAX_SOURCE_TTL_SEC,
+  runnableBlocks,
   sourceValue,
   specIssues,
   timeRangeSchema,
@@ -109,6 +113,7 @@ import {
   categoryField,
   categoryOf,
   linkFields,
+  mergeLayers,
   NONE_LABEL,
   projectRow,
   type RecordLink,
@@ -134,6 +139,8 @@ export class DashboardError extends Error {
     readonly code: DashboardErrorCode,
     message: string,
     readonly problems: string[] = [],
+    /** What a caller acts on besides the message (a conflict's current version). */
+    readonly body?: Record<string, unknown>,
   ) {
     super(message)
   }
@@ -288,6 +295,15 @@ export async function validateSpec(author: DashboardViewer, raw: unknown): Promi
     if (!check.ok) problems.push(`datasets.${id}: ${check.code}: ${check.message}`)
   }
   for (const [i, block] of parsed.data.blocks.entries()) {
+    for (const [l, layer] of (block.layers ?? []).entries()) {
+      if (!layer.source) continue
+      const check = await sourceCheck(layer.source)
+      if (!check.ok) {
+        problems.push(
+          `blocks.${i}.layers.${l} (${block.id}, layer ${layer.id}): ${check.code}: ${check.message}`,
+        )
+      }
+    }
     if (!block.source) continue
     const check = await sourceCheck(block.source)
     if (!check.ok) problems.push(`blocks.${i} (${block.id}): ${check.code}: ${check.message}`)
@@ -847,7 +863,9 @@ export async function updateDashboard(
   if (input.ifVersion !== undefined && input.ifVersion !== current.version) {
     throw new DashboardError(
       "VERSION_CONFLICT",
-      `the dashboard is at version ${current.version}, not ${input.ifVersion}`,
+      `the dashboard is at version ${current.version}, not ${input.ifVersion}: a whole-spec replace applies only to the version it was written against. Read it again (kernel__dashboards_get) and send it against version ${current.version}`,
+      [],
+      { currentVersion: current.version },
     )
   }
   const spec = input.spec === undefined ? undefined : await validateSpec(viewer, input.spec)
@@ -881,34 +899,51 @@ export async function updateDashboard(
 }
 
 export interface EditDashboardInput {
-  /** The version the operations were written against: a newer save refuses with VERSION_CONFLICT. */
+  /**
+   * The version the operations were written against. When the dashboard moved on since, they
+   * apply on top of the current version unless a version saved in between changed something
+   * they name (rebase.ts); then VERSION_CONFLICT names the operation and that version.
+   */
   ifVersion: number
   operations: EditOperation[]
+}
+
+/** How an edit written against an older version was applied on top of the current one. */
+export interface EditRebase {
+  /** The version the edit was written against. */
+  writtenAgainst: number
+  /** The version it was applied on top of. */
+  appliedOnTopOf: number
+  /** The versions saved in between, oldest first. */
+  between: Array<{ version: number; savedByName: string | null }>
 }
 
 /**
  * Applies `operations` in order to the saved dashboard and saves the result as one new
  * version, or nothing: the resulting spec is validated whole (spec.ts, and every block's
- * source for `viewer`), and an operation that cannot apply refuses the whole edit.
+ * source for `viewer`), and an operation that cannot apply refuses the whole edit. An edit
+ * written against an older version applies on top of the current one when it safely can
+ * (`rebased` says so).
  */
 export async function editDashboard(
   viewer: DashboardViewer,
   id: string,
   input: EditDashboardInput,
   tx?: RlsClient,
-): Promise<DashboardRecord> {
-  const { current, next } = await planEdit(viewer, id, input, tx)
-  return updateDashboard(
+): Promise<DashboardRecord & { rebased?: EditRebase }> {
+  const { current, next, rebased } = await planEdit(viewer, id, input, tx)
+  const saved = await updateDashboard(
     viewer,
     id,
     {
-      ifVersion: input.ifVersion,
+      ifVersion: current.version,
       spec: next.spec,
       ...(next.title !== current.title ? { title: next.title } : {}),
       ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
     },
     tx,
   )
+  return rebased ? { ...saved, rebased } : saved
 }
 
 /**
@@ -938,6 +973,79 @@ export async function checkEdit(
   return { cardLines }
 }
 
+/** The kept versions `from`..`to` of a dashboard, oldest first, as the rebase compares them. */
+async function readRebaseVersions(
+  t: Pick<RlsClient, "select">,
+  dashboardId: string,
+  from: number,
+  to: number,
+): Promise<RebaseVersion[]> {
+  const rows = await t
+    .select({ v: dashboardVersions, savedByName: users.name })
+    .from(dashboardVersions)
+    .leftJoin(users, eq(users.id, dashboardVersions.savedBy))
+    .where(
+      and(
+        eq(dashboardVersions.dashboardId, dashboardId),
+        gte(dashboardVersions.version, from),
+        lte(dashboardVersions.version, to),
+      ),
+    )
+    .orderBy(asc(dashboardVersions.version))
+  return rows.map(({ v, savedByName }) => ({
+    version: v.version,
+    title: v.title,
+    visibility: v.visibility ?? null,
+    spec: v.spec,
+    savedByName: savedByName ?? null,
+  }))
+}
+
+/**
+ * Where an edit written against `ifVersion` applies: the current version itself, or on top
+ * of it when no version saved since changed what the edit names. Throws VERSION_CONFLICT
+ * naming the operation and the version otherwise.
+ */
+async function rebaseOnto(
+  viewer: DashboardViewer,
+  current: DashboardRow,
+  input: EditDashboardInput,
+  tx?: RlsClient,
+): Promise<EditRebase | null> {
+  if (input.ifVersion === current.version) return null
+  const reread = `read it again (kernel__dashboards_get) and send the change against version ${current.version}`
+  if (input.ifVersion > current.version) {
+    throw new DashboardError(
+      "VERSION_CONFLICT",
+      `the dashboard is at version ${current.version}, not ${input.ifVersion}: ${reread}`,
+      [],
+      { currentVersion: current.version },
+    )
+  }
+  const chain = await inTx(viewer, tx, (t) =>
+    readRebaseVersions(t, current.id, input.ifVersion, current.version),
+  )
+  const complete =
+    chain[0]?.version === input.ifVersion && chain.at(-1)?.version === current.version
+  const conflict = complete
+    ? rebaseConflict(input.operations, chain)
+    : {
+        message: `version ${input.ifVersion} or a version saved after it is no longer kept, so what changed since is unknown. The dashboard is now at version ${current.version}: ${reread}.`,
+      }
+  if (conflict) {
+    throw new DashboardError("VERSION_CONFLICT", conflict.message, [], {
+      currentVersion: current.version,
+      writtenAgainst: input.ifVersion,
+      ...("version" in conflict ? { changedBy: conflict.version } : {}),
+    })
+  }
+  return {
+    writtenAgainst: input.ifVersion,
+    appliedOnTopOf: current.version,
+    between: chain.slice(1).map((v) => ({ version: v.version, savedByName: v.savedByName })),
+  }
+}
+
 async function planEdit(
   viewer: DashboardViewer,
   id: string,
@@ -947,14 +1055,10 @@ async function planEdit(
   current: DashboardRow
   next: ReturnType<typeof applyOperations>
   versions: VersionLookup
+  rebased: EditRebase | null
 }> {
   const current = await loadRow(viewer, id, tx)
-  if (input.ifVersion !== current.version) {
-    throw new DashboardError(
-      "VERSION_CONFLICT",
-      `the dashboard is at version ${current.version}, not ${input.ifVersion}: read it again`,
-    )
-  }
+  const rebased = await rebaseOnto(viewer, current, input, tx)
   const targets = revertTargets(input.operations)
   const versions: VersionLookup = targets.length
     ? await inTx(viewer, tx, (t) =>
@@ -978,7 +1082,7 @@ async function planEdit(
     }
     throw err
   }
-  return { current, next, versions }
+  return { current, next, versions, rebased }
 }
 
 export async function deleteDashboard(
@@ -1117,10 +1221,12 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
   const add = (f: string | undefined) => {
     if (f) fields.add(f.split(".")[0]!)
   }
+  // A layered block's layers read as blocks of their own (`blk:<block>~<layer>`, or a dataset).
+  const all = runnableBlocks(spec.blocks)
   const blocks = sourceKey.startsWith("blk:")
-    ? spec.blocks.filter((b) => `blk:${b.id}` === sourceKey)
+    ? all.filter((b) => `blk:${b.id}` === sourceKey)
     : sourceKey.startsWith("ds:")
-      ? spec.blocks.filter((b) => b.dataset && `ds:${b.dataset}` === sourceKey)
+      ? all.filter((b) => b.dataset && `ds:${b.dataset}` === sourceKey)
       : []
   for (const b of blocks) {
     const m = b.map
@@ -1139,7 +1245,7 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
   }
   // Calculated values and measures of any block that read this dataset by name.
   if (sourceKey.startsWith("ds:")) {
-    for (const b of spec.blocks) {
+    for (const b of all) {
       const m = b.map
       for (const v of Object.values(m.values ?? {})) {
         if (`ds:${v.dataset}` !== sourceKey) continue
@@ -1177,7 +1283,7 @@ function project(read: SourceRows, fields: Set<string> | null): SourceRows {
 /** How long a source is cached: the shortest interval of the blocks that read it. */
 function sourceTtlSec(spec: DashboardSpec, sourceKey: SourceKey): number {
   if (sourceKey.startsWith("opt:")) return OPTION_SOURCE_TTL_SEC
-  const ttls = spec.blocks
+  const ttls = runnableBlocks(spec.blocks)
     .filter((b) =>
       sourceKey.startsWith("blk:") ? `blk:${b.id}` === sourceKey : `ds:${b.dataset}` === sourceKey,
     )
@@ -1189,7 +1295,8 @@ function runTargetOf(sourceKey: SourceKey): RunTarget {
   const id = sourceKey.slice(sourceKey.indexOf(":") + 1)
   if (sourceKey.startsWith("ds:")) return { datasetId: id }
   if (sourceKey.startsWith("opt:")) return { filterId: id }
-  return { blockId: id }
+  // A layer runs for its block (`<block>~<layer>`).
+  return { blockId: id.split(LAYER_SEP)[0]! }
 }
 
 /**
@@ -1454,6 +1561,84 @@ export async function getBlockData(
       compareWindow: null,
     }
   }
+  if (block.layers) return layeredBlockData(viewer, dashboard, block, values, opts, now)
+  return runBlockData(viewer, dashboard, block, values, opts, now, true)
+}
+
+/**
+ * A layered (blended) block: each layer runs as a block of its own (its source, cache, budget,
+ * eligibility, filters and comparison), one refresh limit for the whole block, then the layers
+ * are joined on their date buckets (transform.ts mergeLayers). A failed layer shows on its own;
+ * every layer failed refuses the block with the first one's reason.
+ */
+async function layeredBlockData(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  block: DashboardBlock,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+): Promise<BlockDataResponse> {
+  const blockId = block.id
+  if (opts.refresh && !(await takeRefresh(viewer, dashboard.row.id, blockId))) {
+    return {
+      blockId,
+      ok: false,
+      error: "rate_limited",
+      message: "this block was refreshed less than 30 seconds ago",
+    }
+  }
+  const layers = block.layers ?? []
+  const outs = await Promise.all(
+    layerBlocks(block).map((lb) => runBlockData(viewer, dashboard, lb, values, opts, now, false)),
+  )
+  const okOuts = outs.filter((o): o is Extract<BlockDataResponse, { ok: true }> => o.ok)
+  if (okOuts.length === 0) {
+    const first = outs[0] as Extract<BlockDataResponse, { ok: false }>
+    const layer = layers[0]
+    return {
+      ...first,
+      blockId,
+      message: `layer '${layer?.id ?? ""}': ${first.message}`,
+    }
+  }
+  const data = mergeLayers(
+    layers.map((layer, i) => {
+      const o = outs[i]!
+      return o.ok
+        ? { layer, data: o.data, ...(o.previousError ? { previousError: o.previousError } : {}) }
+        : { layer, error: { error: o.error, message: o.message } }
+    }),
+    block.map,
+  )
+  const lead = okOuts.find((o) => o.window.mode === "dashboard") ?? okOuts[0]!
+  return {
+    blockId,
+    ok: true,
+    data,
+    cached: okOuts.every((o) => o.cached),
+    computedAt: okOuts.map((o) => o.computedAt).sort()[0]!,
+    window: lead.window,
+    compareWindow: lead.compareWindow,
+  }
+}
+
+/**
+ * One block's (or one layer's) data: its source read through the cache, mapped, compared.
+ * `checkRefresh`: this run holds the block's refresh limit (a layer's block took it already).
+ */
+async function runBlockData(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  block: DashboardBlock,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+  checkRefresh: boolean,
+): Promise<BlockDataResponse> {
+  const { spec } = dashboard
+  const blockId = block.id
+  const dashboardId = dashboard.row.id
   const sp = blockSourcePlan(spec, block)
   if (!sp) {
     return { blockId, ok: false, error: "invalid_map", message: `no dataset '${block.dataset}'` }
@@ -1478,7 +1663,7 @@ export async function getBlockData(
   const refused = await sourceRefusal(viewer, plan.resolved)
   if (refused) return { ...refused, blockId, window, compareWindow: compareRange }
 
-  if (opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
+  if (checkRefresh && opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
     return {
       blockId,
       ok: false,
@@ -1495,6 +1680,7 @@ export async function getBlockData(
     window: range,
     where,
     timeZone: plan.timeZone,
+    today: dayIn(plan.timeZone, now),
     ...(linkApp ? { linkApp } : {}),
   }
   const current = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
@@ -1581,6 +1767,8 @@ export interface BlockRowsOptions extends Omit<BlockDataOptions, "refresh" | "co
   series?: string
   /** A table row's index in the block's data rows. */
   row?: number
+  /** A layered block: the layer whose rows to read (required there). */
+  layer?: string
   offset?: number
   limit?: number
   /** A CSV export: the limit may reach every row read (DRILL_EXPORT_LIMIT). */
@@ -1642,9 +1830,22 @@ export async function getBlockRows(
 ): Promise<BlockRowsResponse> {
   const dashboard = await loadDashboard(viewer, dashboardId)
   const { spec } = dashboard
-  const block = findBlock(spec, blockId)
+  let block = findBlock(spec, blockId)
   if (block.type === "text") {
     throw new DashboardError("INVALID_REQUEST", "a text block has no rows")
+  }
+  if (block.layers) {
+    // A layered block's rows are one layer's: that layer read as a block of its own.
+    const i = block.layers.findIndex((l) => l.id === opts.layer)
+    if (i < 0) {
+      throw new DashboardError(
+        "INVALID_REQUEST",
+        `a layered block's rows are one layer's: give layer (${block.layers.map((l) => l.id).join(", ")})`,
+      )
+    }
+    block = layerBlocks(block)[i]!
+  } else if (opts.layer !== undefined) {
+    throw new DashboardError("INVALID_REQUEST", "this block has no layers")
   }
   const values = filterValuesFor(spec, opts.filters)
   const now = opts.now ?? new Date()

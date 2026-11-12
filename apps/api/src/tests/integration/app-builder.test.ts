@@ -63,8 +63,12 @@ import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { resolveReferenceDisplay } from "~/modules/threads/reference-display"
 import { seedCustomAppInstall } from "~/seed/factories/org/platform-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 let orgId = ""
 let adminId = ""
@@ -155,6 +159,7 @@ const savedCustomApps = env.LIAISON_CUSTOM_APPS
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   // Organisations' own apps on: this server is self-hosted, where they default off.
   env.LIAISON_CUSTOM_APPS = "on"
   installRoot = mkdtempSync(join(tmpdir(), "app-builder-root-"))
@@ -185,6 +190,7 @@ afterAll(async () => {
   else process.env.LIAISON_APPS_DIR = savedAppsDir
   rmSync(installRoot, { recursive: true, force: true })
   env.LIAISON_CUSTOM_APPS = savedCustomApps
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

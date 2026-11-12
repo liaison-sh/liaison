@@ -2059,6 +2059,13 @@
       "when": 1900003385000,
       "tag": "0292_dashboard_versions_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1900003386000,
+      "tag": "0293_user_hidden_sidebar_apps",
+      "breakpoints": true
     }
   ]
 }

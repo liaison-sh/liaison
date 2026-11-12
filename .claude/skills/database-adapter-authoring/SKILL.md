@@ -20,9 +20,9 @@ Open `docs/database-connector.md` once — it's the architecture + safety-stack
 reference this skill assumes. If this skill and that doc disagree, the doc
 wins.
 
-Reference adapter: `apps/api/src/apps/database/adapters/liaison-self.ts` (the
+Reference adapter: `apps/api/src/modules/apps/connections/sql/adapters/liaison-self.ts` (the
 real, generic liaison-schema adapter). Reference fixture:
-`apps/api/src/apps/database/adapters/__fixtures__/toy-shop.ts` (a tiny
+`apps/api/src/modules/apps/connections/sql/adapters/__fixtures__/toy-shop.ts` (a tiny
 3-table adapter authored purely by following this skill — read it if you
 want to see the destination, not the process).
 
@@ -171,7 +171,7 @@ MIGRATION_DATABASE_URL=postgres://<owner>:<pw>@<host>/<db> \
 ```
 
 If you're extending `liaison-self`, the generated grants file
-(`apps/api/src/apps/database/generated/readonly-grants.sql`) is the ONE
+(`apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql`) is the ONE
 checked-in copy — the same file `deploy/postgres-init/20-readonly-role.sh`
 executes via a bind mount for fresh clusters, no second hand-maintained
 copy — rendered from the catalog by `packages/db-core/src/grants-renderer.ts`.
@@ -234,9 +234,9 @@ change, not something to improvise per-adapter.
 
 - `docs/database-connector.md` — architecture, safety stack, catalog format,
   troubleshooting.
-- `apps/api/src/apps/database/adapters/liaison-self.ts` — the real, generic
+- `apps/api/src/modules/apps/connections/sql/adapters/liaison-self.ts` — the real, generic
   reference adapter.
-- `apps/api/src/apps/database/adapters/__fixtures__/toy-shop.ts` — a tiny
+- `apps/api/src/modules/apps/connections/sql/adapters/__fixtures__/toy-shop.ts` — a tiny
   fixture adapter built purely from this skill; read it to see what "done"
   looks like for a brand-new, non-liaison target.
 - `apps/db-gate/catalog.example.yaml` — the YAML mirror of the same catalog

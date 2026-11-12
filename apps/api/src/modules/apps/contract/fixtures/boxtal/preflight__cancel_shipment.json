@@ -1,0 +1,22 @@
+{
+  "entry": "preflight:cancel_shipment",
+  "params": {
+    "id": "2611121002CHRP5CXMFR"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["boxtal"],
+      "reply": "{\"values\":{\"environment\":\"sandbox\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://api.boxtal.build/shipping/v3.1/shipping-order/2611121002CHRP5CXMFR",
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"boxtal\",\"scheme\":\"bearer\",\"exchange\":{\"url\":\"https://api.boxtal.build/iam/account-app/token\",\"fields\":[\"v3Key\",\"v3Secret\"]}},\"timeoutMs\":5000}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"timestamp\\\":\\\"2026-11-12T10:02:44.859222+01:00\\\",\\\"status\\\":200,\\\"content\\\":{\\\"id\\\":\\\"2611121002CHRP5CXMFR\\\",\\\"shipmentId\\\":\\\"235586\\\",\\\"status\\\":\\\"CONFIRMED\\\",\\\"deliveryPriceExclTax\\\":{\\\"value\\\":4.39,\\\"currency\\\":\\\"EUR\\\"},\\\"insurancePriceExclTax\\\":null,\\\"expectedTakingOverDate\\\":\\\"2026-11-12\\\",\\\"estimatedDeliveryDate\\\":\\\"2026-11-16\\\"}}\"}"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "entry": "tool:settings_carrier_allowlist_get",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"carrier_allowlist\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"0c2e00b3-935e-47f0-97ef-1754bfa72ec2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:09.016206+00\",\"updated_at\":\"2026-11-12 09:01:24.950761+00\",\"key\":\"carrier_allowlist\",\"value\":[]}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"exclude_pickup_point_services\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"2325708b-210a-435a-89a2-102e631b913b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:09.032123+00\",\"updated_at\":\"2026-11-12 09:01:24.983124+00\",\"key\":\"exclude_pickup_point_services\",\"value\":true}]"
+    }
+  ]
+}

@@ -12,7 +12,9 @@
  * the sandboxed run itself (QuickJS and Workers) is covered by
  * modules/apps/workers/executor-parity.test.ts.
  */
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { knowledgeCreateDocumentSchema } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import {
   AppSourceConflictError,
@@ -22,7 +24,11 @@ import {
 } from "~/apps/knowledge/app-sources"
 import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
-import { type KnowledgeActor, knowledgeActorFromContext } from "~/apps/knowledge/service"
+import {
+  createKnowledgeDocument,
+  type KnowledgeActor,
+  knowledgeActorFromContext,
+} from "~/apps/knowledge/service"
 import {
   createSyncedSource,
   type SyncedSourceRow,
@@ -50,7 +56,13 @@ let carol = ""
 /** The fixture provider: per source, its notes by page (`pages[n]` = page n's notes). */
 const provider = new Map<
   string,
-  { pages: string[][]; deletes?: Record<number, string[]>; failAt?: number }
+  {
+    pages: string[][]
+    deletes?: Record<number, string[]>
+    failAt?: number
+    /** Raw pages (documents and folders) returned as they are, in place of `pages`. */
+    raw?: Array<Record<string, unknown>>
+  }
 >()
 const calls: Array<{ sourceId: string; cursor: unknown; userId: string }> = []
 
@@ -62,6 +74,15 @@ async function notesHandler(input: AppSourceSyncInput, tenant: { orgId: string; 
   if (spec.failAt === page) {
     spec.failAt = undefined
     throw new Error(`provider failed on page ${page}`)
+  }
+  if (spec.raw) {
+    const at = typeof input.cursor === "number" ? input.cursor % spec.raw.length : 0
+    return {
+      ...spec.raw[at],
+      nextCursor: at + 1,
+      done: at + 1 >= spec.raw.length,
+      prune: input.config.prune === true,
+    }
   }
   const prefix = String(input.config.prefix ?? "")
   return {
@@ -206,6 +227,56 @@ async function docsOf(sourceId: string) {
       ORDER BY si.external_id`),
   )
 }
+
+/** The source's folders: external id -> name, parent (external id or "root"), archived. */
+async function foldersOf(source: SyncedSourceRow) {
+  const prefix = `synced:${source.id}:`
+  const rows = extractRows<{
+    id: string
+    external_id: string
+    name: string
+    parent: string | null
+    archived: boolean
+    org_id: string
+  }>(
+    await db.execute(sql`
+      SELECT c.id, substr(c.description, ${prefix.length + 1}) AS external_id, c.name,
+             CASE WHEN c.parent_collection_id = ${source.rootCollectionId}::uuid THEN 'root'
+                  ELSE substr(p.description, ${prefix.length + 1}) END AS parent,
+             c.archived_at IS NOT NULL AS archived, c.org_id::text AS org_id
+      FROM ${knowledgeRel("collections")} c
+      LEFT JOIN ${knowledgeRel("collections")} p ON p.id = c.parent_collection_id
+      WHERE starts_with(c.description, ${prefix})
+      ORDER BY 2`),
+  )
+  return Object.fromEntries(rows.map((r) => [r.external_id, r]))
+}
+
+/** Where each live document of the source is filed: its folder's external id, or "root". */
+async function placementOf(source: SyncedSourceRow) {
+  const prefix = `synced:${source.id}:`
+  const rows = extractRows<{ external_id: string; folder: string }>(
+    await db.execute(sql`
+      SELECT si.external_id,
+             string_agg(CASE WHEN c.id = ${source.rootCollectionId}::uuid THEN 'root'
+                             ELSE substr(c.description, ${prefix.length + 1}) END, ',') AS folder
+      FROM ${knowledgeRel("documents")} d
+      JOIN ${knowledgeRel("source_identities")} si ON si.id = d.source_identity_id
+      JOIN ${knowledgeRel("collection_memberships")} cm ON cm.target_type = 'document' AND cm.target_id = d.id
+      JOIN ${knowledgeRel("collections")} c ON c.id = cm.collection_id
+      WHERE d.synced_source_id = ${source.id}::uuid AND d.archived_at IS NULL
+      GROUP BY si.external_id
+      ORDER BY si.external_id`),
+  )
+  return Object.fromEntries(rows.map((r) => [r.external_id, r.folder]))
+}
+
+const note = (externalId: string, over: Record<string, unknown> = {}) => ({
+  externalId,
+  title: externalId.toUpperCase(),
+  body: `body of ${externalId}`,
+  ...over,
+})
 
 beforeAll(async () => {
   await acquireTestLock()
@@ -365,6 +436,354 @@ describe("an app source syncs into Knowledge", () => {
     expect(await loadAppSourceOwnerScopes(orgB, owner.id)).toBeNull()
     await db.execute(sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${owner.id}`)
     expect(await loadAppSourceOwnerScopes(orgA, owner.id)).toBeNull()
+  })
+})
+
+describe("an app source files its documents in folders", () => {
+  it("creates the folders under the source's collection, declared or from a path", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          // A child declared before its parent, across a page boundary below.
+          folders: {
+            upsert: [
+              { externalId: "f-setup", name: "Setup", parentExternalId: "f-guides" },
+              { externalId: "f-guides", name: "Guides" },
+            ],
+          },
+          documents: { upsert: [note("d1", { folderId: "f-setup" }), note("d2")] },
+        },
+        {
+          documents: {
+            upsert: [note("d3", { folderId: "f-guides" }), note("d4", { folderPath: "ref/api" })],
+          },
+        },
+      ],
+    })
+    await drive(source.id)
+    const folders = await foldersOf(source)
+    expect(
+      Object.values(folders).map((f) => [f.external_id, f.name, f.parent, f.archived, f.org_id]),
+    ).toEqual([
+      ["f-guides", "Guides", "root", false, orgA],
+      ["f-setup", "Setup", "f-guides", false, orgA],
+      ["ref", "ref", "root", false, orgA],
+      ["ref/api", "api", "ref", false, orgA],
+    ])
+    expect(await placementOf(source)).toEqual({
+      d1: "f-setup",
+      d2: "root",
+      d3: "f-guides",
+      d4: "ref/api",
+    })
+    // A second pass reuses every folder: no duplicate collection.
+    await drive(source.id)
+    expect(Object.keys(await foldersOf(source))).toHaveLength(4)
+    expect((await sourceState(source.id)).last_sync_status).toBe("ok")
+  })
+
+  it("renames and moves folders and documents, keeping each collection, and drops emptied folders", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: {
+            upsert: [
+              { externalId: "a", name: "A" },
+              { externalId: "b", name: "B" },
+              { externalId: "c", name: "C", parentExternalId: "a" },
+              { externalId: "empty", name: "Empty" },
+            ],
+          },
+          documents: {
+            upsert: [
+              note("n1", { folderId: "a" }),
+              note("n2", { folderId: "c" }),
+              note("n3", { folderId: "b" }),
+            ],
+          },
+        },
+      ],
+    })
+    await drive(source.id)
+    const before = await foldersOf(source)
+    expect(before.empty?.archived).toBe(false)
+
+    // Next pass: "a" is renamed, "c" moves under "b", n1 moves to the root and
+    // n3 into "c": "a" lost its last item and is not declared, so it goes.
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: {
+            upsert: [
+              { externalId: "a", name: "A renamed" },
+              { externalId: "c", name: "C", parentExternalId: "b" },
+            ],
+          },
+          documents: { upsert: [note("n1"), note("n3", { folderId: "c" })] },
+        },
+      ],
+    })
+    await drive(source.id)
+    let after = await foldersOf(source)
+    expect(after.a?.id).toBe(before.a?.id)
+    expect(after.c?.id).toBe(before.c?.id)
+    expect(after.a?.name).toBe("A renamed")
+    expect(after.c?.parent).toBe("b")
+    expect(await placementOf(source)).toEqual({ n1: "root", n2: "c", n3: "c" })
+    // "a" was declared in this page: kept although empty. "b" holds "c": kept.
+    expect([after.a?.archived, after.b?.archived, after.c?.archived]).toEqual([false, false, false])
+
+    // A page that only moves n2 and n3 out of "c" empties it; "b" then holds
+    // nothing either, and goes too. "empty" was never touched: it stays.
+    provider.set(source.id, {
+      pages: [],
+      raw: [{ documents: { upsert: [note("n2", { folderId: "a" }), note("n3")] } }],
+    })
+    await drive(source.id)
+    after = await foldersOf(source)
+    expect([
+      after.a?.archived,
+      after.b?.archived,
+      after.c?.archived,
+      after.empty?.archived,
+    ]).toEqual([false, true, true, false])
+    // Filing a document in an archived folder brings it back, with its parent.
+    provider.set(source.id, {
+      pages: [],
+      raw: [{ documents: { upsert: [note("n3", { folderId: "c" })] } }],
+    })
+    await drive(source.id)
+    after = await foldersOf(source)
+    expect([after.b?.archived, after.c?.archived]).toEqual([false, false])
+    expect(after.c?.id).toBe(before.c?.id)
+    expect((await placementOf(source)).n3).toBe("c")
+  })
+
+  it("deletes a folder with its subfolders and the documents still in it", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: {
+            upsert: [
+              { externalId: "top", name: "Top" },
+              { externalId: "sub", name: "Sub", parentExternalId: "top" },
+              { externalId: "keep", name: "Keep" },
+            ],
+          },
+          documents: {
+            upsert: [
+              note("t1", { folderId: "top" }),
+              note("s1", { folderId: "sub" }),
+              note("s2", { folderId: "sub" }),
+              note("k1", { folderId: "keep" }),
+            ],
+          },
+        },
+      ],
+    })
+    await drive(source.id)
+    // s2 moves out in the same page that deletes "top": it stays.
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: { delete: ["top", "never-declared"] },
+          documents: { upsert: [note("s2", { folderId: "keep" })] },
+        },
+      ],
+    })
+    await drive(source.id)
+    const folders = await foldersOf(source)
+    expect([folders.top?.archived, folders.sub?.archived, folders.keep?.archived]).toEqual([
+      true,
+      true,
+      false,
+    ])
+    expect(await placementOf(source)).toEqual({ k1: "keep", s2: "keep" })
+    expect((await docsOf(source.id)).filter((d) => d.archived).map((d) => d.external_id)).toEqual([
+      "s1",
+      "t1",
+    ])
+    const [events] = extractRows<{ n: number }>(
+      await db.execute(sql`
+        SELECT count(*)::int AS n FROM kernel.pending_events
+        WHERE org_id = ${orgA}::uuid
+          AND payload->>'action' = 'archive'
+          AND payload->'data'->>'syncedSourceId' = ${source.id}`),
+    )
+    expect(events?.n).toBe(2)
+  })
+
+  it("with prune, archives the folders the pass neither declared nor used", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice, config: { prune: true } })
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: { upsert: [{ externalId: "listed-empty", name: "Listed" }] },
+          documents: {
+            upsert: [note("p1", { folderPath: "x/y" }), note("p2", { folderPath: "gone" })],
+          },
+        },
+      ],
+    })
+    await drive(source.id)
+    // A person files their own document in "x": it keeps "x" when the source
+    // no longer lists anything there.
+    const x = (await foldersOf(source)).x!
+    const author = {
+      orgId: orgA,
+      userId: alice,
+      scopes: ["knowledge:documents:create", "knowledge:collections:manage", DOC_READ],
+      // An admin's wildcard grant: any sensitivity and team.
+      dimensionGrants: { "*": ["*"] },
+    }
+    await withRlsContext({ actorType: "user", ...author }, (tx) =>
+      createKnowledgeDocument(
+        tx,
+        knowledgeCreateDocumentSchema.parse({
+          documentScope: "organization",
+          title: "Mine",
+          body: "mine",
+          collectionIds: [x.id],
+        }),
+        knowledgeActorFromContext(author),
+        [],
+      ),
+    )
+
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: { upsert: [{ externalId: "listed-empty", name: "Listed" }] },
+          documents: { upsert: [note("p3")] },
+        },
+      ],
+    })
+    await drive(source.id)
+    const folders = await foldersOf(source)
+    expect(Object.values(folders).map((f) => [f.external_id, f.archived])).toEqual([
+      ["gone", true],
+      ["listed-empty", false],
+      ["x", false],
+      ["x/y", true],
+    ])
+    expect(await placementOf(source)).toEqual({ p3: "root" })
+  })
+
+  it("refuses a page filed in a folder the source never declared, or that nests folders in themselves", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    provider.set(source.id, {
+      pages: [],
+      raw: [{ documents: { upsert: [note("u1", { folderId: "nowhere" })] } }],
+    })
+    await expect(drive(source.id)).rejects.toThrow(
+      'folder "nowhere", which this source never declared',
+    )
+    let state = await sourceState(source.id)
+    expect(state.last_error).toStartWith("Sync page refused:")
+    expect(state.sync_generation).toBe(0)
+    expect(await docsOf(source.id)).toEqual([])
+
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: {
+            upsert: [
+              { externalId: "p", name: "P" },
+              { externalId: "q", name: "Q", parentExternalId: "p" },
+            ],
+          },
+        },
+      ],
+    })
+    await drive(source.id)
+    provider.set(source.id, {
+      pages: [],
+      raw: [{ folders: { upsert: [{ externalId: "p", name: "P", parentExternalId: "q" }] } }],
+    })
+    await expect(drive(source.id)).rejects.toThrow("cannot move into its own subfolder")
+    expect((await foldersOf(source)).p?.parent).toBe("root")
+    provider.set(source.id, {
+      pages: [],
+      raw: [
+        {
+          folders: {
+            upsert: [
+              { externalId: "m", name: "M", parentExternalId: "n" },
+              { externalId: "n", name: "N", parentExternalId: "m" },
+            ],
+          },
+        },
+      ],
+    })
+    await expect(drive(source.id)).rejects.toThrow("are placed inside each other")
+    state = await sourceState(source.id)
+    expect(state.last_sync_status).toBe("error")
+    expect(Object.keys(await foldersOf(source))).toEqual(["p", "q"])
+  })
+
+  it("a stale page writes no folder: the generation guard covers the tree", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    const begun = await dbAppSourceStore.beginAppSourcePass(source)
+    const page = {
+      upserts: [{ externalId: "g1", title: "G1", body: "x", folderId: "g" }],
+      deletes: [],
+      folders: [{ externalId: "g", name: "G", parentExternalId: null }],
+      nextCursor: 1,
+      done: false,
+      prune: false,
+    }
+    await dbAppSourceStore.applyAppSourcePage(source, begun, page)
+    await expect(
+      dbAppSourceStore.applyAppSourcePage(source, begun, {
+        ...page,
+        upserts: [{ externalId: "g2", title: "G2", body: "x", folderId: "h" }],
+        folders: [{ externalId: "h", name: "H", parentExternalId: null }],
+        folderDeletes: ["g"],
+      }),
+    ).rejects.toBeInstanceOf(AppSourceConflictError)
+    const folders = await foldersOf(source)
+    expect(Object.keys(folders)).toEqual(["g"])
+    expect(folders.g?.archived).toBe(false)
+    expect(await placementOf(source)).toEqual({ g1: "g" })
+  })
+
+  it("never touches another org's or another source's folders with the same ids", async () => {
+    const mine = await newSource({ orgId: orgA, userId: alice })
+    const sibling = await newSource({ orgId: orgA, userId: alice })
+    const theirs = await newSource({ orgId: orgB, userId: carol })
+    const first = [
+      {
+        folders: { upsert: [{ externalId: "shared", name: "Shared" }] },
+        documents: { upsert: [note("o1", { folderId: "shared" })] },
+      },
+    ]
+    for (const s of [mine, sibling, theirs]) provider.set(s.id, { pages: [], raw: first })
+    for (const s of [mine, sibling, theirs]) await drive(s.id)
+    provider.set(mine.id, {
+      pages: [],
+      raw: [{ folders: { upsert: [{ externalId: "shared", name: "Renamed" }], delete: [] } }],
+    })
+    await drive(mine.id)
+    provider.set(mine.id, { pages: [], raw: [{ folders: { delete: ["shared"] } }] })
+    await drive(mine.id)
+    expect((await foldersOf(mine)).shared?.archived).toBe(true)
+    for (const s of [sibling, theirs]) {
+      const f = (await foldersOf(s)).shared!
+      expect([f.name, f.archived]).toEqual(["Shared", false])
+      expect(await placementOf(s)).toEqual({ o1: "shared" })
+    }
+    expect((await foldersOf(theirs)).shared?.org_id).toBe(orgB)
   })
 })
 

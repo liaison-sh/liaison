@@ -18,7 +18,6 @@ import {
   type NormalizedOrder,
 } from "./lib/boxtal-v3-client"
 import type { CotationInput, CotationParty, Offer } from "./lib/boxtal-v1-client"
-import { defaultSleep, retryDelayMs } from "./lib/backoff"
 import {
   resolvePackages,
   type CatalogPack,
@@ -2065,10 +2064,6 @@ function partialBatchBlock(
 export async function importLabelDocument(
   ctx: ShipmentCtx,
   input: { id: string },
-  /** Pacing/clock injection, forwarded to the retry loop. The kernel handler
-   *  passes nothing (production defaults); tests drive the backoff with a fake
-   *  clock so no suite ever waits for wall-clock time. */
-  deps: LabelImportDeps = {},
   /** print_pack merges the parcels itself (its orientation pass), so it asks for them unmerged. */
   opts: { mergeParcels?: boolean } = {},
 ): Promise<{ label_file_id?: string; label_file_ids?: string[]; error?: { code: string; message: string } }> {
@@ -2091,10 +2086,8 @@ export async function importLabelDocument(
   if (!ctx.files_importFromUrl) {
     return { error: { code: "unsupported", message: "files_importFromUrl bridge unavailable in this runtime." } }
   }
-  // Was 8 (8 x the sandbox-wide 10s fetch cap = 80s inside a 60s tool budget:
-  // this is the call site print_pack reaches the loop through). The bounded
-  // default carries the arithmetic documented on importLabelFile.
-  const fileIds = await importLabelFiles(ctx, client, boxtalOrderId, String(row.id), LABEL_IMPORT_ATTEMPTS, deps)
+  // One read: a label not generated yet is "retry in a minute", never a wait inside this run.
+  const fileIds = await importLabelFiles(ctx, client, boxtalOrderId, String(row.id))
   if (fileIds.length === 0) {
     return {
       error: {
@@ -2911,7 +2904,7 @@ export async function pollCreateShipmentOutput(
   })) as Array<Record<string, unknown>>
   if (!row) return { ready: false }
 
-  const labelFileId = await importLabelFile(ctx, client, orderId, rowId, 1)
+  const labelFileId = await importLabelFile(ctx, client, orderId, rowId)
   if (!labelFileId) return { ready: false }
 
   let trackingNumber = (row.tracking_number as string | null) ?? null
@@ -2933,69 +2926,20 @@ export async function pollCreateShipmentOutput(
   }
 }
 
-/** Attempts the label-import loop makes before giving up. THREE, not eight:
- *  see the worst-case arithmetic on importLabelFile. */
-export const LABEL_IMPORT_ATTEMPTS = 3
-
-/** Hard wall-clock ceiling on the whole label-import loop. Checked BEFORE each
- *  attempt, so the loop can never start work it has no budget to finish. */
-export const LABEL_IMPORT_BUDGET_MS = 35_000
-
-/** Injectable pacing/clock for the label-import loop, so tests drive the
- *  backoff with a fake clock instead of sleeping for real. */
-export interface LabelImportDeps {
-  sleep?: (ms: number) => Promise<void>
-  random?: () => number
-  now?: () => number
-}
-
-/** Fetch the created order's LABEL document and import it into kernel.files
- *  under the shipment row via the binary-safe host bridge. Bounded attempts,
- *  never throws — a missing label at create time is a null, backfilled later
- *  via the import_label_document tool (get_documents always serves fresh URLs
- *  on demand).
- *
- *  WORST-CASE ARITHMETIC (prod, 2026-09: print_pack held a sandbox worker for
- *  37 to 39s and operators saw "Request failed" at 30s).
- *
- *    per Boxtal call   BOXTAL_CALL_BUDGET_MS      10s   (token + request + one
- *                                                        401 refresh, each round
- *                                                        trip capped at 5s)
- *    attempts          LABEL_IMPORT_ATTEMPTS       3
- *    backoff steps     2 x RETRY_CAP_MS            3s   (full jitter, so 3s is
- *                                                        the ceiling, not the mean)
- *    -------------------------------------------------
- *    worst case        3 x 10s + 3s               33s
- *    loop deadline     LABEL_IMPORT_BUDGET_MS     35s   (no attempt starts past it)
- *    tool budget                                  60s   -> 25s of headroom for the
- *                                                        rest of print_pack
- *
- *  The old shape was 8 attempts x the sandbox-wide 10s fetch cap = 80s inside a
- *  60s budget, with no pause between attempts.
- *
- *  A label that is genuinely not generated yet still returns null, so callers
- *  degrade (print_pack reports "Label not available yet"); this never throws. */
+/** Fetch the created order's LABEL documents and import them into kernel.files
+ *  under the shipment row via the binary-safe host bridge. ONE read per run, no
+ *  retry loop and no waiting: a run is woken, does its work and ends. A label
+ *  Boxtal has not generated yet is an empty answer, and a later run picks it up
+ *  (the create_shipment poll handler, the document-created webhook, or the next
+ *  import_label_document / print_pack). Never throws. */
 export async function importLabelFiles(
   ctx: ShipmentCtx,
   client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
   boxtalOrderId: string,
   shipmentRowId: string,
-  attempts = LABEL_IMPORT_ATTEMPTS,
-  deps: LabelImportDeps = {},
 ): Promise<string[]> {
   if (!ctx.files_importFromUrl) return []
-  const sleep = deps.sleep ?? defaultSleep
-  const random = deps.random ?? Math.random
-  const now = deps.now ?? (() => Date.now())
-  const ATTEMPTS = attempts
-  const deadlineAt = now() + LABEL_IMPORT_BUDGET_MS
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      // Pause BEFORE the retry (exponential with full jitter), then re-check the
-      // deadline: a slow first attempt must not buy a second one we cannot afford.
-      await sleep(retryDelayMs(attempt - 1, random))
-    }
-    if (now() >= deadlineAt) break
+  {
     let labels: Array<{ url?: string }>
     try {
       const docs = await client.v3.getDocuments(boxtalOrderId)
@@ -3003,9 +2947,9 @@ export async function importLabelFiles(
       // (…_bordereau_1.pdf, …_bordereau_2.pdf), and taking the first printed one parcel short.
       labels = docs.filter((d) => d.type === "LABEL" && d.url)
     } catch {
-      continue // transient read failure — try again after the backoff
+      return [] // transient read failure: a later run asks again
     }
-    if (labels.length === 0) continue // documents not generated yet
+    if (labels.length === 0) return [] // documents not generated yet
     const ids: string[] = []
     for (const [i, label] of labels.entries()) {
       try {
@@ -3043,7 +2987,6 @@ export async function importLabelFiles(
     }
     return ids
   }
-  return []
 }
 
 /** Combine a multi-parcel order's labels into ONE PDF, in parcel order (a single label is
@@ -3072,10 +3015,8 @@ export async function importLabelFile(
   client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
   boxtalOrderId: string,
   shipmentRowId: string,
-  attempts = LABEL_IMPORT_ATTEMPTS,
-  deps: LabelImportDeps = {},
 ): Promise<string | null> {
-  const ids = await importLabelFiles(ctx, client, boxtalOrderId, shipmentRowId, attempts, deps)
+  const ids = await importLabelFiles(ctx, client, boxtalOrderId, shipmentRowId)
   if (ids.length === 0) return null
   const merged = await mergeParcelLabels(ctx, ids, boxtalOrderId)
   if ("file_id" in merged) return merged.file_id

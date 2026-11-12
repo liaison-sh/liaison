@@ -37,6 +37,10 @@ interface ConnectionEvent {
 }
 
 /** Connection name → the platforms + source types its sync_state covers. */
+/** The discovery run a connect asks for: deduplicated while it waits or runs. */
+const DISCOVERY_KICK_JOB_ID = "discovery-sync-on-connect"
+const DISCOVERY_KICK_DELAY_MS = 5_000
+
 const CONNECTION_SYNC_PLAN: Record<string, Array<{ platform: Platform; sourceTypes: Array<"discovery" | "watch" | "dm"> }>> = {
   // Instagram Business Login backs the Instagram platform (comments + DMs).
   instagram: [{ platform: "instagram", sourceTypes: ["discovery", "watch", "dm"] }],
@@ -173,10 +177,11 @@ export async function onConnectionEstablished(event: ConnectionEvent, ctx: Socia
     for (const sourceType of sourceTypes) {
       await upsertSyncState(ctx, { platform, account_external_id: accountExternalId, source_type: sourceType }, extra)
     }
-    // Enqueue an immediate discovery cycle so findings appear without waiting
-    // for the next scheduled tick.
-    await ctx.enqueueJob?.("discovery-sync", { platform, accountExternalId })
   }
+  // One discovery cycle soon, so findings appear without waiting for the next
+  // scheduled tick. The job syncs every active row, so connects close together
+  // share one deduplicated run, a few seconds out so their rows are all written.
+  await ctx.enqueueJob?.("discovery-sync", {}, { delay: DISCOVERY_KICK_DELAY_MS, jobId: DISCOVERY_KICK_JOB_ID })
 }
 
 export async function onConnectionDisconnected(event: ConnectionEvent, ctx: SocialToolCtx): Promise<void> {

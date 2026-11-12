@@ -145,11 +145,37 @@ export interface MockBatchTarget {
   snapshot(): () => void
 }
 
+/** The bridge's guard failure (`expect`): same code, status and message shape. */
+function mockPreconditionFailure(
+  op: number,
+  kind: string,
+  entity: string,
+  e: { minRows?: number; maxRows?: number },
+  matched: number,
+): Error {
+  const rows = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`
+  const expected =
+    e.minRows !== undefined && e.minRows === e.maxRows
+      ? `exactly ${rows(e.minRows)}`
+      : e.maxRows === undefined
+        ? `at least ${rows(e.minRows ?? 0)}`
+        : e.minRows === undefined
+          ? `at most ${rows(e.maxRows)}`
+          : `${e.minRows} to ${rows(e.maxRows)}`
+  return Object.assign(
+    new Error(
+      `ctx.db.batch: precondition_failed at ops[${op}] (${kind} ${entity}): expected ${expected}, matched ${matched}`,
+    ),
+    { code: "precondition_failed", status: 409 },
+  )
+}
+
 /**
  * The bridge's batch semantics on any in-memory target: ops in order, the
  * sequence allocated first (stepping past `unique` values already held), the
- * `$seq` / `$ref` placeholders resolved, and every write undone when one op
- * throws (the bridge's savepoint), the sequence included.
+ * `$seq` / `$ref` placeholders resolved, an op's `expect` row-count guard, and
+ * every write undone when one op throws or breaks its guard (the bridge's
+ * savepoint), the sequence included.
  */
 export async function applyMockBatch(
   target: MockBatchTarget,
@@ -221,7 +247,20 @@ export async function applyMockBatch(
       }
       return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, resolve(x)]))
     }
-    for (const op of spec.ops) {
+    for (const [i, op] of spec.ops.entries()) {
+      const expected = op.expect as { minRows?: number; maxRows?: number } | undefined
+      if (expected !== undefined && typeof op.insert === "string") {
+        throw new Error(`ctx.db.batch: ops[${i}].expect applies to update, delete and updateMany`)
+      }
+      const guard = (kind: string, entity: string, matched: number) => {
+        if (!expected) return
+        if (
+          (expected.minRows !== undefined && matched < expected.minRows) ||
+          (expected.maxRows !== undefined && matched > expected.maxRows)
+        ) {
+          throw mockPreconditionFailure(i, kind, entity, expected, matched)
+        }
+      }
       if (typeof op.insert === "string") {
         const row = (await target.insert(
           op.insert,
@@ -230,6 +269,7 @@ export async function applyMockBatch(
         if (typeof op.as === "string") out.rows[op.as] = row
       } else if (typeof op.update === "string") {
         const id = String(resolve(op.id))
+        const exists = (await target.findOne(op.update, id)) !== null
         const patch = { ...((resolve(op.data) as Record<string, unknown> | undefined) ?? {}) }
         const append = (resolve(op.append) as Record<string, unknown[]> | undefined) ?? {}
         const merge =
@@ -247,14 +287,20 @@ export async function applyMockBatch(
             }
           }
         }
-        await target.update(op.update, id, patch)
+        guard("update", op.update, exists ? 1 : 0)
+        // A guarded op that allows no row matches nothing, as the bridge's UPDATE does.
+        if (exists || !expected) await target.update(op.update, id, patch)
       } else if (typeof op.delete === "string") {
-        await target.delete(op.delete, String(resolve(op.id)))
+        const id = String(resolve(op.id))
+        const exists = (await target.findOne(op.delete, id)) !== null
+        await target.delete(op.delete, id)
+        guard("delete", op.delete, exists ? 1 : 0)
       } else if (typeof op.updateMany === "string") {
-        await target.updateMany(op.updateMany, {
+        const { count } = await target.updateMany(op.updateMany, {
           where: resolve(op.where) as Record<string, unknown>,
           data: resolve(op.data) as Record<string, unknown>,
         })
+        guard("updateMany", op.updateMany, count)
       } else {
         throw new Error("ctx.db.batch: an op is none of insert, update, delete, updateMany")
       }

@@ -94,6 +94,11 @@
       "requiredScopes": ["wparity:items:write"],
       "atomic": true
     },
+    "batchGuard": {
+      "description": "A ctx.db.batch whose guarded update matches nothing",
+      "handler": "batchGuard",
+      "requiredScopes": ["wparity:items:write"]
+    },
     "hop": {
       "description": "Call wparityb:echo",
       "handler": "hop",

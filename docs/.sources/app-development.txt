@@ -120,4 +120,5 @@ Page connectionToken: the account named by params.account, the person's own or t
 Open button under a tool call that answers a page handle -> apps/web/src/modules/app-pages/PageHandleCard.tsx:14 ; apps/web/src/modules/app-pages/open-page.ts:43 ; apps/web/src/modules/agent/ToolCallRow.tsx:181
 Entity pick: own readOnly ungated tool, queryParam, idField, labelField, itemsPath -> apps/api/src/modules/apps/manifest-schema.ts:1282
 Registration refuses a bad pick tool -> apps/api/src/modules/apps/contract.ts:654
-Link search runs the pick tool as the person -> apps/api/src/modules/dashboards/tables/link-search.ts:123
+Link search runs the pick tool as the person -> apps/api/src/modules/dashboards/tables/link-search.ts:128
+ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPreconditionFailure reads it -> packages/app-sdk/src/types.ts (DbBatchExpect, DbClient.batch) ; packages/app-sdk/src/db-batch.ts ; apps/api/src/modules/apps/sandbox/bridge/batch.ts (BatchPreconditionError)

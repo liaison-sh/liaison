@@ -32,7 +32,7 @@ Routine filter {tableId, column, to} -> apps/api/src/infra/jobs/event-routine-ga
 Filter evaluated before the coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
 A routine never wakes on its own change -> apps/api/src/infra/jobs/event-routine-subscriber.ts:237
 The owner must read the table, the column must exist -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2774
-Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:123
+Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:128
 Manifest entities.<e>.pick -> apps/api/src/modules/apps/manifest-schema.ts:1282
 Shopify declares pick -> bundled-apps/shopify/app.manifest.json:423
 Boxtal declares pick -> bundled-apps/boxtal/app.manifest.json:225

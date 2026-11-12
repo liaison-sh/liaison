@@ -522,6 +522,8 @@ export function untitledDmQuery(orgId: string, allIds: string[]) {
       AND t.title IS NULL
       AND t.created_from IS NULL
       AND t.is_pinned = false
+      -- A discoverable room is no direct message, whoever sits in it (scope-taint.ts, 14c).
+      AND t.discoverable = false
       AND (
         SELECT COUNT(*) FROM ${sch}.thread_participants tp
         WHERE tp.thread_id = t.id AND tp.participant_type = 'user'

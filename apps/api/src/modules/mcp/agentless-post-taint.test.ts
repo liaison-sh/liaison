@@ -258,6 +258,34 @@ describe("rule 14: posts from a connection bound to no agent", () => {
     parkedId(await reply(conn, group, "third: with the audit trail"))
   }, 60_000)
 
+  it("the standing grant is per person: A approved for X and B for Y never sends A+B to Y", async () => {
+    const w = await world()
+    await grantScope(w.orgId, w.ownerId, OTHER_READ)
+    grants.set(w.ownerId, [...w.ownerScopes, OTHER_READ])
+    const conn = await connection(w)
+    const windowId = connectionTaintWindowId({ connectionId: conn().connectionId })
+    const taint = (scopes: string[]) => saveConnectionTurnTaint(w.orgId, windowId, scopes)
+    const group = await thread(w, [w.ownerId, w.bob, w.holder])
+
+    // A, approved while X (bob) is in the room and Y (carol) is not.
+    await taint([READ])
+    await approve(w, parkedId(await reply(conn, group, "A for X")))
+    // B, approved while Y is in the room and X is not.
+    await sql`DELETE FROM kernel.thread_participants WHERE thread_id = ${group} AND user_id = ${w.bob}`
+    await join(w, group, w.carol)
+    await taint([OTHER_READ])
+    await approve(w, parkedId(await reply(conn, group, "B for Y")))
+    await join(w, group, w.bob)
+
+    // A+B: neither X nor Y was granted both, so it asks.
+    await taint([READ, OTHER_READ])
+    parkedId(await reply(conn, group, "A and B"))
+    expect(await visibleTo(w, w.carol, group)).toEqual(["B for Y"])
+    // A alone is covered for X, but Y was never granted A: still asks.
+    await taint([READ])
+    parkedId(await reply(conn, group, "A again"))
+  }, 60_000)
+
   it("a newcomer lacking the taint makes the next post ask again", async () => {
     const w = await world()
     const conn = await connection(w)

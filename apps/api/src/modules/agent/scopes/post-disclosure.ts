@@ -12,8 +12,8 @@
 //   - disclose:  written inline, with these people on its disclosure list, because
 //                a. "dm": the conversation is a plain one of the requester and exactly one other
 //                   person (agents do not count): telling that person is the requester's choice;
-//                b. "standing": the requester already approved disclosing posts of this thread
-//                   (rule 11b) covering every scope of the stamp to every person now lacking it.
+//                b. "standing": the requester already approved disclosing, to every person now
+//                   lacking the stamp, posts of this thread that together carried every scope of it.
 //   - requester_lacks: the requester does not hold every scope of the stamp (a routine or agent
 //                turn read past its owner's grants). Nobody entitled can disclose it: refused.
 //   - gap:       some other person lacks it and nothing above covers them: the dispatch parks
@@ -22,10 +22,14 @@
 //
 // The standing disclosure is read off the approved posts themselves: a post written by an
 // approved rule-11 re-entry carries `metadata.taintDisclosureApprovalId`, its stamp and its
-// disclosure list. Those of the same requester in the same thread, whose approval row is
-// theirs and was a disclosure, union into (scopes T, audience A). Approving another one widens
-// both; nothing else is stored. A person removed from the thread drops out because the list is
-// always intersected with the thread's people at write time.
+// disclosure list. The grant is PER PERSON: each approved post (same requester, same thread,
+// approved disclosure, not deleted) with stamp T disclosed to people P grants each p in P the
+// scopes T. A new post with stamp T' covers a reader p lacking it only when T' lies within the
+// union of T over the approved posts whose list holds p; every lacking reader must be covered,
+// else it parks, and approving it widens the grant of exactly the people it was disclosed to.
+// (Approving scope A to X and scope B to Y never lets an A+B post reach Y.) Nothing else is
+// stored. A person removed from the thread drops out because the list is intersected with the
+// thread's people at write time.
 
 import { sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -66,14 +70,15 @@ export type PostTarget =
   | { participantIds: readonly string[]; newThread?: boolean; noShortcut?: boolean }
 
 /**
- * The standing disclosure the requester holds on `threadId` (rule 14): the union of the stamps
- * and of the disclosure lists of their approved disclosed posts there. Null when there is none.
+ * The standing disclosure the requester holds on `threadId` (rule 14), per person: for each
+ * person on the list of one of their approved disclosed posts there, the union of the stamps of
+ * the posts disclosed to them. Empty when there is none.
  */
 export async function standingPostDisclosure(opts: {
   orgId: string
   requesterUserId: string
   threadId: string
-}): Promise<{ scopes: Set<string>; audience: Set<string> } | null> {
+}): Promise<Map<string, Set<string>>> {
   const k = schemaRef("kernel")
   const rows = await withPrivilegedDb(opts.orgId, "agent-post-standing-disclosure", async (tx) =>
     extractRows<{ required_scopes: string[] | null; disclosure_list: string[] | null }>(
@@ -93,14 +98,15 @@ export async function standingPostDisclosure(opts: {
           AND (a.metadata->>'taintDisclosedToReaders')::boolean IS TRUE`),
     ),
   )
-  if (rows.length === 0) return null
-  const scopes = new Set<string>()
-  const audience = new Set<string>()
+  const granted = new Map<string, Set<string>>()
   for (const row of rows) {
-    for (const s of row.required_scopes ?? []) scopes.add(s)
-    for (const u of row.disclosure_list ?? []) audience.add(u)
+    for (const u of row.disclosure_list ?? []) {
+      const scopes = granted.get(u) ?? new Set<string>()
+      for (const s of row.required_scopes ?? []) scopes.add(s)
+      granted.set(u, scopes)
+    }
   }
-  return { scopes, audience }
+  return granted
 }
 
 /** The untitled plain thread of exactly these people, the one an untitled create lands in. */
@@ -204,17 +210,17 @@ export async function decidePostDisclosure(opts: {
         requesterUserId: opts.requesterUserId,
         threadId,
       })
-      if (
-        standing !== null &&
-        stamp.every((s) => standing.scopes.has(s)) &&
-        otherLackers.every((u) => standing.audience.has(u))
-      ) {
+      // Every reader lacking the stamp must have been granted all of it, by posts disclosed to
+      // THEM: one person's grant never covers another.
+      const covered = (u: string) => {
+        const scopes = standing.get(u)
+        return scopes !== undefined && stamp.every((s) => scopes.has(s))
+      }
+      if (otherLackers.every(covered)) {
         return {
           kind: "disclose",
           via: "standing",
-          disclosureList: [
-            ...new Set([opts.requesterUserId, ...people.filter((u) => standing.audience.has(u))]),
-          ],
+          disclosureList: [opts.requesterUserId, ...otherLackers],
         }
       }
     }

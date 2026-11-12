@@ -363,14 +363,15 @@
 //         and lacks the taint does not read it (the list is fixed at write time).
 //      d. ONE APPROVAL IS ENOUGH. An approved rule-11 post is a standing disclosure of the
 //         requester for that thread: the post carries its approval (`metadata.
-//         taintDisclosureApprovalId`), and the union of the stamps (T) and disclosure lists (A) of
-//         the requester's approved posts there is the grant (post-disclosure.ts). A later post of
-//         the SAME requester into the SAME thread, from any surface, whose stamp lies within T and
-//         whose readers lacking it are all in A, is written inline with the thread's people in A
-//         on its disclosure list. A new scope, or a newcomer lacking the taint, parks again;
-//         approving that widens the grant to the union. Another requester's posts never inherit
-//         it, and a removed participant drops out because the list is the thread's people at
-//         write time. Only posts into kernel threads (threads_reply, threads_create's message,
+//         taintDisclosureApprovalId`). The grant is PER PERSON (post-disclosure.ts): an approved
+//         post with stamp T disclosed to people P grants each of them T. A later post of the SAME
+//         requester into the SAME thread, from any surface, is written inline only when every
+//         reader lacking its stamp was granted all of it, by posts disclosed to that reader, with
+//         them on its disclosure list. A scope a reader was not granted, or a newcomer lacking the
+//         taint, parks again; approving that widens the grant of the people it was disclosed to,
+//         never anyone else's (A shown to X and B to Y never shows A+B to Y). Another
+//         requester's posts never inherit it, and a removed participant drops out because the
+//         list is the thread's people at write time. Only posts into kernel threads (threads_reply, threads_create's message,
 //         title and references) use it; other writes keep their per-call approvals. A new thread's
 //         title and references (unstamped, read by every later member) never take the direct-message
 //         or standing shortcut: only an approval discloses them. A titled or forced create writes a

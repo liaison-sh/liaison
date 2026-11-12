@@ -213,8 +213,6 @@ const NO_SESSION_ROUTES = new Set([
   "PUT /api/file-relay/:token",
   "GET /api/file-relay-dl/:token",
   "HEAD /api/file-relay-dl/:token",
-  "GET /api/drive-picker/:ticket",
-  "POST /api/drive-picker/:ticket/items",
   "GET /api/org-export-dl/:token",
   "HEAD /api/org-export-dl/:token",
   "GET /api/avatars/:key",

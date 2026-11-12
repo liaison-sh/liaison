@@ -135,7 +135,7 @@ const CASES: Case[] = [
   // A Shared Drive's name is set in a Workspace that may sit outside the org.
   {
     app: "google-drive",
-    dir: API_APPS,
+    dir: BUNDLED,
     tool: "shared_drives",
     row: {
       canManage: true,

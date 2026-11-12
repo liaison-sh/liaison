@@ -4,7 +4,7 @@
 // decimal, a dropped digit) asks for a look on the card, on the row and in the run's read. A row
 // with nothing to compare with is never flagged.
 import { describe, expect, test } from "bun:test"
-import { harness, previousDoc, schedule } from "../__tests__/recurring-draft-fixtures"
+import { harness, previousDoc, schedule } from "../__fixtures__/recurring-draft"
 import { recurringDraftJob } from "./draft-job"
 import { amountFarFlag } from "./flags"
 import { afterRunWrite, type EditCtx } from "./restage"

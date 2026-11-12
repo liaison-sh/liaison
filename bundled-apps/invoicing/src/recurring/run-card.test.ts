@@ -4,7 +4,7 @@
 // change does to its hash, undo and reject, the last-day urgency, and issuing by itself under the
 // approval threshold. Numbers and the issue transaction are proven on Postgres in the api suite.
 import { describe, expect, test } from "bun:test"
-import { harness, previousDoc, schedule } from "../__tests__/recurring-draft-fixtures"
+import { harness, previousDoc, schedule } from "../__fixtures__/recurring-draft"
 import { summarizeRecurringRunIssue } from "../summarizers"
 import { recurringDraftJob } from "./draft-job"
 import { recurringIssueJob } from "./issue-job"

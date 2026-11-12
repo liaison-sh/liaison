@@ -4,7 +4,7 @@
 // from the schedule alone, keyed so a second run adds nothing, with flags read from the data.
 
 import { describe, expect, test } from "bun:test"
-import { CONTACT, harness, previousDoc, schedule } from "../__tests__/recurring-draft-fixtures"
+import { CONTACT, harness, previousDoc, schedule } from "../__fixtures__/recurring-draft"
 import { recurringDraftJob } from "./draft-job"
 
 describe("the month-end draft job", () => {

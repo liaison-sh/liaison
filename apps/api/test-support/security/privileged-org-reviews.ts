@@ -105,6 +105,12 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "no product caller yet (an app's own retention will call it, tests only today): the org of the thread the caller names, matched again on every message row it reads and writes (messages.org_id = orgId)",
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
     "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today): writes only the (orgId, app, feature) row it is given",
+  "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
+    "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
+  "apps/api/src/apps/knowledge/app-sources.ts#applyAppSourcePage":
+    "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
+  "apps/api/src/apps/knowledge/app-sources.ts#failAppSourceSync":
+    "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
   "apps/api/src/modules/approvals/cancel.ts#cancelApprovalsForDeletedTasks":
     "called only by deleteTask (apps/projects/service/tasks.ts) after it archived the tasks in the caller's RLS transaction for that same org (the route's auth org, or the projects bridge's own org); the update touches only that org's pending rows naming the archived task ids",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxInbox":

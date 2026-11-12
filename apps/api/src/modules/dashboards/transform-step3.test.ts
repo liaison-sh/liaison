@@ -94,3 +94,34 @@ describe("quarter and year buckets", () => {
     expect(out.previous?.series[0]?.values).toEqual([10, 20])
   })
 })
+
+describe("date-only values west of UTC (step-3 review MED 6)", () => {
+  it("a pg date sent as midnight UTC, or a timestamp with no offset, is that calendar day", () => {
+    const ny = "America/New_York"
+    expect(calendarDayOf("2026-11-01T00:00:00.000Z", ny)).toBe("2026-11-01")
+    expect(calendarDayOf("2026-11-01T00:00:00Z", ny)).toBe("2026-11-01")
+    expect(calendarDayOf("2026-11-01T00:00:00+00:00", ny)).toBe("2026-11-01")
+    expect(calendarDayOf(new Date("2026-11-01T00:00:00Z"), ny)).toBe("2026-11-01")
+    // No offset: wall time in the org's zone, as written.
+    expect(calendarDayOf("2026-11-07 23:30:00", ny)).toBe("2026-11-07")
+    expect(calendarDayOf("2026-11-07T23:30", "Asia/Tokyo")).toBe("2026-11-07")
+    // A real instant still moves into the zone.
+    expect(calendarDayOf("2026-11-01T03:00:00Z", ny)).toBe("2026-10-31")
+  })
+
+  it("the 1st of a month stays in its month and quarter for an org west of UTC", () => {
+    const rows = [
+      { day: "2026-10-01T00:00:00.000Z", total: 5 },
+      { day: "2026-11-01T00:00:00.000Z", total: 7 },
+    ]
+    const out = transformBlock(
+      "bar",
+      { groupBy: { field: "day", bucket: "quarter" }, y: "total" },
+      rows,
+      { timeZone: "America/Los_Angeles" },
+    )
+    if (out.kind !== "bar") throw new Error("bar")
+    expect(out.labels).toEqual(["2026-Q4"])
+    expect(out.series[0]!.values).toEqual([12])
+  })
+})

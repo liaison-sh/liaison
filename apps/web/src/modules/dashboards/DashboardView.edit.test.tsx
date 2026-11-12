@@ -11,7 +11,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { DashboardView } from "./DashboardView"
-import { resetDashboardsStore } from "./dashboards-store"
+import { reloadDashboard, resetDashboardsStore } from "./dashboards-store"
 import { FILTER_SEARCH_DEBOUNCE_MS } from "./FilterBar"
 
 const toasts = vi.hoisted(() => [] as Array<{ type: string; message: string }>)
@@ -68,10 +68,20 @@ function record(version: number, over: Record<string, unknown> = {}) {
   }
 }
 
-function mount(opts: { canEdit?: boolean; post?: (path: string, body: unknown) => unknown } = {}) {
+function mount(
+  opts: {
+    canEdit?: boolean
+    post?: (path: string, body: unknown) => unknown
+    /** Awaited before the dashboard's own read answers. */
+    readGate?: () => Promise<void>
+  } = {},
+) {
   let current = record(3, opts.canEdit === false ? { canEdit: false } : {})
   const get = vi.fn(async (path: string) => {
-    if (path === "/dashboards/d1") return current
+    if (path === "/dashboards/d1") {
+      if (opts.readGate) await opts.readGate()
+      return current
+    }
     if (path === "/dashboards") return []
     if (path === "/dashboards/d1/versions") {
       return {
@@ -138,8 +148,18 @@ function mount(opts: { canEdit?: boolean; post?: (path: string, body: unknown) =
       <DashboardView entityId="d1" />
     </ApiContext.Provider>
   ))
-  return { get, post, rawGet }
+  return {
+    get,
+    post,
+    rawGet,
+    /** Someone else saved: the server is at version `v` now. */
+    setVersion: (v: number) => {
+      current = record(v)
+    },
+  }
 }
+const reads = (get: ReturnType<typeof vi.fn>) =>
+  get.mock.calls.filter((c) => c[0] === "/dashboards/d1").length
 
 function choose(testId: string) {
   const item = screen.getByTestId(testId)
@@ -226,7 +246,16 @@ describe("edit mode", () => {
     fireEvent.dragOver(screen.getByTestId("dashboard-block-a"))
     fireEvent.drop(screen.getByTestId("dashboard-block-a"))
     await waitFor(() => expect(ops(post).length).toBe(1))
-    expect(ops(post)[0]?.operations).toEqual([{ op: "moveBlock", blockId: "c", position: 0 }])
+    expect(ops(post)[0]?.operations).toEqual([
+      { op: "moveBlock", blockId: "c", position: { before: "a" } },
+    ])
+    fireEvent.dragStart(screen.getByTestId("dashboard-block-a"))
+    fireEvent.dragOver(screen.getByTestId("dashboard-block-b"))
+    fireEvent.drop(screen.getByTestId("dashboard-block-b"))
+    await waitFor(() => expect(ops(post).length).toBe(2))
+    expect(ops(post)[1]?.operations).toEqual([
+      { op: "moveBlock", blockId: "a", position: { after: "b" } },
+    ])
   })
 
   it("resizes, duplicates, and deletes after a confirm", async () => {
@@ -273,6 +302,50 @@ describe("edit mode", () => {
     await waitFor(() => expect(undo.disabled).toBe(true))
   })
 
+  it("Undo twice walks back two changes, each on the version the last one produced", async () => {
+    const { post } = mount()
+    await startEditing()
+    const undo = screen.getByTestId("dashboard-undo") as HTMLButtonElement
+    fireEvent.click(screen.getByTestId("dashboard-block-move-right-a"))
+    await waitFor(() => expect(ops(post).length).toBe(1))
+    const title = screen.getByTestId("dashboard-title-input") as HTMLInputElement
+    title.value = "Sales 2026"
+    fireEvent.blur(title)
+    await waitFor(() => expect(ops(post).length).toBe(2))
+    await waitFor(() => expect(undo.disabled).toBe(false))
+    fireEvent.click(undo)
+    await waitFor(() => expect(ops(post).length).toBe(3))
+    expect(ops(post)[2]).toEqual({ ifVersion: 5, operations: [{ op: "revert", toVersion: 4 }] })
+    await waitFor(() => expect(undo.disabled).toBe(false))
+    fireEvent.click(undo)
+    await waitFor(() => expect(ops(post).length).toBe(4))
+    expect(ops(post)[3]).toEqual({ ifVersion: 6, operations: [{ op: "revert", toVersion: 3 }] })
+    await waitFor(() => expect(undo.disabled).toBe(true))
+  })
+
+  it("Undo never erases someone else's later change: it says so and opens the history", async () => {
+    const { post, get, setVersion } = mount()
+    await startEditing()
+    const undo = screen.getByTestId("dashboard-undo") as HTMLButtonElement
+    fireEvent.click(screen.getByTestId("dashboard-block-move-right-a"))
+    await waitFor(() => expect(undo.disabled).toBe(false))
+    // Someone else saves version 5; this view reloads onto it.
+    setVersion(5)
+    const before = reads(get)
+    reloadDashboard("d1")
+    await waitFor(() => expect(reads(get)).toBeGreaterThan(before))
+    await waitFor(() =>
+      expect(screen.getByTestId("dashboard-view").getAttribute("data-version")).toBe("5"),
+    )
+    fireEvent.click(undo)
+    await waitFor(() => expect(toasts.length).toBe(1))
+    expect(toasts[0]).toMatchObject({ type: "info" })
+    expect(toasts[0]?.message).toMatch(/someone else changed/i)
+    expect(ops(post).length).toBe(1)
+    await waitFor(() => expect(screen.getByTestId("dashboard-history-panel")).toBeTruthy())
+    expect(undo.disabled).toBe(true)
+  })
+
   it("a newer version saved meanwhile reloads the dashboard and says so", async () => {
     const { post, get } = mount({
       post: () => {
@@ -291,6 +364,64 @@ describe("edit mode", () => {
     )
     expect(post).toHaveBeenCalledTimes(1)
     expect((screen.getByTestId("dashboard-undo") as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("a change made while the reload after a conflict is on its way waits for the new version", async () => {
+    let release: () => void = () => {}
+    let gate: Promise<void> | null = null
+    let serverVersion = 3
+    const m = mount({
+      readGate: () => gate ?? Promise.resolve(),
+      post: (_path, body) => {
+        const { ifVersion } = body as { ifVersion: number }
+        if (ifVersion !== serverVersion) throw new ApiError("stale", 409, "VERSION_CONFLICT")
+        serverVersion++
+        m.setVersion(serverVersion)
+        return record(serverVersion)
+      },
+    })
+    await startEditing()
+    // Someone else saved version 5; the reload it triggers is slow.
+    serverVersion = 5
+    m.setVersion(5)
+    gate = new Promise<void>((r) => {
+      release = r
+    })
+    fireEvent.click(screen.getByTestId("dashboard-block-move-right-a"))
+    await waitFor(() => expect(toasts.length).toBe(1))
+    const title = screen.getByTestId("dashboard-title-input") as HTMLInputElement
+    title.value = "Sales 2026"
+    fireEvent.blur(title)
+    await new Promise((r) => setTimeout(r, 30))
+    gate = null
+    release()
+    await waitFor(() => expect(ops(m.post).length).toBe(2))
+    expect(ops(m.post)[1]).toEqual({
+      ifVersion: 5,
+      operations: [{ op: "setTitle", title: "Sales 2026" }],
+    })
+    expect(toasts.length).toBe(1)
+  })
+
+  it("reloads once when the org's day turns over in an open tab", async () => {
+    // 23:50 in Paris on the 12th, then 00:10 on the 13th.
+    let clock = Date.parse("2026-11-12T22:50:00Z")
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => clock)
+    try {
+      const { get } = mount()
+      await waitFor(() => expect(screen.getByTestId("dashboard-title").textContent).toBe("Sales"))
+      document.dispatchEvent(new Event("visibilitychange"))
+      await new Promise((r) => setTimeout(r, 20))
+      const before = reads(get)
+      clock = Date.parse("2026-11-12T23:10:00Z")
+      document.dispatchEvent(new Event("visibilitychange"))
+      await waitFor(() => expect(reads(get)).toBe(before + 1))
+      document.dispatchEvent(new Event("visibilitychange"))
+      await new Promise((r) => setTimeout(r, 30))
+      expect(reads(get)).toBe(before + 1)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("a block is drawn two rows tall when its height is 2", async () => {

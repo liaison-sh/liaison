@@ -409,7 +409,7 @@ Manifest app handlers run inside **QuickJS** compiled to WebAssembly (`quickjs-e
 
 Both paths use the same bridge pattern: bridge functions return QuickJS native promises; the host resolves them when async work completes (DB query, event emission, network fetch). Each invocation gets a fresh context — no state leaks between calls. Timeout enforcement via interrupt handler: 5s in production (not overridable), 60s by default in development/test (overridable via `LIAISON_SANDBOX_TIMEOUT_MS`).
 
-**Context hardening:** Every context has `ArrayBuffer`, `SharedArrayBuffer`, `DataView`, and all typed array constructors removed before app code runs — these bypass QuickJS memory tracking and could OOM the host via WASM linear memory.
+**Context hardening:** Every context has `ArrayBuffer`, `SharedArrayBuffer`, `DataView`, and all typed array constructors removed before app code runs — these bypass QuickJS memory tracking and could OOM the host via WASM linear memory. Then `globalThis.crypto` is installed: the WebCrypto subset apps share with Workers (digests, HMAC, random values), computed by the host with bytes as arrays of numbers (`apps/api/src/modules/apps/sandbox/webcrypto-shim.ts`; [Hash, sign and draw random values](app-sandbox.md#hash-sign-and-draw-random-values-crypto)).
 
 The **RPC bridge** is the only interface between sandbox code and the host:
 

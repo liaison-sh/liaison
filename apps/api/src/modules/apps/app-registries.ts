@@ -1142,6 +1142,47 @@ export const importRegistry = createTypedRegistry<
   }
 >()
 
+/**
+ * One knowledge source kind an app declares (manifest `knowledgeSources.<kind>`):
+ * the sync handler the platform wakes with `{ sourceId, kind, config, cursor }`
+ * (apps/knowledge/app-sources.ts), the scope the source's owner must hold, and
+ * the JSON Schema of a source's config.
+ */
+export interface KnowledgeSourceKindDecl {
+  title: string
+  description?: string
+  handler: string
+  readScope?: string
+  configSchema?: Record<string, unknown>
+  timeoutMs?: number
+}
+
+/** What the platform hands one sync run of an app's knowledge source. */
+export interface KnowledgeSyncDispatchInput {
+  sourceId: string
+  kind: string
+  config: Record<string, unknown>
+  cursor: unknown
+}
+
+/**
+ * The knowledge source kinds an app declares, keyed by `[orgId, appName]`, with
+ * the function that runs one sync page of a kind in the app's sandbox (built at
+ * registration, like the external search handler). `userId` is the source's
+ * owner: the run acts for them.
+ */
+export const knowledgeSourceKindRegistry = createTypedRegistry<
+  [orgId: string, appName: string],
+  {
+    kinds: Record<string, KnowledgeSourceKindDecl>
+    dispatch: (
+      kind: string,
+      input: KnowledgeSyncDispatchInput,
+      tenant: { orgId: string; userId: string },
+    ) => Promise<unknown>
+  }
+>()
+
 // Declared emits per app, keyed by "orgId:appName" for multi-tenant isolation.
 // Populated during registration, used to validate events at emit time.
 // Lives here (not in event-bus.ts) to avoid circular imports since context.ts needs it.

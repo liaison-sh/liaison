@@ -16,7 +16,7 @@
 // source the author cannot read is refused at save. The same check runs again
 // on every view, as the viewer.
 
-import { and, desc, eq, inArray, lte } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
@@ -43,6 +43,8 @@ import {
 } from "~/modules/dashboards/cache"
 import {
   applyOperations,
+  cardLineCount,
+  describeOperations,
   type EditOperation,
   EditOperationError,
   revertTargets,
@@ -625,6 +627,7 @@ async function recordVersion(
       version: row.version,
       title: row.title,
       spec: row.spec,
+      visibility: row.visibility,
       savedBy: opts.ifMissing ? row.updatedBy : viewer.userId,
       savedAt: opts.ifMissing ? new Date(row.updatedAt) : new Date(),
     })
@@ -638,6 +641,16 @@ async function recordVersion(
         lte(dashboardVersions.version, row.version - KEPT_VERSIONS),
       ),
     )
+}
+
+/**
+ * Versions saved while the dashboard was personal are its owner's drafts: once it is shared,
+ * everyone else sees (and reverts to) only those saved while it was shared, or before this was
+ * recorded. Undefined (no condition) for its owner.
+ */
+function ownersDraftsHidden(viewer: DashboardViewer, row: DashboardRow): SQL | undefined {
+  if (row.ownerUserId === viewer.userId) return undefined
+  return or(isNull(dashboardVersions.visibility), ne(dashboardVersions.visibility, "personal"))
 }
 
 export interface DashboardVersionSummary {
@@ -663,7 +676,7 @@ export async function listVersions(
       .select({ v: dashboardVersions, savedByName: users.name })
       .from(dashboardVersions)
       .leftJoin(users, eq(users.id, dashboardVersions.savedBy))
-      .where(eq(dashboardVersions.dashboardId, dashboardId))
+      .where(and(eq(dashboardVersions.dashboardId, dashboardId), ownersDraftsHidden(viewer, row)))
       .orderBy(desc(dashboardVersions.version))
       .limit(KEPT_VERSIONS + 1)
     return rows.map(({ v, savedByName }) => ({
@@ -697,8 +710,8 @@ export async function getVersion(
   tx?: RlsClient,
 ): Promise<DashboardVersionDetail> {
   const found = await inTx(viewer, tx, async (t) => {
-    await loadRow(viewer, dashboardId, t)
-    return readVersions(t, dashboardId, [version])
+    const row = await loadRow(viewer, dashboardId, t)
+    return readVersions(t, dashboardId, [version], ownersDraftsHidden(viewer, row))
   })
   const v = found.get(version)
   if (!v) throw new DashboardError("NOT_FOUND", `version ${version} is not kept`)
@@ -710,6 +723,8 @@ export async function readVersions(
   t: Pick<RlsClient, "select">,
   dashboardId: string,
   numbers: number[],
+  /** A further condition (ownersDraftsHidden): versions it leaves out read as not kept. */
+  visible?: SQL,
 ): Promise<Map<number, SavedVersion & { savedBy: string | null }>> {
   const out = new Map<number, SavedVersion & { savedBy: string | null }>()
   if (numbers.length === 0) return out
@@ -721,6 +736,7 @@ export async function readVersions(
       and(
         eq(dashboardVersions.dashboardId, dashboardId),
         inArray(dashboardVersions.version, numbers),
+        visible,
       ),
     )
   for (const { v, savedByName } of rows) {
@@ -904,9 +920,22 @@ export async function checkEdit(
   viewer: DashboardViewer,
   id: string,
   input: EditDashboardInput,
-): Promise<void> {
-  const { next } = await planEdit(viewer, id, input)
+): Promise<{ cardLines: number }> {
+  const { current, next, versions } = await planEdit(viewer, id, input)
   await validateSpec(viewer, next.spec)
+  // How many lines its approval card lists: a revert lists each change it restores.
+  const cardLines = versions.size
+    ? describeOperations(
+        {
+          title: current.title,
+          visibility: current.visibility,
+          spec: current.spec as unknown as DashboardSpec,
+        },
+        input.operations,
+        { timeZone: await dashboardTimezone(viewer.orgId), now: new Date(), versions },
+      ).length
+    : cardLineCount(input.operations)
+  return { cardLines }
 }
 
 async function planEdit(
@@ -914,7 +943,11 @@ async function planEdit(
   id: string,
   input: EditDashboardInput,
   tx?: RlsClient,
-): Promise<{ current: DashboardRow; next: ReturnType<typeof applyOperations> }> {
+): Promise<{
+  current: DashboardRow
+  next: ReturnType<typeof applyOperations>
+  versions: VersionLookup
+}> {
   const current = await loadRow(viewer, id, tx)
   if (input.ifVersion !== current.version) {
     throw new DashboardError(
@@ -924,7 +957,9 @@ async function planEdit(
   }
   const targets = revertTargets(input.operations)
   const versions: VersionLookup = targets.length
-    ? await inTx(viewer, tx, (t) => readVersions(t, id, targets))
+    ? await inTx(viewer, tx, (t) =>
+        readVersions(t, id, targets, ownersDraftsHidden(viewer, current)),
+      )
     : new Map()
   let next: ReturnType<typeof applyOperations>
   try {
@@ -943,7 +978,7 @@ async function planEdit(
     }
     throw err
   }
-  return { current, next }
+  return { current, next, versions }
 }
 
 export async function deleteDashboard(
@@ -1171,11 +1206,12 @@ async function readSourceCached(
   opts: { refresh?: boolean; signal?: AbortSignal; range?: TimeRange; budgeted?: boolean },
   ttlOverride?: number,
 ): Promise<SourceReadResult> {
+  const fields = projectionFields(dashboard.spec, sourceKey)
   const key = sourceCacheKey(viewer, {
     dashboardId: dashboard.row.id,
-    version: dashboard.row.version,
     sourceKey,
     resolvedSource: source,
+    fields,
     range,
   })
   const failedKey = failedBlockCacheKey(key)
@@ -1235,7 +1271,7 @@ async function readSourceCached(
         }
         return { ok: false, error: outcome.error, message: outcome.message }
       }
-      const read = project(outcome.read, projectionFields(dashboard.spec, sourceKey))
+      const read = project(outcome.read, fields)
       const computedAt = new Date().toISOString()
       const entry: CachedSource = { read, computedAt, ...(opts.refresh ? { forced: true } : {}) }
       const json = JSON.stringify(entry)

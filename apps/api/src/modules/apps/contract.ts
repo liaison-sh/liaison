@@ -4,9 +4,13 @@ import { z } from "zod"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
 import { appSurfaceErrors } from "~/modules/apps/app-surface"
 import { connectionLimitsErrors } from "~/modules/apps/connection-limits"
+import { createParamValidatorCache } from "~/modules/apps/param-validator"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { validateProviderContracts } from "~/modules/apps/provider-contracts/validate"
 import { resultCardErrors } from "~/modules/apps/result-card-schema"
+
+/** Compiles a knowledge source kind's configSchema (the same options its config check uses). */
+export const knowledgeConfigValidator = createParamValidatorCache({ allErrors: true })
 
 const SEMVER_REGEX = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/
 const NAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
@@ -761,6 +765,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   validateProviderContracts(data as Record<string, unknown>, errors)
   // On the raw input: the schema strips the retired keys this names.
   errors.push(...webhookHealthErrors(descriptor))
+  errors.push(...knowledgeSourceErrors(descriptor))
   errors.push(...scheduledJobNameErrors(descriptor))
   errors.push(...runsForErrors(descriptor))
   errors.push(...settingsErrors(data as Record<string, any>))
@@ -944,6 +949,42 @@ function scopeMatchesApp(scope: string, appName: string): boolean {
   return scope.startsWith(`${appName}:`) || scope.startsWith(`${appScopePrefix(appName)}:`)
 }
 
+/**
+ * The manifest's `knowledgeSources` kinds (apps/knowledge/app-sources.ts): each
+ * `readScope` in the app's own namespace, each `configSchema` a JSON Schema
+ * that compiles (a source's config is validated against it at creation).
+ */
+export function knowledgeSourceErrors(manifest: any): string[] {
+  const decl = manifest?.knowledgeSources
+  if (decl === undefined) return []
+  if (!decl || typeof decl !== "object" || Array.isArray(decl)) {
+    return ["knowledgeSources: must be an object of kinds"]
+  }
+  const errors: string[] = []
+  const appName = String(manifest.name ?? "")
+  for (const [kind, raw] of Object.entries(decl as Record<string, any>)) {
+    if (!raw || typeof raw !== "object") continue
+    if (typeof raw.handler !== "string" || raw.handler.length === 0) {
+      errors.push(`knowledgeSources.${kind}.handler: must be a string export name`)
+    }
+    if (typeof raw.readScope === "string" && !scopeMatchesApp(raw.readScope, appName)) {
+      errors.push(
+        `knowledgeSources.${kind}.readScope: must start with "${appScopePrefix(appName)}:" (got "${raw.readScope}")`,
+      )
+    }
+    if (raw.configSchema !== undefined) {
+      try {
+        knowledgeConfigValidator(raw.configSchema)
+      } catch (err) {
+        errors.push(
+          `knowledgeSources.${kind}.configSchema: not a valid JSON Schema (${err instanceof Error ? err.message : String(err)})`,
+        )
+      }
+    }
+  }
+  return errors
+}
+
 /** One error per `requiredScopes` entry outside the app's own namespace. */
 function toolScopeNamespaceErrors(
   toolName: string,
@@ -1112,6 +1153,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   validateGuideSections(manifest, errors)
   validateProviderContracts(manifest, errors)
   errors.push(...webhookHealthErrors(manifest))
+  errors.push(...knowledgeSourceErrors(manifest))
   errors.push(...scheduledJobNameErrors(manifest))
   errors.push(...runsForErrors(manifest))
   errors.push(...configKeysDeclarationErrors(manifest.configKeys, manifest.connections))

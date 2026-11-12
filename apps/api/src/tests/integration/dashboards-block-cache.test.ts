@@ -90,9 +90,10 @@ describe("the block cache on Redis", () => {
 
     const key = sourceCacheKey(viewer, {
       dashboardId,
-      version: 1,
       sourceKey: "blk:total",
       resolvedSource: { kind: "tool", tool: `${APP}:rows_list`, params: {} },
+      // The fields the block keeps from each row: its map's, plus a drill-down's defaults.
+      fields: new Set(["id", "name", "title", "n"]),
     })
     const ttl = await redis.ttl(key)
     expect(ttl).toBeGreaterThan(800)

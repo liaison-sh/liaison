@@ -607,6 +607,14 @@ before calling again. While another run holds the key
 the answer is `in_flight`: try again later. The answer is stored as JSON. Keys
 are your app's own: no other app can read or settle them.
 
+### Hash or sign a value
+
+Use WebCrypto, the global `crypto` (`crypto.subtle.digest`, HMAC `sign` and `verify`,
+`crypto.getRandomValues`, `crypto.randomUUID`). It works on every executor. Pass text through
+`utf8Bytes` and read answers with `bytesToHex` from `@liaison/app-sdk/bytes`, or call
+`digestHex("SHA-256", text)` / `hmacHex("SHA-256", key, text)`: the local sandbox has no typed
+arrays, and these helpers hide that. What is available: [Hash, sign and draw random values](app-sandbox.md#hash-sign-and-draw-random-values-crypto).
+
 ---
 
 ## 7. Testing
@@ -1050,6 +1058,77 @@ the same key, in your app's own namespace:
   "write": { "type": "oauth2", "oauthClient": { "key": "my-app:google" }, "...": "..." }
 }
 ```
+
+## 18. Offer a knowledge source
+
+An app can feed Knowledge: a person adds a synced source of the app's kind, and
+Liaison keeps its documents up to date. Declare the kind in the manifest:
+
+```json
+"knowledgeSources": {
+  "notes": {
+    "title": "Notes",
+    "handler": "syncNotes",
+    "readScope": "my-app:notes:read",
+    "configSchema": {
+      "type": "object",
+      "properties": { "folder": { "type": "string" } },
+      "required": ["folder"]
+    },
+    "timeoutMs": 30000
+  }
+}
+```
+
+- `handler`: the export Liaison wakes for each page of a sync.
+- `readScope`: a scope of your app the person must hold to add the source.
+  Liaison checks it again before every sync, for the source's owner.
+- `configSchema`: the JSON Schema of a source's settings, checked when the
+  source is added (`POST /api/knowledge/synced-sources` with `appName`,
+  `sourceKind` and `sourceConfig`; `GET /api/knowledge/synced-sources/kinds`
+  lists the kinds a person may add).
+- `timeoutMs`: one page's time limit, 60 s when absent, at most 120 s.
+
+The handler gets `{ sourceId, kind, config, cursor }` and returns one page:
+
+```ts
+import type { KnowledgeSyncInput, KnowledgeSyncResult } from "@liaison/app-sdk"
+
+export async function syncNotes(input: KnowledgeSyncInput<string>, ctx): Promise<KnowledgeSyncResult<string>> {
+  const res = await ctx.fetch(`https://api.example.com/notes?after=${input.cursor ?? ""}`, {
+    method: "GET",
+    auth: { connection: "main", scheme: "bearer", fields: ["token"] },
+  })
+  return {
+    documents: {
+      upsert: res.notes.map((n) => ({ externalId: n.id, title: n.title, body: n.text, rev: n.version })),
+      delete: res.deletedIds,
+    },
+    nextCursor: res.next ?? null,
+    done: !res.next,
+  }
+}
+```
+
+- Liaison writes the page and `nextCursor` together, then wakes the handler
+  again with that cursor until `done`. Keep nothing between pages in module
+  state: the cursor is the only memory.
+- A sync job runs up to 25 pages or 60 s, then hands the rest to a new job. A
+  page that fails is retried from the same cursor: the documents already
+  written stay, nothing is written twice.
+- The cursor of the last page is kept. The next sync starts from it, so an
+  incremental cursor (a change token, an "updated after" date) syncs only what
+  changed. Return `nextCursor: null` on the last page to start over each time.
+- `documents.delete` archives documents by `externalId`. `prune: true` on the
+  last page archives every document of the source that this pass did not
+  return, for a source that lists everything each time.
+- Per page: at most 200 documents, 1000 deletes, a body of 1,000,000 characters
+  and a cursor of 16 KB of JSON. A page past these limits is refused, nothing of
+  it is written, and the source shows the reason.
+
+Documents land in the source's collection, owned like any synced document: an
+organization source's documents follow its sensitivity, a personal source's
+stay with its owner.
 
 ## See also
 

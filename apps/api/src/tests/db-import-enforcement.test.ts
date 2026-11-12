@@ -519,6 +519,13 @@ describe("db import enforcement", () => {
     "apps/knowledge/synced-sources.ts",
     "apps/knowledge/sync-reconciler.ts",
     "apps/knowledge/knowledge-jobs.ts",
+    // App knowledge sources: each page and its cursor written in one privileged
+    // transaction, pinned to the synced_sources row's own org and id.
+    "apps/knowledge/app-sources.ts",
+    // An app's knowledge source sync run: a vouched app's bridge calls get
+    // per-call privileged transactions of the source's org (the search
+    // handler's shape in runtime.ts).
+    "modules/apps/knowledge-sync-dispatch.ts",
     "lib/server.ts",
     // Phase 10 — search indexer/reindex, file storage workers, attention
     // translation + digest workers, and the Phase 10 boot orchestrator all

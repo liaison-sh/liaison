@@ -860,3 +860,46 @@ export interface WebhookResult {
   status: number
   body?: string
 }
+
+/**
+ * What a knowledge source kind's sync handler receives (manifest
+ * `knowledgeSources.<kind>.handler`): the source, its kind and config, and the
+ * cursor the previous page returned (null at the start of a first pass).
+ */
+export interface KnowledgeSyncInput<Cursor = unknown> {
+  sourceId: string
+  kind: string
+  config: Record<string, unknown>
+  cursor: Cursor | null
+}
+
+/** One document of a knowledge source page. */
+export interface KnowledgeSyncDocument {
+  /** The provider's stable id: the document's identity across syncs. */
+  externalId: string
+  title: string
+  /** The text (markdown or plain), at most 1,000,000 characters. */
+  body: string
+  url?: string
+  mimeType?: string
+  /** ISO date of the provider's last change. */
+  modifiedAt?: string
+  /** The provider's revision (etag, commit, version). */
+  rev?: string
+  /** A path to show; the title when absent. */
+  path?: string
+}
+
+/**
+ * One page a sync handler returns. The platform writes the page and
+ * `nextCursor` together, then wakes the handler again with that cursor until
+ * `done`. At most 200 upserts and 1000 deletes per page; the cursor must be
+ * JSON of at most 16 KB. `prune: true` on the final page archives the source's
+ * documents this pass did not upsert (the pass listed everything).
+ */
+export interface KnowledgeSyncResult<Cursor = unknown> {
+  documents?: { upsert?: KnowledgeSyncDocument[]; delete?: string[] }
+  nextCursor?: Cursor | null
+  done: boolean
+  prune?: boolean
+}

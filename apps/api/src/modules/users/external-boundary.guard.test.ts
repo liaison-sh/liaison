@@ -137,6 +137,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "who on an approval's route is an active member; next in line by stored ids",
   ],
+  "modules/apps/app-pages.ts": [
+    "one-row",
+    "re-checks the person a page link was minted for, who acts with their own scopes",
+  ],
   "modules/apps/attention-store.ts": [
     "walks-org",
     "every active row, to rebuild each person's stored attention list",

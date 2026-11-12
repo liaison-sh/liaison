@@ -667,7 +667,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `abandoned_checkouts_list` | List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. |  | `shopify:orders:read` |
-| `analytics_query` | Aggregate sales analytics over a period, optionally grouped by SKU or market. |  | `shopify:analytics:read` |
+| `analytics_query` | Aggregate store analytics over a period, optionally grouped by SKU, product or market, and optionally split into a time series with timeGrain (day, week or month: rows come back oldest first, each with `date` = the bucket start as YYYY-MM-DD; grouped by sku a series row also carries product_title). |  | `shopify:analytics:read` |
 | `apply_seed_suggestion` | Apply an admin-reviewed scope-seed suggestion (writes Liaison scopes for the named user). | yes | `shopify:admin:scope-seed` |
 | `companies_get` | Get one Shopify B2B company by id, with the same shape as a companies_search result: locations (addresses, tax settings, catalogs) and contacts with their roles per location. |  | `shopify:customers:read` |
 | `companies_search` | Search Shopify B2B companies by name. |  | `shopify:customers:read` |

@@ -101,7 +101,7 @@ describe("each typed form against the baseline", () => {
   // The bench stays cheap enough to run on every change. Its cost is one ranking of the searchable
   // catalog per typed form, so the bound is on that work: the number of tool scorings, and the CPU
   // time the ranking itself takes. Wall clock is only printed: a loaded CI runner stretches it with
-  // no change here. Today: 467 forms, about 0.3 M scorings and 1.3 to 1.8 s of CPU. The counter is
+  // no change here. Today: 592 forms, about 0.4 M scorings and under 1 s of CPU. The counter is
   // the whole process's, so this file runs in a process of its own (test-unit-parallel.ts).
   it("ranks within its budget of tool scorings and CPU time", () => {
     const scorings =
@@ -115,7 +115,7 @@ describe("each typed form against the baseline", () => {
     console.log(
       `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU, ${scorings} scorings\n${report.lines.join("\n")}`,
     )
-    expect(scorings).toBeLessThan(400_000)
+    expect(scorings).toBeLessThan(450_000)
     expect(rankingCpuMs).toBeLessThan(5_000)
   })
 })

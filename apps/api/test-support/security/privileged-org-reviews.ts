@@ -101,8 +101,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "marks the notice on the contacts of one recipient in the org it is given, inside recordCommercialSend's transaction for the org of its CommercialSend (the bridge's context org or the composer's session org); nothing of another org is read or written",
   "apps/api/src/modules/contacts/prospect-retention.ts#runProspectRetention":
     "the daily retention sweep: each org id comes from its own system read of the orgs that hold professional-interest contacts or an unread retention item (orgs being moved left out), and each org's row is refreshed in its own privileged transaction for that org only",
-  "apps/api/src/apps/projects/service/deals.ts#orgTimeZone":
-    "reads only the timezone column of the org it is given (organizations is closed to row-level readers); its callers, the deal board route and the projects bridge, pass the org of their own caller's RLS transaction",
   "apps/api/src/modules/contacts/companies.ts#companyIdsUnknownTo":
     "stage-time check of a gated company call: requester is the staging actor, its org from that actor's own context; it reads only that org's companies and answers existence, nothing else",
   "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey":
@@ -159,8 +157,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "MCP token refresh: the org of the connection row it refreshes (head.orgId, read by connection id)",
   "apps/api/src/modules/agent/providers/openrouter-blocked-hosts.ts#readFromDb":
     "reads one string list (settings.ai.models.blockedHosts) of the org it is asked about; callers pass the org of the OpenRouter call they are about to send (preCheck's own orgId carried on its credit, the idle-compaction job's org, the web search's ctx.orgId, the admin route's signed-in org), and a wrong org could only change which OpenRouter hosts that request avoids, never return another org's data; the trace stops at a `get` name collision",
-  "apps/api/src/modules/approvals/route-world.ts#updateItemRoutePerson":
-    "an item changed hands: every caller (the ticket and task assign, claim and update paths) passes the org of the item it just wrote, and the UPDATE is further pinned to that org_id",
   "apps/api/src/modules/approvals/resource-owner.ts#loadRoutineApproverSetting":
     "name collision in the trace (CredentialStore.get is not a settings getter): callers pass the approval's own org",
   "apps/api/src/apps/mail/search-enrichment.ts#streamFragmentsForRebuild":

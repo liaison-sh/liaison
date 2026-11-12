@@ -263,7 +263,6 @@ const LISTED_APPS = new Map<string, string>([
   ],
   ["projects", `projects, tasks, comments and labels the org's own members write: ${NONE}`],
   ["mcp-manager", `the MCP connections the org added: ${NONE}`],
-  ["example", `the sample app's own items, counts and an HTTP status: ${NONE}`],
 ])
 
 describe("outside text is declared by data", () => {

@@ -1756,6 +1756,26 @@
       "desc": 364,
       "schema": 11
     },
+    "kernel__tables_edit": {
+      "desc": 799,
+      "schema": 3
+    },
+    "kernel__tables_get": {
+      "desc": 135,
+      "schema": 10
+    },
+    "kernel__tables_list": {
+      "desc": 154,
+      "schema": 3
+    },
+    "kernel__tables_query": {
+      "desc": 309,
+      "schema": 98
+    },
+    "kernel__tables_rows_write": {
+      "desc": 0,
+      "schema": 27
+    },
     "kernel__thread_mute_set": {
       "desc": 153,
       "schema": 5

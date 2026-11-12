@@ -12,6 +12,7 @@
 //   - batches running at the same time never share a number and, with some of
 //     them failing, still leave no gap: the committed numbers are exactly 1..n.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import type { RlsClient } from "~/db"
 import { sql } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
@@ -49,7 +50,8 @@ function bridge(): Record<string, any> {
     APP,
     "system:batch-bridge:test",
     TEST_ORG,
-    { run: (fn) => withPrivilegedDb(TEST_ORG, "test", fn) },
+    // Each call its own committed transaction, as a sandboxed run's session gives it.
+    { run: (fn) => withPrivilegedDb(TEST_ORG, "test", (tx) => fn(tx as unknown as RlsClient)) },
     manifest as never,
     undefined,
     "system",

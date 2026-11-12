@@ -120,7 +120,7 @@ export function createBatchMethods(
     db_batch: async (specJson: string): Promise<string> => {
       const spec = parseSpec(specJson)
       // Refused before anything runs: a read-only run writes nothing, whichever op it is.
-      for (const op of spec.ops) {
+      for (const op of spec.ops as unknown[]) {
         const entity = isObject(op) ? (op.insert ?? op.update ?? op.delete ?? op.updateMany) : null
         if (typeof entity === "string") {
           ctx.refuseWriteOnReadOnlyRun(ctx.writeTarget(entity), "ctx.db.batch")
@@ -171,7 +171,8 @@ export function createBatchMethods(
           }
           return id
         }
-        for (const [i, op] of spec.ops.entries()) {
+        // Ops are checked field by field below (the spec is the guest's JSON).
+        for (const [i, op] of (spec.ops as unknown[]).entries()) {
           const where = `ops[${i}]`
           if (!isObject(op)) throw new BatchSpecError(`${where} is not an object`)
           if (typeof op.insert === "string") {

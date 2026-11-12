@@ -489,10 +489,10 @@ describe("first-party trust for readOnly", () => {
 
   it("flags every in-tree app first-party, sandboxed ones included", async () => {
     const apps = await getDefaultApps()
-    const drive = apps.find((a) => a.name === "google-drive")
+    const connector = apps.find((a) => a.name === "api-connector")
     const tickets = apps.find((a) => a.name === "tickets")
-    expect(drive?.trusted).toBe(false)
-    expect(drive?._firstParty).toBe(true)
+    expect(connector?.trusted).toBe(false)
+    expect(connector?._firstParty).toBe(true)
     expect(tickets?._firstParty).toBe(true)
   })
 })

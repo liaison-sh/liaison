@@ -23,8 +23,8 @@ describe("knowledge-create skill", () => {
   })
 
   it("prompt names the import-source tools the agent should consider", () => {
-    expect(skill.content).toMatch(/drive_search/i)
-    expect(skill.content).toMatch(/drive_import/i)
+    expect(skill.content).toMatch(/google-drive__search/i)
+    expect(skill.content).toMatch(/google-drive__import/i)
     expect(skill.content).toMatch(/web_fetch/i)
     expect(skill.content).toMatch(/paste/i)
   })
@@ -35,7 +35,7 @@ describe("knowledge-create skill", () => {
     const TEST_ORG = "00000000-0000-0000-0000-000000fa0001"
     await registerKernelAgentTools(TEST_ORG)
 
-    // Tools mentioned in this skill that are owned by the kernel (drive_* and
+    // Tools mentioned in this skill that are owned by the kernel (google-drive__* and
     // knowledge_* live in app manifests and need the manifest registry — they
     // are out of scope for this kernel-only assertion).
     const kernelToolsCited = ["web_fetch"]

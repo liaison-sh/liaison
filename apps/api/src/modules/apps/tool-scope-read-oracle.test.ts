@@ -213,7 +213,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts",
-    "const { txDb, orgId, actor, source, kinds, scope, params: p, ref } = input",
+    "const { txDb, orgId, actor, source, kinds, scope, params: p } = input",
     "add_folder_source's own `scope` param (personal or organization), not a tool definition",
   ],
   [

@@ -49,7 +49,7 @@
   },
   "kernel.agents": {
     "rows": 7,
-    "digest": "be52ed56522648a0"
+    "digest": "c5dc93c39e186821"
   },
   "kernel.app_seeded_assets": {
     "rows": 4,
@@ -57,11 +57,11 @@
   },
   "kernel.approval_requests": {
     "rows": 8,
-    "digest": "9c9b5575f5f0b16b"
+    "digest": "b300a1469ff7e1ea"
   },
   "kernel.apps": {
     "rows": 16,
-    "digest": "06f5b9b2e3ff393f"
+    "digest": "ce2f98bd8f0eb36d"
   },
   "kernel.attention_events": {
     "rows": 49,
@@ -109,7 +109,7 @@
   },
   "kernel.organizations": {
     "rows": 1,
-    "digest": "c48f59f110702193"
+    "digest": "d4a17b971f00010b"
   },
   "kernel.pending_events": {
     "rows": 229,

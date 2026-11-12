@@ -29,6 +29,9 @@ const manifest = {
   version: "1.0.0",
   _format: "manifest",
   capabilities: ["sequences.allocate"],
+  // A scope reaches each table, so registration accepts the schema (only administrators could
+  // read a table no declared scope reaches).
+  scopes: ["batch-bridge:docs:read", "batch-bridge:doc_lines:read"],
   schema: {
     docs: {
       fields: { series: "string", number: "string?", number_int: "integer?" },

@@ -8,6 +8,7 @@
 import type { TourListItem } from "@liaison/shared"
 import { ChevronRight, CircleHelp } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
+import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { OverlaySheet } from "~/ui/OverlaySheet"
 import { PopupMenu } from "~/ui/PopupMenu"
@@ -35,9 +36,61 @@ export function tourActionLabel(item: TourListItem, t: T): string {
   return t("tours.engine.start")
 }
 
+/** Words in a role's name that point at a role scenario ("kernel.scenario-<key>"). */
+const ROLE_WORDS: Record<string, readonly string[]> = {
+  sales: ["sales"],
+  commerce: ["commerce", "operations"],
+  support: ["support"],
+  dev: ["developer", "engineer"],
+  projects: ["project"],
+  knowledge: ["knowledge"],
+}
+
+const SCENARIO_PREFIX = "kernel.scenario-"
+
+/** How far a tour has got: a run in progress beats a finished one, which beats a new one. */
+function progressRank(item: TourListItem): number {
+  const status = item.progress?.status
+  if (status === "active" || status === "paused") return 3
+  if (status === "completed" || status === "abandoned") return 2
+  return 1
+}
+
+function pointsAtRole(item: TourListItem, roles: readonly string[]): boolean {
+  if (!item.tourId.startsWith(SCENARIO_PREFIX)) return false
+  const words = ROLE_WORDS[item.tourId.slice(SCENARIO_PREFIX.length)] ?? []
+  return roles.some((r) => words.some((w) => r.toLowerCase().includes(w)))
+}
+
+/**
+ * The list as the person reads it: one entry per title (the one furthest along, else the first),
+ * and the tours that point at the person's own roles first. Everything else keeps catalogue order.
+ */
+export function arrangeTours(
+  items: readonly TourListItem[],
+  t: T,
+  roles: readonly string[],
+): TourListItem[] {
+  const byTitle = new Map<string, TourListItem>()
+  for (const item of items) {
+    const key = t(item.title)
+    const kept = byTitle.get(key)
+    if (!kept || progressRank(item) > progressRank(kept)) byTitle.set(key, item)
+  }
+  const kept = new Set(byTitle.values())
+  const unique = items.filter((i) => kept.has(i))
+  return [
+    ...unique.filter((i) => pointsAtRole(i, roles)),
+    ...unique.filter((i) => !pointsAtRole(i, roles)),
+  ]
+}
+
 function statusOf(item: TourListItem): string {
   return item.progress?.status ?? "new"
 }
+
+const listed = (t: T): TourListItem[] =>
+  arrangeTours(tourStore.items, t, userFromToken()?.roles ?? [])
 
 const RowText: Component<{ item: TourListItem }> = (props) => {
   const i18n = useI18n()
@@ -91,7 +144,7 @@ export const ToursHelpButton: Component<{ buttonClass: (extra?: string) => strin
               </p>
             }
           >
-            <For each={tourStore.items}>
+            <For each={listed(i18n.t)}>
               {(item) => (
                 <PopupMenu.Item
                   data-testid="tours-menu-item"
@@ -136,7 +189,7 @@ export const ToursList: Component<{ onPicked?: () => void }> = (props) => {
           </p>
         }
       >
-        <For each={tourStore.items}>
+        <For each={listed(i18n.t)}>
           {(item) => (
             <button
               type="button"

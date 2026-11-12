@@ -15,7 +15,9 @@ import type { TourApi } from "./tour-api"
 vi.mock("~/modules/shell/shell-tier", () => ({ shellTier: () => "desktop" }))
 
 const { resetTourStore, setTourApi, tourStore } = await import("./tour-store")
-const { ToursHelpButton, ToursList, tourActionLabel, tourStatusLabel } = await import("./ToursMenu")
+const { ToursHelpButton, ToursList, arrangeTours, tourActionLabel, tourStatusLabel } = await import(
+  "./ToursMenu"
+)
 const { TourHost } = await import("./TourHost")
 
 function progress(over: Partial<TourProgress> = {}): TourProgress {
@@ -196,5 +198,49 @@ describe("deep link and websocket", () => {
     )
     await waitFor(() => expect(api.progress).toHaveBeenCalled())
     expect(await screen.findByTestId("tour-panel")).toBeTruthy()
+  })
+})
+
+describe("arrangeTours", () => {
+  const row = (tourId: string, title: string, p: TourProgress | null = null): TourListItem => ({
+    tourId,
+    app: "kernel",
+    title,
+    summary: `${title}.summary`,
+    beatCount: 3,
+    progress: p,
+  })
+  const words = (k: string) => k.replace(/^t\./, "")
+
+  it("lists one entry for a title two tours share, the one furthest along", () => {
+    const first = row("projects.basics", "t.Projects")
+    const second = row("kernel.scenario-projects", "t.Projects")
+    expect(arrangeTours([first, second], words, []).map((i) => i.tourId)).toEqual([
+      "projects.basics",
+    ])
+    const started = row(
+      "kernel.scenario-projects",
+      "t.Projects",
+      progress({ tourId: "kernel.scenario-projects" }),
+    )
+    expect(arrangeTours([first, started], words, []).map((i) => i.tourId)).toEqual([
+      "kernel.scenario-projects",
+    ])
+  })
+
+  it("puts the tours that point at the person's roles first and keeps the rest in catalogue order", () => {
+    const items = [
+      row("kernel.scenario-sales", "t.Sales"),
+      row("kernel.scenario-commerce", "t.Commerce"),
+      row("kernel.scenario-dev", "t.Developers"),
+      row("tickets.basics", "t.Tickets"),
+    ]
+    expect(arrangeTours(items, words, ["Developer"]).map((i) => i.tourId)).toEqual([
+      "kernel.scenario-dev",
+      "kernel.scenario-sales",
+      "kernel.scenario-commerce",
+      "tickets.basics",
+    ])
+    expect(arrangeTours(items, words, []).map((i) => i.tourId)).toEqual(items.map((i) => i.tourId))
   })
 })

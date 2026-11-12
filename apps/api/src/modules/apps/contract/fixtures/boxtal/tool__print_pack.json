@@ -1,0 +1,148 @@
+{
+  "entry": "tool:print_pack",
+  "params": {
+    "shipment_id": "6a3d4b53-22bc-4d3b-93ec-68c63e3ba229"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:33.455924+00\",\"updated_at\":\"2026-11-12 09:02:36.334304+00\",\"boxtal_order_id\":\"2611121002CHRP5CXMFR\",\"external_id\":null,\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"contact_ref\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"offer_code\":\"CHRP-Chrono2ShopDirectRetour\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"2611121002CHRP5CXMFR\",\"queue_facts\":{\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"],\"items\":3,\"print\":{\"lines\":[{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200009\",\"value\":78,\"origin\":null,\"currency\":\"EUR\",\"quantity\":2,\"unit_value\":39,\"description\":\"Kestrel Windshield Pack\"},{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200002\",\"value\":29,\"origin\":null,\"currency\":\"EUR\",\"quantity\":1,\"unit_value\":29,\"description\":\"Kestrel XLR Cable Set\"}],\"order\":{\"name\":null,\"email\":\"customer@example.com\",\"phone\":\"+15550100000\",\"address\":{\"city\":\"Lyon\",\"state\":null,\"street\":\"3 rue Test\",\"postal_code\":\"69002\",\"country_iso2\":\"FR\"},\"company\":null,\"customer\":\"Pierre Caron\"},\"invoice\":{\"date\":\"2026-09-04 21:00:00+00\",\"number\":\"INV-2026-0018\"},\"carrier_name\":\"Chronopost\",\"carrier_family\":\"chronopost\"},\"weight\":2.5,\"parcels\":[{\"width\":30,\"height\":20,\"length\":40,\"weight\":2.5}],\"category\":\"sale\",\"customer\":\"Pierre Caron\",\"products\":\"2xWIND, 1xCBL\",\"order_name\":null,\"staff_note\":null,\"to_country\":\"FR\",\"destination\":\"FR\",\"to_postcode\":\"69002\",\"package_count\":1,\"carrier_family\":\"chronopost\",\"order_created_at\":null},\"link_state\":\"created\",\"order_status\":\"CONFIRMED\",\"tracking_status\":null,\"status_fetched_at\":\"2026-01-01 00:00:00+00\",\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF_A4\"}],\"declared_total\":0,\"label_cost_ttc\":5.27,\"currency\":\"EUR\",\"recipient_summary\":\"Pierre Caron\",\"route_summary\":\"FR\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":null,\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "connections_getSettings",
+      "args": ["boxtal"],
+      "reply": "{\"values\":{\"environment\":\"sandbox\"},\"missing\":[]}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"boxtal_order_id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:33.455924+00\",\"updated_at\":\"2026-11-12 09:02:36.334304+00\",\"boxtal_order_id\":\"2611121002CHRP5CXMFR\",\"external_id\":null,\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"contact_ref\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"offer_code\":\"CHRP-Chrono2ShopDirectRetour\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"2611121002CHRP5CXMFR\",\"queue_facts\":{\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"],\"items\":3,\"print\":{\"lines\":[{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200009\",\"value\":78,\"origin\":null,\"currency\":\"EUR\",\"quantity\":2,\"unit_value\":39,\"description\":\"Kestrel Windshield Pack\"},{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200002\",\"value\":29,\"origin\":null,\"currency\":\"EUR\",\"quantity\":1,\"unit_value\":29,\"description\":\"Kestrel XLR Cable Set\"}],\"order\":{\"name\":null,\"email\":\"customer@example.com\",\"phone\":\"+15550100000\",\"address\":{\"city\":\"Lyon\",\"state\":null,\"street\":\"3 rue Test\",\"postal_code\":\"69002\",\"country_iso2\":\"FR\"},\"company\":null,\"customer\":\"Pierre Caron\"},\"invoice\":{\"date\":\"2026-09-04 21:00:00+00\",\"number\":\"INV-2026-0018\"},\"carrier_name\":\"Chronopost\",\"carrier_family\":\"chronopost\"},\"weight\":2.5,\"parcels\":[{\"width\":30,\"height\":20,\"length\":40,\"weight\":2.5}],\"category\":\"sale\",\"customer\":\"Pierre Caron\",\"products\":\"2xWIND, 1xCBL\",\"order_name\":null,\"staff_note\":null,\"to_country\":\"FR\",\"destination\":\"FR\",\"to_postcode\":\"69002\",\"package_count\":1,\"carrier_family\":\"chronopost\",\"order_created_at\":null},\"link_state\":\"created\",\"order_status\":\"CONFIRMED\",\"tracking_status\":null,\"status_fetched_at\":\"2026-01-01 00:00:00+00\",\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF_A4\"}],\"declared_total\":0,\"label_cost_ttc\":5.27,\"currency\":\"EUR\",\"recipient_summary\":\"Pierre Caron\",\"route_summary\":\"FR\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":null,\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://api.boxtal.build/shipping/v3.1/shipping-order/2611121002CHRP5CXMFR/shipping-document",
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"boxtal\",\"scheme\":\"bearer\",\"exchange\":{\"url\":\"https://api.boxtal.build/iam/account-app/token\",\"fields\":[\"v3Key\",\"v3Secret\"]}},\"timeoutMs\":5000}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"timestamp\\\":\\\"2026-11-12T10:02:36.97552+01:00\\\",\\\"status\\\":200,\\\"content\\\":[{\\\"type\\\":\\\"LABEL\\\",\\\"format\\\":\\\"PDF_A4\\\",\\\"url\\\":\\\"https://document.boxtal.build/shipping-label/2611121002CHRP5CXMFR_bordereau.pdf?Expires=1797066156&Signature=redacted&Key-Pair-Id=APKAJWUAL36AVDNBLYTA\\\"}]}\"}"
+    },
+    {
+      "method": "files_importFromUrl",
+      "args": [
+        "{\"targetApp\":\"boxtal\",\"targetEntityType\":\"shipment\",\"targetEntityId\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\",\"url\":\"https://document.boxtal.build/shipping-label/2611121002CHRP5CXMFR_bordereau.pdf?Expires=1797066156&Signature=redacted&Key-Pair-Id=APKAJWUAL36AVDNBLYTA\",\"filename\":\"label-2611121002CHRP5CXMFR.pdf\",\"mimeType\":\"application/pdf\",\"pdfStripRotation\":true}"
+      ],
+      "reply": "{\"id\":\"1f28b45f-367b-4954-a2f0-639f81abd8a5\",\"filename\":\"label-2611121002CHRP5CXMFR.pdf\",\"mimeType\":\"application/pdf\",\"sizeBytes\":3469,\"sha256\":\"d5eb54986a2301d0202ed10f6e09a84c77a41170c72ad6359137bc5d69f46c1e\",\"storageKey\":\"orgs/00000000-0000-4000-8000-00000000c0de/boxtal/shipment/6a3d4b53-22bc-4d3b-93ec-68c63e3ba229/1f28b45f-367b-4954-a2f0-639f81abd8a5/label-2611121002CHRP5CXMFR.pdf\",\"disposition\":\"attachment\",\"contentId\":null}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:files_merge_pdfs",
+        "{\"file_ids\":[\"1f28b45f-367b-4954-a2f0-639f81abd8a5\"],\"title\":\"label-2611121002CHRP5CXMFR.pdf\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_error\",\"message\":\"File(s) not found or not accessible: 1f28b45f-367b-4954-a2f0-639f81abd8a5\",\"retryable\":false}}"
+    },
+    {
+      "method": "executeTool",
+      "args": ["invoicing:documents_get", "{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"}"],
+      "reply": "{\"status\":\"completed\",\"result\":{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"type\":\"invoice\",\"scope\":null,\"number\":\"INV-2026-0018\",\"status\":\"paid\",\"payment_status\":\"paid\",\"counterparty_contact_id\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"counterparty_name\":\"Pierre Caron\",\"counterparty_address\":\"Pierre Caron\\nNantes\\nFR\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"grand_total_minor\":\"12840\",\"issued_at\":\"2026-09-04 21:00:00+00\",\"due_at\":\"2026-09-18 21:00:00+00\",\"channel\":\"manual\",\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"customer_reference\":null,\"notes\":null,\"original_document_id\":null,\"original_document_number\":null,\"credited_by_numbers\":[],\"subtotal_minor\":\"10700\",\"tax_total_minor\":\"2140\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issuer_profile_id\":\"95d031bb-26ec-4ae2-936d-0badc8f1d4b0\",\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{},\"lifecycle_log\":[{\"ts\":\"2026-09-04T21:00:00.000Z\",\"actor\":null,\"event\":\"issued\"},{\"ts\":\"2026-09-04T23:00:00.000Z\",\"actor\":null,\"event\":\"marked_paid\",\"source\":\"manual\"}],\"lines\":[{\"id\":\"9c9d524a-5515-4e03-b605-0a84240c69c0\",\"position\":1,\"description\":\"Kestrel Windshield Pack\",\"quantity\":\"2.000\",\"unit_price_minor\":\"3900\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"7800\",\"tax_minor\":\"1560\",\"total_minor\":\"9360\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/8200009\"},{\"id\":\"4fdd163e-be66-4b12-bc4e-b7c3682dc389\",\"position\":2,\"description\":\"Kestrel XLR Cable Set\",\"quantity\":\"1.000\",\"unit_price_minor\":\"2900\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"2900\",\"tax_minor\":\"580\",\"total_minor\":\"3480\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/8200002\"}],\"shipments\":[],\"customer_kind\":null,\"operation_category\":null,\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":null,\"regime\":null,\"regime_reasons\":[]}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "invoicing:documents_download_pdf",
+        "{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"file_id\":null,\"url\":null,\"legal_original\":false,\"management_copy\":null,\"facturx_xml_file_id\":null}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "invoicing:documents_retry_pdf",
+        "{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"template_not_found\",\"message\":\"no template registered for invoicing:invoice_v1\",\"retryable\":true}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"sender_address\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"ac7b66e2-dc9b-40ef-9b8c-d0c761b6e3b2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2025-11-20 12:00:00+00\",\"updated_at\":\"2026-11-12 09:02:22.302671+00\",\"key\":\"sender_address\",\"value\":{\"city\":\"Paris\",\"name\":\"Shipping desk\",\"type\":\"BUSINESS\",\"email\":\"shipping@example.com\",\"phone\":\"+15550100000\",\"street\":\"14 rue des Ateliers\",\"company\":\"Resonant Audio Labs SAS\",\"postalCode\":\"75011\",\"countryIsoCode\":\"FR\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"},\"limit\":50}"
+      ],
+      "reply": "[{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:33.455924+00\",\"updated_at\":\"2026-11-12 09:02:36.334304+00\",\"boxtal_order_id\":\"2611121002CHRP5CXMFR\",\"external_id\":null,\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"contact_ref\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"offer_code\":\"CHRP-Chrono2ShopDirectRetour\",\"tracking_number\":null,\"boxtal_shipment_ref\":\"2611121002CHRP5CXMFR\",\"queue_facts\":{\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"],\"items\":3,\"print\":{\"lines\":[{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200009\",\"value\":78,\"origin\":null,\"currency\":\"EUR\",\"quantity\":2,\"unit_value\":39,\"description\":\"Kestrel Windshield Pack\"},{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200002\",\"value\":29,\"origin\":null,\"currency\":\"EUR\",\"quantity\":1,\"unit_value\":29,\"description\":\"Kestrel XLR Cable Set\"}],\"order\":{\"name\":null,\"email\":\"customer@example.com\",\"phone\":\"+15550100000\",\"address\":{\"city\":\"Lyon\",\"state\":null,\"street\":\"3 rue Test\",\"postal_code\":\"69002\",\"country_iso2\":\"FR\"},\"company\":null,\"customer\":\"Pierre Caron\"},\"invoice\":{\"date\":\"2026-09-04 21:00:00+00\",\"number\":\"INV-2026-0018\"},\"carrier_name\":\"Chronopost\",\"carrier_family\":\"chronopost\"},\"weight\":2.5,\"parcels\":[{\"width\":30,\"height\":20,\"length\":40,\"weight\":2.5}],\"category\":\"sale\",\"customer\":\"Pierre Caron\",\"products\":\"2xWIND, 1xCBL\",\"order_name\":null,\"staff_note\":null,\"to_country\":\"FR\",\"destination\":\"FR\",\"to_postcode\":\"69002\",\"package_count\":1,\"carrier_family\":\"chronopost\",\"order_created_at\":null},\"link_state\":\"created\",\"order_status\":\"CONFIRMED\",\"tracking_status\":null,\"status_fetched_at\":\"2026-01-01 00:00:00+00\",\"polled_at\":null,\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF_A4\"}],\"declared_total\":0,\"label_cost_ttc\":5.27,\"currency\":\"EUR\",\"recipient_summary\":\"Pierre Caron\",\"route_summary\":\"FR\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":null,\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "variant_sku",
+        "{\"where\":{\"product_source\":\"shopify\",\"product_id\":{\"in\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"]}},\"limit\":2}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:variants_brief",
+        "{\"ids\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"]}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_not_found\",\"message\":\"tool shopify:variants_brief not registered\",\"retryable\":false}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:product_attributes_list",
+        "{\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"]}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"attributes\":[],\"truncated\":false}}"
+    },
+    {
+      "method": "executeTool",
+      "args": ["invoicing:documents_get", "{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"}"],
+      "reply": "{\"status\":\"completed\",\"result\":{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"type\":\"invoice\",\"scope\":null,\"number\":\"INV-2026-0018\",\"status\":\"paid\",\"payment_status\":\"paid\",\"counterparty_contact_id\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"counterparty_name\":\"Pierre Caron\",\"counterparty_address\":\"Pierre Caron\\nNantes\\nFR\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"grand_total_minor\":\"12840\",\"issued_at\":\"2026-09-04 21:00:00+00\",\"due_at\":\"2026-09-18 21:00:00+00\",\"channel\":\"manual\",\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"customer_reference\":null,\"notes\":null,\"original_document_id\":null,\"original_document_number\":null,\"credited_by_numbers\":[],\"subtotal_minor\":\"10700\",\"tax_total_minor\":\"2140\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issuer_profile_id\":\"95d031bb-26ec-4ae2-936d-0badc8f1d4b0\",\"pdf_file_id\":null,\"pdf_status\":\"failed\",\"external_refs\":{},\"lifecycle_log\":[{\"ts\":\"2026-09-04T21:00:00.000Z\",\"actor\":null,\"event\":\"issued\"},{\"ts\":\"2026-09-04T23:00:00.000Z\",\"actor\":null,\"event\":\"marked_paid\",\"source\":\"manual\"}],\"lines\":[{\"id\":\"9c9d524a-5515-4e03-b605-0a84240c69c0\",\"position\":1,\"description\":\"Kestrel Windshield Pack\",\"quantity\":\"2.000\",\"unit_price_minor\":\"3900\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"7800\",\"tax_minor\":\"1560\",\"total_minor\":\"9360\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/8200009\"},{\"id\":\"4fdd163e-be66-4b12-bc4e-b7c3682dc389\",\"position\":2,\"description\":\"Kestrel XLR Cable Set\",\"quantity\":\"1.000\",\"unit_price_minor\":\"2900\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"2900\",\"tax_minor\":\"580\",\"total_minor\":\"3480\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/8200002\"}],\"shipments\":[],\"customer_kind\":null,\"operation_category\":null,\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":null,\"regime\":null,\"regime_reasons\":[]}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:document_rules_match",
+        "{\"recordType\":\"boxtal:order\",\"records\":[{\"id\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"],\"countryIso2\":\"FR\",\"carrier_family\":\"chronopost\"}]}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"matches\":[]}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "prep_state",
+        "{\"where\":{\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "prep_state",
+        "{\"where\":{\"document_ref\":{\"in\":[\"28231ac4-2f7e-4710-a173-79c054a42d07\"]}},\"limit\":1000}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

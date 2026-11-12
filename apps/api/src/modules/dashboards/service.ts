@@ -4,7 +4,7 @@
 // data for the person viewing it.
 //
 // Who may do what (persons; the agent's tools add an approval when others see it, tools.ts).
-// A dashboard is shared as Knowledge documents and contacts are (modules/sharing, 0294): its
+// A dashboard is shared as Knowledge documents and contacts are (modules/sharing, 0295): its
 // owner, `orgAccess` (none | viewer | editor: what every member gets) and grants to people or
 // roles, each viewer or editor. Personal = none and no grant; org = viewer.
 // - read: its owner, everyone when orgAccess is viewer or editor, anyone granted.
@@ -14,7 +14,7 @@
 // - delete: its owner, or kernel:dashboards:admin on one the whole org sees.
 // - change who sees it (sharing.ts): whoever edits it and holds kernel:dashboards:share (or
 //   :admin). Creating an org dashboard needs :share too.
-// The row policies (migration 0294) enforce all of it; the service checks the same rules so a
+// The row policies (migration 0295) enforce all of it; the service checks the same rules so a
 // refusal names its scope.
 //
 // A saved spec is valid (spec.ts) and every block's source may feed a dashboard

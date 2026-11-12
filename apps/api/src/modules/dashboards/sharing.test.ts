@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Dashboards shared as Knowledge documents are (migration 0294, sharing.ts): a dashboard
+// Dashboards shared as Knowledge documents are (migration 0295, sharing.ts): a dashboard
 // restricted to some people or roles is invisible to everyone else by every path (list, open,
 // block data, drill rows, filter options, exports, history, viewer state, the snapshot tool,
 // scheduled-send recipients, raw RLS reads), org admins included; an editor-shared person edits;

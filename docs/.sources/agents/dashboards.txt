@@ -216,8 +216,8 @@ Metric read from a single record has no rows button -> apps/web/src/modules/dash
 Share a dashboard: Share button on the toolbar -> apps/web/src/modules/dashboards/DashboardView.tsx:741
 General access options Restricted / view / edit -> apps/web/src/modules/dashboards/DashboardShareDialog.tsx:30
 Share labels -> packages/shared/src/i18n/locales/en/kernel.json:6441
-Restricted dashboard invisible by every path, no admin bypass (row policies) -> apps/api/src/db/migrations/0294_dashboard_sharing.sql:196
-Who manages sharing: editors with kernel:dashboards:share -> apps/api/src/db/migrations/0294_dashboard_sharing.sql:87
+Restricted dashboard invisible by every path, no admin bypass (row policies) -> apps/api/src/db/migrations/0295_dashboard_sharing.sql:196
+Who manages sharing: editors with kernel:dashboards:share -> apps/api/src/db/migrations/0295_dashboard_sharing.sql:87
 Edit / delete / share rules in words -> apps/api/src/modules/dashboards/service.ts:238
 Admin restricting keeps it only by adding themselves -> apps/api/src/modules/dashboards/sharing.ts:170
 Personal = restricted shared with nobody; visibility sets general access only -> apps/api/src/modules/dashboards/service.ts:1010

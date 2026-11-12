@@ -1,0 +1,25 @@
+{
+  "entry": "tool:prep_select_offer",
+  "params": {
+    "document_ref": "4da92a37-d5dd-4407-a753-84c86fda324a"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "prep_state",
+        "{\"where\":{\"document_ref\":\"4da92a37-d5dd-4407-a753-84c86fda324a\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"49a92b57-c190-4282-bb58-9e7838cd787c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:44.426984+00\",\"updated_at\":\"2026-11-12 09:01:30.045847+00\",\"document_ref\":\"4da92a37-d5dd-4407-a753-84c86fda324a\",\"documents\":null,\"category\":\"sale\",\"excluded\":false,\"selected_offer_code\":null,\"validated\":false,\"validated_at\":null}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "prep_state",
+        "49a92b57-c190-4282-bb58-9e7838cd787c",
+        "{\"selected_offer_code\":null}"
+      ]
+    }
+  ]
+}

@@ -955,7 +955,7 @@ describe("Shopify app.manifest.json", () => {
     // groupBy product, and an optional timeGrain (day, week, month) whose rows carry `date`.
     // 0.4.23: the OAuth request adds write_online_store_navigation, which products_merge's redirect
     // needs; a merge whose connection lacks it is refused before its first write.
-    expect(m.version).toBe("0.4.23")
+    expect(m.version).toBe("0.4.24")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

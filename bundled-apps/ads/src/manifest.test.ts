@@ -89,7 +89,7 @@ describe("ads app.manifest.json", () => {
     // 0.1.59: graph_get and google_search_terms read text people outside the org wrote (page
     // comments, the queries searchers typed), so a turn that read them is marked.
     // 0.1.60: its bundle carries host SDK 1.3.
-    expect(m.version).toBe("0.1.65")
+    expect(m.version).toBe("0.1.66")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

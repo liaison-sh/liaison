@@ -43,6 +43,7 @@ export const NAV: NavSection[] = [
       { id: "agents/models", url: "agents/models" },
       { id: "agents/tools", url: "agents/tools" },
       { id: "agents/dashboards", url: "agents/dashboards" },
+      { id: "agents/dashboard-tables", url: "agents/dashboard-tables" },
       { id: "agents/build-an-app", url: "agents/build-an-app" },
       { id: "agents/mcp-servers", url: "agents/mcp-servers" },
     ],

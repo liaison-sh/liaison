@@ -12,6 +12,7 @@ import type { AppEnv } from "~/app"
 import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
+import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { searchLinkTargets } from "~/modules/dashboards/tables/link-search"
 import {
   createTable,
@@ -173,11 +174,11 @@ tablesRoutes
     run(c, async () => {
       const q = c.req.valid("query")
       return {
-        items: await searchLinkTargets(extractRlsContext(c), {
-          app: q.app,
-          entityType: q.entityType,
-          q: q.q,
-        }),
+        items: await searchLinkTargets(
+          extractRlsContext(c),
+          { app: q.app, entityType: q.entityType, q: q.q },
+          await restToolCall(c),
+        ),
       }
     }),
   )

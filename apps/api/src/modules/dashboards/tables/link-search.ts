@@ -10,6 +10,7 @@
 import type { UserContext } from "~/db/rls"
 import { rootLogger } from "~/lib/logger"
 import { entityRegistry, type PickDeclaration } from "~/modules/apps/app-registries"
+import type { RestToolCall } from "~/modules/apps/rest-tool-call"
 import { TableError } from "~/modules/dashboards/tables/service"
 
 const log = rootLogger.child({ module: "dashboards/tables/link-search" })
@@ -45,17 +46,24 @@ export function itemsOf(data: unknown, itemsPath?: string): unknown[] {
 }
 
 /**
- * The dispatch of a pick tool: the person's own read (origin `human-ui`, their actor and
- * grants), never the webhook/job provenance, and a read-only run, so a manifest that names a
- * writing tool as its picker cannot write.
+ * The dispatch of a pick tool: the person's own read (their actor and grants, the request's
+ * provenance from `restToolCall`), never the webhook/job provenance, and a read-only run, so a
+ * manifest that names a writing tool as its picker cannot write.
  */
-export function pickToolCall(viewer: UserContext, app: string, pick: PickDeclaration, q: string) {
+export function pickToolCall(
+  viewer: UserContext,
+  app: string,
+  pick: PickDeclaration,
+  q: string,
+  call: RestToolCall,
+) {
   return {
     toolName: `${app}:${pick.tool}`,
     orgId: viewer.orgId,
     actor: viewer,
     params: q ? { [pick.queryParam]: q } : {},
-    origin: "human-ui" as const,
+    origin: call.origin,
+    ...(call.threadId ? { threadId: call.threadId } : {}),
     readOnlyRun: true,
   }
 }
@@ -66,11 +74,12 @@ async function viaTool(
   entityType: string,
   pick: PickDeclaration,
   q: string,
+  call: RestToolCall,
 ): Promise<LinkTarget[]> {
   const { executeTool } = await import("~/modules/apps/execute-tool")
   let result: Awaited<ReturnType<typeof executeTool>>
   try {
-    result = await executeTool(pickToolCall(viewer, app, pick, q))
+    result = await executeTool(pickToolCall(viewer, app, pick, q, call))
   } catch (err) {
     const e = err as { status?: number; code?: string; message?: string }
     log.error({ err, app, entityType, tool: pick.tool }, "link search: the pick tool failed")
@@ -137,6 +146,7 @@ async function viaIndex(
 export async function searchLinkTargets(
   viewer: UserContext,
   input: { app?: string; entityType?: string; q: string },
+  call: RestToolCall,
 ): Promise<LinkTarget[]> {
   if (!input.app) return viaIndex(viewer, undefined, input.entityType, input.q)
   const app = input.app
@@ -152,7 +162,7 @@ export async function searchLinkTargets(
   if (picked.length === 0) return viaIndex(viewer, app, input.entityType, input.q)
   const out: LinkTarget[] = []
   for (const [entity, decl] of picked) {
-    out.push(...(await viaTool(viewer, app, entity, decl.pick!, input.q)))
+    out.push(...(await viaTool(viewer, app, entity, decl.pick!, input.q, call)))
     if (out.length >= LINK_SEARCH_LIMIT) break
   }
   return out.slice(0, LINK_SEARCH_LIMIT)

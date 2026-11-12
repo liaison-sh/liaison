@@ -19,11 +19,11 @@ Edit rule (write scope + owner/editor, admin on org-wide) -> apps/api/src/db/mig
 Read rule (owner, org access, grants; no admin bypass) -> apps/api/src/db/migrations/0298_dashboard_tables.sql:143
 Rows follow the table's sharing on every path -> apps/api/src/db/migrations/0298_dashboard_tables.sql:231
 100,000 rows of 256 KB at most -> apps/api/src/modules/data-store/service.ts:34
-Tools tables_list, tables_get, tables_query -> apps/api/src/modules/dashboards/tables/tools.ts:403
-tables_rows_write -> apps/api/src/modules/dashboards/tables/tools.ts:503
-Agent row writes wait when the switch is on -> apps/api/src/modules/dashboards/tables/tools.ts:528
-tables_edit always waits -> apps/api/src/modules/dashboards/tables/tools.ts:597
-Card to the owner of a restricted table, admins for an org-wide one -> apps/api/src/modules/dashboards/tables/tools.ts:132
+Tools tables_list, tables_get, tables_query -> apps/api/src/modules/dashboards/tables/tools.ts:444
+tables_rows_write -> apps/api/src/modules/dashboards/tables/tools.ts:553
+Agent row writes wait when the switch is on -> apps/api/src/modules/dashboards/tables/tools.ts:576
+tables_edit always waits -> apps/api/src/modules/dashboards/tables/tools.ts:651
+Card to the owner of a restricted table, admins for an org-wide one -> apps/api/src/modules/dashboards/tables/tools.ts:133
 Table block source {kind: table, table, where} -> apps/api/src/modules/dashboards/spec.ts:138
 map.editable and map.staleAfterDays -> apps/api/src/modules/dashboards/spec.ts:300
 A block reads at most 2,000 rows; link as label, person as name -> apps/api/src/modules/dashboards/execute.ts:244
@@ -32,7 +32,7 @@ Routine filter {tableId, column, to} -> apps/api/src/infra/jobs/event-routine-ga
 Filter evaluated before the coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
 A routine never wakes on its own change -> apps/api/src/infra/jobs/event-routine-subscriber.ts:237
 The owner must read the table, the column must exist -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2774
-Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:128
+Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:146
 Manifest entities.<e>.pick -> apps/api/src/modules/apps/manifest-schema.ts:1282
 Shopify declares pick -> bundled-apps/shopify/app.manifest.json:423
 Boxtal declares pick -> bundled-apps/boxtal/app.manifest.json:225

@@ -22,6 +22,7 @@ describe("pick tool dispatch", () => {
       "shop",
       { tool: "orders_search", queryParam: "query", idField: "id", labelField: "name" },
       "ACME",
+      { origin: "human-ui" },
     )
     expect(call).toEqual({
       toolName: "shop:orders_search",

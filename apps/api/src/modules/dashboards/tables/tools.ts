@@ -369,7 +369,7 @@ const columnOps = z
   })
   .strict()
 
-const editParams = z.discriminatedUnion("action", [
+const editVariants = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("create"),
@@ -398,6 +398,32 @@ const editParams = z.discriminatedUnion("action", [
     .strict(),
   z.object({ action: z.literal("delete"), tableId: z.string().uuid() }).strict(),
 ])
+/** The params a model sees: one object (a tool's params must be an object schema), each
+ *  call checked against its action's variant above. */
+const editParams = z
+  .object({
+    action: z.enum(["create", "alter", "delete"]),
+    tableId: z.string().uuid().optional().describe("alter, delete"),
+    ifVersion: z.number().int().min(1).optional().describe("alter: the table's version"),
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().max(2000).nullable().optional(),
+    columns: z
+      .union([z.array(columnSchema).max(40), columnOps])
+      .optional()
+      .describe("create: the columns; alter: {add?, rename?, setChoices?, drop?}"),
+    agentWritesNeedApproval: z.boolean().optional(),
+    fromDashboardId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("create: share the table exactly like this dashboard (the one it will show on)"),
+    orgAccess: z.enum(["none", "viewer", "editor"]).optional().describe("create"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const variant = editVariants.safeParse(value)
+    if (!variant.success) for (const issue of variant.error.issues) ctx.addIssue({ ...issue })
+  })
 /** The params as the card reads them (validated by the time a card is made, loosely typed here). */
 interface EditParams {
   action?: "create" | "alter" | "delete"
@@ -572,7 +598,7 @@ export function registerTableTools(orgId: string): void {
     params: editParams,
     handler: (async (params: unknown, ctx: HandlerCtx) =>
       guarded(async () => {
-        const p = params as z.infer<typeof editParams>
+        const p = editVariants.parse(params)
         const viewer = await viewerOf(ctx)
         if (p.action === "create") {
           const t = await createTable(
@@ -629,7 +655,10 @@ export function registerTableTools(orgId: string): void {
     // Checked before any approval is staged: nobody approves a change that would be refused.
     refuseBeforeGate: async (params: unknown, ctx) => {
       if (ctx.userId === "system") return null
-      const p = params as z.infer<typeof editParams>
+      // Bad params are the schema's refusal, made before this runs.
+      const parsed = editVariants.safeParse(params)
+      if (!parsed.success) return null
+      const p = parsed.data
       if (p.action !== "create") {
         const ownerless = await ownerlessRefusal(ctx.orgId, p.tableId, true)
         if (ownerless) return ownerless

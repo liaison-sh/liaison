@@ -1,0 +1,128 @@
+{
+  "entry": "webhook:fulfillments-create",
+  "params": {
+    "id": 8148355743910,
+    "order_id": 19010984706214,
+    "status": "success",
+    "created_at": "2026-11-12T03:18:15-05:00",
+    "service": "manual",
+    "updated_at": "2026-11-12T03:18:17-05:00",
+    "tracking_company": "UPS",
+    "shipment_status": null,
+    "location_id": 83457310886,
+    "origin_address": null,
+    "line_items": [
+      {
+        "id": 50929465917606,
+        "variant_id": 56534760784038,
+        "title": "The Minimal Snowboard",
+        "quantity": 1,
+        "sku": null,
+        "variant_title": null,
+        "vendor": "Contract Shop",
+        "fulfillment_service": "manual",
+        "product_id": 15332593336486,
+        "requires_shipping": true,
+        "taxable": true,
+        "gift_card": false,
+        "name": "The Minimal Snowboard",
+        "variant_inventory_management": "shopify",
+        "properties": [],
+        "product_exists": true,
+        "fulfillable_quantity": 1,
+        "grams": 0,
+        "price": "885.95",
+        "total_discount": "0.00",
+        "fulfillment_status": "partial",
+        "price_set": {
+          "shop_money": {
+            "amount": "885.95",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "885.95",
+            "currency_code": "USD"
+          }
+        },
+        "total_discount_set": {
+          "shop_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          },
+          "presentment_money": {
+            "amount": "0.00",
+            "currency_code": "USD"
+          }
+        },
+        "discount_allocations": [],
+        "origin_location": {
+          "id": 4524267634854,
+          "country_code": "US",
+          "province_code": "",
+          "name": "Shop location",
+          "address1": "",
+          "address2": "",
+          "city": "",
+          "zip": ""
+        },
+        "admin_graphql_api_id": "gid://shopify/LineItem/50929465917606",
+        "duties": [],
+        "tax_lines": [],
+        "fulfillment_line_item_id": 19332754047142
+      }
+    ],
+    "tracking_number": "1Z999AA10123456785",
+    "tracking_numbers": ["1Z999AA10123456785"],
+    "tracking_url": "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785",
+    "tracking_urls": [
+      "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785"
+    ],
+    "receipt": {},
+    "name": "#2802.1",
+    "admin_graphql_api_id": "gid://shopify/Fulfillment/8148355743910"
+  },
+  "extraArgs": [
+    {
+      "x-shopify-hmac-sha256": "bzvVgJctgMBYtSFMnjZgqAmNy//WOOMKQNELdScFpyU=",
+      "x-shopify-webhook-id": "contract-fulfillments-create-10",
+      "x-shopify-topic": "fulfillments/create",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    }
+  ],
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "webhook_deliveries",
+        "{\"where\":{\"webhookId\":\"contract-fulfillments-create-10\"},\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"fulfillment\",\"action\":\"created\",\"entityId\":\"8148355743910\",\"data\":{\"id\":\"8148355743910\",\"orderId\":\"19010984706214\"},\"metadata\":{\"shopify_webhook_id\":\"contract-fulfillments-create-10\"}}"
+      ]
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "webhook_deliveries",
+        "{\"webhookId\":\"contract-fulfillments-create-10\",\"topic\":\"fulfillments/create\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"1c736ebc-a4da-40d2-8460-5b4aca986b0e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:35.67882+00\",\"updated_at\":\"2026-11-12 08:18:35.67882+00\",\"webhook_id\":\"contract-fulfillments-create-10\",\"topic\":\"fulfillments/create\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+    }
+  ]
+}

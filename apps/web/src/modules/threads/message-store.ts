@@ -70,6 +70,9 @@ export interface MessageMetadata {
     /** An approved call's output handed back to the agent (the result rides in
      *  `result`, for the agent's transcript). Rendered as a muted line. */
     | "approval-result"
+    /** The approval-reminder sweep's line in a person's DM with their agent,
+     *  stamped with the person's id. Rendered as a muted line. */
+    | "approval-reminder"
     /** A membership EVENT, not a post: somebody (or a mention) added a
      *  participant. Rendered as a muted centered line with no author and no
      *  avatar, in the reader's language, from the fields below. */

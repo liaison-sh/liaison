@@ -13,7 +13,9 @@ import { extractRows, type RlsClient, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { userRoles } from "~/db/schema/kernel"
+import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { isThreadTainted } from "~/modules/agent/scopes/taint"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { decideApproval } from "~/modules/approvals/decide"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -407,6 +409,88 @@ describe("preview and sources", () => {
     expect((none.data as { sources: { tool: string }[] }).sources.map((s) => s.tool)).not.toContain(
       `${APP}:orders_list`,
     )
+  })
+})
+
+describe("a turn narrowed below the person's own scopes", () => {
+  const SCOPED_APP = "dshnarrow"
+  const SALES_READ = `${SCOPED_APP}:sales:read`
+  let salesReads = 0
+
+  /** A shared room's turn: the effective scope holds the dashboards read, not the sales read. */
+  const narrowedTurn = (): RunContext => {
+    const runId = crypto.randomUUID()
+    return {
+      runId,
+      parentRunId: null,
+      rootRunId: runId,
+      nestingDepth: 0,
+      effectiveScope: ["kernel:dashboards:read"],
+      turnScopeAccumulator: createTurnScopeAccumulator({ orgId }),
+    }
+  }
+
+  async function salesDashboard(): Promise<string> {
+    toolRegistry.set([orgId, SCOPED_APP, "sales_list"], {
+      appName: SCOPED_APP,
+      name: "sales_list",
+      description: "List the sales",
+      requiredScopes: [SALES_READ],
+      readOnly: true,
+      params: z.object({}),
+      returns: { schema: { sales: "object" } },
+      handler: async () => {
+        salesReads += 1
+        return { sales: [{ region: "north", amount: "4242" }] }
+      },
+    })
+    const created = await createDashboard(as(owner, [WRITE, SALES_READ]), {
+      title: "Sales by region",
+      visibility: "personal",
+      spec: {
+        v: 1,
+        blocks: [
+          {
+            id: "sales",
+            type: "pie",
+            title: "Sales by region",
+            source: { kind: "tool", tool: `${SCOPED_APP}:sales_list` },
+            map: { groupBy: { field: "region" }, value: "amount", agg: "sum" },
+          },
+        ],
+      },
+    })
+    return created.id
+  }
+
+  const FULL = ["kernel:dashboards:read", WRITE, SALES_READ]
+
+  it("a snapshot computes its figures with the turn's scopes, not the person's own", async () => {
+    const id = await salesDashboard()
+    salesReads = 0
+    const res = await runContextStore.run(narrowedTurn(), () =>
+      call(owner, FULL, "dashboards_snapshot", { dashboardId: id }),
+    )
+    expect(salesReads).toBe(0)
+    expect(JSON.stringify(res)).not.toContain("4242")
+    const block = (res as { data: { blocks: { id: string; error?: string }[] } }).data.blocks[0]
+    expect(block).toMatchObject({ id: "sales", error: "no_access" })
+
+    // The same person outside a narrowed turn reads their figures.
+    const own = await call(owner, FULL, "dashboards_snapshot", { dashboardId: id })
+    expect(JSON.stringify(own)).toContain("4242")
+  })
+
+  it("a PDF computes its figures with the turn's scopes, not the person's own", async () => {
+    const id = await salesDashboard()
+    salesReads = 0
+    // A conversation of its own: nothing read earlier in this file taints it.
+    const room = await minimal.thread(orgId, owner, { title: "Sales PDF" })
+    const res = await runContextStore.run(narrowedTurn(), () =>
+      call(owner, FULL, "dashboards_pdf", { dashboardId: id }, room),
+    )
+    expect(res).toMatchObject({ data: { fileId: expect.any(String) } })
+    expect(salesReads).toBe(0)
   })
 })
 

@@ -431,8 +431,8 @@ describe("a retry after an unrecorded post never sends twice", () => {
     const approved = { ...ctx, approval: { approvalRequestId: "appr-11" } }
     await expect(replyToFinding(approved, { finding_id: "f1", reply_text: "thanks!" })).rejects.toThrow()
     expect(ctx.posts.length).toBe(1)
-    const retry = await replyToFinding(approved, { finding_id: "f1", reply_text: "thanks!" })
+    // The outcome stays unknown: the retry throws, so the approval waits for its reconciler.
+    await expect(replyToFinding(approved, { finding_id: "f1", reply_text: "thanks!" })).rejects.toThrow(/send_outcome_unknown/)
     expect(ctx.posts.length).toBe(1)
-    expect(retry).toMatchObject({ status: "failed", reason: "send_outcome_unknown" })
   })
 })

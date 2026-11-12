@@ -9,7 +9,9 @@
 // invoked) and replay dedup via the verifier's `replayKey`. The per-handler
 // `webhook_deliveries` ledger here is defense-in-depth so the app survives a
 // kernel cache reset and exposes per-topic retry diagnostics in the Settings
-// panel.
+// panel. A run holds no transaction (each ctx call commits on its own), so the
+// ledger is written once, when a delivery ends (`recordOutcome`): no claim is
+// taken up front that a killed run could leave behind.
 //
 // Handler contract (matches mail/tickets convention):
 //   async function <topic>Handler(payload, ctx, headers?) → { status, body? }
@@ -57,107 +59,52 @@ function header(headers: WebhookHeaders | undefined, key: string): string | unde
 }
 
 /**
- * Atomic dedup-and-claim against the `webhook_deliveries` ledger.
- *
- * Returns one of:
- *   - `{ kind: "new", row }`        — we won the race; caller must process.
- *   - `{ kind: "duplicate", row }`  — already processed or in-flight; caller returns 200.
- *
- * Concurrent retries are bounded by the unique index on `webhookId` declared in
- * `app.manifest.json#schema.webhook_deliveries.constraints.unique = [["webhookId"]]`.
- * The loser of the race observes the existing row.
+ * The ledger row of a delivery id, if any. `webhookId` is unique, so at most
+ * one row matches; a deterministic order keeps the read reproducible.
  */
-async function dedupAndUpsert(
-  ctx: AppContext,
-  webhookId: string,
-  topic: string,
-  shopDomain: string,
-): Promise<{ kind: "new"; row: DedupRow } | { kind: "duplicate"; row: DedupRow }> {
-  // Look up existing first (cheap path). `webhookId` is unique, so at most one
-  // row matches — but pin a deterministic order so the race-loser re-read below
-  // and this lookup never depend on the DB's physical row order.
-  const existing = (await ctx.db.findMany("webhook_deliveries", {
+async function ledgerRow(ctx: AppContext, webhookId: string): Promise<DedupRow | null> {
+  const rows = (await ctx.db.findMany("webhook_deliveries", {
     where: { webhookId },
     orderBy: { receivedAt: "asc" },
     limit: 1,
   })) as DedupRow[]
-  if (existing.length > 0) {
-    const row = existing[0] as DedupRow
-    // I12 — rows in "failed" state are eligible for re-processing on retry.
-    // Reset to "processing" and let the caller re-run the handler. Status
-    // "processed" and "processing" stay dedup'd as before.
-    if (row.status === "failed") {
-      await ctx.db.update("webhook_deliveries", row.id, { status: "processing" })
-      return { kind: "new", row: { ...row, status: "processing" } }
-    }
-    return { kind: "duplicate", row }
-  }
-  // Try to insert. Concurrent insert with the same webhookId hits the unique
-  // index and throws; we catch and re-read.
-  try {
-    const ins = await ctx.db.insert("webhook_deliveries", {
-      webhookId,
-      topic,
-      shopDomain,
-      status: "processing",
-      failureCount: 0,
-      receivedAt: new Date(),
-    })
-    const row = (await ctx.db.findOne("webhook_deliveries", ins.id)) as DedupRow | null
-    if (!row) {
-      // Shouldn't happen, but tolerate.
-      return {
-        kind: "new",
-        row: {
-          id: ins.id,
-          webhookId,
-          topic,
-          shopDomain,
-          status: "processing",
-          failureCount: 0,
-          receivedAt: new Date(),
-        },
-      }
-    }
-    return { kind: "new", row }
-  } catch (_err) {
-    // Race lost; another delivery already inserted. Re-read and treat as dup.
-    // Deterministic order (see note above) so the re-read is reproducible.
-    const reread = (await ctx.db.findMany("webhook_deliveries", {
-      where: { webhookId },
-      orderBy: { receivedAt: "asc" },
-      limit: 1,
-    })) as DedupRow[]
-    if (reread.length === 0) {
-      // Genuinely unexpected — rethrow so the retry surfaces it.
-      throw _err
-    }
-    return { kind: "duplicate", row: reread[0] as DedupRow }
-  }
+  return rows[0] ?? null
 }
 
 /**
- * Mark a delivery row processed (success) or failed (transient — Shopify will
- * retry; we record the failure but leave `status="processing"` so the next
- * retry can pick it up).
+ * Record how a delivery ended, in ONE write that is safe to repeat: the row's
+ * first write inserts it, a later one (a retried delivery, a lost race on the
+ * unique `webhookId`) updates it. Nothing is written before the work is done,
+ * so a run killed half way leaves no claim behind: Shopify's redelivery (or the
+ * kernel's retry) simply runs the delivery again.
  */
-async function markProcessed(ctx: AppContext, rowId: string): Promise<void> {
-  await ctx.db.update("webhook_deliveries", rowId, {
-    status: "processed",
-    processedAt: new Date(),
-  })
-}
-
-async function markTransientFailure(ctx: AppContext, row: DedupRow): Promise<void> {
-  // I12 — flip the row to "failed" so the next Shopify retry hits
-  // `dedupAndUpsert` and finds a row but treats it as not-yet-processed.
-  // (Previously we left status="processing", which made dedupAndUpsert
-  // return `duplicate` and skip the emit on every retry — a transient DB
-  // failure on the first delivery permanently lost the emit.)
-  await ctx.db.update("webhook_deliveries", row.id, {
-    failureCount: (row.failureCount ?? 0) + 1,
-    status: "failed",
-  })
+async function recordOutcome(
+  ctx: AppContext,
+  existing: DedupRow | null,
+  delivery: { webhookId: string; topic: string; shopDomain: string },
+  outcome: "processed" | "failed",
+): Promise<void> {
+  const fields =
+    outcome === "processed"
+      ? { status: "processed" as const, processedAt: new Date() }
+      : { status: "failed" as const, failureCount: (existing?.failureCount ?? 0) + 1 }
+  if (existing) {
+    await ctx.db.update("webhook_deliveries", existing.id, fields)
+    return
+  }
+  try {
+    await ctx.db.insert("webhook_deliveries", {
+      ...delivery,
+      failureCount: 0,
+      receivedAt: new Date(),
+      ...fields,
+    })
+  } catch (err) {
+    // A concurrent delivery of the same id wrote the row first: update it.
+    const row = await ledgerRow(ctx, delivery.webhookId)
+    if (!row) throw err
+    await ctx.db.update("webhook_deliveries", row.id, fields)
+  }
 }
 
 /**
@@ -634,7 +581,7 @@ async function runTopic<P>(
   topic: string,
   payload: P,
   headers: WebhookHeaders | undefined,
-  fn: (row: DedupRow) => Promise<{ entity: string; action: string; entityId: string; data: unknown; metadata: Record<string, unknown> } | null>,
+  fn: () => Promise<{ entity: string; action: string; entityId: string; data: unknown; metadata: Record<string, unknown> } | null>,
 ): Promise<WebhookResult> {
   const webhookId = header(headers, "x-shopify-webhook-id")
   const claimedShopDomain = header(headers, "x-shopify-shop-domain")
@@ -658,27 +605,29 @@ async function runTopic<P>(
   }
   // The installed, connected shop (authoritative) keys the ledger.
   const shopDomain = shopCheck.installedShop
-  const dedup = await dedupAndUpsert(ctx, webhookId, topic, shopDomain)
-  if (dedup.kind === "duplicate") {
-    // Per spec §3.4: in-flight ("processing") or already-completed ("processed")
-    // duplicates both return 200 without re-emitting.
-    return OK
-  }
+  // Only a PROCESSED delivery is a duplicate. A `failed` row (and a legacy
+  // `processing` row, left by a run that was killed) is run again.
+  const existing = await ledgerRow(ctx, webhookId)
+  if (existing?.status === "processed") return OK
+  const delivery = { webhookId, topic, shopDomain }
   try {
-    const ev = await fn(dedup.row)
-    // Mark processed BEFORE emitting so that a process crash between this call
-    // and emit completing leaves the row in processed state — Shopify retries
-    // then dedup and return 200 without re-emitting.
-    // If markProcessed itself throws, the catch block flips the row to failed
-    // and the next retry re-processes safely.
-    await markProcessed(ctx, dedup.row.id)
+    const ev = await fn()
+    // Emit BEFORE recording the delivery processed: a run killed between the
+    // two is run again by the redelivery and emits again (at least once; every
+    // event carries `shopify_webhook_id` for a consumer that dedups). The
+    // other order could drop the event for good.
     if (ev) {
       await emit(ctx, ev.entity, ev.action, ev.entityId, ev.data, ev.metadata)
     }
+    await recordOutcome(ctx, existing, delivery, "processed")
     return OK
   } catch (err) {
     ctx.logger.error("webhook handler failed", { topic, webhookId, err: String(err) })
-    await markTransientFailure(ctx, dedup.row)
+    try {
+      await recordOutcome(ctx, existing, delivery, "failed")
+    } catch {
+      // The ledger is diagnostics here; the 5xx below makes Shopify redeliver.
+    }
     return RETRY_5XX
   }
 }

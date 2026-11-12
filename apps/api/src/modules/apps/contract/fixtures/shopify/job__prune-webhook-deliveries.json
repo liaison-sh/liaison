@@ -1,0 +1,12 @@
+{
+  "entry": "job:prune-webhook-deliveries",
+  "params": {},
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["webhook_deliveries", "{\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":200}"],
+      "reply": "[]"
+    }
+  ]
+}

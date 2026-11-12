@@ -23,6 +23,8 @@ import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { approvalRequests, dashboards, userRoles } from "~/db/schema/kernel"
+import { currentRunContext } from "~/modules/agent/runtime/run-context"
+import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
@@ -103,6 +105,11 @@ interface HandlerCtx {
  * The person a tool call reads and writes for, with their role ids: row policies read them (a
  * record shared with a role), so an agent's preview shows exactly what the person will see on
  * the saved dashboard, whose REST reads carry the roles of the session.
+ *
+ * Inside an agent turn the scopes are the turn's (its effective scope narrowed to the person,
+ * `turnToolScopes`), never the person's own: in a shared room a snapshot, a PDF or a preview
+ * computes every block with the scopes the room allows, as every other read of the turn does.
+ * Outside a turn (a direct API call, an approved re-entry) they are the person's own.
  */
 async function viewerOf(
   ctx: Pick<HandlerCtx, "userId" | "orgId" | "scopes" | "dimensionGrants">,
@@ -117,7 +124,7 @@ async function viewerOf(
     actorType: "user",
     userId: ctx.userId,
     orgId: ctx.orgId,
-    scopes: ctx.scopes ?? [],
+    scopes: turnToolScopes(ctx.scopes ?? [], currentRunContext()),
     dimensionGrants: ctx.dimensionGrants ?? {},
     roles: held.map((r) => r.roleId),
   }

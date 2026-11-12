@@ -2,7 +2,6 @@
 // Task 6 — watch channels, webhook post-verify binding, renewal, polling fallback.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
-import path from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
 import {
   findCalendarByChannelId,
@@ -16,10 +15,25 @@ import {
   stopWatchChannelOnly,
 } from "~/apps/calendar/sync"
 import { withSystemDb } from "~/db/privileged"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { CORE_APP_MODULES } from "~/modules/apps/core/registry"
+import { runCoreHandler } from "~/modules/apps/core/run-core"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
+
+/** Runs one calendar handler the way runApp does: the core module's export, in process. */
+function runCalendar(opts: {
+  exportName: string
+  params: unknown
+  bridge: Record<string, any>
+  extraArgs?: unknown[]
+  timeoutMs?: number
+}): Promise<unknown> {
+  return runCoreHandler({
+    module: CORE_APP_MODULES.calendar!,
+    appName: "calendar",
+    holdsTx: false,
+    ...opts,
+  })
+}
 
 let orgId: string
 let userId: string
@@ -264,20 +278,14 @@ describe("calendar watch channels + webhook", () => {
   })
 })
 
-// --- The sandboxed webhook AUTH boundary (verifyGooglePush + onGooglePush). This is the only
+// --- The webhook AUTH boundary (verifyGooglePush + onGooglePush). This is the only
 // unauthenticated HTTP route into the app; the verify seam does the X-Goog-Channel-Token
-// constant-time compare against the org secret. Driven through the real QuickJS bundle. ---
-describe("verifyGooglePush (sandboxed webhook auth boundary)", () => {
-  let bundleSource: string
+// constant-time compare against the org secret. Driven through the core module, as runApp runs it. ---
+describe("verifyGooglePush (webhook auth boundary)", () => {
   const SECRET = "cal-webhook-secret-123"
   // The channel token is per channel: HMAC(org push secret, channel id).
   const tokenFor = (channelId: string, secret = SECRET) =>
     createHmac("sha256", secret).update(channelId, "utf8").digest("base64")
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
 
   function verifyBridge(secret: string | null): Record<string, any> {
     return {
@@ -297,9 +305,7 @@ describe("verifyGooglePush (sandboxed webhook auth boundary)", () => {
     headers: Record<string, string>,
     secret: string | null = SECRET,
   ): Promise<any> {
-    return executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    return runCalendar({
       exportName: "verifyGooglePush",
       params: { headers, method: "POST", body: "" },
       bridge: verifyBridge(secret),
@@ -369,9 +375,7 @@ describe("verifyGooglePush (sandboxed webhook auth boundary)", () => {
 
   it("onGooglePush delegates to calendar_handleWebhook with the raw headers", async () => {
     const handled: string[] = []
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runCalendar({
       exportName: "onGooglePush",
       params: {},
       extraArgs: [{ "x-goog-channel-id": "chan-9", "x-goog-resource-id": "res-9" }],

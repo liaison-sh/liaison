@@ -44,7 +44,26 @@ const MAILBOX_CONTENT_ENTITIES: ReadonlySet<string> = new Set([
  */
 const COMMIT_NOW_LOCK_TIMEOUT = "5s"
 
-export function createDbMethods(ctx: BridgeContext): Record<string, any> {
+/** Options of a db method set built for one caller (ctx.db.batch). */
+export interface DbMethodsOptions {
+  /**
+   * Told the number of rows each `db_update` / `db_delete` statement matched
+   * (the methods themselves still answer nothing to a handler). ctx.db.batch
+   * reads it to check an op's `expect` guard.
+   */
+  onRowCount?: (rows: number) => void
+}
+
+/** The row count of a write statement's result (postgres.js `count`, node-postgres `rowCount`). */
+export function affectedRows(result: unknown): number {
+  const r = result as { rowCount?: unknown; count?: unknown } | null | undefined
+  return Number(r?.rowCount ?? r?.count ?? 0)
+}
+
+export function createDbMethods(
+  ctx: BridgeContext,
+  opts: DbMethodsOptions = {},
+): Record<string, any> {
   /**
    * `ctx.db.insertNow` / `ctx.db.updateNow`: the same write as `insert` /
    * `update`, with every check they make (the app's own declared tables only,
@@ -393,9 +412,10 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
         drizzleSql.raw(", "),
       )
       try {
-        await txDb.execute(
+        const result = await txDb.execute(
           drizzleSql`UPDATE ${tableRef} SET ${setChunk}, updated_at = now() WHERE id = ${id} AND org_id = ${orgId}`,
         )
+        opts.onRowCount?.(affectedRows(result))
       } catch (err) {
         throw withPgCause(err, "db_update failed")
       }
@@ -454,8 +474,7 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
       } catch (err) {
         throw withPgCause(err, "db_updateMany failed")
       }
-      const count = (result as any).rowCount ?? (result as any).count ?? 0
-      return JSON.stringify({ count: Number(count) })
+      return JSON.stringify({ count: affectedRows(result) })
     },
 
     db_delete: async (entity: string, id: string) => {
@@ -463,7 +482,10 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
       validateEntity(entity)
       const table = drizzleSql.raw(`${quoteIdent(schemaName)}.${quoteIdent(entity)}`)
       try {
-        await txDb.execute(drizzleSql`DELETE FROM ${table} WHERE id = ${id} AND org_id = ${orgId}`)
+        const result = await txDb.execute(
+          drizzleSql`DELETE FROM ${table} WHERE id = ${id} AND org_id = ${orgId}`,
+        )
+        opts.onRowCount?.(affectedRows(result))
       } catch (err) {
         throw withPgCause(err, "db_delete failed")
       }

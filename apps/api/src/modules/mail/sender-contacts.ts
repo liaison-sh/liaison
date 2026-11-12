@@ -30,7 +30,7 @@
 // Cost: one lookup for the whole page's senders; one create per new sender.
 
 import { and, asc, sql as drizzleSql, eq, inArray } from "drizzle-orm"
-import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { contacts } from "~/db/schema/kernel"

@@ -109,7 +109,7 @@ describe("api-connector-authoring skill", () => {
     const text = readFileSync(SKILL, "utf8")
     expect(text).toContain("liaison api-connector validate")
     expect(text).toContain("liaison api-connector test")
-    expect(text).toContain("apiConnectors:")
+    expect(text).toContain("provision:\n      connectors:")
     expect(text).toContain("LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true")
     expect(text).toContain("docs/api-connector.md")
   })

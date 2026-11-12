@@ -4,8 +4,8 @@
 // no `views.settings` entry left, every block bound to a tool the app has, and
 // the status read never approval-gated.
 import { describe, expect, it } from "bun:test"
-import apiConnector from "~/apps/api-connector/app.manifest.json"
 import googleDrive from "~/apps/google-drive/app.manifest.json"
+import apiConnector from "../../../../../bundled-apps/api-connector/app.manifest.json"
 import database from "../../../../../bundled-apps/database/app.manifest.json"
 import gitlab from "../../../../../bundled-apps/gitlab/app.manifest.json"
 import { validateAppManifest } from "./contract"

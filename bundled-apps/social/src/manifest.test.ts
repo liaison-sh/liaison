@@ -51,7 +51,8 @@ describe("social manifest (B1)", () => {
     //   with no transaction held across the run.
     // 0.6.71: 0.6.70 above merged with main's 0.6.66.
     // 0.6.72: both of the above, merged (main's 0.6.67: every package carries its Worker module).
-    expect(manifest.version).toBe("0.6.72")
+    // 0.6.73: above main's 0.6.68, merged.
+    expect(manifest.version).toBe("0.6.73")
     expect(manifest.packageFormat).toBe(1)
   })
 

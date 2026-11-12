@@ -19,6 +19,10 @@ export interface ConnectDialogRequest {
   appName: string
   connectionName: string
   connConfig: AppConnectionConfig
+  /** One org account of a multiInstance credentials connection, by its slug. */
+  identifier?: string
+  /** The declared credential fields to ask for (all when absent). */
+  fields?: string[]
 }
 
 interface PendingRequest extends ConnectDialogRequest {
@@ -50,7 +54,7 @@ export function settleConnectDialog(result: ConnectDialogResult): void {
 export async function openConnectDialog(
   api: ApiClient | undefined,
   appName: string,
-  opts?: { connectionName?: string },
+  opts?: { connectionName?: string; identifier?: string; fields?: string[] },
 ): Promise<ConnectDialogResult> {
   if (api) await appsStore.loadConnections(api, appName)
   const all = appsStore.connectionsFor(appName)
@@ -68,7 +72,14 @@ export async function openConnectDialog(
   // A newer request replaces a dialog still open; its caller learns nothing connected.
   settleConnectDialog({ connected: false })
   return new Promise((resolve) => {
-    setPending({ appName, connectionName: connConfig.name, connConfig, resolve })
+    setPending({
+      appName,
+      connectionName: connConfig.name,
+      connConfig,
+      ...(opts?.identifier !== undefined ? { identifier: opts.identifier } : {}),
+      ...(opts?.fields !== undefined ? { fields: opts.fields } : {}),
+      resolve,
+    })
   })
 }
 
@@ -89,6 +100,8 @@ export const ConnectDialogHost: Component = () => {
               appName={request.appName}
               connectionName={request.connectionName}
               connConfig={request.connConfig}
+              {...(request.identifier !== undefined ? { identifier: request.identifier } : {})}
+              {...(request.fields !== undefined ? { onlyFields: request.fields } : {})}
               onClose={() => settleConnectDialog({ connected: false })}
               onSuccess={() => settleConnectDialog({ connected: true })}
               onRedirect={() => settleConnectDialog({ connected: false, redirected: true })}

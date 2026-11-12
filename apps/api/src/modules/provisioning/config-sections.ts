@@ -18,7 +18,6 @@
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { adminProvisioner } from "~/cli/provisioners/admin"
 import { agentsProvisioner } from "~/cli/provisioners/agents"
-import { apiConnectorsProvisioner } from "~/cli/provisioners/api-connectors"
 import { apiKeysProvisioner } from "~/cli/provisioners/api-keys"
 import { appsProvisioner } from "~/cli/provisioners/apps"
 import { byokProvisioner } from "~/cli/provisioners/byok"
@@ -50,7 +49,7 @@ import { isRecord } from "~/lib/guards"
  * (correction #20). Task numbers are implementation order, NOT this.
  *
  *   org → limits → admin → setup → roles → email → byok → apiKeys → users → mail → tickets → apps
- *     → apiConnectors → knowledge → agents → invoicing → liaisonTeam
+ *     → knowledge → agents → invoicing → liaisonTeam
  */
 export const CANONICAL_ORDER = [
   "org",
@@ -66,7 +65,6 @@ export const CANONICAL_ORDER = [
   "mail",
   "tickets",
   "apps",
-  "apiConnectors",
   "knowledge",
   "agents",
   "invoicing",
@@ -107,7 +105,6 @@ export const defaultRegistry: ProvisionerRegistry = {
   mail: mailMailboxesProvisioner,
   tickets: ticketInboxesProvisioner,
   apps: appsProvisioner,
-  apiConnectors: apiConnectorsProvisioner,
   knowledge: knowledgeProvisioner,
   agents: agentsProvisioner,
   invoicing: invoicingProvisioner,

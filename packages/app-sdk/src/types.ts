@@ -46,8 +46,22 @@ export interface DbClient {
    * `sequences` (instead of `sequence`) allocates several named sequences in one commit (two
    * numbered documents that must land together), referenced as `{ $seq: "<name>.value" }` /
    * `{ $seq: "<name>.formatted" }`, and answered in the result's `sequences`.
+   * An `update`, `delete` or `updateMany` may carry `expect: { minRows?, maxRows? }`: when the
+   * rows it matched fall outside it, nothing in the batch commits (sequence values included)
+   * and the call rejects with an Error whose `code` is `"precondition_failed"` (`status` 409)
+   * and whose message names the op (`... at ops[2] (update subscriptions): expected at least
+   * 1 row, matched 0`); `batchPreconditionFailure(err)` reads it.
    */
   batch(spec: DbBatchSpec): Promise<DbBatchResult>
+}
+
+/**
+ * A guard on the rows an op matched (`DbClient.batch`): at least one bound, `minRows <= maxRows`.
+ * `{ minRows: 1 }` = the row must exist; `{ minRows: 1, maxRows: 1 }` = exactly one.
+ */
+export interface DbBatchExpect {
+  minRows?: number
+  maxRows?: number
 }
 
 export type DbBatchOp =
@@ -60,9 +74,15 @@ export type DbBatchOp =
       append?: Record<string, unknown[]>
       /** Keys merged into json object fields of the row as it is at commit (`field || keys`). */
       merge?: Record<string, Record<string, unknown>>
+      expect?: DbBatchExpect
     }
-  | { delete: string; id: string | { $ref: string } }
-  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
+  | { delete: string; id: string | { $ref: string }; expect?: DbBatchExpect }
+  | {
+      updateMany: string
+      where: Record<string, unknown>
+      data: Record<string, unknown>
+      expect?: DbBatchExpect
+    }
 
 export interface DbBatchSequence {
   key: string
@@ -335,6 +355,45 @@ export interface SqlReadInfo {
  * connection and gets rows. Every call is read-only, bounded (statement
  * timeout, row cap) and audited. Failures are answered, not thrown.
  */
+/**
+ * `ctx.api.*`: the HTTP API connections the platform holds for an app that
+ * declares a credentials connection with an `api` block (each account an
+ * adapter document plus its credentials). The platform renders, signs and
+ * sends every call and checks the caller's scopes against the block's; app
+ * code gets answers, never a credential. Every answer is a JSON object, or
+ * `{ error: { code, message, status? } }`.
+ */
+export type ApiAnswer = Record<string, unknown>
+export interface ApiConnectionsClient {
+  /** Connections and their operations (agent-facing; `{ connection? }` narrows to one). */
+  listOperations(request?: { connection?: string }): Promise<ApiAnswer>
+  /** One READ operation: `{ connection, operation, params? }`; items fenced as external content. */
+  read(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** One approved WRITE operation, with the target pinned at staging. */
+  write(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** The stage-time check of a write: `{ ok, pinnedParams: { target } }` or a refusal. */
+  writeValidate(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterGet(request: { identifier: string; operationsPage?: number }): Promise<ApiAnswer>
+  adapterVersions(request: { identifier: string }): Promise<ApiAnswer>
+  adapterReference(request?: { section?: string }): Promise<ApiAnswer>
+  /** One page of a READ operation; `raw: true` answers the items unfenced (a settings screen). */
+  adapterTest(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** Every connection with its auth shape, operations and credential status. */
+  connections(): Promise<ApiAnswer>
+  /** Check an adapter document (JSON or YAML text, or an object) without saving it. */
+  validate(request: { document: unknown }): Promise<ApiAnswer>
+  /** What a save would do, nothing written: `{ ok, unchanged, created, wipesCredentials }`. */
+  adapterPlan(request: { identifier: string; document: unknown }): Promise<ApiAnswer>
+  /** Save an adapter (admin): `{ identifier, document, confirmCredentialWipe?, skipUnchanged? }`. */
+  adapterPut(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterRestore(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterDelete(request: { identifier: string }): Promise<ApiAnswer>
+  /** `config verify`: one read per connection, `{ results: [{ connection, status, identity?, error? }] }`. */
+  verify(): Promise<ApiAnswer>
+  /** Who a person is in the org's systems: by email, phone, domain, or a ticket's or conversation's participant. */
+  customer(request: Record<string, unknown>): Promise<ApiAnswer>
+}
+
 export interface SqlClient {
   query(connection: string, request: SqlQueryRequest): Promise<SqlRows | SqlError>
   /**
@@ -582,6 +641,8 @@ export interface AppContext {
   pages: PagesClient
   /** Platform-held SQL connections (see {@link SqlClient}). */
   sql: SqlClient
+  /** Platform-held HTTP API connections (an `api` connection only; see ApiConnectionsClient). */
+  api: ApiConnectionsClient
   /** This app's own connected accounts (see {@link AccountsClient}). */
   accounts: AccountsClient
   /** Directory reads of the org (see {@link KernelClient}). */

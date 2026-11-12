@@ -130,7 +130,7 @@ function literalProps(o: ts.ObjectLiteralExpression): Record<string, unknown> {
  * object literal with a `name`, spread over a `common` one.
  */
 function codeRegisteredAppTools(root: string): BenchTool[] {
-  const file = "apps/api/src/apps/api-connector/authoring-tools.ts"
+  const file = "apps/api/src/modules/apps/connections/api/authoring-tools.ts"
   const sf = ts.createSourceFile(
     file,
     readFileSync(join(root, file), "utf8"),

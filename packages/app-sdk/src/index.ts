@@ -62,6 +62,7 @@ export {
   storeCollectionDeclarationSchema,
   storeDeclarationErrors,
 } from "./app-store"
+export { batchPreconditionFailure, type DbBatchPreconditionFailure } from "./db-batch"
 export { defineHandlers } from "./define-handlers"
 export { refuseTool, ToolError, type ToolRefusal } from "./errors"
 export { minorAmountRefusal, readMinorAmount } from "./minor-amount"
@@ -102,11 +103,14 @@ export {
 } from "./secret-placement"
 export type {
   AccountsClient,
+  ApiAnswer,
+  ApiConnectionsClient,
   AppAccount,
   AppContext,
   ConnectionClient,
   ConnectionSettings,
   CrossAppEnvelope,
+  DbBatchExpect,
   DbBatchOp,
   DbBatchResult,
   DbBatchSequence,

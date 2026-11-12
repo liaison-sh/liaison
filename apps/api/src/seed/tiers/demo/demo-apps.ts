@@ -13,8 +13,7 @@ import {
  * bills real ad spend, one needs telephony, and `kpi` is a client for an
  * external KPI service no demo org has (it offered a tab and tools that could
  * only fail). Catalog apps are installed from the baked `.liaisonapp` bundles;
- * in-tree apps (tickets, mail, knowledge, projects, calendar, contacts,
- * api-connector) are
+ * in-tree apps (tickets, mail, knowledge, projects, calendar, contacts) are
  * enable-only, exactly as the provisioning CLI treats them.
  */
 export const DEMO_APPS = [

@@ -14,7 +14,7 @@
  */
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withElevatableRlsFrom, withPrivilegedDb, withSystemReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"

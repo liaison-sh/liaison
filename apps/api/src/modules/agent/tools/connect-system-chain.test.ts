@@ -28,7 +28,6 @@ import * as dnsPromises from "node:dns/promises"
 import { and, eq } from "drizzle-orm"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
-import { invalidateConnectionCaches } from "~/apps/api-connector/cache"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { ActorContext } from "~/db/rls"
 import { messages, secretRequests } from "~/db/schema/kernel"
@@ -42,6 +41,8 @@ import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { buildToolSet, isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
@@ -236,6 +237,7 @@ async function freshWorkspace(label: string): Promise<void> {
     })
   ).userId
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   await registerKernelAgentTools(ORG)
   scopes = (
     await withPrivilegedDb(ORG, "chain-scopes", (tx) => loadEffectivePermissions(tx, ADMIN, ORG))

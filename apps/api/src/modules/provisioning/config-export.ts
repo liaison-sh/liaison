@@ -5,11 +5,13 @@
  * exports plans back as "unchanged". Secrets are never returned: a separate
  * `secrets` list says which connections have theirs set.
  *
- * Exported: roles, email, users, apps, agents, apiConnectors (identifiers and
+ * Exported: roles, email, users, apps (the api-connector entry with its connections:
+ * identifiers and
  * adapter documents), knowledge collections, invoicing issuer profiles and the
  * Liaison team opt-ins (operator only).
  * mail and tickets have no reader yet and say so.
  */
+import { API_CONNECTOR_APP as API_CONNECTIONS_APP } from "@liaison/api-connector-core/contract"
 import { commercialIdentitySchema, orgKernelSettingsSchema } from "@liaison/shared"
 import { and, sql as drizzleSql, eq, isNull } from "drizzle-orm"
 import { listKnowledgeCollections } from "~/apps/knowledge/collections"
@@ -58,9 +60,16 @@ export async function exportOrgConfig(orgId: string, actor: ProvisionActor): Pro
     users: await gated("kernel:users:read", () => exportUsers(priv, orgId)),
     mail: NOT_EXPORTABLE,
     tickets: NOT_EXPORTABLE,
-    apps: (await getEnabledApps(orgId)).map((name) => ({ name, enable: true })),
-    apiConnectors: await gated("api-connector:admin", () =>
-      exportApiConnectors(priv, orgId, secrets),
+    apps: await Promise.all(
+      (await getEnabledApps(orgId)).map(async (name) => {
+        if (name !== API_CONNECTIONS_APP) return { name, enable: true }
+        // The API connections: the app's provisioning (adapters), and the
+        // accounts whose credentials the file names (values never exported).
+        const connectors = await gated("api-connector:admin", () =>
+          exportApiConnectors(priv, orgId, secrets),
+        )
+        return { name, enable: true, ...(connectors as Record<string, unknown>) }
+      }),
     ),
     knowledge: { collections: await exportCollections(orgId, actor) },
     agents: await gated("kernel:agents:read", () => exportAgents(priv, orgId)),
@@ -130,15 +139,17 @@ async function exportApiConnectors(
   priv: Priv,
   orgId: string,
   secrets: ConfigExport["secrets"],
-): Promise<Array<{ identifier: string; adapter: unknown }>> {
-  const { listAdapterRows, API_CONNECTOR_APP } = await import("~/apps/api-connector/store")
+): Promise<Record<string, unknown>> {
+  const { listAdapterRows, API_CONNECTOR_APP } = await import(
+    "~/modules/apps/connections/api/store"
+  )
   let rows: Awaited<ReturnType<typeof listAdapterRows>>
   try {
     rows = await listAdapterRows(orgId)
   } catch (err) {
     // The api-connector app is not set up on this org: nothing to export.
     log.debug({ err, orgId }, "config export: no api connector adapters")
-    return []
+    return {}
   }
   const connected = new Set(
     extractRows<{ identifier: string }>(
@@ -151,12 +162,18 @@ async function exportApiConnectors(
   )
   for (const r of rows) {
     secrets.push({
-      section: "apiConnectors",
+      section: `apps.${API_CONNECTOR_APP}.connections`,
       identifier: r.identifier,
       state: connected.has(r.identifier) ? "set" : "missing",
     })
   }
-  return rows.map((r) => ({ identifier: r.identifier, adapter: r.adapter }))
+  if (rows.length === 0) return {}
+  return {
+    provision: {
+      connectors: rows.map((r) => ({ identifier: r.identifier, adapter: r.adapter })),
+    },
+    connections: rows.map((r) => ({ name: "api", identifier: r.identifier })),
+  }
 }
 
 async function exportCollections(orgId: string, actor: ProvisionActor) {

@@ -266,6 +266,12 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
       schema: async () => ({ tables: [] }),
       probe: async () => ({ ok: true, mode: "direct", warnings: [] }),
     },
+    // No API connection declared: every member answers that way.
+    api: new Proxy({} as AppContext["api"], {
+      get: () => async () => ({
+        error: { code: "not_connected", message: "No API connection (mock)" },
+      }),
+    }),
     accounts: {
       list: async () => [],
       setMetadata: async () => {

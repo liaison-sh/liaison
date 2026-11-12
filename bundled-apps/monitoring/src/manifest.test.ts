@@ -83,7 +83,8 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.17 (main): an alert is always paged, a redelivered one included.
     // 0.4.20: both of the above, merged.
     // 0.4.21: both of the above, merged (main's 0.4.18: every package carries its Worker module).
-    expect(MANIFEST.version).toBe("0.4.21")
+    // 0.4.22: above main's 0.4.19, merged.
+    expect(MANIFEST.version).toBe("0.4.22")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

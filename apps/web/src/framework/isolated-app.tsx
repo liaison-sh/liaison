@@ -113,7 +113,7 @@ export interface IsolatedHost {
   ) => Promise<void>
   openConnectDialog?: (
     app: string,
-    opts?: { connectionName?: string },
+    opts?: { connectionName?: string; identifier?: string; fields?: string[] },
   ) => Promise<{ connected: boolean; redirected?: boolean }>
   fetchBlob?: (path: string) => Promise<Blob>
   navigate?: (path: string) => void
@@ -501,12 +501,25 @@ export async function answerFrameCall(
     }
     case "openConnectDialog": {
       const options = asRecord(args[0])
-      const { connectionName } = options
+      const { connectionName, identifier, fields } = options
       if (connectionName !== undefined && typeof connectionName !== "string") {
         throw new Error("openConnectDialog: connectionName must be a string")
       }
+      if (identifier !== undefined && typeof identifier !== "string") {
+        throw new Error("openConnectDialog: identifier must be a string")
+      }
+      if (
+        fields !== undefined &&
+        !(Array.isArray(fields) && fields.every((f) => typeof f === "string"))
+      ) {
+        throw new Error("openConnectDialog: fields must be a list of field names")
+      }
       if (!host.openConnectDialog) throw new Error("openConnectDialog unavailable")
-      return host.openConnectDialog(app, connectionName === undefined ? {} : { connectionName })
+      return host.openConnectDialog(app, {
+        ...(connectionName === undefined ? {} : { connectionName }),
+        ...(identifier === undefined ? {} : { identifier }),
+        ...(fields === undefined ? {} : { fields: fields as string[] }),
+      })
     }
     case "fetchBlob": {
       const [path] = args

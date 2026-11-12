@@ -19,7 +19,6 @@
  *  apps           kernel:apps:admin; + the connection's admin scope per
  *                 `connection`; + mail:accounts:admin when `providers` is set;
  *                 + each `settings` field's section adminScope
- *  apiConnectors  api-connector:admin
  *  knowledge      knowledge:documents:create per document,
  *                 knowledge:collections:manage per collection,
  *                 knowledge:sources:manage per source
@@ -45,7 +44,6 @@ export const SECTION_BASE_SCOPE: Record<ConfigToolSection, string> = {
   mail: "mail:accounts:admin",
   tickets: "tickets:inboxes:admin",
   apps: "kernel:apps:admin",
-  apiConnectors: "api-connector:admin",
   knowledge: "knowledge:documents:create",
   agents: "kernel:agents:admin",
   invoicing: "invoicing:settings:write",

@@ -87,6 +87,7 @@ export const GATE_LANES: Record<string, number> = {
   "bundled-monitoring": 1,
   "bundled-database": 1,
   "bundled-gitlab": 1,
+  "bundled-api-connector": 1,
   "bundled-pennylane": 1,
   "bundled-stripe": 1,
   "bundled-calls": 1,

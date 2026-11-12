@@ -51,6 +51,9 @@ const { AgentServiceTestAccess, runAgentChat } = await import(
 )
 const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
 const { ensureAppsForOrg } = await import("~/modules/apps/init")
+const { registerApiConnectorApp, seedAdapter } = await import(
+  "~/modules/apps/connections/api/app.test-helpers"
+)
 const { redis } = await import("~/lib/redis")
 const { setMailProviderEnabled } = await import("~/modules/mail/provider-settings")
 const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
@@ -296,6 +299,7 @@ describe("S8: a secret typed into the card is stored and found nowhere else", ()
     agentId = seeded.agentId
     threadId = seeded.threadId
     await ensureAppsForOrg(orgId)
+    await registerApiConnectorApp(orgId)
     await registerKernelAgentTools(orgId)
 
     eventBus.resetEventBus()
@@ -318,7 +322,7 @@ describe("S8: a secret typed into the card is stored and found nowhere else", ()
     restoreLog = () => Reflect.set(stream, "write", original)
 
     // The connector the agent asks credentials for.
-    const adapter = await call("/api/api-connector/adapters/crm", "PUT", {
+    const adapter = await seedAdapter(orgId, "crm", {
       id: "crm",
       name: "Example CRM",
       version: "1.0.0",

@@ -102,7 +102,8 @@ describe("ads app.manifest.json", () => {
     // 0.1.65 (main): audience consent reads the database envelope.
     // 0.1.66: both of the above, merged.
     // 0.1.67: both of the above, merged (main's 0.1.66: every package carries its Worker module).
-    expect(m.version).toBe("0.1.67")
+    // 0.1.68: above main's 0.1.67, merged.
+    expect(m.version).toBe("0.1.68")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

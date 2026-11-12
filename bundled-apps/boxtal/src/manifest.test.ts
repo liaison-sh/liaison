@@ -648,7 +648,8 @@ describe("Boxtal app.manifest.json", () => {
     //   unlink or merge commits with its old-table mirror in one batch, a pack with its components.
     // 0.24.8: 0.24.7 above merged with main's 0.24.6.
     // 0.24.9: both of the above, merged (main's 0.24.7: every package carries its Worker module).
-    expect(m.version).toBe("0.24.9")
+    // 0.24.10: above main's 0.24.8, merged.
+    expect(m.version).toBe("0.24.10")
     expect(m.packageFormat).toBe(1)
   })
 

@@ -1,0 +1,16 @@
+{
+  "entry": "tool:connector_adapter_test",
+  "params": {
+    "identifier": "crm",
+    "operation": "list_companies",
+    "params": {}
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": [
+    {
+      "method": "api_adapterTest",
+      "args": ["{\"identifier\":\"crm\",\"operation\":\"list_companies\",\"params\":{}}"],
+      "reply": "{\"ok\":true,\"connection\":\"crm\",\"operation\":\"list_companies\",\"status\":200,\"count\":6,\"truncated\":false,\"ms\":1,\"items\":\"<external-content source=\\\"untrusted\\\">\\n[{\\\"id\\\":\\\"cmp_001\\\",\\\"name\\\":\\\"Acme Instruments\\\",\\\"domain\\\":\\\"acme-instruments.example\\\",\\\"industry\\\":\\\"Test and measurement\\\",\\\"country\\\":\\\"FR\\\",\\\"tier\\\":\\\"gold\\\"},{\\\"id\\\":\\\"cmp_002\\\",\\\"name\\\":\\\"Northwind Audio\\\",\\\"domain\\\":\\\"northwind-audio.example\\\",\\\"industry\\\":\\\"Pro audio\\\",\\\"country\\\":\\\"NL\\\",\\\"tier\\\":\\\"silver\\\"},{\\\"id\\\":\\\"cmp_003\\\",\\\"name\\\":\\\"Bluefin Robotics\\\",\\\"domain\\\":\\\"bluefin-robotics.example\\\",\\\"industry\\\":\\\"Industrial robotics\\\",\\\"country\\\":\\\"US\\\",\\\"tier\\\":\\\"gold\\\"},{\\\"id\\\":\\\"cmp_004\\\",\\\"name\\\":\\\"Halden Studio\\\",\\\"domain\\\":\\\"halden-studio.example\\\",\\\"industry\\\":\\\"Lighting design\\\",\\\"country\\\":\\\"CA\\\",\\\"tier\\\":\\\"bronze\\\"},{\\\"id\\\":\\\"cmp_005\\\",\\\"name\\\":\\\"Harbor and Pine Furniture\\\",\\\"domain\\\":\\\"harbor-pine.example\\\",\\\"industry\\\":\\\"Furniture manufacturing\\\",\\\"country\\\":\\\"GB\\\",\\\"tier\\\":\\\"silver\\\"},{\\\"id\\\":\\\"cmp_006\\\",\\\"name\\\":\\\"Kestrel Labs\\\",\\\"domain\\\":\\\"kestrel-labs.example\\\",\\\"industry\\\":\\\"University research lab\\\",\\\"country\\\":\\\"DE\\\",\\\"tier\\\":\\\"bronze\\\"}]\\n</external-content>\"}"
+    }
+  ]
+}

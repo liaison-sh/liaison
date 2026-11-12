@@ -96,7 +96,7 @@ Reply language: the message when clear, else earlier messages, else the language
 Language setting: the person's choice, else the org default -> apps/api/src/modules/agent/context/context.ts:1330
 Saved credentials reported as credentials saved; first sync pending -> apps/api/src/modules/agent/context/system-event-replay.ts:68
 config_mail state: credentials saved; first sync pending -> apps/api/src/modules/agent/tools/config-tools.ts:218
-Connect a system with no app: adapter save card, key on the secret card, test -> apps/api/src/apps/api-connector/authoring-tools.ts:303
+Connect a system with no app: adapter save card, key on the secret card, test -> apps/api/src/modules/apps/connections/api/authoring-tools.ts:303
 Announced action with no tool call gets one more try in the same turn -> apps/api/src/modules/agent/runtime/agent-service.ts:2450
 The second try calls the tool or says plainly what it cannot do -> apps/api/src/modules/agent/runtime/announced-action-claim.ts:171
 An offer that waits for the person is left alone -> apps/api/src/modules/agent/runtime/announced-action-claim.ts:87

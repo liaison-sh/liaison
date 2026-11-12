@@ -1,10 +1,10 @@
 No native deals; deal only as an external CRM role -> packages/api-connector-core/src/schema.ts:71
-API connector: CRM, ERP or any HTTP API from an adapter, customer card -> apps/api/src/apps/api-connector/app.manifest.json:5
-Adapter: base URL, auth type, named operations -> apps/api/src/apps/api-connector/app.manifest.json:65
-Operation kind, role, params, fields -> apps/api/src/apps/api-connector/README.md:33-35
+API connector: CRM, ERP or any HTTP API from an adapter, customer card -> apps/api/src/modules/apps/connections/api/app.manifest.json:5
+Adapter: base URL, auth type, named operations -> apps/api/src/modules/apps/connections/api/app.manifest.json:65
+Operation kind, role, params, fields -> apps/api/src/modules/apps/connections/api/README.md:33-35
 Authoring skill and validate before upload -> .claude/skills/api-connector-authoring/SKILL.md:263-270
-Admin role holds api-connector:admin and api-connector:accounts:admin -> apps/api/src/apps/api-connector/app.manifest.json:313-320
-Settings path Settings > Connectors > API connector -> apps/api/src/apps/api-connector/app.manifest.json:67
+Admin role holds api-connector:admin and api-connector:accounts:admin -> apps/api/src/modules/apps/connections/api/app.manifest.json:313-320
+Settings path Settings > Connectors > API connector -> apps/api/src/modules/apps/connections/api/app.manifest.json:67
 Connectors settings group -> apps/web/src/framework/bootstrap.ts:719-724
 Connector display name API connector -> packages/shared/src/i18n/locales/en/kernel.json:556
 Connections section title -> packages/shared/src/i18n/locales/en/api-connector.json:18
@@ -13,46 +13,46 @@ Adapter (YAML or JSON), Or load a file, Save adapter -> packages/shared/src/i18n
 Add connection button -> apps/web/src/modules/api-connector/ApiConnectorAdapters.tsx:114
 Form fields and Save adapter -> apps/web/src/modules/api-connector/AdapterForm.tsx:80-142
 Invalid adapter issues at their paths -> apps/web/src/modules/api-connector/AdapterForm.tsx:126
-PUT adapter, 422 invalid_adapter with issues -> apps/api/src/apps/api-connector/README.md:36-38
-Several connections per org (multiInstance) -> apps/api/src/apps/api-connector/app.manifest.json:24
+PUT adapter, 422 invalid_adapter with issues -> apps/api/src/modules/apps/connections/api/README.md:36-38
+Several connections per org (multiInstance) -> apps/api/src/modules/apps/connections/api/app.manifest.json:24
 Credentials, Test, Replace adapter, Delete buttons -> apps/web/src/modules/api-connector/ApiConnectorAdapters.tsx:199-225
 Delete removes adapter and credentials -> packages/shared/src/i18n/locales/en/api-connector.json:40
 Auth descriptions per type -> packages/shared/src/i18n/locales/en/api-connector.json:47-54
 Credential field labels and Save credentials, stored encrypted -> packages/shared/src/i18n/locales/en/api-connector.json:56-67
 Auth types apiKey (header|query), bearer, basic, oauth2ClientCredentials -> packages/api-connector-core/src/schema.ts:253-275
-Credential fields per auth type -> apps/api/src/apps/api-connector/README.md:46-50
+Credential fields per auth type -> apps/api/src/modules/apps/connections/api/README.md:46-50
 Status Connected / Needs credentials / Error -> packages/shared/src/i18n/locales/en/api-connector.json:42-46
 Roles: ... / No customer roles filled -> packages/shared/src/i18n/locales/en/api-connector.json:38-39
 Test panel: Operation, Run, HTTP status, ms, item count -> apps/web/src/modules/api-connector/TestPanel.tsx:151-270
-Writes cannot be tested -> apps/api/src/apps/api-connector/README.md:42-44
-liaison api-connector validate / test (reads only) -> apps/api/src/apps/api-connector/README.md:83-85
+Writes cannot be tested -> apps/api/src/modules/apps/connections/api/README.md:42-44
+liaison api-connector validate / test (reads only) -> apps/api/src/modules/apps/connections/api/README.md:83-85
 Six fixed roles with params -> packages/api-connector-core/src/schema.ts:91-125
-Customer card on tickets and mail -> apps/api/src/apps/api-connector/app.manifest.json:348-357
-Lookup by email, phone, then company domain; skips consumer and own domains -> apps/api/src/apps/api-connector/customer.ts:5-15 ; apps/api/src/apps/api-connector/consumer-domains.ts:14
+Customer card on tickets and mail -> apps/api/src/modules/apps/connections/api/app.manifest.json:348-357
+Lookup by email, phone, then company domain; skips consumer and own domains -> apps/api/src/modules/apps/connections/api/customer.ts:5-15
 Matched by company domain -> apps/web/src/modules/api-connector/CustomerCard.tsx:264
 Several matches picker -> apps/web/src/modules/api-connector/CustomerCard.tsx:238
 Recent orders, Invoices, Deals, Open in -> packages/shared/src/i18n/locales/en/api-connector.json:10-15
 Card hidden without connection, read scope or email -> apps/web/src/modules/api-connector/CustomerCard.tsx:8-11
-60 s cache -> apps/api/src/apps/api-connector/customer.ts:19-20
-connector_list_operations / connector_read read scope -> apps/api/src/apps/api-connector/app.manifest.json:81-102
-connector_write gated, external, api-connector:write -> apps/api/src/apps/api-connector/app.manifest.json:130-136
+60 s cache -> apps/api/src/modules/apps/connections/api/customer.ts:19-20
+connector_list_operations / connector_read read scope -> apps/api/src/modules/apps/connections/api/app.manifest.json:81-102
+connector_write gated, external, api-connector:write -> apps/api/src/modules/apps/connections/api/app.manifest.json:130-136
 Agent auto-context by email only, needs read scope -> apps/api/src/modules/agent/context/customer-context.ts:2-14
-System of record, say which system, contacts write is not a CRM write -> apps/api/src/apps/api-connector/app.manifest.json:243
-Roles member/admin and scopes -> apps/api/src/apps/api-connector/app.manifest.json:189-205
-Scopes app-wide, not per connection -> apps/api/src/apps/api-connector/README.md:28-29
-https only, link-local/metadata refused, redirects on host -> apps/api/src/apps/api-connector/README.md:53-56
-15 s, 2 MB, 200 items, 5 pages in 45 s -> apps/api/src/apps/api-connector/README.md:57-58
-Projection to fields; errors without body or secrets -> apps/api/src/apps/api-connector/README.md:59-62
-LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS -> apps/api/src/apps/api-connector/adapter-policy.ts:25
+System of record, say which system, contacts write is not a CRM write -> apps/api/src/modules/apps/connections/api/app.manifest.json:243
+Roles member/admin and scopes -> apps/api/src/modules/apps/connections/api/app.manifest.json:189-205
+Scopes app-wide, not per connection -> apps/api/src/modules/apps/connections/api/README.md:28-29
+https only, link-local/metadata refused, redirects on host -> apps/api/src/modules/apps/connections/api/README.md:53-56
+15 s, 2 MB, 200 items, 5 pages in 45 s -> apps/api/src/modules/apps/connections/api/README.md:57-58
+Projection to fields; errors without body or secrets -> apps/api/src/modules/apps/connections/api/README.md:59-62
+LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS -> apps/api/src/modules/apps/connections/api/adapter-policy.ts:25
 Demo workspace read-only -> packages/shared/src/i18n/locales/en/api-connector.json:32
-config apply apiConnectors section, ${VAR}, config verify -> apps/api/src/apps/api-connector/README.md:79-82
+config apply apiConnectors section, ${VAR}, config verify -> apps/api/src/modules/apps/connections/api/README.md:79-82
 apiConnectors keys identifier, adapter, credentials -> docs/reference/config.md:163-165
-connector_write is gated -> apps/api/src/apps/api-connector/app.manifest.json:130
+connector_write is gated -> apps/api/src/modules/apps/connections/api/app.manifest.json:130
 api-connector:approve derived as <app>:approve and decides that app's gated approvals -> apps/api/src/modules/permissions/scope-catalog.ts:239
-Agent connects a system: API docs via web_search/web_fetch, guide, save, request_secret, test, report -> apps/api/src/apps/api-connector/app.manifest.json:368
-Save card: API origin and auth type, operations, credential deletion warning -> apps/api/src/apps/api-connector/authoring-tools.ts:330-365
-Save and restore decided by api-connector:admin, never auto-approved -> apps/api/src/apps/api-connector/authoring-tools.ts:397-398
-Every save keeps the replaced adapter, last 20 -> apps/api/src/apps/api-connector/store.ts:41
+Agent connects a system: API docs via web_search/web_fetch, guide, save, request_secret, test, report -> apps/api/src/modules/apps/connections/api/app.manifest.json:368
+Save card: API origin and auth type, operations, credential deletion warning -> apps/api/src/modules/apps/connections/api/authoring-tools.ts:330-365
+Save and restore decided by api-connector:admin, never auto-approved -> apps/api/src/modules/apps/connections/api/authoring-tools.ts:397-398
+Every save keeps the replaced adapter, last 20 -> apps/api/src/modules/apps/connections/api/store.ts:41
 History button and panel -> apps/web/src/modules/api-connector/ApiConnectorAdapters.tsx:221-256
 History, Restore, warning and Restore and delete credentials labels -> packages/shared/src/i18n/locales/en/api-connector.json:97-111
 Replace warns before deleting credentials, Save and delete credentials -> apps/web/src/modules/api-connector/AdapterForm.tsx:140-163

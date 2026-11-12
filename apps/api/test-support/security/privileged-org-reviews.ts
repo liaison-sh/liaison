@@ -375,9 +375,9 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "a preview's check bridge: the org and user are the run's own (opts.orgId, opts.actor), exactly as writeBundledBatch passes them, from the authenticated preview or the run row's job; its options ({ readOnlyRunOverride }) carry no actor, so the bridge builds it from those ids (bridge/context.ts inheritedActor), which the tracer cannot follow past the options literal",
   "apps/api/src/modules/agent/tools/config-tools.ts#configSectionSummarizer":
     "the config_* tools' approval summarizer, registered per [orgId, kernel, tool] with registerApprovalSummarizer (config-tools.ts); the approval pipeline calls it for an approval of that org and it reads ctx.orgId only",
-  "apps/api/src/apps/api-connector/transport.ts#boundFetchToStream":
+  "apps/api/src/modules/apps/connections/api/transport.ts#boundFetchToStream":
     "bound egress for import transforms (downloadToFile): no production caller yet; its org is BoundRequestInput.orgId, which the transform host fills from the import run row's org",
-  "apps/api/src/apps/api-connector/transport.ts#boundGet":
+  "apps/api/src/modules/apps/connections/api/transport.ts#boundGet":
     "bound egress for import transforms (apiGet): no production caller yet; its org is BoundRequestInput.orgId, which the transform host fills from the import run row's org",
   "apps/api/src/modules/demo/replay/replay.ts#resumeRunningReplays":
     "boot resume: open replay sessions on simulated nodes read by the system pool; each replay resumed in its own row's org",
@@ -468,12 +468,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the device credential's own row (verifyDeviceCredential); refused when absent",
   "apps/api/src/modules/notifications/qa-routes.ts#POST /inject":
     "QA-only route, mounted only with the QA flag (refused in production, env-production-flags.test.ts)",
-  "apps/api/src/apps/api-connector/bridge.ts#call":
+  "apps/api/src/modules/apps/connections/api/bridge.ts#call":
     "sandbox bridge extension: ctx is the run's bridge context (createBridgeContext in rpc-bridge.ts, the org the kernel runs the app for)",
-  "apps/api/src/apps/api-connector/bridge.ts#createApiConnectorBridgeExtension.connector_list_operations":
-    "sandbox bridge extension: ctx.orgId is the run's bridge context org (rpc-bridge.ts)",
-  "apps/api/src/apps/api-connector/bridge.ts#createApiConnectorBridgeExtension.connector_write_validate":
-    "sandbox bridge extension: ctx.orgId is the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/google-drive/bridge.ts#createGoogleDriveBridgeExtension.drive_import":
     "sandbox bridge extension: orgId is the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/knowledge/knowledge-jobs.ts#runSyncWorker":
@@ -655,8 +651,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "tickets cron sweep: the orgId of the run's bridge context (sandbox/bridge/tickets.ts tickets_runJob), one org per fan-out run",
   "apps/api/src/cli/provisioners/apps.ts#plan":
     "provisioning plan: ctx.orgId, the kernel tool context's own org on the tool path (buildActorProvisionContext) or the org chosen with resolveOrgId from the operator CLI; `plan` read as a value in apply-provenance.ts is a name collision",
-  "apps/api/src/cli/provisioners/api-connectors.ts#plan":
-    "provisioning CLI: ctx.orgId, the org chosen with resolveOrgId",
   "apps/api/src/modules/approvals/served-summary.ts#storeApprovalSummaries":
     "demo seed only (served-summary.ts:11): called for the demo org it seeded",
   "apps/api/src/modules/apps/connections/attention.ts#computeConnectionHealthAttentionItems":
@@ -671,7 +665,7 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "backfill sweep: users needing a backfill, each in its own row's org",
   "apps/api/src/apps/tickets/jobs.ts#runSlaCheck":
     "tickets cron sweep: the orgId of the run's bridge context (sandbox/bridge/tickets.ts tickets_runJob), one org per fan-out run",
-  "apps/api/src/modules/api-connector/routes.ts#<module>":
+  "apps/api/src/modules/apps/connections/api/registrations.ts#<module>":
     "credential check registered for the API connector: the connection route calls it with the authenticated request's org",
   "apps/api/src/modules/apps/runtime.ts#registerInOrder":
     "app registration: the orgId parameter of registerApps (each org initialised by initAppsForOrg); the descriptor carries no org",
@@ -702,7 +696,7 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/modules/users/merge-placeholder-tools.ts#summarizeMergeImportedUser":
     "approval summarizer kept in the summarizer registry (registerApprovalSummarizer): the approval pipeline calls it inside the approval's org",
   "apps/api/src/modules/demo/api-connector/responder.ts#maybeDemoApiConnectorResponse":
-    "demo responder kept in a registry (registerDemoApiConnectorResponder, api-connector/routes.ts:198): the API connector transport calls it with the request of the org whose connection it is",
+    "demo responder kept in a registry (registerDemoApiConnectorResponder, connections/api/registrations.ts): the API connector transport calls it with the request of the org whose connection it is",
   "apps/api/src/apps/tickets/summarizers.ts#summarizeTicketClose":
     "approval summarizer named in the tickets manifest (its summarizer field): registered per org and called for an approval of that org",
   "apps/api/src/modules/mcp/connection-service.ts#refreshAccessToken":

@@ -20,7 +20,6 @@
 // is under a call that ran in the turn.
 
 import { isGmailAddress } from "@liaison/shared"
-import { getAdapterRow, listAdapterRows } from "~/apps/api-connector/store"
 import type { RlsClient } from "~/db"
 import {
   captureActingAgentId,
@@ -29,6 +28,7 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
+import { getAdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveGoogleClients } from "~/modules/connection-guides/google"

@@ -106,6 +106,16 @@ export const MOVED_APPS: readonly MovedApp[] = [
       },
     ],
   },
+  {
+    // The API connector keeps every row where the catalog app reads it: its
+    // adapters and their kept versions in its own schema (the same tables),
+    // the connections' credentials (the same `api` connection, one account per
+    // slug), its role scopes and pending approvals (the same tool names). The
+    // platform-held API connections (connections/api/) serve them from there,
+    // so nothing moves.
+    name: "api-connector",
+    steps: [],
+  },
 ]
 
 let movedAppsOverride: readonly MovedApp[] | null = null

@@ -955,7 +955,8 @@ describe("Shopify app.manifest.json", () => {
     // redirect needs; a merge whose connection lacks it is refused before its first write.
     // 0.4.24: both of the above, merged.
     // 0.4.25: both of the above, merged (main's 0.4.24: every package carries its Worker module).
-    expect(m.version).toBe("0.4.25")
+    // 0.4.26: above main's 0.4.25, merged.
+    expect(m.version).toBe("0.4.26")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

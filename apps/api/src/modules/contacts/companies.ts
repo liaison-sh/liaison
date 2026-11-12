@@ -23,7 +23,7 @@
  */
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
-import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import type { RlsClient, RlsTx } from "~/db"
 import { extractRows } from "~/db"
 import { withElevatableRlsFrom, withPrivilegedDb } from "~/db/privileged"

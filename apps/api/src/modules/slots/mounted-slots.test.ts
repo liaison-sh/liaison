@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
-import apiConnectorManifest from "~/apps/api-connector/app.manifest.json"
+import apiConnectorManifest from "../../../../../bundled-apps/api-connector/app.manifest.json"
 import exampleManifest from "~/apps/example/app.manifest.json"
 import ticketsManifest from "~/apps/tickets/app.manifest.json"
 import { slotRegistry } from "~/modules/apps/app-registries"

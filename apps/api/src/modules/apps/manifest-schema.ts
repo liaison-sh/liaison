@@ -427,6 +427,22 @@ const connectionSchema = {
       },
       additionalProperties: false,
     },
+    // An HTTP API the platform holds the connection to (`ctx.api.*`,
+    // connections/api/): each account (multiInstance, keyed by its slug) is
+    // described by an adapter document the platform stores with the app's
+    // `adapters` / `adapter_versions` tables; the platform renders, signs and
+    // sends every call, so app code never holds a credential. The scopes are the
+    // app's own: who reads, who writes (approval-gated), who edits adapters.
+    api: {
+      type: "object",
+      properties: {
+        readScope: { type: "string", minLength: 3 },
+        writeScope: { type: "string", minLength: 3 },
+        adminScope: { type: "string", minLength: 3 },
+      },
+      required: ["readScope", "writeScope", "adminScope"],
+      additionalProperties: false,
+    },
     // Credentials only: several org-owned accounts per org, each keyed by its
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },

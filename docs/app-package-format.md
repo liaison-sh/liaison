@@ -21,6 +21,8 @@ companion — keep the two in sync.
 my-app-1.0.0.liaisonapp                 (gzipped tar — the package)
 ├── app.manifest.json          REQUIRED — app metadata + schema + tools
 ├── bundle.js                  REQUIRED — built backend handler bundle
+├── worker.js                  the same handlers as a Worker module (ES module for
+│                              the remote isolate loader); every freeze emits it
 ├── ui.js                      optional — built frontend panel bundle
 ├── templates/<name>.js        optional — one file per declared pdf_templates[] entry,
 │                              transpiled from its TS source at freeze time
@@ -35,6 +37,12 @@ my-app-1.0.0.liaisonapp.cosign.bundle   (detached cosign signature — sibling f
 
 - **Required files** (`app.manifest.json`, `bundle.js`) — verification fails if
   either is absent.
+- **`worker.js`** — the app's Worker module, built from the same `handlers.ts`
+  with no Node builtin. The install records its sha256 and keeps its bytes;
+  the package's sha256 (and so a signed statement or cosign signature over the
+  package) covers it. A catalog install refuses one that does not hash to the
+  sha256 the catalog pins. A package without it installs and runs on the
+  local sandbox only.
 - **`ui.js`** — present only if the app ships a frontend panel.
 - **Signature** — `bun run app:sign` produces a **detached** `<package>.cosign.bundle`
   *next to* the tarball; the tarball itself is never modified. Embedding the

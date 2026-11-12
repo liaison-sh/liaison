@@ -260,7 +260,7 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // read as the owner under RLS, and both run BEFORE the suppression window opens,
   // so a dropped event never absorbs a later one.
   const filterApplies = isMailSenderFilterActive(sub.filter) && isMailSenderFilterEvent(evt)
-  // A table row routine's filter (0296): its table, column and the value it moves to, read from
+  // A table row routine's filter (0297): its table, column and the value it moves to, read from
   // the change as the owner, before the window opens (a non-matching edit absorbs nothing).
   const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
   if (isOwnerScopedEvent(evt) || filterApplies || tableFilter) {

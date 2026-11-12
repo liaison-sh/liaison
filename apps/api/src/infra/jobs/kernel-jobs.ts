@@ -414,7 +414,7 @@ export async function routineTickCreditGate(
   return { reason: result.reason || "Credit pre-check denied", pause: result.code === undefined }
 }
 
-/** A dashboard table's row history is kept this long (modules/dashboards/tables, 0296). */
+/** A dashboard table's row history is kept this long (modules/dashboards/tables, 0297). */
 export const DASHBOARD_TABLE_CHANGES_RETENTION_DAYS = 400
 
 /** Drops dashboard table row changes past their retention, in batches, every org at once. */

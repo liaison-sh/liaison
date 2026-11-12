@@ -611,13 +611,16 @@ export async function ad_preview(params: AdPreviewParams, ctx: ReadCtx): Promise
     }
   }
 
+  // `rows`: one row per format, the list a dashboard block reads (the single-format answer keeps
+  // its fields at the top level too).
   if (params.ad_formats && params.ad_formats.length > 0) {
     const previews = await Promise.all(params.ad_formats.map(fetchPreview))
-    return { previews }
+    return { previews, rows: previews }
   }
 
   const fmt = params.ad_format ?? "DESKTOP_FEED_STANDARD"
-  return fetchPreview(fmt)
+  const single = await fetchPreview(fmt)
+  return { ...single, rows: [single] }
 }
 
 // ─── counts ───────────────────────────────────────────────────────────────────

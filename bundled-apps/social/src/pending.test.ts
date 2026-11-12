@@ -170,12 +170,22 @@ describe("reads derive the status from the live approvals", () => {
     const db = createMockDb()
     await seed(db)
     await db.insert("dm_conversation", { id: "c1", platform: "instagram", external_id: "IG1", status: "open" })
-    expect(await countsRead({}, makeCtx(db, [reply("a1", "f1", "hi")]))).toEqual({
+    expect(await countsRead({}, makeCtx(db, [reply("a1", "f1", "hi")]))).toMatchObject({
       findings_new: 1, // f1 is awaiting; stale f4 reads new
       awaiting_approval: 1,
       open_dms: 1,
     })
-    expect(await countsRead({}, makeCtx(db, []))).toEqual({ findings_new: 2, awaiting_approval: 0, open_dms: 1 })
+    // The same counts as rows, the list a dashboard block charts.
+    expect(await countsRead({}, makeCtx(db, []))).toEqual({
+      findings_new: 2,
+      awaiting_approval: 0,
+      open_dms: 1,
+      rows: [
+        { key: "findings_new", value: 2 },
+        { key: "awaiting_approval", value: 0 },
+        { key: "open_dms", value: 1 },
+      ],
+    })
   })
 
   test("attention: a pending reply is an approval item routed to its decision; a gone one is not", async () => {

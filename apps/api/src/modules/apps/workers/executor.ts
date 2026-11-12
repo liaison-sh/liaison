@@ -62,7 +62,7 @@ export interface WorkersRunOptions {
   orgId: string
   version: string
   /**
-   * sha256 of the Worker module (LIAISON_WORKERS_BUNDLES, or a custom app's
+   * sha256 of the Worker module (the package's worker.js, recorded on the
    * installed row), not of the package.
    */
   bundleSha256: string

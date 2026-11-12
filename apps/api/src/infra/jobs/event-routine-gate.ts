@@ -79,7 +79,7 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
   "kernel:contact": { schema: "kernel", table: "contacts" },
   "mcp-manager:connection": { schema: "app_mcp_manager", table: "mcp_connections" },
   "knowledge:document": { schema: "app_knowledge", table: "documents" },
-  // A dashboard table's row (modules/dashboards/tables): the owner must read its table (0296).
+  // A dashboard table's row (modules/dashboards/tables): the owner must read its table (0297).
   "kernel:dashboard_table_row": {
     schema: "kernel",
     table: "dashboard_tables",
@@ -364,7 +364,7 @@ export async function triggerEventOrigin(evt: OriginEvent): Promise<"external" |
   }
 }
 
-// ── Dashboard table row filter (0296) ───────────────────────────────────────
+// ── Dashboard table row filter (0297) ───────────────────────────────────────
 
 /**
  * The filter of a `kernel:dashboard_table_row:*` routine: one table, optionally one column, and

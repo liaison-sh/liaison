@@ -57,6 +57,7 @@ import {
   declaredCapabilities,
   declaredCrossAppCalls,
   installAppFromBytes,
+  WorkerModulePinMismatchError,
 } from "~/modules/apps/install-service"
 
 export interface PublishGrants {
@@ -340,24 +341,7 @@ export async function executePublish(
         "the approved package bytes are no longer stored or changed: request the publish again",
       )
     }
-    // The Workers module of the same build, pinned beside the package: recorded
-    // on the install row (0278) so a cell with LIAISON_WORKERS_CUSTOM_APPS runs
-    // exactly these bytes on the loader (workers/bundle-route.ts serves them).
-    let workerModule: { sha256: string; bytes: Uint8Array } | undefined
-    if (pin.workerSha256) {
-      const worker = await getBuildArtifact(tx, {
-        draftId: pin.draftId,
-        sha256: pin.workerSha256,
-      })
-      if (worker?.kind !== "worker") {
-        throw new DraftError(
-          "pin_mismatch",
-          "the approved Workers module is no longer stored or changed: request the publish again",
-        )
-      }
-      workerModule = { sha256: pin.workerSha256, bytes: worker.bytes }
-    }
-    return { done: false as const, active, bytes: artifact.bytes, workerModule }
+    return { done: false as const, active, bytes: artifact.bytes }
   })
 
   let installed: { name: string; version: string }
@@ -376,10 +360,12 @@ export async function executePublish(
         // Written on the install row in the install's transaction, exactly the pinned ones.
         grantedDomains: pin.grants.domains,
         sourceUrl: builderSourceUrl(pin.draftId, pin.n),
-        ...(verified.workerModule ? { workerModule: verified.workerModule } : {}),
+        // The package carries its worker.js: the install checks it against this pin
+        // and records it (0278), so the loader runs exactly the approved build.
+        ...(pin.workerSha256 ? { workerSha256: pin.workerSha256 } : {}),
       })
     } catch (err) {
-      if (err instanceof DomainPinMismatchError) {
+      if (err instanceof DomainPinMismatchError || err instanceof WorkerModulePinMismatchError) {
         throw new DraftError("pin_mismatch", `${err.message}: request the publish again`)
       }
       throw err

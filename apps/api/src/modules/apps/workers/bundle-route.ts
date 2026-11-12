@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// GET /api/app-bridge/bundles/:sha256 — the app loader fetches a custom app's
-// Worker module from this cell when its own store has no object for the sha.
+// GET /api/app-bridge/bundles/:sha256 — the app loader fetches an installed
+// app's Worker module from this cell when its own store has no object for the
+// sha.
 //
-// The bytes are the ones an org's publish recorded on the installed row from
-// the build its approval pinned (0278, modules/app-builder/publish.ts): never
-// a draft's bytes, never a module before its publish installed it. Served only
-// while LIAISON_WORKERS_CUSTOM_APPS is on (config.ts), for a sha some
-// installed, not disabled custom app version names.
+// The bytes are the ones an install recorded on the installed row from the
+// package's worker.js (0278, install-service.ts): a catalog app, an uploaded
+// one or an org's custom app, never a draft's bytes, never a module before an
+// install recorded it. Served while the loader is configured (config.ts), for
+// a sha some installed, not disabled app version names.
 //
 // The module holds the app's handlers only (no name, no org): two apps with
 // the same code have one module and one sha, and either install serves it.
 //
 // Cell-wide on purpose: the loader holds one key per cell, not per org, so an
-// installed custom app of ANY org on this cell is servable to it. The loader
-// runs only what a signed /run from this cell names, under that run's org.
+// installed app of ANY org on this cell is servable to it. The loader runs
+// only what a signed /run from this cell names, under that run's org.
 //
 // Authentication: the loader's v2 signature, direction "loader->cell", method
 // GET, this exact path, an empty body (sign.ts), with this cell's id and key
@@ -55,7 +56,7 @@ export function createAppBridgeBundleRoutes(deps: AppBridgeBundleRouteDeps = {})
 
   return new Hono().get("/bundles/:sha256", async (c) => {
     const cfg = config()
-    if (!cfg?.customApps) return c.json({ error: "Not found", reason: "not_found" }, 404)
+    if (!cfg) return c.json({ error: "Not found", reason: "not_found" }, 404)
 
     const cellId = c.req.header(CELL_ID_HEADER)
     const verdict =

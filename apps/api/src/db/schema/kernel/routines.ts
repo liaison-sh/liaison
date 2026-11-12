@@ -93,7 +93,7 @@ export const routines = kernel.table(
     model: text("model"),
     // Sender filter of a `mail:message:create` routine (0131, S26): evaluated
     // by the event routine subscriber as the owner, before any tick. Null = no filter.
-    // Or (0296) the table-row filter of a `kernel:dashboard_table_row:*` routine: a table, and
+    // Or (0297) the table-row filter of a `kernel:dashboard_table_row:*` routine: a table, and
     // optionally a column and the value it changes to.
     eventFilter: jsonb("event_filter").$type<{
       fromContactIds?: string[]

@@ -97,6 +97,8 @@ export async function analytics_query(
       metric: params.metric,
       period: params.period,
       groupBy: params.groupBy,
+      // The table's rows as objects keyed by column, the list a dashboard block charts.
+      rows: tableRows(table),
       table,
     }
   }
@@ -132,24 +134,31 @@ export function timeSeriesRows(
   table: unknown,
   grain: AnalyticsTimeGrain,
 ): Array<Record<string, unknown>> {
+  return tableRows(table).map((row) => {
+    const bucket = row[grain]
+    return { ...row, date: typeof bucket === "string" ? bucket.slice(0, 10) : null }
+  })
+}
+
+/**
+ * Flattens a ShopifyQL table into one object per row keyed by column name. Accepts both row
+ * shapes Shopify has used: objects keyed by column (API 2026-01 `rows`) and positional arrays
+ * matched to `columns`.
+ */
+export function tableRows(table: unknown): Array<Record<string, unknown>> {
   if (!table || typeof table !== "object") return []
   const t = table as { rows?: unknown; rowData?: unknown; columns?: Array<{ name?: string }> }
   const raw = Array.isArray(t.rows) ? t.rows : Array.isArray(t.rowData) ? t.rowData : []
   const names = Array.isArray(t.columns) ? t.columns.map((c) => String(c?.name ?? "")) : []
   const out: Array<Record<string, unknown>> = []
   for (const r of raw) {
-    let row: Record<string, unknown>
     if (Array.isArray(r)) {
-      row = {}
+      const row: Record<string, unknown> = {}
       for (let i = 0; i < names.length; i++) row[names[i] as string] = r[i]
+      out.push(row)
     } else if (r && typeof r === "object") {
-      row = { ...(r as Record<string, unknown>) }
-    } else {
-      continue
+      out.push({ ...(r as Record<string, unknown>) })
     }
-    const bucket = row[grain]
-    row.date = typeof bucket === "string" ? bucket.slice(0, 10) : null
-    out.push(row)
   }
   return out
 }
@@ -193,6 +202,9 @@ async function degradeToBoundedTally(
     partial: true,
     boundedTo: counted,
     totalCount,
+    // The one figure this fallback has, the period's order count, as the row a dashboard block
+    // reads. It counts orders whatever the metric asked: a block never reads it as revenue.
+    rows: [{ key: "orders", value: totalCount, counted, partial: true }],
     metric: params.metric,
     period: params.period,
     groupBy: params.groupBy,

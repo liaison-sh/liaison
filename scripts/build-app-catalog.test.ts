@@ -2,8 +2,10 @@
 // The catalog's choice per bundled app (A3): the signed artifact when one with
 // this source digest verifies against the pinned keys, the local unsigned build
 // otherwise, and never a failed build because the artifacts host is away.
+
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   cpSync,
   existsSync,
@@ -65,8 +67,10 @@ beforeEach(async () => {
 })
 afterEach(() => rmSync(work, { recursive: true, force: true }))
 
-/** Stand-in for the freeze: a package from the app's manifest and a fixed ui.js. */
-function freeze(name: string, tag = "local"): string {
+const WORKER = "export default {}\n"
+
+/** Stand-in for the freeze: a package from the app's manifest, a fixed ui.js and worker.js. */
+function freeze(name: string, tag = "local", opts: { worker?: boolean } = {}): string {
   const appDir = join(bundledRoot, name)
   const m = JSON.parse(readFileSync(join(appDir, "app.manifest.json"), "utf8"))
   const stage = join(work, `stage-${tag}`)
@@ -74,10 +78,15 @@ function freeze(name: string, tag = "local"): string {
   mkdirSync(stage, { recursive: true })
   cpSync(join(appDir, "app.manifest.json"), join(stage, "app.manifest.json"))
   writeFileSync(join(stage, "ui.js"), `${UI}// ${tag}\n`)
+  const files = ["app.manifest.json", "ui.js"]
+  if (opts.worker !== false) {
+    writeFileSync(join(stage, "worker.js"), WORKER)
+    files.push("worker.js")
+  }
   const out = join(work, `dist-${tag}`)
   mkdirSync(out, { recursive: true })
   const tarball = join(out, `${m.name}-${m.version}.liaisonapp`)
-  spawnSync("tar", ["-czf", tarball, "-C", stage, "app.manifest.json", "ui.js"])
+  spawnSync("tar", ["-czf", tarball, "-C", stage, ...files])
   return tarball
 }
 
@@ -87,8 +96,10 @@ const buildLocal = (name: string): string => {
 }
 
 /** Publish a signed artifact for the current source into a mirror dir. */
-async function publishMirror(): Promise<{ mirror: string; keyId: string }> {
-  const tarball = freeze("demoapp", "release")
+async function publishMirror(
+  opts: { worker?: boolean } = {},
+): Promise<{ mirror: string; keyId: string }> {
+  const tarball = freeze("demoapp", "release", opts)
   const mirror = join(work, "mirror")
   const dir = join(mirror, "demoapp", "1.0.0")
   mkdirSync(dir, { recursive: true })
@@ -118,6 +129,7 @@ describe("buildAppCatalog", () => {
       name: "demoapp",
       version: "1.0.0",
       file: "demoapp-1.0.0.liaisonapp",
+      workerSha256: createHash("sha256").update(WORKER).digest("hex"),
       signed: {
         statement: "demoapp-1.0.0.statement.json",
         signature: "demoapp-1.0.0.statement.sig",
@@ -174,6 +186,35 @@ describe("buildAppCatalog", () => {
       log: (l) => lines.push(l),
     })
     expect(localBuilds).toEqual(["demoapp", "demoapp"])
+  })
+
+  it("never uses a signed package that carries no worker.js: built locally, its module pinned", async () => {
+    const { mirror, keyId } = await publishMirror({ worker: false })
+    const entries = await buildAppCatalog({
+      bundledRoot,
+      outDir,
+      source: { dir: mirror },
+      keys: [{ keyId, publicKey: key.key.publicKey }],
+      buildLocal,
+      log: (l) => lines.push(l),
+    })
+    expect(localBuilds).toEqual(["demoapp"])
+    expect(lines[0]).toContain("carries no worker.js")
+    expect(entries[0]?.signed).toBeUndefined()
+    expect(entries[0]?.workerSha256).toBe(createHash("sha256").update(WORKER).digest("hex"))
+  })
+
+  it("refuses to bake a package without worker.js", async () => {
+    await expect(
+      buildAppCatalog({
+        bundledRoot,
+        outDir,
+        source: null,
+        keys: [],
+        buildLocal: (name) => freeze(name, "local", { worker: false }),
+        log: (l) => lines.push(l),
+      }),
+    ).rejects.toThrow("carries no worker.js")
   })
 
   it("refuses a package whose inner ui.js is not the signed loose one", async () => {

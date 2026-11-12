@@ -15,9 +15,9 @@ A table made from a dashboard copies its sharing -> apps/api/src/modules/dashboa
 Delete: owner, or admin on an org-wide table -> apps/api/src/modules/dashboards/tables/service.ts:1531
 Row events carry ids and keys only -> apps/api/src/modules/dashboards/tables/service.ts:745
 History kept 400 days -> apps/api/src/infra/jobs/kernel-jobs.ts:418
-Edit rule (write scope + owner/editor, admin on org-wide) -> apps/api/src/db/migrations/0296_dashboard_tables.sql:121
-Read rule (owner, org access, grants; no admin bypass) -> apps/api/src/db/migrations/0296_dashboard_tables.sql:143
-Rows follow the table's sharing on every path -> apps/api/src/db/migrations/0296_dashboard_tables.sql:231
+Edit rule (write scope + owner/editor, admin on org-wide) -> apps/api/src/db/migrations/0297_dashboard_tables.sql:121
+Read rule (owner, org access, grants; no admin bypass) -> apps/api/src/db/migrations/0297_dashboard_tables.sql:143
+Rows follow the table's sharing on every path -> apps/api/src/db/migrations/0297_dashboard_tables.sql:231
 100,000 rows of 256 KB at most -> apps/api/src/modules/data-store/service.ts:34
 Tools tables_list, tables_get, tables_query -> apps/api/src/modules/dashboards/tables/tools.ts:403
 tables_rows_write -> apps/api/src/modules/dashboards/tables/tools.ts:503

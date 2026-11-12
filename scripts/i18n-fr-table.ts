@@ -7819,9 +7819,11 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.filterTypeMulti": "Choisir plusieurs valeurs",
   "kernel.dashboards.filterTypeText": "Saisir du texte",
   "kernel.dashboards.filterNoFields": "Les lignes des blocs n'ont aucun champ sur lequel filtrer.",
-  "kernel.dashboards.filterFieldsFailed": "Impossible de lire les champs des blocs. Réessayez dans un instant.",
+  "kernel.dashboards.filterFieldsFailed":
+    "Impossible de lire les champs des blocs. Réessayez dans un instant.",
   "kernel.dashboards.filterAppliesLabel": "S'applique à",
-  "kernel.dashboards.filterNoOptions": "Aucun de ces blocs ne peut lister les valeurs de ce champ. Choisissez un filtre texte, ou d'autres blocs.",
+  "kernel.dashboards.filterNoOptions":
+    "Aucun de ces blocs ne peut lister les valeurs de ce champ. Choisissez un filtre texte, ou d'autres blocs.",
   "kernel.dashboards.filterAll": "Tous",
   "kernel.dashboards.filterAria": "{{label}} : {{value}}",
   "kernel.dashboards.filterLoading": "Chargement des valeurs…",

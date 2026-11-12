@@ -14,12 +14,23 @@ screenshotAlt: "The Settings landing page on the Profile section, with the setti
 | **Profile** | **Profile picture** (PNG, JPEG, WEBP or GIF, up to 5 MB), **Display name**, **Language** (English, French or the organization default), **Theme** (System, Light or Dark), timezone. **Away**: the days you are away (first and last day) and your **Next in line**, who sees what needs you on Home while you are away and gets no new rights (your personal mail, direct conversations and personal agent stay private); **Set away** saves at once, with **Undo** for a few seconds, and **End early** ends a range. **Next in line by default** is saved as soon as you pick it and is used when a range names nobody. Your next in line's Home says that you are away and until when. Days from your own calendar are marked **From your calendar**, and an event that looks like leave asks **Yes** or **No** first ([Calendar](../apps/calendar.md)). Only dates are kept, never why | everyone |
 | **Security** | **Change password**, two-factor authentication (**Enable 2FA**), **Delete my account**; for admins, **Sign-in methods** | everyone |
 | **Notifications** | **How each kind reaches you**: each kind set to **Interrupt**, **Inbox only** or **Off** (muted on every channel, still in your inbox, unread but quiet, not on the badge). How each kind of notification reaches you per channel (in Liaison, on your computer, on your phone or by email), the **Email digest** cadence, and **Approval reminders**: how often your agent reminds you of your requests waiting for approval (daily by default, every 3 days, weekly or off). **Work hours** and time zone: outside them are your quiet hours, on by default from 20:00 to 08:00 on weekdays and all weekend, once your time zone is known (set by you, reported by your browser or app, or the organization's). **Muted conversations** with **Unmute**, and **Channels that notify you of every message** with **Mentions only**. **On call**: who incidents interrupt, the admins until an admin picks people. A routine run waiting for your private mailbox always reaches you in Liaison: no rule turns it off | everyone; **On call** edited by admins |
+| **Sidebar** | Which apps your sidebar shows: one **Show in the sidebar** switch per app, saved as you switch it | everyone |
 | **Computers** | Your computers, this computer's setup in the desktop app, and each computer's folders, agents and settings | everyone |
 | **Connected tools** | The AI clients connected to Liaison over MCP, and the MCP servers you connect for yourself | everyone |
 
 See [Invite and manage users](users.md#set-how-people-sign-in), [Connect a computer](../computers/connect.md) and [MCP servers](../agents/mcp-servers.md).
 
 **Sign-in methods** also holds the workspace's Google client, used by Gmail and Google Calendar. When the server provides a Google client for every workspace, it reads **Google OAuth client provided by this deployment** and nothing needs to be set; a client saved here replaces the server's for this workspace. The card refreshes by itself when the client is saved elsewhere, for example from a conversation with the agent.
+
+### Hide apps from your sidebar
+
+Hide the apps you never use, so your sidebar shows only the ones you need.
+
+- In **Settings › Sidebar**, switch an app off. It leaves the sidebar at once, on the computer and tablet and in the phone's **Work** list.
+- Or right-click an app in the sidebar and choose **Hide from sidebar**. With the keyboard, press Shift+F10 or the menu key on the app.
+- To bring an app back, switch it on again in **Settings › Sidebar**.
+
+Your choice is saved to your account, so your other devices show the same sidebar. Hidden apps stay available from search, the command palette and links, and hiding an app never changes what you can access. Your agent can also hide or show apps for you when you ask it. An admin can set a starting list for you from your page in **Users**; you can change it back here at any time.
 
 ## Set up AI for the organization (AI)
 

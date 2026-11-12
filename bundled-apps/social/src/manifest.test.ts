@@ -45,7 +45,9 @@ describe("social manifest (B1)", () => {
     // 0.6.68: the source repository link names the repository where the code now lives.
     // 0.6.64 (main): a reply the platform refuses as gone or blocked closes its approval.
     // 0.6.69: above main's 0.6.64, merged.
-    expect(manifest.version).toBe("0.6.69")
+    // 0.6.65 (main): one deduplicated discovery run after a connect; job timeouts declared.
+    // 0.6.70: both of the above, merged.
+    expect(manifest.version).toBe("0.6.70")
     expect(manifest.packageFormat).toBe(1)
   })
 

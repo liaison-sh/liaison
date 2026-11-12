@@ -186,3 +186,19 @@ Install from a URL lists the hosts; an upgrade its new ones -> apps/web/src/modu
 Operator for a server-wide app, the org admin for its own app; holds from the next run -> apps/api/src/modules/apps/install-routes.ts:653 ; apps/api/src/modules/apps/install-routes.ts:673
 Users: deactivation asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx:488
 Rules match on product attribute -> apps/api/src/modules/documents/rules-store.ts:99
+Sidebar section in You -> apps/web/src/framework/bootstrap.ts:617
+Sidebar label -> packages/shared/src/i18n/locales/en/kernel.json:1916
+Sidebar intro -> packages/shared/src/i18n/locales/en/kernel.json:6674
+Show in the sidebar switch per app, saved on switch -> apps/web/src/modules/settings/sidebar-settings/SidebarAppsEditor.tsx:73
+One row per sidebar app (Settings excluded) -> apps/web/src/modules/settings/sidebar-settings/SidebarAppsEditor.tsx:28
+Switch label -> packages/shared/src/i18n/locales/en/kernel.json:6676
+Hidden apps left out of the rail -> apps/web/src/modules/shell/ActivityBar.tsx:79
+Hidden apps left out of the phone Work list -> apps/web/src/modules/shell/Work.tsx:174
+Right-click or Shift+F10 / menu key opens the app menu -> apps/web/src/modules/shell/ActivityBar.tsx:431
+Hide from sidebar label -> packages/shared/src/i18n/locales/en/kernel.json:1931
+Saved to the account (partial preferences route) -> apps/api/src/modules/users/preferences-routes.ts:145
+Other devices follow the change -> apps/web/src/modules/threads/read-state-sync.ts:89
+Read at startup on every device -> apps/web/src/startup.ts:86
+Hidden apps stay available from search, palette, links -> packages/shared/src/i18n/locales/en/kernel.json:6675
+Agent can hide or show apps -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
+Admin sets a starting list from the Users page -> apps/web/src/modules/settings/AdminUserDetail.tsx:437

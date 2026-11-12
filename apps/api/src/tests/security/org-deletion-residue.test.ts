@@ -40,6 +40,7 @@ import { installAppFromTarball } from "~/modules/apps/install-service"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { processOrgDeleteJob } from "~/modules/org/delete/job"
 import { IndexWriterTestAccess, writeIndexAndWait } from "~/modules/search/index-writer"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import {
   closeIsolationScans,
   type IsolationOrg,
@@ -50,6 +51,9 @@ import {
 } from "~/tests/helpers/org-isolation"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 const REPO = join(import.meta.dir, "..", "..", "..", "..", "..")
 const tag = crypto.randomUUID().slice(0, 8)
@@ -159,6 +163,7 @@ async function storesOf(orgId: string) {
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   spies.push(spyOn(searchClientModule, "effectiveIndexName").mockReturnValue(INDEX))
   IndexWriterTestAccess.resetRebuildCache()
   const created = await meili.createIndex(INDEX, { primaryKey: "id" })
@@ -201,6 +206,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

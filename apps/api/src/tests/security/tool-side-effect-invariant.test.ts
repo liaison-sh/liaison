@@ -121,6 +121,10 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   kernel_findContactsByExternalId: "read",
   kernel_findOne: "read",
   kernel_findByIds: "read",
+  // Directory reads of the app's own org (bridge/directory.ts).
+  kernel_caller: "read",
+  kernel_roles: "read",
+  kernel_findUsersByEmail: "read",
   // Platform-held SQL connections: a READ ONLY transaction on the app's own
   // connection (connections/sql/service.ts); the audit line is the kernel's.
   sql_query: "read",

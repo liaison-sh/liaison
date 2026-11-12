@@ -885,7 +885,7 @@ describe("Boxtal app.manifest.json", () => {
     expect(/bill of materials|BOM/i.test(desc)).toBe(true)
     expect(/REQUIRED, not optional|BOM is REQUIRED|required for a bundle|empty .*components/i.test(desc)).toBe(true)
     // A concrete example BOM the model can pattern-match.
-    expect(/product_source.*product_id|RAL-44.*ER-OVL/s.test(desc)).toBe(true)
+    expect(/product_source.*product_id|RAL-44.*RAL-WND/s.test(desc)).toBe(true)
     // The name→sku lookup path (packages_list.local_products).
     expect(/packages_list|local_products|label.*sku/i.test(desc)).toBe(true)
     // The `components` param + its item fields are documented, not bare.

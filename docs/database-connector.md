@@ -52,7 +52,7 @@ agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV
 - **Adapter** = the per-deployment unit: a `ReadCatalog` (named reads: SQL
   template + params + column allow-list + tables touched), selected by env
   `LIAISON_DATABASE_ADAPTER` (default `liaison-self`). The first, generic
-  adapter is `liaison-self` (`apps/api/src/apps/database/adapters/
+  adapter is `liaison-self` (`apps/api/src/modules/apps/connections/sql/adapters/
   liaison-self.ts`) — reads any liaison-schema Postgres. Its login bypasses
   row-level security, so the connector holds its reads to the caller: the
   `orgId` parameter is always the caller's org (a passed value is replaced),
@@ -61,7 +61,7 @@ agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV
   and raw `db_query` over it is reserved to the instance operator's org. After
   upgrading, re-run `scripts/db-readonly-role.ts --create` on an existing
   cluster so the role gets the columns those filters read. A toy portability
-  fixture lives at `apps/api/src/apps/database/adapters/__fixtures__/
+  fixture lives at `apps/api/src/modules/apps/connections/sql/adapters/__fixtures__/
   toy-shop.ts` (see [§7](#7-authoring-your-own-adapter)).
 - **Transport** = `DbTransport` (`apps/api/src/modules/apps/connections/sql/transport.ts`,
   the platform's SQL connections, which also serve `ctx.sql` for any app):
@@ -486,7 +486,7 @@ secret-shaped columns → pick domains → write catalog reads → validate
 regenerate `readonly-grants.sql` → connect + `db_probe` → smoke-test each
 read.
 
-`apps/api/src/apps/database/adapters/__fixtures__/toy-shop.ts` is a tiny
+`apps/api/src/modules/apps/connections/sql/adapters/__fixtures__/toy-shop.ts` is a tiny
 (3-table) fixture adapter authored purely by following that skill — proof
 that a third party can adapt the connector without reading its source. It is
 a fixture, not a selectable production adapter: it registers into the same
@@ -532,7 +532,7 @@ catalog read:
    its `tables`).
 2. Run `bun run scripts/db-readonly-role.ts --regenerate` — it renders the
    grants fresh from the current catalog via `grants-renderer.ts` and WRITES
-   the single checked-in file `apps/api/src/apps/database/generated/
+   the single checked-in file `apps/api/src/modules/apps/connections/sql/generated/
    readonly-grants.sql` (the same file `deploy/postgres-init/
    20-readonly-role.sh` executes via a bind mount — there is no second copy
    to keep in sync).

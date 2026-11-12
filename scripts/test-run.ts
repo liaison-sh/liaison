@@ -653,6 +653,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/social-assets-reconcile.test.ts",
             // Meta webhooks reach the polled rows; one reply approval per finding.
             "src/tests/integration/social-webhook-and-reply.test.ts",
+            // One file's app installs never reach the next (reset + snapshot restore).
+            "src/tests/app-install-isolation.test.ts",
             // A request_secret card is posted in the turn, or carried by the approval.
             "src/tests/integration/request-secret-approved-card.test.ts",
             // agents_ask: the asked agent always answers in the thread, in its own name.

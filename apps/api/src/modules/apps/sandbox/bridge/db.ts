@@ -9,6 +9,11 @@ import { fetchWithPinnedHost } from "~/lib/outbound-fetch"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
+  kernelCaller,
+  kernelRoles,
+  kernelUsersByEmail,
+} from "~/modules/apps/sandbox/bridge/directory"
+import {
   BASE_ENTITY_FIELDS,
   SANDBOX_FETCH_MAX_REDIRECTS,
   sandboxEgressOverrides,
@@ -239,6 +244,15 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
       if (!Array.isArray(ids)) throw new Error("kernel_findByIds: ids is an array")
       return JSON.stringify(await findKernelEntitiesByIds(entity, ids))
     },
+
+    // Directory reads for an app's own access rules (directory.ts).
+    kernel_caller: async (scopesJson?: unknown) =>
+      JSON.stringify(
+        await kernelCaller({ orgId, userId, callerScopes: callerScopes ?? [] }, scopesJson),
+      ),
+    kernel_roles: async () => JSON.stringify(await kernelRoles(txDb, orgId)),
+    kernel_findUsersByEmail: async (emailsJson: unknown) =>
+      JSON.stringify(await kernelUsersByEmail(txDb, orgId, emailsJson)),
 
     // Cluster 6 — kernel read affordance. Exposed to handlers as both
     // `ctx.kernel.findContactsByExternalId(limit, cursor)` (kernel-convention

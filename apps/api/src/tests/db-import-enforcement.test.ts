@@ -162,6 +162,10 @@ describe("db import enforcement", () => {
     // org-owned accounts are invisible to RLS; every read and write pins org,
     // app and connection in its predicate, and the caller's own personal rows.
     "modules/apps/sandbox/bridge/accounts.ts",
+    // ctx.kernel.caller: the caller's own roles and grants in the run's org
+    // (loadEffectivePermissions, the same read the domain checks used); answers
+    // only whether each asked scope is held, never the person's other grants.
+    "modules/apps/sandbox/bridge/directory.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
@@ -662,6 +666,8 @@ describe("db import enforcement", () => {
     "tests/security/seeds.ts",
     // Test fixture: deactivates the instance-wide active app versions a test seeded.
     "tests/helpers/seeded-app-rows.ts",
+    // Test fixture: snapshots and restores the instance-wide app install rows of a test file.
+    "tests/helpers/app-install-state.ts",
     // S19 boot-flat seed: sets up hundreds of orgs through the seed factories, outside any request context.
     "tests/e2e/cell/boot-flat-seed.ts",
     // Phase 14 — integration test for the permissionVersion-bump contract reads
@@ -1608,6 +1614,10 @@ describe("db import enforcement", () => {
     // (resolveEffectivePermissions, privileged like token issuance), read only
     // after the caller's RLS read of that user's identity succeeded.
     "modules/users/service.ts",
+    // The sidebar agent tools: another member's hidden-apps list (their own
+    // user_preferences row, RLS self-only) only after the caller's
+    // kernel:users:admin scope and the member's org are checked.
+    "modules/users/sidebar-agent-tools.ts",
   ])
 
   // Allowlist: only these files may import { sql } from ~/db

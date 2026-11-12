@@ -275,6 +275,9 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     kernel: {
       findOne: async () => null,
       findByIds: async () => [],
+      caller: async () => ({ kind: "system" as const, holds: {} }),
+      roles: async () => [],
+      findUsersByEmail: async () => [],
     },
     resolveContact: mock(async (_params: Parameters<AppContext["resolveContact"]>[0]) => undefined),
     listContactsByExternalId: mock(async (_limit?: number, _cursor?: string) => ({

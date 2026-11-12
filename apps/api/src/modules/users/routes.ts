@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { updateProfileSchema } from "@liaison/shared"
+import { hiddenSidebarAppsSchema, updateProfileSchema } from "@liaison/shared"
+import { and, eq } from "drizzle-orm"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
+import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { users } from "~/db/schema/kernel"
 import { deleteObject, getObjectStream, putObject } from "~/infra/storage/object-storage"
 import { withRequestRls } from "~/lib/request-rls"
 import { paginated, success } from "~/lib/response"
@@ -12,6 +15,7 @@ import { zValidator } from "~/lib/validate"
 import { idParam } from "~/lib/validators"
 import { requireScope } from "~/middleware/require-scope"
 import { deactivateWithCompanies } from "~/modules/apps/kernel-bulk"
+import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 import {
   AVATAR_STORED_MIME,
   MAX_AVATAR_UPLOAD_BYTES,
@@ -29,6 +33,7 @@ import {
   MergeUserError,
   mergePlaceholderIntoUser,
 } from "~/modules/users/merge-placeholder"
+import { getHiddenSidebarApps, updateHiddenSidebarApps } from "~/modules/users/preferences-service"
 import {
   getProfile,
   getUserDetail,
@@ -309,5 +314,60 @@ adminUserRoutes.post(
       }
       throw err
     }
+  },
+)
+
+// A member's sidebar: the rail entries hidden for them (0293). The admin sets a
+// starting point the member can change back at any time; hiding changes no
+// access. user_preferences RLS is self-only, so these run privileged, and only
+// after the member is found IN THE CALLER'S ORG (404 otherwise, never another
+// org's row). The admin scope is required here too, like /merge, so moving the
+// route can never drop the check.
+async function memberInOrg(tx: PrivilegedDb, orgId: string, userId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
+    .limit(1)
+  return Boolean(row)
+}
+
+adminUserRoutes.get(
+  "/:id/hidden-apps",
+  requireScope("kernel:users:admin"),
+  zValidator("param", idParam),
+  async (c) => {
+    const orgId = c.get("orgId")
+    const userId = c.req.param("id")
+    const hidden = await withPrivilegedDb(orgId, "admin-read-hidden-sidebar-apps", async (tx) =>
+      (await memberInOrg(tx, orgId, userId)) ? getHiddenSidebarApps(userId, { rlsTx: tx }) : null,
+    )
+    if (!hidden) throw new HTTPException(404, { message: "User not found" })
+    return success(c, { userId, hiddenSidebarApps: hidden })
+  },
+)
+
+adminUserRoutes.put(
+  "/:id/hidden-apps",
+  requireScope("kernel:users:admin"),
+  zValidator("param", idParam),
+  zValidator("json", hiddenSidebarAppsSchema),
+  async (c) => {
+    const orgId = c.get("orgId")
+    const userId = c.req.param("id")
+    const { hiddenSidebarApps } = c.req.valid("json")
+    const stored = await withPrivilegedDb(orgId, "admin-set-hidden-sidebar-apps", async (tx) =>
+      (await memberInOrg(tx, orgId, userId))
+        ? (await updateHiddenSidebarApps(userId, orgId, hiddenSidebarApps, { rlsTx: tx }))
+            .hiddenSidebarApps
+        : null,
+    )
+    if (!stored) throw new HTTPException(404, { message: "User not found" })
+    // Committed: the member's open apps re-apply it at once.
+    await broadcastReadState(orgId, userId, {
+      kind: "hidden_sidebar_apps",
+      hiddenSidebarApps: stored,
+    })
+    return success(c, { userId, hiddenSidebarApps: stored })
   },
 )

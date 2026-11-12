@@ -92,6 +92,11 @@ export const userPreferences = kernel.table("user_preferences", {
   // Who takes over by default while this person is away. NULL = nobody named.
   // Never written through the full-replace `updatePreferences` (same trap as above).
   nextInLineId: uuid("next_in_line_id").references(() => users.id, { onDelete: "set null" }),
+  // The rail entries this person hid from their sidebar (0293): activity-bar
+  // entry ids, unknown ids kept. NULL = nothing hidden. A display preference,
+  // never access. Written ONLY via `updateHiddenSidebarApps` (same trap as
+  // above). A CHECK (`user_preferences_hidden_sidebar_apps_array`) keeps it an array.
+  hiddenSidebarApps: jsonb("hidden_sidebar_apps").$type<string[] | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

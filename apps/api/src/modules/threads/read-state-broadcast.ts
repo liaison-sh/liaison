@@ -50,6 +50,12 @@ export type ReadStateChange =
    * MAC under the mailbox key: web mailbox/agent-mail-access.ts).
    */
   | { kind: "agent_mail_access"; enabled: boolean; at: number; mac?: string }
+  /**
+   * The rail entries hidden from the person's sidebar moved (their own change
+   * on another device, an admin's, or their agent's): the list as stored, so
+   * every open app re-applies it without a refetch.
+   */
+  | { kind: "hidden_sidebar_apps"; hiddenSidebarApps: string[] }
   /** Attention rows were read: one entity, one app (optionally some kinds), all,
    *  or a Home slice (`bulk`, also its Undo). */
   | {

@@ -8457,4 +8457,16 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.followUps.basis.customer": "client existant",
   "contacts.followUps.basis.professional_interest": "intérêt professionnel",
   "contacts.followUps.basis.generic_address": "adresse professionnelle générique",
+  "kernel.nav.section.sidebar": "Barre latérale",
+  "kernel.nav.hideFromSidebar": "Masquer de la barre latérale",
+  "kernel.nav.railEntryMenu": "Options de {{app}}",
+  "kernel.sidebarSettings.title": "Barre latérale",
+  "kernel.sidebarSettings.intro":
+    "Choisissez les applications affichées dans votre barre latérale.",
+  "kernel.sidebarSettings.note":
+    "Les applications masquées restent accessibles depuis la recherche, la palette de commandes et les liens.",
+  "kernel.sidebarSettings.showInSidebar": "Afficher {{app}} dans la barre latérale",
+  "kernel.sidebarSettings.saveFailed": "La barre latérale n'a pas été enregistrée. Réessayez.",
+  "kernel.sidebarSettings.adminIntro":
+    "Les applications que {{name}} voit dans sa barre latérale. Cette personne peut à tout moment afficher ou masquer chacune d'elles dans ses propres réglages.",
 }

@@ -27,6 +27,7 @@ import {
 import { ensureBillingModeLoaded } from "~/modules/settings/BillingState"
 import { setAttentionApi } from "~/modules/shell/attention-store"
 import { ensureBrandingLoaded, ensureSignedInOrgNameLoaded } from "~/modules/shell/branding-store"
+import { hydrateSidebarVisibility } from "~/modules/shell/sidebar-visibility"
 import { rehydrateTabs } from "~/modules/shell/tab-store"
 import { loadAgentDirectory } from "~/modules/threads/agent-directory"
 import { loadThreads, setDefaultThreadReloadHandler } from "~/modules/threads/thread-store"
@@ -81,6 +82,8 @@ async function hydrateThreadStoreOnce(): Promise<void> {
   // per session, from the client this module already owns, so every surface
   // that prints `orgName()` gets the same answer with no mount-order race.
   void ensureSignedInOrgNameLoaded(() => startupClient.get("/org"))
+  // The apps this person hid from their sidebar, before the rail first draws.
+  void hydrateSidebarVisibility(startupClient)
   setDefaultThreadReloadHandler(() => {
     // A self heal reload is asking about a row it has just been told exists,
     // so it needs a list composed after the telling, not one already on the

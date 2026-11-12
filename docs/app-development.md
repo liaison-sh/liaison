@@ -75,7 +75,7 @@ no kernel files to edit.
 
 ## 3. Anatomy of an app
 
-The reference app at `apps/api/src/apps/example/` demonstrates every SDK surface
+The reference app at `apps/api/test-support/apps/example/` demonstrates every SDK surface
 in the smallest possible code. Read it alongside this section — each of its five
 handlers teaches exactly one thing.
 
@@ -1166,4 +1166,4 @@ kind when you declare one, with config `{ ref }`.
 - [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
 - [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent), a catalog app reading through platform-held SQL connections (`ctx.sql`)
 - [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
-- `apps/api/src/apps/example/` — the reference app
+- `apps/api/test-support/apps/example/` — the reference app

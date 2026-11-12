@@ -1,7 +1,1 @@
-[
-  {
-    "app": "example",
-    "tool": "items_create",
-    "why": "the in-tree example app shows the atomic flag; its handler makes no outside call"
-  }
-]
+[]

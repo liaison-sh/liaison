@@ -6,7 +6,7 @@ Topology: LIAISON_API_REPLICAS (2) and LIAISON_WORKER_REPLICAS (1), compose from
 No budget: legacy sizes (env or 20), nothing refuses -> apps/api/src/db/pool-plan.ts:60 ; apps/api/src/db/pool-plan.ts:155
 Floors per role (api 5/6/10/3/2, worker 5/7/15/3/2) -> apps/api/src/db/pool-plan.ts:171-179 ; apps/api/src/db/pool-plan.ts:44
 Api privileged floor 10 measured with two conversation views and their customer cards -> apps/api/src/modules/api-connector/card-privileged-peak.integration.test.ts
-Worker privileged = kernel slots (cron 3, agent 4, media 2, bulk 1, +1) + 4; kernel slots never above the pool -> apps/api/src/db/pool-plan.ts:56 ; apps/api/src/infra/jobs/queue-classes.ts (kernelSlotsWanted, planKernelSlots) ; apps/api/src/infra/jobs/jobs.ts:420-426
+Worker privileged = kernel slots (cron 2, agent 4, media 2, bulk 1, webhook 1, +1) + 4; kernel slots never above the pool -> apps/api/src/db/pool-plan.ts:56 ; apps/api/src/infra/jobs/queue-classes.ts (kernelSlotsWanted, planKernelSlots) ; apps/api/src/infra/jobs/jobs.ts:420-426
 Surplus order: worker jobs, worker privileged-jobs, api request/privileged up to 25/20, rest unallocated -> apps/api/src/db/pool-plan.ts:182-236 ; apps/api/src/db/pool-plan.ts:64-65
 Defaults: api 26, worker 34, steady 86, overlap 172 -> scripts/compose-db-connection-budget.test.ts ; apps/api/src/db/pool-plan.test.ts
 Env pool sizes win over the plan; compose API_DB_*/WORKER_DB_* empty = planned; app keeps 25/15/30; migrate and CLI 2 per pool -> apps/api/src/db/pool-plan.ts:285 ; apps/api/src/db/pool-plan.ts:58 ; deploy/docker-compose.yml:706-709 ; deploy/docker-compose.yml:515-517 ; apps/api/scripts/entrypoint.sh

@@ -43,7 +43,7 @@ Each role starts from a floor:
 | api (split logins) | 5 | 6 | 10 | 3 | 2 |
 | worker (split logins) | 5 | 7 | 15 | 3 | 2 |
 
-The api's privileged floor of 10 is room for two conversation views opening at once, each with its customer card, beside auth checks. Its jobs pool fits two app event handlers at once (they run in the process that published the event, usually an api) plus one connection for short work such as inbound webhooks. The worker's privileged pool is the kernel's job slots (cron 3, agent 4, media 2, bulk 1, plus one) and 4 for nested reads; the kernel never runs more job slots than the pool fits.
+The api's privileged floor of 10 is room for two conversation views opening at once, each with its customer card, beside auth checks. Its jobs pool fits two app event handlers at once (they run in the process that published the event, usually an api) plus one connection for short work such as inbound webhooks. The worker's privileged pool is the kernel's job slots (cron 2, agent 4, media 2, bulk 1, webhook 1, plus one) and 4 for nested reads; the kernel never runs more job slots than the pool fits.
 
 What the budget leaves above the floors goes, in this order:
 

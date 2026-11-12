@@ -107,12 +107,12 @@ describe("boot: the pool budget", () => {
     expect(ok.lines[0]?.obj.perLogin).toEqual({ request: 9, privileged: 17 })
   })
 
-  it("plans a worker's privileged pool so the kernel keeps 3/4/2/1 slots, unscaled", () => {
+  it("plans a worker's privileged pool so the kernel keeps 2/4/2/1/1 slots, unscaled", () => {
     const worker = planPools(
       planInputFromEnv({ DB_CELL_MAX_CONNECTIONS: 200 }, "worker", true, DEFAULT_KERNEL_NEED),
     )
     const k = planKernelSlots({}, worker.pools.privileged)
-    expect(k.slots).toEqual({ cron: 3, agent: 4, media: 2, bulk: 1 })
+    expect(k.slots).toEqual({ cron: 2, agent: 4, media: 2, bulk: 1, webhook: 1 })
     expect(k.scaledDown).toBe(false)
   })
 

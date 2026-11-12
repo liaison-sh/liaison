@@ -28,6 +28,7 @@ import {
 import { customAppsEnabled } from "~/lib/edition"
 import { appsLogger as log } from "~/lib/logger"
 import { ownOption } from "~/lib/safe-path"
+import { WORKER_MODULE_FILE } from "~/modules/app-builder/build/freeze-core"
 import {
   type ActivationActor,
   activateAppVersion,
@@ -143,12 +144,13 @@ export interface InstallOptions {
    */
   ownerOrgId?: string
   /**
-   * The Workers module the app builder built with this package (the sha256 its
-   * publish pinned, and the bytes): recorded on the install row so the Workers
-   * executor can run the version and the cell can serve the module to the app
-   * loader (0278). Only with `ownerOrgId`; the bytes must hash to the sha.
+   * The sha256 the package's Worker module (`worker.js`, beside `bundle.js`) must
+   * have, pinned by whoever vouches for the package: the image's catalog index,
+   * or the app builder's approved publish. The install refuses a package whose
+   * worker.js is missing or hashes to anything else (`WorkerModulePinMismatchError`).
+   * Unset (an upload): the package's own worker.js is recorded as it is.
    */
-  workerModule?: { sha256: string; bytes: Uint8Array }
+  workerSha256?: string
 }
 
 export interface InstallResult {
@@ -849,7 +851,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
     assertIconClean(manifest)
     await assertNotBundled(manifest.name)
     const ownerOrgId = ownOption(opts, "ownerOrgId") ?? null
-    const workerModule = installWorkerModule(ownOption(opts, "workerModule"), ownerOrgId)
+    const workerModule = packageWorkerModule(verified.stagingDir, ownOption(opts, "workerSha256"))
     await assertOrgOwnership(manifest.name, ownerOrgId, manifestFile(verified.stagingDir))
     await assertNameNotReserved(manifest, verified.sha256, verified.stagingDir)
     await assertTabRoutesOwned(manifest.name, manifestFile(verified.stagingDir))
@@ -1027,21 +1029,41 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
   }
 }
 
-/** The install row's Workers module columns: both set (checked), or both NULL. */
-function installWorkerModule(
-  given: InstallOptions["workerModule"],
-  ownerOrgId: string | null,
+/** A package's worker.js does not match the sha256 its catalog entry or approval pinned. */
+export class WorkerModulePinMismatchError extends Error {
+  readonly code = "worker_pin_mismatch"
+  readonly status = 409
+  constructor(detail: string) {
+    super(`the package's Worker module ${detail}`)
+    this.name = "WorkerModulePinMismatchError"
+  }
+}
+
+/**
+ * The install row's Worker module columns, from the package's own worker.js
+ * (scripts/freeze-app.ts puts it beside bundle.js): its sha256 and its bytes,
+ * which the cell serves to the app loader (workers/bundle-route.ts) and the
+ * Workers executor names in every run. Both NULL for a package built before
+ * Worker modules were packaged: it runs on QuickJS. With `pinned`, the bytes
+ * must hash to it.
+ */
+export function packageWorkerModule(
+  stagingDir: string,
+  pinned: string | undefined,
 ): { workerSha256: string | null; workerModule: Uint8Array | null } {
-  if (!given) return { workerSha256: null, workerModule: null }
-  if (ownerOrgId === null) {
-    throw new Error("A Workers module is recorded for an organisation's custom app only")
+  const path = join(stagingDir, WORKER_MODULE_FILE)
+  const bytes = existsSync(path) ? new Uint8Array(readFileSync(path)) : null
+  const sha256 = bytes ? createHash("sha256").update(bytes).digest("hex") : null
+  if (pinned !== undefined) {
+    if (!/^[0-9a-f]{64}$/.test(pinned)) {
+      throw new WorkerModulePinMismatchError("pin is not a lowercase hex sha256")
+    }
+    if (!bytes) throw new WorkerModulePinMismatchError(`is missing (pinned ${pinned})`)
+    if (sha256 !== pinned) {
+      throw new WorkerModulePinMismatchError(`hashes to ${sha256}, not the pinned ${pinned}`)
+    }
   }
-  if (!/^[0-9a-f]{64}$/.test(given.sha256)) throw new Error("Workers module sha256 is malformed")
-  const actual = createHash("sha256").update(given.bytes).digest("hex")
-  if (actual !== given.sha256) {
-    throw new Error("Workers module bytes do not match their sha256")
-  }
-  return { workerSha256: given.sha256, workerModule: given.bytes }
+  return { workerSha256: sha256, workerModule: bytes }
 }
 
 /**
@@ -1063,8 +1085,8 @@ export async function installAppFromBytes(opts: {
   /** The outbound domains the publish's approval pinned: exactly the package's (`exactDomains`). */
   grantedDomains: string[]
   sourceUrl: string
-  /** The Workers module the same build produced (see InstallOptions.workerModule). */
-  workerModule?: { sha256: string; bytes: Uint8Array }
+  /** The sha256 of the package's worker.js the publish's approval pinned (InstallOptions.workerSha256). */
+  workerSha256?: string
 }): Promise<InstallResult> {
   // A new org app is refused while organisations' own apps are off
   // (LIAISON_CUSTOM_APPS); an org moving cells re-installs through
@@ -1087,7 +1109,7 @@ export async function installAppFromBytes(opts: {
       requireSignature: false,
       sourceUrl: opts.sourceUrl,
       ownerOrgId: opts.ownerOrgId,
-      ...(opts.workerModule ? { workerModule: opts.workerModule } : {}),
+      ...(opts.workerSha256 ? { workerSha256: opts.workerSha256 } : {}),
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -1277,6 +1299,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
         pdfTemplates,
         manifestSchema: { schema: declaredSchema(verified.stagingDir) ?? null },
         orgId: upgradeOwner,
+        ...packageWorkerModule(verified.stagingDir, undefined),
       }
       try {
         await withSystemDb("apply-upgrade-row", (db) =>

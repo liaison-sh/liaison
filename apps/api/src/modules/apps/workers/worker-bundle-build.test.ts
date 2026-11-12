@@ -33,7 +33,6 @@ describe("apps:build-worker-bundle", () => {
     expect(a.corePath).toBe(join(scratch, "a", "wbfixture", "1.2.3", "worker-core.js"))
     expect(a.sha256).toMatch(/^[0-9a-f]{64}$/)
     expect(b.sha256).toBe(a.sha256)
-    expect(JSON.parse(a.bundlesEntry)).toEqual({ "wbfixture@1.2.3": a.sha256 })
 
     const worker = readFileSync(a.workerPath, "utf8")
     const core = readFileSync(a.corePath, "utf8")

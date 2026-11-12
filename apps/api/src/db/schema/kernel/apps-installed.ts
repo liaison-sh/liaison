@@ -83,11 +83,11 @@ export const appsInstalled = kernel.table(
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     disabledReason: text("disabled_reason"),
     /**
-     * An org's custom app version built by the app builder: the sha256 and the
-     * bytes of its Workers module, from the build the publish pinned (0278).
-     * The Workers executor names this sha in /run (sandbox/run-app.ts) and the
-     * cell serves the bytes to the loader (workers/bundle-route.ts). NULL on
-     * every other row.
+     * The sha256 and the bytes of the version's Worker module: the package's
+     * worker.js, recorded at install (0279, any app since 0296). The Workers
+     * executor names this sha in /run (sandbox/run-app.ts) and the cell serves
+     * the bytes to the loader (workers/bundle-route.ts). Both NULL for a
+     * version whose package had none (it runs on QuickJS).
      */
     workerSha256: text("worker_sha256"),
     workerModule: bytea("worker_module"),

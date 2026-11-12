@@ -146,9 +146,12 @@ describe("the month-end run card", () => {
     h.ctx.emit = async (e) => {
       emitted.push(e as never)
     }
-    const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } }).current_payload
+    const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } })
+      .current_payload
     await recurringRunIssue(h.ctx, payload)
-    const ends = emitted.filter((e) => e.entity === "recurring_run" && e.data?.resolved === true).map((e) => e.action)
+    const ends = emitted
+      .filter((e) => e.entity === "recurring_run" && e.data?.resolved === true)
+      .map((e) => e.action)
     expect(ends.sort()).toEqual(["due", "late"])
   })
 

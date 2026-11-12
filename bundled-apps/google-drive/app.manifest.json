@@ -1,6 +1,6 @@
 {
   "name": "google-drive",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "kind": "connector",
   "iconName": "folder",
   "description": "Google Drive connector: a Knowledge federated-search source and a headless agent-tool surface (search + read + import Drive files, plus upload of NEW files into an app-owned 'Liaison Reports' folder under the drive.file scope; existing Drive files are never modified or deleted).",

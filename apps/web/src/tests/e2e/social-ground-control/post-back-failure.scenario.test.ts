@@ -68,7 +68,12 @@ test.describe("Social Ground Control post-back failure", () => {
       requestId: pending.id,
       decision: "approve",
     })
-    expect(decided.status, JSON.stringify(decided.body)).toBe(200)
+    // The platform refused the reply: the decision says so (nothing was posted), and as a
+    // gone parent refuses the same reply again, the request closes instead of re-pending.
+    expect(decided.status, JSON.stringify(decided.body)).toBe(422)
+    expect(decided.body).toMatchObject({
+      error: { code: "handler_failed", details: { details: { code: "reply_gone", final: true } } },
+    })
 
     // Exactly one Graph POST attempt was made (the failed re-entry).
     let posts = graphCommentPosts(await getSocialRequests(s, token))

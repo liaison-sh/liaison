@@ -2,45 +2,31 @@
 import { describe, expect, it, vi } from "vitest"
 import {
   createMcpPlaintextResponder,
-  MCP_ACCESS_GRANT_MS,
-  type McpAccessPrompt,
   type McpMailboxRequest,
   readMcpMailboxRequest,
 } from "~/modules/mailbox/mcp-plaintext-responder"
 
-function setup(answer: "once" | "window" | "deny") {
-  let clock = 1_000
-  const askUser = vi.fn(async (_prompt: McpAccessPrompt) => answer)
-  const postPlaintext = vi.fn(async () => {})
+function setup(opts: { unlocked?: boolean; agentMailAccess?: boolean } = {}) {
+  const postPlaintext = vi.fn(async (_id: string, _body: Record<string, unknown>) => {})
+  const openMessages = vi.fn(async (ids: string[]) =>
+    ids.map((id) => ({ id, subject: "s", textBody: "t", htmlBody: null, snippet: null })),
+  )
   const responder = createMcpPlaintextResponder({
-    isUnlocked: () => true,
-    agentMailAccessEnabled: () => true,
-    askUser,
+    isUnlocked: () => opts.unlocked ?? true,
+    agentMailAccessEnabled: () => opts.agentMailAccess ?? true,
     loadConversation: async () => {},
     conversationMessageIds: () => ["m1"],
-    openMessages: async (ids) =>
-      ids.map((id) => ({ id, subject: "s", textBody: "t", htmlBody: null, snippet: null })),
+    openMessages,
     postPlaintext,
     postSearch: vi.fn(async () => {}),
-    now: () => clock,
   })
-  return {
-    responder,
-    askUser,
-    postPlaintext,
-    advance: (ms: number) => {
-      clock += ms
-    },
-  }
+  return { responder, postPlaintext, openMessages }
 }
 
-const read = (n: number, connectionId = "conn-claude"): McpMailboxRequest => ({
+const read = (n: number): McpMailboxRequest => ({
   requestId: `r${n}`,
   turnNonce: `mcp:r${n}`,
   requestKind: "mail.read",
-  connectionId,
-  client: "Claude Code",
-  clientConnectedAt: "2026-09-30T12:00:00.000Z",
   messageIds: ["m1"],
   conversationId: "conv-1",
 })
@@ -50,47 +36,25 @@ describe("MCP plaintext responder", () => {
     expect(readMcpMailboxRequest("mailbox_decrypt_request", { ...read(1) })).toBeNull()
     expect(
       readMcpMailboxRequest("mailbox_decrypt_request", { ...read(1), origin: "mcp" }),
-    ).toMatchObject({ requestId: "r1", connectionId: "conn-claude", conversationId: "conv-1" })
-    // No server-resolved connection: nothing to key a grant on, so not answered.
-    const { connectionId: _dropped, ...anonymous } = read(1)
-    expect(
-      readMcpMailboxRequest("mailbox_decrypt_request", { ...anonymous, origin: "mcp" }),
-    ).toBeNull()
+    ).toMatchObject({ requestId: "r1", conversationId: "conv-1" })
   })
 
-  it("allow once asks again next time", async () => {
-    const t = setup("once")
-    await t.responder.handle(read(1))
-    await t.responder.handle(read(2))
-    expect(t.askUser).toHaveBeenCalledTimes(2)
-  })
-
-  it("allow for a while stops asking that app until it lapses or the mailbox locks", async () => {
-    const t = setup("window")
-    await t.responder.handle(read(1))
-    await t.responder.handle(read(2))
-    expect(t.askUser).toHaveBeenCalledTimes(1)
-    t.advance(MCP_ACCESS_GRANT_MS + 1)
-    await t.responder.handle(read(3))
-    expect(t.askUser).toHaveBeenCalledTimes(2)
-    t.responder.reset()
-    await t.responder.handle(read(4))
-    expect(t.askUser).toHaveBeenCalledTimes(3)
-    expect(t.postPlaintext).toHaveBeenCalledTimes(4)
-  })
-
-  it("a grant belongs to the connection, not to the name: a second client called the same is asked", async () => {
-    const t = setup("window")
-    await t.responder.handle(read(1, "conn-claude"))
-    // Another MCP client of this user that registered under the very same name.
-    await t.responder.handle(read(2, "conn-impostor"))
-    expect(t.askUser).toHaveBeenCalledTimes(2)
-    expect(t.askUser.mock.calls[1]?.[0]).toMatchObject({
-      connectionId: "conn-impostor",
-      client: "Claude Code",
+  it("answers every read of an unlocked mailbox without asking", async () => {
+    const t = setup()
+    expect(await t.responder.handle(read(1))).toEqual({ accepted: true })
+    expect(await t.responder.handle(read(2))).toEqual({ accepted: true })
+    expect(t.postPlaintext).toHaveBeenCalledTimes(2)
+    expect(t.postPlaintext.mock.calls[0]?.[1]).toMatchObject({
+      items: [{ messageId: "m1", subject: "s", textBody: "t" }],
     })
-    // The genuine connection's grant still stands.
-    await t.responder.handle(read(3, "conn-claude"))
-    expect(t.askUser).toHaveBeenCalledTimes(2)
+  })
+
+  it("releases nothing while locked or with agent mail access turned off", async () => {
+    for (const opts of [{ unlocked: false }, { agentMailAccess: false }]) {
+      const t = setup(opts)
+      expect((await t.responder.handle(read(1))).accepted).toBe(false)
+      expect(t.openMessages).not.toHaveBeenCalled()
+      expect(t.postPlaintext.mock.calls[0]?.[1]).toHaveProperty("denied")
+    }
   })
 })

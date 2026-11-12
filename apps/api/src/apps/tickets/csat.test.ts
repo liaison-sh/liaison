@@ -118,11 +118,24 @@ describe("csat survey admin ops (BL-169 #8)", () => {
         {},
         { actorType: "user", userId, scopes: reader().scopes },
       ),
-    )) as { total?: number; pending?: number; responded?: number; averageScore: number | null }
+    )) as {
+      total?: number
+      pending?: number
+      responded?: number
+      declined?: number
+      averageScore: number | null
+      rows: unknown[]
+    }
     expect(summary.total).toBeGreaterThanOrEqual(1)
     expect(summary.pending).toBeGreaterThanOrEqual(1)
     expect(summary.responded).toBe(0)
     expect(summary.averageScore).toBeNull() // the honest-pending invariant — no fabricated score
+    // The surveys by response status as rows, for a dashboard block.
+    expect(summary.rows).toEqual([
+      { key: "responded", value: 0 },
+      { key: "pending", value: summary.pending },
+      { key: "declined", value: summary.declined },
+    ])
   })
 
   it("skips a non-closed ticket (surveying an open ticket is premature)", async () => {

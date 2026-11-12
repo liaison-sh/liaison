@@ -264,6 +264,20 @@ export interface PnlSummaryView extends PeriodWindow {
   opex_minor: string
   other_minor: string
   gross_margin_minor: string
+  /** The five figures as rows (`key` = the `*_minor` field, `value` = its minor units): the list
+   *  a dashboard block charts. */
+  rows: PnlRow[]
+}
+
+const PNL_KEYS = ["revenue_minor", "cogs_minor", "opex_minor", "other_minor", "gross_margin_minor"] as const
+type PnlKey = (typeof PNL_KEYS)[number]
+export interface PnlRow {
+  key: PnlKey
+  value: string
+}
+
+function pnlRows(figures: Record<PnlKey, string>): PnlRow[] {
+  return PNL_KEYS.map((key) => ({ key, value: figures[key] }))
 }
 
 export async function pnlSummary(
@@ -274,14 +288,18 @@ export async function pnlSummary(
   const tb = await readTrialBalanceLines(ctx, input.period, mapping)
   if ("error" in tb) return tb
   const pnl = computePnlSummary(tb.lines, mapping)
-  return {
-    period: input.period ?? "current",
-    ...tb.window,
+  const figures = {
     revenue_minor: String(pnl.revenue),
     cogs_minor: String(pnl.cogs),
     opex_minor: String(pnl.opex),
     other_minor: String(pnl.other),
     gross_margin_minor: String(pnl.gross_margin),
+  }
+  return {
+    period: input.period ?? "current",
+    ...tb.window,
+    ...figures,
+    rows: pnlRows(figures),
   }
 }
 
@@ -458,12 +476,16 @@ export interface HomeLoadView {
     cash_status: string
     refreshed_at: string
   } | null
+  /** The snapshot's figures as rows, the list a dashboard block charts: one per P&L figure
+   *  (`key` = the `*_minor` field) and one per cash currency (`key` = "cash_minor", `currency`).
+   *  Empty until the snapshots are first refreshed. */
+  rows: Array<PnlRow | { key: "cash_minor"; currency: string; value: string }>
 }
 
 export async function homeLoad(ctx: Ctx, _input: Record<string, never>): Promise<HomeLoadView> {
   const pnlRow = await readPnlSnapshot(ctx)
   const cashRow = await readCashSnapshot(ctx)
-  return {
+  const view: Omit<HomeLoadView, "rows"> = {
     pnl: pnlRow
       ? {
           period: pnlRow.period,
@@ -482,5 +504,16 @@ export async function homeLoad(ctx: Ctx, _input: Record<string, never>): Promise
           refreshed_at: cashRow.refreshed_at,
         }
       : null,
+  }
+  return {
+    ...view,
+    rows: [
+      ...(view.pnl ? pnlRows(view.pnl) : []),
+      ...Object.entries(view.cash?.total_by_currency ?? {}).map(([currency, value]) => ({
+        key: "cash_minor" as const,
+        currency,
+        value,
+      })),
+    ],
   }
 }

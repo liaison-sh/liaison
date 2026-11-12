@@ -40,7 +40,11 @@
           "type": "password"
         }
       ],
-      "sql": { "rawQuery": { "scope": "wparity:items:read" } }
+      "sql": {
+        "rawQuery": {
+          "scope": "wparity:items:read"
+        }
+      }
     }
   },
   "schema": {
@@ -198,6 +202,13 @@
         "additionalProperties": false
       },
       "timeoutMs": 30000
+    }
+  },
+  "pages": {
+    "hello": {
+      "source": "pages/hello.ts",
+      "title": "Parity page",
+      "scope": "wparity:items:read"
     }
   }
 }

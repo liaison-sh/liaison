@@ -331,6 +331,12 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the Picker page's one-time ticket: a 256-bit random id (createPickerTicket) under a Redis key only this server writes, taken once (getdel), minted by POST /api/google-drive/picker/ticket from the authenticated caller's own org, user and scopes; pickerAccount re-checks the account is that person's and in picked mode before any token is read",
   "apps/api/src/apps/google-drive/picker-page.ts#drivePickerPageSave":
     "the Picker page's save id: a 256-bit random id under a Redis key only this server writes, minted by drivePickerPage from a ticket that POST /api/google-drive/picker/ticket made from the authenticated caller's own org, user, scopes and an account pickerAccount checked they may pick on; updatePickedItems re-checks the account against that org and user",
+  "apps/api/src/modules/apps/app-pages.ts#renderAppPage":
+    "an app page's one-time ticket: a 256-bit random id under a Redis key only this server writes, taken once (getdel), minted by createAppPageLink for the authenticated caller's own org and user (the link route's session, or a bridge run acting for that person); the person is re-checked active in that org and holding the page's scope before a page session is minted for the same binding",
+  "apps/api/src/modules/apps/app-pages.ts#appPageScript":
+    "an app page's session: a 256-bit random id under a Redis key only this server writes, minted by renderAppPage from a ticket bound to the authenticated caller's own org and user; it only reads that org's registered app surface to serve the page's script",
+  "apps/api/src/modules/apps/app-pages.ts#callAppPageRoute":
+    "an app page's session: a 256-bit random id under a Redis key only this server writes, minted by renderAppPage from a ticket bound to the authenticated caller's own org and user; personActor re-checks that person is active in that org and loads their own permissions, and the route's handler runs as exactly that person in that org",
   "apps/api/src/modules/tours/consumer.ts#registerTourProgressConsumer":
     "an agent turn ended: settleTurnsEndedBeats runs for the org of that turn (the stream registry's snapshot.orgId, set by the turn's own run), and reads and moves only that org's tour rows",
   "apps/api/src/modules/imports/runner.ts#checkBundledBatch":

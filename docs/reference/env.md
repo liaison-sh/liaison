@@ -320,7 +320,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:561`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:562`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
@@ -330,8 +330,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:167`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1296`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1297`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

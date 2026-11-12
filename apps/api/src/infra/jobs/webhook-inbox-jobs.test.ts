@@ -20,8 +20,12 @@ import { webhookHandlers } from "~/modules/apps/app-registries"
 import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import { WebhookHandlerRunTestAccess } from "~/modules/webhooks/handler-run"
 import {
+  claimForReplay,
   type InboxDelivery,
+  pruneWebhookInbox,
+  settleDelivery,
   storeDelivery,
+  WEBHOOK_INBOX_DEAD_RETENTION_DAYS,
   WEBHOOK_INBOX_MAX_ATTEMPTS,
 } from "~/modules/webhooks/inbox"
 import { seedOrgRow } from "~/seed/factories/org/rows"
@@ -244,6 +248,111 @@ describe("webhook inbox replay", () => {
     await replayInboxDelivery({ orgId: ORG, inboxId: stored.id })
     expect(calls).toHaveLength(1)
     expect(await row(stored.id)).toMatchObject({ status: "done", attempts: 1 })
+  })
+})
+
+describe("webhook inbox: claims, privacy and retention", () => {
+  // A replay that lost its claim (its lease ended and another runner took the
+  // row over) must not settle the row under the new runner.
+  it("a settle whose claim was taken over is lost and leaves the new claim's row alone", async () => {
+    const first = await storeDelivery(delivery(), { claimLeaseMs: 60_000 })
+    if (!first) throw new Error("not stored")
+    await makeDue(first.id)
+    const second = await claimForReplay(ORG, first.id)
+    if (!second) throw new Error("not claimed")
+    expect(second.claimToken).not.toBe(first.claimToken)
+
+    expect(await settleDelivery(first, { status: "done" })).toEqual({ state: "lost" })
+    const [r] = await sql<{ status: string; claim_token: string | null; payload: unknown }[]>`
+      SELECT status, claim_token::text AS claim_token, payload
+      FROM kernel.webhook_inbox WHERE id = ${first.id}`
+    expect(r).toEqual({
+      status: "processing",
+      claim_token: second.claimToken,
+      payload: { order: 1 },
+    })
+
+    expect(await settleDelivery(second, { status: "done" })).toEqual({ state: "done" })
+    expect(await row(first.id)).toMatchObject({ status: "done", payload: null })
+  })
+
+  // The inbox is a database table, so in backups: it keeps the provider's
+  // event headers a handler reads, never credentials, cookies or the client's
+  // address, and the handler sees the same headers on a replay as inline.
+  it("stores only the provider's event headers: no credentials, cookies or client addresses", async () => {
+    const stored = await storeDelivery(
+      delivery({
+        headers: {
+          "content-type": "application/json",
+          "user-agent": "Provider-Hookshot/1.0",
+          "x-shopify-topic": "orders/create",
+          "x-shopify-webhook-id": "wh-1",
+          "x-goog-resource-state": "exists",
+          authorization: "Bearer secret",
+          "proxy-authorization": "Basic x",
+          cookie: "sid=1",
+          "x-forwarded-for": "203.0.113.9",
+          "x-real-ip": "203.0.113.9",
+          "cf-connecting-ip": "203.0.113.9",
+          forwarded: "for=203.0.113.9",
+          "true-client-ip": "203.0.113.9",
+          "x-shopify-hmac-sha256": "c2ln",
+          "x-hub-signature-256": "sha256=ab",
+          "x-goog-channel-token": "tok",
+          "x-api-key": "k",
+          host: "liaison.example",
+        },
+      }),
+      { claimLeaseMs: 60_000 },
+    )
+    if (!stored) throw new Error("not stored")
+    const kept = {
+      "content-type": "application/json",
+      "user-agent": "Provider-Hookshot/1.0",
+      "x-goog-resource-state": "exists",
+      "x-shopify-topic": "orders/create",
+      "x-shopify-webhook-id": "wh-1",
+    }
+    const [r] = await sql<{ headers: Record<string, string> }[]>`
+      SELECT headers FROM kernel.webhook_inbox WHERE id = ${stored.id}`
+    expect(r?.headers).toEqual(kept)
+    await makeDue(stored.id)
+    await replayInboxDelivery({ orgId: ORG, inboxId: stored.id })
+    expect(calls[0]?.headers).toEqual(kept)
+  })
+
+  // Settled rows hold no payload; they are kept only while their identity
+  // dedups a redelivery. A dead row keeps its payload for diagnosis, briefly.
+  it("deletes a settled row once its dedup window closed, a dead row after its short window", async () => {
+    // Stored through the inbox, then aged in place.
+    const make = async (status: string, dedupAgo: string, settledAgo: string) => {
+      const stored = await storeDelivery(delivery(), { claimLeaseMs: 60_000 })
+      if (!stored) throw new Error("not stored")
+      await sql`UPDATE kernel.webhook_inbox SET status = ${status}, claim_token = NULL,
+          dedup_until = now() - ${dedupAgo}::interval, settled_at = now() - ${settledAgo}::interval,
+          payload = CASE WHEN ${status} = 'dead' THEN payload ELSE NULL END
+        WHERE id = ${stored.id}`
+      return stored.id
+    }
+    const doneClosed = await make("done", "1 minute", "1 hour")
+    const doneOpen = await make("done", "-1 hour", "1 minute")
+    const rejectedClosed = await make("rejected", "1 minute", "1 hour")
+    const deadOld = await make("dead", "1 minute", `${WEBHOOK_INBOX_DEAD_RETENTION_DAYS + 1} days`)
+    const deadRecent = await make(
+      "dead",
+      "1 minute",
+      `${WEBHOOK_INBOX_DEAD_RETENTION_DAYS - 1} days`,
+    )
+    expect(WEBHOOK_INBOX_DEAD_RETENTION_DAYS).toBeLessThanOrEqual(7)
+
+    await pruneWebhookInbox()
+    const left = (
+      await sql<{ id: string }[]>`SELECT id FROM kernel.webhook_inbox WHERE org_id = ${ORG}`
+    ).map((x) => x.id)
+    expect(left.sort()).toEqual([doneOpen, deadRecent].sort())
+    expect(left).not.toContain(doneClosed)
+    expect(left).not.toContain(rejectedClosed)
+    expect(left).not.toContain(deadOld)
   })
 })
 

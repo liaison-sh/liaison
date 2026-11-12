@@ -23,6 +23,8 @@ async function cached(params, ctx) { if (memo === null) memo = { count: 0 }; mem
   pacedShort: `async function pacedShort() { for (var i = 0; i < 3; i++) await new Promise(function (r) { setTimeout(r, 500) }); return "ok" }`,
   spin: `async function spin() { while (true) {} }`,
   fetches: `async function fetches(params, ctx) { var r = await ctx.fetch("https://api.example.test/items", { method: "GET" }); return r.items.length }`,
+  needsId: `async function needsId(params) { if (!params.id) throw new Error("id is required"); return { id: params.id } }`,
+  answersError: `async function answersError(params) { if (!params.id) return { error: { code: "bad_input", message: "id is required" } }; return { id: params.id } }`,
 }
 const SCRIPT = `${Object.values(HANDLERS).join("\n")}
 ${Object.keys(HANDLERS)
@@ -73,6 +75,22 @@ describe("app contract harness on QuickJS (one reused isolate)", () => {
     expect(v.pure?.reasons).toEqual([])
     expect(v.pacedShort?.reasons).toEqual([])
     expect(v.fetches?.reasons).toEqual([])
+  })
+
+  // An entry that only rejects the empty params it is given, with no fixture,
+  // passes without reaching anything the contract checks: flagged trivial, so
+  // the contract can count it instead of calling it kept.
+  it("flags a pass that only rejected its empty input, with no fixture, as trivial", async () => {
+    const v = await verdicts(["needsId", "answersError", "pure", "fetches"], FIXTURES)
+    expect(v.needsId).toMatchObject({ reasons: [], trivial: true })
+    expect(v.answersError).toMatchObject({ reasons: [], trivial: true })
+    expect(v.pure?.trivial).toBeUndefined()
+    expect(v.fetches?.trivial).toBeUndefined()
+    // With a recorded fixture the same rejection is a judged pass.
+    const withFixture = await verdicts(["needsId"], {
+      "tool:needsId": { entry: "tool:needsId", calls: [] },
+    })
+    expect(withFixture.needsId?.trivial).toBeUndefined()
   })
 
   it("is red on a module-level cache that changes a result", async () => {

@@ -21,7 +21,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { oauthProviders } from "~/db/schema/kernel"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { oauthClientResolverRegistry } from "~/modules/apps/app-registries"
-import { resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
+import { oauthClientKey, resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? ""
 
@@ -53,7 +53,9 @@ export async function upsertConnectionOAuthClient(opts: {
   clientId: string
   clientSecret: string
 }): Promise<{ created: boolean }> {
-  const name = connectionProviderName(opts.appName, opts.connectionName)
+  // The key the connection resolves its client under (its manifest's
+  // `oauthClient.key` when declared): a shared key is one row for both.
+  const name = oauthClientKey(opts.orgId, opts.appName, opts.connectionName)
   const clientSecretEncrypted = encryptSecret(
     opts.clientSecret,
     ENCRYPTION_KEY,
@@ -143,7 +145,7 @@ export async function getConnectionOAuthClient(
       }
     }
   }
-  const resolved = await resolveOAuthClient(orgId, connectionProviderName(appName, connectionName))
+  const resolved = await resolveOAuthClient(orgId, oauthClientKey(orgId, appName, connectionName))
   if (resolved.source === "org" && resolved.clientId) {
     return { configured: true, source: "org", clientId: resolved.clientId, appManaged: false }
   }

@@ -47,6 +47,10 @@ export interface ChartProps {
   onPick?: (index: number, datasetIndex: number) => void
   /** The keyboard button's name for a category ("Show rows for {label}"). */
   pickLabel?: (label: string) => string
+  /** The org's time zone: timestamp labels read in it. */
+  timeZone?: string
+  /** A block two grid rows high: the drawing takes the room. */
+  tall?: boolean
 }
 
 type ChartModule = typeof import("chart.js")
@@ -100,7 +104,7 @@ export function chartPalette(count: number): string[] {
 export function chartConfig(props: ChartProps, locale: string): Record<string, unknown> {
   const fmt = (v: unknown) =>
     formatValue(v, { format: props.format, currency: props.currency, locale })
-  const labels = props.labels.map((l) => formatAxisLabel(l, locale))
+  const labels = props.labels.map((l) => formatAxisLabel(l, locale, props.timeZone))
   const grid = cssVar("--color-border-subtle", "#2a2a30")
   const text = cssVar("--color-text-tertiary", "#65656e")
   if (props.type === "pie") {
@@ -249,6 +253,7 @@ export const Chart: Component<ChartProps> = (props) => {
           props.stacked,
           props.horizontal,
           props.secondaryAxis,
+          props.timeZone,
           locale(),
         ] as const,
       async () => {
@@ -271,7 +276,7 @@ export const Chart: Component<ChartProps> = (props) => {
     <div
       data-testid={props.testid ?? "dashboard-chart"}
       data-chart-type={props.type}
-      class="relative h-56 w-full"
+      class={props.tall ? "relative h-[26rem] w-full" : "relative h-56 w-full"}
     >
       <canvas ref={canvas} role="img" aria-label={props.label ?? props.type}>
         <Show when={props.onPick}>
@@ -279,7 +284,7 @@ export const Chart: Component<ChartProps> = (props) => {
             <ul data-testid="dashboard-chart-picks">
               <For each={props.labels}>
                 {(label, i) => {
-                  const text = formatAxisLabel(label, locale())
+                  const text = formatAxisLabel(label, locale(), props.timeZone)
                   return (
                     <li>
                       <button

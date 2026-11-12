@@ -24,6 +24,8 @@ my-app-1.0.0.liaisonapp                 (gzipped tar — the package)
 ├── ui.js                      optional — built frontend panel bundle
 ├── templates/<name>.js        optional — one file per declared pdf_templates[] entry,
 │                              transpiled from its TS source at freeze time
+├── pages/<name>.js            optional — one file per declared `pages` entry, built
+│                              for the browser from pages/<name>.ts at freeze time
 ├── README.md                  optional
 ├── CHANGELOG.md               optional
 └── LICENSE                    optional

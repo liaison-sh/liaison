@@ -65,7 +65,7 @@ An agent can also bring in a GitLab repository path or the connected database's 
 
 An installed app can offer its own kind of synced source, for example a notes tool or a wiki. Liaison keeps its documents up to date the same way: on the source's interval, page by page, from where the last sync stopped. If a sync fails, the next one starts again from the last page that was saved.
 
-Add one through the API: `GET /api/knowledge/synced-sources/kinds` lists the kinds you may add, and `POST /api/knowledge/synced-sources` with `appName`, `sourceKind` and `sourceConfig` adds a source. You need the app's read scope for that kind, and the config must match what the app asks for. Liaison checks that scope again, for the source's owner, before every sync. To build such an app, see [Offer a knowledge source](../app-development.md#15-offer-a-knowledge-source).
+Add one through the API: `GET /api/knowledge/synced-sources/kinds` lists the kinds you may add, and `POST /api/knowledge/synced-sources` with `appName`, `sourceKind` and `sourceConfig` adds a source. You need the app's read scope for that kind, and the config must match what the app asks for. Liaison checks that scope again, for the source's owner, before every sync. To build such an app, see [Offer a knowledge source](../app-development.md#18-offer-a-knowledge-source).
 
 ## Keep documents verified
 

@@ -44,6 +44,8 @@ export const RUN_ENTRY_KINDS = [
   "pdf-template",
   "summarizer",
   "knowledge-sync",
+  "route",
+  "provision",
 ] as const
 
 export type RunEntryKind = (typeof RUN_ENTRY_KINDS)[number]
@@ -131,6 +133,11 @@ export const RUN_LIMIT_TABLE: Readonly<Record<RunEntryKind, KindRow>> = Object.f
   // apps/knowledge/app-sources.ts: one page of an app's knowledge source sync,
   // the kind's declared `timeoutMs` (the manifest bounds it to 120 s), else 60 s.
   "knowledge-sync": { wall: { rule: "declared-or", ms: 60_000 }, memory: SANDBOX },
+  // app-pages.ts: a page's call to one of the app's routes, like a tool.
+  route: { wall: { rule: "base" }, memory: SANDBOX },
+  // app-provisioning.ts: `config apply` / `config verify` running the app's
+  // provisioning handler (a person waits on the CLI, like a disconnect hook).
+  provision: { wall: { rule: "fixed", ms: 60_000 }, memory: SANDBOX },
 })
 
 type Env = NodeJS.ProcessEnv

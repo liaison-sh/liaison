@@ -135,6 +135,42 @@ export interface TimersClient {
   ): Promise<void>
 }
 
+export interface PagesClient {
+  /**
+   * A one-time link (15 minutes) to one of this app's own pages (manifest `pages`) for the
+   * person this run acts for. `params` (a JSON object, up to 16 KiB) reach the page as
+   * `liaisonPage.params` and every route it calls as `params`. Refused in a run that acts for
+   * no person (a job, a webhook).
+   */
+  link(
+    page: string,
+    params?: Record<string, unknown>,
+  ): Promise<{ url: string; expiresInSeconds: number }>
+}
+
+/** What a route handler (manifest `pageRoutes`) receives as its params. */
+export interface PageRouteParams<B = unknown> {
+  /** What the page sent: the browser's, never trusted. */
+  body: B
+  /** What the link was minted with: set by the app's own run, trusted. */
+  params: Record<string, unknown>
+  /** The page the call came from. */
+  page: string
+}
+
+/** What a provisioning handler (manifest `provisioning.handler`) receives. */
+export interface ProvisionParams<C = Record<string, unknown>> {
+  /** The `apps[].provision` block of the config file, validated against `provisioning.schema`. */
+  config: C
+  /** True for `config apply --dry-run` and `config verify`: report what would change, write nothing. */
+  dryRun: boolean
+}
+
+/** What a provisioning handler answers: one line per thing it changed (or would change). */
+export interface ProvisionResult {
+  changed: string[]
+}
+
 /** What one chunk of a step returns. */
 export interface StepChunkResult<C> {
   /** True once the work is finished: the step is then `done` until `reset`. */
@@ -441,6 +477,8 @@ export interface AppContext {
   timers: TimersClient
   /** Work longer than one run, done as bounded chunks across runs (see {@link StepsClient}). */
   steps: StepsClient
+  /** Links to this app's own pages, for the person the run acts for (see {@link PagesClient}). */
+  pages: PagesClient
   /** Platform-held SQL connections (see {@link SqlClient}). */
   sql: SqlClient
   /** This app's own connected accounts (see {@link AccountsClient}). */

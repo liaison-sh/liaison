@@ -6,7 +6,8 @@
 // pollHandler, reconcileHandler), event subscriptions, jobs, webhooks (handler
 // and verifier), search, export, the attention provider, import kinds,
 // knowledge source kinds (their sync handler), connection before-disconnect
-// hooks and PDF templates.
+// hooks, PDF templates, the routes app pages call, and the provisioning
+// handlers.
 
 import type { RunEntryKind } from "~/modules/apps/run-limits"
 
@@ -166,6 +167,21 @@ export function contractEntries(manifest: Json): ContractEntry[] {
   for (const [connName, kindDef] of Object.entries(fieldObject(manifest, "connections") ?? {})) {
     const exportName = fieldString(manifestObject(kindDef), "beforeDisconnect")
     if (exportName) out.push({ entry: `disconnect:${connName}`, kind: "disconnect", exportName })
+  }
+
+  for (const [routeName, routeDef] of Object.entries(fieldObject(manifest, "pageRoutes") ?? {})) {
+    const exportName = fieldString(manifestObject(routeDef), "handler")
+    if (exportName) out.push({ entry: `route:${routeName}`, kind: "route", exportName })
+  }
+
+  const provisioning = fieldObject(manifest, "provisioning")
+  const provisionExport = fieldString(provisioning, "handler")
+  if (provisionExport) {
+    out.push({ entry: "provision:handler", kind: "provision", exportName: provisionExport })
+  }
+  const verifyExport = fieldString(provisioning, "verify")
+  if (verifyExport) {
+    out.push({ entry: "provision:verify", kind: "provision", exportName: verifyExport })
   }
 
   const templateDecls = Array.isArray(manifest.pdf_templates) ? manifest.pdf_templates : []

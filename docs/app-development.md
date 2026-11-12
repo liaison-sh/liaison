@@ -870,7 +870,94 @@ shows a generic summary of its parameters. While it still awaits a decision,
 the server stores the real one in the background, a few at a time; a decided
 request keeps the generic summary.
 
-## 15. Offer a knowledge source
+## 15. Serve a page of your own
+
+Some screens cannot sit in the app's panel: a provider's picker that loads the
+provider's own scripts, a page opened in a popup or the system browser. Declare
+it as a page, with the routes it calls:
+
+```json
+"pages": {
+  "picker": {
+    "source": "pages/picker.ts",
+    "title": "Choose files",
+    "scope": "my-app:files:read",
+    "routes": ["savePicks"],
+    "hosts": { "script": ["apis.example.com"], "frame": ["docs.example.com"] }
+  }
+},
+"pageRoutes": {
+  "savePicks": { "handler": "savePicks", "scope": "my-app:files:write" }
+}
+```
+
+- Open it with a link minted for one person: `ctx.pages.link("picker", params)` from
+  a handler acting for them (a tool), or `POST /api/apps/<app>/pages/<page>/link`
+  with `{ "params": { ... } }` from your panel. The link works once, for 15 minutes,
+  for a person who holds the page's `scope`.
+- `pages/picker.ts` is built for the browser into `pages/picker.js` in the package.
+  The page reads `window.liaisonPage.params` and calls a route with
+  `await window.liaisonPage.call("savePicks", body)`.
+- A route runs your handler as that person, with their scopes, under the route's
+  `scope` too: `savePicks({ body, params, page }, ctx)`. `body` comes from the
+  browser, `params` from the link. The page may call only the routes it lists;
+  bodies and answers are capped at 1 MiB.
+- The page's policy allows only the hosts it declares (`script`, `frame`, `connect`,
+  `image`, `style`), narrowed to the domains the install was granted. With app frame
+  origins it runs on the app's own origin; without, in an opaque origin: it never
+  sees the workspace's cookies or storage.
+
+## 16. Set your app up from a config file
+
+An admin sets your app up with `liaison config apply` when you declare
+`provisioning`:
+
+```json
+"provisioning": {
+  "schema": { "type": "object", "properties": { "folders": { "type": "array" } } },
+  "handler": "provision",
+  "verify": "verifySetup"
+}
+```
+
+The config file then carries the block under the app:
+
+```yaml
+apps:
+  - name: my-app
+    enable: true
+    provision:
+      folders: ["Contracts", "Invoices"]
+```
+
+- `config apply` checks the block against `schema` (a mismatch stops the run before
+  anything is written), then runs `provision({ config, dryRun: false }, ctx)` once the
+  app's connection is set up. Store what you set up in your own data
+  (`ctx.store`, your schema) and return `{ changed: [...] }`, one line per change;
+  an empty list reads as already set.
+- `config verify` runs `provision` with `dryRun: true` (write nothing, return what
+  would change: any line is DRIFT), then `verify({ config }, ctx)` when declared,
+  which answers `{ ok, problems?, identity? }` from a live check, such as one call
+  through your connection.
+- Both run as your app (its own scopes), like a job.
+
+## 17. Bring your own OAuth client
+
+An `oauth2` connection's client is found by its key, `<app>:<connection>`:
+the workspace's own client first (Settings, or `config apply`), then one the
+server provides in `LIAISON_OAUTH_<KEY>_CLIENT_ID` and `LIAISON_OAUTH_<KEY>_CLIENT_SECRET`
+(the key upper-cased, other characters as `_`: `my-app:crm` reads
+`LIAISON_OAUTH_MY_APP_CRM_CLIENT_ID`). Two connections share one client by naming
+the same key, in your app's own namespace:
+
+```json
+"connections": {
+  "read": { "type": "oauth2", "oauthClient": { "key": "my-app:google" }, "...": "..." },
+  "write": { "type": "oauth2", "oauthClient": { "key": "my-app:google" }, "...": "..." }
+}
+```
+
+## 18. Offer a knowledge source
 
 An app can feed Knowledge: a person adds a synced source of the app's kind, and
 Liaison keeps its documents up to date. Declare the kind in the manifest:

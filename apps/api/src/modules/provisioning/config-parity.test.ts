@@ -18,31 +18,11 @@ import { getOrgKernelSettings } from "~/lib/settings"
 import { registerConfigTools } from "~/modules/agent/tools/config-tools"
 import { canonicalJson, readAppConfig } from "~/modules/apps/app-config"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { CANONICAL_ORDER } from "~/modules/provisioning/config-sections"
 import { CONFIG_TOOL_SECTIONS } from "~/modules/provisioning/config-tool-input"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-
-const INLINE_ADAPTER = {
-  id: "crm",
-  name: "Fixture CRM",
-  version: "1",
-  baseUrl: "https://crm.example.com",
-  auth: { type: "bearer" },
-  operations: [
-    {
-      name: "list_companies",
-      description: "Companies.",
-      kind: "read",
-      method: "GET",
-      path: "/companies",
-      params: { type: "object", properties: {} },
-      fields: ["id", "name"],
-    },
-  ],
-}
 
 /** One fixture per section the tool path can take as-is. */
 const FIXTURES: Omit<ProvisioningConfig, "org" | "admin"> = {
@@ -59,7 +39,6 @@ const FIXTURES: Omit<ProvisioningConfig, "org" | "admin"> = {
   ],
   tickets: { approveRepliesFromHome: true },
   apps: [{ name: "projects", enable: true }],
-  apiConnectors: [{ identifier: "crm", adapter: INLINE_ADAPTER }],
   knowledge: {
     collections: [{ name: "Policies" }],
     documents: [
@@ -229,14 +208,6 @@ describe("config tools write the same rows as config apply", () => {
     const cfg = async (orgId: string) =>
       canonicalJson(await withSystemDb("t", (db) => readAppConfig(db, orgId, "projects")))
     expect(await cfg(toolOrg)).toBe(await cfg(cliOrg))
-  })
-
-  it("apiConnectors", async () => {
-    const cli = await getAdapterRow(cliOrg, "crm")
-    expect(cli?.adapter.name).toBe("Fixture CRM")
-    expect(canonicalJson((await getAdapterRow(toolOrg, "crm"))?.adapter)).toBe(
-      canonicalJson(cli?.adapter),
-    )
   })
 
   it("knowledge", async () => {

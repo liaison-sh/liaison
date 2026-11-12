@@ -206,8 +206,8 @@ card that meets an unreadable amount says refused, prints no total -> bundled-ap
 imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238
 The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5896-5913
 A service line counts as a service in the operation type, as a software line does -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:23; bundled-apps/invoicing/src/einvoicing/booking.ts:289
-A draft and its lines are written in one transaction -> bundled-apps/invoicing/src/recurring/draft-job.ts:157
-A reused draft whose lines differ from its schedule needs a fix -> bundled-apps/invoicing/src/recurring/draft-job.ts:251
+A draft and its lines are written in one transaction -> bundled-apps/invoicing/src/recurring/draft-job.ts:143
+A reused draft whose lines differ from its schedule needs a fix -> bundled-apps/invoicing/src/recurring/draft-job.ts:237
 Rows issue only inside the issue window -> bundled-apps/invoicing/src/recurring/issue-job.ts:48
 recurring_item_issue is internal, only the app's own job calls it -> bundled-apps/invoicing/app.manifest.json:1696 ; apps/api/src/modules/apps/execute-tool.ts:4387
 A local convert runs in one transaction; a failure leaves the quote and uses no number -> bundled-apps/invoicing/src/mutations/convert-to-invoice.ts:179
@@ -238,8 +238,8 @@ B2B company draft/order names the company, location billing (else shipping) addr
 each draft splits net/tax by its own taxesIncluded, issuer prices_include_tax only as fallback -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:231
 tax-exempt company location charged no VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:240; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:260
 catalog price or price override is the unit price, no discount -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:298; bundled-apps/shopify/src/lib/draft-order.ts:607
-First run draft bills the schedule's company: name, contact billing address, recorded VAT -> bundled-apps/invoicing/src/recurring/draft-job.ts:126; bundled-apps/invoicing/src/recurring/draft-job.ts:90
-Run card approval mints a send grant per row; the row's invoice is prepared at issue -> bundled-apps/invoicing/src/recurring/run-card.ts:275; bundled-apps/invoicing/src/recurring/issue-job.ts:118
+First run draft bills the schedule's company: name, contact billing address, recorded VAT -> bundled-apps/invoicing/src/recurring/draft-job.ts:112; bundled-apps/invoicing/src/recurring/run-card.ts:90
+Run card approval mints a send grant per row; the row's invoice is prepared at issue -> bundled-apps/invoicing/src/recurring/run-card.ts:299; bundled-apps/invoicing/src/recurring/issue-job.ts:118
 A run row's send goes only for the invoice the row names -> bundled-apps/invoicing/src/einvoicing/transmit.ts:709
 No-person e-invoices wait for one daily send card listing all and the oldest -> bundled-apps/invoicing/src/einvoicing/transmit.ts:430; bundled-apps/invoicing/app.manifest.json:6688; bundled-apps/invoicing/src/einvoicing/send-batch.ts:133
 Rejected or expired card keeps them for the next day; two days waiting raises one Home line -> bundled-apps/invoicing/src/einvoicing/send-batch.ts:83; bundled-apps/invoicing/src/einvoicing/send-batch.ts:15
@@ -255,19 +255,24 @@ Schedule editor actions at the top, Start disabled during an open conflict or wi
 Run detail: none missing only when consecutive in one series, Fix opens the draft, Download all -> bundled-apps/invoicing/src/ui/RunDetail.tsx:57; bundled-apps/invoicing/src/ui/RunDetail.tsx:70; bundled-apps/invoicing/src/ui/RunDetail.tsx:183
 Standing authorization control: Turn off waits 8 s, Undo calls nothing -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx:37; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:48
 E-invoice status words on an invoice and money chips -> bundled-apps/invoicing/src/ui/RecurringStates.tsx:31; bundled-apps/invoicing/src/ui/RecurringStates.tsx:48; bundled-apps/invoicing/src/ui/DocumentDetail.tsx:545
-Month-end card panel: first line, count and total at the top, waiting rows' sentence before the rows -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:323-375 ; bundled-apps/invoicing/src/ui/month-end.ts:64-90 ; bundled-apps/invoicing/src/ui/month-end.ts:134-142
-A row opens in place with the editor's fields; Save for the month only or from now on; Cancel restores -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:440-482 ; bundled-apps/invoicing/src/ui/Editor.tsx:786-797
-Take out this month or end the schedule with Last month billed; Put back -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:696-754
-Account manager or None; Ask puts a mention in the run's discussion -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:246-249 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:406
-Rights: write edits, otherwise read-only; who decides line -> bundled-apps/invoicing/src/ui/month-end.ts:129-131 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:331
-Above 20 rows, rows with nothing to look at fold; search by customer -> bundled-apps/invoicing/src/ui/month-end.ts:44 ; bundled-apps/invoicing/src/ui/month-end.ts:98-112
-A changed run lists changes, who, old and new totals, and offers Approve N -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:275-320 ; bundled-apps/invoicing/src/ui/month-end.ts:175-200
+Month-end card panel: first line, count and total at the top, waiting rows' sentence before the rows -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:324-376 ; bundled-apps/invoicing/src/ui/month-end.ts:65-96 ; bundled-apps/invoicing/src/ui/month-end.ts:140-148
+A row opens in place with the editor's fields; Save for the month only or from now on; Cancel restores -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:451-493 ; bundled-apps/invoicing/src/ui/Editor.tsx:786-797
+Take out this month or end the schedule with Last month billed; Put back -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:707-765
+Account manager or None; Ask puts a mention in the run's discussion -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:247-250 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:407
+Rights: write edits, otherwise read-only; who decides line -> bundled-apps/invoicing/src/ui/month-end.ts:135-137 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:332
+Above 20 rows, rows with nothing to look at fold; search by customer -> bundled-apps/invoicing/src/ui/month-end.ts:45 ; bundled-apps/invoicing/src/ui/month-end.ts:104-118
+A changed run lists changes, who, old and new totals, and offers Approve N -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:276-321 ; bundled-apps/invoicing/src/ui/month-end.ts:181-206
 month-end-check routine: on recurring_run:drafted, read scopes only, at most two sentences, off by default -> bundled-apps/invoicing/app.manifest.json:6944-6951
-Add an invoice someone forgot: schedules missing from the run, or a customer with one line, through drafts_create with the run -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:600-694 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:215-232 ; bundled-apps/invoicing/src/ui/month-end.ts:231-246 ; bundled-apps/invoicing/src/mutations/drafts.ts:259-280
-Fix an address in place, or Use it on the address an agent found, saved for this month -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:530-598 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:235-244 ; bundled-apps/invoicing/src/ui/month-end.ts:205-252 ; bundled-apps/invoicing/src/recurring/run-get.ts:46-49
-Approve N at the top for someone who decides but does not edit -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:336-343
+Add an invoice someone forgot: schedules missing from the run, or a customer with one line, through drafts_create with the run -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:611-705 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:216-233 ; bundled-apps/invoicing/src/ui/month-end.ts:237-252 ; bundled-apps/invoicing/src/mutations/drafts.ts:259-280
+Fix an address in place, or Use it on the address an agent found, saved for this month -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:541-609 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:236-245 ; bundled-apps/invoicing/src/ui/month-end.ts:211-258 ; bundled-apps/invoicing/src/recurring/run-get.ts:47-50
+Approve N at the top for someone who decides but does not edit -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:337-344
 standing authorization Turn on confirms, no platform offers no Turn on, countdown -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx:218 ; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:209 ; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:246
 run detail before issue: status word, drafts with no number, nothing billed yet; approval day in the issuer's zone -> bundled-apps/invoicing/src/ui/RunDetail.tsx:76 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:332 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:98
-Approve N for everyone who decides; card lines name period, customers, total; a job's card names the job -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:339 ; bundled-apps/invoicing/src/summarizers.ts:1119 ; apps/api/src/modules/approvals/requester.ts:59
+Approve N for everyone who decides; card lines name period, customers, total; a job's card names the job -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:340 ; bundled-apps/invoicing/src/summarizers.ts:1119 ; apps/api/src/modules/approvals/requester.ts:59
 a schedule shows on its customer's Activity timeline with cadence and amount before VAT -> bundled-apps/invoicing/src/activity.ts:172
 no Mark paid on an invoice Stripe collects; Collected by Stripe opens the Stripe customer -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1208 ; bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1293
+Amount check at five times or a fifth of the last invoice -> bundled-apps/invoicing/src/recurring/flags.ts:75
+Check the amount flag names last time's amount, never on a first invoice -> bundled-apps/invoicing/src/recurring/flags.ts:88
+Amount check follows an edit of the row -> bundled-apps/invoicing/src/recurring/restage.ts:260
+Run read names rows billing far from their last invoice -> bundled-apps/invoicing/src/recurring/run-get.ts:112
+Card line carries the row's note -> bundled-apps/invoicing/src/recurring/run-card.ts:150

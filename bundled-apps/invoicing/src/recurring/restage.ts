@@ -6,6 +6,7 @@
 // stale approve is refused). After it, a row that was approved, or one that becomes ready (fixed,
 // added, put back), waits for a new approval, and every such row joins one second card.
 import type { ErrorEnvelope } from "../mutations/shared"
+import { isComparisonFlag, linesSignature, runItemFlags } from "./flags"
 import { NEGATIVE_TOTAL, rowIssuerHold, runItemState, STATE_REASONS } from "./item-state"
 import {
   cardItems,
@@ -14,6 +15,7 @@ import {
   draftTotals,
   findOneWhere,
   jsonOf,
+  previousInvoice,
   type Row,
   type RunCtx,
   runDecided,
@@ -253,6 +255,13 @@ export async function afterRunWrite(
   if (state !== "left_out" || opts.putBack) {
     const wasApproved = state === "approved"
     const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
+    // The comparison with the schedule's last invoice follows the edit: an amount typed far from
+    // what it billed last time asks for a look before the card is approved.
+    const prev = schedule ? await previousInvoice(ctx, schedule.last_document_id, String(draft.id)) : null
+    if (prev) {
+      const fresh = runItemFlags(prev, { net_minor: draftTotals(lines).net, lines_signature: linesSignature(lines) })
+      note = [...fresh, ...note.filter((n) => !isComparisonFlag(n))]
+    }
     const now = runItemState(draft, lines, await rowIssuerHold(ctx, draft, schedule))
     if (now.state === "needs_fix") {
       state = "needs_fix"

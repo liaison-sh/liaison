@@ -22,3 +22,8 @@ run detail, partial run lists rows with Fix -> bundled-apps/invoicing/src/recurr
 a deleted person is cleared from ended schedules, which still list as Customer and open -> apps/api/src/modules/contacts/service.ts:1702 ; apps/api/src/modules/contacts/erasure.ts:121 ; bundled-apps/invoicing/src/ui/RecurringList.tsx:182 ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:184
 list column headers and currency -> bundled-apps/invoicing/src/ui/RecurringList.tsx:172
 editor: numbering series read only, preview fills {period}, title and tab name the customer, reload after Pause and Save -> bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:476 ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:131 ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:294 ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:307
+Amount check at five times or a fifth of the last invoice -> bundled-apps/invoicing/src/recurring/flags.ts:75
+Check the amount flag names last time's amount, never on a first invoice -> bundled-apps/invoicing/src/recurring/flags.ts:88
+Amount check follows an edit of the row -> bundled-apps/invoicing/src/recurring/restage.ts:260
+Run read names rows billing far from their last invoice -> bundled-apps/invoicing/src/recurring/run-get.ts:112
+Card line carries the row's note -> bundled-apps/invoicing/src/recurring/run-card.ts:150

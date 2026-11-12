@@ -16,6 +16,7 @@ import {
   type CardItem,
   changedBy,
   foldRows,
+  isAmountCheck,
   lacksAddress,
   missingSchedules,
   numberCell,
@@ -415,7 +416,17 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   </span>
                 </button>
                 <div class="text-text-secondary">
-                  <For each={row.flags}>{(f) => <span class="mr-2">{f}</span>}</For>
+                  <For each={row.flags}>
+                    {(f) =>
+                      isAmountCheck(f) ? (
+                        <span data-testid={`month-end-row-amount-check-${row.item_id}`} class="mr-2 font-medium text-text">
+                          {f}
+                        </span>
+                      ) : (
+                        <span class="mr-2">{f}</span>
+                      )
+                    }
+                  </For>
                   <Show when={changedBy(row.latest_change, names())}>{(w) => <span>{w()}</span>}</Show>
                 </div>
                 <Show when={lacksAddress(row) && row.draft_id}>

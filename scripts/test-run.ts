@@ -689,6 +689,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // routine tick (agents_ask, Morning brief): each replaces
             // `~/infra/jobs/jobs` with mock.module, so they share this process.
             "src/tests/integration/event-routine-owner-gate.test.ts",
+            // A routine on a dashboard table's row events and its {tableId, column, to} filter.
+            "src/tests/integration/event-routine-table-filter.test.ts",
             "src/tests/integration/routine-event-filter-persistence.test.ts",
             "src/tests/integration/routine-tick-agents-ask.test.ts",
             "src/tests/integration/morning-brief-template.test.ts",

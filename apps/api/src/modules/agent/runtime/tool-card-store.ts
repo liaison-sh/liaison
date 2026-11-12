@@ -19,6 +19,7 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { UUID_RE } from "~/lib/uuid"
 import { redactMailToolResult } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
+import { CALL_TOOL_SDK_NAME } from "~/modules/agent/providers/fixed-tool-list"
 import { uncappedToolResult } from "~/modules/agent/runtime/result-truncation"
 import { projectTaintScopesForOrg } from "~/modules/agent/scopes/taint-read-scopes"
 import { isParkedForApproval } from "~/modules/agent/tools/tool-bridge"
@@ -115,6 +116,12 @@ function appDisplayLabel(orgId: string, app: string): string | undefined {
 
 /** The registry's facts on a tool, for the row that shows it. Empty for a tool of no app. */
 export function toolCallPresentation(orgId: string, sdkName: string): ToolCallPresentation {
+  // A call kept under the tool-calling entry's own name ran no tool: a well-formed
+  // call to a loaded tool runs as that tool, so what stays here is the entry's
+  // answer, a "loaded now" note or a refusal (wrong arguments, a tool not held).
+  // It is no read of any app, so the trace never folds a refusal into "Kernel did
+  // not answer": a failed entry call draws its own row, with its reason.
+  if (sdkName === CALL_TOOL_SDK_NAME) return { readOnly: false }
   const tool = registeredTool(orgId, sdkName)
   if (!tool) return {}
   const appLabel = appDisplayLabel(orgId, tool.appName)

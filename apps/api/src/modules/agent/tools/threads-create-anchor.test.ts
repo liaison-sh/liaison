@@ -4,7 +4,9 @@
 // A record with a discussion gets its message in that discussion, never a new
 // thread, posted as the agent and not as the person. A record the caller
 // cannot see gets nothing, and a person listed who cannot see the record is
-// left out and named, judged by their own grants, not the caller's.
+// left out and named, judged by their own grants, not the caller's. The post is
+// never written hidden (scope-taint.ts, rule 14): a requester whose own grants do
+// not cover what the session read gets nothing posted, not a post hidden from them.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -25,6 +27,7 @@ let orgId: string
 let aliceId: string
 let bobId: string
 let danId: string
+let carolId: string
 
 async function item(text: string): Promise<string> {
   const id = crypto.randomUUID()
@@ -34,17 +37,21 @@ async function item(text: string): Promise<string> {
   return id
 }
 
-function create(params: Parameters<typeof handleThreadsCreate>[0], scopes = SEES_ITEMS) {
+function create(
+  params: Parameters<typeof handleThreadsCreate>[0],
+  scopes = SEES_ITEMS,
+  userId = aliceId,
+) {
   const actor: UserContext = {
     actorType: "user",
-    userId: aliceId,
+    userId,
     orgId,
     scopes,
     dimensionGrants: { "*": ["*"] },
   }
   return withRlsContext(actor, (tx) =>
     handleThreadsCreate(params, {
-      userId: aliceId,
+      userId,
       orgId,
       db: tx,
       scopes,
@@ -70,6 +77,10 @@ describe("threads_create with createdFrom", () => {
     aliceId = (await minimal.person(orgId, { name: "Alice Anchor" })).id
     bobId = (await minimal.person(orgId, { name: "Bob Anchor" })).id
     danId = (await minimal.person(orgId, { name: "Dan Anchor" })).id
+    carolId = (await minimal.person(orgId, { name: "Carol Anchor" })).id
+    // The caller holds the grant her session reads items with; Carol's agent reads
+    // items past her own grants.
+    await minimal.grantScope(aliceId, "example:items:read")
     await minimal.grantScope(bobId, "example:items:read")
   }, 60_000)
   afterAll(async () => {
@@ -135,5 +146,27 @@ describe("threads_create with createdFrom", () => {
     const seated = await seats(result.threadId)
     expect(seated).toContain(bobId)
     expect(seated).not.toContain(danId)
+  })
+
+  test("an agent that read past its requester's own grants posts nothing", async () => {
+    const itemId = await item("Read past Carol's grants")
+    const result = await create(
+      {
+        participantIds: [],
+        createdFrom: { app: "example", entityType: "items", entityId: itemId },
+        initialMessage: "Carol would not see this",
+      },
+      SEES_ITEMS,
+      carolId,
+    )
+    expect(result.error?.code).toBe("post_would_be_hidden")
+    const posted = await withPrivilegedDb(orgId, "test-messages", async (tx) =>
+      extractRows(
+        await tx.execute(drizzleSql`
+          SELECT 1 FROM ${ks()}.messages m JOIN ${ks()}.threads t ON t.id = m.thread_id
+           WHERE t.org_id = ${orgId}::uuid AND t.handle = ${`entity:example:items:${itemId}`}`),
+      ),
+    )
+    expect(posted).toHaveLength(0)
   })
 })

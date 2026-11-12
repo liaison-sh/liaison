@@ -3087,5 +3087,14 @@
     "typed": ["invoice a Stripe payment", "create invoice from payment"],
     "any": ["invoicing__invoice_from_stripe_payment"],
     "modelRun": true
+  },
+  {
+    "id": "DS1",
+    "set": "seed",
+    "lang": "en",
+    "say": "let Margot see the sales dashboard, but she can't edit it",
+    "typed": ["share dashboard", "dashboard access viewer"],
+    "any": ["kernel__dashboards_share"],
+    "modelRun": true
   }
 ]

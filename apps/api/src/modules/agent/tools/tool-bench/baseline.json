@@ -592,6 +592,18 @@
       "desc": 140,
       "schema": 50
     },
+    "database__report_access_find_people": {
+      "desc": 82,
+      "schema": 39
+    },
+    "database__report_access_get": {
+      "desc": 166,
+      "schema": 9
+    },
+    "database__report_access_set": {
+      "desc": 93,
+      "schema": 51
+    },
     "gitlab__gitlab_get_commit": {
       "desc": 56,
       "schema": 62
@@ -1288,6 +1300,10 @@
       "desc": 272,
       "schema": 317
     },
+    "kernel__dashboards_share": {
+      "desc": 528,
+      "schema": 3
+    },
     "kernel__dashboards_snapshot": {
       "desc": 647,
       "schema": 20
@@ -1726,7 +1742,7 @@
     },
     "kernel__threads_reply": {
       "desc": 214,
-      "schema": 363
+      "schema": 423
     },
     "kernel__threads_search": {
       "desc": 197,
@@ -1786,7 +1802,7 @@
     },
     "knowledge__add_folder_source": {
       "desc": 914,
-      "schema": 369
+      "schema": 345
     },
     "knowledge__add_to_collection": {
       "desc": 41,
@@ -2995,6 +3011,8 @@
     "C68|approuver factures du mois": "5t",
     "C68|approve month-end invoices": "",
     "C68|month-end run": "15tl",
+    "DS1|dashboard access viewer": "15tl",
+    "DS1|share dashboard": "15tl",
     "H001|modifier un rôle": "15tl",
     "H002|créer un rôle": "15tl",
     "H003|supprimer un rôle": "15tl",

@@ -1,0 +1,40 @@
+{
+  "entry": "tool:quote_issue",
+  "params": {
+    "draft_id": "3a0217db-e441-4236-9483-9fa86aaaf5c1"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:49.987102+00\",\"updated_at\":\"2026-11-12 08:11:49.987102+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"quote\",\"scope\":null,\"status\":\"draft\",\"payment_status\":\"unpaid\",\"number\":null,\"number_int\":null,\"year_of_issue\":null,\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Harbor Lane Recording LLC\",\"counterparty_address\":\"410 Harbor Lane, Portland, OR 97209, United States\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"US\",\"currency\":\"EUR\",\"subtotal_minor\":\"0\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"0\",\"tax_treatment\":null,\"incoterm\":\"DAP\",\"issued_at\":null,\"due_at\":null,\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":null,\"pdf_status\":null,\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[],\"regime\":null,\"regime_reasons\":null,\"operation_category\":null,\"operation_category_source\":null,\"payment_state\":null,\"vat_on_debits\":null,\"customer_kind\":null,\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":null,\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":null,\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":null,\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":null,\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":null,\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "document_lines",
+        "{\"where\":{\"document_id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\"},\"orderBy\":{\"position\":\"asc\"},\"limit\":1000}"
+      ],
+      "reply": "[{\"id\":\"e44e04ff-4882-44a7-9bfe-9abb687b0d15\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.002293+00\",\"updated_at\":\"2026-11-12 08:11:50.002293+00\",\"document_id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\",\"position\":1,\"description\":\"Studio monitor, pair\",\"quantity\":\"2.000\",\"unit_price_minor\":\"41940\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":null,\"subtotal_minor\":\"83880\",\"tax_minor\":\"0\",\"total_minor\":\"83880\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\",\"product_source\":null,\"external_id\":null},{\"id\":\"2220321e-12c2-4e50-9223-b8c358e3a894\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.02228+00\",\"updated_at\":\"2026-11-12 08:11:50.02228+00\",\"document_id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\",\"position\":2,\"description\":\"Installation\",\"quantity\":\"1.000\",\"unit_price_minor\":\"15000\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":null,\"subtotal_minor\":\"15000\",\"tax_minor\":\"0\",\"total_minor\":\"15000\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":null,\"external_id\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "issuer_profiles",
+        "{\"where\":{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.27835+00\",\"updated_at\":\"2026-11-12 08:11:48.44327+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "requestApproval",
+      "args": [
+        "{\"tool_name\":\"invoicing:quote_issue\",\"summary\":\"Issue quote for Harbor Lane Recording LLC, 988.80 EUR\",\"summary_detail\":{\"subtitle\":\"Turns the saved draft into a quote for Harbor Lane Recording LLC, with its next quote number\",\"lines\":[\"Document: new quote from a saved draft (number assigned on issue)\",\"Customer: Harbor Lane Recording LLC\",\"Total: 988.80 EUR\",\"Line: Studio monitor, pair x 2 @ 419.40 EUR\",\"Line: Installation x 1 @ 150.00 EUR\",\"Issued by: Resonance Atelier SARL\"],\"links\":[{\"label\":\"Open the draft quote\",\"app\":\"invoicing\",\"entityType\":\"detail\",\"entityId\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\"}]},\"current_payload\":{\"draft_id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\"},\"editable_fields\":[\"lines\"],\"auto_approvable\":false}"
+      ],
+      "reply": "{\"approval_id\":\"7d697cf7-ff35-4093-8b58-c722dfeecc58\"}"
+    }
+  ]
+}

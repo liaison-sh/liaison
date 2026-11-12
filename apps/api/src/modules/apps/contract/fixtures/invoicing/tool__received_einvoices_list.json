@@ -1,0 +1,32 @@
+{
+  "entry": "tool:received_einvoices_list",
+  "params": {
+    "limit": 20
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "received_einvoices",
+        "{\"orderBy\":{\"received_at\":\"desc\"},\"limit\":21,\"offset\":0}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "received_sync_state",
+        "{\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "callerHasScope",
+      "args": [
+        "invoicing:received:write"
+      ],
+      "reply": true
+    }
+  ]
+}

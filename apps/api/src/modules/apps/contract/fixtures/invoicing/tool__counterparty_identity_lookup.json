@@ -1,0 +1,18 @@
+{
+  "entry": "tool:counterparty_identity_lookup",
+  "params": {
+    "query": "Atelier Lumen",
+    "postcode": "69003"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "fetch",
+      "args": [
+        "https://recherche-entreprises.api.gouv.fr/search?q=Atelier%20Lumen&page=1&per_page=10&code_postal=69003",
+        "{\"method\":\"GET\",\"headers\":{\"User-Agent\":\"Liaison invoicing (identity lookup)\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"results\\\":[],\\\"total_results\\\":0,\\\"page\\\":1,\\\"per_page\\\":10,\\\"total_pages\\\":0}\"}"
+    }
+  ]
+}

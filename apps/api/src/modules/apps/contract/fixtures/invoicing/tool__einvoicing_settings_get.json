@@ -1,0 +1,22 @@
+{
+  "entry": "tool:einvoicing_settings_get",
+  "params": {},
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "contracts_providers",
+      "args": [
+        "einvoicing-pa@1"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

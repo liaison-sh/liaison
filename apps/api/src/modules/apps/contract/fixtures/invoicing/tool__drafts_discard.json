@@ -1,0 +1,38 @@
+{
+  "entry": "tool:drafts_discard",
+  "params": {
+    "draft_id": "81e09ef2-3ce2-40eb-9f00-f19261aaafcc"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "document_lines",
+        "{\"where\":{\"document_id\":\"81e09ef2-3ce2-40eb-9f00-f19261aaafcc\"},\"limit\":1000}"
+      ],
+      "reply": "[{\"id\":\"f2e40d07-0af1-4554-b5d1-2da23e072d10\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.636211+00\",\"updated_at\":\"2026-11-12 08:11:50.636211+00\",\"document_id\":\"81e09ef2-3ce2-40eb-9f00-f19261aaafcc\",\"position\":1,\"description\":\"Studio monitor, pair\",\"quantity\":\"2.000\",\"unit_price_minor\":\"41940\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":null,\"subtotal_minor\":\"83880\",\"tax_minor\":\"0\",\"total_minor\":\"83880\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\",\"product_source\":null,\"external_id\":null},{\"id\":\"afed0751-e72b-4a1d-976b-2021ed8d3593\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.641368+00\",\"updated_at\":\"2026-11-12 08:11:50.641368+00\",\"document_id\":\"81e09ef2-3ce2-40eb-9f00-f19261aaafcc\",\"position\":2,\"description\":\"Installation\",\"quantity\":\"1.000\",\"unit_price_minor\":\"15000\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":null,\"subtotal_minor\":\"15000\",\"tax_minor\":\"0\",\"total_minor\":\"15000\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":null,\"external_id\":null}]"
+    },
+    {
+      "method": "db_delete",
+      "args": [
+        "document_lines",
+        "f2e40d07-0af1-4554-b5d1-2da23e072d10"
+      ]
+    },
+    {
+      "method": "db_delete",
+      "args": [
+        "document_lines",
+        "afed0751-e72b-4a1d-976b-2021ed8d3593"
+      ]
+    },
+    {
+      "method": "db_delete",
+      "args": [
+        "documents",
+        "81e09ef2-3ce2-40eb-9f00-f19261aaafcc"
+      ]
+    }
+  ]
+}

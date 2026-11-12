@@ -1,0 +1,24 @@
+{
+  "entry": "tool:settings_issuer_profile_delete",
+  "params": {
+    "id": "9db8770b-31c5-4c19-bbac-d8b52f757d72"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": [
+        "invoicing:issuer:admin"
+      ],
+      "reply": true
+    },
+    {
+      "method": "db_count",
+      "args": [
+        "documents",
+        "{\"where\":{\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\"}}"
+      ],
+      "reply": "11"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "entry": "tool:proforma_create_and_issue",
+  "params": {
+    "issuer_profile_id": "9db8770b-31c5-4c19-bbac-d8b52f757d72",
+    "counterparty": {
+      "legal_name": "Jonas Becker",
+      "country": "DE",
+      "address": "Lindenweg 3, 10115 Berlin, Germany",
+      "email": "person1@example.com"
+    },
+    "buyer_is_consumer": true,
+    "currency": "EUR",
+    "items": [
+      {
+        "description": "Studio monitor, pair",
+        "quantity": 2,
+        "unit_price_minor": 41940,
+        "hs_code": "851822",
+        "country_of_origin": "FR",
+        "customs_description": "Loudspeakers"
+      },
+      {
+        "description": "Installation",
+        "quantity": 1,
+        "unit_price_minor": 15000
+      }
+    ],
+    "reason": "Advance payment"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "issuer_profiles",
+        "{\"where\":{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.27835+00\",\"updated_at\":\"2026-11-12 08:11:48.44327+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"counterparty_email\":\"person1@example.com\"},\"orderBy\":{\"createdAt\":\"desc\"},\"limit\":25}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"counterparty_country\":\"DE\"},\"orderBy\":{\"createdAt\":\"desc\"},\"limit\":200}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:orders_search",
+        "{\"limit\":5,\"timeout_ms\":2500,\"query\":\"email:\\\"person1@example.com\\\"\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[],\"nextCursor\":null,\"totalCount\":0}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:customers_search",
+        "{\"limit\":5,\"timeout_ms\":2500,\"query\":\"\\\"Jonas Becker\\\"\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[],\"nextCursor\":null,\"totalCount\":1714}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:orders_search",
+        "{\"limit\":5,\"timeout_ms\":2500,\"query\":\"\\\"Jonas Becker\\\"\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[],\"nextCursor\":null,\"totalCount\":0,\"dateFilterNotice\":\"DATE SCOPE, ACTION REQUIRED: a date term inside the `query` string is SILENTLY IGNORED. orders_search filters by date ONLY through the `created_at_min` / `created_at_max` params (an inclusive placed-date window). You did not pass them, so these results are the most-recent orders the cursor returned, NOT a date-scoped set, and they may carry placed-dates OUTSIDE any day/week you asked for. If the user scoped the request by a DATE/WEEK ('yesterday', 'this week', 'Modular Expo week'), pass created_at_min/created_at_max to scope server-side; otherwise DISCLOSE plainly that this batch is the cursor-returned recent set and do NOT claim you captured exactly that day's/week's orders. Asserting clean date coverage without the date-range params is a false-completion error.\"}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:orders_search",
+        "{\"limit\":5,\"timeout_ms\":2500,\"query\":\"10115 lindenweg\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[],\"nextCursor\":null,\"totalCount\":0,\"dateFilterNotice\":\"DATE SCOPE, ACTION REQUIRED: a date term inside the `query` string is SILENTLY IGNORED. orders_search filters by date ONLY through the `created_at_min` / `created_at_max` params (an inclusive placed-date window). You did not pass them, so these results are the most-recent orders the cursor returned, NOT a date-scoped set, and they may carry placed-dates OUTSIDE any day/week you asked for. If the user scoped the request by a DATE/WEEK ('yesterday', 'this week', 'Modular Expo week'), pass created_at_min/created_at_max to scope server-side; otherwise DISCLOSE plainly that this batch is the cursor-returned recent set and do NOT claim you captured exactly that day's/week's orders. Asserting clean date coverage without the date-range params is a false-completion error.\"}}"
+    },
+    {
+      "method": "time_civil",
+      "args": [
+        "{\"timezone\":\"Europe/Paris\"}"
+      ],
+      "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":9,\"minute\":11,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
+    },
+    {
+      "method": "requestApproval",
+      "args": [
+        "{\"tool_name\":\"invoicing:proforma_create_and_issue\",\"summary\":\"Issue proforma for Jonas Becker, 1176.67 EUR\",\"summary_detail\":{\"subtitle\":\"Creates a proforma for Jonas Becker, with its next proforma number\",\"lines\":[\"Document: new proforma (number assigned on issue)\",\"Customer: Jonas Becker\",\"Total: 1176.67 EUR (988.80 EUR net + 187.87 EUR VAT)\",\"Tax: EU consumer sale (OSS), DE VAT 19%; no buyer VAT number, the buyer was CONFIRMED a private consumer\",\"Prices: net as typed, VAT added on top\",\"and 2 more lines\",\"Reason: Advance payment\",\"Issued by: Resonance Atelier SARL\"]},\"current_payload\":{\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"counterparty\":{\"legal_name\":\"Jonas Becker\",\"country\":\"DE\",\"address\":\"Lindenweg 3, 10115 Berlin, Germany\",\"email\":\"person1@example.com\"},\"buyer_is_consumer\":true,\"currency\":\"EUR\",\"items\":[{\"description\":\"Studio monitor, pair\",\"quantity\":2,\"unit_price_minor\":41940,\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\"},{\"description\":\"Installation\",\"quantity\":1,\"unit_price_minor\":15000}],\"reason\":\"Advance payment\"},\"editable_fields\":[\"items\",\"declared_value_minor\"],\"auto_approvable\":false}"
+      ],
+      "reply": "{\"approval_id\":\"fd6eef3f-71f0-4bd2-9e83-2a90c20ef0d4\"}"
+    }
+  ]
+}

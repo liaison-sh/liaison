@@ -1,0 +1,146 @@
+{
+  "entry": "tool:invoice_create_and_issue",
+  "params": {
+    "issuer_profile_id": "9db8770b-31c5-4c19-bbac-d8b52f757d72",
+    "counterparty": {
+      "legal_name": "Harbor Lane Recording LLC",
+      "country": "US",
+      "address": "410 Harbor Lane, Portland, OR 97209, United States",
+      "email": "person1@example.com"
+    },
+    "currency": "EUR",
+    "items": [
+      {
+        "description": "Studio monitor, pair",
+        "quantity": 2,
+        "unit_price_minor": 41940,
+        "hs_code": "851822",
+        "country_of_origin": "FR",
+        "customs_description": "Loudspeakers"
+      },
+      {
+        "description": "Installation",
+        "quantity": 1,
+        "unit_price_minor": 15000
+      }
+    ],
+    "po_number": "NA-2209",
+    "operation_category": "goods"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "issuer_profiles",
+        "{\"where\":{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.27835+00\",\"updated_at\":\"2026-11-12 08:11:48.44327+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6dbac8cc-adc0-461d-9745-f67953372ef2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.882843+00\",\"updated_at\":\"2026-11-12 08:11:48.882843+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "time_civil",
+      "args": [
+        "{\"timezone\":\"Europe/Paris\"}"
+      ],
+      "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":9,\"minute\":11,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6dbac8cc-adc0-461d-9745-f67953372ef2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.882843+00\",\"updated_at\":\"2026-11-12 08:11:48.882843+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_batch",
+      "args": [
+        "{\"sequence\":{\"key\":\"invoicing:doc_number:9db8770b-31c5-4c19-bbac-d8b52f757d72:invoice:2026\",\"format\":{\"prefix\":\"FAC-2026-\",\"pad\":4},\"unique\":{\"entity\":\"documents\",\"field\":\"number_int\",\"where\":{\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"type\":\"invoice\",\"year_of_issue\":2026}}},\"ops\":[{\"insert\":\"documents\",\"as\":\"document\",\"data\":{\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"number\":{\"$seq\":\"formatted\"},\"number_int\":{\"$seq\":\"value\"},\"year_of_issue\":2026,\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"counterparty_name\":\"Harbor Lane Recording LLC\",\"counterparty_address\":\"410 Harbor Lane, Portland, OR 97209, United States\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"US\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"98880\",\"tax_treatment\":\"eu_export_non_eu\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"po_number\":\"NA-2209\"},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":\"NA-2209\",\"notes\":null,\"regime\":\"e_reporting\",\"regime_reasons\":[{\"code\":\"buyer_not_in_france\",\"en\":\"The buyer is established outside France: e-reporting.\",\"fr\":\"L'acheteur est établi hors de France : e-reporting.\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":null,\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Harbor Lane Recording LLC\",\"buyer_siren_confirmed_via\":null,\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":\"US\",\"tax_point_date\":\"2026-11-12\",\"original_document_id\":null,\"internal_cancellation\":null,\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"},{\"event\":\"po_number_changed\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"from\":null,\"to\":\"NA-2209\",\"source\":\"person\"}]}},{\"insert\":\"document_lines\",\"data\":{\"document_id\":{\"$ref\":\"document\"},\"position\":0,\"description\":\"Studio monitor, pair\",\"quantity\":\"2\",\"unit_price_minor\":\"41940\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"83880\",\"tax_minor\":\"0\",\"total_minor\":\"83880\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\"}},{\"insert\":\"document_lines\",\"data\":{\"document_id\":{\"$ref\":\"document\"},\"position\":1,\"description\":\"Installation\",\"quantity\":\"1\",\"unit_price_minor\":\"15000\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"15000\",\"tax_minor\":\"0\",\"total_minor\":\"15000\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null}}]}"
+      ],
+      "reply": "{\"rows\":{\"document\":{\"id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.749976+00\",\"updated_at\":\"2026-11-12 08:11:50.749976+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0002\",\"number_int\":2,\"year_of_issue\":2026,\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Harbor Lane Recording LLC\",\"counterparty_address\":\"410 Harbor Lane, Portland, OR 97209, United States\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"US\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"98880\",\"tax_treatment\":\"eu_export_non_eu\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"po_number\":\"NA-2209\"},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":\"NA-2209\",\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"to\":\"NA-2209\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"from\":null,\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"po_number_changed\",\"source\":\"person\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is established outside France: e-reporting.\",\"fr\":\"L'acheteur est établi hors de France : e-reporting.\",\"code\":\"buyer_not_in_france\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":null,\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Harbor Lane Recording LLC\",\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":\"US\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":null,\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":null,\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}},\"sequence\":{\"value\":2,\"formatted\":\"FAC-2026-0002\"}}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"document\",\"action\":\"issued\",\"entityId\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"data\":{\"document_id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"type\":\"invoice\",\"number\":\"FAC-2026-0002\",\"status\":\"issued\",\"currency\":\"EUR\",\"grand_total_minor\":\"98880\"}}"
+      ]
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"document\",\"action\":\"po_number_changed\",\"entityId\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"data\":{\"document_id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"type\":\"invoice\",\"number\":\"FAC-2026-0002\",\"status\":\"issued\",\"from\":null,\"to\":\"NA-2209\"}}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6dbac8cc-adc0-461d-9745-f67953372ef2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.882843+00\",\"updated_at\":\"2026-11-12 08:11:48.882843+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "legal_originals",
+        "{\"where\":{\"document_id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"kind\":\"issued_pdf\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "legal_originals",
+        "{\"document_id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01T00:00:00.000Z\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+      ],
+      "reply": "{\"id\":\"ac60660d-efe5-4928-91a1-42ed067466dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.805999+00\",\"updated_at\":\"2026-11-12 08:11:50.805999+00\",\"document_id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"received_id\":null,\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01 00:00:00+00\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+    },
+    {
+      "method": "pdf_render",
+      "args": [
+        "{\"template_kind\":\"invoicing:invoice_v1\",\"filename\":\"invoice-FAC-2026-0002.pdf\",\"data\":{\"document\":{\"type\":\"invoice\",\"scope\":null,\"number\":\"FAC-2026-0002\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"98880\",\"tax_treatment\":\"eu_export_non_eu\",\"incoterm\":\"DAP\",\"payment_status\":null,\"paid_at\":null,\"original_invoice_number\":null,\"original_invoice_date\":null,\"reason\":null,\"operation_label\":\"Livraison de biens\",\"vat_on_debits\":false,\"shopify_order_number\":null,\"po_number\":\"NA-2209\",\"customer_reference\":null,\"notes\":null},\"issuer\":{\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"default_language\":\"fr\",\"logo_file_id\":null,\"siren\":\"902000009\",\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null},\"counterparty\":{\"legal_name\":\"Harbor Lane Recording LLC\",\"country\":\"US\",\"address\":\"410 Harbor Lane, Portland, OR 97209, United States\",\"shipping_address\":null,\"shipping_name\":null,\"email\":\"person1@example.com\",\"siren\":null},\"line_items\":[{\"position\":0,\"description\":\"Studio monitor, pair\",\"quantity\":\"2\",\"unit_price_minor\":\"41940\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"83880\",\"tax_minor\":\"0\",\"total_minor\":\"83880\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\"},{\"position\":1,\"description\":\"Installation\",\"quantity\":\"1\",\"unit_price_minor\":\"15000\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"15000\",\"tax_minor\":\"0\",\"total_minor\":\"15000\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null}],\"legal_mention\":\"Exportation hors Union européenne : exonération de TVA (article 262 I du CGI)\",\"requires_hs_code\":true},\"pdfa\":\"3b\",\"parent\":{\"entityType\":\"legal_original\",\"entityId\":\"ac60660d-efe5-4928-91a1-42ed067466dd\"}}"
+      ],
+      "reply": "{\"file_id\":\"7ab3499e-5e4f-4239-9abe-8c7b56bf5e37\",\"byte_size\":38971,\"page_count\":1,\"pdf_a3_normalized\":true,\"filename\":\"invoice-FAC-2026-0002.pdf\",\"sha256\":\"03b72295fe7f202de1690b399f6570c0de11bbefbf88f57ca6be66a962545ef8\",\"pdfa\":\"3b\",\"parent_entity_type\":\"legal_original\",\"parent_entity_id\":\"ac60660d-efe5-4928-91a1-42ed067466dd\"}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "legal_originals",
+        "ac60660d-efe5-4928-91a1-42ed067466dd",
+        "{\"file_id\":\"7ab3499e-5e4f-4239-9abe-8c7b56bf5e37\",\"sha256\":\"03b72295fe7f202de1690b399f6570c0de11bbefbf88f57ca6be66a962545ef8\",\"byte_size\":38971}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "780240ab-0780-40cc-81d6-3d3bc4aa87c6",
+        "{\"legal_original_id\":\"ac60660d-efe5-4928-91a1-42ed067466dd\",\"legal_original_sha256\":\"03b72295fe7f202de1690b399f6570c0de11bbefbf88f57ca6be66a962545ef8\",\"pdf_file_id\":\"7ab3499e-5e4f-4239-9abe-8c7b56bf5e37\",\"pdf_status\":\"ready\"}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "780240ab-0780-40cc-81d6-3d3bc4aa87c6",
+        "{\"pdf_file_id\":\"7ab3499e-5e4f-4239-9abe-8c7b56bf5e37\",\"pdf_status\":\"ready\",\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"},{\"event\":\"po_number_changed\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"from\":null,\"to\":\"NA-2209\",\"source\":\"person\"}]}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6dbac8cc-adc0-461d-9745-f67953372ef2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.882843+00\",\"updated_at\":\"2026-11-12 08:11:48.882843+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    }
+  ]
+}

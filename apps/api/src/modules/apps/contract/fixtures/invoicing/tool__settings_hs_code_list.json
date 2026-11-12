@@ -1,0 +1,17 @@
+{
+  "entry": "tool:settings_hs_code_list",
+  "params": {
+    "limit": 20
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "hs_code_library",
+        "{\"orderBy\":{\"code\":\"asc\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

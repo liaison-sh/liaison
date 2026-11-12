@@ -1,0 +1,18 @@
+{
+  "entry": "tool:vat_validate",
+  "params": {
+    "country_code": "DE",
+    "vat_number": "DE123456789"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "fetch",
+      "args": [
+        "https://ec.europa.eu/taxation_customs/vies/rest-api/ms/DE/vat/123456789",
+        "{\"method\":\"GET\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"isValid\\\":false,\\\"requestDate\\\":\\\"2026-11-12T08:11:55.170Z\\\",\\\"userError\\\":\\\"INVALID\\\",\\\"name\\\":\\\"---\\\",\\\"address\\\":\\\"---\\\",\\\"requestIdentifier\\\":\\\"\\\",\\\"originalVatNumber\\\":\\\"123456789\\\",\\\"vatNumber\\\":\\\"123456789\\\",\\\"viesApproximate\\\":{\\\"name\\\":\\\"---\\\",\\\"street\\\":\\\"---\\\",\\\"postalCode\\\":\\\"---\\\",\\\"city\\\":\\\"---\\\",\\\"companyType\\\":\\\"---\\\",\\\"matchName\\\":3,\\\"matchStreet\\\":3,\\\"matchPostalCode\\\":3,\\\"matchCity\\\":3,\\\"matchCompanyType\\\":3}}\"}"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "entry": "tool:einvoice_status_refresh",
+  "params": {
+    "document_id": "3ac42f80-0f1f-476e-a4f1-114faccd8aa6"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoice_transmissions",
+        "{\"where\":{\"document_id\":\"3ac42f80-0f1f-476e-a4f1-114faccd8aa6\",\"action\":\"send_einvoice\"},\"limit\":100}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

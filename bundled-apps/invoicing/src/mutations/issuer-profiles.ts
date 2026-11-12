@@ -154,8 +154,31 @@ export async function settingsIssuerProfileWritePreflight(
 ): Promise<PreflightResult> {
   const refused =
     (await checkIssuerWriteAuthority(ctx, action, input ?? {})) ??
-    (action === "delete" ? null : await checkWrittenFields(ctx, input ?? {}))
+    (action === "delete"
+      ? await checkIssuerUnused(ctx, String(input?.id ?? ""))
+      : await checkWrittenFields(ctx, input ?? {}))
   return refused ? { error: refused.error } : { ok: true }
+}
+
+/**
+ * An issuer profile that issued documents stays: the documents reference it (their legal seller
+ * identity and number series), and the database refuses to delete it under them. Said here, typed,
+ * instead of a raw constraint error.
+ */
+async function checkIssuerUnused(
+  ctx: MutationsCtx,
+  id: string,
+): Promise<{ status: "error"; error: { code: string; message: string } } | null> {
+  if (!id) return null
+  const documents = await ctx.db.count("documents", { where: { issuer_profile_id: id } })
+  if (documents === 0) return null
+  return {
+    status: "error",
+    error: {
+      code: "issuer_in_use",
+      message: `This issuer profile has ${documents} document(s) and cannot be deleted: documents keep the seller identity and number series they were issued under. Edit the profile instead.`,
+    },
+  }
 }
 
 /** Audit-timeline value: bigint-safe, bounded, JSON-stored columns reduced to a marker. */
@@ -258,7 +281,8 @@ export async function settingsIssuerProfileDelete(
   if (!id) {
     return { status: "error", error: { code: "invalid_params", message: "id is required" } }
   }
-  const refused = await checkIssuerWriteAuthority(ctx, "delete", input)
+  const refused =
+    (await checkIssuerWriteAuthority(ctx, "delete", input)) ?? (await checkIssuerUnused(ctx, id))
   if (refused) return refused
   const before = (await ctx.db.findOne("issuer_profiles", id)) as Record<string, unknown> | null
   await ctx.db.delete("issuer_profiles", id)

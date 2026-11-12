@@ -1,0 +1,17 @@
+{
+  "entry": "tool:deferred_list",
+  "params": {
+    "limit": 20
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"orderBy\":{\"retried_at\":\"desc\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

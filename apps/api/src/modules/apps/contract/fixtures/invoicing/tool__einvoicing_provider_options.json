@@ -1,0 +1,14 @@
+{
+  "entry": "tool:einvoicing_provider_options",
+  "params": {},
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "contracts_providers",
+      "args": [
+        "einvoicing-pa@1"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

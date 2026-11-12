@@ -1,0 +1,19 @@
+{
+  "entry": "preflight:documents_record_refund",
+  "params": {
+    "document_id": "780240ab-0780-40cc-81d6-3d3bc4aa87c6",
+    "refund_amount_minor": 15000,
+    "refund_kind": "partial"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"780240ab-0780-40cc-81d6-3d3bc4aa87c6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:50.749976+00\",\"updated_at\":\"2026-11-12 08:11:53.787954+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"paid\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0002\",\"number_int\":2,\"year_of_issue\":2026,\"issuer_profile_id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Harbor Lane Recording LLC\",\"counterparty_address\":\"410 Harbor Lane, Portland, OR 97209, United States\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"US\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"98880\",\"tax_treatment\":\"eu_export_non_eu\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-01-20 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"d17d6d8f-df17-4ebd-b6f2-a46b79f36437\",\"pdf_status\":\"ready\",\"external_refs\":{\"po_number\":\"NA-2209\"},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":\"NA-2209\",\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"to\":\"NA-2209\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"from\":null,\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"po_number_changed\",\"source\":\"person\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"paid_date\":\"2026-01-20\",\"payment_note\":\"Bank transfer\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is established outside France: e-reporting.\",\"fr\":\"L'acheteur est établi hors de France : e-reporting.\",\"code\":\"buyer_not_in_france\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":null,\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Harbor Lane Recording LLC\",\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":\"US\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":\"03b72295fe7f202de1690b399f6570c0de11bbefbf88f57ca6be66a962545ef8\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":\"ac60660d-efe5-4928-91a1-42ed067466dd\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "entry": "tool:viewer_access",
+  "params": {},
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": [
+        "invoicing:documents:write"
+      ],
+      "reply": true
+    },
+    {
+      "method": "hasScope",
+      "args": [
+        "invoicing:settings:read"
+      ],
+      "reply": true
+    },
+    {
+      "method": "hasScope",
+      "args": [
+        "invoicing:approve"
+      ],
+      "reply": true
+    }
+  ]
+}

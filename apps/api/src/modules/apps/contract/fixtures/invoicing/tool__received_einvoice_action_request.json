@@ -1,0 +1,19 @@
+{
+  "entry": "tool:received_einvoice_action_request",
+  "params": {
+    "received_id": "00000000-0000-4000-8000-0000000e0001",
+    "action": "dispute",
+    "reason": "Quantity differs from delivery note"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "received_einvoices",
+        "{\"where\":{\"id\":\"00000000-0000-4000-8000-0000000e0001\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

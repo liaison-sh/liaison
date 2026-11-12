@@ -142,45 +142,67 @@ export function createReplayBridge(
 
 /**
  * Wrap a real bridge so every call and its answer is recorded: the recording
- * half. `finish()` hands back the fixture to store under
- * `fixtures/<app>/<entry>.json` (after reading it for secrets).
+ * half. Only the `surface` methods are wrapped (the ones a replay answers), each
+ * with the sync/async kind the executor dispatches on, and the wrapper counts
+ * its in-flight calls (INFLIGHT) so the isolate's event-loop pump waits for a
+ * real bridge call instead of deciding the run can never settle. `finish()`
+ * hands back the fixture to store under `fixtures/<app>/<entry>.json` (after
+ * scrubbing it: recorder.ts).
  */
 export function createRecordingBridge(
   real: AppBridge,
   entry: { entry: string; params?: unknown; extraArgs?: unknown[]; recordedFrom?: string },
+  surface?: ReadonlyArray<readonly [string, "sync" | "async"]>,
 ): { bridge: AppBridge; finish: () => EgressFixture } {
   const calls: RecordedCall[] = []
   const bridge: AppBridge = {}
-  for (const [name, fn] of Object.entries(real)) {
+  let inflight = 0
+  const kinds: ReadonlyArray<readonly [string, "sync" | "async"]> =
+    surface ??
+    Object.entries(real)
+      .filter(([, fn]) => typeof fn === "function")
+      .map(([name, fn]) => [
+        name,
+        (fn as { constructor?: { name?: string } }).constructor?.name === "AsyncFunction"
+          ? "async"
+          : "sync",
+      ])
+  for (const [name, kind] of kinds) {
+    const fn = real[name]
     if (typeof fn !== "function") continue
-    const isAsync =
-      (fn as { constructor?: { name?: string } }).constructor?.name === "AsyncFunction"
-    bridge[name] = isAsync
-      ? async (...args: unknown[]) => {
-          try {
-            const reply = await fn(...args)
+    bridge[name] =
+      kind === "async"
+        ? async (...args: unknown[]) => {
+            inflight++
+            try {
+              const reply = await fn(...args)
+              if (!freeAnswer(name)) calls.push({ method: name, args, reply })
+              return reply
+            } catch (err) {
+              const e = err as { message?: string; status?: number; code?: string }
+              if (!freeAnswer(name)) {
+                calls.push({
+                  method: name,
+                  args,
+                  error: {
+                    message: String(e?.message ?? err),
+                    ...(typeof e?.status === "number" ? { status: e.status } : {}),
+                    ...(typeof e?.code === "string" ? { code: e.code } : {}),
+                  },
+                })
+              }
+              throw err
+            } finally {
+              inflight--
+            }
+          }
+        : (...args: unknown[]) => {
+            const reply = fn(...args)
             if (!freeAnswer(name)) calls.push({ method: name, args, reply })
             return reply
-          } catch (err) {
-            const e = err as { message?: string; status?: number; code?: string }
-            calls.push({
-              method: name,
-              args,
-              error: {
-                message: String(e?.message ?? err),
-                ...(typeof e?.status === "number" ? { status: e.status } : {}),
-                ...(typeof e?.code === "string" ? { code: e.code } : {}),
-              },
-            })
-            throw err
           }
-        }
-      : (...args: unknown[]) => {
-          const reply = fn(...args)
-          if (!freeAnswer(name)) calls.push({ method: name, args, reply })
-          return reply
-        }
   }
+  Object.defineProperty(bridge, INFLIGHT, { value: () => inflight, enumerable: false })
   return {
     bridge,
     finish: () => ({ ...entry, calls: JSON.parse(JSON.stringify(calls)) as RecordedCall[] }),

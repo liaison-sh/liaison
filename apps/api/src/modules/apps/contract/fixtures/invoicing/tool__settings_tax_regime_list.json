@@ -1,0 +1,15 @@
+{
+  "entry": "tool:settings_tax_regime_list",
+  "params": {},
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "tax_regimes",
+        "{\"orderBy\":{\"issuer_country\":\"asc\"},\"limit\":100}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

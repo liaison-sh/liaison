@@ -1,0 +1,68 @@
+{
+  "entry": "tool:counterparty_identity_set",
+  "params": {
+    "contact_id": "00000000-0000-4000-8000-0000000c0a01",
+    "customer_kind": "business",
+    "siren": "900000001",
+    "source": "manual",
+    "notes": "SIREN given by the customer's accountant"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"counterparty_contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":10}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"status\":\"awaiting_data\"},\"limit\":10}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:contacts_read",
+        "{\"contactId\":\"00000000-0000-4000-8000-0000000c0a01\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"contact\":{\"id\":\"00000000-0000-4000-8000-0000000c0a01\",\"name\":\"Atelier Lumen SAS\",\"email\":\"person1@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{},\"metadata\":null,\"createdAt\":\"2026-11-12T08:11:54.491Z\",\"updatedAt\":\"2026-11-12T08:11:54.491Z\"},\"recentMailBacklinks\":[],\"recentTimeline\":[]}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://recherche-entreprises.api.gouv.fr/search?q=900000001&page=1&per_page=10",
+        "{\"method\":\"GET\",\"headers\":{\"User-Agent\":\"Liaison invoicing (identity lookup)\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"results\\\":[{\\\"siren\\\":\\\"900000001\\\",\\\"siren_conserve\\\":null,\\\"nom_complet\\\":\\\"DSB CONSULTING\\\",\\\"nom_raison_sociale\\\":\\\"DSB CONSULTING\\\",\\\"sigle\\\":null,\\\"nombre_etablissements\\\":1,\\\"nombre_etablissements_ouverts\\\":1,\\\"siege\\\":{\\\"a_opco\\\":false,\\\"activite_principale\\\":\\\"70.22Z\\\",\\\"activite_principale_naf25\\\":\\\"70.20Y\\\",\\\"activite_principale_registre_metier\\\":null,\\\"annee_tranche_effectif_salarie\\\":null,\\\"adresse\\\":\\\"9 ALLEE DES VERGERS 75012 PARIS\\\",\\\"caractere_employeur\\\":\\\"N\\\",\\\"cedex\\\":null,\\\"code_pays_etranger\\\":null,\\\"code_postal\\\":\\\"75012\\\",\\\"commune\\\":\\\"75112\\\",\\\"complement_adresse\\\":null,\\\"coordonnees\\\":\\\"48.833490135,2.3965090196\\\",\\\"date_creation\\\":\\\"2021-06-01\\\",\\\"date_debut_activite\\\":\\\"2021-06-01\\\",\\\"date_fermeture\\\":null,\\\"date_mise_a_jour\\\":null,\\\"date_mise_a_jour_insee\\\":\\\"2025-12-05T23:19:21\\\",\\\"departement\\\":\\\"75\\\",\\\"distribution_speciale\\\":null,\\\"epci\\\":\\\"200054781\\\",\\\"est_siege\\\":true,\\\"etat_administratif\\\":\\\"A\\\",\\\"geo_adresse\\\":null,\\\"geo_id\\\":null,\\\"indice_repetition\\\":null,\\\"latitude\\\":\\\"48.833490135\\\",\\\"libelle_cedex\\\":null,\\\"libelle_commune\\\":\\\"PARIS\\\",\\\"libelle_commune_etranger\\\":null,\\\"libelle_pays_etranger\\\":null,\\\"libelle_voie\\\":\\\"DES VERGERS\\\",\\\"liste_enseignes\\\":null,\\\"liste_finess\\\":null,\\\"liste_id_bio\\\":null,\\\"liste_idcc\\\":null,\\\"liste_id_organisme_formation\\\":null,\\\"liste_rge\\\":null,\\\"liste_uai\\\":null,\\\"longitude\\\":\\\"2.3965090196\\\",\\\"nom_commercial\\\":null,\\\"numero_voie\\\":\\\"9\\\",\\\"dernier_numero_voie\\\":null,\\\"region\\\":\\\"11\\\",\\\"siret\\\":\\\"90000000100017\\\",\\\"statut_diffusion_etablissement\\\":\\\"O\\\",\\\"tranche_effectif_salarie\\\":\\\"NN\\\",\\\"type_voie\\\":\\\"ALLEE\\\"},\\\"activite_principale\\\":\\\"70.22Z\\\",\\\"activite_principale_naf25\\\":\\\"70.20Y\\\",\\\"categorie_entreprise\\\":\\\"PME\\\",\\\"caractere_employeur\\\":null,\\\"annee_categorie_entreprise\\\":\\\"2024\\\",\\\"date_creation\\\":\\\"2021-06-01\\\",\\\"date_fermeture\\\":null,\\\"date_mise_a_jour\\\":\\\"2026-11-11T09:17:12\\\",\\\"date_mise_a_jour_insee\\\":\\\"2025-12-06T07:33:30\\\",\\\"date_mise_a_jour_rne\\\":\\\"2026-09-26T13:30:36\\\",\\\"dirigeants\\\":[{\\\"nom\\\":\\\"SIN BLIMA\\\",\\\"prenoms\\\":\\\"DENISE\\\",\\\"annee_de_naissance\\\":\\\"1964\\\",\\\"date_de_naissance\\\":\\\"1964-05\\\",\\\"qualite\\\":\\\"Président de SAS\\\",\\\"nationalite\\\":null,\\\"type_dirigeant\\\":\\\"personne physique\\\"}],\\\"etat_administratif\\\":\\\"A\\\",\\\"nature_juridique\\\":\\\"5710\\\",\\\"section_activite_principale\\\":\\\"M\\\",\\\"tranche_effectif_salarie\\\":\\\"NN\\\",\\\"annee_tranche_effectif_salarie\\\":null,\\\"statut_diffusion\\\":\\\"O\\\",\\\"opposition_diffusion_commerciale\\\":false,\\\"matching_etablissements\\\":[],\\\"finances\\\":null,\\\"complements\\\":{\\\"collectivite_territoriale\\\":null,\\\"convention_collective_renseignee\\\":false,\\\"liste_idcc\\\":null,\\\"liste_finess_juridique\\\":null,\\\"numero_rnf\\\":null,\\\"egapro_renseignee\\\":false,\\\"est_achats_responsables\\\":false,\\\"est_alim_confiance\\\":false,\\\"est_association\\\":false,\\\"est_avocat\\\":false,\\\"est_bio\\\":false,\\\"est_entrepreneur_individuel\\\":false,\\\"est_entrepreneur_spectacle\\\":false,\\\"est_ess\\\":false,\\\"est_finess\\\":false,\\\"est_organisme_formation\\\":true,\\\"est_qualiopi\\\":false,\\\"liste_id_organisme_formation\\\":[\\\"11757795775\\\"],\\\"est_rge\\\":false,\\\"est_siae\\\":false,\\\"est_societe_mission\\\":false,\\\"est_uai\\\":false,\\\"est_patrimoine_vivant\\\":false,\\\"bilan_ges_renseigne\\\":false,\\\"identifiant_association\\\":null,\\\"statut_entrepreneur_spectacle\\\":null,\\\"type_siae\\\":null,\\\"a_aide_minimis\\\":false,\\\"a_aide_ademe\\\":false,\\\"est_administration\\\":false,\\\"est_service_public\\\":null,\\\"est_l100_3\\\":null},\\\"tva\\\":[\\\"FR68900000001\\\"]}],\\\"total_results\\\":1,\\\"page\\\":1,\\\"per_page\\\":10,\\\"total_pages\\\":1}\"}"
+    },
+    {
+      "method": "requestApproval",
+      "args": [
+        "{\"tool_name\":\"invoicing:counterparty_identity_set\",\"summary\":\"Confirm SIREN 900000001 for Atelier Lumen SAS\",\"summary_detail\":{\"subtitle\":\"Identity confirmation: the registered name does not match the counterparty\",\"lines\":[\"Counterparty: Atelier Lumen SAS\",\"Registry name: DSB CONSULTING\",\"SIREN: 900000001\",\"Head office city: PARIS\",\"Source: manual\",\"Name check: the registered name does not match the counterparty\"]},\"current_payload\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"customer_kind\":\"business\",\"siren\":\"900000001\",\"source\":\"manual\",\"notes\":\"SIREN given by the customer's accountant\"},\"editable_fields\":[]}"
+      ],
+      "reply": "{\"approval_id\":\"2007112b-28b9-42f6-8350-858cd37acb40\"}"
+    }
+  ]
+}

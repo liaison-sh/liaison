@@ -1,0 +1,18 @@
+{
+  "entry": "tool:deferred_tax_override",
+  "params": {
+    "deferred_id": "00000000-0000-4000-8000-0000000d0001",
+    "mode": "as_computed"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": [
+        "deferred_events",
+        "00000000-0000-4000-8000-0000000d0001"
+      ],
+      "reply": "null"
+    }
+  ]
+}

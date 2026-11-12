@@ -1,0 +1,45 @@
+{
+  "entry": "tool:recurring_schedule_create",
+  "params": {
+    "issuer_profile_id": "00000000-0000-4000-8000-0000000000a1",
+    "contact_id": "00000000-0000-4000-8000-0000000000c1",
+    "repeats": "month",
+    "billing_day": "1",
+    "lines": [
+      {
+        "description": "Monthly service {period}",
+        "qty": 1,
+        "unit_price_minor": 10000,
+        "vat_bp": 2000
+      }
+    ]
+  },
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["stripe_streams", "{\"limit\":100}"],
+      "reply": "[]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:contacts_identity",
+        "{\"contactId\":\"00000000-0000-4000-8000-0000000000c1\"}"
+      ],
+      "error": {
+        "message": "executeTool is not connected in an empty install"
+      }
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "stripe:billing_status_for_counterparty",
+        "{\"contactId\":\"00000000-0000-4000-8000-0000000000c1\"}"
+      ],
+      "error": {
+        "message": "executeTool is not connected in an empty install"
+      }
+    }
+  ]
+}

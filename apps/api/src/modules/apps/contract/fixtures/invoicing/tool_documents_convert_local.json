@@ -1,0 +1,17 @@
+{
+  "entry": "tool:documents_convert_local",
+  "params": {
+    "source_document_id": "00000000-0000-4000-8000-0000000000d1"
+  },
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"00000000-0000-4000-8000-0000000000d1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

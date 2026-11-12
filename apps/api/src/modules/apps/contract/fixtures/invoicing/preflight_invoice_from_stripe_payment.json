@@ -1,0 +1,22 @@
+{
+  "entry": "preflight:invoice_from_stripe_payment",
+  "params": {
+    "chargeId": "ch_contract_1"
+  },
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["documents", "{\"where\":{\"external_ref\":\"stripe:ch_contract_1\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"event_id\":\"stripe:ch_contract_1\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "entry": "tool:customer_link",
+  "params": {
+    "stripeCustomerId": "cus_contract_1",
+    "contactId": "00000000-0000-4000-8000-0000000000c1"
+  },
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["stripe_customers", "{\"where\":{\"stripe_id\":\"cus_contract_1\"},\"limit\":1}"],
+      "reply": "[]"
+    }
+  ]
+}

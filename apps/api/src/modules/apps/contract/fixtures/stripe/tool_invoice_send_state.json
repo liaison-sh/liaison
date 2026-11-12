@@ -1,0 +1,17 @@
+{
+  "entry": "tool:invoice_send_state",
+  "params": {
+    "ref": {
+      "kind": "stripe_invoice",
+      "id": "in_contract_1"
+    }
+  },
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[]"
+    }
+  ]
+}

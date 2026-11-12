@@ -90,7 +90,10 @@ export function readSupervisorConfig(env: NodeJS.ProcessEnv = process.env): Supe
   } catch {
     throw new Error("SANDBOX_BRIDGE_ORIGIN must be the app's bridge listener, http://host:port")
   }
-  if (origin.protocol !== "http:" || origin.origin !== bridgeOrigin.replace(/\/+$/, "")) {
+  if (
+    origin.protocol !== "http:" ||
+    (bridgeOrigin !== origin.origin && bridgeOrigin !== `${origin.origin}/`)
+  ) {
     throw new Error("SANDBOX_BRIDGE_ORIGIN must be a plain http origin (http://host:port)")
   }
   const cfg: SupervisorConfig = {

@@ -4,13 +4,14 @@
 // listener: it answers `ping` and `nest` for runs it registered (by token),
 // refuses every other call, and records what it saw.
 import { createHash, randomBytes } from "node:crypto"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import type { Server } from "bun"
 import { DEFAULTS, type SupervisorConfig } from "../src/config"
 import { createSupervisor, RUN_DEPTH_HEADER, type Supervisor } from "../src/supervisor"
 
-export const PROBE_APP = readFileSync(join(import.meta.dir, "fixtures", "probe-app.js"))
+// The probe module, as text (the bytes the sandbox hashes and loads).
+import probeAppText from "./fixtures/probe-app.js" with { type: "text" }
+
+export const PROBE_APP = new TextEncoder().encode(probeAppText)
 export const PROBE_SHA = createHash("sha256").update(PROBE_APP).digest("hex")
 
 export interface Sandbox {

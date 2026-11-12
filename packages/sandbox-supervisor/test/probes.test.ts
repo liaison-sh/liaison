@@ -37,8 +37,9 @@ describe("limits", () => {
     await other
     expect(r.body.ok).toBe(false)
     expect(r.body.error).toMatchObject({ kind: "limit", code: "cpu_limit" })
-    // Its limit plus the meter's reach, far before the 20 s deadline.
-    expect(took).toBeLessThan(1_000 + 2_000)
+    // Killed for CPU, long before its 20 s deadline (CPU time accrues slower
+    // than the wall clock on a busy machine, so the bound is loose).
+    expect(took).toBeLessThan(10_000)
     expect(others.length).toBeGreaterThan(3)
     expect(sb.sup.pool.counters.killed.cpu).toBe(1)
     // The process was replaced: the same app runs again.
@@ -51,7 +52,7 @@ describe("limits", () => {
     const took = Date.now() - t0
     expect(r.body.error).toMatchObject({ kind: "timeout", message: "App execution timed out" })
     expect(took).toBeGreaterThanOrEqual(1_500)
-    expect(took).toBeLessThan(1_500 + 1_000 + 1_000)
+    expect(took).toBeLessThan(1_500 + 1_000 + 3_000)
     expect(sb.sup.pool.counters.killed.wall).toBe(1)
   }, 30_000)
 

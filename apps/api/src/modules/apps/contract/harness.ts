@@ -73,7 +73,20 @@ export interface AppUnderContract {
   /** A PDF template's code for this executor, by its source path. */
   templateSource?: (relativePath: string) => Promise<ContractSource>
   surface: BridgeSurface
+  /**
+   * The bridge a webhook verifier gets in production (webhooks/verify-bridge.ts):
+   * config and HMAC helpers only. Defaults to `surface`.
+   */
+  verifySurface?: BridgeSurface
   fixtures?: Record<string, EgressFixture>
+}
+
+/** The bridge surface an entry's run gets: a webhook verifier's own, else the app's. */
+export function surfaceFor(
+  app: Pick<AppUnderContract, "surface" | "verifySurface">,
+  entry: ContractEntry,
+): BridgeSurface {
+  return entry.kind === "webhook-verify" && app.verifySurface ? app.verifySurface : app.surface
 }
 
 /** Production limits: the contract holds an app to the budget it gets in production. */
@@ -152,7 +165,7 @@ export async function runAppContract(
       const limits = limitsFor(entry)
       const fixture = app.fixtures?.[entry.entry] ?? null
       const runOnce = async (): Promise<RunRecord> => {
-        const replay = createReplayBridge(app.surface, fixture)
+        const replay = createReplayBridge(surfaceFor(app, entry), fixture)
         const outcome = await (isolate as ContractIsolate).run({
           exportName: entry.exportName,
           params: fixture?.params ?? {},

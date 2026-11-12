@@ -25,6 +25,7 @@ import type { PackageManifest } from "@liaison/app-sdk"
 import { build as esbuild } from "esbuild"
 import { solidPlugin } from "esbuild-plugin-solid"
 import {
+  buildWorkerModule,
   bunBuildFailureDetail,
   checkPackageManifest,
   manifestErrorMessage,
@@ -32,6 +33,9 @@ import {
   resolveExportedLocalName,
   stripEsmExportBlock,
   UI_EXTERNALS,
+  WORKER_MODULE_FILE,
+  WORKER_RUNTIME_DIRS,
+  REPO_ROOT as WORKER_RUNTIME_ROOT,
   webhookExportError,
 } from "../apps/api/src/modules/app-builder/build/freeze-core"
 import { findUnsupportedBundleImports, readAllShimExports } from "./lib/app-runtime-shims"
@@ -279,6 +283,30 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
     const webhookError = webhookExportError(raw, builtBundleSource)
     if (webhookError) throw new Error(webhookError)
 
+    // The Worker module (the remote isolate executor's build of the same
+    // handlers), beside bundle.js in every package: the install records its
+    // sha256 and keeps its bytes (install-service.ts), the package's sha256
+    // (and so its signed statement) covers it. Platform code it inlines comes
+    // only from WORKER_RUNTIME_DIRS, which the version guard watches.
+    const worker = await buildWorkerModule({ handlersPath: handlersEntry, plugins: bunPlugins })
+    const root = realpathSync(repoRoot)
+    const appReal = realpathSync(appDir)
+    for (const p of bundleSources(worker.outputs, process.cwd(), repoRoot, workspacePackages)) {
+      const abs = resolve(root, p)
+      const platform =
+        !abs.startsWith(`${appReal}/`) &&
+        !p.startsWith("packages/") &&
+        !p.split("/").includes("node_modules")
+      const runtime = relative(realpathSync(WORKER_RUNTIME_ROOT), abs).split("\\").join("/")
+      if (platform && !WORKER_RUNTIME_DIRS.some((dir) => runtime.startsWith(dir))) {
+        throw new Error(
+          `the Worker module inlines ${p}, outside the worker runtime (${WORKER_RUNTIME_DIRS.join(", ")}): add its directory to WORKER_RUNTIME_DIRS (freeze-core.ts)`,
+        )
+      }
+      sources.add(p)
+    }
+    writeFileSync(join(stage, WORKER_MODULE_FILE), worker.text)
+
     // Optional frontend UI bundle (Phase 16.5). Build with target:"browser" and
     // externalize solid-js / solid-js/web / solid-js/store so the kernel + the
     // plugin share one reactive runtime (resolved at runtime via the import map
@@ -468,7 +496,7 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
     }
 
     const tarballPath = join(outDir, `${manifest.name}-${manifest.version}.liaisonapp`)
-    const files = ["app.manifest.json", "bundle.js", ...templateFiles]
+    const files = ["app.manifest.json", "bundle.js", WORKER_MODULE_FILE, ...templateFiles]
     for (const optional of ["ui.js", "README.md", "CHANGELOG.md", "LICENSE"]) {
       if (existsSync(join(stage, optional))) files.push(optional)
     }

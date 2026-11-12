@@ -742,12 +742,12 @@ describe("the google-drive app's move", () => {
     expect(await driveSnapshot()).toEqual(after)
   })
 
-  it("migration 0296 hides what an org connection with no shared drive synced, and nothing of a personal one", async () => {
+  it("migration 0297 hides what an org connection with no shared drive synced, and nothing of a personal one", async () => {
     MovedAppsTestAccess.set(null)
     await seedDriveApp()
     await sql`UPDATE kernel.connected_accounts SET metadata = '{}'::jsonb WHERE id = ${ORG_ACCOUNT}`
     const migration = await Bun.file(
-      join(import.meta.dir, "../../db/migrations/0296_org_drive_unscoped_content.sql"),
+      join(import.meta.dir, "../../db/migrations/0297_org_drive_unscoped_content.sql"),
     ).text()
     await sql.unsafe(migration)
     const [doc] = await sql<Array<{ archived_at: Date | null }>>`

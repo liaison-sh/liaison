@@ -368,15 +368,13 @@ services:
       # Organisations' own custom apps and the app builder: on|off. Empty = on in
       # the managed edition, off on a self-hosted server (docs/reference/env.md).
       LIAISON_CUSTOM_APPS: ${LIAISON_CUSTOM_APPS:-}
-      # Workers app executor (apps on a remote V8 isolate loader). All empty by
-      # default: every app runs on the local sandbox (docs/reference/env.md).
-      LIAISON_WORKERS_APPS: ${LIAISON_WORKERS_APPS:-}
-      LIAISON_WORKERS_CUSTOM_APPS: ${LIAISON_WORKERS_CUSTOM_APPS:-}
+      # Workers app executor (every sandboxed app on a remote V8 isolate loader,
+      # when the three loader variables are set). All empty by default: every
+      # app runs on the local sandbox (docs/reference/env.md).
       LIAISON_APP_LOADER_URL: ${LIAISON_APP_LOADER_URL:-}
       LIAISON_APP_LOADER_CELL_ID: ${LIAISON_APP_LOADER_CELL_ID:-}
       LIAISON_APP_LOADER_KEY: ${LIAISON_APP_LOADER_KEY:-}
       LIAISON_APP_BRIDGE_BASE_URL: ${LIAISON_APP_BRIDGE_BASE_URL:-}
-      LIAISON_WORKERS_BUNDLES: ${LIAISON_WORKERS_BUNDLES:-}
       LIAISON_APP_BRIDGE_TIMINGS_FILE: ${LIAISON_APP_BRIDGE_TIMINGS_FILE:-}
       # Test harness routes (/api/_test/*). Refused at boot under NODE_ENV=production,
       # and the production image does not carry them: development builds only.

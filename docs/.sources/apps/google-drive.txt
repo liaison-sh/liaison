@@ -10,7 +10,7 @@ upload: sourceFileId up to 25 MB, contentBase64 up to 5 MB, multipart/related ->
 Org connection reads only the chosen shared drives; none chosen reads nothing -> bundled-apps/google-drive/src/drive.ts:96 ; bundled-apps/google-drive/src/model.ts:118
 Shared drives chosen in settings, by the agent (gated), or provision.sharedDrives; old connection.sharedDrives refused -> bundled-apps/google-drive/src/shared-drives.ts:93 ; bundled-apps/google-drive/src/provision.ts:16 ; apps/api/src/cli/config/schema.ts:335
 A change of shared drives syncs the org folders again -> bundled-apps/google-drive/src/shared-drives.ts:140
-Org folders hidden while no drive is chosen or outside the chosen drives -> bundled-apps/google-drive/src/knowledge.ts:120 ; apps/api/src/db/migrations/0296_org_drive_unscoped_content.sql:1
+Org folders hidden while no drive is chosen or outside the chosen drives -> bundled-apps/google-drive/src/knowledge.ts:120 ; apps/api/src/db/migrations/0297_org_drive_unscoped_content.sql:1
 Picked mode from the granted scopes -> bundled-apps/google-drive/src/model.ts:108
 Choose files opens Google's picker on the app's page with the person's own token -> bundled-apps/google-drive/src/ui/picked-files.tsx:80 ; bundled-apps/google-drive/pages/picker.ts:1 ; apps/api/src/modules/apps/app-pages.ts:383
 drive_picker answers an Open button (page handle) -> bundled-apps/google-drive/src/picker.ts:95 ; apps/web/src/modules/app-pages/PageHandleCard.tsx:14

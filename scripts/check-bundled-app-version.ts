@@ -16,6 +16,8 @@
 // under `packages/` changed, each app whose package they reach (the `sources`
 // scripts/freeze-app.ts reports) is frozen twice: as it is, and with those files
 // at their base contents (served to the bundlers, the tree is not touched). The
+// platform code every Worker module inlines (WORKER_RUNTIME_DIRS in freeze-core.ts:
+// the worker entry and core, and the sandbox files they import) counts the same way. The
 // app changed when the two packages differ, so a shared change the bundler drops
 // from an app (tree-shaken code) asks for no bump. When the second freeze cannot
 // be made (a file new or deleted since the base that it needs, a JSX file of a
@@ -30,6 +32,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { WORKER_RUNTIME_DIRS } from "../apps/api/src/modules/app-builder/build/freeze-core"
 import { freezeApp } from "./freeze-app"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -155,7 +158,10 @@ export async function checkBundledAppVersions(
     const m = /^bundled-apps\/([^/]+)\/(.+)$/.exec(path)
     if (m) {
       if (counts(m[2])) add(m[1], m[2])
-    } else if (path.startsWith("packages/") && counts(path)) {
+    } else if (
+      (path.startsWith("packages/") || WORKER_RUNTIME_DIRS.some((d) => path.startsWith(d))) &&
+      counts(path)
+    ) {
       shared.add(path)
     }
   }

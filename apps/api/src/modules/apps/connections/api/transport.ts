@@ -50,9 +50,17 @@ import { rootLogger } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
 import { readStreamCapped } from "~/lib/read-capped-body"
 import { redis } from "~/lib/redis"
+import { toolRegistry } from "~/modules/apps/app-registries"
+import {
+  acquireConnectionPermit,
+  ConnectionRateLimitedError,
+} from "~/modules/apps/connection-limiter"
+import { type ConnectionLimits, declaredConnectionLimits } from "~/modules/apps/connection-limits"
+import { connectionLimiterLimits } from "~/modules/apps/run-limits"
 import { assertDemoAppFetchAllowed, isDemoRestriction } from "~/modules/demo/demo-egress"
 import { privateApiConnectorHostsAllowed } from "./adapter-policy"
 import { cacheKeyFor, rememberCacheKey } from "./cache"
+import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "./store"
 
 export const apiConnectorLog = rootLogger.child({ module: "api-connector" })
 
@@ -132,49 +140,51 @@ export class RequestBudgetError extends ApiConnectorError {
   }
 }
 
-/** Requests in flight to one connection at most, across every caller in this process. */
+/**
+ * Requests in flight to one connection at most, across every caller of every
+ * process: the shared per-connection limiter (connection-limiter.ts), with the
+ * `limits` the app declares on its API connection, this many when it declares
+ * none. A wait past the limiter's interactive budget is answered as a timeout.
+ */
 export const MAX_IN_FLIGHT_PER_CONNECTION = 4
 
-const inFlight = new Map<string, { active: number; waiting: (() => void)[] }>()
+function connectionLimitsOf(orgId: string): ConnectionLimits {
+  const manifest = (
+    toolRegistry.get([orgId, API_CONNECTOR_APP, "connector_read"]) as
+      | { _manifest?: { connections?: Record<string, unknown> } }
+      | undefined
+  )?._manifest
+  return (
+    declaredConnectionLimits(manifest, API_CONNECTOR_CONNECTION) ?? {
+      concurrency: MAX_IN_FLIGHT_PER_CONNECTION,
+    }
+  )
+}
 
-/**
- * Wait for one of the connection's MAX_IN_FLIGHT_PER_CONNECTION request
- * slots; resolves to its release. A caller whose signal aborts while it waits
- * leaves the queue and rejects with the signal's reason.
- */
-export function acquireConnectionSlot(key: string, signal?: AbortSignal): Promise<() => void> {
-  let entry = inFlight.get(key)
-  if (!entry) {
-    entry = { active: 0, waiting: [] }
-    inFlight.set(key, entry)
-  }
-  const e = entry
-  const release = () => {
-    const next = e.waiting.shift()
-    if (next) next()
-    else {
-      e.active--
-      if (e.active === 0) inFlight.delete(key)
+/** Wait for one of the connection's permits; resolves to its release. */
+export async function acquireConnectionSlot(
+  orgId: string,
+  identifier: string,
+  signal?: AbortSignal,
+): Promise<() => Promise<void>> {
+  try {
+    return await acquireConnectionPermit(
+      { orgId, app: API_CONNECTOR_APP, connection: API_CONNECTOR_CONNECTION, identifier },
+      connectionLimitsOf(orgId),
+      {
+        maxWaitMs: connectionLimiterLimits().maxWaitMs.interactive,
+        ...(signal ? { signal } : {}),
+      },
+    )
+  } catch (err) {
+    if (err instanceof ConnectionRateLimitedError) {
+      throw new ApiConnectorError(
+        "timeout",
+        "Too many requests to this connection are in flight; try again in a moment.",
+      )
     }
+    throw err
   }
-  if (e.active < MAX_IN_FLIGHT_PER_CONNECTION) {
-    e.active++
-    return Promise.resolve(release)
-  }
-  return new Promise((resolve, reject) => {
-    const grant = () => {
-      signal?.removeEventListener("abort", onAbort)
-      resolve(release)
-    }
-    const onAbort = () => {
-      const i = e.waiting.indexOf(grant)
-      if (i >= 0) e.waiting.splice(i, 1)
-      reject(signal?.reason)
-    }
-    if (signal?.aborted) return reject(signal.reason)
-    signal?.addEventListener("abort", onAbort, { once: true })
-    e.waiting.push(grant)
-  })
 }
 
 // ---------------------------------------------------------------------------
@@ -773,16 +783,16 @@ export async function callOperation(input: CallOperationInput): Promise<CallOper
       break
     }
     let page: { status: number; doc: unknown }
-    const release = await acquireConnectionSlot(
-      `${input.orgId}:${input.identifier}`,
-      perRequest,
-    ).catch((err: unknown) => {
-      throw mapFetchError(err, allSecrets, perRequest)
-    })
+    const release = await acquireConnectionSlot(input.orgId, input.identifier, perRequest).catch(
+      (err: unknown) => {
+        if (err instanceof ApiConnectorError) throw err
+        throw mapFetchError(err, allSecrets, perRequest)
+      },
+    )
     try {
       page = await sendOnce(input, rendered, extra, auth, allSecrets, perRequest)
     } finally {
-      release()
+      await release()
     }
     pages++
     status = page.status

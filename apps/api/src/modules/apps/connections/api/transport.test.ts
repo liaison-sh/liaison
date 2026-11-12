@@ -140,30 +140,31 @@ afterEach(() => {
   delete process.env.LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS
 })
 
-describe("api-connector transport: per-connection limiter", () => {
+describe("api-connector transport: the shared per-connection limiter", () => {
   it("lets MAX_IN_FLIGHT_PER_CONNECTION requests run at once, the next when one ends", async () => {
-    const key = `org:limiter-${Date.now()}`
+    const org = `00000000-0000-4000-8000-${String(Date.now()).slice(-12).padStart(12, "0")}`
+    const id = `limiter-${Date.now()}`
     const first = await Promise.all(
-      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () => acquireConnectionSlot(key)),
+      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () => acquireConnectionSlot(org, id)),
     )
     let granted = false
-    const waiting = acquireConnectionSlot(key).then((release) => {
+    const waiting = acquireConnectionSlot(org, id).then((release) => {
       granted = true
       return release
     })
     const aborted = new AbortController()
-    const cancelled = acquireConnectionSlot(key, aborted.signal)
-    await Bun.sleep(5)
+    const cancelled = acquireConnectionSlot(org, id, aborted.signal)
+    await Bun.sleep(50)
     expect(granted).toBe(false)
     // Another connection is not held up.
-    ;(await acquireConnectionSlot(`${key}-other`))()
+    await (await acquireConnectionSlot(org, `${id}-other`))()
     aborted.abort(new Error("gone"))
     await expect(cancelled).rejects.toThrow("gone")
-    first[0]?.()
+    await first[0]?.()
     const release = await waiting
     expect(granted).toBe(true)
-    release()
-    for (const r of first.slice(1)) r()
+    await release()
+    for (const r of first.slice(1)) await r()
   })
 })
 

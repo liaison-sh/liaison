@@ -11,8 +11,15 @@
     "summary": "Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools and a customer card.",
     "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/api-connector"
   },
-  "trusted": false,
+  "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "scopes": [
+    "api-connector:read",
+    "api-connector:write",
+    "api-connector:admin",
+    "api-connector:accounts:admin"
+  ],
   "dependencies": {
     "required": [
       "kernel"
@@ -24,6 +31,9 @@
       "purpose": "API connection",
       "multiInstance": true,
       "allowedDomains": [],
+      "limits": {
+        "concurrency": 4
+      },
       "credentialFields": [
         {
           "name": "apiKey",

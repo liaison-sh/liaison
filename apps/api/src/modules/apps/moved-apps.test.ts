@@ -1093,3 +1093,166 @@ describe("the gitlab app's move", () => {
     )
   })
 })
+
+// The API connector's move: everything it had stays where the catalog app (and
+// the platform-held API connections, connections/api/) read it. The
+// registration, both connections' accounts with their encrypted credentials,
+// the adapters and their kept versions in the app's own tables are the same
+// rows before and after, the catalog app is installed under the same name, and
+// the platform still reads every connection.
+describe("the api-connector app's move", () => {
+  const AC = "api-connector"
+  const CRM_ACCOUNT = "00000000-0000-0000-0000-0000000ad033"
+  const ERP_ACCOUNT = "00000000-0000-0000-0000-0000000ad043"
+  const json = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
+  const adapter = (id: string, auth: Record<string, unknown>) => ({
+    id,
+    name: `${id.toUpperCase()} system`,
+    version: "1.0.0",
+    baseUrl: `https://${id}.example.com/api`,
+    auth,
+    operations: [
+      {
+        name: "list_companies",
+        description: "Companies.",
+        kind: "read",
+        method: "GET",
+        path: "/companies",
+        params: { type: "object", properties: {} },
+        items: "/data",
+        fields: ["id", "name"],
+      },
+    ],
+  })
+  const CRM = adapter("crm", { type: "apiKey", in: "header", name: "X-Api-Key" })
+  const ERP = adapter("erp", {
+    type: "oauth2ClientCredentials",
+    tokenUrl: "https://erp.example.com/oauth/token",
+  })
+
+  async function seedApiConnector(): Promise<void> {
+    const rows: Array<[string, Record<string, RowValue>]> = [
+      [
+        "kernel.apps",
+        { org_id: ORG, name: AC, version: "1.3.1", status: "active", config: json({}) },
+      ],
+      ...[
+        [CRM_ACCOUNT, "crm"],
+        [ERP_ACCOUNT, "erp"],
+      ].map(
+        ([id, identifier]) =>
+          [
+            "kernel.connected_accounts",
+            {
+              id: id as string,
+              org_id: ORG,
+              app_name: AC,
+              connection_name: "api",
+              owner_type: "org",
+              provider_type: "credentials",
+              identifier: identifier as string,
+              display_name: `${identifier} system`,
+              credentials_encrypted: `enc:v1:${identifier}`,
+              created_by: USER,
+            },
+          ] as [string, Record<string, RowValue>],
+      ),
+      ...[CRM, ERP].map(
+        (doc) =>
+          [
+            "app_api_connector.adapters",
+            {
+              org_id: ORG,
+              identifier: doc.id,
+              adapter: json(doc),
+              adapter_version: doc.version,
+              updated_by: USER,
+            },
+          ] as [string, Record<string, RowValue>],
+      ),
+      [
+        "app_api_connector.adapter_versions",
+        {
+          org_id: ORG,
+          identifier: "crm",
+          adapter: json({ ...CRM, version: "0.9.0" }),
+          adapter_version: "0.9.0",
+          saved_by: USER,
+          saved_at: { raw: "now()" },
+        },
+      ],
+    ]
+    for (const [table, row] of rows) await sql.unsafe(insertSql(table, row))
+  }
+
+  async function acSnapshot(): Promise<Record<string, unknown[]>> {
+    const strip = (rows: readonly unknown[]) =>
+      rows.map((r) => {
+        const { updated_at: _u, ...rest } = r as Record<string, unknown>
+        return rest
+      })
+    return {
+      apps: strip(
+        await sql`SELECT id, name, status, config FROM kernel.apps
+        WHERE org_id = ${ORG} AND name = ${AC}`,
+      ),
+      accounts: strip(
+        await sql`SELECT * FROM kernel.connected_accounts
+        WHERE org_id = ${ORG} AND app_name = ${AC} ORDER BY identifier`,
+      ),
+      adapters: strip(
+        await sql`SELECT * FROM app_api_connector.adapters WHERE org_id = ${ORG} ORDER BY identifier`,
+      ),
+      versions: strip(
+        await sql`SELECT * FROM app_api_connector.adapter_versions
+        WHERE org_id = ${ORG} ORDER BY identifier, saved_at`,
+      ),
+      adoptions: strip(
+        await sql`SELECT step_id, report FROM kernel.app_adoptions WHERE app_name = ${AC}`,
+      ),
+    }
+  }
+
+  afterEach(async () => {
+    await withSystemDb("moved-apps-ac-test-cleanup", async (db) => {
+      await db.delete(appsInstalled).where(eq(appsInstalled.name, AC))
+      await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, AC))
+    })
+    await sql`DELETE FROM app_api_connector.adapter_versions WHERE org_id = ${ORG}`
+    await sql`DELETE FROM app_api_connector.adapters WHERE org_id = ${ORG}`
+  })
+
+  it("keeps every row: registration, accounts and credentials, adapters and their versions", async () => {
+    MovedAppsTestAccess.set(null)
+    bakeCatalog(true, AC)
+    await seedApiConnector()
+    const before = await acSnapshot()
+    expect(before.accounts).toHaveLength(2)
+    expect(before.adapters).toHaveLength(2)
+    expect(before.versions).toHaveLength(1)
+
+    const first = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(first.failed).toEqual([])
+    expect(first.repaired).toContain(AC)
+    const after = await acSnapshot()
+    expect(after).toEqual(before)
+    expect(after.adoptions).toEqual([])
+    const [installed] = await sql`SELECT name, version, source_url FROM kernel.apps_installed
+      WHERE name = ${AC}`
+    expect(installed?.version).toBe(VERSION)
+
+    // The platform reads every connection, with its credentials' status.
+    const { listAdapterRows, credentialStatuses } = await import(
+      "~/modules/apps/connections/api/store"
+    )
+    expect((await listAdapterRows(ORG)).map((r) => [r.identifier, r.adapter.auth.type])).toEqual([
+      ["crm", "apiKey"],
+      ["erp", "oauth2ClientCredentials"],
+    ])
+    expect([...(await credentialStatuses(ORG)).keys()].sort()).toEqual(["crm", "erp"])
+
+    const second = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(second.failed).toEqual([])
+    expect(await acSnapshot()).toEqual(after)
+  })
+})

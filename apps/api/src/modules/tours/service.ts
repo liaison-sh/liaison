@@ -38,12 +38,12 @@ import {
   type UpdateTourRequest,
 } from "@liaison/shared"
 import { and, eq, isNull, sql } from "drizzle-orm"
-import { customerLookupConfigured } from "~/apps/api-connector/customer"
 import type { RlsClient } from "~/db"
 import { type TourProgressRow, tourProgress } from "~/db/schema/kernel"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { env } from "~/lib/env"
 import { listInstalledAppNames } from "~/modules/apps/app-registries"
+import { customerLookupConfigured } from "~/modules/apps/connections/api/customer"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isDemoEgressRestricted } from "~/modules/demo/demo-egress"
 import { isDemoOrgId, isVisitorDemoOrgId } from "~/modules/demo/demo-org"

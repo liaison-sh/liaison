@@ -8,7 +8,6 @@ import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
 import { validateAdapter } from "@liaison/api-connector-core"
 import { sql as drizzleSql, eq } from "drizzle-orm"
-import { upsertAdapterRow } from "~/apps/api-connector/store"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -20,6 +19,8 @@ import { registerImportTools } from "~/modules/agent/tools/import-tools"
 import { decideApproval } from "~/modules/approvals/decide"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import * as catalogSources from "~/modules/apps/catalog-sources"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg, reloadInstalledApps } from "~/modules/apps/init"
@@ -331,6 +332,7 @@ describe("import tools: kinds and transforms", () => {
 
   it("samples with the agent's own scopes, never more: a file under a ticket stays out of reach of an agent without tickets access", async () => {
     await ensureAppsForOrg(orgId, {})
+    await registerApiConnectorApp(orgId)
     await reloadInstalledApps(orgId)
     await rebuildFilesSelectPolicy()
     const p = `Sc${crypto.randomUUID().slice(0, 5)}`

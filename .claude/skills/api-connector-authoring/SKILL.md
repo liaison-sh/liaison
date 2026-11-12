@@ -24,7 +24,7 @@ Schema) and the error codes. If this skill and that doc disagree, the doc
 wins.
 
 Worked example, used throughout: the fixture CRM in
-`apps/api/src/apps/api-connector/__fixtures__/fixture-crm/`, its
+`apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/`, its
 `openapi.json` (the input) and `fixture-crm.adapter.yaml` (the result, written
 by following this skill). Read the adapter when you want to see what "done"
 looks like.
@@ -54,7 +54,7 @@ To practise or demo the loop end to end, start the fixture CRM (it serves
 answers to `fixture-crm-dev-key`):
 
 ```sh
-FIXTURE_CRM_API_KEY=dev-key bun run apps/api/src/apps/api-connector/__fixtures__/fixture-crm/server.ts
+FIXTURE_CRM_API_KEY=dev-key bun run apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/server.ts
 ```
 
 and run Steps 6 to 8 from a checkout against a **private** database (see
@@ -329,13 +329,19 @@ or on the command line. Then add the connector to the deployment's
 apps:
   - name: api-connector
     enable: true
-
-apiConnectors:
-  - identifier: crm                          # the connection slug: lowercase, digits, -
-    adapter: connectors/crm.adapter.yaml     # relative to this config file, inside its directory (or inline)
-    credentials:
-      apiKey: "${CRM_API_KEY}"               # the fields of your auth type (Step 2)
+    provision:
+      connectors:
+        - identifier: crm                                # the connection slug: lowercase, digits, -
+          adapter: { $file: connectors/crm.adapter.yaml }  # relative to this config file, inside its directory (or inline)
+    connections:
+      - name: api
+        identifier: crm
+        credentials:
+          apiKey: "${CRM_API_KEY}"                       # the fields of your auth type (Step 2)
 ```
+
+(The old top-level `apiConnectors` section is refused, with a message saying
+where it moved.)
 
 ```sh
 docker compose exec -T -e CRM_API_KEY app liaison config apply --config /setup/liaison-config.yaml --dry-run
@@ -345,8 +351,9 @@ docker compose exec -T -e CRM_API_KEY app liaison config apply --config /setup/l
 Read the dry-run plan first (per connection: adapter write/unchanged,
 credentials write/unchanged/pending); a second apply of the same file changes
 nothing. Credentials whose values are all empty are reported pending, not
-written. An org can hold several connectors (a CRM and an ERP): one entry
-each, with its own `identifier` and credentials. `liaison config verify`
+written. An org can hold several connectors (a CRM and an ERP): one
+`connectors` entry and one `connections` entry each, with its own
+`identifier` and credentials. `liaison config verify`
 then probes each connection with one page of a read operation that needs no
 params, preferring one that is not `customer.lookup`: called with no filter, a
 lookup can return (or page through) every customer, which a real CRM may
@@ -489,10 +496,10 @@ search-style GraphQL or JSON-RPC query can sometimes be expressed as a
 ## Reference
 
 - `docs/api-connector.md`: architecture, safety stack, format reference,
-  roles, config, CLI, routes, error codes.
+  roles, config, CLI, the settings screen's tools, error codes.
 - `packages/api-connector-core/adapter.schema.json`: the JSON Schema (for
   editors; `validateAdapter` is the authority).
-- `apps/api/src/apps/api-connector/__fixtures__/fixture-crm/`: the fixture
+- `apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/`: the fixture
   CRM (`openapi.json`) and the adapter built from it with this skill
   (`fixture-crm.adapter.yaml`).
 - `docs/provisioning-cli.md`: `liaison config apply` and its other sections.

@@ -11,6 +11,8 @@
  * matches the file (`unchanged`).
  */
 
+import { readFileSync } from "node:fs"
+import { isAbsolute, relative, resolve, sep } from "node:path"
 import { ConfigError } from "~/cli/config/parse"
 import type { ProvisionContext } from "~/cli/provisioners/types"
 import {
@@ -36,12 +38,63 @@ export function assertProvisionValid(
   }
 }
 
+/**
+ * A provision block may name a file next to the config file where a value is
+ * long (an adapter document): `{ $file: "adapters/crm.yaml" }` is replaced by
+ * that file's text before the app sees the block. The path is relative to the
+ * config file's directory and may not leave it. An agent's config tool has no
+ * config directory: a `$file` there is refused.
+ */
+export function resolveProvisionFiles(
+  value: unknown,
+  configDir: string | undefined,
+  where: string,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((v, i) => resolveProvisionFiles(v, configDir, `${where}[${i}]`))
+  }
+  if (value === null || typeof value !== "object") return value
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+  if (keys.length === 1 && keys[0] === "$file") {
+    const path = record.$file
+    if (typeof path !== "string" || path === "") {
+      throw new ConfigError(`${where}: $file names a file path`)
+    }
+    if (!configDir)
+      throw new ConfigError(`${where}: $file needs a config file; pass the content inline`)
+    if (isAbsolute(path))
+      throw new ConfigError(`${where}: '${path}' must be relative to the config file directory`)
+    const base = resolve(configDir)
+    const target = resolve(base, path)
+    const rel = relative(base, target)
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new ConfigError(`${where}: '${path}' escapes the config file directory`)
+    }
+    try {
+      return readFileSync(target, "utf8")
+    } catch (err) {
+      throw new ConfigError(
+        `${where}: cannot read '${path}': ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+  return Object.fromEntries(
+    keys.map((k) => [k, resolveProvisionFiles(record[k], configDir, `${where}.${k}`)]),
+  )
+}
+
 async function runProvisionBlock(
   ctx: ProvisionContext,
   appName: string,
-  provision: Record<string, unknown>,
+  rawProvision: Record<string, unknown>,
   dryRun: boolean,
 ): Promise<string[]> {
+  const provision = resolveProvisionFiles(
+    rawProvision,
+    ctx.toolPath ? undefined : ctx.configDir,
+    `apps.${appName}.provision`,
+  ) as Record<string, unknown>
   await ensureAppsForOrg(ctx.orgId)
   assertProvisionValid(ctx.orgId, appName, provision)
   try {

@@ -97,9 +97,9 @@ liaison erase-user <userId>
   report (app, connection, `PASS` / `FAIL` / `SKIPPED`, the remote identity,
   never the secret) and exits `1` when any connector fails, so it can gate a
   deploy. Apps that declare no `verify` handler report `SKIPPED` (GitLab
-  declares one). Each `apiConnectors` connection is probed with
-  a read operation that takes no required params, preferring one that is not
-  `customer.lookup` (an unfiltered lookup may return every customer; `SKIPPED`
+  declares one). The `api-connector` app's own check probes each
+  connection with a read operation that takes no required params and is not
+  `customer.lookup` (an unfiltered lookup may return every customer; skipped
   when there is none). Like `api-connector test`, it calls the API from the
   CLI process: a loopback or private host needs
   `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true` in the CLI's environment.
@@ -483,7 +483,7 @@ The annotated full example is
   `${VAR}` without a default is exit 2. Quote a reference inside a YAML flow
   map (`{ apiKey: "${KEY}" }`), where a bare `${` does not parse.
 - Sections run in this order: `org`, `admin`, `roles`, `email`, `byok`,
-  `apiKeys`, `users`, `mail`, `tickets`, `apps`, `apiConnectors`, `knowledge`,
+  `apiKeys`, `users`, `mail`, `tickets`, `apps`, `knowledge`,
   `agents`, `invoicing`.
   `users[].role` names are checked before anything is written. A role is
   valid when the org has it or the same apply creates it: a role declared under
@@ -497,7 +497,7 @@ The annotated full example is
 | Section | What it ensures |
 |---|---|
 | `org` | The org (`slug`, `name`, optional `timezone`, `defaultLocale`, `credits`, `requireAdminSecondFactor`). `requireAdminSecondFactor: true` makes two-step verification mandatory for administrators: one without it signs in to a screen that only sets it up. Absent leaves the org's setting unchanged. |
-| `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (credentials in `apiConnectors`, an `apps` connection, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A catalog app install fails the same way (exit `2`). An org-owned connection that already exists unchanged needs no admin. |
+| `admin` | The owner account, with a personal agent. `password` is optional (passwordless sign-in). An existing admin's password is never reset. Without this section, the run acts as the org's earliest active admin (for example, as the person who connected an API connector's credentials). With no active admin, any step that would store a connection (an `apps` connection or account, an IMAP tickets inbox or shared mailbox) is refused before writing, with a message naming the step and saying to add an `admin` section. A catalog app install fails the same way (exit `2`). An org-owned connection that already exists unchanged needs no admin. |
 | `roles` | Custom roles: a name plus the exact scope set, reconciled on every apply. |
 | `users` | Members by email with a role name; `mode: invite` (default) or `mode: create` with `password`. A re-run that gives an existing `mode: create` user a role they do not hold yet grants it and reports the user under `changed` (the plan says `exists: grant role <name>`); an identical re-run reports them `unchanged`, and so does an invite to a user who already holds the role or already has an invite waiting. The password of an existing user is never changed. |
 | `byok` | Per-org AI provider keys (`openrouter`, `anthropic`, `openai`, `google`, `mistral`), validated live unless `validate: false` or `--no-validate-byok`. One `openrouter` key is the recommended single key: when the org has no other usable model key, the apply adds OpenRouter's default model (DeepSeek V4.1 Flash 1017) and makes it Auto, so the org can chat without a dashboard step (reported as `byok.openRouterAuto`). |
@@ -506,8 +506,7 @@ The annotated full example is
 | `mail.mailboxes` | Mail app mailboxes (below). |
 | `tickets.inboxes` | Ticket inboxes (below). |
 | `tickets.approveRepliesFromHome` | `true` lets a pending customer reply be approved, edited or rejected from its Home card; `false` (the default) keeps it decidable only from the ticket. Omit it to leave the stored value unchanged. |
-| `apps` | Install (catalog apps), enable, and connect: credentials connections headlessly, OAuth connections reported `pending`. |
-| `apiConnectors` | API connections of the `api-connector` app by `identifier`: the adapter document (a path relative to the config file, or inline) and the credentials its auth type needs (below). |
+| `apps` | Install (catalog apps), enable, and connect: credentials connections headlessly, OAuth connections reported `pending`. An app's own setup goes in its `provision` block, more accounts of one connection in `connections` (the API connector's connections, below). |
 | `knowledge` | Knowledge collections (by name), documents from one `contentFile` or a whole `dir` (relative to the config file), written inline in `content`, or read from an uploaded file (`contentFileId`), sources. |
 | `agents` | Role agents (support, sales...) by `handle`: display name, purpose, system prompt, extra scopes. |
 | `invoicing` | Issuer profiles, tax regimes, HS codes (below). |
@@ -749,31 +748,42 @@ app's connection is set up and reports each line it changed
 handler without writing: a line it would change is `DRIFT`; then the app's own
 check, when it has one, is `PASS` or `FAIL`.
 
-### `apiConnectors`
+### API connections (`apps[].provision` of `api-connector`)
+
+The removed top-level `apiConnectors` section is refused (exit 2) with where it
+moved: each connection's adapter goes in the `api-connector` app's
+`provision.connectors`, its credentials in the app entry's `connections`.
 
 ```yaml
-apiConnectors:
-  - identifier: crm                      # slug: lowercase letters, digits, -
-    adapter: adapters/crm.adapter.yaml   # relative to this file (or an inline object)
-    credentials: { apiKey: "${CRM_API_KEY}" }
-  - identifier: erp
-    adapter: adapters/erp.adapter.yaml
-    credentials: { clientId: "${ERP_CLIENT_ID}", clientSecret: "${ERP_CLIENT_SECRET}" }
+apps:
+  - name: api-connector
+    enable: true
+    provision:
+      connectors:
+        - identifier: crm                              # slug: lowercase letters, digits, -
+          adapter: { $file: adapters/crm.adapter.yaml }  # relative to this file (or an inline object)
+        - identifier: erp
+          adapter: { $file: adapters/erp.adapter.yaml }
+    connections:
+      - { name: api, identifier: crm, credentials: { apiKey: "${CRM_API_KEY}" } }
+      - { name: api, identifier: erp, credentials: { clientId: "${ERP_CLIENT_ID}", clientSecret: "${ERP_CLIENT_SECRET}" } }
 ```
 
+- `{ $file: <path> }` anywhere in a `provision` block is replaced by that
+  file's text; the path may not leave the config file's directory. The agent's
+  config tools take content inline only.
 - The adapter is validated before anything is written: an invalid one is
-  exit 2 with each issue's path. Adapter paths may not leave the config
-  file's directory.
-- `credentials` holds exactly the fields of the adapter's auth type:
-  `apiKey` (apiKey), `token` (bearer), `username` + `password` (basic),
-  `clientId` + `clientSecret` (oauth2ClientCredentials; the token URL is part
-  of the adapter). Values all empty (`${VAR:-}`) report the connection
-  `pending` and still store the adapter.
-- Re-applying is idempotent: the adapter and the credentials are rewritten
-  only when they differ from what is stored (compared decrypted, never
-  printed), and a rewrite drops the connection's cached token and customer
-  lookups. The plan and the log name the adapter settings that changed
-  (`adapter updated (baseUrl changed)`).
+  exit 2 with each issue's path. Only a changed adapter is written, and a
+  change of its API address or auth deletes the stored credentials (the plan
+  says so).
+- `connections` (several accounts of one multiInstance connection, each by its
+  `identifier`) are applied after the app's `provision`. For an API connection,
+  `credentials` holds exactly the fields of the adapter's auth type: `apiKey`
+  (apiKey), `token` (bearer), `username` + `password` (basic), `clientId` +
+  `clientSecret` (oauth2ClientCredentials; the token URL is part of the
+  adapter). Values all empty (`${VAR:-}`) report the account `pending`.
+- Re-applying is idempotent: adapters and credentials are rewritten only when
+  they differ from what is stored (compared decrypted, never printed).
 - Demo orgs refuse credentials, like every connector.
 
 ### `knowledge`
@@ -1099,7 +1109,7 @@ cap reaches 80 % and 100 %.
 
 An admin can also ask the agent to change a section. The agent uses the
 `config_<section>` tools (roles, email, users, mail, tickets, apps,
-apiConnectors, knowledge, agents, invoicing), which take the same data as the
+knowledge, agents, invoicing), which take the same data as the
 section here and run the same provisioners.
 
 - Each change is an approval card listing its plan; it runs only once a

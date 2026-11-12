@@ -1,0 +1,14 @@
+{
+  "entry": "provision:verify",
+  "params": {
+    "config": {}
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": [
+    {
+      "method": "api_verify",
+      "args": [],
+      "reply": "{\"results\":[{\"connection\":\"crm\",\"status\":\"PASS\",\"identity\":\"list_companies: HTTP 200, 6 item(s)\"},{\"connection\":\"crm-us\",\"status\":\"SKIPPED\",\"reason\":\"no credentials stored\"}]}"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ Authorization: Bearer or ApiKey, sha256 lookup -> apps/api/src/modules/webhooks/
 Public routes mounted at /webhooks -> apps/api/src/app.ts:1159
 Create routes generic and per inbox -> apps/api/src/modules/webhooks/tickets-public.ts:1336-1346
 Attachment routes -> apps/api/src/modules/webhooks/tickets-public.ts:666-674
-No OpenAPI document (only a test fixture CRM has one) -> apps/api/src/apps/api-connector/__fixtures__/fixture-crm/openapi.json:1
+No OpenAPI document (only a test fixture CRM has one) -> apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/openapi.json:1
 Settings > Apps > Tickets, Inboxes, tickets:inboxes:admin -> docs/apps/tickets.md:13
 Create API inbox -> packages/shared/src/i18n/locales/en/tickets.json:146
 Generate API key, shown once, Copy API key -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:227-232

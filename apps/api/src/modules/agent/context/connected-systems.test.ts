@@ -18,7 +18,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { validateAdapter } from "@liaison/api-connector-core"
 import { sql as drizzleSql } from "drizzle-orm"
-import { upsertAdapterRow } from "~/apps/api-connector/store"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
@@ -30,6 +29,8 @@ import { assembleContext } from "~/modules/agent/context/context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { handleToolSearch } from "~/modules/agent/tools/tool-search"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -102,6 +103,7 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   THREAD = randomUUID()
   await db.execute(drizzleSql`
     INSERT INTO kernel.threads (id, org_id, handle, type, created_by)

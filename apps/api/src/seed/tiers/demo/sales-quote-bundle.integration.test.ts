@@ -24,10 +24,6 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { buildRefToken } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import {
-  type DemoApiConnectorResponder,
-  registerDemoApiConnectorResponder,
-} from "~/apps/api-connector/transport"
 import { withPrivilegedDb } from "~/db/privileged"
 import { isJobWorkerRegistered, registerJobWorker } from "~/infra/jobs/jobs"
 import { resolveRoutineOwnerDimensionGrants } from "~/infra/jobs/kernel-jobs"
@@ -36,6 +32,10 @@ import { decideApproval } from "~/modules/approvals/decide"
 import { updatePayload } from "~/modules/approvals/edit"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { installCatalogApp } from "~/modules/apps/catalog"
+import {
+  type DemoApiConnectorResponder,
+  registerDemoApiConnectorResponder,
+} from "~/modules/apps/connections/api/transport"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"

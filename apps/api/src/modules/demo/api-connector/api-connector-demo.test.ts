@@ -14,9 +14,6 @@ import { validateAdapter } from "@liaison/api-connector-core"
 import { sql as drizzleSql } from "drizzle-orm"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
-import { loadFixtureCrmAdapter } from "~/apps/api-connector/__fixtures__/fixture-crm/adapter"
-import { invalidateConnectionCaches } from "~/apps/api-connector/cache"
-import { upsertAdapterRow } from "~/apps/api-connector/store"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -24,8 +21,12 @@ import { connectedAccounts } from "~/db/schema/kernel"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { errorHandler } from "~/middleware/error-handler"
-import { apiConnectorRoutes } from "~/modules/api-connector/routes"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
+import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -89,7 +90,9 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(DEMO_ORG)
+  await registerApiConnectorApp(DEMO_ORG)
   await ensureAppsForOrg(NORMAL_ORG)
+  await registerApiConnectorApp(NORMAL_ORG)
   await markOrgAsDemo(DEMO_ORG, visitorMarker(24))
   DemoModeTestAccess.set(true)
   invalidateDemoMarker()
@@ -242,6 +245,7 @@ describe("demo org: the fixture CRM keeps what the agent writes", () => {
     await installDemoApiConnectorConnection({ orgId: DEMO_ORG, createdByUserId: USER })
     const OTHER_DEMO_ORG = await newOrg("api-connector-demo-other")
     await ensureAppsForOrg(OTHER_DEMO_ORG)
+    await registerApiConnectorApp(OTHER_DEMO_ORG)
     await markOrgAsDemo(OTHER_DEMO_ORG, visitorMarker(24))
     invalidateDemoMarker()
     await installDemoApiConnectorConnection({ orgId: OTHER_DEMO_ORG, createdByUserId: USER })

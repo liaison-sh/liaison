@@ -393,11 +393,11 @@ describe("db import enforcement", () => {
     "modules/mail/provider-settings.ts",
     // API connector: org-owned adapter rows, credentials and the audit row,
     // each scoped to the org explicitly (the routes check the app scopes).
-    "apps/api-connector/store.ts",
-    "apps/api-connector/service.ts",
+    "modules/apps/connections/api/store.ts",
+    "modules/apps/connections/api/service.ts",
     // The customer resolver's domain fallback excludes the org's own mailbox
     // and inbox domains: configuration, read org-scoped, only ever to exclude.
-    "apps/api-connector/customer.ts",
+    "modules/apps/connections/api/customer.ts",
     "apps/tickets/admin.ts",
     // Close silent tickets: the per-org scan of inboxes with the option on, the
     // acting person's active row and permissions, and the cancel of a pending

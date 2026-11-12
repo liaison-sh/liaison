@@ -254,6 +254,8 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
   const [dropping, setDropping] = createSignal(false)
+  // The card is draggable only from its grip: a drag that starts in the title field selects text.
+  const [armed, setArmed] = createSignal(false)
   const hasMenu = () => !!props.edit || (!!props.onExport && props.block.type !== "text")
   let titleInput: HTMLInputElement | undefined
   const commitTitle = (raw: string) => {
@@ -281,7 +283,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
       data-width={props.block.width}
       data-height={props.block.height ?? 1}
       aria-busy={busy() ? "true" : undefined}
-      draggable={props.edit ? true : undefined}
+      draggable={props.edit && armed() ? true : undefined}
       onDragStart={(e) => {
         if (!props.edit) return
         e.dataTransfer?.setData("text/plain", props.block.id)
@@ -290,6 +292,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
       }}
       onDragEnd={() => {
         setDropping(false)
+        setArmed(false)
         props.edit?.onDragEnd()
       }}
       onDragOver={(e) => {
@@ -330,7 +333,9 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
             data-testid={`dashboard-block-grip-${props.block.id}`}
             aria-hidden="true"
             title={i18n.t("kernel.dashboards.dragHint")}
-            class="flex shrink-0 cursor-grab text-text-tertiary"
+            onPointerDown={() => setArmed(true)}
+            onPointerUp={() => setArmed(false)}
+            class="flex shrink-0 cursor-grab touch-none text-text-tertiary"
           >
             <GripVertical size={14} />
           </span>

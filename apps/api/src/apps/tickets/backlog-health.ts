@@ -109,6 +109,12 @@ export interface BacklogHealthResult {
   byAge: BacklogHealthAgeBucket[]
   /** The oldest open tickets (by created_at), oldest first. */
   oldest: BacklogHealthOldest[]
+  /**
+   * The open backlog split by status as rows (`key` = the `byStatus` field, `value` = its count):
+   * the list a dashboard block charts by default. byCategory, byAge and oldest stay reachable by
+   * name (a block's rowsPath). Last, after the bulky arrays, like them.
+   */
+  rows: Array<{ key: "open" | "awaitingCustomer" | "awaitingFollowup"; value: number }>
 }
 
 export interface BacklogHealthError {
@@ -402,5 +408,10 @@ export async function backlogHealth(
     byCategory,
     byAge,
     oldest,
+    rows: [
+      { key: "open", value: byStatus.open },
+      { key: "awaitingCustomer", value: byStatus.awaitingCustomer },
+      { key: "awaitingFollowup", value: byStatus.awaitingFollowup },
+    ],
   }
 }

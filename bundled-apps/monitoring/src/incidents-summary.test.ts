@@ -32,6 +32,14 @@ describe("incidentsSummaryHandler", () => {
     expect(prod?.open).toBe(2)
     expect(prod?.worstSeverity).toBe("critical")
     expect(res.data.sources.map((s) => s.source)).toContain("shopify-disputes")
+    // The counts as rows, the list a dashboard block charts.
+    expect(res.rows).toEqual([
+      { key: "critical", status: "open", value: 1 },
+      { key: "warning", status: "open", value: 1 },
+      { key: "info", status: "open", value: 0 },
+      { key: "acknowledged", status: "acknowledged", value: 1 },
+      { key: "resolved24h", status: "resolved", value: 1 },
+    ])
   })
 
   it("returns an empty board when nothing is tracked", async () => {

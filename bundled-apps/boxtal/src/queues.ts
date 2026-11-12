@@ -205,6 +205,9 @@ export interface QueueCounts {
    *  exceptions check — a non-zero `exceptions` means a stuck parcel exists and the caller must
    *  exceptions_list/track to surface it (queue_counts is a badge, exceptions_list is the breakdown). */
   exceptions: number
+  /** The four counts as rows (`key` = the queue, `value` = its count): the list a dashboard
+   *  block charts. */
+  rows: Array<{ key: "to_prepare" | "ready" | "returns" | "exceptions"; value: number }>
 }
 
 // Local view of a `shipment` row (the columns these reads touch).
@@ -817,7 +820,18 @@ export async function queueCounts(ctx: BoxtalToolCtx): Promise<QueueCounts> {
     // never-synced orders -- flipping the default here is a product decision, not yet made.
     worklistCandidates(ctx, { bestEffortWrites: true }).then((r) => r.candidates.length),
   ])
-  return { to_prepare: toPrepareEstimate, ready, returns, exceptions }
+  return {
+    to_prepare: toPrepareEstimate,
+    ready,
+    returns,
+    exceptions,
+    rows: [
+      { key: "to_prepare", value: toPrepareEstimate },
+      { key: "ready", value: ready },
+      { key: "returns", value: returns },
+      { key: "exceptions", value: exceptions },
+    ],
+  }
 }
 
 // ── exceptions_list ────────────────────────────────────────────────────────────

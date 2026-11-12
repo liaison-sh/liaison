@@ -272,6 +272,14 @@ describe("pennylane reads — projection + derivation", () => {
     expect(out.revenue_minor).toBe("100000")
     expect(out.cogs_minor).toBe("40000")
     expect(out.gross_margin_minor).toBe("60000")
+    // The figures are also rows, keyed by their `_minor` field, for a dashboard block.
+    expect(out.rows).toEqual([
+      { key: "revenue_minor", value: "100000" },
+      { key: "cogs_minor", value: "40000" },
+      { key: "opex_minor", value: out.opex_minor },
+      { key: "other_minor", value: out.other_minor },
+      { key: "gross_margin_minor", value: "60000" },
+    ])
     // Regression (board-deck-quarter-narrative judge directive): pnl_summary money fields
     // MUST carry the `_minor` suffix that every sibling handler uses. A bare unlabelled
     // `revenue`/`gross_margin` is the exact ambiguity the model read as whole euros → a
@@ -420,6 +428,16 @@ describe("pennylane reads — projection + derivation", () => {
     expect((out.pnl as unknown as Record<string, unknown> | null)?.gross_margin).toBeUndefined()
     expect(out.cash?.cash_status).toBe("live")
     expect(out.cash?.total_by_currency).toEqual({ EUR: "250000" })
+    // The snapshot as rows for a dashboard block: the P&L figures, then cash per currency.
+    expect(out.rows.map((r) => r.key)).toEqual([
+      "revenue_minor",
+      "cogs_minor",
+      "opex_minor",
+      "other_minor",
+      "gross_margin_minor",
+      "cash_minor",
+    ])
+    expect(out.rows.at(-1)).toEqual({ key: "cash_minor", currency: "EUR", value: "250000" })
   })
 
   it("supplier_invoice_get returns a not-found shape for an unknown id (404), not a throw of a raw string", async () => {

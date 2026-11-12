@@ -83,7 +83,16 @@ export async function einvoicingSettingsGet(ctx: EinvCtx & { contracts?: EinvCtx
     const env = await ctx.contracts.call("einvoicing-pa@1", "registration_status", {})
     registration = env.status === "completed" ? (env.result as Row) : { status: "error", error: env.error }
   }
-  return { status: "ok", settings, providers, registration }
+  // `rows`: the settings and the bound provider's registration status as `key`/`value` rows, the
+  // list a dashboard block reads (`providers` stays the list of installed providers).
+  const rows: Array<{ key: string; value: string | boolean | null }> = [
+    { key: "provider_app", value: settings.provider_app },
+    { key: "cutover_date", value: settings.cutover_date },
+    { key: "send_enabled", value: settings.send_enabled },
+    { key: "book_enabled", value: settings.book_enabled },
+    { key: "registration_status", value: typeof registration?.status === "string" ? registration.status : null },
+  ]
+  return { status: "ok", settings, providers, registration, rows }
 }
 
 /** `einvoicing_settings_values` (read only, the settings page's own): the four e-invoicing fields

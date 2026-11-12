@@ -152,6 +152,9 @@ liaison-self: orgId pinned, table scopes, raw SQL operator only -> apps/api/src/
 Schema drops secret columns -> apps/api/src/modules/apps/connections/sql/catalog.ts:131
 ctx.accounts.list / setMetadata: own app, org's and caller's own, admin scope, 32 KiB, audited, kernel keys refused -> apps/api/src/modules/apps/sandbox/bridge/accounts.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:152 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:176 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:34 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:202 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.kernel.findByIds: up to 200 ids, directory fields, caller's org -> apps/api/src/modules/apps/sandbox/bridge/context.ts:1109
+ctx.kernel.caller: system or person with roleIds, holds for at most 20 named scopes, own grants plus the call's -> apps/api/src/modules/apps/sandbox/bridge/directory.ts:52
+ctx.kernel.roles: the org's roles, id and name -> apps/api/src/modules/apps/sandbox/bridge/directory.ts:73
+ctx.kernel.findUsersByEmail: case-insensitive, up to 200, directory fields -> apps/api/src/modules/apps/sandbox/bridge/directory.ts:85
 Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:386 ; apps/api/src/modules/apps/connection-limits.ts:1
 ctx.fetch with auth.connection takes a permit, key per org/app/connection/identifier -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:419 ; apps/api/src/modules/apps/connection-limiter.ts:1
 Waits 2 s in a tool, 20 s in a job, then provider_rate_limited 429 -> apps/api/src/modules/apps/run-limits.ts:342 ; apps/api/src/modules/apps/connection-limiter.ts:54

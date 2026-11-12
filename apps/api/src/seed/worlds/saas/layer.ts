@@ -616,6 +616,7 @@ async function seedSaasRoutines(ctx: SeedContext, org: SeedDemoOrgResult): Promi
           scopes: [...tpl.scopes],
           prompt: tpl.promptTemplate,
           template: spec.template,
+          followUp: tpl.followUp === true,
         },
       }),
     )

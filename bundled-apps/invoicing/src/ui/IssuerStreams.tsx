@@ -12,7 +12,7 @@
 import { app, fetch as hostFetch, onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { tr } from "./i18n"
-import { Badge, Button } from "./kit"
+import { Badge, Button, isUserId } from "./kit"
 
 export interface StreamView {
   stream: "card" | "transfer" | "one_off"
@@ -158,7 +158,7 @@ async function loadStreams(): Promise<IssuerStreamsView[]> {
 }
 
 async function personName(id: string | null): Promise<string | null> {
-  if (!id) return null
+  if (!isUserId(id)) return null
   try {
     const p = await hostFetch<{ name?: string | null }>(
       `/api/users/${encodeURIComponent(id)}/preview`,

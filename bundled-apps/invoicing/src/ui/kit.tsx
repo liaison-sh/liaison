@@ -37,6 +37,15 @@ export {
 // The currency's ISO 4217 exponent decides how many minor digits split off:
 // zero-decimal currencies (JPY, KRW, ...) have no fractional unit, so their
 // minor amount IS their major amount and must NOT be divided by 100.
+/**
+ * Whether an id names a person the host can describe (a user id). A record written by a seed,
+ * an import or the system names its writer with a word ("seed", "system"), which the host's
+ * person preview refuses: asking for it only fails, on every draw.
+ */
+export function isUserId(id: unknown): id is string {
+  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
 export function formatMoneyMinor(
   minor: bigint | number | string | null | undefined,
   currency?: string,

@@ -484,6 +484,34 @@ describe("ToolCallRow", () => {
       expect(screen.getByTestId("tool-rollup-summary")).toHaveTextContent("Billing did not answer")
     })
 
+    it("an app with no connection is neither read nor reported as not answering", () => {
+      const calls = [
+        read("r1", "contacts", "Contacts"),
+        read("r2", "drive", "Drive", {
+          result: {
+            error: { code: "not_connected", message: "No connection for this organization." },
+          },
+        }),
+        read("r3", "invoicing", "Invoicing"),
+      ]
+      render(() => <TurnCalls calls={calls} />)
+      expect(screen.getByTestId("tool-rollup-title")).toHaveTextContent("Read 2 apps")
+      expect(screen.getByTestId("tool-rollup-summary")).toHaveTextContent("Contacts, Invoicing")
+      expect(screen.getByTestId("tool-rollup").textContent).not.toContain("did not answer")
+    })
+
+    it("reads that only found apps with no connection draw no line", () => {
+      const notConnected = {
+        result: { error: { code: "not_connected", message: "Not connected." } },
+      }
+      const calls = [
+        read("r1", "drive", "Drive", notConnected),
+        read("r2", "drive", "Drive", notConnected),
+      ]
+      render(() => <TurnCalls calls={calls} />)
+      expect(screen.queryByTestId("tool-rollup")).toBeNull()
+    })
+
     it("while the reads run, one line per app in order, with the tool's running label", () => {
       const calls = [
         read("r1", "contacts", "Contacts"),

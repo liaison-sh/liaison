@@ -438,6 +438,12 @@ export async function recurringRunIssue(
       ? { status: run.status === "partial" ? "issuing" : run.status }
       : { status: "approved", approved_by: decider, approved_at: new Date().toISOString() },
   )
+  // The run is decided: its "waits for approval" and "is late" alerts end for everyone they reached.
+  if (!reask && ctx.emit) {
+    for (const action of ["due", "late"] as const) {
+      await ctx.emit({ entity: "recurring_run", action, entityId: input.run_id, data: { run_id: input.run_id, resolved: true } })
+    }
+  }
   return {
     status: "completed",
     run_id: input.run_id,

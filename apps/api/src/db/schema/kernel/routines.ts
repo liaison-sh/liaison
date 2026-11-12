@@ -93,9 +93,14 @@ export const routines = kernel.table(
     model: text("model"),
     // Sender filter of a `mail:message:create` routine (0131, S26): evaluated
     // by the event routine subscriber as the owner, before any tick. Null = no filter.
+    // Or (0296) the table-row filter of a `kernel:dashboard_table_row:*` routine: a table, and
+    // optionally a column and the value it changes to.
     eventFilter: jsonb("event_filter").$type<{
       fromContactIds?: string[]
       fromGroupIds?: string[]
+      tableId?: string
+      column?: string
+      to?: string | number | boolean | null
     } | null>(),
     // Who decides the gated drafts the routine raises (0131, S29): the tool's
     // deciding-scope audience, or the owner alone (only while the owner holds
@@ -174,7 +179,7 @@ export const routines = kernel.table(
     check("routines_model_len_chk", sql`${t.model} IS NULL OR char_length(${t.model}) <= 200`),
     check(
       "routines_event_filter_chk",
-      sql`${t.eventFilter} IS NULL OR (jsonb_typeof(${t.eventFilter}) = 'object' AND ${t.event} = 'mail:message:create')`,
+      sql`${t.eventFilter} IS NULL OR (jsonb_typeof(${t.eventFilter}) = 'object' AND ${t.event} IN ('mail:message:create', 'kernel:dashboard_table_row:created', 'kernel:dashboard_table_row:updated', 'kernel:dashboard_table_row:deleted'))`,
     ),
     check(
       "routines_hard_token_limit_chk",

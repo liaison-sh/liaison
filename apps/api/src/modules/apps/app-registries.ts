@@ -954,6 +954,21 @@ export interface PrintDeclaration {
   fields: PrintFieldDeclaration[]
 }
 
+/**
+ * `entities.<e>.pick` (manifest-schema.ts, contract.ts pickDeclarationErrors): how a person
+ * picks one record of the entity (a dashboard table's link cell) when the search index does not
+ * hold it: this app's own readOnly, ungated tool, run as the person with `{ [queryParam]: q }`;
+ * each item of its result (at `itemsPath`, else the result or its only list) gives the record's
+ * id (`idField`) and label (`labelField`).
+ */
+export interface PickDeclaration {
+  tool: string
+  queryParam: string
+  idField: string
+  labelField: string
+  itemsPath?: string
+}
+
 export const entityRegistry = createTypedRegistry<
   [orgId: string, appName: string, entityName: string],
   {
@@ -968,6 +983,8 @@ export const entityRegistry = createTypedRegistry<
     archivedField?: string
     /** Printable through the org's document templates (modules/documents/print.ts). */
     print?: PrintDeclaration
+    /** Picked by its app's own read tool (a dashboard table's link cell). */
+    pick?: PickDeclaration
     permissionFields?: {
       readScope: string
       participantIdsField?: string

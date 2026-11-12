@@ -97,6 +97,13 @@ export type { ControlPlaneOutboxRow } from "./control-plane-outbox"
 export { controlPlaneOutbox } from "./control-plane-outbox"
 export { creditBalances, creditTransactions, modelPricing } from "./credits"
 export {
+  type DashboardTableChangeOp,
+  type DashboardTableChangeRow,
+  type DashboardTableRow,
+  dashboardTableChanges,
+  dashboardTables,
+} from "./dashboard-tables"
+export {
   type DashboardOrgAccess,
   type DashboardRow,
   type DashboardVersionRow,

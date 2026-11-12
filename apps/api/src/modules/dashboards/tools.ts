@@ -626,6 +626,51 @@ export function registerDashboardTools(orgId: string): void {
       .describe('Filter values, e.g. {market: ["FR"]}. Default: each filter\'s default.'),
   }
 
+  const recipientsParam = z
+    .array(z.string().uuid())
+    .max(50)
+    .optional()
+    .describe(
+      "The people it will be sent to (user ids): each is checked, and only those who may receive it are listed in sendTo. Required whenever it goes to anyone but you.",
+    )
+
+  /**
+   * The recipients check, enforced: who may receive figures computed as `viewer` (sendTo), who
+   * is left out and why (leftOut). Null when no recipient was named; a refusal when nobody named
+   * may receive it (then nothing is computed for them).
+   */
+  const recipientsOutcome = async (viewer: UserContext, dashboardId: string, ids?: string[]) => {
+    if (!ids?.length) return null
+    const checks = await checkRecipients(viewer, dashboardId, ids)
+    const sendTo = checks
+      .filter((c) => c.mayReceive)
+      .map((c) => ({ userId: c.userId, name: c.name }))
+    const leftOut = checks
+      .filter((c) => !c.mayReceive)
+      .map((c) => ({ userId: c.userId, name: c.name, reason: c.reason ?? "" }))
+    if (sendTo.length === 0) {
+      return {
+        refused: {
+          error: {
+            code: "no_recipient_may_receive",
+            message: `None of the recipients may receive these figures: ${leftOut
+              .map((l) => `${l.name ?? l.userId} (${l.reason})`)
+              .join("; ")}. Send nothing; tell the requester who was left out and why.`,
+            retryable: false,
+            status: 403,
+          },
+        },
+      }
+    }
+    return {
+      sendTo,
+      leftOut,
+      recipientsNote: leftOut.length
+        ? "Send it ONLY to the people in sendTo. The people in leftOut must not receive it: say who was left out and why. Each of them can get their own figures from a routine they own."
+        : "Send it only to the people in sendTo.",
+    }
+  }
+
   /** The range options of a snapshot call, checked. */
   const snapshotOptions = (p: {
     timeRange?: unknown
@@ -656,16 +701,12 @@ export function registerDashboardTools(orgId: string): void {
     taintSource: true,
     deferLoading: true,
     description:
-      "Read a whole dashboard at once for a period and filters, computed with your access: each block's key figures (a metric's value, its compared value and change, its target; a chart's totals per series with their change and its top labels; a table's first rows), the period and the filters. Pass recipients (user ids) before sharing it: it says who may receive it (they can open the dashboard and read every source themselves). For a PDF of it, kernel__dashboards_pdf. To send it on a schedule, a routine calls this tool (kernel__skill_read build-dashboard).",
+      "Read a whole dashboard at once for a period and filters, computed with your access: each block's key figures (a metric's value, its compared value and change, its target; a chart's totals per series with their change and its top labels; a table's first rows), the period and the filters. Before sending it to anyone, pass recipients (user ids): only the people in sendTo may receive it (they can open the dashboard, read every source themselves, and see at least the rows you see); leftOut says who must not and why. For a PDF of it, kernel__dashboards_pdf. To send it on a schedule, a routine calls this tool (kernel__skill_read build-dashboard).",
     searchKeywords: ["dashboard", "snapshot", "rapport", "report", "weekly", "hebdo", "résumé"],
     requiredScopes: [READ],
     params: z.object({
       ...snapshotParams,
-      recipients: z
-        .array(z.string().uuid())
-        .max(50)
-        .optional()
-        .describe("The people it will be sent to: each one is checked."),
+      recipients: recipientsParam,
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
       const p = params as {
@@ -678,19 +719,14 @@ export function registerDashboardTools(orgId: string): void {
       return guarded(async () => {
         const viewer = await viewerOf(ctx)
         const opts = snapshotOptions(p)
+        const recipients = await recipientsOutcome(viewer, p.dashboardId, p.recipients)
+        if (recipients && "refused" in recipients) return recipients.refused
         const computed = await computeDashboard(viewer, p.dashboardId, {
           ...opts,
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         })
         const snapshot = snapshotOf(computed, viewer, p.filters)
-        if (!p.recipients?.length) return snapshot
-        const recipients = await checkRecipients(ctx.orgId, p.dashboardId, p.recipients)
-        return {
-          ...snapshot,
-          recipients,
-          recipientsNote:
-            "Send it only to the people with mayReceive true, and say who was left out and why. The figures are computed with your access: someone whose access to rows differs may see other numbers on the dashboard. To give each person their own figures, each gets a routine they own.",
-        }
+        return recipients ? { ...snapshot, ...recipients } : snapshot
       })
     }) as (params: unknown, ctx: any) => Promise<unknown>,
   })
@@ -700,26 +736,34 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_pdf",
     deferLoading: true,
     description:
-      "Print a dashboard as a PDF for a period and filters, computed with your access (title, period and filters in the header, then each block), staged as a file only you can read: attach its fileId to a reply or a mail. Returns { fileId, filename, byteSize }.",
+      "Print a dashboard as a PDF for a period and filters, computed with your access (title, period and filters in the header, then each block), staged as a file only you can read: attach its fileId to a reply or a mail. Before sending it to anyone, pass recipients (user ids): attach it only for the people in sendTo; leftOut says who must not receive it and why. Returns { fileId, filename, byteSize[, sendTo, leftOut] }.",
     searchKeywords: ["dashboard", "pdf", "export", "imprimer", "rapport"],
     requiredScopes: [READ],
-    params: z.object(snapshotParams),
+    params: z.object({ ...snapshotParams, recipients: recipientsParam }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
       const p = params as {
         dashboardId: string
         timeRange?: unknown
         compare?: string
         filters?: Record<string, string[]>
+        recipients?: string[]
       }
       return guarded(async () => {
         const viewer = await viewerOf(ctx)
+        const recipients = await recipientsOutcome(viewer, p.dashboardId, p.recipients)
+        if (recipients && "refused" in recipients) return recipients.refused
         const computed = await computeDashboard(viewer, p.dashboardId, {
           ...snapshotOptions(p),
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         })
         const bytes = await renderDashboardPdf(computed, p.filters)
         try {
-          return await stagePdfForViewer(viewer, bytes, exportFilename(computed.view.title, "pdf"))
+          const file = await stagePdfForViewer(
+            viewer,
+            bytes,
+            exportFilename(computed.view.title, "pdf"),
+          )
+          return recipients ? { ...file, ...recipients } : file
         } catch (err) {
           if (err instanceof StorageFullError) {
             return {
@@ -912,11 +956,12 @@ export function registerDashboardTools(orgId: string): void {
       if (ctx.userId === "system") return null
       const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
       return guarded(async () => {
-        await checkEdit(viewer, p.dashboardId, {
+        const { cardLines } = await checkEdit(viewer, p.dashboardId, {
           ifVersion: p.ifVersion,
           operations: p.operations,
         })
-        return null
+        // A revert's card lists every change it restores: those lines count too.
+        return cardLines > MAX_CARD_CHANGES ? tooManyChanges(cardLines) : null
       })
     },
   })

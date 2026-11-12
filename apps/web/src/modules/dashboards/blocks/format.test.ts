@@ -5,6 +5,10 @@ import { formatAxisLabel, formatValue, looksLikeDate } from "./format"
 const nbsp = (s: string) => s.replace(/[  ]/g, " ")
 
 describe("formatValue", () => {
+  it("a year bucket (a four-digit string) reads as a label; a number stays a number", () => {
+    expect(formatValue("2026", { locale: "en" })).toBe("2026")
+    expect(formatValue(2026, { locale: "en" })).toBe("2,026")
+  })
   it("formats numbers in the viewer's language", () => {
     expect(formatValue(1234.567, { locale: "en" })).toBe("1,234.57")
     expect(nbsp(formatValue(1234.5, { locale: "fr" }))).toBe("1 234,5")

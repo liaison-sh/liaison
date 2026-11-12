@@ -4,38 +4,75 @@
 // (left/right: one place; up/down: one row of the grid as it is drawn now) or dropped on
 // another block, and how a saved version reads in the history list against the one before it.
 // Every change itself is an operation sent to `POST /dashboards/:id/edit` (DashboardView).
-import type { DashboardBlockSpec, DashboardVersionSummary } from "./dashboards-client"
+import type {
+  BlockPosition,
+  DashboardBlockSpec,
+  DashboardVersionSummary,
+} from "./dashboards-client"
 
 export type MoveDirection = "up" | "down" | "left" | "right"
 
+/** A block as the moves see it: its id and its width in columns (1 when unset). */
+type Placed = Pick<DashboardBlockSpec, "id"> & { width?: number }
+
 /**
  * The index `blockId` moves to (the block taken out first, as the server places it), or null
- * when it cannot move that way (already first, last, or on the top or bottom row).
+ * when it cannot move that way (already first, last, or on the top or bottom row). Up and down
+ * go to the block in the row above or below over the same column (or the nearest one), the rows
+ * as the widths draw them: a block that does not fit on the row starts the next one. Heights are
+ * left out: a tall block counts as one row.
  */
 export function moveTarget(
-  blocks: Pick<DashboardBlockSpec, "id">[],
+  blocks: Placed[],
   blockId: string,
   direction: MoveDirection,
   columns: number,
 ): number | null {
   const at = blocks.findIndex((b) => b.id === blockId)
   if (at < 0) return null
-  const step = direction === "left" || direction === "right" ? 1 : Math.max(1, columns)
-  const to = direction === "left" || direction === "up" ? at - step : at + step
-  if (to < 0 || to > blocks.length - 1) return null
-  return to
+  if (direction === "left" || direction === "right") {
+    const to = direction === "left" ? at - 1 : at + 1
+    return to < 0 || to > blocks.length - 1 ? null : to
+  }
+  const cols = Math.max(1, columns)
+  const cells: { row: number; start: number; end: number }[] = []
+  let row = 0
+  let col = 0
+  for (const b of blocks) {
+    const w = Math.min(cols, Math.max(1, b.width ?? 1))
+    if (col + w > cols) {
+      row++
+      col = 0
+    }
+    cells.push({ row, start: col, end: col + w - 1 })
+    col += w
+  }
+  const me = cells[at] as (typeof cells)[number]
+  const target = me.row + (direction === "up" ? -1 : 1)
+  let best: number | null = null
+  let bestGap = Number.POSITIVE_INFINITY
+  cells.forEach((c, i) => {
+    if (c.row !== target) return
+    const gap = c.end < me.start ? me.start - c.end : Math.max(0, c.start - me.start)
+    if (gap < bestGap) {
+      best = i
+      bestGap = gap
+    }
+  })
+  return best
 }
 
-/** The index a block dragged onto another lands at: the place of the block it was dropped on. */
+/** Where a block dragged onto another lands: after it when moving down, before it when up. */
 export function dropTarget(
   blocks: Pick<DashboardBlockSpec, "id">[],
   draggedId: string,
   targetId: string,
-): number | null {
+): BlockPosition | null {
   if (draggedId === targetId) return null
   const from = blocks.findIndex((b) => b.id === draggedId)
   const to = blocks.findIndex((b) => b.id === targetId)
-  return from < 0 || to < 0 ? null : to
+  if (from < 0 || to < 0) return null
+  return to > from ? { after: targetId } : { before: targetId }
 }
 
 /** How many columns the grid draws now (one on a phone, up to three on a wide panel). */

@@ -7668,6 +7668,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.editConflict":
     "Quelqu'un d'autre a modifié ce tableau de bord. Il est rechargé : refaites votre modification.",
   "kernel.dashboards.editFailed": "La modification n'a pas pu être enregistrée.",
+  "kernel.dashboards.undoOverridden":
+    "Quelqu'un d'autre a modifié ce tableau de bord depuis votre dernière modification : Annuler effacerait sa modification. Utilisez plutôt l'historique des versions pour revenir en arrière.",
   "kernel.dashboards.editFailedWhy": "La modification n'a pas pu être enregistrée : {{reason}}",
   "kernel.dashboards.exportMenu": "Exporter",
   "kernel.dashboards.exportPdf": "Télécharger le PDF",

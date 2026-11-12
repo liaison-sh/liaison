@@ -832,61 +832,6 @@ function changeWords(
   return parts.join("; ") || "no field"
 }
 
-/** What a revert changes, in short: the diff to the saved version, grouped by kind. */
-function revertWords(state: EditableDashboard, changes: EditOperation[]): string {
-  if (changes.length === 0) return "no difference with the dashboard as it is"
-  const blocks = (state.spec.blocks ?? []) as unknown as Record<string, unknown>[]
-  const name = (id: string) => blockName(blocks[indexOf(blocks, id)], id)
-  const removed: string[] = []
-  const added: string[] = []
-  const changed: string[] = []
-  const other: string[] = []
-  let moved = 0
-  for (const c of changes) {
-    switch (c.op) {
-      case "removeBlock":
-        removed.push(name(c.blockId))
-        break
-      case "addBlock":
-        added.push(`"${String(c.block.title ?? c.block.id)}"`)
-        break
-      case "updateBlock":
-        changed.push(name(c.blockId))
-        break
-      case "moveBlock":
-        moved++
-        break
-      case "setTitle":
-        other.push(`the title becomes "${c.title}"`)
-        break
-      case "setTimeRange":
-        other.push("the default range changes")
-        break
-      case "setDataset":
-      case "removeDataset":
-        other.push(`the shared dataset '${c.id}' changes`)
-        break
-      case "setFilter":
-        other.push(`the filter '${String(c.filter.id)}' changes`)
-        break
-      case "removeFilter":
-        other.push(`the filter '${c.id}' goes`)
-        break
-      default:
-        other.push("the dashboard's settings change")
-    }
-  }
-  const parts: string[] = [
-    `the dashboard goes back to that version (${changes.length} change${changes.length === 1 ? "" : "s"})`,
-  ]
-  if (removed.length) parts.push(`removes ${removed.join(", ")}`)
-  if (added.length) parts.push(`adds back ${added.join(", ")}`)
-  if (changed.length) parts.push(`changes ${changed.join(", ")}`)
-  if (moved) parts.push(`moves ${moved} block${moved === 1 ? "" : "s"}`)
-  parts.push(...new Set(other))
-  return parts.join("; ")
-}
-
 /**
  * One plain-language line per operation, numbered, as it applies in order to `current`:
  * "2. Add a bar block "Spend by campaign" (width 2) at position 3 of 8 (after "Orders"),
@@ -909,6 +854,8 @@ export function describeOperations(
       window = resolveTimeRange({ preset: "last30d" }, ctx)
     }
     let line: string
+    /** Lines under this one (a revert's changes). */
+    let sub: string[] = []
     let next: EditableDashboard = state
     try {
       const applied = applyOperations(state, [op], ctx.versions)
@@ -1064,12 +1011,22 @@ export function describeOperations(
           line = `Revert to version ${op.toVersion} (not kept any more: this edit will be refused)`
           break
         }
+        // The restored state as an edit card lists it: each change on its own line under this
+        // one (blocks with their source, params and map; settings old → new).
         const changes = diffDashboards(state, { title: saved.title, spec: saved.spec })
-        line = `Revert to version ${op.toVersion} (saved ${saved.savedAt.slice(0, 10)}${saved.savedByName ? ` by ${saved.savedByName}` : ""}): ${revertWords(state, changes)}`
+        const saidAt = `saved ${saved.savedAt.slice(0, 10)}${saved.savedByName ? ` by ${saved.savedByName}` : ""}`
+        line =
+          changes.length === 0
+            ? `Revert to version ${op.toVersion} (${saidAt}): no difference with the dashboard as it is`
+            : `Revert to version ${op.toVersion} (${saidAt}): ${changes.length} change${changes.length === 1 ? "" : "s"}, listed below`
+        sub = describeOperations(state, changes, { ...ctx, versions: new Map() }).map((l) =>
+          /^\d+\. /.test(l) ? `   ${i + 1}.${l}` : `   ${l}`,
+        )
         break
       }
     }
     lines.push(`${i + 1}. ${line}.`)
+    lines.push(...sub)
     const note = noteOf(op)
     if (note !== null) lines.push(...noteExtraLines(note))
     state = next

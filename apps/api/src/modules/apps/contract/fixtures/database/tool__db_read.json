@@ -10,24 +10,17 @@
   "calls": [
     {
       "method": "sql_reads",
-      "args": [
-        "database"
-      ],
+      "args": ["database"],
       "reply": "{\"adapter\":\"contract-shop\",\"reads\":{\"knowledge_sync_list\":{\"description\":\"Knowledge articles, keyset-paginated by (updated_at, id).\",\"domain\":\"knowledge\",\"params\":{\"after_updated_at\":{\"type\":\"string\"},\"after_id\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"}},\"columns\":[\"id\",\"title\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"knowledge_sync_get\":{\"description\":\"One knowledge article with its body.\",\"domain\":\"knowledge\",\"params\":{\"id\":{\"type\":\"string\"}},\"columns\":[\"id\",\"title\",\"body\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"orders_by_status\":{\"description\":\"Orders in one status, newest first.\",\"domain\":\"support\",\"params\":{\"status\":{\"type\":\"string\"}},\"columns\":[\"id\",\"status\",\"total_cents\",\"created_at\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true},\"revenue_by_month\":{\"description\":\"Revenue per month.\",\"domain\":\"revenue\",\"params\":{},\"columns\":[\"month\",\"revenue_cents\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true}},\"domains\":{\"revenue\":{\"tier\":\"confidential\"}}}"
     },
     {
       "method": "store_get",
-      "args": [
-        "settings",
-        "domain_access"
-      ],
+      "args": ["settings", "domain_access"],
       "reply": "null"
     },
     {
       "method": "kernel_caller",
-      "args": [
-        "[\"kernel:org:admin\",\"database:query:read\"]"
-      ],
+      "args": ["[\"kernel:org:admin\",\"database:query:read\"]"],
       "reply": "{\"kind\":\"person\",\"userId\":\"00000000-0000-4000-8000-00000000c0df\",\"roleIds\":[],\"holds\":{\"kernel:org:admin\":true,\"database:query:read\":true}}"
     },
     {

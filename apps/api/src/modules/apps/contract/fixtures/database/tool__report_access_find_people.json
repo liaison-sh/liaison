@@ -1,17 +1,13 @@
 {
   "entry": "tool:report_access_find_people",
   "params": {
-    "emails": [
-      "recorder@example.com"
-    ]
+    "emails": ["recorder@example.com"]
   },
   "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
   "calls": [
     {
       "method": "kernel_findUsersByEmail",
-      "args": [
-        "[\"recorder@example.com\"]"
-      ],
+      "args": ["[\"recorder@example.com\"]"],
       "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000c0df\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"email\":\"recorder@example.com\",\"name\":\"Contract Recorder\",\"avatar_url\":null,\"avatar_key\":null,\"timezone\":null,\"locale\":null,\"status\":\"active\",\"created_at\":\"2026-11-12 11:08:16.183783+00\",\"updated_at\":\"2026-11-12 11:08:16.183783+00\"}]"
     }
   ]

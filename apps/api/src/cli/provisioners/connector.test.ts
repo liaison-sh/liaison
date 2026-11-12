@@ -416,9 +416,7 @@ describe("generic connector (Task 11)", () => {
         to: "team-new",
       },
     ])
-    expect(logs.join("\n")).toContain(
-      'group "team-old" -> "team-new"',
-    )
+    expect(logs.join("\n")).toContain('group "team-old" -> "team-new"')
     expect(rotated.fieldChanges).toEqual([{ field: "token", secret: true }])
     expect(logs.join("\n")).toContain("token (secret)")
     // Field names only for secrets: no secret value in the report or the log.

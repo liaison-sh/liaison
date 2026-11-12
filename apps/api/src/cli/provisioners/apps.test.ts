@@ -429,11 +429,7 @@ describe("apps provisioner (Task 11)", () => {
         throw new Error("HTTP 404 from gate-new.example.com")
       },
     }
-    const r = await appsProvisioner.apply(
-      ctx,
-      { actions: [] },
-      configWith("team-new"),
-    )
+    const r = await appsProvisioner.apply(ctx, { actions: [] }, configWith("team-new"))
     expect(r.changed).toContain("apps.gitlab.connection.group")
     const entry = (r.section as { apps: Array<Record<string, unknown>> }).apps.find(
       (a) => a.name === "gitlab",

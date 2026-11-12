@@ -10,9 +10,7 @@
   "calls": [
     {
       "method": "sql_reads",
-      "args": [
-        "database"
-      ],
+      "args": ["database"],
       "reply": "{\"adapter\":\"contract-shop\",\"reads\":{\"knowledge_sync_list\":{\"description\":\"Knowledge articles, keyset-paginated by (updated_at, id).\",\"domain\":\"knowledge\",\"params\":{\"after_updated_at\":{\"type\":\"string\"},\"after_id\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"}},\"columns\":[\"id\",\"title\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"knowledge_sync_get\":{\"description\":\"One knowledge article with its body.\",\"domain\":\"knowledge\",\"params\":{\"id\":{\"type\":\"string\"}},\"columns\":[\"id\",\"title\",\"body\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"orders_by_status\":{\"description\":\"Orders in one status, newest first.\",\"domain\":\"support\",\"params\":{\"status\":{\"type\":\"string\"}},\"columns\":[\"id\",\"status\",\"total_cents\",\"created_at\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true},\"revenue_by_month\":{\"description\":\"Revenue per month.\",\"domain\":\"revenue\",\"params\":{},\"columns\":[\"month\",\"revenue_cents\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true}},\"domains\":{\"revenue\":{\"tier\":\"confidential\"}}}"
     },
     {
@@ -25,18 +23,12 @@
     },
     {
       "method": "sql_query",
-      "args": [
-        "database",
-        "{\"read\":\"knowledge_sync_get\",\"params\":{\"id\":\"kb-1\"}}"
-      ],
+      "args": ["database", "{\"read\":\"knowledge_sync_get\",\"params\":{\"id\":\"kb-1\"}}"],
       "reply": "{\"rows\":[{\"id\":\"kb-1\",\"title\":\"Pairing a controller\",\"body\":\"# Pairing\\nHold the button for 3 s.\",\"updated_at\":\"2026-05-01T00:00:00.000Z\"}],\"truncated\":false,\"durationMs\":2}"
     },
     {
       "method": "sql_query",
-      "args": [
-        "database",
-        "{\"read\":\"knowledge_sync_get\",\"params\":{\"id\":\"kb-2\"}}"
-      ],
+      "args": ["database", "{\"read\":\"knowledge_sync_get\",\"params\":{\"id\":\"kb-2\"}}"],
       "reply": "{\"rows\":[{\"id\":\"kb-2\",\"title\":\"Firmware update\",\"body\":\"# Update\\nUse the desktop app.\",\"updated_at\":\"2026-05-02T00:00:00.000Z\"}],\"truncated\":false,\"durationMs\":8}"
     }
   ]

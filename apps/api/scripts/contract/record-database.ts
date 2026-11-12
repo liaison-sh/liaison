@@ -154,7 +154,9 @@ const PLAN: Array<{ entry: string; params?: unknown }> = [
   {
     entry: "provision:handler",
     params: {
-      config: { domainAccess: { revenue: { tier: "restricted", users: ["recorder@example.com"] } } },
+      config: {
+        domainAccess: { revenue: { tier: "restricted", users: ["recorder@example.com"] } },
+      },
       dryRun: false,
     },
   },
@@ -264,7 +266,9 @@ describe("record database contract fixtures", () => {
     await sql`DELETE FROM kernel.app_documents WHERE org_id = ${CONTRACT_ORG_ID} AND app = ${APP}`
     const { closeSqlPools } = await import("~/modules/apps/connections/sql/pool")
     closeSqlPools({ orgId: CONTRACT_ORG_ID })
-    await su?.unsafe(`DROP SCHEMA IF EXISTS contract_kb CASCADE; DROP SCHEMA IF EXISTS contract_shop CASCADE`)
+    await su?.unsafe(
+      `DROP SCHEMA IF EXISTS contract_kb CASCADE; DROP SCHEMA IF EXISTS contract_shop CASCADE`,
+    )
     await su?.unsafe(`DROP OWNED BY ${LOGIN}; DROP ROLE IF EXISTS ${LOGIN}`).catch(() => {})
     await su?.end()
     rmSync(catalogDir, { recursive: true, force: true })
@@ -291,7 +295,8 @@ describe("record database contract fixtures", () => {
     const report: string[] = []
     for (const step of PLAN) {
       const entry = entries.get(step.entry)
-      if (!entry) throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
+      if (!entry)
+        throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
       const { fixture, outcome } = await recordEntry({
         isolate,
         entry,
@@ -302,7 +307,10 @@ describe("record database contract fixtures", () => {
         recordedFrom: RECORDED_FROM,
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
-      const summary = JSON.stringify(answer)?.slice(0, process.env.CONTRACT_RECORD_DEBUG ? 3000 : 240)
+      const summary = JSON.stringify(answer)?.slice(
+        0,
+        process.env.CONTRACT_RECORD_DEBUG ? 3000 : 240,
+      )
       const rejected =
         !outcome.ok ||
         (answer !== null && typeof answer === "object" && "error" in (answer as object))

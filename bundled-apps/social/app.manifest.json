@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.64",
+  "version": "0.6.65",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {
@@ -293,28 +293,33 @@
       "runsFor": {"connection": ["instagram", "facebook", "google"]},
       "schedule": "*/15 * * * *",
       "handler": "discoverySyncJob",
+      "timeoutMs": 60000,
       "retry": { "attempts": 3, "backoff": "exponential" }
     },
     "watch-poller": {
       "runsFor": {"connection": ["instagram", "facebook", "google"]},
       "schedule": "*/5 * * * *",
       "handler": "watchPollerJob",
+      "timeoutMs": 60000,
       "retry": { "attempts": 3, "backoff": "exponential" }
     },
     "dm-sync": {
       "runsFor": {"connection": ["instagram", "facebook", "google"]},
       "schedule": "*/10 * * * *",
       "handler": "dmSyncJob",
+      "timeoutMs": 60000,
       "retry": { "attempts": 3, "backoff": "exponential" }
     },
     "probe-webhook-upstream": {
       "runsFor": {"connection": ["instagram", "facebook", "google"]},
       "schedule": "*/15 * * * *",
-      "handler": "probeWebhookUpstreamJob"
+      "handler": "probeWebhookUpstreamJob",
+      "timeoutMs": 60000
     },
     "parse-webhook": {
       "onDemand": true,
-      "handler": "parseWebhookHandler"
+      "handler": "parseWebhookHandler",
+      "timeoutMs": 60000
     }
   },
   "schema": {

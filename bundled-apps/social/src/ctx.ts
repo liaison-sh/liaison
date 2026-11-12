@@ -96,7 +96,7 @@ export interface SocialToolCtx {
   approval_recordEffectLanded?: (toolName: string, externalRefJson: string) => Promise<void>
   approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
   approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
-  enqueueJob?: (jobName: string, payload: unknown) => Promise<void>
+  enqueueJob?: (jobName: string, payload: unknown, opts?: { delay?: number; jobId?: string }) => Promise<void>
   emit?: (event: { entity: string; action: string; entityId?: string; data?: unknown }) => Promise<void>
   // Resolve-or-create a kernel contact for an external author/participant
   // (§5/§6). Returns the contact row (`{ id }`); the app stores `id` as the

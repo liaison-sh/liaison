@@ -11,7 +11,14 @@
 //   - a file that installs restores a snapshot of them when it ends.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
+import { sql as drizzleSql } from "drizzle-orm"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
+import {
+  appActivationEvents,
+  appsActiveVersion,
+  appsInstalled,
+} from "~/db/schema/kernel/apps-installed"
 import { getInstallTrust, resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { acquireTestLock, releaseTestLock, truncateOrgTables } from "~/tests/route-test-setup"
@@ -23,12 +30,30 @@ const RESET = `iso-reset-${suffix}`
 const SHA = "a".repeat(64)
 
 async function install(name: string, version: string): Promise<void> {
-  await sql`INSERT INTO kernel.apps_installed (name, version, source_url, sha256, installed_by, granted_domains)
-    VALUES (${name}, ${version}, ${`test://${name}-${version}`}, ${SHA}, ${randomUUID()}, ${["api.example.com"]})`
-  await sql`INSERT INTO kernel.apps_active_version (name, version) VALUES (${name}, ${version})
-    ON CONFLICT (name) DO UPDATE SET previous_version = kernel.apps_active_version.version, version = EXCLUDED.version`
-  await sql`INSERT INTO kernel.app_activation_events (app, from_version, to_version, outcome, actor_kind)
-    VALUES (${name}, NULL, ${version}, 'activated', 'system')`
+  await withSystemDb("test-app-install-isolation", async (db) => {
+    await db.insert(appsInstalled).values({
+      name,
+      version,
+      sourceUrl: `test://${name}-${version}`,
+      sha256: SHA,
+      installedBy: randomUUID(),
+      grantedDomains: ["api.example.com"],
+    })
+    await db
+      .insert(appsActiveVersion)
+      .values({ name, version })
+      .onConflictDoUpdate({
+        target: appsActiveVersion.name,
+        set: { previousVersion: drizzleSql`${appsActiveVersion.version}`, version },
+      })
+    await db.insert(appActivationEvents).values({
+      app: name,
+      fromVersion: null,
+      toVersion: version,
+      outcome: "activated",
+      actorKind: "system",
+    })
+  })
 }
 
 async function counts(name: string) {

@@ -65,7 +65,7 @@ jobs:
         # validates the compose file end to end.
         run: |
           set -euo pipefail
-          IMAGE="ghcr.io/mathieufro/liaison:v0.1.0"
+          IMAGE="ghcr.io/liaison-sh/liaison:v0.1.0"
           if docker pull "$IMAGE"; then
             echo "pulled $IMAGE"
           else

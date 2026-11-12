@@ -44,6 +44,7 @@ import {
   VISITOR_OUTPUT_USD_PER_M,
 } from "~/modules/demo/demo-spend-ceiling"
 import { createOrGetAgentDm, resolvePersonalAgentId } from "~/modules/threads/thread"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 import { stageDemoCatalog } from "../../../../test-support/seed/stage-demo-catalog"
 import { PROSPECT_SCENARIO_ROUTINE, SUPPORT_SCENARIO_ROUTINE } from "./seed-agent-native"
@@ -299,6 +300,8 @@ describe("a demo visitor's agent steps fit the step cap and the Everything budge
     ])
   }
 
+  let installs: AppInstallSnapshot | null = null
+
   beforeAll(async () => {
     if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
     if (/liaison_dev|liaison_test(?!_)/.test(DB_URL)) {
@@ -311,6 +314,7 @@ describe("a demo visitor's agent steps fit the step cap and the Everything budge
     }
     // The catalog apps (invoicing, shopify, boxtal...): without them the
     // commerce layer and the sales routine are not seeded.
+    installs = await snapshotAppInstalls()
     catalogDir = stageDemoCatalog("visitor-turn-size")
     process.env.LIAISON_APP_CATALOG_DIR = catalogDir
     webSearchFixture = (
@@ -371,6 +375,8 @@ describe("a demo visitor's agent steps fit the step cap and the Everything budge
   }, 2_400_000)
 
   afterAll(async () => {
+    // The catalog installs the seed made are instance-wide: put them back.
+    await installs?.restore()
     if (appsTmp) {
       rmSync(appsTmp, { recursive: true, force: true })
       delete process.env.LIAISON_APPS_DIR

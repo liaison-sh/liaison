@@ -29,6 +29,7 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { discountsFor } from "~/modules/demo/shopify/overlay"
 import { DEMO_WAREHOUSE_DSN_ENV } from "~/modules/demo/warehouse"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { ensureBundledAppBuilt } from "~/tests/helpers/bundled-app-build"
 import { DEMO_APPS } from "./demo-apps"
 import { type SeedDemoWorldResult, seedDemoWorld } from "./seed-demo"
@@ -92,7 +93,10 @@ function stageCatalog(): string {
   return dir
 }
 
-beforeAll(() => {
+// The catalog installs the seed makes are instance-wide: put them back after the file.
+let installs: AppInstallSnapshot | null = null
+
+beforeAll(async () => {
   if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
   if (/liaison_dev|liaison_test(?!_)/.test(DB_URL)) {
     throw new Error("refusing to seed a shared database")
@@ -108,6 +112,7 @@ beforeAll(() => {
     const name = DB_URL.split("/").pop() ?? "liaison_hardening_test"
     process.env.MIGRATION_DATABASE_URL = `postgres://postgres:postgres@localhost:5432/${name}`
   }
+  installs = await snapshotAppInstalls()
   process.env.LIAISON_APP_CATALOG_DIR = stageCatalog()
   if (!process.env.LIAISON_APPS_DIR) {
     process.env.LIAISON_APPS_DIR = path.join(
@@ -117,9 +122,10 @@ beforeAll(() => {
   }
 })
 
-afterAll(() => {
+afterAll(async () => {
   resetAppRegistries()
   DemoModeTestAccess.set(null)
+  await installs?.restore()
 })
 
 interface PendingRow {

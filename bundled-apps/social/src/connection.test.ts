@@ -10,8 +10,10 @@ import type { SocialToolCtx } from "./ctx"
 import { onConnectionDisconnected, onConnectionEstablished, resolveAccessToken } from "./connection"
 import { createMockDb, type MockDb } from "./test-db"
 
-function makeCtx(db: MockDb): SocialToolCtx & { __jobs: Array<{ name: string; payload: unknown }> } {
-  const jobs: Array<{ name: string; payload: unknown }> = []
+type Job = { name: string; payload: unknown; opts?: { delay?: number; jobId?: string } }
+
+function makeCtx(db: MockDb): SocialToolCtx & { __jobs: Job[] } {
+  const jobs: Job[] = []
   return {
     orgId: "org-1",
     db,
@@ -19,12 +21,12 @@ function makeCtx(db: MockDb): SocialToolCtx & { __jobs: Array<{ name: string; pa
     connections: {},
     config: { get: async () => null },
     async emit() {},
-    async enqueueJob(name, payload) {
-      jobs.push({ name, payload })
+    async enqueueJob(name, payload, opts) {
+      jobs.push({ name, payload, ...(opts ? { opts } : {}) })
     },
     logger: { warn() {}, info() {}, error() {}, debug() {} },
     __jobs: jobs,
-  } as SocialToolCtx & { __jobs: Array<{ name: string; payload: unknown }> }
+  } as SocialToolCtx & { __jobs: Job[] }
 }
 
 const instagramConnect = {
@@ -48,6 +50,21 @@ describe("onConnectionEstablished (B10)", () => {
     expect(discovery.length).toBe(1)
     expect(discovery.every((r) => r.active === true)).toBe(true)
     expect(ctx.__jobs.filter((j) => j.name === "discovery-sync").length).toBe(1)
+  })
+
+  test("the discovery kick is one deduplicated job, after every sync row is written", async () => {
+    const db = createMockDb()
+    const ctx = makeCtx(db)
+    // The discovery job syncs every active row: kicks from connects close
+    // together share one id, so the queue runs it once.
+    await onConnectionEstablished(instagramConnect, ctx)
+    await onConnectionEstablished(instagramConnect, ctx)
+    const kicks = ctx.__jobs.filter((j) => j.name === "discovery-sync")
+    expect(kicks.length).toBe(2)
+    for (const k of kicks) {
+      expect(k.opts?.jobId).toBe("discovery-sync-on-connect")
+      expect(k.opts?.delay).toBeGreaterThan(0)
+    }
   })
 
   test("facebook connection seeds facebook discovery/watch/dm", async () => {

@@ -1909,7 +1909,8 @@
       "rolesAccess": "Rôles et accès",
       "appStore": "Boutique d'applications",
       "connectors": "Connecteurs",
-      "documents": "Documents"
+      "documents": "Documents",
+      "sidebar": "Barre latérale"
     },
     "invoicing": "Facturation",
     "monitoring": "Supervision",
@@ -1923,7 +1924,9 @@
     "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}",
     "dashboard": "Tableau de bord",
     "appBuilder": "Créateur d'apps",
-    "dashboards": "Tableaux de bord"
+    "dashboards": "Tableaux de bord",
+    "hideFromSidebar": "Masquer de la barre latérale",
+    "railEntryMenu": "Options de {{app}}"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -6675,5 +6678,13 @@
     "refresh": "Actualiser",
     "failed": "Les journaux n'ont pas pu être lus. Réessayez dans un instant.",
     "empty": "Rien n'a été journalisé ces 7 derniers jours."
+  },
+  "sidebarSettings": {
+    "title": "Barre latérale",
+    "intro": "Choisissez les applications affichées dans votre barre latérale.",
+    "note": "Les applications masquées restent accessibles depuis la recherche, la palette de commandes et les liens.",
+    "showInSidebar": "Afficher {{app}} dans la barre latérale",
+    "saveFailed": "La barre latérale n'a pas été enregistrée. Réessayez.",
+    "adminIntro": "Les applications que {{name}} voit dans sa barre latérale. Cette personne peut à tout moment afficher ou masquer chacune d'elles dans ses propres réglages."
   }
 }

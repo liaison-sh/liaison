@@ -125,9 +125,9 @@ describe("catalog CRUD", () => {
       gross_weight: 5,
       components: [
         { product_source: "local", product_id: "RAL-44", quantity: 1 },
-        { product_source: "local", product_id: "ER-OVL", quantity: 1 },
-        { product_source: "local", product_id: "ER-CASE", quantity: 1 },
-        { product_source: "local", product_id: "ER-CBL", quantity: 1 },
+        { product_source: "local", product_id: "RAL-WND", quantity: 1 },
+        { product_source: "local", product_id: "RAL-CASE", quantity: 1 },
+        { product_source: "local", product_id: "RAL-CBL", quantity: 1 },
       ],
     })
     expect(full.component_count).toBe(4)

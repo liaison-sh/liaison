@@ -422,6 +422,26 @@
 // exactly this form: an enforcing-sink tool with one of the three strings above, character for
 // character, and every other write tool with its own `schema.table`.
 //
+// A RESTRICTED RESOURCE'S READ NARROWS THE TURN (2026-11-12). A dashboard table follows its own
+// sharing, below any scope: everyone holds `kernel:dashboards:read`, few may read the payroll
+// table. Judged on scopes alone, copying its rows into an org-wide table ran at once.
+//
+//  15. a. A read of a shared resource declares the resource TYPE as its `readsFromTable` (a
+//         SHAREABLE_RESOURCES key, `kernel.dashboard_table` for tables_query) and its id as the
+//         row: the read files it as an origin, like A46b, and never authorizes a write (no tool
+//         writes to a resource type).
+//      b. Every write of that turn (execute-tool.ts, after rules 6 to 14, whatever the scope taint
+//         holds: `kernel:dashboards:read` is every member's, so it classifies nothing) has readers: the
+//         target resource's (`sinkReadersResource`), the acting user (`sinkReadersSelf`), the
+//         conversation's (`sinkReadersConversation`), a post's thread (`taintPostAudience`), else
+//         unbounded. It runs at once only when every reader also reads every restricted resource
+//         the turn read (resourceReadsGap); a resource the whole org sees narrows nothing.
+//      c. Otherwise it parks for the REQUESTER alone (the approval is owner-routed to them, who
+//         read the resource): never inline, never refused silently, never notified to the org's
+//         deciders, who may not read the resource. A call no person asked for is refused.
+//      d. The record is per turn (the live origin store, forwarded across a hop like A46b): the
+//         reply stamp carries the scopes only, so a later turn is judged by its own reads.
+//
 // SAME-RESOURCE ALLOWANCE (A46). The taint also records WHERE it came from: per table, the row
 // ids the turn's scoped reads RETURNED (A46b: filed after the read succeeded, never from its
 // arguments alone, so a failed, refused, empty or scope-free read files nothing). A write outside the enforcing sinks is allowed when the

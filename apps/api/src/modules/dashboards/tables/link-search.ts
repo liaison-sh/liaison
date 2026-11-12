@@ -44,6 +44,22 @@ export function itemsOf(data: unknown, itemsPath?: string): unknown[] {
   return []
 }
 
+/**
+ * The dispatch of a pick tool: the person's own read (origin `human-ui`, their actor and
+ * grants), never the webhook/job provenance, and a read-only run, so a manifest that names a
+ * writing tool as its picker cannot write.
+ */
+export function pickToolCall(viewer: UserContext, app: string, pick: PickDeclaration, q: string) {
+  return {
+    toolName: `${app}:${pick.tool}`,
+    orgId: viewer.orgId,
+    actor: viewer,
+    params: q ? { [pick.queryParam]: q } : {},
+    origin: "human-ui" as const,
+    readOnlyRun: true,
+  }
+}
+
 async function viaTool(
   viewer: UserContext,
   app: string,
@@ -54,14 +70,7 @@ async function viaTool(
   const { executeTool } = await import("~/modules/apps/execute-tool")
   let result: Awaited<ReturnType<typeof executeTool>>
   try {
-    result = await executeTool({
-      toolName: `${app}:${pick.tool}`,
-      orgId: viewer.orgId,
-      actor: viewer,
-      params: q ? { [pick.queryParam]: q } : {},
-      // A picker read the person asked for: an ungated readOnly tool, run with their authorization.
-      origin: "system",
-    })
+    result = await executeTool(pickToolCall(viewer, app, pick, q))
   } catch (err) {
     const e = err as { status?: number; code?: string; message?: string }
     log.error({ err, app, entityType, tool: pick.tool }, "link search: the pick tool failed")

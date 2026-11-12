@@ -29,7 +29,7 @@ A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_
 
 Every write, by a person or an agent, is checked against the columns. A refused write names the column and the reason, and nothing of it is saved.
 
-Removing a column hides its values but keeps them in the history, and its key cannot be used again.
+Removing a column hides its values everywhere (rows, history, search, filters) but keeps them stored for retention, and its key cannot be used again.
 
 ## Who sees a table
 
@@ -45,7 +45,9 @@ A table is shared like a dashboard: its owner, what everyone in the organisation
 
 Each row change is kept with who made it: a person, an agent (`@support`) or a routine (`Routine Inbound follow-up`). A row keeps its last 200 changes, for 400 days.
 
-**Undo** writes a change's previous values back as a new change. It works only while that change is still the row's latest: once someone changed the row again, undo is refused and says who changed it since. Undoing a deletion brings the row back.
+**Undo** writes a change's previous values back as a new change. It works only while that change is still the row's latest: once someone changed the row again, undo is refused and says who changed it since. Undoing a deletion brings the row back. An undo whose old values no longer fit the columns (a removed column, a removed choice, someone no longer a member, a required column left empty) is refused and names the column.
+
+The history, like the grid, shows only the columns that exist now, and **Linked record** for a link you cannot open. Searching the grid matches only what you can see.
 
 Two people changing the same row: the second change is refused with the row as it is now, and nothing is overwritten.
 
@@ -61,7 +63,9 @@ Your agent uses these tools, with your access:
 | `tables_rows_write` | Up to 50 row changes at once (add, update, delete), all or none. |
 | `tables_edit` | Create a table, change its columns or settings, or delete it. |
 
-A row change by an agent applies at once and is recorded, unless the table's **Agent row writes need approval** is on: then all its changes wait on one approval card. Creating a table, changing its columns or deleting it always waits for an approval. A restricted table's card goes to its owner; a table the whole organisation sees is decided by a dashboards administrator. If a row changed between the request and its approval, the whole change is refused and names the row.
+A row change by an agent applies at once and is recorded, unless the table's **Agent row writes need approval** is on: then all its changes wait on one approval card. Creating a table, changing its columns or deleting it always waits for an approval. A restricted table's card goes to its owner; a table the whole organisation sees is decided by a dashboards administrator. A restricted table whose owner's account was erased has no one to decide: such a change is refused until the table has an owner. If a row changed between the request and its approval, the whole change is refused and names the row.
+
+After your agent reads a table shared with some people only, anything it writes in the same turn runs at once only when everyone who will read it can read that table too. Otherwise it waits for your own approval (no one else sees the card): copying a restricted table's rows into a table the whole organisation sees, or posting them in a conversation with someone the table is not shared with, is a choice you make.
 
 Your own changes in the app never wait for an approval.
 

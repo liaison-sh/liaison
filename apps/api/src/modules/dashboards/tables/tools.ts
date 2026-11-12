@@ -137,7 +137,24 @@ async function tableDecider(
   const stored = await storedTable(orgId, id)
   if (!stored) return requestedBy
   if (stored.orgAccess !== "none") return null
-  return stored.ownerUserId ?? requestedBy
+  // An ownerless restricted table never reaches here for a gated call (refused first by
+  // `ownerlessRefusal`); were it to, its decider is nobody the requester could stand in for.
+  if (!stored.ownerUserId) throw new TableError("forbidden", OWNERLESS_MESSAGE)
+  return stored.ownerUserId
+}
+
+const OWNERLESS_MESSAGE =
+  "this table is shared with some people only and has no owner (its owner's account was erased), so nobody may approve an agent's change to it: it needs an owner first. Ask an editor of the table to make the change by hand, or an admin to share it with the whole organisation."
+
+/**
+ * A gated change to a restricted table with no owner (its owner was erased) has no decider: the
+ * requester must never decide it for their own agent. Refused before any approval is staged.
+ */
+async function ownerlessRefusal(orgId: string, id: unknown, gated: boolean) {
+  if (!gated) return null
+  const stored = await storedTable(orgId, id)
+  if (stored?.orgAccess !== "none" || stored.ownerUserId) return null
+  return asToolError(new TableError("forbidden", OWNERLESS_MESSAGE))
 }
 
 /** Who decides a new table: the requester for their own, the admins for an org-wide one. */
@@ -456,6 +473,11 @@ export function registerTableTools(orgId: string): void {
     readOnly: true,
     // Cells are free text people and agents wrote, some from outside the organisation.
     taintSource: true,
+    // The read files the table itself as a taint origin (scope-taint.ts, rule 15): a table shared
+    // with some people only narrows where the turn may write without an approval.
+    readsFromTable: TABLE_RESOURCE,
+    targetRowParam: "tableId",
+    resultRowPath: "tableId",
     deferLoading: true,
     description:
       'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
@@ -494,7 +516,11 @@ export function registerTableTools(orgId: string): void {
           },
           ctx.db,
         )
-        return { rows: page.rows.map(compactRow), nextCursor: page.nextCursor }
+        return {
+          tableId: p.tableId,
+          rows: page.rows.map(compactRow),
+          nextCursor: page.nextCursor,
+        }
       })) as Handler,
   })
 
@@ -526,6 +552,11 @@ export function registerTableTools(orgId: string): void {
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) =>
       (await storedTable(o, (params as { tableId?: unknown } | null)?.tableId))
         ?.agentWritesNeedApproval === true,
+    refuseBeforeGate: async (params: unknown, ctx) => {
+      const id = (params as { tableId?: unknown } | null)?.tableId
+      const stored = await storedTable(ctx.orgId, id)
+      return ownerlessRefusal(ctx.orgId, id, stored?.agentWritesNeedApproval === true)
+    },
   })
   registerApprovalSummarizer(orgId, "kernel", "tables_rows_write", summarizeRowsWrite)
   approvalResourceOwnerRegistry.set([orgId, "kernel", "tables_rows_write"], {
@@ -601,6 +632,10 @@ export function registerTableTools(orgId: string): void {
     refuseBeforeGate: async (params: unknown, ctx) => {
       if (ctx.userId === "system") return null
       const p = params as z.infer<typeof editParams>
+      if (p.action !== "create") {
+        const ownerless = await ownerlessRefusal(ctx.orgId, p.tableId, true)
+        if (ownerless) return ownerless
+      }
       const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
       return guarded(async () => {
         if (p.action === "create") return null

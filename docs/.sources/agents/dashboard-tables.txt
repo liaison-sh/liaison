@@ -42,3 +42,8 @@ Table name input, Enter creates -> apps/web/src/modules/dashboards/DashboardsSid
 A new table opens on Settings -> apps/web/src/modules/dashboards/TablePage.tsx:38
 Two tables cannot share a name -> packages/shared/src/i18n/locales/en/kernel.json:6734
 A link column with no linkTo searches every app -> apps/api/src/modules/dashboards/tables/routes.ts:112
+A removed column's cells are hidden from rows, history, search and filters -> apps/api/src/modules/dashboards/tables/service.ts:534 ; apps/api/src/modules/dashboards/tables/service.ts:547 ; apps/api/src/modules/dashboards/tables/service.ts:557
+An undo whose old values no longer fit is refused, naming the column -> apps/api/src/modules/dashboards/tables/service.ts:1239
+The grid search matches only what the reader sees -> apps/api/src/modules/dashboards/tables/service.ts:547
+A restricted table with no owner refuses an agent's gated change -> apps/api/src/modules/dashboards/tables/tools.ts:146
+After reading a restricted table, a write some readers cannot see waits for the requester -> apps/api/src/modules/apps/execute-tool.ts:4355

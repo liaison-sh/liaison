@@ -53,6 +53,7 @@ import {
   validateCells,
 } from "~/modules/dashboards/tables/columns"
 import {
+  type ContainsQuery,
   DataStoreError,
   deleteDocument,
   getDocument,
@@ -528,6 +529,42 @@ export function visibleCells(
   return out
 }
 
+/** The cells of a change a reader sees: as for a row (A16), so a dropped column's old values and
+ *  a link label they may not open never reach them through the history. */
+function visibleChangeCells(
+  viewer: UserContext,
+  columns: Column[],
+  cells: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  return cells === null ? null : visibleCells(viewer, columns, cells)
+}
+
+/**
+ * What the grid's text search reaches for this reader: the active columns' values, and a link
+ * cell's label only when the reader may open the link's app (the display rule, A16). A dropped
+ * column's cells and a hidden label never match, so the search is no oracle on them.
+ */
+function searchFor(viewer: UserContext, columns: Column[], text: string): ContainsQuery {
+  const plain = columns.filter((c) => c.type !== "link").map((c) => c.key)
+  const linkFields = columns.filter((c) => c.type === "link").map((c) => c.key)
+  const apps = viewer.scopes.includes("*")
+    ? ("all" as const)
+    : [...new Set(["kernel", ...viewer.scopes.map((s) => s.split(":")[0] ?? "")])].filter(Boolean)
+  return { text, fields: plain, links: { fields: linkFields, apps } }
+}
+
+/** A filter names active columns only: a dropped column's retired cells are not queryable. */
+function checkWhere(where: Where | undefined, columns: Column[]): void {
+  if (!where) return
+  for (const key of Object.keys(where)) {
+    if (!columns.some((c) => c.key === key)) {
+      throw new TableError("invalid_request", `'${key}' is not a column of this table`, {
+        column: key,
+      })
+    }
+  }
+}
+
 async function latestActors(
   t: RlsClient,
   orgId: string,
@@ -630,6 +667,7 @@ export async function listRows(
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
     const field = orderField(opts.sort, loaded.columns)
+    checkWhere(opts.where, loaded.columns)
     const limit = Math.min(Math.max(opts.limit ?? DEFAULT_ROWS_PAGE, 1), MAX_QUERY_LIMIT)
     const page = await queryDocuments(
       t,
@@ -641,7 +679,7 @@ export async function listRows(
         limit,
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       },
-      { contains: opts.q },
+      opts.q?.trim() ? { contains: searchFor(viewer, loaded.columns, opts.q) } : {},
     ).catch(storeError)
     return { rows: await toRows(t, viewer, loaded, page.items), nextCursor: page.nextCursor }
   })
@@ -655,6 +693,7 @@ export async function readAllRows(
   opts: { where?: Where; sort?: string; dir?: "asc" | "desc"; max: number },
 ): Promise<{ docs: StoreDocument[]; truncated: boolean }> {
   const field = orderField(opts.sort, loaded.columns)
+  checkWhere(opts.where, loaded.columns)
   const docs: StoreDocument[] = []
   let cursor: string | undefined
   for (;;) {
@@ -1069,8 +1108,8 @@ export async function listChanges(
         id: row.id,
         rowId: row.rowId,
         op: row.op,
-        before: row.before,
-        after: row.after,
+        before: visibleChangeCells(viewer, loaded.columns, row.before),
+        after: visibleChangeCells(viewer, loaded.columns, row.after),
         actor: label(row),
         at: iso(row.at),
         undoable: latest.get(row.rowId) === row.id,
@@ -1144,9 +1183,10 @@ export async function undoChange(
         action = "deleted"
         result = { id: change.rowId, deleted: true }
       } else if (change.after === null) {
-        // Undo a delete: the row comes back with its cells and id.
+        // Undo a delete: the row comes back with its cells and id, if they still fit the columns.
         if (doc) throw await conflict(t, viewer, loaded, change.rowId)
-        const written = await setDocument(t, caller, collection, change.rowId, change.before, {
+        const restored = applyCells({}, await undoCells(t, viewer, loaded, change.before, true))
+        const written = await setDocument(t, caller, collection, change.rowId, restored, {
           ifVersion: 0,
         })
         before = null
@@ -1157,7 +1197,7 @@ export async function undoChange(
         result = (await toRowsNow(viewer, loaded, written, writer))!
       } else {
         if (!doc) throw await conflict(t, viewer, loaded, change.rowId)
-        const next = applyCells(doc.data, change.before)
+        const next = applyCells(doc.data, await undoCells(t, viewer, loaded, change.before, false))
         keys = changedKeys(doc.data, next)
         const written = await setDocument(t, caller, collection, change.rowId, next, {
           ifVersion: doc.version,
@@ -1188,6 +1228,42 @@ export async function undoChange(
       return result
     }),
   )
+}
+
+/**
+ * The cells an undo writes back, checked against the columns as they are now (S1): a cell of a
+ * column dropped since, a choice removed since, a person no longer a member, a required column
+ * left empty are refused, naming the column. An undone delete brings back the row's active
+ * cells only: a dropped column's cells stay retired (and in the history).
+ */
+async function undoCells(
+  t: RlsClient,
+  viewer: UserContext,
+  loaded: LoadedTable,
+  before: Record<string, unknown>,
+  wholeRow: boolean,
+): Promise<Record<string, unknown>> {
+  const active = new Set(loaded.columns.map((c) => c.key))
+  const cells: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(before)) {
+    if (active.has(key)) cells[key] = value
+    else if (!wholeRow) {
+      throw new TableError(
+        "invalid_cell",
+        `cannot undo: the column '${key}' was dropped since, so its old value cannot be written back`,
+        { column: key },
+      )
+    }
+  }
+  const members = await activeMembers(t, viewer.orgId, personIdsIn(loaded.columns, cells))
+  try {
+    return validateCells(loaded.columns, cells, { full: wholeRow, members })
+  } catch (err) {
+    if (err instanceof CellError) {
+      throw new TableError("invalid_cell", `cannot undo: ${err.message}`, { column: err.column })
+    }
+    throw err
+  }
 }
 
 async function toRowsNow(

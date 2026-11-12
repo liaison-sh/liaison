@@ -12,6 +12,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
   appDocuments,
+  appDocumentUsage,
   dashboardTableChanges,
   dashboardTables,
   pendingEvents,
@@ -209,6 +210,52 @@ describe("sharing in the database", () => {
     expect(touched).toEqual([])
   })
 
+  it("a viewer and a non-grantee cannot delete rows by a raw path", async () => {
+    const id = await sharedTable()
+    const owner = await asHeld(ownerId)
+    await writeRows(owner, id, [{ op: "add", cells: { batch: "B-del" } }])
+    for (const userId of [viewerId, outsiderId]) {
+      const who = await asHeld(userId)
+      const deleted = await withRlsContext(who, (tx) =>
+        tx
+          .delete(appDocuments)
+          .where(
+            and(
+              eq(appDocuments.orgId, orgId),
+              eq(appDocuments.app, "dashboards"),
+              eq(appDocuments.collection, tableCollection(id)),
+            ),
+          )
+          .returning({ id: appDocuments.docId }),
+      )
+      expect(deleted).toEqual([])
+    }
+    expect((await listRows(owner, id)).rows).toHaveLength(1)
+  })
+
+  it("a table's usage row (row count, size) is read by its readers only", async () => {
+    const id = await sharedTable()
+    const owner = await asHeld(ownerId)
+    await writeRows(owner, id, [{ op: "add", cells: { batch: "B-use" } }])
+    const usage = (userId: string) =>
+      asHeld(userId).then((who) =>
+        withRlsContext(who, (tx) =>
+          tx
+            .select({ collection: appDocumentUsage.collection, docs: appDocumentUsage.docs })
+            .from(appDocumentUsage)
+            .where(
+              and(
+                eq(appDocumentUsage.orgId, orgId),
+                eq(appDocumentUsage.app, "dashboards"),
+                eq(appDocumentUsage.collection, tableCollection(id)),
+              ),
+            ),
+        ),
+      )
+    expect(await usage(outsiderId)).toEqual([])
+    expect(await usage(viewerId)).toEqual([{ collection: tableCollection(id), docs: 1 }])
+  })
+
   it("a role grant reaches the role's members", async () => {
     const id = await sharedTable()
     const member = await asHeld(roleMemberId)
@@ -328,6 +375,43 @@ describe("history", () => {
     expect(back.cells).toEqual({ batch: "D" })
   })
 
+  it("an undo refuses old cells that no longer fit the columns, naming the column", async () => {
+    const id = await sharedTable()
+    const owner = await asHeld(ownerId)
+    const [row] = (await writeRows(owner, id, [
+      { op: "add", cells: { batch: "F", status: "ordered", qty: 4 } },
+    ])) as Row[]
+    await writeRows(owner, id, [
+      { op: "update", id: row!.id, ifVersion: 1, cells: { status: "arrived" } },
+    ])
+    // The old choice is removed: undoing would write a value the column no longer accepts.
+    const info = await getTable(owner, id)
+    await updateTable(owner, id, {
+      ifVersion: info.version,
+      columns: { setChoices: [{ key: "status", choices: ["in_transit", "arrived"] }] },
+    })
+    const change = (await listChanges(owner, id, { rowId: row!.id })).changes[0]!
+    await expect(undoChange(owner, id, change.id)).rejects.toMatchObject({
+      code: "invalid_cell",
+      details: { column: "status" },
+    })
+    // A dropped column: its old value cannot be written back either.
+    const now = (await listRows(owner, id)).rows[0]!
+    await writeRows(owner, id, [
+      { op: "update", id: row!.id, ifVersion: now.version, cells: { qty: 5 } },
+    ])
+    await updateTable(owner, id, {
+      ifVersion: (await getTable(owner, id)).version,
+      columns: { drop: ["qty"] },
+    })
+    const qtyChange = (await listChanges(owner, id, { rowId: row!.id })).changes[0]!
+    await expect(undoChange(owner, id, qtyChange.id)).rejects.toMatchObject({
+      code: "invalid_cell",
+      message: expect.stringContaining("'qty'"),
+    })
+    expect((await listRows(owner, id)).rows[0]!.cells).toEqual({ batch: "F", status: "arrived" })
+  })
+
   it("a stale ifVersion is a conflict carrying the current row", async () => {
     const id = await sharedTable()
     const owner = await asHeld(ownerId)
@@ -339,6 +423,90 @@ describe("history", () => {
     expect(err).toBeInstanceOf(TableError)
     expect((err as TableError).code).toBe("version_conflict")
     expect((err as TableError).details.current).toMatchObject({ id: row!.id, version: 2 })
+  })
+})
+
+describe("what a reader sees (A16)", () => {
+  const LINK_COLUMNS = [
+    { key: "batch", label: "Batch", type: "text", required: true },
+    { key: "qty", label: "Quantity", type: "number" },
+    { key: "customer", label: "Customer", type: "link" },
+  ]
+
+  async function linkTable() {
+    n += 1
+    const owner = await asHeld(ownerId)
+    const t = await createTable(owner, { name: `Linked ${n}`, columns: LINK_COLUMNS })
+    await setTableSharing(owner, t.id, {
+      orgAccess: "none",
+      users: [{ userId: viewerId, role: "viewer" }],
+    })
+    return t.id
+  }
+
+  it("history hides a link label the reader may not open, and a dropped column's cells", async () => {
+    const id = await linkTable()
+    const owner = await asHeld(ownerId)
+    const hidden = { app: "vaultapp", entityType: "customer", id: "c-1", label: "ACME GmbH" }
+    const [row] = (await writeRows(owner, id, [
+      { op: "add", cells: { batch: "L-1", qty: 31337, customer: hidden } },
+    ])) as Row[]
+    await writeRows(owner, id, [
+      { op: "update", id: row!.id, ifVersion: 1, cells: { qty: 271828 } },
+    ])
+    await updateTable(owner, id, {
+      ifVersion: (await getTable(owner, id)).version,
+      columns: { drop: ["qty"] },
+    })
+    const viewer = await asHeld(viewerId)
+    expect(viewer.scopes.some((s) => s === "*" || s.startsWith("vaultapp"))).toBe(false)
+    const changes = (await listChanges(viewer, id, { rowId: row!.id })).changes
+    const text = JSON.stringify(changes)
+    expect(text).not.toContain("ACME")
+    expect(text).not.toContain("31337")
+    expect(text).not.toContain("271828")
+    expect(changes.find((c) => c.op === "create")!.after).toEqual({
+      batch: "L-1",
+      customer: { ...hidden, label: "Linked record" },
+    })
+    const rows = (await listRows(viewer, id)).rows
+    expect(JSON.stringify(rows)).not.toContain("271828")
+  })
+
+  it("the grid search matches visible cells only: no hidden label, no dropped column", async () => {
+    const id = await linkTable()
+    const owner = await asHeld(ownerId)
+    await writeRows(owner, id, [
+      {
+        op: "add",
+        cells: {
+          batch: "S-1",
+          qty: 4242,
+          customer: { app: "vaultapp", entityType: "customer", id: "c-2", label: "Hidden Corp" },
+        },
+      },
+      {
+        op: "add",
+        cells: {
+          batch: "S-2",
+          customer: { app: "kernel", entityType: "contact", id: "c-3", label: "Open Ltd" },
+        },
+      },
+    ])
+    await updateTable(owner, id, {
+      ifVersion: (await getTable(owner, id)).version,
+      columns: { drop: ["qty"] },
+    })
+    const viewer = await asHeld(viewerId)
+    const found = async (q: string) =>
+      (await listRows(viewer, id, { q })).rows.map((r) => r.cells.batch)
+    expect(await found("Hidden Corp")).toEqual([])
+    expect(await found("4242")).toEqual([])
+    expect(await found("Open Ltd")).toEqual(["S-2"])
+    expect(await found("S-1")).toEqual(["S-1"])
+    await expect(listRows(viewer, id, { where: { qty: 4242 } })).rejects.toMatchObject({
+      code: "invalid_request",
+    })
   })
 })
 

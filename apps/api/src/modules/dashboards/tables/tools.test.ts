@@ -115,6 +115,26 @@ describe("tables_rows_write", () => {
     expect((await listRows(await asHeld(ownerId), id)).rows.length).toBe(1)
   })
 
+  it("refuses a gated write to a restricted table whose owner was erased: nobody may decide it", async () => {
+    const id = await table({ switchOn: true })
+    // What erasure does to the owner column (erase-user.ts): the table is kept, ownerless.
+    await sql`UPDATE kernel.dashboard_tables SET owner_user_id = NULL WHERE id = ${id}::uuid`
+    const outcome = await agentCall(editorId, "kernel:tables_rows_write", {
+      tableId: id,
+      ops: [{ op: "add", cells: { batch: "R-orphan" } }],
+    }).then(
+      (res) => ({ blocked: res.blocked, text: JSON.stringify(res) }),
+      (err: Error) => ({ blocked: undefined, text: err.message }),
+    )
+    expect(outcome.blocked).toBeUndefined()
+    expect(outcome.text).toContain("needs an owner")
+    const [pending] = await sql`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+       WHERE org_id = ${orgId}::uuid AND tool_name LIKE '%tables_rows_write%'
+         AND tool_params::text LIKE '%R-orphan%'`
+    expect(pending?.n).toBe(0)
+  })
+
   it("an agent of someone the table is not shared with finds no table", async () => {
     const id = await table()
     await expect(

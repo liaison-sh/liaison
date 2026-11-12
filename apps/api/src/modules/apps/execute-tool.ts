@@ -218,7 +218,9 @@ import {
   conversationReadersTaintGap,
   holdsEveryScope,
   readersTaintGap,
+  resourceReaders,
   resourceReadersTaintGap,
+  resourceReadsGap,
   selfReaderTaintGap,
   sinkReaderScopes,
   type TaintAudienceGap,
@@ -716,6 +718,8 @@ interface CreateApprovalRequestOpts {
    * dispatch already checked they hold them.
    */
   audienceMustHold?: string[]
+  /** Rule 15: route the approval to the requester alone (resolveApprovalOwnerRouting). */
+  routeToRequester?: boolean
   /** Readers of the write's target lack those scopes (rule 8e): the card carries the disclosure
    *  line, which an in-place edit of the row (rule 8g) rebuilds. */
   taintDisclosedToReaders?: boolean
@@ -1301,7 +1305,11 @@ async function resolveApprovalOwnerRouting(a: {
   mustHold: string[]
   /** The acting agent (a write to its own memory is its owner's): absent reads the live frame. */
   actingAgentId?: string | null
+  /** Rule 15: the turn read a restricted resource the write's readers do not all read; the
+   *  requester (its reader) alone decides. */
+  routeToRequester?: boolean
 }): Promise<string | null> {
+  if (a.routeToRequester === true && a.requestedBy) return a.requestedBy
   const originRoutineId = currentRunContext()?.routineId
   const personalToolOwnerId =
     toolRegistry.get([a.orgId, a.appName, a.toolShortName])?.ownerUserId ?? null
@@ -1563,6 +1571,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     dimensionConstraint,
     mustHold: audienceMustHold,
     actingAgentId,
+    routeToRequester: opts.routeToRequester === true,
   })
   // An N-eyes floor the audience can never meet is refused here, never parked
   // (every caller also checks earlier, before creating any thread).
@@ -3864,6 +3873,10 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // With it, when a person's own external client asked for the post: that connection's scopes,
   // recorded on the approval because its re-entry runs without the client's frame.
   let taintPostExternalClientScopes: string[] | undefined
+  // Rule 15 (resource taint): the turn read a resource only some people see, and this write
+  // would reach people outside them. It parks for the requester alone (who read it), never for
+  // the org's deciders, who may not be its readers either.
+  let resourceReadRoutesToRequester = false
   // What a judged tainted turn read, whatever the sink check answered (rule 13, 2026-11-03): a
   // write the taint lets through (an enforcing sink such as memory, readers who hold it, the
   // same-resource allowance) can still park for another reason (the outside-content hold, a host
@@ -4269,6 +4282,85 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
                 (u) => u !== "",
               )
       }
+    }
+  }
+
+  // A RESTRICTED RESOURCE'S READ NARROWS THE TURN BELOW ITS SCOPES (scope-taint.ts, rule 15,
+  // 2026-11-12). The taint scopes say "dashboards" at most (and `kernel:dashboards:read`, held by
+  // every member, classifies nothing), not "this table, shared with HR only": a turn that read a
+  // restricted dashboard table may write only where every reader also reads that table. Judged
+  // whatever the scope taint holds. The write's readers, when the tool says who they are: the
+  // target resource's (tables_rows_write), the acting user's, the conversation's, a post's thread;
+  // any other write's readers are unbounded. Outside them, the write parks for the requester
+  // alone (never silently refused, never run inline).
+  if (
+    opts.origin !== "human-ui" &&
+    !personClientUnjudged &&
+    turnTaintOriginRows !== undefined &&
+    !isReadOnlyTool(tool) &&
+    !isWebRead &&
+    !approvalExecutingNestedCall &&
+    !carriesNoTurnContent(tool, opts.params) &&
+    tool.taintUnjudgedWrite !== true &&
+    tool.taintEditsPendingApproval !== true
+  ) {
+    const requesterUserId = opts.actor.actorType === "user" ? opts.actor.userId : ""
+    const params = (opts.params ?? {}) as Record<string, unknown>
+    const postTarget = tool.taintPostAudience?.(opts.params) ?? null
+    let writeReaders: "everyone" | readonly string[] | null = null
+    if (tool.sinkReadersResource) {
+      writeReaders = await resourceReaders(
+        opts.orgId,
+        tool.sinkReadersResource.type,
+        params[tool.sinkReadersResource.idParam],
+      ).catch(() => null)
+    } else if (tool.sinkReadersSelf === true && requesterUserId !== "") {
+      writeReaders = [requesterUserId]
+    } else if (
+      tool.sinkReadersConversation === true &&
+      requesterUserId !== "" &&
+      typeof opts.threadId === "string"
+    ) {
+      writeReaders = [
+        ...new Set([requesterUserId, ...(await threadPeopleIds(opts.orgId, opts.threadId))]),
+      ]
+    } else if (postTarget !== null) {
+      writeReaders =
+        "threadId" in postTarget
+          ? [
+              ...new Set([
+                requesterUserId,
+                ...(await threadPeopleIds(opts.orgId, postTarget.threadId)),
+              ]),
+            ].filter((u) => u !== "")
+          : [...new Set([requesterUserId, ...postTarget.participantIds])].filter((u) => u !== "")
+    }
+    const resourceGap = await resourceReadsGap({
+      orgId: opts.orgId,
+      originRows: turnTaintOriginRows,
+      writeReaders,
+    })
+    if (resourceGap !== null) {
+      if (requesterUserId === "") {
+        if (taintFrame) taintFrame.scopeTaintRefused = true
+        return {
+          error: markPlatformTaintRefusal({
+            code: "E_SCOPE_TAINT_BLOCKED",
+            message: `tool ${opts.toolName}: NOT EXECUTED: this conversation read a dashboard table shared with some people only, and this write would reach people it is not shared with. Nobody acting for a person asked for it, so nobody may decide it. Nothing was written.`,
+            retryable: false,
+            status: 403,
+          }),
+        }
+      }
+      resourceReadRoutesToRequester = true
+      const known =
+        Array.isArray(turnTaintScopes) && turnTaintScopes.every((s) => typeof s === "string")
+          ? turnTaintScopes
+          : []
+      taintForcedApprovalScopes = [
+        ...new Set([...(taintForcedApprovalScopes ?? known), ...resourceGap.readScopes]),
+      ].sort()
+      taintDisclosedToReaders = true
     }
   }
 
@@ -5006,6 +5098,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       dimensionConstraint,
       mustHold,
       actingAgentId,
+      routeToRequester: resourceReadRoutesToRequester,
     })
     // The requester, who holds the taint (rule 6c, judged above), is a decider when they may
     // approve it: the same answer the card's "you can approve this" is built from.
@@ -5098,6 +5191,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           }
         : {}),
       actingAgentId,
+      routeToRequester: resourceReadRoutesToRequester,
     })
     envelope = {
       blocked: {
@@ -5321,6 +5415,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             dimensionConstraint,
             mustHold: parkTaint ?? [],
             actingAgentId,
+            routeToRequester: resourceReadRoutesToRequester,
           }),
           approveScope,
           dimensionConstraint,
@@ -5498,6 +5593,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
               }
             : {}),
           actingAgentId,
+          routeToRequester: resourceReadRoutesToRequester,
           ...(autoCreatedApprovalId ? { id: autoCreatedApprovalId } : {}),
         })
       }

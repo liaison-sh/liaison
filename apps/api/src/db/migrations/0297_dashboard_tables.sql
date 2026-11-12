@@ -285,6 +285,70 @@ CREATE POLICY app_documents_dashboard_tables_delete ON kernel.app_documents
   );
 --> statement-breakpoint
 
+-- app_document_usage rows of app 'dashboards' (a table's row count and size) follow their table
+-- too: read by its readers, written (the data store's counter, in the row write's transaction) by
+-- its editors. Without them any member learns the ids and sizes of tables not shared with them.
+-- expand-safe: replaced by the policy below in the same transaction.
+DROP POLICY IF EXISTS app_document_usage_dashboard_tables_select ON kernel.app_document_usage;
+--> statement-breakpoint
+-- expand-safe: usage rows of every other app pass unchanged (app <> 'dashboards'); the previous release has no 'dashboards' rows.
+CREATE POLICY app_document_usage_dashboard_tables_select ON kernel.app_document_usage
+  AS RESTRICTIVE FOR SELECT TO liaison_rls
+  USING (
+    app <> 'dashboards'
+    OR collection IN (SELECT 't_' || replace(t.id::text, '-', '') FROM kernel.dashboard_tables t)
+  );
+--> statement-breakpoint
+-- expand-safe: replaced by the policy below in the same transaction.
+DROP POLICY IF EXISTS app_document_usage_dashboard_tables_insert ON kernel.app_document_usage;
+--> statement-breakpoint
+-- expand-safe: usage rows of every other app pass unchanged (app <> 'dashboards'); the previous release has no 'dashboards' rows.
+CREATE POLICY app_document_usage_dashboard_tables_insert ON kernel.app_document_usage
+  AS RESTRICTIVE FOR INSERT TO liaison_rls
+  WITH CHECK (
+    app <> 'dashboards'
+    OR collection IN (
+      SELECT 't_' || replace(t.id::text, '-', '') FROM kernel.dashboard_tables t
+       WHERE kernel.dashboard_table_can_edit(t.owner_user_id, t.org_access, t.id)
+    )
+  );
+--> statement-breakpoint
+-- expand-safe: replaced by the policy below in the same transaction.
+DROP POLICY IF EXISTS app_document_usage_dashboard_tables_update ON kernel.app_document_usage;
+--> statement-breakpoint
+-- expand-safe: usage rows of every other app pass unchanged (app <> 'dashboards'); the previous release has no 'dashboards' rows.
+CREATE POLICY app_document_usage_dashboard_tables_update ON kernel.app_document_usage
+  AS RESTRICTIVE FOR UPDATE TO liaison_rls
+  USING (
+    app <> 'dashboards'
+    OR collection IN (
+      SELECT 't_' || replace(t.id::text, '-', '') FROM kernel.dashboard_tables t
+       WHERE kernel.dashboard_table_can_edit(t.owner_user_id, t.org_access, t.id)
+    )
+  )
+  WITH CHECK (
+    app <> 'dashboards'
+    OR collection IN (
+      SELECT 't_' || replace(t.id::text, '-', '') FROM kernel.dashboard_tables t
+       WHERE kernel.dashboard_table_can_edit(t.owner_user_id, t.org_access, t.id)
+    )
+  );
+--> statement-breakpoint
+-- expand-safe: replaced by the policy below in the same transaction.
+DROP POLICY IF EXISTS app_document_usage_dashboard_tables_delete ON kernel.app_document_usage;
+--> statement-breakpoint
+-- expand-safe: usage rows of every other app pass unchanged (app <> 'dashboards'); the previous release has no 'dashboards' rows.
+CREATE POLICY app_document_usage_dashboard_tables_delete ON kernel.app_document_usage
+  AS RESTRICTIVE FOR DELETE TO liaison_rls
+  USING (
+    app <> 'dashboards'
+    OR collection IN (
+      SELECT 't_' || replace(t.id::text, '-', '') FROM kernel.dashboard_tables t
+       WHERE kernel.dashboard_table_can_edit(t.owner_user_id, t.org_access, t.id)
+    )
+  );
+--> statement-breakpoint
+
 -- Who may change a table's sharing: whoever edits it (or owns it) AND holds kernel:dashboards:share
 -- or :admin. SECURITY DEFINER so the grants table's write policy can ask it without recursing.
 -- reviewed-dynamic: a SQL function body reading kernel.dashboard_tables, no DDL.

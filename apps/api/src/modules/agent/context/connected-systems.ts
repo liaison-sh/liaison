@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * The org's API connections (api-connector adapters) as the agent sees them
- * before it has loaded any connector tool.
+ * The org's API connections as the agent sees them before it has loaded any
+ * connector tool: the adapters of every app whose API connection declares a
+ * `customerContext` (connections/api/declarations.ts), reached through that
+ * app's own read and write tools. No app is named here.
  *
  * Without this, an org with a CRM connected looked to the agent like an org
  * without one: the connector tools are deferred, the catalog named them only
@@ -24,26 +26,32 @@
  */
 import { promptSafeName } from "@liaison/api-connector-core"
 import { rootLogger } from "~/lib/logger"
-import { CONNECTOR_APP } from "~/modules/agent/tools/tool-rank"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import {
+  apiConnectionsOf,
+  customerContextConnections,
+} from "~/modules/apps/connections/api/declarations"
 import { listAdapterRows } from "~/modules/apps/connections/api/store"
 import { isAppOffForOrg } from "~/modules/apps/org-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "connected-systems" })
 
-export { CONNECTOR_APP }
-
-const READ_SCOPE = "api-connector:read"
-const WRITE_SCOPE = "api-connector:write"
-export const CONNECTOR_READ_TOOL = "connector_read"
-export const CONNECTOR_WRITE_TOOL = "connector_write"
+/** The apps whose tools connect outside systems (they declare an API connection). */
+export function connectorApps(orgId: string): Set<string> {
+  return new Set(apiConnectionsOf(orgId).map((c) => c.app))
+}
 /** Operations a prompt line names before it says "and N more". */
 const OPS_LISTED = 6
 /** Characters of an operation's description a search synopsis carries. */
 const OP_DESCRIPTION_CHARS = 80
 
 export interface ConnectedSystem {
+  /** The app whose API connection it is. */
+  app: string
+  /** That app's read and write tools (SDK names, `<app>__<tool>`). */
+  readTool: string
+  writeTool: string
   /** The connection slug (`connection` param of the connector tools). */
   connection: string
   /** The adapter's display name, prompt-safe. */
@@ -61,29 +69,37 @@ export async function loadConnectedSystems(
   orgId: string,
   turnScopes: readonly string[],
 ): Promise<ConnectedSystem[]> {
-  if (!hasScope(READ_SCOPE, [...turnScopes])) return []
-  if (!toolRegistry.get([orgId, CONNECTOR_APP, CONNECTOR_READ_TOOL])) return []
-  if (isAppOffForOrg(orgId, CONNECTOR_APP)) return []
-  const canWrite = hasScope(WRITE_SCOPE, [...turnScopes])
-  try {
-    const rows = await listAdapterRows(orgId)
-    return rows.map((row) => ({
-      connection: row.identifier,
-      system: promptSafeName(row.adapter.name),
-      reads: row.adapter.operations.filter((o) => o.kind === "read").map((o) => o.name),
-      writes: canWrite
-        ? row.adapter.operations
-            .filter((o) => o.kind === "write")
-            .map((o) => ({
-              name: o.name,
-              description: promptSafeName(o.description ?? "").slice(0, OP_DESCRIPTION_CHARS),
-            }))
-        : [],
-    }))
-  } catch (err) {
-    log.warn({ err }, "could not list the org's API connections")
-    return []
+  const out: ConnectedSystem[] = []
+  for (const source of customerContextConnections(orgId)) {
+    if (!hasScope(source.decl.readScope, [...turnScopes])) continue
+    if (!toolRegistry.get([orgId, source.app, source.customer.readTool])) continue
+    if (isAppOffForOrg(orgId, source.app)) continue
+    const canWrite = hasScope(source.decl.writeScope, [...turnScopes])
+    try {
+      const rows = await listAdapterRows(source)
+      out.push(
+        ...rows.map((row) => ({
+          app: source.app,
+          readTool: `${source.app}__${source.customer.readTool}`,
+          writeTool: `${source.app}__${source.customer.writeTool}`,
+          connection: row.identifier,
+          system: promptSafeName(row.adapter.name),
+          reads: row.adapter.operations.filter((o) => o.kind === "read").map((o) => o.name),
+          writes: canWrite
+            ? row.adapter.operations
+                .filter((o) => o.kind === "write")
+                .map((o) => ({
+                  name: o.name,
+                  description: promptSafeName(o.description ?? "").slice(0, OP_DESCRIPTION_CHARS),
+                }))
+            : [],
+        })),
+      )
+    } catch (err) {
+      log.warn({ err, app: source.app }, "could not list the org's API connections")
+    }
   }
+  return out
 }
 
 function listed(names: string[]): string {
@@ -96,9 +112,9 @@ export function connectedSystemLine(s: ConnectedSystem): string {
   const reads = s.reads.length > 0 ? `reads ${listed(s.reads)}` : "no reads"
   const writes =
     s.writes.length > 0
-      ? `; writes ${listed(s.writes.map((w) => w.name))} (connector_write, approval required)`
+      ? `; writes ${listed(s.writes.map((w) => w.name))} (${s.writeTool}, approval required)`
       : ""
-  return `- ${s.system} (connection "${s.connection}") is connected: ${reads}${writes}.`
+  return `- ${s.system} (connection "${s.connection}", read with ${s.readTool}) is connected: ${reads}${writes}.`
 }
 
 /**
@@ -110,7 +126,7 @@ export function connectedSystemsBlock(systems: readonly ConnectedSystem[]): stri
   if (systems.length === 0) return null
   return [
     "## Connected business systems",
-    "The org's own systems, reached with the api-connector tools (connector_read; connector_write for a change). A note or change for one of their records (a company, contact, deal or order) is a connector_write there, never a Liaison ticket note or contact edit.",
+    "The org's own systems, reached with each line's read tool (and its write tool for a change). A note or change for one of their records (a company, contact, deal or order) is a write there, never a Liaison ticket note or contact edit.",
     ...systems.map(connectedSystemLine),
   ].join("\n")
 }
@@ -130,16 +146,37 @@ function words(text: string): string[] {
 }
 
 /**
- * Search hints for the connector tools, keyed by tool name. connector_write
- * gets one only when some connection has a write operation the turn may run.
+ * Search hints for the connector tools, keyed by SDK name (`<app>__<tool>`). A
+ * write tool gets one only when some connection has a write operation the turn
+ * may run.
  */
 export function connectorSearchHints(
   systems: readonly ConnectedSystem[],
 ): Map<string, ToolSearchHint> {
   const hints = new Map<string, ToolSearchHint>()
+  for (const [tool, group] of groupBy(systems, (s) => s.readTool)) {
+    addReadHint(hints, tool, group)
+  }
+  for (const [tool, group] of groupBy(systems, (s) => s.writeTool)) {
+    addWriteHint(hints, tool, group)
+  }
+  return hints
+}
+
+function groupBy<T>(items: readonly T[], key: (t: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>()
+  for (const item of items) out.set(key(item), [...(out.get(key(item)) ?? []), item])
+  return out
+}
+
+function addReadHint(
+  hints: Map<string, ToolSearchHint>,
+  tool: string,
+  systems: readonly ConnectedSystem[],
+): void {
   const withReads = systems.filter((s) => s.reads.length > 0)
   if (withReads.length > 0) {
-    hints.set(CONNECTOR_READ_TOOL, {
+    hints.set(tool, {
       keywords: [
         ...new Set(
           withReads.flatMap((s) => [...words(s.system), s.connection, ...s.reads.flatMap(words)]),
@@ -148,9 +185,16 @@ export function connectorSearchHints(
       summary: `Reads ${withReads.map((s) => `${s.system} ("${s.connection}"): ${listed(s.reads)}`).join("; ")}.`,
     })
   }
+}
+
+function addWriteHint(
+  hints: Map<string, ToolSearchHint>,
+  tool: string,
+  systems: readonly ConnectedSystem[],
+): void {
   const withWrites = systems.filter((s) => s.writes.length > 0)
   if (withWrites.length > 0) {
-    hints.set(CONNECTOR_WRITE_TOOL, {
+    hints.set(tool, {
       keywords: [
         ...new Set([
           "update",
@@ -173,17 +217,24 @@ export function connectorSearchHints(
         .join("; ")}. Approval required.`,
     })
   }
-  return hints
 }
 
 /**
- * The api-connector line of the deferred-tool catalog: which systems its
- * connector_write reaches, with their write operations. Null without writes.
+ * Per connector app, its line of the deferred-tool catalog: which systems its
+ * write tool reaches, with their write operations. Apps without writes are absent.
  */
-export function connectorCatalogNote(systems: readonly ConnectedSystem[]): string | null {
-  const withWrites = systems.filter((s) => s.writes.length > 0)
-  if (withWrites.length === 0) return null
-  return `connector_write writes to ${withWrites
-    .map((s) => `${s.system}: ${listed(s.writes.map((w) => w.name))}`)
-    .join("; ")}`
+export function connectorCatalogNotes(systems: readonly ConnectedSystem[]): Map<string, string> {
+  const notes = new Map<string, string>()
+  for (const [app, group] of groupBy(systems, (s) => s.app)) {
+    const withWrites = group.filter((s) => s.writes.length > 0)
+    if (withWrites.length === 0) continue
+    const tool = withWrites[0]?.writeTool.slice(app.length + 2) ?? ""
+    notes.set(
+      app,
+      `${tool} writes to ${withWrites
+        .map((s) => `${s.system}: ${listed(s.writes.map((w) => w.name))}`)
+        .join("; ")}`,
+    )
+  }
+  return notes
 }

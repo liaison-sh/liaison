@@ -12,7 +12,10 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -120,7 +123,7 @@ beforeAll(async () => {
   await ensureAppsForOrg(ORG)
   await registerApiConnectorApp(ORG)
   await initSandboxPool()
-  await upsertAdapterRow(ORG, "crm", CRM, USER)
+  await upsertAdapterRow(testApiConn(ORG), "crm", CRM, USER)
   await withPrivilegedDb(ORG, "connector-tools-test", (tx) =>
     createCredentialConnection(tx, ORG, USER, "api-connector", "api", {
       identifier: "crm",
@@ -131,7 +134,7 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await invalidateConnectionCaches(ORG, "crm")
+  await invalidateConnectionCaches(testApiConn(ORG), "crm")
   resetAppRegistries()
   await releaseTestLock()
 })
@@ -396,7 +399,7 @@ describe("api-connector tools: connector_write is pinned to the adapter it was a
     })
     const edited = validateAdapter({ ...CRM, description: "Edited after staging." })
     if (!edited.ok) throw new Error(JSON.stringify(edited.issues))
-    await upsertAdapterRow(ORG, "crm", edited.adapter, USER)
+    await upsertAdapterRow(testApiConn(ORG), "crm", edited.adapter, USER)
     try {
       await approve(id)
       expect(seen).toEqual([])
@@ -406,8 +409,8 @@ describe("api-connector tools: connector_write is pinned to the adapter it was a
         ORDER BY "timestamp" DESC LIMIT 1`
       expect(audit[0]?.metadata.code).toBe("write_not_allowed")
     } finally {
-      await upsertAdapterRow(ORG, "crm", CRM, USER)
-      await invalidateConnectionCaches(ORG, "crm")
+      await upsertAdapterRow(testApiConn(ORG), "crm", CRM, USER)
+      await invalidateConnectionCaches(testApiConn(ORG), "crm")
     }
   })
 })

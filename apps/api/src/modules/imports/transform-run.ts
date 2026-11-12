@@ -762,32 +762,44 @@ async function defaultQuotaLeft(orgId: string): Promise<number | null> {
   return left === null ? null : left - (await orgStagedBytes(orgId))
 }
 
-/** The bound client of an api-connector connection, as the person running the import. */
+/**
+ * The bound client of an import-source API connection (any app's, declared
+ * `importSource`), as the person running the import.
+ */
 async function openApiConnection(
   orgId: string,
-  userId: string,
+  _userId: string,
   identifier: string,
 ): Promise<ApiConnectionClient> {
-  const [{ getAdapterRow, resolveConnectionCredentials }, transport] = await Promise.all([
-    import("~/modules/apps/connections/api/store"),
-    import("~/modules/apps/connections/api/transport"),
-  ])
-  const row = await getAdapterRow(orgId, identifier)
-  if (!row) {
+  const [{ importSourceConnection }, { resolveConnectionCredentials }, transport] =
+    await Promise.all([
+      import("~/modules/apps/connections/api/declarations"),
+      import("~/modules/apps/connections/api/store"),
+      import("~/modules/apps/connections/api/transport"),
+    ])
+  const found = await importSourceConnection(orgId, identifier)
+  const row = found?.row
+  if (!found || !row) {
+    const app = found?.conn.app
     throw new ImportError(
       "invalid_source",
-      `There is no API connection named ${identifier}. Create it with api-connector__connector_adapter_save (for a shipped reference, kernel__import_transform_save with fromReference and params.SITE returns the exact call), then ask for its credentials with kernel__request_secret.`,
+      app
+        ? `There is no API connection named ${identifier}. Create it with ${app}__connector_adapter_save (for a shipped reference, kernel__import_transform_save with fromReference and params.SITE returns the exact call), then ask for its credentials with kernel__request_secret.`
+        : `There is no API connection named ${identifier}, and no app of this workspace offers API connections as an import source.`,
     )
   }
-  const creds = await resolveConnectionCredentials(orgId, userId, identifier)
+  const conn = found.conn
+  const creds = await resolveConnectionCredentials(conn, identifier)
   if (!creds) {
     throw new ImportError(
       "invalid_source",
-      `The API connection ${identifier} has no saved credentials: ask for them with kernel__request_secret({ kind: "api_connector_credentials", target: { identifier: "${identifier}" } }) first.`,
+      `The API connection ${identifier} has no saved credentials: ask for them with kernel__request_secret({ kind: "connection_credentials", target: { app: "${conn.app}", connection: "${conn.connection}", identifier: "${identifier}" } }) first.`,
     )
   }
   const base = {
     orgId,
+    app: conn.app,
+    connection: conn.connection,
     identifier,
     adapter: row.adapter,
     credentials: creds?.values ?? null,
@@ -809,11 +821,13 @@ export async function apiConnectionFacts(
   userId: string,
   identifier: string,
 ): Promise<{ adapter: string | null; adapterSavedAt: string | null; credentials: string | null }> {
-  const { getAdapterRow, resolveConnectionCredentials } = await import(
-    "~/modules/apps/connections/api/store"
-  )
-  const row = await getAdapterRow(orgId, identifier)
-  const creds = row ? await resolveConnectionCredentials(orgId, userId, identifier) : null
+  const [{ importSourceConnection }, { resolveConnectionCredentials }] = await Promise.all([
+    import("~/modules/apps/connections/api/declarations"),
+    import("~/modules/apps/connections/api/store"),
+  ])
+  const found = await importSourceConnection(orgId, identifier)
+  const row = found?.row ?? null
+  const creds = found && row ? await resolveConnectionCredentials(found.conn, identifier) : null
   return {
     adapter: row ? sha256Of(JSON.stringify(row.adapter)) : null,
     adapterSavedAt: row?.updatedAt ?? null,

@@ -73,15 +73,15 @@ import {
 } from "~/modules/agent/context/cold-resume"
 import { estimateTokens } from "~/modules/agent/context/compaction"
 import {
-  CONNECTOR_APP,
   connectedSystemsBlock,
-  connectorCatalogNote,
+  connectorApps,
+  connectorCatalogNotes,
   loadConnectedSystems,
 } from "~/modules/agent/context/connected-systems"
 import {
   applyCustomerContext,
-  CUSTOMER_CONTEXT_APP,
-  CUSTOMER_CONTEXT_TOOLS,
+  type CustomerContextSource,
+  customerContextTools,
   loadCustomerContextBlock,
 } from "~/modules/agent/context/customer-context"
 import { type GuideNote, readGuideNotes } from "~/modules/agent/context/guide-notes"
@@ -1482,16 +1482,15 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // The block names only the connector tools this load adds: none when the
   // caller keeps no discovery set (the REST composition preview).
   let customerTools: ReadonlySet<string> | undefined
-  const connectorTools = (): ReadonlySet<string> => {
+  const connectorTools = (source: CustomerContextSource): ReadonlySet<string> => {
+    // The source app's customer tools only (its `customerContext` contract):
+    // the adapter authoring tools (an admin's scopes hold them too) answer no
+    // customer question.
+    const names = customerContextTools(source)
     customerTools ??= new Set(
       discoveredTools
         ? listDeferredTools(orgId, { ...actor, scopes: turnScopes })
-            // The customer tools only: the adapter authoring tools (an admin's
-            // scopes hold them too) answer no customer question.
-            .filter(
-              (tool) =>
-                tool.appName === CUSTOMER_CONTEXT_APP && CUSTOMER_CONTEXT_TOOLS.has(tool.toolName),
-            )
+            .filter((tool) => tool.appName === source.app && names.has(tool.toolName))
             .map((tool) => tool.sdkName)
         : [],
     )
@@ -1505,7 +1504,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     callableTools: connectorTools,
   })
   if (customerBlock && discoveredTools) {
-    for (const name of connectorTools()) discoveredTools.add(name)
+    for (const name of connectorTools(customerBlock.source)) discoveredTools.add(name)
   }
   const discoveredApps = discoveredAppNames(discoveredTools)
   const canDiscover = canCallToolSearch(orgId, turnScopes)
@@ -1917,19 +1916,21 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // The org's connected business systems (API connections), on every surface:
   // without it, an org with a CRM looked to the agent like one without, and a
   // note asked for a CRM company landed on a Liaison ticket instead.
+  const apiApps = connectorApps(orgId)
   const connectorReachable =
-    canDiscover || [...(discoveredTools ?? [])].some((n) => n.startsWith(`${CONNECTOR_APP}__`))
+    canDiscover ||
+    [...(discoveredTools ?? [])].some((n) => apiApps.has(n.slice(0, Math.max(0, n.indexOf("__")))))
   const connectedSystems = connectorReachable ? await loadConnectedSystems(orgId, turnScopes) : []
   const connectedBlock = connectedSystemsBlock(connectedSystems)
   if (connectedBlock) dynamicLines.push(connectedBlock)
   if (!canDiscover) {
     dynamicLines.push(buildNoToolDiscoveryNote(deferred.map((t) => t.appName)))
   } else if (allDeferred.length > 0) {
-    const connectorNote = connectorCatalogNote(connectedSystems)
+    const connectorNotes = connectorCatalogNotes(connectedSystems)
     dynamicLines.push(
       buildDeferredToolsAnnouncement(
         allDeferred,
-        connectorNote ? new Map([[CONNECTOR_APP, connectorNote]]) : undefined,
+        connectorNotes.size > 0 ? connectorNotes : undefined,
       ),
     )
   }

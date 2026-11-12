@@ -2,9 +2,11 @@
 /**
  * Customer auto-context: when the user is looking at a ticket or a mail
  * conversation, the agent gets the matched customer's `customer.summary` from
- * the org's API connector, as untrusted external content.
+ * the org's API connections, as untrusted external content. The connections
+ * are those of the apps whose API connection declares `customerContext`
+ * (connections/api/declarations.ts): no app is named here.
  *
- * - Only when the turn's EFFECTIVE scopes (agent ∩ user) hold the connector's
+ * - Only when the turn's EFFECTIVE scopes (agent ∩ user) hold that app's
  *   read scope: a role agent without it, or a user without it, gets nothing.
  * - The participant's email is read under the actor's RLS (a ticket's
  *   participant by the tickets rule the card uses, `loadTicketParticipantEmail`;
@@ -46,23 +48,29 @@ import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { TurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { resolveCustomer } from "~/modules/apps/connections/api/customer"
-import { listAdapterRows } from "~/modules/apps/connections/api/store"
+import {
+  type ApiConnDecl,
+  type ApiCustomerContextDecl,
+  customerContextConnections,
+} from "~/modules/apps/connections/api/declarations"
+import { type AdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "customer-context" })
 
-export const CUSTOMER_CONTEXT_SCOPE = "api-connector:read"
-const CONNECTOR_WRITE_SCOPE = "api-connector:write"
-/** The app whose tools the block points at (the assembler loads them for the turn). */
-export const CUSTOMER_CONTEXT_APP = "api-connector"
-export const CUSTOMER_CONTEXT_READ_TOOL = `${CUSTOMER_CONTEXT_APP}__connector_read`
-export const CUSTOMER_CONTEXT_WRITE_TOOL = `${CUSTOMER_CONTEXT_APP}__connector_write`
-/** The connector tools a turn with a customer block loads (tool names). */
-export const CUSTOMER_CONTEXT_TOOLS: ReadonlySet<string> = new Set([
-  "connector_list_operations",
-  "connector_read",
-  "connector_write",
-])
+/** The app whose connection a block came from, with its customer contract. */
+export type CustomerContextSource = ApiConnDecl & { customer: ApiCustomerContextDecl }
+
+/** The app's tools a turn with a customer block loads (tool names, not SDK names). */
+export function customerContextTools(source: CustomerContextSource): ReadonlySet<string> {
+  return new Set([source.customer.listTool, source.customer.readTool, source.customer.writeTool])
+}
+
+/** A loaded customer block: its text and the connection it came from. */
+export interface CustomerContextBlock {
+  text: string
+  source: CustomerContextSource
+}
 
 /** The roles a customer question reaches past the summary: role, noun, what each answers. */
 const FOLLOW_UP_ROLES: readonly [RoleName, string, string][] = [
@@ -173,6 +181,7 @@ function header(system: string, connection: string, adapter: Adapter): string {
  * is pointed at inside the fence rather than repeated outside.
  */
 function connectionGuide(
+  source: CustomerContextSource,
   system: string,
   connection: string,
   adapter: Adapter,
@@ -180,10 +189,12 @@ function connectionGuide(
   callableTools: ReadonlySet<string>,
 ): string[] {
   const out: string[] = []
+  const readTool = `${source.app}__${source.customer.readTool}`
+  const writeTool = `${source.app}__${source.customer.writeTool}`
   const reads = filledRoles(adapter).map((r) => `- ${r.what}: operation "${r.op}"`)
-  if (reads.length > 0 && callableTools.has(CUSTOMER_CONTEXT_READ_TOOL)) {
+  if (reads.length > 0 && callableTools.has(readTool)) {
     out.push(
-      `The record above is a summary only. For more, call ${CUSTOMER_CONTEXT_READ_TOOL} with connection "${connection}", the operation below and params {"customerId": the record's id above}:`,
+      `The record above is a summary only. For more, call ${readTool} with connection "${connection}", the operation below and params {"customerId": the record's id above}:`,
       ...reads,
     )
   }
@@ -192,11 +203,11 @@ function connectionGuide(
     .map((o) => `"${o.name}" (params: ${Object.keys(o.params.properties).join(", ") || "none"})`)
   if (
     writes.length > 0 &&
-    callableTools.has(CUSTOMER_CONTEXT_WRITE_TOOL) &&
-    hasScope(CONNECTOR_WRITE_SCOPE, [...effectiveScopes])
+    callableTools.has(writeTool) &&
+    hasScope(source.decl.writeScope, [...effectiveScopes])
   ) {
     out.push(
-      `To change something in ${system} (for example "add a note in the CRM"), call ${CUSTOMER_CONTEXT_WRITE_TOOL} with connection "${connection}" (write operations: ${writes.join(", ")}); a person approves it before it runs. A write to another app, such as Liaison's own contacts, is not a write to ${system}: never describe it as one.`,
+      `To change something in ${system} (for example "add a note in the CRM"), call ${writeTool} with connection "${connection}" (write operations: ${writes.join(", ")}); a person approves it before it runs. A write to another app, such as Liaison's own contacts, is not a write to ${system}: never describe it as one.`,
     )
   }
   return out
@@ -209,12 +220,26 @@ export interface CustomerContextInput {
   /** The turn's effective scopes (agent ∩ user). */
   effectiveScopes: readonly string[]
   /**
-   * The connector tools the turn loads when a block is added (SDK names),
-   * asked only once there is a record. Empty when the caller loads none (the
-   * REST composition preview): the block then names no tool.
+   * The source app's customer tools the turn loads when a block is added (SDK
+   * names), asked only once there is a record. Empty when the caller loads
+   * none (the REST composition preview): the block then names no tool.
    */
-  callableTools: () => ReadonlySet<string>
+  callableTools: (source: CustomerContextSource) => ReadonlySet<string>
   budgetMs?: number
+}
+
+/** The first connection (by app, then slug) the turn may read that fills `customer.lookup`. */
+async function lookupConnection(
+  input: CustomerContextInput,
+): Promise<{ source: CustomerContextSource; row: AdapterRow } | null> {
+  for (const source of customerContextConnections(input.orgId)) {
+    if (!hasScope(source.decl.readScope, [...input.effectiveScopes])) continue
+    const [row] = (await listAdapterRows(source)).filter((r) =>
+      r.adapter.operations.some((o) => o.role === "customer.lookup"),
+    )
+    if (row) return { source, row }
+  }
+  return null
 }
 
 async function buildBlock(
@@ -222,16 +247,16 @@ async function buildBlock(
   view: { tabType: string; entityId: string },
   budgetMs: number,
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<CustomerContextBlock | null> {
   // The connection first: an org without one pays no participant query.
-  const [row] = (await listAdapterRows(input.orgId)).filter((r) =>
-    r.adapter.operations.some((o) => o.role === "customer.lookup"),
-  )
-  if (!row || signal.aborted) return null
+  const found = await lookupConnection(input)
+  if (!found || signal.aborted) return null
+  const { source, row } = found
   const email = await participantEmail(view, input.actor)
   if (!email || !isStrictEmail(email) || signal.aborted) return null
   const resolution = await resolveCustomer({
     actor: { orgId: input.orgId, userId: input.actor.userId, actorType: "agent" },
+    conn: source,
     email,
     emailOnly: true,
     budgetMs,
@@ -250,17 +275,19 @@ async function buildBlock(
   )
   // The display name is the admin's, schema-checked; normalized again here.
   const system = promptSafeName(row.adapter.name)
-  return [
+  const text = [
     header(system, row.identifier, row.adapter),
     wrapExternalContent(body),
     ...connectionGuide(
+      source,
       system,
       row.identifier,
       row.adapter,
       input.effectiveScopes,
-      input.callableTools(),
+      input.callableTools(source),
     ),
   ].join("\n")
+  return { text, source }
 }
 
 /**
@@ -270,10 +297,9 @@ async function buildBlock(
  */
 export async function loadCustomerContextBlock(
   input: CustomerContextInput,
-): Promise<string | null> {
+): Promise<CustomerContextBlock | null> {
   const view = input.currentView
   if (!view || !SURFACES.has(view.tabType)) return null
-  if (!hasScope(CUSTOMER_CONTEXT_SCOPE, [...input.effectiveScopes])) return null
   const budgetMs = input.budgetMs ?? CUSTOMER_CONTEXT_BUDGET_MS
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -300,15 +326,15 @@ export async function loadCustomerContextBlock(
  * when a block was added.
  */
 export async function applyCustomerContext(input: {
-  block: string | null
+  block: CustomerContextBlock | null
   tailLines: string[]
   turnScopeAccumulator?: TurnScopeAccumulator
   /** Marks the thread tainted (persisted); called once when a block is added. */
   markTainted: () => Promise<void>
 }): Promise<boolean> {
   if (!input.block) return false
-  input.tailLines.push(input.block)
-  input.turnScopeAccumulator?.recordInjected([CUSTOMER_CONTEXT_SCOPE])
+  input.tailLines.push(input.block.text)
+  input.turnScopeAccumulator?.recordInjected([input.block.source.decl.readScope])
   await input.markTainted().catch((err) => log.warn({ err }, "could not mark the thread tainted"))
   return true
 }

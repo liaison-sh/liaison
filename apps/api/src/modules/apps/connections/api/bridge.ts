@@ -49,6 +49,7 @@ import {
 } from "./authoring"
 import { invalidateConnectionCaches } from "./cache"
 import { resolveCustomer } from "./customer"
+import { type ApiConn, apiConnectionOf } from "./declarations"
 import { demoChangeRefusal } from "./registrations"
 import {
   type ConnectorCallMode,
@@ -60,8 +61,6 @@ import {
 import {
   AdapterChangedError,
   type AdapterSavePlan,
-  API_CONNECTOR_APP,
-  API_CONNECTOR_CONNECTION,
   CredentialsChangedError,
   credentialStatuses,
   deleteConnection,
@@ -133,7 +132,7 @@ function errorJson(code: "invalid_params" | "unknown_connection", message: strin
 
 /** A test that reached the API (or tried to) and did not get a page back. */
 async function failedTestResult(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   operation: string,
   err: ApiConnectorError,
@@ -141,7 +140,7 @@ async function failedTestResult(
   const status = err.upstreamStatus ?? null
   const hints: string[] = []
   if (status !== null && status >= 400 && status < 500) {
-    const op = await resolveConnectorOperation(orgId, identifier, operation, "test")
+    const op = await resolveConnectorOperation(conn, identifier, operation, "test")
       .then((r) => r.operation)
       .catch(() => null)
     if (op?.kind === "read" && op.method === "POST" && op.body === undefined) {
@@ -218,13 +217,6 @@ export function verifyProbeOperation(operations: readonly Operation[]): Operatio
   )
 }
 
-/** The scopes an `api` connection declares (manifest `connections.<name>.api`). */
-export interface ApiConnectionDeclaration {
-  readScope: string
-  writeScope: string
-  adminScope: string
-}
-
 type ApiBridgeContext = Pick<
   BridgeContext,
   | "appName"
@@ -285,18 +277,6 @@ function parse(json: unknown): Record<string, unknown> {
   }
 }
 
-/** The `api` block of the calling app's connection, or null when it declares none. */
-export function apiDeclarationOf(
-  manifest: ApiBridgeContext["manifest"],
-  appName: string,
-): ApiConnectionDeclaration | null {
-  // The platform stores adapter documents with the declaring app's tables; one
-  // app holds the API connections of an instance (the contract's app name).
-  if (appName !== API_CONNECTOR_APP) return null
-  const block = manifest.connections?.[API_CONNECTOR_CONNECTION]?.api
-  return block && typeof block.readScope === "string" ? block : null
-}
-
 /**
  * The `api_*` methods. Absent (an empty set) for an app that declares no `api`
  * connection, so no other app's sandbox ever sees them.
@@ -304,9 +284,13 @@ export function apiDeclarationOf(
 export function createApiConnectionMethods(
   ctx: ApiBridgeContext,
 ): Record<string, (paramsJson?: unknown) => Promise<string>> {
-  const decl = apiDeclarationOf(ctx.manifest, ctx.appName)
-  if (!decl) return {}
+  // Any app that declares an API connection reaches these, for its own
+  // connection only: the store is keyed by the calling app's name.
+  const api = apiConnectionOf(ctx.manifest as Parameters<typeof apiConnectionOf>[0])
+  if (!api) return {}
+  const decl = api.decl
   const orgId = ctx.orgId
+  const conn: ApiConn = { orgId, app: ctx.appName, connection: api.connection }
   const actor = { orgId, userId: ctx.userId, actorType: ctx.actorType }
   const signal = ctx.bridgeOptions?.signal
   // A run the host started without a caller (an event, a provisioning run as
@@ -335,6 +319,7 @@ export function createApiConnectionMethods(
     try {
       const r = await runConnectorOperation({
         actor,
+        conn,
         identifier: p.connection,
         operation: p.operation,
         params,
@@ -366,7 +351,7 @@ export function createApiConnectionMethods(
   }
 
   async function summaryOf(identifier: string, adapter: Adapter): Promise<ConnectionSummary> {
-    const statuses = await credentialStatuses(orgId)
+    const statuses = await credentialStatuses(conn)
     return summarizeConnection(identifier, adapter, statuses.get(identifier) ?? "needs_credentials")
   }
 
@@ -378,13 +363,13 @@ export function createApiConnectionMethods(
     try {
       // The person who saved it; none for a run as the app itself (provisioning).
       const { credentialsCleared } = await upsertAdapterRow(
-        orgId,
+        conn,
         identifier,
         plan.adapter,
         UUID_RE.test(ctx.userId) ? ctx.userId : null,
         { expectPriorHash: plan.priorHash, expectCredentialsPresent: plan.credentialsPresent },
       )
-      await invalidateConnectionCaches(orgId, identifier)
+      await invalidateConnectionCaches(conn, identifier)
       return { credentialsCleared }
     } catch (err) {
       if (err instanceof AdapterChangedError || err instanceof CredentialsChangedError) {
@@ -419,7 +404,7 @@ export function createApiConnectionMethods(
       if (denied) return denied
       const raw = parse(paramsJson)
       const only = typeof raw.connection === "string" ? raw.connection : null
-      const rows = (await listAdapterRows(orgId)).filter(
+      const rows = (await listAdapterRows(conn)).filter(
         (r) => only === null || r.identifier === only,
       )
       if (only !== null && rows.length === 0) {
@@ -437,7 +422,7 @@ export function createApiConnectionMethods(
         // "cannot be connected".
         ...(rows.length === 0
           ? {
-              next: `No API connection exists yet. An administrator connects a system (a CRM, an ERP, any HTTP API with a key or token): read the guide with ${API_CONNECTOR_APP}__connector_adapter_reference, save an adapter with ${API_CONNECTOR_APP}__connector_adapter_save (a person approves it), then ask for its credentials with kernel__request_secret.`,
+              next: `No API connection exists yet. An administrator connects a system (a CRM, an ERP, any HTTP API with a key or token): read the guide with ${conn.app}__connector_adapter_reference, save an adapter with ${conn.app}__connector_adapter_save (a person approves it), then ask for its credentials with kernel__request_secret.`,
             }
           : {}),
       })
@@ -464,7 +449,7 @@ export function createApiConnectionMethods(
       let target: ReturnType<typeof writeTarget>
       try {
         const { row, operation } = await resolveConnectorOperation(
-          orgId,
+          conn,
           p.connection,
           p.operation,
           "write",
@@ -477,7 +462,7 @@ export function createApiConnectionMethods(
         }
         throw err
       }
-      const credentials = await resolveConnectionCredentials(orgId, ctx.userId, p.connection)
+      const credentials = await resolveConnectionCredentials(conn, p.connection)
       if (!credentials) {
         return refuse("not_configured", `The connection "${p.connection}" has no credentials yet.`)
       }
@@ -495,14 +480,14 @@ export function createApiConnectionMethods(
       const identifier = identifierOf(p)
       if (!identifier) return errorJson("invalid_params", "identifier is required.")
       const page = typeof p.operationsPage === "number" ? p.operationsPage : 1
-      return JSON.stringify(await readStoredAdapter(orgId, identifier, page))
+      return JSON.stringify(await readStoredAdapter(conn, identifier, page))
     },
     api_adapterVersions: async (paramsJson?: unknown): Promise<string> => {
       const denied = lacks(decl.adminScope)
       if (denied) return denied
       const identifier = identifierOf(parse(paramsJson))
       if (!identifier) return errorJson("invalid_params", "identifier is required.")
-      return JSON.stringify(await listVersionsWithTargets(orgId, identifier))
+      return JSON.stringify(await listVersionsWithTargets(conn, identifier))
     },
     api_adapterReference: async (paramsJson?: unknown): Promise<string> => {
       const p = parse(paramsJson)
@@ -525,6 +510,7 @@ export function createApiConnectionMethods(
       try {
         const r = await runConnectorOperation({
           actor,
+          conn,
           identifier,
           operation: p.operation,
           params: isRecord(p.params) ? p.params : {},
@@ -571,7 +557,7 @@ export function createApiConnectionMethods(
         // FAILED in words, carries the API's own error text (vendor text,
         // fenced) and what to do next, so a weak model neither calls the
         // connection verified nor stalls on a bare status.
-        return JSON.stringify(await failedTestResult(orgId, identifier, p.operation, err))
+        return JSON.stringify(await failedTestResult(conn, identifier, p.operation, err))
       }
     },
 
@@ -583,10 +569,7 @@ export function createApiConnectionMethods(
     api_verify: async (): Promise<string> => {
       const denied = lacks(decl.adminScope)
       if (denied) return denied
-      const [rows, statuses] = await Promise.all([
-        listAdapterRows(orgId),
-        credentialStatuses(orgId),
-      ])
+      const [rows, statuses] = await Promise.all([listAdapterRows(conn), credentialStatuses(conn)])
       const results: Array<Record<string, unknown>> = []
       for (const row of rows) {
         const id = row.identifier
@@ -606,6 +589,7 @@ export function createApiConnectionMethods(
         try {
           const r = await runConnectorOperation({
             actor,
+            conn,
             identifier: id,
             operation: op.name,
             params: {},
@@ -638,8 +622,8 @@ export function createApiConnectionMethods(
       const denied = lacks(decl.readScope)
       if (denied) return denied
       const [rows, statuses, demo] = await Promise.all([
-        listAdapterRows(orgId),
-        credentialStatuses(orgId),
+        listAdapterRows(conn),
+        credentialStatuses(conn),
         isDemoEgressRestricted(orgId),
       ])
       return JSON.stringify({
@@ -690,7 +674,7 @@ export function createApiConnectionMethods(
           ? parseAdapterDocument(p.document)
           : validateAdapterDocument(p.document)
       if (!parsed.ok) return JSON.stringify({ ok: false, issues: parsed.issues })
-      const plan = await planAdapterSave(orgId, identifier, parsed.adapter)
+      const plan = await planAdapterSave(conn, identifier, parsed.adapter)
       if (!plan.ok) return JSON.stringify({ ok: false, issues: plan.issues })
       return JSON.stringify({
         ok: true,
@@ -726,7 +710,7 @@ export function createApiConnectionMethods(
           ? parseAdapterDocument(p.document)
           : validateAdapterDocument(p.document)
       if (!parsed.ok) return invalidAdapterJson(parsed.issues)
-      const plan = await planAdapterSave(orgId, identifier, parsed.adapter)
+      const plan = await planAdapterSave(conn, identifier, parsed.adapter)
       if (!plan.ok) return invalidAdapterJson(plan.issues)
       if (plan.wipesCredentials && p.confirmCredentialWipe !== true) {
         return wipeRefusal("Saving this adapter", plan)
@@ -751,7 +735,7 @@ export function createApiConnectionMethods(
       }
       const demo = await demoChangeRefusal(orgId)
       if (demo) return demo
-      const version = await getAdapterVersion(orgId, identifier, p.versionId)
+      const version = await getAdapterVersion(conn, identifier, p.versionId)
       if (!version) {
         return refusalJson(
           "unknown_version",
@@ -759,7 +743,7 @@ export function createApiConnectionMethods(
           404,
         )
       }
-      const plan = await planAdapterSave(orgId, identifier, version.adapter)
+      const plan = await planAdapterSave(conn, identifier, version.adapter)
       if (!plan.ok) return invalidAdapterJson(plan.issues)
       if (plan.wipesCredentials && p.confirmCredentialWipe !== true) {
         return wipeRefusal("Restoring this version", plan)
@@ -779,8 +763,8 @@ export function createApiConnectionMethods(
       if (!identifier) return errorJson("invalid_params", "identifier is required.")
       const demo = await demoChangeRefusal(orgId)
       if (demo) return demo
-      const removed = await deleteConnection(orgId, identifier)
-      await invalidateConnectionCaches(orgId, identifier)
+      const removed = await deleteConnection(conn, identifier)
+      await invalidateConnectionCaches(conn, identifier)
       if (!removed) {
         return refusalJson("not_found", `No API connection named "${identifier}".`, 404)
       }
@@ -821,6 +805,7 @@ export function createApiConnectionMethods(
       }
       const result = await resolveCustomer({
         actor: { orgId, userId: ctx.userId, actorType: "user" },
+        conn,
         ...(email ? { email } : {}),
         ...(phone ? { phone } : {}),
         ...(domain ? { domain } : {}),

@@ -2094,6 +2094,13 @@
       "when": 1900003390000,
       "tag": "0297_org_drive_unscoped_content",
       "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1900003390001,
+      "tag": "0298_api_adapters",
+      "breakpoints": true
     }
   ]
 }

@@ -26,7 +26,12 @@ export type RequiredStepCode = (typeof REQUIRED_STEP_CODES)[number]
 export interface RequiredStep {
   code: RequiredStepCode
   identifier: string
+  /** The app and API connection the identifier belongs to (absent on a step stored before). */
+  app?: string
+  connection?: string
 }
+
+const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/i
 
 /** Host tool entries that may name a required step, and which codes. */
 const emitters = new WeakMap<object, ReadonlySet<RequiredStepCode>>()
@@ -47,10 +52,15 @@ function isCode(v: unknown): v is RequiredStepCode {
 function targetCall(step: RequiredStep): { tool: string; params: unknown } | null {
   switch (step.code) {
     case "request_credentials": {
-      const params = {
-        kind: "api_connector_credentials",
-        target: { identifier: step.identifier },
-      }
+      // A step stored before steps named their app keeps the legacy kind, which
+      // the secret tool reads as the org's API connection.
+      const params =
+        step.app && step.connection
+          ? {
+              kind: "connection_credentials",
+              target: { app: step.app, connection: step.connection, identifier: step.identifier },
+            }
+          : { kind: "api_connector_credentials", target: { identifier: step.identifier } }
       return requestSecretParams.safeParse(params).success
         ? { tool: "kernel__request_secret", params }
         : null
@@ -63,7 +73,14 @@ export function parseRequiredStep(raw: unknown): RequiredStep | null {
   if (!isRecord(raw) || !isCode(raw.code)) return null
   const identifier = raw.identifier
   if (typeof identifier !== "string" || !MULTI_INSTANCE_IDENTIFIER_RE.test(identifier)) return null
-  const step = { code: raw.code, identifier }
+  const named =
+    typeof raw.app === "string" &&
+    NAME_RE.test(raw.app) &&
+    typeof raw.connection === "string" &&
+    NAME_RE.test(raw.connection)
+      ? { app: raw.app, connection: raw.connection }
+      : {}
+  const step: RequiredStep = { code: raw.code, identifier, ...named }
   return targetCall(step) ? step : null
 }
 

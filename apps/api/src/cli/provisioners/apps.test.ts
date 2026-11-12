@@ -35,7 +35,10 @@ import {
   manifestRegistry,
 } from "~/modules/apps/app-registries"
 import { resetCatalogCache } from "~/modules/apps/catalog"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import { getCredentialsForConnection } from "~/modules/apps/connections/service"
 import { getEnabledApps } from "~/modules/apps/enabled-apps"
@@ -427,7 +430,7 @@ describe("apps provisioner (Task 11)", () => {
       )
     const r1 = await appsProvisioner.apply(ctx, { actions: [] }, config)
     expect(r1.changed).toContain("apps.api-connector.provision: connection 'crm': adapter created")
-    expect((await getAdapterRow(orgId, "crm"))?.adapter.name).toBe("Example CRM")
+    expect((await getAdapterRow(testApiConn(orgId), "crm"))?.adapter.name).toBe("Example CRM")
     expect(await accounts()).toEqual([{ identifier: "crm" }])
 
     const r2 = await appsProvisioner.apply(ctx, { actions: [] }, config)

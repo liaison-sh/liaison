@@ -282,13 +282,16 @@ describe("SecretRequestToolCard", () => {
     )
   })
 
-  it("API connector: posts mode org with the adapter's identifier and shows where it goes", async () => {
+  it("API connection: posts mode org with the adapter's identifier and shows where it goes", async () => {
     const r = row({
-      kind: "api_connector_credentials",
-      target: { identifier: "crm" },
-      title: "crm API connector credentials",
+      kind: "connection_credentials",
+      target: { app: "api-connector", connection: "api", identifier: "crm" },
+      title: "api-connector api credentials (crm)",
       fields: [{ name: "token", secret: true, required: true }],
+      fixed: { identifier: "crm" },
       destination: [
+        { name: "app", value: "api-connector" },
+        { name: "connection", value: "api" },
         { name: "identifier", value: "crm" },
         { name: "baseUrl", value: "https://crm.example.com" },
         { name: "authType", value: "bearer" },

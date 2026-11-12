@@ -28,6 +28,7 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getAdapterRow, listAdapterRows } from "~/modules/apps/connections/api/store"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
@@ -127,15 +128,17 @@ async function adapterProblem(
   target: SecretTarget,
   scopes: string[],
 ): Promise<string | null> {
-  if (target.kind !== "api_connector_credentials") return null
-  const row = await getAdapterRow(orgId, target.identifier)
+  if (target.kind !== "connection_credentials" || !target.identifier) return null
+  const api = apiConnFor(orgId, target.app)
+  if (!api || api.connection !== target.connection) return null
+  const row = await getAdapterRow(api, target.identifier)
   if (row) return null
   // The saved adapters are named only to an actor who may read them.
-  const saved = hasScope("api-connector:read", scopes)
-    ? (await listAdapterRows(orgId)).map((r) => r.identifier)
+  const saved = hasScope(api.decl.readScope, scopes)
+    ? (await listAdapterRows(api)).map((r) => r.identifier)
     : []
   return (
-    `No API connector adapter "${target.identifier}": ` +
+    `No API connection adapter "${target.identifier}" in ${target.app}: ` +
     (saved.length > 0
       ? `the saved ones are ${saved.join(", ")}; or save this adapter first, then ask for its credentials.`
       : "save the adapter first, then ask for its credentials.")
@@ -191,7 +194,7 @@ async function requestSecretProblem(
   if (!parsed.success) {
     return refused(`Invalid request_secret parameters: ${parsed.error.message}`)
   }
-  const target = parseSecretTarget(parsed.data)
+  const target = parseSecretTarget(parsed.data, ctx.orgId)
   if (!target.ok) return refused(target.error)
   const scopes = [...ctx.scopes]
   // A refusal names only connections of apps this actor may use: On for the

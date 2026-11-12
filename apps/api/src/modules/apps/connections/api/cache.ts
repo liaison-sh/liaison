@@ -9,42 +9,55 @@
  * deletes them all.
  */
 import { redis } from "~/lib/redis"
+import type { ApiConn } from "./declarations"
 
 export type ApiConnectorCacheKind = "token" | "customer"
 
-const PREFIX = "api-connector"
+const PREFIX = "api-connection"
 
 export function cacheKeyFor(
   kind: ApiConnectorCacheKind,
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   adapterHash: string,
   credentialVersion: string,
   ...rest: string[]
 ): string {
-  return [PREFIX, kind, orgId, identifier, adapterHash, credentialVersion, ...rest].join(":")
+  return [
+    PREFIX,
+    kind,
+    ...connParts(conn),
+    identifier,
+    adapterHash,
+    credentialVersion,
+    ...rest,
+  ].join(":")
 }
 
-function indexKey(orgId: string, identifier: string): string {
-  return [PREFIX, "keys", orgId, identifier].join(":")
+function connParts(conn: ApiConn): string[] {
+  return [conn.orgId, conn.app, conn.connection]
+}
+
+function indexKey(conn: ApiConn, identifier: string): string {
+  return [PREFIX, "keys", ...connParts(conn), identifier].join(":")
 }
 
 /** Index `key` under its connection so invalidation finds it. */
 export async function rememberCacheKey(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   key: string,
   ttlSeconds: number,
 ): Promise<void> {
-  const idx = indexKey(orgId, identifier)
+  const idx = indexKey(conn, identifier)
   await redis.sadd(idx, key)
   const current = await redis.ttl(idx)
   if (current < ttlSeconds) await redis.expire(idx, ttlSeconds)
 }
 
 /** Delete every cached entry of one connection. Best-effort: Redis down is not an error. */
-export async function invalidateConnectionCaches(orgId: string, identifier: string): Promise<void> {
-  const idx = indexKey(orgId, identifier)
+export async function invalidateConnectionCaches(conn: ApiConn, identifier: string): Promise<void> {
+  const idx = indexKey(conn, identifier)
   try {
     const keys = await redis.smembers(idx)
     if (keys.length > 0) await redis.del(...keys)
@@ -59,8 +72,8 @@ export async function invalidateConnectionCaches(orgId: string, identifier: stri
  * through it (a contact created on approval) can change who a lookup finds,
  * and a miss cached just before would hide the new record for its TTL.
  */
-export async function forgetCustomerLookups(orgId: string, identifier: string): Promise<void> {
-  const idx = indexKey(orgId, identifier)
+export async function forgetCustomerLookups(conn: ApiConn, identifier: string): Promise<void> {
+  const idx = indexKey(conn, identifier)
   const customer = `${PREFIX}:customer:`
   try {
     const keys = (await redis.smembers(idx)).filter((k) => k.startsWith(customer))

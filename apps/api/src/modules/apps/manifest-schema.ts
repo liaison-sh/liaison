@@ -396,6 +396,24 @@ const connectionSchema = {
         readScope: { type: "string", minLength: 3 },
         writeScope: { type: "string", minLength: 3 },
         adminScope: { type: "string", minLength: 3 },
+        // Kernel features read API connections through this contract, never by
+        // an app's name (connections/api/declarations.ts): the app's own tools
+        // that answer a customer (the agent's customer block, the customer card).
+        customerContext: {
+          type: "object",
+          properties: {
+            listTool: { type: "string", minLength: 1 },
+            readTool: { type: "string", minLength: 1 },
+            writeTool: { type: "string", minLength: 1 },
+          },
+          required: ["listTool", "readTool", "writeTool"],
+          additionalProperties: false,
+        },
+        // An import transform may pull from this app's API connections.
+        importSource: { type: "boolean" },
+        // The field of the app's `provisioning` schema that takes the adapters
+        // (`[{ identifier, adapter }]`): `config export` writes them there.
+        provisionKey: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$" },
       },
       required: ["readScope", "writeScope", "adminScope"],
       additionalProperties: false,

@@ -195,6 +195,18 @@ describe("a saved credential is not a working connection", () => {
     const line = saved("api_connector_credentials", { identifier: "jira" })
     expect(line).toContain("connector_adapter_test")
     expect(line).toContain("never call it connected or live")
+    // The generic kind: the saved event says it is an API connection's (announce.ts).
+    const generic = systemEventLine({
+      content: "jira credentials saved",
+      metadata: {
+        type: "secret-request-result",
+        kind: "connection_credentials",
+        target: { app: "api-connector", connection: "api", identifier: "jira" },
+        apiConnection: true,
+        saved: true,
+      },
+    })
+    expect(generic).toContain("connector_adapter_test")
   })
 
   it("a model key needs no such warning", () => {

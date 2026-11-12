@@ -50,7 +50,7 @@ import { rootLogger } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
 import { readStreamCapped } from "~/lib/read-capped-body"
 import { redis } from "~/lib/redis"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { appBridgeManifest } from "~/modules/apps/app-registries"
 import {
   acquireConnectionPermit,
   ConnectionRateLimitedError,
@@ -60,7 +60,7 @@ import { connectionLimiterLimits } from "~/modules/apps/run-limits"
 import { assertDemoAppFetchAllowed, isDemoRestriction } from "~/modules/demo/demo-egress"
 import { privateApiConnectorHostsAllowed } from "./adapter-policy"
 import { cacheKeyFor, rememberCacheKey } from "./cache"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "./store"
+import type { ApiConn } from "./declarations"
 
 export const apiConnectorLog = rootLogger.child({ module: "api-connector" })
 
@@ -148,14 +148,12 @@ export class RequestBudgetError extends ApiConnectorError {
  */
 export const MAX_IN_FLIGHT_PER_CONNECTION = 4
 
-function connectionLimitsOf(orgId: string): ConnectionLimits {
-  const manifest = (
-    toolRegistry.get([orgId, API_CONNECTOR_APP, "connector_read"]) as
-      | { _manifest?: { connections?: Record<string, unknown> } }
-      | undefined
-  )?._manifest
+function connectionLimitsOf(conn: ApiConn): ConnectionLimits {
+  const manifest = appBridgeManifest(conn.orgId, conn.app) as
+    | { connections?: Record<string, unknown> }
+    | undefined
   return (
-    declaredConnectionLimits(manifest, API_CONNECTOR_CONNECTION) ?? {
+    declaredConnectionLimits(manifest, conn.connection) ?? {
       concurrency: MAX_IN_FLIGHT_PER_CONNECTION,
     }
   )
@@ -163,14 +161,14 @@ function connectionLimitsOf(orgId: string): ConnectionLimits {
 
 /** Wait for one of the connection's permits; resolves to its release. */
 export async function acquireConnectionSlot(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   signal?: AbortSignal,
 ): Promise<() => Promise<void>> {
   try {
     return await acquireConnectionPermit(
-      { orgId, app: API_CONNECTOR_APP, connection: API_CONNECTOR_CONNECTION, identifier },
-      connectionLimitsOf(orgId),
+      { orgId: conn.orgId, app: conn.app, connection: conn.connection, identifier },
+      connectionLimitsOf(conn),
       {
         maxWaitMs: connectionLimiterLimits().maxWaitMs.interactive,
         ...(signal ? { signal } : {}),
@@ -191,8 +189,7 @@ export async function acquireConnectionSlot(
 // Demo fixture responder
 // ---------------------------------------------------------------------------
 
-export interface DemoApiConnectorRequest {
-  orgId: string
+export interface DemoApiConnectorRequest extends ApiConn {
   identifier: string
   adapter: Adapter
   operation: Operation
@@ -332,7 +329,7 @@ const TOKEN_TTL_FLOOR_S = 30
 const TOKEN_TTL_CEILING_S = 3600
 
 async function oauthToken(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   adapter: Adapter,
   credentials: Record<string, string> | null,
@@ -343,7 +340,7 @@ async function oauthToken(
   if (auth.type !== "oauth2ClientCredentials") throw new Error("not an oauth2 adapter")
   const clientId = need(credentials, "clientId")
   const clientSecret = need(credentials, "clientSecret")
-  const key = cacheKeyFor("token", orgId, identifier, adapterHash(adapter), credentialVersion)
+  const key = cacheKeyFor("token", conn, identifier, adapterHash(adapter), credentialVersion)
   const cached = await redis.get(key).catch(() => null)
   if (cached) return cached
 
@@ -368,7 +365,7 @@ async function oauthToken(
   try {
     // A demo org's token request is refused before anything leaves the box,
     // exactly like its API requests (the demo fixture uses no oauth2).
-    await assertDemoAppFetchAllowed(orgId, tokenUrl.origin)
+    await assertDemoAppFetchAllowed(conn.orgId, tokenUrl.origin)
     res = await fetchWithPinnedHost(
       tokenUrl,
       {
@@ -412,13 +409,13 @@ async function oauthToken(
   )
   await redis
     .set(key, token, "EX", ttl)
-    .then(() => rememberCacheKey(orgId, identifier, key, ttl))
+    .then(() => rememberCacheKey(conn, identifier, key, ttl))
     .catch(() => undefined)
   return token
 }
 
 async function applyAuth(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   adapter: Adapter,
   credentials: Record<string, string> | null,
@@ -445,7 +442,7 @@ async function applyAuth(
     }
     case "oauth2ClientCredentials": {
       const token = await oauthToken(
-        orgId,
+        conn,
         identifier,
         adapter,
         credentials,
@@ -552,8 +549,7 @@ function mapFetchError(
 // One operation call
 // ---------------------------------------------------------------------------
 
-export interface CallOperationInput {
-  orgId: string
+export interface CallOperationInput extends ApiConn {
   identifier: string
   adapter: Adapter
   credentials: Record<string, string> | null
@@ -619,6 +615,8 @@ async function sendOnce(
   if (demoResponder) {
     res = await demoResponder({
       orgId: input.orgId,
+      app: input.app,
+      connection: input.connection,
       identifier: input.identifier,
       adapter: input.adapter,
       operation: input.operation,
@@ -751,7 +749,7 @@ export async function callOperation(input: CallOperationInput): Promise<CallOper
   let auth: AppliedAuth
   try {
     auth = await applyAuth(
-      input.orgId,
+      input,
       input.identifier,
       input.adapter,
       input.credentials,
@@ -783,7 +781,7 @@ export async function callOperation(input: CallOperationInput): Promise<CallOper
       break
     }
     let page: { status: number; doc: unknown }
-    const release = await acquireConnectionSlot(input.orgId, input.identifier, perRequest).catch(
+    const release = await acquireConnectionSlot(input, input.identifier, perRequest).catch(
       (err: unknown) => {
         if (err instanceof ApiConnectorError) throw err
         throw mapFetchError(err, allSecrets, perRequest)
@@ -834,8 +832,7 @@ export function requiredCredentialFields(adapter: Adapter): readonly string[] {
 //   - a 429 is an answer with `retryAfterMs`, not an error, so the import's
 //     host loop can wait outside the sandbox deadline.
 
-export interface BoundRequestInput {
-  orgId: string
+export interface BoundRequestInput extends ApiConn {
   identifier: string
   adapter: Adapter
   credentials: Record<string, string> | null
@@ -994,7 +991,7 @@ async function sendBoundWith(
   let auth: AppliedAuth
   try {
     auth = await applyAuth(
-      input.orgId,
+      input,
       input.identifier,
       input.adapter,
       input.credentials,

@@ -59,16 +59,33 @@ same way everywhere.
 
 The app ships in the catalog (`bundled-apps/api-connector`): its agent tools,
 its settings screen and its customer card. The connection itself is the
-platform's: an app declares a credentials connection with an `api` block
-(the read, write and admin scopes), and the platform stores each account's
-adapter in the app's `adapters` table (previous ones in `adapter_versions`),
-holds the credentials, renders, signs and sends every call
-(`apps/api/src/modules/apps/connections/api/`), and checks the caller's scopes
+platform's, and any app can have one: an app declares one credentials
+connection with an `api` block (the read, write and admin scopes), and the
+platform stores each account's adapter in its own tables (`kernel.api_adapters`,
+previous ones in `kernel.api_adapter_versions`), keyed by the app, its
+connection and the account's slug, holds the credentials, renders, signs and
+sends every call (`apps/api/src/modules/apps/connections/api/`), adds the
+adapter save and restore tools under that app, and checks the caller's scopes
 on every `ctx.api` call. Calls to one connection share the platform's
 per-connection limiter: at most the connection's declared `limits` (4 in
-flight) across every process. An instance that ran the connector before it
-moved to the catalog keeps every connection: the boot reconcile installs the
-catalog app under the same name, on the same tables and the same accounts.
+flight) across every process.
+
+What else reads an app's API connections is declared in the same `api` block,
+never chosen by the app's name: `customerContext` names the app's own tools
+that answer a customer (`listTool`, `readTool`, `writeTool`: the agent's
+customer block on a ticket or mail, the connected systems in its prompt and
+tool search), `importSource: true` lets import transforms pull from its
+connections, and `provisionKey` names the field of its `provisioning` that
+takes the adapters (`config export` writes them there). The credentials card
+asks with kind `connection_credentials` (the app, its connection and the
+adapter's slug); the older kind `api_connector_credentials` is still read as
+that.
+
+An instance that ran the connector before it moved to the catalog keeps every
+connection: the boot reconcile installs the catalog app under the same name,
+on the same accounts, and copies its adapters and their kept versions from the
+app's former tables into the platform's at every boot (a newer document
+replaces an older one; the former tables are left as they are).
 
 ### Demo orgs
 
@@ -131,7 +148,7 @@ document is refused unless `allowRemovingOperations` names them. At execution
 a stored document other than the one the approval was asked for refuses the
 save (`adapter_changed`, nothing written). The saver recorded is the approver
 (or the admin, for a direct call). Every save, by any path, keeps the
-replaced document in `app_api_connector.adapter_versions` (the last 20 per
+replaced document in `kernel.api_adapter_versions` (the last 20 per
 connection; deleting the connection deletes them).
 
 **`connector_write` at staging and at execution.** Before an approval is
@@ -707,7 +724,8 @@ liaison api-connector test hubspot add_company_note --dry-run --param customerId
 ```
 
 `list_companies` is a cheap param-less read, so `config verify` probes it rather than
-the lookup.
+the lookup. When two apps hold a connection of the same slug, `test` asks for
+`--app <name>`.
 
 ### Field table
 

@@ -1213,6 +1213,23 @@ describe("the api-connector app's move", () => {
     }
   }
 
+  /** The platform's copy, in the app table's columns (row diff against `acSnapshot`). */
+  async function platformCopy(): Promise<Record<string, unknown[]>> {
+    return {
+      adapters:
+        await sql`SELECT org_id, identifier, adapter, adapter_version, updated_by, created_at
+        FROM kernel.api_adapters
+        WHERE org_id = ${ORG} AND app_name = ${AC} AND connection_name = 'api' ORDER BY identifier`,
+      versions:
+        await sql`SELECT id, org_id, identifier, adapter, adapter_version, saved_by, saved_at
+        FROM kernel.api_adapter_versions
+        WHERE org_id = ${ORG} AND app_name = ${AC} AND connection_name = 'api'
+        ORDER BY identifier, saved_at`,
+    }
+  }
+  const pick = (rows: unknown[], keys: string[]) =>
+    rows.map((r) => Object.fromEntries(keys.map((k) => [k, (r as Record<string, unknown>)[k]])))
+
   afterEach(async () => {
     await withSystemDb("moved-apps-ac-test-cleanup", async (db) => {
       await db.delete(appsInstalled).where(eq(appsInstalled.name, AC))
@@ -1220,6 +1237,8 @@ describe("the api-connector app's move", () => {
     })
     await sql`DELETE FROM app_api_connector.adapter_versions WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_api_connector.adapters WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.api_adapter_versions WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.api_adapters WHERE org_id = ${ORG}`
   })
 
   it("keeps every row: registration, accounts and credentials, adapters and their versions", async () => {
@@ -1235,8 +1254,31 @@ describe("the api-connector app's move", () => {
     expect(first.failed).toEqual([])
     expect(first.repaired).toContain(AC)
     const after = await acSnapshot()
+    // The app's own rows stay exactly as they were (the previous release reads them).
     expect(after).toEqual(before)
+    // The step copying them runs at every boot: never recorded.
     expect(after.adoptions).toEqual([])
+    // Row diff: the platform holds the same adapters and kept versions, keyed by app and connection.
+    const copy = await platformCopy()
+    const adapterCols = [
+      "org_id",
+      "identifier",
+      "adapter",
+      "adapter_version",
+      "updated_by",
+      "created_at",
+    ]
+    const versionCols = [
+      "id",
+      "org_id",
+      "identifier",
+      "adapter",
+      "adapter_version",
+      "saved_by",
+      "saved_at",
+    ]
+    expect(copy.adapters).toEqual(pick(before.adapters as unknown[], adapterCols))
+    expect(copy.versions).toEqual(pick(before.versions as unknown[], versionCols))
     const [installed] = await sql`SELECT name, version, source_url FROM kernel.apps_installed
       WHERE name = ${AC}`
     expect(installed?.version).toBe(VERSION)
@@ -1245,14 +1287,38 @@ describe("the api-connector app's move", () => {
     const { listAdapterRows, credentialStatuses } = await import(
       "~/modules/apps/connections/api/store"
     )
-    expect((await listAdapterRows(ORG)).map((r) => [r.identifier, r.adapter.auth.type])).toEqual([
+    const conn = { orgId: ORG, app: AC, connection: "api" }
+    expect((await listAdapterRows(conn)).map((r) => [r.identifier, r.adapter.auth.type])).toEqual([
       ["crm", "apiKey"],
       ["erp", "oauth2ClientCredentials"],
     ])
-    expect([...(await credentialStatuses(ORG)).keys()].sort()).toEqual(["crm", "erp"])
+    expect([...(await credentialStatuses(conn)).keys()].sort()).toEqual(["crm", "erp"])
 
+    // The previous release, still draining, saves a newer crm and a new adapter in
+    // its own tables: the next boot copies both, and a re-run changes nothing more.
+    await sql.unsafe(
+      `UPDATE app_api_connector.adapters SET adapter_version = '1.1.0', updated_at = now() + interval '1 minute'
+       WHERE org_id = '${ORG}' AND identifier = 'crm'`,
+    )
+    await sql.unsafe(
+      insertSql("app_api_connector.adapters", {
+        org_id: ORG,
+        identifier: "wms",
+        adapter: json({ ...CRM, id: "wms" }),
+        adapter_version: CRM.version,
+        updated_by: USER,
+      }),
+    )
     const second = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
     expect(second.failed).toEqual([])
-    expect(await acSnapshot()).toEqual(after)
+    const copied = await platformCopy()
+    expect(pick(copied.adapters, ["identifier", "adapter_version"])).toEqual([
+      { identifier: "crm", adapter_version: "1.1.0" },
+      { identifier: "erp", adapter_version: ERP.version },
+      { identifier: "wms", adapter_version: CRM.version },
+    ])
+    expect(copied.versions).toHaveLength(1)
+    await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(await platformCopy()).toEqual(copied)
   })
 })

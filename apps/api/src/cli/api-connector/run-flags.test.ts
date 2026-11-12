@@ -15,6 +15,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { testApiConn } from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { describeRequest } from "~/modules/apps/connections/api/transport"
@@ -116,7 +117,7 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
-  await upsertAdapterRow(ORG, ID, API, USER)
+  await upsertAdapterRow(testApiConn(ORG), ID, API, USER)
   await withPrivilegedDb(ORG, "cli-flags-test", (tx) =>
     createCredentialConnection(tx, ORG, USER, "api-connector", "api", {
       identifier: ID,
@@ -127,7 +128,7 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await invalidateConnectionCaches(ORG, ID)
+  await invalidateConnectionCaches(testApiConn(ORG), ID)
   resetAppRegistries()
   await releaseTestLock()
 })

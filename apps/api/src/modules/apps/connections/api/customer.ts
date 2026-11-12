@@ -57,6 +57,7 @@ import { quoteIdent } from "~/lib/sql-utils"
 import type { AuditEntry } from "~/modules/audit/service"
 import { cacheKeyFor, rememberCacheKey } from "./cache"
 import { isConsumerMailDomain } from "./consumer-domains"
+import { type ApiConn, customerContextConnections } from "./declarations"
 import { type ConnectorCallActor, runConnectorOperation, writeConnectorAudits } from "./service"
 import {
   type AdapterRow,
@@ -79,6 +80,8 @@ export type { CustomerConnectionError, CustomerMatch, CustomerResolution }
 
 export interface ResolveCustomerInput {
   actor: ConnectorCallActor
+  /** The app's API connection whose adapters are asked (its org is the actor's). */
+  conn: ApiConn
   email?: string
   /** A phone number (digits, an optional leading +; spaces, dots, dashes and brackets ignored). */
   phone?: string
@@ -201,7 +204,7 @@ async function resolveOnConnection(
 
   const cacheKey = cacheKeyFor(
     "customer",
-    input.actor.orgId,
+    input.conn,
     identifier,
     adapterHash(adapter),
     credentials.version,
@@ -217,6 +220,7 @@ async function resolveOnConnection(
       auditSink,
       requestBudget: budget,
       actor: input.actor,
+      conn: input.conn,
       identifier,
       operation: operation.name,
       params,
@@ -281,7 +285,7 @@ async function resolveOnConnection(
 
   await redis
     .set(cacheKey, JSON.stringify(matches), "EX", CUSTOMER_CACHE_TTL_S)
-    .then(() => rememberCacheKey(input.actor.orgId, identifier, cacheKey, CUSTOMER_CACHE_TTL_S))
+    .then(() => rememberCacheKey(input.conn, identifier, cacheKey, CUSTOMER_CACHE_TTL_S))
     .catch(() => undefined)
   return matches
 }
@@ -354,13 +358,19 @@ export function customerKey(
   return { ...(email ? { email } : {}), ...(phone ? { phone } : {}), ...(domain ? { domain } : {}) }
 }
 
-/** Some connection of the org fills `customer.lookup` (tickets and mail then show the customer card). */
+/**
+ * Some connection of an app that answers customers (`customerContext`) fills
+ * `customer.lookup` (tickets and mail then show the customer card).
+ */
 export async function customerLookupConfigured(orgId: string): Promise<boolean> {
-  return (await listAdapterRows(orgId)).some((r) => roleOp(r.adapter, "customer.lookup"))
+  for (const conn of customerContextConnections(orgId)) {
+    if ((await listAdapterRows(conn)).some((r) => roleOp(r.adapter, "customer.lookup"))) return true
+  }
+  return false
 }
 
 export async function resolveCustomer(input: ResolveCustomerInput): Promise<CustomerResolution> {
-  const lookupRows = (input.adapterRows ?? (await listAdapterRows(input.actor.orgId))).filter((r) =>
+  const lookupRows = (input.adapterRows ?? (await listAdapterRows(input.conn))).filter((r) =>
     roleOp(r.adapter, "customer.lookup"),
   )
   const rows = input.firstConnectionOnly ? lookupRows.slice(0, 1) : lookupRows
@@ -376,7 +386,7 @@ export async function resolveCustomer(input: ResolveCustomerInput): Promise<Cust
   const overall = AbortSignal.timeout(input.budgetMs ?? CUSTOMER_OVERALL_BUDGET_MS)
   const signal = input.signal ? AbortSignal.any([overall, input.signal]) : overall
   const credentials = await resolveConnectionsCredentials(
-    input.actor.orgId,
+    input.conn,
     rows.map((r) => r.identifier),
   )
   const auditSink: AuditEntry[] = []

@@ -113,6 +113,11 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // 0293): instance-wide, no org column, written and read by the boot
   // reconcile (modules/apps/moved-apps.ts) through the privileged pool only.
   "kernel.app_adoptions",
+  // The adapter documents of the platform-held API connections (migration
+  // 0298): read and written by connections/api/store.ts through the
+  // privileged pool only, scoped to the org explicitly.
+  "kernel.api_adapters",
+  "kernel.api_adapter_versions",
   // The moves an org took part in, per instance (migration 0270): privileged
   // pool only, never read by a person.
   "kernel.org_transfer_ledger",

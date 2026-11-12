@@ -109,8 +109,9 @@ describe("record api-connector contract fixtures", () => {
     const { upsertAdapterRow } = await import("~/modules/apps/connections/api/store")
     const adapter = loadFixtureCrmAdapter({ baseUrl: crm.baseUrl })
     // An earlier version kept in the history (restored below), then the current one.
-    await upsertAdapterRow(CONTRACT_ORG_ID, "crm", { ...adapter, version: "0.9.0" }, null)
-    await upsertAdapterRow(CONTRACT_ORG_ID, "crm", adapter, null)
+    const conn = { orgId: CONTRACT_ORG_ID, app: APP, connection: "api" }
+    await upsertAdapterRow(conn, "crm", { ...adapter, version: "0.9.0" }, null)
+    await upsertAdapterRow(conn, "crm", adapter, null)
     await withPrivilegedDb(CONTRACT_ORG_ID, "contract-record-api-connector", (tx) =>
       createCredentialConnection(tx, CONTRACT_ORG_ID, CONTRACT_USER_ID, APP, "api", {
         identifier: "crm",
@@ -125,8 +126,8 @@ describe("record api-connector contract fixtures", () => {
 
   async function cleanRows(): Promise<void> {
     await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${CONTRACT_ORG_ID} AND app_name = ${APP}`
-    await sql`DELETE FROM app_api_connector.adapter_versions WHERE org_id = ${CONTRACT_ORG_ID}`
-    await sql`DELETE FROM app_api_connector.adapters WHERE org_id = ${CONTRACT_ORG_ID}`
+    await sql`DELETE FROM kernel.api_adapter_versions WHERE org_id = ${CONTRACT_ORG_ID}`
+    await sql`DELETE FROM kernel.api_adapters WHERE org_id = ${CONTRACT_ORG_ID}`
   }
 
   afterAll(async () => {

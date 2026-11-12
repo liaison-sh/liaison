@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from "bu
 import * as dnsPromises from "node:dns/promises"
 import { type Adapter, validateAdapter } from "@liaison/api-connector-core"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
+import { testApiConn } from "~/modules/apps/connections/api/app.test-helpers"
 import { runApiPull } from "~/modules/imports/transforms/execute"
 import { shutdownTransformPool } from "~/modules/imports/transforms/pool"
 import {
@@ -77,7 +78,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 function input(path: string, patch: Partial<BoundRequestInput> = {}): BoundRequestInput {
   return {
-    orgId: ORG,
+    ...testApiConn(ORG),
     identifier: "helpdesk",
     adapter: adapterOf(),
     credentials: { token: KEY },
@@ -384,7 +385,7 @@ describe("bound egress: answers and secrets", () => {
         apiGet: async (path: string) => {
           try {
             return await boundGet({
-              orgId: ORG,
+              ...testApiConn(ORG),
               identifier: "helpdesk",
               adapter,
               credentials: { apiKey: KEY },

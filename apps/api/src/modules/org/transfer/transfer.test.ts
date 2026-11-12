@@ -313,12 +313,15 @@ beforeAll(async () => {
   // catalog reconcile does, so neither the file order nor a clean namespace changes what the
   // two closures hold. The schema cache is process-wide: forget it so B's registration checks
   // B's own catalog.
+  // A schema with no table is not an app's: an earlier file can leave an empty
+  // `app_<name>` behind (a fixture that created the schema and dropped only its
+  // tables). Counted, it made B install that app, whose tables A then lacked,
+  // and the reverse move refused B's bundle as skewed (a CI flake).
   const schemasA = new Set(
     (
-      await A<
-        { nspname: string }[]
-      >`SELECT nspname FROM pg_namespace WHERE starts_with(nspname, 'app_')`
-    ).map((r) => r.nspname),
+      await A<{ s: string }[]>`SELECT DISTINCT table_schema AS s FROM information_schema.tables
+        WHERE starts_with(table_schema, 'app_') AND table_type = 'BASE TABLE'`
+    ).map((r) => r.s),
   )
   // The bundled apps whose schema A carries (an app's schema is app_<name>, dashes as underscores).
   const bundledApps = readdirSync(BUNDLED_APPS_DIR).filter(
@@ -346,8 +349,52 @@ beforeAll(async () => {
     AppSchemaDdlTestAccess.forgetCurrentSchemas()
     await ensureAppsForOrg(neighbourB)
   })
+  await alignAppSchemas()
   // Generous: the first run builds the bundled apps' packages it installs on B.
 }, 900_000)
+
+/** `schema.table` of every base table in an app schema. */
+async function appTables(db: postgres.Sql): Promise<Set<string>> {
+  const rows = await db<{ t: string }[]>`
+    SELECT table_schema || '.' || table_name AS t FROM information_schema.tables
+    WHERE starts_with(table_schema, 'app_') AND table_type = 'BASE TABLE'`
+  return new Set(rows.map((r) => r.t))
+}
+
+/**
+ * The two cells must hold the same app tables, or the reverse move refuses
+ * B's bundle as skewed far from the cause. B is a fresh template clone plus
+ * the apps installed above; A is this namespace's database, which earlier
+ * files have used. B drops a whole app schema A does not have (as a cell of
+ * the same release would not have it), and an app table B has that A lacks
+ * stops the setup here, naming the tables and the likely cause.
+ */
+async function alignAppSchemas(): Promise<void> {
+  const schemasOf = async (db: postgres.Sql) =>
+    new Set(
+      (
+        await db<{ nspname: string }[]>`
+          SELECT nspname FROM pg_namespace WHERE starts_with(nspname, 'app_')`
+      ).map((r) => r.nspname),
+    )
+  const onA = await schemasOf(A)
+  const dropped = [...(await schemasOf(B))].filter((n) => !onA.has(n)).sort()
+  for (const n of dropped) await B.unsafe(`DROP SCHEMA IF EXISTS "${n}" CASCADE`)
+  if (dropped.length > 0) {
+    console.warn(
+      `org transfer test: database A lacks the app schema(s) ${dropped.join(", ")} that B ` +
+        "has (an earlier file in this database dropped them); dropped on B as well",
+    )
+  }
+  const tablesA = await appTables(A)
+  const missingOnA = [...(await appTables(B))].filter((t) => !tablesA.has(t)).sort()
+  if (missingOnA.length > 0) {
+    throw new Error(
+      `org transfer test setup: database A lacks app table(s) ${missingOnA.join(", ")} that B ` +
+        "has; an earlier file in this database removed them (a test isolation bug, not a transfer one)",
+    )
+  }
+}
 
 afterAll(async () => {
   PrivilegedDbTestAccess.usePool(null)

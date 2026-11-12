@@ -216,7 +216,16 @@ export interface GatePlan {
 
 const isTestFile = (p: string) => /\.test\.tsx?$/.test(p)
 
+/**
+ * A bundled app's rendered-screen suite (`bundled-<app>-ui`) is vitest over its
+ * `src/**\/*.vitest.tsx` only (each app's vitest.config.ts `include`). Its cwd is
+ * the app's directory, which also holds the app's bun tests: those belong to
+ * `bundled-<app>`, and handed to vitest as filters they match nothing.
+ */
+const BUNDLED_UI_SUITE = /^bundled-[\w-]+-ui$/
+
 function belongs(file: string, suite: string, info: SuiteInfo | undefined): boolean {
+  if (BUNDLED_UI_SUITE.test(suite) && !file.endsWith(".vitest.tsx")) return false
   if (suite === "e2e-parallel" || suite === "e2e") {
     return (
       file.startsWith("apps/api/src/tests/e2e/") &&

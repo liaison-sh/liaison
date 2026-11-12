@@ -21,7 +21,7 @@ import {
   SOURCES_CONFIG_KEY,
 } from "./lib/profiles"
 import { refFields, resolveIncident } from "./lib/refs"
-import { type IncidentsSummaryWithConfig, summarize } from "./lib/summarize"
+import { type IncidentsSummary, type IncidentsSummaryWithConfig, summarize } from "./lib/summarize"
 import { resolveActorUserId, strOrNull, toIsoOrNull } from "./lib/values"
 
 export interface IncidentView {
@@ -186,6 +186,28 @@ export async function incidentsResolveHandler(
   return { data: view((await ctx.db.findOne("incidents", row.id)) as Row) }
 }
 
+/** One count of the summary, as a dashboard block reads it. */
+export interface SummaryRow {
+  key: "critical" | "warning" | "info" | "acknowledged" | "resolved24h"
+  status: "open" | "acknowledged" | "resolved"
+  value: number
+}
+
+/**
+ * The summary's counts as rows (`key`, `status`, `value`): the open incidents by severity, the
+ * acknowledged ones, and those resolved in the trailing 24h. The sets do not overlap, so the rows
+ * add up to every incident the summary counts. `data.sources` stays the per-source list.
+ */
+function summaryRows(s: IncidentsSummary): SummaryRow[] {
+  return [
+    { key: "critical", status: "open", value: s.open.critical },
+    { key: "warning", status: "open", value: s.open.warning },
+    { key: "info", status: "open", value: s.open.info },
+    { key: "acknowledged", status: "acknowledged", value: s.acknowledged },
+    { key: "resolved24h", status: "resolved", value: s.resolved24h },
+  ]
+}
+
 /**
  * Dashboard aggregate: open counts by severity, acknowledged count, resolved
  * in the trailing 24h, and per-source health (live count, worst severity,
@@ -195,7 +217,7 @@ export async function incidentsResolveHandler(
 export async function incidentsSummaryHandler(
   _params: Record<string, never>,
   ctx: AppContext,
-): Promise<{ data: IncidentsSummaryWithConfig }> {
+): Promise<{ data: IncidentsSummaryWithConfig; rows: SummaryRow[] }> {
   const [open, acknowledged, resolved, sourcesConfig, urlConfig, canConfigure] = await Promise.all([
     ctx.db.findMany("incidents", {
       where: { status: "open" },
@@ -222,6 +244,7 @@ export async function incidentsSummaryHandler(
   const { profiles, warnings } = parseSourceProfiles(sourcesConfig)
   const bySource = new Map(profiles.map((p) => [p.source, p]))
   return {
+    rows: summaryRows(summary),
     data: {
       ...summary,
       sources: summary.sources.map((s) => ({ ...s, profile: bySource.get(s.source) ?? null })),

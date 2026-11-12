@@ -31,6 +31,26 @@ export async function atomicFail(p: { title: string }, ctx: Ctx) {
   throw new Error("atomic tool failed after its write")
 }
 
+export async function batchGuard(p: { title: string }, ctx: Ctx) {
+  try {
+    await ctx.db.batch({
+      ops: [
+        { insert: "items", data: { title: p.title } },
+        {
+          update: "items",
+          id: "00000000-0000-0000-0000-00000000dead",
+          data: { title: "never" },
+          expect: { minRows: 1 },
+        },
+      ],
+    })
+    return { committed: true }
+  } catch (e) {
+    const err = e as { message?: string; code?: string; status?: number }
+    return { message: err.message, code: err.code, status: err.status }
+  }
+}
+
 export async function hop(p: { v: string }, ctx: Ctx) {
   return ctx.executeTool("wparityb:echo", { v: p.v })
 }

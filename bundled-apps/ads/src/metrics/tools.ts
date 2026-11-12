@@ -57,5 +57,17 @@ export async function metrics_run(params: unknown, ctx: MetricsInputCtx): Promis
   const inputs = await gatherAllInputs(ctx, period)
   const result = formula.compute(inputs, period)
 
-  return result
+  // `rows`: the figure as one row, the list a dashboard block reads.
+  return {
+    ...result,
+    rows: [
+      {
+        key: result.formulaId,
+        value: result.value,
+        period_start: period.start,
+        period_end: period.end,
+        degraded: result.degraded === true,
+      },
+    ],
+  }
 }

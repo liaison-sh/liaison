@@ -5,8 +5,8 @@
 // is set (measurement runs):
 //
 //   kind "call"  one /api/app-bridge call that reached a run (bridge-route.ts)
-//   kind "run"   one app run through runApp of an app listed in
-//                LIAISON_WORKERS_APPS, on whichever executor ran it (run-app.ts):
+//   kind "run"   one sandboxed app run through runApp (not trusted code
+//                in-process), on whichever executor ran it (run-app.ts):
 //                {kind, runId?, app, entry, executor, nested, parentApp?, ms, at,
 //                 ok, loader?, sleepMs?, sleepExact?, fallback?, attempts?, errorKind?,
 //                 faultClass?}
@@ -22,7 +22,6 @@
 import { appendFile } from "node:fs/promises"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
-import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
   onRunSettled,
   type RunSettledInfo,
@@ -125,30 +124,13 @@ export function clearBridgeTimings(): void {
 }
 
 /**
- * Whether an app's runs write a timing record: listed in LIAISON_WORKERS_APPS
- * (whatever else is set), or a custom app while LIAISON_WORKERS_CUSTOM_APPS is on.
+ * Whether a settled run writes a timing record: a sandboxed app's run (not
+ * trusted code in-process), whichever executor ran it, so a run that fell back
+ * to QuickJS is measured beside the Workers ones.
  */
-export function isTimedApp(appName: string): boolean {
-  if (timedApps().has(appName)) return true
-  const flag = (env.LIAISON_WORKERS_CUSTOM_APPS ?? "").trim().toLowerCase()
-  return (flag === "1" || flag === "true") && isCustomAppName(appName)
+export function isTimedRun(info: Pick<RunSettledInfo, "executor">): boolean {
+  return info.executor !== "inprocess"
 }
-
-/** The apps LIAISON_WORKERS_APPS lists. */
-function timedApps(): ReadonlySet<string> {
-  const raw = env.LIAISON_WORKERS_APPS ?? ""
-  if (raw === timedAppsRaw) return timedAppsSet
-  timedAppsRaw = raw
-  timedAppsSet = new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  return timedAppsSet
-}
-let timedAppsRaw = ""
-let timedAppsSet: ReadonlySet<string> = new Set()
 
 /** A settled run -> its run record. */
 export function runTimingOf(info: RunSettledInfo): RunTiming {
@@ -174,5 +156,5 @@ export function runTimingOf(info: RunSettledInfo): RunTiming {
 }
 
 onRunSettled((info) => {
-  if (isTimedApp(info.app)) recordRunTiming(runTimingOf(info))
+  if (isTimedRun(info)) recordRunTiming(runTimingOf(info))
 })

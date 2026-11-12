@@ -1033,10 +1033,20 @@ export async function orders_invoice_links(
 // ─────────────────────────────────────────────────────────────────────────
 const SHORT_CODES_MAX_SKUS = 500
 
+/** `codes` by SKU, and the same as rows (`sku`, `code`): the list a dashboard block charts. */
+interface ShortCodes {
+  codes: Record<string, string>
+  rows: Array<{ sku: string; code: string }>
+}
+
+function shortCodes(codes: Record<string, string>): ShortCodes {
+  return { codes, rows: Object.entries(codes).map(([sku, code]) => ({ sku, code })) }
+}
+
 export async function products_short_codes(
   params: Record<string, unknown>,
   ctx: AppContext,
-): Promise<{ codes: Record<string, string> }> {
+): Promise<ShortCodes> {
   const raw = Array.isArray(params.skus) ? params.skus : []
   const skus = Array.from(
     new Set(
@@ -1046,7 +1056,7 @@ export async function products_short_codes(
         .filter((v) => v !== ""),
     ),
   ).slice(0, SHORT_CODES_MAX_SKUS)
-  if (skus.length === 0) return { codes: {} }
+  if (skus.length === 0) return shortCodes({})
   const crossCtx = ctx as ShopifyCrossAppCtx
   let env: CrossAppEnvelope
   try {
@@ -1055,9 +1065,9 @@ export async function products_short_codes(
       keys: ["short_code"],
     })
   } catch {
-    return { codes: {} }
+    return shortCodes({})
   }
-  if (env.status !== "completed") return { codes: {} }
+  if (env.status !== "completed") return shortCodes({})
   const result = env.result as {
     attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }>
   } | null
@@ -1067,7 +1077,7 @@ export async function products_short_codes(
     const code = a.value.trim()
     if (code !== "") codes[a.sku] = code
   }
-  return { codes }
+  return shortCodes(codes)
 }
 
 // — Draft orders (read) —

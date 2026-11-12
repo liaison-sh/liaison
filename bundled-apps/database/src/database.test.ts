@@ -16,6 +16,7 @@ import {
   compactListing,
   dbDescribe,
   dbListReads,
+  dbProbe,
   dbQuery,
   dbRead,
   explain,
@@ -100,6 +101,11 @@ describe("db_list_reads and db_read", () => {
     const out = await dbListReads({}, asCtx(ctx))
     expect(Object.keys(out.reads as object).sort()).toEqual(["open_tickets", "revenue_by_month"])
     expect(ctx.lookups.caller).toBe(0)
+    // The same reads as rows, one per read, for a dashboard block.
+    expect((out.rows as Array<{ name: string }>).map((r) => r.name).sort()).toEqual([
+      "open_tickets",
+      "revenue_by_month",
+    ])
   })
 
   it("a read of a domain the caller may not run is left out, and refused by name", async () => {
@@ -211,6 +217,26 @@ describe("db_query, db_describe and the warehouse", () => {
       code: "table_not_readable",
       readableTables: ["public.orders"],
     })
+  })
+
+  it("db_probe answers the report and its checks as rows", async () => {
+    const ctx = fakeCtx({
+      probe: () => ({
+        ok: false,
+        mode: "direct",
+        writeGrantsDetected: true,
+        warnings: ["write grant"],
+      }),
+    })
+    const out = await dbProbe({}, asCtx(ctx))
+    expect(out).toMatchObject({ ok: false, warnings: ["write grant"] })
+    expect((out as { rows: unknown }).rows).toEqual([
+      { key: "ok", value: false },
+      { key: "writeGrantsDetected", value: true },
+      { key: "dangerousExecuteGrantsDetected", value: false },
+      { key: "missingReads", value: 0 },
+      { key: "warnings", value: 1 },
+    ])
   })
 
   it("the connect-time probe runs on the connection that was saved and never throws", async () => {

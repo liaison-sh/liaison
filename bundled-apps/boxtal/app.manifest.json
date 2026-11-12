@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.24.7",
+  "version": "0.24.8",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {

@@ -1823,7 +1823,14 @@ describe("products_short_codes", () => {
         args: { skus: ["DEV-2", "STAND", "UNKNOWN"], keys: ["short_code"] },
       },
     ])
-    expect(out).toEqual({ codes: { "DEV-2": "E2", STAND: "FS" } })
+    expect(out).toEqual({
+      codes: { "DEV-2": "E2", STAND: "FS" },
+      // The same codes as rows, for a dashboard block.
+      rows: [
+        { sku: "DEV-2", code: "E2" },
+        { sku: "STAND", code: "FS" },
+      ],
+    })
   })
 
   it("is best effort: a failed or refused lookup returns no codes, and no SKUs means no call", async () => {
@@ -1836,9 +1843,9 @@ describe("products_short_codes", () => {
         return { status: "error", error: { code: "forbidden", message: "no" } }
       },
     })
-    expect(await products_short_codes({ skus: ["A"] }, ctx)).toEqual({ codes: {} })
-    expect(await products_short_codes({ skus: ["A"] }, ctx)).toEqual({ codes: {} })
-    expect(await products_short_codes({ skus: [] }, ctx)).toEqual({ codes: {} })
+    expect(await products_short_codes({ skus: ["A"] }, ctx)).toEqual({ codes: {}, rows: [] })
+    expect(await products_short_codes({ skus: ["A"] }, ctx)).toEqual({ codes: {}, rows: [] })
+    expect(await products_short_codes({ skus: [] }, ctx)).toEqual({ codes: {}, rows: [] })
     expect(called).toBe(2)
   })
 })

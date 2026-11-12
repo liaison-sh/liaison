@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { timeSeriesRows } from "./analytics"
+import { tableRows, timeSeriesRows } from "./analytics"
 import {
   type AnalyticsSpecError,
   buildAnalyticsQuery,
@@ -277,6 +277,19 @@ describe("timeSeriesRows — dashboard-ready rows", () => {
       "month",
     )
     expect(rows).toEqual([{ month: "2026-04-01", sessions: 120, date: "2026-04-01" }])
+  })
+
+  it("tableRows: the same rows without a date, for a call without timeGrain", () => {
+    expect(
+      tableRows({
+        columns: [{ name: "sku" }, { name: "units" }],
+        rows: [["A-1", 3], { sku: "B-2", units: 5 }],
+      }),
+    ).toEqual([
+      { sku: "A-1", units: 3 },
+      { sku: "B-2", units: 5 },
+    ])
+    expect(tableRows(null)).toEqual([])
   })
 
   it("returns no rows for an empty table", () => {

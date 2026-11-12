@@ -98,7 +98,9 @@ export function createRpcBridge(
     rpcBridge,
     createIdentityMethods(ctx),
     createDbMethods(ctx),
-    createBatchMethods(ctx, (tx) => createDbMethods({ ...ctx, txDb: tx })),
+    createBatchMethods(ctx, (tx, onRowCount) =>
+      createDbMethods({ ...ctx, txDb: tx }, { onRowCount }),
+    ),
     createPlatformMethods(ctx),
     createAgentMethods(ctx),
     createEgressMethods(ctx),

@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Build an app's Worker module (the remote V8 isolate executor). Build only:
-// nothing is uploaded.
+// Build an app's Worker module on its own (a development aid: every
+// `.liaisonapp` already carries its `worker.js`, built by scripts/freeze-app.ts
+// with the same step). Build only: nothing is uploaded.
 //
 //   bun run apps:build-worker-bundle <app> [--app-dir <dir>] [--out <dir>]
 //
@@ -19,23 +20,16 @@
 //                                         fake loader): `export function
 //                                         run(req, bridge)`, same contract.
 //
-// Both: `bun build` (run from the repo root) of a generated entry, target "browser", format esm, no
-// `node:` import (the build fails if one remains). Prints the sha256 of
-// worker.js (hex, over its bytes) and the LIAISON_WORKERS_BUNDLES entry
-// `{"<app>@<version>":"<sha256>"}`. The generated entries are written under
-// <repo>/dist-worker/.entries at a fixed path per app (the bundle's path
-// comments name it, so a fixed path keeps the sha stable) and removed after
-// the build. The sha is the one to put in LIAISON_WORKERS_BUNDLES and the R2
-// key `<app>/<version>/<sha256>.js` (wire protocol).
+// Both come from `buildWorkerModule` (freeze-core.ts): no `node:` import (the
+// build fails if one remains). Prints the sha256 of worker.js (hex, over its
+// bytes). Run from the repo root, as the freeze is: the bundle's module path
+// comments are relative to the process's cwd, so the sha matches the package's
+// worker.js only from there.
 
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
-import {
-  workerCoreEntrySource,
-  workerEntrySource,
-  workerNodeImport,
-} from "../apps/api/src/modules/app-builder/build/freeze-core"
+import { buildWorkerModule } from "../apps/api/src/modules/app-builder/build/freeze-core"
 
 const REPO_ROOT = resolve(import.meta.dir, "..")
 
@@ -47,8 +41,6 @@ export interface WorkerBundleBuild {
   corePath: string
   workerBytes: number
   coreBytes: number
-  /** The LIAISON_WORKERS_BUNDLES entry for this build. */
-  bundlesEntry: string
 }
 
 function readManifest(appDir: string): { name: string; version: string } {
@@ -59,43 +51,6 @@ function readManifest(appDir: string): { name: string; version: string } {
     throw new Error(`${path}: name and version must be strings`)
   }
   return { name: raw.name, version: raw.version }
-}
-
-async function bundle(entry: string, outDir: string, naming: string): Promise<string> {
-  const out = join(outDir, naming)
-  // The CLI, run from the repo root: the bundle's module path comments are
-  // relative to the build's cwd, so a fixed cwd keeps the sha independent of
-  // where this script was started from.
-  const proc = Bun.spawn(
-    [
-      process.execPath,
-      "build",
-      entry,
-      "--outfile",
-      out,
-      "--target",
-      "browser",
-      "--format",
-      "esm",
-      "--external",
-      "cloudflare:workers",
-    ],
-    { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
-  )
-  const [code, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  if (code !== 0) {
-    throw new Error(
-      `Worker bundle failed (${naming}): ${(stderr || stdout).trim() || `exit ${code}`}`,
-    )
-  }
-  const text = readFileSync(out, "utf8")
-  const nodeImport = workerNodeImport(text)
-  if (nodeImport) throw new Error(`${naming} still imports a Node builtin: ${nodeImport}`)
-  return out
 }
 
 export async function buildWorkerBundle(opts: {
@@ -109,39 +64,21 @@ export async function buildWorkerBundle(opts: {
   const { name, version } = readManifest(appDir)
   const outDir = join(resolve(opts.outRoot ?? join(REPO_ROOT, "dist-worker")), name, version)
   mkdirSync(outDir, { recursive: true })
-
-  const entriesDir = join(REPO_ROOT, "dist-worker/.entries")
-  mkdirSync(entriesDir, { recursive: true })
-  const workerEntry = join(entriesDir, `${name}.worker.ts`)
-  const coreEntry = join(entriesDir, `${name}.core.ts`)
-  writeFileSync(workerEntry, workerEntrySource(handlers))
-  writeFileSync(coreEntry, workerCoreEntrySource(handlers))
-  try {
-    const workerPath = await bundle(workerEntry, outDir, "worker.js")
-    const corePath = await bundle(coreEntry, outDir, "worker-core.js")
-    const bytes = readFileSync(workerPath)
-    const sha256 = createHash("sha256").update(bytes).digest("hex")
-    return {
-      app: name,
-      version,
-      sha256,
-      workerPath,
-      corePath,
-      workerBytes: bytes.length,
-      coreBytes: readFileSync(corePath).length,
-      bundlesEntry: JSON.stringify({ [`${name}@${version}`]: sha256 }),
-    }
-  } finally {
-    rmSync(workerEntry, { force: true })
-    rmSync(coreEntry, { force: true })
-    // Leave no empty scaffolding behind (another build may still use it).
-    for (const dir of [entriesDir, join(REPO_ROOT, "dist-worker")]) {
-      try {
-        rmdirSync(dir)
-      } catch {
-        /* not empty */
-      }
-    }
+  const worker = await buildWorkerModule({ handlersPath: handlers })
+  const core = await buildWorkerModule({ handlersPath: handlers, core: true })
+  const workerPath = join(outDir, "worker.js")
+  const corePath = join(outDir, "worker-core.js")
+  writeFileSync(workerPath, worker.text)
+  writeFileSync(corePath, core.text)
+  const bytes = readFileSync(workerPath)
+  return {
+    app: name,
+    version,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    workerPath,
+    corePath,
+    workerBytes: bytes.length,
+    coreBytes: readFileSync(corePath).length,
   }
 }
 
@@ -166,7 +103,6 @@ if (import.meta.main) {
     console.log(`worker.js       ${r.workerPath} (${r.workerBytes} bytes)`)
     console.log(`worker-core.js  ${r.corePath} (${r.coreBytes} bytes)`)
     console.log(`sha256          ${r.sha256}`)
-    console.log(`LIAISON_WORKERS_BUNDLES entry: ${r.bundlesEntry}`)
   } catch (err) {
     console.error((err as Error).message)
     process.exit(1)

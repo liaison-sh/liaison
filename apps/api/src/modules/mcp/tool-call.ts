@@ -21,6 +21,7 @@ import { resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
 import {
   checkToolScopeTaint,
   isPlatformTaintRefusal,
+  personClientWriteUnjudged,
   wasRefusedBeforeRun,
 } from "~/modules/agent/scopes/scope-taint"
 import { watchTaintMarks } from "~/modules/agent/scopes/taint"
@@ -694,7 +695,10 @@ export async function handleToolCall(
     turnScopesSettled = true
     if (accumulator) await persistTurnScopes(accumulator.snapshot())
   }
-  if (touchedBefore) {
+  // A person's own client (no agent) is judged on its kernel-thread posts only (scope-taint.ts,
+  // rule 14f): its window above is still recorded, so those posts are judged by it.
+  const personClientUnjudged = personClientWriteUnjudged(!ctx.agentId, toolDef)
+  if (touchedBefore && !personClientUnjudged) {
     const refused = checkToolScopeTaint(touchedBefore, toolDef, {
       args,
       originRows: accumulator?.originRows(),
@@ -791,7 +795,8 @@ export async function handleToolCall(
   // So may ANY write on a turn that already carries scoped reads: a tainted write parks for
   // approval instead of being refused (scope taint rule 8), and without the connection thread
   // its approval landed on an auto-created surface the MCP agent never watches.
-  const turnCarriesTaint = (ctx.turnScopeAccumulator?.snapshot().length ?? 0) > 0
+  const turnCarriesTaint =
+    !personClientUnjudged && (ctx.turnScopeAccumulator?.snapshot().length ?? 0) > 0
   const mayParkOnTaint =
     (turnCarriesTaint && toolDef.readOnly !== true) ||
     toolDef.externalEffect === true ||

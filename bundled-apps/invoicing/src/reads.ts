@@ -1439,6 +1439,28 @@ export interface PdfRef {
   management_copy: { file_id: string; url: string } | null
   /** Factur-X only: the CII XML kept beside the legal original. */
   facturx_xml_file_id: string | null
+  /** The files above as rows (`kind`, `file_id`, `url`), the list a dashboard block reads: the
+   *  PDF (kind `legal_original` when it is one, else `pdf`), then any management copy and
+   *  Factur-X XML. Empty when no PDF has rendered. */
+  rows: Array<{
+    kind: "legal_original" | "pdf" | "management_copy" | "facturx_xml"
+    file_id: string
+    url: string | null
+  }>
+}
+
+function pdfRefRows(ref: Omit<PdfRef, "rows">): PdfRef["rows"] {
+  const rows: PdfRef["rows"] = []
+  if (ref.file_id)
+    rows.push({
+      kind: ref.legal_original ? "legal_original" : "pdf",
+      file_id: ref.file_id,
+      url: ref.url,
+    })
+  if (ref.management_copy) rows.push({ kind: "management_copy", ...ref.management_copy })
+  if (ref.facturx_xml_file_id)
+    rows.push({ kind: "facturx_xml", file_id: ref.facturx_xml_file_id, url: null })
+  return rows
 }
 
 const inlineUrl = (fileId: string) => `/api/files/${fileId}/inline`
@@ -1455,6 +1477,7 @@ async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<Pd
     legal_original: false,
     management_copy: null,
     facturx_xml_file_id: null,
+    rows: [],
   }
   if (!id) return none
   const r = await resolveDocumentRow(ctx.db, id)
@@ -1470,7 +1493,7 @@ async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<Pd
     })) as Array<Record<string, unknown>>
     xmlId = (xml[0]?.file_id as string | null | undefined) ?? null
   }
-  return {
+  const ref = {
     file_id: fileId,
     url: fileId ? inlineUrl(fileId) : null,
     legal_original: chosen.legal_original,
@@ -1480,6 +1503,7 @@ async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<Pd
         : null,
     facturx_xml_file_id: xmlId,
   }
+  return { ...ref, rows: pdfRefRows(ref) }
 }
 
 export function documentsPreviewPdf(ctx: ReadsCtx, input: { id: string }): Promise<PdfRef> {

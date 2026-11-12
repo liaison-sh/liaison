@@ -239,10 +239,27 @@ export async function monitorTermsList(
 }
 
 /** Sidebar badge counts, on the derived finding status (pending.ts). */
+type CountKey = "findings_new" | "awaiting_approval" | "open_dms"
+type Counts = Record<CountKey, number> & {
+  /** The three counts as rows (`key` = the count's name): the list a dashboard block charts. */
+  rows: Array<{ key: CountKey; value: number }>
+}
+
+function withRows(c: Record<CountKey, number>): Counts {
+  return {
+    ...c,
+    rows: [
+      { key: "findings_new", value: c.findings_new },
+      { key: "awaiting_approval", value: c.awaiting_approval },
+      { key: "open_dms", value: c.open_dms },
+    ],
+  }
+}
+
 export async function countsRead(
   _params: Record<string, never>,
   ctx: SocialToolCtx,
-): Promise<{ findings_new: number; awaiting_approval: number; open_dms: number }> {
+): Promise<Counts> {
   const [storedNew, staleAwaiting, open_dms, pending] = await Promise.all([
     ctx.db.count("finding", { where: { status: "new" } }),
     ctx.db.findMany("finding", { where: { status: "awaiting_approval" }, limit: 500 }),
@@ -253,7 +270,7 @@ export async function countsRead(
     const awaiting_approval = await ctx.db.count("finding", {
       where: { status: "awaiting_approval" },
     })
-    return { findings_new: storedNew, awaiting_approval, open_dms }
+    return withRows({ findings_new: storedNew, awaiting_approval, open_dms })
   }
   const targeted = await loadTargeted(ctx, pending)
   const awaiting_approval = targeted.filter(
@@ -265,5 +282,9 @@ export async function countsRead(
   const newNowAwaiting = targeted.filter(
     (r) => r.status === "new" && derivedFindingStatus(r, pending) !== "new",
   ).length
-  return { findings_new: storedNew + newFromStale - newNowAwaiting, awaiting_approval, open_dms }
+  return withRows({
+    findings_new: storedNew + newFromStale - newNowAwaiting,
+    awaiting_approval,
+    open_dms,
+  })
 }

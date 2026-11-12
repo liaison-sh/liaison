@@ -1466,6 +1466,13 @@ describe("queueCounts", () => {
     })
     const counts = await queueCounts(ctx)
     expect(counts.exceptions).toBe(2) // stuck1 (EXCEPTION) + stuck2 (INCIDENT); the IN_TRANSIT one is healthy
+    // The same counts as rows, the list a dashboard block charts.
+    expect(counts.rows).toEqual([
+      { key: "to_prepare", value: counts.to_prepare },
+      { key: "ready", value: counts.ready },
+      { key: "returns", value: counts.returns },
+      { key: "exceptions", value: 2 },
+    ])
   })
 
   it("excludes prep_state.excluded rows from to_prepare, so the sidebar badge agrees with prep_list's default view", async () => {

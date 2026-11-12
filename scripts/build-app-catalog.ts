@@ -38,6 +38,7 @@
 //
 // Default out dir: <repoRoot>/app-catalog
 import { execFileSync, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   copyFileSync,
   existsSync,
@@ -86,6 +87,8 @@ export interface CatalogEntry {
   scopes: string[]
   /** Connection ids the app declares (granted in full on install). */
   connections: string[]
+  /** sha256 of the package's worker.js (its Worker module): the install refuses other bytes. */
+  workerSha256?: string
   /** Present when `file` is the signed release artifact: its statement files. */
   signed?: { statement: string; signature: string }
 }
@@ -224,6 +227,11 @@ async function findSignedArtifact(
     if (verified.statement.sourceDigest !== app.sourceDigest) {
       return { reason: "signed artifact refused (source digest differs from its index entry)" }
     }
+    // A package from before Worker modules were packaged is not used: every catalog
+    // package carries its worker.js (the install records it, catalog.json pins it).
+    if (packageFile(packageBytes, "worker.js") === null) {
+      return { reason: "signed artifact refused (the package carries no worker.js)" }
+    }
     // The installed files come from the package: they must be the signed loose ones.
     if (
       !sameBytes(packageFile(packageBytes, "ui.js"), uiBytes) ||
@@ -354,6 +362,14 @@ export async function buildAppCatalog(opts: BuildCatalogOptions): Promise<Catalo
       copyFileSync(tarball, join(opts.outDir, file))
     }
 
+    // The package's Worker module, pinned in catalog.json: the catalog install
+    // refuses a package whose worker.js hashes to anything else.
+    const worker = packageFile(new Uint8Array(readFileSync(join(opts.outDir, file))), "worker.js")
+    if (!worker) {
+      throw new Error(`[build-app-catalog] ${name}@${version}: the package carries no worker.js`)
+    }
+    const workerSha256 = createHash("sha256").update(worker).digest("hex")
+
     entries.push({
       name,
       ...(manifest.displayName ? { displayName: manifest.displayName } : {}),
@@ -366,6 +382,7 @@ export async function buildAppCatalog(opts: BuildCatalogOptions): Promise<Catalo
       file,
       scopes: manifest.scopes ?? [],
       connections: Object.keys(manifest.connections ?? {}),
+      workerSha256,
       ...(signed ? { signed } : {}),
     })
   }

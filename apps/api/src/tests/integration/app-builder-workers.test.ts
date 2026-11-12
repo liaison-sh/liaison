@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Custom apps on the Workers executor (LIAISON_WORKERS_CUSTOM_APPS), end to
-// end on a real database, the real install path and a local loader that
-// behaves like the real one (workers/__fixtures__/fake-loader.ts):
-//   - a publish records the pinned build's Worker module on the installed row;
-//   - selection: a custom app goes to Workers only with the switch on, and
-//     needs no LIAISON_WORKERS_APPS / LIAISON_WORKERS_BUNDLES entry;
+// Custom apps on the Workers executor, end to end on a real database, the
+// real install path and a local loader that behaves like the real one
+// (workers/__fixtures__/fake-loader.ts):
+//   - a publish records the pinned build's Worker module (the package's
+//     worker.js) on the installed row;
+//   - selection: a custom app goes to Workers as soon as a loader is
+//     configured, from its row's sha, with no list to keep;
 //   - parity: the loader has no copy, fetches the module from the cell's
 //     bundle route (signed v2 loader->cell), re-hashes it, runs it, and the
 //     tool answers as on QuickJS;
@@ -54,13 +55,10 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 const CELL_ID = "cell-custom"
 const CELL_KEY = "custom-cell-key-0123456789abcdef"
 const ENV_KEYS = [
-  "LIAISON_WORKERS_APPS",
-  "LIAISON_WORKERS_CUSTOM_APPS",
   "LIAISON_APP_LOADER_URL",
   "LIAISON_APP_LOADER_CELL_ID",
   "LIAISON_APP_LOADER_KEY",
   "LIAISON_APP_BRIDGE_BASE_URL",
-  "LIAISON_WORKERS_BUNDLES",
 ] as const
 type Mutable = Record<string, unknown>
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, env[k]]))
@@ -102,21 +100,14 @@ async function makeOrg(second = false): Promise<Org> {
   }
 }
 
-/** Loader + cell configured; custom apps on unless `custom: false`. */
-function workers(opts: { custom?: boolean } = {}) {
+/** Loader + cell configured: every sandboxed app runs there. */
+function workers() {
   const e = env as unknown as Mutable
   for (const k of ENV_KEYS) e[k] = undefined
   e.LIAISON_APP_LOADER_URL = loader.url
   e.LIAISON_APP_LOADER_CELL_ID = CELL_ID
   e.LIAISON_APP_LOADER_KEY = CELL_KEY
   e.LIAISON_APP_BRIDGE_BASE_URL = cellOrigin
-  if (opts.custom === false) {
-    // A listed-apps cell that does not list it: the custom app stays on QuickJS.
-    e.LIAISON_WORKERS_APPS = "kpi"
-    e.LIAISON_WORKERS_BUNDLES = JSON.stringify({ "kpi@1.0.0": "a".repeat(64) })
-  } else {
-    e.LIAISON_WORKERS_CUSTOM_APPS = "1"
-  }
   clearInstalledIdentityCache()
 }
 
@@ -235,11 +226,9 @@ describe("custom apps on Workers", () => {
     expect(v?.sha).toBe(row?.worker_sha256 as string)
   })
 
-  it("selects a custom app only with LIAISON_WORKERS_CUSTOM_APPS=1, from its row's sha", async () => {
+  it("selects a custom app once a loader is configured, from its row's sha", async () => {
     const opts = { trusted: false, appName: crud.appName, orgId: a.orgId }
     workersOff()
-    expect(await resolveWorkersTarget(opts)).toBeNull()
-    workers({ custom: false })
     expect(await resolveWorkersTarget(opts)).toBeNull()
     workers()
     const target = await resolveWorkersTarget(opts)
@@ -313,9 +302,7 @@ describe("GET /api/app-bridge/bundles/:sha256", () => {
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(crudSha)
   })
 
-  it("answers 404 on every path while custom apps are off", async () => {
-    workers({ custom: false })
-    expect((await bundleGet(crudSha, signedGet(crudSha))).status).toBe(404)
+  it("answers 404 on every path while no loader is configured", async () => {
     workersOff()
     expect((await bundleGet(crudSha, signedGet(crudSha))).status).toBe(404)
   })

@@ -10,15 +10,20 @@
 // In-tree and kernel reads run their real handlers. A bundled app's read is registered from its
 // manifest declaration (the flags the source rule reads), with a handler returning the shape
 // its real one does, since a bundled app is not installed in a fresh test org.
+//
+// The reads given a top-level `rows` list (a set of counts, a keyed map, one figure) are run
+// last: a block that counts the rows saves, runs, and gets them.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
+import { external_fetch } from "~/apps/example/handlers"
 import type { UserContext } from "~/db/rls"
 import { defineAppBuilderTools } from "~/modules/app-builder/tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { READ_ROWS_STAND_INS } from "~/modules/dashboards/__fixtures__/read-rows"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import { checkToolSource, SECRET_READS } from "~/modules/dashboards/sources"
 import * as minimal from "~/seed/tiers/minimal"
@@ -170,6 +175,18 @@ const BUNDLED: Array<{ app: string; tool: string; result: unknown; expect: "rows
   },
 ]
 
+/** In-tree reads given rows, run on their real handlers, with the rows a fresh org gives. */
+const IN_TREE_ROWS: Array<{ tool: string; rows: number }> = [
+  // open, awaitingCustomer, awaitingFollowup
+  { tool: "tickets:backlogHealth", rows: 3 },
+  // responded, pending, declined
+  { tool: "tickets:csat.summary", rows: 3 },
+  // no prefix set: the one example handle
+  { tool: "tickets:idSegment.get", rows: 1 },
+  // the ping, against a stand-in for the example API
+  { tool: "example:external_fetch", rows: 1 },
+]
+
 const REPO = join(import.meta.dir, "..", "..", "..", "..", "..")
 
 function manifestTool(app: string, tool: string): Record<string, unknown> {
@@ -182,6 +199,21 @@ function manifestTool(app: string, tool: string): Record<string, unknown> {
 }
 
 let orgId = ""
+
+/** Registers a bundled read from its manifest declaration, answering `result`. */
+function registerStandIn(app: string, tool: string, result: unknown): void {
+  const t = manifestTool(app, tool)
+  toolRegistry.set([orgId, app, tool], {
+    appName: app,
+    name: tool,
+    description: String(t.description),
+    requiredScopes: t.requiredScopes as string[],
+    readOnly: t.readOnly === true,
+    ...(t.agentVisible === false ? { agentVisible: false } : {}),
+    params: z.object({}),
+    handler: async () => result,
+  })
+}
 let owner = ""
 let viewer: UserContext
 
@@ -217,17 +249,18 @@ beforeAll(async () => {
   owner = org.adminUserId
   await ensureAppsForOrg(orgId)
   defineAppBuilderTools(orgId)
-  for (const b of BUNDLED) {
-    const t = manifestTool(b.app, b.tool)
-    toolRegistry.set([orgId, b.app, b.tool], {
-      appName: b.app,
-      name: b.tool,
-      description: String(t.description),
-      requiredScopes: t.requiredScopes as string[],
-      readOnly: t.readOnly === true,
-      ...(t.agentVisible === false ? { agentVisible: false } : {}),
-      params: z.object({}),
-      handler: async () => b.result,
+  for (const b of BUNDLED) registerStandIn(b.app, b.tool, b.result)
+  for (const st of READ_ROWS_STAND_INS) registerStandIn(st.app, st.tool, st.result)
+  // The example app's read reaches its API: its real handler runs against a stand-in.
+  const ping = toolRegistry.get([orgId, "example", "external_fetch"])
+  if (ping) {
+    toolRegistry.set([orgId, "example", "external_fetch"], {
+      ...ping,
+      handler: async () =>
+        external_fetch({}, {
+          connections: {},
+          fetch: async () => ({ status: 204 }),
+        } as unknown as Parameters<typeof external_fetch>[1]),
     })
   }
   // The viewer holds every scope the reads under test need, and the dashboard scopes.
@@ -235,7 +268,9 @@ beforeAll(async () => {
   for (const c of [
     ...KERNEL_CASES,
     ...IN_TREE_CASES,
+    ...IN_TREE_ROWS,
     ...BUNDLED.map((b) => ({ tool: `${b.app}:${b.tool}` })),
+    ...READ_ROWS_STAND_INS.map((b) => ({ tool: `${b.app}:${b.tool}` })),
   ]) {
     const [app, name] = c.tool.split(":") as [string, string]
     for (const s of toolRegistry.get([orgId, app, name])?.requiredScopes ?? []) scopes.add(s)
@@ -288,4 +323,47 @@ describe("reads made dashboard sources", () => {
       ).ok,
     ).toBe(false)
   })
+})
+
+describe("reads given rows: a block saves, runs and gets them", () => {
+  /** A block counting the rows of `tool`'s answer: it runs only on a list. */
+  async function countRows(tool: string) {
+    const d = await createDashboard(viewer, {
+      title: `Rows of ${tool}`,
+      visibility: "personal",
+      spec: {
+        v: 1,
+        blocks: [
+          {
+            id: "b",
+            type: "metric",
+            title: tool,
+            source: { kind: "tool", tool, params: {} },
+            map: { agg: "count" },
+          },
+        ],
+      },
+    })
+    return getBlockData(viewer, d.id, "b")
+  }
+
+  for (const st of READ_ROWS_STAND_INS) {
+    const full = `${st.app}:${st.tool}`
+    it(`${full}${st.variant ? ` (${st.variant})` : ""}: ${st.rows} rows`, async () => {
+      registerStandIn(st.app, st.tool, st.result)
+      expect(await countRows(full)).toMatchObject({
+        ok: true,
+        data: { kind: "metric", value: st.rows },
+      })
+    })
+  }
+
+  for (const c of IN_TREE_ROWS) {
+    it(`${c.tool}: ${c.rows} rows from its real handler`, async () => {
+      expect(await countRows(c.tool)).toMatchObject({
+        ok: true,
+        data: { kind: "metric", value: c.rows },
+      })
+    })
+  }
 })

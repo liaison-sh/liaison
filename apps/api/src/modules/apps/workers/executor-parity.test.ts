@@ -59,12 +59,10 @@ const SECRETS = { carrierKey: CARRIER_KEY, cellKey: CELL_KEY }
 const APP_SECRET = "carrier-app-held-secret-4b8d1e"
 
 const ENV_KEYS = [
-  "LIAISON_WORKERS_APPS",
   "LIAISON_APP_LOADER_URL",
   "LIAISON_APP_LOADER_CELL_ID",
   "LIAISON_APP_LOADER_KEY",
   "LIAISON_APP_BRIDGE_BASE_URL",
-  "LIAISON_WORKERS_BUNDLES",
 ] as const
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, env[k]]))
 const savedRole = env.LIAISON_ROLE
@@ -81,6 +79,7 @@ let cell: Server<undefined> | null = null
 let files: Server<undefined> | null = null
 let cellOrigin = ""
 let loader: FakeLoader
+/** `<app>@<version>` -> the sha256 of the Worker module its install recorded. */
 const bundles: Record<string, string> = {}
 /** The credential values the carrier stub received (host-side injection). */
 const injectedKeys: string[] = []
@@ -92,20 +91,17 @@ type Mutable = Record<string, unknown>
 
 function workersOn(over: Partial<Record<(typeof ENV_KEYS)[number], string>> = {}) {
   const e = env as unknown as Mutable
-  e.LIAISON_WORKERS_APPS = "wparity,wparityb"
   e.LIAISON_APP_LOADER_URL = loader.url
   e.LIAISON_APP_LOADER_CELL_ID = CELL_ID
   e.LIAISON_APP_LOADER_KEY = CELL_KEY
   e.LIAISON_APP_BRIDGE_BASE_URL = cellOrigin
-  e.LIAISON_WORKERS_BUNDLES = JSON.stringify(bundles)
   Object.assign(e, over)
 }
 
-/** QuickJS, with the apps still listed (so their runs are timed and tagged). */
+/** QuickJS: no loader (sandboxed runs are still timed and tagged). */
 function workersOff() {
   const e = env as unknown as Mutable
   for (const k of ENV_KEYS) e[k] = undefined
-  e.LIAISON_WORKERS_APPS = "wparity,wparityb"
 }
 
 const bearerOf = (who: "A" | "B") => (who === "A" ? bearerA : bearerB)
@@ -245,6 +241,11 @@ beforeAll(async () => {
       approveUiFullAccess: true,
     })
     const built = await buildWorkerBundle({ appDir, outRoot: join(scratch, "dist-worker") })
+    // The package carried its worker.js and the install recorded it: the same
+    // bytes the standalone build makes (the loader below serves those).
+    const [row] = await sql`SELECT worker_sha256 FROM kernel.apps_installed
+      WHERE name = ${name} AND version = ${manifest.version}`
+    expect(row?.worker_sha256).toBe(built.sha256)
     bundles[`${built.app}@${built.version}`] = built.sha256
     loaderFiles[`${built.app}/${built.version}/${built.sha256}.js`] = {
       workerPath: built.workerPath,
@@ -344,6 +345,22 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(r.quickjs.status).toBeGreaterThanOrEqual(400)
     expect(r.workers).toEqual(r.quickjs)
     expect(await countTitled("atomic-workers")).toBe(await countTitled("atomic-quickjs"))
+  })
+
+  it("a ctx.db.batch guard that fails: the same typed error, nothing written, on both", async () => {
+    const r = await both("tool:batchGuard", (mode) =>
+      callTool("batchGuard", { title: `guard-${mode}` }),
+    )
+    expect(r.quickjs.status).toBe(200)
+    expect(r.quickjs.body.data).toEqual({
+      message:
+        "ctx.db.batch: precondition_failed at ops[1] (update items): expected at least 1 row, matched 0",
+      code: "precondition_failed",
+      status: 409,
+    })
+    expect(r.workers).toEqual(r.quickjs)
+    expect(await countTitled("guard-quickjs")).toBe(0)
+    expect(await countTitled("guard-workers")).toBe(0)
   })
 
   it("a nested cross-app call into a second Workers app", async () => {
@@ -1015,14 +1032,23 @@ describe("Workers-only properties", () => {
     expect(await countTitled("replay-1")).toBe(1)
   }, 30_000)
 
-  it("a listed app with no bundle for its installed version runs on QuickJS, tagged", async () => {
-    const only = Object.fromEntries(
-      Object.entries(bundles).filter(([k]) => k.startsWith("wparityb@")),
-    )
-    workersOn({ LIAISON_WORKERS_BUNDLES: JSON.stringify(only) })
-    const r = await callTool("list")
-    expect(r.status).toBe(200)
-    expect(lastRun("tool:list")?.executor).toBe("quickjs")
+  it("a version installed without a Worker module runs on QuickJS, tagged", async () => {
+    const [row] = await sql`SELECT version, worker_sha256, worker_module FROM kernel.apps_installed
+      WHERE name = 'wparity' AND worker_sha256 IS NOT NULL`
+    await sql`UPDATE kernel.apps_installed SET worker_sha256 = NULL, worker_module = NULL
+      WHERE name = 'wparity' AND version = ${row!.version}`
+    clearInstalledIdentityCache()
+    try {
+      workersOn()
+      const r = await callTool("list")
+      expect(r.status).toBe(200)
+      expect(lastRun("tool:list")?.executor).toBe("quickjs")
+    } finally {
+      await sql`UPDATE kernel.apps_installed
+        SET worker_sha256 = ${row!.worker_sha256}, worker_module = ${row!.worker_module}
+        WHERE name = 'wparity' AND version = ${row!.version}`
+      clearInstalledIdentityCache()
+    }
   })
 
   it("a bad loader signature: retried once, then the run runs on QuickJS; the tokens are revoked", async () => {

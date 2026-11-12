@@ -67,6 +67,20 @@ describe("metric", () => {
       value: 20,
     })
   })
+  test("a value field no row carries leaves every row out instead of summing to a silent 0", () => {
+    const rows = [{ cost: 4.99 }, { cost: 0 }]
+    expect(transformBlock("metric", { value: "cost_micros" }, rows)).toMatchObject({
+      value: 0,
+      meta: { sourceRows: 2, skippedRows: 2 },
+    })
+    expect(transformBlock("metric", { value: "cost" }, rows)).toMatchObject({
+      value: 4.99,
+      meta: { skippedRows: 0 },
+    })
+    expect(
+      transformBlock("bar", { y: "spend", groupBy: { field: "name" } }, [{ name: "a", cost: 1 }]),
+    ).toMatchObject({ meta: { skippedRows: 1 } })
+  })
   test("reads a scalar path when the source returns one object", () => {
     expect(
       transformBlock("metric", { value: "totals.sales" }, { totals: { sales: "99.9" } }),

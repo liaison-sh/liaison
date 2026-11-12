@@ -7,7 +7,7 @@ import { describe, expect, it } from "bun:test"
 import type { AttentionItem } from "@liaison/shared"
 import { normalizeProviderItems, PROVIDER_ITEM_CAP } from "~/modules/apps/attention-store"
 
-function item(entityId: string, kind: string, urgency: number): AttentionItem {
+function item(entityId: string, kind: AttentionItem["kind"], urgency: number): AttentionItem {
   return {
     id: `${kind}:${entityId}`,
     app: "desk",

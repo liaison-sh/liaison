@@ -81,6 +81,8 @@ const CASES: KeyCase[] = [
     registry: "contentParams",
     expected: ["note"],
   },
+  { key: "humanTurnOnly", tool: { humanTurnOnly: true }, registry: "humanTurnOnly", expected: true },
+  { key: "dmOnly", tool: { dmOnly: true }, registry: "dmOnly", expected: true },
   { key: "feature", tool: { feature: "budgets" }, registry: "feature", expected: "budgets" },
   { key: "focusCore", tool: { focusCore: true }, registry: "focusCore", expected: true },
   {
@@ -250,6 +252,16 @@ describe("manifest keys carried onto the registry", () => {
     const { failedApps } = await registerApps([manifest], TEST_ORG)
     expect(failedApps).toEqual([APP])
     expect(toolRegistry.get([TEST_ORG, APP, "put"])).toBeUndefined()
+  })
+
+  it("a call-place declaration refuses an app nobody vouched for, so nothing is carried", async () => {
+    for (const key of ["humanTurnOnly", "dmOnly"]) {
+      const manifest = appWith({ put: { readOnly: true, [key]: true } }, { trusted: false })
+      const { failedApps } = await registerApps([manifest], TEST_ORG)
+      expect({ key, failedApps }).toEqual({ key, failedApps: [APP] })
+      expect(toolRegistry.get([TEST_ORG, APP, "put"])).toBeUndefined()
+      resetAppRegistries()
+    }
   })
 })
 

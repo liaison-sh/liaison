@@ -1,6 +1,6 @@
 {
   "name": "example",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Reference app demonstrating every Liaison SDK surface",
   "listing": {
     "publisher": "Liaison",
@@ -160,6 +160,22 @@
       "requiredScopes": ["example:items:read"],
       "handler": "items_list",
       "readOnly": true,
+      "params": { "type": "object", "properties": {} }
+    },
+    "items_count_on_turn": {
+      "description": "Count example items, only on a person's own turn",
+      "requiredScopes": ["example:items:read"],
+      "handler": "items_count_on_turn",
+      "readOnly": true,
+      "humanTurnOnly": true,
+      "params": { "type": "object", "properties": {} }
+    },
+    "items_count_in_dm": {
+      "description": "Count example items, only in a DM with the agent",
+      "requiredScopes": ["example:items:read"],
+      "handler": "items_count_in_dm",
+      "readOnly": true,
+      "dmOnly": true,
       "params": { "type": "object", "properties": {} }
     },
     "items_create": {

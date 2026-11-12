@@ -397,6 +397,8 @@ Keys on a tool:
 | `trustBoundary: "internal"` | string | Only code calls the tool: the app's own jobs, event handlers and tools through `ctx.executeTool`, or another app that declares it in `cross_app_calls`. A person (the REST tool route), an agent and an MCP client are refused with `forbidden`. Give a step that must run in one transaction (`atomic: true`) this mark, and call it from a tool or job that holds no transaction while it talks to another service |
 | `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |
 | `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
+| `humanTurnOnly` | boolean | First-party apps only: the tool runs only on a person's own turn (a chat turn they typed, the app, their own MCP client). From a routine, a sub-run or a job it is refused with `human_turn_only` (409) before any approval. Any other app declaring it is not loaded |
+| `dmOnly` | boolean | First-party apps only: an agent runs the tool only in its DM with the person. In a shared thread or an approval thread it is refused with `dm_only` (409), whose next step is "Continue in a DM". A person in the app and an MCP client pass. Any other app declaring it is not loaded |
 
 Keys on the app:
 

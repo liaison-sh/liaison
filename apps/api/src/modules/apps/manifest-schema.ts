@@ -655,6 +655,12 @@ const toolSchema = {
     instructions: { type: "string" },
     taintSource: { type: "boolean" },
     externalEffect: { type: "boolean" },
+    // First-party only (contract.ts, FIRST_PARTY_ONLY_TOOL_KEYS). Where a call may run, checked from
+    // its own run frame and refused there, never parked (execute-tool.ts): `humanTurnOnly` only on
+    // a person's own turn (a chat turn, the app, their own MCP client), never from a routine, a
+    // sub-run or a job; `dmOnly` for an agent only in its DM with the person, never a shared thread.
+    humanTurnOnly: { type: "boolean" },
+    dmOnly: { type: "boolean" },
     retryOnTransientDbError: { type: "boolean" },
     // Sandbox execution budget for one run of this tool handler (mirrors the
     // jobs-level timeoutMs). For read tools that fan out many cross-app calls

@@ -752,8 +752,8 @@ async function validateForRegistration(
     }
     return { ok: false, problem }
   }
-  // Tool keys that narrow a scope-taint refusal count only for an app the platform vouches
-  // for (contract.ts): any other app declaring one is not loaded, same errored state.
+  // First-party-only tool keys (contract.ts) count only for an app the platform vouches
+  // for: any other app declaring one is not loaded, same errored state.
   const firstPartyKeyErrors =
     isManifest && !hasPrivilegedBridge(desc) ? firstPartyOnlyToolKeyErrors(manifestOnly) : []
   if (firstPartyKeyErrors.length > 0) {
@@ -3394,6 +3394,9 @@ async function registerSingleApp(
             if (hasPrivilegedBridge(desc)) {
               if (tool.sinkReadersSelf === true) entry.sinkReadersSelf = true
               if (Array.isArray(tool.contentParams)) entry.contentParams = tool.contentParams
+              // Where a call may run: a product rule of first-party apps (contract.ts).
+              if (tool.humanTurnOnly === true) entry.humanTurnOnly = true
+              if (tool.dmOnly === true) entry.dmOnly = true
             }
             // Outbound text params: a placeholder there is refused before any gate (execute-tool.ts).
             if (Array.isArray(tool.outboundTextParams)) {

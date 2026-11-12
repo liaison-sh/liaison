@@ -146,3 +146,6 @@ knowledge sync input scope; ctx.knowledge_appSource / knowledge_appSourceWrite o
 App metadata kept across a reconnect by the same owner -> apps/api/src/modules/apps/connections/service.ts:3385 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.fetch convert xlsx-text; multipart related and base64 parts -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:107 ; apps/api/src/modules/apps/sandbox/bridge/multipart.ts:195
 ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPreconditionFailure reads it -> packages/app-sdk/src/types.ts (DbBatchExpect, DbClient.batch) ; packages/app-sdk/src/db-batch.ts ; apps/api/src/modules/apps/sandbox/bridge/batch.ts (BatchPreconditionError)
+humanTurnOnly and dmOnly are first-party only; any other app declaring either is not loaded -> apps/api/src/modules/apps/contract.ts:1058 ; apps/api/src/modules/apps/runtime.ts:3398
+humanTurnOnly: refused human_turn_only from a routine, a sub-run or a job; app and MCP pass -> apps/api/src/modules/apps/execute-tool.ts:3634,4691
+dmOnly: refused dm_only outside a DM for an agent, next step Continue in a DM; both 409 -> apps/api/src/modules/apps/execute-tool.ts:3659,3685,4695

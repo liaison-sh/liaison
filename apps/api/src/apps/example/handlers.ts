@@ -35,6 +35,31 @@ async function item_notes_count(
 }
 
 /**
+ * Manifest `humanTurnOnly` (first-party apps only): the host runs this only on a person's own
+ * turn, a chat turn, the app or their own MCP client, and refuses it from a routine, a sub-run or
+ * a job before the handler is reached.
+ */
+async function items_count_on_turn(
+  _params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<{ count: number }> {
+  const rows = await ctx.db.findMany("items", { where: { orgId: ctx.orgId } })
+  return { count: rows.length }
+}
+
+/**
+ * Manifest `dmOnly` (first-party apps only): an agent runs this only in its DM with the person;
+ * in a shared thread the host refuses it before the handler is reached.
+ */
+async function items_count_in_dm(
+  _params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<{ count: number }> {
+  const rows = await ctx.db.findMany("items", { where: { orgId: ctx.orgId } })
+  return { count: rows.length }
+}
+
+/**
  * Manifest `contextProviders`: a read-only tool the agent's context calls while
  * an item is in view. It returns a few short lines and where they came from,
  * or null; the host fences them and keeps the total small.
@@ -109,6 +134,8 @@ async function nightly_summary(
 const handlers = {
   item_context,
   item_notes_count,
+  items_count_in_dm,
+  items_count_on_turn,
   items_list,
   items_create,
   external_fetch,
@@ -123,6 +150,8 @@ export {
   handlers,
   item_context,
   item_notes_count,
+  items_count_in_dm,
+  items_count_on_turn,
   items_create,
   items_list,
   nightly_summary,

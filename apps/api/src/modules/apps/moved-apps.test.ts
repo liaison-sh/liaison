@@ -1216,15 +1216,17 @@ describe("the api-connector app's move", () => {
   /** The platform's copy, in the app table's columns (row diff against `acSnapshot`). */
   async function platformCopy(): Promise<Record<string, unknown[]>> {
     return {
-      adapters:
-        await sql`SELECT org_id, identifier, adapter, adapter_version, updated_by, created_at
+      adapters: [
+        ...(await sql`SELECT org_id, identifier, adapter, adapter_version, updated_by, created_at
         FROM kernel.api_adapters
-        WHERE org_id = ${ORG} AND app_name = ${AC} AND connection_name = 'api' ORDER BY identifier`,
-      versions:
-        await sql`SELECT id, org_id, identifier, adapter, adapter_version, saved_by, saved_at
+        WHERE org_id = ${ORG} AND app_name = ${AC} AND connection_name = 'api' ORDER BY identifier`),
+      ],
+      versions: [
+        ...(await sql`SELECT id, org_id, identifier, adapter, adapter_version, saved_by, saved_at
         FROM kernel.api_adapter_versions
         WHERE org_id = ${ORG} AND app_name = ${AC} AND connection_name = 'api'
-        ORDER BY identifier, saved_at`,
+        ORDER BY identifier, saved_at`),
+      ],
     }
   }
   const pick = (rows: unknown[], keys: string[]) =>

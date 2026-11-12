@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { testApiConn } from "~/modules/apps/connections/api/app.test-helpers"
 import { acquireTestLock, releaseTestLock, truncateOrgTables } from "~/tests/route-test-setup"
 
 const API_DIR = join(dirname(new URL(import.meta.url).pathname), "..", "..")
@@ -485,7 +486,7 @@ describe("CLI dispatch: api-connector validate | test", () => {
     )
     const parsed = validateAdapterDocument(ADAPTER)
     if (!parsed.ok) throw new Error("fixture adapter invalid")
-    await upsertAdapterRow(org?.id ?? "", "crm", parsed.adapter, null)
+    await upsertAdapterRow(testApiConn(org?.id ?? ""), "crm", parsed.adapter, null)
     const res = runCli([
       "api-connector",
       "test",

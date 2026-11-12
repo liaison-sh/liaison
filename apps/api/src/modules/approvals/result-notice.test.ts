@@ -16,7 +16,16 @@ import { registerRequiredStepEmitter, requiredStepLine, requiredStepOf } from ".
 import { approvedSecretCardOf, formatApprovalResult } from "./result-notice"
 
 const ORG = "00000000-0000-4000-8000-0000000c0de5"
-registerAdapterAuthoringTools(ORG)
+registerAdapterAuthoringTools({
+  orgId: ORG,
+  app: "api-connector",
+  connection: "api",
+  decl: {
+    readScope: "api-connector:read",
+    writeScope: "api-connector:write",
+    adminScope: "api-connector:admin",
+  },
+})
 const saveTool = toolRegistry.get([ORG, "api-connector", "connector_adapter_save"])
 
 /** The row postApprovalResultNotice writes. */

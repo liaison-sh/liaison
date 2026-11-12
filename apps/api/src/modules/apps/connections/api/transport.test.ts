@@ -146,19 +146,21 @@ describe("api-connector transport: the shared per-connection limiter", () => {
     const org = `00000000-0000-4000-8000-${String(Date.now()).slice(-12).padStart(12, "0")}`
     const id = `limiter-${Date.now()}`
     const first = await Promise.all(
-      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () => acquireConnectionSlot(org, id)),
+      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () =>
+        acquireConnectionSlot(testApiConn(org), id),
+      ),
     )
     let granted = false
-    const waiting = acquireConnectionSlot(org, id).then((release) => {
+    const waiting = acquireConnectionSlot(testApiConn(org), id).then((release) => {
       granted = true
       return release
     })
     const aborted = new AbortController()
-    const cancelled = acquireConnectionSlot(org, id, aborted.signal)
+    const cancelled = acquireConnectionSlot(testApiConn(org), id, aborted.signal)
     await Bun.sleep(50)
     expect(granted).toBe(false)
     // Another connection is not held up.
-    await (await acquireConnectionSlot(org, `${id}-other`))()
+    await (await acquireConnectionSlot(testApiConn(org), `${id}-other`))()
     aborted.abort(new Error("gone"))
     await expect(cancelled).rejects.toThrow("gone")
     await first[0]?.()

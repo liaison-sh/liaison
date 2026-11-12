@@ -6,7 +6,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-shopify.recorder.ts)
+//     bun test ./test-support/contract/record-shopify.recorder.ts)
 //
 // Needs SHOPIFY_DEV_STORE_DOMAIN and the app's SHOPIFY_OAUTH_CLIENT_ID /
 // SHOPIFY_OAUTH_CLIENT_SECRET: the run takes the app's offline token for the
@@ -29,17 +29,15 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
-import { ensureAppsForOrg } from "~/modules/apps/init"
-import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
-import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import type { AppBridge } from "~/modules/apps/sandbox/run-app"
-import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { BUNDLED_APPS_DIR, bridgeSurfaceOf, verifySurface } from "./apps.test-helpers"
-import { contractEntries } from "./entries"
-import { bundledAppScripts, productionLimits } from "./harness"
-import type { ContractIsolate } from "./isolate"
-import { quickJsContractExecutor } from "./quickjs-isolate"
+import {
+  BUNDLED_APPS_DIR,
+  bridgeSurfaceOf,
+  verifySurface,
+} from "~/modules/apps/contract/apps.test-helpers"
+import { contractEntries } from "~/modules/apps/contract/entries"
+import { bundledAppScripts, productionLimits } from "~/modules/apps/contract/harness"
+import type { ContractIsolate } from "~/modules/apps/contract/isolate"
+import { quickJsContractExecutor } from "~/modules/apps/contract/quickjs-isolate"
 import {
   type Replacement,
   recordEntry,
@@ -47,17 +45,23 @@ import {
   scrubValue,
   verifyFixture,
   writeFixture,
-} from "./recorder"
+} from "~/modules/apps/contract/recorder"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
+import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import type { AppBridge } from "~/modules/apps/sandbox/run-app"
+import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   type PlanState,
   SHOPIFY_RECORDING_PLAN,
   SYNTHETIC_WEBHOOK_SECRET,
 } from "./recording-plan-shopify"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "./replay-bridge"
 
 const APP = "shopify"
 const DIR = join(BUNDLED_APPS_DIR, APP)
-const FIXTURES_DIR = join(import.meta.dir, "fixtures")
+const FIXTURES_DIR = join(import.meta.dir, "../../src/modules/apps/contract/fixtures")
 const STAND_IN_SHOP = "contract-shop.myshopify.com"
 
 function requiredEnv(name: string): string {

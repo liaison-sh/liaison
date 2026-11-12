@@ -4,8 +4,8 @@
 // entry (`<kind>:<name>`), builds its input from what earlier steps found or
 // created (`state.values`), and may read its answer for later steps.
 
-import type { RecordInput } from "./recorder"
-import { CONTRACT_USER_ID } from "./replay-bridge"
+import type { RecordInput } from "~/modules/apps/contract/recorder"
+import { CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 
 export interface PlanState {
   /** The development store's `<shop>.myshopify.com`. */

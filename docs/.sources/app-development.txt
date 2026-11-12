@@ -83,3 +83,4 @@ Each run replaces the list; no scope = empty; a failed run keeps the last list w
 Summaries computed at request time and on edit, stored; reads serve stored text, generic while missing -> apps/api/src/modules/apps/execute-tool.ts:4954 ; apps/api/src/modules/approvals/edit.ts:641 ; apps/api/src/modules/approvals/served-summary.ts:1-15
 Refreshes are background jobs on their own queue, one per app and workspace per 15 s, capped per workspace per minute -> apps/api/src/modules/apps/attention-store.ts:489-560
 Background backfill of missing summaries, pending requests only, a few at a time -> apps/api/src/modules/approvals/summary-backfill.ts:1-22 ; apps/api/src/infra/boot-phase10.ts:487
+Apps hash and sign with WebCrypto through @liaison/app-sdk/bytes on every executor -> packages/app-sdk/src/bytes.ts:48 ; packages/app-sdk/src/bytes.ts:80 ; packages/app-sdk/src/bytes.ts:91 ; packages/app-sdk/src/bytes.ts:96 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:276

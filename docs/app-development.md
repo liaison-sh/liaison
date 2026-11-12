@@ -515,6 +515,14 @@ before calling again. While another run holds the key
 the answer is `in_flight`: try again later. The answer is stored as JSON. Keys
 are your app's own: no other app can read or settle them.
 
+### Hash or sign a value
+
+Use WebCrypto, the global `crypto` (`crypto.subtle.digest`, HMAC `sign` and `verify`,
+`crypto.getRandomValues`, `crypto.randomUUID`). It works on every executor. Pass text through
+`utf8Bytes` and read answers with `bytesToHex` from `@liaison/app-sdk/bytes`, or call
+`digestHex("SHA-256", text)` / `hmacHex("SHA-256", key, text)`: the local sandbox has no typed
+arrays, and these helpers hide that. What is available: [Hash, sign and draw random values](app-sandbox.md#hash-sign-and-draw-random-values-crypto).
+
 ---
 
 ## 7. Testing

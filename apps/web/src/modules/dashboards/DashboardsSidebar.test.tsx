@@ -38,7 +38,7 @@ function mount(
   const api = {
     get: vi.fn(async (path: string) => {
       if (path === "/dashboards") return rows
-      if (path === "/dashboards/tables" && tables) return { data: { tables } }
+      if (path === "/dashboards/tables" && tables) return { tables }
       throw new Error(`unexpected ${path}`)
     }),
     post: vi.fn(async (path: string, body: unknown) => post(path, body)),
@@ -160,7 +160,7 @@ describe("DashboardsSidebar", () => {
       updatedAt: "2026-11-12T08:00:00Z",
       droppedKeys: [],
     }
-    const post = vi.fn((_path: string, _body: unknown) => ({ data: created }))
+    const post = vi.fn((_path: string, _body: unknown) => created)
     mount(ROWS, null, post)
     fireEvent.click(await screen.findByTestId("dashboards-sidebar-new-table"))
     const input = screen.getByTestId("dashboards-sidebar-new-table-name")

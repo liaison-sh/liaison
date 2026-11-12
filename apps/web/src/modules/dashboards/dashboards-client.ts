@@ -1407,10 +1407,7 @@ function tablesPath(id?: string): string {
   return id ? `/dashboards/tables/${encodeURIComponent(id)}` : "/dashboards/tables"
 }
 
-/** A success body's payload: the API answers every table call in the `{data}` envelope. */
-function unwrapData(body: unknown): unknown {
-  return isRecord(body) ? body.data : undefined
-}
+// The API answers in the `{data}` envelope; the api client hands back its payload.
 
 const TABLE_ERROR_CODES: ReadonlySet<string> = new Set([
   "invalid_cell",
@@ -1457,7 +1454,7 @@ export function tableErrorFrom(err: unknown): TableError {
 
 /** The tables the caller can see. */
 export async function listTables(api: Pick<TablesApi, "get">): Promise<TableInfo[]> {
-  const body = unwrapData(await api.get<unknown>(tablesPath(), QUIET))
+  const body = await api.get<unknown>(tablesPath(), QUIET)
   const rows = isRecord(body) && Array.isArray(body.tables) ? body.tables : []
   return rows.filter(
     (t): t is TableInfo => isRecord(t) && typeof t.id === "string" && typeof t.name === "string",
@@ -1469,13 +1466,11 @@ export async function createTable(
   api: Pick<TablesApi, "post">,
   input: { name: string; description?: string; columns?: TableColumn[] },
 ): Promise<TableInfo> {
-  return unwrapData(
-    await api.post<unknown>(tablesPath(), { columns: [], ...input }, QUIET),
-  ) as TableInfo
+  return (await api.post<unknown>(tablesPath(), { columns: [], ...input }, QUIET)) as TableInfo
 }
 
 export async function getTable(api: Pick<TablesApi, "get">, id: string): Promise<TableInfo> {
-  return unwrapData(await api.get<unknown>(tablesPath(id), QUIET)) as TableInfo
+  return (await api.get<unknown>(tablesPath(id), QUIET)) as TableInfo
 }
 
 /** Changes the table at `ifVersion` (settings and column operations together). */
@@ -1485,9 +1480,7 @@ export async function patchTable(
   ifVersion: number,
   patch: TablePatch,
 ): Promise<TableInfo> {
-  return unwrapData(
-    await api.patch<unknown>(tablesPath(id), { ifVersion, ...patch }, QUIET),
-  ) as TableInfo
+  return (await api.patch<unknown>(tablesPath(id), { ifVersion, ...patch }, QUIET)) as TableInfo
 }
 
 export interface TableRowsQuery {
@@ -1519,9 +1512,7 @@ export async function getTableRows(
   id: string,
   opts: TableRowsQuery = {},
 ): Promise<TableRowsPage> {
-  const body = unwrapData(
-    await api.get<unknown>(`${tablesPath(id)}/rows?${tableRowsQuery(opts)}`, QUIET),
-  )
+  const body = await api.get<unknown>(`${tablesPath(id)}/rows?${tableRowsQuery(opts)}`, QUIET)
   const rows = isRecord(body) && Array.isArray(body.rows) ? body.rows : []
   return {
     rows: rows.map(rowFrom).filter((r): r is TableRow => !!r),
@@ -1535,7 +1526,7 @@ export async function writeTableRows(
   id: string,
   ops: TableRowOp[],
 ): Promise<TableRowResult[]> {
-  const body = unwrapData(await api.post<unknown>(`${tablesPath(id)}/rows`, { ops }, QUIET))
+  const body = await api.post<unknown>(`${tablesPath(id)}/rows`, { ops }, QUIET)
   return isRecord(body) && Array.isArray(body.rows) ? (body.rows as TableRowResult[]) : []
 }
 
@@ -1556,7 +1547,7 @@ export async function getTableChanges(
   const q = new URLSearchParams({ limit: String(opts.limit ?? TABLE_PAGE_SIZE) })
   if (opts.rowId) q.set("rowId", opts.rowId)
   if (opts.cursor) q.set("cursor", opts.cursor)
-  const body = unwrapData(await api.get<unknown>(`${tablesPath(id)}/changes?${q}`, QUIET))
+  const body = await api.get<unknown>(`${tablesPath(id)}/changes?${q}`, QUIET)
   const changes = isRecord(body) && Array.isArray(body.changes) ? body.changes : []
   return {
     changes: changes.filter(
@@ -1572,12 +1563,10 @@ export async function undoTableChange(
   id: string,
   changeId: string,
 ): Promise<TableRow | null> {
-  const body = unwrapData(
-    await api.post<unknown>(
-      `${tablesPath(id)}/changes/${encodeURIComponent(changeId)}/undo`,
-      {},
-      QUIET,
-    ),
+  const body = await api.post<unknown>(
+    `${tablesPath(id)}/changes/${encodeURIComponent(changeId)}/undo`,
+    {},
+    QUIET,
   )
   return rowFrom(body) ?? null
 }
@@ -1601,7 +1590,7 @@ export async function searchTableLinks(
   const q = new URLSearchParams({ q: opts.q })
   if (opts.app) q.set("app", opts.app)
   if (opts.entityType) q.set("entityType", opts.entityType)
-  const body = unwrapData(await api.get<unknown>(`${tablesPath()}/link-search?${q}`, QUIET))
+  const body = await api.get<unknown>(`${tablesPath()}/link-search?${q}`, QUIET)
   const items = isRecord(body) && Array.isArray(body.items) ? body.items : []
   return items.filter(
     (i): i is LinkPickItem =>

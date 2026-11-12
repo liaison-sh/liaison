@@ -21,7 +21,7 @@ const TABLE: TableInfo = {
 }
 
 function mount() {
-  const get = vi.fn(async (path: string) => ({ data: await body(path) }))
+  const get = vi.fn(async (path: string) => body(path))
   async function body(path: string): Promise<unknown> {
     if (path === "/dashboards/tables/t1") return TABLE
     if (path.startsWith("/dashboards/tables/t1/rows?")) {

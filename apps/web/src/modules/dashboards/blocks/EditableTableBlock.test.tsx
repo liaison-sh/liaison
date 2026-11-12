@@ -62,9 +62,9 @@ interface Mock {
 }
 
 function mount(m: Mock = {}, props: Partial<Parameters<typeof EditableTableBlock>[0]> = {}) {
-  // The API answers in the `{data}` envelope.
-  const get = vi.fn(async (path: string) => ({ data: await getBody(path) }))
-  const post = vi.fn(async (path: string, body: unknown) => ({ data: await postBody(path, body) }))
+  // The api client hands back the envelope's payload.
+  const get = vi.fn(async (path: string) => getBody(path))
+  const post = vi.fn(async (path: string, body: unknown) => postBody(path, body))
   async function getBody(path: string): Promise<unknown> {
     if (path === "/dashboards/tables/t1")
       return typeof m.table === "function" ? m.table() : (m.table ?? TABLE)
@@ -398,7 +398,9 @@ describe("EditableTableBlock", () => {
 
   it("reads the page again when a row change of its table arrives live, not another's", async () => {
     let units = 120
+    let rowCount = 1
     const { get } = mount({
+      table: () => ({ ...TABLE, rowCount }),
       rows: () => ({
         rows: [row("r1", { batch: "B4", units, status: "In transit" })],
         nextCursor: null,
@@ -410,10 +412,13 @@ describe("EditableTableBlock", () => {
     const api = { get } as unknown as ApiClient
     void handleTableEvent(api, "rows", "updated", { tableId: "other" })
     units = 150
+    rowCount = 2
     void handleTableEvent(api, "rows", "updated", { tableId: "t1" })
     await waitFor(() => expect(rowReads()).toBe(before + 1))
     await waitFor(() =>
       expect(screen.getByTestId("table-block-cell-r1-units").textContent).toBe("150"),
     )
+    // The count follows too (it is the table's, read again with the page).
+    expect(screen.getByTestId("table-block-count").textContent).toBe("2 rows")
   })
 })

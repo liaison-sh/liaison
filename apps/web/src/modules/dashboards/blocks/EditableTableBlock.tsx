@@ -164,8 +164,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     ),
   )
   // Live: another person's, an agent's or a routine's change reaches this grid (tables-store).
-  // A changed table (its columns) reads everything again; changed rows read the page again,
-  // unless a cell is being edited or saved (the save reads its row itself).
+  // A changed table (its columns) reads everything again; changed rows read the table (its row
+  // count) and the page again, unless a cell is being edited or saved (the save reads its row).
   createEffect(
     on(
       () => tableRevision(props.tableId, "table"),
@@ -178,7 +178,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       () => tableRevision(props.tableId, "rows"),
       () => {
         if (status() !== "ready" || editing() || saving()) return
-        void reloadRows().catch(() => {})
+        void load()
       },
       { defer: true },
     ),

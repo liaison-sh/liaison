@@ -20,6 +20,7 @@ COPY apps/desktop/package.json apps/desktop/
 COPY apps/desktop/sidecar/package.json apps/desktop/sidecar/
 COPY apps/mobile/package.json apps/mobile/
 COPY packages/api-connector-core/package.json packages/api-connector-core/
+COPY packages/app-loader/package.json packages/app-loader/
 COPY packages/app-sdk/package.json packages/app-sdk/
 COPY packages/app-ui/package.json packages/app-ui/
 COPY packages/control-plane-contract/package.json packages/control-plane-contract/

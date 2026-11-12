@@ -3,29 +3,41 @@
 // Dashboards (kernel.dashboards): CRUD under the caller's RLS, and a block's
 // data for the person viewing it.
 //
-// Who may do what (persons; the agent's tools add an approval for org ones, tools.ts):
-// - kernel:dashboards:write: create, edit and delete one's own personal dashboards.
-// - kernel:dashboards:share: also make one's own dashboard org-visible, and edit
-//   or delete one's own org dashboards.
-// - kernel:dashboards:admin: edit or delete any org dashboard.
-// Nobody reads another person's personal dashboard (RLS). The service checks the
-// same rules as the row policies (migration 0275) so a refusal names its scope.
+// Who may do what (persons; the agent's tools add an approval when others see it, tools.ts).
+// A dashboard is shared as Knowledge documents and contacts are (modules/sharing, 0295): its
+// owner, `orgAccess` (none | viewer | editor: what every member gets) and grants to people or
+// roles, each viewer or editor. Personal = none and no grant; org = viewer.
+// - read: its owner, everyone when orgAccess is viewer or editor, anyone granted.
+// - edit: its owner (kernel:dashboards:write); with kernel:dashboards:write, everyone when
+//   orgAccess is editor and anyone granted editor; kernel:dashboards:admin on a dashboard the
+//   whole org sees. No admin bypass of a restricted one.
+// - delete: its owner, or kernel:dashboards:admin on one the whole org sees.
+// - change who sees it (sharing.ts): whoever edits it and holds kernel:dashboards:share (or
+//   :admin). Creating an org dashboard needs :share too.
+// The row policies (migration 0295) enforce all of it; the service checks the same rules so a
+// refusal names its scope.
 //
 // A saved spec is valid (spec.ts) and every block's source may feed a dashboard
 // for its AUTHOR (sources.ts): an unknown tool, a write, a gated tool or a
 // source the author cannot read is refused at save. The same check runs again
 // on every view, as the viewer.
 
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
-import type { RlsClient } from "~/db"
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, type SQL, sql } from "drizzle-orm"
+import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
+  type DashboardOrgAccess,
   type DashboardRow,
   dashboards,
   dashboardVersions,
   dashboardViewerStates,
+  resourceGrants,
+  userRoles,
   users,
 } from "~/db/schema/kernel"
+import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   FAILED_BLOCK_TTL_SEC,
   failedBlockCacheKey,
@@ -153,10 +165,18 @@ export const ADMIN_SCOPE = "kernel:dashboards:admin"
 /** The person a dashboard is read or written for: a user actor. */
 export type DashboardViewer = UserContext
 
+/** The resource type of a dashboard in kernel.resource_grants (modules/sharing). */
+export const DASHBOARD_RESOURCE = "kernel.dashboard"
+
 export interface DashboardRecord {
   id: string
   title: string
+  /** "org" when the whole org gets access (orgAccess viewer or editor), else "personal". */
   visibility: DashboardVisibility
+  /** What every member of the org gets: none, viewer or editor. */
+  orgAccess: DashboardOrgAccess
+  /** Someone besides its owner sees it (the whole org, or people or roles it is shared with). */
+  shared: boolean
   ownerUserId: string | null
   spec: DashboardSpec
   version: number
@@ -164,14 +184,21 @@ export interface DashboardRecord {
   updatedBy: string | null
   createdAt: string
   updatedAt: string
-  /** May this viewer edit it (title, blocks, visibility) and delete it. */
+  /** May this viewer edit it (title, blocks). */
   canEdit: boolean
+  /** May this viewer change who sees it (sharing). */
+  canShare: boolean
+  /** May this viewer delete it. */
+  canDelete: boolean
 }
 
 export interface DashboardSummary {
   id: string
   title: string
   visibility: DashboardVisibility
+  orgAccess: DashboardOrgAccess
+  /** Someone besides its owner sees it. */
+  shared: boolean
   ownerUserId: string | null
   /** The owner's display name, for "by <name>" in the list (null when the owner is gone). */
   ownerName: string | null
@@ -184,28 +211,87 @@ export interface DashboardSummary {
 
 const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : String(d))
 
-/** May `viewer` edit or delete this dashboard (the row policies, in words)? */
-export function canEditDashboard(
-  viewer: DashboardViewer,
-  row: Pick<DashboardRow, "visibility" | "ownerUserId">,
-): boolean {
-  if (row.visibility === "org" && hasScope(ADMIN_SCOPE, viewer.scopes)) return true
-  if (row.ownerUserId !== viewer.userId) return false
-  if (row.visibility === "personal") return hasScope(WRITE_SCOPE, viewer.scopes)
-  return hasScope(SHARE_SCOPE, viewer.scopes)
+/** The viewer's own access through grants, and whether it has any grant at all. */
+export interface DashboardAccess {
+  /** The strongest grant the viewer holds (as a person or through a role), or null. */
+  grantRole: "viewer" | "editor" | null
+  /** It has at least one grant (to anyone). */
+  granted: boolean
 }
 
-/** May `viewer` own a dashboard of this visibility (create one, or switch theirs to it)? */
+const NO_ACCESS: DashboardAccess = { grantRole: null, granted: false }
+
+/** The grants side of a dashboard for the RLS actor of `t` (the database's own evaluation). */
+async function accessOf(t: Pick<RlsClient, "execute">, id: string): Promise<DashboardAccess> {
+  const k = sql.raw(quoteIdent(schemaRef("kernel")))
+  const [row] = extractRows<{ grant_role: "viewer" | "editor" | null; granted: boolean }>(
+    await t.execute(sql`
+      SELECT ${k}.resource_grant_role(${DASHBOARD_RESOURCE}, ${id}::uuid) AS grant_role,
+             EXISTS (SELECT 1 FROM ${k}.resource_grants g
+                      WHERE g.resource_type = ${DASHBOARD_RESOURCE}
+                        AND g.resource_id = ${id}::uuid) AS granted`),
+  )
+  return { grantRole: row?.grant_role ?? null, granted: row?.granted === true }
+}
+
+type AccessRow = Pick<DashboardRow, "orgAccess" | "ownerUserId">
+
+/** Does someone besides its owner see it? */
+export function isShared(row: Pick<DashboardRow, "orgAccess">, access: DashboardAccess): boolean {
+  return row.orgAccess !== "none" || access.granted
+}
+
+/** May `viewer` edit this dashboard (the UPDATE policy, in words)? */
+export function canEditDashboard(
+  viewer: DashboardViewer,
+  row: AccessRow,
+  access: DashboardAccess = NO_ACCESS,
+): boolean {
+  if (row.ownerUserId === viewer.userId) return hasScope(WRITE_SCOPE, viewer.scopes)
+  if (
+    (row.orgAccess === "editor" || access.grantRole === "editor") &&
+    hasScope(WRITE_SCOPE, viewer.scopes)
+  ) {
+    return true
+  }
+  return row.orgAccess !== "none" && hasScope(ADMIN_SCOPE, viewer.scopes)
+}
+
+/** May `viewer` delete this dashboard (the DELETE policy, in words)? */
+export function canDeleteDashboard(viewer: DashboardViewer, row: AccessRow): boolean {
+  if (row.ownerUserId === viewer.userId) return hasScope(WRITE_SCOPE, viewer.scopes)
+  return row.orgAccess !== "none" && hasScope(ADMIN_SCOPE, viewer.scopes)
+}
+
+/** May `viewer` change who sees it (kernel.can_manage_dashboard_sharing, in words)? */
+export function canShareDashboard(
+  viewer: DashboardViewer,
+  row: AccessRow,
+  access: DashboardAccess = NO_ACCESS,
+): boolean {
+  const scoped = hasScope(SHARE_SCOPE, viewer.scopes) || hasScope(ADMIN_SCOPE, viewer.scopes)
+  if (!scoped) return false
+  if (row.ownerUserId === viewer.userId) return true
+  return canEditDashboard(viewer, row, access)
+}
+
+/** May `viewer` own a dashboard of this visibility (create one)? */
 function mayHold(viewer: DashboardViewer, visibility: DashboardVisibility): boolean {
   if (visibility === "personal") return hasScope(WRITE_SCOPE, viewer.scopes)
   return hasScope(SHARE_SCOPE, viewer.scopes) || hasScope(ADMIN_SCOPE, viewer.scopes)
 }
 
-function toRecord(viewer: DashboardViewer, row: DashboardRow): DashboardRecord {
+function toRecord(
+  viewer: DashboardViewer,
+  row: DashboardRow,
+  access: DashboardAccess,
+): DashboardRecord {
   return {
     id: row.id,
     title: row.title,
     visibility: row.visibility,
+    orgAccess: row.orgAccess,
+    shared: isShared(row, access),
     ownerUserId: row.ownerUserId,
     spec: row.spec as unknown as DashboardSpec,
     version: row.version,
@@ -213,20 +299,22 @@ function toRecord(viewer: DashboardViewer, row: DashboardRow): DashboardRecord {
     updatedBy: row.updatedBy,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
-    canEdit: canEditDashboard(viewer, row),
+    canEdit: canEditDashboard(viewer, row, access),
+    canShare: canShareDashboard(viewer, row, access),
+    canDelete: canDeleteDashboard(viewer, row),
   }
 }
 
 export type DashboardEventAction = "created" | "updated" | "deleted"
 
 /**
- * What a `kernel:dashboard` frame carries: ids, visibility and version, never the
- * title or the spec. A client that hears one re-reads its list (and an open view
- * its record) through the REST routes, under its own RLS. Delivery
- * (infra/websocket.ts, `hasDashboardVisibilityAccess`): an org dashboard's frame
- * reaches every member who reads dashboards; a personal one's reaches its owner
- * only. `previousVisibility: "org"` on a switch to personal tells the members who
- * saw it to drop it.
+ * What a `kernel:dashboard` frame carries: ids, access and version, never the title or the
+ * spec. A client that hears one re-reads its list (and an open view its record) through the
+ * REST routes, under its own RLS. Delivery (infra/websocket.ts, `hasDashboardVisibilityAccess`):
+ * a dashboard the whole org sees (`orgWide`) reaches every member who reads dashboards; any
+ * other reaches the people in `userIds` (its owner, the people it is shared with and the members
+ * of the roles it is shared with). `wasOrgWide` and the previous audience (merged into `userIds`)
+ * let the people who saw it before a change drop it.
  */
 export interface DashboardEventData {
   dashboardId: string
@@ -234,21 +322,76 @@ export interface DashboardEventData {
   previousVisibility?: DashboardVisibility
   ownerUserId: string | null
   version: number
+  orgWide: boolean
+  wasOrgWide?: boolean
+  /** Who may hear it when it is not org-wide (null when it is). */
+  userIds: string[] | null
+}
+
+/** Before a change: what the frame must still reach. */
+export interface DashboardAudience {
+  orgWide: boolean
+  userIds: string[]
+}
+
+/**
+ * Everyone who sees a dashboard that is not org-wide: its owner, the people granted, and the
+ * members of the roles granted. Read privileged (role memberships are routing metadata).
+ */
+export async function dashboardAudience(
+  orgId: string,
+  row: Pick<DashboardRow, "id" | "orgAccess" | "ownerUserId">,
+): Promise<DashboardAudience> {
+  if (row.orgAccess !== "none") return { orgWide: true, userIds: [] }
+  const ids = await withPrivilegedDb(orgId, "dashboard-audience", async (tx) => {
+    const grants = await tx
+      .select({ kind: resourceGrants.granteeKind, grantee: resourceGrants.grantee })
+      .from(resourceGrants)
+      .where(
+        and(
+          eq(resourceGrants.orgId, orgId),
+          eq(resourceGrants.resourceType, DASHBOARD_RESOURCE),
+          eq(resourceGrants.resourceId, row.id),
+        ),
+      )
+    const people = grants.filter((g) => g.kind === "user").map((g) => g.grantee)
+    const roleIds = grants.filter((g) => g.kind === "role").map((g) => g.grantee)
+    const members = roleIds.length
+      ? await tx
+          .select({ userId: userRoles.userId })
+          .from(userRoles)
+          .where(and(eq(userRoles.orgId, orgId), inArray(userRoles.roleId, roleIds)))
+      : []
+    return [...people, ...members.map((m) => m.userId)]
+  })
+  const all = new Set(ids)
+  if (row.ownerUserId) all.add(row.ownerUserId)
+  return { orgWide: false, userIds: [...all] }
 }
 
 async function queueDashboardEvent(
   t: RlsClient,
   viewer: DashboardViewer,
   action: DashboardEventAction,
-  row: Pick<DashboardRow, "id" | "visibility" | "ownerUserId" | "version">,
-  previousVisibility?: DashboardVisibility,
+  row: Pick<DashboardRow, "id" | "visibility" | "orgAccess" | "ownerUserId" | "version">,
+  before?: { visibility: DashboardVisibility; audience: DashboardAudience },
 ): Promise<void> {
+  const audience = await dashboardAudience(viewer.orgId, row)
+  const previousVisibility = before?.visibility
+  const userIds = audience.orgWide
+    ? before && !before.audience.orgWide
+      ? before.audience.userIds
+      : null
+    : [...new Set([...audience.userIds, ...(before?.audience.userIds ?? [])])]
   const data: DashboardEventData = {
     dashboardId: row.id,
     visibility: row.visibility,
     ownerUserId: row.ownerUserId,
     version: row.version,
     ...(previousVisibility && previousVisibility !== row.visibility ? { previousVisibility } : {}),
+    orgWide: audience.orgWide,
+    ...(before?.audience.orgWide && !audience.orgWide ? { wasOrgWide: true } : {}),
+    userIds,
   }
   await t.queueEvent({
     app: "kernel",
@@ -261,6 +404,16 @@ async function queueDashboardEvent(
     orgId: viewer.orgId,
     timestamp: new Date().toISOString(),
   })
+}
+
+/** A sharing change, announced as an update so the people who gain or lose it re-read. */
+export function queueSharingEvent(
+  t: RlsClient,
+  viewer: DashboardViewer,
+  row: DashboardRow,
+  before: { visibility: DashboardVisibility; audience: DashboardAudience },
+): Promise<void> {
+  return queueDashboardEvent(t, viewer, "updated", row, before)
 }
 
 /** Runs on `tx` when the caller holds one (an agent tool's), else in a fresh RLS transaction. */
@@ -329,16 +482,22 @@ export async function listDashboards(
 ): Promise<DashboardSummary[]> {
   const rows = await inTx(viewer, tx, (t) =>
     t
-      .select({ d: dashboards, ownerName: users.name })
+      .select({
+        d: dashboards,
+        ownerName: users.name,
+        granted: sql<boolean>`EXISTS (SELECT 1 FROM ${resourceGrants} WHERE ${resourceGrants.resourceType} = ${DASHBOARD_RESOURCE} AND ${resourceGrants.resourceId} = ${dashboards.id})`,
+      })
       .from(dashboards)
       .leftJoin(users, eq(users.id, dashboards.ownerUserId))
       .orderBy(desc(dashboards.updatedAt))
       .limit(200),
   )
-  return rows.map(({ d: r, ownerName }) => ({
+  return rows.map(({ d: r, ownerName, granted }) => ({
     id: r.id,
     title: r.title,
     visibility: r.visibility,
+    orgAccess: r.orgAccess,
+    shared: r.orgAccess !== "none" || granted === true,
     ownerUserId: r.ownerUserId,
     ownerName: ownerName ?? null,
     description:
@@ -359,6 +518,18 @@ async function loadRow(viewer: DashboardViewer, id: string, tx?: RlsClient): Pro
   )
   if (!row) throw new DashboardError("NOT_FOUND", "no such dashboard")
   return row
+}
+
+/** The row and the viewer's grants on it, under their RLS. NOT_FOUND when they cannot see it. */
+export async function loadWithAccess(
+  viewer: DashboardViewer,
+  id: string,
+  tx?: RlsClient,
+): Promise<{ row: DashboardRow; access: DashboardAccess }> {
+  return inTx(viewer, tx, async (t) => {
+    const row = await loadRow(viewer, id, t)
+    return { row, access: await accessOf(t, id) }
+  })
 }
 
 /** A dashboard's range as one person sees it: their remembered choice, else its default. */
@@ -428,9 +599,10 @@ export async function getDashboard(
   tx?: RlsClient,
   now: Date = new Date(),
 ): Promise<DashboardView> {
-  const { row, state, stored } = await inTx(viewer, tx, async (t) => {
+  const { row, access, state, stored } = await inTx(viewer, tx, async (t) => {
     const [found] = await t.select().from(dashboards).where(eq(dashboards.id, id)).limit(1)
     if (!found) throw new DashboardError("NOT_FOUND", "no such dashboard")
+    const access = await accessOf(t, id)
     const [saved] = await t
       .select({
         timeRange: dashboardViewerStates.timeRange,
@@ -445,9 +617,9 @@ export async function getDashboard(
         ),
       )
       .limit(1)
-    return { row: found, state: parseViewerState(saved), stored: saved }
+    return { row: found, access, state: parseViewerState(saved), stored: saved }
   })
-  const record = toRecord(viewer, row)
+  const record = toRecord(viewer, row, access)
   const spec = record.spec
   const defaultFilters = defaultFilterValues(spec ?? {})
   const savedFilters = sanitizeSavedFilterValues(spec ?? {}, stored?.filters)
@@ -633,7 +805,8 @@ async function recordVersion(
   t: RlsClient,
   viewer: DashboardViewer,
   row: DashboardRow,
-  opts: { ifMissing?: boolean } = {},
+  /** shared: someone besides its owner sees it now (else this version is its owner's draft). */
+  opts: { ifMissing?: boolean; shared?: boolean } = {},
 ): Promise<void> {
   await t
     .insert(dashboardVersions)
@@ -643,7 +816,7 @@ async function recordVersion(
       version: row.version,
       title: row.title,
       spec: row.spec,
-      visibility: row.visibility,
+      visibility: (opts.shared ?? row.orgAccess !== "none") ? "org" : "personal",
       savedBy: opts.ifMissing ? row.updatedBy : viewer.userId,
       savedAt: opts.ifMissing ? new Date(row.updatedAt) : new Date(),
     })
@@ -812,6 +985,7 @@ export async function createDashboard(
         orgId: viewer.orgId,
         title: input.title,
         visibility: input.visibility,
+        orgAccess: input.visibility === "org" ? "viewer" : "none",
         ownerUserId: viewer.userId,
         spec: spec as unknown as Record<string, unknown>,
         createdBy: viewer.userId,
@@ -822,7 +996,7 @@ export async function createDashboard(
     await queueDashboardEvent(t, viewer, "created", inserted!)
     return inserted!
   })
-  return toRecord(viewer, row)
+  return toRecord(viewer, row, NO_ACCESS)
 }
 
 export interface UpdateDashboardInput {
@@ -839,26 +1013,31 @@ export async function updateDashboard(
   input: UpdateDashboardInput,
   tx?: RlsClient,
 ): Promise<DashboardRecord> {
-  const current = await loadRow(viewer, id, tx)
-  if (!canEditDashboard(viewer, current)) {
+  const { row: current, access } = await loadWithAccess(viewer, id, tx)
+  if (!canEditDashboard(viewer, current, access)) {
     throw new DashboardError(
       "SCOPE_DENIED",
-      current.visibility === "org"
-        ? `editing an org dashboard needs ${SHARE_SCOPE} (your own) or ${ADMIN_SCOPE}`
-        : "only its owner edits a personal dashboard",
+      current.ownerUserId === viewer.userId
+        ? `editing your dashboard needs ${WRITE_SCOPE}`
+        : `editing this dashboard needs editor access to it (shared with you as editor, with ${WRITE_SCOPE}), or ${ADMIN_SCOPE} when the whole organisation sees it`,
     )
   }
   const visibility = input.visibility ?? current.visibility
+  // visibility is the org-wide part of the sharing: org = everyone views, personal = not the
+  // whole organisation (its owner and the people it is shared with). Changing it is sharing.
+  let orgAccess: DashboardOrgAccess = current.orgAccess
+  let ownerUserId = current.ownerUserId
   if (visibility !== current.visibility) {
-    // Only the owner changes who sees it; to org needs share (or admin), to personal needs an owner.
-    if (current.ownerUserId !== viewer.userId || !mayHold(viewer, visibility)) {
+    if (!canShareDashboard(viewer, current, access)) {
       throw new DashboardError(
         "SCOPE_DENIED",
-        visibility === "org"
-          ? `sharing with the org needs ${SHARE_SCOPE}`
-          : "only its owner makes a dashboard personal",
+        `changing who sees a dashboard needs editor access to it and ${SHARE_SCOPE}`,
       )
     }
+    orgAccess = visibility === "org" ? "viewer" : "none"
+    // A dashboard the whole org does not see always has an owner: whoever restricts one
+    // nobody owns takes it.
+    if (orgAccess === "none" && !ownerUserId) ownerUserId = viewer.userId
   }
   if (input.ifVersion !== undefined && input.ifVersion !== current.version) {
     throw new DashboardError(
@@ -869,6 +1048,10 @@ export async function updateDashboard(
     )
   }
   const spec = input.spec === undefined ? undefined : await validateSpec(viewer, input.spec)
+  const before = {
+    visibility: current.visibility,
+    audience: await dashboardAudience(viewer.orgId, current),
+  }
   const row = await inTx(viewer, tx, async (t) => {
     const [updated] = await t
       .update(dashboards)
@@ -876,6 +1059,8 @@ export async function updateDashboard(
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(spec !== undefined ? { spec: spec as unknown as Record<string, unknown> } : {}),
         visibility,
+        orgAccess,
+        ownerUserId,
         version: current.version + 1,
         updatedBy: viewer.userId,
         updatedAt: new Date(),
@@ -884,9 +1069,12 @@ export async function updateDashboard(
       .returning()
     if (updated) {
       // The version it replaces is kept too when it predates the history (saved before it).
-      await recordVersion(t, viewer, current, { ifMissing: true })
-      await recordVersion(t, viewer, updated)
-      await queueDashboardEvent(t, viewer, "updated", updated, current.visibility)
+      await recordVersion(t, viewer, current, {
+        ifMissing: true,
+        shared: isShared(current, access),
+      })
+      await recordVersion(t, viewer, updated, { shared: isShared(updated, access) })
+      await queueDashboardEvent(t, viewer, "updated", updated, before)
     }
     return updated
   })
@@ -895,7 +1083,7 @@ export async function updateDashboard(
       "VERSION_CONFLICT",
       "the dashboard changed while saving: read it again",
     )
-  return toRecord(viewer, row)
+  return toRecord(viewer, row, access)
 }
 
 export interface EditDashboardInput {
@@ -1091,17 +1279,27 @@ export async function deleteDashboard(
   tx?: RlsClient,
 ): Promise<void> {
   const current = await loadRow(viewer, id, tx)
-  if (!canEditDashboard(viewer, current)) {
+  if (!canDeleteDashboard(viewer, current)) {
     throw new DashboardError(
       "SCOPE_DENIED",
-      current.visibility === "org"
-        ? `deleting an org dashboard needs ${SHARE_SCOPE} (your own) or ${ADMIN_SCOPE}`
-        : "only its owner deletes a personal dashboard",
+      current.ownerUserId === viewer.userId
+        ? `deleting your dashboard needs ${WRITE_SCOPE}`
+        : `only its owner deletes this dashboard (or ${ADMIN_SCOPE} when the whole organisation sees it)`,
     )
   }
+  const before = {
+    visibility: current.visibility,
+    audience: await dashboardAudience(viewer.orgId, current),
+  }
   await inTx(viewer, tx, async (t) => {
+    // Its grants go with it (read while the row still lets the grants' policies see them).
+    await t
+      .delete(resourceGrants)
+      .where(
+        and(eq(resourceGrants.resourceType, DASHBOARD_RESOURCE), eq(resourceGrants.resourceId, id)),
+      )
     await t.delete(dashboards).where(eq(dashboards.id, id))
-    await queueDashboardEvent(t, viewer, "deleted", current)
+    await queueDashboardEvent(t, viewer, "deleted", current, before)
   })
 }
 

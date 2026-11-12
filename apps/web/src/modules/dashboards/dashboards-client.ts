@@ -141,6 +141,10 @@ export interface DashboardSummary {
   id: string
   title: string
   visibility: DashboardVisibility
+  /** What everyone in the organisation gets (absent from a server that predates sharing). */
+  orgAccess?: "none" | "viewer" | "editor"
+  /** Someone besides its owner sees it: the whole organisation, or people or roles it is shared with. */
+  shared?: boolean
   ownerUserId: string | null
   /** The owner's display name (the list carries it; one dashboard's read does not). */
   ownerName?: string | null
@@ -163,6 +167,8 @@ export interface Dashboard extends DashboardSummary {
   defaultFilters?: FilterValues
   /** The viewer may change this dashboard (edit mode, Restore). */
   canEdit?: boolean
+  /** The viewer may change who sees it (the Share dialog's controls). */
+  canShare?: boolean
   /** Today in the org's time zone (YYYY-MM-DD): presets resolve from it, never the browser's date. */
   today?: string
   /** The org's IANA time zone (UTC when unset). */

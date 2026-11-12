@@ -355,6 +355,9 @@ dashboards_snapshot tool: read scope, recipients -> apps/api/src/modules/dashboa
 dashboards_pdf tool: staged file only the caller reads -> apps/api/src/modules/dashboards/tools.ts:698 ; apps/api/src/modules/dashboards/export.ts:587
 dashboards_edit tool: resize, duplicate, description, revert ops -> apps/api/src/modules/dashboards/edit.ts:175
 Connections of one app sharing a client key: one stored client, asked for once -> apps/api/src/modules/apps/connections/oauth-client.ts:64 ; apps/api/src/modules/secret-requests/pending-cards.ts:45 ; apps/api/src/modules/secret-requests/stored.ts:134
+dashboards_share: scope, always gated, owner decides a restricted one -> apps/api/src/modules/dashboards/tools.ts:1210
+dashboards_share approval routing -> apps/api/src/modules/dashboards/tools.ts:231
 sidebar_apps_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1804
 sidebar_apps_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
 sidebar tools: another member needs kernel:users:admin -> apps/api/src/modules/users/sidebar-agent-tools.ts:102
+Agent post: DM always posted, one approval covers later posts of the same data in that conversation, also for a connected app -> apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:60 ; apps/api/src/modules/mcp/tool-call.ts:510

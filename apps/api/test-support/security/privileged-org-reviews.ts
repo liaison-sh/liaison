@@ -91,6 +91,8 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
+    "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
   "apps/api/src/apps/knowledge/app-sources.ts#applyAppSourcePage":

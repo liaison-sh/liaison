@@ -527,6 +527,14 @@ export class PennylaneFake {
       for (const k of ["supplier_id", "date", "deadline", "currency_amount_before_tax", "currency_amount", "currency_tax", "invoice_lines"]) {
         if (body[k] === undefined) return { status: 400, body: { status: 400, error: `${k} is missing` } }
       }
+      // The live API refuses a line without its VAT rate code (recorded 2026-11).
+      const lines = Array.isArray(body.invoice_lines) ? (body.invoice_lines as Json[]) : []
+      if (lines.some((l) => typeof l.vat_rate !== "string")) {
+        return {
+          status: 400,
+          body: { message: "Missing required fields: invoice_lines.vat_rate.", code: "NotExistRequiredKey", field: "invoice_lines" },
+        }
+      }
       att.used = true
       const id = this.id()
       const inv: Json = {

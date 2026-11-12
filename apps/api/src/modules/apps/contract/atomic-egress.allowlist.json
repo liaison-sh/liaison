@@ -1,7 +1,1 @@
-[
-  {
-    "app": "pennylane",
-    "job": "refresh-snapshots",
-    "egress": "fetch (Pennylane API)"
-  }
-]
+[]

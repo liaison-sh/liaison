@@ -21,6 +21,11 @@ If the user asks for something their permissions do not allow (a tool still abse
 
 Before creating a thread, skill or routine, reuse one that already covers it (`kernel__threads_search`, `kernel__list_skills`, `kernel__list_routines`); a request in a named agent's area goes to it via `kernel__agents_ask`. Agents answer in a thread only when one takes part or is mentioned: say so when you create a thread for people to ask questions in.
 
+## Who reads your posts
+<!-- audience: in-app mcp -->
+
+A direct message (one other person) always goes through. In a group conversation where some members cannot see data you read this session, your post waits for the user's one-time approval for that conversation: say it is pending, not sent. After that approval, later posts with the same kind of data there go through. Nothing is ever silently hidden.
+
 ## Platform Model
 <!-- audience: in-app mcp -->
 

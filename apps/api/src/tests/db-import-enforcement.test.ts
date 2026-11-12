@@ -1256,6 +1256,10 @@ describe("db import enforcement", () => {
     // Knowledge pointers are an agent-asset table (privileged-write by design,
     // migration 0050), stamped after the knowledge write already passed RLS.
     "modules/agent/knowledge/knowledge-pointers.ts",
+    // A restricted dashboard's audience: the people and role members its grants
+    // name, read only to address its realtime frames (the acting editor may not
+    // see every role membership); org-scoped, read-only, no row content.
+    "modules/dashboards/service.ts",
     // Mention picker secondary labels: one fact per exact id the picker already
     // resolved; the rows themselves are not one actor's own.
     "modules/search/mention-secondary.ts",
@@ -1394,6 +1398,11 @@ describe("db import enforcement", () => {
     // Readers' gaps and room floors: every org member's (or participant's)
     // effective grants, which no single caller's context can read.
     "modules/agent/scopes/taint-approval-audience.ts",
+    // Whether an agent post reaches its readers (rule 14): the thread's shape, the
+    // untitled conversation an untitled create lands in, and the requester's approved
+    // post disclosures in that thread (approval rows the caller's context may not read),
+    // each bound to the post's org. Reads only.
+    "modules/agent/scopes/post-disclosure.ts",
     // The holder's live grants, the agent's checkpoints (agent-asset table,
     // privileged by design) and the recall audit rows kept for the thread.
     "modules/agent/local-sessions/local-context-scopes.ts",

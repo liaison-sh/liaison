@@ -6,10 +6,14 @@
 // (agent/prompts/kernel/build-dashboard.md) teaches the loop: find a source,
 // preview each block until its data is right, then save, then open.
 //
-// Approvals: an agent's write that results in or touches an ORG dashboard
-// (create one, switch one to org, edit or delete an org one) is gated with
-// kernel:dashboards:admin, and its card lists the title and each block with
-// its source. A personal dashboard is a plain write. A person's own REST call
+// Approvals: an agent's write that results in or touches a dashboard someone
+// besides its owner sees (create an org one, switch one to org, share one, edit
+// or delete a shared one) waits for one approval, and its card lists the title
+// and each block with its source (a share: who gains and who loses access). A
+// dashboard the whole org sees is decided by a kernel:dashboards:admin holder (they
+// edit it); one restricted to some people or roles is routed privately to its
+// owner (else the requester), so nobody who cannot see it reads its card
+// (resolveOwner, below). A personal dashboard is a plain write. A person's own REST call
 // is never gated: their scopes decide (service.ts). A block whose params carry date
 // tokens ({{today-30d}}) shows them as written and the date each one is today.
 //
@@ -22,10 +26,21 @@ import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { approvalRequests, dashboards, userRoles } from "~/db/schema/kernel"
+import {
+  approvalRequests,
+  dashboards,
+  resourceGrants,
+  roles,
+  userRoles,
+  users,
+} from "~/db/schema/kernel"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
-import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
+import {
+  type ApprovalSummarizer,
+  approvalResourceOwnerRegistry,
+  toolRegistry,
+} from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
   cardLineCount,
@@ -66,6 +81,7 @@ import {
 import {
   checkEdit,
   createDashboard,
+  DASHBOARD_RESOURCE,
   DashboardError,
   deleteDashboard,
   editDashboard,
@@ -75,6 +91,7 @@ import {
   readVersions,
   updateDashboard,
 } from "~/modules/dashboards/service"
+import { getDashboardSharing, setDashboardSharing } from "~/modules/dashboards/sharing"
 import { listEligibleSources } from "~/modules/dashboards/sources"
 import {
   blockRangeMode,
@@ -176,24 +193,77 @@ function tooManyChanges(count: number) {
 async function cardRow(tx: Parameters<ApprovalSummarizer>[1]["tx"], id: unknown) {
   if (typeof id !== "string") return undefined
   const [row] = await tx
-    .select({ title: dashboards.title, visibility: dashboards.visibility, spec: dashboards.spec })
+    .select({
+      title: dashboards.title,
+      visibility: dashboards.visibility,
+      orgAccess: dashboards.orgAccess,
+      spec: dashboards.spec,
+    })
     .from(dashboards)
     .where(eq(dashboards.id, id))
     .limit(1)
   return row
 }
 
-/** The visibility of a saved dashboard, read for the gate (which runs before the handler). */
-async function storedVisibility(orgId: string, id: unknown): Promise<"personal" | "org" | null> {
+/** Who sees a saved dashboard, read for the gate and the routing (which run before the handler). */
+interface StoredAccess {
+  orgAccess: "none" | "viewer" | "editor"
+  ownerUserId: string | null
+  /** Someone besides its owner sees it (the whole org, or people or roles granted). */
+  shared: boolean
+}
+
+async function storedAccess(orgId: string, id: unknown): Promise<StoredAccess | null> {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return null
-  const [row] = await withPrivilegedDb(orgId, "dashboard-gate", (tx) =>
-    tx
-      .select({ visibility: dashboards.visibility })
+  return withPrivilegedDb(orgId, "dashboard-gate", async (tx) => {
+    const [row] = await tx
+      .select({ orgAccess: dashboards.orgAccess, ownerUserId: dashboards.ownerUserId })
       .from(dashboards)
-      .where(eq(dashboards.id, id))
-      .limit(1),
-  )
-  return row?.visibility ?? null
+      .where(and(eq(dashboards.id, id), eq(dashboards.orgId, orgId)))
+      .limit(1)
+    if (!row) return null
+    const [grant] = await tx
+      .select({ id: resourceGrants.id })
+      .from(resourceGrants)
+      .where(
+        and(
+          eq(resourceGrants.orgId, orgId),
+          eq(resourceGrants.resourceType, DASHBOARD_RESOURCE),
+          eq(resourceGrants.resourceId, id),
+        ),
+      )
+      .limit(1)
+    return { ...row, shared: row.orgAccess !== "none" || grant !== undefined }
+  })
+}
+
+/**
+ * Who decides an agent's change to a saved dashboard: null (the org's kernel:dashboards:admin
+ * holders, who edit every dashboard the whole org sees) when the dashboard is or becomes
+ * org-wide; otherwise it is restricted to some people or roles, and its card must reach nobody
+ * else: its owner decides, or the requester when nobody owns it (the requester's own edit
+ * access is checked before anything is staged).
+ */
+async function restrictedDecider(
+  orgId: string,
+  id: unknown,
+  requestedBy: string,
+  becomesOrgWide: boolean,
+): Promise<string | null> {
+  if (becomesOrgWide) return null
+  const stored = await storedAccess(orgId, id)
+  if (stored?.orgAccess !== "none") return null
+  return stored.ownerUserId ?? requestedBy
+}
+
+/** The card's line on who sees the dashboard. */
+async function audienceSubtitle(orgId: string, id: unknown, sharing: boolean): Promise<string> {
+  if (sharing)
+    return "Everyone in the organisation will see this dashboard. All changes apply together."
+  const stored = await storedAccess(orgId, id)
+  return stored && stored.orgAccess === "none"
+    ? "Only the people it is shared with see this dashboard. All changes apply together."
+    : "Everyone in the organisation sees this dashboard. All changes apply together."
 }
 
 /** The dashboard tools whose approval changes a saved dashboard. */
@@ -275,7 +345,7 @@ async function pendingDashboardNotes(
 const visibilityParam = z
   .enum(["personal", "org"])
   .describe(
-    "personal: only you see it (no approval). org: everyone in the organisation (a person approves).",
+    "personal: not shared with the whole organisation (only you, plus anyone you share it with by kernel__dashboards_share). org: everyone in the organisation can view it (a person approves).",
   )
 
 const specParam = z
@@ -435,13 +505,12 @@ const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
       })
     : ["No change: the dashboard stays as it is."]
   const n = ops.length
-  const sharing = current.visibility === "personal"
+  const sharing = current.visibility === "personal" && p.visibility === "org"
+  const restricted = !sharing && current.orgAccess === "none"
   return {
     kind: "dashboard_update",
-    title: `${sharing ? "Share the dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
-    subtitle: sharing
-      ? "Everyone in the organisation will see this dashboard. All changes apply together."
-      : "Everyone in the organisation sees this dashboard. All changes apply together.",
+    title: `${sharing ? "Share the dashboard" : restricted ? "Change the shared dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
+    subtitle: await audienceSubtitle(ctx.orgId, p.id, sharing),
     lines,
   }
 }
@@ -479,14 +548,15 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
     { timeZone: await dashboardTimezone(ctx.orgId), now: new Date(), versions },
   )
   const n = ops.data.length
-  // A personal dashboard's edit is gated by its own setVisibility org: it is being shared.
-  const sharing = current.visibility === "personal"
+  // A personal dashboard's edit with a setVisibility org: it is being shared with everyone.
+  const sharing =
+    current.visibility === "personal" &&
+    ops.data.some((op) => (op as { visibility?: unknown }).visibility === "org")
+  const restricted = !sharing && current.orgAccess === "none"
   return {
     kind: "dashboard_edit",
-    title: `${sharing ? "Share the dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
-    subtitle: sharing
-      ? "Everyone in the organisation will see this dashboard. All changes apply together."
-      : "Everyone in the organisation sees this dashboard. All changes apply together.",
+    title: `${sharing ? "Share the dashboard" : restricted ? "Change the shared dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
+    subtitle: await audienceSubtitle(ctx.orgId, p.dashboardId, sharing),
     lines,
   }
 }
@@ -501,13 +571,150 @@ const summarizeDelete: ApprovalSummarizer = async (raw, ctx) => {
           .where(eq(dashboards.id, id))
           .limit(1)
       : []
+  const restricted = (await storedAccess(ctx.orgId, id))?.orgAccess === "none"
   return {
     kind: "dashboard_delete",
-    title: `Delete the org dashboard "${current?.title ?? id ?? ""}"`,
+    title: `Delete the ${restricted ? "shared" : "org"} dashboard "${current?.title ?? id ?? ""}"`,
     lines: [
-      "Nobody in the organisation will see it any more.",
+      restricted
+        ? "Nobody it is shared with will see it any more."
+        : "Nobody in the organisation will see it any more.",
       ...blockLines(current?.spec, await cardTimezone(current?.spec, ctx.orgId), 5),
     ],
+  }
+}
+
+const accessParam = z.enum(["viewer", "editor", "none"])
+const shareParams = z.object({
+  id: z.string().uuid(),
+  orgAccess: z
+    .enum(["none", "viewer", "editor"])
+    .optional()
+    .describe(
+      "What everyone in the organisation gets. none: only the owner and the people or roles listed. Omit to keep it.",
+    ),
+  people: z
+    .array(z.object({ userId: z.string().uuid(), access: accessParam }))
+    .max(50)
+    .optional()
+    .describe("People to add, change or remove (access none removes theirs). Others keep theirs."),
+  roles: z
+    .array(z.object({ roleId: z.string().uuid(), access: accessParam }))
+    .max(20)
+    .optional()
+    .describe("Roles to add, change or remove (access none removes it). Others keep theirs."),
+})
+type ShareParams = z.infer<typeof shareParams>
+
+type ShareState = Awaited<ReturnType<typeof getDashboardSharing>>
+
+/** The sharing after a dashboards_share call: its people and roles merged into the current ones. */
+function mergeShare(current: ShareState, p: ShareParams) {
+  const users = new Map(current.users.map((u) => [u.userId.toLowerCase(), u.role] as const))
+  for (const u of p.people ?? []) {
+    if (u.access === "none") users.delete(u.userId.toLowerCase())
+    else users.set(u.userId.toLowerCase(), u.access)
+  }
+  const roleMap = new Map(current.roles.map((r) => [r.roleId.toLowerCase(), r.role] as const))
+  for (const r of p.roles ?? []) {
+    if (r.access === "none") roleMap.delete(r.roleId.toLowerCase())
+    else roleMap.set(r.roleId.toLowerCase(), r.access)
+  }
+  return {
+    orgAccess: p.orgAccess ?? current.orgAccess,
+    users: [...users].map(([userId, role]) => ({ userId, role })),
+    roles: [...roleMap].map(([roleId, role]) => ({ roleId, role })),
+  }
+}
+
+const ACCESS_WORDS = { viewer: "can view", editor: "can edit", none: "no access" } as const
+const ORG_WORDS = {
+  none: "only the people and roles it is shared with",
+  viewer: "everyone in the organisation can view",
+  editor: "everyone in the organisation can edit",
+} as const
+
+/**
+ * A share card says plainly who gains and who loses access: the organisation-wide change, then
+ * one line per person and role whose access changes, with their names. Read on the
+ * summarizer's transaction, computed once when the approval is created.
+ */
+const summarizeShare: ApprovalSummarizer = async (raw, ctx) => {
+  const p = (raw ?? {}) as Partial<ShareParams>
+  const id = typeof p.id === "string" ? p.id : ""
+  const [row] = id
+    ? await ctx.tx
+        .select({ title: dashboards.title, orgAccess: dashboards.orgAccess })
+        .from(dashboards)
+        .where(eq(dashboards.id, id))
+        .limit(1)
+    : []
+  if (!row) {
+    return {
+      kind: "dashboard_share",
+      title: `Change who sees the dashboard ${id}`,
+      lines: [
+        "The dashboard could not be read: approving applies the call as sent, or refuses it.",
+      ],
+    }
+  }
+  const grants = await ctx.tx
+    .select({
+      kind: resourceGrants.granteeKind,
+      grantee: resourceGrants.grantee,
+      role: resourceGrants.role,
+    })
+    .from(resourceGrants)
+    .where(
+      and(eq(resourceGrants.resourceType, DASHBOARD_RESOURCE), eq(resourceGrants.resourceId, id)),
+    )
+  const had = new Map(grants.map((g) => [`${g.kind}:${g.grantee.toLowerCase()}`, g.role]))
+  const userIds = (p.people ?? []).map((u) => u.userId)
+  const roleIds = (p.roles ?? []).map((r) => r.roleId)
+  const userNames = new Map(
+    (userIds.length
+      ? await ctx.tx
+          .select({ id: users.id, name: users.name, email: users.email })
+          .from(users)
+          .where(inArray(users.id, userIds))
+      : []
+    ).map((u) => [u.id.toLowerCase(), u.name || u.email]),
+  )
+  const roleNames = new Map(
+    (roleIds.length
+      ? await ctx.tx
+          .select({ id: roles.id, name: roles.name })
+          .from(roles)
+          .where(inArray(roles.id, roleIds))
+      : []
+    ).map((r) => [r.id.toLowerCase(), r.name]),
+  )
+  const lines: string[] = []
+  if (p.orgAccess && p.orgAccess !== row.orgAccess) {
+    lines.push(`Organisation: ${ORG_WORDS[row.orgAccess]} → ${ORG_WORDS[p.orgAccess]}.`)
+  }
+  const change = (label: string, key: string, access: "viewer" | "editor" | "none") => {
+    const before = had.get(key) ?? "none"
+    if (before === access) return
+    if (access === "none") lines.push(`${label} loses access (${ACCESS_WORDS[before]} now).`)
+    else if (before === "none") lines.push(`${label} gains access: ${ACCESS_WORDS[access]}.`)
+    else lines.push(`${label}: ${ACCESS_WORDS[before]} → ${ACCESS_WORDS[access]}.`)
+  }
+  for (const u of p.people ?? []) {
+    const k = u.userId.toLowerCase()
+    change(userNames.get(k) ?? `Person ${u.userId}`, `user:${k}`, u.access)
+  }
+  for (const r of p.roles ?? []) {
+    const k = r.roleId.toLowerCase()
+    change(`Role ${roleNames.get(k) ?? r.roleId} (everyone holding it)`, `role:${k}`, r.access)
+  }
+  if (lines.length === 0) lines.push("No change: everyone keeps the access they have.")
+  return {
+    kind: "dashboard_share",
+    title: `Change who sees the dashboard "${row.title}"`,
+    subtitle:
+      "Anyone not listed keeps their access. Administrators see a restricted dashboard only when it is shared with them.",
+    lines,
   }
 }
 
@@ -958,7 +1165,7 @@ export function registerDashboardTools(orgId: string): void {
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const p = (params ?? {}) as { id?: unknown; visibility?: unknown }
       if (p.visibility === "org") return true
-      return (await storedVisibility(o, p.id)) === "org"
+      return (await storedAccess(o, p.id))?.shared === true
     },
     // One approval card lists every change of an org dashboard: more than it lists is refused.
     refuseBeforeGate: async (params: unknown, { orgId: o, userId }) => {
@@ -983,7 +1190,8 @@ export function registerDashboardTools(orgId: string): void {
       )
       // Only a card that will exist is counted: an org dashboard, or the caller's own one shared.
       const carded =
-        row?.visibility === "org" || (p.visibility === "org" && row?.ownerUserId === userId)
+        (await storedAccess(o, p.id))?.shared === true ||
+        (p.visibility === "org" && row?.ownerUserId === userId)
       if (!row || !carded) return null
       const count = cardLineCount(
         diffDashboards(
@@ -999,6 +1207,10 @@ export function registerDashboardTools(orgId: string): void {
     },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_update", summarizeUpdate)
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "dashboards_update"], {
+    resolveOwner: (params, ctx) =>
+      restrictedDecider(ctx.orgId, params.id, ctx.requestedBy, params.visibility === "org"),
+  })
 
   toolRegistry.set([orgId, "kernel", "dashboards_edit"], {
     appName: "kernel",
@@ -1061,7 +1273,7 @@ export function registerDashboardTools(orgId: string): void {
       if (ops.some((op) => (op as { visibility?: unknown } | null)?.visibility === "org")) {
         return true
       }
-      return (await storedVisibility(o, p.dashboardId)) === "org"
+      return (await storedAccess(o, p.dashboardId))?.shared === true
     },
     // Checked before any approval is staged: an admin never approves an edit that would then be
     // refused (an unknown or duplicate block, an invalid map, a source the requester cannot
@@ -1083,6 +1295,16 @@ export function registerDashboardTools(orgId: string): void {
     },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_edit", summarizeEdit)
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "dashboards_edit"], {
+    resolveOwner: (params, ctx) =>
+      restrictedDecider(
+        ctx.orgId,
+        params.dashboardId,
+        ctx.requestedBy,
+        Array.isArray(params.operations) &&
+          params.operations.some((op) => (op as { visibility?: unknown })?.visibility === "org"),
+      ),
+  })
 
   toolRegistry.set([orgId, "kernel", "dashboards_delete"], {
     appName: "kernel",
@@ -1104,7 +1326,65 @@ export function registerDashboardTools(orgId: string): void {
     gatedAgentNotes: (params: unknown, c: { orgId: string; userId: string; scopes: string[] }) =>
       pendingDashboardNotes("dashboards_delete", params, c),
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) =>
-      (await storedVisibility(o, (params as { id?: unknown } | null)?.id)) === "org",
+      (await storedAccess(o, (params as { id?: unknown } | null)?.id))?.shared === true,
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_delete", summarizeDelete)
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "dashboards_delete"], {
+    resolveOwner: (params, ctx) => restrictedDecider(ctx.orgId, params.id, ctx.requestedBy, false),
+  })
+
+  toolRegistry.set([orgId, "kernel", "dashboards_share"], {
+    appName: "kernel",
+    name: "dashboards_share",
+    deferLoading: true,
+    description:
+      "Change who sees a dashboard, as in a shared drive: orgAccess is what everyone in the organisation gets (none: only the owner and the people or roles it is shared with; viewer; editor), people and roles add, change or remove one person's or role's access (viewer, editor, or none to remove it). Everyone else, administrators included, cannot see a dashboard restricted this way. Waits for a person's approval whose card says who gains and who loses access. Find people with kernel__users_search and roles with kernel__roles_list.",
+    searchKeywords: ["dashboard", "share", "partager", "access", "accès", "permission", "restrict"],
+    requiredScopes: [WRITE],
+    params: shareParams,
+    handler: (async (params: unknown, ctx: HandlerCtx) =>
+      guarded(async () => {
+        const p = params as ShareParams
+        const viewer = await viewerOf(ctx)
+        const current = await getDashboardSharing(viewer, p.id, ctx.db)
+        const next = mergeShare(current, p)
+        const saved = await setDashboardSharing(viewer, p.id, next, ctx.db)
+        return {
+          id: p.id,
+          orgAccess: saved.orgAccess,
+          people: saved.users.map((u) => ({ userId: u.userId, name: u.name, access: u.role })),
+          roles: saved.roles.map((r) => ({ roleId: r.roleId, name: r.name, access: r.role })),
+        }
+      })) as (params: unknown, ctx: any) => Promise<unknown>,
+    writesToTable: SINK,
+    // Every sharing change by an agent waits for a person: someone gains or loses access.
+    gated: true,
+    approveScope: ADMIN,
+    approvalImpact: "internal",
+    // Checked before any approval is staged: the requester may change this dashboard's sharing.
+    refuseBeforeGate: async (params: unknown, ctx) => {
+      if (ctx.userId === "system") return null
+      const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
+      return guarded(async () => {
+        const current = await getDashboardSharing(viewer, (params as ShareParams).id)
+        if (!current.canManage) {
+          throw new DashboardError(
+            "SCOPE_DENIED",
+            "changing who sees this dashboard needs editor access to it and kernel:dashboards:share",
+          )
+        }
+        return null
+      })
+    },
+  })
+  registerApprovalSummarizer(orgId, "kernel", "dashboards_share", summarizeShare)
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "dashboards_share"], {
+    resolveOwner: (params, ctx) =>
+      restrictedDecider(
+        ctx.orgId,
+        params.id,
+        ctx.requestedBy,
+        params.orgAccess === "viewer" || params.orgAccess === "editor",
+      ),
+  })
 }

@@ -48,6 +48,12 @@ describe("chat tools", () => {
     await sql`INSERT INTO kernel.threads (id, org_id, handle, title, type, created_by) VALUES (${THREAD_ID}, ${ORG_ID}, 'search-target', 'Q2 Planning Discussion', 'thread', ${USER_A}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.threads (id, org_id, handle, title, type, created_by) VALUES (${READ_THREAD_ID}, ${ORG_ID}, 'already-read', 'Already Read Thread', 'thread', ${USER_A}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${THREAD_ID}, ${USER_A}, ${ORG_ID}) ON CONFLICT DO NOTHING`
+    // Both hold what actorA's direct calls stamp (its `*`, expanded): a post its requester or a
+    // participant could not read is refused, never written hidden (scope-taint.ts, rule 14).
+    for (const userId of [USER_A, USER_B]) {
+      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+        VALUES (${userId}, ${ORG_ID}, '*') ON CONFLICT DO NOTHING`
+    }
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${THREAD_ID}, ${USER_B}, ${ORG_ID}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${READ_THREAD_ID}, ${USER_A}, ${ORG_ID}) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${READ_THREAD_ID}, ${USER_B}, ${ORG_ID}) ON CONFLICT DO NOTHING`
@@ -75,6 +81,7 @@ describe("chat tools", () => {
     await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.agents WHERE org_id = ${ORG_ID}`
+    await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG_ID}`
   })

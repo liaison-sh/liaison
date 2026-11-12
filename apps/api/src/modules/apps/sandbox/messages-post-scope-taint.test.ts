@@ -184,6 +184,42 @@ describe("sandbox messages.post: requiredScopes from the captured turn frame", (
     expect(await visibleTo(lackerId, [])).toContain(id)
   })
 
+  // scope-taint.ts rule 14: a person's own external client (an MCP connection bound to no agent)
+  // now runs under a gateway frame. Through this bridge it posts as it did with no frame.
+  it("a person's own external client's gateway frame posts with no required scopes, as before", async () => {
+    const turnScopeAccumulator = createTurnScopeAccumulator()
+    turnScopeAccumulator.recordInjected([READ])
+    const frame = frameOf({ mcpGateway: true, effectiveScope: ACTOR_SCOPES, turnScopeAccumulator })
+    const env = await postVia(
+      "createSessionRpcBridge",
+      { frame, scopesBefore: [READ], callerScopes: ACTOR_SCOPES },
+      "posted from an external client",
+    )
+    expect(env.error).toBeUndefined()
+    const id = env.message_id as string
+    expect(await scopesOf(id)).toEqual([])
+    expect(await visibleTo(lackerId, [])).toContain(id)
+  })
+
+  it("an agent-bound gateway frame still stamps the post with what its turn read", async () => {
+    const turnScopeAccumulator = createTurnScopeAccumulator()
+    turnScopeAccumulator.recordInjected([READ])
+    const frame = frameOf({
+      mcpGateway: true,
+      agentId: crypto.randomUUID(),
+      agentCeiling: ACTOR_SCOPES,
+      effectiveScope: ACTOR_SCOPES,
+      turnScopeAccumulator,
+    })
+    const env = await postVia(
+      "createSessionRpcBridge",
+      { frame, scopesBefore: [READ], callerScopes: ACTOR_SCOPES },
+      "posted from an agent connection",
+    )
+    expect(env.error).toBeUndefined()
+    expect(await scopesOf(env.message_id as string)).toEqual([READ])
+  })
+
   it("fail closed: a frame without an accumulator tags the post with the turn's effective scope", async () => {
     const env = await postVia(
       "createSessionRpcBridge",

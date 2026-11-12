@@ -19,5 +19,13 @@ through its own connection and its manifest's `knowledgeSources` (Google Drive:
 `bundled-apps/google-drive/src/knowledge.ts`); Knowledge holds no external
 credential of its own.
 
-For the shared connection machinery behind those federated sources, see
+Items Knowledge reaches without syncing them come from the apps that declare
+`knowledgeItems` in their manifest (`source-registry.ts`): `search` answers
+`search` across sources (on unless the org's policy for the app, or the app's
+`searchByDefault`, says otherwise), `resolve` serves `source_link_create`,
+link verify and refresh, and reading a remote hit. GitLab and Google Drive
+declare both; Drive's search is off until an admin turns it on
+(`PATCH /api/knowledge/sources/google-drive {"broadSearchEnabled": true}`).
+
+For the shared connection machinery behind those sources, see
 [`docs/connecting-apps.md`](../../../../../docs/connecting-apps.md).

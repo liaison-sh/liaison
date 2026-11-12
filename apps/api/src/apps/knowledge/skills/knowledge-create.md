@@ -51,7 +51,7 @@ the google-drive app's tools:
 - `google-drive__search`, `google-drive__read`, `google-drive__import` — Drive content (when the connector is installed and connected; surface a graceful "Drive not connected" message via `AdminIntegrations` if absent)
 - `web_fetch` — web pages
 - `knowledge_create` — create a Knowledge **document** (a local copy / faithful summary of the content)
-- `knowledge_source_link_create` — register a **source_link**: a LIVING pointer to a remote doc (e.g. a Google Drive file) that always reflects the current version, never a frozen copy. Pass `source` (the connector id, e.g. `'google-drive'`) + `externalId` (the file id from `google-drive__search`) + `title`. This is the tool for "track / link / register / this is the canonical X" — resolve the real file id via `google-drive__search` first, never guess it from the file name.
+- `knowledge_source_link_create` — register a **source_link**: a LIVING pointer to a remote doc (e.g. a Google Drive file) that always reflects the current version, never a frozen copy. Pass `source` (the app id: `'google-drive'`, `'gitlab'`) + `externalId` + `title`. This is the tool for "track / link / register / this is the canonical X" — resolve the real id first, never guess it from the file name: a `knowledge_search` hit from that source carries `source` + `sourceEntityId`; otherwise a Drive file id from `google-drive__search`, or a GitLab `<project id>:<branch>:<file path>`.
 - `knowledge_update` — update an existing document
 - `knowledge_collection_create`, `knowledge_add_to_collection` — collection ops
 - Future connector tools when available — pick them up by name without a re-deploy

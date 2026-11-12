@@ -355,4 +355,40 @@ describe("surfaceFor", () => {
     expect(app.verifySurface.every(([, kind]) => kind === "async")).toBe(true)
     expect(surfaceFor({ surface: SURFACE }, verify)).toBe(SURFACE)
   })
+
+  it("replaces a git host's people (names, handles, avatars) wherever they appear, stably", () => {
+    const commit = {
+      id: "abc",
+      author_name: "Jane Roe",
+      author_email: "jane@corp.test",
+      committer_name: "Jane Roe",
+      message: "Fix by Jane Roe",
+    }
+    const user = {
+      id: 9,
+      username: "jroe",
+      name: "Jane Roe",
+      avatar_url: "https://secure.gravatar.com/avatar/0123abcd?s=80&d=identicon",
+      web_url: "https://gitlab.com/jroe",
+    }
+    const fixture = {
+      params: { author: "jroe" },
+      calls: [{ reply: JSON.stringify({ body: JSON.stringify([commit, { author: user }]) }) }],
+    }
+    const text = JSON.stringify(scrubValue(fixture, []))
+    for (const live of ["Jane Roe", "jroe", "gravatar.com", "0123abcd"]) {
+      expect(text).not.toContain(live)
+    }
+    const handle = /person-[0-9a-f]{8}/.exec(text)?.[0]
+    expect(handle).toBeDefined()
+    // The handle in the params and in the web URL is the same stand-in.
+    expect(text).toContain(`"author":"${handle}"`)
+    expect(text).toContain(`gitlab.com/${handle}`)
+    expect(text).toMatch(/https:\/\/avatars\.example\.com\/[0-9a-f]{8}\.png/)
+    // A stand-in profile a recorder writes itself is kept, and a scrubbed value stays.
+    const standIn = { username: "contract-reader", name: "Contract Reader" }
+    expect(scrubStoreIdentity(standIn)).toEqual(standIn)
+    const once = scrubValue(fixture, [])
+    expect(JSON.stringify(scrubValue(once, []))).toBe(JSON.stringify(once))
+  })
 })

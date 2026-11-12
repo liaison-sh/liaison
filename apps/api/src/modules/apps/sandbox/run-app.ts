@@ -6,26 +6,22 @@
 // is made here, in `selectExecutor`, and nowhere else:
 //
 //   inprocess  trusted code, on the host's in-process QuickJS pool (executeInSandbox)
-//   workers    an untrusted app listed for the remote V8 isolate loader
-//              (LIAISON_WORKERS_APPS) whose installed version has a Worker
-//              bundle (LIAISON_WORKERS_BUNDLES), or, with
-//              LIAISON_WORKERS_CUSTOM_APPS=1, an org's custom app whose
-//              installed row carries its Worker module's sha (0278), when
-//              Workers is configured and this process has role "all"
-//              (workers/config.ts)
+//   workers    an untrusted app whose installed version recorded a Worker
+//              module (the package's worker.js, install-service.ts), when
+//              the app loader is configured (workers/config.ts), in any role
 //   pool       everything else, on the out-of-process worker pool
 //
-// A listed app that cannot run on Workers (no bundle for its installed
-// version) runs on the pool with a warning per run. A run is decided, then
-// its bridge is built for that executor, then it runs: a Workers run gets a
-// secret-free bridge (the site's `workersBridge`, or a marked copy of
+// An app that cannot run on Workers (its installed version came from a
+// package without a Worker module) runs on the pool with a warning per run.
+// A run is decided, then its bridge is built for that executor, then it
+// runs: a Workers run gets a secret-free bridge (the site's `workersBridge`, or a marked copy of
 // `bridge`), a QuickJS run `bridge` itself, which runApp never changes. A
 // Workers run whose attempts end on a loader-level fault before any bridge
 // call runs once more on QuickJS, on `bridge` (`fallback: "loader_fault"`,
 // workers/fallback.ts); never after a bridge call. Every run raises one
 // run-settled event (workers/run-settled.ts) once it has settled, tagged with
 // the executor that ran it; the run timing records (workers/timings.ts, kind
-// "run", listed and custom apps) are one of its subscribers.
+// "run") are one of its subscribers.
 //
 // A new executor is one more arm of `selectExecutor` and of the switch in
 // `runApp`; no call site changes. The sandboxes that do not run app handlers
@@ -34,7 +30,7 @@
 
 import { createHash } from "node:crypto"
 import { dirname } from "node:path"
-import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
+import { and, eq, isNull, or } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { rootLogger } from "~/lib/logger"
@@ -55,12 +51,7 @@ import {
   initWorkerPool,
   type WorkerExecOptions,
 } from "~/modules/apps/sandbox/worker-pool"
-import {
-  readWorkersConfig,
-  type WorkersConfig,
-  workersBundleSha,
-  workersSelectsApp,
-} from "~/modules/apps/workers/config"
+import { readWorkersConfig, type WorkersConfig } from "~/modules/apps/workers/config"
 import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
 import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
@@ -75,9 +66,9 @@ export interface InstalledIdentity {
   version: string
   sha256: string
   /**
-   * The sha256 of the version's Worker module recorded at install (an org's
-   * custom app built by the app builder, 0278), null when none. Undefined:
-   * not read (a caller-supplied identity); read when a custom app needs it.
+   * The sha256 of the version's Worker module recorded at install (the
+   * package's worker.js, 0278), null when its package had none. Undefined: not
+   * read (a caller-supplied identity); read when a Workers run needs it.
    */
   workerSha256?: string | null
 }
@@ -170,41 +161,33 @@ export interface WorkersTarget {
 }
 
 /**
- * The Workers target of a run, or null (QuickJS). Only an untrusted app chosen
- * by a usable Workers configuration is looked at (listed, or a custom app with
- * LIAISON_WORKERS_CUSTOM_APPS): a custom app's Worker module is the one its
- * installed row names (the build its publish pinned), a listed app's the
- * LIAISON_WORKERS_BUNDLES entry. One with no module for its installed version
- * warns (every run) and runs on the pool.
+ * The Workers target of a run, or null (QuickJS). Every untrusted app runs
+ * there when the loader is configured, on the Worker module its installed row
+ * names (the package's worker.js, recorded at install). A version whose
+ * package had none warns (every run) and runs on the pool.
  */
 export async function resolveWorkersTarget(
   opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
 ): Promise<WorkersTarget | null> {
   if (opts.trusted) return null
   const config = readWorkersConfig()
-  if (!config || !workersSelectsApp(config, opts.appName)) return null
+  if (!config) return null
   let identity =
     opts.installed !== undefined
       ? opts.installed
       : await resolveInstalledIdentity(opts.appName, opts.orgId, opts.bundlePath)
-  const custom = config.customApps && isCustomAppName(opts.appName)
-  if (custom && identity && identity.workerSha256 === undefined) {
+  if (identity && identity.workerSha256 === undefined) {
     // A caller-supplied identity carries no module: the row of that version does.
     identity = await readIdentity(opts.appName, opts.orgId, identity.version)
   }
-  const sha = !identity
-    ? undefined
-    : custom
-      ? (identity.workerSha256 ?? workersBundleSha(config, opts.appName, identity.version))
-      : workersBundleSha(config, opts.appName, identity.version)
-  if (!identity || !sha) {
+  if (!identity?.workerSha256) {
     log.warn(
       { app: opts.appName, orgId: opts.orgId, version: identity?.version ?? null },
-      "App listed for Workers has no Worker bundle for its installed version; running on QuickJS",
+      "App has no Worker module for its installed version; running on QuickJS",
     )
     return null
   }
-  return { config, version: identity.version, sha256: sha }
+  return { config, version: identity.version, sha256: identity.workerSha256 }
 }
 
 /**
@@ -542,12 +525,12 @@ async function readActiveIdentity(
 }
 
 /**
- * The Worker module bytes an installed custom app version recorded for `sha256`
- * (0278), re-hashed on read, or null: no row of an org's custom app (any org of
- * this cell, any installed version, not disabled) names that sha, or its bytes
- * no longer hash to it. Never a draft's bytes: the column is written only by a
- * publish's install. Read by the cell's bundle route for the app loader
- * (workers/bundle-route.ts).
+ * The Worker module bytes an installed app version recorded for `sha256` (its
+ * package's worker.js, 0278), re-hashed on read, or null: no installed, not
+ * disabled version of any app (an instance app or an org's custom app, any org
+ * of this cell) names that sha, or its bytes no longer hash to it. Never a
+ * draft's bytes: the column is written only by an install. Read by the cell's
+ * bundle route for the app loader (workers/bundle-route.ts).
  */
 export async function readInstalledWorkerModule(
   sha256: string,
@@ -560,17 +543,11 @@ export async function readInstalledWorkerModule(
         bytes: appsInstalled.workerModule,
       })
       .from(appsInstalled)
-      .where(
-        and(
-          eq(appsInstalled.workerSha256, sha256),
-          isNotNull(appsInstalled.orgId),
-          isNull(appsInstalled.disabledAt),
-        ),
-      )
+      .where(and(eq(appsInstalled.workerSha256, sha256), isNull(appsInstalled.disabledAt)))
       .limit(2),
   )
   for (const row of rows) {
-    if (!row.bytes || !isCustomAppName(row.name)) continue
+    if (!row.bytes) continue
     if (createHash("sha256").update(row.bytes).digest("hex") !== sha256) {
       log.error(
         { app: row.name, version: row.version, sha256 },

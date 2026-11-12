@@ -106,6 +106,80 @@ export function workerNodeImport(text: string): string | null {
   return /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']node:[^"']+["']/.exec(text)?.[0] ?? null
 }
 
+/**
+ * The directories (repo-relative) of the platform code a Worker module inlines
+ * besides the app's own sources and the workspace packages: the entry and core
+ * (workers/) and what they import from the sandbox (sandbox/). A change there
+ * changes every app's worker.js, so the bundled-app version guard
+ * (scripts/check-bundled-app-version.ts) treats these like `packages/`, and
+ * `buildWorkerModule` refuses to inline platform code from anywhere else.
+ */
+export const WORKER_RUNTIME_DIRS = [
+  "apps/api/src/modules/apps/workers/",
+  "apps/api/src/modules/apps/sandbox/",
+] as const
+
+/** The Worker module's file name inside a `.liaisonapp`, beside `bundle.js`. */
+export const WORKER_MODULE_FILE = "worker.js"
+
+const WORKER_ENTRY_SPECIFIER = "liaison-worker-entry.ts"
+
+export interface WorkerModuleBuild {
+  /** The module's text (ES module, default export = the WorkerEntrypoint). */
+  text: string
+  /** The bundler's metafile outputs (paths relative to the process's cwd). */
+  outputs: Record<string, { inputs: Record<string, { bytesInOutput: number }> }>
+}
+
+/**
+ * Build an app's Worker module in process: the generated entry (or, with
+ * `core`, the Cloudflare-free core entry) is served as a virtual module, so no
+ * temporary path reaches the output and the bytes depend only on the sources
+ * (and, like bundle.js, on the process's cwd: run from the repo root). Fails
+ * when the module still imports a Node builtin. `plugins` run first (a source
+ * overlay).
+ */
+export async function buildWorkerModule(opts: {
+  handlersPath: string
+  core?: boolean
+  plugins?: Bun.BunPlugin[]
+}): Promise<WorkerModuleBuild> {
+  const source = opts.core
+    ? workerCoreEntrySource(opts.handlersPath)
+    : workerEntrySource(opts.handlersPath)
+  const entryPlugin: Bun.BunPlugin = {
+    name: "liaison-worker-entry",
+    setup(build) {
+      build.onResolve({ filter: /^liaison-worker-entry\.ts$/ }, () => ({
+        path: WORKER_ENTRY_SPECIFIER,
+        namespace: "liaison-worker",
+      }))
+      build.onLoad({ filter: /.*/, namespace: "liaison-worker" }, () => ({
+        contents: source,
+        loader: "ts",
+      }))
+    },
+  }
+  const result = await Bun.build({
+    entrypoints: [WORKER_ENTRY_SPECIFIER],
+    target: "browser",
+    format: "esm",
+    external: ["cloudflare:workers"],
+    metafile: true,
+    plugins: [...(opts.plugins ?? []), entryPlugin],
+  })
+  if (!result.success) {
+    throw new Error(`Worker module failed: ${bunBuildFailureDetail(result.logs)}`)
+  }
+  const text = await result.outputs[0].text()
+  const nodeImport = workerNodeImport(text)
+  if (nodeImport) throw new Error(`the Worker module still imports a Node builtin: ${nodeImport}`)
+  return {
+    text,
+    outputs: (result.metafile?.outputs ?? {}) as WorkerModuleBuild["outputs"],
+  }
+}
+
 // Every packaged file's mtime, so the tar headers never carry the build time.
 const FIXED_MTIME = new Date("2000-01-01T00:00:00Z")
 

@@ -110,10 +110,10 @@ export interface ProvisionContext {
    * Defaults to `process.cwd()` when no config path is known (tests / piped input).
    */
   configDir: string
-  /** Per-app connection health probes run after the apps section applies a
-   *  credentials connection (`config apply` sets the `config verify` registry).
+  /** The connection health check run after the apps section applies a
+   *  credentials connection (`config apply` sets the `config verify` one).
    *  Absent: no post-apply health check (the tool path, provisioner tests). */
-  connectionProbes?: Partial<Record<string, VerifyProbe>>
+  connectionProbe?: VerifyProbe
   /** Run `fn` under the admin RLS context for the current org (branded RlsClient). */
   rls: <T>(fn: (tx: RlsClient) => Promise<T>) => Promise<T>
   /** Run `fn` under a privileged, org-scoped transaction. */
@@ -192,8 +192,8 @@ export function buildProvisionContext(opts: {
   seams?: ProvisionDbSeams
   /** Config-file directory for relative file resolution (defaults to cwd). */
   configDir?: string
-  /** Post-apply connection health probes (see `ProvisionContext.connectionProbes`). */
-  connectionProbes?: Partial<Record<string, VerifyProbe>>
+  /** Post-apply connection health check (see `ProvisionContext.connectionProbe`). */
+  connectionProbe?: VerifyProbe
 }): ProvisionContext {
   const seams = opts.seams ?? defaultSeams
   const ctx: ProvisionContext = {
@@ -203,7 +203,7 @@ export function buildProvisionContext(opts: {
     log: opts.log,
     validateByok: opts.validateByok,
     configDir: opts.configDir ?? process.cwd(),
-    ...(opts.connectionProbes ? { connectionProbes: opts.connectionProbes } : {}),
+    ...(opts.connectionProbe ? { connectionProbe: opts.connectionProbe } : {}),
     rls: (fn) =>
       seams.withRlsContext(
         {

@@ -83,7 +83,7 @@ async function apply(
     echoSupplied: false,
     configDir: dirname(path),
     log: () => {},
-    connectionProbes: {},
+    connectionProbe: null,
     appliedBy: "cli:test@ci",
     ...(opts.only ? { only: opts.only } : {}),
     ...(opts.prefer ? { prefer: opts.prefer } : {}),

@@ -1,0 +1,32 @@
+{
+  "entry": "tool:gitlab_get_merge_request",
+  "params": {
+    "project": "22738259",
+    "iid": 8,
+    "withChanges": true
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["gitlab"],
+      "reply": "{\"values\":{\"group\":\"gitlab-examples\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/projects/22738259/merge_requests/8",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":350514273,\\\"iid\\\":8,\\\"project_id\\\":22738259,\\\"title\\\":\\\"B2BCL-53403 Implement semantic versioning when pushing to default branch\\\",\\\"description\\\":\\\"\\\",\\\"state\\\":\\\"closed\\\",\\\"created_at\\\":\\\"2024-12-18T04:16:41.738Z\\\",\\\"updated_at\\\":\\\"2024-12-18T04:18:06.579Z\\\",\\\"merged_by\\\":null,\\\"merge_user\\\":null,\\\"merged_at\\\":null,\\\"closed_by\\\":{\\\"id\\\":14005385,\\\"username\\\":\\\"karthikeyan.b2\\\",\\\"public_email\\\":\\\"person1@example.com\\\",\\\"name\\\":\\\"Karthikeyan Balasubramaniam\\\",\\\"state\\\":\\\"active\\\",\\\"locked\\\":false,\\\"avatar_url\\\":\\\"https://gitlab.com/uploads/-/system/user/avatar/14005385/avatar.png?v=1794486910\\\",\\\"web_url\\\":\\\"https://gitlab.com/karthikeyan.b2\\\"},\\\"closed_at\\\":\\\"2024-12-18T04:18:06.620Z\\\",\\\"target_branch\\\":\\\"master\\\",\\\"source_branch\\\":\\\"feature/B2BCL-53403_semantic-version\\\",\\\"user_notes_count\\\":0,\\\"upvotes\\\":0,\\\"downvotes\\\":0,\\\"author\\\":{\\\"id\\\":14005385,\\\"username\\\":\\\"karthikeyan.b2\\\",\\\"public_email\\\":\\\"person1@example.com\\\",\\\"name\\\":\\\"Karthikeyan Balasubramaniam\\\",\\\"state\\\":\\\"active\\\",\\\"locked\\\":false,\\\"avatar_url\\\":\\\"https://gitlab.com/uploads/-/system/user/avatar/14005385/avatar.png?v=1794486910\\\",\\\"web_url\\\":\\\"https://gitlab.com/karthikeyan.b2\\\",\\\"bot\\\":false},\\\"assignees\\\":[],\\\"assignee\\\":null,\\\"reviewers\\\":[],\\\"source_project_id\\\":null,\\\"target_project_id\\\":22738259,\\\"labels\\\":[],\\\"draft\\\":false,\\\"imported\\\":false,\\\"imported_from\\\":\\\"none\\\",\\\"work_in_progress\\\":false,\\\"milestone\\\":null,\\\"merge_when_pipeline_succeeds\\\":false,\\\"merge_status\\\":\\\"can_be_merged\\\",\\\"detailed_merge_status\\\":\\\"not_open\\\",\\\"merge_after\\\":null,\\\"sha\\\":\\\"e5ec25bea21425d54c1c40827d3793f4a4bff018\\\",\\\"merge_commit_sha\\\":null,\\\"squash_commit_sha\\\":null,\\\"discussion_locked\\\":null,\\\"should_remove_source_branch\\\":null,\\\"force_remove_source_branch\\\":true,\\\"prepared_at\\\":\\\"2024-12-18T04:16:45.564Z\\\",\\\"allow_collaboration\\\":false,\\\"allow_maintainer_to_push\\\":false,\\\"reference\\\":\\\"!8\\\",\\\"references\\\":{\\\"short\\\":\\\"!8\\\",\\\"relative\\\":\\\"!8\\\",\\\"full\\\":\\\"gitlab-examples/semantic-release-npm!8\\\"},\\\"web_url\\\":\\\"https://gitlab.com/gitlab-examples/semantic-release-npm/-/merge_requests/8\\\",\\\"time_stats\\\":{\\\"time_estimate\\\":0,\\\"total_time_spent\\\":0,\\\"human_time_estimate\\\":null,\\\"human_total_time_spent\\\":null},\\\"squash\\\":false,\\\"squash_on_merge\\\":false,\\\"task_completion_status\\\":{\\\"count\\\":0,\\\"completed_count\\\":0},\\\"has_conflicts\\\":false,\\\"blocking_discussions_resolved\\\":true,\\\"approvals_before_merge\\\":null,\\\"subscribed\\\":false,\\\"changes_count\\\":\\\"2\\\",\\\"latest_build_started_at\\\":null,\\\"latest_build_finished_at\\\":null,\\\"first_deployed_to_production_at\\\":null,\\\"pipeline\\\":null,\\\"head_pipeline\\\":null,\\\"diff_refs\\\":{\\\"base_sha\\\":\\\"ee100d81f12ae315a81c2a664979a6cc1bce99a2\\\",\\\"head_sha\\\":\\\"e5ec25bea21425d54c1c40827d3793f4a4bff018\\\",\\\"start_sha\\\":\\\"ee100d81f12ae315a81c2a664979a6cc1bce99a2\\\"},\\\"merge_error\\\":null,\\\"first_contribution\\\":true,\\\"user\\\":{\\\"can_merge\\\":false}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/projects/22738259/merge_requests/8/diffs?per_page=100",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\",\"link\":\"<https://gitlab.com/api/v4/projects/22738259/merge_requests/8/diffs?id=22738259&merge_request_iid=8&page=1&per_page=100&unidiff=false>; rel=\\\"first\\\", <https://gitlab.com/api/v4/projects/22738259/merge_requests/8/diffs?id=22738259&merge_request_iid=8&page=1&per_page=100&unidiff=false>; rel=\\\"last\\\"\",\"x-next-page\":\"\"},\"body\":\"[{\\\"diff\\\":\\\"@@ -1 +1,2 @@\\\\n console.log(\\\\\\\"Hello, world!\\\\\\\");\\\\n+console.log(\\\\\\\"Testing Semantic release\\\\\\\");\\\\n\\\",\\\"collapsed\\\":false,\\\"too_large\\\":false,\\\"new_path\\\":\\\"index.js\\\",\\\"old_path\\\":\\\"index.js\\\",\\\"a_mode\\\":\\\"100644\\\",\\\"b_mode\\\":\\\"100644\\\",\\\"new_file\\\":false,\\\"renamed_file\\\":false,\\\"deleted_file\\\":false,\\\"generated_file\\\":false},{\\\"diff\\\":\\\"\\\",\\\"collapsed\\\":false,\\\"too_large\\\":true,\\\"new_path\\\":\\\"package-lock.json\\\",\\\"old_path\\\":\\\"package-lock.json\\\",\\\"a_mode\\\":\\\"100644\\\",\\\"b_mode\\\":\\\"100644\\\",\\\"new_file\\\":false,\\\"renamed_file\\\":false,\\\"deleted_file\\\":false,\\\"generated_file\\\":true}]\"}"
+    }
+  ]
+}

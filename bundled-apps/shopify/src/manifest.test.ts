@@ -954,7 +954,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.23 on main: the OAuth request adds write_online_store_navigation, which products_merge's
     // redirect needs; a merge whose connection lacks it is refused before its first write.
     // 0.4.24: both of the above, merged.
-    expect(m.version).toBe("0.4.24")
+    // 0.4.25: both of the above, merged (main's 0.4.24: every package carries its Worker module).
+    expect(m.version).toBe("0.4.25")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

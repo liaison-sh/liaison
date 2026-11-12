@@ -742,12 +742,11 @@ before; its name cannot carry an organization key. The rules:
   that the call is refused with 429 `custom_app_busy` and `Retry-After`. Its
   webhooks accept 120 deliveries a minute each; past that they answer 429
   `custom_app_rate_limited` with `Retry-After` before any of its code runs.
-- On a server that runs apps on a remote isolate loader with
-  `LIAISON_WORKERS_CUSTOM_APPS=1`, an app built with the app builder runs
-  there too, as the Worker module its publish built (recorded with the
-  install, no `LIAISON_WORKERS_BUNDLES` entry). The loader fetches that
-  module from the server with a signed request when it has no copy. An app
-  installed from a package file stays on the local sandbox.
+- On a server that runs apps on a remote isolate loader, an app built with
+  the app builder runs there too, as the Worker module its publish built:
+  the package carries it as `worker.js`, and the install checks it against
+  the sha256 the publish approved and records it. The loader fetches that
+  module from the server with a signed request when it has no copy.
 - `ctx.bulk.fetchToBlob` keeps its downloads apart from your organization's
   other apps: 256 MiB per custom app, a shared limit for all custom apps on the
   server, and a download not used for an hour is deleted.
@@ -1089,6 +1088,10 @@ apps:
   would change: any line is DRIFT), then `verify({ config }, ctx)` when declared,
   which answers `{ ok, problems?, identity? }` from a live check, such as one call
   through your connection.
+- `verify` is also your connection's health check: `config verify` and
+  `config apply` run it for an app whose connection the config file sets, even
+  with no `provision` block (`config` is then `{}`). An app without `verify`
+  reports `SKIPPED` there.
 - Both run as your app (its own scopes), like a job.
 
 ## 17. Bring your own OAuth client
@@ -1135,7 +1138,9 @@ Liaison keeps its documents up to date. Declare the kind in the manifest:
 - `configSchema`: the JSON Schema of a source's settings, checked when the
   source is added (`POST /api/knowledge/synced-sources` with `appName`,
   `sourceKind` and `sourceConfig`; `GET /api/knowledge/synced-sources/kinds`
-  lists the kinds a person may add).
+  lists the kinds a person may add). An agent adds one with
+  `knowledge__add_folder_source` (`source`: your app, `kind`); the `ref` it
+  passes becomes the config `{ ref }`, and the same ref finds the same source.
 - `timeoutMs`: one page's time limit, 60 s when absent, at most 120 s.
 
 The handler gets `{ sourceId, kind, config, cursor }` and returns one page:
@@ -1232,6 +1237,6 @@ return {
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec
 - [`docs/app-sandbox.md`](app-sandbox.md) — the sandbox runtime internals
 - [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
-- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent) — a host-side bridge-extension app in the same in-tree shape as `gitlab`, built because raw DB sockets are a structural SDK gap (see the gap log entry)
+- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent), a catalog app reading through platform-held SQL connections (`ctx.sql`)
 - [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
 - `apps/api/src/apps/example/` — the reference app

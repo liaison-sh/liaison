@@ -89,7 +89,8 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.50: the source repository link names the repository where the code now lives.
     // 0.1.48 (main): refresh-snapshots is a resumable step (no held transaction).
     // 0.1.51: both of the above, merged.
-    expect(m.version).toBe("0.1.51")
+    // 0.1.52: both of the above, merged (main's 0.1.49: every package carries its Worker module).
+    expect(m.version).toBe("0.1.52")
     expect(m.packageFormat).toBe(1)
   })
 

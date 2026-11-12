@@ -50,7 +50,8 @@ describe("social manifest (B1)", () => {
     // 0.6.66 (main): watch_object commits the watch and its backfilled finding links in one batch,
     //   with no transaction held across the run.
     // 0.6.71: 0.6.70 above merged with main's 0.6.66.
-    expect(manifest.version).toBe("0.6.71")
+    // 0.6.72: both of the above, merged (main's 0.6.67: every package carries its Worker module).
+    expect(manifest.version).toBe("0.6.72")
     expect(manifest.packageFormat).toBe(1)
   })
 

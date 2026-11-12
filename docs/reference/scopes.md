@@ -166,10 +166,10 @@ Sync GitLab manuals into Knowledge and read projects, merge requests and issues.
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `gitlab:accounts:admin` | role admin; settings section connection |  |
-| `gitlab:accounts:read` | role member |  |
+| `gitlab:accounts:admin` | manifest scopes; role admin; settings section connection |  |
+| `gitlab:accounts:read` | manifest scopes; role member |  |
 | `gitlab:approve` | approver scope | Decide (approve, edit, or deny) gitlab approvals raised by its gated tools |
-| `gitlab:repo:read` | role member; tools gitlab_get_commit, gitlab_get_merge_request, gitlab_list_commits, gitlab_list_issues, gitlab_list_labels, gitlab_list_merge_requests and 7 more |  |
+| `gitlab:repo:read` | manifest scopes; role member; tools gitlab_get_commit, gitlab_get_merge_request, gitlab_list_commits, gitlab_list_issues, gitlab_list_labels, gitlab_list_merge_requests and 7 more |  |
 
 ## google-drive
 

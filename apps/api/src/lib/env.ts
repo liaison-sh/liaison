@@ -1244,21 +1244,15 @@ export const envSchema = z
     // singletons (behind the leader lease), with a health-only HTTP server.
     // Any other value refuses boot. The CLI ignores it.
     LIAISON_ROLE: z.enum(["all", "api", "worker"]).default("all"),
-    // Running listed apps on a remote V8 isolate loader instead of the local
-    // QuickJS sandbox (modules/apps/workers/config.ts). Used only when
+    // Running sandboxed apps on a remote V8 isolate loader instead of the local
+    // QuickJS sandbox (modules/apps/workers/config.ts). Used when
     // LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY
-    // are set, and either LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES or
-    // LIAISON_WORKERS_CUSTOM_APPS=1 is set (any LIAISON_ROLE: a bridge call on another
-    // process is forwarded to the run's own); otherwise every app runs on QuickJS
-    // and /api/app-bridge answers 404. Unset by default. The app names, comma separated.
-    LIAISON_WORKERS_APPS: z.preprocess(unsetIfEmpty, z.string().optional()),
-    // `1`: every organisation's custom app built with the app builder runs on
-    // the loader too (with the loader variables below). Its Worker module is
-    // the one its publish built, recorded with the install, and the loader
-    // fetches it from this server (`GET /api/app-bridge/bundles/<sha256>`,
-    // signed with LIAISON_APP_LOADER_KEY) when it has no copy. With it,
-    // LIAISON_WORKERS_APPS and LIAISON_WORKERS_BUNDLES are optional.
-    LIAISON_WORKERS_CUSTOM_APPS: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // are all set: every installed sandboxed app then runs there (any
+    // LIAISON_ROLE: a bridge call on another process is forwarded to the run's
+    // own), on the Worker module its package carried, which the loader fetches
+    // from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with
+    // LIAISON_APP_LOADER_KEY) when it has no copy. Unset by default: every app
+    // runs on QuickJS and /api/app-bridge answers 404.
     // The loader's base URL (it is called at `<url>/run`).
     LIAISON_APP_LOADER_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
     // This instance's id at the loader; it picks the signing key and the bridge
@@ -1269,10 +1263,6 @@ export const envSchema = z
     // The public base URL the loader's isolates call back on
     // (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL.
     LIAISON_APP_BRIDGE_BASE_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
-    // The bundle each listed app version runs there, as JSON
-    // `{"<app>@<version>":"<sha256>"}`. A listed app whose installed version has
-    // no entry runs on QuickJS. Custom apps need no entry.
-    LIAISON_WORKERS_BUNDLES: z.preprocess(unsetIfEmpty, z.string().optional()),
     // A JSONL file that receives one timing line per /api/app-bridge call (run,
     // app, method, duration, status). Unset, the timings stay in memory only.
     LIAISON_APP_BRIDGE_TIMINGS_FILE: z.preprocess(unsetIfEmpty, z.string().optional()),

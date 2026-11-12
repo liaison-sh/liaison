@@ -16,13 +16,10 @@ import { RunRegistry } from "./run-registry"
 const ORG = "00000000-0000-4000-8000-0000000000a1"
 
 const config: WorkersConfig = {
-  apps: new Set(["rt"]),
-  customApps: false,
   loaderUrl: "http://loader.invalid",
   cellId: "cell-rt",
   loaderKey: "rt-cell-key-0123456789abcdef",
   bridgeBaseUrl: "http://cell.invalid/api/app-bridge",
-  bundles: new Map(),
 }
 
 type Step =

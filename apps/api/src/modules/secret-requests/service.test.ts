@@ -150,12 +150,12 @@ describe("secret requests: completion is derived from the store", () => {
   })
 
   it("connection_credentials: saved, with no hint, after an org-owned account is stored", async () => {
-    const row = await ask({ kind: "connection_credentials", app: "gitlab", connection: "gitlab" })
+    const row = await ask({ kind: "connection_credentials", app: "test", connection: "service" })
     await expectNothingStored(row.id)
 
     // A PERSONAL account (someone's own login) is not what was asked for.
     const member = await minimal.person(orgId)
-    const personal = await app.request("/api/connections/gitlab/gitlab/credentials", {
+    const personal = await app.request("/api/connections/test/service/credentials", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -169,7 +169,7 @@ describe("secret requests: completion is derived from the store", () => {
     expect(personal.status).toBe(201)
     await expectNothingStored(row.id)
 
-    const org = await req("/api/connections/gitlab/gitlab/credentials", {
+    const org = await req("/api/connections/test/service/credentials", {
       method: "POST",
       body: { mode: "org", credentials: { token: "glpat-org-secret", group: "acme" } },
     })
@@ -182,19 +182,19 @@ describe("secret requests: completion is derived from the store", () => {
   it("connection_credentials, mode personal: saved after the requester's OWN account is stored", async () => {
     const row = await ask({
       kind: "connection_credentials",
-      app: "gitlab",
-      connection: "gitlab",
+      app: "test",
+      connection: "service",
       mode: "personal",
     })
     // The organization's shared account is not the person's own mailbox or login.
-    const org = await req("/api/connections/gitlab/gitlab/credentials", {
+    const org = await req("/api/connections/test/service/credentials", {
       method: "POST",
       body: { mode: "org", credentials: { token: "glpat-org-2", group: "acme" } },
     })
     expect(org.status).toBe(201)
     await expectNothingStored(row.id)
 
-    const own = await req("/api/connections/gitlab/gitlab/credentials", {
+    const own = await req("/api/connections/test/service/credentials", {
       method: "POST",
       body: { mode: "personal", credentials: { token: "glpat-own", group: "acme" } },
     })
@@ -289,14 +289,14 @@ describe("secret requests: completion is derived from the store", () => {
   })
 
   it("an org credential already stored when asked is not a completion: 409 until a new write", async () => {
-    const first = await req("/api/connections/gitlab/gitlab/credentials", {
+    const first = await req("/api/connections/test/service/credentials", {
       method: "POST",
       body: { mode: "org", credentials: { token: "glpat-stored-before", group: "acme" } },
     })
     expect(first.status).toBe(201)
-    const row = await ask({ kind: "connection_credentials", app: "gitlab", connection: "gitlab" })
+    const row = await ask({ kind: "connection_credentials", app: "test", connection: "service" })
     await expectNothingStored(row.id)
-    await req("/api/connections/gitlab/gitlab/credentials", {
+    await req("/api/connections/test/service/credentials", {
       method: "POST",
       body: { mode: "org", credentials: { token: "glpat-stored-after", group: "acme" } },
     })

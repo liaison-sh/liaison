@@ -5,7 +5,7 @@
  * The connector reads the connection's manifest declaration from
  * `connectionConfigRegistry` (warmed by `ensureAppsForOrg`, which `ensureOrg`
  * runs post-commit) and drives it generically:
- *  - `type:credentials` (gitlab: fields token+group, NO identifierVar) → validate
+ *  - `type:credentials` (the test app's `service`: fields token+group, NO identifierVar) → validate
  *    supplied creds, derive identifier from `connection.identifier`, 4-key
  *    precheck, `createCredentialConnection` (ownerType:'org'). Re-run → NO new
  *    row. Missing a required field → clean error, no row. Creds-changed →
@@ -76,25 +76,25 @@ async function countActive(
 }
 
 describe("generic connector (Task 11)", () => {
-  test("credentials connector (gitlab): valid creds → org-owned row + derived identifier; re-run no dup", async () => {
+  test("credentials connector (test/service): valid creds → org-owned row + derived identifier; re-run no dup", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const spec = {
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { token: "glpat-secret-1", group },
     }
 
-    const r1 = await provisionConnection(ctx, "gitlab", spec)
+    const r1 = await provisionConnection(ctx, "test", spec)
     expect(r1.connected).toBe(true)
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+    expect(await countActive(orgId, "test", "service", group)).toBe(1)
 
     // ownerType:'org' on the stored row.
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT owner_type, identifier FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'gitlab' AND connection_name = 'gitlab'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'test' AND connection_name = 'service'
           AND identifier = ${group} AND status = 'active'
       `),
     )
@@ -103,9 +103,9 @@ describe("generic connector (Task 11)", () => {
     expect(row.identifier).toBe(group)
 
     // Re-run with identical creds → unchanged, NO new row (count==1).
-    const r2 = await provisionConnection(ctx, "gitlab", spec)
+    const r2 = await provisionConnection(ctx, "test", spec)
     expect(r2.connected).toBe(true)
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+    expect(await countActive(orgId, "test", "service", group)).toBe(1)
   })
 
   test("no acting person (no admin section, no active admin) → clean error naming `admin`, no row", async () => {
@@ -119,31 +119,31 @@ describe("generic connector (Task 11)", () => {
     ctx.orgId = orgId
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const spec = {
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { token: "glpat-secret-1", group },
     }
 
-    const err = await provisionConnection(ctx, "gitlab", spec).catch((e: unknown) => e)
+    const err = await provisionConnection(ctx, "test", spec).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ConfigError)
     expect(String(err)).toContain("`admin` section")
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
+    expect(await countActive(orgId, "test", "service", group)).toBe(0)
   })
 
   test("missing required credentialField → clean error, no row", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
-    // gitlab requires `token` — omit it.
+    // the connection requires `token` — omit it.
     const spec = {
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { group },
     }
 
-    await expect(provisionConnection(ctx, "gitlab", spec)).rejects.toBeInstanceOf(ConfigError)
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
+    await expect(provisionConnection(ctx, "test", spec)).rejects.toBeInstanceOf(ConfigError)
+    expect(await countActive(orgId, "test", "service", group)).toBe(0)
   })
 
   test("ALL-empty credentials (secrets not pasted yet) → pending skip, no error, no row", async () => {
@@ -152,18 +152,18 @@ describe("generic connector (Task 11)", () => {
     // config is listed with every app — the connector must SKIP (pending), not
     // hard-fail, so the file can be applied incrementally (oauth convention).
     const spec = {
-      name: "gitlab",
+      name: "service",
       identifier: "",
       ownerType: "org" as const,
       credentials: { token: "", group: "" },
     }
 
-    const r = await provisionConnection(ctx, "gitlab", spec)
+    const r = await provisionConnection(ctx, "test", spec)
     expect(r.connected).toBeFalsy()
     expect(r.pending?.kind).toBe("credentials")
-    expect(r.pending?.app).toBe("gitlab")
-    expect(r.pending?.connection).toBe("gitlab")
-    expect(await countActive(orgId, "gitlab", "gitlab", "")).toBe(0)
+    expect(r.pending?.app).toBe("test")
+    expect(r.pending?.connection).toBe("service")
+    expect(await countActive(orgId, "test", "service", "")).toBe(0)
   })
 
   test("oauth2 connector (google-drive/drive) → pending, no write", async () => {
@@ -246,29 +246,29 @@ describe("generic connector (Task 11)", () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const spec1 = {
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { token: "glpat-OLD", group },
     }
-    await provisionConnection(ctx, "gitlab", spec1)
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+    await provisionConnection(ctx, "test", spec1)
+    expect(await countActive(orgId, "test", "service", group)).toBe(1)
 
     const spec2 = {
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { token: "glpat-NEW", group },
     }
-    const r2 = await provisionConnection(ctx, "gitlab", spec2)
+    const r2 = await provisionConnection(ctx, "test", spec2)
     expect(r2.connected).toBe(true)
 
     // Still exactly one ACTIVE row by the 4-key.
-    expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+    expect(await countActive(orgId, "test", "service", group)).toBe(1)
 
     // The active row carries the NEW token.
     const creds = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", group, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", group, {
         actorType: "system",
       }),
     )
@@ -334,20 +334,20 @@ describe("generic connector (Task 11)", () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const spec = {
-      name: "gitlab",
+      name: "service",
       ownerType: "org" as const,
       credentials: { token: "glpat-noid-1", group },
     }
-    const r1 = await provisionConnection(ctx, "gitlab", spec)
+    const r1 = await provisionConnection(ctx, "test", spec)
     expect(r1.connected).toBe(true)
     expect(r1.identifier).toBe(orgId)
-    expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(1)
-    const r2 = await provisionConnection(ctx, "gitlab", spec)
-    expect(r2.unchanged ?? []).toContain("apps.gitlab.connection")
-    expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(1)
+    expect(await countActive(orgId, "test", "service", orgId)).toBe(1)
+    const r2 = await provisionConnection(ctx, "test", spec)
+    expect(r2.unchanged ?? []).toContain("apps.test.connection")
+    expect(await countActive(orgId, "test", "service", orgId)).toBe(1)
     // The read-only plan resolves the same account.
-    expect(await planConnection(ctx, orgId, "gitlab", spec)).toEqual([
-      "app 'gitlab' connection 'gitlab' unchanged",
+    expect(await planConnection(ctx, orgId, "test", spec)).toEqual([
+      "app 'test' connection 'service' unchanged",
     ])
   })
 
@@ -355,19 +355,19 @@ describe("generic connector (Task 11)", () => {
   // no sensible default, so the error names the missing field.
   test("multiInstance connection without identifier → ConfigError naming 'identifier', no row", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
-    const key = [orgId, "gitlab", "gitlab"] as const
+    const key = [orgId, "test", "service"] as const
     const decl = connectionConfigRegistry.get([...key])
     expect(decl).toBeDefined()
     try {
       connectionConfigRegistry.set([...key], { ...decl!, multiInstance: true })
-      const err = await provisionConnection(ctx, "gitlab", {
-        name: "gitlab",
+      const err = await provisionConnection(ctx, "test", {
+        name: "service",
         ownerType: "org" as const,
         credentials: { token: "glpat-mi", group: "g" },
       }).catch((e) => e)
       expect(err).toBeInstanceOf(ConfigError)
       expect(String(err.message)).toContain("'identifier'")
-      expect(await countActive(orgId, "gitlab", "gitlab", orgId)).toBe(0)
+      expect(await countActive(orgId, "test", "service", orgId)).toBe(0)
     } finally {
       connectionConfigRegistry.set([...key], decl!)
     }
@@ -379,44 +379,44 @@ describe("generic connector (Task 11)", () => {
   test("an explicit identifier wins over a newly declared identifierVar: one account, updated", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
-    const key = [orgId, "gitlab", "gitlab"] as const
+    const key = [orgId, "test", "service"] as const
     const decl = connectionConfigRegistry.get([...key])
     expect(decl).toBeDefined()
     const spec = (token: string) => ({
-      name: "gitlab",
+      name: "service",
       identifier: "default",
       ownerType: "org" as const,
       credentials: { token, group },
     })
     // Stored before the manifest derived its identifier.
-    await provisionConnection(ctx, "gitlab", spec("glpat-OLD"))
-    expect(await countActive(orgId, "gitlab", "gitlab", "default")).toBe(1)
+    await provisionConnection(ctx, "test", spec("glpat-OLD"))
+    expect(await countActive(orgId, "test", "service", "default")).toBe(1)
     try {
       connectionConfigRegistry.set([...key], { ...decl!, identifierVar: "group" })
-      const r = await provisionConnection(ctx, "gitlab", spec("glpat-NEW"))
+      const r = await provisionConnection(ctx, "test", spec("glpat-NEW"))
       expect(r.connected).toBe(true)
-      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(0)
-      expect(await countActive(orgId, "gitlab", "gitlab", "default")).toBe(1)
+      expect(await countActive(orgId, "test", "service", group)).toBe(0)
+      expect(await countActive(orgId, "test", "service", "default")).toBe(1)
       const creds = await withPrivilegedDb(orgId, "t", (tx) =>
-        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", "default", {
+        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", "default", {
           actorType: "system",
         }),
       )
       expect(creds.token).toBe("glpat-NEW")
       // With no explicit identifier, the declared field still names the account.
-      const derived = await provisionConnection(ctx, "gitlab", {
-        name: "gitlab",
+      const derived = await provisionConnection(ctx, "test", {
+        name: "service",
         ownerType: "org" as const,
         credentials: { token: "glpat-NEW", group },
       })
       expect(derived.connected).toBe(true)
-      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+      expect(await countActive(orgId, "test", "service", group)).toBe(1)
     } finally {
       connectionConfigRegistry.set([...key], decl!)
     }
   })
-  // A connection declaring a URL beside its secret (GitLab's default
-  // group: `group` is a text field, `token` a password field). A rename
+  // A connection declaring a setting beside its secret (the test app's `service`:
+  // `group` is a text field, `token` a password field). A rename
   // changes only the group: apply must write it and say WHICH fields moved, naming
   // the secret fields without ever printing a value.
   test("a changed non-secret setting (the URL) is written and reported by field name", async () => {
@@ -424,29 +424,29 @@ describe("generic connector (Task 11)", () => {
     const logs: string[] = []
     ctx.log = (line: string) => logs.push(line)
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    const base = { name: "gitlab", identifier, ownerType: "org" as const }
-    await provisionConnection(ctx, "gitlab", {
+    const base = { name: "service", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "test", {
       ...base,
       credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
 
-    const same = await provisionConnection(ctx, "gitlab", {
+    const same = await provisionConnection(ctx, "test", {
       ...base,
       credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
-    expect(same.unchanged).toEqual(["apps.gitlab.connection"])
+    expect(same.unchanged).toEqual(["apps.test.connection"])
     expect(same.changed).toBeUndefined()
 
-    const moved = await provisionConnection(ctx, "gitlab", {
+    const moved = await provisionConnection(ctx, "test", {
       ...base,
       credentials: { group: "team-new", token: "tok-SECRET-1" },
     })
     expect(moved.connected).toBe(true)
     expect(moved.unchanged).toBeUndefined()
-    expect(moved.changed).toEqual(["apps.gitlab.connection.group"])
-    expect(await countActive(orgId, "gitlab", "gitlab", identifier)).toBe(1)
+    expect(moved.changed).toEqual(["apps.test.connection.group"])
+    expect(await countActive(orgId, "test", "service", identifier)).toBe(1)
     const stored = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", identifier, {
         actorType: "system",
       }),
     )
@@ -454,11 +454,11 @@ describe("generic connector (Task 11)", () => {
     expect(stored.token).toBe("tok-SECRET-1")
     expect(logs.join("\n")).toContain("group")
 
-    const rotated = await provisionConnection(ctx, "gitlab", {
+    const rotated = await provisionConnection(ctx, "test", {
       ...base,
       credentials: { group: "team-new", token: "tok-SECRET-2" },
     })
-    expect(rotated.changed).toEqual(["apps.gitlab.connection.token"])
+    expect(rotated.changed).toEqual(["apps.test.connection.token"])
     // The non-secret setting shows old -> new; the secret is named only.
     expect(moved.fieldChanges).toEqual([
       {
@@ -481,78 +481,73 @@ describe("generic connector (Task 11)", () => {
   test("planConnection reports drift of an existing connection without writing", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    const base = { name: "gitlab", identifier, ownerType: "org" as const }
-    await provisionConnection(ctx, "gitlab", {
+    const base = { name: "service", identifier, ownerType: "org" as const }
+    await provisionConnection(ctx, "test", {
       ...base,
       credentials: { group: "team-old", token: "tok-SECRET-1" },
     })
 
     expect(
-      await planConnection(ctx, orgId, "gitlab", {
+      await planConnection(ctx, orgId, "test", {
         ...base,
         credentials: { group: "team-old", token: "tok-SECRET-1" },
       }),
-    ).toEqual(["app 'gitlab' connection 'gitlab' unchanged"])
+    ).toEqual(["app 'test' connection 'service' unchanged"])
 
-    const lines = await planConnection(ctx, orgId, "gitlab", {
+    const lines = await planConnection(ctx, orgId, "test", {
       ...base,
       credentials: { group: "team-new", token: "tok-SECRET-2" },
     })
     expect(lines).toEqual([
-      `update app 'gitlab' connection 'gitlab': group "team-old" -> "team-new", token (secret)`,
+      `update app 'test' connection 'service': group "team-old" -> "team-new", token (secret)`,
     ])
     expect(lines.join("\n")).not.toContain("tok-SECRET")
 
     // Nothing written: the stored row still holds the old values.
     const stored = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", identifier, {
         actorType: "system",
       }),
     )
     expect(stored).toEqual({ group: "team-old", token: "tok-SECRET-1" })
     // A new org (none yet) or a new connection plans nothing beyond "connect".
-    expect(await planConnection(ctx, "", "gitlab", base)).toEqual([])
+    expect(await planConnection(ctx, "", "test", base)).toEqual([])
   })
 
-  test("checkConnectionHealth runs the app's probe on the stored row; no probe is SKIPPED", async () => {
-    const { ctx } = await freshOrgWithAdmin()
+  test("checkConnectionHealth runs the app's verify check; an app without one is SKIPPED", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    await provisionConnection(ctx, "gitlab", {
-      name: "gitlab",
+    await provisionConnection(ctx, "test", {
+      name: "service",
       identifier,
       ownerType: "org",
       credentials: { group: "team", token: "tok-SECRET-1" },
     })
-    const seen: Record<string, string>[] = []
+    const seen: unknown[] = []
     const pass = await checkConnectionHealth(
       ctx,
-      {
-        gitlab: async (creds) => {
-          seen.push(creds)
-          return { identity: "gate ok" }
-        },
+      async (input) => {
+        seen.push(input)
+        return { identity: "gate ok" }
       },
-      "gitlab",
-      "gitlab",
-      identifier,
+      "test",
+      "service",
     )
     expect(pass).toEqual({ status: "PASS", identity: "gate ok" })
-    expect(seen[0]?.group).toBe("team")
+    // The check gets the app and the org, never the stored credential.
+    expect(seen).toEqual([{ orgId, appName: "test" }])
 
     const fail = await checkConnectionHealth(
       ctx,
-      {
-        gitlab: async () => {
-          throw new Error("HTTP 404 from gate.example.com")
-        },
+      async () => {
+        throw new Error("HTTP 404 from gate.example.com")
       },
-      "gitlab",
-      "gitlab",
-      identifier,
+      "test",
+      "service",
     )
     expect(fail).toEqual({ status: "FAIL", error: "HTTP 404 from gate.example.com" })
 
-    const skipped = await checkConnectionHealth(ctx, {}, "gitlab", "gitlab", identifier)
+    const skipped = await checkConnectionHealth(ctx, async () => null, "test", "service")
     expect(skipped.status).toBe("SKIPPED")
   })
 })

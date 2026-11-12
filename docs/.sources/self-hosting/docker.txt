@@ -281,7 +281,7 @@ LIAISON_RELEASE_CHANNEL, LIAISON_ALLOW_OLDER_IMAGE env -> deploy/docker-compose.
 LIAISON_RELEASE_CHANNEL values and default -> apps/api/src/lib/env.ts:72
 LIAISON_ALLOW_OLDER_IMAGE behaviour -> apps/api/src/db/schema-guard.ts:30
 quickstart --channel -> deploy/quickstart.sh:20
-LIAISON_WORKERS_CUSTOM_APPS=1 runs every custom app on the loader; the loader fetches its Worker module from /api/app-bridge/bundles/<sha256>, signed -> apps/api/src/lib/env.ts:1133 ; apps/api/src/modules/apps/workers/config.ts:1-30 ; apps/api/src/modules/apps/workers/bundle-route.ts:1-24
+The three loader variables run every installed sandboxed app on the loader, as the worker.js its package carried; the loader fetches it from /api/app-bridge/bundles/<sha256>, signed -> apps/api/src/lib/env.ts:1176 ; apps/api/src/modules/apps/workers/config.ts:1-21 ; apps/api/src/modules/apps/workers/bundle-route.ts:1-24
 LIAISON_CUSTOM_APPS on: org custom apps and the app builder; unset off when self-hosted, on when managed; instance installs and installed apps unaffected -> apps/api/src/lib/env.ts:1061 ; apps/api/src/lib/edition.ts:53 ; apps/api/src/modules/apps/install-routes.ts:265
 LIAISON_APP_FRAME_ORIGIN_TEMPLATE frames outside apps (and LIAISON_FRAMED_APPS first-party apps) on <app>--<org> of their own domain; empty = opaque frame; passed by compose -> apps/api/src/lib/env.ts:175 ; apps/api/src/lib/env.ts:188 ; deploy/docker-compose.yml:655 ; deploy/docker-compose.yml:657
 Tool search adds a meaning score to its word ranking -> apps/api/src/modules/agent/tools/tool-rank.ts:523

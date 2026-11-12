@@ -1581,7 +1581,8 @@ describe("invoicing manifest", () => {
     //   its replacement in one commit (both or neither).
     // 0.21.4: both 0.21.3, merged: the convert's local half and the month-end run's draft write and
     //   item issue hold no transaction either, each commits its writes in one batch.
-    expect(m.version).toBe("0.21.4")
+    // 0.21.5: both of the above, merged (main's 0.21.4: every package carries its Worker module).
+    expect(m.version).toBe("0.21.5")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

@@ -58,6 +58,20 @@ describe("freezeApp", () => {
     expect(list).toContain("bundle.js")
   })
 
+  it("packs worker.js beside bundle.js: the same handlers as a Worker module", async () => {
+    const { tarballPath } = await freezeApp({
+      appName: "example",
+      repoRoot: workDir,
+      outDir: workDir,
+    })
+    const list = spawnSync("tar", ["-tzf", tarballPath]).stdout.toString().split("\n")
+    expect(list).toContain("worker.js")
+    const worker = spawnSync("tar", ["-xzOf", tarballPath, "worker.js"]).stdout.toString()
+    expect(worker).toContain('from "cloudflare:workers"')
+    expect(worker).toContain("ping")
+    expect(worker).not.toMatch(/["']node:/)
+  })
+
   it("does NOT write bundle.js or ui.js into the source app dir (no source-tree pollution)", async () => {
     await freezeApp({ appName: "example", repoRoot: workDir, outDir: workDir })
     expect(existsSync(join(appDir, "bundle.js"))).toBe(false)

@@ -79,17 +79,17 @@ describe("credentials route: an account held by another owner", () => {
   afterAll(releaseTestLock)
 
   it("an org save of a connection that names no account never meets the saver's personal one", async () => {
-    const personal = await post(adminToken, "/api/connections/gitlab/gitlab/credentials", {
+    const personal = await post(adminToken, "/api/connections/test/service/credentials", {
       mode: "personal",
       credentials: { token: "glpat-personal", group: "acme" },
     })
     expect(personal.status).toBe(201)
-    const org = await post(adminToken, "/api/connections/gitlab/gitlab/credentials", {
+    const org = await post(adminToken, "/api/connections/test/service/credentials", {
       mode: "org",
       credentials: { token: "glpat-org", group: "acme" },
     })
     expect(org.status).toBe(201)
-    expect(await active("gitlab", "gitlab")).toEqual([
+    expect(await active("test", "service")).toEqual([
       { owner_type: "org", owner_id: null, identifier: orgId },
       { owner_type: "user", owner_id: adminId, identifier: adminId },
     ])

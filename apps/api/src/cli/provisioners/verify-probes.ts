@@ -1,45 +1,45 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * Per-app credential-verify probes for `liaison config verify`.
+ * The connection health check of `liaison config verify` and of the check
+ * `config apply` runs after it applied a connection.
  *
- * A probe drives ONE cheap authenticated read through the app's OWN adapter
- * (never a raw fetch/curl) using the credential map the caller already
- * resolved through `getCredentialsForConnection` (the same decrypt path the
- * app's tools use — see `~/modules/apps/connections/service.ts`). It returns
- * a non-secret `identity` string (e.g. the remote username) to prove the
- * credential is live, and MUST NEVER return or log the credential values
- * themselves.
- *
- * This is a REGISTRY, not a switch statement: an app with no entry here is
- * reported `SKIPPED (no verify probe)` by the driver, never a hard failure.
- * Adding a new connector's probe is a one-line addition to this map — no
- * driver changes.
+ * It is the app's own declarative `provisioning.verify` handler
+ * (app-provisioning.ts): one cheap authenticated read through the app's
+ * connection, run as an ordinary sandboxed run of the app, the credential
+ * added host-side by `ctx.fetch` auth. The CLI never decrypts the stored
+ * credential and holds no per-app probe code. An app that declares no
+ * `verify` handler is reported SKIPPED, never a failure.
  */
 
-import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
-
-/** Successful probe outcome — a non-secret identity string only. */
+/** Successful probe outcome: a non-secret identity string only. */
 export interface VerifyProbeResult {
   identity: string
 }
 
-/**
- * A per-app probe. `credentials` is the fully-decrypted credential map for
- * the connection being checked. Throw (with a message safe to print — no
- * secrets) on failure; the driver maps that to a FAIL result.
- */
-export type VerifyProbe = (credentials: Record<string, string>) => Promise<VerifyProbeResult>
-
-async function verifyGitlab(credentials: Record<string, string>): Promise<VerifyProbeResult> {
-  const token = credentials.token
-  if (!token) throw new Error("stored credential has no 'token' field")
-  // Same adapter the gitlab tools use (`makeGitlabFetchers`) — not a raw fetch.
-  const client = makeGitlabFetchers(async () => token)
-  const user = await client.getCurrentUser()
-  return { identity: user.username }
+export interface VerifyProbeInput {
+  orgId: string
+  appName: string
+  /** The app's `apps[].provision` block, when the config file has one. */
+  provision?: Record<string, unknown>
 }
 
-/** App name → verify probe. Sparse: an app with no entry is SKIPPED. */
-export const verifyProbeRegistry: Partial<Record<string, VerifyProbe>> = {
-  gitlab: verifyGitlab,
+/**
+ * Check one app's connection. Null: the app declares no live check. Throws
+ * (with a message safe to print, no secret) when the check fails.
+ */
+export type VerifyProbe = (input: VerifyProbeInput) => Promise<VerifyProbeResult | null>
+
+/** The production probe: the app's `provisioning.verify` handler. */
+export const appVerifyProbe: VerifyProbe = async ({ orgId, appName, provision }) => {
+  const { ensureAppsForOrg } = await import("~/modules/apps/init")
+  const { appSurfaceRegistry } = await import("~/modules/apps/app-surface")
+  const { runAppProvisioningVerify } = await import("~/modules/apps/app-provisioning")
+  await ensureAppsForOrg(orgId)
+  if (!appSurfaceRegistry.get([orgId, appName])?.provisioning?.verify) return null
+  const verified = await runAppProvisioningVerify({ orgId, appName, config: provision ?? {} })
+  if (!verified) return null
+  if (!verified.ok) {
+    throw new Error(verified.problems.join("; ") || `${appName} verify failed`)
+  }
+  return { identity: verified.identity ?? "ok" }
 }

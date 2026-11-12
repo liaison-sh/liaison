@@ -145,9 +145,14 @@ describe("ctx.db.batch", () => {
   })
 
   it("steps past numbers rows written another way already hold", async () => {
-    await sql.unsafe(
-      `INSERT INTO "${SCHEMA}".docs (org_id, series, number, number_int) VALUES ($1, 'C', 'C-0001', 1), ($1, 'C', 'C-0002', 2)`,
-      [TEST_ORG],
+    // Numbers written by hand, without the allocator (e.g. an imported history).
+    await bridge().db_batch(
+      JSON.stringify({
+        ops: [
+          { insert: "docs", data: { series: "C", number: "C-0001", number_int: 1 } },
+          { insert: "docs", data: { series: "C", number: "C-0002", number_int: 2 } },
+        ],
+      }),
     )
     const r = JSON.parse(await bridge().db_batch(issueSpec("C"))) as { sequence: { value: number } }
     expect(r.sequence.value).toBe(3)

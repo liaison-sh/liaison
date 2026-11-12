@@ -34,6 +34,15 @@
  * in the database): a log entry or a key added this way is never lost to a
  * writer that changed the row between the app's read and this write.
  *
+ * An `update`, `delete` or `updateMany` may carry `expect: { minRows?, maxRows? }`,
+ * a guard on the number of rows the op matched: when the count falls outside it,
+ * the whole batch rolls back (every op before it and the sequence values, which
+ * are rows of the same savepoint, so no number is used) and the call rejects with
+ * a `precondition_failed` error (HTTP 409) whose message names the op:
+ * `ctx.db.batch: precondition_failed at ops[2] (update subscriptions): expected
+ * at least 1 row, matched 0`. A mirror write that must find its row and the
+ * ledger entry it implies commit together this way, or not at all.
+ *
  * Every op goes through the same checks as its single-call twin (`ctx.db.insert`,
  * `update`, `delete`, `updateMany`): the app's own declared tables and fields,
  * the bridge's org, the run's RLS actor, refused on a read-only run.
@@ -43,6 +52,7 @@ import type { RlsClient } from "~/db"
 import { withReleasedSavepoint } from "~/db/savepoint"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { affectedRows } from "~/modules/apps/sandbox/bridge/db"
 import { snakeCase, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
 
 /** The most ops one batch may carry. */
@@ -52,6 +62,12 @@ export const MAX_SEQUENCE_SKIPS = 10_000
 
 type Row = Record<string, unknown>
 
+/** How many rows a guarded op must match; at least one bound, `minRows <= maxRows`. */
+export interface BatchExpect {
+  minRows?: number
+  maxRows?: number
+}
+
 export type BatchOp =
   | { insert: string; data: Row; as?: string }
   | {
@@ -60,9 +76,10 @@ export type BatchOp =
       data?: Row
       append?: Record<string, unknown[]>
       merge?: Record<string, Row>
+      expect?: BatchExpect
     }
-  | { delete: string; id: unknown }
-  | { updateMany: string; where: Row; data: Row }
+  | { delete: string; id: unknown; expect?: BatchExpect }
+  | { updateMany: string; where: Row; data: Row; expect?: BatchExpect }
 
 export interface BatchSequence {
   key: string
@@ -99,8 +116,65 @@ export class BatchSpecError extends Error {
   }
 }
 
+/** An op's `expect` guard did not hold: the batch rolled back (see the header). */
+export class BatchPreconditionError extends Error {
+  readonly code = "precondition_failed"
+  readonly status = 409
+  constructor(
+    readonly op: number,
+    kind: string,
+    entity: string,
+    expected: BatchExpect,
+    readonly matched: number,
+  ) {
+    super(
+      `ctx.db.batch: precondition_failed at ops[${op}] (${kind} ${entity}): expected ${describeExpect(expected)}, matched ${matched}`,
+    )
+    this.name = "BatchPreconditionError"
+  }
+}
+
+function rowsWord(n: number): string {
+  return `${n} ${n === 1 ? "row" : "rows"}`
+}
+
+function describeExpect(e: BatchExpect): string {
+  if (e.minRows !== undefined && e.minRows === e.maxRows) return `exactly ${rowsWord(e.minRows)}`
+  if (e.maxRows === undefined) return `at least ${rowsWord(e.minRows ?? 0)}`
+  if (e.minRows === undefined) return `at most ${rowsWord(e.maxRows)}`
+  return `${e.minRows} to ${rowsWord(e.maxRows)}`
+}
+
 function isObject(v: unknown): v is Row {
   return v !== null && typeof v === "object" && !Array.isArray(v)
+}
+
+function isCount(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0
+}
+
+/** The op's guard, checked; undefined when it has none. */
+function checkExpect(op: Row, where: string): BatchExpect | undefined {
+  if (op.expect === undefined) return undefined
+  if (typeof op.insert === "string") {
+    throw new BatchSpecError(
+      `${where}.expect applies to update, delete and updateMany (an insert writes one row or fails)`,
+    )
+  }
+  const e = op.expect
+  const shape = `${where}.expect is { minRows?, maxRows? }: counts of rows, at least one of them, minRows <= maxRows`
+  if (!isObject(e)) throw new BatchSpecError(shape)
+  const keys = Object.keys(e)
+  if (
+    keys.length === 0 ||
+    keys.some((k) => k !== "minRows" && k !== "maxRows") ||
+    (e.minRows !== undefined && !isCount(e.minRows)) ||
+    (e.maxRows !== undefined && !isCount(e.maxRows)) ||
+    (isCount(e.minRows) && isCount(e.maxRows) && e.minRows > e.maxRows)
+  ) {
+    throw new BatchSpecError(shape)
+  }
+  return e as BatchExpect
 }
 
 const SEQUENCE_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
@@ -141,6 +215,10 @@ function parseSpec(raw: unknown): BatchSpec {
   if (spec.ops.length > MAX_BATCH_OPS) {
     throw new BatchSpecError(`at most ${MAX_BATCH_OPS} ops per batch`)
   }
+  // Guards are checked before anything runs, so a malformed one writes nothing.
+  for (const [i, op] of (spec.ops as unknown[]).entries()) {
+    if (isObject(op)) checkExpect(op, `ops[${i}]`)
+  }
   if (spec.sequence !== undefined) checkSequence(spec.sequence, "sequence")
   if (spec.sequences !== undefined) {
     if (spec.sequence !== undefined) {
@@ -162,7 +240,7 @@ function parseSpec(raw: unknown): BatchSpec {
 
 export function createBatchMethods(
   ctx: BridgeContext,
-  dbMethodsOn: (txDb: RlsClient) => Record<string, any>,
+  dbMethodsOn: (txDb: RlsClient, onRowCount: (rows: number) => void) => Record<string, any>,
 ): { db_batch: (specJson: string) => Promise<string> } {
   return {
     db_batch: async (specJson: string): Promise<string> => {
@@ -177,7 +255,11 @@ export function createBatchMethods(
       if (spec.sequence || spec.sequences) ctx.requireCapability("sequences.allocate")
       const result = await withReleasedSavepoint(ctx.txDb, async (sp) => {
         const tx = sp as unknown as RlsClient
-        const db = dbMethodsOn(tx)
+        // The rows the last db_update / db_delete matched, for `expect`.
+        let lastRowCount = 0
+        const db = dbMethodsOn(tx, (rows) => {
+          lastRowCount = rows
+        })
         const out: BatchResult = { rows: {} }
         const allocateOne = async (seq: BatchSequence): Promise<AllocatedValue> => {
           const value = await allocate(ctx, tx, db, seq)
@@ -246,6 +328,17 @@ export function createBatchMethods(
         for (const [i, op] of (spec.ops as unknown[]).entries()) {
           const where = `ops[${i}]`
           if (!isObject(op)) throw new BatchSpecError(`${where} is not an object`)
+          const expected = checkExpect(op, where)
+          /** The guard, on what the op matched. */
+          const enforceBatchExpect = (kind: string, entity: string, matched: number) => {
+            if (!expected) return
+            if (
+              (expected.minRows !== undefined && matched < expected.minRows) ||
+              (expected.maxRows !== undefined && matched > expected.maxRows)
+            ) {
+              throw new BatchPreconditionError(i, kind, entity, expected, matched)
+            }
+          }
           if (typeof op.insert === "string") {
             if (!isObject(op.data)) throw new BatchSpecError(`${where}.data is required`)
             const row = JSON.parse(
@@ -274,23 +367,31 @@ export function createBatchMethods(
             const changes =
               Object.keys(data).length + Object.keys(append).length + Object.keys(merge).length
             if (changes === 0) throw new BatchSpecError(`${where} changes nothing`)
+            // Both statements target the one row by id: the first one's count is the op's.
+            let matched: number | undefined
             if (Object.keys(data).length > 0) {
               await db.db_update(op.update, id, JSON.stringify(resolve(data, where)))
+              matched = lastRowCount
             }
-            await appendAndMerge(ctx, tx, op.update, id, {
+            const appended = await appendAndMerge(ctx, tx, op.update, id, {
               append: resolve(append, where) as Record<string, unknown[]>,
               merge: resolve(merge, where) as Record<string, Row>,
             })
+            enforceBatchExpect("update", op.update, matched ?? appended ?? 0)
           } else if (typeof op.delete === "string") {
             await db.db_delete(op.delete, idOf(op.id, where))
+            enforceBatchExpect("delete", op.delete, lastRowCount)
           } else if (typeof op.updateMany === "string") {
             if (!isObject(op.data) || !isObject(op.where)) {
               throw new BatchSpecError(`${where} needs where and data`)
             }
-            await db.db_updateMany(
-              op.updateMany,
-              JSON.stringify({ where: resolve(op.where, where), data: resolve(op.data, where) }),
-            )
+            const res = JSON.parse(
+              await db.db_updateMany(
+                op.updateMany,
+                JSON.stringify({ where: resolve(op.where, where), data: resolve(op.data, where) }),
+              ),
+            ) as { count?: number }
+            enforceBatchExpect("updateMany", op.updateMany, Number(res.count ?? 0))
           } else {
             throw new BatchSpecError(`${where} is none of insert, update, delete, updateMany`)
           }
@@ -336,19 +437,22 @@ async function allocate(
   return value
 }
 
-/** `field = field || value` for json fields, on the row as it is now (see the header). */
+/**
+ * `field = field || value` for json fields, on the row as it is now (see the header).
+ * Answers the rows it matched, or undefined when there was nothing to append or merge.
+ */
 async function appendAndMerge(
   ctx: BridgeContext,
   tx: RlsClient,
   entity: string,
   id: string,
   ops: { append: Record<string, unknown[]>; merge: Record<string, Row> },
-): Promise<void> {
+): Promise<number | undefined> {
   const sets = [
     ...Object.entries(ops.append).map(([field, value]) => ({ field, value, empty: "[]" })),
     ...Object.entries(ops.merge).map(([field, value]) => ({ field, value, empty: "{}" })),
   ]
-  if (sets.length === 0) return
+  if (sets.length === 0) return undefined
   // Declared fields only, as every write checks.
   ctx.validateFields(entity, Object.fromEntries(sets.map((x) => [x.field, x.value])))
   const table = drizzleSql.raw(`${quoteIdent(ctx.schemaName)}.${quoteIdent(entity)}`)
@@ -360,8 +464,10 @@ async function appendAndMerge(
     drizzleSql.raw(", "),
   )
   try {
-    await tx.execute(
-      drizzleSql`UPDATE ${table} SET ${setChunk}, updated_at = now() WHERE id = ${id} AND org_id = ${ctx.orgId}`,
+    return affectedRows(
+      await tx.execute(
+        drizzleSql`UPDATE ${table} SET ${setChunk}, updated_at = now() WHERE id = ${id} AND org_id = ${ctx.orgId}`,
+      ),
     )
   } catch (err) {
     throw withPgCause(err, "ctx.db.batch append/merge failed")

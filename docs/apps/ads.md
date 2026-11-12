@@ -113,6 +113,8 @@ Every tool marked "Always" files an approval and changes nothing until a person 
 | `metrics_list`, `metrics_run` | Compute deterministic metrics | No |
 | `audience_erasure_sweep` | Apply pending erasure requests to audiences | No |
 
+A large Meta insights read (a daily series below account level, or one with no date range) is a report Meta builds in the background. The first `insights_query` answers "not ready yet" and starts the report; asking again with the same question picks up that report instead of starting a new one, and answers its rows once Meta has finished. A report older than an hour is dropped and started again.
+
 The metrics that split DTC from B2B revenue (`blended_mer_dtc`, `blended_mer_total`, `cpa_by_sku_class`) recognise a B2B order by the order itself, with the store's own rule from [Store](store.md): placed for a Shopify B2B company, tagged with a B2B order tag, or, on older orders, carrying a B2B sku suffix. A B2B order counts as B2B as a whole, whatever its skus.
 
 Related: [Social](social.md), [Store](store.md), [Approve what agents do](../agents/approvals.md), [Agent tools](../reference/agent-tools.md), [App settings](../reference/app-settings.md).

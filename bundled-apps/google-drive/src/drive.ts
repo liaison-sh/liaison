@@ -37,7 +37,10 @@ export class DriveHttpError extends Error {
   }
 }
 
-export type DriveScopeCode = "SHARED_DRIVES_NOT_CHOSEN" | "OUTSIDE_SHARED_DRIVES" | "ORG_UPLOAD_UNSUPPORTED"
+export type DriveScopeCode =
+  | "SHARED_DRIVES_NOT_CHOSEN"
+  | "OUTSIDE_SHARED_DRIVES"
+  | "ORG_UPLOAD_UNSUPPORTED"
 
 /**
  * A read refused by the connection's scope. 404 for a file outside the chosen
@@ -98,7 +101,11 @@ function errorOf(status: number, body: string): DriveHttpError {
   let message = body.slice(0, 300)
   try {
     const parsed = JSON.parse(body) as {
-      error?: { message?: string; errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> }
+      error?: {
+        message?: string
+        errors?: Array<{ reason?: string }>
+        details?: Array<{ reason?: string }>
+      }
     }
     reason = parsed.error?.errors?.[0]?.reason ?? parsed.error?.details?.[0]?.reason
     if (parsed.error?.message) message = parsed.error.message
@@ -165,7 +172,13 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
 
   async function call(
     url: string,
-    opts: { method?: string; headers?: Record<string, string>; body?: unknown; convert?: "xlsx-text"; timeoutMs?: number } = {},
+    opts: {
+      method?: string
+      headers?: Record<string, string>
+      body?: unknown
+      convert?: "xlsx-text"
+      timeoutMs?: number
+    } = {},
   ): Promise<string> {
     const res = await ctx.fetch(url, { ...(opts as Record<string, unknown>), auth } as never)
     if (res.status < 200 || res.status >= 300) throw errorOf(res.status, res.body)
@@ -249,7 +262,11 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
         if (res.incompleteSearch) incompleteSearch = true
       }
       const nextPageToken = encodeFanout(next)
-      return { files, ...(incompleteSearch ? { incompleteSearch } : {}), ...(nextPageToken ? { nextPageToken } : {}) }
+      return {
+        files,
+        ...(incompleteSearch ? { incompleteSearch } : {}),
+        ...(nextPageToken ? { nextPageToken } : {}),
+      }
     },
     metadata: scopedMetadata,
     async text(file, exportMime) {
@@ -301,23 +318,38 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
       const body = await call(`${DRIVE_API}/files?${query({ fields: "id" })}`, {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=UTF-8" },
-        body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", appProperties }),
+        body: JSON.stringify({
+          name,
+          mimeType: "application/vnd.google-apps.folder",
+          appProperties,
+        }),
       })
       return (JSON.parse(body) as { id: string }).id
     },
     async upload(input) {
       writable()
-      const metadata = JSON.stringify({ name: input.name, mimeType: input.mimeType, parents: [input.parentId] })
+      const metadata = JSON.stringify({
+        name: input.name,
+        mimeType: input.mimeType,
+        parents: [input.parentId],
+      })
       const media =
         "fileId" in input.media
           ? { name: "media", fileId: input.media.fileId, contentType: input.mimeType }
           : { name: "media", base64: input.media.base64, contentType: input.mimeType }
-      const q = query({ uploadType: "multipart", fields: "id,webViewLink", supportsAllDrives: true })
+      const q = query({
+        uploadType: "multipart",
+        fields: "id,webViewLink",
+        supportsAllDrives: true,
+      })
       const body = await call(`${DRIVE_UPLOAD_API}/files?${q}`, {
         method: "POST",
         body: {
           related: true,
-          multipart: [{ name: "metadata", value: metadata, contentType: "application/json; charset=UTF-8" }, media],
+          multipart: [
+            { name: "metadata", value: metadata, contentType: "application/json; charset=UTF-8" },
+            media,
+          ],
         },
         timeoutMs: 120_000,
       })

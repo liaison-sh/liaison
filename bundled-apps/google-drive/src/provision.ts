@@ -14,7 +14,10 @@ interface DriveProvision {
   sharedDrives?: Array<{ account?: string; drives: string[] }>
 }
 
-export async function provisionDrive(p: ProvisionParams<DriveProvision>, ctx: DriveCtx): Promise<ProvisionResult> {
+export async function provisionDrive(
+  p: ProvisionParams<DriveProvision>,
+  ctx: DriveCtx,
+): Promise<ProvisionResult> {
   const changed: string[] = []
   for (const entry of p.config.sharedDrives ?? []) {
     try {
@@ -25,7 +28,8 @@ export async function provisionDrive(p: ProvisionParams<DriveProvision>, ctx: Dr
         )
       }
     } catch (err) {
-      if (err instanceof SharedDrivesError) throw new Error(`provision.sharedDrives: ${err.message}`)
+      if (err instanceof SharedDrivesError)
+        throw new Error(`provision.sharedDrives: ${err.message}`)
       throw err
     }
   }

@@ -121,7 +121,9 @@ export function driveModeOf(metadata: Record<string, unknown>): DriveMode {
   const granted = metadata.grantedOAuthScopes
   if (!Array.isArray(granted) || granted.length === 0) return "full"
   // Exact scope strings of the recorded grant (an array), never a substring.
-  return granted.some((s) => s === DRIVE_READONLY_SCOPE || s === DRIVE_FULL_SCOPE) ? "full" : "picked"
+  return granted.some((s) => s === DRIVE_READONLY_SCOPE || s === DRIVE_FULL_SCOPE)
+    ? "full"
+    : "picked"
 }
 
 /** What an account may read. */
@@ -139,7 +141,8 @@ export function accessOf(account: AppAccount): DriveAccess {
   }
 }
 
-const newest = (a: AppAccount, b: AppAccount) => (b.updatedAt > a.updatedAt ? 1 : b.updatedAt < a.updatedAt ? -1 : 0)
+const newest = (a: AppAccount, b: AppAccount) =>
+  b.updatedAt > a.updatedAt ? 1 : b.updatedAt < a.updatedAt ? -1 : 0
 
 /**
  * The account a person's call goes through: their own newest Drive account,
@@ -168,7 +171,8 @@ export async function sourceAccount(
   identifier?: string,
 ): Promise<AppAccount | null> {
   const all = await ctx.accounts.list(DRIVE_CONNECTION)
-  const match = (a: AppAccount) => !identifier || a.identifier.toLowerCase() === identifier.toLowerCase()
+  const match = (a: AppAccount) =>
+    !identifier || a.identifier.toLowerCase() === identifier.toLowerCase()
   const own = all.filter((a) => a.ownerType === "user" && match(a)).sort(newest)
   const org = all.filter((a) => a.ownerType === "org" && match(a)).sort(newest)
   return (personal ? (own[0] ?? org[0]) : (org[0] ?? own[0])) ?? null
@@ -220,7 +224,8 @@ export function driveTypeLabel(mimeType: string): string {
   if (mimeType.startsWith("video/")) return "video"
   if (mimeType.startsWith("audio/")) return "audio"
   if (mimeType.includes("wordprocessingml") || mimeType === "application/msword") return "Word"
-  if (mimeType.includes("presentationml") || mimeType === "application/vnd.ms-powerpoint") return "PowerPoint"
+  if (mimeType.includes("presentationml") || mimeType === "application/vnd.ms-powerpoint")
+    return "PowerPoint"
   if (mimeType === "application/vnd.ms-excel") return "Excel 97-2003 (.xls)"
   if (mimeType.startsWith("application/vnd.google-apps.")) {
     return `Google ${mimeType.slice("application/vnd.google-apps.".length)}`
@@ -233,6 +238,11 @@ export function driveTypeLabel(mimeType: string): string {
  * Drive's `fullText contains '…'` literal, so it can never break out of it.
  */
 export function sanitizeDriveQuery(query: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what is stripped
-  return query.replace(/[\\'\x00-\x1f\x7f]/g, "").trim().slice(0, 1000)
+  let out = ""
+  for (const ch of query) {
+    const code = ch.charCodeAt(0)
+    if (ch === "\\" || ch === "'" || code < 0x20 || code === 0x7f) continue
+    out += ch
+  }
+  return out.trim().slice(0, 1000)
 }

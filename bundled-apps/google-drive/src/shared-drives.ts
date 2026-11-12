@@ -7,9 +7,15 @@
 // account sync again now, so what they hold follows the new choice.
 
 import type { AppAccount } from "@liaison/app-sdk"
-import { appSource, type AppSourceView, type DriveCtx } from "./ctx"
+import { type AppSourceView, appSource, type DriveCtx } from "./ctx"
 import { driveClient } from "./drive"
-import { accessOf, DRIVE_CONNECTION, MAX_SHARED_DRIVES, type SharedDrive, sharedDrivesOf } from "./model"
+import {
+  accessOf,
+  DRIVE_CONNECTION,
+  MAX_SHARED_DRIVES,
+  type SharedDrive,
+  sharedDrivesOf,
+} from "./model"
 
 export class SharedDrivesError extends Error {
   constructor(
@@ -29,7 +35,12 @@ export interface OrgDriveAccountView {
 
 function viewOf(a: AppAccount): OrgDriveAccountView {
   const sharedDrives = sharedDrivesOf(a.metadata)
-  return { id: a.id, identifier: a.identifier, sharedDrives, needsSharedDrives: sharedDrives.length === 0 }
+  return {
+    id: a.id,
+    identifier: a.identifier,
+    sharedDrives,
+    needsSharedDrives: sharedDrives.length === 0,
+  }
 }
 
 async function orgAccounts(ctx: DriveCtx): Promise<AppAccount[]> {
@@ -39,7 +50,9 @@ async function orgAccounts(ctx: DriveCtx): Promise<AppAccount[]> {
 /** The org account a call is about: by its Google address, or the only one there is. */
 function pickAccount(rows: AppAccount[], identifier?: string): AppAccount {
   const found = identifier
-    ? rows.find((r) => r.identifier.toLowerCase() === identifier.toLowerCase() || r.id === identifier)
+    ? rows.find(
+        (r) => r.identifier.toLowerCase() === identifier.toLowerCase() || r.id === identifier,
+      )
     : rows.length === 1
       ? rows[0]
       : undefined
@@ -60,7 +73,10 @@ function pickAccount(rows: AppAccount[], identifier?: string): AppAccount {
 
 function requireManage(account: AppAccount): void {
   if (!account.canManage) {
-    throw new SharedDrivesError("forbidden", "Choosing the organization's shared drives needs google-drive:accounts:admin")
+    throw new SharedDrivesError(
+      "forbidden",
+      "Choosing the organization's shared drives needs google-drive:accounts:admin",
+    )
   }
 }
 
@@ -70,7 +86,10 @@ function refusal(err: unknown): { error: { code: string; message: string } } {
 }
 
 /** `shared_drives`: the org connections, their chosen drives, and (admin) what each can choose. */
-export async function driveSharedDrives(params: { account?: string }, ctx: DriveCtx): Promise<unknown> {
+export async function driveSharedDrives(
+  params: { account?: string },
+  ctx: DriveCtx,
+): Promise<unknown> {
   try {
     const rows = await orgAccounts(ctx)
     const canManage = rows.length > 0 && rows.every((r) => r.canManage)
@@ -81,7 +100,10 @@ export async function driveSharedDrives(params: { account?: string }, ctx: Drive
     const member = await driveClient(ctx, accessOf(row)).sharedDrives()
     return {
       ...state,
-      available: { account: viewOf(row), available: member.map((d) => ({ ...d, chosen: chosen.has(d.id) })) },
+      available: {
+        account: viewOf(row),
+        available: member.map((d) => ({ ...d, chosen: chosen.has(d.id) })),
+      },
     }
   } catch (err) {
     return refusal(err)
@@ -109,7 +131,8 @@ export async function chooseSharedDrives(
   const unknown: string[] = []
   for (const wanted of drives) {
     const w = wanted.trim()
-    const match = member.find((d) => d.id === w) ?? member.find((d) => d.name.toLowerCase() === w.toLowerCase())
+    const match =
+      member.find((d) => d.id === w) ?? member.find((d) => d.name.toLowerCase() === w.toLowerCase())
     if (!match) unknown.push(w)
     else if (!chosen.some((d) => d.id === match.id)) chosen.push(match)
   }
@@ -130,7 +153,10 @@ export async function chooseSharedDrives(
     })
     await resyncAccountSources(ctx, row.identifier)
   }
-  return { account: viewOf({ ...row, metadata: { ...row.metadata, sharedDrives: chosen } }), changed }
+  return {
+    account: viewOf({ ...row, metadata: { ...row.metadata, sharedDrives: chosen } }),
+    changed,
+  }
 }
 
 /** The folders that sync through an org account sync again now, against its new choice. */
@@ -155,7 +181,10 @@ export async function driveChooseSharedDrives(
   ctx: DriveCtx,
 ): Promise<unknown> {
   const drives = drivesParam(params.drives)
-  if (!drives) return { error: { code: "invalid_params", message: "drives (an array of ids or names) is required." } }
+  if (!drives)
+    return {
+      error: { code: "invalid_params", message: "drives (an array of ids or names) is required." },
+    }
   try {
     return await chooseSharedDrives(ctx, params.account, drives)
   } catch (err) {
@@ -180,7 +209,10 @@ interface ApprovalSummaryShape {
 
 /** Approval summary of `choose_shared_drives`: exactly which drives the team would see. */
 export function summarizeChooseSharedDrives(params: unknown): Promise<ApprovalSummaryShape> {
-  const p = params && typeof params === "object" && !Array.isArray(params) ? (params as Record<string, unknown>) : {}
+  const p =
+    params && typeof params === "object" && !Array.isArray(params)
+      ? (params as Record<string, unknown>)
+      : {}
   const drives = (Array.isArray(p.drives) ? p.drives : []).filter(
     (d): d is string => typeof d === "string" && d.trim() !== "",
   )

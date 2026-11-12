@@ -18,7 +18,11 @@
 // chose: with none chosen, or for a folder outside them, the pass upserts
 // nothing and prunes, so what the folder held is hidden until the choice covers it.
 
-import type { KnowledgeSyncDocument, KnowledgeSyncFolder, KnowledgeSyncResult } from "@liaison/app-sdk"
+import type {
+  KnowledgeSyncDocument,
+  KnowledgeSyncFolder,
+  KnowledgeSyncResult,
+} from "@liaison/app-sdk"
 import type { DriveCtx } from "./ctx"
 import { type DriveClient, type DriveFile, DriveScopeError, driveClient } from "./drive"
 import {
@@ -128,7 +132,11 @@ async function walk(
   const pushed: Frame[] = []
   for (const file of res.files) {
     if (file.mimeType === DRIVE_FOLDER_MIME) {
-      folders.push({ externalId: file.id, name: file.name || "Untitled folder", parentExternalId: frame.parent })
+      folders.push({
+        externalId: file.id,
+        name: file.name || "Untitled folder",
+        parentExternalId: frame.parent,
+      })
       pushed.push({ id: file.id, parent: file.id })
       continue
     }
@@ -137,9 +145,14 @@ async function walk(
     if (body !== null) documents.push(docOf(file, body, frame.parent))
   }
   const stack = res.nextPageToken ? cursor.stack : cursor.stack.slice(0, -1)
-  const next: Cursor = { stack: [...stack, ...pushed], ...(res.nextPageToken ? { pageToken: res.nextPageToken } : {}) }
+  const next: Cursor = {
+    stack: [...stack, ...pushed],
+    ...(res.nextPageToken ? { pageToken: res.nextPageToken } : {}),
+  }
   if (next.stack.length > MAX_STACK) {
-    throw new Error(`This Drive folder tree is too wide to sync (over ${MAX_STACK} folders waiting): sync a smaller folder.`)
+    throw new Error(
+      `This Drive folder tree is too wide to sync (over ${MAX_STACK} folders waiting): sync a smaller folder.`,
+    )
   }
   const done = next.stack.length === 0
   return {
@@ -152,9 +165,13 @@ async function walk(
 }
 
 /** `knowledgeSources.folder`: a Drive folder and its subfolders. */
-export async function syncDriveFolder(input: SyncInput, ctx: DriveCtx): Promise<KnowledgeSyncResult<Cursor>> {
+export async function syncDriveFolder(
+  input: SyncInput,
+  ctx: DriveCtx,
+): Promise<KnowledgeSyncResult<Cursor>> {
   const ref = typeof input.config.ref === "string" ? input.config.ref : ""
-  if (!/^[A-Za-z0-9_-]{4,128}$/.test(ref)) throw new Error("This Drive source names no folder (config.ref)")
+  if (!/^[A-Za-z0-9_-]{4,128}$/.test(ref))
+    throw new Error("This Drive source names no folder (config.ref)")
   const client = await clientFor(ctx, input)
   let cursor = cursorOf(input.cursor)
   try {
@@ -166,10 +183,13 @@ export async function syncDriveFolder(input: SyncInput, ctx: DriveCtx): Promise<
     return await walk(ctx, client, cursor)
   } catch (err) {
     if (err instanceof DriveScopeError) {
-      ctx.logger.warn("drive sync: outside the organization's chosen shared drives, content hidden", {
-        source: input.sourceId,
-        code: err.code,
-      })
+      ctx.logger.warn(
+        "drive sync: outside the organization's chosen shared drives, content hidden",
+        {
+          source: input.sourceId,
+          code: err.code,
+        },
+      )
       return HIDE
     }
     throw err
@@ -177,11 +197,14 @@ export async function syncDriveFolder(input: SyncInput, ctx: DriveCtx): Promise<
 }
 
 /** `knowledgeSources.picked`: what a person picked on one account. */
-export async function syncPickedFiles(input: SyncInput, ctx: DriveCtx): Promise<KnowledgeSyncResult<Cursor>> {
+export async function syncPickedFiles(
+  input: SyncInput,
+  ctx: DriveCtx,
+): Promise<KnowledgeSyncResult<Cursor>> {
   const client = await clientFor(ctx, input)
   const account = (await ctx.accounts.list("drive")).find((a) => a.id === client.access.accountId)
   const picked = account ? pickedItemsOf(account.metadata) : []
-  let cursor = cursorOf(input.cursor)
+  const cursor = cursorOf(input.cursor)
   try {
     if (!cursor) {
       // First page: the picked files themselves (no folder), and the picked folders pushed.
@@ -199,7 +222,11 @@ export async function syncPickedFiles(input: SyncInput, ctx: DriveCtx): Promise<
         }
         if (meta.trashed) continue
         if (meta.mimeType === DRIVE_FOLDER_MIME) {
-          folders.push({ externalId: meta.id, name: meta.name || item.name, parentExternalId: null })
+          folders.push({
+            externalId: meta.id,
+            name: meta.name || item.name,
+            parentExternalId: null,
+          })
           stack.push({ id: meta.id, parent: meta.id })
           continue
         }

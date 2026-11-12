@@ -18,7 +18,9 @@ export interface FetchCall {
 
 export type DriveAnswer = { status?: number; body: unknown }
 
-export function account(over: Partial<AppAccount> & { id: string; identifier: string }): AppAccount {
+export function account(
+  over: Partial<AppAccount> & { id: string; identifier: string },
+): AppAccount {
   return {
     ownerType: "user",
     ownerId: "user-1",
@@ -77,7 +79,10 @@ export function fakeCtx(opts: {
       }
       calls.push(call)
       const path = u.pathname.replace(/^\/(upload\/)?drive\/v3/, "")
-      const answer = opts.drive?.(path, u.searchParams, call) ?? { status: 404, body: { error: { message: "not found" } } }
+      const answer = opts.drive?.(path, u.searchParams, call) ?? {
+        status: 404,
+        body: { error: { message: "not found" } },
+      }
       return {
         status: answer.status ?? 200,
         headers: {},
@@ -107,7 +112,12 @@ export function fakeCtx(opts: {
     async files_importFromUrl(argsJson: string) {
       const args = JSON.parse(argsJson) as Record<string, unknown>
       imports.push(args)
-      return JSON.stringify({ id: "file-1", filename: args.filename, mimeType: args.mimeType, sizeBytes: 3 })
+      return JSON.stringify({
+        id: "file-1",
+        filename: args.filename,
+        mimeType: args.mimeType,
+        sizeBytes: 3,
+      })
     },
     async knowledge_appSource(paramsJson: string) {
       const p = JSON.parse(paramsJson) as Record<string, unknown>

@@ -5,8 +5,14 @@
 // folder), and the export slot. Every Drive call goes through `driveClient`
 // (drive.ts), which enforces the account's read scope.
 
-import { type DriveClient, DriveHttpError, type DriveFile, driveClient, scopeRefusal } from "./drive"
 import type { DriveCtx } from "./ctx"
+import {
+  type DriveClient,
+  type DriveFile,
+  DriveHttpError,
+  driveClient,
+  scopeRefusal,
+} from "./drive"
 import {
   accessOf,
   driveModeOf,
@@ -71,7 +77,9 @@ export interface SearchHit {
   webViewLink?: string
 }
 
-const hitOf = (f: Pick<DriveFile, "id" | "name" | "mimeType" | "modifiedTime" | "webViewLink">): SearchHit => ({
+const hitOf = (
+  f: Pick<DriveFile, "id" | "name" | "mimeType" | "modifiedTime" | "webViewLink">,
+): SearchHit => ({
   driveFileId: f.id,
   name: f.name,
   mimeType: f.mimeType,
@@ -79,7 +87,11 @@ const hitOf = (f: Pick<DriveFile, "id" | "name" | "mimeType" | "modifiedTime" | 
   ...(f.webViewLink ? { webViewLink: f.webViewLink } : {}),
 })
 
-async function searchDrive(client: DriveClient, safeQuery: string, limit: number | undefined): Promise<SearchHit[]> {
+async function searchDrive(
+  client: DriveClient,
+  safeQuery: string,
+  limit: number | undefined,
+): Promise<SearchHit[]> {
   // Name as well as content: Drive's fullText does not match folders, and a
   // folder the person names must be findable (to add it to Knowledge).
   const res = await client.list({
@@ -93,16 +105,27 @@ async function searchDrive(client: DriveClient, safeQuery: string, limit: number
 }
 
 /** The picked items of the person's accounts in picked mode (theirs and the org's). */
-export async function pickedForPerson(ctx: DriveCtx): Promise<{ picked: boolean; items: PickedItem[] }> {
-  const accounts = (await ctx.accounts.list("drive")).filter((a) => driveModeOf(a.metadata) === "picked")
+export async function pickedForPerson(
+  ctx: DriveCtx,
+): Promise<{ picked: boolean; items: PickedItem[] }> {
+  const accounts = (await ctx.accounts.list("drive")).filter(
+    (a) => driveModeOf(a.metadata) === "picked",
+  )
   return {
     picked: accounts.length > 0,
-    items: mergePickedItems([], accounts.flatMap((a) => pickedItemsOf(a.metadata)), []),
+    items: mergePickedItems(
+      [],
+      accounts.flatMap((a) => pickedItemsOf(a.metadata)),
+      [],
+    ),
   }
 }
 
 /** `search`: files in the connected Drive whose name or content matches. */
-export async function driveSearch(params: { query?: string; limit?: number }, ctx: DriveCtx): Promise<unknown> {
+export async function driveSearch(
+  params: { query?: string; limit?: number },
+  ctx: DriveCtx,
+): Promise<unknown> {
   const client = await personClient(ctx)
   if (!client) return NOT_CONNECTED
   const safeQuery = sanitizeDriveQuery(params.query ?? "")
@@ -114,8 +137,12 @@ export async function driveSearch(params: { query?: string; limit?: number }, ct
       .split(/\s+/)
       .filter((w) => w !== "" && w !== "*")
     const named =
-      words.length === 0 ? mode.items : mode.items.filter((i) => words.some((w) => i.name.toLowerCase().includes(w)))
-    const files: SearchHit[] = named.map((i) => hitOf({ id: i.id, name: i.name, mimeType: i.mimeType }))
+      words.length === 0
+        ? mode.items
+        : mode.items.filter((i) => words.some((w) => i.name.toLowerCase().includes(w)))
+    const files: SearchHit[] = named.map((i) =>
+      hitOf({ id: i.id, name: i.name, mimeType: i.mimeType }),
+    )
     let searchError: string | undefined
     if (words.length > 0) {
       try {
@@ -191,21 +218,36 @@ export async function driveRead(params: { driveFileId?: string }, ctx: DriveCtx)
       }
     }
     if (!exportMime && meta.capabilities?.canDownload === false) {
-      return { error: { code: "not_downloadable", message: `File "${meta.name}" cannot be downloaded.` } }
+      return {
+        error: { code: "not_downloadable", message: `File "${meta.name}" cannot be downloaded.` },
+      }
     }
     try {
-      if (isXlsx) return { ...base, content: await client.workbookText(meta), contentMimeType: "text/csv" }
-      return { ...base, content: await client.text(meta, exportMime), contentMimeType: exportMime ?? mimeType }
+      if (isXlsx)
+        return { ...base, content: await client.workbookText(meta), contentMimeType: "text/csv" }
+      return {
+        ...base,
+        content: await client.text(meta, exportMime),
+        contentMimeType: exportMime ?? mimeType,
+      }
     } catch (err) {
       if (err instanceof DriveHttpError || !(err as { code?: string })?.code) {
         if (tooLarge(err)) {
-          return { error: { code: "file_too_large", message: `"${meta.name}" is too large to read as text (over 1 MB).` } }
+          return {
+            error: {
+              code: "file_too_large",
+              message: `"${meta.name}" is too large to read as text (over 1 MB).`,
+            },
+          }
         }
         throw err
       }
       if ((err as { code?: string }).code === "not_a_workbook") {
         return {
-          error: { code: "not_readable_as_text", message: `"${meta.name}" could not be read as a workbook: ${(err as Error).message}` },
+          error: {
+            code: "not_readable_as_text",
+            message: `"${meta.name}" could not be read as a workbook: ${(err as Error).message}`,
+          },
         }
       }
       throw err
@@ -214,7 +256,10 @@ export async function driveRead(params: { driveFileId?: string }, ctx: DriveCtx)
 }
 
 /** `import`: download a Drive file into Liaison as an attachable file (only its id comes back). */
-export async function driveImport(params: { driveFileId?: string }, ctx: DriveCtx): Promise<unknown> {
+export async function driveImport(
+  params: { driveFileId?: string },
+  ctx: DriveCtx,
+): Promise<unknown> {
   if (!params.driveFileId) return invalid("driveFileId is required.")
   const client = await personClient(ctx)
   if (!client) return NOT_CONNECTED
@@ -228,12 +273,15 @@ export async function driveImport(params: { driveFileId?: string }, ctx: DriveCt
       return {
         error: {
           code: "not_downloadable",
-          message: "Google Docs, Sheets, and Slides have no binary form and cannot be imported as a file attachment.",
+          message:
+            "Google Docs, Sheets, and Slides have no binary form and cannot be imported as a file attachment.",
         },
       }
     }
     if (meta.capabilities?.canDownload === false) {
-      return { error: { code: "not_downloadable", message: `File "${meta.name}" cannot be downloaded.` } }
+      return {
+        error: { code: "not_downloadable", message: `File "${meta.name}" cannot be downloaded.` },
+      }
     }
     const filename = meta.name || "drive-file"
     // The file's parent: a row of the person's own (personal rows: only they see it).
@@ -310,11 +358,19 @@ export function mapDrive403(err: DriveHttpError): ToolError {
     }
   }
   if (RATE_REASONS.has(reason)) {
-    return { error: { code: "drive_rate_limited", message: `Google Drive rate limit hit (${reason}): wait a minute and retry the upload.` } }
+    return {
+      error: {
+        code: "drive_rate_limited",
+        message: `Google Drive rate limit hit (${reason}): wait a minute and retry the upload.`,
+      },
+    }
   }
   if (SCOPE_REASONS.has(reason) || /scope/i.test(err.message) || !reason) return SCOPE_MISSING
   return {
-    error: { code: "drive_permission_denied", message: `Google Drive refused the write (403, reason: ${reason}). ${err.message}` },
+    error: {
+      code: "drive_permission_denied",
+      message: `Google Drive refused the write (403, reason: ${reason}). ${err.message}`,
+    },
   }
 }
 
@@ -338,7 +394,10 @@ export async function driveUpload(
     const compact = (params.contentBase64 as string).replace(/\s+/g, "")
     if (compact.length > Math.ceil((UPLOAD_BASE64_CAP_BYTES * 4) / 3) + 4) {
       return {
-        error: { code: "file_too_large", message: "contentBase64 decodes to more than the 5 MB cap: pass sourceFileId instead." },
+        error: {
+          code: "file_too_large",
+          message: "contentBase64 decodes to more than the 5 MB cap: pass sourceFileId instead.",
+        },
       }
     }
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) {
@@ -350,7 +409,8 @@ export async function driveUpload(
   if (!client) return NOT_CONNECTED
   const mimeType = params.mimeType || "application/octet-stream"
   const name = params.name
-  const mintFolder = () => client.createFolder(REPORTS_FOLDER_NAME, { [REPORTS_FOLDER_TAG_KEY]: "1" })
+  const mintFolder = () =>
+    client.createFolder(REPORTS_FOLDER_NAME, { [REPORTS_FOLDER_TAG_KEY]: "1" })
   try {
     let folderId = (await client.findTaggedFolder(REPORTS_FOLDER_TAG_KEY)) ?? (await mintFolder())
     let created: { id: string; webViewLink?: string }
@@ -362,13 +422,21 @@ export async function driveUpload(
       folderId = await mintFolder()
       created = await client.upload({ name, mimeType, parentId: folderId, media })
     }
-    return { fileId: created.id, name, ...(created.webViewLink ? { webViewLink: created.webViewLink } : {}), folderId }
+    return {
+      fileId: created.id,
+      name,
+      ...(created.webViewLink ? { webViewLink: created.webViewLink } : {}),
+      folderId,
+    }
   } catch (err) {
     const refused = scopeRefusal(err)
     if (refused) return refused
     if (err instanceof DriveHttpError && err.status === 403) {
       const mapped = mapDrive403(err)
-      ctx.logger.error("drive upload refused with 403", { reason: err.reason, code: mapped.error.code })
+      ctx.logger.error("drive upload refused with 403", {
+        reason: err.reason,
+        code: mapped.error.code,
+      })
       return mapped
     }
     const message = err instanceof Error ? err.message : String(err)
@@ -381,7 +449,12 @@ export async function driveUpload(
       }
     }
     if (/request_too_large|exceeds/.test(message)) {
-      return { error: { code: "file_too_large", message: `The file is larger than the upload cap (25 MB). ${message}` } }
+      return {
+        error: {
+          code: "file_too_large",
+          message: `The file is larger than the upload cap (25 MB). ${message}`,
+        },
+      }
     }
     throw err
   }
@@ -407,7 +480,17 @@ export async function exportGoogleDrive(
     }))
   if (params.format !== "csv") return rows
   const cell = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-  const columns = ["id", "connectionName", "identifier", "displayName", "status", "createdAt"] as const
-  const lines = [columns.join(","), ...rows.map((r) => columns.map((c) => cell(String(r[c]))).join(","))]
+  const columns = [
+    "id",
+    "connectionName",
+    "identifier",
+    "displayName",
+    "status",
+    "createdAt",
+  ] as const
+  const lines = [
+    columns.join(","),
+    ...rows.map((r) => columns.map((c) => cell(String(r[c]))).join(",")),
+  ]
   return `${lines.join("\n")}\n`
 }

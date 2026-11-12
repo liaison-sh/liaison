@@ -14,6 +14,9 @@ interface DisconnectEvent {
 
 export async function onAccountDisconnected(event: DisconnectEvent, ctx: DriveCtx): Promise<void> {
   if (event.data?.appName !== "google-drive" || typeof event.data.id !== "string") return
-  const result = await appSource<Record<string, unknown>>(ctx, { op: "purgeAccount", connectionId: event.data.id })
+  const result = await appSource<Record<string, unknown>>(ctx, {
+    op: "purgeAccount",
+    connectionId: event.data.id,
+  })
   ctx.logger.info("drive disconnect: synced content of the account deleted", result)
 }

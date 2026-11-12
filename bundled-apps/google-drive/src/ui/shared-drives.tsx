@@ -41,7 +41,9 @@ async function call<T>(tool: string, args: Record<string, unknown>): Promise<T> 
 
 const AccountDrives: Component<{ account: OrgAccount }> = (props) => {
   const [available, setAvailable] = createSignal<Drive[] | null>(null)
-  const [chosen, setChosen] = createSignal<Set<string>>(new Set(props.account.sharedDrives.map((d) => d.id)))
+  const [chosen, setChosen] = createSignal<Set<string>>(
+    new Set(props.account.sharedDrives.map((d) => d.id)),
+  )
   const [status, setStatus] = createSignal<string | null>(null)
 
   onMount(async () => {
@@ -63,7 +65,10 @@ const AccountDrives: Component<{ account: OrgAccount }> = (props) => {
   }
 
   return (
-    <div class="flex flex-col gap-2 rounded-md border border-border p-3" data-testid={`drive-shared-${props.account.id}`}>
+    <div
+      class="flex flex-col gap-2 rounded-md border border-border p-3"
+      data-testid={`drive-shared-${props.account.id}`}
+    >
       <span class="font-medium">{props.account.identifier}</span>
       <Show when={chosen().size === 0}>
         <span class="text-text-muted">{t("needsChoice")}</span>
@@ -116,7 +121,9 @@ export const DriveSharedDrives: Component = () => {
   return (
     <div class="flex flex-col gap-3 text-[13px]" data-testid="drive-shared-drives">
       <p class="text-text-muted">{t("sharedIntro")}</p>
-      <Show when={error()}>{(e) => <p class="text-danger">{t("loadFailed", { message: e() })}</p>}</Show>
+      <Show when={error()}>
+        {(e) => <p class="text-danger">{t("loadFailed", { message: e() })}</p>}
+      </Show>
       <Show when={state() && state()?.accounts.length === 0}>
         <p class="text-text-muted">{t("noOrgConnection")}</p>
       </Show>

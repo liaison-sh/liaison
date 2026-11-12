@@ -36,7 +36,9 @@ export interface DriveCtx extends AppContext {
 const WRITES = new Set(["ensure", "sync", "purgeAccount"])
 
 export async function appSource<T>(ctx: DriveCtx, params: Record<string, unknown>): Promise<T> {
-  const method = WRITES.has(String(params.op)) ? ctx.knowledge_appSourceWrite : ctx.knowledge_appSource
+  const method = WRITES.has(String(params.op))
+    ? ctx.knowledge_appSourceWrite
+    : ctx.knowledge_appSource
   if (!method) throw new Error("This server cannot manage an app's knowledge sources.")
   return JSON.parse(await method(JSON.stringify(params))) as T
 }

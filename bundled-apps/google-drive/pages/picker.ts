@@ -90,7 +90,8 @@ function open(): void {
     say("The Google Picker could not start. Close this window and try again.")
     return
   }
-  const view = () => new G.DocsView(G.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(true)
+  const view = () =>
+    new G.DocsView(G.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(true)
   const mine = view().setParent("root")
   const all = view()
   const shared = view().setEnableDrives(true)
@@ -103,10 +104,13 @@ function open(): void {
     .addView(shared)
     .enableFeature(G.Feature.MULTISELECT_ENABLED)
     .enableFeature(G.Feature.SUPPORT_DRIVES)
-    .setTitle(`Choose files for Liaison (${page.liaisonPage.connectionToken?.identifier ?? "Drive"})`)
+    .setTitle(
+      `Choose files for Liaison (${page.liaisonPage.connectionToken?.identifier ?? "Drive"})`,
+    )
     .setCallback(picked)
   // On the app's own origin the Picker answers that origin; an opaque origin has none to give.
-  if (page.location.origin && page.location.origin !== "null") builder = builder.setOrigin(page.location.origin)
+  if (page.location.origin && page.location.origin !== "null")
+    builder = builder.setOrigin(page.location.origin)
   builder.build().setVisible(true)
 }
 
@@ -128,7 +132,9 @@ function picked(data: { action: string; docs?: PickerDoc[] }): void {
   page.liaisonPage
     .call("savePicks", { add })
     .then(() => {
-      say(`Saved: Liaison now sees ${add.length} more item${add.length === 1 ? "" : "s"}. You can close this window.`)
+      say(
+        `Saved: Liaison now sees ${add.length} more item${add.length === 1 ? "" : "s"}. You can close this window.`,
+      )
       again.hidden = false
       page.setTimeout(() => {
         try {
@@ -151,7 +157,9 @@ again.addEventListener("click", () => {
 })
 
 if (!token) {
-  say("This Drive connection has no access right now: reconnect Google Drive in Liaison, then try again.")
+  say(
+    "This Drive connection has no access right now: reconnect Google Drive in Liaison, then try again.",
+  )
 } else {
   const loader = doc.createElement("script")
   loader.src = "https://apis.google.com/js/api.js"

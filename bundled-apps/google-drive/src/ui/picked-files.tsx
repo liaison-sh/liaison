@@ -111,14 +111,22 @@ export const DrivePickedFiles: Component = () => {
 
   return (
     <div class="flex flex-col gap-3 text-[13px]" data-testid="drive-picked-files">
-      <Show when={error()}>{(e) => <p class="text-danger">{t("loadFailed", { message: e() })}</p>}</Show>
+      <Show when={error()}>
+        {(e) => <p class="text-danger">{t("loadFailed", { message: e() })}</p>}
+      </Show>
       <For each={picked()}>
         {(account) => (
-          <div class="flex flex-col gap-2 rounded-md border border-border p-3" data-testid={`drive-picked-${account.id}`}>
+          <div
+            class="flex flex-col gap-2 rounded-md border border-border p-3"
+            data-testid={`drive-picked-${account.id}`}
+          >
             <p class="text-text-muted">{t("pickedIntro")}</p>
             <div class="flex items-center justify-between gap-2">
               <span class="font-medium">{account.identifier}</span>
-              <Show when={state()?.pickerConfigured} fallback={<span class="text-text-muted">{t("notConfigured")}</span>}>
+              <Show
+                when={state()?.pickerConfigured}
+                fallback={<span class="text-text-muted">{t("notConfigured")}</span>}
+              >
                 <button
                   type="button"
                   class="rounded-sm border border-border bg-surface px-3 py-1"
@@ -130,7 +138,9 @@ export const DrivePickedFiles: Component = () => {
               </Show>
             </div>
             <span data-testid="drive-picker-count">
-              {account.picked.length ? t("pickedCount", { count: account.picked.length }) : t("noPicks")}
+              {account.picked.length
+                ? t("pickedCount", { count: account.picked.length })
+                : t("noPicks")}
             </span>
             <Show when={account.sync}>
               {(sync) => (
@@ -162,7 +172,11 @@ export const DrivePickedFiles: Component = () => {
               </For>
             </ul>
             <For each={account.notImported}>
-              {(n) => <span class="text-text-muted">{t("notImported", { name: n.name, type: n.type })}</span>}
+              {(n) => (
+                <span class="text-text-muted">
+                  {t("notImported", { name: n.name, type: n.type })}
+                </span>
+              )}
             </For>
           </div>
         )}

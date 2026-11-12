@@ -12,7 +12,7 @@
 // the picks (`picker_state`) and removes one (`picker_remove`).
 
 import type { AppAccount } from "@liaison/app-sdk"
-import { appSource, type AppSourceView, type DriveCtx } from "./ctx"
+import { type AppSourceView, appSource, type DriveCtx } from "./ctx"
 import {
   DRIVE_CONNECTION,
   DRIVE_FOLDER_MIME,
@@ -39,12 +39,16 @@ export interface PickerConfig {
 export async function pickerConfig(ctx: DriveCtx): Promise<PickerConfig | null> {
   const apiKey = await ctx.config.get("pickerApiKey")
   const appId = await ctx.config.get("pickerAppId")
-  return typeof apiKey === "string" && apiKey && typeof appId === "string" && appId ? { apiKey, appId } : null
+  return typeof apiKey === "string" && apiKey && typeof appId === "string" && appId
+    ? { apiKey, appId }
+    : null
 }
 
 /** The accounts a person may pick on: their own, and the org's when they manage it. */
 async function pickableAccounts(ctx: DriveCtx): Promise<AppAccount[]> {
-  return (await ctx.accounts.list(DRIVE_CONNECTION)).filter((a) => a.ownerType === "user" || a.canManage)
+  return (await ctx.accounts.list(DRIVE_CONNECTION)).filter(
+    (a) => a.ownerType === "user" || a.canManage,
+  )
 }
 
 async function pickedSource(ctx: DriveCtx, account: AppAccount): Promise<AppSourceView | null> {
@@ -78,7 +82,11 @@ export async function pickerState(_params: unknown, ctx: DriveCtx): Promise<unkn
       picked,
       notImported: notImportedOf(picked),
       sync: source
-        ? { status: source.lastSyncStatus, documents: source.documents, lastError: source.lastError }
+        ? {
+            status: source.lastSyncStatus,
+            documents: source.documents,
+            lastError: source.lastError,
+          }
         : null,
     })
   }
@@ -87,23 +95,37 @@ export async function pickerState(_params: unknown, ctx: DriveCtx): Promise<unkn
 
 function accountOf(accounts: AppAccount[], ref: unknown): AppAccount | null {
   if (typeof ref !== "string") return null
-  return accounts.find((a) => a.id === ref || a.identifier.toLowerCase() === ref.toLowerCase()) ?? null
+  return (
+    accounts.find((a) => a.id === ref || a.identifier.toLowerCase() === ref.toLowerCase()) ?? null
+  )
 }
 
 /** `drive_picker`: the Drive mode of the person's accounts, and a page handle to pick files. */
 export async function drivePicker(params: { account?: string }, ctx: DriveCtx): Promise<unknown> {
   const accounts = await pickableAccounts(ctx)
   if (accounts.length === 0) {
-    return { error: { code: "not_connected", message: "No Google Drive connection: connect Drive first (Settings > Connectors > Google Drive)." } }
+    return {
+      error: {
+        code: "not_connected",
+        message:
+          "No Google Drive connection: connect Drive first (Settings > Connectors > Google Drive).",
+      },
+    }
   }
   const modes = accounts.map((a) => ({
     account: a.identifier,
     ownerType: a.ownerType,
     mode: driveModeOf(a.metadata),
-    pickedFiles: pickedItemsOf(a.metadata).map((i) => ({ driveFileId: i.id, name: i.name, mimeType: i.mimeType })),
+    pickedFiles: pickedItemsOf(a.metadata).map((i) => ({
+      driveFileId: i.id,
+      name: i.name,
+      mimeType: i.mimeType,
+    })),
   }))
   const pickable = accounts.filter((a) => driveModeOf(a.metadata) === "picked")
-  const target = params.account ? accountOf(pickable, params.account) : (pickable.find((a) => a.ownerType === "user") ?? pickable[0])
+  const target = params.account
+    ? accountOf(pickable, params.account)
+    : (pickable.find((a) => a.ownerType === "user") ?? pickable[0])
   if (!target) {
     return {
       accounts: modes,
@@ -122,7 +144,11 @@ export async function drivePicker(params: { account?: string }, ctx: DriveCtx): 
       },
     }
   }
-  const page = await ctx.pages.link("picker", { account: target.id, apiKey: config.apiKey, appId: config.appId })
+  const page = await ctx.pages.link("picker", {
+    account: target.id,
+    apiKey: config.apiKey,
+    appId: config.appId,
+  })
   return {
     accounts: modes,
     page,
@@ -138,7 +164,10 @@ async function savePickChange(
   const account = accountOf(await pickableAccounts(ctx), accountRef)
   if (!account) throw new PickError("not_found", "No Drive account of yours with this id")
   if (driveModeOf(account.metadata) !== "picked") {
-    throw new PickError("not_picked_mode", "This Drive account reads the whole Drive: there are no files to pick")
+    throw new PickError(
+      "not_picked_mode",
+      "This Drive account reads the whole Drive: there are no files to pick",
+    )
   }
   const picked = mergePickedItems(pickedItemsOf(account.metadata), change.add, change.remove)
   await ctx.accounts.setMetadata(account.id, { pickedItems: picked })
@@ -176,7 +205,10 @@ export async function savePicks(
 ): Promise<unknown> {
   const body = (p.body && typeof p.body === "object" ? p.body : {}) as { add?: unknown }
   const add = parsePickedItems(body.add)
-  if (!add) return { error: { code: "invalid_body", message: "add: 1 to 500 picked items {id, name, mimeType}" } }
+  if (!add)
+    return {
+      error: { code: "invalid_body", message: "add: 1 to 500 picked items {id, name, mimeType}" },
+    }
   try {
     return await savePickChange(ctx, p.params.account, { add, remove: [] })
   } catch (err) {
@@ -186,7 +218,10 @@ export async function savePicks(
 }
 
 /** `picker_remove`: Liaison stops seeing one picked item (the next sync removes it from Knowledge). */
-export async function pickerRemove(params: { account?: string; itemId?: string }, ctx: DriveCtx): Promise<unknown> {
+export async function pickerRemove(
+  params: { account?: string; itemId?: string },
+  ctx: DriveCtx,
+): Promise<unknown> {
   if (typeof params.itemId !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(params.itemId)) {
     return { error: { code: "invalid_params", message: "itemId is required" } }
   }

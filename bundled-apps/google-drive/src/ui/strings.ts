@@ -36,7 +36,8 @@ const FR: Record<keyof typeof EN, string> = {
     "Ce Drive est connecté avec un accès limité aux fichiers que vous choisissez. Liaison voit les fichiers et dossiers choisis ici, et les fichiers qu'il crée.",
   choose: "Choisir des fichiers",
   chooseFor: "Choisir des fichiers pour {{account}}",
-  popupBlocked: "Votre navigateur a bloqué la fenêtre. Autorisez les fenêtres pour Liaison et réessayez.",
+  popupBlocked:
+    "Votre navigateur a bloqué la fenêtre. Autorisez les fenêtres pour Liaison et réessayez.",
   openFailed: "Le sélecteur n'a pas pu s'ouvrir. Réessayez.",
   notConfigured:
     "Le sélecteur Google n'est pas configuré sur ce serveur : un administrateur renseigne sa clé d'API et son numéro de projet (pickerApiKey, pickerAppId).",
@@ -51,7 +52,8 @@ const FR: Record<keyof typeof EN, string> = {
     "La connexion Drive de l'organisation ne lit que les drives partagés choisis ici, jamais le Mon Drive de quelqu'un.",
   noOrgConnection: "L'organisation n'a pas de connexion Drive à elle.",
   needsChoice: "Aucun drive partagé choisi : Liaison ne lit aucun fichier de cette connexion.",
-  notMember: "Pour un drive partagé absent de cette liste, ajoutez-y {{account}} (n'importe quel rôle).",
+  notMember:
+    "Pour un drive partagé absent de cette liste, ajoutez-y {{account}} (n'importe quel rôle).",
   save: "Enregistrer",
   saved: "Enregistré",
   saveFailed: "Enregistrement impossible : {{message}}",

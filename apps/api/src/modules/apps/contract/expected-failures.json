@@ -1121,16 +1121,6 @@
   },
   {
     "app": "shopify",
-    "entry": "lint:src/lib/shopify-client.ts",
-    "reason": "wait"
-  },
-  {
-    "app": "shopify",
-    "entry": "lint:src/lib/timers.ts",
-    "reason": "wait"
-  },
-  {
-    "app": "shopify",
     "entry": "preflight:draft_orders_create",
     "reason": "no-fixture"
   },

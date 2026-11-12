@@ -9,12 +9,11 @@
 // every read / mutation / job / webhook path uses the same resolution
 // rules (previously duplicated across six modules).
 //
-// A fresh client is built on every call (binding the current `ctx.fetch`), but the bucket-aware throttle watermark (`nextEarliestCallAt`)
-// is persisted per (orgId, shopDomain) so back-pressure survives across calls
-// within the same org and shop — rebuilding the client must not reset the
-// watermark and defeat the throttle. Caching the whole client would instead pin
-// a stale per-invocation fetch closure. Watermarks
-// expire after 5 minutes.
+// A fresh client is built on every call (binding the current `ctx.fetch`).
+// The app keeps no state between runs: back-pressure lives in the platform's
+// shared per-connection limiter (manifest `connections.shop.limits`). A response
+// that reports a low GraphQL cost bucket pauses the shop there
+// (`ctx.limiter.pause`), so every run and process waits for it.
 import type { AppContext } from "@liaison/app-sdk"
 import { API_VERSION, SHOPIFY_DOMAIN_RE } from "./constants"
 import { type InstallMetadata, loadInstallMetadata } from "./install-metadata"
@@ -39,29 +38,6 @@ function isClientError(err: unknown): err is ClientError {
 }
 
 const SHOP_CONNECTION = "shop"
-const THROTTLE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-
-interface CachedWatermark {
-  /** Epoch-ms the next call may start (bucket-aware throttle watermark). */
-  at: number
-  expiresAt: number
-}
-
-// Module-level throttle-watermark cache, keyed by (orgId, shopDomain). A FRESH
-// `ShopifyClient` is built on every call so each invocation binds the current
-// `ctx.fetch` and offline token; only the bucket-aware throttle watermark is
-// persisted here so back-pressure survives across nearby tool calls. Module state
-// can outlive one run and be shared by every run the runtime keeps loaded, so an
-// entry is only ever read under its own org, a run without an org id neither
-// reads nor writes one, and expired entries are pruned on write. The value is a
-// timestamp: nothing about the shop or its data is kept.
-const throttleWatermarks = new Map<string, CachedWatermark>()
-
-function pruneExpiredWatermarks(now: number): void {
-  for (const [key, entry] of throttleWatermarks) {
-    if (entry.expiresAt <= now) throttleWatermarks.delete(key)
-  }
-}
 
 interface ConnAccount {
   /** `kernel.connected_accounts.id` — used as `install_metadata.connectionId`. */
@@ -260,11 +236,8 @@ export function shopFetchAuth(identifier: string): {
 /**
  * Build a Shopify client bound to the org's offline-token connection.
  * Throws `INSTALL_METADATA_MISSING` or `CONNECTION_MISSING` when prerequisites
- * are absent.
- *
- * The bucket-aware throttle watermark is persisted per `(orgId, shopDomain)` for
- * `THROTTLE_TTL_MS` so back-pressure survives across tool invocations — without
- * it, each fresh client would reset the watermark and negate the throttle.
+ * are absent. A low GraphQL cost bucket pauses the shop account in the shared
+ * limiter, so the throttle holds across runs without any module state.
  */
 export async function getShopifyClient(
   ctx: AppContext,
@@ -301,25 +274,15 @@ export async function getShopifyClient(
   const baseUrlOverride =
     typeof row?.apiBaseUrl === "string" && row.apiBaseUrl.length > 0 ? row.apiBaseUrl : undefined
 
-  // Restore the persisted throttle watermark (if still fresh) and keep it
-  // updated as this client makes calls, so back-pressure carries across
-  // invocations without caching the client's per-call fetch closure.
-  const orgId = typeof ctx.orgId === "string" && ctx.orgId.length > 0 ? ctx.orgId : null
-  const cacheKey = orgId ? `${orgId}:${domain.toLowerCase()}` : null
-  const cached = cacheKey ? throttleWatermarks.get(cacheKey) : undefined
-  const initialThrottleAt = cached && cached.expiresAt > Date.now() ? cached.at : 0
+  const limiter = (ctx as { limiter?: { pause?: AppContext["limiter"]["pause"] } }).limiter
   return new ShopifyClient({
     shop: domain.replace(/\.myshopify\.com$/i, ""),
     fetch: fetchImpl,
     baseUrlOverride,
-    initialThrottleAt,
     failFast: !!opts.timeoutMs,
-    onThrottleChange: (at) => {
-      if (!cacheKey) return
-      const now = Date.now()
-      pruneExpiredWatermarks(now)
-      throttleWatermarks.set(cacheKey, { at, expiresAt: now + THROTTLE_TTL_MS })
-    },
+    onThrottle: limiter?.pause
+      ? (ms) => limiter.pause!(SHOP_CONNECTION, ms, account.identifier)
+      : undefined,
   })
 }
 

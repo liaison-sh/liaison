@@ -5,7 +5,6 @@
 
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
-import { createPollPacer } from "../lib/timers"
 import {
   type PreflightResult,
   type ShopClient,
@@ -19,6 +18,7 @@ import {
   markExternalEffect,
   assertNoUserErrors,
   emitMutationEvent,
+  recordAwaitingOutput,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -543,32 +543,65 @@ interface BulkCreationStatus {
   failedCount: number | null
 }
 
-/** Poll the async bulk-creation job until `done`, bounded so a stuck job throws loudly instead of hanging
- *  the gated turn forever. Between polls the pacer waits 250 ms doubling to 2 s, within
- *  BULK_POLL_WAIT_BUDGET_MS in all, where the runtime has a timer; where it has none (a guest `setTimeout`
- *  is "not defined") the wait is a no-op and the pacing comes from the network round trip of
- *  `client.query` itself. Shopify's bulk-add of ≤200 redeem codes completes well inside the poll window.
- *  Returns the final status. */
-/** Total wait between bulk-creation polls: the tool declares no `timeoutMs`, so it runs under the host's
- *  tight default execution budget and most of that budget stays with the Shopify calls. */
-const BULK_POLL_WAIT_BUDGET_MS = 2_500
-
-async function pollBulkCreation(client: ShopClient, jobId: string): Promise<BulkCreationStatus> {
-  const pace = createPollPacer(BULK_POLL_WAIT_BUDGET_MS)
-  for (let i = 0; i < 60; i++) {
-    if (i > 0) await pace(i - 1)
-    const data = await client.query<{ discountRedeemCodeBulkCreation: BulkCreationStatus | null }>(
-      DISCOUNT_BULK_CREATION_STATUS,
-      { id: jobId },
-    )
-    const status = data.discountRedeemCodeBulkCreation
-    if (status?.done) return status
-  }
-  throw makeMutationError(
-    "BULK_CREATION_TIMEOUT",
-    `discounts_bulk_create: bulk code-creation job ${jobId} did not complete within the poll window`,
-    502,
+/** One look at the async bulk-creation job (never a wait): the tool and its `pollHandler` both ask once. */
+async function bulkCreationStatus(client: ShopClient, jobId: string): Promise<BulkCreationStatus | null> {
+  const data = await client.query<{ discountRedeemCodeBulkCreation: BulkCreationStatus | null }>(
+    DISCOUNT_BULK_CREATION_STATUS,
+    { id: jobId },
   )
+  return data.discountRedeemCodeBulkCreation
+}
+
+/** What the tool returns once the codes are in: read back from the store (the ground truth). */
+interface BulkCreateResult {
+  discountId: string
+  title: string
+  requestedCount: number
+  createdCount: number
+  codes: string[]
+}
+
+/** Throw when the finished bulk job dropped codes, then read the persisted codes back and emit. */
+async function finishBulkCreate(
+  ctx: AppContext,
+  client: ShopClient,
+  args: { discountId: string; requestedCount: number; fallbackTitle: string; status: BulkCreationStatus | null },
+): Promise<BulkCreateResult> {
+  if ((args.status?.failedCount ?? 0) > 0)
+    throw makeMutationError(
+      "BULK_CREATION_PARTIAL",
+      `discounts_bulk_create: ${args.status?.failedCount} of ${args.requestedCount - 1} bulk codes failed to import (likely a code collision); none of the batch can be trusted`,
+      502,
+    )
+  const back = await client.query<{
+    codeDiscountNode: {
+      id: string
+      codeDiscount: { __typename: string; title?: string; codes?: { nodes: { code: string }[] } }
+    } | null
+  }>(DISCOUNT_NODE_CODES, { id: args.discountId, first: Math.min(args.requestedCount + 5, 250) })
+  const persistedCodes = (back.codeDiscountNode?.codeDiscount?.codes?.nodes ?? []).map((n) => n.code)
+  const title = back.codeDiscountNode?.codeDiscount?.title ?? args.fallbackTitle
+
+  await emitMutationEvent(ctx, "discount", "bulk_created", args.discountId, {
+    discountId: args.discountId,
+    title,
+    createdCount: persistedCodes.length,
+  })
+  return {
+    discountId: args.discountId,
+    title,
+    requestedCount: args.requestedCount,
+    createdCount: persistedCodes.length,
+    codes: persistedCodes,
+  }
+}
+
+/** Where a bulk-create whose codes are still being added stands (the approval's external ref). */
+interface BulkCreateRef {
+  discount_id: string
+  bulk_creation_id: string
+  requested_count: number
+  title: string
 }
 
 /**
@@ -655,36 +688,54 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
     assertNoUserErrors(added.discountRedeemCodeBulkAdd as Record<string, unknown>, "discountRedeemCodeBulkAdd")
     const jobId = added.discountRedeemCodeBulkAdd.bulkCreation?.id
     if (!jobId) throw makeMutationError("SHOPIFY_EMPTY_PAYLOAD", "discounts_bulk_create: bulk-add returned no job id", 502)
-    const status = await pollBulkCreation(client, jobId)
-    if ((status.failedCount ?? 0) > 0)
-      throw makeMutationError(
-        "BULK_CREATION_PARTIAL",
-        `discounts_bulk_create: ${status.failedCount} of ${remaining.length} bulk codes failed to import (likely a code collision); none of the batch can be trusted`,
-        502,
-      )
+    // ONE look, never a wait in the run: Shopify usually finishes a batch this size at once.
+    const status = await bulkCreationStatus(client, jobId)
+    if (!status?.done) {
+      const ref: BulkCreateRef = {
+        discount_id: discountId,
+        bulk_creation_id: jobId,
+        requested_count: count,
+        title: String(raw.title ?? prefix),
+      }
+      // Under an approval the kernel's poll job asks `pollHandler` until the codes are in and
+      // resumes the sequence with them.
+      const awaiting = await recordAwaitingOutput(ctx, ref)
+      return {
+        discountId,
+        title: ref.title,
+        requestedCount: count,
+        createdCount: null,
+        codes: [],
+        status: "creating",
+        message: awaiting
+          ? "Shopify is still adding the codes: the result is filled in once they are all in."
+          : "Shopify is still adding the codes: read them with discounts_search in a moment.",
+      }
+    }
+    return finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status })
   }
+  return finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status: null })
+}
 
-  // READ BACK the actual persisted codes — the ground truth the agent reports. (codes[0] + the bulk batch.)
-  const back = await client.query<{
-    codeDiscountNode: {
-      id: string
-      codeDiscount: { __typename: string; title?: string; codes?: { nodes: { code: string }[] } }
-    } | null
-  }>(DISCOUNT_NODE_CODES, { id: discountId, first: Math.min(codes.length + 5, 250) })
-  const persistedCodes = (back.codeDiscountNode?.codeDiscount?.codes?.nodes ?? []).map((n) => n.code)
-  const title = back.codeDiscountNode?.codeDiscount?.title ?? String(raw.title ?? prefix)
-
-  await emitMutationEvent(ctx, "discount", "bulk_created", discountId, {
-    discountId,
-    title,
-    createdCount: persistedCodes.length,
+/**
+ * Kernel poll target (manifest `pollHandler` on discounts_bulk_create): one look at the bulk
+ * job recorded as the approval's external ref. `{ ready: false }` while Shopify is still
+ * adding codes; `{ ready: true, result }` with the codes read back once it is done.
+ */
+export async function discounts_bulk_create_poll(
+  params: { external_ref?: Partial<BulkCreateRef> | null },
+  ctx: AppContext,
+): Promise<{ ready: boolean; result?: BulkCreateResult }> {
+  const ref = params?.external_ref
+  if (!ref?.discount_id || !ref.bulk_creation_id || !ref.requested_count) return { ready: false }
+  const client = await getShopifyClient(ctx)
+  const status = await bulkCreationStatus(client, ref.bulk_creation_id)
+  if (!status?.done) return { ready: false }
+  const result = await finishBulkCreate(ctx, client, {
+    discountId: ref.discount_id,
+    requestedCount: ref.requested_count,
+    fallbackTitle: ref.title ?? "",
+    status,
   })
-
-  return {
-    discountId,
-    title,
-    requestedCount: count,
-    createdCount: persistedCodes.length,
-    codes: persistedCodes,
-  }
+  return { ready: true, result }
 }

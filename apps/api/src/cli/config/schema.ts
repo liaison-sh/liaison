@@ -13,11 +13,7 @@
  * roles are checked against `kernel.roles` at plan time (the users provisioner),
  * env interpolation is `parse.ts`.
  */
-import {
-  commercialIdentitySchema,
-  googleOAuthClientIdSchema,
-  orgCapsSchema,
-} from "@liaison/shared"
+import { commercialIdentitySchema, googleOAuthClientIdSchema, orgCapsSchema } from "@liaison/shared"
 import { z } from "zod"
 import { MAIL_PROVIDER_IDS } from "~/modules/mail/provider-ids"
 

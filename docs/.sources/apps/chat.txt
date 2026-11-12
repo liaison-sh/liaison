@@ -95,3 +95,4 @@ A linked dashboard shows as a chip with its title -> apps/api/src/modules/thread
 Dashboards in the bar on the left -> apps/web/src/framework/bootstrap.ts:1271
 The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:4967, apps/web/src/modules/threads/message-store.ts:2540
 A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2661
+Group post waits for approval once per conversation; DM always posted; never hidden -> apps/api/src/modules/apps/execute-tool.ts:4131 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/tools/chat-tools.ts:160

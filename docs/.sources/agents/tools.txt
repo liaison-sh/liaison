@@ -358,3 +358,4 @@ Connections of one app sharing a client key: one stored client, asked for once -
 sidebar_apps_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1804
 sidebar_apps_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
 sidebar tools: another member needs kernel:users:admin -> apps/api/src/modules/users/sidebar-agent-tools.ts:102
+Agent post: DM always posted, one approval covers later posts of the same data in that conversation, also for a connected app -> apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:60 ; apps/api/src/modules/mcp/tool-call.ts:510

@@ -333,7 +333,9 @@ describe("the guard on the mention dispatch", () => {
           threadId: THREAD,
           content: `@[Callee](agent:${CALLEE}) an agent post that names another agent`,
         },
-        { userId: USER, orgId: ORG, db: tx, scopes: ["*"] } as never,
+        // No scoped data read: an unstamped post. The caller's whole grant would stamp it with
+        // every read scope, which this test's user does not hold in the database (rule 14).
+        { userId: USER, orgId: ORG, db: tx, scopes: [] } as never,
       ),
     )
     expect((result as { message?: unknown }).message).toBeDefined()

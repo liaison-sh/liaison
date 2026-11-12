@@ -41,7 +41,11 @@ import {
   type MediaAnalysisCaller,
   type MediaAnalysisToolDeps,
 } from "~/modules/agent/media/media-analysis-tool"
-import { currentRunContext, type RunContext } from "~/modules/agent/runtime/run-context"
+import {
+  currentRunContext,
+  isPersonClientFrame,
+  type RunContext,
+} from "~/modules/agent/runtime/run-context"
 import { isMailAttachmentMailboxPrivate } from "~/modules/mailbox-crypto/content-suppression"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -162,7 +166,8 @@ export async function handleMailAttachmentRead(
 
   // Private from here: only a live turn can be given the content, as its context block.
   const frame = deps.currentRun()
-  if (!frame) {
+  // A person's own external client has a gateway frame (rule 14) but no turn to hand it to.
+  if (!frame || isPersonClientFrame(frame)) {
     return err(
       "needs_conversation",
       "This attachment is in an encrypted mailbox, so it can be read only in a conversation with the agent in Liaison, with the mailbox unlocked.",

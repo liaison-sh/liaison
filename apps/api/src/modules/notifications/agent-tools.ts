@@ -30,7 +30,7 @@ import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { attentionSubscriptions, userThreadState } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
+import { currentRunContext, isPersonClientFrame } from "~/modules/agent/runtime/run-context"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { recipientLocale } from "~/modules/push/fanout-consumer"
 import { queueReadState } from "~/modules/threads/read-state-broadcast"
@@ -84,7 +84,8 @@ export function refuseOutsideInteractiveTurn(
   const read = op === "read"
   let message: string | null = null
   if (ctx.originRoutineId || frame?.routineId) message = REFUSAL.routine
-  else if (!frame) message = read ? null : REFUSAL.outsideTurn
+  // A person's own external client (no agent bound) reads as no frame did (rule 14).
+  else if (!frame || isPersonClientFrame(frame)) message = read ? null : REFUSAL.outsideTurn
   // An agent-bound MCP connection: the person may read their own settings
   // (as with their own MCP client), but nothing proves a person asked for a
   // change, so a change is refused.

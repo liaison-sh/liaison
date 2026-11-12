@@ -50,6 +50,7 @@ import { getApprovalStatus } from "~/modules/mcp/approval-status"
 import {
   addDiscoveredTools,
   addSurfacedSkills,
+  connectionTaintWindowId,
   loadConnectionTurnTaint,
   loadConnectionTurnTaintOrigins,
   loadLiveAgent,
@@ -501,7 +502,13 @@ export async function handleToolCall(
   // THIS call and are never written back into the agent's shared window, or
   // every connection of the agent would stay tainted by one session for good.
   let jobOnlyScopes: ReadonlySet<string> = new Set()
-  if (ctx.agentId) {
+  // WHOSE WINDOW (scope-taint.ts, rule 14, 2026-11-12). An agent-bound connection keeps the
+  // per-agent key above. A connection bound to NO agent (a person's own external client) gets
+  // the same frame, accumulator and window, keyed by the CONNECTION: it was left with none, so
+  // its posts were stamped with the caller's whole grant and written hidden from the people they
+  // addressed. Per connection, not per person, so one login's reads never stamp another's posts.
+  const taintWindowId = connectionTaintWindowId(ctx)
+  {
     ctx.turnScopeAccumulator ??= createTurnScopeAccumulator({ orgId: ctx.orgId })
     ctx.turnRunId ??= randomUUID()
     // The persisted set is unioned in BEFORE the pre-call snapshot, so a scoped
@@ -509,7 +516,7 @@ export async function handleToolCall(
     // inside a single in-app turn.
     // A node session's connection also carries what its jobs were handed
     // from Liaison (node-session-connection.ts `nodeJobSourceScopes`).
-    const windowScopes = await loadConnectionTurnTaint(ctx.orgId, ctx.agentId, {
+    const windowScopes = await loadConnectionTurnTaint(ctx.orgId, taintWindowId, {
       dropIdleScopes: true,
     })
     // Projected as the accumulator projects them (a write scope lands on its
@@ -533,7 +540,7 @@ export async function handleToolCall(
     // judged against no origins at all, and the reply is refused before it can
     // stage its approval.
     for (const [table, rowIds] of Object.entries(
-      await loadConnectionTurnTaintOrigins(ctx.orgId, ctx.agentId),
+      await loadConnectionTurnTaintOrigins(ctx.orgId, taintWindowId),
     )) {
       ctx.turnScopeAccumulator.recordOriginRows(table, rowIds)
     }
@@ -542,7 +549,8 @@ export async function handleToolCall(
     // agent reaches is a frame no reader can judge against. An agent that has
     // gone away between the auth middleware and here yields an empty ceiling,
     // which admits nothing rather than everything.
-    const actingAgent = await loadLiveAgent(ctx.orgId, ctx.agentId)
+    // Agentless: neither (a person's own client is not an agent).
+    const actingAgent = ctx.agentId ? await loadLiveAgent(ctx.orgId, ctx.agentId) : undefined
     // The connection's EFFECTIVE scope, not a second computation of one:
     // `resolveConnectionFromToken` already intersects the grantor's current
     // grants with the agent's current ceiling on every request, and that set is
@@ -552,22 +560,26 @@ export async function handleToolCall(
     // The turn this request's writes hang under, when the connection thread
     // holds one. Absent, a question posted now is the root of its own chain,
     // exactly as it was.
-    const connectionTurnMessageId = ctx.connectionThreadId
-      ? await connectionThreadTurnMessageId(ctx.orgId, ctx.connectionThreadId)
-      : undefined
+    // Agentless: none. A person's own client posts roots of their own chains, as before rule 14.
+    const connectionTurnMessageId =
+      ctx.agentId && ctx.connectionThreadId
+        ? await connectionThreadTurnMessageId(ctx.orgId, ctx.connectionThreadId)
+        : undefined
     // A GATEWAY TURN (S59, D37, A34): the desktop's local turn proved, with
     // the credential minted for the person's message, that this call answers
     // that message. Anything short of every check reads as no credential.
+    // A turn credential is minted for an agent's connection only: agentless calls have none.
     if (ctx.gatewayTurn === undefined) {
-      ctx.gatewayTurn = ctx.turnCredential
-        ? await resolveGatewayTurn({
-            raw: ctx.turnCredential,
-            orgId: ctx.orgId,
-            userId: ctx.ownerUserId,
-            agentId: ctx.agentId,
-            connectionId: ctx.connectionId,
-          })
-        : null
+      ctx.gatewayTurn =
+        ctx.turnCredential && ctx.agentId
+          ? await resolveGatewayTurn({
+              raw: ctx.turnCredential,
+              orgId: ctx.orgId,
+              userId: ctx.ownerUserId,
+              agentId: ctx.agentId,
+              connectionId: ctx.connectionId,
+            })
+          : null
       if (ctx.turnCredential && !ctx.gatewayTurn) {
         log.debug(
           { connectionId: ctx.connectionId, agentId: ctx.agentId },
@@ -584,8 +596,10 @@ export async function handleToolCall(
       nestingDepth: 0,
       // No person is proven behind a gateway call (run-context.ts).
       mcpGateway: true,
-      agentId: ctx.agentId,
-      agentCeiling: actingAgent?.scopeCeiling ?? [],
+      // Both present or both absent (run-context.ts): agentless carries neither.
+      ...(ctx.agentId
+        ? { agentId: ctx.agentId, agentCeiling: actingAgent?.scopeCeiling ?? [] }
+        : {}),
       effectiveScope: connectionScopes,
       turnScopeAccumulator: ctx.turnScopeAccumulator,
       ...(turnMessageId ? { turnMessageId } : {}),
@@ -630,13 +644,13 @@ export async function handleToolCall(
   /** What this call itself read: a job-only scope it read again is the window's too. */
   let readByThisCall: ReadonlySet<string> = new Set()
   const persistTurnScopes = async (all: string[]): Promise<void> => {
-    if (!accumulator || !ctx.agentId) return
+    if (!accumulator) return
     const snapshot = all.filter((s) => !jobOnlyScopes.has(s) || readByThisCall.has(s))
-    await saveConnectionTurnTaint(ctx.orgId, ctx.agentId, snapshot)
+    await saveConnectionTurnTaint(ctx.orgId, taintWindowId, snapshot)
     // The same set, stamped with WHEN each scope first arrived, so a tagger
     // that knows its turn's start can fold in this turn's scopes and not the
     // window's (see `mcpTurnTaintMarksKey`). Nothing refuses on these.
-    await recordConnectionTaintMarks(ctx.orgId, ctx.agentId, snapshot)
+    await recordConnectionTaintMarks(ctx.orgId, taintWindowId, snapshot)
   }
   const recordTurnScopes = async (): Promise<void> => {
     if (turnScopesSettled) return
@@ -644,13 +658,13 @@ export async function handleToolCall(
     if (accumulator && toolDef.taintFree !== true) {
       accumulator.record(toolDef)
       // What THIS call read, stamped so the scope ages out a window after its last read.
-      if (ctx.agentId) {
+      {
         const own = resolveRequiredScopes(toolDef)
         // Its own declared scopes, projected like the snapshot. A nested read
         // of a scope already in the set leaves no trace in the accumulator (a
         // set), so only the call's own declaration is counted here.
         readByThisCall = new Set(projectTaintScopesForOrg(own, ctx.orgId))
-        await touchConnectionTaintScopes(ctx.orgId, ctx.agentId, own)
+        await touchConnectionTaintScopes(ctx.orgId, taintWindowId, own)
         // A NODE JOB running on this connection keeps what its calls touched
         // for its whole life (A18, A50/F6): this call's scopes and whatever it
         // read nested, never the agent window's older scopes. No-op for a
@@ -660,7 +674,7 @@ export async function handleToolCall(
         ]
         await recordNodeJobTaint(ctx.connectionId, readHere)
         // Kept a day for tagging a long local turn's reply (`mcpTurnTaintLedgerKey`).
-        await recordConnectionTaintLedger(ctx.orgId, ctx.agentId, readHere)
+        await recordConnectionTaintLedger(ctx.orgId, taintWindowId, readHere)
       }
     }
     if (accumulator) await persistTurnScopes(accumulator.snapshot())
@@ -915,10 +929,10 @@ export async function handleToolCall(
     // accumulator (`execute-tool.ts`, A46b). Written back here, after the call
     // settled, so the next POST judges its write against the rows this one
     // actually read. Nothing is written for a call that filed nothing.
-    if (accumulator && ctx.agentId) {
+    if (accumulator) {
       const origins = accumulator.originRows()
       if (Object.keys(origins).length > 0) {
-        await saveConnectionTurnTaintOrigins(ctx.orgId, ctx.agentId, origins)
+        await saveConnectionTurnTaintOrigins(ctx.orgId, taintWindowId, origins)
       }
     }
 

@@ -101,6 +101,8 @@ describe("threads_reply contactId from a routine run", () => {
     await acquireTestLock()
     await sql`INSERT INTO kernel.organizations (id, name, slug)
       VALUES (${ORG}, 'Discussion Routine Org', 'discussion-routine-org') ON CONFLICT DO NOTHING`
+    // Both read threads, as every member does: a post the tick stamps with what it read must be
+    // readable by its owner, or it is refused rather than written hidden (scope-taint.ts, 14a).
     for (const [id, email, name] of [
       [OWNER, "discussion-routine-owner@test.com", "Routine Owner"],
       [OTHER, "discussion-routine-other@test.com", "Someone Else"],
@@ -108,7 +110,8 @@ describe("threads_reply contactId from a routine run", () => {
       await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
         VALUES (${id}, ${ORG}, ${email}, ${name}, 'active', 'x') ON CONFLICT DO NOTHING`
       await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${id}, ${ORG}, 'kernel:threads:write'), (${id}, ${ORG}, 'kernel:contacts:read')
+        VALUES (${id}, ${ORG}, 'kernel:threads:write'), (${id}, ${ORG}, 'kernel:contacts:read'),
+          (${id}, ${ORG}, 'kernel:threads:read')
         ON CONFLICT DO NOTHING`
     }
     // The owner's agent, seated in the routine's run thread (an agent seat), never in the

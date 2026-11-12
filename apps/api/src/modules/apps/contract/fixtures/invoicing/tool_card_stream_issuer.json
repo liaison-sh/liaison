@@ -4,10 +4,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_streams",
-        "{\"limit\":100}"
-      ],
+      "args": ["stripe_streams", "{\"limit\":100}"],
       "reply": "[]"
     }
   ],

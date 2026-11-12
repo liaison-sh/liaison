@@ -1,17 +1,12 @@
 {
   "entry": "tool:billing_status_for_counterparty",
   "params": {
-    "emails": [
-      "billing@example.com"
-    ]
+    "emails": ["billing@example.com"]
   },
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "install_metadata",
-        "{\"limit\":1}"
-      ],
+      "args": ["install_metadata", "{\"limit\":1}"],
       "reply": "[]"
     }
   ],

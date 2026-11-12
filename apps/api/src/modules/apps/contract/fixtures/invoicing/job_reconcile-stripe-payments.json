@@ -4,10 +4,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_streams",
-        "{\"limit\":100}"
-      ],
+      "args": ["stripe_streams", "{\"limit\":100}"],
       "reply": "[]"
     },
     {
@@ -28,10 +25,7 @@
     },
     {
       "method": "executeTool",
-      "args": [
-        "stripe:reconcile_candidates",
-        "{\"waiting\":[]}"
-      ],
+      "args": ["stripe:reconcile_candidates", "{\"waiting\":[]}"],
       "reply": "{\"status\": \"completed\", \"result\": {\"invoices\": [], \"refunds\": [], \"summary\": \"0 Stripe invoice(s) with no Liaison document, 0 paid invoice(s) to check, 0 succeeded refund(s) with no credit note recorded.\"}}"
     }
   ],

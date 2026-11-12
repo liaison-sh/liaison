@@ -4,18 +4,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "einvoice_standing",
-        "{\"where\":{\"ended_at\":null},\"limit\":200}"
-      ],
+      "args": ["einvoice_standing", "{\"where\":{\"ended_at\":null},\"limit\":200}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_settings",
-        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
-      ],
+      "args": ["einvoicing_settings", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"],
       "reply": "[]"
     }
   ],

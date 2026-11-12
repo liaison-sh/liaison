@@ -4,18 +4,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "issuer_profiles",
-        "{\"limit\":100}"
-      ],
+      "args": ["issuer_profiles", "{\"limit\":100}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_streams",
-        "{\"limit\":100}"
-      ],
+      "args": ["stripe_streams", "{\"limit\":100}"],
       "reply": "[]"
     }
   ],

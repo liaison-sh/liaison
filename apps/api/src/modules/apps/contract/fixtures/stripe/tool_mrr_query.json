@@ -4,94 +4,67 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"limit\":50}"
-      ],
+      "args": ["sync_state", "{\"limit\":50}"],
       "reply": "[]"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\"}"
-      ],
+      "args": ["{\"timezone\":\"UTC\"}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767225600000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767225600000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767198600000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767198600000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767185100000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767185100000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767178320000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767178320000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767174960000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767174960000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767173280000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767173280000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767172440000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767172440000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767172020000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767172020000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767171780000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767171780000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767171660000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767171660000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\",\"at\":1767171600000}"
-      ],
+      "args": ["{\"timezone\":\"UTC\",\"at\":1767171600000}"],
       "reply": "{\"date\": \"2026-01-01\", \"year\": 2026, \"month\": 1, \"day\": 1, \"hour\": 0, \"minute\": 0, \"weekday\": 4, \"zone\": \"UTC\"}"
     },
     {
@@ -112,10 +85,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"resource\":\"mrr_gap\"},\"limit\":1}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"resource\":\"mrr_gap\"},\"limit\":1}"],
       "reply": "[]"
     }
   ],

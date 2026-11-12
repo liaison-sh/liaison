@@ -4,10 +4,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"limit\":50}"
-      ],
+      "args": ["sync_state", "{\"limit\":50}"],
       "reply": "[]"
     }
   ],

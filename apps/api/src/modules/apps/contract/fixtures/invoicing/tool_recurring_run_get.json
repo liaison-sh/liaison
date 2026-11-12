@@ -6,10 +6,7 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": [
-        "recurring_runs",
-        "00000000-0000-4000-8000-000000000101"
-      ],
+      "args": ["recurring_runs", "00000000-0000-4000-8000-000000000101"],
       "reply": "null"
     }
   ],

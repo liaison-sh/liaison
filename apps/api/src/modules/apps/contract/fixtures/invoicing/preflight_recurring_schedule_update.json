@@ -8,10 +8,7 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": [
-        "recurring_schedules",
-        "00000000-0000-4000-8000-000000000103"
-      ],
+      "args": ["recurring_schedules", "00000000-0000-4000-8000-000000000103"],
       "reply": "null"
     }
   ],

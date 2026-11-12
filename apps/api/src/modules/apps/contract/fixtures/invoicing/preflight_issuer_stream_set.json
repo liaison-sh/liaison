@@ -8,10 +8,7 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": [
-        "issuer_profiles",
-        "00000000-0000-4000-8000-000000000104"
-      ],
+      "args": ["issuer_profiles", "00000000-0000-4000-8000-000000000104"],
       "reply": "null"
     }
   ],

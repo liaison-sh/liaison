@@ -7,10 +7,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "install_metadata",
-        "{\"limit\":1}"
-      ],
+      "args": ["install_metadata", "{\"limit\":1}"],
       "reply": "[]"
     }
   ],

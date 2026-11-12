@@ -4,34 +4,22 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "install_metadata",
-        "{\"limit\":1}"
-      ],
+      "args": ["install_metadata", "{\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_customers",
-        "{\"limit\":3}"
-      ],
+      "args": ["stripe_customers", "{\"limit\":3}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_subscriptions",
-        "{\"limit\":3}"
-      ],
+      "args": ["stripe_subscriptions", "{\"limit\":3}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "stripe_invoices",
-        "{\"limit\":3}"
-      ],
+      "args": ["stripe_invoices", "{\"limit\":3}"],
       "reply": "[]"
     },
     {

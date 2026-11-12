@@ -30,7 +30,6 @@
 // Cost: one lookup for the whole page's senders; one create per new sender.
 
 import { and, asc, sql as drizzleSql, eq, inArray } from "drizzle-orm"
-import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import type { PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { contacts } from "~/db/schema/kernel"
@@ -40,6 +39,7 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { quoteIdent } from "~/lib/sql-utils"
 import { checkRateLimit } from "~/middleware/rate-limiter"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import { resolveContact } from "~/modules/contacts/service"
 import { recomputeSearchAcl } from "~/modules/sharing/service"
 

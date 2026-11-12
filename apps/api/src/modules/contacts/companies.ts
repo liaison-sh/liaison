@@ -23,7 +23,6 @@
  */
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
-import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import type { RlsClient, RlsTx } from "~/db"
 import { extractRows } from "~/db"
 import { withElevatableRlsFrom, withPrivilegedDb } from "~/db/privileged"
@@ -32,6 +31,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { contactsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import {
   actorGrantRole,
   asAdmin,

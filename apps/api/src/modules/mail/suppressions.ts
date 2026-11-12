@@ -14,7 +14,6 @@
  */
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withElevatableRlsFrom, withPrivilegedDb, withSystemReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -22,6 +21,7 @@ import {
   continueRoutinesAfterWithdrawal,
   withdrawCommercialDraftsOn,
 } from "~/modules/approvals/withdraw-on-events"
+import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
 import { asAdmin } from "~/modules/sharing/service"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))

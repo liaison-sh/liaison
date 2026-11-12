@@ -15,6 +15,9 @@
     ]
   },
   "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "expectError": {
+    "reason": "recorded with no Stripe app reachable from the contract replay, so it pins the subscription_check_unavailable refusal (nothing written while Stripe cannot be asked); the working path is still to record"
+  },
   "calls": [
     {
       "method": "db_findMany",

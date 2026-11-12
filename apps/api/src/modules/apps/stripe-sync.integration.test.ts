@@ -203,9 +203,7 @@ afterAll(async () => {
 describe("stripe sync jobs on the real bridge", () => {
   it("fifty invoices finalized before the connection are mirrored and make no document and no unmatched payment", async () => {
     const before = await documents()
-    const res = await withRlsContext(actor, (tx) =>
-      runBackfill(syncCtx(tx, stripe), { sleep: async () => {} }),
-    )
+    const res = await withRlsContext(actor, (tx) => runBackfill(syncCtx(tx, stripe)))
     expect(res.outcome).toBe("done")
     expect(await count("stripe_invoices")).toBe(50)
     expect(await count("stripe_payments")).toBe(50)
@@ -230,7 +228,7 @@ describe("stripe sync jobs on the real bridge", () => {
   })
 
   it("disconnecting deletes every mirror row and keeps every invoicing document", async () => {
-    await withRlsContext(actor, (tx) => runBackfill(syncCtx(tx, stripe), { sleep: async () => {} }))
+    await withRlsContext(actor, (tx) => runBackfill(syncCtx(tx, stripe)))
     await sql.unsafe(
       insertSql("app_stripe.webhook_deliveries", {
         org_id: ORG,

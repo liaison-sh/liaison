@@ -123,13 +123,25 @@ export async function recurringItemIssue(
       ? [{ update: "recurring_schedules", id: String(item.schedule_id), data: { last_document_id: { $ref: "document" } } }]
       : []),
   ]
-  const issued = await issueRunDraft(ctx, {
-    draft_id: draftId,
-    external_ref: externalRef,
-    lifecycle_log: carried,
-    ...(send ? { einvoice_send: send } : {}),
-    commit_with: followers,
-  })
+  let issued: Awaited<ReturnType<typeof issueRunDraft>>
+  try {
+    issued = await issueRunDraft(ctx, {
+      draft_id: draftId,
+      external_ref: externalRef,
+      lifecycle_log: carried,
+      ...(send ? { einvoice_send: send } : {}),
+      commit_with: followers,
+    })
+  } catch (err) {
+    // A second call for the same item lost the race (the period key is unique, the draft is
+    // gone): the first one issued it, and this one wrote nothing.
+    const now = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
+    if (now?.state !== "issued") throw err
+    return fail(
+      "already_issued",
+      `Item ${input.item_id} is already issued as ${String(now.issued_number ?? now.document_id)}; nothing was issued again.`,
+    )
+  }
   if (issued.status !== "completed") {
     if (issued.status === "error") return issued
     return fail("not_issued", `Item ${input.item_id} was not issued: the issue asked for an approval.`)

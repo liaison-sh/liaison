@@ -5,6 +5,9 @@
     "expected_version": 1,
     "status": "active"
   },
+  "expectError": {
+    "reason": "recorded on a contract install with no rows, so the replay pins the schedule_not_found refusal a caller gets when the record it names does not exist (nothing written); the working path is still to record"
+  },
   "calls": [
     {
       "method": "db_findOne",

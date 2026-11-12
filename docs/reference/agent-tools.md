@@ -477,7 +477,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
 | `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
 | `document_send_state` | Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided. |  | `invoicing:documents:read` |
-| `documents_convert_local` | Convert a quote or proforma with no Shopify draft order into an invoice, in one transaction. |  | `invoicing:documents:write` |
+| `documents_convert_local` | Convert a quote or proforma with no Shopify draft order into an invoice, in one commit. |  | `invoicing:documents:write` |
 | `documents_convert_to_invoice` | Convert a quote or proforma into an invoice. | yes | `invoicing:documents:write` |
 | `documents_download_pdf` | Resolve a document's rendered-PDF file id + URL for download. |  | `invoicing:documents:read` |
 | `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
@@ -537,7 +537,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
 | `received_einvoices_list` | List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
 | `received_einvoices_refresh` | Re-read received supplier e-invoices from the e-invoicing platform now: with received_id, that one; without, everything new since the last check plus the statuses of open ones. |  | `invoicing:received:write` |
-| `recurring_draft_write` | Write one month-end run draft and its lines in one transaction. |  | `invoicing:documents:write` |
+| `recurring_draft_write` | Write one month-end run draft and its lines in one commit. |  | `invoicing:documents:write` |
 | `recurring_item_issue` | Issue one approved row of a month-end run. |  | `invoicing:documents:write` |
 | `recurring_list` | List recurring schedules with their next issue day and draft day. |  | `invoicing:documents:read` |
 | `recurring_run_get` | Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. |  | `invoicing:documents:read` |

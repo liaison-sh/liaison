@@ -6,6 +6,9 @@
     "issuer": "liaison"
   },
   "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)",
+  "expectError": {
+    "reason": "recorded on a contract install with no rows, so the replay pins the issuer_not_found refusal a caller gets when the record it names does not exist (nothing written); the working path is still to record"
+  },
   "calls": [
     {
       "method": "db_findOne",

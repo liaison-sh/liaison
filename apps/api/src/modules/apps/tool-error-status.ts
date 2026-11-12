@@ -337,6 +337,11 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // A row asked to issue outside its run's issue window, and a run draft written without its key.
   outside_issue_window: 409,
   not_a_run_draft: 422,
+  // A row whose run stopped issuing, whose draft is gone, or whose draft lost its period key
+  // between its approval and its issue: nothing was written and no number was used.
+  run_not_issuing: 409,
+  draft_missing: 409,
+  draft_without_key: 409,
   // A Shopify-linked quote sent to the local convert (it converts by completing its draft order).
   shopify_linked: 409,
   // The local convert step failed; the quote is unchanged and no number was used.

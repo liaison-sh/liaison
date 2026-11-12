@@ -540,6 +540,111 @@ describe("rule 14: posts from a connection bound to no agent", () => {
     expect(n).toBe(0)
   }, 30_000)
 
+  // Follow-ups: the disclosure names only what the lacking readers lack, and an approved
+  // external-client post keeps its marker.
+  it("the card and relay name only the apps the lacking readers lack, not the whole taint", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    // The window read threads (everyone here holds it) and the test app (bob and carol lack it).
+    await saveConnectionTurnTaint(
+      w.orgId,
+      connectionTaintWindowId({ connectionId: conn().connectionId }),
+      ["kernel:threads:read", READ],
+    )
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const res = await reply(conn, group, "3 open items")
+    const id = parkedId(res)
+    const relay =
+      (res.structuredContent as { postDisclosure?: { relay?: string } }).postDisclosure?.relay ?? ""
+    expect(relay).toContain("cannot see test data read in this session")
+    expect(relay).not.toContain("threads")
+    const [card] = await sql<{ summary: unknown; metadata: Record<string, unknown> }[]>`
+      SELECT summary, metadata FROM kernel.approval_requests WHERE id = ${id}`
+    const text = JSON.stringify(card?.summary)
+    expect(text).toContain(
+      "2 people in this conversation cannot see test data this conversation read",
+    )
+    expect(text).not.toContain("test, threads")
+    // Wording only: the stored audience still demands the whole taint.
+    expect([...((card?.metadata.taintAudienceMustHold as string[]) ?? [])].sort()).toEqual(
+      ["kernel:threads:read", READ].sort(),
+    )
+  }, 60_000)
+
+  it("the handler's refusal names only what the lacking readers lack", async () => {
+    const w = await world()
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const scopes = ["kernel:threads:read", READ]
+    const res = await withRlsContext(userContextFor(w.orgId, w.ownerId, w.ownerScopes), (db) =>
+      handleThreadsReply(
+        { threadId: group, content: "hidden" },
+        { userId: w.ownerId, orgId: w.orgId, db, scopes, actorType: "mcp" },
+      ),
+    )
+    const message = (res as { error?: { message?: string } }).error?.message ?? ""
+    expect(message).toContain(
+      "2 people in this conversation cannot see test data this session read",
+    )
+  }, 30_000)
+
+  it("an approved post from a person's external client keeps the external-client marker", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    await read(conn)
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const id = parkedId(await reply(conn, group, "from my client, approved"))
+    const [approval] = await sql<{ metadata: Record<string, unknown> }[]>`
+      SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`
+    expect(approval?.metadata.taintDisclosureExternalClient).toBeDefined()
+    await approve(w, id)
+    const [row] = await rows(group)
+    expect(row?.metadata?.taintDisclosureApprovalId).toBe(id)
+    expect(row?.metadata?.externalClientPost).toBe(true)
+  }, 60_000)
+
+  it("an in-app agent's approved post does not get the external-client marker", async () => {
+    const w = await world()
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const { executeTool } = await import("~/modules/apps/execute-tool")
+    const { runContextStore } = await import("~/modules/agent/runtime/run-context")
+    const { createTurnScopeAccumulator } = await import(
+      "~/modules/agent/scopes/turn-scope-accumulator"
+    )
+    const accumulator = createTurnScopeAccumulator()
+    accumulator.recordInjected([READ])
+    const runId = crypto.randomUUID()
+    const res = await runContextStore.run(
+      {
+        runId,
+        parentRunId: null,
+        rootRunId: runId,
+        nestingDepth: 0,
+        humanTurn: true,
+        effectiveScope: w.ownerScopes,
+        turnScopeAccumulator: accumulator,
+      },
+      () =>
+        executeTool({
+          toolName: "kernel:threads_reply",
+          orgId: w.orgId,
+          actor: userContextFor(w.orgId, w.ownerId, w.ownerScopes),
+          params: { threadId: group, content: "from the in-app agent, approved" },
+          origin: "in-app-agent",
+          stepBundleId: null,
+        }),
+    )
+    const id = "blocked" in res ? (res.blocked?.approvalRequestId ?? "") : ""
+    expect(id).not.toBe("")
+    const [approval] = await sql<{ metadata: Record<string, unknown> }[]>`
+      SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`
+    expect(approval?.metadata.taintDisclosureExternalClient).toBeUndefined()
+    await approve(w, id)
+    const [row] = await rows(group)
+    expect(row?.content).toBe("from the in-app agent, approved")
+    expect(row?.metadata?.taintDisclosureApprovalId).toBe(id)
+    expect(row?.metadata?.externalClientPost).toBeUndefined()
+  }, 60_000)
+
   describe("threads_create's first message", () => {
     async function create(ctx: () => ToolCallCtx, participantIds: string[], text: string) {
       return handleToolCall(ctx(), "kernel__threads_create", {

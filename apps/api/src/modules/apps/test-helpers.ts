@@ -182,13 +182,15 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
         })
       },
     },
-    // A page link names the page and its params; no ticket is stored.
+    // A page handle names the page and its params; nothing is stored.
     pages: {
       link: async (page, params) => ({
-        url: `https://liaison.test/api/app-pages/test-${page}?${new URLSearchParams(
+        handle: `lpg_test-${page}-${new URLSearchParams(
           Object.entries(params ?? {}).map(([k, v]): [string, string] => [k, String(v)]),
         )}`,
-        expiresInSeconds: 900,
+        app: "test-app",
+        page,
+        expiresInSeconds: 300,
       }),
     },
     // No shared limiter in a unit test: a pause is answered as set, nothing waits.

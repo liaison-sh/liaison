@@ -289,7 +289,7 @@ export async function syncNotes(
   }
 }
 
-/** `ctx.pages.link`: a link for the run's person; an unknown page refused alike. */
+/** `ctx.pages.link`: a handle for the run's person; an unknown page refused alike. */
 export async function pageLink(_p: unknown, ctx: Ctx) {
   const link = await ctx.pages.link("hello", { from: "parity" })
   let missing: unknown
@@ -300,7 +300,8 @@ export async function pageLink(_p: unknown, ctx: Ctx) {
     missing = { thrown: true, code: err.code ?? null, status: err.status ?? null }
   }
   return {
-    url: /\/api\/app-pages\/[A-Za-z0-9_-]{43}$/.test(link.url),
+    handle: /^lpg_[A-Za-z0-9_-]{43}$/.test(link.handle),
+    url: "url" in link,
     expiresInSeconds: link.expiresInSeconds,
     missing,
   }

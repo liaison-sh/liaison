@@ -899,17 +899,26 @@ it as a page, with the routes it calls:
 }
 ```
 
-- Open it with a link minted for one person: `ctx.pages.link("picker", params)` from
-  a handler acting for them (a tool), or `POST /api/apps/<app>/pages/<page>/link`
-  with `{ "params": { ... } }` from your panel. The link works once, for 15 minutes,
-  for a person who holds the page's `scope`.
+- Open it for one person who holds the page's `scope`. From a handler acting for them
+  (a tool), `ctx.pages.link("picker", params)` answers a handle (`lpg_...`), not a
+  URL: return it to the person, and their signed-in app turns it into a link with
+  `POST /api/apps/<app>/pages/open` `{ "handle": "lpg_..." }`. Your app's code never
+  holds a link it could open as the person. From your panel, the person's browser can
+  also ask `POST /api/apps/<app>/pages/<page>/link` (no `params`: it refuses them).
+  A handle and a link each work once, for 5 minutes; a person gets at most 20 per app
+  every 10 minutes.
 - `pages/picker.ts` is built for the browser into `pages/picker.js` in the package.
   The page reads `window.liaisonPage.params` and calls a route with
   `await window.liaisonPage.call("savePicks", body)`.
 - A route runs your handler as that person, with their scopes, under the route's
   `scope` too: `savePicks({ body, params, page }, ctx)`. `body` comes from the
-  browser, `params` from the link. The page may call only the routes it lists;
-  bodies and answers are capped at 1 MiB.
+  browser, `params` from your own `ctx.pages.link` call. Check every id in either
+  against what the person may read or change: the route acts as them. The page may
+  call only the routes it lists, at most 60 calls a minute; bodies and answers are
+  capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
+- A route call carries the page session's key, which only the page's bootstrap
+  holds (it is never in `liaisonPage` or the document), so a session id copied out of
+  the page calls nothing.
 - The page's policy allows only the hosts it declares (`script`, `frame`, `connect`,
   `image`, `style`), narrowed to the domains the install was granted. With app frame
   origins it runs on the app's own origin; without, in an opaque origin: it never

@@ -4,7 +4,7 @@
 
 interface Ctx {
   getUserId(): string | Promise<string>
-  pages: { link(page: string, params?: Record<string, unknown>): Promise<{ url: string }> }
+  pages: { link(page: string, params?: Record<string, unknown>): Promise<{ handle: string }> }
   store: {
     get(c: string, id: string): Promise<{ data: Record<string, unknown> } | null>
     set(c: string, id: string, data: Record<string, unknown>): Promise<unknown>

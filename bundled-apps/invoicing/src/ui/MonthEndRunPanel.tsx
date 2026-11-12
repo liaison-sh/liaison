@@ -96,7 +96,7 @@ async function loadNames(ids: string[]): Promise<Map<string, string>> {
       if (name) out.set(id, name)
       else unnamed.add(id)
     } catch {
-      // Unknown here: the row says "a teammate".
+      // Unknown here: the row shows no manager line.
       unnamed.add(id)
     }
   }

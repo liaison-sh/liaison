@@ -347,7 +347,7 @@ describe("the month-end panel", () => {
     expect(calls.some((c) => c.tool.startsWith("threads") || c.tool.includes("reply"))).toBe(false)
   })
 
-  it("a row whose schedule a seed or the system wrote asks the host for no name and says a teammate", async () => {
+  it("a row whose schedule a seed or the system wrote asks the host for no name and shows no manager line", async () => {
     rows = [
       row("a", "Hôtels Belcour", "58800", { account_manager: "seed" }),
       row("b", "Le Comptoir Sud", "58800", { account_manager: ELODIE }),
@@ -356,7 +356,7 @@ describe("the month-end panel", () => {
     await waitFor(() =>
       expect(screen.getByTestId("month-end-row-manager-b").textContent).toContain("Élodie Renard"),
     )
-    expect(screen.getByTestId("month-end-row-manager-a").textContent).toContain("a teammate")
+    expect(screen.queryByTestId("month-end-row-manager-a")).toBeNull()
     expect(previews.some((p) => p.includes("/seed/"))).toBe(false)
   })
 

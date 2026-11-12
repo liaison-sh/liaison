@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// A sandbox service in this process with a stand-in for the app's bridge
+// listener: it answers `ping` and `nest` for runs it registered (by token),
+// refuses every other call, and records what it saw.
+import { createHash, randomBytes } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import type { Server } from "bun"
+import { DEFAULTS, type SupervisorConfig } from "../src/config"
+import { createSupervisor, RUN_DEPTH_HEADER, type Supervisor } from "../src/supervisor"
+
+export const PROBE_APP = readFileSync(join(import.meta.dir, "fixtures", "probe-app.js"))
+export const PROBE_SHA = createHash("sha256").update(PROBE_APP).digest("hex")
+
+export interface Sandbox {
+  url: string
+  sup: Supervisor
+  bridgeOrigin: string
+  /** Bridge calls the stand-in answered or refused, by run id. */
+  calls: Array<{ runId: string; method: string; status: number }>
+  run(
+    exportName: string,
+    params?: unknown,
+    o?: { orgId?: string; depth?: number; deadlineMs?: number; cpuMs?: number; token?: string },
+  ): Promise<{ status: number; body: Record<string, any> }>
+  stop(): Promise<void>
+}
+
+export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promise<Sandbox> {
+  const tokens = new Map<string, { orgId: string; depth: number }>()
+  const calls: Sandbox["calls"] = []
+  let sandbox: Sandbox
+  const bridge: Server<undefined> = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url)
+      const runId = decodeURIComponent(url.pathname.replace("/api/app-bridge/", ""))
+      const token = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "")
+      const body = (await req.json()) as { method: string; args: unknown[] }
+      const run = tokens.get(`${runId} ${token}`)
+      if (!run) {
+        calls.push({ runId, method: body.method, status: 401 })
+        return Response.json({ error: "Unknown run", reason: "bad_token" }, { status: 401 })
+      }
+      calls.push({ runId, method: body.method, status: 200 })
+      if (body.method === "ping") return Response.json({ data: { pong: body.args[0] } })
+      if (body.method === "nest") {
+        const want = (body.args[0] as { to: number }).to
+        if (run.depth >= want) return Response.json({ data: { depth: run.depth } })
+        const r = await sandbox.run("nest", { to: want }, { orgId: run.orgId, depth: run.depth + 1 })
+        return Response.json({ data: r.body })
+      }
+      return Response.json({ error: "Unknown method", errorStatus: 404 }, { status: 404 })
+    },
+  })
+  const bridgeOrigin = `http://127.0.0.1:${bridge.port}`
+  const sup = await createSupervisor({ ...DEFAULTS, bridgeOrigin, spares: 0, ...over })
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: (r) => sup.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  const put = await fetch(`${url}/modules/${PROBE_SHA}`, { method: "PUT", body: PROBE_APP })
+  if (put.status !== 204) throw new Error(`module push failed: ${put.status}`)
+  sandbox = {
+    url,
+    sup,
+    bridgeOrigin,
+    calls,
+    async run(exportName, params = null, o = {}) {
+      const runId = `test:${randomBytes(8).toString("hex")}`
+      const runToken = o.token ?? randomBytes(32).toString("base64url")
+      const orgId = o.orgId ?? "org-a"
+      if (!o.token) tokens.set(`${runId} ${runToken}`, { orgId, depth: o.depth ?? 0 })
+      const res = await fetch(`${url}/run`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(o.depth ? { [RUN_DEPTH_HEADER]: String(o.depth) } : {}),
+        },
+        body: JSON.stringify({
+          runId,
+          orgId,
+          app: "probe",
+          version: "1.0.0",
+          sha256: PROBE_SHA,
+          exportName,
+          params,
+          extraArgs: [],
+          approval: null,
+          bridgeMethods: ["ping", "nest"],
+          bridgeUrl: `${bridgeOrigin}/api/app-bridge/${encodeURIComponent(runId)}`,
+          runToken,
+          deadlineMs: o.deadlineMs ?? 10_000,
+          ...(o.cpuMs ? { limits: { cpuMs: o.cpuMs } } : {}),
+        }),
+      })
+      tokens.delete(`${runId} ${runToken}`)
+      return { status: res.status, body: (await res.json()) as Record<string, any> }
+    },
+    async stop() {
+      server.stop(true)
+      bridge.stop(true)
+      await sup.stop()
+    },
+  }
+  return sandbox
+}

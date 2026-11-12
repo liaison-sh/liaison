@@ -10,7 +10,6 @@ import { api, createUserWithScopes } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
 import { seedGatedApproval } from "./approvals-seed"
 import { getActiveUsersNamed, getTicketSlaTargetSeconds } from "./db-reads"
-import { triggerCronJob } from "./run-cron"
 import { seedFactory, seedTicket, seedTicketMessages } from "./seed"
 
 const PROJECT_SCOPES = [
@@ -254,6 +253,10 @@ export async function resetAttentionForUser(
   token: string,
   adminToken: string = token,
 ): Promise<void> {
+  // The feed serves stored lists: recompute them first, so only rows that still
+  // apply are acted on (a stored row can name a task another test since moved
+  // out of reach, which the PATCH below would refuse).
+  await refreshStoredAttention(env, orgId)
   const res = await api(env.serverUrl, "/api/attention-items", { token })
   if (res.status !== 200) {
     throw new Error(`resetAttentionForUser: feed read failed ${res.status}`)
@@ -301,12 +304,14 @@ export async function resetAttentionForUser(
 }
 
 /**
- * Recompute the org's stored app attention lists now, as the attention minute
- * tick does (rows written straight into an app's tables wake nothing). The job
- * runs in the server; callers poll the feed for its result.
+ * Recompute the org's stored app attention lists now (rows written straight
+ * into an app's tables wake nothing). The attention minute tick only queues a
+ * refresh, deduplicated per (org, app) and minute and counted against the org's
+ * minute budget, so a second tick within a minute changes nothing: the lists are
+ * recomputed in the server instead, and stored when this returns.
  */
 export async function refreshStoredAttention(env: WorkerEnv, orgId: string): Promise<void> {
-  await triggerCronJob(env, "kernel-cron", "attention-state-email-materialize-org", { orgId })
+  await seedFactory(env, orgId, "attention.refresh", {})
 }
 
 interface SeededAttentionFixtures {
@@ -358,6 +363,9 @@ export async function seedAttentionFixtures(
     title: "Approve attention seed",
     params: { message: "attn seed", lines: ["Body preview: attn seed"] },
   })
+  // Home serves the apps' stored attention lists, and rows seeded straight into
+  // their tables wake no refresh: recompute them, as the minute tick would.
+  await refreshStoredAttention(env, params.orgId)
 
   return {
     projectId: proj.id,
@@ -823,6 +831,9 @@ export async function seedRichAttentionFeed(
     title: "Forward Hans Weber to mailbox archive",
     params: { message: "Forward Hans Weber to mailbox archive" },
   })
+  // Home serves the apps' stored attention lists, and rows seeded straight into
+  // their tables wake no refresh: recompute them, as the minute tick would.
+  await refreshStoredAttention(env, params.orgId)
 
   return {
     projectId: proj.id,

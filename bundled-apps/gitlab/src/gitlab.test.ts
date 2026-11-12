@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { base64Bytes, redactSecrets, utf8Text } from "./client"
 import * as handlers from "./handlers"
+import { resolveGitlabItem, searchGitlabKnowledge } from "./items"
 import { FILES_PER_RUN, parseFolderRef, syncGitlabFolder } from "./knowledge"
 import { verifyGitlab } from "./provisioning"
 import { asCtx, fakeCtx, fileAnswer, json } from "./test-ctx"
@@ -24,7 +25,7 @@ const MANIFEST = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manife
 const AUTH = { connection: "gitlab", scheme: "bearer", fields: ["token"] }
 
 describe("manifest", () => {
-  it("is version 1.1.0, newer than the last in-tree release (1.0.2)", () => {
+  it("is a semver version, newer than the last in-tree release (1.0.2)", () => {
     expect(MANIFEST.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -36,8 +37,10 @@ describe("manifest", () => {
       ),
       MANIFEST.provisioning.handler,
       MANIFEST.provisioning.verify,
+      MANIFEST.knowledgeItems.search,
+      MANIFEST.knowledgeItems.resolve,
     ]
-    expect(names.length).toBe(16)
+    expect(names.length).toBe(18)
     for (const name of names)
       expect(typeof (handlers as Record<string, unknown>)[name]).toBe("function")
   })
@@ -374,5 +377,81 @@ describe("provisioning verify", () => {
       ok: false,
       problems: ["not_connected: No GitLab connection for this organization."],
     })
+  })
+})
+
+describe("knowledge items", () => {
+  it("search: a blob search in the connected group, ids in the link reference shape", async () => {
+    const ctx = fakeCtx({
+      routes: {
+        "/groups/acme/search?scope=blobs&search=pricing%20sheet&per_page=5": json([
+          {
+            project_id: 7,
+            ref: "main",
+            path: "docs/pricing.md",
+            data: "token glpat-abcdefghijklmnopqrstuvwx here",
+          },
+        ]),
+      },
+    })
+    const res = await searchGitlabKnowledge({ query: " pricing sheet ", limit: 5 }, asCtx(ctx))
+    expect(res).toEqual({
+      results: [
+        {
+          id: "7:main:docs/pricing.md",
+          entity: "file",
+          title: "docs/pricing.md",
+          snippet: "token [REDACTED] here",
+        },
+      ],
+      nextCursor: null,
+    })
+    expect(ctx.calls[0]?.auth).toEqual(AUTH)
+  })
+
+  it("search: no query or no connection is no hits, not an error", async () => {
+    expect(await searchGitlabKnowledge({ query: "  " }, asCtx(fakeCtx()))).toEqual({
+      results: [],
+      nextCursor: null,
+    })
+    const notConnected = fakeCtx({ settings: "throws" })
+    expect(await searchGitlabKnowledge({ query: "x" }, asCtx(notConnected))).toEqual({
+      results: [],
+      nextCursor: null,
+    })
+  })
+
+  it("resolve: a file's name and link, its text only when asked and only for a text file", async () => {
+    const routes = {
+      "/projects/7/repository/files/docs%2Fpricing.md?ref=main": fileAnswer("# Prices"),
+      "/projects/7/repository/files/img%2Flogo.png?ref=main": fileAnswer("PNG"),
+      "/projects/7": json({ path_with_namespace: "acme/handbook" }),
+    }
+    const ctx = asCtx(fakeCtx({ routes }))
+    expect(await resolveGitlabItem({ ref: "7:main:docs/pricing.md" }, ctx)).toEqual({
+      found: true,
+      title: "pricing.md",
+      url: "https://gitlab.com/acme/handbook/-/blob/main/docs/pricing.md",
+    })
+    expect(
+      await resolveGitlabItem({ ref: "7:main:docs/pricing.md", content: true }, ctx),
+    ).toMatchObject({
+      text: "# Prices",
+    })
+    const image = await resolveGitlabItem({ ref: "7:main:img/logo.png", content: true }, ctx)
+    expect(image).toMatchObject({ found: true, title: "logo.png" })
+    expect(image.text).toBeUndefined()
+  })
+
+  it("resolve: gone or forbidden is not found; an auth failure is an error", async () => {
+    expect(await resolveGitlabItem({ ref: "7:main:gone.md" }, asCtx(fakeCtx()))).toEqual({
+      found: false,
+    })
+    const revoked = fakeCtx({
+      routes: { "/projects/7/repository/files/a.md?ref=main": json({ message: "401" }, {}, 401) },
+    })
+    await expect(resolveGitlabItem({ ref: "7:main:a.md" }, asCtx(revoked))).rejects.toThrow(
+      "AUTH_REVOKED",
+    )
   })
 })

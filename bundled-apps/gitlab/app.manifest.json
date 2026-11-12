@@ -1,6 +1,6 @@
 {
   "name": "gitlab",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "kind": "connector",
   "iconName": "folder",
   "description": "GitLab connector: sync group manuals into the knowledge base and provide read-only access to projects, commits, MRs, issues, releases, and more.",
@@ -608,6 +608,12 @@
       },
       "timeoutMs": 120000
     }
+  },
+  "knowledgeItems": {
+    "search": "searchGitlabKnowledge",
+    "resolve": "resolveGitlabItem",
+    "readScope": "gitlab:repo:read",
+    "timeoutMs": 10000
   },
   "provisioning": {
     "schema": {

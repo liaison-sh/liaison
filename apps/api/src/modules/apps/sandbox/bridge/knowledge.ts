@@ -339,6 +339,11 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
     const { setTaintFlag } = await import("~/modules/agent/scopes/taint")
     await setTaintFlag(threadId, orgId)
   }
+  // A short transaction of its own for one DB step. knowledge_search and
+  // knowledge_get are tx-less on a session bridge (rpc-bridge.ts): they wake the
+  // apps behind remote sources, never inside a transaction.
+  const dbStep = <T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> =>
+    bridgeOptions?.withShortTx ? bridgeOptions.withShortTx(fn) : fn(txDb)
   const methods: Record<string, any> = {
     // --- Knowledge tool bridges (T13) ---
     knowledge_search: async (paramsJson: string): Promise<string> => {
@@ -360,17 +365,18 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
         "~/apps/knowledge/federated-search"
       )
       const { registerDefaultKnowledgeSources } = await import("~/apps/knowledge/source-registry")
+      const { loadSearchPolicies } = await import("~/apps/knowledge/sources")
       const actor = knowledgeActorFromContext(bridgeKnowledgeActorInput(ctx))
-      // Build a request-scoped registry whose Drive adapter resolves OAuth
-      // tokens through the connections store on the active RLS-bound tx.
-      // Never use the process-wide cached registry — its getToken/fetchDrive
-      // stubs throw on any real remote fan-out.
-      const registry = registerDefaultKnowledgeSources({
-        tx: txDb as never,
-        orgId,
-        userId,
-        scopes: callerScopes ?? [],
-      })
+      // The remote sources the caller reaches: the apps that declare
+      // `knowledgeItems.search`, woken for this person (source-registry.ts).
+      const registry =
+        bridgeOptions?.knowledgeRegistryOverride ??
+        (await registerDefaultKnowledgeSources({
+          orgId,
+          userId,
+          scopes: callerScopes ?? [],
+          searchPolicy: await dbStep((tx) => loadSearchPolicies(tx)),
+        }))
       // Local knowledge search: run the same Meili-backed query the HTTP
       // /knowledge/search route uses, so agent tool calls see the same docs a
       // human-driven search would. Without this the tool would only ever
@@ -428,11 +434,8 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
                 }))
               // The index can lag an archive/delete: never hand back a hit whose
               // row is archived or gone (opening it would return not_found).
-              const hits = await dropArchivedKnowledgeHits(
-                txDb as never,
-                actor.orgId,
-                indexed,
-                actor,
+              const hits = await dbStep((tx) =>
+                dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor),
               )
               return {
                 hits,
@@ -496,14 +499,19 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
       } = await import("~/apps/knowledge/service")
       const actor = knowledgeActorFromContext(bridgeKnowledgeActorInput(ctx))
       if (params.id) {
-        const row = await loadKnowledgeDocument(txDb as never, params.id, actor)
-        if (!row) return JSON.stringify({ status: "not_found" })
-        try {
-          const shareRole = await loadDocumentShareRole(txDb as never, row.id, actor)
-          assertCanReadDocumentRow(row, actor, shareRole)
-        } catch {
-          return JSON.stringify({ status: "not_found" })
-        }
+        const id = params.id
+        const read = await dbStep(async (tx) => {
+          const row = await loadKnowledgeDocument(tx, id, actor)
+          if (!row) return null
+          try {
+            assertCanReadDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
+          } catch {
+            return null
+          }
+          return row
+        })
+        if (!read) return JSON.stringify({ status: "not_found" })
+        const row = read
         if (row.syncedSourceId) {
           await taintTurnForExternalText()
           // A synced document's body is the external source's text: fenced as
@@ -523,9 +531,8 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
         // Google Doc's exported text) so the agent can ground a Knowledge body
         // in it rather than fabricate one. Gated behind knowledge:sources:read
         // (the source-read scope, distinct from documents:read used for local
-        // get). Routes through the same request-scoped source registry the
-        // federated search uses, whose Drive adapter resolves an OAuth token on
-        // the active RLS tx and exports Google-native docs to text.
+        // get). Routes through the same source registry the federated search
+        // uses: the source's app resolves the item with its text (knowledgeItems.resolve).
         const { hasScope } = await import("~/modules/permissions/permissions")
         if (!hasScope("knowledge:sources:read", actor.scopes)) {
           return JSON.stringify({
@@ -538,12 +545,13 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
         }
         const registry =
           bridgeOptions?.knowledgeRegistryOverride ??
-          (await import("~/apps/knowledge/source-registry")).registerDefaultKnowledgeSources({
-            tx: txDb as never,
+          (await (
+            await import("~/apps/knowledge/source-registry")
+          ).registerDefaultKnowledgeSources({
             orgId,
             userId,
             scopes: callerScopes ?? [],
-          })
+          }))
         const adapter = registry.listEnabled(actor).find((a) => a.source === params.source)
         if (!adapter || typeof adapter.fetchRemoteContent !== "function") {
           return JSON.stringify({

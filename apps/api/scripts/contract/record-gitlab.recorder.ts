@@ -8,7 +8,8 @@
 // such as the GitLab CLI's), given in GITLAB_RECORD_TOKEN: it is stored as the
 // contract org's connection and added host-side by `ctx.fetch` auth, never seen
 // by the app or written to a fixture. The token owner's profile (the verify
-// read) is reduced to a stand-in before it is recorded.
+// read) is reduced to a stand-in before it is recorded, and every other person
+// in an answer (names, handles, avatars) is replaced by the recorder's scrub.
 // Not part of any suite run (it skips unless CONTRACT_RECORD=1): run it by
 // path when the app's calls change, read what it wrote, commit it.
 //
@@ -103,6 +104,14 @@ const PLAN: RecordingStep[] = [
         config: { ref: `${DOCS_PROJECT}:master:doc` },
         cursor: null,
       }),
+  },
+  {
+    entry: "knowledge-items:search",
+    input: () => params({ query: "Continuous Integration", limit: 5, cursor: null }),
+  },
+  {
+    entry: "knowledge-items:resolve",
+    input: () => params({ ref: `${DOCS_PROJECT}:master:README.md`, content: true }),
   },
   { entry: "provision:handler", input: () => params({ config: {}, dryRun: false }) },
   { entry: "provision:verify", input: () => params({ config: {} }) },

@@ -248,7 +248,12 @@ export async function federatedKnowledgeSearch(
     cursors: input.cursors ?? {},
     filters: input.filters ?? {},
   }
-  const remoteAdapters = deps.registry.listEnabled(deps.actor, request.filters)
+  const remoteAdapters = deps.registry
+    .listEnabled(deps.actor, request.filters)
+    .flatMap((adapter) => {
+      const search = adapter.searchRemote
+      return search ? [{ source: adapter.source, search: search.bind(adapter) }] : []
+    })
 
   if (!query) {
     const skipped = remoteAdapters.map((adapter) => ({
@@ -265,7 +270,7 @@ export async function federatedKnowledgeSearch(
   const sourceResults = await Promise.all([
     runSource("knowledge", () => deps.localSearch(request, deps.actor), timeoutMs),
     ...remoteAdapters.map((adapter) =>
-      runSource(adapter.source, () => adapter.searchRemote(request, deps.actor), timeoutMs),
+      runSource(adapter.source, () => adapter.search(request, deps.actor), timeoutMs),
     ),
   ])
   // Observability — per-source latency/status. Query and body content are

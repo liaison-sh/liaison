@@ -63,7 +63,9 @@ export const editOperationSchema = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("addBlock"),
-      block: blockRecord.describe("The whole new block: {id, type, title, width?, source, map}."),
+      block: blockRecord.describe(
+        "The whole new block: {id, type, title, width?, source, map} (a blended combo: layers instead of source).",
+      ),
       position: positionSchema
         .optional()
         .describe("Index (0 = first), {before: blockId} or {after: blockId}. Default: the end."),
@@ -572,8 +574,9 @@ function aggWords(field: unknown, agg: unknown): string {
  * What a block's map draws, in words: "sum of total by status, target 5000; keeps only rows
  * where status is not cancelled". `spec` names the filters a where clause reads.
  */
-function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
+function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}, layered = false): string {
   const map = isObject(rawMap) ? rawMap : {}
+  if (layered) return displayWords(map).join(", ") || "the layers as they are drawn"
   const field = map.value ?? map.y
   const parts: string[] = []
   const measureList = (list: unknown) =>
@@ -612,6 +615,7 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
   if (map.horizontal) parts.push("horizontal bars")
   if (Array.isArray(map.lineSeries)) parts.push(`drawn as lines: ${map.lineSeries.join(", ")}`)
   if (map.secondaryAxis) parts.push("lines on their own axis")
+  parts.push(...displayWords(map).filter((w) => !w.startsWith("shown as")))
   if (map.scale !== undefined) parts.push(`every value multiplied by ${String(map.scale)}`)
   if (map.percentOfTotal) parts.push("each value as a percentage of its total")
   if (map.target !== undefined) parts.push(`target ${String(map.target)}`)
@@ -642,12 +646,56 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
   return out
 }
 
+/** The display words a layered block's own map shares with any chart: curve, headline, format. */
+function displayWords(map: Record<string, unknown>): string[] {
+  const out: string[] = []
+  if (map.curve === "smooth") out.push("smooth curve")
+  if (map.curve === "linear") out.push("straight lines between points")
+  if (map.headline === "total") {
+    out.push("headline: the period's total with its change against the comparison")
+  }
+  if (map.headline === "series") {
+    out.push("headline: one figure per series with its change against the comparison")
+  }
+  if (Array.isArray(map.headlineCalc)) {
+    for (const c of map.headlineCalc.filter(isObject)) {
+      out.push(`headline figure "${String(c.label)}" = ${compact(c.expr, 80)}`)
+    }
+  }
+  if (map.format !== undefined) {
+    out.push(`shown as ${String(map.format)}${map.currency ? ` (${String(map.currency)})` : ""}`)
+  }
+  return out
+}
+
+/** A layered block's layers in words: how each is drawn, what it shows, where it reads. */
+function layersWords(
+  layers: unknown,
+  spec: Record<string, unknown>,
+  window: DayWindow,
+  ctx: DescribeContext,
+): string {
+  const list = (Array.isArray(layers) ? layers : []).filter(isObject)
+  const each = list.map((l) => {
+    const drawn = `${l.as === "line" ? "a line" : "bars"}${l.axis === "right" ? " on the right axis" : ""}`
+    return `"${String(l.label ?? l.id)}" (${drawn}, ${mapWords(l.map, spec)}) ${blockSourceWords(l, spec, window, ctx)}`
+  })
+  return `blending ${list.length} layer${list.length === 1 ? "" : "s"} joined on their date bucket: ${each.join("; ")}`
+}
+
 /** Whether a block follows the dashboard range (spec.ts blockRangeMode, on an unchecked block). */
 function rangeModeWords(
   block: Record<string, unknown>,
   spec: Record<string, unknown> = {},
 ): string {
   if (block.type === "text") return "no dates"
+  if (Array.isArray(block.layers) && block.timeRange === undefined) {
+    return block.layers.some(
+      (l) => isObject(l) && rangeModeWords(l, spec) === "follows the dashboard range",
+    )
+      ? "follows the dashboard range"
+      : "keeps its own dates"
+  }
   const shared =
     typeof block.dataset === "string" && isObject(spec.datasets)
       ? spec.datasets[block.dataset]
@@ -707,6 +755,7 @@ function blockSourceWords(
   ctx: DescribeContext,
 ): string {
   if (b.type === "text") return `showing ${noteHead(String(b.text ?? ""))}`
+  if (Array.isArray(b.layers)) return layersWords(b.layers, spec, window, ctx)
   if (typeof b.dataset === "string") {
     const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
     return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
@@ -773,14 +822,28 @@ function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>):
   const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) => {
     const map = isObject(b.map) ? b.map : {}
     const where = Array.isArray(map.where) ? map.where : []
+    const layers = (Array.isArray(b.layers) ? b.layers : []).filter(isObject)
     return (
       reads(b.source) ||
       (typeof b.dataset === "string" && reads(datasets[b.dataset])) ||
-      where.some((w) => isObject(w) && isObject(w.value) && w.value.filter === f.id)
+      where.some((w) => isObject(w) && isObject(w.value) && w.value.filter === f.id) ||
+      layers.some((l) => {
+        const lw = isObject(l.map) && Array.isArray(l.map.where) ? l.map.where : []
+        return (
+          reads(l.source) ||
+          (typeof l.dataset === "string" && reads(datasets[l.dataset])) ||
+          lw.some((w) => isObject(w) && isObject(w.value) && w.value.filter === f.id)
+        )
+      })
     )
   }).length
   return `"${String(f.label ?? f.id)}" (id ${String(f.id)}, ${kind}${options}${def}${blocks ? `; read by ${blocks} block${blocks === 1 ? "" : "s"}` : ""})`
 }
+
+/** Whether a block (or one of its layers) reads the shared dataset `id`. */
+const readsDataset = (b: Record<string, unknown>, id: string) =>
+  b.dataset === id ||
+  (Array.isArray(b.layers) && b.layers.some((l) => isObject(l) && l.dataset === id))
 
 const specOf = (d: EditableDashboard) => d.spec as unknown as Record<string, unknown>
 
@@ -804,7 +867,8 @@ function changeWords(
   const parts: string[] = []
   // Short, human parts first (title, dates, dataset), the long source and map words last:
   // a line over the length cap loses its end, never the title change.
-  const rank = (k: string) => (k === "title" ? 0 : k === "source" || k === "map" ? 2 : 1)
+  const rank = (k: string) =>
+    k === "title" ? 0 : k === "source" || k === "map" || k === "layers" ? 2 : 1
   const entries = Object.entries(changes).sort(([a], [b]) => rank(a) - rank(b))
   for (const [k, v] of entries) {
     if (k === "id") continue
@@ -822,8 +886,13 @@ function changeWords(
           : `now reads the shared dataset '${String(v)}'`,
       )
     } else if (k === "text") parts.push(`now shows ${noteHead(String(v ?? ""))}`)
-    else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v), spec)}`)
-    else if (k === "timeRange") {
+    else if (k === "map") {
+      parts.push(
+        `now shows ${mapWords(mergeKeys(before.map, v), spec, Array.isArray(before.layers) || Array.isArray(changes.layers))}`,
+      )
+    } else if (k === "layers") {
+      parts.push(v === null ? "no layers any more" : `now ${layersWords(v, spec, window, ctx)}`)
+    } else if (k === "timeRange") {
       parts.push(
         v === "fixed"
           ? "keeps its own dates"
@@ -890,7 +959,7 @@ export function describeOperations(
         const shows =
           b.type === "text"
             ? ""
-            : `; it shows ${mapWords(b.map, specOf(next))}, ${rangeModeWords(b, specOf(next))}`
+            : `; it shows ${mapWords(b.map, specOf(next), Array.isArray(b.layers))}, ${rangeModeWords(b, specOf(next))}`
         line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${shows}${refresh}`
         break
       }
@@ -953,14 +1022,14 @@ export function describeOperations(
       case "setDataset": {
         const had = isObject(specOf(state).datasets) && op.id in (specOf(state).datasets as object)
         const users = nextBlocks
-          .filter((b) => b.dataset === op.id)
+          .filter((b) => readsDataset(b, op.id))
           .map((b) => blockName(b, String(b.id)))
         line = `${had ? "Change" : "Add"} the shared dataset '${op.id}': it reads ${sourceWords(op.source, window, ctx)}, once per view for every block that uses it${users.length ? ` (${users.join(", ")})` : " (no block uses it yet)"}`
         break
       }
       case "removeDataset":
         line = `Remove the shared dataset '${op.id}'${
-          blocks.some((b) => b.dataset === op.id)
+          blocks.some((b) => readsDataset(b, op.id))
             ? " (blocks still read it: this edit will be refused unless they change too)"
             : ""
         }`

@@ -71,6 +71,13 @@ Changes always go through `kernel__dashboards_edit`. `kernel__dashboards_update(
 - `expr` grammar: numbers, names, `+ - * /`, parentheses, `min(...)`, `max(...)`, `abs(x)`, `round(x, decimals)`. A division by zero or a missing value shows no value.
 - `map.scale`: multiplies every value (`0.01` turns cents into units). `map.percentOfTotal: true` (bar, line, area, pie, funnel): each value as a percentage of its series' total; set `format: "percent"`.
 
+### Charts over time
+
+- A date-bucketed chart (`groupBy.bucket`) that follows the dashboard range shows every bucket of the range, an empty one as 0 (a gap for `avg`, `min`, `max`), and its comparison lines up day for day. Today's unfinished bucket comes back as `inProgressLabel` (drawn dotted).
+- `map.curve: "smooth"` (line, area, combo) draws a smooth line.
+- `map.headline: "total"` (bar, line, area, combo) puts the period's figure above the chart with its change against the comparison: the same aggregation over all rows (a sum stays a sum, an average is the average of every row). `"series"`: one figure per series or measure (a measure with `expr` is computed from the other measures' totals, so a ratio stays a true ratio).
+- A blended chart reads two or three sources: a `combo` with `layers` instead of a source. Each layer is `{ id, label, as: "bar" | "line", axis: "left" | "right", source or dataset, map }`, its map a bar or line map with `groupBy: { field, bucket }`; every layer uses the same bucket (they join on it, and on nothing else). The block's own map takes only `curve`, `format`, `currency` and `headlineCalc: [{ label, expr }]`: figures over the layers' totals by layer id (`"units / sessions"`; each layer it reads has `headline: "total"`). A layer that fails shows its error and the others still draw.
+
 ### Shared datasets
 
 When two or more blocks read the same source with the same params (a count and a list of the same orders, a chart and a table of the same ad spend), declare it once in `datasets` and point each block at it with `"dataset": "<id>"` instead of `source`. The source then runs once per view for all of them: fewer calls to rate-limited services, and blocks that always agree. Each block keeps its own `map` (and `where`). A dataset's params take the same date, range and filter tokens as a block's.

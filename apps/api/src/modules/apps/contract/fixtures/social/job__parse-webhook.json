@@ -1,0 +1,78 @@
+{
+  "entry": "job:parse-webhook",
+  "params": {
+    "platform": "facebook",
+    "body": {
+      "object": "page",
+      "entry": [
+        {
+          "id": "104857600000001",
+          "time": 1767225600,
+          "changes": [
+            {
+              "field": "feed",
+              "value": {
+                "from": {
+                  "id": "6000000000000003",
+                  "name": "Lena Okafor"
+                },
+                "post": {
+                  "status_type": "added_photos",
+                  "is_published": true,
+                  "id": "104857600000001_123450000000001"
+                },
+                "message": "Are these panels safe to mount above a radiator?",
+                "post_id": "104857600000001_123450000000001",
+                "comment_id": "123450000000001_998800000000003",
+                "created_time": 1767225540,
+                "item": "comment",
+                "parent_id": "104857600000001_123450000000001",
+                "verb": "add"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\"}}"],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:29.256905+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.85735+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"dmStateRepair\":{\"done\":true,\"offset\":0,\"version\":1},\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\"}}"],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:29.256905+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.85735+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"dmStateRepair\":{\"done\":true,\"offset\":0,\"version\":1},\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "finding",
+        "{\"where\":{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "resolveContact",
+      "args": ["{\"externalId\":\"6000000000000003\"}"],
+      "reply": "null"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "finding",
+        "{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"permalink\":null,\"occurred_at\":\"2025-12-31T23:59:00.000Z\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":null,\"metadata\":{\"siblingsAccessible\":true},\"contact_id\":null,\"status\":\"new\"}"
+      ],
+      "reply": "{\"id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.963834+00\",\"updated_at\":\"2026-11-12 10:10:29.963834+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"media_url\":null,\"permalink\":null,\"occurred_at\":\"2025-12-31 23:59:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"siblingsAccessible\":true}}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\"}"
+      ]
+    }
+  ]
+}

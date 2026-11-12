@@ -1,0 +1,20 @@
+{
+  "entry": "tool:pages_list",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/me/accounts?fields=id%2Cname%2Ccategory",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"104857600000001\\\",\\\"name\\\":\\\"Resonant Audio Labs\\\",\\\"category\\\":\\\"Musical instrument store\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    }
+  ]
+}

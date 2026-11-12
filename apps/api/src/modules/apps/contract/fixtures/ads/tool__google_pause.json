@@ -1,0 +1,58 @@
+{
+  "entry": "tool:google_pause",
+  "params": {
+    "object_type": "campaign",
+    "object_id": "21000000001",
+    "reason": "Spend with no conversion for 14 days"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["google"],
+      "reply": "ads-token-stand-in-2"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT campaign.id, campaign.name, campaign.status FROM campaign WHERE campaign.id = 21000000001\\\"}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"campaign\\\":{\\\"resourceName\\\":\\\"customers/1234567890/campaigns/21000000001\\\",\\\"id\\\":\\\"21000000001\\\",\\\"name\\\":\\\"Search – acoustic panels FR\\\",\\\"status\\\":\\\"ENABLED\\\",\\\"advertisingChannelType\\\":\\\"SEARCH\\\"},\\\"campaignBudget\\\":{\\\"resourceName\\\":\\\"customers/1234567890/campaignBudgets/13000000001\\\",\\\"amountMicros\\\":\\\"25000000\\\"},\\\"metrics\\\":{\\\"clicks\\\":\\\"318\\\",\\\"impressions\\\":\\\"9120\\\",\\\"costMicros\\\":\\\"214350000\\\",\\\"conversions\\\":11},\\\"segments\\\":{\\\"date\\\":\\\"2025-12-31\\\"}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/campaigns:mutate",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"operations\\\":[{\\\"update\\\":{\\\"resourceName\\\":\\\"customers/1234567890/campaigns/21000000001\\\",\\\"status\\\":\\\"PAUSED\\\"},\\\"updateMask\\\":\\\"status\\\"}]}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"results\\\":[{\\\"resourceName\\\":\\\"customers/1234567890/campaigns/21000000001\\\"}]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT campaign.id, campaign.status FROM campaign WHERE campaign.id = 21000000001\\\"}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"campaign\\\":{\\\"resourceName\\\":\\\"customers/1234567890/campaigns/21000000001\\\",\\\"id\\\":\\\"21000000001\\\",\\\"name\\\":\\\"Search – acoustic panels FR\\\",\\\"status\\\":\\\"ENABLED\\\",\\\"advertisingChannelType\\\":\\\"SEARCH\\\"},\\\"campaignBudget\\\":{\\\"resourceName\\\":\\\"customers/1234567890/campaignBudgets/13000000001\\\",\\\"amountMicros\\\":\\\"25000000\\\"},\\\"metrics\\\":{\\\"clicks\\\":\\\"318\\\",\\\"impressions\\\":\\\"9120\\\",\\\"costMicros\\\":\\\"214350000\\\",\\\"conversions\\\":11},\\\"segments\\\":{\\\"date\\\":\\\"2025-12-31\\\"}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "pause_ledger",
+        "{\"meta_object_id\":\"21000000001\",\"prior_status\":\"ENABLED\",\"paused_by_us\":true,\"reason\":\"Spend with no conversion for 14 days\",\"object_type\":\"campaign\",\"resolved_at\":null}"
+      ],
+      "reply": "{\"id\":\"aee80ec3-a007-4efe-aec9-219e87a22149\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:45.953758+00\",\"updated_at\":\"2026-11-12 10:16:45.953758+00\",\"meta_object_id\":\"21000000001\",\"prior_status\":\"ENABLED\",\"paused_by_us\":true,\"reason\":\"Spend with no conversion for 14 days\",\"resolved_at\":null,\"object_type\":\"campaign\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["pause_ledger", "{\"where\":{\"object_type\":\"campaign\",\"paused_by_us\":true}}"],
+      "reply": "[{\"id\":\"aee80ec3-a007-4efe-aec9-219e87a22149\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:45.953758+00\",\"updated_at\":\"2026-11-12 10:16:45.953758+00\",\"meta_object_id\":\"21000000001\",\"prior_status\":\"ENABLED\",\"paused_by_us\":true,\"reason\":\"Spend with no conversion for 14 days\",\"resolved_at\":null,\"object_type\":\"campaign\"}]"
+    }
+  ]
+}

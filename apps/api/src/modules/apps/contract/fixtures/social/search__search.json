@@ -1,0 +1,18 @@
+{
+  "entry": "search:search",
+  "params": {
+    "query": "bass traps Belgium",
+    "limit": 10
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "finding",
+        "{\"search\":{\"fields\":[\"content_text\",\"author_handle\"],\"query\":\"bass traps Belgium\"},\"orderBy\":{\"id\":\"asc\"},\"limit\":11,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"9dd8a3db-b5f8-4ded-a875-1a3e216664a4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.536395+00\",\"updated_at\":\"2026-11-12 10:10:29.536395+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000001\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"contact_id\":null,\"author_handle\":\"Camille Martin\",\"author_external_id\":\"6000000000000001\",\"content_text\":\"Do the new bass traps ship to Belgium? I could not find it in the checkout.\",\"media_url\":null,\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000001\",\"occurred_at\":\"2025-12-31 23:18:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"pageId\":\"104857600000001\",\"siblingsAccessible\":true}}]"
+    }
+  ]
+}

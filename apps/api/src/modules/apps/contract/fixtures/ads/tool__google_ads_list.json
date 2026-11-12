@@ -1,0 +1,27 @@
+{
+  "entry": "tool:google_ads_list",
+  "params": {
+    "ad_group_id": "152000000001"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["google"],
+      "reply": "ads-token-stand-in-2"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT ad_group_ad.ad.id, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.status, ad_group.id, campaign.id FROM ad_group_ad WHERE ad_group.id = 152000000001\\\"}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"adGroupAd\\\":{\\\"resourceName\\\":\\\"customers/1234567890/adGroupAds/152000000001~700000000001\\\",\\\"status\\\":\\\"ENABLED\\\",\\\"ad\\\":{\\\"id\\\":\\\"700000000001\\\",\\\"responsiveSearchAd\\\":{\\\"headlines\\\":[{\\\"text\\\":\\\"Acoustic panels made in France\\\"},{\\\"text\\\":\\\"Free shipping over 150 €\\\"}]}}},\\\"adGroup\\\":{\\\"id\\\":\\\"152000000001\\\"},\\\"campaign\\\":{\\\"id\\\":\\\"21000000001\\\"}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "entry": "tool:merchant_feed_status",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["merchant"],
+      "reply": "ads-token-stand-in-3"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://merchantapi.googleapis.com/issueresolution/v1/accounts/5550001234/aggregateProductStatuses",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-3\",\"Content-Type\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"aggregateProductStatuses\\\":[{\\\"name\\\":\\\"accounts/5550001234/aggregateProductStatuses/SHOPPING_ADS~FR\\\",\\\"reportingContext\\\":\\\"SHOPPING_ADS\\\",\\\"country\\\":\\\"FR\\\",\\\"stats\\\":{\\\"activeCount\\\":\\\"38\\\",\\\"pendingCount\\\":\\\"1\\\",\\\"disapprovedCount\\\":\\\"2\\\",\\\"expiringCount\\\":\\\"0\\\"},\\\"itemLevelIssues\\\":[{\\\"code\\\":\\\"missing_gtin\\\",\\\"severity\\\":\\\"DISAPPROVED\\\",\\\"resolution\\\":\\\"MERCHANT_ACTION\\\",\\\"attribute\\\":\\\"gtin\\\",\\\"reportingContext\\\":\\\"SHOPPING_ADS\\\",\\\"description\\\":\\\"Missing value [gtin]\\\",\\\"detail\\\":\\\"Add a GTIN for this product\\\",\\\"productCount\\\":\\\"2\\\"}]}]}\"}"
+    }
+  ]
+}

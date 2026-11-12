@@ -68,6 +68,7 @@ export const NAV: NavSection[] = [
       { id: "apps/knowledge", url: "apps/knowledge" },
       { id: "apps/google-drive", url: "apps/google-drive" },
       { id: "apps/gitlab", url: "apps/gitlab" },
+      { id: "apps/github", url: "apps/github" },
       { id: "apps/contacts", url: "apps/contacts" },
       { id: "apps/calendar", url: "apps/calendar" },
       { id: "apps/projects", url: "apps/projects" },

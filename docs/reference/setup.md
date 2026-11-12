@@ -32,6 +32,7 @@ Measured on a live install with a coding agent running the AGENT steps: about 9 
 | GitLab: a read-only access token | 2 to 4 min |  |
 | Boxtal: two API key pairs | 4 to 7 min |  |
 | Pennylane: an API token | 3 to 6 min |  |
+| GitHub: a read-only fine-grained token *(on top)* | 3 to 5 min |  |
 | Stripe: a restricted key and a webhook *(on top)* | 5 to 10 min |  |
 | Webhook sources (call transcripts, monitoring alerts, CI status): one signed webhook each in your own system *(on top)* | 15 to 30 min |  |
 | A database: a read-only role and its catalog *(on top)* | 10 to 20 min |  |
@@ -306,6 +307,29 @@ A second, direct-only database connection for raw read-only SELECT (an analytics
 5. **AGENT** The owner pastes the secret values into deploy/.setup-secrets.env (never the chat); put the values in the config: an `apps` entry { name: database, connection: { name: warehouse, credentials: { connectionString (secret), dialect (optional), statementTimeoutMs (optional) } } }, secrets as ${ENV} references to the secrets file, then run `liaison config apply` and `liaison config verify --app database`.
 
 Provider docs: <docs/database-connector.md>
+
+### github
+
+#### github/github
+
+Credentials. Steps on your server: `liaison guide github/github`.
+
+Connect a GitHub organization or user read-only with a fine-grained personal access token. Liaison refuses a token that can write.
+
+1. **HUMAN** (1 min) On github.com, open your avatar → **Settings → Developer settings → Personal access tokens → Fine-grained tokens** and choose **Generate new token**.
+   Open: <https://github.com/settings/personal-access-tokens/new>
+2. **HUMAN** (1 min) Under **Resource owner**, pick the organization (or yourself), and under **Repository access** the repositories Liaison may read.
+   Open: <https://github.com/settings/personal-access-tokens/new>
+3. **HUMAN** (1 min) Under **Repository permissions**, set **Contents**, **Metadata**, **Pull requests** and **Issues** to **Read-only**. Leave everything else at No access: never Read and write, never Administration. A classic token with the `repo` scope can write and is refused.
+   Open: <https://github.com/settings/personal-access-tokens/new>
+4. **HUMAN** Set the longest expiry your organization allows. An expired token answers 401 and every GitHub read stops until you paste a new one.
+   Open: <https://github.com/settings/personal-access-tokens/new>
+5. **HUMAN** Copy the `github_pat_…` value and paste it into the **token** field.
+6. **HUMAN** (1 min) In **owner**, enter the organization or user name exactly as in its GitHub URL (e.g. `maison-example`).
+7. **HUMAN** Rotating later: come back to this same form and paste the new token. It REPLACES the stored credential rather than adding a second connection.
+8. **AGENT** The owner pastes the secret values into deploy/.setup-secrets.env (never the chat); put the values in the config: an `apps` entry { name: github, connection: { name: github, credentials: { token (secret), owner } } }, secrets as ${ENV} references to the secrets file, then run `liaison config apply` and `liaison config verify --app github`.
+
+Provider docs: <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens>
 
 ### gitlab
 

@@ -115,7 +115,9 @@ describe("each typed form against the baseline", () => {
     console.log(
       `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU, ${scorings} scorings\n${report.lines.join("\n")}`,
     )
-    expect(scorings).toBeLessThan(400_000)
+    // 450 k (was 400 k): the GitHub connector's 13 read tools and their 26 forms took the
+    // catalog to about 425 k scorings; the CPU bound below still holds the real cost.
+    expect(scorings).toBeLessThan(450_000)
     expect(rankingCpuMs).toBeLessThan(5_000)
   })
 })

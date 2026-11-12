@@ -116,6 +116,12 @@ export const CONNECTION_ESTIMATES: Array<{ refs: string[]; label: string } & Ste
   { refs: ["pennylane/pennylane"], label: "Pennylane: an API token", minutes: [3, 6] },
   // Not in the install the full onboarding was measured on: listed with its own time.
   {
+    refs: ["github/github"],
+    label: "GitHub: a read-only fine-grained token",
+    minutes: [3, 5],
+    part: "extra",
+  },
+  {
     refs: ["stripe/stripe"],
     label: "Stripe: a restricted key and a webhook",
     minutes: [5, 10],

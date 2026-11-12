@@ -160,6 +160,17 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 | `database:query:read` | manifest scopes; role admin; tool db_query |  |
 | `database:reads:read` | manifest scopes; role member; tools db_describe, db_list_reads, db_probe, db_read |  |
 
+## github
+
+Read repositories, commits, pull requests and issues on GitHub, read-only.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `github:accounts:admin` | manifest scopes; role admin; settings section connection |  |
+| `github:accounts:read` | manifest scopes; role member |  |
+| `github:approve` | approver scope | Decide (approve, edit, or deny) github approvals raised by its gated tools |
+| `github:repo:read` | manifest scopes; role member; tools github_get_commit, github_get_pull_request, github_list_commits, github_list_issues, github_list_labels, github_list_milestones and 7 more |  |
+
 ## gitlab
 
 Sync GitLab manuals into Knowledge and read projects, merge requests and issues.

@@ -90,6 +90,11 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     why: "an e-invoicing provider op the invoicing app calls through its contract; marked contractOnly and internal",
   })),
   {
+    tool: "github:github_read_file",
+    reason: "trust boundary",
+    why: "one repository file's text: outside text, fenced for the agent that asked for it, with no rows a block can chart",
+  },
+  {
     tool: "gitlab:gitlab_read_file",
     reason: "trust boundary",
     why: "one repository file's text: outside text, fenced for the agent that asked for it, with no rows a block can chart",

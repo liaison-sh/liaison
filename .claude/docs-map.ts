@@ -99,6 +99,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/sharing/**", pages: ["apps/knowledge"] },
   { glob: "bundled-apps/google-drive/**", pages: ["apps/google-drive"] },
   { glob: "bundled-apps/gitlab/**", pages: ["apps/gitlab"] },
+  { glob: "bundled-apps/github/**", pages: ["apps/github"] },
   { glob: "apps/api/src/apps/contacts/**", pages: ["apps/contacts", "sales/contacts"] },
   { glob: "apps/api/src/modules/contacts/**", pages: ["apps/contacts", "sales/contacts", "sales/duplicates"] },
   { glob: "apps/api/src/modules/product-attributes/**", pages: ["agents/tools"] },

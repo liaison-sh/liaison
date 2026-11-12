@@ -296,10 +296,12 @@ export async function readFile(
 }
 
 // ---------------------------------------------------------------------------
-// Secret redaction of file text (high-confidence patterns only)
+// Secret redaction of every text body (high-confidence patterns only)
 // ---------------------------------------------------------------------------
 
 const SECRET_PATTERNS: RegExp[] = [
+  /\bgh[pousr]_[A-Za-z0-9]{36,}/g, // GitHub classic, OAuth, user, server and refresh tokens
+  /\bgithub_pat_[A-Za-z0-9_]{22,}/g, // GitHub fine-grained token
   /glpat-[A-Za-z0-9_-]{20,}/g, // GitLab PAT
   /AKIA[0-9A-Z]{16}/g, // AWS access key id
   /-----BEGIN [\w ]+ PRIVATE KEY-----[\s\S]*?-----END [\w ]+ PRIVATE KEY-----/g, // PEM key

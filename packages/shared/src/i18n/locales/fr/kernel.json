@@ -495,6 +495,10 @@
       "remove": "Supprimer",
       "quota": "Quota d'API"
     },
+    "github": {
+      "connectionTitle": "Connexion",
+      "connectionDescription": "Le jeton en lecture seule et l'organisation ou l'utilisateur avec lesquels Liaison lit GitHub."
+    },
     "pennylane": {
       "connectionTitle": "Connexion",
       "connectionDescription": "Le jeton d'API et le périmètre (entreprise ou cabinet) avec lesquels Liaison lit Pennylane."
@@ -609,6 +613,7 @@
       "contacts": "Contacts",
       "database": "Base de données",
       "files": "Fichiers",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "invoicing": "Facturation",
@@ -2022,6 +2027,7 @@
     "connectionStatus": "État de la connexion : {{status}}",
     "app": {
       "database": "Base de données",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "pennylane": "Pennylane",
@@ -2040,6 +2046,7 @@
       "syncedSources": "Sources synchronisées",
       "calendarConnections": "Connexions d'agenda",
       "database": "Base de données",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "googleDrive": "Google Drive",
       "profile": "Profil",
@@ -3914,6 +3921,8 @@
     "calendar__admin": "Administrateur de l'agenda : gérer les connexions Google Agenda de l'organisation et le choix des agendas",
     "database__member": "Lecteur du connecteur de base de données : lectures prédéfinies uniquement",
     "database__admin": "Administrateur du connecteur de base de données : lectures prédéfinies et requêtes libres (si le déploiement l'autorise)",
+    "github__member": "Lecteur GitHub : accès en lecture aux dépôts, commits, pull requests et tickets",
+    "github__admin": "Administrateur GitHub : gérer la connexion GitHub",
     "gitlab__member": "Lecteur GitLab : accès en lecture aux projets, commits, tickets et demandes de fusion",
     "gitlab__admin": "Administrateur GitLab : gérer les connexions GitLab",
     "google-drive__member": "Lecteur Google Drive : consulter les comptes Drive connectés, déposer de nouveaux fichiers dans le dossier de rapports de l'application",
@@ -3950,6 +3959,7 @@
     "calendar": "Agenda : vues mois et semaine synchronisées dans les deux sens avec Google Agenda, pour les agendas de l'organisation et personnels.",
     "contacts": "Répertoire des contacts",
     "database": "Connecteur en lecture seule vers la base de données du déploiement, pour le diagnostic et le support : licences et abonnements, modération, santé de l'instance.",
+    "github": "Connecteur GitHub : accès en lecture seule aux dépôts, commits, pull requests, tickets, versions et au code d'une organisation ou d'un utilisateur.",
     "gitlab": "Connecteur GitLab : synchronise les manuels du groupe dans la base de connaissances et donne un accès en lecture aux projets, commits, demandes de fusion, tickets, versions et plus.",
     "google-drive": "Connecteur Google Drive : source de recherche pour les connaissances et outils d'agent (rechercher, lire et importer des fichiers Drive, déposer de nouveaux fichiers dans un dossier « Liaison Reports » ; les fichiers existants ne sont jamais modifiés ni supprimés).",
     "knowledge": "Espace de connaissances pour les documents locaux et les liens vers des sources choisies",
@@ -4837,6 +4847,9 @@
     "database": {
       "database": "Base de données opérationnelle",
       "warehouse": "Entrepôt en lecture seule"
+    },
+    "github": {
+      "github": "Propriétaire GitHub"
     },
     "gitlab": {
       "gitlab": "Groupe GitLab"

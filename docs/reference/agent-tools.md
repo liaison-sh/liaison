@@ -427,6 +427,26 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 | `report_access_get` | The Report access settings: each domain of the connected catalog with its reads, the catalog default, the organization rule, and the roles and people a rule can name. |  | `database:access:admin` |
 | `report_access_set` | Replace the organization's Report access rules (one map of domain to tier, roles and people). |  | `database:access:admin` |
 
+## github
+
+Read repositories, commits, pull requests and issues on GitHub, read-only.
+
+| Tool | Description | Approval-gated | Required scopes |
+| --- | --- | --- | --- |
+| `github_get_commit` | Get a single GitHub commit by SHA, optionally with diff. |  | `github:repo:read` |
+| `github_get_pull_request` | Get a single GitHub pull request by number, optionally with its changed files. |  | `github:repo:read` |
+| `github_list_commits` | List commits in a GitHub repository. |  | `github:repo:read` |
+| `github_list_issues` | List issues in a GitHub repository (pull requests left out). |  | `github:repo:read` |
+| `github_list_labels` | List labels in a GitHub repository. |  | `github:repo:read` |
+| `github_list_milestones` | List milestones in a GitHub repository, open and closed, with their issue counts. |  | `github:repo:read` |
+| `github_list_pull_requests` | List pull requests in a GitHub repository. |  | `github:repo:read` |
+| `github_list_releases` | List releases in a GitHub repository. |  | `github:repo:read` |
+| `github_list_repos` | List the repositories of the connected GitHub owner. |  | `github:repo:read` |
+| `github_list_tags` | List git tags in a GitHub repository. |  | `github:repo:read` |
+| `github_list_tree` | List files and directories at a path of a GitHub repository. |  | `github:repo:read` |
+| `github_read_file` | Read a file from a GitHub repository. |  | `github:repo:read` |
+| `github_search` | Search the connected owner's GitHub repositories. |  | `github:repo:read` |
+
 ## gitlab
 
 Sync GitLab manuals into Knowledge and read projects, merge requests and issues.

@@ -37,3 +37,8 @@ Manifest entities.<e>.pick -> apps/api/src/modules/apps/manifest-schema.ts:1282
 Shopify declares pick -> bundled-apps/shopify/app.manifest.json:423
 Boxtal declares pick -> bundled-apps/boxtal/app.manifest.json:225
 REST routes under /api/dashboards/tables -> apps/api/src/modules/dashboards/tables/routes.ts:33
+New table in the sidebar's Tables section -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:262 ; packages/shared/src/i18n/locales/en/kernel.json:6732
+Table name input, Enter creates -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:283 ; packages/shared/src/i18n/locales/en/kernel.json:6733
+A new table opens on Settings -> apps/web/src/modules/dashboards/TablePage.tsx:38
+Two tables cannot share a name -> packages/shared/src/i18n/locales/en/kernel.json:6734
+A link column with no linkTo searches every app -> apps/api/src/modules/dashboards/tables/routes.ts:112

@@ -5,6 +5,10 @@ description: "Tables hold rows that people and agents write, such as incoming ba
 
 A table is the organisation's own data, kept in Liaison: a name, typed columns and rows. People edit its rows on a dashboard or on the table's page ([See your dashboards](dashboards.md)), agents write them with their tools, and any dashboard block can show or chart them. Every change is recorded with who made it, and can be undone.
 
+## Create a table
+
+In **Dashboards**, the **Tables** section of the sidebar lists the tables you can see. Select **+** (**New table**), type its **Table name** and press Enter: the table opens on its **Settings**, where you add its columns. Two tables cannot share a name. Your agent can create one too, with your approval.
+
 ## Columns
 
 A table has at most 40 columns. Each has a key, a label and a type:
@@ -73,7 +77,7 @@ A [routine](routines.md) triggered by `kernel:dashboard_table_row:created`, `:up
 
 ## Link a record
 
-A link cell picks a record of a connected app. Records the search index holds are searched there; an app can let people pick other records through one of its own read tools, declared on the entity in its manifest: `pick: { tool, queryParam, idField, labelField, itemsPath? }`. Shopify declares it for orders, customers, products and returns, Boxtal for shipments. A reader who cannot open a linked record sees **Linked record** instead of its label.
+A link cell picks a record of a connected app (any app when the column names none). Records the search index holds are searched there; an app can let people pick other records through one of its own read tools, declared on the entity in its manifest: `pick: { tool, queryParam, idField, labelField, itemsPath? }`. Shopify declares it for orders, customers, products and returns, Boxtal for shipments. A reader who cannot open a linked record sees **Linked record** instead of its label.
 
 ## The tables API
 

@@ -269,3 +269,22 @@ A conflict names the change and the version that changed the same thing -> apps/
 A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853
 Blended chart card: one line, then one numbered line per layer -> apps/api/src/modules/dashboards/edit.ts:698 ; apps/api/src/modules/dashboards/edit.ts:1052
 Card points to the line that adds or changes a dataset, else names its tool -> apps/api/src/modules/dashboards/edit.ts:791
+Tables section of the Dashboards sidebar -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:211
+Table page at /dashboard-table/<id> -> apps/web/src/framework/bootstrap.ts:567
+Grid, Settings and History tabs -> apps/web/src/modules/dashboards/TablePage.tsx:18 ; packages/shared/src/i18n/locales/en/kernel.json:6712
+Editable table block: table block on a table source with map.editable, map.columns -> apps/web/src/modules/dashboards/dashboards-client.ts:1607
+Click a cell to edit it, saved as an update at the row's version -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:222
+Cell editors per column type -> apps/web/src/modules/dashboards/blocks/CellEditor.tsx:355 ; apps/web/src/modules/dashboards/blocks/CellEditor.tsx:392
+Add form, required columns first -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:258 ; apps/web/src/modules/dashboards/blocks/table-cells.ts:116
+Delete after a confirm -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:289
+Last change column -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:601 ; packages/shared/src/i18n/locales/en/kernel.json:6672
+Undo in the row history -> apps/web/src/modules/dashboards/blocks/RowHistoryPanel.tsx:74
+Conflict reloads the row and names who changed it -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:193
+To confirm marker -> apps/web/src/modules/dashboards/blocks/table-cells.ts:138 ; packages/shared/src/i18n/locales/en/kernel.json:6703
+Linked record label -> apps/web/src/modules/dashboards/blocks/table-cells.ts:66 ; packages/shared/src/i18n/locales/en/kernel.json:6675
+50 rows a page, sort by a column -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:166 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:179
+View access is read-only -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:113
+Settings: add, rename, edit choices, remove a column -> apps/web/src/modules/dashboards/TableSettings.tsx:92 ; apps/web/src/modules/dashboards/TableSettings.tsx:367
+Removed column name cannot be reused -> apps/web/src/modules/dashboards/blocks/table-cells.ts:194
+Who can see and edit opens the sharing dialog -> apps/web/src/modules/dashboards/TableSettings.tsx:373 ; packages/shared/src/i18n/locales/en/kernel.json:6677
+Agent row writes need approval switch -> apps/web/src/modules/dashboards/TableSettings.tsx:346 ; packages/shared/src/i18n/locales/en/kernel.json:6639

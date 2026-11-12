@@ -2,10 +2,11 @@
 //
 // THE DASHBOARDS SIDEBAR, beside the Dashboards page and every dashboard tab: a
 // filter, "All dashboards" (the page), then the viewer's own dashboards and the
-// ones others share with the team, each by title. The open one is lit. The agent
+// ones others share with the team, each by title, then the tables (org data people and agents
+// write) the viewer can see. The open one is lit. The agent
 // builds dashboards, so the foot says to ask it. The list is the store's, so it
 // stays live like the page.
-import { LayoutDashboard, LayoutGrid, Search, Sparkles, Users } from "lucide-solid"
+import { LayoutDashboard, LayoutGrid, Search, Sparkles, Table2, Users } from "lucide-solid"
 import { type Component, createSignal, For, type JSX, onMount, Show } from "solid-js"
 import { cn } from "~/lib/cn"
 import { userFromToken } from "~/modules/auth/auth-store"
@@ -21,6 +22,7 @@ import {
   openDashboard,
   splitDashboards,
 } from "./dashboards-store"
+import { loadTables, openTable, TABLE_TAB_TYPE, tablesList } from "./tables-store"
 
 /** The tab the shell shows now, if any. */
 function activeTab() {
@@ -72,7 +74,10 @@ export const DashboardsSidebar: Component = () => {
   const t = i18n.t
   const api = useApi()
   const [query, setQuery] = createSignal("")
-  onMount(() => void loadDashboards(api))
+  onMount(() => {
+    void loadDashboards(api)
+    void loadTables(api)
+  })
 
   const matches = (d: DashboardSummary) => {
     const q = query().trim().toLocaleLowerCase(i18n.locale())
@@ -83,6 +88,14 @@ export const DashboardsSidebar: Component = () => {
   const isOpen = (id: string) => {
     const tab = activeTab()
     return tab?.type === DASHBOARD_TAB_TYPE && tab.entityId === id
+  }
+  const tables = () => {
+    const q = query().trim().toLocaleLowerCase(i18n.locale())
+    return tablesList().filter((t) => !q || t.name.toLocaleLowerCase(i18n.locale()).includes(q))
+  }
+  const isTableOpen = (id: string) => {
+    const tab = activeTab()
+    return tab?.type === TABLE_TAB_TYPE && tab.entityId === id
   }
   const indexOpen = () => activeTab()?.type === DASHBOARDS_TAB_TYPE
 
@@ -193,7 +206,31 @@ export const DashboardsSidebar: Component = () => {
           </For>
         </Show>
 
-        <Show when={query().trim() !== "" && groups().yours.length + groups().team.length === 0}>
+        <Show when={tables().length > 0}>
+          <SectionTitle
+            testid="dashboards-sidebar-tables"
+            label={t("kernel.dashboards.tables.section")}
+            count={tables().length}
+          />
+          <For each={tables()}>
+            {(tb) => (
+              <SidebarRow
+                testid={`dashboards-sidebar-table-${tb.id}`}
+                label={tb.name}
+                icon={Table2}
+                active={isTableOpen(tb.id)}
+                onClick={() => openTable(tb)}
+              />
+            )}
+          </For>
+        </Show>
+
+        <Show
+          when={
+            query().trim() !== "" &&
+            groups().yours.length + groups().team.length + tables().length === 0
+          }
+        >
           <p
             data-testid="dashboards-sidebar-no-match"
             class="px-3 py-2 text-[12.5px] text-text-tertiary"

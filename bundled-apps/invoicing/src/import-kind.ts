@@ -70,10 +70,17 @@ function day(v: unknown, field: string): string {
   return v
 }
 
-async function issuerFor(ctx: ImportCtx, record: Row, cache: Map<string, string[]>): Promise<string> {
+async function issuerFor(
+  ctx: ImportCtx,
+  record: Row,
+  cache: Map<string, string[]>,
+): Promise<string> {
   const named = str(record.issuerProfileId)
   if (named) {
-    const found = (await ctx.db.findMany("issuer_profiles", { where: { id: named }, limit: 1 })) as Row[]
+    const found = (await ctx.db.findMany("issuer_profiles", {
+      where: { id: named },
+      limit: 1,
+    })) as Row[]
     if (found.length === 0) throw new Error(`issuer_not_found: ${named}`)
     return named
   }
@@ -119,7 +126,11 @@ export async function importDocuments(batch: ImportBatch, ctx: ImportCtx): Promi
       }
       out.push(result)
     } catch (err) {
-      out.push({ status: "failed", rows: [], error: err instanceof Error ? err.message : String(err) })
+      out.push({
+        status: "failed",
+        rows: [],
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
   return out
@@ -217,7 +228,8 @@ function documentPreparer(
       record.amountPaidMinor !== undefined && record.amountPaidMinor !== null
         ? minor(record.amountPaidMinor, "amountPaidMinor")
         : "0"
-    const isPaid = type === "invoice" && BigInt(paidAmount) === BigInt(grand) && BigInt(grand) !== 0n
+    const isPaid =
+      type === "invoice" && BigInt(paidAmount) === BigInt(grand) && BigInt(grand) !== 0n
     // The status follows the payment: a stated status must agree with it.
     const stated = str(record.status)
     if (stated !== null && (stated === "paid") !== isPaid) {
@@ -250,7 +262,9 @@ function documentPreparer(
         limit: 1,
       })) as Row[]
       if (taken.length > 0) {
-        throw new Error(`numberTaken: ${type} ${numberInt} of ${year} is already used by this issuer`)
+        throw new Error(
+          `numberTaken: ${type} ${numberInt} of ${year} is already used by this issuer`,
+        )
       }
     }
     if (number) {
@@ -275,7 +289,10 @@ function documentPreparer(
     if (type === "credit_note" && originalRef) {
       const candidates = source ? [`${source}:${originalRef}`, originalRef] : [originalRef]
       for (const ref of candidates) {
-        const found = (await ctx.db.findMany("documents", { where: { external_ref: ref }, limit: 1 })) as Row[]
+        const found = (await ctx.db.findMany("documents", {
+          where: { external_ref: ref },
+          limit: 1,
+        })) as Row[]
         if (found[0]) {
           originalId = String(found[0].id)
           break
@@ -299,8 +316,11 @@ function documentPreparer(
       ? [str(cp.name), str(cp.address)].filter(Boolean).join(", ") || null
       : str(cp.address)
     const sourceTag = `import:${source || "import"}`
-    const lifecycle: Row[] = [{ ts: `${issueDate}T00:00:00.000Z`, event: "issued", source: sourceTag }]
-    if (isPaid) lifecycle.push({ ts: `${issueDate}T00:00:00.000Z`, event: "marked_paid", source: sourceTag })
+    const lifecycle: Row[] = [
+      { ts: `${issueDate}T00:00:00.000Z`, event: "issued", source: sourceTag },
+    ]
+    if (isPaid)
+      lifecycle.push({ ts: `${issueDate}T00:00:00.000Z`, event: "marked_paid", source: sourceTag })
     // `import_source` marks the document imported: its PDF is the original,
     // never re-rendered (mutations/pdf.ts), and the legal-original backfill
     // reads the file the host records as `import_file_id`.
@@ -313,61 +333,66 @@ function documentPreparer(
       for (const c of claims) claimed.add(c)
     }
     const write = async (): Promise<ImportResult> => {
-    const rows: Array<{ table: string; id: string }> = []
-    try {
-      const document = await ctx.db.insert("documents", {
-        type,
-        status,
-        payment_status: paymentStatus,
-        number,
-        number_int: numberInt,
-        year_of_issue: year,
-        issuer_profile_id: issuerId,
-        counterparty_name: name,
-        counterparty_address: address,
-        counterparty_vat_id: str(cp.vatId),
-        counterparty_email: str(cp.email),
-        counterparty_country: str(cp.country),
-        currency: String(record.currency ?? "").toUpperCase(),
-        subtotal_minor: subtotal,
-        tax_total_minor: tax,
-        grand_total_minor: grand,
-        tax_treatment: str(record.taxTreatment),
-        issued_at: issueDate,
-        due_at: dueDate ?? (isPaid ? issueDate : null),
-        paid_at: isPaid ? issueDate : null,
-        tax_point_date: deliveryDate,
-        pdf_status: "ready",
-        shopify_order_number: str(record.orderNumber),
-        po_number: str(record.poNumber),
-        notes: str(record.notes),
-        original_document_id: originalId,
-        external_ref: dedupValue,
-        external_refs: externalRefs,
-        lifecycle_log: lifecycle,
-      })
-      rows.push({ table: "app_invoicing.documents", id: document.id })
-      for (const line of lines) {
-        const written = await ctx.db.insert("document_lines", { document_id: document.id, ...line })
-        rows.push({ table: "app_invoicing.document_lines", id: written.id })
+      const rows: Array<{ table: string; id: string }> = []
+      try {
+        const document = await ctx.db.insert("documents", {
+          type,
+          status,
+          payment_status: paymentStatus,
+          number,
+          number_int: numberInt,
+          year_of_issue: year,
+          issuer_profile_id: issuerId,
+          counterparty_name: name,
+          counterparty_address: address,
+          counterparty_vat_id: str(cp.vatId),
+          counterparty_email: str(cp.email),
+          counterparty_country: str(cp.country),
+          currency: String(record.currency ?? "").toUpperCase(),
+          subtotal_minor: subtotal,
+          tax_total_minor: tax,
+          grand_total_minor: grand,
+          tax_treatment: str(record.taxTreatment),
+          issued_at: issueDate,
+          due_at: dueDate ?? (isPaid ? issueDate : null),
+          paid_at: isPaid ? issueDate : null,
+          tax_point_date: deliveryDate,
+          pdf_status: "ready",
+          shopify_order_number: str(record.orderNumber),
+          po_number: str(record.poNumber),
+          notes: str(record.notes),
+          original_document_id: originalId,
+          external_ref: dedupValue,
+          external_refs: externalRefs,
+          lifecycle_log: lifecycle,
+        })
+        rows.push({ table: "app_invoicing.documents", id: document.id })
+        for (const line of lines) {
+          const written = await ctx.db.insert("document_lines", {
+            document_id: document.id,
+            ...line,
+          })
+          rows.push({ table: "app_invoicing.document_lines", id: written.id })
+        }
+        return {
+          status: "created",
+          rows,
+          attachments: [
+            { fileId: pdfFileId, parent: "pdf", rowId: document.id, ref: "import_file_id" },
+          ],
+          ...(numberInt !== null
+            ? {
+                sequenceFloors: [
+                  { key: `invoicing:doc_number:${issuerId}:${type}:${year}`, value: numberInt },
+                ],
+              }
+            : {}),
+        }
+      } catch (err) {
+        // A write failed midway: the rows already written are reported, so the
+        // run ledgers them and undo removes them.
+        return { status: "failed", rows, error: err instanceof Error ? err.message : String(err) }
       }
-      return {
-        status: "created",
-        rows,
-        attachments: [{ fileId: pdfFileId, parent: "pdf", rowId: document.id, ref: "import_file_id" }],
-        ...(numberInt !== null
-          ? {
-              sequenceFloors: [
-                { key: `invoicing:doc_number:${issuerId}:${type}:${year}`, value: numberInt },
-              ],
-            }
-          : {}),
-      }
-    } catch (err) {
-      // A write failed midway: the rows already written are reported, so the
-      // run ledgers them and undo removes them.
-      return { status: "failed", rows, error: err instanceof Error ? err.message : String(err) }
-    }
     }
     return { write, claim, claims }
   }

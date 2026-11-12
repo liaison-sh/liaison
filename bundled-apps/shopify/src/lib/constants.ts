@@ -27,14 +27,15 @@ export const SHOPIFY_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i
  *  predates a scope addition (e.g. read_all_orders / read_reports in 0.1.7)
  *  surfaces as "permissions update required" instead of degrading silently.
  *  Sourced from the manifest itself so the two can never drift. */
-export const REQUIRED_OAUTH_SCOPES: string[] = (
-  manifest as { connections?: { shop?: { scopes?: string[] } } }
-).connections?.shop?.scopes ?? []
+export const REQUIRED_OAUTH_SCOPES: string[] =
+  (manifest as { connections?: { shop?: { scopes?: string[] } } }).connections?.shop?.scopes ?? []
 
 /** The OAuth scopes a connection's install metadata RECORDS as granted. Empty when the grant was
  *  never recorded (a connection that predates granted-scope tracking): callers treat empty as
  *  "unknown", never as "nothing granted". */
-export function recordedGrantedScopes(meta: { grantedOAuthScopes?: unknown } | null | undefined): string[] {
+export function recordedGrantedScopes(
+  meta: { grantedOAuthScopes?: unknown } | null | undefined,
+): string[] {
   const raw = meta?.grantedOAuthScopes
   return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : []
 }

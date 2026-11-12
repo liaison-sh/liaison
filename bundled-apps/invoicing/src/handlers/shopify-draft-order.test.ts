@@ -16,23 +16,23 @@
 //   * completed -> invoiced (and NOT an invoice issued here: the order flow does that),
 //     deleted -> rejected.
 
-import { testTime } from "../test-time"
 import { describe, expect, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
 import { type MutationsCtx, quoteCreateAndIssue } from "../mutations"
 import { createMockDb, type MockDb } from "../test-db"
+import { testTime } from "../test-time"
 import {
+  type DraftOrderCtx,
   draftOrderLinesToItems,
-  netOfIncludedTax,
   majorAmountToMinor,
+  type NormalizedDraftOrder,
+  netOfIncludedTax,
   onShopifyDraftOrderCompleted,
   onShopifyDraftOrderCreated,
-  syncQuoteFromDraftOrder,
   onShopifyDraftOrderDeleted,
   onShopifyDraftOrderUpdated,
   retryParkedDraftOrderQuote,
-  type DraftOrderCtx,
-  type NormalizedDraftOrder,
+  syncQuoteFromDraftOrder,
 } from "./shopify-draft-order"
 
 const SHOP = "acme.myshopify.com"
@@ -158,7 +158,13 @@ function makeCtx(opts?: {
     pdf: {
       async render() {
         idSeq += 1
-        return { file_id: `pdf-${idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
+        return {
+          file_id: `pdf-${idSeq}`,
+          byte_size: 1024,
+          page_count: 1,
+          sha256: "0".repeat(64),
+          parent_entity_id: crypto.randomUUID(),
+        }
       },
     },
     messages: {
@@ -438,7 +444,11 @@ describe("shopify draft_order:created -> quote", () => {
     const { ctx, db } = makeCtx()
     await onShopifyDraftOrderCreated({ entityId: DRAFT_GID }, ctx)
     const edited = draftOrder({
-      shippingAddress: address({ name: "New Site Contact", company: null, address1: "4 Quai Neuf" }),
+      shippingAddress: address({
+        name: "New Site Contact",
+        company: null,
+        address1: "4 Quai Neuf",
+      }),
     })
     const r = await onShopifyDraftOrderUpdated({ entityId: DRAFT_GID, data: edited }, ctx)
     expect(r.status).toBe("updated")
@@ -518,7 +528,10 @@ describe("shopify draft_order:updated -> quote", () => {
   // quote silently keep the old (or no) value forever.
   test("a LATER edit of the draft order's PO number updates the quote's PO, not just at create", async () => {
     const { ctx, db } = makeCtx()
-    await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder({ poNumber: "PO-1000" }) }, ctx)
+    await onShopifyDraftOrderCreated(
+      { entityId: DRAFT_GID, data: draftOrder({ poNumber: "PO-1000" }) },
+      ctx,
+    )
     expect(quotes(db)[0]!.po_number).toBe("PO-1000")
 
     const edited = draftOrder({ poNumber: "PO-2000" })
@@ -536,7 +549,10 @@ describe("shopify draft_order:updated -> quote", () => {
 
   test("an update payload with no PO number does not erase an already-recorded one", async () => {
     const { ctx, db } = makeCtx()
-    await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder({ poNumber: "PO-1000" }) }, ctx)
+    await onShopifyDraftOrderCreated(
+      { entityId: DRAFT_GID, data: draftOrder({ poNumber: "PO-1000" }) },
+      ctx,
+    )
     const edited = draftOrder({ totalPrice: "999.00" }) // no poNumber on this payload
     await onShopifyDraftOrderUpdated({ entityId: DRAFT_GID, data: edited }, ctx)
     expect(quotes(db)[0]!.po_number).toBe("PO-1000")
@@ -683,14 +699,32 @@ describe("draft order money + line mapping (pure)", () => {
       shippingLine: { title: "Colissimo", price: "6.00" },
       lineItems: [
         {
-          id: null, title: "Tessera 2", sku: null, variantId: "gid://shopify/ProductVariant/9", productId: null,
-          quantity: 2, unitPrice: "1.20", discountedTotal: "2.40", appliedDiscount: null,
-          taxable: true, requiresShipping: true, custom: false,
+          id: null,
+          title: "Tessera 2",
+          sku: null,
+          variantId: "gid://shopify/ProductVariant/9",
+          productId: null,
+          quantity: 2,
+          unitPrice: "1.20",
+          discountedTotal: "2.40",
+          appliedDiscount: null,
+          taxable: true,
+          requiresShipping: true,
+          custom: false,
         },
         {
-          id: null, title: "Tax free item", sku: null, variantId: null, productId: null,
-          quantity: 1, unitPrice: "5.00", discountedTotal: "5.00", appliedDiscount: null,
-          taxable: false, requiresShipping: true, custom: true,
+          id: null,
+          title: "Tax free item",
+          sku: null,
+          variantId: null,
+          productId: null,
+          quantity: 1,
+          unitPrice: "5.00",
+          discountedTotal: "5.00",
+          appliedDiscount: null,
+          taxable: false,
+          requiresShipping: true,
+          custom: true,
         },
       ],
     })
@@ -702,14 +736,18 @@ describe("draft order money + line mapping (pure)", () => {
   })
 
   test("net-priced drafts and tax-free drafts keep their prices as they are", () => {
-    expect(String(draftOrderLinesToItems(draftOrder({ taxesIncluded: false }))[0]!.unit_price_minor)).toBe("5000")
     expect(
-      String(draftOrderLinesToItems(draftOrder({ taxesIncluded: true, taxLines: [] }))[0]!.unit_price_minor),
+      String(draftOrderLinesToItems(draftOrder({ taxesIncluded: false }))[0]!.unit_price_minor),
+    ).toBe("5000")
+    expect(
+      String(
+        draftOrderLinesToItems(draftOrder({ taxesIncluded: true, taxLines: [] }))[0]!
+          .unit_price_minor,
+      ),
     ).toBe("5000")
     expect(String(netOfIncludedTax(12000n, 2000))).toBe("10000")
     expect(String(netOfIncludedTax(100n, 2000))).toBe("83")
   })
-
 
   test("major amounts convert to minor units, zero-decimal currencies included", () => {
     expect(majorAmountToMinor("419.40", "EUR")).toBe(41940n)
@@ -777,7 +815,9 @@ function captureWarnings<T>(fn: () => Promise<T>): Promise<{ warnings: string[];
     })
 }
 
-function catalogLine(overrides?: Partial<NormalizedDraftOrder["lineItems"][number]>): NormalizedDraftOrder["lineItems"][number] {
+function catalogLine(
+  overrides?: Partial<NormalizedDraftOrder["lineItems"][number]>,
+): NormalizedDraftOrder["lineItems"][number] {
   return {
     id: "gid://shopify/DraftOrderLineItem/5",
     title: "Catalog item",
@@ -850,7 +890,9 @@ describe("each draft's own taxesIncluded splits net and tax", () => {
   })
 
   test("a draft-level tax exemption also charges no tax", () => {
-    const items = draftOrderLinesToItems(draftOrder({ taxExempt: true, lineItems: [catalogLine()] }))
+    const items = draftOrderLinesToItems(
+      draftOrder({ taxExempt: true, lineItems: [catalogLine()] }),
+    )
     expect(items[0]!.tax_rate_bp_override).toBe(0)
   })
 
@@ -867,7 +909,10 @@ describe("each draft's own taxesIncluded splits net and tax", () => {
   })
 
   test("the issuer setting is the fallback only when the draft states no flag", () => {
-    const stated = draftOrder({ taxesIncluded: false, taxLines: [{ title: "VAT", rate: 0.2, price: "0" }] })
+    const stated = draftOrder({
+      taxesIncluded: false,
+      taxLines: [{ title: "VAT", rate: 0.2, price: "0" }],
+    })
     expect(String(draftOrderLinesToItems(stated, true)[0]!.unit_price_minor)).toBe("5000")
     const unstated = { ...stated, taxesIncluded: undefined } as unknown as NormalizedDraftOrder
     expect(String(draftOrderLinesToItems(unstated, true)[0]!.unit_price_minor)).toBe("4167")
@@ -879,7 +924,12 @@ describe("each draft's own taxesIncluded splits net and tax", () => {
       draftOrder({
         lineItems: [
           catalogLine(),
-          catalogLine({ id: "l2", unitPrice: "500.00", priceOverride: "500.00", discountedTotal: "500.00" }),
+          catalogLine({
+            id: "l2",
+            unitPrice: "500.00",
+            priceOverride: "500.00",
+            discountedTotal: "500.00",
+          }),
         ],
       }),
     )
@@ -894,14 +944,28 @@ describe("each draft's own taxesIncluded splits net and tax", () => {
 // its own. The quote names the company, billed at its location.
 
 describe("a draft order for a B2B company", () => {
-  const company = (overrides?: Partial<NonNullable<NormalizedDraftOrder["purchasingCompany"]>>) => ({
+  const company = (
+    overrides?: Partial<NonNullable<NormalizedDraftOrder["purchasingCompany"]>>,
+  ) => ({
     companyName: "Buyer Industries SAS",
     locationName: "Head office",
     taxRegistrationId: "FR99887766554",
     taxExempt: false,
     contactEmail: "buyer@buyer-industries.example",
-    billingAddress: address({ name: "Accounts", company: "Buyer Industries SAS", address1: "5 rue Exemple", zip: "69002", city: "Lyon" }),
-    shippingAddress: address({ name: "Warehouse", company: "Buyer Industries SAS", address1: "9 quai Exemple", zip: "69007", city: "Lyon" }),
+    billingAddress: address({
+      name: "Accounts",
+      company: "Buyer Industries SAS",
+      address1: "5 rue Exemple",
+      zip: "69002",
+      city: "Lyon",
+    }),
+    shippingAddress: address({
+      name: "Warehouse",
+      company: "Buyer Industries SAS",
+      address1: "9 quai Exemple",
+      zip: "69007",
+      city: "Lyon",
+    }),
     ...overrides,
   })
 
@@ -941,7 +1005,11 @@ describe("a draft order for a B2B company", () => {
   })
 
   test("a webhook draft without purchasingCompany is re-fetched to learn the company", async () => {
-    const fetched = draftOrder({ billingAddress: null, shippingAddress: null, purchasingCompany: company() })
+    const fetched = draftOrder({
+      billingAddress: null,
+      shippingAddress: null,
+      purchasingCompany: company(),
+    })
     const { ctx, db, extras } = makeCtx({ draft: fetched })
     const webhook = { ...fetched } as Partial<NormalizedDraftOrder>
     delete webhook.purchasingCompany
@@ -953,9 +1021,12 @@ describe("a draft order for a B2B company", () => {
 })
 
 describe("a draft order refused for its zone", () => {
-  const brokenIssuer = (db: MockDb) => db.update("issuer_profiles", "iss-1", { timezone: "Europe/Atlantis" })
+  const brokenIssuer = (db: MockDb) =>
+    db.update("issuer_profiles", "iss-1", { timezone: "Europe/Atlantis" })
   const parks = (db: MockDb) =>
-    db.findMany("deferred_events", { where: { event_id: DRAFT_GID } }) as Promise<Array<Record<string, unknown>>>
+    db.findMany("deferred_events", { where: { event_id: DRAFT_GID } }) as Promise<
+      Array<Record<string, unknown>>
+    >
 
   test("parks awaiting_config with its arguments, and takes no number", async () => {
     const { ctx, db } = makeCtx()
@@ -989,25 +1060,35 @@ describe("a draft order refused for its zone", () => {
     const { ctx, db } = makeCtx()
     await brokenIssuer(db)
     await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder() } as never, ctx)
-    await onShopifyDraftOrderUpdated({ entityId: DRAFT_GID, data: draftOrder({ note: "edited" }) } as never, ctx)
+    await onShopifyDraftOrderUpdated(
+      { entityId: DRAFT_GID, data: draftOrder({ note: "edited" }) } as never,
+      ctx,
+    )
     const all = await parks(db)
     expect(all.length).toBe(1)
-    expect((all[0]?.event_payload_json as { draft: { note: string } }).draft.note).toBe("edited")
+    expect((all[0]!.event_payload_json as { draft: { note: string } }).draft.note).toBe("edited")
   })
 
   test("a retry with the zone fixed makes the quote from its arguments, and closes nothing twice", async () => {
     const { ctx, db } = makeCtx()
     await brokenIssuer(db)
-    await syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft: draftOrder(), customerReference: "REF-1" })
+    await syncQuoteFromDraftOrder(ctx, {
+      draftOrderId: DRAFT_GID,
+      draft: draftOrder(),
+      customerReference: "REF-1",
+    })
     const [row] = await parks(db)
-    expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "still_blocked", reason: "issuer_timezone_invalid" })
+    expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({
+      status: "still_blocked",
+      reason: "issuer_timezone_invalid",
+    })
     expect(await db.findMany("documents", {})).toEqual([])
 
     await db.update("issuer_profiles", "iss-1", { timezone: "Europe/Paris" })
     expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "ok" })
     const docs = (await db.findMany("documents", {})) as Array<Record<string, unknown>>
     expect(docs.length).toBe(1)
-    expect((docs[0]?.external_refs as Record<string, unknown>).customer_reference).toBe("REF-1")
+    expect((docs[0]!.external_refs as Record<string, unknown>).customer_reference).toBe("REF-1")
 
     // Again: the quote exists, nothing is rewritten from the stored arguments.
     expect(await retryParkedDraftOrderQuote(ctx, row as never)).toEqual({ status: "ok" })
@@ -1019,7 +1100,10 @@ describe("a draft order refused for its zone", () => {
     await brokenIssuer(db)
     await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: draftOrder() } as never, ctx)
     await onShopifyDraftOrderCompleted(
-      { entityId: DRAFT_GID, data: draftOrder({ status: "completed", orderId: "gid://shopify/Order/5" }) } as never,
+      {
+        entityId: DRAFT_GID,
+        data: draftOrder({ status: "completed", orderId: "gid://shopify/Order/5" }),
+      } as never,
       ctx,
     )
     expect((await parks(db))[0]?.status).toBe("resolved")
@@ -1030,13 +1114,20 @@ describe("a draft order refused for its zone", () => {
     const { ctx, db, extras } = makeCtx()
     await brokenIssuer(db)
     const res = await quoteCreateAndIssue(ctx, {
-      counterparty: { legal_name: "Buyer SARL", country: "FR", address: "1 rue Buyer, 75002 Paris", email: "ap@buyersarl.example" },
+      counterparty: {
+        legal_name: "Buyer SARL",
+        country: "FR",
+        address: "1 rue Buyer, 75002 Paris",
+        email: "ap@buyersarl.example",
+      },
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [{ description: "Widget", quantity: "1", unit_price_minor: 1000 }],
     } as never)
     expect(res).toMatchObject({ status: "error", error: { code: "issuer_timezone_invalid" } })
-    expect(extras.executeToolCalls.filter((c) => c.name === "shopify:draft_orders_create")).toEqual([])
+    expect(extras.executeToolCalls.filter((c) => c.name === "shopify:draft_orders_create")).toEqual(
+      [],
+    )
     expect(await parks(db)).toEqual([])
   })
 })

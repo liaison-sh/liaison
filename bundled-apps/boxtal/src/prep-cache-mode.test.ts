@@ -17,11 +17,15 @@
 // cache-only path into swallowing them as well.
 
 import { describe, expect, it } from "bun:test"
+import {
+  makeOrderScanStub,
+  type OrderScanStubOptions,
+  orderKeysFor,
+} from "./__fixtures__/order-scan"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import { prepList, prepSync } from "./prep"
 import { queueCounts, worklistCandidates } from "./queues"
 import { createMockDb } from "./test-db"
-import { makeOrderScanStub, orderKeysFor, type OrderScanStubOptions } from "./__fixtures__/order-scan"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 
 const SENDER_PARTY = {
   name: "Fabrikam SAS",
@@ -58,7 +62,7 @@ function makeCacheOnlyCtx(opts: {
     }
     if (target === "invoicing:documents_for_orders") {
       const ids = Array.isArray((args as { shopify_order_ids?: unknown[] })?.shopify_order_ids)
-        ? ((args as { shopify_order_ids: string[] }).shopify_order_ids)
+        ? (args as { shopify_order_ids: string[] }).shopify_order_ids
         : []
       const links = ids.flatMap((id) => opts.invoicingLinks?.[id] ?? [])
       return { status: "completed", result: { links } }

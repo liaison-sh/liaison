@@ -10,7 +10,9 @@ import { decodeSourceId } from "./sources"
 
 const [labels, setLabels] = createSignal<Record<string, string>>({})
 
-export function rememberSourceLabels(views: ReadonlyArray<{ source: string; label: string }>): void {
+export function rememberSourceLabels(
+  views: ReadonlyArray<{ source: string; label: string }>,
+): void {
   setLabels((prev) => {
     let next = prev
     for (const v of views) {

@@ -60,9 +60,11 @@ describe("sirenFromFrVat", () => {
   })
   test("tolerates spaces and lowercase", () => {
     const good = frVat(SIREN)
-    expect(sirenFromFrVat(`${good.slice(0, 2)} ${good.slice(2, 4)} ${good.slice(4)}`.toLowerCase(), { billingCountry: "FR" })).toBe(
-      SIREN,
-    )
+    expect(
+      sirenFromFrVat(`${good.slice(0, 2)} ${good.slice(2, 4)} ${good.slice(4)}`.toLowerCase(), {
+        billingCountry: "FR",
+      }),
+    ).toBe(SIREN)
   })
 })
 
@@ -96,7 +98,9 @@ describe("isSirenConfirmed", () => {
     expect(isSirenConfirmed({ siren: SIREN, source: "derived", confirmed_via: null })).toBe(false)
     expect(isSirenConfirmed({ siren: SIREN, source: "vat_derived" })).toBe(false)
     expect(isSirenConfirmed({ siren: SIREN, source: "registry", confirmed_via: "auto" })).toBe(true)
-    expect(isSirenConfirmed({ siren: SIREN, source: "manual", confirmed_via: "approval" })).toBe(true)
+    expect(isSirenConfirmed({ siren: SIREN, source: "manual", confirmed_via: "approval" })).toBe(
+      true,
+    )
     expect(isSirenConfirmed(null)).toBe(false)
     expect(isSirenConfirmed(undefined)).toBe(false)
   })

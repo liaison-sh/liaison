@@ -36,10 +36,7 @@ export function microsToMajor(micros: number): number {
 // Deliberately the loose handler/sandbox shape (mirrors MetaFetch in
 // meta-client.ts) — assignable from the real AppContext["fetch"] without
 // narrowing every ctx interface + test mock.
-export type GoogleFetch = (
-  url: string,
-  opts?: Record<string, unknown>,
-) => Promise<unknown>
+export type GoogleFetch = (url: string, opts?: Record<string, unknown>) => Promise<unknown>
 
 interface FetchResult {
   status: number
@@ -89,10 +86,7 @@ export interface GaqlSearchOptions {
  * legacy token in an old config is accepted and ignored.
  * customerId goes in the URL path (digits only, dashes stripped), not a header.
  */
-export async function gaqlSearch(
-  fetch: GoogleFetch,
-  opts: GaqlSearchOptions,
-): Promise<unknown[]> {
+export async function gaqlSearch(fetch: GoogleFetch, opts: GaqlSearchOptions): Promise<unknown[]> {
   const customerId = stripDashes(opts.customerId)
   const loginCustomerId = stripDashes(opts.loginCustomerId)
   const url = `${GOOGLE_ADS_BASE}/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:searchStream`

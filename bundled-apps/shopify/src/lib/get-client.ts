@@ -17,8 +17,8 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { API_VERSION, SHOPIFY_DOMAIN_RE } from "./constants"
 import { type InstallMetadata, loadInstallMetadata } from "./install-metadata"
-import { ShopifyClient, type ShopifyFetch } from "./shopify-client"
 import { runOrgId } from "./run-identity"
+import { ShopifyClient, type ShopifyFetch } from "./shopify-client"
 
 interface ClientError extends Error {
   code: "INSTALL_METADATA_MISSING" | "CONNECTION_MISSING"
@@ -96,7 +96,11 @@ export async function connectedShopDomains(ctx: AppContext): Promise<string[]> {
 }
 
 /** The in-memory stand-in for a missing row, built from the connection record. */
-async function inMemoryInstallMetadata(ctx: AppContext, domain: string, account: ConnAccount): Promise<InstallMetadata> {
+async function inMemoryInstallMetadata(
+  ctx: AppContext,
+  domain: string,
+  account: ConnAccount,
+): Promise<InstallMetadata> {
   return {
     id: "",
     orgId: await runOrgId(ctx),

@@ -28,7 +28,8 @@ const MANIFEST = JSON.parse(
   }
   slots?: Record<
     string,
-    { panels?: Array<{ component: string }> } | Record<string, { tabs?: Array<{ component: string }> }>
+    | { panels?: Array<{ component: string }> }
+    | Record<string, { tabs?: Array<{ component: string }> }>
   >
 }
 
@@ -59,7 +60,9 @@ function collectUiComponents(): Set<string> {
   for (const slot of Object.values(MANIFEST.slots ?? {})) {
     const flat = (slot as { panels?: Array<{ component: string }> }).panels
     if (flat) for (const p of flat) out.add(p.component)
-    for (const inner of Object.values(slot as Record<string, { tabs?: Array<{ component: string }> }>)) {
+    for (const inner of Object.values(
+      slot as Record<string, { tabs?: Array<{ component: string }> }>,
+    )) {
       const tabs = inner?.tabs
       if (Array.isArray(tabs)) for (const t of tabs) out.add(t.component)
     }

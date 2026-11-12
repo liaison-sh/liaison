@@ -26,95 +26,16 @@
 // update). This index re-exports the public surface that handlers.ts registers and the tests import.
 
 export {
-  type DocumentType,
-  type DraftInsert,
-  type DraftRow,
-  type DocumentRowSummary,
-  type ErrorEnvelope,
-  type PreflightResult,
-  type CompletedEnvelope,
-  type PendingApprovalEnvelope,
-  type MutationResult,
-  NOTES_MAX_LENGTH,
-  normaliseNotes,
-  type MutationsDb,
-  type MutationsCtx,
-} from "./mutations/shared"
+  type ConvertToInvoiceResult,
+  documentsConvertToInvoice,
+  documentsConvertToInvoicePreflight,
+} from "./mutations/convert-to-invoice"
 export {
-  readDraftOrderId,
-} from "./mutations/db-helpers"
-export {
+  assertNoLiveInvoiceForOrder,
   creditedTotalMinor,
   ISSUED_INVOICE_STATUSES,
   isFullyCredited,
-  assertNoLiveInvoiceForOrder,
 } from "./mutations/credit-coverage"
-export {
-  type DraftsCreateInput,
-  draftsCreate,
-  draftsCreateTool,
-  draftsCreatePreflight,
-  draftsUpdate,
-  draftsUpdateTool,
-  draftsUpdatePreflight,
-  draftsDiscard,
-} from "./mutations/drafts"
-export {
-  liftMisplacedHsCode,
-  liftMisplacedCountry,
-  liftMisplacedCountryOnLine,
-  netLinesForIssuer,
-  computeLineFinancials,
-} from "./mutations/lines"
-export {
-  invoiceIssuePreflight,
-  invoiceIssue,
-  type InvoiceCreateAndIssueInput,
-  invoiceCreateAndIssuePreflight,
-  invoiceCreateAndIssue,
-} from "./mutations/invoice-issue"
-export {
-  type ConvertToInvoiceResult,
-  documentsConvertToInvoicePreflight,
-  documentsConvertToInvoice,
-} from "./mutations/convert-to-invoice"
-export {
-  documentsMarkPaidPreflight,
-  documentsMarkPaid,
-  documentsRecordRefundPreflight,
-  documentsRecordRefund,
-} from "./mutations/payments"
-export {
-  documentsSendToCustomerPreflight,
-  documentsSendToCustomer,
-  sendErrorFromEnvelope,
-} from "./mutations/send-to-customer"
-export {
-  type GatingKind,
-  quoteIssue,
-  type QuoteCreateAndIssueInput,
-  type CreateAndIssueRawInput,
-  isUniqueViolation,
-  type QuoteCreateAndIssueResult,
-  quoteCreateAndIssue,
-  quoteCreateAndIssuePreflight,
-  quoteIssuePreflight,
-  proformaIssuePreflight,
-  proformaIssue,
-  type ProformaCreateAndIssueInput,
-  proformaCreateAndIssuePreflight,
-  proformaCreateAndIssue,
-  poIssue,
-  poCreateAndIssue,
-  poCreateAndIssuePreflight,
-  draftIssuePreview,
-} from "./mutations/quote-proforma-po"
-export {
-  minorToMajorAmount,
-  toShopifyDraftLines,
-  type SplitPostalAddress,
-  splitPostalAddress,
-} from "./mutations/shopify-quote"
 export {
   type CreditNoteCreateAndIssueInput,
   creditNoteCreateAndIssue,
@@ -123,40 +44,117 @@ export {
   creditNoteIssuePreflight,
 } from "./mutations/credit-notes"
 export {
-  type OrderReissueApplyInput,
-  type OrderReissueApplyResult,
-  orderReissueApplyPreflight,
-  orderReissueApply,
-} from "./mutations/order-reissue"
-export {
+  type ContactRelationshipRow,
+  contactRelationshipsSet,
+  type HsCodeLibraryRow,
+  type HsCodesUnassignField,
+  hsCodesAssign,
+  hsCodesLibraryDelete,
+  hsCodesLibraryUpsert,
+  hsCodesUnassign,
+  inferContactRelationshipOnIssue,
+  normalizeHsCode,
+  type ProductCustomsOverlayRow,
   type Relationship,
   type RelationshipSource,
-  type ContactRelationshipRow,
-  type ProductCustomsOverlayRow,
-  type HsCodeLibraryRow,
-  normalizeHsCode,
-  hsCodesAssign,
-  hsCodesLibraryUpsert,
-  hsCodesLibraryDelete,
-  type HsCodesUnassignField,
-  hsCodesUnassign,
-  contactRelationshipsSet,
-  inferContactRelationshipOnIssue,
 } from "./mutations/customs-relationships"
-export {
-  settingsIssuerProfileCreate,
-  settingsIssuerProfileUpdate,
-  settingsIssuerProfileDelete,
-  settingsIssuerProfileWritePreflight,
-} from "./mutations/issuer-profiles"
-export {
-  type DocumentRenderCtx,
-  ensureDocumentPdf,
-  documentsRetryPdf,
-} from "./mutations/pdf"
+export { readDraftOrderId } from "./mutations/db-helpers"
 export {
   type DocumentsUpdateInput,
   documentsUpdate,
   documentsUpdatePreflight,
   documentsUpdatePreview,
 } from "./mutations/documents-update"
+export {
+  type DraftsCreateInput,
+  draftsCreate,
+  draftsCreatePreflight,
+  draftsCreateTool,
+  draftsDiscard,
+  draftsUpdate,
+  draftsUpdatePreflight,
+  draftsUpdateTool,
+} from "./mutations/drafts"
+export {
+  type InvoiceCreateAndIssueInput,
+  invoiceCreateAndIssue,
+  invoiceCreateAndIssuePreflight,
+  invoiceIssue,
+  invoiceIssuePreflight,
+} from "./mutations/invoice-issue"
+export {
+  settingsIssuerProfileCreate,
+  settingsIssuerProfileDelete,
+  settingsIssuerProfileUpdate,
+  settingsIssuerProfileWritePreflight,
+} from "./mutations/issuer-profiles"
+export {
+  computeLineFinancials,
+  liftMisplacedCountry,
+  liftMisplacedCountryOnLine,
+  liftMisplacedHsCode,
+  netLinesForIssuer,
+} from "./mutations/lines"
+export {
+  type OrderReissueApplyInput,
+  type OrderReissueApplyResult,
+  orderReissueApply,
+  orderReissueApplyPreflight,
+} from "./mutations/order-reissue"
+export {
+  documentsMarkPaid,
+  documentsMarkPaidPreflight,
+  documentsRecordRefund,
+  documentsRecordRefundPreflight,
+} from "./mutations/payments"
+export {
+  type DocumentRenderCtx,
+  documentsRetryPdf,
+  ensureDocumentPdf,
+} from "./mutations/pdf"
+export {
+  type CreateAndIssueRawInput,
+  draftIssuePreview,
+  type GatingKind,
+  isUniqueViolation,
+  type ProformaCreateAndIssueInput,
+  poCreateAndIssue,
+  poCreateAndIssuePreflight,
+  poIssue,
+  proformaCreateAndIssue,
+  proformaCreateAndIssuePreflight,
+  proformaIssue,
+  proformaIssuePreflight,
+  type QuoteCreateAndIssueInput,
+  type QuoteCreateAndIssueResult,
+  quoteCreateAndIssue,
+  quoteCreateAndIssuePreflight,
+  quoteIssue,
+  quoteIssuePreflight,
+} from "./mutations/quote-proforma-po"
+export {
+  documentsSendToCustomer,
+  documentsSendToCustomerPreflight,
+  sendErrorFromEnvelope,
+} from "./mutations/send-to-customer"
+export {
+  type CompletedEnvelope,
+  type DocumentRowSummary,
+  type DocumentType,
+  type DraftInsert,
+  type DraftRow,
+  type ErrorEnvelope,
+  type MutationResult,
+  type MutationsCtx,
+  type MutationsDb,
+  NOTES_MAX_LENGTH,
+  normaliseNotes,
+  type PendingApprovalEnvelope,
+  type PreflightResult,
+} from "./mutations/shared"
+export {
+  minorToMajorAmount,
+  type SplitPostalAddress,
+  splitPostalAddress,
+  toShopifyDraftLines,
+} from "./mutations/shopify-quote"

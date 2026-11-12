@@ -53,14 +53,22 @@ const SHOPIFY_TRACKING_COMPANY: Record<string, string> = {
 }
 
 /** The Shopify `trackingInfo` for a parcel: its number, and its carrier when Shopify knows it. */
-export function shopifyTrackingInfo(row: FulfillmentShipmentRow, number: string): { number: string; company?: string } {
+export function shopifyTrackingInfo(
+  row: FulfillmentShipmentRow,
+  number: string,
+): { number: string; company?: string } {
   const family = carrierFamilyOf(row.offer_code)
   const company = family ? SHOPIFY_TRACKING_COMPANY[family] : undefined
   return company ? { number, company } : { number }
 }
 
 export type FulfillOutcome =
-  | { status: "fulfilled"; fulfillment_id: string | null; tracking_number: string; already: boolean }
+  | {
+      status: "fulfilled"
+      fulfillment_id: string | null
+      tracking_number: string
+      already: boolean
+    }
   | { status: "pending_approval"; message: string }
   | { status: "error"; code: string; message: string }
 
@@ -102,7 +110,9 @@ export async function fulfillmentCarryingTracking(
   const wanted = trackingNumber.trim()
   if (!wanted) return null
   try {
-    const env = await ctx.executeTool("shopify:orders_get", { id: toShopifyOrderGid(shopifyOrderId) })
+    const env = await ctx.executeTool("shopify:orders_get", {
+      id: toShopifyOrderGid(shopifyOrderId),
+    })
     if (env.status !== "completed" || env.result == null) {
       ctx.logger?.warn?.("orders_get for the fulfillment check did not complete", {
         shopifyOrderId,
@@ -122,13 +132,24 @@ export async function fulfillmentCarryingTracking(
       ) ?? null
     )
   } catch (err) {
-    ctx.logger?.warn?.("orders_get for the fulfillment check threw", { shopifyOrderId, err: String(err) })
+    ctx.logger?.warn?.("orders_get for the fulfillment check threw", {
+      shopifyOrderId,
+      err: String(err),
+    })
     return undefined
   }
 }
 
 /** Approval states in which the parked request will never run: a new one may be staged. */
-const DEAD_APPROVAL_STATES = new Set(["denied", "rejected", "expired", "withdrawn", "cancelled", "canceled", "failed"])
+const DEAD_APPROVAL_STATES = new Set([
+  "denied",
+  "rejected",
+  "expired",
+  "withdrawn",
+  "cancelled",
+  "canceled",
+  "failed",
+])
 
 /**
  * Retire the parcel's parked fulfillment approval, so at most ONE exists per shipment.
@@ -203,7 +224,11 @@ async function recordFailure(
     fulfillment_state: "failed",
     fulfillment_error: message,
   })
-  ctx.logger?.warn?.("boxtal: Shopify fulfillment failed", { shipmentId: String(row.id), code, message })
+  ctx.logger?.warn?.("boxtal: Shopify fulfillment failed", {
+    shipmentId: String(row.id),
+    code,
+    message,
+  })
   return { status: "error", code, message }
 }
 
@@ -311,7 +336,12 @@ export async function fulfillShipment(
     })
     return { status: "fulfilled", fulfillment_id: id, tracking_number: tracking, already: false }
   } catch (err) {
-    return recordFailure(ctx, row, "unexpected", `Shopify fulfillment failed: ${err instanceof Error ? err.message : String(err)}`)
+    return recordFailure(
+      ctx,
+      row,
+      "unexpected",
+      `Shopify fulfillment failed: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }
 
@@ -331,7 +361,11 @@ export async function unfulfillShipment(
       if (shopifyOrderId && row.tracking_number) {
         const found = await fulfillmentCarryingTracking(ctx, shopifyOrderId, row.tracking_number)
         if (found === undefined) {
-          return { status: "error", code: "shopify_unreachable", message: "Could not read the Shopify order, so the fulfillment was not cancelled." }
+          return {
+            status: "error",
+            code: "shopify_unreachable",
+            message: "Could not read the Shopify order, so the fulfillment was not cancelled.",
+          }
         }
         fulfillmentId = typeof found?.id === "string" && found.id ? found.id : null
       }
@@ -350,11 +384,16 @@ export async function unfulfillShipment(
     if (env.status === "pending_approval") {
       return {
         status: "pending_approval",
-        message: "Cancelling the fulfillment is waiting for approval by someone allowed to approve it. The order is still fulfilled.",
+        message:
+          "Cancelling the fulfillment is waiting for approval by someone allowed to approve it. The order is still fulfilled.",
       }
     }
     if (env.status !== "completed") {
-      return { status: "error", code: "shopify_error", message: `Shopify did not cancel the fulfillment: ${envelopeMessage(env)}` }
+      return {
+        status: "error",
+        code: "shopify_error",
+        message: `Shopify did not cancel the fulfillment: ${envelopeMessage(env)}`,
+      }
     }
     await ctx.db.update("shipment", String(row.id), {
       fulfillment_synced: false,

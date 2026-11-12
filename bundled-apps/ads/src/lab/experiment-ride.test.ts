@@ -7,9 +7,9 @@
 
 import { describe, expect, it } from "bun:test"
 import {
-  summarizeCampaign,
   summarizeAdset,
   summarizeBudget,
+  summarizeCampaign,
   summarizeSetStatus,
 } from "../summarizers"
 

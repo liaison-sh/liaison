@@ -13,11 +13,7 @@
 // change makes a refunded or cancelled order shippable again, this fails.
 
 import { describe, expect, it } from "bun:test"
-import {
-  isOrderShippable,
-  unshippableMessage,
-  unshippableReason,
-} from "./order-shippability"
+import { isOrderShippable, unshippableMessage, unshippableReason } from "./order-shippability"
 
 describe("order shippability", () => {
   it("blocks a fully refunded order (the #3320 shape)", () => {

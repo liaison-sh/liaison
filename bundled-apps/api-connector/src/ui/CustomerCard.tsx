@@ -23,10 +23,8 @@ import type {
   CustomerSummaryValue,
   ProjectedObject,
 } from "@liaison/api-connector-core/contract"
-import { type Component, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { type HostEntityChangeEvent as EntityChangeEvent, onEntityChange } from "@liaison/host"
-import { narrowFrame, useI18n } from "./kit"
-import { Skeleton } from "./kit"
+import { type Component, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { CUSTOMER_LOOKUP_TIMEOUT_MS, lookupCustomer } from "./api"
 import {
   formatValue,
@@ -36,6 +34,7 @@ import {
   SUMMARY_RESERVED_KEYS,
   safeHttpUrl,
 } from "./customer-format"
+import { narrowFrame, Skeleton, useI18n } from "./kit"
 
 export type CustomerCardVariant = "panel" | "header"
 
@@ -78,7 +77,10 @@ const LIST_LIMIT = 5
 const LIST_ROLES: readonly RowRole[] = ["orders", "invoices", "deals"]
 
 /** Whose card: a ticket's or a conversation's participant (the server reads it), or an address. */
-export type CustomerSubject = { ticketId: string } | { mailConversationId: string } | { email: string }
+export type CustomerSubject =
+  | { ticketId: string }
+  | { mailConversationId: string }
+  | { email: string }
 
 function subjectKey(subject: CustomerSubject | null | undefined): string {
   if (!subject) return ""
@@ -102,9 +104,7 @@ export const CustomerCard: Component<{
   // A re-read after a write keeps the card on screen until the answer comes.
   let quiet = false
   // Narrow widths open the header card collapsed; the sidebar card never collapses.
-  const [collapsed, setCollapsed] = createSignal(
-    props.variant === "header" && narrowFrame(),
-  )
+  const [collapsed, setCollapsed] = createSignal(props.variant === "header" && narrowFrame())
 
   createEffect(
     on([() => subjectKey(props.subject), attempt], ([key]) => {

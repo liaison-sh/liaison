@@ -48,7 +48,10 @@ describe("pause", () => {
   // Three-call contract: GET pre-pause status → POST PAUSED → GET confirm.
   // The pre-pause GET returns status:ACTIVE; the post-pause GET returns PAUSED.
   function prePauseGet(id: string) {
-    return { status: 200, body: JSON.stringify({ id, status: "ACTIVE", effective_status: "ACTIVE" }) }
+    return {
+      status: 200,
+      body: JSON.stringify({ id, status: "ACTIVE", effective_status: "ACTIVE" }),
+    }
   }
   function postPauseWrite() {
     return { status: 200, body: JSON.stringify({ success: true }) }
@@ -89,15 +92,19 @@ describe("pause", () => {
   })
 
   it("result carries effective_status from the confirm GET, not the write echo", async () => {
-    const { ctx } = makeCtx([prePauseGet("adset_1"), postPauseWrite(), confirmGet("adset_1", "ADSET_PAUSED")])
-    const result = await pause({ object_id: "adset_1" }, ctx) as { effective_status: string }
+    const { ctx } = makeCtx([
+      prePauseGet("adset_1"),
+      postPauseWrite(),
+      confirmGet("adset_1", "ADSET_PAUSED"),
+    ])
+    const result = (await pause({ object_id: "adset_1" }, ctx)) as { effective_status: string }
     expect(result.effective_status).toBe("ADSET_PAUSED")
   })
 
   it("ledger prior_status is the PRE-pause status (ACTIVE), captured before the POST", async () => {
     const db = createMockDb()
     const { ctx } = makeCtx([prePauseGet("adset_9"), postPauseWrite(), confirmGet("adset_9")], db)
-    const result = await pause({ object_id: "adset_9" }, ctx) as { prior_status: string }
+    const result = (await pause({ object_id: "adset_9" }, ctx)) as { prior_status: string }
     // The ledger + result must record ACTIVE (the pre-pause read), never PAUSED.
     expect(result.prior_status).toBe("ACTIVE")
     const row = db.__all("pause_ledger")[0] as Record<string, unknown>
@@ -106,7 +113,10 @@ describe("pause", () => {
 
   it("writes a pause_ledger row with paused_by_us:true", async () => {
     const db = createMockDb()
-    const { ctx } = makeCtx([prePauseGet("adset_2"), postPauseWrite(), confirmGet("adset_2", "ADSET_PAUSED")], db)
+    const { ctx } = makeCtx(
+      [prePauseGet("adset_2"), postPauseWrite(), confirmGet("adset_2", "ADSET_PAUSED")],
+      db,
+    )
     await pause({ object_id: "adset_2", reason: "low-roas" }, ctx)
     const rows = db.__all("pause_ledger")
     expect(rows.length).toBe(1)
@@ -117,10 +127,14 @@ describe("pause", () => {
 
   it("bulk: pausing object_ids[] makes 3 calls per object (pre-GET+write+confirm-GET each)", async () => {
     const { ctx, calls } = makeCtx([
-      prePauseGet("camp_A"), postPauseWrite(), confirmGet("camp_A"),
-      prePauseGet("camp_B"), postPauseWrite(), confirmGet("camp_B"),
+      prePauseGet("camp_A"),
+      postPauseWrite(),
+      confirmGet("camp_A"),
+      prePauseGet("camp_B"),
+      postPauseWrite(),
+      confirmGet("camp_B"),
     ])
-    const result = await pause({ object_ids: ["camp_A", "camp_B"] }, ctx) as { paused: unknown[] }
+    const result = (await pause({ object_ids: ["camp_A", "camp_B"] }, ctx)) as { paused: unknown[] }
     expect(calls.length).toBe(6) // 3 per object
     expect(result.paused).toHaveLength(2)
   })

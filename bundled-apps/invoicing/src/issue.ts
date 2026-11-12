@@ -28,29 +28,33 @@
 // the snapshotted line — this is enforced by storing the values inline on
 // the document_lines row rather than referencing the overlay.
 
-import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import type { CrossAppExecuteTool } from "./cross-app"
-import { documentRollup, lineAmounts } from "./money"
-import { numberingSequence } from "./numbering"
-import { classifyRegime } from "./einvoicing/classify"
-import type { TimeSurface } from "./issue-date"
 import type { CustomerKind, Regime } from "./einvoicing/classify"
+import { classifyRegime } from "./einvoicing/classify"
 import type { OperationCategory, PaymentState } from "./einvoicing/classify-operation"
+import { cachedRate, FxRateUnavailableError, fxIssueDate } from "./einvoicing/fx"
 import {
   type DeliveryAddress,
-  type OperationSource,
-  type RegimeSnapshotColumns,
   EinvoiceGateRefusal,
   gateWarning,
+  type OperationSource,
+  type RegimeSnapshotColumns,
   regimeSnapshot,
 } from "./einvoicing/gate"
 import { ensureDerivedIdentity } from "./einvoicing/identity-derive"
-import { cachedRate, FxRateUnavailableError, fxIssueDate } from "./einvoicing/fx"
-import { type EinvoiceOriginal, type EinvoicingWarning, prepareEinvoiceGate } from "./einvoicing/issue-gate"
+import {
+  type EinvoiceOriginal,
+  type EinvoicingWarning,
+  prepareEinvoiceGate,
+} from "./einvoicing/issue-gate"
 import { documentLegalMention } from "./einvoicing/mentions"
+import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
+import type { TimeSurface } from "./issue-date"
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
+import { documentRollup, lineAmounts } from "./money"
+import { numberingSequence } from "./numbering"
 import { classify, operationLabel } from "./tax"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
@@ -150,12 +154,7 @@ export interface Counterparty {
  * typed `invalid_params` result instead of an exception. The JSON-Schema `required` array on the
  * `*_create_and_issue` tools rejects the agent path even earlier.
  */
-export const REQUIRED_COUNTERPARTY_FIELDS = [
-  "legal_name",
-  "country",
-  "address",
-  "email",
-] as const
+export const REQUIRED_COUNTERPARTY_FIELDS = ["legal_name", "country", "address", "email"] as const
 
 /** A counterparty field whose value is missing, null, or whitespace-only. */
 function blank(v: string | null | undefined): boolean {
@@ -522,10 +521,17 @@ export interface IssueCtx {
   requestApproval?(input: {
     tool_name: string
     summary: string
-    summary_detail?: { subtitle?: string; lines?: string[]; links?: Array<{ label: string; app: string; entityType: string; entityId: string }> }
+    summary_detail?: {
+      subtitle?: string
+      lines?: string[]
+      links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+    }
     current_payload: unknown
     editable_fields?: string[]
-  }): Promise<{ approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }>
+  }): Promise<
+    | { approval_id: string; auto_approved?: undefined }
+    | { approval_id: string | null; auto_approved: true }
+  >
 }
 
 export interface DocumentInsert {
@@ -699,9 +705,7 @@ export function readRefString(
  * cannot represent BigInt natively, and the underlying Postgres column
  * is BIGINT — accepting a numeric string).
  */
-function serialiseDocumentInsert(
-  row: DocumentInsert,
-): Record<string, unknown> {
+function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
   return {
     type: row.type,
     scope: row.scope,
@@ -875,7 +879,8 @@ async function fetchShopifyVariantCustoms(
   // envelope (tool error); both propagate as a thrown CustomsFetchError.
   const envelope = await executeTool("shopify:variants_get", { id: variantId })
   if (envelope.status !== "completed") {
-    const e = (envelope as { error?: { code?: string; message?: string; retryable?: boolean } }).error ?? {}
+    const e =
+      (envelope as { error?: { code?: string; message?: string; retryable?: boolean } }).error ?? {}
     throw new CustomsFetchError(
       e.message ?? "shopify:variants_get failed",
       e.code ?? "tool_error",
@@ -976,15 +981,13 @@ export async function enrichLineCustoms(
     let overlay = await lookupOverlay(ctx.db, line.product_source, line.external_id)
     const overlayEmpty =
       !overlay || (!overlay.hs_code && !overlay.country_of_origin && !overlay.customs_description)
-    if (
-      line.product_source === "shopify" &&
-      overlayEmpty &&
-      ctx.executeTool &&
-      requiresHsCode
-    ) {
+    if (line.product_source === "shopify" && overlayEmpty && ctx.executeTool && requiresHsCode) {
       try {
         const fetched = await fetchShopifyVariantCustoms(ctx.executeTool, line.external_id)
-        if (fetched && (fetched.hs_code || fetched.country_of_origin || fetched.customs_description)) {
+        if (
+          fetched &&
+          (fetched.hs_code || fetched.country_of_origin || fetched.customs_description)
+        ) {
           await cacheVariantOverlay(ctx.db, line.external_id, fetched)
           overlay = { source: "shopify", external_id: line.external_id, ...fetched }
         }
@@ -998,7 +1001,10 @@ export async function enrichLineCustoms(
           code: ce?.code ?? (err as { code?: string }).code ?? "customs_fetch_failed",
           throttled: ce?.throttled ?? false,
           retryable: ce?.retryable ?? false,
-          detail: (ce?.message ?? (err as { message?: string }).message ?? String(err)).slice(0, 300),
+          detail: (ce?.message ?? (err as { message?: string }).message ?? String(err)).slice(
+            0,
+            300,
+          ),
         }
       }
     }
@@ -1011,10 +1017,7 @@ export async function enrichLineCustoms(
   return { hs_code, country_of_origin, customs_description, fetchFailure }
 }
 
-export async function issueDocument(
-  ctx: IssueCtx,
-  input: IssueInput,
-): Promise<IssueResult> {
+export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<IssueResult> {
   const prepared = await prepareIssue(ctx, input)
   // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
   //    holds no transaction across its calls, so a run that fails or is killed after this point
@@ -1022,7 +1025,11 @@ export async function issueDocument(
   //    it leaves nothing and consumes no number.
   const committed = await ctx.db.batch({ sequence: prepared.sequence, ops: prepared.ops })
   const allocated = committed.sequence
-  if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
+  if (
+    !allocated ||
+    typeof allocated.value !== "number" ||
+    typeof allocated.formatted !== "string"
+  ) {
     throw new Error(`numbering failed for "${prepared.sequence.key}": ${JSON.stringify(committed)}`)
   }
   return prepared.finish({
@@ -1053,7 +1060,11 @@ export async function issueTogether<N extends string>(
   const results = {} as Record<N, IssueResult>
   for (const [name, p] of prepared) {
     const allocated = committed.sequences?.[name]
-    if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
+    if (
+      !allocated ||
+      typeof allocated.value !== "number" ||
+      typeof allocated.formatted !== "string"
+    ) {
       throw new Error(`numbering failed for "${p.sequence.key}": ${JSON.stringify(committed)}`)
     }
     results[name] = await p.finish({
@@ -1106,7 +1117,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       operation_source: input.operation_source ?? null,
       // The payment state AT ISSUE is recorded for every invoice (BT-23 x1 / x2 reads it, never
       // the later payment_status: a Factur-X first rendered after a mark-paid must still say due).
-      payment_state: input.payment_state ?? (type === "invoice" ? (input.settlement ? "paid" : "due") : null),
+      payment_state:
+        input.payment_state ?? (type === "invoice" ? (input.settlement ? "paid" : "due") : null),
       original: type === "credit_note" ? (input.original ?? null) : null,
       origin: input.origin ?? "manual",
     },
@@ -1161,9 +1173,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     const { hs_code, country_of_origin, customs_description } = enriched
     if (enriched.fetchFailure) customsFetchFailures.push(enriched.fetchFailure)
     const tax_rate_bp =
-      typeof dl.tax_rate_bp_override === "number"
-        ? dl.tax_rate_bp_override
-        : docDefaultRateBp
+      typeof dl.tax_rate_bp_override === "number" ? dl.tax_rate_bp_override : docDefaultRateBp
     const discount_minor = dl.discount_minor ?? 0n
     // Discount is subtracted from the line subtotal and rendered explicitly on
     // the document — never folded into the unit price.
@@ -1197,7 +1207,9 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   const rollup = documentRollup(snapshotLines)
   const fxDate = fxIssueDate(draft.issued_at)
   const fxSnapshot =
-    draft.currency && draft.currency !== "EUR" ? await cachedRate(ctx.db, draft.currency, fxDate) : null
+    draft.currency && draft.currency !== "EUR"
+      ? await cachedRate(ctx.db, draft.currency, fxDate)
+      : null
   // A foreign-currency e-invoice carries its VAT total in EUR (BT-111): without a rate its
   // Factur-X can never be built, and an issued document is never re-snapshotted. Refuse it here,
   // before numbering, so nothing is persisted and the call can simply be retried. The issuing
@@ -1250,9 +1262,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     due_at: draft.due_at,
     // Born-settled (Shopify order-paid): only payment_status/paid_at are set — status stays
     // "issued" so the invoice remains a live, shippable document.
-    ...(input.settlement
-      ? { payment_status: "paid", paid_at: input.settlement.paid_at }
-      : {}),
+    ...(input.settlement ? { payment_status: "paid", paid_at: input.settlement.paid_at } : {}),
     pdf_file_id: null,
     pdf_status: "pending",
     external_refs: externalRefs,
@@ -1336,7 +1346,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     },
     ...snapshotLines.map((l) => ({
       insert: "document_lines",
-      data: { ...serialiseLineInsert({ ...l, document_id: "" }), document_id: { $ref: "document" } },
+      data: {
+        ...serialiseLineInsert({ ...l, document_id: "" }),
+        document_id: { $ref: "document" },
+      },
     })),
     ...(input.commit_with ?? []),
   ]
@@ -1409,10 +1422,17 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     let pdfFileId: string | null = null
     let pdfStatus: "ready" | "failed" | "facturx_failed" = "ready"
     let renderError: unknown = null
-    const legalMention = await documentLegalMention(ctx.db, classification.treatment, issuer.default_language, {
-      category: (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ?? null,
-      issueDate: draft.issued_at,
-    })
+    const legalMention = await documentLegalMention(
+      ctx.db,
+      classification.treatment,
+      issuer.default_language,
+      {
+        category:
+          (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ??
+          null,
+        issueDate: draft.issued_at,
+      },
+    )
     const templateData = buildTemplateData({
       type,
       document: { ...documentInsert, id: documentId },
@@ -1426,7 +1446,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       reason: reasonFromRefs,
     })
     if (hasLegalOriginal(type)) {
-      const docForFacturx = { ...documentInsert, id: documentId } as unknown as Record<string, unknown>
+      const docForFacturx = { ...documentInsert, id: documentId } as unknown as Record<
+        string,
+        unknown
+      >
       let facturx: FacturxInput | null = null
       let buildError: FacturxBuildError | null = null
       if (facturxEligible(type, docForFacturx)) {
@@ -1436,7 +1459,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
             doc: docForFacturx,
             lines: snapshotLines,
             issuer: issuer as unknown as Record<string, unknown>,
-            original: { number: input.original_invoice_number ?? null, issue_date: input.original_invoice_date ?? null },
+            original: {
+              number: input.original_invoice_number ?? null,
+              issue_date: input.original_invoice_date ?? null,
+            },
             legalMention,
           })
         } catch (err) {
@@ -1445,7 +1471,12 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         }
       }
       const recorded = buildError
-        ? ({ ok: false, code: buildError.code, message: buildError.message, facturx: true } as const)
+        ? ({
+            ok: false,
+            code: buildError.code,
+            message: buildError.message,
+            facturx: true,
+          } as const)
         : await recordLegalOriginal(ctx, {
             documentId,
             type,
@@ -1506,7 +1537,9 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         actor: userId,
         ts: new Date().toISOString(),
         error: (renderError as { code?: string }).code ?? "render_failed",
-        ...(pdfStatus === "facturx_failed" ? { facturx: true, detail: (renderError as { message?: string }).message ?? null } : {}),
+        ...(pdfStatus === "facturx_failed"
+          ? { facturx: true, detail: (renderError as { message?: string }).message ?? null }
+          : {}),
       })
     }
     // Surface any live customs-fetch failures (Shopify throttle / bad id /
@@ -1591,7 +1624,9 @@ export function taxCountryOf(counterparty: Pick<Counterparty, "country" | "tax_c
 /** The tax destination recorded on a persisted document (`external_refs.tax_country`), or null for
  *  a document whose billing country was also its tax country. Used by every path that rebuilds a
  *  Counterparty from a stored row, so it classifies the document exactly as its issuance did. */
-export function storedTaxCountry(row: { external_refs?: unknown } | null | undefined): string | null {
+export function storedTaxCountry(
+  row: { external_refs?: unknown } | null | undefined,
+): string | null {
   const refs = row?.external_refs
   if (!refs || typeof refs !== "object") return null
   const raw = (refs as Record<string, unknown>).tax_country
@@ -1636,7 +1671,11 @@ export function buildTemplateData(params: {
   const stored = document as unknown as Record<string, unknown>
   const flat = (document.einvoice ?? stored) as Record<string, unknown>
   const snapshot = {
-    operation_category: ((flat.operation_category ?? stored.operation_category) as OperationCategory | null | undefined) ?? null,
+    operation_category:
+      ((flat.operation_category ?? stored.operation_category) as
+        | OperationCategory
+        | null
+        | undefined) ?? null,
     vat_on_debits: (flat.vat_on_debits ?? stored.vat_on_debits) as boolean | null | undefined,
     buyer_siren: ((flat.buyer_siren ?? stored.buyer_siren) as string | null | undefined) ?? null,
   }

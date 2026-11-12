@@ -22,13 +22,19 @@ export const PENNYLANE_RECEIVED_STATUS: Readonly<Record<string, ReceivedState>> 
 }
 
 /** The status word Pennylane takes for each contract status. */
-export const PENNYLANE_STATUS_FOR: Readonly<Record<"refused" | "in_dispute" | "approved", string>> = {
-  refused: "refused",
-  in_dispute: "disputed",
-  approved: "approved",
-}
+export const PENNYLANE_STATUS_FOR: Readonly<Record<"refused" | "in_dispute" | "approved", string>> =
+  {
+    refused: "refused",
+    in_dispute: "disputed",
+    approved: "approved",
+  }
 
-const r = (reason: string, afnor_code: AfnorReasonCode, label_en: string, label_fr: string): ReceivedReason => ({
+const r = (
+  reason: string,
+  afnor_code: AfnorReasonCode,
+  label_en: string,
+  label_fr: string,
+): ReceivedReason => ({
   reason,
   afnor_code,
   label_en,
@@ -49,18 +55,45 @@ export const REFUSE_REASONS: readonly ReceivedReason[] = [
 export const DISPUTE_REASONS: readonly ReceivedReason[] = [
   r("incorrect_vat_rate", "TX_TVA_ERR", "Incorrect VAT rate", "Taux de TVA erroné"),
   r("incorrect_unit_prices", "PU_ERR", "Incorrect unit prices", "Prix unitaires erronés"),
-  r("incorrect_billed_quantity", "QTE_ERR", "Incorrect quantity billed", "Quantité facturée erronée"),
+  r(
+    "incorrect_billed_quantity",
+    "QTE_ERR",
+    "Incorrect quantity billed",
+    "Quantité facturée erronée",
+  ),
   r("incorrect_billed_item", "ART_ERR", "Wrong item billed", "Article facturé erroné"),
-  r("defective_delivered_item", "QUALITE_ERR", "Defective item delivered", "Article livré défectueux"),
+  r(
+    "defective_delivered_item",
+    "QUALITE_ERR",
+    "Defective item delivered",
+    "Article livré défectueux",
+  ),
   r("delivery_issue", "LIVR_INCOMP", "Delivery issue", "Problème de livraison"),
-  r("missing_legal_notice", "NON_CONFORME", "A legal mention is missing", "Mention légale manquante"),
+  r(
+    "missing_legal_notice",
+    "NON_CONFORME",
+    "A legal mention is missing",
+    "Mention légale manquante",
+  ),
   r("recipient_error", "DEST_ERR", "Not addressed to us", "Erreur de destinataire"),
   r("bank_details_error", "AUTRE", "Wrong bank details", "Coordonnées bancaires erronées"),
-  r("incorrect_payment_terms", "AUTRE", "Incorrect payment terms", "Conditions de paiement erronées"),
-  r("missing_contractual_reference", "AUTRE", "Contract reference missing", "Référence contractuelle manquante"),
+  r(
+    "incorrect_payment_terms",
+    "AUTRE",
+    "Incorrect payment terms",
+    "Conditions de paiement erronées",
+  ),
+  r(
+    "missing_contractual_reference",
+    "AUTRE",
+    "Contract reference missing",
+    "Référence contractuelle manquante",
+  ),
 ]
 
 /** Official reason codes no Pennylane reason reaches (not observable through this provider). */
 export const NOT_OBSERVABLE_REASON_CODES: readonly AfnorReasonCode[] = AFNOR_REASON_CODES.filter(
-  (c) => !REFUSE_REASONS.some((x) => x.afnor_code === c) && !DISPUTE_REASONS.some((x) => x.afnor_code === c),
+  (c) =>
+    !REFUSE_REASONS.some((x) => x.afnor_code === c) &&
+    !DISPUTE_REASONS.some((x) => x.afnor_code === c),
 )

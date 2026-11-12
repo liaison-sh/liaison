@@ -19,9 +19,10 @@
 // Styling: Tailwind tokens (kernel design system). The kernel's theme.css
 // `@source "../../../../bundled-apps/**/src/**/*.{tsx,ts}"` directive scans
 // this file at build time so the JIT emits the classes used here.
-import { For, Show, type Component, createSignal } from "solid-js"
-import { app, onEntityChange } from "@liaison/host"
+
 import { CardTable } from "@liaison/app-ui/card-table"
+import { app, onEntityChange } from "@liaison/host"
+import { type Component, createSignal, For, Show } from "solid-js"
 import { Chip } from "./primitives"
 
 export interface IdentityMappingRow {
@@ -79,7 +80,9 @@ function SourceBadge(props: { source: "auto" | "override" | "unmapped" }) {
         ? "bg-warning-glow text-warning border border-warning-border"
         : "bg-surface-hover text-text-tertiary border border-border"
   return (
-    <span class={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}>
+    <span
+      class={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}
+    >
       {label}
     </span>
   )
@@ -197,7 +200,11 @@ export const ShopifyDiagnostics: Component = () => {
                     <span class="font-mono">{b().connection.shopDomain}</span>: the stored Shopify
                     token is no longer valid. Sync is paused until you reconnect.
                   </p>
-                  <ReconnectButton testid="shopify-connect-button" label="Reconnect Shopify" onClick={() => void onConnect()} />
+                  <ReconnectButton
+                    testid="shopify-connect-button"
+                    label="Reconnect Shopify"
+                    onClick={() => void onConnect()}
+                  />
                 </div>
               </Show>
               {/* Permissions drift — the silent-degradation killer. Shown while
@@ -208,8 +215,7 @@ export const ShopifyDiagnostics: Component = () => {
                   configuration, so the scopes go there before a Reconnect. */}
               <Show
                 when={
-                  b().connection.status === "connected" &&
-                  b().connection.missingScopes.length > 0
+                  b().connection.status === "connected" && b().connection.missingScopes.length > 0
                 }
               >
                 <div
@@ -222,23 +228,25 @@ export const ShopifyDiagnostics: Component = () => {
                     <span class="font-mono text-text">
                       {b().connection.missingScopes.join(", ")}
                     </span>
-                    . Until the store grants them, Shopify silently limits what the tools can
-                    see (order history older than 60 days, analytics). Shopify grants only the
-                    scopes in your Shopify app's configuration, so Reconnect alone cannot add
-                    them: first add them to that configuration (download the current
-                    shopify.app.toml from Liaison's Shopify setup guide, or add them to{" "}
+                    . Until the store grants them, Shopify silently limits what the tools can see
+                    (order history older than 60 days, analytics). Shopify grants only the scopes in
+                    your Shopify app's configuration, so Reconnect alone cannot add them: first add
+                    them to that configuration (download the current shopify.app.toml from Liaison's
+                    Shopify setup guide, or add them to{" "}
                     <span class="font-mono">[access_scopes] scopes</span>) and run{" "}
                     <span class="font-mono">shopify app deploy</span>, then click Reconnect and
                     approve.
                   </p>
                   <div class="mt-2">
-                    <ReconnectButton testid="shopify-reconnect-button" label="Reconnect" onClick={() => void onConnect()} />
+                    <ReconnectButton
+                      testid="shopify-reconnect-button"
+                      label="Reconnect"
+                      onClick={() => void onConnect()}
+                    />
                   </div>
                 </div>
               </Show>
-              <Show
-                when={b().connection.status === "connected" && !b().connection.scopesKnown}
-              >
+              <Show when={b().connection.status === "connected" && !b().connection.scopesKnown}>
                 <div
                   data-testid="shopify-scopes-unknown-banner"
                   class="rounded-md border border-warning-border bg-warning-glow px-3 py-2"
@@ -247,11 +255,15 @@ export const ShopifyDiagnostics: Component = () => {
                   <p class="mt-0.5 text-[11px] text-text-secondary">
                     This connection was made before Liaison recorded granted permissions, so it
                     cannot verify the grant covers everything the tools need (including order
-                    history older than 60 days and analytics). Click Reconnect once to
-                    re-authorize and record the grant.
+                    history older than 60 days and analytics). Click Reconnect once to re-authorize
+                    and record the grant.
                   </p>
                   <div class="mt-2">
-                    <ReconnectButton testid="shopify-reconnect-button" label="Reconnect" onClick={() => void onConnect()} />
+                    <ReconnectButton
+                      testid="shopify-reconnect-button"
+                      label="Reconnect"
+                      onClick={() => void onConnect()}
+                    />
                   </div>
                 </div>
               </Show>
@@ -315,9 +327,7 @@ export const ShopifyDiagnostics: Component = () => {
             >
               <div class="flex items-baseline justify-between border-b border-border-subtle px-4 py-3">
                 <h2 class="text-sm font-medium text-text">Identity mappings</h2>
-                <p class="text-[11px] text-text-tertiary">
-                  Liaison user ↔ Shopify staff
-                </p>
+                <p class="text-[11px] text-text-tertiary">Liaison user ↔ Shopify staff</p>
               </div>
               <Show
                 when={b().mappings.length > 0}
@@ -335,9 +345,7 @@ export const ShopifyDiagnostics: Component = () => {
                       key: "user",
                       header: "Liaison user",
                       role: "anchor",
-                      cell: (row) => (
-                        <span class="font-mono text-[12px]">{row.liaisonEmail}</span>
-                      ),
+                      cell: (row) => <span class="font-mono text-[12px]">{row.liaisonEmail}</span>,
                     },
                     {
                       key: "staff",
@@ -444,7 +452,9 @@ export const ShopifyDiagnostics: Component = () => {
                     {(s) => (
                       <li class="flex items-center justify-between gap-3 py-2.5">
                         <div class="min-w-0">
-                          <p class="truncate font-mono text-[12px] text-text">{s.shopifyStaffEmail}</p>
+                          <p class="truncate font-mono text-[12px] text-text">
+                            {s.shopifyStaffEmail}
+                          </p>
                           <p class="mt-0.5 truncate text-[11px] text-text-secondary">
                             {s.scopes.join(", ")}
                           </p>
@@ -471,7 +481,9 @@ export const ShopifyDiagnostics: Component = () => {
             >
               <div class="flex items-baseline justify-between">
                 <h2 class="text-sm font-medium text-text">Inventory-location allowlist</h2>
-                <p class="text-[11px] text-text-tertiary">{b().inventoryAllowlist.length} locations</p>
+                <p class="text-[11px] text-text-tertiary">
+                  {b().inventoryAllowlist.length} locations
+                </p>
               </div>
               <Show
                 when={b().inventoryAllowlist.length > 0}

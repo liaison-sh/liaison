@@ -137,7 +137,13 @@ async function loadOrCreateProgress(ctx: AppContext): Promise<BackfillProgressRo
     blobId: null,
     status: "running",
   })
-  return { id: ins.id, entityType: "customers", cursorExternalId: null, blobId: null, status: "running" }
+  return {
+    id: ins.id,
+    entityType: "customers",
+    cursorExternalId: null,
+    blobId: null,
+    status: "running",
+  }
 }
 
 async function startBulkOp(client: ShopifyClient): Promise<BulkOp> {
@@ -200,7 +206,10 @@ export async function backfillCustomersJob(
   const setProgress = (data: Record<string, unknown>) =>
     ctx.db.update("backfill_progress", progress.id, data)
 
-  const fail = async (data: Record<string, unknown>, after: string | null): Promise<StepChunkResult<BackfillCursor>> => {
+  const fail = async (
+    data: Record<string, unknown>,
+    after: string | null,
+  ): Promise<StepChunkResult<BackfillCursor>> => {
     await setProgress({ status: "failed" })
     await emitEvent(ctx, { entity: "customer", action: "backfill_failed", data })
     outcome = "failed"
@@ -209,7 +218,11 @@ export async function backfillCustomersJob(
 
   const finish = async (after: string | null): Promise<StepChunkResult<BackfillCursor>> => {
     await setProgress({ status: "completed", cursorExternalId: after })
-    await emitEvent(ctx, { entity: "customer", action: "backfill_completed", data: { finalCursor: after } })
+    await emitEvent(ctx, {
+      entity: "customer",
+      action: "backfill_completed",
+      data: { finalCursor: after },
+    })
     outcome = "completed"
     return { done: true, cursor: { phase: "start", after } }
   }
@@ -220,7 +233,11 @@ export async function backfillCustomersJob(
     if (cursor.phase === "start") {
       const op = await startBulkOp(client)
       await setProgress({ status: "running" })
-      return { done: false, cursor: { phase: "poll", opId: op.id, polls: 0, after: cursor.after }, wakeIn: POLL_FIRST_WAKE_S }
+      return {
+        done: false,
+        cursor: { phase: "poll", opId: op.id, polls: 0, after: cursor.after },
+        wakeIn: POLL_FIRST_WAKE_S,
+      }
     }
 
     if (cursor.phase === "poll") {
@@ -233,7 +250,8 @@ export async function backfillCustomersJob(
       if (op.status === "FAILED" || op.status === "CANCELED" || op.status === "EXPIRED") {
         return fail({ errorCode: op.errorCode ?? null, opId: op.id }, cursor.after)
       }
-      if (cursor.polls + 1 >= MAX_POLLS) return fail({ reason: "poll_timeout", opId: op.id }, cursor.after)
+      if (cursor.polls + 1 >= MAX_POLLS)
+        return fail({ reason: "poll_timeout", opId: op.id }, cursor.after)
       const wakeIn = Math.min(POLL_FIRST_WAKE_S * 2 ** (cursor.polls + 1), POLL_MAX_WAKE_S)
       return { done: false, cursor: { ...cursor, polls: cursor.polls + 1 }, wakeIn }
     }
@@ -262,7 +280,11 @@ export async function backfillCustomersJob(
       if (!row) return finish(after)
       const ext = shortExternalId(row.id)
       if (!ext || (after && isAtOrBeforeCursor(ext, after))) continue
-      await ctx.resolveContact({ email: row.email ?? undefined, name: fullName(row), externalId: ext })
+      await ctx.resolveContact({
+        email: row.email ?? undefined,
+        name: fullName(row),
+        externalId: ext,
+      })
       after = ext
       imported++
     }

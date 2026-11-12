@@ -3,9 +3,7 @@
 // Invoicing mutations: draft line normalisation, net-of-tax lines, line financials, the
 // two-eyes check and the issue input built from a draft.
 
-import { type EinvoiceRowColumns, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
-import type { IssueDateParts } from "../issue-date"
-import { lineAmounts, netOfIncludedTax } from "../money"
+import { counterpartyEinvoiceFields, type EinvoiceRowColumns } from "../einvoicing/issue-gate"
 import {
   type Counterparty,
   type DraftLine,
@@ -13,14 +11,16 @@ import {
   type IssuerProfile,
   storedTaxCountry,
 } from "../issue"
+import type { IssueDateParts } from "../issue-date"
+import { lineAmounts, netOfIncludedTax } from "../money"
 import { type ClassifyInput, classify, KNOWN_COUNTRIES } from "../tax"
 import {
-  type MutationsCtx,
-  type ErrorEnvelope,
-  type DraftRow,
-  type DocumentType,
   coerceMinorAmount,
+  type DocumentType,
+  type DraftRow,
+  type ErrorEnvelope,
   lineAmountsError,
+  type MutationsCtx,
 } from "./shared"
 
 // ── Invoice issuance (threshold-gated) ────────────────────────────────────
@@ -61,17 +61,21 @@ export async function checkTwoEyes(
  * string`. This is the single boundary that promotes the input shape.
  */
 export function normaliseDraftLine(l: DraftLineInput): DraftLine {
-  return liftMisplacedCountryOnLine(liftMisplacedHsCode({
-    ...l,
-    // Canonicalise at the boundary (mirrors unit_price_minor): the wire / an edited approval
-    // payload can deliver `quantity` as a NUMBER, but DraftLine.quantity is a decimal STRING and
-    // parseDecimalQuantity downstream expects string semantics. String() makes a number "6"; a
-    // genuinely-missing value stringifies to "undefined" and surfaces a descriptive invalid-quantity.
-    quantity: String(l.quantity),
-    unit_price_minor: coerceMinorAmount(l.unit_price_minor, "unit_price_minor"),
-    discount_minor:
-      l.discount_minor != null ? coerceMinorAmount(l.discount_minor, "discount_minor") : undefined,
-  }))
+  return liftMisplacedCountryOnLine(
+    liftMisplacedHsCode({
+      ...l,
+      // Canonicalise at the boundary (mirrors unit_price_minor): the wire / an edited approval
+      // payload can deliver `quantity` as a NUMBER, but DraftLine.quantity is a decimal STRING and
+      // parseDecimalQuantity downstream expects string semantics. String() makes a number "6"; a
+      // genuinely-missing value stringifies to "undefined" and surfaces a descriptive invalid-quantity.
+      quantity: String(l.quantity),
+      unit_price_minor: coerceMinorAmount(l.unit_price_minor, "unit_price_minor"),
+      discount_minor:
+        l.discount_minor != null
+          ? coerceMinorAmount(l.discount_minor, "discount_minor")
+          : undefined,
+    }),
+  )
 }
 
 /**
@@ -118,11 +122,12 @@ export function liftMisplacedHsCode(line: DraftLine): DraftLine {
  * always wins. Mirrors BL-39/BL-25/BL-41: fix the weak-model field-placement at the boundary,
  * mechanically, not via prompt text.
  */
-export function liftMisplacedCountry<T extends { counterparty_country?: string | null; tax_treatment?: string | null }>(
-  header: T,
-): T {
+export function liftMisplacedCountry<
+  T extends { counterparty_country?: string | null; tax_treatment?: string | null },
+>(header: T): T {
   if (header.counterparty_country && String(header.counterparty_country).trim()) return header
-  const hint = typeof header.tax_treatment === "string" ? header.tax_treatment.trim().toUpperCase() : ""
+  const hint =
+    typeof header.tax_treatment === "string" ? header.tax_treatment.trim().toUpperCase() : ""
   if (hint && KNOWN_COUNTRIES.has(hint)) {
     return { ...header, counterparty_country: hint, tax_treatment: null }
   }
@@ -137,7 +142,10 @@ export function liftMisplacedCountry<T extends { counterparty_country?: string |
  */
 export function liftMisplacedCountryOnLine(line: DraftLine): DraftLine {
   if (line.country_of_origin && String(line.country_of_origin).trim()) return line
-  const cd = typeof line.customs_description === "string" ? line.customs_description.trim().toUpperCase() : ""
+  const cd =
+    typeof line.customs_description === "string"
+      ? line.customs_description.trim().toUpperCase()
+      : ""
   if (cd && KNOWN_COUNTRIES.has(cd)) {
     return { ...line, country_of_origin: cd, customs_description: null }
   }
@@ -188,11 +196,7 @@ export function netLinesForIssuer<
     discount_minor?: bigint
     tax_rate_bp_override?: number
   },
->(
-  items: T[],
-  issuer: { prices_include_tax?: boolean },
-  classifyInput: ClassifyInput,
-): T[] {
+>(items: T[], issuer: { prices_include_tax?: boolean }, classifyInput: ClassifyInput): T[] {
   if (!issuer.prices_include_tax) return items
   const { default_rate_bp } = classify(classifyInput)
   return items.map((l) => {
@@ -219,7 +223,8 @@ export function computeLineFinancials(
       {
         quantity: l.quantity,
         unit_price_minor: coerceMinorAmount(l.unit_price_minor, "unit_price_minor"),
-        discount_minor: l.discount_minor == null ? 0n : coerceMinorAmount(l.discount_minor, "discount_minor"),
+        discount_minor:
+          l.discount_minor == null ? 0n : coerceMinorAmount(l.discount_minor, "discount_minor"),
       },
       rate,
     )

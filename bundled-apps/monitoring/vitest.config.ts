@@ -15,9 +15,10 @@ import { fileURLToPath } from "node:url"
 const here = dirname(fileURLToPath(import.meta.url))
 const toolchain = resolve(here, "../../packages/app-ui/node_modules")
 const { default: solid } = await import(resolve(toolchain, "vite-plugin-solid/dist/esm/index.mjs"))
-const solidRoot = [resolve(here, "node_modules/solid-js"), resolve(here, "../../node_modules/solid-js")].find((p) =>
-  existsSync(p),
-) as string
+const solidRoot = [
+  resolve(here, "node_modules/solid-js"),
+  resolve(here, "../../node_modules/solid-js"),
+].find((p) => existsSync(p)) as string
 
 export default {
   root: here,
@@ -27,7 +28,10 @@ export default {
       { find: /^solid-js\/web$/, replacement: resolve(solidRoot, "web/dist/dev.js") },
       { find: /^solid-js\/store$/, replacement: resolve(solidRoot, "store/dist/dev.js") },
       { find: /^solid-js$/, replacement: resolve(solidRoot, "dist/dev.js") },
-      { find: "@solidjs/testing-library", replacement: resolve(toolchain, "@solidjs/testing-library/dist/index.js") },
+      {
+        find: "@solidjs/testing-library",
+        replacement: resolve(toolchain, "@solidjs/testing-library/dist/index.js"),
+      },
     ],
   },
   test: {

@@ -5,21 +5,21 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { resolveOrderPoNumber } from "../lib/draft-order"
 import { getShopifyClient } from "../lib/get-client"
-import { normalizeDraftOrderInput, isUsableEmail, normalizeEmailInput } from "./draft-order-input"
+import { isUsableEmail, normalizeDraftOrderInput, normalizeEmailInput } from "./draft-order-input"
 import {
   assertDraftOrderInvoiceable,
   invoiceabilityFactsForCreate,
   invoiceabilityFactsForDraft,
 } from "./invoiceability"
 import {
-  type PreflightResult,
-  type ShopClient,
-  resolveMutationInput,
-  preflightRefusal,
-  runMutation,
   makeMutationError,
-  requireTargetId,
+  type PreflightResult,
+  preflightRefusal,
   readGatedTarget,
+  requireTargetId,
+  resolveMutationInput,
+  runMutation,
+  type ShopClient,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -79,7 +79,10 @@ export async function draft_orders_create_preflight(
   return { ok: true }
 }
 
-export async function draft_orders_create(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function draft_orders_create(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = await normalizeDraftOrderInput(resolveMutationInput(params), ctx, {
     promoteWholeOrderDiscount: true,
     enforceBuyerIdentity: true,
@@ -140,14 +143,19 @@ export async function draft_orders_complete_preflight(
 ): Promise<PreflightResult> {
   try {
     if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
-    await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForDraft(String(params.id), ctx))
+    await assertDraftOrderInvoiceable(ctx, () =>
+      invoiceabilityFactsForDraft(String(params.id), ctx),
+    )
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
   return { ok: true }
 }
 
-export async function draft_orders_complete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function draft_orders_complete(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
   // Re-checked at execution: the draft or its customer can change between staging and the approve.
   await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForDraft(String(params.id), ctx))
@@ -173,7 +181,9 @@ export async function draft_orders_complete(params: Record<string, unknown>, ctx
       const draftOrder = node.draftOrder as Record<string, unknown> | undefined
       if (!draftOrder) return node
       const order = draftOrder.order as { poNumber?: string | null } | undefined
-      const poNumber = resolveOrderPoNumber(order?.poNumber, draftOrder.poNumber as string | null | undefined) ?? null
+      const poNumber =
+        resolveOrderPoNumber(order?.poNumber, draftOrder.poNumber as string | null | undefined) ??
+        null
       return {
         ...node,
         draftOrder: { ...draftOrder, poNumber },
@@ -214,11 +224,18 @@ export async function draft_orders_update_preflight(
   return { ok: true }
 }
 
-export async function draft_orders_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function draft_orders_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
-  const input = await normalizeDraftOrderInput(resolveMutationInput({ input: params.input ?? {} }), ctx, {
-    draftId: String(params.id),
-  })
+  const input = await normalizeDraftOrderInput(
+    resolveMutationInput({ input: params.input ?? {} }),
+    ctx,
+    {
+      draftId: String(params.id),
+    },
+  )
   // Same normalize-then-mutate shape as the create, so it carries the same exposure: a usable-looking
   // email whose domain Shopify rejects would 422 the whole gated update. Same single retry without it.
   const send = (variables: Record<string, unknown>): Promise<unknown> =>
@@ -270,7 +287,10 @@ export async function draft_orders_delete_preflight(
   return { ok: true }
 }
 
-export async function draft_orders_delete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function draft_orders_delete(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   requireTargetId(params, "id")
   return runMutation(ctx, {
     query: DRAFT_ORDER_DELETE,
@@ -294,7 +314,10 @@ const DRAFT_ORDER_INVOICE_SEND = `
  *  sets the draft's CUSTOMER but does NOT populate the draft's `email`, and draftOrderInvoiceSend does
  *  NOT auto-fall-back to the customer's email — so with no recipient it fails "To can't be blank".
  *  Prefer the draft's own email, else the customer's. Returns undefined if neither is usable. */
-async function resolveDraftRecipientEmail(client: ShopClient, draftId: string): Promise<string | undefined> {
+async function resolveDraftRecipientEmail(
+  client: ShopClient,
+  draftId: string,
+): Promise<string | undefined> {
   try {
     const data = await client.query<{
       draftOrder?: { email?: string | null; customer?: { email?: string | null } }
@@ -306,7 +329,10 @@ async function resolveDraftRecipientEmail(client: ShopClient, draftId: string): 
   }
 }
 
-export async function draft_orders_send(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function draft_orders_send(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
   let email = normalizeEmailInput(params.email)
   if (email?.to == null) {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { packageManifestSchema } from "@liaison/app-sdk"
@@ -83,7 +83,7 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.44: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.1.46: the package carries the app SDK's manifest `secrets` field; no change of its own.
     // 0.1.48: refresh-snapshots is a resumable step (no held transaction).
-    expect(m.version).toBe("0.1.50")
+    expect(m.version).toBe("0.1.51")
     expect(m.packageFormat).toBe(1)
   })
 
@@ -141,7 +141,9 @@ describe("pennylane app.manifest.json", () => {
 
   it("declares the nine read tools (gated≠true, scoped pennylane:*:read) + gated upload", () => {
     const tools = (
-      load() as { tools: Record<string, { gated?: boolean; requiredScopes: string[]; handler: string }> }
+      load() as {
+        tools: Record<string, { gated?: boolean; requiredScopes: string[]; handler: string }>
+      }
     ).tools
     const reads = [
       "supplier_invoices_list",
@@ -244,10 +246,9 @@ describe("pennylane app.manifest.json", () => {
     for (const [name, tool] of gated) {
       expect(tool.summarizer, `${name} is gated but declares no summarizer`).toBeDefined()
       const fn = (handlers as Record<string, unknown>)[tool.summarizer as string]
-      expect(
-        typeof fn,
-        `${name}'s summarizer "${tool.summarizer}" is not exported`,
-      ).toBe("function")
+      expect(typeof fn, `${name}'s summarizer "${tool.summarizer}" is not exported`).toBe(
+        "function",
+      )
     }
   })
 })

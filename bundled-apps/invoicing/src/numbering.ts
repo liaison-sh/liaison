@@ -54,9 +54,7 @@ export function numberingSequence({
   const prefixKey = PREFIX_KEY_BY_TYPE[type]
   const prefix = issuer_profile[prefixKey]
   if (typeof prefix !== "string" || prefix.length === 0) {
-    throw new Error(
-      `issuer_profile is missing ${prefixKey} (required to format ${type} numbers)`,
-    )
+    throw new Error(`issuer_profile is missing ${prefixKey} (required to format ${type} numbers)`)
   }
   return {
     key: `invoicing:doc_number:${issuer_profile.id}:${type}:${year_of_issue}`,

@@ -10,16 +10,40 @@
 // from the matched shipping_profile (or an explicit override), NOT from the
 // invoice — invoicing carries no weight.
 
-import { DECLARED_CURRENCY, convertToDeclared, type FxConversion } from "./fx"
+import { convertToDeclared, DECLARED_CURRENCY, type FxConversion } from "./fx"
 import { currencyExponent } from "./money"
 
 const DESCRIPTION_MAX = 64
 
 /** Static EU-member list for the intra-EU customs-omission rule. */
 export const EU_MEMBERS = Object.freeze([
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
-  "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
-  "SI", "ES", "SE",
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
 ])
 
 export interface CustomsDocLine {
@@ -123,15 +147,15 @@ export function buildCustomsArticles(
     const profile = ref ? profilesByRef[ref] : undefined
 
     const unitWeight =
-      override?.unitWeight ?? (profile?.unit_weight && profile.unit_weight > 0 ? profile.unit_weight : null)
+      override?.unitWeight ??
+      (profile?.unit_weight && profile.unit_weight > 0 ? profile.unit_weight : null)
 
     const baseDescription = line.customs_description ?? line.description
     const description = truncate(override?.description ?? baseDescription)
 
     // Minor → major must be exponent-aware: a hardcoded /100 inflates every
     // zero-decimal currency (JPY, KRW …) a hundredfold. Same rule as money.ts.
-    const invoiceMajor =
-      Number(line.unit_price_minor) / 10 ** currencyExponent(doc.currency)
+    const invoiceMajor = Number(line.unit_price_minor) / 10 ** currencyExponent(doc.currency)
     // An override is already expressed in the declared currency; only the
     // invoice-derived figure gets converted.
     const converted = needsConversion && fx ? convertToDeclared(invoiceMajor, fx) : invoiceMajor
@@ -181,13 +205,8 @@ export function buildCustomsArticles(
  * `incomplete` article is not a re-entry burden (M1). Defaults to counting
  * `incomplete` (customs-required) for backwards compatibility.
  */
-export function countMandatoryEmpty(
-  articles: CustomsArticle[],
-  customsRequired = true,
-): number {
-  return articles.filter(
-    (a) => a.blocked || (customsRequired && a.incomplete),
-  ).length
+export function countMandatoryEmpty(articles: CustomsArticle[], customsRequired = true): number {
+  return articles.filter((a) => a.blocked || (customsRequired && a.incomplete)).length
 }
 
 /**
@@ -215,7 +234,9 @@ export type PrepCategory = "sale" | "repair" | "gift" | "return"
  * shipment.ts's shipmentDraftCreate, which previously each re-implemented the same
  * `(state?.category as PrepCategory | undefined) ?? "sale"` fallback independently.
  */
-export function resolvePrepCategory(state: { category?: string | null } | null | undefined): PrepCategory {
+export function resolvePrepCategory(
+  state: { category?: string | null } | null | undefined,
+): PrepCategory {
   return (state?.category as PrepCategory | undefined) ?? "sale"
 }
 
@@ -230,7 +251,9 @@ export type CustomsBasis = "SALE" | "REPAIR" | "GIFT" | "RETURN"
  * repair/return -> REPAIR/RETURN (no new sale, typically duty-exempt on re-entry). Unknown/
  * missing category defaults to SALE (the safe default: a real transaction, dutiable).
  */
-export function categoryToCustomsBasis(category: PrepCategory | string | null | undefined): CustomsBasis {
+export function categoryToCustomsBasis(
+  category: PrepCategory | string | null | undefined,
+): CustomsBasis {
   switch (category) {
     case "repair":
       return "REPAIR"

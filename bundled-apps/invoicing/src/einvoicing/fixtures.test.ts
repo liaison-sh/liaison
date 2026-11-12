@@ -15,7 +15,14 @@ import {
 } from "./lookup.fixtures"
 import { FICTIONAL_SIRENS } from "./test-fixtures"
 
-const NAME_KEYS = new Set(["nom_complet", "nom_raison_sociale", "denomination", "nom_commercial", "nom", "prenoms"])
+const NAME_KEYS = new Set([
+  "nom_complet",
+  "nom_raison_sociale",
+  "denomination",
+  "nom_commercial",
+  "nom",
+  "prenoms",
+])
 const LIST_NAME_KEYS = new Set(["liste_enseignes"])
 
 function collect(node: unknown, out: Array<{ key: string; value: unknown }>, key = ""): void {
@@ -74,7 +81,13 @@ describe("recorded registry fixtures are anonymised", () => {
   test("the recorded shapes: one hit, zero results, and a 429 that carries no Retry-After", () => {
     expect(REGISTRY_SEARCH_HIT.results).toHaveLength(1)
     expect(REGISTRY_SEARCH_HIT.results[0]!.etat_administratif).toBe("A")
-    expect(REGISTRY_SEARCH_EMPTY).toEqual({ results: [], total_results: 0, page: 1, per_page: 1, total_pages: 0 })
+    expect(REGISTRY_SEARCH_EMPTY).toEqual({
+      results: [],
+      total_results: 0,
+      page: 1,
+      per_page: 1,
+      total_pages: 0,
+    })
     expect(REGISTRY_RATE_LIMITED.status).toBe(429)
     const headerNames = Object.keys(REGISTRY_RATE_LIMITED.headers).map((h) => h.toLowerCase())
     expect(headerNames).not.toContain("retry-after")

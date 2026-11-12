@@ -7,9 +7,10 @@
 // we pin the SOURCE invariant that ShopifyHome consumes `app.createResource`
 // (not a frozen source-less `createResource`), so a Monday-data-on-Wednesday
 // regression would be caught.
+
+import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "bun:test"
 
 const source = readFileSync(join(import.meta.dir, "home.tsx"), "utf-8")
 

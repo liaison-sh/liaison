@@ -7,9 +7,9 @@
 // canonical detail-entity types per spec §3.8.
 import { describe, expect, it } from "bun:test"
 import {
-  DETAIL_ENTITY_URL_TEMPLATES,
   adminOrderUrl,
   adminResourceId,
+  DETAIL_ENTITY_URL_TEMPLATES,
   renderDetailUrl,
   renderUrlTemplate,
   shopSubdomain,
@@ -25,11 +25,14 @@ describe("renderUrlTemplate", () => {
   })
 
   it("throws when a required variable is missing or empty", () => {
+    expect(() => renderUrlTemplate("https://{{shop}}/x/{{id}}", { shop: SHOP, id: "" })).toThrow(
+      /id/,
+    )
     expect(() =>
-      renderUrlTemplate("https://{{shop}}/x/{{id}}", { shop: SHOP, id: "" }),
-    ).toThrow(/id/)
-    expect(() =>
-      renderUrlTemplate("https://{{shop}}/x/{{id}}", { shop: SHOP } as unknown as { shop: string; id: string }),
+      renderUrlTemplate("https://{{shop}}/x/{{id}}", { shop: SHOP } as unknown as {
+        shop: string
+        id: string
+      }),
     ).toThrow(/id/)
   })
 })
@@ -83,7 +86,15 @@ describe("detail-entity URL templates", () => {
   })
 
   it("template table is the single source of truth (no entity is missing)", () => {
-    const entities = ["order", "customer", "product", "draftOrder", "return", "refund", "market"] as const
+    const entities = [
+      "order",
+      "customer",
+      "product",
+      "draftOrder",
+      "return",
+      "refund",
+      "market",
+    ] as const
     for (const e of entities) {
       expect(DETAIL_ENTITY_URL_TEMPLATES[e]).toBeDefined()
     }

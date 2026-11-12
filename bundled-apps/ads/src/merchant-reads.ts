@@ -18,8 +18,8 @@
 // from the issue's detail/documentation/resolution (v1 has NO
 // recommendedAction field), with no tool path.
 
-import { merchantFetch, classifyIssue } from "./lib/merchant-client"
-import { getMerchantClient, GoogleConfigError } from "./lib/google-config"
+import { GoogleConfigError, getMerchantClient } from "./lib/google-config"
+import { classifyIssue, merchantFetch } from "./lib/merchant-client"
 
 interface MerchantReadCtx {
   connections: unknown
@@ -63,7 +63,10 @@ interface AggregateProductStatusesResponse {
   aggregateProductStatuses?: AggregateProductStatusEntry[]
 }
 
-export async function merchant_feed_status(_params: Record<string, never>, ctx: MerchantReadCtx): Promise<unknown> {
+export async function merchant_feed_status(
+  _params: Record<string, never>,
+  ctx: MerchantReadCtx,
+): Promise<unknown> {
   let client: Awaited<ReturnType<typeof getMerchantClient>>
   try {
     client = await getMerchantClient(ctx)
@@ -78,7 +81,8 @@ export async function merchant_feed_status(_params: Record<string, never>, ctx: 
     return {
       error: {
         code: "merchant_not_configured",
-        message: "No Merchant Center account id is configured (google-config merchantId is empty). Merchant Center is optional: add the id in the ads app's Google Ads Config connection to enable feed reads.",
+        message:
+          "No Merchant Center account id is configured (google-config merchantId is empty). Merchant Center is optional: add the id in the ads app's Google Ads Config connection to enable feed reads.",
       },
     }
   }
@@ -178,7 +182,10 @@ function informationalString(issue: MerchantProductIssue, code: string): string 
   )
 }
 
-export async function merchant_product_issues(params: ProductIssuesParams, ctx: MerchantReadCtx): Promise<unknown> {
+export async function merchant_product_issues(
+  params: ProductIssuesParams,
+  ctx: MerchantReadCtx,
+): Promise<unknown> {
   let client: Awaited<ReturnType<typeof getMerchantClient>>
   try {
     client = await getMerchantClient(ctx)
@@ -193,7 +200,8 @@ export async function merchant_product_issues(params: ProductIssuesParams, ctx: 
     return {
       error: {
         code: "merchant_not_configured",
-        message: "No Merchant Center account id is configured (google-config merchantId is empty). Merchant Center is optional: add the id in the ads app's Google Ads Config connection to enable feed reads.",
+        message:
+          "No Merchant Center account id is configured (google-config merchantId is empty). Merchant Center is optional: add the id in the ads app's Google Ads Config connection to enable feed reads.",
       },
     }
   }
@@ -204,7 +212,8 @@ export async function merchant_product_issues(params: ProductIssuesParams, ctx: 
   })) as MerchantProductsResponse
 
   const rawProducts = resp.products ?? []
-  const limited = typeof params.limit === "number" ? rawProducts.slice(0, params.limit) : rawProducts
+  const limited =
+    typeof params.limit === "number" ? rawProducts.slice(0, params.limit) : rawProducts
 
   const products = limited.map((p) => {
     const rawIssues = p.productStatus?.itemLevelIssues ?? p.itemLevelIssues ?? []

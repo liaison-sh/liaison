@@ -7,19 +7,19 @@
 // else issues in between, and which any sort by date or amount scatters
 // entirely.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { build as esbuild } from "esbuild"
-import { solidPlugin } from "esbuild-plugin-solid"
 import { unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { build as esbuild } from "esbuild"
+import { solidPlugin } from "esbuild-plugin-solid"
 import { renderToString } from "solid-js/web"
 import { LIST_COLUMNS } from "../DocumentsList"
 import {
   creditedIndicatorOf,
+  type PairableRow,
+  type PairedRow,
   pairLabelOf,
   pairMemberIds,
   pairSplitDocuments,
-  type PairableRow,
-  type PairedRow,
 } from "./pair-split"
 
 const doc = (id: string, order: string | null, scope: string | null) => ({
@@ -92,7 +92,12 @@ describe("pairSplitDocuments", () => {
     // the split pair must not be re-emitted as a member of its credit group.
     const rows: PairableRow[] = [
       { id: "goods-inv", number: "INV-2026-0100", shopify_order_number: "#900", scope: "goods" },
-      { id: "software-inv", number: "INV-2026-0101", shopify_order_number: "#900", scope: "software" },
+      {
+        id: "software-inv",
+        number: "INV-2026-0101",
+        shopify_order_number: "#900",
+        scope: "software",
+      },
       {
         id: "goods-cn",
         number: "CN-2026-0001",
@@ -149,7 +154,9 @@ interface CreditTestRow extends PairableRow {
   po_number?: string | null
 }
 
-const invoiceRow = (over: Partial<CreditTestRow> & { id: string; number: string }): CreditTestRow => ({
+const invoiceRow = (
+  over: Partial<CreditTestRow> & { id: string; number: string },
+): CreditTestRow => ({
   type: "invoice",
   status: "issued",
   currency: "EUR",
@@ -159,7 +166,12 @@ const invoiceRow = (over: Partial<CreditTestRow> & { id: string; number: string 
 })
 
 const creditNoteRow = (
-  over: Partial<CreditTestRow> & { id: string; number: string; original_document_id: string; original_document_number: string },
+  over: Partial<CreditTestRow> & {
+    id: string
+    number: string
+    original_document_id: string
+    original_document_number: string
+  },
 ): CreditTestRow => ({
   type: "credit_note",
   status: "issued",
@@ -195,7 +207,9 @@ describe("pairSplitDocuments (credit notes)", () => {
         original_document_number: "INV-2026-9999",
       }),
     ])
-    expect(out).toEqual([{ row: expect.objectContaining({ id: "cn-1" }), pairKey: null, position: null, kind: null }])
+    expect(out).toEqual([
+      { row: expect.objectContaining({ id: "cn-1" }), pairKey: null, position: null, kind: null },
+    ])
   })
 
   test("more than one credit note against the same invoice stays contiguous, oldest credit note first", () => {
@@ -404,7 +418,12 @@ function bodyRowTexts(html: string): string[] {
   return html
     .split("<tr")
     .slice(2) // [0] = everything before the first <tr>, [1] = the thead row
-    .map((chunk) => chunk.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .map((chunk) =>
+      chunk
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
 }
 
 function renderDocumentsTable(rows: CreditTestRow[]): { html: string; rowTexts: string[] } {
@@ -421,7 +440,8 @@ function renderDocumentsTable(rows: CreditTestRow[]): { html: string; rowTexts: 
   // Mirrors DocumentsList.tsx's wiring: the co-resident adjacency label wins when present,
   // otherwise fall back to the row's own lifecycle_log-derived indicator.
   const pairLabel = (r: CreditTestRow) => pairLabelOf(paired, r.id) ?? creditedIndicatorOf(r)
-  const pairAction = (key: string) => (pairMemberIds(paired, key).length > 2 ? "All PDFs" : "Both PDFs")
+  const pairAction = (key: string) =>
+    pairMemberIds(paired, key).length > 2 ? "All PDFs" : "Both PDFs"
   const html = renderToString(() =>
     DataTable({
       columns: LIST_COLUMNS,
@@ -491,8 +511,18 @@ describe("DataTable rendering (real component, real solid-js/web SSR)", () => {
 
   test("a split pair still renders Both PDFs (unchanged 2-member behavior)", () => {
     const rows = [
-      invoiceRow({ id: "g", number: "INV-2026-0100", scope: "goods", shopify_order_number: "#900" }),
-      invoiceRow({ id: "s", number: "INV-2026-0101", scope: "software", shopify_order_number: "#900" }),
+      invoiceRow({
+        id: "g",
+        number: "INV-2026-0100",
+        scope: "goods",
+        shopify_order_number: "#900",
+      }),
+      invoiceRow({
+        id: "s",
+        number: "INV-2026-0101",
+        scope: "software",
+        shopify_order_number: "#900",
+      }),
     ]
     const { rowTexts } = renderDocumentsTable(rows)
     expect(rowTexts).toHaveLength(2)
@@ -507,8 +537,18 @@ describe("DataTable rendering (real component, real solid-js/web SSR)", () => {
   // asked for, invisible on the order shape that matters most.
   test("a credit note in a split order still says which invoice it credits", () => {
     const rows = [
-      invoiceRow({ id: "goods-inv", number: "INV-2026-0100", scope: "goods", shopify_order_number: "#900" }),
-      invoiceRow({ id: "software-inv", number: "INV-2026-0101", scope: "software", shopify_order_number: "#900" }),
+      invoiceRow({
+        id: "goods-inv",
+        number: "INV-2026-0100",
+        scope: "goods",
+        shopify_order_number: "#900",
+      }),
+      invoiceRow({
+        id: "software-inv",
+        number: "INV-2026-0101",
+        scope: "software",
+        shopify_order_number: "#900",
+      }),
       creditNoteRow({
         id: "goods-cn",
         number: "CN-2026-0001",

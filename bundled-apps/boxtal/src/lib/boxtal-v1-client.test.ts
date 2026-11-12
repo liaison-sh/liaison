@@ -2,13 +2,13 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BoxtalApiError } from "./boxtal-v3-client"
 import {
   BoxtalV1Client,
   buildCotationQuery,
-  parseCotationXml,
   type CotationInput,
+  parseCotationXml,
 } from "./boxtal-v1-client"
+import { BoxtalApiError } from "./boxtal-v3-client"
 
 const FIX = join(import.meta.dir, "..", "__fixtures__", "boxtal")
 const fixture = (n: string) => readFileSync(join(FIX, `${n}.xml`), "utf8")
@@ -20,7 +20,10 @@ interface RecordedCall {
   auth?: unknown
 }
 
-function makeFetch(status: number, body: string): {
+function makeFetch(
+  status: number,
+  body: string,
+): {
   fetch: BoxtalV1Client["fetchImpl"]
   calls: RecordedCall[]
 } {
@@ -29,7 +32,12 @@ function makeFetch(status: number, body: string): {
     url: string,
     opts?: { method?: string; headers?: Record<string, string>; body?: string; auth?: unknown },
   ) => {
-    calls.push({ url, method: opts?.method ?? "GET", headers: opts?.headers ?? {}, auth: opts?.auth })
+    calls.push({
+      url,
+      method: opts?.method ?? "GET",
+      headers: opts?.headers ?? {},
+      auth: opts?.auth,
+    })
     return { status, headers: {}, body }
   }
   return { fetch, calls }
@@ -122,7 +130,10 @@ describe("parseCotationXml", () => {
   })
 
   it("collection type COMPANY yields pickup_at_sender true (live prod on-premise code)", () => {
-    const xml = fixture("cotation-collection-pickup").replace("<code>PICKUP</code>", "<code>COMPANY</code>")
+    const xml = fixture("cotation-collection-pickup").replace(
+      "<code>PICKUP</code>",
+      "<code>COMPANY</code>",
+    )
     const offers = parseCotationXml(xml)
     expect(offers).toHaveLength(1)
     expect(offers[0]!.collection_type).toBe("COMPANY")
@@ -130,7 +141,10 @@ describe("parseCotationXml", () => {
   })
 
   it("collection type POST_OFFICE yields pickup_at_sender false (live prod dropoff code)", () => {
-    const xml = fixture("cotation-collection-pickup").replace("<code>PICKUP</code>", "<code>POST_OFFICE</code>")
+    const xml = fixture("cotation-collection-pickup").replace(
+      "<code>PICKUP</code>",
+      "<code>POST_OFFICE</code>",
+    )
     const offers = parseCotationXml(xml)
     expect(offers).toHaveLength(1)
     expect(offers[0]!.collection_type).toBe("POST_OFFICE")
@@ -138,7 +152,10 @@ describe("parseCotationXml", () => {
   })
 
   it("unknown collection type code yields pickup_at_sender null, not false", () => {
-    const xml = fixture("cotation-collection-pickup").replace("<code>PICKUP</code>", "<code>WAREHOUSE_X</code>")
+    const xml = fixture("cotation-collection-pickup").replace(
+      "<code>PICKUP</code>",
+      "<code>WAREHOUSE_X</code>",
+    )
     const offers = parseCotationXml(xml)
     expect(offers).toHaveLength(1)
     expect(offers[0]!.collection_type).toBe("WAREHOUSE_X")
@@ -193,7 +210,11 @@ describe("BoxtalV1Client.quote", () => {
     const call = calls[0]!
     expect(call.url.startsWith("https://test.envoimoinscher.com/api/v1/cotation?")).toBe(true)
     // The host sends Basic(v1Key:v1Secret); the client sets no credential itself.
-    expect(call.auth).toEqual({ connection: "boxtal", scheme: "basic", fields: ["v1Key", "v1Secret"] })
+    expect(call.auth).toEqual({
+      connection: "boxtal",
+      scheme: "basic",
+      fields: ["v1Key", "v1Secret"],
+    })
     expect(call.headers.Authorization).toBeUndefined()
     expect(offers.map((o) => o.price_ht)).toEqual([5.5, 7.8, 9.2])
   })
@@ -224,7 +245,7 @@ describe("BoxtalV1Client.quote", () => {
   it("a 4xx names the field the carrier rejected, not just the status", async () => {
     const { fetch } = makeFetch(
       400,
-      "<?xml version=\"1.0\"?><cotation><error>Le code postal du destinataire est invalide.</error></cotation>",
+      '<?xml version="1.0"?><cotation><error>Le code postal du destinataire est invalide.</error></cotation>',
     )
     const client = new BoxtalV1Client({
       fetch,

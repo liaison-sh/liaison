@@ -5,9 +5,14 @@
 // approach: run the ACTUAL creditNoteCreateAndIssue pipeline against the
 // in-memory mock db, no stubbing of the issuance itself).
 import { describe, expect, test } from "bun:test"
-import { ISSUER_ROW, invoiceRow, issuePipelineCtx, lineRow } from "../__tests__/credit-note-fixtures"
+import {
+  ISSUER_ROW,
+  invoiceRow,
+  issuePipelineCtx,
+  lineRow,
+} from "../__tests__/credit-note-fixtures"
 import { createMockDb, type MockDb } from "../test-db"
-import { onShopifyOrderCancelled, type OrderCancelledCtx } from "./shopify-order-cancelled"
+import { type OrderCancelledCtx, onShopifyOrderCancelled } from "./shopify-order-cancelled"
 
 function makeFullCtx(db: MockDb): OrderCancelledCtx {
   return {
@@ -648,7 +653,10 @@ describe("order cancellation closes the order's open parks", () => {
         ],
       },
     })
-    const result = await onShopifyOrderCancelled({ id: "ORD-P", shop_id: "shop-1" }, makeFullCtx(db))
+    const result = await onShopifyOrderCancelled(
+      { id: "ORD-P", shop_id: "shop-1" },
+      makeFullCtx(db),
+    )
     expect(result).toEqual({ status: "noop", reason: "no_invoice_yet" })
     const rows = db.__all("deferred_events") as Array<Record<string, unknown>>
     expect(rows.find((r) => r.event_id === "ORD-P")).toMatchObject({

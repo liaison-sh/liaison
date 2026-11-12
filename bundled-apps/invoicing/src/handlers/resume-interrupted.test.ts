@@ -27,11 +27,16 @@ describe("parkInterruptedIssues", () => {
   test("parks the render of an issue a dead run left unrendered, and the email the order flow owed", async () => {
     const db = createMockDb({
       seed: {
-        issuer_profiles: [{ id: ISSUER, auto_email_enabled: true, shopify_shop_id: "shop.example" }],
+        issuer_profiles: [
+          { id: ISSUER, auto_email_enabled: true, shopify_shop_id: "shop.example" },
+        ],
         documents: [
           docRow("00000000-0000-4000-8000-000000000001", {
             shopify_order_id: "1001",
-            lifecycle_log: [{ event: "issued" }, { event: "marked_paid", source: "shopify_order_paid" }],
+            lifecycle_log: [
+              { event: "issued" },
+              { event: "marked_paid", source: "shopify_order_paid" },
+            ],
           }),
           // A manual invoice: its render is owed, never an email nobody asked for.
           docRow("00000000-0000-4000-8000-000000000002", {}),
@@ -43,10 +48,12 @@ describe("parkInterruptedIssues", () => {
       },
     })
     expect(await parkInterruptedIssues({ db } as never, NOW)).toEqual({ parked: 2 })
-    const parks = db.__all("deferred_events").map((p) => [
-      (p.blocked_on as Record<string, unknown>).kind,
-      (p.blocked_on as Record<string, unknown>).document_id,
-    ])
+    const parks = db
+      .__all("deferred_events")
+      .map((p) => [
+        (p.blocked_on as Record<string, unknown>).kind,
+        (p.blocked_on as Record<string, unknown>).document_id,
+      ])
     expect(parks).toEqual([
       ["pdf_render", "00000000-0000-4000-8000-000000000001"],
       ["email_send", "00000000-0000-4000-8000-000000000001"],

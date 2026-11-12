@@ -269,7 +269,8 @@ function probeRows(report: {
   missingReads?: string[]
   warnings: string[]
 }): Array<{ key: string; value: boolean | number }> {
-  const dangerous = (report as { dangerousExecuteGrantsDetected?: boolean }).dangerousExecuteGrantsDetected
+  const dangerous = (report as { dangerousExecuteGrantsDetected?: boolean })
+    .dangerousExecuteGrantsDetected
   return [
     { key: "ok", value: report.ok },
     { key: "writeGrantsDetected", value: report.writeGrantsDetected === true },

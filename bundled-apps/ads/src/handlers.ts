@@ -11,15 +11,16 @@
 // `{ error: { code: "<platform>_not_connected", message } }`, the same contract
 // the shopify app ships and the same one the google and merchant reads already
 // built inline. Any other throw still propagates.
-import { withMetaConnectionEnvelope } from "./lib/get-client"
-import { withGoogleConnectionEnvelope } from "./lib/google-config"
-import * as reads from "./reads"
-import * as insightsReport from "./insights-report"
-import * as writes from "./writes"
-import * as pauseHandlers from "./pause"
+
+import * as googlePause from "./google-pause"
 import * as googleReads from "./google-reads"
 import * as googleWrites from "./google-writes"
-import * as googlePause from "./google-pause"
+import * as insightsReport from "./insights-report"
+import { withMetaConnectionEnvelope } from "./lib/get-client"
+import { withGoogleConnectionEnvelope } from "./lib/google-config"
+import * as pauseHandlers from "./pause"
+import * as reads from "./reads"
+import * as writes from "./writes"
 
 // ─── Meta reads (reads.ts) ───────────────────────────────────────────────────
 export const insights_query = withMetaConnectionEnvelope(reads.insights_query)
@@ -55,7 +56,9 @@ export const create_custom_audience = withMetaConnectionEnvelope(writes.create_c
 export const create_custom_audience_preflight = withMetaConnectionEnvelope(
   writes.create_custom_audience_preflight,
 )
-export const create_lookalike_audience = withMetaConnectionEnvelope(writes.create_lookalike_audience)
+export const create_lookalike_audience = withMetaConnectionEnvelope(
+  writes.create_lookalike_audience,
+)
 export const add_users_to_audience = withMetaConnectionEnvelope(writes.add_users_to_audience)
 export const add_users_to_audience_preflight = withMetaConnectionEnvelope(
   writes.add_users_to_audience_preflight,
@@ -83,11 +86,15 @@ export const google_recommendations_list = withGoogleConnectionEnvelope(
 )
 
 // ─── Google writes (google-writes.ts) ────────────────────────────────────────
-export const google_create_campaign = withGoogleConnectionEnvelope(googleWrites.google_create_campaign)
+export const google_create_campaign = withGoogleConnectionEnvelope(
+  googleWrites.google_create_campaign,
+)
 export const google_create_campaign_preflight = withGoogleConnectionEnvelope(
   googleWrites.google_create_campaign_preflight,
 )
-export const google_create_adgroup = withGoogleConnectionEnvelope(googleWrites.google_create_adgroup)
+export const google_create_adgroup = withGoogleConnectionEnvelope(
+  googleWrites.google_create_adgroup,
+)
 export const google_create_ad = withGoogleConnectionEnvelope(googleWrites.google_create_ad)
 export const google_update_budget = withGoogleConnectionEnvelope(googleWrites.google_update_budget)
 export const google_set_status = withGoogleConnectionEnvelope(googleWrites.google_set_status)
@@ -110,14 +117,16 @@ export const preflightGoogleAddNegativeKeywordsParams =
 
 // ─── Google pause (google-pause.ts) ──────────────────────────────────────────
 export const google_pause = withGoogleConnectionEnvelope(googlePause.google_pause)
-export const google_pause_preflight = withGoogleConnectionEnvelope(googlePause.google_pause_preflight)
+export const google_pause_preflight = withGoogleConnectionEnvelope(
+  googlePause.google_pause_preflight,
+)
 export const preflightGooglePauseParams = googlePause.preflightGooglePauseParams
 
-// ─── Handlers that build their own not-connected envelope already ────────────
-export * from "./merchant-reads"
-export * from "./summarizers"
+export * from "./lab/audience-erasure-consumer"
+export * from "./lab/dealer-profiles"
 export * from "./lab/experiments"
 export * from "./lab/manual-spend"
-export * from "./lab/dealer-profiles"
+// ─── Handlers that build their own not-connected envelope already ────────────
+export * from "./merchant-reads"
 export * from "./metrics/tools"
-export * from "./lab/audience-erasure-consumer"
+export * from "./summarizers"

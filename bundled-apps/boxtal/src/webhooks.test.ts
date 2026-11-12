@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { CLAIM_TTL_MS, documentCreatedHandler, trackingChangedHandler } from "./webhooks"
-import { createMockDb } from "./test-db"
 import { buildLabelPdf, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
+import { createMockDb } from "./test-db"
+import { CLAIM_TTL_MS, documentCreatedHandler, trackingChangedHandler } from "./webhooks"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
@@ -25,18 +25,44 @@ function makeCtx(opts?: { documents?: Array<{ url: string; type: string; format:
   })
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/shipping-document")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: opts?.documents ?? [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: opts?.documents ?? [
+            { url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" },
+          ],
+        }),
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const ctx = {
     orgId: "org-1",
     db,
     fetch,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
@@ -55,16 +81,16 @@ const trackingPayload = (over?: Record<string, unknown>) => ({
 describe("trackingChangedHandler", () => {
   it("applies the tracking change and dedups by delivery id", async () => {
     const { ctx, db } = makeCtx()
-    const r1 = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-1" })
+    const r1 = await trackingChangedHandler(trackingPayload(), ctx, {
+      "x-bxt-delivery-id": "del-1",
+    })
     expect(r1.status).toBe(200)
     let row = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     expect(row.tracking_status).toBe("IN_TRANSIT")
     // duplicate delivery → 200 without re-applying (status already set)
-    const r2 = await trackingChangedHandler(
-      trackingPayload({ status: "DELIVERED" }),
-      ctx,
-      { "x-bxt-delivery-id": "del-1" },
-    )
+    const r2 = await trackingChangedHandler(trackingPayload({ status: "DELIVERED" }), ctx, {
+      "x-bxt-delivery-id": "del-1",
+    })
     expect(r2.status).toBe(200)
     row = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     // dedup blocked the second application → still IN_TRANSIT
@@ -85,11 +111,9 @@ describe("trackingChangedHandler", () => {
 
   it("an unknown order id → 200, no state change", async () => {
     const { ctx } = makeCtx()
-    const r = await trackingChangedHandler(
-      trackingPayload({ orderId: "ghost" }),
-      ctx,
-      { "x-bxt-delivery-id": "del-9" },
-    )
+    const r = await trackingChangedHandler(trackingPayload({ orderId: "ghost" }), ctx, {
+      "x-bxt-delivery-id": "del-9",
+    })
     expect(r.status).toBe(200)
   })
 
@@ -119,7 +143,10 @@ describe("trackingChangedHandler", () => {
 
   it("a genuine resend (same status + timestamp, no header) still dedups", async () => {
     const { ctx, db } = makeCtx()
-    const payload = trackingPayload({ status: "IN_TRANSIT", trackingDateTime: "2026-06-02T10:00:00Z" })
+    const payload = trackingPayload({
+      status: "IN_TRANSIT",
+      trackingDateTime: "2026-06-02T10:00:00Z",
+    })
     await trackingChangedHandler(payload, ctx, {})
     await trackingChangedHandler(payload, ctx, {})
     // Identical event → identical fallback key → one ledger row.
@@ -133,7 +160,11 @@ describe("trackingChangedHandler", () => {
 // completed delivery: the redelivery answers 503 so it is retried, and only `processed` answers 200.
 describe("delivery claim lease", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
-  function seedClaim(db: ReturnType<typeof makeCtx>["db"], claimedAt: string, attempt: number | null = 1) {
+  function seedClaim(
+    db: ReturnType<typeof makeCtx>["db"],
+    claimedAt: string,
+    attempt: number | null = 1,
+  ) {
     return db.insert("webhook_delivery", {
       delivery_id: "del-9",
       event_type: "TRACKING_CHANGED",
@@ -153,7 +184,9 @@ describe("delivery claim lease", () => {
     const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
     expect(r.status).toBe(200)
     expect(status(db)).toBe("IN_TRANSIT")
-    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processed")
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe(
+      "processed",
+    )
   })
 
   it("a claim from before the lease (no claim time) expires on its received time", async () => {
@@ -169,7 +202,9 @@ describe("delivery claim lease", () => {
     const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
     expect(r.status).toBe(503)
     expect(status(db)).toBeNull()
-    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processing")
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe(
+      "processing",
+    )
   })
 
   it("a run killed after its claim: replays answer 503 until the claim lapses, then it is applied exactly once", async () => {
@@ -191,10 +226,14 @@ describe("delivery claim lease", () => {
     }
     void trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
     await new Promise((r) => setTimeout(r, 10))
-    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processing")
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe(
+      "processing",
+    )
 
     // The kernel's replay at +5 s: the claim is still held, so the delivery is not acknowledged.
-    const early = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    const early = await trackingChangedHandler(trackingPayload(), ctx, {
+      "x-bxt-delivery-id": "del-9",
+    })
     expect(early.status).toBe(503)
     expect(shipmentWrites).toBe(0)
 
@@ -202,12 +241,16 @@ describe("delivery claim lease", () => {
     const realNow = Date.now
     Date.now = () => realNow() + CLAIM_TTL_MS + 1_000
     try {
-      const late = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+      const late = await trackingChangedHandler(trackingPayload(), ctx, {
+        "x-bxt-delivery-id": "del-9",
+      })
       expect(late.status).toBe(200)
       expect(status(db)).toBe("IN_TRANSIT")
       expect(shipmentWrites).toBe(1)
       // Any further redelivery is a completed duplicate: acknowledged, applied no second time.
-      const again = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+      const again = await trackingChangedHandler(trackingPayload(), ctx, {
+        "x-bxt-delivery-id": "del-9",
+      })
       expect(again.status).toBe(200)
       expect(shipmentWrites).toBe(1)
     } finally {
@@ -229,7 +272,10 @@ describe("delivery claim lease", () => {
       if (entity === "webhook_delivery" && !raced) {
         raced = true
         const row = db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")!
-        await db.update("webhook_delivery", row.id as string, { claim_attempt: 2, claimed_at: ago(0) })
+        await db.update("webhook_delivery", row.id as string, {
+          claim_attempt: 2,
+          claimed_at: ago(0),
+        })
       }
       return rows
     }
@@ -259,8 +305,12 @@ describe("documentCreatedHandler", () => {
 
   it("a duplicate document delivery dedups (single application)", async () => {
     const { ctx, db } = makeCtx()
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "dd-1" })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "dd-1" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "dd-1",
+    })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "dd-1",
+    })
     expect(db.__all("webhook_delivery").filter((d) => d.delivery_id === "dd-1")).toHaveLength(1)
   })
 })
@@ -305,20 +355,42 @@ function makeAutoFulfillCtx(opts?: {
       // gid here is what let the auto-fulfillment gid bug reach prod on 2026-09-16: the fixture
       // handed the handler a value that needed no normalization, so the missing normalization was
       // invisible to every test while every real parcel failed.
-      ...(opts?.prepMeta === null ? {} : { prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "1", ...opts?.prepMeta }] }),
+      ...(opts?.prepMeta === null
+        ? {}
+        : {
+            prep_meta: [
+              { id: "m1", document_ref: "doc-1", shopify_order_id: "1", ...opts?.prepMeta },
+            ],
+          }),
     },
   })
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/shipping-document")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }],
+        }),
+      }
     }
     if (url === "https://signed/label.pdf" && opts?.labelBody !== undefined) {
       return { status: 200, headers: {}, body: opts.labelBody }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const executeTool = async (target: string, args: unknown) => {
     opts?.executeToolCalls?.push({ target, args })
@@ -336,7 +408,15 @@ function makeAutoFulfillCtx(opts?: {
     db,
     fetch,
     executeTool,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
@@ -346,8 +426,13 @@ function makeAutoFulfillCtx(opts?: {
 describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () => {
   it("DOCUMENT_CREATED (CONFIRMED transition) with an already-known tracking number calls shopify:fulfillments_create and marks synced", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx, db } = makeAutoFulfillCtx({ shipment: { tracking_number: "TRK1" }, executeToolCalls: calls })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    const { ctx, db } = makeAutoFulfillCtx({
+      shipment: { tracking_number: "TRK1" },
+      executeToolCalls: calls,
+    })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-1",
+    })
     const fulfillCall = calls.find((c) => c.target === "shopify:fulfillments_create")
     expect(fulfillCall).toBeDefined()
     // The GID, not the stored numeric id: shopify:fulfillments_create binds this to a GraphQL `ID!`,
@@ -364,7 +449,9 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       shipment: { tracking_number: "1Z999", offer_code: "UPSE-Standard" },
       executeToolCalls: calls,
     })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-2" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-2",
+    })
     const fulfillCall = calls.find((c) => c.target === "shopify:fulfillments_create")!
     // Same payload as the packed tick: the shopify app's customerShippingEmail policy turns the
     // caller's false into true for a retail order (and keeps it false for B2B).
@@ -381,7 +468,9 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       prepMeta: { shopify_order_id: "gid://shopify/Order/1" },
       executeToolCalls: calls,
     })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-1",
+    })
     const fulfillCall = calls.find((c) => c.target === "shopify:fulfillments_create")
     expect((fulfillCall!.args as { orderId: string }).orderId).toBe("gid://shopify/Order/1")
   })
@@ -390,19 +479,36 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
     const calls: Array<{ target: string; args: unknown }> = []
     const { ctx, db } = makeAutoFulfillCtx({ executeToolCalls: calls })
     await trackingChangedHandler(
-      { eventType: "TRACKING_CHANGED", orderId: "ord-1", status: "ANNOUNCED", trackingNumber: "TRK1", trackingDateTime: "2026-06-02T10:00:00Z" },
+      {
+        eventType: "TRACKING_CHANGED",
+        orderId: "ord-1",
+        status: "ANNOUNCED",
+        trackingNumber: "TRK1",
+        trackingDateTime: "2026-06-02T10:00:00Z",
+      },
       ctx,
       { "x-bxt-delivery-id": "del-1" },
     )
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(true)
-    expect(db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced).toBe(true)
+    expect(
+      db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced,
+    ).toBe(true)
   })
 
   it("does NOT double-fulfill: a second webhook after fulfillment_synced=true skips the call", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx } = makeAutoFulfillCtx({ shipment: { tracking_number: "TRK1", fulfillment_synced: true }, executeToolCalls: calls })
+    const { ctx } = makeAutoFulfillCtx({
+      shipment: { tracking_number: "TRK1", fulfillment_synced: true },
+      executeToolCalls: calls,
+    })
     await trackingChangedHandler(
-      { eventType: "TRACKING_CHANGED", orderId: "ord-1", status: "IN_TRANSIT", trackingNumber: "TRK1", trackingDateTime: "2026-06-03T10:00:00Z" },
+      {
+        eventType: "TRACKING_CHANGED",
+        orderId: "ord-1",
+        status: "IN_TRANSIT",
+        trackingNumber: "TRK1",
+        trackingDateTime: "2026-06-03T10:00:00Z",
+      },
       ctx,
       { "x-bxt-delivery-id": "del-2" },
     )
@@ -411,8 +517,16 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
 
   it("no linked Shopify order (prep_meta missing/no shopify_order_id) skips the call without failing the webhook", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx } = makeAutoFulfillCtx({ shipment: { tracking_number: "TRK1" }, prepMeta: null, executeToolCalls: calls })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    const { ctx } = makeAutoFulfillCtx({
+      shipment: { tracking_number: "TRK1" },
+      prepMeta: null,
+      executeToolCalls: calls,
+    })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-1" },
+    )
     expect(r.status).toBe(200)
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
   })
@@ -420,18 +534,29 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
   it("a shopify:fulfillments_create error is logged and the webhook still returns 200 (log-and-continue)", async () => {
     const { ctx, db } = makeAutoFulfillCtx({
       shipment: { tracking_number: "TRK1" },
-      fulfillResult: { status: "error", error: { code: "already_fulfilled", message: "order already fulfilled" } },
+      fulfillResult: {
+        status: "error",
+        error: { code: "already_fulfilled", message: "order already fulfilled" },
+      },
     })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-1" },
+    )
     expect(r.status).toBe(200)
     // Not marked synced on a failed call — a later retry may still succeed.
-    expect(db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced).toBe(false)
+    expect(
+      db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced,
+    ).toBe(false)
   })
 
   it("no tracking number yet: DOCUMENT_CREATED skips the fulfillment call", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
     const { ctx } = makeAutoFulfillCtx({ executeToolCalls: calls }) // tracking_number: null by default
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-1",
+    })
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
   })
 
@@ -443,15 +568,26 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
   // tracking event, or the operator's tick.
   it("DOCUMENT_CREATED with a label-read AWB stores tracking but does NOT call fulfillments_create", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx, db } = makeAutoFulfillCtx({ executeToolCalls: calls, labelBody: buildLabelPdf(FEDEX_LABEL_LINES) })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-lbl" })
+    const { ctx, db } = makeAutoFulfillCtx({
+      executeToolCalls: calls,
+      labelBody: buildLabelPdf(FEDEX_LABEL_LINES),
+    })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-lbl",
+    })
     const row = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     expect(row.tracking_number).toBe("877740925574")
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
     expect(row.fulfillment_state ?? null).toBeNull()
     // The carrier's first event with its number is what fulfils.
     await trackingChangedHandler(
-      { eventType: "TRACKING_CHANGED", orderId: "ord-1", status: "IN_TRANSIT", trackingNumber: "877740925574", trackingDateTime: "2026-06-03T10:00:00Z" },
+      {
+        eventType: "TRACKING_CHANGED",
+        orderId: "ord-1",
+        status: "IN_TRANSIT",
+        trackingNumber: "877740925574",
+        trackingDateTime: "2026-06-03T10:00:00Z",
+      },
       ctx,
       { "x-bxt-delivery-id": "del-lbl-2" },
     )
@@ -463,9 +599,14 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
   it("a failed auto-fulfillment is recorded on the shipment row", async () => {
     const { ctx, db } = makeAutoFulfillCtx({
       shipment: { tracking_number: "TRK1" },
-      fulfillResult: { status: "error", error: { code: "NO_FULFILLABLE_ITEMS", message: "Order has no OPEN fulfillment orders" } },
+      fulfillResult: {
+        status: "error",
+        error: { code: "NO_FULFILLABLE_ITEMS", message: "Order has no OPEN fulfillment orders" },
+      },
     })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-fail" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-fail",
+    })
     const row = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     expect(row.fulfillment_state).toBe("failed")
     expect(String(row.fulfillment_error)).toContain("Order has no OPEN fulfillment orders")
@@ -473,9 +614,18 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
 
   it("an operator-cancelled fulfillment is not redone by a later carrier event", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx } = makeAutoFulfillCtx({ shipment: { tracking_number: "TRK1", fulfillment_state: "cancelled" }, executeToolCalls: calls })
+    const { ctx } = makeAutoFulfillCtx({
+      shipment: { tracking_number: "TRK1", fulfillment_state: "cancelled" },
+      executeToolCalls: calls,
+    })
     await trackingChangedHandler(
-      { eventType: "TRACKING_CHANGED", orderId: "ord-1", status: "IN_TRANSIT", trackingNumber: "TRK1", trackingDateTime: "2026-06-03T10:00:00Z" },
+      {
+        eventType: "TRACKING_CHANGED",
+        orderId: "ord-1",
+        status: "IN_TRANSIT",
+        trackingNumber: "TRK1",
+        trackingDateTime: "2026-06-03T10:00:00Z",
+      },
       ctx,
       { "x-bxt-delivery-id": "del-cx" },
     )
@@ -499,11 +649,17 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       },
       executeToolCalls: calls,
     })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-heal-1" })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-heal-1" },
+    )
     expect(r.status).toBe(200)
     expect(calls.some((c) => c.target === "shopify:orders_get")).toBe(true)
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
-    expect(db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced).toBe(true)
+    expect(
+      db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced,
+    ).toBe(true)
   })
 
   // Several parcels legitimately share one order: another parcel's tracking number on the order must
@@ -516,14 +672,20 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
         status: "completed",
         result: {
           fulfillmentStatus: "PARTIALLY_FULFILLED",
-          fulfillments: [{ id: "f1", status: "SUCCESS", trackingInfo: [{ number: "OTHER-PARCEL" }] }],
+          fulfillments: [
+            { id: "f1", status: "SUCCESS", trackingInfo: [{ number: "OTHER-PARCEL" }] },
+          ],
         },
       },
       executeToolCalls: calls,
     })
-    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-heal-2" })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-heal-2",
+    })
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(true)
-    expect(db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced).toBe(true)
+    expect(
+      db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced,
+    ).toBe(true)
   })
 
   // The pre-check is a convenience read: a Shopify outage must not stop the parcel being fulfilled.
@@ -534,7 +696,11 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       ordersGetThrows: true,
       executeToolCalls: calls,
     })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-heal-3" })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-heal-3" },
+    )
     expect(r.status).toBe(200)
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(true)
   })
@@ -546,7 +712,11 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       ordersGetResult: { status: "error", error: { code: "upstream", message: "shopify 500" } },
       executeToolCalls: calls,
     })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-heal-4" })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-heal-4" },
+    )
     expect(r.status).toBe(200)
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(true)
   })
@@ -561,11 +731,17 @@ describe("auto-fulfillment on shipment CONFIRMED / first tracking number", () =>
       },
       executeToolCalls: calls,
     })
-    const r = await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, { "x-bxt-delivery-id": "del-1" })
+    const r = await documentCreatedHandler(
+      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
+      ctx,
+      { "x-bxt-delivery-id": "del-1" },
+    )
     expect(r.status).toBe(200)
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(true)
     // NOT marked synced — an eventual rejection must let a later webhook re-attempt.
-    expect(db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced).toBe(false)
+    expect(
+      db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!.fulfillment_synced,
+    ).toBe(false)
   })
 })
 
@@ -582,14 +758,15 @@ describe("auto-fulfillment — PARTIAL batches fulfill only their own lines", ()
       },
       executeToolCalls: calls,
     })
-    await documentCreatedHandler(
-      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
-      ctx,
-      { "x-bxt-delivery-id": "del-p1" },
-    )
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-p1",
+    })
     const fulfillCall = calls.find((c) => c.target === "shopify:fulfillments_create")
     expect(fulfillCall).toBeDefined()
-    const args = fulfillCall!.args as { orderId: string; lineItems?: Array<{ sku: string; quantity: number }> }
+    const args = fulfillCall!.args as {
+      orderId: string
+      lineItems?: Array<{ sku: string; quantity: number }>
+    }
     expect(args.lineItems).toEqual([
       { sku: "RAL-44", quantity: 2 },
       { sku: "EMB-FS", quantity: 1 },
@@ -607,11 +784,9 @@ describe("auto-fulfillment — PARTIAL batches fulfill only their own lines", ()
       },
       executeToolCalls: calls,
     })
-    await documentCreatedHandler(
-      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
-      ctx,
-      { "x-bxt-delivery-id": "del-p2" },
-    )
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-p2",
+    })
     expect(calls.find((c) => c.target === "shopify:fulfillments_create")).toBeUndefined()
     const row = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     expect(row.fulfillment_synced).toBe(false)
@@ -619,13 +794,17 @@ describe("auto-fulfillment — PARTIAL batches fulfill only their own lines", ()
 
   it("a FULL shipment (no line_quantities) keeps the legacy whole-order call (no lineItems)", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
-    const { ctx } = makeAutoFulfillCtx({ shipment: { tracking_number: "TRK1" }, executeToolCalls: calls })
-    await documentCreatedHandler(
-      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
-      ctx,
-      { "x-bxt-delivery-id": "del-p3" },
-    )
-    const args = calls.find((c) => c.target === "shopify:fulfillments_create")!.args as Record<string, unknown>
+    const { ctx } = makeAutoFulfillCtx({
+      shipment: { tracking_number: "TRK1" },
+      executeToolCalls: calls,
+    })
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "del-p3",
+    })
+    const args = calls.find((c) => c.target === "shopify:fulfillments_create")!.args as Record<
+      string,
+      unknown
+    >
     expect(args.lineItems).toBeUndefined()
   })
 })
@@ -642,7 +821,11 @@ describe("real Boxtal v3.1 delivery shape (WebhookEventTrackingChanged)", () => 
     shipmentExternalId: "ext-9",
     payload: {
       trackings: [
-        { status: "DELIVERED", trackingNumber: "TRK-REAL", trackingDateTime: "2026-08-04T15:18:00Z" },
+        {
+          status: "DELIVERED",
+          trackingNumber: "TRK-REAL",
+          trackingDateTime: "2026-08-04T15:18:00Z",
+        },
       ],
     },
   })
@@ -668,7 +851,12 @@ describe("real Boxtal v3.1 delivery shape (WebhookEventTrackingChanged)", () => 
   it("applies a real-shaped DOCUMENT_CREATED via shippingOrderId", async () => {
     const { ctx, db } = makeCtx()
     const r = await documentCreatedHandler(
-      { id: "evt-doc-1", type: "DOCUMENT_CREATED", shippingOrderId: "ord-1", payload: { documents: [] } } as never,
+      {
+        id: "evt-doc-1",
+        type: "DOCUMENT_CREATED",
+        shippingOrderId: "ord-1",
+        payload: { documents: [] },
+      } as never,
       ctx,
       {},
     )

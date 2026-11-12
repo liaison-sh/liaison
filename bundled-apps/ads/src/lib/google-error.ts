@@ -84,7 +84,8 @@ const ADS_ACCESS_URL = "https://console.cloud.google.com/google/ads-apis/overvie
  * Cloud project since developer tokens were retired on 2026-09-09
  * (developers.google.com/google-ads/api/docs/api-policy/developer-token).
  */
-const DEVELOPER_TOKEN_DOC_URL = "https://developers.google.com/google-ads/api/docs/api-policy/developer-token"
+const DEVELOPER_TOKEN_DOC_URL =
+  "https://developers.google.com/google-ads/api/docs/api-policy/developer-token"
 
 const HINTS: Record<string, string> = {
   USER_PERMISSION_DENIED:
@@ -147,7 +148,11 @@ export function parseGoogleAdsError(body: string, status: number): GoogleAdsApiE
   if (!first) {
     const reason = (err.details ?? []).find((d) => typeof d.reason === "string")?.reason
     if (status >= 400 && status < 500 && (topStatus || reason)) {
-      return new GoogleAdsApiError(describe(status, topStatus, reason, topMessage, reason), status, reason)
+      return new GoogleAdsApiError(
+        describe(status, topStatus, reason, topMessage, reason),
+        status,
+        reason,
+      )
     }
     return new GoogleAdsApiError(topMessage, status, reason)
   }

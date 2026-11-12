@@ -17,13 +17,11 @@
 
 import type { ConnectionStatus, ConnectionSummary } from "@liaison/api-connector-core/contract"
 import { type Component, createSignal, For, onMount, Show } from "solid-js"
-import { useI18n } from "./kit"
-import { useApi } from "./api"
-import { Button } from "./kit"
 import { AdapterForm } from "./AdapterForm"
-import { deleteConnection, listConnections } from "./api"
+import { deleteConnection, listConnections, useApi } from "./api"
 import { CredentialsForm } from "./CredentialsForm"
 import { HistoryPanel } from "./HistoryPanel"
+import { Button, useI18n } from "./kit"
 import { TestPanel } from "./TestPanel"
 
 type PanelKind = "credentials" | "test" | "replace" | "history" | "delete"

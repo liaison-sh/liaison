@@ -7,22 +7,34 @@
 // (the platform's reasons in plain words) and an optional note, then a confirmation; it asks for
 // approval and the tab says it waits. On a refused, rejected or paid invoice no action is shown;
 // the tab says why.
-import { app, fetchBlob, navigate, openFile as hostOpenFile } from "@liaison/host"
+import { app, fetchBlob, openFile as hostOpenFile, navigate } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { tr } from "../i18n"
 import { Button, ConfirmDialog, inputClass, SectionLabel, Select } from "../kit"
 import { confirmText, detailView, type ReceivedDetailData } from "./view"
 
 /** The invoice, or why it could not be read: missing is not the same as unreachable. */
-type Loaded = { ok: true; data: ReceivedDetailData } | { ok: false; notFound: boolean; message: string }
+type Loaded =
+  | { ok: true; data: ReceivedDetailData }
+  | { ok: false; notFound: boolean; message: string }
 
 async function load(id: string): Promise<Loaded> {
   try {
-    const res = await app.invokeTool<ReceivedDetailData & { error?: { code?: string; message?: string } }>("received_einvoices_get", { received_id: id })
+    const res = await app.invokeTool<
+      ReceivedDetailData & { error?: { code?: string; message?: string } }
+    >("received_einvoices_get", { received_id: id })
     if (res && res.status === "ok") return { ok: true, data: res }
-    return { ok: false, notFound: res?.error?.code === "not_found", message: res?.error?.message ?? tr("The invoice could not be loaded.") }
+    return {
+      ok: false,
+      notFound: res?.error?.code === "not_found",
+      message: res?.error?.message ?? tr("The invoice could not be loaded."),
+    }
   } catch (e) {
-    return { ok: false, notFound: false, message: e instanceof Error ? e.message : tr("The invoice could not be loaded.") }
+    return {
+      ok: false,
+      notFound: false,
+      message: e instanceof Error ? e.message : tr("The invoice could not be loaded."),
+    }
   }
 }
 
@@ -82,13 +94,17 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
     if (!a || !props.entityId) return
     setBusy(true)
     try {
-      const r = await app.invokeTool<{ status: string; error?: { message?: string } }>("received_einvoice_action_request", {
-        received_id: props.entityId,
-        action: a.action,
-        reason: a.needsReason ? reason() : null,
-        comment: comment().trim() || null,
-      })
-      if (r?.status === "error") setNote({ text: r.error?.message ?? tr("The request failed."), isError: true })
+      const r = await app.invokeTool<{ status: string; error?: { message?: string } }>(
+        "received_einvoice_action_request",
+        {
+          received_id: props.entityId,
+          action: a.action,
+          reason: a.needsReason ? reason() : null,
+          comment: comment().trim() || null,
+        },
+      )
+      if (r?.status === "error")
+        setNote({ text: r.error?.message ?? tr("The request failed."), isError: true })
       else {
         // A request by someone who may decide it runs at once (approvals are for agents).
         setNote({
@@ -114,10 +130,25 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
     setBusy(true)
     setNote(null)
     try {
-      const r = await app.invokeTool<{ status: string; files_pending?: boolean; error?: { message?: string } }>("received_einvoices_refresh", { received_id: props.entityId })
-      if (r?.status === "error") setNote({ text: tr("Refresh failed: {{reason}}", { reason: r.error?.message ?? tr("the platform could not be reached.") }), isError: true })
+      const r = await app.invokeTool<{
+        status: string
+        files_pending?: boolean
+        error?: { message?: string }
+      }>("received_einvoices_refresh", { received_id: props.entityId })
+      if (r?.status === "error")
+        setNote({
+          text: tr("Refresh failed: {{reason}}", {
+            reason: r.error?.message ?? tr("the platform could not be reached."),
+          }),
+          isError: true,
+        })
     } catch (e) {
-      setNote({ text: tr("Refresh failed: {{reason}}", { reason: e instanceof Error ? e.message : tr("the platform could not be reached.") }), isError: true })
+      setNote({
+        text: tr("Refresh failed: {{reason}}", {
+          reason: e instanceof Error ? e.message : tr("the platform could not be reached."),
+        }),
+        isError: true,
+      })
     } finally {
       setBusy(false)
       refetch()
@@ -125,20 +156,32 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
   }
 
   return (
-    <div data-testid="invoicing-received-detail" class="flex h-full min-h-0 flex-col gap-4 overflow-auto p-5 text-[12.5px]">
+    <div
+      data-testid="invoicing-received-detail"
+      class="flex h-full min-h-0 flex-col gap-4 overflow-auto p-5 text-[12.5px]"
+    >
       <Switch>
         <Match when={failure()?.notFound}>
           <div data-testid="received-detail-missing" class="text-text-tertiary">
             {tr("This received invoice could not be found.")}{" "}
-            <a class="text-accent" href="/invoicing/received" onClick={(e) => (e.preventDefault(), navigate("/invoicing/received"))}>
+            <a
+              class="text-accent"
+              href="/invoicing/received"
+              onClick={(e) => (e.preventDefault(), navigate("/invoicing/received"))}
+            >
               {tr("Back to Received")}
             </a>
           </div>
         </Match>
         <Match when={failure()}>
           {(f) => (
-            <div data-testid="received-detail-error" class="flex max-w-[60ch] flex-col items-start gap-2 text-text-secondary">
-              <span>{tr("The invoice could not be loaded: {{reason}}", { reason: f().message })}</span>
+            <div
+              data-testid="received-detail-error"
+              class="flex max-w-[60ch] flex-col items-start gap-2 text-text-secondary"
+            >
+              <span>
+                {tr("The invoice could not be loaded: {{reason}}", { reason: f().message })}
+              </span>
               <Button testid="received-detail-retry" variant="ghost" onClick={() => refetch()}>
                 {tr("Try again")}
               </Button>
@@ -167,7 +210,12 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
                 </Show>
               </div>
               <Show when={v().canAct}>
-                <Button testid="received-detail-refresh" variant="ghost" disabled={busy()} onClick={() => void refresh()}>
+                <Button
+                  testid="received-detail-refresh"
+                  variant="ghost"
+                  disabled={busy()}
+                  onClick={() => void refresh()}
+                >
                   {busy() ? tr("Checking…") : tr("Refresh")}
                 </Button>
               </Show>
@@ -192,36 +240,55 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
                     <span class="w-40 shrink-0 text-text-tertiary">{t.label}</span>
                     <span class="font-mono tabular-nums text-text">{t.value}</span>
                     <Show when={t.file}>
-                      <span class="text-text-secondary">· {tr("the file says {{amount}}", { amount: t.file ?? "" })}</span>
+                      <span class="text-text-secondary">
+                        · {tr("the file says {{amount}}", { amount: t.file ?? "" })}
+                      </span>
                     </Show>
                   </div>
                 )}
               </For>
               <Show when={v().mismatch}>
                 <div data-testid="received-totals-mismatch" class="text-text-secondary">
-                  {tr("The original file's totals differ from the platform's: check the invoice before paying it.")}
+                  {tr(
+                    "The original file's totals differ from the platform's: check the invoice before paying it.",
+                  )}
                 </div>
               </Show>
             </div>
 
             <div class="flex flex-col gap-1.5">
               <SectionLabel>{tr("Files")}</SectionLabel>
-              <Show when={v().files.length > 0} fallback={<span class="text-text-tertiary">{tr("No file yet.")}</span>}>
+              <Show
+                when={v().files.length > 0}
+                fallback={<span class="text-text-tertiary">{tr("No file yet.")}</span>}
+              >
                 <div class="flex flex-wrap gap-2">
                   <For each={v().files}>
                     {(f) => (
                       <Show
                         when={f.previewable}
                         fallback={
-                          <Button testid={`${f.testid}-download`} variant="ghost" onClick={() => void openFile(f.file_id, f.filename, false)}>
+                          <Button
+                            testid={`${f.testid}-download`}
+                            variant="ghost"
+                            onClick={() => void openFile(f.file_id, f.filename, false)}
+                          >
                             {tr("Download {{what}}", { what: f.label })}
                           </Button>
                         }
                       >
-                        <Button testid={`${f.testid}-preview`} variant="ghost" onClick={() => void openFile(f.file_id, f.filename, true)}>
+                        <Button
+                          testid={`${f.testid}-preview`}
+                          variant="ghost"
+                          onClick={() => void openFile(f.file_id, f.filename, true)}
+                        >
                           {tr("Preview {{what}}", { what: f.label })}
                         </Button>
-                        <Button testid={`${f.testid}-download`} variant="ghost" onClick={() => void openFile(f.file_id, f.filename, false)}>
+                        <Button
+                          testid={`${f.testid}-download`}
+                          variant="ghost"
+                          onClick={() => void openFile(f.file_id, f.filename, false)}
+                        >
                           {tr("Download")}
                         </Button>
                       </Show>
@@ -265,7 +332,11 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
                 <div class="flex flex-wrap gap-2">
                   <For each={v().actions}>
                     {(a) => (
-                      <Button testid={`received-action-${a.action}`} variant="ghost" onClick={() => startAction(a.action)}>
+                      <Button
+                        testid={`received-action-${a.action}`}
+                        variant="ghost"
+                        onClick={() => startAction(a.action)}
+                      >
                         {a.label}
                       </Button>
                     )}
@@ -278,14 +349,22 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
                     <Show when={a().needsReason}>
                       <label class="flex flex-col gap-1">
                         <span class="text-text-tertiary">{tr("Reason")}</span>
-                        <Select testid="received-action-reason" value={reason()} onChange={setReason}>
+                        <Select
+                          testid="received-action-reason"
+                          value={reason()}
+                          onChange={setReason}
+                        >
                           <option value="">{tr("Choose the reason")}</option>
-                          <For each={a().reasons}>{(r) => <option value={r.value}>{r.label}</option>}</For>
+                          <For each={a().reasons}>
+                            {(r) => <option value={r.value}>{r.label}</option>}
+                          </For>
                         </Select>
                       </label>
                     </Show>
                     <label class="flex flex-col gap-1">
-                      <span class="text-text-tertiary">{tr("Note (kept in Liaison, optional)")}</span>
+                      <span class="text-text-tertiary">
+                        {tr("Note (kept in Liaison, optional)")}
+                      </span>
                       <textarea
                         data-testid="received-action-comment"
                         class={`${inputClass} min-h-[60px]`}
@@ -295,10 +374,18 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
                       />
                     </label>
                     <div class="flex gap-2">
-                      <Button testid="received-action-submit" disabled={!canSubmit() || busy()} onClick={() => setConfirming(true)}>
+                      <Button
+                        testid="received-action-submit"
+                        disabled={!canSubmit() || busy()}
+                        onClick={() => setConfirming(true)}
+                      >
                         {tr("Continue")}
                       </Button>
-                      <Button testid="received-action-cancel" variant="ghost" onClick={() => setChoosing(null)}>
+                      <Button
+                        testid="received-action-cancel"
+                        variant="ghost"
+                        onClick={() => setChoosing(null)}
+                      >
                         {tr("Cancel")}
                       </Button>
                     </div>
@@ -307,7 +394,10 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
               </Show>
               <Show when={note()}>
                 {(n) => (
-                  <div data-testid="received-action-note" class={n().isError ? "text-text" : "text-text-secondary"}>
+                  <div
+                    data-testid="received-action-note"
+                    class={n().isError ? "text-text" : "text-text-secondary"}
+                  >
                     {n().text}
                   </div>
                 )}
@@ -316,7 +406,13 @@ export const InvoicingReceivedDetail: Component<{ entityId?: string }> = (props)
 
             <ConfirmDialog
               open={confirming()}
-              title={chosen()?.action === "refuse" ? tr("Refuse this invoice?") : chosen()?.action === "dispute" ? tr("Dispute this invoice?") : tr("Withdraw the dispute?")}
+              title={
+                chosen()?.action === "refuse"
+                  ? tr("Refuse this invoice?")
+                  : chosen()?.action === "dispute"
+                    ? tr("Dispute this invoice?")
+                    : tr("Withdraw the dispute?")
+              }
               body={confirmText(chosen()?.action ?? "", chosenReasonLabel())}
               confirmLabel={tr("Confirm")}
               busy={busy()}

@@ -118,7 +118,9 @@ function netUnitMinor(row: Record<string, unknown>, unit: string): string {
   if (!(qty > 0)) return String(unitMinor)
   const sub = String(row.subtotal_minor ?? "")
   const discount = String(row.discount_minor ?? "0")
-  const subtotal = isInt(sub) ? Number(sub) : Math.round(unitMinor * qty) - (isInt(discount) ? Number(discount) : 0)
+  const subtotal = isInt(sub)
+    ? Number(sub)
+    : Math.round(unitMinor * qty) - (isInt(discount) ? Number(discount) : 0)
   return String(Math.round(subtotal / qty))
 }
 
@@ -167,20 +169,28 @@ async function shopifyOrders(
   for (const d of docs) if (d.counterparty_email) emails.add(d.counterparty_email)
   if (customer && !customer.includes("@")) queries.push(`"${shopifyTerm(customer)}"`)
   for (const e of [...emails].slice(0, 2)) queries.push(`email:"${shopifyTerm(e)}"`)
-  const numbers = [...new Set(docs.map((d) => d.shopify_order_number).filter((n): n is string => !!n))].slice(0, 5)
-  if (numbers.length > 0) queries.push(numbers.map((n) => `name:#${shopifyTerm(n.replace(/^#/, ""))}`).join(" OR "))
+  const numbers = [
+    ...new Set(docs.map((d) => d.shopify_order_number).filter((n): n is string => !!n)),
+  ].slice(0, 5)
+  if (numbers.length > 0)
+    queries.push(numbers.map((n) => `name:#${shopifyTerm(n.replace(/^#/, ""))}`).join(" OR "))
   if (queries.length === 0) return { orders: [], status: "checked" }
   let absent = 0
   let failed: string | null = null
   const answers = await Promise.all(
     queries.slice(0, 4).map(async (query) => {
       try {
-        const env = await exec("shopify:orders_search", { query, limit: SHOPIFY_LIMIT, timeout_ms: SHOPIFY_TIMEOUT_MS })
+        const env = await exec("shopify:orders_search", {
+          query,
+          limit: SHOPIFY_LIMIT,
+          timeout_ms: SHOPIFY_TIMEOUT_MS,
+        })
         if (env.status === "completed") {
           const results = (env.result as { results?: unknown } | null)?.results
           return Array.isArray(results) ? (results as OrderHit[]) : []
         }
-        const code = env.status === "error" ? String(env.error?.code ?? "error") : String(env.status)
+        const code =
+          env.status === "error" ? String(env.error?.code ?? "error") : String(env.status)
         const message = env.status === "error" ? String(env.error?.message ?? "") : ""
         if (shopifyAbsent(`${code} ${message}`)) absent++
         else failed ??= code
@@ -202,7 +212,8 @@ async function shopifyOrders(
       title: str(li?.title),
       quantity: typeof li?.quantity === "number" ? li.quantity : Number(li?.quantity ?? 0) || 0,
     }))
-    if (product && items.length > 0 && !items.some((i) => productMatches(product, i.title ?? ""))) continue
+    if (product && items.length > 0 && !items.some((i) => productMatches(product, i.title ?? "")))
+      continue
     const name = [str(a.customer?.firstName), str(a.customer?.lastName)].filter(Boolean).join(" ")
     const amount = str(a.totalAmount)
     const currency = str(hit.currency)
@@ -211,14 +222,22 @@ async function shopifyOrders(
       created_at: str(a.createdAt),
       customer: name || null,
       email: str(a.email) ?? str(a.customer?.email),
-      total: amount ? `${amount}${currency ? ` ${currency}` : ""} (order total, tax and shipping included)` : null,
+      total: amount
+        ? `${amount}${currency ? ` ${currency}` : ""} (order total, tax and shipping included)`
+        : null,
       items,
     })
   }
-  return { orders: [...byId.values()], status: failed ? `could not be checked (${failed})` : "checked" }
+  return {
+    orders: [...byId.values()],
+    status: failed ? `could not be checked (${failed})` : "checked",
+  }
 }
 
-export async function customerHistory(ctx: ReadsCtx, input: CustomerHistoryInput = {}): Promise<CustomerHistoryResult> {
+export async function customerHistory(
+  ctx: ReadsCtx,
+  input: CustomerHistoryInput = {},
+): Promise<CustomerHistoryResult> {
   const customer = str(input.customer)
   const contactId = str(input.contact_id)
   const product = str(input.product)
@@ -231,7 +250,9 @@ export async function customerHistory(ctx: ReadsCtx, input: CustomerHistoryInput
   if (contactId) add(await documentsSearch(ctx, { contact_id: contactId, limit: 50 }))
   if (customer) add(await documentsSearch(ctx, { query: customer, limit: 50 }))
   // The newest first: documentsSearch ranks by match, the history reads by date.
-  const docs = [...found.values()].sort((a, b) => String(b.issued_at ?? "").localeCompare(String(a.issued_at ?? "")))
+  const docs = [...found.values()].sort((a, b) =>
+    String(b.issued_at ?? "").localeCompare(String(a.issued_at ?? "")),
+  )
 
   const documents: CustomerHistoryDocument[] = []
   for (const d of docs) {
@@ -241,7 +262,9 @@ export async function customerHistory(ctx: ReadsCtx, input: CustomerHistoryInput
       orderBy: { position: "asc" },
       limit: 200,
     })) as Array<Record<string, unknown>>
-    const lines = rows.filter((l) => productMatches(product, String(l.description ?? ""))).map((l) => lineOf(l, d.currency))
+    const lines = rows
+      .filter((l) => productMatches(product, String(l.description ?? "")))
+      .map((l) => lineOf(l, d.currency))
     if (product && lines.length === 0) continue
     documents.push({
       id: d.id,
@@ -259,8 +282,9 @@ export async function customerHistory(ctx: ReadsCtx, input: CustomerHistoryInput
   }
 
   const pick =
-    documents.find((d) => d.type !== "credit_note" && !NOT_A_SALE.has(d.status) && d.lines.length > 0) ??
-    documents.find((d) => d.type !== "credit_note" && d.lines.length > 0)
+    documents.find(
+      (d) => d.type !== "credit_note" && !NOT_A_SALE.has(d.status) && d.lines.length > 0,
+    ) ?? documents.find((d) => d.type !== "credit_note" && d.lines.length > 0)
   const line = pick?.lines[0]
   const last_sale =
     pick && line

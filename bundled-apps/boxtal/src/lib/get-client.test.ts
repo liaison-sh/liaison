@@ -85,7 +85,13 @@ describe("getClient (Boxtal facade)", () => {
   it("throws 'Boxtal not connected' when the settings read fails", async () => {
     const ctx = {
       fetch: fetchStub([]),
-      connections: { boxtal: { getSettings: async () => { throw new Error("no row") } } },
+      connections: {
+        boxtal: {
+          getSettings: async () => {
+            throw new Error("no row")
+          },
+        },
+      },
     } as any
     await expect(getClient(ctx)).rejects.toThrow("Boxtal not connected")
   })
@@ -112,8 +118,15 @@ describe("getClient (Boxtal facade)", () => {
     expect(calls[0]!.opts!.auth).toEqual({
       connection: "boxtal",
       scheme: "bearer",
-      exchange: { url: "https://api.boxtal.build/iam/account-app/token", fields: ["v3Key", "v3Secret"] },
+      exchange: {
+        url: "https://api.boxtal.build/iam/account-app/token",
+        fields: ["v3Key", "v3Secret"],
+      },
     })
-    expect(calls[1]!.opts!.auth).toEqual({ connection: "boxtal", scheme: "basic", fields: ["v1Key", "v1Secret"] })
+    expect(calls[1]!.opts!.auth).toEqual({
+      connection: "boxtal",
+      scheme: "basic",
+      fields: ["v1Key", "v1Secret"],
+    })
   })
 })

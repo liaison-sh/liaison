@@ -66,5 +66,4 @@ describe("Shopify handler bundle", () => {
     }
     expect(missing).toEqual([])
   })
-
 })

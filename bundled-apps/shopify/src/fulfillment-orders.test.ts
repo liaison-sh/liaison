@@ -22,7 +22,14 @@ function makeCtx(opts: { fetchResponses: unknown[] }): { ctx: AppContext; calls:
     db: {
       findMany: async (entity: string) => {
         if (entity === "install_metadata") {
-          return [{ id: "i1", shopDomain: "demo.myshopify.com", connectionId: "ca1", apiVersion: "2026-04" }]
+          return [
+            {
+              id: "i1",
+              shopDomain: "demo.myshopify.com",
+              connectionId: "ca1",
+              apiVersion: "2026-04",
+            },
+          ]
         }
         return []
       },
@@ -39,7 +46,13 @@ function makeCtx(opts: { fetchResponses: unknown[] }): { ctx: AppContext; calls:
     connections: {
       shop: {
         getAccounts: async () => [
-          { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+          {
+            id: "ca1",
+            ownerType: "org" as const,
+            ownerId: null,
+            identifier: "demo.myshopify.com",
+            displayName: null,
+          },
         ],
         getToken: async () => "test-token",
       },
@@ -153,6 +166,8 @@ describe("fulfillment_orders_get — per-FO line items with remaining quantities
 
   it("errors NOT_FOUND when the order does not exist", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { order: null } }] })
-    await expect(fulfillment_orders_get({ orderId: "gid://shopify/Order/404" }, ctx)).rejects.toThrow(/not found/i)
+    await expect(
+      fulfillment_orders_get({ orderId: "gid://shopify/Order/404" }, ctx),
+    ).rejects.toThrow(/not found/i)
   })
 })

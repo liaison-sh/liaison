@@ -29,9 +29,13 @@ export interface EinvoicingSettingsData {
 
 /** Plain-words lines about the bound platform. */
 export function registrationLines(d: EinvoicingSettingsData | null): string[] {
-  if (!d?.settings.provider_app) return [tr("No e-invoicing platform is set: nothing is sent or booked.")]
+  if (!d?.settings.provider_app)
+    return [tr("No e-invoicing platform is set: nothing is sent or booked.")]
   const r = d.registration
-  if (!r || r.status === "error") return [tr("The platform could not be reached: {{reason}}", { reason: r?.error?.message ?? "-" })]
+  if (!r || r.status === "error")
+    return [
+      tr("The platform could not be reached: {{reason}}", { reason: r?.error?.message ?? "-" }),
+    ]
   return [
     r.emission_activated
       ? tr("Emission is activated on the platform.")
@@ -53,7 +57,10 @@ async function load(): Promise<EinvoicingSettingsData | null> {
 export const EinvoicingRegistration: Component = () => {
   const [data] = createResource(load)
   return (
-    <ul data-testid="settings-einvoicing-registration" class="flex flex-col gap-0.5 text-[12.5px] text-text-secondary">
+    <ul
+      data-testid="settings-einvoicing-registration"
+      class="flex flex-col gap-0.5 text-[12.5px] text-text-secondary"
+    >
       <For each={data.loading ? [] : registrationLines(data() ?? null)}>{(l) => <li>{l}</li>}</For>
     </ul>
   )

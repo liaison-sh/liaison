@@ -55,15 +55,26 @@ function routedIdsOf(metadata: unknown): string[] | null {
 
 async function facebookRows(ctx: SocialToolCtx, account?: string): Promise<Row[]> {
   return (await ctx.db.findMany("sync_state", {
-    where: account ? { platform: "facebook", account_external_id: account } : { platform: "facebook" },
+    where: account
+      ? { platform: "facebook", account_external_id: account }
+      : { platform: "facebook" },
   })) as Row[]
 }
 
-async function writeIds(ctx: SocialToolCtx, rows: Row[], ids: string[], checkedAt: string): Promise<void> {
+async function writeIds(
+  ctx: SocialToolCtx,
+  rows: Row[],
+  ids: string[],
+  checkedAt: string,
+): Promise<void> {
   for (const row of rows) {
     if (routedIdsOf(row.metadata) === null) continue
     await ctx.db.update("sync_state", row.id, {
-      metadata: { ...metadataOf(row.metadata), [META_PAGE_IDS_KEY]: ids, [META_PAGES_CHECKED_AT_KEY]: checkedAt },
+      metadata: {
+        ...metadataOf(row.metadata),
+        [META_PAGE_IDS_KEY]: ids,
+        [META_PAGES_CHECKED_AT_KEY]: checkedAt,
+      },
     })
   }
 }
@@ -99,7 +110,8 @@ export async function refreshMetaPageIds(
     return { kind: "ok", ids: stored }
   }
   if (stored.length === 0) return { kind: "ok", ids: [] }
-  const token = opts.token !== undefined ? opts.token : await resolveAccessToken(ctx, "facebook", account)
+  const token =
+    opts.token !== undefined ? opts.token : await resolveAccessToken(ctx, "facebook", account)
   if (!token) {
     // No usable token (disconnected, or the refresh failed): it authorizes nothing.
     await writeIds(ctx, rows, [], now.toISOString())
@@ -109,7 +121,11 @@ export async function refreshMetaPageIds(
   let url: string | null = `${FB_BASE}/me/accounts?fields=id&limit=100`
   for (let page = 0; url && page < 20; page++) {
     const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    let parsed: { data?: Array<{ id?: unknown }>; paging?: { next?: unknown }; error?: { code?: unknown } } = {}
+    let parsed: {
+      data?: Array<{ id?: unknown }>
+      paging?: { next?: unknown }
+      error?: { code?: unknown }
+    } = {}
     try {
       parsed = res.body ? JSON.parse(res.body) : {}
     } catch {
@@ -117,18 +133,25 @@ export async function refreshMetaPageIds(
     }
     const code = typeof parsed.error?.code === "number" ? parsed.error.code : null
     if (res.status === 401 || (code !== null && NOT_AUTHORIZED_CODES.has(code))) {
-      ctx.logger?.warn?.("social: Meta no longer authorizes this account's Pages; routing cleared", {
-        account,
-        status: res.status,
-        code,
-      })
+      ctx.logger?.warn?.(
+        "social: Meta no longer authorizes this account's Pages; routing cleared",
+        {
+          account,
+          status: res.status,
+          code,
+        },
+      )
       await writeIds(ctx, rows, [], now.toISOString())
       return { kind: "ok", ids: [] }
     }
     if (res.status < 200 || res.status >= 300 || parsed.error) {
-      return { kind: "unavailable", reason: `HTTP ${res.status}${code !== null ? ` (#${code})` : ""}` }
+      return {
+        kind: "unavailable",
+        reason: `HTTP ${res.status}${code !== null ? ` (#${code})` : ""}`,
+      }
     }
-    for (const p of parsed.data ?? []) if (p.id !== undefined && p.id !== null) managed.add(String(p.id))
+    for (const p of parsed.data ?? [])
+      if (p.id !== undefined && p.id !== null) managed.add(String(p.id))
     url = typeof parsed.paging?.next === "string" ? parsed.paging.next : null
   }
   // More Pages than were read: nothing is pruned on a partial answer.
@@ -153,12 +176,18 @@ export class MetaPagesUnavailableError extends Error {}
  * returned as it is. Otherwise only entries of a Page some connected account of
  * this workspace manages now are kept.
  */
-export async function livePagesOnly(ctx: SocialToolCtx, body: unknown, now = new Date()): Promise<unknown> {
+export async function livePagesOnly(
+  ctx: SocialToolCtx,
+  body: unknown,
+  now = new Date(),
+): Promise<unknown> {
   const rows = await facebookRows(ctx)
   const accounts = [
     ...new Set(
       rows
-        .filter((r) => routedIdsOf(r.metadata) !== null && typeof r.account_external_id === "string")
+        .filter(
+          (r) => routedIdsOf(r.metadata) !== null && typeof r.account_external_id === "string",
+        )
         .map((r) => r.account_external_id as string),
     ),
   ]
@@ -167,16 +196,21 @@ export async function livePagesOnly(ctx: SocialToolCtx, body: unknown, now = new
   for (const account of accounts) {
     if (rows.some((r) => r.account_external_id === account && r.active === false)) continue
     const out = await refreshMetaPageIds(ctx, account, { now })
-    if (out.kind === "unavailable") throw new MetaPagesUnavailableError(`Meta Pages check failed: ${out.reason}`)
+    if (out.kind === "unavailable")
+      throw new MetaPagesUnavailableError(`Meta Pages check failed: ${out.reason}`)
     if (out.kind === "ok") for (const id of out.ids) live.add(id)
   }
-  const envelope = body && typeof body === "object" && !Array.isArray(body) ? (body as { entry?: unknown }) : {}
+  const envelope =
+    body && typeof body === "object" && !Array.isArray(body) ? (body as { entry?: unknown }) : {}
   const entries = Array.isArray(envelope.entry) ? (envelope.entry as Array<{ id?: unknown }>) : []
   const kept = entries.filter((e) => e && e.id !== undefined && live.has(String(e.id)))
   if (kept.length !== entries.length) {
-    ctx.logger?.info?.("social: delivery entries for Pages this workspace no longer manages were dropped", {
-      dropped: entries.length - kept.length,
-    })
+    ctx.logger?.info?.(
+      "social: delivery entries for Pages this workspace no longer manages were dropped",
+      {
+        dropped: entries.length - kept.length,
+      },
+    )
   }
   return { ...envelope, entry: kept }
 }

@@ -51,16 +51,20 @@ describe("tax regime classifier", () => {
     // A counterparty contact (or issuer profile) can have no country — e.g. an agent-created
     // contact. classify must degrade like an UNKNOWN country, not crash the whole gated issuance.
     for (const cp of [null, undefined, ""] as const) {
-      expect(() => classify({ issuer_country: "FR", counterparty_country: cp, has_vat_id: false })).not.toThrow()
-      expect(classify({ issuer_country: "FR", counterparty_country: cp, has_vat_id: false }).treatment).toBe(
-        "ambiguous",
-      )
+      expect(() =>
+        classify({ issuer_country: "FR", counterparty_country: cp, has_vat_id: false }),
+      ).not.toThrow()
+      expect(
+        classify({ issuer_country: "FR", counterparty_country: cp, has_vat_id: false }).treatment,
+      ).toBe("ambiguous")
     }
     for (const iss of [null, undefined, ""] as const) {
-      expect(() => classify({ issuer_country: iss, counterparty_country: "DE", has_vat_id: false })).not.toThrow()
-      expect(classify({ issuer_country: iss, counterparty_country: "DE", has_vat_id: false }).treatment).toBe(
-        "unconfigured",
-      )
+      expect(() =>
+        classify({ issuer_country: iss, counterparty_country: "DE", has_vat_id: false }),
+      ).not.toThrow()
+      expect(
+        classify({ issuer_country: iss, counterparty_country: "DE", has_vat_id: false }).treatment,
+      ).toBe("unconfigured")
     }
   })
 
@@ -125,13 +129,50 @@ describe("tax regime classifier", () => {
     const it = classify({ issuer_country: "FR", counterparty_country: "IT", has_vat_id: false })
     expect(it.treatment).toBe("eu_b2c_oss")
     expect(it.default_rate_bp).toBe(2200)
-    expect(classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: false }).default_rate_bp).toBe(1900)
-    expect(classify({ issuer_country: "DE", counterparty_country: "FR", has_vat_id: false }).default_rate_bp).toBe(2000)
-    expect(classify({ issuer_country: "FR", counterparty_country: "HU", has_vat_id: false }).default_rate_bp).toBe(2700)
+    expect(
+      classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: false })
+        .default_rate_bp,
+    ).toBe(1900)
+    expect(
+      classify({ issuer_country: "DE", counterparty_country: "FR", has_vat_id: false })
+        .default_rate_bp,
+    ).toBe(2000)
+    expect(
+      classify({ issuer_country: "FR", counterparty_country: "HU", has_vat_id: false })
+        .default_rate_bp,
+    ).toBe(2700)
   })
 
   test("every EU member state has a standard rate", () => {
-    for (const cc of ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]) {
+    for (const cc of [
+      "AT",
+      "BE",
+      "BG",
+      "HR",
+      "CY",
+      "CZ",
+      "DK",
+      "EE",
+      "FI",
+      "FR",
+      "DE",
+      "GR",
+      "HU",
+      "IE",
+      "IT",
+      "LV",
+      "LT",
+      "LU",
+      "MT",
+      "NL",
+      "PL",
+      "PT",
+      "RO",
+      "SK",
+      "SI",
+      "ES",
+      "SE",
+    ]) {
       expect(EU_STANDARD_RATE_BP[cc]).toBeGreaterThan(0)
     }
   })
@@ -161,18 +202,24 @@ describe("tax regime classifier — a real country outside the trading-partner l
   test("still degrades to ambiguous when the code is not a country at all", () => {
     // The safe default is only defensible when we genuinely cannot tell.
     for (const bogus of ["XX", "ZZ", "EXPORT", ""]) {
-      expect(classify({ issuer_country: "FR", counterparty_country: bogus, has_vat_id: false })
-        .treatment).toBe("ambiguous")
+      expect(
+        classify({ issuer_country: "FR", counterparty_country: bogus, has_vat_id: false })
+          .treatment,
+      ).toBe("ambiguous")
     }
   })
 
   test("does not disturb the EU cases", () => {
-    expect(classify({ issuer_country: "FR", counterparty_country: "FR", has_vat_id: false })
-      .default_rate_bp).toBe(2000)
-    expect(classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: true })
-      .treatment).toBe("eu_reverse_charge")
-    expect(classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: false })
-      .treatment).toBe("eu_b2c_oss")
+    expect(
+      classify({ issuer_country: "FR", counterparty_country: "FR", has_vat_id: false })
+        .default_rate_bp,
+    ).toBe(2000)
+    expect(
+      classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: true }).treatment,
+    ).toBe("eu_reverse_charge")
+    expect(
+      classify({ issuer_country: "FR", counterparty_country: "DE", has_vat_id: false }).treatment,
+    ).toBe("eu_b2c_oss")
   })
 })
 
@@ -191,7 +238,11 @@ describe("French legal mentions (dated table, accented)", () => {
     ["eu_export_non_eu", "services", EXPORT],
     ["eu_export_non_eu", "mixed", EXPORT],
     ["eu_export_non_eu", null, EXPORT],
-    ["eu_b2c_oss", "goods", "TVA collectée dans le cadre du guichet unique OSS de l'Union européenne."],
+    [
+      "eu_b2c_oss",
+      "goods",
+      "TVA collectée dans le cadre du guichet unique OSS de l'Union européenne.",
+    ],
     ["eu_domestic", "goods", ""],
     ["eu_domestic", "mixed", ""],
     ["ambiguous", null, "Traitement TVA en cours de vérification : consultez votre comptable."],
@@ -214,22 +265,35 @@ describe("French legal mentions (dated table, accented)", () => {
       "us_export",
       "ambiguous",
     ] as TaxTreatment[]) {
-      expect(resolveLegalMention(t, "fr")).not.toMatch(/europeenne|exoneree|collectee|verification|taux zero|Etats|etat;/)
+      expect(resolveLegalMention(t, "fr")).not.toMatch(
+        /europeenne|exoneree|collectee|verification|taux zero|Etats|etat;/,
+      )
     }
   })
 
   test("English and German keep a goods/services split for reverse charge", () => {
-    expect(resolveLegalMention("eu_reverse_charge", "en", { category: "goods" })).toContain("262 ter I")
-    expect(resolveLegalMention("eu_reverse_charge", "en", { category: "services" })).toContain("Article 196")
-    expect(resolveLegalMention("eu_reverse_charge", "de", { category: "services" })).toContain("Reverse Charge")
+    expect(resolveLegalMention("eu_reverse_charge", "en", { category: "goods" })).toContain(
+      "262 ter I",
+    )
+    expect(resolveLegalMention("eu_reverse_charge", "en", { category: "services" })).toContain(
+      "Article 196",
+    )
+    expect(resolveLegalMention("eu_reverse_charge", "de", { category: "services" })).toContain(
+      "Reverse Charge",
+    )
   })
 
   test("a mixed reverse charge joins goods and services with one period in every language", () => {
     for (const lang of ["en", "fr", "de"] as const) {
-      const mixed = resolveLegalMention("eu_reverse_charge", lang, { category: "mixed", issueDate: "2026-11-02" })
+      const mixed = resolveLegalMention("eu_reverse_charge", lang, {
+        category: "mixed",
+        issueDate: "2026-11-02",
+      })
       expect(mixed).not.toContain("..")
       expect(mixed).not.toMatch(/\.\s*\./)
-      expect(mixed).toContain(resolveLegalMention("eu_reverse_charge", lang, { category: "services" }))
+      expect(mixed).toContain(
+        resolveLegalMention("eu_reverse_charge", lang, { category: "services" }),
+      )
     }
     expect(resolveLegalMention("eu_reverse_charge", "en", { category: "mixed" })).toBe(
       "Intra-Community supply of goods exempt from VAT (Article 262 ter I of the French Tax Code, CGI). " +
@@ -243,9 +307,9 @@ describe("French legal mentions (dated table, accented)", () => {
       expect(entry).toBeDefined()
       const issueDate = period === "cgi" ? "2026-11-02" : "2027-02-01"
       for (const lang of ["en", "fr", "de"] as const) {
-        expect(resolveLegalMention("eu_reverse_charge", lang, { category: "goods", issueDate })).toBe(
-          (entry as Record<string, string>)[lang] as string,
-        )
+        expect(
+          resolveLegalMention("eu_reverse_charge", lang, { category: "goods", issueDate }),
+        ).toBe((entry as Record<string, string>)[lang] as string)
       }
     }
   })
@@ -277,7 +341,11 @@ describe("French legal mentions (dated table, accented)", () => {
     expect(legalMentionPeriod(null, configured)).toBe("cgi")
     for (const issueDate of ["2026-08-31", "2026-09-01"]) {
       expect(
-        resolveLegalMention("eu_reverse_charge", "fr", { category: "goods", issueDate, cibsSwitchDate: configured }),
+        resolveLegalMention("eu_reverse_charge", "fr", {
+          category: "goods",
+          issueDate,
+          cibsSwitchDate: configured,
+        }),
       ).toBe("Exonération de TVA, article 262 ter I du CGI")
     }
   })

@@ -2,22 +2,22 @@
 //
 // Invoicing mutations: quotes created as Shopify draft orders (line, name and address mapping).
 
-import { type DraftLine, counterpartyCompletenessError } from "../issue"
 // Cycle note: the draft-order sync imports the mutations index back (it calls quoteCreateAndIssue
 // and documentsUpdate). Both directions are function-level only -- nothing runs at module init --
 // so the bundle resolves it through hoisting.
 import { syncQuoteFromDraftOrder } from "../handlers/shopify-draft-order"
-import { type IssuerProfileRow, describeIssuerProfiles } from "./db-helpers"
+import { counterpartyCompletenessError, type DraftLine } from "../issue"
+import { describeIssuerProfiles, type IssuerProfileRow } from "./db-helpers"
 import { normaliseDraftLines } from "./lines"
 import {
+  completedIssueResult,
   type QuoteCreateAndIssueInput,
   type QuoteCreateAndIssueResult,
-  completedIssueResult,
 } from "./quote-proforma-po"
 import {
-  type MutationsCtx,
   lineAmountsError,
   lineDiscountError,
+  type MutationsCtx,
   normaliseCustomerReference,
   toBigInt,
 } from "./shared"
@@ -66,10 +66,7 @@ export function minorToMajorAmount(minor: bigint): string {
  * (product_source "shopify" + a variant gid) is sent as a variant line so Shopify prices and
  * stocks it itself; everything else goes as a custom line at the price the quote states.
  */
-export function toShopifyDraftLines(
-  items: DraftLine[],
-  currency: string,
-): ShopifyDraftLineInput[] {
+export function toShopifyDraftLines(items: DraftLine[], currency: string): ShopifyDraftLineInput[] {
   return items.map((li) => {
     const quantity = Math.max(1, Math.round(Number(li.quantity ?? 1)))
     const externalId = typeof li.external_id === "string" ? li.external_id : null
@@ -105,12 +102,33 @@ function splitName(name: string): { firstName: string; lastName: string } {
 // Country names a free-text address commonly ends with, keyed by ISO-2. Only used to drop the
 // trailing country segment before splitting: Shopify takes the country from countryCode.
 const COUNTRY_NAMES_BY_CODE: Record<string, string[]> = {
-  FR: ["france"], DE: ["germany", "deutschland"], US: ["united states", "usa", "united states of america"],
-  GB: ["united kingdom", "uk", "great britain", "england"], ES: ["spain", "espana", "españa"], IT: ["italy", "italia"],
-  NL: ["netherlands", "the netherlands", "nederland"], BE: ["belgium", "belgique", "belgie"], CH: ["switzerland", "suisse", "schweiz"],
-  AT: ["austria", "osterreich", "österreich"], PT: ["portugal"], IE: ["ireland"], SE: ["sweden"], NO: ["norway"], DK: ["denmark"],
-  FI: ["finland"], PL: ["poland", "polska"], CZ: ["czech republic", "czechia"], CA: ["canada"], AU: ["australia"], JP: ["japan"],
-  LU: ["luxembourg"], GR: ["greece"], HU: ["hungary"], RO: ["romania"], KR: ["south korea", "korea"], CN: ["china"],
+  FR: ["france"],
+  DE: ["germany", "deutschland"],
+  US: ["united states", "usa", "united states of america"],
+  GB: ["united kingdom", "uk", "great britain", "england"],
+  ES: ["spain", "espana", "españa"],
+  IT: ["italy", "italia"],
+  NL: ["netherlands", "the netherlands", "nederland"],
+  BE: ["belgium", "belgique", "belgie"],
+  CH: ["switzerland", "suisse", "schweiz"],
+  AT: ["austria", "osterreich", "österreich"],
+  PT: ["portugal"],
+  IE: ["ireland"],
+  SE: ["sweden"],
+  NO: ["norway"],
+  DK: ["denmark"],
+  FI: ["finland"],
+  PL: ["poland", "polska"],
+  CZ: ["czech republic", "czechia"],
+  CA: ["canada"],
+  AU: ["australia"],
+  JP: ["japan"],
+  LU: ["luxembourg"],
+  GR: ["greece"],
+  HU: ["hungary"],
+  RO: ["romania"],
+  KR: ["south korea", "korea"],
+  CN: ["china"],
 }
 
 export interface SplitPostalAddress {
@@ -130,9 +148,15 @@ export interface SplitPostalAddress {
  * segment exists the last remaining segment is taken as the city, so a two-part address still
  * satisfies Shopify. A single segment goes to address1 with city null: the caller decides.
  */
-export function splitPostalAddress(text: string | null | undefined, countryCode: string | null | undefined): SplitPostalAddress {
+export function splitPostalAddress(
+  text: string | null | undefined,
+  countryCode: string | null | undefined,
+): SplitPostalAddress {
   const raw = (text ?? "").trim()
-  let segs = raw.split(/\s*(?:,|\n)\s*/).map((x) => x.trim()).filter((x) => x.length > 0)
+  let segs = raw
+    .split(/\s*(?:,|\n)\s*/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0)
   const cc = (countryCode ?? "").trim().toUpperCase()
   if (segs.length > 1) {
     const last = segs[segs.length - 1]!.toLowerCase()
@@ -149,11 +173,24 @@ export function splitPostalAddress(text: string | null | undefined, countryCode:
   for (let i = segs.length - 1; i >= 1; i--) {
     const seg = segs[i]!
     const m1 = seg.match(zipFirst)
-    if (m1 && /\d/.test(m1[1]!)) { zip = m1[1]!.trim(); city = m1[2]!.trim(); cityIdx = i; break }
+    if (m1 && /\d/.test(m1[1]!)) {
+      zip = m1[1]!.trim()
+      city = m1[2]!.trim()
+      cityIdx = i
+      break
+    }
     const m2 = seg.match(zipLast)
-    if (m2) { city = m2[1]!.trim(); zip = m2[2]!; cityIdx = i; break }
+    if (m2) {
+      city = m2[1]!.trim()
+      zip = m2[2]!
+      cityIdx = i
+      break
+    }
   }
-  if (cityIdx === -1) { cityIdx = segs.length - 1; city = segs[cityIdx]! }
+  if (cityIdx === -1) {
+    cityIdx = segs.length - 1
+    city = segs[cityIdx]!
+  }
   const middle = segs.slice(1, cityIdx)
   const tail = segs.slice(cityIdx + 1)
   const address2 = [...middle, ...tail].join(", ")
@@ -169,7 +206,9 @@ async function resolveShopifyCustomerId(
     // kernel:contacts_read takes `contactId` and answers `{ contact: { externalIds } }`.
     const envelope = await ctx.executeTool("kernel:contacts_read", { contactId })
     if (envelope.status !== "completed") return null
-    const result = envelope.result as { contact?: { externalIds?: Record<string, unknown> | null } } | null
+    const result = envelope.result as {
+      contact?: { externalIds?: Record<string, unknown> | null }
+    } | null
     const raw = result?.contact?.externalIds?.shopify
     if (typeof raw !== "string" || raw.trim() === "") return null
     return raw.startsWith("gid://") ? raw : `gid://shopify/Customer/${raw.trim()}`
@@ -220,21 +259,25 @@ export async function quoteCreateViaShopifyDraftOrder(
     countryCode: cp.country ?? null,
   }
   const customerId = await resolveShopifyCustomerId(ctx, cp.contact_id)
-  const envelope = await ctx.executeTool("shopify:draft_orders_create", { input: {
-    email: cp.email ?? null,
-    ...(customerId ? { purchasingEntity: { customerId } } : {}),
-    billingAddress: address,
-    shippingAddress: address,
-    lineItems: toShopifyDraftLines(items, currency),
-    // The sync copies the draft order's PO number onto the quote, so this is how the tool's
-    // po_number reaches a quote made as a draft order.
-    ...(rawInput.po_number?.trim() ? { poNumber: rawInput.po_number.trim() } : {}),
-    // The order-created auto-flow reads the buyer's VAT number only from the order's custom
-    // attributes (a draft's carry over to its order), so a business quote keeps its reverse charge.
-    ...(cp.vat_id?.trim() ? { customAttributes: [{ key: "VAT number", value: cp.vat_id.trim() }] } : {}),
-    note: `Quote for ${cp.legal_name ?? cp.email ?? "customer"}`,
-    tags: ["liaison-quote"],
-  } })
+  const envelope = await ctx.executeTool("shopify:draft_orders_create", {
+    input: {
+      email: cp.email ?? null,
+      ...(customerId ? { purchasingEntity: { customerId } } : {}),
+      billingAddress: address,
+      shippingAddress: address,
+      lineItems: toShopifyDraftLines(items, currency),
+      // The sync copies the draft order's PO number onto the quote, so this is how the tool's
+      // po_number reaches a quote made as a draft order.
+      ...(rawInput.po_number?.trim() ? { poNumber: rawInput.po_number.trim() } : {}),
+      // The order-created auto-flow reads the buyer's VAT number only from the order's custom
+      // attributes (a draft's carry over to its order), so a business quote keeps its reverse charge.
+      ...(cp.vat_id?.trim()
+        ? { customAttributes: [{ key: "VAT number", value: cp.vat_id.trim() }] }
+        : {}),
+      note: `Quote for ${cp.legal_name ?? cp.email ?? "customer"}`,
+      tags: ["liaison-quote"],
+    },
+  })
   if (envelope.status === "pending_approval") {
     // The Shopify approval card IS the gate for this quote: the draft order (and therefore
     // the quote) appears once a human approves it there.
@@ -254,11 +297,12 @@ export async function quoteCreateViaShopifyDraftOrder(
       },
     }
   }
-  const created = envelope.result as
-    | { draftOrder?: { id?: unknown; name?: unknown }; id?: unknown; name?: unknown }
-    | null
-  const draftOrderId =
-    readGid(created?.draftOrder?.id) ?? readGid(created?.id)
+  const created = envelope.result as {
+    draftOrder?: { id?: unknown; name?: unknown }
+    id?: unknown
+    name?: unknown
+  } | null
+  const draftOrderId = readGid(created?.draftOrder?.id) ?? readGid(created?.id)
   if (!draftOrderId) {
     return {
       status: "error",
@@ -309,8 +353,12 @@ async function draftOrderFailureMessage(
 ): Promise<string> {
   let plain: Array<Record<string, unknown>> = []
   try {
-    const rows = (await ctx.db.findMany("issuer_profiles", { limit: 100 })) as Array<Record<string, unknown>>
-    plain = rows.filter((r) => typeof r.shopify_shop_id !== "string" || r.shopify_shop_id.trim() === "")
+    const rows = (await ctx.db.findMany("issuer_profiles", { limit: 100 })) as Array<
+      Record<string, unknown>
+    >
+    plain = rows.filter(
+      (r) => typeof r.shopify_shop_id !== "string" || r.shopify_shop_id.trim() === "",
+    )
   } catch {
     plain = []
   }

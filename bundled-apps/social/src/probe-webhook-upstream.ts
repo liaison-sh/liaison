@@ -60,7 +60,9 @@ async function graphGet<T>(ctx: SocialToolCtx, url: string, token: string): Prom
   }
   const err = (body as { error?: { message?: string; code?: number } }).error
   if (res.status !== 200 || err) {
-    throw new GraphError(`${res.status}${err ? ` ${err.code ?? ""} ${err.message ?? ""}`.trimEnd() : ""}`)
+    throw new GraphError(
+      `${res.status}${err ? ` ${err.code ?? ""} ${err.message ?? ""}`.trimEnd() : ""}`,
+    )
   }
   return body as T
 }
@@ -72,7 +74,11 @@ function newer(a: string | null, b: string | undefined | null): string | null {
 }
 
 /** Newest inbound message across the Page's newest conversations. */
-async function newestInboundMessage(ctx: SocialToolCtx, pageId: string, token: string): Promise<string | null> {
+async function newestInboundMessage(
+  ctx: SocialToolCtx,
+  pageId: string,
+  token: string,
+): Promise<string | null> {
   const url = `${FB_BASE}/${pageId}/conversations?fields=updated_time,messages.limit(1){from,created_time}&limit=${HEAD_LIMIT}`
   const body = await graphGet<{
     data?: Array<{ messages?: { data?: Array<{ from?: FbFrom; created_time?: string }> } }>
@@ -87,7 +93,11 @@ async function newestInboundMessage(ctx: SocialToolCtx, pageId: string, token: s
 }
 
 /** Newest comment or reply by someone else across the Page's newest posts. */
-async function newestForeignComment(ctx: SocialToolCtx, pageId: string, token: string): Promise<string | null> {
+async function newestForeignComment(
+  ctx: SocialToolCtx,
+  pageId: string,
+  token: string,
+): Promise<string | null> {
   const url = `${FB_BASE}/${pageId}/feed?fields=comments.filter(stream).order(reverse_chronological).limit(${HEAD_LIMIT}){from,created_time}&limit=${HEAD_LIMIT}`
   const body = await graphGet<{
     data?: Array<{ comments?: { data?: Array<{ from?: FbFrom; created_time?: string }> } }>
@@ -133,15 +143,22 @@ async function probeAccount(ctx: SocialToolCtx, accountExternalId: string): Prom
       throw err
     })
     const fields = new Set(
-      (subs.data ?? []).find((a) => a.id === app.id)?.subscribed_fields?.filter((f) => SUBSCRIBED_FIELDS.has(f)) ?? [],
+      (subs.data ?? [])
+        .find((a) => a.id === app.id)
+        ?.subscribed_fields?.filter((f) => SUBSCRIBED_FIELDS.has(f)) ?? [],
     )
-    if (fields.has("messages")) latest = newer(latest, await newestInboundMessage(ctx, page.id, page.access_token))
-    if (fields.has("feed")) latest = newer(latest, await newestForeignComment(ctx, page.id, page.access_token))
+    if (fields.has("messages"))
+      latest = newer(latest, await newestInboundMessage(ctx, page.id, page.access_token))
+    if (fields.has("feed"))
+      latest = newer(latest, await newestForeignComment(ctx, page.id, page.access_token))
   }
   return latest
 }
 
-export async function probeWebhookUpstreamJob(_params: unknown, ctx: SocialToolCtx): Promise<UpstreamProbeResult> {
+export async function probeWebhookUpstreamJob(
+  _params: unknown,
+  ctx: SocialToolCtx,
+): Promise<UpstreamProbeResult> {
   const states = (await ctx.db.findMany("sync_state", {
     where: { platform: "facebook", active: true },
   })) as Array<{ account_external_id: string }>

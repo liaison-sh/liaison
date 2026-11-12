@@ -15,11 +15,7 @@
 
 import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
 import { BoxtalV1Client } from "./boxtal-v1-client"
-import {
-  type BoxtalEnvironment,
-  type BoxtalFetch,
-  BoxtalV3Client,
-} from "./boxtal-v3-client"
+import { type BoxtalEnvironment, type BoxtalFetch, BoxtalV3Client } from "./boxtal-v3-client"
 
 const CONNECTION = "boxtal"
 const REQUIRED_KEYS = ["v1Key", "v1Secret", "v3Key", "v3Secret", "environment"] as const

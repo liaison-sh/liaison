@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
-  google_campaigns_list,
+  google_account_info,
   google_adgroups_list,
   google_ads_list,
+  google_campaigns_list,
   google_insights_query,
-  google_account_info,
-  google_search_terms,
   google_recommendations_list,
+  google_search_terms,
 } from "./google-reads"
 import { GoogleConfigError } from "./lib/google-config"
 
@@ -117,7 +117,9 @@ describe("google_adgroups_list", () => {
         ]),
       },
     ])
-    const result = (await google_adgroups_list({ campaign_id: "111" }, ctx)) as { ad_groups: unknown[] }
+    const result = (await google_adgroups_list({ campaign_id: "111" }, ctx)) as {
+      ad_groups: unknown[]
+    }
     expect(result.ad_groups.length).toBe(1)
     expect(calls[0]?.body).toContain("FROM ad_group")
     expect(calls[0]?.body).toContain("111")
@@ -233,7 +235,10 @@ describe("google_insights_query", () => {
     // ("Tool execution failed"), so the actionable not-connected state is
     // returned as data — callers (metrics, agents) branch on the code.
     const { ctx } = noConnCtx()
-    const result = (await google_insights_query({ query: "SELECT campaign.id FROM campaign" }, ctx)) as {
+    const result = (await google_insights_query(
+      { query: "SELECT campaign.id FROM campaign" },
+      ctx,
+    )) as {
       error?: { code: string; message: string }
     }
     expect(result.error?.code).toBe("google_not_connected")

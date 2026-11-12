@@ -23,9 +23,12 @@ const DOT: Record<string, string> = {
 }
 
 /** The prototype's small row button (the kit Button's padding is not overridable). */
-const SmallButton: Component<{ testid: string; disabled?: boolean; onClick: (e: MouseEvent) => void; children: string }> = (
-  props,
-) => (
+const SmallButton: Component<{
+  testid: string
+  disabled?: boolean
+  onClick: (e: MouseEvent) => void
+  children: string
+}> = (props) => (
   <button
     type="button"
     data-testid={props.testid}
@@ -52,16 +55,25 @@ export function incidentDetailLine(inc: IncidentLike, resolverName?: string | nu
   const note = inc.resolutionNote?.trim() || null
   if (isAutoResolved(inc)) return note
   const who = resolverName || tr("a teammate")
-  return note ? tr("Resolved by {{name}} · “{{note}}”", { name: who, note }) : tr("Resolved by {{name}}", { name: who })
+  return note
+    ? tr("Resolved by {{name}} · “{{note}}”", { name: who, note })
+    : tr("Resolved by {{name}}", { name: who })
 }
 
 /** Status tag label and style ("Auto-resolved" for a source-cleared incident). */
 export function incidentTag(inc: IncidentLike): { label: string; cls: string } {
-  if (isAutoResolved(inc)) return { label: tr("Auto-resolved"), cls: "bg-success-glow text-success" }
+  if (isAutoResolved(inc))
+    return { label: tr("Auto-resolved"), cls: "bg-success-glow text-success" }
   if (inc.status === "resolved")
-    return { label: tr("Resolved"), cls: "border border-dashed border-border-strong text-text-secondary" }
+    return {
+      label: tr("Resolved"),
+      cls: "border border-dashed border-border-strong text-text-secondary",
+    }
   if (inc.status === "acknowledged")
-    return { label: tr("Acknowledged"), cls: "border border-dashed border-border-strong text-text-secondary" }
+    return {
+      label: tr("Acknowledged"),
+      cls: "border border-dashed border-border-strong text-text-secondary",
+    }
   return { label: tr("Open"), cls: "bg-surface-active text-text" }
 }
 
@@ -101,7 +113,12 @@ export const IncidentRow: Component<{
       }}
       class="group grid cursor-pointer grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 border-t border-border-subtle py-[9px] pl-4 pr-3.5 first:border-t-0 hover:bg-surface-hover md:grid-cols-[16px_minmax(0,1fr)_96px_52px_84px_208px]"
     >
-      <span class={cx("h-2 w-2 rounded-full", resolved() ? "bg-success" : (DOT[inc().severity] ?? "bg-text-tertiary"))} />
+      <span
+        class={cx(
+          "h-2 w-2 rounded-full",
+          resolved() ? "bg-success" : (DOT[inc().severity] ?? "bg-text-tertiary"),
+        )}
+      />
       <div class="min-w-0">
         <div class="flex min-w-0 items-baseline gap-1.5 text-[13px] text-text">
           <RefTag value={inc().ref} testid={`monitoring-incident-ref-${inc().id}`} />
@@ -111,7 +128,11 @@ export const IncidentRow: Component<{
         </div>
         <Show when={detail()}>
           {(d) => (
-            <div class="mt-px truncate text-[11.5px] text-text-tertiary" title={d()} data-testid={`monitoring-incident-detail-${inc().id}`}>
+            <div
+              class="mt-px truncate text-[11.5px] text-text-tertiary"
+              title={d()}
+              data-testid={`monitoring-incident-detail-${inc().id}`}
+            >
               {d()}
             </div>
           )}
@@ -126,14 +147,23 @@ export const IncidentRow: Component<{
       >
         {tag().label}
       </span>
-      <span class="text-right font-mono text-[11.5px] text-text-secondary max-md:hidden">×{inc().count}</span>
+      <span class="text-right font-mono text-[11.5px] text-text-secondary max-md:hidden">
+        ×{inc().count}
+      </span>
       <span class="text-right text-[12px] text-text-tertiary">
-        {formatAge(resolved() ? (inc().resolvedAt ?? inc().lastSeenAt) : inc().lastSeenAt, props.nowMs)}
+        {formatAge(
+          resolved() ? (inc().resolvedAt ?? inc().lastSeenAt) : inc().lastSeenAt,
+          props.nowMs,
+        )}
       </span>
       <div class="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:hidden">
         <Show when={props.onTriage && !resolved()}>
           <Show when={inc().status === "open"}>
-            <SmallButton testid={`monitoring-ack-${inc().id}`} disabled={props.busy} onClick={(e) => act(e, "incidents_ack")}>
+            <SmallButton
+              testid={`monitoring-ack-${inc().id}`}
+              disabled={props.busy}
+              onClick={(e) => act(e, "incidents_ack")}
+            >
               {tr("Ack")}
             </SmallButton>
           </Show>

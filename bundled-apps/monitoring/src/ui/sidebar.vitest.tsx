@@ -108,7 +108,13 @@ describe("activeRoute / onRowClick", () => {
 
   it("ignores non-primary buttons and an already-cancelled event", () => {
     const go = vi.fn()
-    const base = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, preventDefault: () => {} }
+    const base = {
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: () => {},
+    }
     onRowClick({ ...base, button: 1, defaultPrevented: false }, "/monitoring", go)
     onRowClick({ ...base, button: 0, defaultPrevented: true }, "/monitoring", go)
     expect(go).not.toHaveBeenCalled()

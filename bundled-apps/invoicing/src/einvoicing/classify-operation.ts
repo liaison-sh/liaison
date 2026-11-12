@@ -27,7 +27,11 @@ export function operationCategory(
 }
 
 const LETTER: Record<OperationCategory, "B" | "S" | "M"> = { goods: "B", services: "S", mixed: "M" }
-const STATE: Record<PaymentState, "1" | "2" | "4"> = { due: "1", paid: "2", final_after_deposit: "4" }
+const STATE: Record<PaymentState, "1" | "2" | "4"> = {
+  due: "1",
+  paid: "2",
+  final_after_deposit: "4",
+}
 
 export function bt23(category: OperationCategory, paymentState: PaymentState): Bt23 {
   return `${LETTER[category]}${STATE[paymentState]}` as Bt23

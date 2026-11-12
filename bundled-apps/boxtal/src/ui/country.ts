@@ -48,7 +48,11 @@ export function compareCountry(
 }
 
 /** A stable sort by country (rows of one country keep their order: oldest request first). */
-export function sortByCountry<T>(rows: T[], countryOf: (row: T) => string | null | undefined, dir: "asc" | "desc" | null): T[] {
+export function sortByCountry<T>(
+  rows: T[],
+  countryOf: (row: T) => string | null | undefined,
+  dir: "asc" | "desc" | null,
+): T[] {
   if (!dir) return rows
   return rows
     .map((row, i) => ({ row, i }))

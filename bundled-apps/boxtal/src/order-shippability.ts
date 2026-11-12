@@ -42,7 +42,9 @@ export type UnshippableReason = "order_cancelled" | "order_refunded"
  * whole queue on a transient Shopify read failure; the create-time guard
  * re-reads live, so an unknown here is re-checked before any money is spent.
  */
-export function unshippableReason(facts: OrderShippabilityFacts | null | undefined): UnshippableReason | null {
+export function unshippableReason(
+  facts: OrderShippabilityFacts | null | undefined,
+): UnshippableReason | null {
   if (!facts) return null
   if (typeof facts.cancelled_at === "string" && facts.cancelled_at.trim() !== "") {
     return "order_cancelled"

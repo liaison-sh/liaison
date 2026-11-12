@@ -20,6 +20,7 @@ import type { AppContext } from "@liaison/app-sdk"
 import { channelName, loadDeclaredEmits } from "./lib/emit.testutil"
 import {
   appUninstalledHandler,
+  buyerTaxIdFromNoteAttributes,
   customersCreateHandler,
   draftOrdersCreateHandler,
   draftOrdersDeleteHandler,
@@ -30,7 +31,6 @@ import {
   productsCreateHandler,
   productsUpdateHandler,
   refundsCreateHandler,
-  buyerTaxIdFromNoteAttributes,
   shippingRefundMinor,
 } from "./webhooks"
 
@@ -44,7 +44,13 @@ interface CtxSpy {
   inserts: Array<{ entity: string; data: Record<string, unknown> }>
   updates: Array<{ entity: string; id: string; data: Record<string, unknown> }>
   rows: Map<string, StoredRow[]>
-  emits: Array<{ entity: string; action: string; entityId?: string; data?: unknown; metadata?: Record<string, unknown> }>
+  emits: Array<{
+    entity: string
+    action: string
+    entityId?: string
+    data?: unknown
+    metadata?: Record<string, unknown>
+  }>
   channels: string[]
   resolveContactCalls: Array<{ email?: string; name?: string; externalId?: string }>
   failNextEmit: boolean
@@ -68,7 +74,10 @@ function makeCtx(): { ctx: AppContext; spy: CtxSpy } {
     userId: USER,
     orgId: ORG,
     db: {
-      findMany: async (entity: string, opts?: { where?: Record<string, unknown>; limit?: number }) => {
+      findMany: async (
+        entity: string,
+        opts?: { where?: Record<string, unknown>; limit?: number },
+      ) => {
         const all = spy.rows.get(entity) ?? []
         const where = opts?.where ?? {}
         const filtered = all.filter((r) =>
@@ -111,7 +120,13 @@ function makeCtx(): { ctx: AppContext; spy: CtxSpy } {
     // Enforcing emit: throws (like the kernel rpc-bridge guard) if a handler
     // emits an `${entity}:${action}` not declared in the real app.manifest.json,
     // so a drift between a webhook handler and the manifest fails HERE.
-    emit: async (e: { entity: string; action: string; entityId?: string; data?: unknown; metadata?: Record<string, unknown> }) => {
+    emit: async (e: {
+      entity: string
+      action: string
+      entityId?: string
+      data?: unknown
+      metadata?: Record<string, unknown>
+    }) => {
       if (spy.failNextEmit) {
         spy.failNextEmit = false
         throw new Error("downstream emit failed")
@@ -196,9 +211,7 @@ describe("webhooks — dedup ledger", () => {
   it("ledger row is flipped to 'processed' after successful emit", async () => {
     const { ctx, spy } = makeCtx()
     await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-ok"))
-    const row = (spy.rows.get("webhook_deliveries") ?? []).find(
-      (r) => r.webhookId === "wh-ok",
-    )
+    const row = (spy.rows.get("webhook_deliveries") ?? []).find((r) => r.webhookId === "wh-ok")
     expect(row?.status).toBe("processed")
   })
 })
@@ -243,7 +256,11 @@ describe("webhooks — orders/create contract", () => {
     // Phase-17 contract: metadata (axes) is a top-level field on the emit
     // envelope, not embedded under data. The attention translator reads
     // event.metadata directly (translator.ts axes extraction).
-    const meta = (evt?.metadata ?? {}) as { shopify_webhook_id?: string; market?: string; currency?: string }
+    const meta = (evt?.metadata ?? {}) as {
+      shopify_webhook_id?: string
+      market?: string
+      currency?: string
+    }
     expect(meta.shopify_webhook_id).toBe("wh2")
     expect(meta.market).toBe("EU")
     expect(meta.currency).toBe("EUR")
@@ -263,7 +280,7 @@ describe("webhooks — orders/create contract", () => {
     }
     await ordersCreateHandler(shipTo, ctx, HDR("wh-country-ship"))
     let evt = spy.emits.find((e) => e.entity === "order" && e.action === "created")
-    expect((evt?.data as { customer?: { country?: string | null } }).customer?.country).toBe("US")
+    expect((evt!.data as { customer?: { country?: string | null } }).customer?.country).toBe("US")
 
     const { ctx: ctx2, spy: spy2 } = makeCtx()
     const noShip = {
@@ -273,12 +290,12 @@ describe("webhooks — orders/create contract", () => {
     }
     await ordersCreateHandler(noShip, ctx2, HDR("wh-country-default"))
     evt = spy2.emits.find((e) => e.entity === "order" && e.action === "created")
-    expect((evt?.data as { customer?: { country?: string | null } }).customer?.country).toBe("DE")
+    expect((evt!.data as { customer?: { country?: string | null } }).customer?.country).toBe("DE")
 
     const { ctx: ctx3, spy: spy3 } = makeCtx()
     await ordersCreateHandler(FIXTURE_ORDER, ctx3, HDR("wh-country-none"))
     evt = spy3.emits.find((e) => e.entity === "order" && e.action === "created")
-    expect((evt?.data as { customer?: { country?: string | null } }).customer?.country).toBeNull()
+    expect((evt!.data as { customer?: { country?: string | null } }).customer?.country).toBeNull()
   })
 
   it("resolveContact is called with externalId as a flat string", async () => {
@@ -374,9 +391,7 @@ describe("webhooks — downstream emit failure", () => {
     spy.failNextEmit = true
     const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh4"))
     expect(res.status).toBeGreaterThanOrEqual(500)
-    const row = (spy.rows.get("webhook_deliveries") ?? []).find(
-      (r) => r.webhookId === "wh4",
-    )
+    const row = (spy.rows.get("webhook_deliveries") ?? []).find((r) => r.webhookId === "wh4")
     expect(row?.status).toBe("failed")
     expect((row as { failureCount?: number })?.failureCount).toBeGreaterThan(0)
   })
@@ -391,9 +406,7 @@ describe("webhooks — downstream emit failure", () => {
     const res2 = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-retry"))
     expect(res2.status).toBe(200)
     expect(spy.emits.length).toBe(initialEmits + 1)
-    const row = (spy.rows.get("webhook_deliveries") ?? []).find(
-      (r) => r.webhookId === "wh-retry",
-    )
+    const row = (spy.rows.get("webhook_deliveries") ?? []).find((r) => r.webhookId === "wh-retry")
     expect(row?.status).toBe("processed")
   })
 })
@@ -490,7 +503,9 @@ describe("webhooks — shop-domain validation", () => {
   it("refuses a delivery with no X-Shopify-Shop-Domain header (a stripped-header replay)", async () => {
     const { ctx, spy } = makeCtx()
     await ctx.db.insert("install_metadata", { shopDomain: "demo.myshopify.com" })
-    const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, { "x-shopify-webhook-id": "wh-stripped" })
+    const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, {
+      "x-shopify-webhook-id": "wh-stripped",
+    })
     expect(res.status).toBe(401)
     expect(spy.emits.length).toBe(0)
     expect(spy.rows.get("webhook_deliveries") ?? []).toHaveLength(0)
@@ -587,7 +602,6 @@ describe("webhooks — install_metadata self-heal on write paths (X3d)", () => {
     const rows = spy.rows.get("install_metadata") ?? []
     expect(rows.some((r) => r.shopDomain === "demo.myshopify.com")).toBe(true)
   })
-
 })
 
 describe("webhooks — app/uninstalled heals install_metadata before flipping (X3d)", () => {
@@ -721,11 +735,17 @@ describe("webhooks — refunds/create reconciles the invoice", () => {
     expect(lines.length).toBe(2)
     // 9.99 + 0.83 = 10.82 -> 1082 minor units, gid built from the NESTED order line item's
     // numeric variant_id (a refund_line_items entry carries no variant id of its own).
-    expect(lines[0]).toEqual({ external_id: "gid://shopify/ProductVariant/8101", amount_minor: "1082" })
+    expect(lines[0]).toEqual({
+      external_id: "gid://shopify/ProductVariant/8101",
+      amount_minor: "1082",
+    })
     // 15.00 + 1.25 = 16.25 -> 1625 minor units. The two lines' shares (1082, 1625) do not split
     // the transaction amount evenly -- each is computed from its OWN subtotal/tax, not a division
     // of the refund total.
-    expect(lines[1]).toEqual({ external_id: "gid://shopify/ProductVariant/8102", amount_minor: "1625" })
+    expect(lines[1]).toEqual({
+      external_id: "gid://shopify/ProductVariant/8102",
+      amount_minor: "1625",
+    })
   })
 
   it("a refund_line_items entry with no variant (custom line) emits a null external_id, never a guess", async () => {
@@ -741,7 +761,10 @@ describe("webhooks — refunds/create reconciles the invoice", () => {
     await refundsCreateHandler(customLineRefund, ctx, HDR("wh-refund-custom-line"))
     const created = spy.emits.find((e) => e.entity === "refund" && e.action === "created")
     const data = (created?.data ?? {}) as Record<string, unknown>
-    const lines = data.refund_line_items as Array<{ external_id: string | null; amount_minor: string }>
+    const lines = data.refund_line_items as Array<{
+      external_id: string | null
+      amount_minor: string
+    }>
     expect(lines[0]).toEqual({ external_id: null, amount_minor: "500" })
   })
 })
@@ -849,7 +872,10 @@ describe("webhooks - draft_orders/create, update, delete (quotes-are-draft-order
     expect(lineItems[0]?.productId).toBe("gid://shopify/Product/7001")
     // quantity(2) * price(60.00) - discount.amount(6.00) = 114.00
     expect(lineItems[0]?.discountedTotal).toBe("114.00")
-    expect(evt?.metadata).toMatchObject({ shopify_webhook_id: "wh-do-create-shape", currency: "EUR" })
+    expect(evt?.metadata).toMatchObject({
+      shopify_webhook_id: "wh-do-create-shape",
+      currency: "EUR",
+    })
   })
 
   it("draft_orders/create emits poNumber when a person typed a PO on the draft in the Shopify admin", async () => {
@@ -858,7 +884,11 @@ describe("webhooks - draft_orders/create, update, delete (quotes-are-draft-order
     // learns of it ONLY from this webhook event. NormalizedDraftOrder is camelCase throughout
     // (draftOrderId, orderId, orderName, ...), so the field is poNumber, not po_number.
     const { ctx, spy } = makeCtx()
-    await draftOrdersCreateHandler({ ...FIXTURE_DRAFT_ORDER, po_number: "PO-7731" }, ctx, HDR("wh-do-po-present"))
+    await draftOrdersCreateHandler(
+      { ...FIXTURE_DRAFT_ORDER, po_number: "PO-7731" },
+      ctx,
+      HDR("wh-do-po-present"),
+    )
     const evt = spy.emits.find((e) => e.entity === "draft_order" && e.action === "created")
     const data = evt?.data as Record<string, unknown>
     expect(data.poNumber).toBe("PO-7731")
@@ -893,7 +923,7 @@ describe("webhooks - draft_orders/create, update, delete (quotes-are-draft-order
     expect(res.status).toBe(200)
     const evt = spy.emits.find((e) => e.entity === "draft_order" && e.action === "updated")
     expect(evt?.entityId).toBe("gid://shopify/DraftOrder/3001")
-    expect((evt?.data as Record<string, unknown>).status).toBe("invoice_sent")
+    expect((evt!.data as Record<string, unknown>).status).toBe("invoice_sent")
     expect(spy.channels).toContain(channelName("shopify", "draft_order", "updated"))
   })
 
@@ -1005,7 +1035,14 @@ describe("webhooks — no claim before the work (no run-wide transaction)", () =
   it("a `processing` row a killed run left behind does not block the redelivery", async () => {
     const { ctx, spy } = makeCtx()
     spy.rows.set("webhook_deliveries", [
-      { id: "stale", webhookId: "wh-stale", topic: "orders/create", shopDomain: "demo.myshopify.com", status: "processing", failureCount: 0 },
+      {
+        id: "stale",
+        webhookId: "wh-stale",
+        topic: "orders/create",
+        shopDomain: "demo.myshopify.com",
+        status: "processing",
+        failureCount: 0,
+      },
     ])
     const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-stale"))
     expect(res.status).toBe(200)
@@ -1029,9 +1066,7 @@ describe("webhooks — app/uninstalled flips connectionStatus", () => {
     )
     expect(result.status).toBe(200)
     // connectionStatus must be flipped to 'disconnected'.
-    const upd = spy.updates.find(
-      (u) => u.entity === "install_metadata" && u.id === "meta-1",
-    )
+    const upd = spy.updates.find((u) => u.entity === "install_metadata" && u.id === "meta-1")
     expect(upd).toBeDefined()
     expect(upd?.data.connectionStatus).toBe("disconnected")
     // The event must still be emitted.
@@ -1121,7 +1156,7 @@ describe("webhooks — orders/create tax + address + shipping enrichment (invoic
     expect(shipping).toHaveLength(1)
     expect(shipping[0]!.title).toBe("DHL Express")
     expect((shipping[0]!.priceSet as Record<string, unknown>).amount).toBe("29.99")
-    expect(((shipping[0]!.taxLines as Array<Record<string, unknown>>)[0]!).rate).toBe(0.2)
+    expect((shipping[0]!.taxLines as Array<Record<string, unknown>>)[0]!.rate).toBe(0.2)
   })
 
   it("legacy payloads (no tax fields) emit taxesIncluded=false, requiresShipping=true, null addresses, empty shippingLines", async () => {
@@ -1155,7 +1190,9 @@ describe("webhooks: invoicing tax facts (marketplace tax, buyer VAT id, shipping
             quantity: 1,
             price: "899.00",
             requires_shipping: true,
-            tax_lines: [{ title: "CA State Tax", rate: 0.0725, price: "65.18", channel_liable: true }],
+            tax_lines: [
+              { title: "CA State Tax", rate: 0.0725, price: "65.18", channel_liable: true },
+            ],
           },
         ],
         shipping_lines: [],
@@ -1164,7 +1201,9 @@ describe("webhooks: invoicing tax facts (marketplace tax, buyer VAT id, shipping
       HDR("wh-channel-liable"),
     )
     const evt = spy.emits.find((e) => e.entity === "order" && e.action === "created")
-    const li = ((evt?.data as Record<string, unknown>).lineItems as Array<Record<string, unknown>>)[0]!
+    const li = (
+      (evt!.data as Record<string, unknown>).lineItems as Array<Record<string, unknown>>
+    )[0]!
     const tl = (li.taxLines as Array<Record<string, unknown>>)[0]!
     expect(tl.channelLiable).toBe(true)
     expect(tl.amount).toBe("65.18")
@@ -1186,12 +1225,14 @@ describe("webhooks: invoicing tax facts (marketplace tax, buyer VAT id, shipping
       HDR("wh-buyer-vat"),
     )
     const evt = spy.emits.find((e) => e.entity === "order" && e.action === "created")
-    expect((evt?.data as Record<string, unknown>).buyerTaxId).toBe("IT01234567890")
+    expect((evt!.data as Record<string, unknown>).buyerTaxId).toBe("IT01234567890")
   })
 
   it("an attribute that is not a tax id is never read as one", () => {
     expect(buyerTaxIdFromNoteAttributes([{ name: "Gift message", value: "FR123" }])).toBeNull()
-    expect(buyerTaxIdFromNoteAttributes([{ name: "VAT number", value: " DE123456789 " }])).toBe("DE123456789")
+    expect(buyerTaxIdFromNoteAttributes([{ name: "VAT number", value: " DE123456789 " }])).toBe(
+      "DE123456789",
+    )
     expect(buyerTaxIdFromNoteAttributes(undefined)).toBeNull()
   })
 
@@ -1215,7 +1256,7 @@ describe("webhooks: invoicing tax facts (marketplace tax, buyer VAT id, shipping
       HDR("wh-refund-shipping-lines"),
     )
     const created = spy.emits.find((e) => e.entity === "refund" && e.action === "created")
-    expect((created?.data as Record<string, unknown>).shipping_refund_minor).toBe("8300")
+    expect((created!.data as Record<string, unknown>).shipping_refund_minor).toBe("8300")
     expect(
       shippingRefundMinor(
         {

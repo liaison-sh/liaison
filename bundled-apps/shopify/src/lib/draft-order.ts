@@ -271,7 +271,9 @@ function parseTags(tags: string | null | undefined): string[] {
     .filter((t) => t.length > 0)
 }
 
-function normalizeRestAddress(a: ShopifyDraftOrderAddressPayload | null | undefined): NormalizedAddress | null {
+function normalizeRestAddress(
+  a: ShopifyDraftOrderAddressPayload | null | undefined,
+): NormalizedAddress | null {
   if (!a) return null
   const out: NormalizedAddress = {
     name: a.name ?? null,
@@ -472,7 +474,11 @@ export interface ShopifyDraftOrderGraphQLNode {
     amountSet?: MoneyBag | null
   } | null
   shippingLine?: { title?: string | null; originalPriceSet?: MoneyBag | null } | null
-  taxLines?: Array<{ title?: string | null; rate?: number | null; priceSet?: MoneyBag | null }> | null
+  taxLines?: Array<{
+    title?: string | null
+    rate?: number | null
+    priceSet?: MoneyBag | null
+  }> | null
   billingAddress?: ShopifyDraftOrderGraphQLAddress | null
   shippingAddress?: ShopifyDraftOrderGraphQLAddress | null
   customer?: {
@@ -596,7 +602,9 @@ function normalizeGraphQLAddress(
   return hasContent ? out : null
 }
 
-function normalizeGraphQLLineItem(node: ShopifyDraftOrderGraphQLLineItemNode): NormalizedDraftOrderLineItem {
+function normalizeGraphQLLineItem(
+  node: ShopifyDraftOrderGraphQLLineItemNode,
+): NormalizedDraftOrderLineItem {
   return {
     id: node.id ?? null,
     title: node.title ?? "",
@@ -677,7 +685,10 @@ export function normalizeDraftOrderNode(
         }
       : null,
     shippingLine: node.shippingLine
-      ? { title: node.shippingLine.title ?? null, price: moneyAmount(node.shippingLine.originalPriceSet) }
+      ? {
+          title: node.shippingLine.title ?? null,
+          price: moneyAmount(node.shippingLine.originalPriceSet),
+        }
       : null,
     taxLines: (node.taxLines ?? []).map((t) => ({
       title: t.title ?? null,

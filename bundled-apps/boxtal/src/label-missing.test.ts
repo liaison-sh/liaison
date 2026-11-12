@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import type { BoxtalToolCtx } from "./ctx"
-import { checkMissingLabels, LABEL_MISSING_AFTER_MS, LABEL_MISSING_RECHECK_MS } from "./label-missing"
+import {
+  checkMissingLabels,
+  LABEL_MISSING_AFTER_MS,
+  LABEL_MISSING_RECHECK_MS,
+} from "./label-missing"
 import { createMockDb } from "./test-db"
 
 const T0 = Date.parse("2026-11-03T09:00:00Z")
@@ -23,7 +27,12 @@ function boughtRow(id: string, minutesAgo: number, extra: Record<string, unknown
 
 function makeCtx(rows: Array<Record<string, unknown>>, boxtalLabels: string[] = []) {
   const db = createMockDb({ seed: { shipment: rows } })
-  const events: Array<{ entity: string; action: string; entityId?: string; data?: Record<string, unknown> }> = []
+  const events: Array<{
+    entity: string
+    action: string
+    entityId?: string
+    data?: Record<string, unknown>
+  }> = []
   const connected = boxtalLabels.length > 0
   const documentReads: string[] = []
   const ctx: BoxtalToolCtx = {
@@ -32,14 +41,32 @@ function makeCtx(rows: Array<Record<string, unknown>>, boxtalLabels: string[] = 
     fetch: async (url: string) => {
       if (url.includes("/shipping-order/")) documentReads.push(url)
       if (url.includes("/iam/account-app/token")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+        }
       }
       const id = (url.split("/shipping-order/")[1] ?? "").split("/")[0] ?? ""
-      const content = boxtalLabels.includes(id) ? [{ url: "https://document.boxtal.com/l.pdf", type: "LABEL", format: "PDF" }] : []
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content }) }
+      const content = boxtalLabels.includes(id)
+        ? [{ url: "https://document.boxtal.com/l.pdf", type: "LABEL", format: "PDF" }]
+        : []
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content }),
+      }
     },
     connections: connected
-      ? { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } }
+      ? {
+          boxtal: {
+            getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+            getToken: async () => {
+              throw new Error("no")
+            },
+            getAccounts: async () => [],
+          },
+        }
       : {},
     config: { get: async () => null, has: async () => false },
     executeTool: async () => ({ ok: true, data: null }) as never,
@@ -63,14 +90,24 @@ describe("checkMissingLabels", () => {
     const first = await checkMissingLabels(ctx, { now: T0, heal: false })
     expect(first).toEqual({ missing: 2, alerted: true, resolved: false })
     expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ entity: "queue", action: "labels_missing", entityId: "ready" })
+    expect(events[0]).toMatchObject({
+      entity: "queue",
+      action: "labels_missing",
+      entityId: "ready",
+    })
     expect(events[0]!.data).toMatchObject({ count: 2, resolved: false })
     expect(String(events[0]!.data!.orders)).toContain("#1")
 
     // Next pass, nothing new: no second item.
     await checkMissingLabels(ctx, { now: T0 + 60_000, heal: false })
     expect(events).toHaveLength(1)
-    expect(db.__all("shipment").filter((r) => r.label_missing_alerted).map((r) => r.id).sort()).toEqual(["1", "2"])
+    expect(
+      db
+        .__all("shipment")
+        .filter((r) => r.label_missing_alerted)
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(["1", "2"])
   })
 
   it("does nothing before the 15 minutes are up", async () => {
@@ -92,7 +129,12 @@ describe("checkMissingLabels", () => {
     await db.update("shipment", "2", { documents: [{ type: "LABEL", format: "PDF" }] })
     const done = await checkMissingLabels(ctx, { now: T0, heal: false })
     expect(done).toEqual({ missing: 0, alerted: false, resolved: true })
-    expect(events.at(-1)).toMatchObject({ entity: "queue", action: "labels_missing", entityId: "ready", data: { resolved: true } })
+    expect(events.at(-1)).toMatchObject({
+      entity: "queue",
+      action: "labels_missing",
+      entityId: "ready",
+      data: { resolved: true },
+    })
     expect(db.__all("shipment").some((r) => r.label_missing_alerted)).toBe(false)
   })
 

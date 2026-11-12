@@ -27,6 +27,8 @@
 //
 // Nothing is ever derived or defaulted: a value the sources do not hold is null and the template
 // prints its blank.
+
+import { CARRIER_BRANDS } from "./carriers"
 import type { BoxtalToolCtx } from "./ctx"
 import { currencyExponent } from "./money"
 import {
@@ -38,7 +40,6 @@ import {
   readPrintSnapshot,
   trackingLabelOf,
 } from "./print-record"
-import { CARRIER_BRANDS } from "./carriers"
 import { refKey, resolveVariantSkus, SHOPIFY_VARIANT_GID } from "./product-attributes"
 import { worklistCandidates } from "./queues"
 import { shipmentDraftCreate } from "./shipment"
@@ -76,7 +77,10 @@ export function dateText(value: string | null | undefined): string | null {
 }
 
 /** 1234.5, "USD" -> "USD 1,234.50"; null when either is missing. */
-export function moneyText(value: number | null | undefined, currency: string | null | undefined): string | null {
+export function moneyText(
+  value: number | null | undefined,
+  currency: string | null | undefined,
+): string | null {
   if (value == null || !Number.isFinite(value) || !currency) return null
   const digits = currencyExponent(currency)
   const [int, frac] = Math.abs(value).toFixed(digits).split(".")
@@ -162,8 +166,14 @@ function text(v: unknown): string | null {
 }
 
 /** The order's live outbound shipment, the newest when there are several batches. */
-async function liveShipmentFor(ctx: BoxtalToolCtx, documentRef: string): Promise<ShipmentRowView | null> {
-  const rows = (await ctx.db.findMany("shipment", { where: { document_ref: documentRef }, limit: 50 })) as ShipmentRowView[]
+async function liveShipmentFor(
+  ctx: BoxtalToolCtx,
+  documentRef: string,
+): Promise<ShipmentRowView | null> {
+  const rows = (await ctx.db.findMany("shipment", {
+    where: { document_ref: documentRef },
+    limit: 50,
+  })) as ShipmentRowView[]
   const live = rows
     .filter((r) => (r.kind ?? "outbound") !== "return" && r.order_status !== "CANCELLED")
     .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
@@ -187,7 +197,11 @@ async function invoiceFor(ctx: BoxtalToolCtx, documentRef: string): Promise<Invo
  * cannot be read keeps its id (logged), never failing the record. `cache` writes what the store
  * answered into the cache (a read-only caller passes false).
  */
-async function merchantSkusOf(ctx: BoxtalToolCtx, ids: string[], cache: boolean): Promise<Map<string, string>> {
+async function merchantSkusOf(
+  ctx: BoxtalToolCtx,
+  ids: string[],
+  cache: boolean,
+): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   const refs = [...new Set(ids.filter((id) => id.startsWith(SHOPIFY_VARIANT_GID)))].map((id) => ({
     product_source: "shopify",
@@ -204,21 +218,32 @@ async function merchantSkusOf(ctx: BoxtalToolCtx, ids: string[], cache: boolean)
     ctx.logger?.warn?.("order print record: variant SKU lookup failed", { err: String(err) })
   }
   const unresolved = refs.filter((r) => !out.has(r.product_id)).map((r) => r.product_id)
-  if (unresolved.length > 0) ctx.logger?.warn?.("order print record: no SKU for these store variants", { variants: unresolved })
+  if (unresolved.length > 0)
+    ctx.logger?.warn?.("order print record: no SKU for these store variants", {
+      variants: unresolved,
+    })
   return out
 }
 
 /** Product attributes by SKU (kernel), one call for the record's SKUs; empty on any failure. */
-async function attributesBySku(ctx: BoxtalToolCtx, skus: string[]): Promise<Map<string, Record<string, string>>> {
+async function attributesBySku(
+  ctx: BoxtalToolCtx,
+  skus: string[],
+): Promise<Map<string, Record<string, string>>> {
   const out = new Map<string, Record<string, string>>()
   if (skus.length === 0) return out
   try {
     const env = await ctx.executeTool("kernel:product_attributes_list", { skus })
     if (env.status !== "completed") return out
     const rows =
-      (env.result as { attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }> } | null)?.attributes ?? []
+      (
+        env.result as {
+          attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }>
+        } | null
+      )?.attributes ?? []
     for (const a of rows) {
-      if (typeof a.sku !== "string" || typeof a.key !== "string" || typeof a.value !== "string") continue
+      if (typeof a.sku !== "string" || typeof a.key !== "string" || typeof a.value !== "string")
+        continue
       const attrs = out.get(a.sku) ?? {}
       attrs[a.key] = a.value
       out.set(a.sku, attrs)
@@ -232,10 +257,15 @@ async function attributesBySku(ctx: BoxtalToolCtx, skus: string[]): Promise<Map<
 /** The address lines a declaration prints, from the snapshot's parts (nothing invented). */
 export function addressLines(order: PrintSnapshot["order"]): string[] {
   const a = order.address
-  const cityLine = [a.city, [a.state, a.postal_code].filter(Boolean).join(" ")].filter(Boolean).join(", ")
-  return [order.company, a.street, cityLine || null, countryNameEn(a.country_iso2) ?? a.country_iso2].filter(
-    (l): l is string => typeof l === "string" && l.trim() !== "",
-  )
+  const cityLine = [a.city, [a.state, a.postal_code].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ")
+  return [
+    order.company,
+    a.street,
+    cityLine || null,
+    countryNameEn(a.country_iso2) ?? a.country_iso2,
+  ].filter((l): l is string => typeof l === "string" && l.trim() !== "")
 }
 
 /**
@@ -252,7 +282,8 @@ export function composeOrderRecord(args: {
 }): OrderPrintRecord {
   const { snapshot, invoice, shipment } = args
   const family = snapshot.carrier_family ?? (shipment ? carrierFamilyOf(shipment.offer_code) : null)
-  const carrierName = snapshot.carrier_name ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null
+  const carrierName =
+    snapshot.carrier_name ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null
   const tracking = text(shipment?.tracking_number)
   const label = trackingLabelOf(family)
   const currency = snapshot.lines.find((l) => l.currency)?.currency ?? text(invoice?.currency)
@@ -264,7 +295,10 @@ export function composeOrderRecord(args: {
     attributes: (l.sku ? args.attributes.get(l.sku) : undefined) ?? {},
   }))
   const values = lines.map((l) => l.value)
-  const total = values.length > 0 && values.every((v) => v != null) ? values.reduce<number>((n, v) => n + (v ?? 0), 0) : null
+  const total =
+    values.length > 0 && values.every((v) => v != null)
+      ? values.reduce<number>((n, v) => n + (v ?? 0), 0)
+      : null
   const digits = currency ? currencyExponent(currency) : 2
   const value = total == null ? null : Math.round(total * 10 ** digits) / 10 ** digits
   const iso2 = snapshot.order.address.country_iso2
@@ -320,7 +354,8 @@ export type OrderDraftView = Parameters<typeof buildPrintSnapshot>[0] & {
   } | null
   recipient_country?: string | null
 }
-const readDraft: DraftReader = (ctx, documentRef) => shipmentDraftCreate(ctx, { document_ref: documentRef })
+const readDraft: DraftReader = (ctx, documentRef) =>
+  shipmentDraftCreate(ctx, { document_ref: documentRef })
 
 export interface RecordOptions {
   /** The day printed as the issue date (ISO); now when unset. */
@@ -336,7 +371,13 @@ export async function orderPrintRecordGet(
   opts: RecordOptions = {},
 ): Promise<OrderPrintRecord | { error: { code: string; message: string } }> {
   const ref = String(input.document_ref ?? "").trim()
-  if (!ref) return { error: { code: "invalid_params", message: "document_ref is required (the order's goods invoice)." } }
+  if (!ref)
+    return {
+      error: {
+        code: "invalid_params",
+        message: "document_ref is required (the order's goods invoice).",
+      },
+    }
   const shipment = await liveShipmentFor(ctx, ref)
   let snapshot = shipment ? readPrintSnapshot(shipment.queue_facts) : null
   if (!snapshot) {
@@ -387,10 +428,18 @@ export async function orderPrintRecordGet(
     opts.cacheVariantSkus === true,
   )
   if (merchant.size > 0) {
-    snapshot = { ...snapshot, lines: snapshot.lines.map((l) => (l.sku && merchant.has(l.sku) ? { ...l, sku: merchant.get(l.sku)! } : l)) }
+    snapshot = {
+      ...snapshot,
+      lines: snapshot.lines.map((l) =>
+        l.sku && merchant.has(l.sku) ? { ...l, sku: merchant.get(l.sku)! } : l,
+      ),
+    }
   }
   const skus = [...new Set(snapshot.lines.map((l) => l.sku).filter((s): s is string => s != null))]
-  const [invoice, attributes] = await Promise.all([invoiceFor(ctx, ref), attributesBySku(ctx, skus)])
+  const [invoice, attributes] = await Promise.all([
+    invoiceFor(ctx, ref),
+    attributesBySku(ctx, skus),
+  ])
   return composeOrderRecord({
     documentRef: ref,
     snapshot,
@@ -460,7 +509,10 @@ export function readOrderDocuments(raw: unknown): OrderDocument[] {
   if (!Array.isArray(value)) return []
   return value.filter(
     (d): d is OrderDocument =>
-      d != null && typeof d === "object" && typeof d.template_id === "string" && typeof d.file_id === "string",
+      d != null &&
+      typeof d === "object" &&
+      typeof d.template_id === "string" &&
+      typeof d.file_id === "string",
   )
 }
 
@@ -482,11 +534,21 @@ interface PrepStateView {
 }
 
 async function prepStateRow(ctx: BoxtalToolCtx, documentRef: string): Promise<PrepStateView> {
-  const rows = (await ctx.db.findMany("prep_state", { where: { document_ref: documentRef }, limit: 1 })) as PrepStateView[]
+  const rows = (await ctx.db.findMany("prep_state", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as PrepStateView[]
   if (rows[0]) return rows[0]
   // The order's file parent: the row the worklist keeps per order (defaults as prep.ts writes them).
-  await ctx.db.insert("prep_state", { document_ref: documentRef, category: "sale", excluded: false })
-  const again = (await ctx.db.findMany("prep_state", { where: { document_ref: documentRef }, limit: 1 })) as PrepStateView[]
+  await ctx.db.insert("prep_state", {
+    document_ref: documentRef,
+    category: "sale",
+    excluded: false,
+  })
+  const again = (await ctx.db.findMany("prep_state", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as PrepStateView[]
   if (!again[0]) throw new Error(`no prep_state row for ${documentRef}`)
   return again[0]
 }
@@ -496,7 +558,13 @@ interface MatchEnvelope {
 }
 
 interface PrintEnvelope {
-  files?: Array<{ templateId?: string; templateName?: string; fileId?: string; filename?: string; blanks?: Array<{ label?: string }> }>
+  files?: Array<{
+    templateId?: string
+    templateName?: string
+    fileId?: string
+    filename?: string
+    blanks?: Array<{ label?: string }>
+  }>
 }
 
 /**
@@ -508,18 +576,38 @@ export async function generateOrderDocuments(
   documentRefs: readonly string[],
   opts: RecordOptions = {},
 ): Promise<GenerateResult[]> {
-  const refs = [...new Set(documentRefs.filter((r) => typeof r === "string" && r !== ""))].slice(0, GENERATE_BATCH)
+  const refs = [...new Set(documentRefs.filter((r) => typeof r === "string" && r !== ""))].slice(
+    0,
+    GENERATE_BATCH,
+  )
   if (refs.length === 0) return []
   const today = opts.today ?? new Date().toISOString()
   const records = new Map<string, OrderPrintRecord>()
   const results = new Map<string, GenerateResult>()
   for (const ref of refs) {
     try {
-      const rec = await orderPrintRecordGet(ctx, { document_ref: ref }, { cacheVariantSkus: true, ...opts, today })
-      if ("error" in rec) results.set(ref, { document_ref: ref, needed: [], printed: [], unchanged: [], error: rec.error.message })
+      const rec = await orderPrintRecordGet(
+        ctx,
+        { document_ref: ref },
+        { cacheVariantSkus: true, ...opts, today },
+      )
+      if ("error" in rec)
+        results.set(ref, {
+          document_ref: ref,
+          needed: [],
+          printed: [],
+          unchanged: [],
+          error: rec.error.message,
+        })
       else records.set(ref, rec)
     } catch (err) {
-      results.set(ref, { document_ref: ref, needed: [], printed: [], unchanged: [], error: String(err) })
+      results.set(ref, {
+        document_ref: ref,
+        needed: [],
+        printed: [],
+        unchanged: [],
+        error: String(err),
+      })
     }
   }
   if (records.size === 0) return refs.map((r) => results.get(r)!)
@@ -541,27 +629,43 @@ export async function generateOrderDocuments(
       if (typeof m.recordId !== "string") continue
       needs.set(
         m.recordId,
-        (m.templates ?? []).flatMap((t) => (typeof t.id === "string" ? [{ id: t.id, name: String(t.name ?? "") }] : [])),
+        (m.templates ?? []).flatMap((t) =>
+          typeof t.id === "string" ? [{ id: t.id, name: String(t.name ?? "") }] : [],
+        ),
       )
     }
   } catch (err) {
     ctx.logger?.warn?.("order documents: rules match failed", { err: String(err) })
     for (const ref of records.keys())
-      results.set(ref, { document_ref: ref, needed: [], printed: [], unchanged: [], error: String(err) })
+      results.set(ref, {
+        document_ref: ref,
+        needed: [],
+        printed: [],
+        unchanged: [],
+        error: String(err),
+      })
     return refs.map((r) => results.get(r)!)
   }
 
   for (const [ref, record] of records) {
     const needed = needs.get(ref) ?? []
-    const result: GenerateResult = { document_ref: ref, needed: needed.map((t) => t.id), printed: [], unchanged: [] }
+    const result: GenerateResult = {
+      document_ref: ref,
+      needed: needed.map((t) => t.id),
+      printed: [],
+      unchanged: [],
+    }
     results.set(ref, result)
     try {
-      const row = needed.length > 0 ? await prepStateRow(ctx, ref) : await existingPrepState(ctx, ref)
+      const row =
+        needed.length > 0 ? await prepStateRow(ctx, ref) : await existingPrepState(ctx, ref)
       if (!row) continue
       const previous = readOrderDocuments(row.documents)
       const fingerprint = recordFingerprint(record)
       const kept = previous.filter((d) => needed.some((t) => t.id === d.template_id))
-      const stale = needed.filter((t) => !kept.some((d) => d.template_id === t.id && d.fingerprint === fingerprint))
+      const stale = needed.filter(
+        (t) => !kept.some((d) => d.template_id === t.id && d.fingerprint === fingerprint),
+      )
       result.unchanged = needed.filter((t) => !stale.includes(t)).map((t) => t.id)
       let fresh: OrderDocument[] = []
       if (stale.length > 0) {
@@ -596,20 +700,31 @@ export async function generateOrderDocuments(
       }
       // In the rules' order: the fresh paper replaces the old one of the same template.
       const next = needed.flatMap((t) => {
-        const doc = fresh.find((d) => d.template_id === t.id) ?? kept.find((d) => d.template_id === t.id)
+        const doc =
+          fresh.find((d) => d.template_id === t.id) ?? kept.find((d) => d.template_id === t.id)
         return doc ? [doc] : []
       })
-      if (stableJson(next) !== stableJson(previous)) await ctx.db.update("prep_state", row.id, { documents: next })
+      if (stableJson(next) !== stableJson(previous))
+        await ctx.db.update("prep_state", row.id, { documents: next })
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err)
-      ctx.logger?.warn?.("order documents: generation failed", { document_ref: ref, err: result.error })
+      ctx.logger?.warn?.("order documents: generation failed", {
+        document_ref: ref,
+        err: result.error,
+      })
     }
   }
   return refs.map((r) => results.get(r)!)
 }
 
-async function existingPrepState(ctx: BoxtalToolCtx, documentRef: string): Promise<PrepStateView | null> {
-  const rows = (await ctx.db.findMany("prep_state", { where: { document_ref: documentRef }, limit: 1 })) as PrepStateView[]
+async function existingPrepState(
+  ctx: BoxtalToolCtx,
+  documentRef: string,
+): Promise<PrepStateView | null> {
+  const rows = (await ctx.db.findMany("prep_state", {
+    where: { document_ref: documentRef },
+    limit: 1,
+  })) as PrepStateView[]
   return rows[0] ?? null
 }
 
@@ -640,11 +755,19 @@ export async function generateOrderDocumentsJobHandler(
 ): Promise<{ orders: number; printed: number; errors: number }> {
   let refs = payload?.document_refs ?? []
   if (refs.length === 0) {
-    const { candidates } = await worklistCandidates(ctx, { source: "cache", bestEffortWrites: true })
-    const shipments = (await ctx.db.findMany("shipment", { where: { tracking_status: null }, limit: 500 })) as ShipmentRowView[]
+    const { candidates } = await worklistCandidates(ctx, {
+      source: "cache",
+      bestEffortWrites: true,
+    })
+    const shipments = (await ctx.db.findMany("shipment", {
+      where: { tracking_status: null },
+      limit: 500,
+    })) as ShipmentRowView[]
     refs = [
       ...candidates.map((c) => c.anchor_ref ?? ""),
-      ...shipments.filter((s) => (s.kind ?? "outbound") !== "return").map((s) => s.document_ref ?? ""),
+      ...shipments
+        .filter((s) => (s.kind ?? "outbound") !== "return")
+        .map((s) => s.document_ref ?? ""),
     ]
   }
   const results = await generateOrderDocuments(ctx, refs)

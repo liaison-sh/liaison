@@ -256,7 +256,10 @@ describe("normalizeDraftOrderNode", () => {
             taxable: true,
             requiresShipping: true,
             quantity: 3,
-            variant: { id: "gid://shopify/ProductVariant/9200", product: { id: "gid://shopify/Product/7400" } },
+            variant: {
+              id: "gid://shopify/ProductVariant/9200",
+              product: { id: "gid://shopify/Product/7400" },
+            },
             originalUnitPriceSet: { presentmentMoney: { amount: "80.00" } },
             discountedTotalSet: { presentmentMoney: { amount: "220.00" } },
             appliedDiscount: {
@@ -343,7 +346,11 @@ describe("normalizeDraftOrderNode", () => {
     expect(li?.productId).toBe("gid://shopify/Product/7400")
     expect(li?.unitPrice).toBe("80.00")
     expect(li?.discountedTotal).toBe("220.00")
-    expect(li?.appliedDiscount).toEqual({ valueType: "FIXED_AMOUNT", value: "20.00", amount: "20.00" })
+    expect(li?.appliedDiscount).toEqual({
+      valueType: "FIXED_AMOUNT",
+      value: "20.00",
+      amount: "20.00",
+    })
   })
 
   const COMPLETED_NODE: ShopifyDraftOrderGraphQLNode = {
@@ -386,7 +393,14 @@ describe("normalizeDraftOrderNode: the B2B buyer", () => {
           location: {
             name: "Head office",
             taxSettings: { taxRegistrationId: "FR99887766554", taxExempt: true },
-            billingAddress: { recipient: "Accounts", companyName: "Buyer Industries SAS", address1: "5 rue Exemple", zip: "69002", city: "Lyon", countryCode: "FR" },
+            billingAddress: {
+              recipient: "Accounts",
+              companyName: "Buyer Industries SAS",
+              address1: "5 rue Exemple",
+              zip: "69002",
+              city: "Lyon",
+              countryCode: "FR",
+            },
             shippingAddress: null,
           },
         },
@@ -416,7 +430,9 @@ describe("normalizeDraftOrderNode: the B2B buyer", () => {
   })
 
   it("a consumer draft (the Customer arm reads as {}) has no company", () => {
-    expect(normalizeDraftOrderNode({ ...base, purchasingEntity: {} }, null).purchasingCompany).toBeNull()
+    expect(
+      normalizeDraftOrderNode({ ...base, purchasingEntity: {} }, null).purchasingCompany,
+    ).toBeNull()
     expect(normalizeDraftOrderNode(base, null).purchasingCompany).toBeNull()
   })
 
@@ -431,7 +447,9 @@ describe("normalizeDraftOrderNode: the B2B buyer", () => {
                 id: "l1",
                 title: "Item",
                 quantity: 1,
-                originalUnitPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } },
+                originalUnitPriceSet: {
+                  presentmentMoney: { amount: "699.00", currencyCode: "EUR" },
+                },
                 priceOverride: { amount: "629.00", currencyCode: "EUR" },
               },
             },
@@ -440,6 +458,10 @@ describe("normalizeDraftOrderNode: the B2B buyer", () => {
       },
       null,
     )
-    expect(norm.lineItems[0]).toMatchObject({ unitPrice: "629.00", priceOverride: "629.00", appliedDiscount: null })
+    expect(norm.lineItems[0]).toMatchObject({
+      unitPrice: "629.00",
+      priceOverride: "629.00",
+      appliedDiscount: null,
+    })
   })
 })

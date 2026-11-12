@@ -26,7 +26,8 @@ describe("ads manifest skills block sync (drift guard)", () => {
 
   it("preserves the existing ads-playbook skill untouched", () => {
     const manifest = loadManifest()
-    const existingSkills = (manifest.skills as Record<string, { kind: string; enabledByDefault: boolean }>) ?? {}
+    const existingSkills =
+      (manifest.skills as Record<string, { kind: string; enabledByDefault: boolean }>) ?? {}
     const playbook = existingSkills["ads-playbook"]
     expect(playbook).toBeDefined()
     expect(playbook?.kind).toBe("guide")

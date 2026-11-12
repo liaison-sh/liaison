@@ -6,19 +6,31 @@ import { deriveKind, ensureDerivedIdentity, hasLegalFormToken } from "./identity
 
 describe("deriveKind", () => {
   test("a VAT id derives business", () => {
-    expect(deriveKind({ vat_id: "FR68900000001", legal_name: "Exemple", country: "FR", origin: "manual" })).toBe(
-      "business",
-    )
+    expect(
+      deriveKind({
+        vat_id: "FR68900000001",
+        legal_name: "Exemple",
+        country: "FR",
+        origin: "manual",
+      }),
+    ).toBe("business")
   })
 
   test("a company on the contact derives business", () => {
-    expect(deriveKind({ company: "Exemple Atelier", legal_name: "Celine Exemple", country: "FR", origin: "manual" })).toBe(
-      "business",
-    )
+    expect(
+      deriveKind({
+        company: "Exemple Atelier",
+        legal_name: "Celine Exemple",
+        country: "FR",
+        origin: "manual",
+      }),
+    ).toBe("business")
   })
 
   test("a buyer outside France with no signal is an individual", () => {
-    expect(deriveKind({ legal_name: "Alex Example", country: "DE", origin: "manual" })).toBe("individual")
+    expect(deriveKind({ legal_name: "Alex Example", country: "DE", origin: "manual" })).toBe(
+      "individual",
+    )
   })
 
   test("a French buyer with no signal is unknown on a manual document", () => {
@@ -26,12 +38,18 @@ describe("deriveKind", () => {
   })
 
   test("a French checkout buyer with no signal is an individual", () => {
-    expect(deriveKind({ legal_name: "Celine Exemple", country: "FR", origin: "shopify" })).toBe("individual")
+    expect(deriveKind({ legal_name: "Celine Exemple", country: "FR", origin: "shopify" })).toBe(
+      "individual",
+    )
   })
 
   test("a legal-form token without VAT id or company is unknown, whatever the origin", () => {
-    expect(deriveKind({ legal_name: "Exemple Atelier SARL", country: "FR", origin: "manual" })).toBeNull()
-    expect(deriveKind({ legal_name: "Exemple Atelier S.A.R.L.", country: "FR", origin: "shopify" })).toBeNull()
+    expect(
+      deriveKind({ legal_name: "Exemple Atelier SARL", country: "FR", origin: "manual" }),
+    ).toBeNull()
+    expect(
+      deriveKind({ legal_name: "Exemple Atelier S.A.R.L.", country: "FR", origin: "shopify" }),
+    ).toBeNull()
     expect(deriveKind({ legal_name: "Beispiel GmbH", country: "DE", origin: "manual" })).toBeNull()
   })
 
@@ -68,9 +86,17 @@ describe("ensureDerivedIdentity", () => {
 
   test("never touches an existing identity row", async () => {
     const db = createMockDb({
-      seed: { counterparty_identities: [{ contact_id: "c-1", customer_kind: "individual", source: "manual" }] },
+      seed: {
+        counterparty_identities: [
+          { contact_id: "c-1", customer_kind: "individual", source: "manual" },
+        ],
+      },
     })
-    const id = await ensureDerivedIdentity(db, { contact_id: "c-1", customer_kind: "business", vat_id: null })
+    const id = await ensureDerivedIdentity(db, {
+      contact_id: "c-1",
+      customer_kind: "business",
+      vat_id: null,
+    })
     expect(id).toBeNull()
     expect(db.__all("counterparty_identities")).toHaveLength(1)
     expect(db.__all("counterparty_identities")[0]?.customer_kind).toBe("individual")

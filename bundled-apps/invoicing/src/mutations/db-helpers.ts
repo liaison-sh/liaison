@@ -3,20 +3,20 @@
 // Invoicing mutations: generic-CRUD wrappers around semantic operations (issuer profile
 // resolution, document summaries, draft rows and lines, prior refunds, line item details).
 
-import { lineSubtotal } from "../money"
-import { type DraftLine, type IssuerProfile, type IssueDb, readRefString } from "../issue"
-import { isUuid } from "../reads"
 import { readEinvoiceRowColumns } from "../einvoicing/issue-gate"
+import { type DraftLine, type IssueDb, type IssuerProfile, readRefString } from "../issue"
+import { lineSubtotal } from "../money"
+import { isUuid } from "../reads"
 import { liftMisplacedCountry } from "./lines"
 import {
-  type MutationsDb,
-  type ErrorEnvelope,
   type DocumentRowSummary,
   type DocumentType,
-  type DraftRow,
   type DraftInsert,
-  toBigInt,
+  type DraftRow,
+  type ErrorEnvelope,
+  type MutationsDb,
   normaliseNotesOrThrow,
+  toBigInt,
 } from "./shared"
 
 // ── DB helpers (generic-CRUD wrappers around semantic operations) ─────────
@@ -78,9 +78,7 @@ const REFUND_RECORDED_EVENTS = new Set([
  * status logic handles the full-refund case separately. All money stays in
  * minor units; nothing is converted across currencies.
  */
-export function sumPriorRefundedMinor(
-  lifecycleLog: Array<Record<string, unknown>>,
-): bigint {
+export function sumPriorRefundedMinor(lifecycleLog: Array<Record<string, unknown>>): bigint {
   let total = 0n
   for (const entry of lifecycleLog) {
     if (!REFUND_RECORDED_EVENTS.has(String(entry.event ?? ""))) continue
@@ -112,8 +110,7 @@ export async function findIssuerProfile(
     iban: (row.iban as string | null) ?? null,
     swift_bic: (row.swift_bic as string | null) ?? null,
     bank_name: (row.bank_name as string | null) ?? null,
-    default_language:
-      (row.default_language as "en" | "fr" | "de") ?? "en",
+    default_language: (row.default_language as "en" | "fr" | "de") ?? "en",
     timezone: (row.timezone as string | null) ?? null,
     logo_file_id: (row.logo_file_id as string | null) ?? null,
     // Defaults mirror the manifest schema defaults — older fixtures and
@@ -187,7 +184,9 @@ export async function resolveIssuerProfileOrError(
   if (explicit) {
     const issuer = await findIssuerProfile(db, explicit)
     if (issuer) return { ok: true, issuer }
-    const rows = (await db.findMany("issuer_profiles", { limit: 100 })) as Array<Record<string, unknown>>
+    const rows = (await db.findMany("issuer_profiles", { limit: 100 })) as Array<
+      Record<string, unknown>
+    >
     if (rows.length === 0) {
       return fail(
         "issuer_not_found",
@@ -202,7 +201,9 @@ export async function resolveIssuerProfileOrError(
     )
   }
   // No explicit id — resolve the org's issuer profiles and default only when unambiguous.
-  const rows = (await db.findMany("issuer_profiles", { limit: 100 })) as Array<Record<string, unknown>>
+  const rows = (await db.findMany("issuer_profiles", { limit: 100 })) as Array<
+    Record<string, unknown>
+  >
   if (rows.length === 0) return noIssuerError
   if (rows.length > 1) {
     return fail(
@@ -226,7 +227,9 @@ export function describeIssuerProfiles(rows: Array<Record<string, unknown>>): st
   return rows
     .map((r) => {
       const shop =
-        typeof r.shopify_shop_id === "string" && r.shopify_shop_id.trim() !== "" ? r.shopify_shop_id.trim() : null
+        typeof r.shopify_shop_id === "string" && r.shopify_shop_id.trim() !== ""
+          ? r.shopify_shop_id.trim()
+          : null
       return `${String(r.id)} (${String(r.legal_name ?? "unnamed")}, ${
         shop ? `linked to Shopify shop ${shop}` : "no shop linked"
       })`
@@ -243,7 +246,9 @@ export function describeIssuerProfiles(rows: Array<Record<string, unknown>>): st
  * numeric id is deliberately NOT rejected — completed orders are routinely passed
  * unprefixed, and there is no local way to prove a number is a draft.
  */
-export function rejectDraftOrderId(shopifyOrderId: string | null | undefined): ErrorEnvelope | null {
+export function rejectDraftOrderId(
+  shopifyOrderId: string | null | undefined,
+): ErrorEnvelope | null {
   if (typeof shopifyOrderId !== "string") return null
   const id = shopifyOrderId.trim()
   if (!id) return null
@@ -285,8 +290,7 @@ export async function findDocumentSummary(
     id: String(row.id),
     type: (row.type as DocumentType | string) ?? "invoice",
     status: (row.status as string | undefined) ?? "draft",
-    counterparty_contact_id:
-      (row.counterparty_contact_id as string | null) ?? null,
+    counterparty_contact_id: (row.counterparty_contact_id as string | null) ?? null,
     counterparty_name: (row.counterparty_name as string | null) ?? null,
     counterparty_address: (row.counterparty_address as string | null) ?? null,
     counterparty_shipping_address: (row.counterparty_shipping_address as string | null) ?? null,
@@ -297,8 +301,7 @@ export async function findDocumentSummary(
     currency: String(row.currency ?? "EUR"),
     incoterm: String(row.incoterm ?? "DAP"),
     issuer_profile_id: String(row.issuer_profile_id ?? ""),
-    lifecycle_log:
-      (row.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
+    lifecycle_log: (row.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
     pdf_file_id: (row.pdf_file_id as string | null) ?? null,
     pdf_status: (row.pdf_status as string | null) ?? null,
     number: (row.number as string | null) ?? null,
@@ -328,10 +331,7 @@ export async function findDocumentSummary(
   }
 }
 
-export async function loadDraftLines(
-  db: MutationsDb,
-  documentId: string,
-): Promise<DraftLine[]> {
+export async function loadDraftLines(db: MutationsDb, documentId: string): Promise<DraftLine[]> {
   const rows = await db.findMany("document_lines", {
     where: { document_id: documentId },
     orderBy: { position: "asc" },
@@ -345,8 +345,7 @@ export async function loadDraftLines(
       quantity: String(r.quantity ?? "0"),
       unit_price_minor: toBigInt(r.unit_price_minor),
       discount_minor: toBigInt(r.discount_minor),
-      tax_rate_bp_override:
-        r.tax_rate_bp != null ? Number(r.tax_rate_bp) : undefined,
+      tax_rate_bp_override: r.tax_rate_bp != null ? Number(r.tax_rate_bp) : undefined,
       hs_code: (r.hs_code as string | null) ?? null,
       customs_description: (r.customs_description as string | null) ?? null,
       country_of_origin: (r.country_of_origin as string | null) ?? null,
@@ -369,7 +368,8 @@ async function insertDraftLines(
     // + judge read it as a broken/empty draft (the export multi-step scenarios). Tax is still 0 on a
     // draft (applied at issue), so total = subtotal here.
     const discount = l.discount_minor ?? 0n
-    const subtotal = lineSubtotal({ quantity: l.quantity, unit_price_minor: l.unit_price_minor }) - discount
+    const subtotal =
+      lineSubtotal({ quantity: l.quantity, unit_price_minor: l.unit_price_minor }) - discount
     await db.insert("document_lines", {
       document_id: documentId,
       // Agent-supplied lines carry NO `position` (only DB-loaded lines do). Inserting `undefined`
@@ -384,10 +384,7 @@ async function insertDraftLines(
       // Persist NULL (not 0) when there is no per-line override, so issuing the
       // draft falls back to the tax classifier's domestic rate. Writing 0 here
       // would round-trip back as an explicit 0% override and drop all VAT.
-      tax_rate_bp:
-        typeof l.tax_rate_bp_override === "number"
-          ? l.tax_rate_bp_override
-          : null,
+      tax_rate_bp: typeof l.tax_rate_bp_override === "number" ? l.tax_rate_bp_override : null,
       subtotal_minor: subtotal.toString(),
       tax_minor: "0",
       total_minor: subtotal.toString(),
@@ -402,10 +399,7 @@ async function insertDraftLines(
   }
 }
 
-export async function deleteAllLines(
-  db: MutationsDb,
-  documentId: string,
-): Promise<void> {
+export async function deleteAllLines(db: MutationsDb, documentId: string): Promise<void> {
   const rows = await db.findMany("document_lines", {
     where: { document_id: documentId },
     limit: 1000,
@@ -416,10 +410,7 @@ export async function deleteAllLines(
   }
 }
 
-export async function getDraft(
-  db: MutationsDb,
-  draftId: string,
-): Promise<DraftRow | null> {
+export async function getDraft(db: MutationsDb, draftId: string): Promise<DraftRow | null> {
   // findMany shape — see comment in findIssuerProfile for the rationale.
   const rows = await db.findMany("documents", { where: { id: draftId }, limit: 1 })
   const doc = rows[0] as Record<string, unknown> | undefined
@@ -429,8 +420,7 @@ export async function getDraft(
   return {
     id: String(doc.id),
     type: (doc.type as DocumentType) ?? "invoice",
-    counterparty_contact_id:
-      (doc.counterparty_contact_id as string | null) ?? null,
+    counterparty_contact_id: (doc.counterparty_contact_id as string | null) ?? null,
     counterparty_name: (doc.counterparty_name as string | null) ?? null,
     counterparty_address: (doc.counterparty_address as string | null) ?? null,
     counterparty_shipping_address: (doc.counterparty_shipping_address as string | null) ?? null,
@@ -443,8 +433,7 @@ export async function getDraft(
     currency: String(doc.currency ?? "EUR"),
     incoterm: String(doc.incoterm ?? "DAP"),
     due_at: (doc.due_at as string | null) ?? null,
-    external_refs:
-      (doc.external_refs as Record<string, unknown> | undefined) ?? {},
+    external_refs: (doc.external_refs as Record<string, unknown> | undefined) ?? {},
     po_number: (doc.po_number as string | null) ?? null,
     notes: (doc.notes as string | null) ?? null,
     ...draftEinvoiceFieldsOf(doc),
@@ -453,10 +442,7 @@ export async function getDraft(
   }
 }
 
-export async function insertDraftRow(
-  db: MutationsDb,
-  row: DraftInsert,
-): Promise<DraftRow> {
+export async function insertDraftRow(db: MutationsDb, row: DraftInsert): Promise<DraftRow> {
   const inserted = (await db.insert("documents", {
     type: row.type,
     status: "draft",
@@ -574,7 +560,9 @@ function draftEinvoiceWrite(
       continue
     }
     if (typeof v !== "string" || !(allowed as readonly string[]).includes(v)) {
-      throw new Error(`invalid_params: ${key} must be one of ${allowed.join(", ")} (got ${JSON.stringify(v)})`)
+      throw new Error(
+        `invalid_params: ${key} must be one of ${allowed.join(", ")} (got ${JSON.stringify(v)})`,
+      )
     }
     out[key] = v
   }

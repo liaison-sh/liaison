@@ -213,7 +213,10 @@ interface CreateAdGroupParams {
   experiment?: unknown
 }
 
-export async function google_create_adgroup(params: unknown, ctx: GoogleWriteCtx): Promise<unknown> {
+export async function google_create_adgroup(
+  params: unknown,
+  ctx: GoogleWriteCtx,
+): Promise<unknown> {
   const p = params as CreateAdGroupParams & Record<string, unknown>
   const { token, config } = await getGoogleClient(ctx)
 
@@ -278,7 +281,8 @@ export async function google_create_ad(params: unknown, ctx: GoogleWriteCtx): Pr
     )
   }
   const finalUrls = Array.isArray(p.final_urls) ? p.final_urls.map(String) : []
-  if (finalUrls.length === 0) throw new Error("google_create_ad: final_urls is required (at least 1)")
+  if (finalUrls.length === 0)
+    throw new Error("google_create_ad: final_urls is required (at least 1)")
 
   const adGroupResourceName = `customers/${stripDashes(config.customerId)}/adGroups/${adGroupId}`
 
@@ -642,4 +646,3 @@ export async function google_create_conversion_action(
     type,
   }
 }
-

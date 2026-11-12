@@ -11,7 +11,12 @@ import { describe, expect, test } from "bun:test"
 import { onConnectionDisconnected } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { parseWebhookJob } from "./ingest"
-import { CHECK_TTL_MS, livePagesOnly, MetaPagesUnavailableError, refreshMetaPageIds } from "./meta-pages"
+import {
+  CHECK_TTL_MS,
+  livePagesOnly,
+  MetaPagesUnavailableError,
+  refreshMetaPageIds,
+} from "./meta-pages"
 import { createMockDb, type MockDb } from "./test-db"
 
 type Reply = { status: number; body: string }
@@ -34,7 +39,10 @@ function harness(reply: () => Reply) {
   return { db, ctx, calls }
 }
 
-const managed = (...ids: string[]): Reply => ({ status: 200, body: JSON.stringify({ data: ids.map((id) => ({ id })) }) })
+const managed = (...ids: string[]): Reply => ({
+  status: 200,
+  body: JSON.stringify({ data: ids.map((id) => ({ id })) }),
+})
 
 async function seedRouted(db: MockDb, pages: string[], extra: Record<string, unknown> = {}) {
   for (const source_type of ["discovery", "watch", "dm"]) {
@@ -88,9 +96,15 @@ describe("livePagesOnly", () => {
   })
 
   test("Meta refuses the token (#190): the list is cleared and nothing is ingested", async () => {
-    const h = harness(() => ({ status: 400, body: JSON.stringify({ error: { code: 190, message: "expired" } }) }))
+    const h = harness(() => ({
+      status: 400,
+      body: JSON.stringify({ error: { code: 190, message: "expired" } }),
+    }))
     await seedRouted(h.db, ["P1"])
-    const out = (await livePagesOnly(h.ctx, { object: "page", entry: [messengerFor("P1", "m1")] })) as {
+    const out = (await livePagesOnly(h.ctx, {
+      object: "page",
+      entry: [messengerFor("P1", "m1")],
+    })) as {
       entry: unknown[]
     }
     expect(out.entry).toEqual([])
@@ -102,16 +116,20 @@ describe("livePagesOnly", () => {
     await seedRouted(h.db, ["P1"], { meta_pages_checked_at: new Date().toISOString() })
     await livePagesOnly(h.ctx, { object: "page", entry: [messengerFor("P1", "m1")] })
     expect(h.calls.length).toBe(0)
-    await livePagesOnly(h.ctx, { object: "page", entry: [] }, new Date(Date.now() + CHECK_TTL_MS + 1))
+    await livePagesOnly(
+      h.ctx,
+      { object: "page", entry: [] },
+      new Date(Date.now() + CHECK_TTL_MS + 1),
+    )
     expect(h.calls.length).toBe(1)
   })
 
   test("Meta unavailable: the job fails (and retries) without dropping or keeping anything", async () => {
     const h = harness(() => ({ status: 500, body: "{}" }))
     await seedRouted(h.db, ["P1"])
-    await expect(livePagesOnly(h.ctx, { object: "page", entry: [messengerFor("P1", "m1")] })).rejects.toBeInstanceOf(
-      MetaPagesUnavailableError,
-    )
+    await expect(
+      livePagesOnly(h.ctx, { object: "page", entry: [messengerFor("P1", "m1")] }),
+    ).rejects.toBeInstanceOf(MetaPagesUnavailableError)
     expect(await storedIds(h.db)).toEqual([["P1"], ["P1"], ["P1"]])
   })
 })
@@ -137,7 +155,10 @@ describe("refresh on discovery and disconnect", () => {
   test("refreshMetaPageIds prunes to the Pages Meta lists", async () => {
     const h = harness(() => managed("P3"))
     await seedRouted(h.db, ["P1", "P3"])
-    expect(await refreshMetaPageIds(h.ctx, "U1", { force: true })).toEqual({ kind: "ok", ids: ["P3"] })
+    expect(await refreshMetaPageIds(h.ctx, "U1", { force: true })).toEqual({
+      kind: "ok",
+      ids: ["P3"],
+    })
     expect(await storedIds(h.db)).toEqual([["P3"], ["P3"], ["P3"]])
   })
 

@@ -34,13 +34,18 @@ describe("worklist row state and tint", () => {
   })
 
   it("a failed fulfillment is red and named, whatever the tick says", () => {
-    const r = row({ fulfillment_state: "failed", fulfillment_error: "Order has no OPEN fulfillment orders" })
+    const r = row({
+      fulfillment_state: "failed",
+      fulfillment_error: "Order has no OPEN fulfillment orders",
+    })
     expect(readyRowState(r)).toBe("fulfillment_failed")
     expect(readyRowClass(r)).toContain("bg-error")
   })
 
   it("on hold wins over a done row: a held parcel never looks done", () => {
-    expect(readyRowClass(row({ status: "on_hold", packed: true, fulfillment_state: "fulfilled" }))).toContain("bg-error")
+    expect(
+      readyRowClass(row({ status: "on_hold", packed: true, fulfillment_state: "fulfilled" })),
+    ).toContain("bg-error")
   })
 
   it("a fresh label is just bought, untinted", () => {
@@ -105,8 +110,12 @@ describe("one worklist, one filter", () => {
     expect(worklistEmptyKind({ ...base, filter: "all" })).toBe("nothing_to_prepare")
     expect(worklistEmptyKind({ ...base, filter: "packed" })).toBe("nothing_ready")
     expect(worklistEmptyKind({ ...base, filter: "packed", readyTotal: 2 })).toBe("no_match")
-    expect(worklistEmptyKind({ ...base, filter: "to_prepare", readyTotal: 2 })).toBe("nothing_to_prepare")
-    expect(worklistEmptyKind({ ...base, filter: "all", prepTotal: 3, narrowed: true })).toBe("no_match")
+    expect(worklistEmptyKind({ ...base, filter: "to_prepare", readyTotal: 2 })).toBe(
+      "nothing_to_prepare",
+    )
+    expect(worklistEmptyKind({ ...base, filter: "all", prepTotal: 3, narrowed: true })).toBe(
+      "no_match",
+    )
   })
 
   it("To pack and Packed split the bought labels by the tick", () => {

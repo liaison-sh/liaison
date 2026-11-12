@@ -89,7 +89,7 @@ describe("ads app.manifest.json", () => {
     // 0.1.59: graph_get and google_search_terms read text people outside the org wrote (page
     // comments, the queries searchers typed), so a turn that read them is marked.
     // 0.1.60: its bundle carries host SDK 1.3.
-    expect(m.version).toBe("0.1.67")
+    expect(m.version).toBe("0.1.68")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()
@@ -170,10 +170,10 @@ describe("ads app.manifest.json", () => {
   it("agentInstructions contains load-bearing honesty substrings", () => {
     const ai = guideText(loadManifest())
     expect(ai).toContain("effective_status")
-    expect(ai).toContain("1487632")   // the exact budget-cap subcode
-    expect(ai).toContain("blended")   // blended ROAS framing
-    expect(ai).toContain("minor")     // minor units
-    expect(ai).toMatch(/sensitive/i)  // sensitive attribute refusal
+    expect(ai).toContain("1487632") // the exact budget-cap subcode
+    expect(ai).toContain("blended") // blended ROAS framing
+    expect(ai).toContain("minor") // minor units
+    expect(ai).toMatch(/sensitive/i) // sensitive attribute refusal
   })
 
   it("structural cross-field check: every kind:'event' routine has event app-segment === 'ads' AND entity:action in events.emits", () => {
@@ -187,7 +187,9 @@ describe("ads app.manifest.json", () => {
       if (routine.kind !== "event") continue
       const ev = routine.event ?? ""
       const parts = ev.split("/")
-      expect(parts.length, `routine '${name}' event must have 3 segments (app/entity:action)`).toBe(2)
+      expect(parts.length, `routine '${name}' event must have 3 segments (app/entity:action)`).toBe(
+        2,
+      )
       const [appSeg, entityAction] = parts
       expect(appSeg, `routine '${name}' event app-segment must be 'ads'`).toBe("ads")
       expect(
@@ -213,7 +215,14 @@ describe("ads app.manifest.json", () => {
     const m = loadManifest() as {
       connections: Record<
         string,
-        { credentialFields?: Array<{ name: string; type: string; label: string; required?: boolean }> }
+        {
+          credentialFields?: Array<{
+            name: string
+            type: string
+            label: string
+            required?: boolean
+          }>
+        }
       >
     }
     const fields = m.connections?.meta?.credentialFields ?? []
@@ -308,7 +317,12 @@ describe("ads app.manifest.json", () => {
     const m = loadManifest() as {
       connections: Record<
         string,
-        { type: string; scopes?: string[]; allowedDomains?: string[]; extraParams?: Record<string, string> }
+        {
+          type: string
+          scopes?: string[]
+          allowedDomains?: string[]
+          extraParams?: Record<string, string>
+        }
       >
     }
     const google = m.connections?.google
@@ -325,7 +339,10 @@ describe("ads app.manifest.json", () => {
 
   it("declares connections.google-config as type 'credentials' with the four Google Ads/Merchant config fields", () => {
     const m = loadManifest() as {
-      connections: Record<string, { type: string; credentialFields?: Array<{ name: string; type: string }> }>
+      connections: Record<
+        string,
+        { type: string; credentialFields?: Array<{ name: string; type: string }> }
+      >
     }
     const cfg = m.connections?.["google-config"]
     expect(cfg, "connections.google-config must exist").toBeDefined()
@@ -380,7 +397,9 @@ describe("ads app.manifest.json", () => {
   // ─── P4 batch 2: Google Ads read tools + google_pause + Merchant reads ────
 
   it("declares the 7 Google Ads read tools with scope ads:google:read, ungated", () => {
-    const m = loadManifest() as { tools: Record<string, { requiredScopes?: string[]; gated?: boolean; handler?: string }> }
+    const m = loadManifest() as {
+      tools: Record<string, { requiredScopes?: string[]; gated?: boolean; handler?: string }>
+    }
     const GOOGLE_READ_TOOLS = [
       "google_campaigns_list",
       "google_adgroups_list",
@@ -409,7 +428,16 @@ describe("ads app.manifest.json", () => {
 
   it("declares google_pause with scopes ads:google:pause + ads:internal, GATED, with its summarizer", () => {
     const m = loadManifest() as {
-      tools: Record<string, { requiredScopes?: string[]; gated?: boolean; trustBoundary?: string; summarizer?: string; handler?: string }>
+      tools: Record<
+        string,
+        {
+          requiredScopes?: string[]
+          gated?: boolean
+          trustBoundary?: string
+          summarizer?: string
+          handler?: string
+        }
+      >
     }
     const tool = m.tools.google_pause
     expect(tool, "tools.google_pause must exist").toBeDefined()
@@ -422,7 +450,16 @@ describe("ads app.manifest.json", () => {
 
   it("declares pause (Meta) GATED with its summarizer — all pauses are approval-gated", () => {
     const m = loadManifest() as {
-      tools: Record<string, { requiredScopes?: string[]; gated?: boolean; trustBoundary?: string; summarizer?: string; handler?: string }>
+      tools: Record<
+        string,
+        {
+          requiredScopes?: string[]
+          gated?: boolean
+          trustBoundary?: string
+          summarizer?: string
+          handler?: string
+        }
+      >
     }
     const tool = m.tools.pause
     expect(tool, "tools.pause must exist").toBeDefined()
@@ -446,7 +483,9 @@ describe("ads app.manifest.json", () => {
   })
 
   it("declares the 2 Merchant Center read tools with scope ads:merchant:read, ungated", () => {
-    const m = loadManifest() as { tools: Record<string, { requiredScopes?: string[]; gated?: boolean; handler?: string }> }
+    const m = loadManifest() as {
+      tools: Record<string, { requiredScopes?: string[]; gated?: boolean; handler?: string }>
+    }
     for (const name of ["merchant_feed_status", "merchant_product_issues"]) {
       const tool = m.tools[name]
       expect(tool, `tools.${name} must exist`).toBeDefined()
@@ -561,7 +600,10 @@ describe("ads app.manifest.json", () => {
     }
     // Every entry must have a non-empty reason
     for (const entry of m.cross_app_calls ?? []) {
-      expect(entry.reason.length, `cross_app_calls entry '${entry.target}' has no reason`).toBeGreaterThan(0)
+      expect(
+        entry.reason.length,
+        `cross_app_calls entry '${entry.target}' has no reason`,
+      ).toBeGreaterThan(0)
     }
   })
 
@@ -625,7 +667,9 @@ describe("ads app.manifest.json", () => {
   })
 
   it("weekly-account-review: cron '0 9 * * 1', timezone Europe/Paris, both-platform + lab scopes", () => {
-    const m = loadManifest() as { routines: Record<string, { cron: string; timezone: string; scopes: string[] }> }
+    const m = loadManifest() as {
+      routines: Record<string, { cron: string; timezone: string; scopes: string[] }>
+    }
     const r = m.routines["weekly-account-review"]
     expect(r?.cron).toBe("0 9 * * 1")
     expect(r?.timezone).toBe("Europe/Paris")
@@ -647,7 +691,9 @@ describe("ads app.manifest.json", () => {
   })
 
   it("monthly-deep-review: cron '0 9 1 * *', timezone Europe/Paris, read + gated-write scopes", () => {
-    const m = loadManifest() as { routines: Record<string, { cron: string; timezone: string; scopes: string[] }> }
+    const m = loadManifest() as {
+      routines: Record<string, { cron: string; timezone: string; scopes: string[] }>
+    }
     const r = m.routines["monthly-deep-review"]
     expect(r?.cron).toBe("0 9 1 * *")
     expect(r?.timezone).toBe("Europe/Paris")
@@ -667,7 +713,9 @@ describe("ads app.manifest.json", () => {
   })
 
   it("low-roas-autopause: generalized to sweep Google (google_insights_query + google_pause), budget raises stay gated", () => {
-    const m = loadManifest() as { routines: Record<string, { scopes: string[]; promptTemplate: string }> }
+    const m = loadManifest() as {
+      routines: Record<string, { scopes: string[]; promptTemplate: string }>
+    }
     const r = m.routines["low-roas-autopause"]
     expect(r?.scopes).toContain("ads:campaigns:write")
     expect(r?.scopes).toContain("ads:insights:read")
@@ -783,7 +831,9 @@ describe("ads app.manifest.json", () => {
   })
 
   it("ads-playbook skill exists with kind:'guide' and enabledByDefault:true", () => {
-    const m = loadManifest() as { skills: Record<string, { kind: string; enabledByDefault: boolean; body: string }> }
+    const m = loadManifest() as {
+      skills: Record<string, { kind: string; enabledByDefault: boolean; body: string }>
+    }
     const skill = m.skills?.["ads-playbook"]
     expect(skill).toBeDefined()
     expect(skill?.kind).toBe("guide")
@@ -849,7 +899,13 @@ describe("ads app.manifest.json", () => {
     const m = loadManifest() as {
       skills: Record<
         string,
-        { kind: string; enabledByDefault: boolean; body: string; description: string; requiredScopes?: string[] }
+        {
+          kind: string
+          enabledByDefault: boolean
+          body: string
+          description: string
+          requiredScopes?: string[]
+        }
       >
     }
     for (const name of TIER2_PLAYBOOK_NAMES) {
@@ -872,9 +928,10 @@ describe("ads app.manifest.json", () => {
       const scopes = m.skills[name]?.requiredScopes ?? []
       expect(scopes.length, `${name}.requiredScopes must be non-empty`).toBeGreaterThan(0)
       for (const scope of scopes) {
-        expect(m.scopes, `${name}.requiredScopes contains '${scope}' not declared in top-level scopes[]`).toContain(
-          scope,
-        )
+        expect(
+          m.scopes,
+          `${name}.requiredScopes contains '${scope}' not declared in top-level scopes[]`,
+        ).toContain(scope)
       }
     }
   })
@@ -982,14 +1039,18 @@ describe("ads app.manifest.json", () => {
     })
 
     it("manual_spend_add is gated with a summarizer; manual_spend_list is ungated", () => {
-      const m = loadManifest() as { tools: Record<string, { gated?: boolean; summarizer?: string }> }
+      const m = loadManifest() as {
+        tools: Record<string, { gated?: boolean; summarizer?: string }>
+      }
       expect(m.tools.manual_spend_add?.gated).toBe(true)
       expect(m.tools.manual_spend_add?.summarizer).toBe("summarizeManualSpendAdd")
       expect(m.tools.manual_spend_list?.gated).not.toBe(true)
     })
 
     it("dealer_profile_upsert is gated with a summarizer; dealer_profiles_list is ungated", () => {
-      const m = loadManifest() as { tools: Record<string, { gated?: boolean; summarizer?: string }> }
+      const m = loadManifest() as {
+        tools: Record<string, { gated?: boolean; summarizer?: string }>
+      }
       expect(m.tools.dealer_profile_upsert?.gated).toBe(true)
       expect(m.tools.dealer_profile_upsert?.summarizer).toBe("summarizeDealerProfileUpsert")
       expect(m.tools.dealer_profiles_list?.gated).not.toBe(true)
@@ -1020,15 +1081,28 @@ describe("ads app.manifest.json", () => {
 
     it("all seven Google gated write tools exist, are gated:true, trustBoundary:'user', scope ads:google:write, with their summarizer", () => {
       const m = loadManifest() as {
-        tools: Record<string, { gated?: boolean; trustBoundary?: string; requiredScopes?: string[]; summarizer?: string; handler?: string }>
+        tools: Record<
+          string,
+          {
+            gated?: boolean
+            trustBoundary?: string
+            requiredScopes?: string[]
+            summarizer?: string
+            handler?: string
+          }
+        >
       }
       for (const name of GOOGLE_WRITE_TOOLS) {
         const tool = m.tools[name]
         expect(tool, `${name} tool must exist`).toBeDefined()
         expect(tool?.gated, `${name} must be gated`).toBe(true)
         expect(tool?.trustBoundary, `${name} must have trustBoundary:'user'`).toBe("user")
-        expect(tool?.requiredScopes, `${name} must have scope ads:google:write`).toEqual(["ads:google:write"])
-        expect(tool?.summarizer, `${name} must reference its summarizer`).toBe(SUMMARIZER_BY_TOOL[name])
+        expect(tool?.requiredScopes, `${name} must have scope ads:google:write`).toEqual([
+          "ads:google:write",
+        ])
+        expect(tool?.summarizer, `${name} must reference its summarizer`).toBe(
+          SUMMARIZER_BY_TOOL[name],
+        )
         expect(tool?.handler).toBe(name)
       }
     })
@@ -1043,7 +1117,9 @@ describe("ads app.manifest.json", () => {
         tools: Record<string, { params?: { properties?: Record<string, { enum?: string[] }> } }>
       }
       const props = m.tools.google_create_campaign?.params?.properties ?? {}
-      expect(props.advertising_channel_type?.enum?.sort()).toEqual(["PERFORMANCE_MAX", "SEARCH"].sort())
+      expect(props.advertising_channel_type?.enum?.sort()).toEqual(
+        ["PERFORMANCE_MAX", "SEARCH"].sort(),
+      )
       expect(props.experiment).toBeDefined()
     })
 
@@ -1061,7 +1137,9 @@ describe("ads app.manifest.json", () => {
 
   describe("P5 metrics registry tools", () => {
     it("metrics_list and metrics_run exist, are ungated reads under ads:internal", () => {
-      const m = loadManifest() as { tools: Record<string, { gated?: boolean; requiredScopes?: string[]; handler?: string }> }
+      const m = loadManifest() as {
+        tools: Record<string, { gated?: boolean; requiredScopes?: string[]; handler?: string }>
+      }
       for (const name of ["metrics_list", "metrics_run"]) {
         const tool = m.tools[name]
         expect(tool, `${name} tool must exist`).toBeDefined()
@@ -1077,7 +1155,13 @@ describe("ads app.manifest.json", () => {
       }
       const enumValues = m.tools.metrics_run?.params?.properties?.formula_id?.enum ?? []
       expect([...enumValues].sort()).toEqual(
-        ["blended_mer_dtc", "blended_mer_total", "cpa_by_sku_class", "revenue_by_channel", "total_vs_dtc_mer_gap"].sort(),
+        [
+          "blended_mer_dtc",
+          "blended_mer_total",
+          "cpa_by_sku_class",
+          "revenue_by_channel",
+          "total_vs_dtc_mer_gap",
+        ].sort(),
       )
     })
 
@@ -1101,15 +1185,22 @@ describe("ads app.manifest.json", () => {
 
     it("add_users_to_audience REQUIRES audience_purpose", () => {
       const m = loadManifest() as {
-        tools: Record<string, { params?: { required?: string[]; properties?: Record<string, { enum?: string[] }> } }>
+        tools: Record<
+          string,
+          { params?: { required?: string[]; properties?: Record<string, { enum?: string[] }> } }
+        >
       }
       const tool = m.tools.add_users_to_audience
       expect(tool?.params?.required).toContain("audience_purpose")
-      expect(tool?.params?.properties?.audience_purpose?.enum?.sort()).toEqual(["buyer", "newsletter"].sort())
+      expect(tool?.params?.properties?.audience_purpose?.enum?.sort()).toEqual(
+        ["buyer", "newsletter"].sort(),
+      )
     })
 
     it("audience_erasure_sweep exists, is UNGATED (safe-direction GDPR obligation), under ads:internal", () => {
-      const m = loadManifest() as { tools: Record<string, { gated?: boolean; requiredScopes?: string[]; handler?: string }> }
+      const m = loadManifest() as {
+        tools: Record<string, { gated?: boolean; requiredScopes?: string[]; handler?: string }>
+      }
       const tool = m.tools.audience_erasure_sweep
       expect(tool, "audience_erasure_sweep tool must exist").toBeDefined()
       expect(tool?.gated).not.toBe(true)
@@ -1178,7 +1269,15 @@ describe("ads app.manifest.json", () => {
 
     it("A-G doctrine block is still present verbatim (block markers)", () => {
       const ai = guideText(loadManifest())
-      for (const marker of ["A. TRUST HIERARCHY", "B. REGIME-FIRST", "C. SPEND GATING", "D. STATISTICAL HONESTY", "E. HYBRID DTC/WHOLESALE", "F. CONSENT FLOOR", "G. EXPERIMENT DISCIPLINE"]) {
+      for (const marker of [
+        "A. TRUST HIERARCHY",
+        "B. REGIME-FIRST",
+        "C. SPEND GATING",
+        "D. STATISTICAL HONESTY",
+        "E. HYBRID DTC/WHOLESALE",
+        "F. CONSENT FLOOR",
+        "G. EXPERIMENT DISCIPLINE",
+      ]) {
         expect(ai, `missing doctrine marker: ${marker}`).toContain(marker)
       }
     })
@@ -1189,7 +1288,9 @@ describe("ads app.manifest.json", () => {
   describe("P6 dashboard view + copy fixes", () => {
     it("declares a 'dashboard' tabType with component AdsDashboard at /ads/dashboard", () => {
       const m = loadManifest() as {
-        views: { tabTypes: Record<string, { component: string; urlPattern: string; singleton?: boolean }> }
+        views: {
+          tabTypes: Record<string, { component: string; urlPattern: string; singleton?: boolean }>
+        }
       }
       const dash = m.views.tabTypes.dashboard
       expect(dash).toBeDefined()
@@ -1234,11 +1335,12 @@ describe("ads app.manifest.json", () => {
 
     it("no dash punctuation (em/en dash or double-hyphen) in the account status copy", () => {
       const src = readFileSync(join(import.meta.dir, "ui", "AccountStatus.tsx"), "utf8")
-      const literals = src
-        .split("\n")
-        .map((line) => line.replace(/\/\/.*$/, ""))
-        .join("\n")
-        .match(/"[^"\n]*"/g) ?? []
+      const literals =
+        src
+          .split("\n")
+          .map((line) => line.replace(/\/\/.*$/, ""))
+          .join("\n")
+          .match(/"[^"\n]*"/g) ?? []
       for (const l of literals) {
         expect(l).not.toMatch(/[—–]/)
         expect(l).not.toContain("--")
@@ -1266,7 +1368,8 @@ describe("ads app.manifest.json", () => {
           .join("\n")
         // Match quoted string literals ("...", '...', `...`) — covers JSX
         // attributes, plain JS strings, and template literals alike.
-        const literals = withoutComments.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g) ?? []
+        const literals =
+          withoutComments.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g) ?? []
         // Also match bare JSX text nodes (text between `>` and `<`, no
         // quoting at all) — e.g. `{c.name} — ACTIVE, no spend this week`
         // rendered directly as JSX children, not a string/template literal.

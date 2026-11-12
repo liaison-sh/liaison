@@ -7,7 +7,12 @@
 // handler never writes an `undefined` org or user id.
 import type { AppContext } from "@liaison/app-sdk"
 
-type IdentityCtx = { orgId?: unknown; userId?: unknown; getOrgId?: () => unknown; getUserId?: () => unknown }
+type IdentityCtx = {
+  orgId?: unknown
+  userId?: unknown
+  getOrgId?: () => unknown
+  getUserId?: () => unknown
+}
 
 async function pick(field: unknown, getter: (() => unknown) | undefined): Promise<string> {
   if (typeof field === "string" && field.length > 0) return field

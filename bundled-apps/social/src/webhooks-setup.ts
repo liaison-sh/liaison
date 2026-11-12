@@ -38,7 +38,10 @@ export const WEBHOOK_FIELDS = ["feed", "messages"] as const
 const WEBHOOK_ENDPOINT = "meta"
 
 type SetupCtx = SocialToolCtx & {
-  config: { get(key: string): Promise<unknown>; setSecret?(key: string, value: string): Promise<void> }
+  config: {
+    get(key: string): Promise<unknown>
+    setSecret?(key: string, value: string): Promise<void>
+  }
 }
 
 export interface SetupError {
@@ -90,7 +93,9 @@ async function graph<T>(
   }
   const err = (parsed as { error?: { message?: string; code?: number } }).error
   if (res.status < 200 || res.status >= 300 || err) {
-    throw new GraphError(`HTTP ${res.status}${err ? ` (#${err.code ?? "?"}) ${err.message ?? ""}`.trimEnd() : ""}`)
+    throw new GraphError(
+      `HTTP ${res.status}${err ? ` (#${err.code ?? "?"}) ${err.message ?? ""}`.trimEnd() : ""}`,
+    )
   }
   return parsed as T
 }
@@ -124,27 +129,40 @@ async function cellCallback(ctx: SetupCtx): Promise<{ url: string; verifyToken: 
 }
 
 /** Everything knowable before an approval: a connected account, the callback, the app secret. */
-async function prerequisites(params: { callback_base_url?: string }, ctx: SetupCtx): Promise<Prereqs | SetupError> {
-  const rows = (await ctx.db.findMany("sync_state", { where: { platform: "facebook", active: true } })) as Array<{
+async function prerequisites(
+  params: { callback_base_url?: string },
+  ctx: SetupCtx,
+): Promise<Prereqs | SetupError> {
+  const rows = (await ctx.db.findMany("sync_state", {
+    where: { platform: "facebook", active: true },
+  })) as Array<{
     account_external_id: string
     metadata?: unknown
   }>
   const accounts = [...new Set(rows.map((r) => r.account_external_id))]
   if (accounts.length === 0) {
-    return fail("not_connected", "No Facebook account is connected: connect Facebook in Settings, Social first.")
+    return fail(
+      "not_connected",
+      "No Facebook account is connected: connect Facebook in Settings, Social first.",
+    )
   }
   const appSecret = await ctx.config.get(META_APP_SECRET_KEY)
   const cell = await cellCallback(ctx)
   if (cell) {
     if (!/^https:\/\/[^/\s]+\/webhooks\/_cell\/meta$/.test(cell.url)) {
-      return fail("callback_base_url_missing", `The server's Meta callback is not an https address: ${cell.url}`)
+      return fail(
+        "callback_base_url_missing",
+        `The server's Meta callback is not an https address: ${cell.url}`,
+      )
     }
     if (typeof appSecret !== "string" || !appSecret) {
       return fail("app_secret_missing", "The Meta app secret is not stored: reconnect Facebook.")
     }
     return { accounts, callbackUrl: cell.url, appSecret, cellVerifyToken: cell.verifyToken }
   }
-  const stored = rows.map((r) => metadataOf(r.metadata)[BASE_URL_METADATA_KEY]).find((v) => typeof v === "string" && v)
+  const stored = rows
+    .map((r) => metadataOf(r.metadata)[BASE_URL_METADATA_KEY])
+    .find((v) => typeof v === "string" && v)
   const base = String(params?.callback_base_url || stored || "").replace(/\/+$/, "")
   if (!/^https:\/\/[^/\s]+/.test(base)) {
     return fail(
@@ -161,7 +179,8 @@ async function prerequisites(params: { callback_base_url?: string }, ctx: SetupC
   // The sandbox leaves `ctx.orgId` unset and exposes the org through `getOrgId()`; a callback
   // without it ("/webhooks/undefined/...") would be refused by Meta or route nowhere.
   const orgId = ctx.orgId || (ctx.getOrgId ? await ctx.getOrgId() : "")
-  if (!orgId) return fail("org_unknown", "The organization of this install is not known to the app host.")
+  if (!orgId)
+    return fail("org_unknown", "The organization of this install is not known to the app host.")
   return {
     accounts,
     callbackUrl: `${base}/webhooks/${orgId}/social/${WEBHOOK_ENDPOINT}`,
@@ -184,7 +203,8 @@ function newVerifyToken(): string {
 async function ensureVerifyToken(ctx: SetupCtx): Promise<string> {
   const existing = await ctx.config.get(VERIFY_TOKEN_KEY)
   if (typeof existing === "string" && existing) return existing
-  if (typeof ctx.config.setSecret !== "function") throw new GraphError("this host cannot store the webhook verify token")
+  if (typeof ctx.config.setSecret !== "function")
+    throw new GraphError("this host cannot store the webhook verify token")
   const token = newVerifyToken()
   await ctx.config.setSecret(VERIFY_TOKEN_KEY, token)
   return token
@@ -209,14 +229,20 @@ export async function webhooksSetupPreflight(
   return "status" in pre ? { error: pre.error } : { ok: true }
 }
 
-export async function webhooksSetup(params: { callback_base_url?: string }, ctx: SetupCtx): Promise<SetupResult | SetupError> {
+export async function webhooksSetup(
+  params: { callback_base_url?: string },
+  ctx: SetupCtx,
+): Promise<SetupResult | SetupError> {
   const pre = await prerequisites(params, ctx)
   if ("status" in pre) return pre
   const { accounts, callbackUrl, appSecret, cellVerifyToken } = pre
 
   const firstToken = await resolveAccessToken(ctx, "facebook", accounts[0] as string)
   if (!firstToken) {
-    return fail("connection_lost", `The Facebook token for account ${accounts[0]} is missing or expired: reconnect Facebook.`)
+    return fail(
+      "connection_lost",
+      `The Facebook token for account ${accounts[0]} is missing or expired: reconnect Facebook.`,
+    )
   }
 
   // ── 1. App-level `page` subscription ─────────────────────────────────────
@@ -224,14 +250,21 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
   let appStatus: "subscribed" | "unchanged"
   try {
     const app = await graph<{ id?: string }>(ctx, `${FB_BASE}/app?fields=id`, { token: firstToken })
-    if (!app.id) return fail("provider_rejected", "Meta did not return the app id for the Facebook token.")
+    if (!app.id)
+      return fail("provider_rejected", "Meta did not return the app id for the Facebook token.")
     appId = app.id
     const appToken = `${appId}|${appSecret}`
-    const current = await graph<{ data?: AppSubscription[] }>(ctx, `${FB_BASE}/${appId}/subscriptions`, { token: appToken })
+    const current = await graph<{ data?: AppSubscription[] }>(
+      ctx,
+      `${FB_BASE}/${appId}/subscriptions`,
+      { token: appToken },
+    )
     const page = (current.data ?? []).find((s) => s.object === "page")
     const have = new Set(fieldNames(page?.fields))
     const matches =
-      page?.callback_url === callbackUrl && page?.active !== false && WEBHOOK_FIELDS.every((f) => have.has(f))
+      page?.callback_url === callbackUrl &&
+      page?.active !== false &&
+      WEBHOOK_FIELDS.every((f) => have.has(f))
     if (
       cellVerifyToken !== null &&
       typeof page?.callback_url === "string" &&
@@ -270,7 +303,8 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
   // ── 2. Per-Page `subscribed_apps` ────────────────────────────────────────
   const pages: PageResult[] = []
   for (const account of accounts) {
-    const userToken = account === accounts[0] ? firstToken : await resolveAccessToken(ctx, "facebook", account)
+    const userToken =
+      account === accounts[0] ? firstToken : await resolveAccessToken(ctx, "facebook", account)
     if (!userToken) {
       pages.push({
         page_id: "",
@@ -283,13 +317,14 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
     }
     let managed: Array<{ id: string; name?: string; access_token?: string }>
     try {
-      managed = (
-        await graph<{ data?: Array<{ id: string; name?: string; access_token?: string }> }>(
-          ctx,
-          `${FB_BASE}/me/accounts?fields=id,name,access_token`,
-          { token: userToken },
-        )
-      ).data ?? []
+      managed =
+        (
+          await graph<{ data?: Array<{ id: string; name?: string; access_token?: string }> }>(
+            ctx,
+            `${FB_BASE}/me/accounts?fields=id,name,access_token`,
+            { token: userToken },
+          )
+        ).data ?? []
     } catch (e) {
       pages.push({
         page_id: "",
@@ -303,7 +338,11 @@ export async function webhooksSetup(params: { callback_base_url?: string }, ctx:
     for (const p of managed) {
       const base = { page_id: p.id, name: p.name ?? null, account_external_id: account }
       if (!p.access_token) {
-        pages.push({ ...base, status: "failed", error: "Meta returned no Page access token for this Page." })
+        pages.push({
+          ...base,
+          status: "failed",
+          error: "Meta returned no Page access token for this Page.",
+        })
         continue
       }
       try {
@@ -351,7 +390,10 @@ async function recordPageIds(ctx: SetupCtx, pages: PageResult[]): Promise<void> 
   const byAccount = new Map<string, string[]>()
   for (const p of pages) {
     if (p.status === "failed" || !p.page_id) continue
-    byAccount.set(p.account_external_id, [...(byAccount.get(p.account_external_id) ?? []), p.page_id])
+    byAccount.set(p.account_external_id, [
+      ...(byAccount.get(p.account_external_id) ?? []),
+      p.page_id,
+    ])
   }
   for (const [account, ids] of byAccount) {
     const rows = (await ctx.db.findMany("sync_state", {

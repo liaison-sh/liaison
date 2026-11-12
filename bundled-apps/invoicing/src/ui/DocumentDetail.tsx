@@ -26,21 +26,25 @@
 //
 // Header actions are wired by testid: G6's Playwright killer scenario
 // targets these to assert the approval-card → mail send loop.
-import { tr } from "./i18n"
+
+import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app, fetchBlob, navigate, openFile } from "@liaison/host"
 import {
+  type Component,
   createEffect,
   createMemo,
   createResource,
   createSignal,
   For,
+  type JSX,
   onCleanup,
   Show,
   Suspense,
-  type Component,
-  type JSX,
 } from "solid-js"
-import { app, fetchBlob, navigate, openFile } from "@liaison/host"
-import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { formatMoneyMinor } from "../money"
+import { RegimeLine } from "./einvoicing/RegimeLine"
+import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
+import { tr } from "./i18n"
 import {
   Badge,
   type BadgeTone,
@@ -52,10 +56,7 @@ import {
   StatusBadge,
   TypeLabel,
 } from "./kit"
-import { RegimeLine } from "./einvoicing/RegimeLine"
-import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { rememberDocumentLabel } from "./tab-labels"
-import { formatMoneyMinor } from "../money"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types.
@@ -296,7 +297,11 @@ export function footerActionResultNote(tool: string, result: unknown): FooterAct
     }
   }
   if (tool === FOOTER_ACTIONS.send_to_customer.tool) {
-    return { text: tr("Sent to the customer."), isError: false, autoDismissMs: ACTION_NOTE_DISMISS_MS }
+    return {
+      text: tr("Sent to the customer."),
+      isError: false,
+      autoDismissMs: ACTION_NOTE_DISMISS_MS,
+    }
   }
   return null
 }
@@ -413,10 +418,9 @@ async function loadDocument(id: string): Promise<LoadedDocument | null> {
     // threw `Cannot read properties of undefined` on every cold detail open.
     app.invokeTool<unknown>("documents_get", { id }),
     app
-      .invokeTool<{ panels: DocumentDetailTabContribution[] }>(
-        "kernel:slots.list",
-        { slot: "invoicing.document_detail.tabs" },
-      )
+      .invokeTool<{ panels: DocumentDetailTabContribution[] }>("kernel:slots.list", {
+        slot: "invoicing.document_detail.tabs",
+      })
       .catch(() => ({ panels: [] as DocumentDetailTabContribution[] })),
   ])
   const loaded = toLoadedDocument(doc, slot?.panels ?? [])
@@ -576,7 +580,10 @@ function CustomerBlock(p: { doc: DocumentSummary }): JSX.Element {
         </div>
         <div class="flex items-baseline justify-between gap-3">
           <span class="text-text-secondary">{tr("Country")}</span>
-          <span data-testid="document-detail-customer-country" class="text-right font-mono text-text">
+          <span
+            data-testid="document-detail-customer-country"
+            class="text-right font-mono text-text"
+          >
             {dash(p.doc.counterparty_country)}
           </span>
         </div>
@@ -600,7 +607,10 @@ function CustomerBlock(p: { doc: DocumentSummary }): JSX.Element {
         </div>
         <div class="col-span-2 flex items-baseline justify-between gap-3">
           <span class="text-text-secondary">{tr("Ship to")}</span>
-          <span data-testid="document-detail-customer-shipping-address" class="text-right text-text">
+          <span
+            data-testid="document-detail-customer-shipping-address"
+            class="text-right text-text"
+          >
             {dash(p.doc.counterparty_shipping_address)}
           </span>
         </div>
@@ -655,42 +665,52 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
       </Show>
       <div class="flex flex-col gap-2.5">
         <SectionLabel>{tr("Lines")}</SectionLabel>
-        <Show when={p.lines.length > 0} fallback={<div class="text-text-tertiary">{tr("No lines.")}</div>}>
+        <Show
+          when={p.lines.length > 0}
+          fallback={<div class="text-text-tertiary">{tr("No lines.")}</div>}
+        >
           <CardTable
             rows={p.lines}
             rowKey={(l) => String(l.position)}
             rowTestid={(l) => `document-detail-line-${l.position}`}
-            columns={[
-              {
-                key: "description",
-                header: tr("Description"),
-                role: "anchor",
-                cell: (l) => l.description,
-              },
-              {
-                key: "qty",
-                header: tr("Qty"),
-                role: "secondary",
-                cell: (l) => <span class="font-mono tabular-nums">{l.quantity}</span>,
-              },
-              {
-                key: "unit",
-                header: tr("Unit"),
-                role: "meta",
-                align: "right",
-                cell: (l) => (
-                  <Money minor={l.unit_price_minor} currency={p.doc.currency} codeless class="text-text-secondary" />
-                ),
-              },
-              {
-                key: "total",
-                header: tr("Total"),
-                role: "meta",
-                numeric: true,
-                align: "right",
-                cell: (l) => <Money minor={l.total_minor} currency={p.doc.currency} codeless />,
-              },
-            ] as Array<CardTableColumn<DocumentLine>>}
+            columns={
+              [
+                {
+                  key: "description",
+                  header: tr("Description"),
+                  role: "anchor",
+                  cell: (l) => l.description,
+                },
+                {
+                  key: "qty",
+                  header: tr("Qty"),
+                  role: "secondary",
+                  cell: (l) => <span class="font-mono tabular-nums">{l.quantity}</span>,
+                },
+                {
+                  key: "unit",
+                  header: tr("Unit"),
+                  role: "meta",
+                  align: "right",
+                  cell: (l) => (
+                    <Money
+                      minor={l.unit_price_minor}
+                      currency={p.doc.currency}
+                      codeless
+                      class="text-text-secondary"
+                    />
+                  ),
+                },
+                {
+                  key: "total",
+                  header: tr("Total"),
+                  role: "meta",
+                  numeric: true,
+                  align: "right",
+                  cell: (l) => <Money minor={l.total_minor} currency={p.doc.currency} codeless />,
+                },
+              ] as Array<CardTableColumn<DocumentLine>>
+            }
           />
         </Show>
       </div>
@@ -699,15 +719,28 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
       <div class="ml-auto w-full max-w-xs flex-col gap-1.5">
         <div class="flex items-center justify-between py-1">
           <span class="text-text-secondary">{tr("Subtotal")}</span>
-          <Money minor={p.doc.subtotal_minor} currency={p.doc.currency} class="text-text-secondary" />
+          <Money
+            minor={p.doc.subtotal_minor}
+            currency={p.doc.currency}
+            class="text-text-secondary"
+          />
         </div>
         <div class="flex items-center justify-between py-1">
           <span class="text-text-secondary">{tr("Tax")}</span>
-          <Money minor={p.doc.tax_total_minor} currency={p.doc.currency} class="text-text-secondary" />
+          <Money
+            minor={p.doc.tax_total_minor}
+            currency={p.doc.currency}
+            class="text-text-secondary"
+          />
         </div>
         <div class="mt-1 flex items-center justify-between border-t border-border pt-2">
           <span class="font-medium text-text">{tr("Grand total")}</span>
-          <Money minor={p.doc.grand_total_minor} currency={p.doc.currency} emphasis class="text-[14px]" />
+          <Money
+            minor={p.doc.grand_total_minor}
+            currency={p.doc.currency}
+            emphasis
+            class="text-[14px]"
+          />
         </div>
       </div>
     </div>
@@ -718,16 +751,22 @@ function CustomsBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.El
   return (
     <div data-testid="document-detail-customs" class="flex flex-col gap-3 px-4 py-3 text-[12.5px]">
       <div>
-        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">{tr("Treatment")}</div>
+        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+          {tr("Treatment")}
+        </div>
         <div class="font-medium text-text">{p.doc.tax_treatment ?? "-"}</div>
       </div>
       <div>
-        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">{tr("Incoterm")}</div>
+        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+          {tr("Incoterm")}
+        </div>
         <div class="font-mono text-text">{p.doc.incoterm ?? "DAP"}</div>
       </div>
 
       <div>
-        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">{tr("Per-line customs")}</div>
+        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+          {tr("Per-line customs")}
+        </div>
         <Show
           when={p.lines.length > 0}
           fallback={<div class="text-text-tertiary">{tr("No lines.")}</div>}
@@ -736,21 +775,28 @@ function CustomsBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.El
             rows={p.lines}
             rowKey={(l) => String(l.position)}
             rowTestid={(l) => `document-detail-customs-line-${l.position}`}
-            columns={[
-              { key: "description", header: tr("Description"), role: "anchor", cell: (l) => l.description },
-              {
-                key: "hs",
-                header: "HS",
-                role: "meta",
-                cell: (l) => <span class="font-mono">{l.hs_code ?? "-"}</span>,
-              },
-              {
-                key: "coo",
-                header: "CoO",
-                role: "meta",
-                cell: (l) => <span class="font-mono">{l.country_of_origin ?? "-"}</span>,
-              },
-            ] as Array<CardTableColumn<DocumentLine>>}
+            columns={
+              [
+                {
+                  key: "description",
+                  header: tr("Description"),
+                  role: "anchor",
+                  cell: (l) => l.description,
+                },
+                {
+                  key: "hs",
+                  header: "HS",
+                  role: "meta",
+                  cell: (l) => <span class="font-mono">{l.hs_code ?? "-"}</span>,
+                },
+                {
+                  key: "coo",
+                  header: "CoO",
+                  role: "meta",
+                  cell: (l) => <span class="font-mono">{l.country_of_origin ?? "-"}</span>,
+                },
+              ] as Array<CardTableColumn<DocumentLine>>
+            }
           />
         </Show>
       </div>
@@ -770,7 +816,8 @@ async function fetchPdfBlobUrl(documentId: string): Promise<string | null> {
     )
     if (!res?.url) return null
     const blob = await fetchBlob(res.url)
-    const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
+    const pdfBlob =
+      blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
     return URL.createObjectURL(pdfBlob)
   } catch {
     return null
@@ -804,19 +851,35 @@ function PdfBody(p: {
   })
 
   return (
-    <div data-testid="document-detail-pdf" class="flex h-full flex-col gap-2 px-4 py-3 text-[12.5px]">
+    <div
+      data-testid="document-detail-pdf"
+      class="flex h-full flex-col gap-2 px-4 py-3 text-[12.5px]"
+    >
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">{tr("PDF status")}</div>
+          <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+            {tr("PDF status")}
+          </div>
           {/* `downloadEnabled` is true only once the render reached a usable PDF
               (ready / a3-skipped). The distinct testid lets the chaos visual
               checkpoint wait for the PDF to actually finish generating. */}
-          <div data-testid={p.affordance.downloadEnabled ? "document-detail-pdf-ready" : "document-detail-pdf-status"} class="text-text">
+          <div
+            data-testid={
+              p.affordance.downloadEnabled
+                ? "document-detail-pdf-ready"
+                : "document-detail-pdf-status"
+            }
+            class="text-text"
+          >
             {p.affordance.statusLabel}
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Button variant="secondary" testid="document-detail-pdf-preview-inline" onClick={p.onPreview}>
+          <Button
+            variant="secondary"
+            testid="document-detail-pdf-preview-inline"
+            onClick={p.onPreview}
+          >
             {tr("Preview")}
           </Button>
           <Button
@@ -830,7 +893,9 @@ function PdfBody(p: {
         </div>
       </div>
       <Show when={p.doc.pdf_file_id}>
-        <div class="text-text-tertiary">{tr("file_id:")} <span class="font-mono">{p.doc.pdf_file_id}</span></div>
+        <div class="text-text-tertiary">
+          {tr("file_id:")} <span class="font-mono">{p.doc.pdf_file_id}</span>
+        </div>
       </Show>
       <Show when={p.affordance.showRetry}>
         <button
@@ -876,7 +941,10 @@ function PdfBody(p: {
 function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
   const log = createMemo(() => p.doc.lifecycle_log ?? [])
   return (
-    <div data-testid="document-detail-lifecycle" class="flex flex-col gap-2 px-4 py-3 text-[12.5px]">
+    <div
+      data-testid="document-detail-lifecycle"
+      class="flex flex-col gap-2 px-4 py-3 text-[12.5px]"
+    >
       <Show
         when={log().length > 0}
         fallback={<div class="text-text-tertiary">{tr("No lifecycle events yet.")}</div>}
@@ -884,11 +952,16 @@ function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
         <ul class="flex flex-col gap-1">
           <For each={log()}>
             {(entry) => (
-              <li data-testid={`document-detail-lifecycle-${entry.event}`} class="flex gap-2 border-l-2 border-border-subtle pl-2">
+              <li
+                data-testid={`document-detail-lifecycle-${entry.event}`}
+                class="flex gap-2 border-l-2 border-border-subtle pl-2"
+              >
                 <span class="font-mono text-text-tertiary">{fmtDate(entry.at)}</span>
                 <span class="font-medium text-text">{entry.event}</span>
                 <Show when={entry.actor}>
-                  <span class="text-text-secondary">{tr("by")} {entry.actor?.type}</span>
+                  <span class="text-text-secondary">
+                    {tr("by")} {entry.actor?.type}
+                  </span>
                 </Show>
                 <Show when={entry.note}>
                   <span class="text-text-tertiary">({entry.note})</span>
@@ -1007,7 +1080,8 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
       const blob = await fetchBlob(res.url)
       // Force the PDF mime so the browser renders a preview tab instead of
       // downloading (the inline route serves non-image mimes as attachment).
-      const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
+      const pdfBlob =
+        blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
       // The desktop webview opens no tab and saves no blob download: there the host opens the PDF
       // in the system viewer, for preview and download alike.
       if (await openFile(pdfBlob, `${data()?.document.number ?? props.documentId}.pdf`)) return
@@ -1045,12 +1119,21 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   }
 
   return (
-    <Suspense fallback={<div data-testid="document-detail-loading" class="p-4 text-text-tertiary">{tr("Loading…")}</div>}>
+    <Suspense
+      fallback={
+        <div data-testid="document-detail-loading" class="p-4 text-text-tertiary">
+          {tr("Loading…")}
+        </div>
+      }
+    >
       <Show
         when={data()}
         fallback={
           <Show when={data.state === "ready"}>
-            <div data-testid="document-detail-not-found" class="p-6 text-[13px] text-text-secondary">
+            <div
+              data-testid="document-detail-not-found"
+              class="p-6 text-[13px] text-text-secondary"
+            >
               <p class="font-medium text-text">{tr("Document not found")}</p>
               <p class="mt-1">
                 {tr("It may have been deleted, or it belongs to another organization.")}
@@ -1068,7 +1151,10 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
               <header class="flex flex-col gap-1.5 border-b border-border-subtle px-5 py-3.5">
                 <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                   <div class="flex items-center gap-3">
-                    <span data-testid="document-detail-number" class="font-mono text-[14px] font-medium text-text">
+                    <span
+                      data-testid="document-detail-number"
+                      class="font-mono text-[14px] font-medium text-text"
+                    >
                       {doc().number ?? tr("Draft")}
                     </span>
                     <TypeLabel
@@ -1097,7 +1183,11 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         deleted; issued documents are legally immutable and are
                         reversed via a credit note, never deleted. */}
                     <Show when={doc().status === "draft"}>
-                      <Button variant="danger" testid="document-detail-action-delete-draft" onClick={deleteDraft}>
+                      <Button
+                        variant="danger"
+                        testid="document-detail-action-delete-draft"
+                        onClick={deleteDraft}
+                      >
                         {tr(FOOTER_ACTIONS.delete_draft.label)}
                       </Button>
                       <span aria-hidden="true" class="mx-1 h-5 w-px self-center bg-border-subtle" />
@@ -1111,13 +1201,21 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                       <Show
                         when={doc().status === "draft"}
                         fallback={
-                          <Button variant="secondary" testid="document-detail-action-edit" onClick={editDraft}>
+                          <Button
+                            variant="secondary"
+                            testid="document-detail-action-edit"
+                            onClick={editDraft}
+                          >
                             {tr("Edit")}
                           </Button>
                         }
                       >
                         <span data-testid="document-detail-action-edit" class="contents">
-                          <Button variant="secondary" testid="document-detail-action-edit-draft" onClick={editDraft}>
+                          <Button
+                            variant="secondary"
+                            testid="document-detail-action-edit-draft"
+                            onClick={editDraft}
+                          >
                             {tr("Edit draft")}
                           </Button>
                         </span>
@@ -1125,11 +1223,19 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     </Show>
                     {/* Credit notes are never payable — no mark-paid. */}
                     <Show when={doc().type !== "credit_note"}>
-                      <Button variant="ghost" testid="document-detail-action-mark-paid" onClick={markPaid}>
+                      <Button
+                        variant="ghost"
+                        testid="document-detail-action-mark-paid"
+                        onClick={markPaid}
+                      >
                         {tr(FOOTER_ACTIONS.mark_paid.label)}
                       </Button>
                     </Show>
-                    <Button variant="secondary" testid="document-detail-action-send-to-customer" onClick={sendToCustomer}>
+                    <Button
+                      variant="secondary"
+                      testid="document-detail-action-send-to-customer"
+                      onClick={sendToCustomer}
+                    >
                       {tr(FOOTER_ACTIONS.send_to_customer.label)}
                     </Button>
                     <Show when={canConvertToInvoice(doc())}>
@@ -1141,7 +1247,11 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         {tr(FOOTER_ACTIONS.convert_to_invoice.label)}
                       </Button>
                     </Show>
-                    <Button variant="secondary" testid="document-detail-action-preview-pdf" onClick={previewPdf}>
+                    <Button
+                      variant="secondary"
+                      testid="document-detail-action-preview-pdf"
+                      onClick={previewPdf}
+                    >
                       {tr(FOOTER_ACTIONS.preview_pdf.label)}
                     </Button>
                     <Button
@@ -1155,8 +1265,13 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                   </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-text-tertiary">
-                  <span>{tr("Issued")} <span class="text-text-secondary">{fmtDate(doc().issued_at)}</span></span>
-                  <span>{tr("Due")} <span class="text-text-secondary">{fmtDate(doc().due_at)}</span></span>
+                  <span>
+                    {tr("Issued")}{" "}
+                    <span class="text-text-secondary">{fmtDate(doc().issued_at)}</span>
+                  </span>
+                  <span>
+                    {tr("Due")} <span class="text-text-secondary">{fmtDate(doc().due_at)}</span>
+                  </span>
                   {/* Shopify-sourced invoices carry external_refs pointing back at
                       the originating order — link out to the real Shopify admin
                       page (no in-app order detail exists here; invoicing only

@@ -43,9 +43,10 @@ export type PreflightResult = { ok: true } | { error: { code: string; message: s
 /** Turn a validation THROW from a shared handler guard into the `{ error }` shape a preflight must
  *  return, preserving the handler's own code + message so the two surfaces agree verbatim. */
 export function preflightRefusal(err: unknown, fallbackCode: string): PreflightResult {
-  const code = typeof (err as { code?: unknown } | null)?.code === "string"
-    ? ((err as { code: string }).code)
-    : fallbackCode
+  const code =
+    typeof (err as { code?: unknown } | null)?.code === "string"
+      ? (err as { code: string }).code
+      : fallbackCode
   return { error: { code, message: err instanceof Error ? err.message : String(err) } }
 }
 
@@ -169,7 +170,10 @@ const ctxsAwaitingOutput = new WeakSet<object>()
  * protocol wrapper leaves the execution at `awaiting_output` instead of marking it succeeded.
  * Returns false (nothing recorded) outside an approval.
  */
-export async function recordAwaitingOutput(ctx: AppContext, externalRef: unknown): Promise<boolean> {
+export async function recordAwaitingOutput(
+  ctx: AppContext,
+  externalRef: unknown,
+): Promise<boolean> {
   const bridged = ctx as unknown as ApprovalBridges
   const approval = bridged.approval
   if (!approval || typeof bridged.approval_recordAwaitingOutput !== "function") return false
@@ -200,7 +204,10 @@ export function withApprovalProtocol(fn: MutationHandler): MutationHandler {
     try {
       const result = await fn(params, ctx)
       const isErrorEnvelope =
-        result != null && typeof result === "object" && "error" in result && (result as { error?: unknown }).error != null
+        result != null &&
+        typeof result === "object" &&
+        "error" in result &&
+        (result as { error?: unknown }).error != null
       if (isErrorEnvelope) {
         await bridged.approval_recordFailedNoEffect?.(
           approval.toolName,
@@ -236,7 +243,10 @@ export interface UserError {
 }
 
 /** Read `userErrors` (any of the *UserError variants) from a mutation payload and throw if non-empty. */
-export function assertNoUserErrors(payload: Record<string, unknown> | undefined, mutationName: string): void {
+export function assertNoUserErrors(
+  payload: Record<string, unknown> | undefined,
+  mutationName: string,
+): void {
   if (!payload) return
   // Shopify uses `userErrors` for most, `inventoryUserErrors` etc for a few.
   const keys = Object.keys(payload).filter((k) => k.endsWith("UserErrors") || k === "userErrors")
@@ -347,15 +357,25 @@ export async function runMutation<T extends Record<string, unknown>>(
   assertNoUserErrors(node as Record<string, unknown>, args.dataKey)
   markExternalEffect(ctx)
   const entityId =
-    args.entityIdOverride ?? (args.entityIdPath ? resolveDotPath(node, args.entityIdPath) : undefined)
-  const emittedNode = args.transformNode ? args.transformNode(node as Record<string, unknown>) : node
+    args.entityIdOverride ??
+    (args.entityIdPath ? resolveDotPath(node, args.entityIdPath) : undefined)
+  const emittedNode = args.transformNode
+    ? args.transformNode(node as Record<string, unknown>)
+    : node
   await emitMutationEvent(ctx, args.eventEntity, args.eventAction, entityId, emittedNode)
   return emittedNode as T
 }
 
 // Bare entity-name wrappers a weak model sometimes adds around a mutation's GraphQL input.
 const INPUT_WRAPPER_KEYS = new Set([
-  "input", "product", "variant", "order", "draftorder", "customer", "return", "returnrequest",
+  "input",
+  "product",
+  "variant",
+  "order",
+  "draftorder",
+  "customer",
+  "return",
+  "returnrequest",
 ])
 
 /**

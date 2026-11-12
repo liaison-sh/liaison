@@ -25,7 +25,12 @@ describe("summarizeBoxtalError", () => {
       errors: [
         {
           code: "RequestValidationException",
-          parameters: [{ propertyPath: "shipment.toAddress.location.postalCode", message: "This value should not be blank." }],
+          parameters: [
+            {
+              propertyPath: "shipment.toAddress.location.postalCode",
+              message: "This value should not be blank.",
+            },
+          ],
         },
         { code: "InvalidPaymentException", parameters: null },
       ],
@@ -36,7 +41,9 @@ describe("summarizeBoxtalError", () => {
   })
 
   it("falls back to a single `message` field", () => {
-    expect(summarizeBoxtalError(JSON.stringify({ message: "no offer found" }))).toBe("no offer found")
+    expect(summarizeBoxtalError(JSON.stringify({ message: "no offer found" }))).toBe(
+      "no offer found",
+    )
   })
 
   it("returns a truncated raw body for non-JSON / unknown shapes", () => {

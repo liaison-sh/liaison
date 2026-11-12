@@ -17,7 +17,7 @@
 // stored as one (`RECEIVED_EINVOICE_PARENT`), and the tool answers `received_einvoice_in_pennylane`.
 import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
 import type { PennylaneToolCtx } from "./ctx"
-import { opError, fromException, type OpError } from "./einvoicing/errors"
+import { fromException, type OpError, opError } from "./einvoicing/errors"
 import { getClient } from "./lib/get-client"
 import { PennylaneApiError, PennylaneClient } from "./lib/pennylane-client"
 
@@ -45,7 +45,10 @@ export interface UploadResult {
   adopted: boolean
 }
 
-export type UploadCtx = Pick<PennylaneToolCtx, "db" | "fetch" | "connections" | "logger" | "__client">
+export type UploadCtx = Pick<
+  PennylaneToolCtx,
+  "db" | "fetch" | "connections" | "logger" | "__client"
+>
 
 const ZERO_DECIMAL = new Set(["JPY", "KRW", "CLP", "ISK", "HUF", "TWD", "UGX", "VND", "XAF", "XOF"])
 
@@ -61,12 +64,16 @@ export function minorToDecimal(minor: string, currency: string): string | null {
 }
 
 /** What is wrong with the amounts of a bill, before anything parks and again at execution. */
-export function minorAmountsRefusal(input: { amount_minor?: unknown; tax_minor?: unknown }): string | null {
+export function minorAmountsRefusal(input: {
+  amount_minor?: unknown
+  tax_minor?: unknown
+}): string | null {
   for (const [field, value] of [
     ["amount_minor", input.amount_minor],
     ["tax_minor", input.tax_minor ?? "0"],
   ] as const) {
-    if (value !== undefined && readMinorAmount(value) === null) return minorAmountRefusal(field, value)
+    if (value !== undefined && readMinorAmount(value) === null)
+      return minorAmountRefusal(field, value)
   }
   return null
 }
@@ -112,24 +119,39 @@ interface Supplier {
   name?: string | null
 }
 
-async function resolveSupplier(c: PennylaneClient, input: UploadInput): Promise<Supplier | OpError> {
+async function resolveSupplier(
+  c: PennylaneClient,
+  input: UploadInput,
+): Promise<Supplier | OpError> {
   if (input.supplier_id) {
-    if (!/^\d+$/.test(input.supplier_id)) return opError("invalid_input", "supplier_id must be a Pennylane supplier id")
+    if (!/^\d+$/.test(input.supplier_id))
+      return opError("invalid_input", "supplier_id must be a Pennylane supplier id")
     try {
       return await c.get<Supplier>(`/suppliers/${input.supplier_id}`)
     } catch (e) {
-      if (e instanceof PennylaneApiError && e.status === 404) return opError("supplier_not_found", `Pennylane has no supplier ${input.supplier_id}`)
+      if (e instanceof PennylaneApiError && e.status === 404)
+        return opError("supplier_not_found", `Pennylane has no supplier ${input.supplier_id}`)
       throw e
     }
   }
   const name = input.supplier_name.trim()
-  const page = await c.list<Supplier>("/suppliers", { filter: [{ field: "name", operator: "start_with", value: name }], limit: 100 })
+  const page = await c.list<Supplier>("/suppliers", {
+    filter: [{ field: "name", operator: "start_with", value: name }],
+    limit: 100,
+  })
   const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase()
   const exact = page.items.filter((s) => norm(s.name) === norm(name))
   if (exact.length === 1) return exact[0]!
-  const found = (exact.length > 1 ? exact : page.items).slice(0, 10).map((s) => ({ supplier_id: String(s.id), name: s.name ?? "" }))
+  const found = (exact.length > 1 ? exact : page.items)
+    .slice(0, 10)
+    .map((s) => ({ supplier_id: String(s.id), name: s.name ?? "" }))
   if (exact.length > 1) {
-    return opError("supplier_ambiguous", `Several Pennylane suppliers are named "${name}": pass supplier_id`, false, { candidates: found })
+    return opError(
+      "supplier_ambiguous",
+      `Several Pennylane suppliers are named "${name}": pass supplier_id`,
+      false,
+      { candidates: found },
+    )
   }
   return opError(
     "supplier_not_found",
@@ -141,16 +163,24 @@ async function resolveSupplier(c: PennylaneClient, input: UploadInput): Promise<
   )
 }
 
-export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput): Promise<UploadResult | OpError> {
+export async function supplierInvoiceUpload(
+  ctx: UploadCtx,
+  input: UploadInput,
+): Promise<UploadResult | OpError> {
   const currency = (input.currency ?? "EUR").trim().toUpperCase()
-  if (!input.file_id || !input.supplier_name?.trim()) return opError("invalid_input", "file_id and supplier_name are required")
-  if (!DATE.test(input.invoice_date ?? "")) return opError("invalid_input", "invoice_date must be YYYY-MM-DD")
-  if (input.due_date && !DATE.test(input.due_date)) return opError("invalid_input", "due_date must be YYYY-MM-DD")
-  if (!/^[A-Z]{3}$/.test(currency)) return opError("invalid_input", "currency must be a 3-letter code")
+  if (!input.file_id || !input.supplier_name?.trim())
+    return opError("invalid_input", "file_id and supplier_name are required")
+  if (!DATE.test(input.invoice_date ?? ""))
+    return opError("invalid_input", "invoice_date must be YYYY-MM-DD")
+  if (input.due_date && !DATE.test(input.due_date))
+    return opError("invalid_input", "due_date must be YYYY-MM-DD")
+  if (!/^[A-Z]{3}$/.test(currency))
+    return opError("invalid_input", "currency must be a 3-letter code")
   const total = minorToDecimal(String(input.amount_minor ?? ""), currency)
   const tax = minorToDecimal(String(input.tax_minor ?? "0"), currency)
   const refused = minorAmountsRefusal(input)
-  if (refused || total === null || tax === null) return opError("invalid_amount", refused ?? "amount_minor is required")
+  if (refused || total === null || tax === null)
+    return opError("invalid_amount", refused ?? "amount_minor is required")
   const taxMinor = BigInt(String(input.tax_minor ?? "0").trim())
   const beforeTaxMinor = BigInt(String(input.amount_minor).trim()) - taxMinor
   const beforeTax = minorToDecimal(String(beforeTaxMinor), currency)!
@@ -187,7 +217,13 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
     if (prior.items[0]) return await record(String(prior.items[0].id), true)
     const filename = `${(input.invoice_number ?? "supplier-invoice").replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`
     const att = await c.postMultipart<{ id: number }>("/file_attachments", [
-      { name: "file", fileId: input.file_id, filename, contentType: "application/pdf", refuseParents: [RECEIVED_EINVOICE_PARENT] },
+      {
+        name: "file",
+        fileId: input.file_id,
+        filename,
+        contentType: "application/pdf",
+        refuseParents: [RECEIVED_EINVOICE_PARENT],
+      },
       { name: "filename", value: filename },
     ])
     try {
@@ -213,7 +249,10 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
       })
       return await record(String(created.data.id), false)
     } catch (e) {
-      const existing = e instanceof PennylaneApiError && e.status === 409 ? /document with ID (\d+)/.exec(e.body)?.[1] : null
+      const existing =
+        e instanceof PennylaneApiError && e.status === 409
+          ? /document with ID (\d+)/.exec(e.body)?.[1]
+          : null
       if (existing) return await record(existing, true)
       throw e
     }
@@ -226,5 +265,8 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
 /** The host's `file_parent_refused` (it crosses the sandbox as an error or an error-shaped value). */
 function isParentRefusal(e: unknown): boolean {
   const o = e as { code?: unknown; message?: unknown } | null
-  return o?.code === "file_parent_refused" || /file_parent_refused|which this upload refuses/.test(String(o?.message ?? e ?? ""))
+  return (
+    o?.code === "file_parent_refused" ||
+    /file_parent_refused|which this upload refuses/.test(String(o?.message ?? e ?? ""))
+  )
 }

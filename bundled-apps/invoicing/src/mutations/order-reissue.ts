@@ -2,6 +2,8 @@
 //
 // Invoicing mutations: order.reissue_apply (operator-approved order-edit reissue).
 
+import type { Regime } from "../einvoicing/classify"
+import { checkEinvoiceGate, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
 import { type Counterparty, type DraftLine, type DraftLineInput, storedTaxCountry } from "../issue"
 import { ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import { prepareCreditNoteCreateAndIssue } from "./credit-notes"
@@ -9,16 +11,14 @@ import { findDocumentSummary, findIssuerProfile, loadDraftLines } from "./db-hel
 import { issueTogetherWithFxRate } from "./fx-issue"
 import { prepareInvoiceCreateAndIssue } from "./invoice-issue"
 import { normaliseDraftLines } from "./lines"
-import type { Regime } from "../einvoicing/classify"
-import { checkEinvoiceGate, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
 import {
-  type MutationResult,
-  type MutationsCtx,
   type DocumentRowSummary,
   type ErrorEnvelope,
-  type PreflightResult,
-  normaliseNotes,
   lineAmountsError,
+  type MutationResult,
+  type MutationsCtx,
+  normaliseNotes,
+  type PreflightResult,
   toPreflightResult,
 } from "./shared"
 
@@ -256,7 +256,8 @@ export async function orderReissueApply(
 
   const currency = input.currency ?? original.currency
   const statedCategory =
-    original.einvoice?.operation_category && original.einvoice.operation_category_source !== "lines_default"
+    original.einvoice?.operation_category &&
+    original.einvoice.operation_category_source !== "lines_default"
       ? original.einvoice.operation_category
       : null
 
@@ -278,8 +279,7 @@ export async function orderReissueApply(
     items: creditItems,
     original_document_id: original.id,
     reason:
-      input.reason ??
-      "Order edited after invoice issued: reissuing with the updated items/amounts",
+      input.reason ?? "Order edited after invoice issued: reissuing with the updated items/amounts",
     // Explicit notes win on both documents; otherwise the credit note inherits the original
     // invoice's own notes (it reads them from original_document_id itself).
     notes: notes.value,

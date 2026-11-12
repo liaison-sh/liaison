@@ -7,6 +7,10 @@
       "scripts/**",
       "tools/**",
       "qa/notifications/**",
+      "bundled-apps/**",
+      "!bundled-apps/*/dist/**",
+      "!bundled-apps/*/dist-*/**",
+      "!bundled-apps/**/*.liaisonapp",
       "!apps/web/logs/**",
       "!apps/api/scripts/dictation-bakeoff-results/**",
       "!apps/web/test-results/**",
@@ -95,7 +99,11 @@
       }
     },
     {
-      "includes": ["apps/api/src/apps/*/app.manifest.json"],
+      "includes": [
+        "apps/api/src/apps/*/app.manifest.json",
+        "bundled-apps/*/app.manifest.json",
+        "bundled-apps/*/src/__fixtures__/**/*.json"
+      ],
       "formatter": {
         "enabled": false
       }

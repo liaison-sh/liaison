@@ -4,10 +4,7 @@
 // zero results, the 429 without Retry-After (one retry), an outage, and never picking among
 // several candidates.
 import { describe, expect, test } from "bun:test"
-import {
-  candidateMatchesName,
-  registrySearch,
-} from "./lookup"
+import { candidateMatchesName, registrySearch } from "./lookup"
 import {
   REGISTRY_RATE_LIMITED,
   REGISTRY_SEARCH_EMPTY,
@@ -102,7 +99,10 @@ describe("registrySearch", () => {
 
   test("two candidates are both returned, none picked", async () => {
     const a = registryResultWith({ siren: FICTIONAL_SIRENS[0], nom_complet: "EXEMPLE INDUSTRIES" })
-    const b = registryResultWith({ siren: FICTIONAL_SIRENS[2], nom_complet: "EXEMPLE INDUSTRIES NORD" })
+    const b = registryResultWith({
+      siren: FICTIONAL_SIRENS[2],
+      nom_complet: "EXEMPLE INDUSTRIES NORD",
+    })
     const { fetch } = fakeFetch([registryResponse([a, b])])
     const r = await registrySearch({ fetch }, { q: "exemple industries" })
     expect(r.status).toBe("ok")

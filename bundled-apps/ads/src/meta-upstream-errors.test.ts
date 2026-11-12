@@ -79,7 +79,9 @@ describe("Meta 4xx answers cross the sandbox as ToolError, not a bare Error", ()
   })
 
   it("a Meta 5xx is not reclassified: it still propagates as a MetaApiError", async () => {
-    const ctx = ctxAnswering(500, { error: { code: 2, message: "Service temporarily unavailable" } })
+    const ctx = ctxAnswering(500, {
+      error: { code: 2, message: "Service temporarily unavailable" },
+    })
     const err = await thrown("graph_get", { path: "/act_1" }, ctx)
     expect(err).toBeInstanceOf(MetaApiError)
     expect(err.name).not.toBe("ToolError")

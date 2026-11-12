@@ -3,8 +3,9 @@
 // Watched — the posts/videos/threads the poller is actively following. Each row
 // shows a cadence pill (HOT/WARM/COOL/DECAYED) derived from status + cadence; a
 // decayed watch shows a Resume action that flips it back to active.
-import { type Component, For, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, For, Show } from "solid-js"
 import { Badge, type BadgeTone, Button, EmptyState, PageHeader } from "./kit"
 
 export interface WatchedRow {
@@ -19,7 +20,10 @@ export interface WatchedRow {
 
 // ── Pure helper (unit-tested) ────────────────────────────────────────────────
 /** Map a watch's status + cadence to a human cadence pill. */
-export function cadenceLabel(status: WatchedRow["status"], cadenceSeconds: number): "HOT" | "WARM" | "COOL" | "DECAYED" | "STOPPED" {
+export function cadenceLabel(
+  status: WatchedRow["status"],
+  cadenceSeconds: number,
+): "HOT" | "WARM" | "COOL" | "DECAYED" | "STOPPED" {
   if (status === "decayed") return "DECAYED"
   if (status === "stopped") return "STOPPED"
   if (cadenceSeconds <= 300) return "HOT"
@@ -64,7 +68,14 @@ export const Watched: Component = () => {
     <div class="flex h-full min-h-0 flex-col">
       <PageHeader title="Watched" subtitle="Posts and videos the poller is following" />
       <div class="min-h-0 flex-1 overflow-y-auto" data-testid="social-watched-list">
-        <Show when={(rows() ?? []).length > 0} fallback={<EmptyState title="Nothing watched yet">Active threads are promoted automatically.</EmptyState>}>
+        <Show
+          when={(rows() ?? []).length > 0}
+          fallback={
+            <EmptyState title="Nothing watched yet">
+              Active threads are promoted automatically.
+            </EmptyState>
+          }
+        >
           <For each={rows() ?? []}>
             {(r) => {
               const label = cadenceLabel(r.status, r.cadence_seconds)
@@ -75,12 +86,20 @@ export const Watched: Component = () => {
                 >
                   <span class="flex flex-col">
                     <span class="text-[12.5px] text-text">{r.external_id}</span>
-                    <span class="text-[11px] text-text-tertiary">{r.platform} · {r.kind}</span>
+                    <span class="text-[11px] text-text-tertiary">
+                      {r.platform} · {r.kind}
+                    </span>
                   </span>
                   <span class="flex items-center gap-2">
-                    <Badge tone={cadenceTone(label)} testid={`social-watched-cadence-${r.id}`}>{label}</Badge>
+                    <Badge tone={cadenceTone(label)} testid={`social-watched-cadence-${r.id}`}>
+                      {label}
+                    </Badge>
                     <Show when={r.status === "decayed"}>
-                      <Button variant="secondary" testid={`social-watched-resume-${r.id}`} onClick={() => void resume(r)}>
+                      <Button
+                        variant="secondary"
+                        testid={`social-watched-resume-${r.id}`}
+                        onClick={() => void resume(r)}
+                      >
                         Resume
                       </Button>
                     </Show>

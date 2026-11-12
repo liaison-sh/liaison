@@ -30,23 +30,43 @@ vi.mock("@liaison/host", () => ({
 }))
 
 class ApiError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
     super(message)
     this.name = "ApiError"
   }
 }
 
 /** The ApiError the ads UI receives for a given Meta Graph error answer. */
-async function apiErrorFor(httpStatus: number, graphError: Record<string, unknown>): Promise<ApiError> {
-  const fetch = async () => ({ status: httpStatus, headers: {}, body: JSON.stringify({ error: graphError }) })
+async function apiErrorFor(
+  httpStatus: number,
+  graphError: Record<string, unknown>,
+): Promise<ApiError> {
+  const fetch = async () => ({
+    status: httpStatus,
+    headers: {},
+    body: JSON.stringify({ error: graphError }),
+  })
   const err = await metaFetch(fetch, { path: "/act_1", accessToken: "t" }).catch((e) => e)
   const tool = metaUpstreamToolError(err)
   if (!tool) throw new Error("expected a ToolError mapping")
   return new ApiError(tool.message, tool.status, tool.code)
 }
 
-const THROTTLE = { code: 80000, error_subcode: 2446079, message: "There have been too many calls", fbtrace_id: "FB1" }
-const DENIED = { code: 10, message: "(#10) Application does not have permission for this action", fbtrace_id: "FB2" }
+const THROTTLE = {
+  code: 80000,
+  error_subcode: 2446079,
+  message: "There have been too many calls",
+  fbtrace_id: "FB1",
+}
+const DENIED = {
+  code: 10,
+  message: "(#10) Application does not have permission for this action",
+  fbtrace_id: "FB2",
+}
 
 const THROTTLE_TEXT = "Meta is limiting requests right now. Try again in a few minutes."
 const DENIED_TEXT =
@@ -66,7 +86,9 @@ describe("Campaigns tab", () => {
     const note = await screen.findByTestId("ads-campaigns-issue")
     expect(note.textContent).toBe(`${THROTTLE_TEXT}Retry`)
     expect(screen.queryByText(/No Meta Ads connection/)).toBeNull()
-    expect(document.body.textContent).not.toMatch(/Next step|unknown error|Tool execution failed|Something went wrong/i)
+    expect(document.body.textContent).not.toMatch(
+      /Next step|unknown error|Tool execution failed|Something went wrong/i,
+    )
   })
 
   it("a Meta permission refusal names Meta's reason and offers no Retry", async () => {
@@ -84,8 +106,12 @@ describe("Campaigns tab", () => {
 describe("Settings: account status, Meta card", () => {
   it("a permission refusal on the account read says so instead of 'Not connected'", async () => {
     answers.set("account_info", { reject: await apiErrorFor(403, DENIED) })
-    answers.set("google_account_info", { resolve: { error: { code: "google_not_connected", message: "x" } } })
-    answers.set("merchant_feed_status", { resolve: { error: { code: "google_not_connected", message: "x" } } })
+    answers.set("google_account_info", {
+      resolve: { error: { code: "google_not_connected", message: "x" } },
+    })
+    answers.set("merchant_feed_status", {
+      resolve: { error: { code: "google_not_connected", message: "x" } },
+    })
     const { AdsAccountStatus } = await import("./AccountStatus")
     render(() => <AdsAccountStatus />)
     const card = await screen.findByTestId("ads-settings-status")
@@ -96,12 +122,22 @@ describe("Settings: account status, Meta card", () => {
 
 describe("Settings: account status, Google and Merchant cards", () => {
   it("each arm reads its own status and offers no connect button (the connections block does)", async () => {
-    answers.set("account_info", { resolve: { id: "act_1", name: "Studio", currency: "EUR", account_status: 1 } })
-    answers.set("google_account_info", { resolve: { error: { code: "google_not_connected", message: "Google account not authorized yet" } } })
-    answers.set("merchant_feed_status", { resolve: { error: { code: "merchant_not_configured", message: "x" } } })
+    answers.set("account_info", {
+      resolve: { id: "act_1", name: "Studio", currency: "EUR", account_status: 1 },
+    })
+    answers.set("google_account_info", {
+      resolve: {
+        error: { code: "google_not_connected", message: "Google account not authorized yet" },
+      },
+    })
+    answers.set("merchant_feed_status", {
+      resolve: { error: { code: "merchant_not_configured", message: "x" } },
+    })
     const { AdsAccountStatus } = await import("./AccountStatus")
     render(() => <AdsAccountStatus />)
-    await vi.waitFor(() => expect(screen.getByTestId("ads-settings-status").textContent).toContain("Studio · EUR"))
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("ads-settings-status").textContent).toContain("Studio · EUR"),
+    )
     expect(screen.getByTestId("ads-settings-google").textContent).toContain("Not connected")
     expect(screen.getByTestId("ads-settings-merchant").textContent).toContain("Optional")
     expect(screen.queryByTestId("ads-settings-google-connect")).toBeNull()

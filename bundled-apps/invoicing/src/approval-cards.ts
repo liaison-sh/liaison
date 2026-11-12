@@ -56,7 +56,9 @@ const GID_RE = /gid:\/\/[A-Za-z]+\/[A-Za-z]+\/\d+(\?[^\s,)]*)?/g
 export function isOpaqueId(v: unknown): boolean {
   if (typeof v !== "string") return false
   const s = v.trim()
-  return /^gid:\/\//.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  return (
+    /^gid:\/\//.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  )
 }
 
 /** Free text with any uuid or gid taken out (a reason or note an agent wrote may quote one). */
@@ -146,7 +148,8 @@ export function unreadableLineAmount(lines: CardLineItem[]): string | null {
       [l.unit_price_minor, "price"],
       [l.discount_minor, "discount"],
     ] as const) {
-      const absent = value === undefined || value === null || (typeof value === "string" && value.trim() === "")
+      const absent =
+        value === undefined || value === null || (typeof value === "string" && value.trim() === "")
       if (!absent && toMinor(value) === null) {
         return `the ${label} on line ${i + 1} is ${JSON.stringify(value)}, not a whole number of cents`
       }
@@ -181,7 +184,9 @@ export function day(v: unknown): string | null {
 }
 
 /** A document the card names: "proforma PRO-2026-0029", or "draft proforma" before numbering. */
-export function docName(doc: { type?: unknown; number?: unknown; status?: unknown } | null | undefined): string {
+export function docName(
+  doc: { type?: unknown; number?: unknown; status?: unknown } | null | undefined,
+): string {
   const type = docTypeLabel(doc?.type)
   const number = text(doc?.number, 40)
   if (number) return `${type} ${number}`
@@ -280,7 +285,9 @@ export interface IssueCardFacts {
 }
 
 /** The tax, price-basis and total lines of an issue card: exactly what will be issued. */
-export function taxCardLines(f: Pick<IssueCardFacts, "tax" | "taxCountry" | "buyer" | "currency" | "customer">): string[] {
+export function taxCardLines(
+  f: Pick<IssueCardFacts, "tax" | "taxCountry" | "buyer" | "currency" | "customer">,
+): string[] {
   const plan = f.tax
   if (!plan) return []
   const cur = f.currency
@@ -288,18 +295,24 @@ export function taxCardLines(f: Pick<IssueCardFacts, "tax" | "taxCountry" | "buy
   const vat = b?.vat_id ? String(b.vat_id) : null
   let vatPart: string
   if (vat) {
-    const from = b?.vat_id_source === "prior_document" && b.prior_document_number ? `, filled in from ${b.prior_document_number}` : ""
+    const from =
+      b?.vat_id_source === "prior_document" && b.prior_document_number
+        ? `, filled in from ${b.prior_document_number}`
+        : ""
     const vies =
       b?.vies === "valid"
         ? `, VIES verified${b.vies_name ? `: ${text(b.vies_name, 60)}` : ""}${
-            b.vies_name_mismatch ? ` (NAME MISMATCH with the buyer "${text(f.customer, 50) ?? "?"}", check it is the same company)` : ""
+            b.vies_name_mismatch
+              ? ` (NAME MISMATCH with the buyer "${text(f.customer, 50) ?? "?"}", check it is the same company)`
+              : ""
           }`
         : b?.vies === "unavailable"
           ? ", NOT verified (VIES unavailable)"
           : ""
     vatPart = `buyer VAT number ${vat}${from}${vies}`
   } else if (b?.buyer_is_consumer && (b.consumer_override_evidence?.length ?? 0) > 0) {
-    vatPart = "no buyer VAT number: the agent declared this buyer a private consumer, against the evidence above"
+    vatPart =
+      "no buyer VAT number: the agent declared this buyer a private consumer, against the evidence above"
   } else if (b?.business_unverified) {
     vatPart = `no buyer VAT number, business status NOT verified (${text(b.business_unverified, 80)}): approve only if you know the buyer is a private person`
   } else if (b?.buyer_is_consumer) {
@@ -325,7 +338,9 @@ export function taxCardLines(f: Pick<IssueCardFacts, "tax" | "taxCountry" | "buy
  * evidence (buyer-vat.ts `consumer_override_evidence`): the person deciding reads the evidence in
  * plain words before anything else. Empty when there is no such declaration.
  */
-export function consumerOverrideCardLines(buyer: Partial<Pick<BuyerVatFacts, "consumer_override_evidence">> | null | undefined): string[] {
+export function consumerOverrideCardLines(
+  buyer: Partial<Pick<BuyerVatFacts, "consumer_override_evidence">> | null | undefined,
+): string[] {
   const evidence = buyer?.consumer_override_evidence ?? []
   if (evidence.length === 0) return []
   // At most three lines: the card holds eight, and the tax lines below must stay on it.
@@ -343,15 +358,26 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
   const unreadable = unreadableLineAmount(f.lines)
   if (unreadable) return refusedCard(f, type, customer, unreadable)
   const exact = (f.totalMinor !== undefined && f.totalMinor !== null) || !!f.tax
-  const totalMinor = f.tax ? f.tax.total_minor : exact ? (f.totalMinor as bigint) : linesTotal(f.lines)
+  const totalMinor = f.tax
+    ? f.tax.total_minor
+    : exact
+      ? (f.totalMinor as bigint)
+      : linesTotal(f.lines)
   const total = formatMoneyMinor(totalMinor, f.currency)
   // The original's total may be unknown here: a zero then waits for the stage-time check's answer.
   const originalTotal = toMinor(f.originalTotalMinor)
   if (
     f.type === "credit_note" &&
-    (totalMinor > 0n || (totalMinor === 0n && (!f.originalNumber || (originalTotal !== null && originalTotal !== 0n))))
+    (totalMinor > 0n ||
+      (totalMinor === 0n &&
+        (!f.originalNumber || (originalTotal !== null && originalTotal !== 0n))))
   ) {
-    return refusedCard(f, type, customer, `a credit note's total must be negative, these lines total ${total}`)
+    return refusedCard(
+      f,
+      type,
+      customer,
+      `a credit note's total must be negative, these lines total ${total}`,
+    )
   }
   const order = orderName(f.orderNumber)
   const draftOrder = orderName(f.draftOrderName)
@@ -370,7 +396,11 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
     ? // The tax lines (or, when the issuer's tax setup is unknown, the typed lines total, said as
       // such: a card never claims a tax basis it did not compute).
       taxCardLines(f)
-    : [exact ? `Total: ${total}` : `Lines total: ${total} as typed (tax not computed here, check the document)`]
+    : [
+        exact
+          ? `Total: ${total}`
+          : `Lines total: ${total} as typed (tax not computed here, check the document)`,
+      ]
   const lines: string[] = isCredit
     ? [
         // The title names the document, the customer and the amount. What a person decides on then

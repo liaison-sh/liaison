@@ -38,10 +38,20 @@ function makeCtx(db: MockDb, live: FakeApproval[] | null): SocialToolCtx & { cal
               calls.push([key, toolNames])
               return JSON.stringify(
                 live
-                  .filter((a) => a.tool_name.startsWith("social:") && (!toolNames || toolNames.includes(a.tool_name)))
+                  .filter(
+                    (a) =>
+                      a.tool_name.startsWith("social:") &&
+                      (!toolNames || toolNames.includes(a.tool_name)),
+                  )
                   .filter((a) => typeof a.payload[key] === "string")
                   .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                  .map((a) => ({ id: a.id, tool_name: a.tool_name, target_id: a.payload[key], payload: a.payload, created_at: a.created_at })),
+                  .map((a) => ({
+                    id: a.id,
+                    tool_name: a.tool_name,
+                    target_id: a.payload[key],
+                    payload: a.payload,
+                    created_at: a.created_at,
+                  })),
               )
             },
           },
@@ -50,7 +60,12 @@ function makeCtx(db: MockDb, live: FakeApproval[] | null): SocialToolCtx & { cal
   } as SocialToolCtx & { calls: unknown[][] }
 }
 
-const reply = (id: string, findingId: string, text: string, at = "2026-10-01T10:00:00.000Z"): FakeApproval => ({
+const reply = (
+  id: string,
+  findingId: string,
+  text: string,
+  at = "2026-10-01T10:00:00.000Z",
+): FakeApproval => ({
   id,
   tool_name: "social:reply_to_finding",
   payload: { finding_id: findingId, reply_text: text },
@@ -65,18 +80,54 @@ const like = (id: string, findingId: string, at = "2026-10-01T10:00:00.000Z"): F
 
 async function seed(db: MockDb) {
   const base = { platform: "facebook", relation: "comment_on_our_content" }
-  await db.insert("finding", { id: "f1", external_id: "e1", status: "new", occurred_at: "2026-10-01T08:00:00.000Z", ...base })
-  await db.insert("finding", { id: "f2", external_id: "e2", status: "triaged", occurred_at: "2026-10-01T07:00:00.000Z", should_reply: true, ...base })
-  await db.insert("finding", { id: "f3", external_id: "e3", status: "handled", occurred_at: "2026-10-01T06:00:00.000Z", ...base })
+  await db.insert("finding", {
+    id: "f1",
+    external_id: "e1",
+    status: "new",
+    occurred_at: "2026-10-01T08:00:00.000Z",
+    ...base,
+  })
+  await db.insert("finding", {
+    id: "f2",
+    external_id: "e2",
+    status: "triaged",
+    occurred_at: "2026-10-01T07:00:00.000Z",
+    should_reply: true,
+    ...base,
+  })
+  await db.insert("finding", {
+    id: "f3",
+    external_id: "e3",
+    status: "handled",
+    occurred_at: "2026-10-01T06:00:00.000Z",
+    ...base,
+  })
   // Stored awaiting by an earlier handler version, its request long gone.
-  await db.insert("finding", { id: "f4", external_id: "e4", status: "awaiting_approval", approval_request_id: "dead", occurred_at: "2026-10-01T05:00:00.000Z", ...base })
+  await db.insert("finding", {
+    id: "f4",
+    external_id: "e4",
+    status: "awaiting_approval",
+    approval_request_id: "dead",
+    occurred_at: "2026-10-01T05:00:00.000Z",
+    ...base,
+  })
 }
 
 describe("deriveFindingApprovalState", () => {
-  const pending = { approval_id: "a1", action: "reply" as const, draft: "Thanks!", created_at: null }
+  const pending = {
+    approval_id: "a1",
+    action: "reply" as const,
+    draft: "Thanks!",
+    created_at: null,
+  }
 
   test("a pending approval reads as awaiting_approval with the draft and the approval id", () => {
-    expect(deriveFindingApprovalState<Record<string, unknown>>({ id: "f1", status: "new", suggested_reply: null }, pending)).toEqual({
+    expect(
+      deriveFindingApprovalState<Record<string, unknown>>(
+        { id: "f1", status: "new", suggested_reply: null },
+        pending,
+      ),
+    ).toEqual({
       id: "f1",
       status: "awaiting_approval",
       suggested_reply: "Thanks!",
@@ -90,7 +141,12 @@ describe("deriveFindingApprovalState", () => {
       { id: "f1", status: "triaged", suggested_reply: "triage idea" },
       { approval_id: "a2", action: "like", draft: null, created_at: null },
     )
-    expect(d).toMatchObject({ status: "awaiting_approval", suggested_reply: "triage idea", approval_request_id: "a2", pending_action: "like" })
+    expect(d).toMatchObject({
+      status: "awaiting_approval",
+      suggested_reply: "triage idea",
+      approval_request_id: "a2",
+      pending_action: "like",
+    })
   })
 
   test("no pending approval: the stored status, unchanged", () => {
@@ -99,12 +155,21 @@ describe("deriveFindingApprovalState", () => {
   })
 
   test("a handled or dismissed finding keeps its status even with a pending approval", () => {
-    expect(deriveFindingApprovalState({ id: "f3", status: "handled" }, pending).status).toBe("handled")
-    expect(deriveFindingApprovalState({ id: "f3", status: "dismissed" }, pending).status).toBe("dismissed")
+    expect(deriveFindingApprovalState({ id: "f3", status: "handled" }, pending).status).toBe(
+      "handled",
+    )
+    expect(deriveFindingApprovalState({ id: "f3", status: "dismissed" }, pending).status).toBe(
+      "dismissed",
+    )
   })
 
   test("a stale stored awaiting_approval falls back to new and drops its dead approval id", () => {
-    expect(deriveFindingApprovalState<Record<string, unknown>>({ id: "f4", status: "awaiting_approval", approval_request_id: "dead" }, undefined)).toEqual({
+    expect(
+      deriveFindingApprovalState<Record<string, unknown>>(
+        { id: "f4", status: "awaiting_approval", approval_request_id: "dead" },
+        undefined,
+      ),
+    ).toEqual({
       id: "f4",
       status: "new",
       approval_request_id: null,
@@ -119,11 +184,21 @@ describe("pendingFindingApprovals", () => {
       reply("r-old", "f1", "old draft", "2026-10-01T09:00:00.000Z"),
       reply("r-new", "f1", "new draft", "2026-10-01T11:00:00.000Z"),
       like("l2", "f2"),
-      { id: "dm", tool_name: "social:send_dm", payload: { conversation_id: "c1", body: "x" }, created_at: "2026-10-01T10:00:00.000Z" },
+      {
+        id: "dm",
+        tool_name: "social:send_dm",
+        payload: { conversation_id: "c1", body: "x" },
+        created_at: "2026-10-01T10:00:00.000Z",
+      },
     ])
     const index = await pendingFindingApprovals(ctx)
     expect(ctx.calls).toEqual([["finding_id", ["social:reply_to_finding", "social:like_item"]]])
-    expect(index?.get("f1")).toEqual({ approval_id: "r-new", action: "reply", draft: "new draft", created_at: "2026-10-01T11:00:00.000Z" })
+    expect(index?.get("f1")).toEqual({
+      approval_id: "r-new",
+      action: "reply",
+      draft: "new draft",
+      created_at: "2026-10-01T11:00:00.000Z",
+    })
     expect(index?.get("f2")).toMatchObject({ approval_id: "l2", action: "like", draft: null })
     expect(index?.size).toBe(2)
   })
@@ -139,9 +214,15 @@ describe("reads derive the status from the live approvals", () => {
     await seed(db)
     const live = [reply("a1", "f1", "Thanks for the kind words")]
     const during = (await findingsGet({ finding_id: "f1" }, makeCtx(db, live))).finding
-    expect(during).toMatchObject({ status: "awaiting_approval", suggested_reply: "Thanks for the kind words", approval_request_id: "a1" })
+    expect(during).toMatchObject({
+      status: "awaiting_approval",
+      suggested_reply: "Thanks for the kind words",
+      approval_request_id: "a1",
+    })
     // Denied / expired / cancelled: the kernel no longer lists it as pending.
-    const after = (await findingsGet({ finding_id: "f1" }, makeCtx(db, []))).finding as { status: string }
+    const after = (await findingsGet({ finding_id: "f1" }, makeCtx(db, []))).finding as {
+      status: string
+    }
     expect(after.status).toBe("new")
     // Nothing was ever written on the stored row.
     expect(((await db.findOne("finding", "f1")) as { status: string }).status).toBe("new")
@@ -152,7 +233,9 @@ describe("reads derive the status from the live approvals", () => {
     await seed(db)
     const ctx = makeCtx(db, [reply("a1", "f1", "hi"), like("a2", "f3")])
     const all = await findingsList({}, ctx)
-    const byId = Object.fromEntries((all.findings as Array<{ id: string; status: string }>).map((f) => [f.id, f.status]))
+    const byId = Object.fromEntries(
+      (all.findings as Array<{ id: string; status: string }>).map((f) => [f.id, f.status]),
+    )
     expect(byId).toEqual({ f1: "awaiting_approval", f2: "triaged", f3: "handled", f4: "new" })
     expect(all.totalCount).toBe(4)
 
@@ -169,7 +252,12 @@ describe("reads derive the status from the live approvals", () => {
   test("counts follow the derived status", async () => {
     const db = createMockDb()
     await seed(db)
-    await db.insert("dm_conversation", { id: "c1", platform: "instagram", external_id: "IG1", status: "open" })
+    await db.insert("dm_conversation", {
+      id: "c1",
+      platform: "instagram",
+      external_id: "IG1",
+      status: "open",
+    })
     expect(await countsRead({}, makeCtx(db, [reply("a1", "f1", "hi")]))).toMatchObject({
       findings_new: 1, // f1 is awaiting; stale f4 reads new
       awaiting_approval: 1,
@@ -191,9 +279,15 @@ describe("reads derive the status from the live approvals", () => {
   test("attention: a pending reply is an approval item routed to its decision; a gone one is not", async () => {
     const db = createMockDb()
     await seed(db)
-    const items = await computeSocialAttention(makeCtx(db, [reply("a9", "f2", "hi")]), "org-1", "u1")
+    const items = await computeSocialAttention(
+      makeCtx(db, [reply("a9", "f2", "hi")]),
+      "org-1",
+      "u1",
+    )
     const approval = items.filter((i) => i.kind === "approval_pending")
-    expect(approval.map((i) => [i.entityId, i.action])).toEqual([["f2", { type: "decide_approval", approvalId: "a9" }]])
+    expect(approval.map((i) => [i.entityId, i.action])).toEqual([
+      ["f2", { type: "decide_approval", approvalId: "a9" }],
+    ])
     // f2's reply is already staged: no separate "needs a reply" item for it.
     expect(items.some((i) => i.kind === "mention" && i.entityId === "f2")).toBe(false)
 

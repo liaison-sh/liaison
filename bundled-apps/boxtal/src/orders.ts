@@ -27,18 +27,18 @@ import { isOrderShippable, type OrderShippabilityFacts } from "./order-shippabil
 import {
   effectiveStatus,
   isExcluded,
+  type LegacyPrepStateRow,
   loadOrderStates,
   numericOrderId,
   orderKeyForDocument,
   orderKeyForShopifyOrder,
-  parseOrderKey,
-  type LegacyPrepStateRow,
   type PrepOrderStateRow,
   type PrepRecipient,
   type PrepStatus,
+  parseOrderKey,
 } from "./order-state"
-import { isProformaApprovalExpired, resolvePendingProformas } from "./proforma"
 import { type CachedShipTo, shopifyOrderMetaOf } from "./prep-meta"
+import { isProformaApprovalExpired, resolvePendingProformas } from "./proforma"
 import { toShopifyOrderGid } from "./shopify-ref"
 
 /**
@@ -228,7 +228,11 @@ interface ShopifyOrderHit {
       phone?: string | null
       defaultAddress?: Record<string, string | null> | null
     } | null
-    lineItems?: Array<{ sku?: string | null; title?: string | null; quantity?: number | null }> | null
+    lineItems?: Array<{
+      sku?: string | null
+      title?: string | null
+      quantity?: number | null
+    }> | null
   } | null
   // orders_get adds these at the top level.
   shippingAddress?: Record<string, string | null> | null
@@ -268,7 +272,9 @@ function recipientFromHit(hit: ShopifyOrderHit): PrepRecipient | null {
   const a = hit.attributes ?? {}
   const detailed = hit.shippingAddress ?? hit.customerAddress ?? null
   if (detailed) {
-    const street = [detailed.address1, detailed.address2].filter((v) => v && String(v).trim()).join(", ")
+    const street = [detailed.address1, detailed.address2]
+      .filter((v) => v && String(v).trim())
+      .join(", ")
     return {
       name: detailed.name ?? customerName(hit),
       company: detailed.company ?? null,
@@ -280,7 +286,8 @@ function recipientFromHit(hit: ShopifyOrderHit): PrepRecipient | null {
       countryIsoCode: detailed.countryCode ?? null,
     }
   }
-  if (!a.shippingAddress1 && !a.shippingCity && !a.shippingZip && !a.shippingCountryCode) return null
+  if (!a.shippingAddress1 && !a.shippingCity && !a.shippingZip && !a.shippingCountryCode)
+    return null
   return {
     name: customerName(hit),
     email: a.customer?.email ?? a.email ?? null,
@@ -322,12 +329,14 @@ function totalMinorFromHit(hit: ShopifyOrderHit): number | null {
 
 /** The shipping the customer paid on the order, from the hit's shipping line. Absent hit or line
  *  reads as unknown (null), never as free. Exported as a test seam. */
-export function customerShippingFromHit(
-  hit: ShopifyOrderHit | null | undefined,
-): { customer_shipping_minor: number | null; customer_shipping_currency: string | null } {
+export function customerShippingFromHit(hit: ShopifyOrderHit | null | undefined): {
+  customer_shipping_minor: number | null
+  customer_shipping_currency: string | null
+} {
   const raw = hit?.attributes?.shippingAmount
   const n = raw == null ? Number.NaN : typeof raw === "number" ? raw : Number.parseFloat(raw)
-  if (!Number.isFinite(n)) return { customer_shipping_minor: null, customer_shipping_currency: null }
+  if (!Number.isFinite(n))
+    return { customer_shipping_minor: null, customer_shipping_currency: null }
   const currency = hit?.attributes?.shippingCurrency ?? hit?.currency ?? null
   return {
     customer_shipping_minor: Math.round(n * 10 ** currencyExponent(currency ?? "EUR")),
@@ -354,7 +363,9 @@ export function pickGoodsInvoice(docs: OrderDocumentLink[]): OrderDocumentLink |
   // row's anchor, customs basis, parcels and cached quote. The document NUMBER is the gap-free
   // per-year series, so the highest one is the most recent: compare numerically where both numbers
   // are numeric, and fall back to a string compare so the order is at least TOTAL and stable.
-  return [...goods].sort((a, b) => compareDocumentNumbers(a.number, b.number))[goods.length - 1] ?? null
+  return (
+    [...goods].sort((a, b) => compareDocumentNumbers(a.number, b.number))[goods.length - 1] ?? null
+  )
 }
 
 /** Total order over document numbers: numeric tail ascending, then the raw string. */
@@ -398,7 +409,9 @@ async function searchOpenOrders(
           : "Shopify did not answer the open-order scan, so this list may be incomplete."
       return { hits, truncated, error: message }
     }
-    const raw = env.result as { results?: ShopifyOrderHit[]; nextCursor?: string | null } | ShopifyOrderHit[]
+    const raw = env.result as
+      | { results?: ShopifyOrderHit[]; nextCursor?: string | null }
+      | ShopifyOrderHit[]
     const page = Array.isArray(raw) ? raw : (raw.results ?? [])
     hits.push(...page)
     const next = Array.isArray(raw) ? null : (raw.nextCursor ?? null)
@@ -426,7 +439,9 @@ async function fetchOrderDetail(ctx: BoxtalToolCtx, orderId: string): Promise<Or
   try {
     const env = await ctx.executeTool("shopify:orders_get", { id: toShopifyOrderGid(orderId) })
     if (env.status === "completed") {
-      return env.result == null ? { kind: "absent" } : { kind: "hit", hit: env.result as ShopifyOrderHit }
+      return env.result == null
+        ? { kind: "absent" }
+        : { kind: "hit", hit: env.result as ShopifyOrderHit }
     }
     const message =
       env.status === "error" ? env.error.message : "Shopify parked the order read for approval."
@@ -493,7 +508,9 @@ async function settlePendingProformas(
   opts: { bestEffortWrites?: boolean } = {},
 ): Promise<Map<string, string>> {
   const renames = new Map<string, string>()
-  const pending = [...states.values()].filter((s) => s.proforma_pending_approval_id && !s.proforma_document_ref)
+  const pending = [...states.values()].filter(
+    (s) => s.proforma_pending_approval_id && !s.proforma_document_ref,
+  )
   if (pending.length === 0) return renames
   const resolved = await resolvePendingProformas(
     ctx,
@@ -549,7 +566,8 @@ function buildCandidate(args: {
   const goodsInvoice = pickGoodsInvoice(documents)
 
   const proformaRef = state?.proforma_document_ref ?? null
-  const proformaNumber = (state as { proforma_number?: string | null } | undefined)?.proforma_number ?? null
+  const proformaNumber =
+    (state as { proforma_number?: string | null } | undefined)?.proforma_number ?? null
 
   let anchorRef: string | null = null
   let anchorKind: AnchorKind | null = null
@@ -593,14 +611,15 @@ function buildCandidate(args: {
     shopify_order_id: shopifyOrderId,
     order_name: hit?.name ?? hit?.title ?? meta?.order_name ?? null,
     order_created_at: hit?.attributes?.createdAt ?? meta?.order_created_at ?? null,
-    customer: hit ? customerName(hit) : (state?.recipient?.name || "-"),
+    customer: hit ? customerName(hit) : state?.recipient?.name || "-",
     destination:
       hit?.attributes?.shippingCountryCode ??
       hit?.shippingAddress?.countryCode ??
       state?.recipient?.countryIsoCode ??
       null,
     order_tags: Array.isArray(hit?.attributes?.tags) ? hit!.attributes!.tags! : cachedTags(meta),
-    financial_status: hit?.attributes?.financialStatus ?? (hit ? null : (meta?.financial_status ?? null)),
+    financial_status:
+      hit?.attributes?.financialStatus ?? (hit ? null : (meta?.financial_status ?? null)),
     cancelled_at: hit?.attributes?.cancelledAt ?? (hit ? null : (meta?.cancelled_at ?? null)),
     line_items: hit ? lineItemsFromHit(hit) : [],
     order_total_minor: hit ? totalMinorFromHit(hit) : null,
@@ -669,7 +688,8 @@ async function legacyStateIndex(ctx: BoxtalToolCtx): Promise<{
     if (oid) {
       const seen = metaByOrderId.get(oid)
       // Several documents can point at one order (an invoice plus a proforma): keep the freshest.
-      if (!seen || String(m.fetched_at ?? "") > String(seen.fetched_at ?? "")) metaByOrderId.set(oid, m)
+      if (!seen || String(m.fetched_at ?? "") > String(seen.fetched_at ?? ""))
+        metaByOrderId.set(oid, m)
     }
   }
   const byKey = new Map<string, LegacyPrepStateRow>()
@@ -705,7 +725,10 @@ function cachedOrderKeys(
     const fetchedMs = meta.fetched_at ? Date.parse(String(meta.fetched_at)) : NaN
     if (Number.isFinite(fetchedMs) && fetchedMs < cutoff) continue
     if (
-      !isOrderShippable({ financial_status: meta.financial_status ?? null, cancelled_at: meta.cancelled_at ?? null })
+      !isOrderShippable({
+        financial_status: meta.financial_status ?? null,
+        cancelled_at: meta.cancelled_at ?? null,
+      })
     ) {
       continue
     }
@@ -851,14 +874,18 @@ export async function openOrdersScan(
 
   const candidates = orderKeys.map((key) => {
     const parsed = parseOrderKey(key)
-    const shopifyOrderId = parsed?.kind === "order" ? parsed.id : (states.get(key)?.shopify_order_id ?? null)
+    const shopifyOrderId =
+      parsed?.kind === "order" ? parsed.id : (states.get(key)?.shopify_order_id ?? null)
     const documents = shopifyOrderId ? (byOrder.get(shopifyOrderId) ?? []) : []
     const state = states.get(key)
     // Prefer the flags indexed by key; fall back to the ones on the row's current anchor document.
     const anchorForLegacy =
-      state?.proforma_document_ref ?? pickGoodsInvoice(documents)?.id ?? (parsed?.kind === "document" ? parsed.id : null)
+      state?.proforma_document_ref ??
+      pickGoodsInvoice(documents)?.id ??
+      (parsed?.kind === "document" ? parsed.id : null)
     const legacy =
-      legacyIndex.byKey.get(key) ?? (anchorForLegacy ? legacyIndex.byDocument.get(anchorForLegacy) : undefined)
+      legacyIndex.byKey.get(key) ??
+      (anchorForLegacy ? legacyIndex.byDocument.get(anchorForLegacy) : undefined)
     return buildCandidate({
       orderKey: key,
       hit: shopifyOrderId ? (hitsByOrderId.get(shopifyOrderId) ?? null) : null,
@@ -908,7 +935,10 @@ export async function lookupOrderForPrefill(
   const name = `#${digits}`
   let hit: ShopifyOrderHit | null = null
   try {
-    const env = await ctx.executeTool("shopify:orders_search", { query: `name:"${name}"`, limit: 5 })
+    const env = await ctx.executeTool("shopify:orders_search", {
+      query: `name:"${name}"`,
+      limit: 5,
+    })
     if (env.status === "completed" && env.result != null) {
       const raw = env.result as { results?: ShopifyOrderHit[] } | ShopifyOrderHit[]
       const page = Array.isArray(raw) ? raw : (raw.results ?? [])
@@ -916,7 +946,10 @@ export async function lookupOrderForPrefill(
       // DIFFERENT customer's address and items into a new shipment.
       hit = page.find((h) => (h.name ?? h.title) === name) ?? null
     } else if (env.status === "error") {
-      ctx.logger?.warn?.("prep: order prefill search failed", { order_name: name, err: env.error.message })
+      ctx.logger?.warn?.("prep: order prefill search failed", {
+        order_name: name,
+        err: env.error.message,
+      })
     }
   } catch (err) {
     ctx.logger?.warn?.("prep: order prefill search threw", {

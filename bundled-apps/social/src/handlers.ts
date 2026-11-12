@@ -8,12 +8,10 @@
 
 import { facebookAdapter } from "./adapters/facebook"
 import { instagramAdapter } from "./adapters/instagram"
-import { youtubeAdapter } from "./adapters/youtube"
 import type { Platform, PlatformAdapter } from "./adapters/types"
+import { youtubeAdapter } from "./adapters/youtube"
 import { computeSocialAttention } from "./attention"
 import { onConnectionDisconnected, onConnectionEstablished, resolveAccessToken } from "./connection"
-import { clearMissingToken, noteMissingToken } from "./missing-token"
-import { metadataObject } from "./quota"
 import type { SocialToolCtx } from "./ctx"
 import {
   findConversationRow,
@@ -33,6 +31,7 @@ import {
   watchObject,
 } from "./internal"
 import { type SocialWebhookBridge, verifyMetaSignature } from "./lib/hmac"
+import { clearMissingToken, noteMissingToken } from "./missing-token"
 import {
   likeItem,
   likeItemPreflight,
@@ -42,6 +41,7 @@ import {
   sendDm,
   sendDmPreflight,
 } from "./post-back"
+import { metadataObject } from "./quota"
 import {
   countsRead,
   dmGet,
@@ -71,17 +71,17 @@ const ALL_ADAPTERS: Record<Platform, PlatformAdapter> = {
 // a `(ctx, params)` function directly would silently swap ctx and params at the
 // tool boundary (ctx becomes the params object → every db/fetch call throws).
 
-// ── Read tools (B7) — already (params, ctx) ───────────────────────────────────
-export { findingsList, findingsGet, dmList, dmGet, watchedList, monitorTermsList, countsRead }
-
 // Settings surface reads: per-connection kernel status and per-platform quota.
-export { connectionsStatus as connectionsStatusHandler, quotaStatus as quotaStatusHandler } from "./settings-status"
+export {
+  connectionsStatus as connectionsStatusHandler,
+  quotaStatus as quotaStatusHandler,
+} from "./settings-status"
+// ── Read tools (B7) — already (params, ctx) ───────────────────────────────────
+export { countsRead, dmGet, dmList, findingsGet, findingsList, monitorTermsList, watchedList }
 
 // ── Internal mutations (B7 — ungated, no external effect) — wrapped to (params, ctx)
-export const setTriageHandler = (
-  params: Parameters<typeof setTriage>[1],
-  ctx: SocialToolCtx,
-) => setTriage(ctx, params)
+export const setTriageHandler = (params: Parameters<typeof setTriage>[1], ctx: SocialToolCtx) =>
+  setTriage(ctx, params)
 export const correctTriageHandler = (
   params: Parameters<typeof correctTriage>[1],
   ctx: SocialToolCtx,
@@ -90,10 +90,8 @@ export const dismissFindingHandler = (
   params: Parameters<typeof dismissFinding>[1],
   ctx: SocialToolCtx,
 ) => dismissFinding(ctx, params)
-export const watchObjectHandler = (
-  params: Parameters<typeof watchObject>[1],
-  ctx: SocialToolCtx,
-) => watchObject(ctx, params)
+export const watchObjectHandler = (params: Parameters<typeof watchObject>[1], ctx: SocialToolCtx) =>
+  watchObject(ctx, params)
 export const unwatchObjectHandler = (
   params: Parameters<typeof unwatchObject>[1],
   ctx: SocialToolCtx,
@@ -118,20 +116,18 @@ export const monitorTermsRemoveHandler = (
 export const computeSocialAttentionItems = (_params: unknown, ctx: SocialToolCtx) =>
   computeSocialAttention(ctx, ctx.orgId ?? "", "")
 
-// ── Gated-tool approval summarizers ─────────────────────────────────────────
-export { summarizeLikeItem, summarizeReplyToFinding, summarizeSendDm } from "./summarizers"
-
-// ── External search handler ──────────────────────────────────────────────────
-export { searchHandler }
-
 // ── Webhook upstream probe job (already `(params, ctx)`) ────────────────────
 export { probeWebhookUpstreamJob } from "./probe-webhook-upstream"
-
+// ── Gated-tool approval summarizers ─────────────────────────────────────────
+export { summarizeLikeItem, summarizeReplyToFinding, summarizeSendDm } from "./summarizers"
 // ── Webhook setup (gated, approval-backed) — authored (params, ctx) ──────────
-export { webhooksSetup as webhooksSetupHandler, webhooksSetupPreflight as webhooksSetupPreflightHandler } from "./webhooks-setup"
-
+export {
+  webhooksSetup as webhooksSetupHandler,
+  webhooksSetupPreflight as webhooksSetupPreflightHandler,
+} from "./webhooks-setup"
+// ── External search handler ──────────────────────────────────────────────────
 // ── Connection lifecycle (B10) ───────────────────────────────────────────────
-export { onConnectionEstablished, onConnectionDisconnected }
+export { onConnectionDisconnected, onConnectionEstablished, searchHandler }
 
 // ── Gated post-back tools (B6) — wrapped to (params, ctx) ────────────────────
 export const replyToFindingHandler = (
@@ -151,10 +147,8 @@ export const reconcileReplyToFindingHandler = (
   params: Parameters<typeof reconcileReplyToFinding>[1],
   ctx: SocialToolCtx,
 ) => reconcileReplyToFinding(ctx, params)
-export const sendDmHandler = (
-  params: Parameters<typeof sendDm>[1],
-  ctx: SocialToolCtx,
-) => sendDm(ctx, params)
+export const sendDmHandler = (params: Parameters<typeof sendDm>[1], ctx: SocialToolCtx) =>
+  sendDm(ctx, params)
 // STAGE-TIME preflight for the gated send_dm (manifest `preflight`). Runs BEFORE the approval gate so a
 // CLOSED reply window (>7 days since the last inbound, or no inbound on record) surfaces a typed
 // `dm_window_closed` error to the agent at the call site — it then honestly tells the user the messaging
@@ -164,10 +158,8 @@ export const sendDmPreflightHandler = (
   params: Parameters<typeof sendDmPreflight>[1],
   ctx: SocialToolCtx,
 ) => sendDmPreflight(ctx, params)
-export const likeItemHandler = (
-  params: Parameters<typeof likeItem>[1],
-  ctx: SocialToolCtx,
-) => likeItem(ctx, params)
+export const likeItemHandler = (params: Parameters<typeof likeItem>[1], ctx: SocialToolCtx) =>
+  likeItem(ctx, params)
 // STAGE-TIME preflight for the gated like_item (manifest `preflight`). Runs BEFORE the approval gate so
 // an unsupported target (YouTube channel-likes aren't exposed by the API) surfaces a typed
 // `like_unsupported_for_target` error to the agent at the call site — it then proposes gated likes only
@@ -463,7 +455,9 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
   if (result.error) {
     // RATE_LIMITED self-resolves on the next tick — warn, not a paged error.
     const logFn =
-      result.error === "RATE_LIMITED" ? ctx.logger?.warn?.bind(ctx.logger) : ctx.logger?.error?.bind(ctx.logger)
+      result.error === "RATE_LIMITED"
+        ? ctx.logger?.warn?.bind(ctx.logger)
+        : ctx.logger?.error?.bind(ctx.logger)
     logFn?.("social: DM sync failed, watermark not advanced", {
       platform: s.platform,
       accountExternalId: s.account_external_id,
@@ -501,7 +495,8 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
         external_id: c.externalId,
         participant_handle: c.participantHandle ?? prior?.participant_handle ?? null,
         participant_external_id: c.participantExternalId ?? prior?.participant_external_id ?? null,
-        participant_display_name: c.participantDisplayName ?? prior?.participant_display_name ?? null,
+        participant_display_name:
+          c.participantDisplayName ?? prior?.participant_display_name ?? null,
         last_inbound_at: laterIso(prior?.last_inbound_at, c.lastInboundAt),
         last_message_at: laterIso(prior?.last_message_at, c.lastMessageAt),
         // Facebook's `{ pageId }` (set by facebook.ts's syncDms) so a later

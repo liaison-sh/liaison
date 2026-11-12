@@ -6,9 +6,12 @@
 // tracking grid, a tracking timeline, and document links (re-fetched live on
 // view via get_documents, never a stored URL). Status badges + document labels
 // come from the shared kit so this surface stays pixel-identical to invoicing.
-import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
-import { app, currentPath } from "@liaison/host"
+
 import { CardTable, type CardTableColumn, createMediaMatch } from "@liaison/app-ui/card-table"
+import { app, currentPath } from "@liaison/host"
+import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { createDebouncedSearch } from "./debounced-search"
+import { loadFileInto, openPreparingTab } from "./file-open"
 import {
   Button,
   cx,
@@ -22,8 +25,6 @@ import {
   Segmented,
   TrackingStatusBadge,
 } from "./kit"
-import { createDebouncedSearch } from "./debounced-search"
-import { loadFileInto, openPreparingTab } from "./file-open"
 import { usePathname } from "./sidebar"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -167,7 +168,9 @@ const ImportBox: Component<{ onDone: () => void }> = (props) => {
   const [result, setResult] = createSignal<string | null>(null)
 
   const run = async () => {
-    const list = ids().split(/[\s,;]+/).filter(Boolean)
+    const list = ids()
+      .split(/[\s,;]+/)
+      .filter(Boolean)
     if (list.length === 0 || busy()) return
     setBusy(true)
     setResult(null)
@@ -187,7 +190,10 @@ const ImportBox: Component<{ onDone: () => void }> = (props) => {
   }
 
   return (
-    <div class="flex flex-col gap-2 border-b border-border-subtle bg-surface px-4 py-3" data-testid="boxtal-import-box">
+    <div
+      class="flex flex-col gap-2 border-b border-border-subtle bg-surface px-4 py-3"
+      data-testid="boxtal-import-box"
+    >
       <p class="text-[11px] text-text-tertiary">
         Paste Boxtal order ids (comma or newline separated). Only orders created through this API
         application are fetchable. Boxtal has no API to list web-interface orders.
@@ -201,12 +207,19 @@ const ImportBox: Component<{ onDone: () => void }> = (props) => {
           value={ids()}
           onInput={(e) => setIds(e.currentTarget.value)}
         />
-        <Button variant="primary" testid="boxtal-import-run" disabled={busy()} onClick={() => void run()}>
+        <Button
+          variant="primary"
+          testid="boxtal-import-run"
+          disabled={busy()}
+          onClick={() => void run()}
+        >
           {busy() ? "Importing…" : "Import"}
         </Button>
       </div>
       <Show when={result()}>
-        <p class="text-[11px] text-text-secondary" data-testid="boxtal-import-result">{result()}</p>
+        <p class="text-[11px] text-text-secondary" data-testid="boxtal-import-result">
+          {result()}
+        </p>
       </Show>
     </div>
   )
@@ -320,38 +333,38 @@ export const Shipments: Component = () => {
               </EmptyState>
             }
           >
-          <Show
-            when={rows() !== undefined}
-            fallback={
-              /* A slow first search must read as LOADING, never as an empty
+            <Show
+              when={rows() !== undefined}
+              fallback={
+                /* A slow first search must read as LOADING, never as an empty
                  fleet — "No shipments" during a 10 s cold fetch is a lie that
                  sends the operator away (field report 2026-08-04). */
-              <EmptyState testid="boxtal-shipments-loading" title="Loading shipments">
-                Fetching the shipment index…
-              </EmptyState>
-            }
-          >
-          <Show
-            when={visible().length > 0}
-            fallback={
-              <EmptyState testid="boxtal-shipments-empty" title="No shipments">
-                Shipments created through Liaison appear here automatically. Boxtal's API cannot
-                list orders made in its web interface. Use Import to pull in orders you have the
-                Boxtal order id for.
-              </EmptyState>
-            }
-          >
-            <div data-testid="boxtal-shipments-table">
-              <CardTable
-                rows={visible()}
-                rowKey={(row) => row.id}
-                rowTestid={(row) => `boxtal-shipment-row-${row.id}`}
-                onRowClick={(row) => setSelectedId(row.id)}
-                columns={shipmentColumns()}
-              />
-            </div>
-          </Show>
-          </Show>
+                <EmptyState testid="boxtal-shipments-loading" title="Loading shipments">
+                  Fetching the shipment index…
+                </EmptyState>
+              }
+            >
+              <Show
+                when={visible().length > 0}
+                fallback={
+                  <EmptyState testid="boxtal-shipments-empty" title="No shipments">
+                    Shipments created through Liaison appear here automatically. Boxtal's API cannot
+                    list orders made in its web interface. Use Import to pull in orders you have the
+                    Boxtal order id for.
+                  </EmptyState>
+                }
+              >
+                <div data-testid="boxtal-shipments-table">
+                  <CardTable
+                    rows={visible()}
+                    rowKey={(row) => row.id}
+                    rowTestid={(row) => `boxtal-shipment-row-${row.id}`}
+                    onRowClick={(row) => setSelectedId(row.id)}
+                    columns={shipmentColumns()}
+                  />
+                </div>
+              </Show>
+            </Show>
           </Show>
         </div>
       </div>
@@ -370,7 +383,6 @@ export const Shipments: Component = () => {
       </div>
     </div>
   )
-
 }
 
 /**
@@ -416,7 +428,10 @@ export function shipmentColumns(): Array<CardTableColumn<ShipmentRow>> {
       role: "meta",
       fit: true,
       cell: (row) => (
-        <OrderStatusBadge status={row.attributes.order_status} testid={`boxtal-row-order-${row.id}`} />
+        <OrderStatusBadge
+          status={row.attributes.order_status}
+          testid={`boxtal-row-order-${row.id}`}
+        />
       ),
     },
     {
@@ -458,10 +473,10 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
     const win = openPreparingTab()
     void (async () => {
       try {
-        const res = await app.invokeTool<{ label?: { file_id: string } | null; label_error?: string }>(
-          "print_pack",
-          { shipment_id: props.shipment.id },
-        )
+        const res = await app.invokeTool<{
+          label?: { file_id: string } | null
+          label_error?: string
+        }>("print_pack", { shipment_id: props.shipment.id })
         if (res?.label?.file_id) await loadFileInto(res.label.file_id, win, "label")
         else {
           win?.close()
@@ -494,11 +509,15 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
         {/* Summary grid. */}
         <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-[12.5px]" data-testid="boxtal-detail-grid">
           <div class="flex flex-col gap-1">
-            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">Carrier</dt>
+            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+              Carrier
+            </dt>
             <dd class="text-text">{props.shipment.attributes.carrier ?? "-"}</dd>
           </div>
           <div class="flex flex-col gap-1">
-            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">Declared value</dt>
+            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+              Declared value
+            </dt>
             <dd>
               <Money
                 value={props.shipment.attributes.declared_value}
@@ -507,13 +526,20 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
             </dd>
           </div>
           <div class="flex flex-col gap-1">
-            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">Tracking #</dt>
-            <dd class="font-mono tabular-nums text-text" data-testid="boxtal-detail-tracking-number">
+            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+              Tracking #
+            </dt>
+            <dd
+              class="font-mono tabular-nums text-text"
+              data-testid="boxtal-detail-tracking-number"
+            >
               {props.shipment.attributes.tracking_number ?? "-"}
             </dd>
           </div>
           <div class="flex flex-col gap-1">
-            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">Linked invoice</dt>
+            <dt class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+              Linked invoice
+            </dt>
             <dd class="text-text" data-testid="boxtal-detail-invoice-ref">
               {props.shipment.attributes.document_number ?? "-"}
             </dd>
@@ -563,52 +589,71 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
         {/* Documents. */}
         <section class="flex flex-col gap-2.5" data-testid="boxtal-detail-documents">
           <SectionLabel>Documents</SectionLabel>
-          <Show when={!docs.error} fallback={
-            <p class="text-[12px] text-warning" data-testid="boxtal-detail-docs-error">
-              Couldn't load documents: {String(docs.error?.message ?? docs.error ?? "Unknown error")}
-            </p>
-          }>
           <Show
-            when={docList().length > 0}
+            when={!docs.error}
             fallback={
-              <Show when={!docs.loading} fallback={
-                <p class="text-[12px] text-text-tertiary" data-testid="boxtal-detail-docs-loading">
-                  Loading documents…
-                </p>
-              }>
-              <Show
-                when={isPending()}
-                fallback={
-                  <p class="text-[12px] text-text-tertiary">No documents available for this shipment.</p>
-                }
-              >
-                <p class="text-[12px] text-text-tertiary" data-testid="boxtal-detail-docs-generating">
-                  Label generating, you'll be notified when it's ready.
-                </p>
-              </Show>
-              </Show>
+              <p class="text-[12px] text-warning" data-testid="boxtal-detail-docs-error">
+                Couldn't load documents:{" "}
+                {String(docs.error?.message ?? docs.error ?? "Unknown error")}
+              </p>
             }
           >
-            <ul class="divide-y divide-border-subtle rounded-lg border border-border-subtle">
-              <For each={docList()}>
-                {(doc) => (
-                  <li class="flex items-center justify-between gap-3 px-3 py-2">
-                    <span class="text-[12.5px] text-text">{documentTypeLabel(doc.type)}</span>
-                    <Show when={doc.type === "LABEL"}>
-                      <Button variant="ghost" testid={`boxtal-doc-${doc.type}`} onClick={openLabel}>
-                        Download
-                      </Button>
-                    </Show>
-                  </li>
-                )}
-              </For>
-            </ul>
-            <Show when={docError()}>
-              <p class="text-[12px] text-warning" data-testid="boxtal-detail-doc-open-error">
-                {docError()}
-              </p>
+            <Show
+              when={docList().length > 0}
+              fallback={
+                <Show
+                  when={!docs.loading}
+                  fallback={
+                    <p
+                      class="text-[12px] text-text-tertiary"
+                      data-testid="boxtal-detail-docs-loading"
+                    >
+                      Loading documents…
+                    </p>
+                  }
+                >
+                  <Show
+                    when={isPending()}
+                    fallback={
+                      <p class="text-[12px] text-text-tertiary">
+                        No documents available for this shipment.
+                      </p>
+                    }
+                  >
+                    <p
+                      class="text-[12px] text-text-tertiary"
+                      data-testid="boxtal-detail-docs-generating"
+                    >
+                      Label generating, you'll be notified when it's ready.
+                    </p>
+                  </Show>
+                </Show>
+              }
+            >
+              <ul class="divide-y divide-border-subtle rounded-lg border border-border-subtle">
+                <For each={docList()}>
+                  {(doc) => (
+                    <li class="flex items-center justify-between gap-3 px-3 py-2">
+                      <span class="text-[12.5px] text-text">{documentTypeLabel(doc.type)}</span>
+                      <Show when={doc.type === "LABEL"}>
+                        <Button
+                          variant="ghost"
+                          testid={`boxtal-doc-${doc.type}`}
+                          onClick={openLabel}
+                        >
+                          Download
+                        </Button>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+              <Show when={docError()}>
+                <p class="text-[12px] text-warning" data-testid="boxtal-detail-doc-open-error">
+                  {docError()}
+                </p>
+              </Show>
             </Show>
-          </Show>
           </Show>
         </section>
       </div>

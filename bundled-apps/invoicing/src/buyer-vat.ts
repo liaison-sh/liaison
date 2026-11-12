@@ -30,9 +30,9 @@
 // call the same function and can never disagree.
 
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
+import { addressMatch, addressParts, normaliseAddress } from "./address-match"
 import type { CrossAppExecuteTool } from "./cross-app"
 import { isUuid, type ReadsFetch, settingsIssuerProfileList, vatValidate } from "./reads"
-import { addressMatch, addressParts, normaliseAddress } from "./address-match"
 import { isEuCountry } from "./tax"
 
 /** The `documents` row fields the evidence search reads. */
@@ -56,7 +56,11 @@ export interface BuyerVatCtx {
   db: {
     findMany(
       entity: string,
-      opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number },
+      opts?: {
+        where?: Record<string, unknown>
+        orderBy?: Record<string, "asc" | "desc">
+        limit?: number
+      },
     ): Promise<unknown[]>
   }
   executeTool?: CrossAppExecuteTool
@@ -111,9 +115,7 @@ export interface BuyerVatFacts {
   business_unverified: string | null
 }
 
-export type BuyerVatOutcome =
-  | { ok: true; facts: BuyerVatFacts }
-  | { ok: false; error: ToolRefusal }
+export type BuyerVatOutcome = { ok: true; facts: BuyerVatFacts } | { ok: false; error: ToolRefusal }
 
 const NONE: BuyerVatFacts = {
   applies: false,
@@ -142,7 +144,10 @@ export function consumerDeclaredAgainstEvidence(
  * or the buyer's business status could not be verified (a Shopify read failed).
  */
 export function needsHumanBuyerDecision(
-  facts: Partial<Pick<BuyerVatFacts, "consumer_override_evidence" | "business_unverified">> | null | undefined,
+  facts:
+    | Partial<Pick<BuyerVatFacts, "consumer_override_evidence" | "business_unverified">>
+    | null
+    | undefined,
 ): boolean {
   return consumerDeclaredAgainstEvidence(facts) || !!facts?.business_unverified
 }
@@ -167,10 +172,33 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null
 }
 
-export { addressMatch, addressParts, normaliseAddress, sameAddress, sameFullAddress } from "./address-match"
 export type { AddressParts } from "./address-match"
+export {
+  addressMatch,
+  addressParts,
+  normaliseAddress,
+  sameAddress,
+  sameFullAddress,
+} from "./address-match"
 
-const NAME_NOISE = new Set(["the", "and", "und", "et", "di", "de", "del", "della", "der", "die", "das", "van", "von", "les", "la", "le"])
+const NAME_NOISE = new Set([
+  "the",
+  "and",
+  "und",
+  "et",
+  "di",
+  "de",
+  "del",
+  "della",
+  "der",
+  "die",
+  "das",
+  "van",
+  "von",
+  "les",
+  "la",
+  "le",
+])
 
 /** The words of a name that identify it: no legal form, no short or filler words. */
 function nameWords(name: string | null | undefined): string[] {
@@ -180,7 +208,10 @@ function nameWords(name: string | null | undefined): string[] {
 }
 
 /** Two names that could be the same buyer: they share an identifying word. Unknown is not compatible. */
-export function compatibleNames(a: string | null | undefined, b: string | null | undefined): boolean {
+export function compatibleNames(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
   const wa = nameWords(a)
   const wb = new Set(nameWords(b))
   return wa.length > 0 && wb.size > 0 && wa.some((w) => wb.has(w))
@@ -234,7 +265,11 @@ interface Evidence {
 }
 
 /** Earlier documents for the same buyer: same contact, same email or same address. */
-async function priorDocumentEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evidence): Promise<void> {
+async function priorDocumentEvidence(
+  ctx: BuyerVatCtx,
+  input: BuyerVatInput,
+  ev: Evidence,
+): Promise<void> {
   const cp = input.counterparty
   const country = (input.taxCountry ?? "").toUpperCase()
   const email = str(cp.email)
@@ -247,17 +282,41 @@ async function priorDocumentEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev:
   const newest = { createdAt: "desc" } as const
   // One after the other: they share the handler's database session.
   if (contactId) {
-    add(await ctx.db.findMany("documents", { where: { counterparty_contact_id: contactId }, orderBy: newest, limit: PRIOR_BY_PARTY_LIMIT }))
+    add(
+      await ctx.db.findMany("documents", {
+        where: { counterparty_contact_id: contactId },
+        orderBy: newest,
+        limit: PRIOR_BY_PARTY_LIMIT,
+      }),
+    )
   }
   if (email) {
-    add(await ctx.db.findMany("documents", { where: { counterparty_email: email }, orderBy: newest, limit: PRIOR_BY_PARTY_LIMIT }))
+    add(
+      await ctx.db.findMany("documents", {
+        where: { counterparty_email: email },
+        orderBy: newest,
+        limit: PRIOR_BY_PARTY_LIMIT,
+      }),
+    )
     if (emailKey && emailKey !== email) {
-      add(await ctx.db.findMany("documents", { where: { counterparty_email: emailKey }, orderBy: newest, limit: PRIOR_BY_PARTY_LIMIT }))
+      add(
+        await ctx.db.findMany("documents", {
+          where: { counterparty_email: emailKey },
+          orderBy: newest,
+          limit: PRIOR_BY_PARTY_LIMIT,
+        }),
+      )
     }
   }
   // The address match needs the destination's documents; only read them when there is an address.
   if (country && str(cp.address)) {
-    add(await ctx.db.findMany("documents", { where: { counterparty_country: country }, orderBy: newest, limit: PRIOR_BY_COUNTRY_LIMIT }))
+    add(
+      await ctx.db.findMany("documents", {
+        where: { counterparty_country: country },
+        orderBy: newest,
+        limit: PRIOR_BY_COUNTRY_LIMIT,
+      }),
+    )
   }
   considerPriorRows(rows, input, ev, null)
 }
@@ -276,7 +335,9 @@ function unseen(list: unknown[], input: BuyerVatInput, ev: Evidence): PriorDocum
 
 /** The Shopify order number a document records ("2748"): its column, else its external_refs. */
 function orderNumberOf(r: PriorDocumentRow & { shopify_order_number?: unknown }): string | null {
-  const n = str(r.shopify_order_number) ?? str((r.external_refs as Record<string, unknown> | null)?.shopify_order_number)
+  const n =
+    str(r.shopify_order_number) ??
+    str((r.external_refs as Record<string, unknown> | null)?.shopify_order_number)
   return n ? n.replace(/^#/, "") : null
 }
 
@@ -302,13 +363,33 @@ function businessSale(r: PriorDocumentRow, country: string): boolean {
  * (shopify_order_number), plus the document number an imported invoice shares with its order;
  * a row counts only when it records that order.
  */
-async function orderDocumentEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evidence): Promise<void> {
-  const orders = [...ev.matchedOrders].filter((n) => !ev.shopifyOrders.has(n)).slice(0, MAX_PRIOR_SHOPIFY_ORDERS)
+async function orderDocumentEvidence(
+  ctx: BuyerVatCtx,
+  input: BuyerVatInput,
+  ev: Evidence,
+): Promise<void> {
+  const orders = [...ev.matchedOrders]
+    .filter((n) => !ev.shopifyOrders.has(n))
+    .slice(0, MAX_PRIOR_SHOPIFY_ORDERS)
   for (const n of orders) {
     const rows: PriorDocumentRow[] = []
-    for (const where of [{ shopify_order_number: n }, { shopify_order_number: `#${n}` }, { number: n }]) {
-      const found = (await ctx.db.findMany("documents", { where, orderBy: { createdAt: "desc" }, limit: 5 })) as PriorDocumentRow[]
-      rows.push(...unseen(found.filter((r) => orderNumberOf(r) === n), input, ev))
+    for (const where of [
+      { shopify_order_number: n },
+      { shopify_order_number: `#${n}` },
+      { number: n },
+    ]) {
+      const found = (await ctx.db.findMany("documents", {
+        where,
+        orderBy: { createdAt: "desc" },
+        limit: 5,
+      })) as PriorDocumentRow[]
+      rows.push(
+        ...unseen(
+          found.filter((r) => orderNumberOf(r) === n),
+          input,
+          ev,
+        ),
+      )
     }
     considerPriorRows(rows, input, ev, n)
   }
@@ -318,7 +399,12 @@ async function orderDocumentEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev:
  * Earlier documents as evidence. `viaOrder` is the Shopify order number the rows were found
  * through (the order matched the buyer); null for rows found by contact, email or address.
  */
-function considerPriorRows(rows: PriorDocumentRow[], input: BuyerVatInput, ev: Evidence, viaOrder: string | null): void {
+function considerPriorRows(
+  rows: PriorDocumentRow[],
+  input: BuyerVatInput,
+  ev: Evidence,
+  viaOrder: string | null,
+): void {
   const cp = input.counterparty
   const country = (input.taxCountry ?? "").toUpperCase()
   const emailKey = str(cp.email)?.toLowerCase() ?? null
@@ -347,10 +433,16 @@ function considerPriorRows(rows: PriorDocumentRow[], input: BuyerVatInput, ev: E
     // The buyer's company: a legal form in the name, or another name than the buyer's on a
     // business sale ("Bottega Notturna" invoiced with no VAT to the address of "Lucia Ferro").
     const company =
-      name && (hasCompanyLegalForm(name) || (businessSale(r, country) && !compatibleNames(cp.legal_name, name))) ? name : null
-    if (company && !ev.companies.some((c) => c.name === company)) ev.companies.push({ name: company, from: label })
+      name &&
+      (hasCompanyLegalForm(name) ||
+        (businessSale(r, country) && !compatibleNames(cp.legal_name, name)))
+        ? name
+        : null
+    if (company && !ev.companies.some((c) => c.name === company))
+      ev.companies.push({ name: company, from: label })
     const shopifyOrder = orderNumberOf(r)
-    if (shopifyOrder && ev.shopifyOrders.size < MAX_PRIOR_SHOPIFY_ORDERS) ev.shopifyOrders.add(shopifyOrder)
+    if (shopifyOrder && ev.shopifyOrders.size < MAX_PRIOR_SHOPIFY_ORDERS)
+      ev.shopifyOrders.add(shopifyOrder)
     const to = company ? `, to the company "${company}"` : name ? `, to "${name}"` : ""
     const vat = str(r.counterparty_vat_id)
     if (vat) {
@@ -369,9 +461,13 @@ function considerPriorRows(rows: PriorDocumentRow[], input: BuyerVatInput, ev: E
     const zeroTaxSale = sameDest && tax === 0n && grand !== null && grand > 0n
     const order = shopifyOrder ? `, Shopify order ${shopifyOrder}` : ""
     if (treatment === "eu_reverse_charge" || treatment === "eu_destination" || zeroTaxSale) {
-      ev.lines.push(`${label} (${how}${to}${order}) was issued WITHOUT VAT (${treatment ?? "no tax"}, ${tax === 0n ? "zero VAT" : "no VAT line"}): a business sale`)
+      ev.lines.push(
+        `${label} (${how}${to}${order}) was issued WITHOUT VAT (${treatment ?? "no tax"}, ${tax === 0n ? "zero VAT" : "no VAT line"}): a business sale`,
+      )
     } else if (company) {
-      ev.lines.push(`${label} (${how}) was issued to the company "${company}" (legal form in its name)`)
+      ev.lines.push(
+        `${label} (${how}) was issued to the company "${company}" (legal form in its name)`,
+      )
     }
     // A document WITH VAT to a person's name is a consumer sale: no evidence either way.
   }
@@ -392,7 +488,13 @@ interface ShopifyOrderHit {
     shippingAddress1?: unknown
     shippingZip?: unknown
     shippingCity?: unknown
-    customer?: { id?: unknown; firstName?: unknown; lastName?: unknown; email?: unknown; taxExempt?: unknown } | null
+    customer?: {
+      id?: unknown
+      firstName?: unknown
+      lastName?: unknown
+      email?: unknown
+      taxExempt?: unknown
+    } | null
     b2bCompany?: { name?: unknown; taxRegistrationId?: unknown } | null
   }
 }
@@ -407,7 +509,12 @@ interface ShopifyCustomerHit {
     tags?: unknown
     taxExempt?: unknown
     companies?: unknown
-    defaultAddress?: { address1?: unknown; city?: unknown; zip?: unknown; countryCode?: unknown } | null
+    defaultAddress?: {
+      address1?: unknown
+      city?: unknown
+      zip?: unknown
+      countryCode?: unknown
+    } | null
   }
 }
 
@@ -420,7 +527,10 @@ const MAX_PRIOR_SHOPIFY_ORDERS = 3
 const B2B_TAG_RE = /^(b2b|wholesale|business|professional|dealer|reseller|distributor|trade)$/i
 
 /** Every identifying word of the buyer's name is in the other name ("Lucia Ferro" in "Marco Lucia Ferro"). */
-export function nameCovers(buyer: string | null | undefined, other: string | null | undefined): boolean {
+export function nameCovers(
+  buyer: string | null | undefined,
+  other: string | null | undefined,
+): boolean {
   const wb = nameWords(buyer)
   const wo = new Set(nameWords(other))
   if (wb.length === 0 || wo.size === 0) return false
@@ -448,7 +558,11 @@ export function shopifyTerm(s: string): string {
  * together, SHOPIFY_LOOKUP_LIMIT hits, SHOPIFY_LOOKUP_TIMEOUT_MS each); a read that fails or
  * times out marks the check `shopifyUnverified` (fail closed: a person decides).
  */
-async function shopifyEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evidence): Promise<void> {
+async function shopifyEvidence(
+  ctx: BuyerVatCtx,
+  input: BuyerVatInput,
+  ev: Evidence,
+): Promise<void> {
   if (!ctx.executeTool) return
   const exec = ctx.executeTool
   const cp = input.counterparty
@@ -458,10 +572,16 @@ async function shopifyEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evide
   const dest = (input.taxCountry ?? "").toUpperCase()
   const issuer = (input.issuerCountry ?? "").toUpperCase()
   const base = { limit: SHOPIFY_LOOKUP_LIMIT, timeout_ms: SHOPIFY_LOOKUP_TIMEOUT_MS }
-  const lookups: Array<{ tool: "shopify:orders_search" | "shopify:customers_search"; query: string }> = []
+  const lookups: Array<{
+    tool: "shopify:orders_search" | "shopify:customers_search"
+    query: string
+  }> = []
   if (email) lookups.push({ tool: "shopify:orders_search", query: `email:"${shopifyTerm(email)}"` })
   if (ev.shopifyOrders.size > 0) {
-    lookups.push({ tool: "shopify:orders_search", query: [...ev.shopifyOrders].map((n) => `name:#${shopifyTerm(n)}`).join(" OR ") })
+    lookups.push({
+      tool: "shopify:orders_search",
+      query: [...ev.shopifyOrders].map((n) => `name:#${shopifyTerm(n)}`).join(" OR "),
+    })
   }
   if (name && nameWords(name).length > 0) {
     lookups.push({ tool: "shopify:orders_search", query: `"${shopifyTerm(name)}"` })
@@ -482,7 +602,10 @@ async function shopifyEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evide
           const results = (env.result as { results?: unknown } | null)?.results
           return { tool: l.tool, results: Array.isArray(results) ? results : [] }
         }
-        const code = env?.status === "error" ? String(env.error?.code ?? "error") : String(env?.status ?? "no answer")
+        const code =
+          env?.status === "error"
+            ? String(env.error?.code ?? "error")
+            : String(env?.status ?? "no answer")
         const message = env?.status === "error" ? String(env.error?.message ?? "") : ""
         if (shopifyAbsent(`${code} ${message}`)) absent++
         else failed ??= code
@@ -511,35 +634,75 @@ async function shopifyEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evide
     const a = hit.attributes
     if (!a) continue
     const order = str(hit.title) ?? "an order"
-    const customerName = [str(a.customer?.firstName), str(a.customer?.lastName)].filter(Boolean).join(" ")
+    const customerName = [str(a.customer?.firstName), str(a.customer?.lastName)]
+      .filter(Boolean)
+      .join(" ")
     const ship = str(a.shippingCountryCode)?.toUpperCase() ?? null
-    const shipAddress = [str(a.shippingAddress1), [str(a.shippingZip), str(a.shippingCity)].filter(Boolean).join(" ")].filter(Boolean).join(", ")
+    const shipAddress = [
+      str(a.shippingAddress1),
+      [str(a.shippingZip), str(a.shippingCity)].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(", ")
     const orderEmail = str(a.email) ?? str(a.customer?.email)
     const byEmail = !!email && orderEmail?.toLowerCase() === email.toLowerCase()
     const byNumber = ev.shopifyOrders.has(order.replace(/^#/, ""))
     const byAddress = addressMatch(cp.address, shipAddress) !== null
     const byName = nameCovers(name, customerName) && (ship === null || ship === dest)
     if (!byEmail && !byNumber && !byAddress && !byName) continue
-    if (/^#?\d+$/.test(order) && ev.matchedOrders.size < MAX_PRIOR_SHOPIFY_ORDERS) ev.matchedOrders.add(order.replace(/^#/, ""))
-    const how = byEmail ? `of ${email}` : byNumber ? "on the earlier document" : byAddress ? "to the same address" : `of the customer "${customerName}"`
-    const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : []
+    if (/^#?\d+$/.test(order) && ev.matchedOrders.size < MAX_PRIOR_SHOPIFY_ORDERS)
+      ev.matchedOrders.add(order.replace(/^#/, ""))
+    const how = byEmail
+      ? `of ${email}`
+      : byNumber
+        ? "on the earlier document"
+        : byAddress
+          ? "to the same address"
+          : `of the customer "${customerName}"`
+    const tags = Array.isArray(a.tags)
+      ? a.tags.filter((t): t is string => typeof t === "string")
+      : []
     const b2bTag = tags.find((t) => B2B_TAG_RE.test(t.trim()))
     const company = str(a.b2bCompany?.name)
     const taxId = str(a.b2bCompany?.taxRegistrationId)
     if (taxId) {
       const key = canonicalVat(taxId, dest)
-      const rec: VatOnRecord = { vat: taxId, from: `Shopify order ${order}`, how: byEmail ? "the same Shopify customer" : how }
+      const rec: VatOnRecord = {
+        vat: taxId,
+        from: `Shopify order ${order}`,
+        how: byEmail ? "the same Shopify customer" : how,
+      }
       const target = byEmail ? ev.strong : ev.weak
       if (!ev.strong.has(key) && !target.has(key)) target.set(key, rec)
     }
-    if (company && !ev.companies.some((c) => c.name === company)) ev.companies.push({ name: company, from: `Shopify order ${order}` })
+    if (company && !ev.companies.some((c) => c.name === company))
+      ev.companies.push({ name: company, from: `Shopify order ${order}` })
     const signs: string[] = []
     if (b2bTag) signs.push(`tagged "${b2bTag}"`)
-    if (company) signs.push(`bought by the company "${company}"${taxId ? ` (tax id ${taxId})` : ""}`)
-    if (a.taxExempt === true || a.customerTaxExempt === true || a.customer?.taxExempt === true) signs.push("tax exempt")
-    const tax = typeof a.totalTax === "string" ? Number(a.totalTax) : typeof a.totalTax === "number" ? a.totalTax : null
-    const total = typeof a.totalAmount === "string" ? Number(a.totalAmount) : typeof a.totalAmount === "number" ? a.totalAmount : null
-    if (tax === 0 && total !== null && total > 0 && a.euDestination === true && ship !== null && ship !== issuer) {
+    if (company)
+      signs.push(`bought by the company "${company}"${taxId ? ` (tax id ${taxId})` : ""}`)
+    if (a.taxExempt === true || a.customerTaxExempt === true || a.customer?.taxExempt === true)
+      signs.push("tax exempt")
+    const tax =
+      typeof a.totalTax === "string"
+        ? Number(a.totalTax)
+        : typeof a.totalTax === "number"
+          ? a.totalTax
+          : null
+    const total =
+      typeof a.totalAmount === "string"
+        ? Number(a.totalAmount)
+        : typeof a.totalAmount === "number"
+          ? a.totalAmount
+          : null
+    if (
+      tax === 0 &&
+      total !== null &&
+      total > 0 &&
+      a.euDestination === true &&
+      ship !== null &&
+      ship !== issuer
+    ) {
       signs.push("no VAT charged on an EU delivery")
     }
     if (signs.length > 0) ev.lines.push(`Shopify order ${order} (${how}): ${signs.join(", ")}`)
@@ -547,24 +710,38 @@ async function shopifyEvidence(ctx: BuyerVatCtx, input: BuyerVatInput, ev: Evide
   for (const hit of customers.values()) {
     const a = hit.attributes
     if (!a) continue
-    const customerName = [str(a.firstName), str(a.lastName)].filter(Boolean).join(" ") || (str(hit.title) ?? "")
+    const customerName =
+      [str(a.firstName), str(a.lastName)].filter(Boolean).join(" ") || (str(hit.title) ?? "")
     const d = a.defaultAddress
-    const home = d ? [str(d.address1), [str(d.zip), str(d.city)].filter(Boolean).join(" ")].filter(Boolean).join(", ") : ""
+    const home = d
+      ? [str(d.address1), [str(d.zip), str(d.city)].filter(Boolean).join(" ")]
+          .filter(Boolean)
+          .join(", ")
+      : ""
     const country = str(d?.countryCode)?.toUpperCase() ?? null
     const byAddress = addressMatch(cp.address, home) !== null
     const byName = nameCovers(name, customerName) && (country === null || country === dest)
     if (!byAddress && !byName) continue
-    const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : []
+    const tags = Array.isArray(a.tags)
+      ? a.tags.filter((t): t is string => typeof t === "string")
+      : []
     const b2bTag = tags.find((t) => B2B_TAG_RE.test(t.trim()))
     const companies = Array.isArray(a.companies)
-      ? a.companies.map((c) => (typeof c === "string" ? c : str((c as { name?: unknown } | null)?.name))).filter((c): c is string => !!c)
+      ? a.companies
+          .map((c) => (typeof c === "string" ? c : str((c as { name?: unknown } | null)?.name)))
+          .filter((c): c is string => !!c)
       : []
     const signs: string[] = []
     if (b2bTag) signs.push(`tagged "${b2bTag}"`)
     if (a.taxExempt === true) signs.push("tax exempt")
     if (companies.length > 0) signs.push(`buys for the company "${companies[0]}"`)
-    for (const c of companies) if (!ev.companies.some((x) => x.name === c)) ev.companies.push({ name: c, from: `Shopify customer "${customerName}"` })
-    if (signs.length > 0) ev.lines.push(`Shopify customer "${customerName}" (${byAddress ? "the same address" : "the same name"}): ${signs.join(", ")}`)
+    for (const c of companies)
+      if (!ev.companies.some((x) => x.name === c))
+        ev.companies.push({ name: c, from: `Shopify customer "${customerName}"` })
+    if (signs.length > 0)
+      ev.lines.push(
+        `Shopify customer "${customerName}" (${byAddress ? "the same address" : "the same name"}): ${signs.join(", ")}`,
+      )
   }
 }
 
@@ -580,12 +757,24 @@ export interface ViesAnswer {
 }
 
 /** VIES on one VAT number within BUYER_VIES_TIMEOUT_MS: valid, invalid (with VIES's answer) or unavailable. */
-export async function viesCheck(ctx: Pick<BuyerVatCtx, "fetch">, vat: string, taxCountry: string): Promise<ViesAnswer> {
+export async function viesCheck(
+  ctx: Pick<BuyerVatCtx, "fetch">,
+  vat: string,
+  taxCountry: string,
+): Promise<ViesAnswer> {
   const compact = vat.replace(/[\s.-]/g, "").toUpperCase()
   // The number's own prefix names its member state (Greece registers as EL); a bare number takes
   // the tax destination's.
-  const prefix = /^[A-Z]{2}/.test(compact) ? compact.slice(0, 2) : taxCountry === "GR" ? "EL" : taxCountry
-  const r = await vatValidate(ctx, { country_code: prefix, vat_number: compact, timeout_ms: BUYER_VIES_TIMEOUT_MS })
+  const prefix = /^[A-Z]{2}/.test(compact)
+    ? compact.slice(0, 2)
+    : taxCountry === "GR"
+      ? "EL"
+      : taxCountry
+  const r = await vatValidate(ctx, {
+    country_code: prefix,
+    vat_number: compact,
+    timeout_ms: BUYER_VIES_TIMEOUT_MS,
+  })
   if (r.error) return { status: "unavailable", name: null, address: null }
   return { status: r.isValid ? "valid" : "invalid", name: r.name, address: r.address }
 }
@@ -609,7 +798,10 @@ function vatFacts(
     vies_address: v.address,
     // VIES often answers "---" for a name it withholds: only a real name can mismatch.
     vies_name_mismatch:
-      v.status === "valid" && nameWords(v.name).length > 0 && !!str(buyerName) && !compatibleNames(buyerName, v.name),
+      v.status === "valid" &&
+      nameWords(v.name).length > 0 &&
+      !!str(buyerName) &&
+      !compatibleNames(buyerName, v.name),
   }
 }
 
@@ -620,13 +812,24 @@ function recordWords(r: VatOnRecord): string {
 /**
  * Decide the buyer's VAT status for an intra-EU document, or refuse the call. See the file header.
  */
-export async function checkBuyerVat(ctx: BuyerVatCtx, input: BuyerVatInput): Promise<BuyerVatOutcome> {
+export async function checkBuyerVat(
+  ctx: BuyerVatCtx,
+  input: BuyerVatInput,
+): Promise<BuyerVatOutcome> {
   const issuer = (input.issuerCountry ?? "").trim().toUpperCase()
   const dest = (input.taxCountry ?? "").trim().toUpperCase()
   const suppliedVat = str(input.counterparty.vat_id)
   const consumer = input.buyerIsConsumer === true
   if (!isEuCountry(issuer) || !isEuCountry(dest) || issuer === dest) {
-    return { ok: true, facts: { ...NONE, vat_id: suppliedVat, vat_id_source: suppliedVat ? "caller" : null, buyer_is_consumer: consumer } }
+    return {
+      ok: true,
+      facts: {
+        ...NONE,
+        vat_id: suppliedVat,
+        vat_id_source: suppliedVat ? "caller" : null,
+        buyer_is_consumer: consumer,
+      },
+    }
   }
   if (suppliedVat && consumer) {
     return refuse(
@@ -642,20 +845,31 @@ export async function checkBuyerVat(ctx: BuyerVatCtx, input: BuyerVatInput): Pro
         `VIES says the VAT number ${suppliedVat} is NOT valid. Nothing was created. Check the number (an earlier document for this buyer, the buyer's website legal notice or company registry), then call again with the correct counterparty.vat_id. Check a number with invoicing__vat_validate.`,
       )
     }
-    return { ok: true, facts: vatFacts(suppliedVat, "caller", null, v, input.counterparty.legal_name) }
+    return {
+      ok: true,
+      facts: vatFacts(suppliedVat, "caller", null, v, input.counterparty.legal_name),
+    }
   }
 
   // The evidence search runs whatever the caller says: buyer_is_consumer is a claim to check, not
   // a way around the check.
-  const ev: Evidence = { lines: [], strong: new Map(), weak: new Map(), companies: [], shopifyOrders: new Set(),
+  const ev: Evidence = {
+    lines: [],
+    strong: new Map(),
+    weak: new Map(),
+    companies: [],
+    shopifyOrders: new Set(),
     matchedOrders: new Set(),
     seenDocs: new Set(),
     shopifyUnverified: null,
   }
   const kind = str(input.counterparty.customer_kind)
-  if (kind && kind !== "individual") ev.lines.push(`the counterparty is marked customer_kind "${kind}"`)
+  if (kind && kind !== "individual")
+    ev.lines.push(`the counterparty is marked customer_kind "${kind}"`)
   if (hasCompanyLegalForm(input.counterparty.legal_name)) {
-    ev.lines.push(`the buyer's name "${String(input.counterparty.legal_name).trim()}" is a company legal form`)
+    ev.lines.push(
+      `the buyer's name "${String(input.counterparty.legal_name).trim()}" is a company legal form`,
+    )
   }
   // The earlier documents first: their Shopify order numbers are looked up in Shopify.
   await priorDocumentEvidence(ctx, input, ev)
@@ -676,7 +890,10 @@ export async function checkBuyerVat(ctx: BuyerVatCtx, input: BuyerVatInput): Pro
         { vat_on_record: strong },
       )
     }
-    const evidence = [...ev.lines, ...weak.map((r) => `VAT number ${recordWords(r)} may be this buyer's`)]
+    const evidence = [
+      ...ev.lines,
+      ...weak.map((r) => `VAT number ${recordWords(r)} may be this buyer's`),
+    ]
     return {
       ok: true,
       facts: {
@@ -695,18 +912,27 @@ export async function checkBuyerVat(ctx: BuyerVatCtx, input: BuyerVatInput): Pro
     const only = strong[0]!
     const v = await viesCheck(ctx, only.vat, dest)
     if (v.status !== "invalid") {
-      return { ok: true, facts: vatFacts(only.vat, "prior_document", only.from, v, input.counterparty.legal_name) }
+      return {
+        ok: true,
+        facts: vatFacts(only.vat, "prior_document", only.from, v, input.counterparty.legal_name),
+      }
     }
     ev.lines.push(`the VAT number ${only.vat} on ${only.from} is NOT valid in VIES any more`)
   }
   if (ev.lines.length === 0 && weak.length === 0) {
-    return { ok: true, facts: { ...NONE, applies: true, business_unverified: ev.shopifyUnverified } }
+    return {
+      ok: true,
+      facts: { ...NONE, applies: true, business_unverified: ev.shopifyUnverified },
+    }
   }
   const shown = ev.lines.slice(0, 6)
   const candidates = [...strong, ...weak]
   const entity = ev.companies[0] ?? null
   const lookup = vatLookupCall(
-    entity?.name ?? (hasCompanyLegalForm(input.counterparty.legal_name) ? str(input.counterparty.legal_name) : null),
+    entity?.name ??
+      (hasCompanyLegalForm(input.counterparty.legal_name)
+        ? str(input.counterparty.legal_name)
+        : null),
     dest,
     input.counterparty.address,
   )
@@ -719,7 +945,9 @@ export async function checkBuyerVat(ctx: BuyerVatCtx, input: BuyerVatInput): Pro
         : "") +
       (entity
         ? `The buyer is likely the company "${entity.name}" (the name on ${entity.from})${
-            compatibleNames(entity.name, input.counterparty.legal_name) ? "" : `, not "${str(input.counterparty.legal_name) ?? "the name given"}"`
+            compatibleNames(entity.name, input.counterparty.legal_name)
+              ? ""
+              : `, not "${str(input.counterparty.legal_name) ?? "the name given"}"`
           }. `
         : "") +
       `Next step: ${lookup.text}. If it finds none, find the buyer's VAT number: on the earlier documents above (invoicing__documents_get), in VIES (invoicing__vat_validate), in the company register, in the customer's website legal notice, or on the Shopify order's company or the buyer's contact record. Then call again with counterparty.vat_id and the company's name as counterparty.legal_name. ` +
@@ -749,10 +977,17 @@ export function vatLookupCall(
 ): { text: string; params: Record<string, string> } {
   const parts = addressParts(address)
   const city = parts?.city ? titleCase(parts.city) : null
-  const params: Record<string, string> = { ...(legalName ? { legal_name: legalName } : {}), country }
+  const params: Record<string, string> = {
+    ...(legalName ? { legal_name: legalName } : {}),
+    country,
+  }
   if (city) params.city = city
   if (parts?.postcode) params.postcode = parts.postcode
-  const place = [`country '${country}'`, ...(city ? [`city '${city}'`] : []), ...(parts?.postcode ? [`postcode '${parts.postcode}'`] : [])]
+  const place = [
+    `country '${country}'`,
+    ...(city ? [`city '${city}'`] : []),
+    ...(parts?.postcode ? [`postcode '${parts.postcode}'`] : []),
+  ]
   if (!legalName) {
     // No company on record: never a placeholder the agent fills with the person's own name.
     return {
@@ -762,7 +997,10 @@ export function vatLookupCall(
       params,
     }
   }
-  return { text: `call invoicing__vat_lookup with ${[`legal_name '${legalName}'`, ...place].join(", ")}`, params }
+  return {
+    text: `call invoicing__vat_lookup with ${[`legal_name '${legalName}'`, ...place].join(", ")}`,
+    params,
+  }
 }
 
 /**
@@ -783,7 +1021,11 @@ export async function documentsIssuePreview(
   items: Record<string, unknown>[]
   buyer: BuyerVatFacts | null
   refusal: string | null
-  original?: { number: string | null; issued_at: string | null; grand_total_minor: string | null } | null
+  original?: {
+    number: string | null
+    issued_at: string | null
+    grand_total_minor: string | null
+  } | null
 }> {
   const { items } = await settingsIssuerProfileList(ctx)
   // A credit note's card names the invoice it reverses by its number and date, never its id.
@@ -801,8 +1043,10 @@ export async function documentsIssuePreview(
         doc?.type === "invoice"
           ? {
               number: str(doc.number),
-              issued_at: doc.issued_at instanceof Date ? doc.issued_at.toISOString() : str(doc.issued_at),
-              grand_total_minor: doc.grand_total_minor == null ? null : String(doc.grand_total_minor),
+              issued_at:
+                doc.issued_at instanceof Date ? doc.issued_at.toISOString() : str(doc.issued_at),
+              grand_total_minor:
+                doc.grand_total_minor == null ? null : String(doc.grand_total_minor),
             }
           : null,
     }
@@ -814,7 +1058,8 @@ export async function documentsIssuePreview(
       ? live[0]
       : undefined
   let cp: Record<string, unknown> | null = null
-  if (params.counterparty && typeof params.counterparty === "object") cp = params.counterparty as Record<string, unknown>
+  if (params.counterparty && typeof params.counterparty === "object")
+    cp = params.counterparty as Record<string, unknown>
   else if (typeof params.counterparty === "string") {
     try {
       const parsed: unknown = JSON.parse(params.counterparty)
@@ -838,5 +1083,7 @@ export async function documentsIssuePreview(
     },
     buyerIsConsumer: params.buyer_is_consumer === true,
   })
-  return r.ok ? { items, buyer: r.facts, refusal: null } : { items, buyer: null, refusal: r.error.error.message }
+  return r.ok
+    ? { items, buyer: r.facts, refusal: null }
+    : { items, buyer: null, refusal: r.error.error.message }
 }

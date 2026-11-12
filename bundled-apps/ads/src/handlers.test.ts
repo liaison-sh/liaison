@@ -43,9 +43,16 @@ describe("ads handler bundle", () => {
   it("exports 10 read tool handlers", () => {
     const r = handlers as Record<string, unknown>
     const readTools = [
-      "insights_query", "campaigns_list", "adsets_list", "ads_list",
-      "targeting_search", "media_list", "audiences_list", "pages_list",
-      "account_info", "graph_get",
+      "insights_query",
+      "campaigns_list",
+      "adsets_list",
+      "ads_list",
+      "targeting_search",
+      "media_list",
+      "audiences_list",
+      "pages_list",
+      "account_info",
+      "graph_get",
     ]
     for (const name of readTools) {
       expect(typeof r[name], `read handler '${name}' not exported`).toBe("function")
@@ -55,9 +62,16 @@ describe("ads handler bundle", () => {
   it("exports 10 write tool handlers", () => {
     const r = handlers as Record<string, unknown>
     const writeTools = [
-      "create_campaign", "create_adset", "create_ad", "create_creative",
-      "upload_image", "update_budget", "set_status",
-      "create_custom_audience", "create_lookalike_audience", "add_users_to_audience",
+      "create_campaign",
+      "create_adset",
+      "create_ad",
+      "create_creative",
+      "upload_image",
+      "update_budget",
+      "set_status",
+      "create_custom_audience",
+      "create_lookalike_audience",
+      "add_users_to_audience",
     ]
     for (const name of writeTools) {
       expect(typeof r[name], `write handler '${name}' not exported`).toBe("function")
@@ -67,9 +81,16 @@ describe("ads handler bundle", () => {
   it("exports 10 summarizers", () => {
     const r = handlers as Record<string, unknown>
     const summarizers = [
-      "summarizeCampaign", "summarizeAdset", "summarizeAd", "summarizeCreative",
-      "summarizeUploadImage", "summarizeBudget", "summarizeSetStatus",
-      "summarizeCustomAudience", "summarizeLookalike", "summarizeAddUsers",
+      "summarizeCampaign",
+      "summarizeAdset",
+      "summarizeAd",
+      "summarizeCreative",
+      "summarizeUploadImage",
+      "summarizeBudget",
+      "summarizeSetStatus",
+      "summarizeCustomAudience",
+      "summarizeLookalike",
+      "summarizeAddUsers",
     ]
     for (const name of summarizers) {
       expect(typeof r[name], `summarizer '${name}' not exported`).toBe("function")

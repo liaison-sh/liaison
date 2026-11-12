@@ -9,11 +9,8 @@
 
 import type { AdapterVersionList, AdapterVersionView } from "@liaison/api-connector-core/contract"
 import { type Component, createSignal, For, onMount, Show } from "solid-js"
-import { formatDateTime } from "./kit"
-import { useI18n } from "./kit"
-import { useApi } from "./api"
-import { Button } from "./kit"
-import { listVersions, restoreVersion } from "./api"
+import { listVersions, restoreVersion, useApi } from "./api"
+import { Button, formatDateTime, useI18n } from "./kit"
 
 type LoadState = "loading" | "ready" | "error"
 

@@ -117,7 +117,11 @@ export function youtubeQuotaDay(now: Date): string {
 export function nextYoutubeQuotaReset(now: Date): Date {
   const ms = now.getTime()
   const local = new Date(ms - pacificOffsetHours(ms) * 3_600_000)
-  const nextLocalMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + 1)
+  const nextLocalMidnight = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate() + 1,
+  )
   // Midnight sits before the 02:00 switch, so it carries the previous day's
   // offset: probe one hour before midnight-as-PDT (07:00 UTC).
   const offset = pacificOffsetHours(nextLocalMidnight + 7 * 3_600_000 - 1)
@@ -202,10 +206,11 @@ export function youtubeQuotaStatus(input: {
   const consumed = discoveryUsed + watchUsed
   const dq = youtubeQuotaMetadata(discovery)
   const wq = youtubeQuotaMetadata(watch)
-  const exhaustedUntil = [dq.exhausted_until, wq.exhausted_until]
-    .filter((v): v is string => typeof v === "string" && Date.parse(v) > now.getTime())
-    .sort()
-    .pop() ?? null
+  const exhaustedUntil =
+    [dq.exhausted_until, wq.exhausted_until]
+      .filter((v): v is string => typeof v === "string" && Date.parse(v) > now.getTime())
+      .sort()
+      .pop() ?? null
   return {
     day: youtubeQuotaDay(now),
     resetsAt: nextYoutubeQuotaReset(now).toISOString(),
@@ -213,7 +218,11 @@ export function youtubeQuotaStatus(input: {
     cap,
     consumed,
     remaining: exhaustedUntil ? 0 : Math.max(0, cap - consumed),
-    discovery: { consumed: discoveryUsed, share: YT_DISCOVERY_DAILY_SHARE, skipped: dq.discovery_skipped ?? null },
+    discovery: {
+      consumed: discoveryUsed,
+      share: YT_DISCOVERY_DAILY_SHARE,
+      skipped: dq.discovery_skipped ?? null,
+    },
     watch: { consumed: watchUsed, deferred: wq.deferred ?? 0 },
     exhaustedUntil,
   }
@@ -228,7 +237,8 @@ export function youtubeDiscoveryGate(input: {
 }): "run" | "quota_exhausted" | "budget" | "cadence" {
   const { status, estimatedUnits, lastRunAt, now } = input
   if (status.exhaustedUntil) return "quota_exhausted"
-  if (lastRunAt && now.getTime() - Date.parse(lastRunAt) < YT_DISCOVERY_MIN_INTERVAL_MS) return "cadence"
+  if (lastRunAt && now.getTime() - Date.parse(lastRunAt) < YT_DISCOVERY_MIN_INTERVAL_MS)
+    return "cadence"
   if (status.discovery.consumed + estimatedUnits > status.discovery.share) return "budget"
   if (status.consumed + estimatedUnits > status.cap) return "budget"
   return "run"

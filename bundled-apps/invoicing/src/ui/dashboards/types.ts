@@ -97,8 +97,13 @@ export const DEFAULT_FILTER: DashboardFilter = {
  * the "all" tab — those show only issued-and-later documents. On the Drafts tab
  * we show ONLY status='draft'. Pure + unit-testable.
  */
-export function filterRowsForTab<T extends { status: string }>(rows: T[], draftsOnly: boolean): T[] {
-  return draftsOnly ? rows.filter((r) => r.status === "draft") : rows.filter((r) => r.status !== "draft")
+export function filterRowsForTab<T extends { status: string }>(
+  rows: T[],
+  draftsOnly: boolean,
+): T[] {
+  return draftsOnly
+    ? rows.filter((r) => r.status === "draft")
+    : rows.filter((r) => r.status !== "draft")
 }
 
 /**
@@ -149,6 +154,31 @@ export function applyFilter(rows: DocumentRow[], f: DashboardFilter): DocumentRo
 // purity guard would let through, but keeping ui/dashboards self-contained
 // keeps the bundle-tree shallow).
 export const EU_COUNTRIES = new Set([
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
-  "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
 ])

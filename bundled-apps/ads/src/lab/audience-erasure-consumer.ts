@@ -20,10 +20,10 @@
 // harmless no-op on the platform side). Absent connections degrade to a
 // clean no-op + audit note per platform, never a crash.
 
-import { metaFetch } from "../lib/meta-client"
 import { getMetaClient } from "../lib/get-client"
 import { googleAdsMutate } from "../lib/google-client"
-import { getGoogleClient, GoogleConfigError } from "../lib/google-config"
+import { GoogleConfigError, getGoogleClient } from "../lib/google-config"
+import { metaFetch } from "../lib/meta-client"
 
 interface PendingErasure {
   emailSha256: string
@@ -32,7 +32,10 @@ interface PendingErasure {
 }
 
 interface ExecuteToolCtx {
-  executeTool?: (target: string, args: Record<string, unknown>) => Promise<{
+  executeTool?: (
+    target: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
     status: "completed" | "pending_approval" | "error"
     result?: unknown
     error?: { code: string; message: string; retryable?: boolean }
@@ -87,7 +90,10 @@ function normalizeErasureRow(raw: unknown): PendingErasure | null {
   return {
     emailSha256,
     reason: typeof r.reason === "string" ? r.reason : "",
-    erasedAt: typeof (r.erasedAt ?? r.erased_at) === "string" ? ((r.erasedAt ?? r.erased_at) as string) : "",
+    erasedAt:
+      typeof (r.erasedAt ?? r.erased_at) === "string"
+        ? ((r.erasedAt ?? r.erased_at) as string)
+        : "",
   }
 }
 
@@ -105,11 +111,18 @@ function unwrapDbRows(result: unknown): PendingErasure[] | null {
 
 async function pollPendingErasures(ctx: ExecuteToolCtx): Promise<PollResult> {
   if (!ctx.executeTool) {
-    return { pending: [], degraded: true, note: "cross-app calls not enabled on this ctx (see docs/sdk-gaps.md)" }
+    return {
+      pending: [],
+      degraded: true,
+      note: "cross-app calls not enabled on this ctx (see docs/sdk-gaps.md)",
+    }
   }
 
   try {
-    const envelope = await ctx.executeTool("database:db_read", { name: "pending_audience_erasures", params: {} })
+    const envelope = await ctx.executeTool("database:db_read", {
+      name: "pending_audience_erasures",
+      params: {},
+    })
     if (envelope.status === "completed") {
       const rows = unwrapDbRows(envelope.result)
       if (rows !== null) return { pending: rows }
@@ -148,7 +161,11 @@ async function pollPendingErasures(ctx: ExecuteToolCtx): Promise<PollResult> {
 
 // ─── already-consumed check (Liaison-side audience_erasure_log) ───────────
 
-async function alreadyConsumed(db: AppDb | undefined, emailSha256: string, platform: "meta" | "google"): Promise<boolean> {
+async function alreadyConsumed(
+  db: AppDb | undefined,
+  emailSha256: string,
+  platform: "meta" | "google",
+): Promise<boolean> {
   if (!db) return false
   const rows = (await db.findMany("audience_erasure_log", {
     where: { email_sha256: emailSha256, platform, status: "removed" },
@@ -181,7 +198,11 @@ async function writeAuditLog(
 
 // ─── Meta remove-users ──────────────────────────────────────────────────────
 
-export type MetaRemoveStatus = "removed" | "no_op_not_connected" | "no_op_no_audience_ids" | "failed"
+export type MetaRemoveStatus =
+  | "removed"
+  | "no_op_not_connected"
+  | "no_op_no_audience_ids"
+  | "failed"
 
 interface MetaRemoveResult {
   removed: boolean
@@ -277,7 +298,8 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
   try {
     client = await getGoogleClient(ctx)
   } catch (e) {
-    const note = e instanceof GoogleConfigError ? e.message : e instanceof Error ? e.message : String(e)
+    const note =
+      e instanceof GoogleConfigError ? e.message : e instanceof Error ? e.message : String(e)
     return { removed: false, status: "no_op_not_connected", note: `Google not connected: ${note}` }
   }
 
@@ -340,7 +362,9 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
 
 export async function audience_erasure_sweep(params: unknown, ctx: SweepCtx): Promise<unknown> {
   const p = (params ?? {}) as SweepParams
-  const managedMetaAudienceIds = Array.isArray(p.managed_meta_audience_ids) ? p.managed_meta_audience_ids : []
+  const managedMetaAudienceIds = Array.isArray(p.managed_meta_audience_ids)
+    ? p.managed_meta_audience_ids
+    : []
 
   const pollResult = await pollPendingErasures(ctx)
   const pending = pollResult.pending

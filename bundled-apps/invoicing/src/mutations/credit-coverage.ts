@@ -95,7 +95,11 @@ export const ISSUED_INVOICE_STATUSES = new Set(["issued", "paid", "overdue", "re
  *  `creditedTotalMinor`) cover its full grand total (absolute value). */
 export async function isFullyCredited(
   db: Pick<MutationsDb, "findOne">,
-  invoiceRow: { id?: string; lifecycle_log: Array<Record<string, unknown>>; grand_total_minor: bigint },
+  invoiceRow: {
+    id?: string
+    lifecycle_log: Array<Record<string, unknown>>
+    grand_total_minor: bigint
+  },
   candidateDocs?: Array<Record<string, unknown>>,
 ): Promise<boolean> {
   const credited = await creditedTotalMinor(db, invoiceRow, candidateDocs)
@@ -131,10 +135,16 @@ export async function assertNoLiveInvoiceForOrder(
     // must never block a new one.
     if (dup.type === "credit_note") continue
     const status = String(dup.status ?? "draft")
-    if (opts.creditedInSameCommit && String(dup.id) === opts.creditedInSameCommit && status !== "draft") {
+    if (
+      opts.creditedInSameCommit &&
+      String(dup.id) === opts.creditedInSameCommit &&
+      status !== "draft"
+    ) {
       continue
     }
-    const label = dup.number ? `${String(dup.id)} / ${String(dup.number)}` : `${String(dup.id)}, still a draft`
+    const label = dup.number
+      ? `${String(dup.id)} / ${String(dup.number)}`
+      : `${String(dup.id)}, still a draft`
     if (status === "draft") {
       throw new Error(
         `already_invoiced: Shopify order ${shopifyOrderId} already has an invoice ` +
@@ -155,7 +165,11 @@ export async function assertNoLiveInvoiceForOrder(
       existing,
     )
     if (fullyCredited) continue
-    const credited = await creditedTotalMinor(db, { id: invoiceId, lifecycle_log: lifecycle }, existing)
+    const credited = await creditedTotalMinor(
+      db,
+      { id: invoiceId, lifecycle_log: lifecycle },
+      existing,
+    )
     const currency = String(dup.currency ?? "EUR")
     const absTotal = invoiceTotal < 0n ? -invoiceTotal : invoiceTotal
     const partialNote =

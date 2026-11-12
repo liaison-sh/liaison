@@ -51,7 +51,11 @@ describe("summarize", () => {
       [],
       [
         inc({ id: "1", status: "resolved", resolvedAt: new Date(NOW - 3_600_000).toISOString() }),
-        inc({ id: "2", status: "resolved", resolvedAt: new Date(NOW - 30 * 3_600_000).toISOString() }),
+        inc({
+          id: "2",
+          status: "resolved",
+          resolvedAt: new Date(NOW - 30 * 3_600_000).toISOString(),
+        }),
         inc({ id: "3", status: "resolved", resolvedAt: null }),
       ],
       NOW,
@@ -86,7 +90,12 @@ describe("summarize", () => {
     })
     // Quiet source (only resolved history) shows open 0, null severity, but keeps recency.
     const c = s.sources.find((x) => x.source === "c")
-    expect(c).toEqual({ source: "c", open: 0, worstSeverity: null, lastSeenAt: "2026-07-11T11:30:00.000Z" })
+    expect(c).toEqual({
+      source: "c",
+      open: 0,
+      worstSeverity: null,
+      lastSeenAt: "2026-07-11T11:30:00.000Z",
+    })
     // Loudest first.
     expect(s.sources[0]?.source).toBe("a")
   })

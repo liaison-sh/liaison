@@ -31,7 +31,12 @@ export class LedgerDouble implements EffectsBridge {
   async settleUnknown(key: string, decisionJson: string) {
     const d = JSON.parse(decisionJson) as { outcome: "done" | "retry"; result?: unknown }
     if (this.rows.get(key)?.state !== "unknown") return { ok: false }
-    this.rows.set(key, d.outcome === "done" ? { state: "done", result: d.result ?? null } : { state: "pending", result: null })
+    this.rows.set(
+      key,
+      d.outcome === "done"
+        ? { state: "done", result: d.result ?? null }
+        : { state: "pending", result: null },
+    )
     return { ok: true }
   }
   async markUnknown(key: string) {
@@ -41,6 +46,7 @@ export class LedgerDouble implements EffectsBridge {
   }
   /** The claiming process is gone: its pending claims are unknown now. */
   die() {
-    for (const [k, r] of this.rows) if (r.state === "pending") this.rows.set(k, { state: "unknown", result: null })
+    for (const [k, r] of this.rows)
+      if (r.state === "pending") this.rows.set(k, { state: "unknown", result: null })
   }
 }

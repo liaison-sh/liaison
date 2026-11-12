@@ -54,7 +54,12 @@ export const ALL_SALES_COLUMNS: DashboardColumn[] = [
   { key: "date", label: "Date", get: (r) => (r.issued_at ?? "").slice(0, 10) },
   { key: "number", label: "Number", get: (r) => r.number ?? "", survivesPhone: true },
   { key: "type", label: "Type", get: (r) => r.type, kind: "type" },
-  { key: "customer", label: "Customer", get: (r) => r.counterparty_name ?? "", survivesPhone: true },
+  {
+    key: "customer",
+    label: "Customer",
+    get: (r) => r.counterparty_name ?? "",
+    survivesPhone: true,
+  },
   // The store order this document bills ("#1149"). Free-text search matches it,
   // so without the column a row could match a query with nothing on screen
   // explaining why -- and reconciling a document against an order meant opening
@@ -62,34 +67,93 @@ export const ALL_SALES_COLUMNS: DashboardColumn[] = [
   { key: "order", label: "Order", get: (r) => r.shopify_order_number ?? "" },
   { key: "channel", label: "Channel", get: (r) => r.channel ?? "manual", kind: "channel" },
   { key: "status", label: "Status", get: (r) => r.status, kind: "status" },
-  { key: "total", label: "Total", get: (r) => formatMoney(r.grand_total_minor, r.currency), kind: "money", align: "right", survivesPhone: true },
+  {
+    key: "total",
+    label: "Total",
+    get: (r) => formatMoney(r.grand_total_minor, r.currency),
+    kind: "money",
+    align: "right",
+    survivesPhone: true,
+  },
 ]
 
 export const AWAITING_PAYMENT_COLUMNS: DashboardColumn[] = [
   { key: "date", label: "Date", get: (r) => (r.issued_at ?? "").slice(0, 10) },
   { key: "number", label: "Number", get: (r) => r.number ?? "" },
   { key: "customer", label: "Customer", get: (r) => r.counterparty_name ?? "" },
-  { key: "total", label: "Total", get: (r) => formatMoney(r.grand_total_minor, r.currency), kind: "money", align: "right" },
+  {
+    key: "total",
+    label: "Total",
+    get: (r) => formatMoney(r.grand_total_minor, r.currency),
+    kind: "money",
+    align: "right",
+  },
   { key: "currency", label: "Currency", get: (r) => r.currency },
-  { key: "days_overdue", label: "Days overdue", get: (r) => String(r.days_overdue ?? 0), kind: "num", align: "right" },
+  {
+    key: "days_overdue",
+    label: "Days overdue",
+    get: (r) => String(r.days_overdue ?? 0),
+    kind: "num",
+    align: "right",
+  },
   { key: "last_action", label: "Last action", get: (r) => r.last_action ?? "" },
 ]
 
 export const B2B_COLUMNS: DashboardColumn[] = [
   { key: "customer", label: "Customer", get: (r) => r.counterparty_name ?? "" },
-  { key: "count", label: "Count", get: (r) => String(r.group_count ?? 1), kind: "num", align: "right" },
-  { key: "total", label: "Total", get: (r) => formatMoney(r.grand_total_minor, r.currency), kind: "money", align: "right" },
+  {
+    key: "count",
+    label: "Count",
+    get: (r) => String(r.group_count ?? 1),
+    kind: "num",
+    align: "right",
+  },
+  {
+    key: "total",
+    label: "Total",
+    get: (r) => formatMoney(r.grand_total_minor, r.currency),
+    kind: "money",
+    align: "right",
+  },
   { key: "currency", label: "Currency", get: (r) => r.currency },
-  { key: "last_document_date", label: "Last document date", get: (r) => (r.issued_at ?? "").slice(0, 10) },
+  {
+    key: "last_document_date",
+    label: "Last document date",
+    get: (r) => (r.issued_at ?? "").slice(0, 10),
+  },
 ]
 
 export const BY_MARKET_COLUMNS: DashboardColumn[] = [
   { key: "country", label: "Country", get: (r) => r.destination_country ?? "" },
-  { key: "count", label: "Count", get: (r) => String(r.group_count ?? 1), kind: "num", align: "right" },
-  { key: "revenue", label: "Revenue", get: (r) => formatMoney(r.grand_total_minor, r.currency), kind: "money", align: "right" },
+  {
+    key: "count",
+    label: "Count",
+    get: (r) => String(r.group_count ?? 1),
+    kind: "num",
+    align: "right",
+  },
+  {
+    key: "revenue",
+    label: "Revenue",
+    get: (r) => formatMoney(r.grand_total_minor, r.currency),
+    kind: "money",
+    align: "right",
+  },
   { key: "currency", label: "Currency", get: (r) => r.currency },
-  { key: "vat_collected", label: "VAT collected", get: (r) => formatMoney(r.tax_total_minor, r.currency), kind: "money", align: "right" },
-  { key: "customs_documents_count", label: "Customs documents count", get: (r) => String(r.customs_documents_count ?? 0), kind: "num", align: "right" },
+  {
+    key: "vat_collected",
+    label: "VAT collected",
+    get: (r) => formatMoney(r.tax_total_minor, r.currency),
+    kind: "money",
+    align: "right",
+  },
+  {
+    key: "customs_documents_count",
+    label: "Customs documents count",
+    get: (r) => String(r.customs_documents_count ?? 0),
+    kind: "num",
+    align: "right",
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -6,16 +6,11 @@
 // No imports from ~/  or apps/api — only @liaison/app-sdk and local lib/*.
 
 import type { CrossAppEnvelope } from "@liaison/app-sdk"
-import { metaFetch, BudgetCapError, ParamError, toMinorUnits } from "./lib/meta-client"
+import { filterByBuyerConsent, filterByNewsletterConsent } from "./lab/consent-join"
 import { getMetaClient } from "./lib/get-client"
 import { hashIdentifier } from "./lib/hash-identifier"
-import { filterByBuyerConsent, filterByNewsletterConsent } from "./lab/consent-join"
-import {
-  type PreflightOutcome,
-  refuse,
-  throwIfRefused,
-  toPreflightResult,
-} from "./lib/preflight"
+import { BudgetCapError, metaFetch, ParamError, toMinorUnits } from "./lib/meta-client"
+import { type PreflightOutcome, refuse, throwIfRefused, toPreflightResult } from "./lib/preflight"
 
 // ─── Audience PII payload builder ──────────────────────────────────────────────
 //
@@ -181,16 +176,14 @@ export async function create_campaign(params: unknown, ctx: CrossAppCtx): Promis
   if (!objective.startsWith("OUTCOME_") || LEGACY_OBJECTIVES.has(objective)) {
     throw new Error(
       `Invalid campaign objective "${objective}". ` +
-      "Meta requires OUTCOME_* objectives (e.g. OUTCOME_SALES, OUTCOME_LEADS, " +
-      "OUTCOME_AWARENESS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION). " +
-      "Legacy objectives (CONVERSIONS, TRAFFIC, etc.) are no longer accepted."
+        "Meta requires OUTCOME_* objectives (e.g. OUTCOME_SALES, OUTCOME_LEADS, " +
+        "OUTCOME_AWARENESS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION). " +
+        "Legacy objectives (CONVERSIONS, TRAFFIC, etc.) are no longer accepted.",
     )
   }
 
   // special_ad_categories MUST always be present in the POST body — Meta 400s on absence.
-  const specialAdCategories = Array.isArray(p.special_ad_categories)
-    ? p.special_ad_categories
-    : []
+  const specialAdCategories = Array.isArray(p.special_ad_categories) ? p.special_ad_categories : []
 
   const postParams: Record<string, unknown> = {
     name: String(p.name ?? ""),
@@ -199,12 +192,12 @@ export async function create_campaign(params: unknown, ctx: CrossAppCtx): Promis
     status: String(p.status ?? "PAUSED"),
   }
 
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: `/${adAccountId}/campaigns`,
     method: "POST",
     params: postParams,
     accessToken,
-  }) as { id?: string }
+  })) as { id?: string }
 
   return { id: result.id, campaign: result }
 }
@@ -220,7 +213,10 @@ export function preflightCreateAdsetParams(p: Record<string, unknown>): Prefligh
   if (p.daily_budget !== undefined) {
     const majorAmount = Number(p.daily_budget)
     if (!Number.isFinite(majorAmount) || majorAmount <= 0) {
-      return refuse("invalid_params", `create_adset: invalid daily_budget value "${p.daily_budget}"`)
+      return refuse(
+        "invalid_params",
+        `create_adset: invalid daily_budget value "${p.daily_budget}"`,
+      )
     }
   } else if (p.lifetime_budget !== undefined) {
     const majorAmount = Number(p.lifetime_budget)
@@ -277,12 +273,12 @@ export async function create_adset(params: unknown, ctx: CrossAppCtx): Promise<u
     postParams.lifetime_budget = toMinorUnits(majorAmount, currency)
   }
 
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: `/${adAccountId}/adsets`,
     method: "POST",
     params: postParams,
     accessToken,
-  }) as { id?: string }
+  })) as { id?: string }
 
   return { id: result.id, adset: result }
 }
@@ -300,12 +296,12 @@ export async function create_ad(params: unknown, ctx: CrossAppCtx): Promise<unkn
     status: String(p.status ?? "PAUSED"),
   }
 
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: `/${adAccountId}/ads`,
     method: "POST",
     params: postParams,
     accessToken,
-  }) as { id?: string }
+  })) as { id?: string }
 
   return { id: result.id, ad: result }
 }
@@ -323,8 +319,8 @@ export async function create_creative(params: unknown, ctx: CrossAppCtx): Promis
     if (Array.isArray(childAttachments) && childAttachments.length < 2) {
       throw new Error(
         `carousel requires at least 2 images but ${childAttachments.length} provided. ` +
-        "Add more images to the asset_feed_spec.child_attachments array. " +
-        "[CAROUSEL_IMAGE]"
+          "Add more images to the asset_feed_spec.child_attachments array. " +
+          "[CAROUSEL_IMAGE]",
       )
     }
   }
@@ -341,12 +337,12 @@ export async function create_creative(params: unknown, ctx: CrossAppCtx): Promis
     postParams.asset_feed_spec = assetFeedSpec
   }
 
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: `/${adAccountId}/adcreatives`,
     method: "POST",
     params: postParams,
     accessToken,
-  }) as { id?: string }
+  })) as { id?: string }
 
   return { id: result.id, creative: result }
 }
@@ -364,8 +360,8 @@ export async function upload_image(params: unknown, ctx: CrossAppCtx): Promise<u
   if (imageBytes.length > IMAGE_BYTES_LIMIT) {
     throw new Error(
       `Image too large: base64 payload is ${imageBytes.length} chars ` +
-      `(source exceeds ~740 KB). Compress or resize the image first. ` +
-      "Use media_list to discover existing images in the account. [media_list]"
+        `(source exceeds ~740 KB). Compress or resize the image first. ` +
+        "Use media_list to discover existing images in the account. [media_list]",
     )
   }
 
@@ -378,12 +374,12 @@ export async function upload_image(params: unknown, ctx: CrossAppCtx): Promise<u
     postParams.name = String(p.filename)
   }
 
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: `/${adAccountId}/adimages`,
     method: "POST",
     params: postParams,
     accessToken,
-  }) as { images?: Record<string, { hash?: string }> }
+  })) as { images?: Record<string, { hash?: string }> }
 
   // Extract image_hash from Meta response envelope
   const images = result.images ?? {}
@@ -490,7 +486,7 @@ export async function update_budget(params: unknown, ctx: CrossAppCtx): Promise<
   if (!p.currency) {
     throw new Error(
       "update_budget: currency is required: call account_info first to get the account currency " +
-      "(major→minor unit conversion differs per currency, e.g. JPY has 0 decimals).",
+        "(major→minor unit conversion differs per currency, e.g. JPY has 0 decimals).",
     )
   }
   const currency = String(p.currency)
@@ -531,7 +527,7 @@ export async function update_budget(params: unknown, ctx: CrossAppCtx): Promise<
       // Surface budget-change cap clearly — no retry
       throw new Error(
         `Meta limits budget changes to ~4/hour on this ad set (error 613+1487632). ` +
-        `Wait ~1 hour before retrying. Original error: ${err.message}`
+          `Wait ~1 hour before retrying. Original error: ${err.message}`,
       )
     }
     throw err
@@ -560,12 +556,12 @@ export async function set_status(params: unknown, ctx: CrossAppCtx): Promise<unk
   })
 
   // Re-read effective_status after execution
-  const refreshed = await metaFetch(ctx.fetch, {
+  const refreshed = (await metaFetch(ctx.fetch, {
     path: `/${objectId}`,
     method: "GET",
     params: { fields: "id,status,effective_status" },
     accessToken,
-  }) as { id?: string; status?: string; effective_status?: string }
+  })) as { id?: string; status?: string; effective_status?: string }
 
   return {
     object_id: objectId,
@@ -664,23 +660,27 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
     // The cross-app capability is required to fill this audience — checked here
     // too (never only inside the preflight) and BEFORE the audience POST.
     if (!ctx.executeTool) {
-      throw new Error("create_custom_audience: ctx.executeTool not available (cross-app calls not enabled)")
+      throw new Error(
+        "create_custom_audience: ctx.executeTool not available (cross-app calls not enabled)",
+      )
     }
 
     // Step 1: create the audience
-    const audienceResult = await metaFetch(ctx.fetch, {
+    const audienceResult = (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/customaudiences`,
       method: "POST",
       params: { name, subtype: "CUSTOMER_LIST", customer_file_source: customerFileSource },
       accessToken,
-    }) as { id?: string }
+    })) as { id?: string }
 
     const audienceId = audienceResult.id
     if (!audienceId) throw new Error("create_custom_audience: Meta did not return audience id")
 
     // Step 2: pull customers from Shopify
     if (!ctx.executeTool) {
-      throw new Error("create_custom_audience: ctx.executeTool not available, cross-app calls are not enabled")
+      throw new Error(
+        "create_custom_audience: ctx.executeTool not available, cross-app calls are not enabled",
+      )
     }
     // MUST pass plain object — NOT pre-stringified JSON (sandbox __wrap auto-stringifies)
     const envelope = await ctx.executeTool("shopify:customers_search", shopifyQuery)
@@ -696,7 +696,11 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
     // buildAudiencePayload/hash+upload. Default-deny: any email lacking a
     // purpose-appropriate consent record is dropped, never uploaded.
     const pulledCustomers = extractCustomers(envelope.result)
-    const { customers: consentedCustomers, outcome } = await applyConsentJoin(audiencePurpose, pulledCustomers, ctx)
+    const { customers: consentedCustomers, outcome } = await applyConsentJoin(
+      audiencePurpose,
+      pulledCustomers,
+      ctx,
+    )
 
     // Step 3: extract + hash identifiers PER TYPE — NEVER send raw PII to Meta,
     // and NEVER label a phone hash as EMAIL_SHA256 (Meta matches positionally).
@@ -732,7 +736,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
     const pixelId = String(p.pixel_id ?? "")
     if (!pixelId) throw new Error("create_custom_audience (WEBSITE): pixel_id is required")
 
-    const result = await metaFetch(ctx.fetch, {
+    const result = (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/customaudiences`,
       method: "POST",
       params: {
@@ -743,13 +747,13 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
         retention_days: p.retention_days,
       },
       accessToken,
-    }) as { id?: string }
+    })) as { id?: string }
 
     return { audience_id: result.id, subtype: "WEBSITE" }
   }
 
   if (subtype === "ENGAGEMENT") {
-    const result = await metaFetch(ctx.fetch, {
+    const result = (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/customaudiences`,
       method: "POST",
       params: {
@@ -761,20 +765,23 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
         retention_days: p.retention_days,
       },
       accessToken,
-    }) as { id?: string }
+    })) as { id?: string }
 
     return { audience_id: result.id, subtype: "ENGAGEMENT" }
   }
 
   throw new Error(
     `create_custom_audience: unknown subtype "${subtype}". ` +
-    "Expected CUSTOMER_LIST, WEBSITE, or ENGAGEMENT."
+      "Expected CUSTOMER_LIST, WEBSITE, or ENGAGEMENT.",
   )
 }
 
 // ─── create_lookalike_audience ────────────────────────────────────────────────
 
-export async function create_lookalike_audience(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
+export async function create_lookalike_audience(
+  params: unknown,
+  ctx: CrossAppCtx,
+): Promise<unknown> {
   const p = params as Record<string, unknown>
   const { accessToken, adAccountId } = await getMetaClient(ctx)
 
@@ -783,14 +790,15 @@ export async function create_lookalike_audience(params: unknown, ctx: CrossAppCt
   const ratio = Number(p.ratio ?? 1)
   const valueBased = Boolean(p.value_based)
 
-  if (!sourceAudienceId) throw new Error("create_lookalike_audience: source_audience_id is required")
+  if (!sourceAudienceId)
+    throw new Error("create_lookalike_audience: source_audience_id is required")
   if (!country) throw new Error("create_lookalike_audience: country is required")
   if (ratio < 1 || ratio > 10) throw new Error("create_lookalike_audience: ratio must be 1-10")
 
   const audienceName = `Lookalike (${country}, ${ratio}%) from ${sourceAudienceId}`
 
   const createLookalike = async (type: "value_based" | "similarity") => {
-    return await metaFetch(ctx.fetch, {
+    return (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/customaudiences`,
       method: "POST",
       params: {
@@ -804,7 +812,7 @@ export async function create_lookalike_audience(params: unknown, ctx: CrossAppCt
         },
       },
       accessToken,
-    }) as { id?: string }
+    })) as { id?: string }
   }
 
   // Honor value_based when requested: ATTEMPT it. Only fall back to a plain
@@ -899,9 +907,7 @@ export async function add_users_to_audience(params: unknown, ctx: CrossAppCtx): 
   const shopifyQuery = p.shopify_customer_query as Record<string, unknown> | undefined
   if (!shopifyQuery) throw new Error("add_users_to_audience: shopify_customer_query is required")
 
-  const audiencePurpose = throwIfRefused(
-    checkAudiencePurpose(p, "add_users_to_audience"),
-  ).purpose
+  const audiencePurpose = throwIfRefused(checkAudiencePurpose(p, "add_users_to_audience")).purpose
 
   if (!ctx.executeTool) {
     throw new Error("add_users_to_audience: ctx.executeTool not available")
@@ -921,7 +927,11 @@ export async function add_users_to_audience(params: unknown, ctx: CrossAppCtx): 
   // buildAudiencePayload/hash+upload. Default-deny: any email lacking a
   // purpose-appropriate consent record is dropped, never uploaded.
   const pulledCustomers = extractCustomers(envelope.result)
-  const { customers: consentedCustomers, outcome } = await applyConsentJoin(audiencePurpose, pulledCustomers, ctx)
+  const { customers: consentedCustomers, outcome } = await applyConsentJoin(
+    audiencePurpose,
+    pulledCustomers,
+    ctx,
+  )
 
   // Hash identifiers PER TYPE — NEVER send raw PII; phone→PHONE_SHA256, email→EMAIL_SHA256
   const payload = await buildAudiencePayload(consentedCustomers)

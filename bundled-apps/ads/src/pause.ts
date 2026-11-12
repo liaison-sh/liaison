@@ -9,15 +9,10 @@
 //
 // Uses (params, ctx) — the kernel convention.
 
-import { metaFetch } from "./lib/meta-client"
-import { getMetaClient } from "./lib/get-client"
 import type { AppCtx } from "./lib/ctx-types"
-import {
-  type PreflightOutcome,
-  refuse,
-  throwIfRefused,
-  toPreflightResult,
-} from "./lib/preflight"
+import { getMetaClient } from "./lib/get-client"
+import { metaFetch } from "./lib/meta-client"
+import { type PreflightOutcome, refuse, throwIfRefused, toPreflightResult } from "./lib/preflight"
 
 // ─── pause (gated) ────────────────────────────────────────────────────────────
 
@@ -88,12 +83,12 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
     // Call 1: GET pre-pause status — capture the TRUE prior_status BEFORE pausing.
     // Also read `name` so the result is self-documenting: the agent's reply should
     // enumerate each paused object BY NAME (a vague "all paused" fails the rubric).
-    const before = await metaFetch(ctx.fetch, {
+    const before = (await metaFetch(ctx.fetch, {
       path: `/${objectId}`,
       method: "GET",
       params: { fields: "id,name,status,effective_status" },
       accessToken,
-    }) as { id?: string; name?: string; status?: string; effective_status?: string }
+    })) as { id?: string; name?: string; status?: string; effective_status?: string }
     const priorStatus = before.status
     const objectName = before.name
 
@@ -106,12 +101,12 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
     })
 
     // Call 3: GET re-read — confirm effective_status; do NOT trust the write echo.
-    const after = await metaFetch(ctx.fetch, {
+    const after = (await metaFetch(ctx.fetch, {
       path: `/${objectId}`,
       method: "GET",
       params: { fields: "id,status,effective_status" },
       accessToken,
-    }) as { id?: string; status?: string; effective_status?: string }
+    })) as { id?: string; status?: string; effective_status?: string }
 
     const effectiveStatus = after.effective_status
 

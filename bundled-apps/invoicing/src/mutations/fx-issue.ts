@@ -25,11 +25,16 @@ export async function issueWithFxRate(
   ctx: MutationsCtx,
   input: IssueInput,
 ): Promise<{ ok: true; result: IssueResult } | { ok: false; error: ErrorEnvelope }> {
-  await warmFxRate(ctx as MutationsCtx & FxFetchCtx, input.draft.currency, fxIssueDate(input.draft.issued_at))
+  await warmFxRate(
+    ctx as MutationsCtx & FxFetchCtx,
+    input.draft.currency,
+    fxIssueDate(input.draft.issued_at),
+  )
   try {
     return { ok: true, result: await issueDocument(ctx, input) }
   } catch (err) {
-    if (err instanceof FxRateUnavailableError) return { ok: false, error: fxRateUnavailableEnvelope(err) }
+    if (err instanceof FxRateUnavailableError)
+      return { ok: false, error: fxRateUnavailableEnvelope(err) }
     throw err
   }
 }
@@ -43,12 +48,17 @@ export async function issueTogetherWithFxRate<N extends string>(
   inputs: ReadonlyArray<readonly [N, IssueInput]>,
 ): Promise<{ ok: true; results: Record<N, IssueResult> } | { ok: false; error: ErrorEnvelope }> {
   for (const [, input] of inputs) {
-    await warmFxRate(ctx as MutationsCtx & FxFetchCtx, input.draft.currency, fxIssueDate(input.draft.issued_at))
+    await warmFxRate(
+      ctx as MutationsCtx & FxFetchCtx,
+      input.draft.currency,
+      fxIssueDate(input.draft.issued_at),
+    )
   }
   try {
     return { ok: true, results: await issueTogether(ctx, inputs) }
   } catch (err) {
-    if (err instanceof FxRateUnavailableError) return { ok: false, error: fxRateUnavailableEnvelope(err) }
+    if (err instanceof FxRateUnavailableError)
+      return { ok: false, error: fxRateUnavailableEnvelope(err) }
     throw err
   }
 }

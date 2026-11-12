@@ -4,11 +4,17 @@
 // totals breakdown, customs-readiness, validation warnings/errors, and the
 // approval-threshold callout. Styled with the shared kit so it reads as one
 // calm column of grouped facts.
-import { tr } from "./i18n"
-import { For, Show, type Component } from "solid-js"
-import type { CustomsReadinessResult, DraftDocument, TotalsResult, ValidationResult } from "./Editor"
-import { Badge, cx, SectionLabel } from "./kit"
+
+import { type Component, For, Show } from "solid-js"
 import { formatMoneyMinor } from "../money"
+import type {
+  CustomsReadinessResult,
+  DraftDocument,
+  TotalsResult,
+  ValidationResult,
+} from "./Editor"
+import { tr } from "./i18n"
+import { Badge, cx, SectionLabel } from "./kit"
 
 export interface EditorSummaryProps {
   draft: DraftDocument
@@ -61,10 +67,23 @@ export const EditorSummary: Component<EditorSummaryProps> = (props) => {
       <div class="flex flex-col gap-2">
         <SectionLabel>{tr("Totals")}</SectionLabel>
         <div class="flex flex-col gap-1.5">
-          <Row label={tr("Subtotal")} testid="editor-summary-subtotal" value={fmtMoney(props.totals.subtotal_minor, props.draft.currency)} />
-          <Row label="VAT" testid="editor-summary-tax" value={fmtMoney(props.totals.tax_total_minor, props.draft.currency)} />
+          <Row
+            label={tr("Subtotal")}
+            testid="editor-summary-subtotal"
+            value={fmtMoney(props.totals.subtotal_minor, props.draft.currency)}
+          />
+          <Row
+            label="VAT"
+            testid="editor-summary-tax"
+            value={fmtMoney(props.totals.tax_total_minor, props.draft.currency)}
+          />
           <div class="mt-1 border-t border-border-subtle pt-2">
-            <Row label={tr("Grand total")} testid="editor-summary-grand-total" strong value={fmtMoney(props.totals.grand_total_minor, props.draft.currency)} />
+            <Row
+              label={tr("Grand total")}
+              testid="editor-summary-grand-total"
+              strong
+              value={fmtMoney(props.totals.grand_total_minor, props.draft.currency)}
+            />
           </div>
         </div>
       </div>
@@ -83,7 +102,8 @@ export const EditorSummary: Component<EditorSummaryProps> = (props) => {
             when={props.readiness.ready}
             fallback={
               <Badge tone="warning" testid="editor-summary-customs-gaps">
-                {props.readiness.missing_hs} {tr("HS ·")} {props.readiness.missing_coo} {tr("CoO missing")}
+                {props.readiness.missing_hs} {tr("HS ·")} {props.readiness.missing_coo}{" "}
+                {tr("CoO missing")}
               </Badge>
             }
           >
@@ -105,7 +125,10 @@ export const EditorSummary: Component<EditorSummaryProps> = (props) => {
                 : "border-border-subtle bg-surface text-text-secondary",
             )}
           >
-            <Show when={info().exceeds} fallback={<>{tr("Under the approval threshold, issues directly.")}</>}>
+            <Show
+              when={info().exceeds}
+              fallback={<>{tr("Under the approval threshold, issues directly.")}</>}
+            >
               {tr("⚠ Approval required: the grand total exceeds the configured threshold.")}
             </Show>
           </div>

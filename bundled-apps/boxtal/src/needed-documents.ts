@@ -50,14 +50,20 @@ export async function loadTemplateNeeds(
         records: batch,
       })
       if (env.status !== "completed") {
-        ctx.logger?.warn?.("ready list: document_rules_match did not complete", { status: env.status })
+        ctx.logger?.warn?.("ready list: document_rules_match did not complete", {
+          status: env.status,
+        })
         return out
       }
       for (const m of (env.result as MatchResult | null)?.matches ?? []) {
         if (typeof m.recordId !== "string") continue
-        const rules = (m.rules ?? []).map((r) => r.name).filter((n): n is string => typeof n === "string" && n !== "")
+        const rules = (m.rules ?? [])
+          .map((r) => r.name)
+          .filter((n): n is string => typeof n === "string" && n !== "")
         const templates = (m.templates ?? []).flatMap((t) =>
-          typeof t.id === "string" && typeof t.name === "string" ? [{ id: t.id, name: t.name }] : [],
+          typeof t.id === "string" && typeof t.name === "string"
+            ? [{ id: t.id, name: t.name }]
+            : [],
         )
         out.set(m.recordId, { rules, templates })
       }

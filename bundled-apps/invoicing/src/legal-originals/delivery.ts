@@ -11,9 +11,15 @@ export async function deliveryFileId(
   db: Pick<IssueDb, "findMany">,
   doc: Record<string, unknown>,
 ): Promise<{ file_id: string | null; legal_original: boolean }> {
-  const legalId = typeof doc.legal_original_id === "string" && doc.legal_original_id ? doc.legal_original_id : null
+  const legalId =
+    typeof doc.legal_original_id === "string" && doc.legal_original_id
+      ? doc.legal_original_id
+      : null
   if (legalId) {
-    const rows = (await db.findMany("legal_originals", { where: { id: legalId }, limit: 1 })) as Array<Record<string, unknown>>
+    const rows = (await db.findMany("legal_originals", {
+      where: { id: legalId },
+      limit: 1,
+    })) as Array<Record<string, unknown>>
     const row = rows[0]
     if (row?.file_id && row.sha256) return { file_id: String(row.file_id), legal_original: true }
   }

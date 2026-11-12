@@ -3,7 +3,7 @@
 // Invoicing mutations: HS code assignment and library, product customs overlay, and
 // contact relationships.
 
-import type { MutationsDb, MutationsCtx, MutationResult, DocumentType } from "./shared"
+import type { DocumentType, MutationResult, MutationsCtx, MutationsDb } from "./shared"
 
 // ── E8 — hs_codes.assign + contact_relationships.set + customs overlay ────
 
@@ -236,7 +236,9 @@ export async function hsCodesLibraryUpsert(
     // description overwrites it) so a bare code-format normalisation pass
     // never wipes out a description someone already recorded.
     const description =
-      input.description !== undefined ? input.description : ((existing.description as string | null) ?? null)
+      input.description !== undefined
+        ? input.description
+        : ((existing.description as string | null) ?? null)
     const id = String(existing.id)
     await ctx.db.update("hs_code_library", id, { code: normalized, description })
     return {
@@ -356,12 +358,7 @@ export async function contactRelationshipsSet(
       error: { code: "invalid_input", message: "contact_id is required" },
     }
   }
-  const valid: ReadonlyArray<Relationship> = [
-    "customer",
-    "vendor",
-    "both",
-    "other",
-  ]
+  const valid: ReadonlyArray<Relationship> = ["customer", "vendor", "both", "other"]
   if (!valid.includes(input.relationship)) {
     return {
       status: "error",
@@ -395,10 +392,8 @@ export async function inferContactRelationshipOnIssue(
   | { status: "ok"; row: ContactRelationshipRow; action: "created" | "upgraded" | "noop" }
   | { status: "attention"; reason: "manual_conflict"; existing: ContactRelationshipRow }
 > {
-  const sideForDoc: Relationship =
-    input.document_type === "purchase_order" ? "vendor" : "customer"
-  const opposite: Relationship =
-    sideForDoc === "vendor" ? "customer" : "vendor"
+  const sideForDoc: Relationship = input.document_type === "purchase_order" ? "vendor" : "customer"
+  const opposite: Relationship = sideForDoc === "vendor" ? "customer" : "vendor"
   const existing = await getContactRelationship(ctx.db, input.contact_id)
 
   if (!existing) {
@@ -411,10 +406,7 @@ export async function inferContactRelationshipOnIssue(
   }
 
   if (existing.source === "manual") {
-    if (
-      existing.relationship !== sideForDoc &&
-      existing.relationship !== "both"
-    ) {
+    if (existing.relationship !== sideForDoc && existing.relationship !== "both") {
       await ctx.emit({
         entity: "invoicing",
         action: "contact_conflict",

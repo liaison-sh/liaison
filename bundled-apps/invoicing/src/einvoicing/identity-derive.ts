@@ -49,7 +49,10 @@ export function deriveKind(input: DeriveKindInput): CustomerKind | null {
 }
 
 interface IdentityDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number },
+  ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<unknown>
 }
 

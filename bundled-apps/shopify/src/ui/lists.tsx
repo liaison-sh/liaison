@@ -26,29 +26,30 @@
 // Design: same density + token palette as the Home recent-orders table so
 // drilling sideways from Home into a section feels continuous, not like
 // stepping into a different app.
-import { createResource, createSignal, onCleanup, type Component } from "solid-js"
-import { app, navigate, onEntityChange } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app, navigate, onEntityChange } from "@liaison/host"
+import { type Component, createResource, createSignal, onCleanup } from "solid-js"
+import { onOutsideLinkClick, openOutside, screenFramed } from "./external-link"
 import {
   cartMoreLabel,
   cartSummary,
   formatListDate,
+  type ListColumn,
   lineSkus,
   listCountLabel,
   normOrderStatus,
   ORDER_COLUMNS,
   ORDER_FILTERS,
+  type OrderFilterKey,
+  type OrderLineLike,
   orderHasItemsToShip,
   orderMatchesFilter,
   orderTags,
   statusLabel,
-  type ListColumn,
-  type OrderFilterKey,
-  type OrderLineLike,
 } from "./list-helpers"
 import { adminOrderUrl, adminResourceId } from "./panels/url-template"
 import { Chip, Empty, For, Show, StatusPill, useShopDomain } from "./primitives"
-import { onOutsideLinkClick, openOutside, screenFramed } from "./external-link"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Shared types — the bundle's read tools return a uniform NormalizedHit.
@@ -130,9 +131,7 @@ function ListShell(props: {
         <div class="flex items-baseline gap-2">
           <h1 class="text-base font-semibold text-text">{props.title}</h1>
           <Show when={props.count !== null}>
-            <span class="font-mono text-[11px] tabular-nums text-text-tertiary">
-              {props.count}
-            </span>
+            <span class="font-mono text-[11px] tabular-nums text-text-tertiary">{props.count}</span>
           </Show>
         </div>
         <Show when={shopifyAdminUrl(props.shopDomain, props.shopifyPath)}>
@@ -171,9 +170,7 @@ function ListShell(props: {
       >
         <Show
           when={!props.empty}
-          fallback={
-            <Empty testid={`${props.testid}-empty`}>{props.emptyMessage}</Empty>
-          }
+          fallback={<Empty testid={`${props.testid}-empty`}>{props.emptyMessage}</Empty>}
         >
           <div class="overflow-hidden rounded-md border border-border bg-surface">
             {props.children}
@@ -241,14 +238,17 @@ function useSearch<T>(toolName: string, project: (raw: unknown) => T[]) {
   onCleanup(() => {
     if (debounceTimer) clearTimeout(debounceTimer)
   })
-  const [results, { refetch }] = createResource<SearchState<T>, string>(debouncedQuery, async (q) => {
-    const raw = await app.invokeTool(toolName, {
-      query: q || undefined,
-      limit: SEARCH_PAGE_SIZE,
-    })
-    const r = raw as { nextCursor?: string | null }
-    return { results: project(raw), hasMore: Boolean(r?.nextCursor) }
-  })
+  const [results, { refetch }] = createResource<SearchState<T>, string>(
+    debouncedQuery,
+    async (q) => {
+      const raw = await app.invokeTool(toolName, {
+        query: q || undefined,
+        limit: SEARCH_PAGE_SIZE,
+      })
+      const r = raw as { nextCursor?: string | null }
+      return { results: project(raw), hasMore: Boolean(r?.nextCursor) }
+    },
+  )
   return { query, onQuery, results, refetch, debouncedQuery }
 }
 
@@ -262,14 +262,17 @@ function useCoDebouncedSearch<T>(
   debouncedQuery: () => string,
   project: (raw: unknown) => T[],
 ) {
-  const [results, { refetch }] = createResource<SearchState<T>, string>(debouncedQuery, async (q) => {
-    const raw = await app.invokeTool(toolName, {
-      query: q || undefined,
-      limit: SEARCH_PAGE_SIZE,
-    })
-    const r = raw as { nextCursor?: string | null }
-    return { results: project(raw), hasMore: Boolean(r?.nextCursor) }
-  })
+  const [results, { refetch }] = createResource<SearchState<T>, string>(
+    debouncedQuery,
+    async (q) => {
+      const raw = await app.invokeTool(toolName, {
+        query: q || undefined,
+        limit: SEARCH_PAGE_SIZE,
+      })
+      const r = raw as { nextCursor?: string | null }
+      return { results: project(raw), hasMore: Boolean(r?.nextCursor) }
+    },
+  )
   return { results, refetch }
 }
 
@@ -326,9 +329,10 @@ interface InvoiceLink {
 }
 
 function projectOrderRow(o: NormalizedHit): OrderRow {
-  const customer = (o.attributes?.customer ?? null) as
-    | { displayName?: string; email?: string }
-    | null
+  const customer = (o.attributes?.customer ?? null) as {
+    displayName?: string
+    email?: string
+  } | null
   const currency = (o.currency ?? o.attributes?.shopCurrency ?? null) as string | null
   const sortAt = (o.attributes?.processedAt ?? o.attributes?.createdAt ?? null) as string | null
   return {
@@ -345,16 +349,19 @@ function projectOrderRow(o: NormalizedHit): OrderRow {
     sortAt,
     tags: orderTags(Array.isArray(o.attributes?.tags) ? (o.attributes.tags as string[]) : []),
     lineItems: projectLineItems(o.attributes?.lineItems),
-    requiresShipping: typeof o.attributes?.requiresShipping === "boolean" ? o.attributes.requiresShipping : null,
+    requiresShipping:
+      typeof o.attributes?.requiresShipping === "boolean" ? o.attributes.requiresShipping : null,
     lineItemsMore: o.attributes?.lineItemsMore === true,
-    itemsQuantity: typeof o.attributes?.itemsQuantity === "number" ? o.attributes.itemsQuantity : null,
+    itemsQuantity:
+      typeof o.attributes?.itemsQuantity === "number" ? o.attributes.itemsQuantity : null,
   }
 }
 
 function projectDraftRow(d: NormalizedHit): OrderRow {
-  const customer = (d.attributes?.customer ?? null) as
-    | { displayName?: string; email?: string }
-    | null
+  const customer = (d.attributes?.customer ?? null) as {
+    displayName?: string
+    email?: string
+  } | null
   return {
     kind: "draft",
     id: d.id,
@@ -448,35 +455,46 @@ export const ShopifyOrdersList: Component = () => {
   // appears. This UI may watch only its own keys, so the app's
   // `onInvoicingDocumentChanged` subscriber relays invoicing's document
   // events as `order:invoice_changed`, which lands here too.
-  const orderGids = () => mergedRows().filter((r) => r.kind === "order").map((r) => r.id)
-  const [invoiceLinks, { refetch: refetchInvoiceLinks }] = createResource(orderGids, async (ids) => {
-    if (ids.length === 0) return new Map<string, InvoiceLink[]>()
-    try {
-      const res = await app.invokeTool<{ links: InvoiceLink[] }>("orders_invoice_links", {
-        order_ids: ids,
-      })
-      const byOrder = new Map<string, InvoiceLink[]>()
-      for (const link of res?.links ?? []) {
-        const bucket = byOrder.get(link.order_id)
-        if (bucket) bucket.push(link)
-        else byOrder.set(link.order_id, [link])
+  const orderGids = () =>
+    mergedRows()
+      .filter((r) => r.kind === "order")
+      .map((r) => r.id)
+  const [invoiceLinks, { refetch: refetchInvoiceLinks }] = createResource(
+    orderGids,
+    async (ids) => {
+      if (ids.length === 0) return new Map<string, InvoiceLink[]>()
+      try {
+        const res = await app.invokeTool<{ links: InvoiceLink[] }>("orders_invoice_links", {
+          order_ids: ids,
+        })
+        const byOrder = new Map<string, InvoiceLink[]>()
+        for (const link of res?.links ?? []) {
+          const bucket = byOrder.get(link.order_id)
+          if (bucket) bucket.push(link)
+          else byOrder.set(link.order_id, [link])
+        }
+        return byOrder
+      } catch {
+        return new Map<string, InvoiceLink[]>()
       }
-      return byOrder
-    } catch {
-      return new Map<string, InvoiceLink[]>()
-    }
-  })
+    },
+  )
   onEntityChange("shopify:order", () => void refetchInvoiceLinks())
 
   // Short codes for the cart summary: the org's product attributes, read by
   // SKU through this app's own `products_short_codes` tool. Best effort: a
   // failure leaves every line as "N×?" with its title on hover.
-  const visibleSkus = () => lineSkus(mergedRows().flatMap((r) => r.lineItems)).sort().join("\n")
+  const visibleSkus = () =>
+    lineSkus(mergedRows().flatMap((r) => r.lineItems))
+      .sort()
+      .join("\n")
   const [shortCodes] = createResource(visibleSkus, async (joined) => {
     const skus = joined === "" ? [] : joined.split("\n")
     if (skus.length === 0) return {} as Record<string, string>
     try {
-      const res = await app.invokeTool<{ codes?: Record<string, string> }>("products_short_codes", { skus })
+      const res = await app.invokeTool<{ codes?: Record<string, string> }>("products_short_codes", {
+        skus,
+      })
       return res?.codes ?? {}
     } catch {
       return {} as Record<string, string>
@@ -535,8 +553,14 @@ export const ShopifyOrdersList: Component = () => {
       const entries = () => cartSummary(o.lineItems, shortCodes.latest ?? {})
       const more = cartMoreLabel(o)
       return (
-        <Show when={entries().length > 0 || more} fallback={<span class="text-text-tertiary">-</span>}>
-          <span data-testid={`shopify-orders-cart-${o.id}`} class="font-mono text-[11.5px] text-text-secondary">
+        <Show
+          when={entries().length > 0 || more}
+          fallback={<span class="text-text-tertiary">-</span>}
+        >
+          <span
+            data-testid={`shopify-orders-cart-${o.id}`}
+            class="font-mono text-[11.5px] text-text-secondary"
+          >
             <For each={entries()}>
               {(e, i) => (
                 <>
@@ -559,7 +583,10 @@ export const ShopifyOrdersList: Component = () => {
     if (key === "tags") {
       return (
         <Show when={o.tags.length > 0} fallback={<span class="text-text-tertiary">-</span>}>
-          <div data-testid={`shopify-orders-tags-${o.id}`} class="flex flex-wrap items-center gap-1">
+          <div
+            data-testid={`shopify-orders-tags-${o.id}`}
+            class="flex flex-wrap items-center gap-1"
+          >
             <For each={o.tags}>{(t) => <Chip>{t}</Chip>}</For>
           </div>
         </Show>
@@ -852,7 +879,11 @@ export const ShopifyProductsList: Component = () => {
             numeric: true,
             cell: (p) => {
               const variantCount = p.attributes?.variantCount as number | undefined
-              return variantCount === undefined ? <span class="text-text-tertiary">-</span> : variantCount
+              return variantCount === undefined ? (
+                <span class="text-text-tertiary">-</span>
+              ) : (
+                variantCount
+              )
             },
           },
         ]}

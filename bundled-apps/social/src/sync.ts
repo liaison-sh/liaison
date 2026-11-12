@@ -7,7 +7,12 @@
 // `watched_object`s, ingests their child activity, and adapts each watch's
 // cadence (hot/warm/cool/decayed) via `adaptCadence`.
 
-import { refreshMetaPageIds } from "./meta-pages"
+import type { DiscoveryTerm, NormalizedFinding, Platform, PlatformAdapter } from "./adapters/types"
+import {
+  estimateYoutubeDiscoveryUnits,
+  termAppearsIn,
+  YT_COMMENT_THREADS_UNITS,
+} from "./adapters/youtube"
 import {
   adaptCadence,
   META_POLLS_PER_TICK,
@@ -17,26 +22,25 @@ import {
   shouldAutoWatch,
   type WatchStatus,
 } from "./auto-watch"
-import { estimateYoutubeDiscoveryUnits, termAppearsIn, YT_COMMENT_THREADS_UNITS } from "./adapters/youtube"
-import type { DiscoveryTerm, NormalizedFinding, PlatformAdapter, Platform } from "./adapters/types"
 import { resolveAccessToken } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { emitFindingCreated, upsertFinding } from "./ingest"
-import { clearMissingToken, noteMissingToken } from "./missing-token"
 import { watchObject } from "./internal"
+import { refreshMetaPageIds } from "./meta-pages"
+import { clearMissingToken, noteMissingToken } from "./missing-token"
 import {
   DEFAULT_YT_DAILY_BUDGET,
   metadataObject,
   nextYoutubeQuotaReset,
   planWatchBudget,
   QuotaBudget,
+  type YoutubeQuotaMetadata,
+  type YoutubeQuotaStatus,
   YT_QUOTA_METADATA_KEY,
   youtubeDiscoveryGate,
   youtubeQuotaDay,
   youtubeQuotaMetadata,
   youtubeQuotaStatus,
-  type YoutubeQuotaMetadata,
-  type YoutubeQuotaStatus,
 } from "./quota"
 
 export { DEFAULT_YT_DAILY_BUDGET }
@@ -56,12 +60,15 @@ interface MonitorTermRow {
  * search text (`hashtag` terms are for a future hashtag-search surface, not
  * YouTube's free-text `q`).
  */
-async function loadDiscoveryTerms(ctx: SocialToolCtx, platform: Platform): Promise<DiscoveryTerm[]> {
+async function loadDiscoveryTerms(
+  ctx: SocialToolCtx,
+  platform: Platform,
+): Promise<DiscoveryTerm[]> {
   const rows = (await ctx.db.findMany("monitor_term", {
     where: { enabled: true },
   })) as MonitorTermRow[]
   return rows
-    .filter((r) => (r.platform === null || r.platform === undefined || r.platform === platform))
+    .filter((r) => r.platform === null || r.platform === undefined || r.platform === platform)
     .filter((r) => r.kind === "keyword" || r.kind === "handle")
     .map((r) => ({ id: r.id, kind: r.kind, value: r.value }))
 }
@@ -115,7 +122,10 @@ interface SyncStateRow {
 
 /** A sync_state metadata patch that merges `patch` into the row's
  *  `youtube_quota` object, keeping every other metadata key. */
-function quotaMetadataPatch(row: SyncStateRow, patch: YoutubeQuotaMetadata): Record<string, unknown> {
+function quotaMetadataPatch(
+  row: SyncStateRow,
+  patch: YoutubeQuotaMetadata,
+): Record<string, unknown> {
   const meta = metadataObject(row.metadata)
   return { ...meta, [YT_QUOTA_METADATA_KEY]: { ...youtubeQuotaMetadata(row), ...patch } }
 }
@@ -129,7 +139,11 @@ async function youtubeLedgerRows(
   })) as SyncStateRow[]
   if (!discovery) return { discovery: undefined, watch: undefined }
   const [watch] = (await ctx.db.findMany("sync_state", {
-    where: { platform: "youtube", source_type: "watch", account_external_id: discovery.account_external_id },
+    where: {
+      platform: "youtube",
+      source_type: "watch",
+      account_external_id: discovery.account_external_id,
+    },
     limit: 1,
   })) as SyncStateRow[]
   return { discovery, watch }
@@ -178,7 +192,9 @@ async function enrollOwnPosts(
   ctx: SocialToolCtx,
   adapters: Partial<Record<Platform, PlatformAdapter>>,
   now: Date,
-  accountFor: (platform: Platform) => Promise<{ accountExternalId: string; accessToken: string } | null>,
+  accountFor: (
+    platform: Platform,
+  ) => Promise<{ accountExternalId: string; accessToken: string } | null>,
 ): Promise<{ enrolled: number; retired: number }> {
   let enrolled = 0
   let retired = 0
@@ -189,7 +205,12 @@ async function enrollOwnPosts(
     const account = await accountFor(platform)
     if (!account) continue
     const listed = await adapter.listOwnRecentObjects(
-      { accountExternalId: account.accountExternalId, fetch: ctx.fetch, accessToken: account.accessToken, logger: ctx.logger },
+      {
+        accountExternalId: account.accountExternalId,
+        fetch: ctx.fetch,
+        accessToken: account.accessToken,
+        logger: ctx.logger,
+      },
       OWN_WATCH_CAP_PER_PLATFORM,
     )
     if (listed.error) {
@@ -221,11 +242,11 @@ async function enrollOwnPosts(
       enrolled += 1
     }
 
-    const own = ((await ctx.db.findMany("watched_object", {
-      where: { platform, reason: "auto_own", status: "active" },
-    })) as WatchedRow[]).sort(
-      (a, b) => postedAtMs(b) - postedAtMs(a),
-    )
+    const own = (
+      (await ctx.db.findMany("watched_object", {
+        where: { platform, reason: "auto_own", status: "active" },
+      })) as WatchedRow[]
+    ).sort((a, b) => postedAtMs(b) - postedAtMs(a))
     for (const w of own.slice(OWN_WATCH_CAP_PER_PLATFORM)) {
       await retireOwnWatch(ctx, w, "cap")
       retired += 1
@@ -239,7 +260,11 @@ function postedAtMs(w: WatchedRow): number {
   return Number.isNaN(t) ? 0 : t
 }
 
-async function retireOwnWatch(ctx: SocialToolCtx, w: WatchedRow, why: "age" | "cap"): Promise<void> {
+async function retireOwnWatch(
+  ctx: SocialToolCtx,
+  w: WatchedRow,
+  why: "age" | "cap",
+): Promise<void> {
   await ctx.db.update("watched_object", w.id, {
     status: "stopped",
     metadata: { ...(w.metadata ?? {}), retiredReason: why },
@@ -276,10 +301,15 @@ export async function runDiscoverySync(
   // state (not connected), said once at info and skipped (missing-token.ts).
   const accessToken = await resolveAccessToken(ctx, adapter.platform, accountExternalId)
   if (!accessToken) {
-    await noteMissingToken(ctx, state, "social: discovery skipped, no OAuth access token for account", {
-      platform: adapter.platform,
-      accountExternalId,
-    })
+    await noteMissingToken(
+      ctx,
+      state,
+      "social: discovery skipped, no OAuth access token for account",
+      {
+        platform: adapter.platform,
+        accountExternalId,
+      },
+    )
     return { ingested: 0, unitsConsumed: 0 }
   }
   await clearMissingToken(ctx, state)
@@ -337,7 +367,9 @@ export async function runDiscoverySync(
     // sync tick retries after the window) — warn keeps the operator trace
     // without paging as a critical. Everything else stays error.
     const logFn =
-      result.error === "RATE_LIMITED" ? ctx.logger?.warn?.bind(ctx.logger) : ctx.logger?.error?.bind(ctx.logger)
+      result.error === "RATE_LIMITED"
+        ? ctx.logger?.warn?.bind(ctx.logger)
+        : ctx.logger?.error?.bind(ctx.logger)
     logFn?.("social: discovery page failed, watermark not advanced", {
       platform: adapter.platform,
       accountExternalId,
@@ -412,11 +444,17 @@ export async function runDiscoverySync(
       patch.units_window_date = today
       const exhaustedUntil = result.quotaExhausted ? nextYoutubeQuotaReset(now).toISOString() : null
       if (exhaustedUntil) {
-        ctx.logger?.warn?.("social: youtube daily quota exhausted, discovery and polls stop until reset", {
-          exhaustedUntil,
-        })
+        ctx.logger?.warn?.(
+          "social: youtube daily quota exhausted, discovery and polls stop until reset",
+          {
+            exhaustedUntil,
+          },
+        )
       }
-      patch.metadata = quotaMetadataPatch(state, { exhausted_until: exhaustedUntil, discovery_skipped: null })
+      patch.metadata = quotaMetadataPatch(state, {
+        exhausted_until: exhaustedUntil,
+        discovery_skipped: null,
+      })
     }
     await ctx.db.update("sync_state", state.id, patch)
   }
@@ -433,7 +471,10 @@ function isDue(row: WatchedRow, now: Date): boolean {
  * the watch poller resolves a token against (watch rows don't carry it). Read
  * from any active sync_state row for the platform; `null` when none is connected.
  */
-async function accountIdForPlatform(ctx: SocialToolCtx, platform: Platform): Promise<string | null> {
+async function accountIdForPlatform(
+  ctx: SocialToolCtx,
+  platform: Platform,
+): Promise<string | null> {
   const [state] = (await ctx.db.findMany("sync_state", {
     where: { platform, active: true },
     limit: 1,
@@ -467,7 +508,12 @@ async function loadYoutubeBudget(
   ctx: SocialToolCtx,
   cap: number,
   now: Date,
-): Promise<{ budget: QuotaBudget; ledger: SyncStateRow; pollerPrior: number; status: YoutubeQuotaStatus } | null> {
+): Promise<{
+  budget: QuotaBudget
+  ledger: SyncStateRow
+  pollerPrior: number
+  status: YoutubeQuotaStatus
+} | null> {
   const rows = await youtubeLedgerRows(ctx)
   const discovery = rows.discovery
   if (!discovery) return null
@@ -526,11 +572,18 @@ export async function runWatchPoller(
   // token identifier is the platform's connected account (from its sync_state),
   // NOT the watched object's external id. `null` = resolved-and-absent (skip
   // that platform's watches with an explicit auth error).
-  const accountByPlatform = new Map<Platform, { accountExternalId: string; accessToken: string } | null>()
-  async function accountFor(platform: Platform): Promise<{ accountExternalId: string; accessToken: string } | null> {
+  const accountByPlatform = new Map<
+    Platform,
+    { accountExternalId: string; accessToken: string } | null
+  >()
+  async function accountFor(
+    platform: Platform,
+  ): Promise<{ accountExternalId: string; accessToken: string } | null> {
     if (accountByPlatform.has(platform)) return accountByPlatform.get(platform) ?? null
     const accountExternalId = await accountIdForPlatform(ctx, platform)
-    const token = accountExternalId ? await resolveAccessToken(ctx, platform, accountExternalId) : null
+    const token = accountExternalId
+      ? await resolveAccessToken(ctx, platform, accountExternalId)
+      : null
     const account = accountExternalId && token ? { accountExternalId, accessToken: token } : null
     accountByPlatform.set(platform, account)
     return account
@@ -570,16 +623,20 @@ export async function runWatchPoller(
       .sort(
         (a, b) =>
           b.priority - a.priority ||
-          (a.next_poll_at ? Date.parse(a.next_poll_at) : 0) - (b.next_poll_at ? Date.parse(b.next_poll_at) : 0),
+          (a.next_poll_at ? Date.parse(a.next_poll_at) : 0) -
+            (b.next_poll_at ? Date.parse(b.next_poll_at) : 0),
       )
     otherDue.push(...queue.slice(0, META_POLLS_PER_TICK))
     metaDeferred += Math.max(0, queue.length - META_POLLS_PER_TICK)
   }
   if (metaDeferred > 0) {
-    ctx.logger?.warn?.("social: facebook/instagram watch polls deferred, per-tick Graph cap reached", {
-      deferred: metaDeferred,
-      capPerPlatform: META_POLLS_PER_TICK,
-    })
+    ctx.logger?.warn?.(
+      "social: facebook/instagram watch polls deferred, per-tick Graph cap reached",
+      {
+        deferred: metaDeferred,
+        capPerPlatform: META_POLLS_PER_TICK,
+      },
+    )
   }
 
   // Quota-plan the YouTube watches: highest-priority-first, deferring the tail
@@ -678,7 +735,9 @@ export async function runWatchPoller(
     // `comment_on_our_content`. Manual watches are untouched (own-content
     // discovery does not go through this path at all — see youtube.ts).
     const classified =
-      w.platform === "youtube" ? classifyWatchedComments(result.findings, w.reason, ytTerms) : result.findings
+      w.platform === "youtube"
+        ? classifyWatchedComments(result.findings, w.reason, ytTerms)
+        : result.findings
     // Activity = NEW findings. A poll returns the latest comments every time,
     // so "any comments returned" kept every watch on the 5-minute hot cadence
     // forever (90 watches x 288 polls a day, far past the YouTube quota).
@@ -709,7 +768,8 @@ export async function runWatchPoller(
     const activitySeen = created > 0
     // Own posts follow their age band (tightened by fresh activity); every
     // other watch keeps the activity-driven hot/warm/cool/decayed cadence.
-    const ownCadence = w.reason === "auto_own" ? ownPostCadence(w.metadata?.postedAt, activitySeen, now) : null
+    const ownCadence =
+      w.reason === "auto_own" ? ownPostCadence(w.metadata?.postedAt, activitySeen, now) : null
     const decision =
       ownCadence !== null
         ? { status: "active" as const, cadenceSeconds: ownCadence }
@@ -724,7 +784,10 @@ export async function runWatchPoller(
     })
   }
   for (const [platform, watches] of skippedNoToken) {
-    ctx.logger?.debug?.("social: watch polls skipped, no OAuth access token for platform", { platform, watches })
+    ctx.logger?.debug?.("social: watch polls skipped, no OAuth access token for platform", {
+      platform,
+      watches,
+    })
   }
 
   // Persist the poller's running YouTube unit total for the day onto ITS OWN

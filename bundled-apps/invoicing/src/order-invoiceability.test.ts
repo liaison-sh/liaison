@@ -4,9 +4,9 @@
 
 import { describe, expect, it } from "bun:test"
 import {
-  type ProspectiveOrderFacts,
   invoiceabilityProblems,
   ordersInvoiceabilityCheck,
+  type ProspectiveOrderFacts,
 } from "./order-invoiceability"
 
 const FR_ISSUER = { country: "FR" }
@@ -17,7 +17,12 @@ const IT_ADDRESS = {
   city: "Milano",
   country_code: "IT",
 }
-const FR_ADDRESS = { address1: "12 rue de la Paix", zip: "75002", city: "Paris", country_code: "FR" }
+const FR_ADDRESS = {
+  address1: "12 rue de la Paix",
+  zip: "75002",
+  city: "Paris",
+  country_code: "FR",
+}
 
 /** A tax exempt Italian business buyer, linked customer, as an agent would draft it. */
 const italianB2b = (over: Partial<ProspectiveOrderFacts> = {}): ProspectiveOrderFacts => ({
@@ -59,28 +64,49 @@ describe("invoiceabilityProblems: what the order-created auto-flow would park", 
   })
 
   it("no postal address anywhere (billing, ship to, customer default) parks counterparty_incomplete", () => {
-    const facts = italianB2b({ billing_address: null, shipping_address: null, customer_default_address: null })
+    const facts = italianB2b({
+      billing_address: null,
+      shipping_address: null,
+      customer_default_address: null,
+    })
     expect(reasons(facts)).toEqual(["counterparty_incomplete"])
     expect(reasons({ ...facts, customer_default_address: IT_ADDRESS })).toEqual([])
   })
 
   it("an intra-EU consumer charged VAT by Shopify is invoiceable (OSS); charged none it is not", () => {
-    const consumer = italianB2b({ vat_id: null, tax_exempt: false, stage: "complete", total_price: "122.00" })
+    const consumer = italianB2b({
+      vat_id: null,
+      tax_exempt: false,
+      stage: "complete",
+      total_price: "122.00",
+    })
     expect(reasons({ ...consumer, total_tax: "22.00" })).toEqual([])
     expect(reasons({ ...consumer, total_tax: "0.00" })).toEqual(["buyer_vat_missing"])
     // At create the tax is not computed yet: an untaxed outcome is only known when exempt.
-    expect(reasons({ ...consumer, stage: "create", total_price: null, total_tax: null })).toEqual([])
+    expect(reasons({ ...consumer, stage: "create", total_price: null, total_tax: null })).toEqual(
+      [],
+    )
   })
 
   it("a reverse charge sale that Shopify charged VAT on parks tax_on_exempt_treatment", () => {
-    const facts = italianB2b({ tax_exempt: false, stage: "complete", total_price: "120.00", total_tax: "20.00" })
+    const facts = italianB2b({
+      tax_exempt: false,
+      stage: "complete",
+      total_price: "120.00",
+      total_tax: "20.00",
+    })
     const problems = invoiceabilityProblems(facts, FR_ISSUER)
     expect(problems.map((p) => p.reason)).toEqual(["tax_on_exempt_treatment"])
     expect(problems[0]!.message).toContain("taxExempt")
   })
 
   it("a domestic sale with no VAT number is fine, and a zero total is never refused", () => {
-    const domestic = italianB2b({ vat_id: null, tax_exempt: false, billing_address: FR_ADDRESS, shipping_address: FR_ADDRESS })
+    const domestic = italianB2b({
+      vat_id: null,
+      tax_exempt: false,
+      billing_address: FR_ADDRESS,
+      shipping_address: FR_ADDRESS,
+    })
     expect(reasons(domestic)).toEqual([])
     expect(reasons(italianB2b({ email: null, vat_id: null, total_price: "0" }))).toEqual([])
   })
@@ -90,20 +116,36 @@ describe("ordersInvoiceabilityCheck: applies only when an issuer profile is mapp
   const db = (rows: Array<Record<string, unknown>>) =>
     ({
       findMany: async (table: string, q: { where?: Record<string, unknown> }) =>
-        table === "issuer_profiles" ? rows.filter((r) => r.shopify_shop_id === q.where?.shopify_shop_id) : [],
+        table === "issuer_profiles"
+          ? rows.filter((r) => r.shopify_shop_id === q.where?.shopify_shop_id)
+          : [],
     }) as never
-  const issuer = { id: "iss-1", legal_name: "Seller SAS", country: "FR", shopify_shop_id: "shop.myshopify.com" }
+  const issuer = {
+    id: "iss-1",
+    legal_name: "Seller SAS",
+    country: "FR",
+    shopify_shop_id: "shop.myshopify.com",
+  }
 
   it("no issuer mapped to the shop: does not apply, whatever the order lacks", async () => {
-    const out = await ordersInvoiceabilityCheck({ db: db([]) }, italianB2b({ email: null, vat_id: null }))
+    const out = await ordersInvoiceabilityCheck(
+      { db: db([]) },
+      italianB2b({ email: null, vat_id: null }),
+    )
     expect(out).toEqual({ applies: false, problems: [] })
   })
 
   it("mapped: returns the problems and one message naming every fix", async () => {
-    const out = await ordersInvoiceabilityCheck({ db: db([issuer]) }, italianB2b({ email: null, vat_id: null }))
+    const out = await ordersInvoiceabilityCheck(
+      { db: db([issuer]) },
+      italianB2b({ email: null, vat_id: null }),
+    )
     expect(out.applies).toBe(true)
     expect(out.issuer_profile_id).toBe("iss-1")
-    expect(out.problems.map((p) => p.reason)).toEqual(["customer_email_missing", "buyer_vat_missing"])
+    expect(out.problems.map((p) => p.reason)).toEqual([
+      "customer_email_missing",
+      "buyer_vat_missing",
+    ])
     expect(out.message).toContain("customers_update")
     expect(out.message).toContain("VAT number")
   })

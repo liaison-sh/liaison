@@ -7,7 +7,11 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const calls = vi.hoisted(() => ({ tools: [] as Array<{ name: string; args: unknown }>, opened: [] as string[], label: "f-label" as string | null }))
+const calls = vi.hoisted(() => ({
+  tools: [] as Array<{ name: string; args: unknown }>,
+  opened: [] as string[],
+  label: "f-label" as string | null,
+}))
 
 vi.mock("@liaison/host", () => ({
   currentPath: () => "/boxtal/shipments",
@@ -22,9 +26,19 @@ vi.mock("@liaison/host", () => ({
     },
     invokeTool: (name: string, args: unknown) => {
       calls.tools.push({ name, args })
-      if (name === "get_documents") return Promise.resolve({ documents: [{ type: "LABEL", format: "PDF" }, { type: "CN23", format: "PDF" }] })
+      if (name === "get_documents")
+        return Promise.resolve({
+          documents: [
+            { type: "LABEL", format: "PDF" },
+            { type: "CN23", format: "PDF" },
+          ],
+        })
       if (name === "print_pack") {
-        return Promise.resolve(calls.label ? { label: { file_id: calls.label, filename: "label.pdf" } } : { label: null, label_error: "Boxtal has not served the label yet." })
+        return Promise.resolve(
+          calls.label
+            ? { label: { file_id: calls.label, filename: "label.pdf" } }
+            : { label: null, label_error: "Boxtal has not served the label yet." },
+        )
       }
       return Promise.reject(new Error(`no ${name}`))
     },
@@ -36,7 +50,14 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 const shipment = {
   id: "2611081522DHLE5ANCFR",
   title: "Client Bordeaux",
-  attributes: { order_status: "CONFIRMED", tracking_status: null, carrier: "DHLE", declared_value: 0, currency: "EUR", document_ref: null },
+  attributes: {
+    order_status: "CONFIRMED",
+    tracking_status: null,
+    carrier: "DHLE",
+    declared_value: 0,
+    currency: "EUR",
+    document_ref: null,
+  },
 }
 
 async function mount() {
@@ -57,7 +78,9 @@ describe("shipment detail: the label's Download", () => {
     await mount()
     fireEvent.click(screen.getByTestId("boxtal-doc-LABEL"))
     for (let i = 0; i < 4; i++) await flush()
-    expect(calls.tools.find((c) => c.name === "print_pack")?.args).toEqual({ shipment_id: "2611081522DHLE5ANCFR" })
+    expect(calls.tools.find((c) => c.name === "print_pack")?.args).toEqual({
+      shipment_id: "2611081522DHLE5ANCFR",
+    })
     expect(calls.opened).toEqual(["f-label"])
   })
 
@@ -67,7 +90,9 @@ describe("shipment detail: the label's Download", () => {
     fireEvent.click(screen.getByTestId("boxtal-doc-LABEL"))
     for (let i = 0; i < 4; i++) await flush()
     expect(calls.opened).toEqual([])
-    expect(screen.getByTestId("boxtal-detail-doc-open-error").textContent).toContain("not served the label yet")
+    expect(screen.getByTestId("boxtal-detail-doc-open-error").textContent).toContain(
+      "not served the label yet",
+    )
   })
 
   it("shows no button it cannot honour", async () => {

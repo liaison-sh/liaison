@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { google_pause } from "./google-pause"
-import { createMockDb } from "./test-db"
 import { GoogleConfigError } from "./lib/google-config"
+import { createMockDb } from "./test-db"
 
 interface FetchCall {
   url: string
@@ -50,7 +50,10 @@ function prePauseGet(id: string, status = "ENABLED") {
   return { status: 200, body: streamBody([{ campaign: { id, name: `Camp ${id}`, status } }]) }
 }
 function mutateWrite() {
-  return { status: 200, body: JSON.stringify({ results: [{ resourceName: "customers/1234567890/campaigns/1" }] }) }
+  return {
+    status: 200,
+    body: JSON.stringify({ results: [{ resourceName: "customers/1234567890/campaigns/1" }] }),
+  }
 }
 function postPauseGet(id: string, status = "PAUSED") {
   return { status: 200, body: streamBody([{ campaign: { id, name: `Camp ${id}`, status } }]) }
@@ -80,7 +83,11 @@ describe("google_pause — three-call contract", () => {
   })
 
   it("returns the VERIFIED post-write status from the re-read, not the mutate write echo", async () => {
-    const { ctx } = makeCtx([prePauseGet("111", "ENABLED"), mutateWrite(), postPauseGet("111", "PAUSED")])
+    const { ctx } = makeCtx([
+      prePauseGet("111", "ENABLED"),
+      mutateWrite(),
+      postPauseGet("111", "PAUSED"),
+    ])
     const result = (await google_pause({ object_id: "111", object_type: "campaign" }, ctx)) as {
       status: string
       prior_status: string
@@ -102,16 +109,26 @@ describe("google_pause — three-call contract", () => {
   it("throws an actionable connect-error when the google connection is absent (never a crash)", async () => {
     const { calls } = makeCtx([])
     void calls
-    const ctx = { fetch: async () => { throw new Error("must not be called") }, connections: {}, db: createMockDb() }
-    await expect(google_pause({ object_id: "111", object_type: "campaign" }, ctx)).rejects.toBeInstanceOf(
-      GoogleConfigError,
-    )
+    const ctx = {
+      fetch: async () => {
+        throw new Error("must not be called")
+      },
+      connections: {},
+      db: createMockDb(),
+    }
+    await expect(
+      google_pause({ object_id: "111", object_type: "campaign" }, ctx),
+    ).rejects.toBeInstanceOf(GoogleConfigError)
   })
 })
 
 describe("google_pause — per object_type mutate path + status extraction", () => {
   it("object_type=ad_group hits adGroups:mutate and reads status from ad_group.status", async () => {
-    const { ctx, calls } = makeCtx([adGroupPreGet("222", "ENABLED"), mutateWrite(), adGroupPostGet("222", "PAUSED")])
+    const { ctx, calls } = makeCtx([
+      adGroupPreGet("222", "ENABLED"),
+      mutateWrite(),
+      adGroupPostGet("222", "PAUSED"),
+    ])
     const result = (await google_pause({ object_id: "222", object_type: "ad_group" }, ctx)) as {
       status: string
       prior_status: string
@@ -123,8 +140,15 @@ describe("google_pause — per object_type mutate path + status extraction", () 
   })
 
   it("object_type=ad hits adGroupAds:mutate and falls back to adGroupAd.status for extraction", async () => {
-    const { ctx, calls } = makeCtx([adPreGet("333", "ENABLED"), mutateWrite(), adPostGet("333", "PAUSED")])
-    const result = (await google_pause({ object_id: "20~333", object_type: "ad", ad_group_id: "20", ad_id: "333" }, ctx)) as {
+    const { ctx, calls } = makeCtx([
+      adPreGet("333", "ENABLED"),
+      mutateWrite(),
+      adPostGet("333", "PAUSED"),
+    ])
+    const result = (await google_pause(
+      { object_id: "20~333", object_type: "ad", ad_group_id: "20", ad_id: "333" },
+      ctx,
+    )) as {
       status: string
       prior_status: string
     }
@@ -138,22 +162,30 @@ describe("google_pause — per object_type mutate path + status extraction", () 
   })
 
   it("object_type=ad builds the composite adGroupAd resourceName ({adGroupId}~{adId}), never a bare ad id", async () => {
-    const { ctx, calls } = makeCtx([adPreGet("444", "ENABLED"), mutateWrite(), adPostGet("444", "PAUSED")])
+    const { ctx, calls } = makeCtx([
+      adPreGet("444", "ENABLED"),
+      mutateWrite(),
+      adPostGet("444", "PAUSED"),
+    ])
     await google_pause({ object_type: "ad", ad_group_id: "77", ad_id: "444" } as never, ctx)
     expect(calls[1]?.body).toContain("adGroupAds/77~444")
   })
 
   it("object_type=ad accepts a pre-composed object_id (adGroupId~adId) as an alternative to ad_group_id+ad_id", async () => {
-    const { ctx, calls } = makeCtx([adPreGet("555", "ENABLED"), mutateWrite(), adPostGet("555", "PAUSED")])
+    const { ctx, calls } = makeCtx([
+      adPreGet("555", "ENABLED"),
+      mutateWrite(),
+      adPostGet("555", "PAUSED"),
+    ])
     await google_pause({ object_id: "88~555", object_type: "ad" }, ctx)
     expect(calls[1]?.body).toContain("adGroupAds/88~555")
   })
 
   it("object_type=ad without ad_group_id/ad_id or a composite object_id throws an actionable error", async () => {
     const { ctx } = makeCtx([])
-    await expect(
-      google_pause({ object_id: "333", object_type: "ad" }, ctx),
-    ).rejects.toThrow(/composite/)
+    await expect(google_pause({ object_id: "333", object_type: "ad" }, ctx)).rejects.toThrow(
+      /composite/,
+    )
   })
 })
 
@@ -163,8 +195,22 @@ describe("google_pause — bulk-pause notification threshold", () => {
     // Seed 2 prior campaign-level pauses within the last hour.
     const now = new Date().toISOString()
     db.__seed("pause_ledger", [
-      { meta_object_id: "a", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "campaign", created_at: now },
-      { meta_object_id: "b", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "campaign", created_at: now },
+      {
+        meta_object_id: "a",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "campaign",
+        created_at: now,
+      },
+      {
+        meta_object_id: "b",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "campaign",
+        created_at: now,
+      },
     ])
     const emitted: Array<{ event: string; payload: unknown }> = []
     const { ctx } = makeCtx([prePauseGet("c"), mutateWrite(), postPauseGet("c")], db)
@@ -179,13 +225,37 @@ describe("google_pause — bulk-pause notification threshold", () => {
     const db = createMockDb()
     const now = new Date().toISOString()
     db.__seed("pause_ledger", [
-      { meta_object_id: "a", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "campaign", created_at: now },
-      { meta_object_id: "b", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "campaign", created_at: now },
-      { meta_object_id: "c", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "campaign", created_at: now },
+      {
+        meta_object_id: "a",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "campaign",
+        created_at: now,
+      },
+      {
+        meta_object_id: "b",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "campaign",
+        created_at: now,
+      },
+      {
+        meta_object_id: "c",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "campaign",
+        created_at: now,
+      },
     ])
     const emitted: Array<{ event: string; payload: Record<string, unknown> }> = []
     const { ctx } = makeCtx([prePauseGet("d"), mutateWrite(), postPauseGet("d")], db)
-    ;(ctx as unknown as { emit: unknown }).emit = async (event: string, payload: Record<string, unknown>) => {
+    ;(ctx as unknown as { emit: unknown }).emit = async (
+      event: string,
+      payload: Record<string, unknown>,
+    ) => {
       emitted.push({ event, payload })
     }
     const result = await google_pause({ object_id: "d", object_type: "campaign" }, ctx)
@@ -202,9 +272,30 @@ describe("google_pause — bulk-pause notification threshold", () => {
     const db = createMockDb()
     const now = new Date().toISOString()
     db.__seed("pause_ledger", [
-      { meta_object_id: "a", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "ad_group", created_at: now },
-      { meta_object_id: "b", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "ad_group", created_at: now },
-      { meta_object_id: "c", prior_status: "ENABLED", paused_by_us: true, reason: "x", object_type: "ad_group", created_at: now },
+      {
+        meta_object_id: "a",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "ad_group",
+        created_at: now,
+      },
+      {
+        meta_object_id: "b",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "ad_group",
+        created_at: now,
+      },
+      {
+        meta_object_id: "c",
+        prior_status: "ENABLED",
+        paused_by_us: true,
+        reason: "x",
+        object_type: "ad_group",
+        created_at: now,
+      },
     ])
     const emitted: Array<{ event: string }> = []
     const { ctx } = makeCtx([prePauseGet("d"), mutateWrite(), postPauseGet("d")], db)

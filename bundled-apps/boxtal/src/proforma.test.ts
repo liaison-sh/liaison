@@ -4,28 +4,33 @@
 // customs articles as the sale invoice would), the 1 EUR split, the correlation reference, and
 // the three envelope outcomes.
 
+import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
-
-import { describe, expect, it } from "bun:test"
+import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import {
   buildNominalLines,
   ensureNominalProforma,
   isProformaApprovalExpired,
+  type ProformaItem,
   prepProformaShipmentRef,
   prepProformaToken,
   resolvePendingProformas,
   splitNominal,
-  type ProformaItem,
 } from "./proforma"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
 import { createMockDb } from "./test-db"
 
 const NOMINAL_TOTAL_MINOR = HOUSE_PACKAGING_POLICY.nominal_proforma_value_minor!
 
 const ITEMS: ProformaItem[] = [
-  { name: "Tessera 2", quantity: 1, external_id: "TESSERA2", product_source: "shopify", hs_code: "9207.90" },
+  {
+    name: "Tessera 2",
+    quantity: 1,
+    external_id: "TESSERA2",
+    product_source: "shopify",
+    hs_code: "9207.90",
+  },
   { name: "Power supply", quantity: 1, external_id: "PSU", product_source: "shopify" },
   { name: "USB cable", quantity: 1, external_id: "CBL", product_source: "shopify" },
 ]
@@ -38,7 +43,10 @@ interface StubOpts {
   documents?: unknown
 }
 
-function makeCtx(opts: StubOpts = {}): { ctx: BoxtalToolCtx; calls: Array<{ target: string; args: unknown }> } {
+function makeCtx(opts: StubOpts = {}): {
+  ctx: BoxtalToolCtx
+  calls: Array<{ target: string; args: unknown }>
+} {
   const calls: Array<{ target: string; args: unknown }> = []
   const executeTool = async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
     calls.push({ target, args })
@@ -67,7 +75,13 @@ function makeCtx(opts: StubOpts = {}): { ctx: BoxtalToolCtx; calls: Array<{ targ
           app_config:
             opts.policy === null
               ? []
-              : [{ id: "cfg-packaging", key: "packaging_policy", value: opts.policy ?? HOUSE_PACKAGING_POLICY }],
+              : [
+                  {
+                    id: "cfg-packaging",
+                    key: "packaging_policy",
+                    value: opts.policy ?? HOUSE_PACKAGING_POLICY,
+                  },
+                ],
         },
       }),
     } as unknown as BoxtalToolCtx,
@@ -124,12 +138,20 @@ describe("buildNominalLines", () => {
   })
 
   it("(2b) uses the sample wording for the gift category", () => {
-    const lines = buildNominalLines([{ name: "Tessera 2", quantity: 1 }], "gift", NOMINAL_TOTAL_MINOR)
+    const lines = buildNominalLines(
+      [{ name: "Tessera 2", quantity: 1 }],
+      "gift",
+      NOMINAL_TOTAL_MINOR,
+    )
     expect(lines[0]!.description).toBe("1x Tessera 2: SAMPLE - NO COMMERCIAL VALUE")
   })
 
   it("carries a real quantity through onto the line", () => {
-    const lines = buildNominalLines([{ name: "Pads", quantity: 4, external_id: "PAD" }], "repair", NOMINAL_TOTAL_MINOR)
+    const lines = buildNominalLines(
+      [{ name: "Pads", quantity: 4, external_id: "PAD" }],
+      "repair",
+      NOMINAL_TOTAL_MINOR,
+    )
     expect(lines[0]!.quantity).toBe(4)
     expect(lines[0]!.description.startsWith("4x Pads")).toBe(true)
   })
@@ -168,7 +190,9 @@ describe("ensureNominalProforma", () => {
   })
 
   it("declares the org's own nominal value, split across the lines", async () => {
-    const { ctx, calls } = makeCtx({ policy: { ...HOUSE_PACKAGING_POLICY, nominal_proforma_value_minor: 500 } })
+    const { ctx, calls } = makeCtx({
+      policy: { ...HOUSE_PACKAGING_POLICY, nominal_proforma_value_minor: 500 },
+    })
     const res = await ensureNominalProforma(ctx, base)
     expect(res.status).toBe("completed")
     const params = issuedParams(calls)
@@ -237,7 +261,10 @@ describe("ensureNominalProforma", () => {
 
   it("(2d) also unwraps a pending approval returned INSIDE the invoicing result", async () => {
     const { ctx } = makeCtx({
-      proforma: { status: "completed", result: { status: "pending_approval", approval_id: "appr-inner" } },
+      proforma: {
+        status: "completed",
+        result: { status: "pending_approval", approval_id: "appr-inner" },
+      },
     })
     expect(await ensureNominalProforma(ctx, base)).toEqual({
       status: "pending_approval",
@@ -247,7 +274,10 @@ describe("ensureNominalProforma", () => {
 
   it("(2e) surfaces a forbidden refusal as a typed error", async () => {
     const { ctx } = makeCtx({
-      proforma: { status: "error", error: { code: "forbidden", message: "missing invoicing:documents:write" } },
+      proforma: {
+        status: "error",
+        error: { code: "forbidden", message: "missing invoicing:documents:write" },
+      },
     })
     const res = await ensureNominalProforma(ctx, base)
     expect(res.status).toBe("error")
@@ -304,7 +334,11 @@ describe("resolvePendingProformas", () => {
 
   it("resolves an order-less pending row by its pending token", async () => {
     const { ctx } = makeCtx({
-      documents: { results: [{ id: "prof-z", number: "PF-9", shipment_ref: prepProformaShipmentRef("pending:tok1") }] },
+      documents: {
+        results: [
+          { id: "prof-z", number: "PF-9", shipment_ref: prepProformaShipmentRef("pending:tok1") },
+        ],
+      },
     })
     const resolved = await resolvePendingProformas(ctx, [{ order_key: "pending:tok1" }])
     expect(resolved.get("pending:tok1")?.document_id).toBe("prof-z")
@@ -368,7 +402,7 @@ describe("no pending-proforma fixture pins an absolute date", () => {
    */
   function valueIsPinned(source: string, raw: string, depth = 0): boolean {
     const value = raw.trim()
-    if (/^["'\`]/.test(value)) return ABSOLUTE_DATE.test(value)
+    if (/^["'`]/.test(value)) return ABSOLUTE_DATE.test(value)
     const named = IDENTIFIER.exec(value)
     if (named && depth < 3) {
       const declaration = new RegExp(`\\b(?:const|let|var)\\s+${named[1]}\\s*=\\s*([^\\n]+)`).exec(

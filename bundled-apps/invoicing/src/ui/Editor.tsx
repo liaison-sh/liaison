@@ -12,8 +12,10 @@
 // readOnly) is extracted so the bundled-app bun:test suite can pin every
 // branch without a jsdom shim. Component is thin presentation glue + a
 // handful of `app.invokeTool(...)` calls.
-import { tr } from "./i18n"
+
+import { app, navigate } from "@liaison/host"
 import {
+  type Component,
   createEffect,
   createMemo,
   createResource,
@@ -21,9 +23,7 @@ import {
   For,
   Index,
   Show,
-  type Component,
 } from "solid-js"
-import { app, navigate } from "@liaison/host"
 import {
   documentRollup,
   formatMinorAsMajorInput,
@@ -36,9 +36,8 @@ import {
   parseMoneyMajorToMinor,
 } from "../money"
 import { classify } from "../tax"
-import { Button, cx, dateInputClass, Field, inputClass, Select, StatusBadge, TypeLabel } from "./kit"
-import { EditorSummary } from "./EditorSummary"
 import { ContactPicker, pickedContactPatch } from "./ContactPicker"
+import { EditorSummary } from "./EditorSummary"
 import {
   type BlockerAction,
   blockerAction,
@@ -51,6 +50,17 @@ import {
   OPERATION_CATEGORY_OPTIONS,
   type OperationCategory,
 } from "./einvoicing/blockers"
+import { tr } from "./i18n"
+import {
+  Button,
+  cx,
+  dateInputClass,
+  Field,
+  inputClass,
+  Select,
+  StatusBadge,
+  TypeLabel,
+} from "./kit"
 
 export { EditorSummary } from "./EditorSummary"
 
@@ -58,7 +68,13 @@ export { EditorSummary } from "./EditorSummary"
 // Types & enums.
 // ─────────────────────────────────────────────────────────────────────────
 export type DocType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
-export const DOC_TYPES: DocType[] = ["invoice", "quote", "proforma", "purchase_order", "credit_note"]
+export const DOC_TYPES: DocType[] = [
+  "invoice",
+  "quote",
+  "proforma",
+  "purchase_order",
+  "credit_note",
+]
 
 // ─────────────────────────────────────────────────────────────────────────
 // Primary-action copy.
@@ -263,9 +279,33 @@ export interface ValidationResult {
 }
 
 const EU_COUNTRIES = new Set([
-  "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
-  "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
-  "PT", "RO", "SE", "SI", "SK",
+  "AT",
+  "BE",
+  "BG",
+  "CY",
+  "CZ",
+  "DE",
+  "DK",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GR",
+  "HR",
+  "HU",
+  "IE",
+  "IT",
+  "LT",
+  "LU",
+  "LV",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SE",
+  "SI",
+  "SK",
 ])
 
 export function validateDraft(d: DraftDocument): ValidationResult {
@@ -328,7 +368,8 @@ export function validateDraft(d: DraftDocument): ValidationResult {
     // Credit notes legitimately carry NEGATIVE unit_price_minor (mirroring the reversed portion of
     // the original invoice) — only reject a non-finite value for that type; every other type keeps
     // the non-negative requirement.
-    const unitInvalid = d.type === "credit_note" ? !Number.isFinite(unit) : !Number.isFinite(unit) || unit < 0
+    const unitInvalid =
+      d.type === "credit_note" ? !Number.isFinite(unit) : !Number.isFinite(unit) || unit < 0
     if (unitInvalid) {
       errors.push({
         field: `lines[${idx}].unit_price_minor`,
@@ -344,8 +385,7 @@ export function validateDraft(d: DraftDocument): ValidationResult {
   if (EU_COUNTRIES.has(d.issuer_country) && !d.issuer_vat_id) {
     warnings.push({
       field: "issuer_vat_id",
-      message:
-        tr("VAT ID is required by law on invoices issued from EU countries."),
+      message: tr("VAT ID is required by law on invoices issued from EU countries."),
     })
   }
 
@@ -400,7 +440,10 @@ export function rollupTotalsInclusive(lines: DraftLine[]): TotalsResult {
 export function grossUpLinesForDisplay(lines: DraftLine[]): DraftLine[] {
   return lines.map((l) => ({
     ...l,
-    unit_price_minor: grossOfExcludedTax(BigInt(l.unit_price_minor || "0"), l.tax_rate_bp).toString(),
+    unit_price_minor: grossOfExcludedTax(
+      BigInt(l.unit_price_minor || "0"),
+      l.tax_rate_bp,
+    ).toString(),
   }))
 }
 
@@ -488,10 +531,7 @@ const EXPORT_TREATMENTS = new Set([
   "us_export",
 ])
 
-export function customsReadiness(
-  lines: DraftLine[],
-  taxTreatment: string,
-): CustomsReadinessResult {
+export function customsReadiness(lines: DraftLine[], taxTreatment: string): CustomsReadinessResult {
   if (!EXPORT_TREATMENTS.has(taxTreatment)) {
     return { applicable: false, ready: true, missing_hs: 0, missing_coo: 0 }
   }
@@ -557,11 +597,18 @@ export function einvoicingIssueState(
     items.push({
       field: "customer_kind",
       message: tr("Customer type is required."),
-      action: blockerAction({ field: "customer_kind", fix_tool: "counterparty_identity_set" }, bctx),
+      action: blockerAction(
+        { field: "customer_kind", fix_tool: "counterparty_identity_set" },
+        bctx,
+      ),
     })
   }
   const regime = verdict?.regime ?? null
-  if (d.type === "invoice" && (regime === "e_invoice" || regime === "needs_review") && !d.operation_category) {
+  if (
+    d.type === "invoice" &&
+    (regime === "e_invoice" || regime === "needs_review") &&
+    !d.operation_category
+  ) {
     items.push({
       field: "operation_category",
       message: tr("Operation type is required."),
@@ -573,7 +620,8 @@ export function einvoicingIssueState(
     // Filled in here since the verdict was computed: it travels with the issuing call.
     if (m.field === "customer_kind" && knownKind) continue
     if (m.field === "operation_category" && d.operation_category) continue
-    if (m.field === "billing_address" && d.billing_postcode?.trim() && d.billing_city?.trim()) continue
+    if (m.field === "billing_address" && d.billing_postcode?.trim() && d.billing_city?.trim())
+      continue
     items.push({
       field: m.field,
       message: tr("Missing for this e-invoice: {{field}}.", { field: missingFieldLabel(m.field) }),
@@ -585,9 +633,12 @@ export function einvoicingIssueState(
       blockers: [],
       note:
         items.length > 0
-          ? tr("E-invoicing data still to complete: {{fields}}. Issuing records the gap on the document.", {
-              fields: missingSummary(items.map((i) => ({ field: i.field, fix_tool: "" }))),
-            })
+          ? tr(
+              "E-invoicing data still to complete: {{fields}}. Issuing records the gap on the document.",
+              {
+                fields: missingSummary(items.map((i) => ({ field: i.field, fix_tool: "" }))),
+              },
+            )
           : null,
     }
   }
@@ -595,7 +646,10 @@ export function einvoicingIssueState(
 }
 
 /** canIssue() plus the e-invoicing blockers (enforce mode). */
-export function canIssueWithEinvoicing(d: DraftDocument, verdict: ClassifyVerdict | null | undefined): boolean {
+export function canIssueWithEinvoicing(
+  d: DraftDocument,
+  verdict: ClassifyVerdict | null | undefined,
+): boolean {
   return canIssue(d) && einvoicingIssueState(d, verdict).blockers.length === 0
 }
 
@@ -739,7 +793,11 @@ export function minorToPriceInput(minor: string, currency: string): string {
  * shape is exactly what makes `<Index>` (keyed by position) survive the edit
  * while `<For>` (keyed by item reference) disposes and re-creates the row.
  */
-export function replaceLineAt(lines: DraftLine[], i: number, patch: Partial<DraftLine>): DraftLine[] {
+export function replaceLineAt(
+  lines: DraftLine[],
+  i: number,
+  patch: Partial<DraftLine>,
+): DraftLine[] {
   return lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l))
 }
 
@@ -830,7 +888,9 @@ export function issueDateNotice(
       "This issuer's quotes are made as Shopify draft orders and take the day the draft order is created. Clear this date, or pick an issuer with no shop.",
     )
   }
-  return stated > today ? tr("This date is after today, so it would be refused. Pick today or an earlier date.") : null
+  return stated > today
+    ? tr("This date is after today, so it would be refused. Pick today or an earlier date.")
+    : null
 }
 
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
@@ -896,7 +956,8 @@ function isForbidden(err: unknown): boolean {
 export async function loadIssuerProfiles(): Promise<IssuerProfilesLoad> {
   try {
     const r = await app.invokeTool<
-      { items: EditorIssuerProfile[] } | { status: "error"; error: { code: string; message: string } }
+      | { items: EditorIssuerProfile[] }
+      | { status: "error"; error: { code: string; message: string } }
     >("settings_issuer_profile_list", {})
     if (r && typeof r === "object" && "status" in r && r.status === "error") {
       return { items: [], failure: isForbidden(r) ? "forbidden" : "failed" }
@@ -919,7 +980,9 @@ export const Editor: Component<EditorProps> = (props) => {
   // The e-invoicing verdict on the saved draft (invoices and credit notes only): regime, gate
   // mode and what the gate would refuse. Refetched after the e-invoicing fields are saved.
   const classifyKey = () =>
-    props.documentId && draft().status === "draft" && (draft().type === "invoice" || draft().type === "credit_note")
+    props.documentId &&
+    draft().status === "draft" &&
+    (draft().type === "invoice" || draft().type === "credit_note")
       ? props.documentId
       : null
   const [verdict, { refetch: refetchVerdict }] = createResource(classifyKey, async (id) => {
@@ -1351,7 +1414,11 @@ export const Editor: Component<EditorProps> = (props) => {
         class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle px-5 py-3"
       >
         <div class="flex items-center gap-3">
-          <TypeLabel type={draft().type} testid="editor-top-bar-type" class="text-[14px] font-medium text-text" />
+          <TypeLabel
+            type={draft().type}
+            testid="editor-top-bar-type"
+            class="text-[14px] font-medium text-text"
+          />
           <StatusBadge status={draft().status} testid="editor-top-bar-status" />
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -1359,10 +1426,19 @@ export const Editor: Component<EditorProps> = (props) => {
             when={isNonDraftEditable()}
             fallback={
               <>
-                <Button variant="secondary" testid="editor-button-preview-pdf" onClick={onPreviewPdf}>
+                <Button
+                  variant="secondary"
+                  testid="editor-button-preview-pdf"
+                  onClick={onPreviewPdf}
+                >
                   {tr("Preview PDF")}
                 </Button>
-                <Button variant="secondary" testid="editor-button-issue" disabled={!issuable()} onClick={onIssue}>
+                <Button
+                  variant="secondary"
+                  testid="editor-button-issue"
+                  disabled={!issuable()}
+                  onClick={onIssue}
+                >
                   {primaryActionLabel(draft().type)}
                 </Button>
                 <Button
@@ -1408,7 +1484,9 @@ export const Editor: Component<EditorProps> = (props) => {
               data-testid="editor-issuer-forbidden-banner"
               class="border-b border-border-subtle bg-warning-glow px-5 py-2.5 text-[12px] text-warning"
             >
-              {tr("Your role can't read the issuer profiles, so documents can't be created or issued here. Ask an admin for invoicing write access.")}
+              {tr(
+                "Your role can't read the issuer profiles, so documents can't be created or issued here. Ask an admin for invoicing write access.",
+              )}
             </div>
           </Show>
           <Show when={issuerFailure() === "failed"}>
@@ -1420,13 +1498,19 @@ export const Editor: Component<EditorProps> = (props) => {
             </div>
           </Show>
           <Show
-            when={!issuerLoad.loading && issuerFailure() === null && (issuerProfiles()?.length ?? 0) === 0}
+            when={
+              !issuerLoad.loading &&
+              issuerFailure() === null &&
+              (issuerProfiles()?.length ?? 0) === 0
+            }
           >
             <div
               data-testid="editor-not-configured-banner"
               class="border-b border-border-subtle bg-error-glow px-5 py-2.5 text-[12px] text-error"
             >
-              {tr("Invoicing isn't configured yet: no issuer profile exists. Create one in Settings → Invoicing (or provision one via the `liaison config apply` CLI) before issuing documents.")}
+              {tr(
+                "Invoicing isn't configured yet: no issuer profile exists. Create one in Settings → Invoicing (or provision one via the `liaison config apply` CLI) before issuing documents.",
+              )}
             </div>
           </Show>
 
@@ -1437,7 +1521,11 @@ export const Editor: Component<EditorProps> = (props) => {
             >
               <Show
                 when={draft().status === "pending_approval"}
-                fallback={<>{tr("This document is")} {draft().status} {tr("and cannot be edited.")}</>}
+                fallback={
+                  <>
+                    {tr("This document is")} {draft().status} {tr("and cannot be edited.")}
+                  </>
+                }
               >
                 {tr("Pending approval. The editor is read-only until the request is decided.")}
               </Show>
@@ -1463,7 +1551,11 @@ export const Editor: Component<EditorProps> = (props) => {
                 onChange={(v) => update({ type: v as DocType })}
               >
                 <For each={DOC_TYPES}>
-                  {(t) => <option value={t}>{t.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}</option>}
+                  {(t) => (
+                    <option value={t}>
+                      {t.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}
+                    </option>
+                  )}
                 </For>
               </Select>
             </Field>
@@ -1504,7 +1596,10 @@ export const Editor: Component<EditorProps> = (props) => {
               />
               <Show when={issueNotice()}>
                 {(notice) => (
-                  <p data-testid="editor-issue-date-notice" class="mt-1 text-[11.5px] text-text-secondary">
+                  <p
+                    data-testid="editor-issue-date-notice"
+                    class="mt-1 text-[11.5px] text-text-secondary"
+                  >
                     {notice()}
                   </p>
                 )}
@@ -1512,7 +1607,10 @@ export const Editor: Component<EditorProps> = (props) => {
             </Field>
             {/* Credit notes are never payable — no due date, so the field is hidden for this type. */}
             <Show when={draft().type !== "credit_note"}>
-              <Field label={tr("Due date")} error={validation().errors.some((er) => er.field === "due_at")}>
+              <Field
+                label={tr("Due date")}
+                error={validation().errors.some((er) => er.field === "due_at")}
+              >
                 <input
                   data-testid="editor-field-due-at"
                   type="date"
@@ -1668,11 +1766,16 @@ export const Editor: Component<EditorProps> = (props) => {
                 maxlength={NOTES_MAX_LENGTH}
                 value={draft().notes ?? ""}
                 onInput={(e) => update({ notes: e.currentTarget.value || null })}
-                placeholder={tr("Contract reference, customs details, special mentions: printed on the document")}
+                placeholder={tr(
+                  "Contract reference, customs details, special mentions: printed on the document",
+                )}
                 rows={3}
                 class={cx(inputClass, "resize-y")}
               />
-              <p data-testid="editor-field-notes-remaining" class="mt-1 text-[10.5px] text-text-tertiary">
+              <p
+                data-testid="editor-field-notes-remaining"
+                class="mt-1 text-[10.5px] text-text-tertiary"
+              >
                 {NOTES_MAX_LENGTH - (draft().notes?.length ?? 0)} {tr("characters left")}
               </p>
             </Field>
@@ -1693,14 +1796,29 @@ export const Editor: Component<EditorProps> = (props) => {
                       testid="editor-field-customer-kind"
                       disabled={ro() || frozen()}
                       value={draft().customer_kind ?? ""}
-                      onChange={(v) => void saveEinvoicing({ customer_kind: (v || null) as CustomerKind | null })}
+                      onChange={(v) =>
+                        void saveEinvoicing({ customer_kind: (v || null) as CustomerKind | null })
+                      }
                     >
                       <option value="">{tr("Not set")}</option>
-                      <For each={CUSTOMER_KIND_OPTIONS}>{(o) => <option value={o.value}>{tr(o.label)}</option>}</For>
+                      <For each={CUSTOMER_KIND_OPTIONS}>
+                        {(o) => <option value={o.value}>{tr(o.label)}</option>}
+                      </For>
                     </Select>
-                    <Show when={!draft().customer_kind && verdict()?.buyer?.source === "identity" && verdict()?.buyer?.customer_kind}>
-                      <p data-testid="editor-customer-kind-recorded" class="mt-1 text-[10.5px] text-text-tertiary">
-                        {tr("Recorded on the customer: {{kind}}", { kind: customerKindLabel(verdict()?.buyer?.customer_kind) })}
+                    <Show
+                      when={
+                        !draft().customer_kind &&
+                        verdict()?.buyer?.source === "identity" &&
+                        verdict()?.buyer?.customer_kind
+                      }
+                    >
+                      <p
+                        data-testid="editor-customer-kind-recorded"
+                        class="mt-1 text-[10.5px] text-text-tertiary"
+                      >
+                        {tr("Recorded on the customer: {{kind}}", {
+                          kind: customerKindLabel(verdict()?.buyer?.customer_kind),
+                        })}
                       </p>
                     </Show>
                   </Field>
@@ -1712,10 +1830,16 @@ export const Editor: Component<EditorProps> = (props) => {
                       testid="editor-field-operation-category"
                       disabled={ro() || frozen()}
                       value={draft().operation_category ?? ""}
-                      onChange={(v) => void saveEinvoicing({ operation_category: (v || null) as OperationCategory | null })}
+                      onChange={(v) =>
+                        void saveEinvoicing({
+                          operation_category: (v || null) as OperationCategory | null,
+                        })
+                      }
                     >
                       <option value="">{tr("Not set")}</option>
-                      <For each={OPERATION_CATEGORY_OPTIONS}>{(o) => <option value={o.value}>{tr(o.label)}</option>}</For>
+                      <For each={OPERATION_CATEGORY_OPTIONS}>
+                        {(o) => <option value={o.value}>{tr(o.label)}</option>}
+                      </For>
                     </Select>
                   </Field>
                   <Show when={(draft().counterparty_country ?? "").trim().toUpperCase() === "FR"}>
@@ -1728,7 +1852,11 @@ export const Editor: Component<EditorProps> = (props) => {
                         disabled={ro() || frozen()}
                         value={draft().billing_postcode ?? ""}
                         onInput={(e) => update({ billing_postcode: e.currentTarget.value || null })}
-                        onBlur={() => void saveEinvoicing({ billing_country_code: draft().billing_country_code ?? "FR" })}
+                        onBlur={() =>
+                          void saveEinvoicing({
+                            billing_country_code: draft().billing_country_code ?? "FR",
+                          })
+                        }
                         class={inputClass}
                       />
                     </Field>
@@ -1741,7 +1869,11 @@ export const Editor: Component<EditorProps> = (props) => {
                         disabled={ro() || frozen()}
                         value={draft().billing_city ?? ""}
                         onInput={(e) => update({ billing_city: e.currentTarget.value || null })}
-                        onBlur={() => void saveEinvoicing({ billing_country_code: draft().billing_country_code ?? "FR" })}
+                        onBlur={() =>
+                          void saveEinvoicing({
+                            billing_country_code: draft().billing_country_code ?? "FR",
+                          })
+                        }
                         class={inputClass}
                       />
                     </Field>
@@ -1751,14 +1883,21 @@ export const Editor: Component<EditorProps> = (props) => {
                         disabled={ro() || frozen()}
                         value={draft().billing_line1 ?? ""}
                         onInput={(e) => update({ billing_line1: e.currentTarget.value || null })}
-                        onBlur={() => void saveEinvoicing({ billing_country_code: draft().billing_country_code ?? "FR" })}
+                        onBlur={() =>
+                          void saveEinvoicing({
+                            billing_country_code: draft().billing_country_code ?? "FR",
+                          })
+                        }
                         class={inputClass}
                       />
                     </Field>
                   </Show>
                 </Show>
                 <Show when={einvoicing().blockers.length > 0}>
-                  <ul data-testid="editor-einvoicing-blockers" class="col-span-2 flex flex-col gap-1 lg:col-span-3">
+                  <ul
+                    data-testid="editor-einvoicing-blockers"
+                    class="col-span-2 flex flex-col gap-1 lg:col-span-3"
+                  >
                     <For each={einvoicing().blockers}>
                       {(b) => (
                         <li
@@ -1794,7 +1933,12 @@ export const Editor: Component<EditorProps> = (props) => {
                     class="col-span-2 text-[11.5px] text-text-secondary lg:col-span-3"
                   >
                     {einvoicing().note}{" "}
-                    <Show when={identityHref({ contactId: draft().counterparty_contact_id ?? null, documentId: props.documentId ?? null })}>
+                    <Show
+                      when={identityHref({
+                        contactId: draft().counterparty_contact_id ?? null,
+                        documentId: props.documentId ?? null,
+                      })}
+                    >
                       {(href) => (
                         <a
                           class="cursor-pointer text-accent hover:underline"
@@ -1917,7 +2061,11 @@ export const Editor: Component<EditorProps> = (props) => {
                                 updateLine(idx, { unit_price_minor: minor })
                               }
                             }}
-                            onBlur={() => setPriceText(minorToPriceInput(line().unit_price_minor, draft().currency))}
+                            onBlur={() =>
+                              setPriceText(
+                                minorToPriceInput(line().unit_price_minor, draft().currency),
+                              )
+                            }
                             class={cx(CELL, "w-24 text-right tabular-nums")}
                           />
                         </td>
@@ -1943,7 +2091,9 @@ export const Editor: Component<EditorProps> = (props) => {
                             data-testid={`editor-line-${idx + 1}-hs`}
                             disabled={ro() || frozen()}
                             value={line().hs_code ?? ""}
-                            onInput={(e) => updateLine(idx, { hs_code: e.currentTarget.value || null })}
+                            onInput={(e) =>
+                              updateLine(idx, { hs_code: e.currentTarget.value || null })
+                            }
                             placeholder="-"
                             class={cx(CELL, "w-24 font-mono")}
                           />
@@ -1961,7 +2111,9 @@ export const Editor: Component<EditorProps> = (props) => {
                           />
                         </td>
                         <td class="px-2 py-1.5 text-right">
-                          <span class="font-mono tabular-nums text-text">{fmtMoney(total(), draft().currency)}</span>
+                          <span class="font-mono tabular-nums text-text">
+                            {fmtMoney(total(), draft().currency)}
+                          </span>
                         </td>
                         <td class="px-1 py-1.5 text-center">
                           <Show when={!ro() && !frozen() && draft().lines.length > 1}>
@@ -1983,8 +2135,13 @@ export const Editor: Component<EditorProps> = (props) => {
               </tbody>
             </table>
             <Show when={draft().prices_include_tax}>
-              <div data-testid="editor-prices-include-tax-note" class="mt-2 text-[11.5px] text-text-tertiary">
-                {tr("Prices are tax inclusive (issuer setting). Catalog lines take the store price.")}
+              <div
+                data-testid="editor-prices-include-tax-note"
+                class="mt-2 text-[11.5px] text-text-tertiary"
+              >
+                {tr(
+                  "Prices are tax inclusive (issuer setting). Catalog lines take the store price.",
+                )}
               </div>
             </Show>
             <Button

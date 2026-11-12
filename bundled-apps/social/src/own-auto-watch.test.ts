@@ -25,12 +25,20 @@ function ctxWith(db: MockDb, fetch: MockFetch, logs: string[] = []): SocialToolC
     fetch,
     connections: { getToken: async () => "user-token" },
     config: { get: async () => null },
-    logger: { warn: (m: string) => logs.push(m), error: (m: string) => logs.push(m), info: () => {} },
+    logger: {
+      warn: (m: string) => logs.push(m),
+      error: (m: string) => logs.push(m),
+      info: () => {},
+    },
     async emit() {},
   } as unknown as SocialToolCtx
 }
 
-async function seedAccount(db: MockDb, platform: "facebook" | "instagram", account: string): Promise<void> {
+async function seedAccount(
+  db: MockDb,
+  platform: "facebook" | "instagram",
+  account: string,
+): Promise<void> {
   await db.insert("sync_state", {
     platform,
     account_external_id: account,
@@ -64,18 +72,36 @@ describe("own-content auto-watch: enrollment", () => {
       "/me/accounts": { data: [{ id: "page-1", name: "Page", access_token: "page-token" }] },
       "/page-1/posts": {
         data: [
-          { id: "page-1_new", message: "New arrivals", permalink_url: "https://fb/new", created_time: hoursAgo(2) },
+          {
+            id: "page-1_new",
+            message: "New arrivals",
+            permalink_url: "https://fb/new",
+            created_time: hoursAgo(2),
+          },
           { id: "page-1_old", message: "Old news", created_time: hoursAgo(20 * 24) },
         ],
       },
       "page-1_new/comments": {
         data: [
-          { id: "page-1_c1", message: "Price?", from: { id: "fan-1", name: "Fan" }, created_time: hoursAgo(1) },
-          { id: "page-1_c2", message: "DM us", from: { id: "page-1", name: "Page" }, created_time: hoursAgo(1) },
+          {
+            id: "page-1_c1",
+            message: "Price?",
+            from: { id: "fan-1", name: "Fan" },
+            created_time: hoursAgo(1),
+          },
+          {
+            id: "page-1_c2",
+            message: "DM us",
+            from: { id: "page-1", name: "Page" },
+            created_time: hoursAgo(1),
+          },
         ],
       },
     })
-    const res = await runWatchPoller(ctxWith(db, fetch), { adapters: { facebook: facebookAdapter }, now: NOW })
+    const res = await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { facebook: facebookAdapter },
+      now: NOW,
+    })
 
     const rows = await watches(db, "facebook")
     expect(rows.map((r) => r.external_id)).toEqual(["page-1_new"])
@@ -85,7 +111,10 @@ describe("own-content auto-watch: enrollment", () => {
     expect(w.metadata.postedAt).toBe(hoursAgo(2))
     // Polled this tick: fan comment ingested and linked, the Page's own reply skipped.
     expect(res.polled).toBe(1)
-    const findings = (await db.findMany("finding", {})) as Array<{ external_id: string; watched_object_id: string }>
+    const findings = (await db.findMany("finding", {})) as Array<{
+      external_id: string
+      watched_object_id: string
+    }>
     expect(findings.map((f) => f.external_id)).toEqual(["page-1_c1"])
     expect(findings[0]?.watched_object_id).toBe(w.id)
     // Fresh post with activity: 5 min cadence; the comments read is newest first.
@@ -98,7 +127,11 @@ describe("own-content auto-watch: enrollment", () => {
     const db = createMockDb()
     await seedAccount(db, "instagram", "ig-1")
     const fetch = makeMockFetch({
-      "/ig-1/media": { data: [{ id: "m1", caption: "Launch", permalink: "https://ig/m1", timestamp: hoursAgo(30) }] },
+      "/ig-1/media": {
+        data: [
+          { id: "m1", caption: "Launch", permalink: "https://ig/m1", timestamp: hoursAgo(30) },
+        ],
+      },
       "/me?": { id: "17841", username: "brand" },
       "/m1/comments": {
         data: [
@@ -107,7 +140,10 @@ describe("own-content auto-watch: enrollment", () => {
         ],
       },
     })
-    await runWatchPoller(ctxWith(db, fetch), { adapters: { instagram: instagramAdapter }, now: NOW })
+    await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     const [w] = await watches(db, "instagram")
     expect(w?.reason).toBe("auto_own")
     const findings = (await db.findMany("finding", {})) as Array<{ external_id: string }>
@@ -126,7 +162,10 @@ describe("own-content auto-watch: enrollment", () => {
       metadata: { postedAt: hoursAgo(1) },
     })
     const fetch = makeMockFetch({ "/ig-1/media": { data: [{ id: "m1", timestamp: hoursAgo(1) }] } })
-    await runWatchPoller(ctxWith(db, fetch), { adapters: { instagram: instagramAdapter }, now: NOW })
+    await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     const rows = await watches(db, "instagram")
     expect(rows.length).toBe(1)
     expect(rows[0]?.status).toBe("stopped")
@@ -141,7 +180,10 @@ describe("own-content auto-watch: enrollment", () => {
       { status: 400 },
     )
     const logs: string[] = []
-    await runWatchPoller(ctxWith(db, fetch, logs), { adapters: { instagram: instagramAdapter }, now: NOW })
+    await runWatchPoller(ctxWith(db, fetch, logs), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     expect((await watches(db, "instagram")).length).toBe(0)
     expect(logs.some((m) => /own posts listing failed/.test(m))).toBe(true)
   })
@@ -180,7 +222,10 @@ describe("own-content auto-watch: cadence decays with post age", () => {
       "/me?": { id: "17841", username: "brand" },
       "/m1/comments": { data: comments },
     })
-    await runWatchPoller(ctxWith(db, fetch), { adapters: { instagram: instagramAdapter }, now: NOW })
+    await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     return (await watches(db, "instagram"))[0] as WatchRow
   }
 
@@ -193,7 +238,9 @@ describe("own-content auto-watch: cadence decays with post age", () => {
   })
 
   test("fresh activity on a five-day-old post polls it hourly", async () => {
-    const w = await pollSeeded(5 * 24, [{ id: "ic9", text: "Still available?", username: "fan", timestamp: hoursAgo(1) }])
+    const w = await pollSeeded(5 * 24, [
+      { id: "ic9", text: "Still available?", username: "fan", timestamp: hoursAgo(1) },
+    ])
     expect(w.cadence_seconds).toBe(3600)
   })
 })
@@ -216,7 +263,10 @@ describe("own-content auto-watch: retirement and caps", () => {
       "/me/accounts": { data: [{ id: "page-1", access_token: "page-token" }] },
       "/page-1/posts": { data: [] },
     })
-    const res = await runWatchPoller(ctxWith(db, fetch), { adapters: { facebook: facebookAdapter }, now: NOW })
+    const res = await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { facebook: facebookAdapter },
+      now: NOW,
+    })
     const [w] = await watches(db, "facebook")
     expect(w?.status).toBe("stopped")
     expect(w?.metadata.retiredReason).toBe("age")
@@ -241,7 +291,10 @@ describe("own-content auto-watch: retirement and caps", () => {
       "/me/accounts": { data: [{ id: "page-1", access_token: "page-token" }] },
       "/page-1/posts": { data: [] },
     })
-    const res = await runWatchPoller(ctxWith(db, fetch), { adapters: { facebook: facebookAdapter }, now: NOW })
+    const res = await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { facebook: facebookAdapter },
+      now: NOW,
+    })
     expect(res.polled).toBe(1)
     // The manual watch keeps the activity cadence (decayed when idle), never the age retirement.
     const [w] = await watches(db, "facebook")
@@ -268,23 +321,34 @@ describe("own-content auto-watch: retirement and caps", () => {
       timestamp: hoursAgo(1 + i),
     }))
     const fetch = makeMockFetch({ "/ig-1/media": { data: media }, "/comments": { data: [] } })
-    await runWatchPoller(ctxWith(db, fetch), { adapters: { instagram: instagramAdapter }, now: NOW })
+    await runWatchPoller(ctxWith(db, fetch), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     const rows = await watches(db, "instagram")
     const active = rows.filter((r) => r.status === "active")
     expect(active.length).toBe(OWN_WATCH_CAP_PER_PLATFORM)
     expect(active.map((r) => r.external_id)).not.toContain("older")
     expect(rows.find((r) => r.external_id === "older")?.metadata.retiredReason).toBe("cap")
     // The listing asked for no more than the cap.
-    expect(fetch.calls.find((c) => c.url.includes("/ig-1/media"))?.url).toContain(`limit=${OWN_WATCH_CAP_PER_PLATFORM}`)
+    expect(fetch.calls.find((c) => c.url.includes("/ig-1/media"))?.url).toContain(
+      `limit=${OWN_WATCH_CAP_PER_PLATFORM}`,
+    )
   })
 
   test("at most META_POLLS_PER_TICK comment polls per platform per tick; the rest stay due and are logged", async () => {
     const db = createMockDb()
     await seedAccount(db, "instagram", "ig-1")
-    const media = Array.from({ length: 15 }, (_, i) => ({ id: `m${i}`, timestamp: hoursAgo(1 + i * 0.1) }))
+    const media = Array.from({ length: 15 }, (_, i) => ({
+      id: `m${i}`,
+      timestamp: hoursAgo(1 + i * 0.1),
+    }))
     const fetch = makeMockFetch({ "/ig-1/media": { data: media }, "/comments": { data: [] } })
     const logs: string[] = []
-    const res = await runWatchPoller(ctxWith(db, fetch, logs), { adapters: { instagram: instagramAdapter }, now: NOW })
+    const res = await runWatchPoller(ctxWith(db, fetch, logs), {
+      adapters: { instagram: instagramAdapter },
+      now: NOW,
+    })
     expect(commentCalls(fetch).length).toBe(META_POLLS_PER_TICK)
     expect(res.polled).toBe(META_POLLS_PER_TICK)
     const unpolled = (await watches(db, "instagram")).filter((w) => !w.last_polled_at)
@@ -293,17 +357,28 @@ describe("own-content auto-watch: retirement and caps", () => {
 
     // Next tick: the deferred ones go first.
     const fetch2 = makeMockFetch({ "/ig-1/media": { data: media }, "/comments": { data: [] } })
-    await runWatchPoller(ctxWith(db, fetch2), { adapters: { instagram: instagramAdapter }, now: new Date(NOW.getTime() + 60_000) })
+    await runWatchPoller(ctxWith(db, fetch2), {
+      adapters: { instagram: instagramAdapter },
+      now: new Date(NOW.getTime() + 60_000),
+    })
     expect((await watches(db, "instagram")).filter((w) => !w.last_polled_at).length).toBe(0)
   })
 })
 
 describe("own-content auto-watch: watched polls read Graph throttling", () => {
-  const throttled = (code: number) => ({ status: 400, headers: {}, body: JSON.stringify({ error: { code, message: "limit" } }) })
+  const throttled = (code: number) => ({
+    status: 400,
+    headers: {},
+    body: JSON.stringify({ error: { code, message: "limit" } }),
+  })
 
   test("an Instagram comments poll answered 400 with a rate-limit code is RATE_LIMITED, not an empty read", async () => {
     const fetch: MockFetch = Object.assign(async () => throttled(80002), { calls: [] })
-    const res = await instagramAdapter.pollObject({ accountExternalId: "ig-1", fetch, accessToken: "t" }, "m1", null)
+    const res = await instagramAdapter.pollObject(
+      { accountExternalId: "ig-1", fetch, accessToken: "t" },
+      "m1",
+      null,
+    )
     expect(res.error).toBe("RATE_LIMITED")
     expect(res.findings).toEqual([])
   })
@@ -313,10 +388,20 @@ describe("own-content auto-watch: watched polls read Graph throttling", () => {
       async (url: string) =>
         url.includes("/comments")
           ? throttled(613)
-          : { status: 200, headers: {}, body: JSON.stringify({ data: [{ id: "pg1", access_token: "page-token", name: "Brand" }] }) },
+          : {
+              status: 200,
+              headers: {},
+              body: JSON.stringify({
+                data: [{ id: "pg1", access_token: "page-token", name: "Brand" }],
+              }),
+            },
       { calls: [] },
     )
-    const res = await facebookAdapter.pollObject({ accountExternalId: "pg1", fetch, accessToken: "t" }, "pg1_post1", null)
+    const res = await facebookAdapter.pollObject(
+      { accountExternalId: "pg1", fetch, accessToken: "t" },
+      "pg1_post1",
+      null,
+    )
     expect(res.error).toBe("RATE_LIMITED")
     expect(res.findings).toEqual([])
   })

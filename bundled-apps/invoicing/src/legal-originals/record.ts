@@ -14,9 +14,9 @@
 // Later renders (mark paid, an edit before the lock) are management copies: they never touch
 // this row or its file, and every delivery sends the legal original (./delivery.ts).
 
-import type { IssueCtx, IssueDb } from "../issue"
 import { sha256Hex } from "../einvoicing/backfill-sha256"
 import { buildCii, FacturxBuildError, type FacturxInput } from "../facturx/cii"
+import type { IssueCtx, IssueDb } from "../issue"
 import { base64, utf8Bytes } from "./bytes"
 
 /** OPEN: `Data` per the open-source Factur-X reference implementation; the FNFE example uses
@@ -31,10 +31,26 @@ export function facturxXmpExtension(documentType: "INVOICE" = "INVOICE") {
     namespaceUri: "urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#",
     prefix: "fx",
     properties: [
-      { name: "DocumentFileName", value: FACTURX_FILENAME, description: "The name of the embedded XML document" },
-      { name: "DocumentType", value: documentType, description: "The type of the hybrid document in capital letters, e.g. INVOICE or ORDER" },
-      { name: "Version", value: "1.0", description: "The actual version of the standard applying to the embedded XML document" },
-      { name: "ConformanceLevel", value: FACTURX_PROFILE, description: "The conformance level of the embedded XML document" },
+      {
+        name: "DocumentFileName",
+        value: FACTURX_FILENAME,
+        description: "The name of the embedded XML document",
+      },
+      {
+        name: "DocumentType",
+        value: documentType,
+        description: "The type of the hybrid document in capital letters, e.g. INVOICE or ORDER",
+      },
+      {
+        name: "Version",
+        value: "1.0",
+        description: "The actual version of the standard applying to the embedded XML document",
+      },
+      {
+        name: "ConformanceLevel",
+        value: FACTURX_PROFILE,
+        description: "The conformance level of the embedded XML document",
+      },
     ],
   }
 }
@@ -47,7 +63,13 @@ export interface LegalOriginalCtx {
 }
 
 export type LegalOriginalResult =
-  | { ok: true; file_id: string; legal_original_id: string; sha256: string; kind: "facturx" | "issued_pdf" }
+  | {
+      ok: true
+      file_id: string
+      legal_original_id: string
+      sha256: string
+      kind: "facturx" | "issued_pdf"
+    }
   | { ok: false; code: string; message: string; facturx: boolean }
 
 /**
@@ -75,7 +97,8 @@ export async function recordLegalOriginal(
     try {
       xml = buildCii(args.facturx)
     } catch (err) {
-      if (err instanceof FacturxBuildError) return { ok: false, code: err.code, message: err.message, facturx: true }
+      if (err instanceof FacturxBuildError)
+        return { ok: false, code: err.code, message: err.message, facturx: true }
       throw err
     }
   }
@@ -87,14 +110,17 @@ export async function recordLegalOriginal(
   // for what only the render knows. A row left empty by an earlier failed render of the same
   // document is reused (rows are immutable and the pair document/kind is unique); a complete one
   // means the legal original already exists and is never re-rendered.
-  const existing = ((await ctx.db.findMany("legal_originals", {
-    where: { document_id: args.documentId, kind },
-    limit: 1,
-  })) as Array<Record<string, unknown>>)[0]
+  const existing = (
+    (await ctx.db.findMany("legal_originals", {
+      where: { document_id: args.documentId, kind },
+      limit: 1,
+    })) as Array<Record<string, unknown>>
+  )[0]
   if (existing?.sha256 && existing.file_id) {
     // The legal original was committed by the host while the call that recorded it rolled back
     // (commit mode): re-create what that call lost, the XML copy and the document's pointers.
-    if (xml != null && xmlBytes) await recordFacturxXml(ctx, args.documentId, args.number, xmlBytes, now)
+    if (xml != null && xmlBytes)
+      await recordFacturxXml(ctx, args.documentId, args.number, xmlBytes, now)
     await ctx.db.update("documents", args.documentId, {
       legal_original_id: existing.id,
       legal_original_sha256: existing.sha256,
@@ -160,17 +186,32 @@ export async function recordLegalOriginal(
       parent,
     })) as typeof rendered
   } catch (err) {
-    rendered = { error: { code: (err as { code?: string }).code, message: (err as { message?: string }).message } }
+    rendered = {
+      error: {
+        code: (err as { code?: string }).code,
+        message: (err as { message?: string }).message,
+      },
+    }
   }
   if ("error" in rendered || !rendered.sha256 || (hostCommits && !rendered.parent_entity_id)) {
     // An empty row (no file, no hash) is no legal original and is never read as one; the retry
     // fills it.
-    const e = "error" in rendered ? rendered.error : { code: "render_failed", message: "the renderer returned no hash" }
+    const e =
+      "error" in rendered
+        ? rendered.error
+        : { code: "render_failed", message: "the renderer returned no hash" }
     // A render failure is not a Factur-X data problem: the document goes to `failed`, retried
     // like any render; only a build refusal (FacturxBuildError above) is `facturx_failed`.
-    return { ok: false, code: e.code ?? "render_failed", message: e.message ?? "PDF render failed", facturx: false }
+    return {
+      ok: false,
+      code: e.code ?? "render_failed",
+      message: e.message ?? "PDF render failed",
+      facturx: false,
+    }
   }
-  const originalId = hostCommits ? String(rendered.parent_entity_id) : String((original as Record<string, unknown>).id)
+  const originalId = hostCommits
+    ? String(rendered.parent_entity_id)
+    : String((original as Record<string, unknown>).id)
   if (!hostCommits) {
     await ctx.db.update("legal_originals", originalId, {
       file_id: rendered.file_id,
@@ -178,14 +219,21 @@ export async function recordLegalOriginal(
       byte_size: rendered.byte_size,
     })
   }
-  if (xml != null && xmlBytes) await recordFacturxXml(ctx, args.documentId, args.number, xmlBytes, now)
+  if (xml != null && xmlBytes)
+    await recordFacturxXml(ctx, args.documentId, args.number, xmlBytes, now)
   await ctx.db.update("documents", args.documentId, {
     legal_original_id: originalId,
     legal_original_sha256: rendered.sha256,
     pdf_file_id: rendered.file_id,
     pdf_status: "ready",
   })
-  return { ok: true, file_id: rendered.file_id, legal_original_id: originalId, sha256: rendered.sha256, kind }
+  return {
+    ok: true,
+    file_id: rendered.file_id,
+    legal_original_id: originalId,
+    sha256: rendered.sha256,
+    kind,
+  }
 }
 
 /** The standalone CII copy of a legal original: one immutable `facturx_files` row per document,
@@ -198,9 +246,10 @@ async function recordFacturxXml(
   xmlBytes: ReturnType<typeof utf8Bytes>,
   now: string,
 ): Promise<void> {
-  const rows = (await ctx.db.findMany("facturx_files", { where: { document_id: documentId }, limit: 1 })) as Array<
-    Record<string, unknown>
-  >
+  const rows = (await ctx.db.findMany("facturx_files", {
+    where: { document_id: documentId },
+    limit: 1,
+  })) as Array<Record<string, unknown>>
   const existing = rows[0]
   if (existing?.file_id || (existing && !ctx.files_importAttachment)) return
   const row =

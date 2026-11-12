@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
+  localProductUpsert,
+  packagesList,
   packDelete,
   packUpsert,
-  packagesList,
-  localProductUpsert,
   productProfileUpsert,
 } from "./catalog"
 import { createMockDb } from "./test-db"
@@ -80,7 +80,8 @@ describe("catalog CRUD", () => {
     const { ctx, db } = makeCtx()
     const insert = db.insert.bind(db)
     db.insert = async (entity, data) => {
-      if (entity === "pack_component" && data.product_id === "V2") throw new Error("component refused")
+      if (entity === "pack_component" && data.product_id === "V2")
+        throw new Error("component refused")
       return insert(entity, data)
     }
     await expect(

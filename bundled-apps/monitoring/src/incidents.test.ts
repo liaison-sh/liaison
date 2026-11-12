@@ -4,6 +4,7 @@
 // including the lifecycle guards (ack/resolve of a resolved incident errors,
 // unknown ids error) and the audit stamps + events each mutation records.
 import { describe, expect, it } from "bun:test"
+import { incidentsCommentHandler } from "./comments"
 import {
   incidentsAckHandler,
   incidentsGetHandler,
@@ -11,7 +12,6 @@ import {
   incidentsResolveHandler,
   webhookInfoHandler,
 } from "./incidents"
-import { incidentsCommentHandler } from "./comments"
 import { incidents, makeCtx, setActor, USER } from "./test-ctx"
 import { alertWebhookHandler } from "./webhooks"
 
@@ -26,11 +26,22 @@ const ALERT = {
 async function seed(ctx: Parameters<typeof alertWebhookHandler>[1]) {
   await alertWebhookHandler(ALERT, ctx)
   await alertWebhookHandler(
-    { source: "uptime-robot", severity: "warning", title: "Marketing site slow", dedupKey: "mkt", ts: "2026-07-05T04:00:00Z" },
+    {
+      source: "uptime-robot",
+      severity: "warning",
+      title: "Marketing site slow",
+      dedupKey: "mkt",
+      ts: "2026-07-05T04:00:00Z",
+    },
     ctx,
   )
   await alertWebhookHandler(
-    { source: "grafana-prod", severity: "info", title: "Deploy finished", ts: "2026-07-05T05:00:00Z" },
+    {
+      source: "grafana-prod",
+      severity: "info",
+      title: "Deploy finished",
+      ts: "2026-07-05T05:00:00Z",
+    },
     ctx,
   )
 }
@@ -100,7 +111,11 @@ describe("incidentsAckHandler", () => {
     expect(row.status).toBe("acknowledged")
     expect(row.acknowledged_by).toBe(USER)
     expect(row.acknowledged_at).toBeDefined()
-    expect(spy.emits.at(-1)).toMatchObject({ entity: "incident", action: "acknowledged", entityId: id })
+    expect(spy.emits.at(-1)).toMatchObject({
+      entity: "incident",
+      action: "acknowledged",
+      entityId: id,
+    })
   })
 
   it("refuses to ack a resolved incident", async () => {
@@ -152,13 +167,16 @@ describe("incidentsResolveHandler", () => {
       ["a".repeat(4001), /resolution_note_too_long/],
       [42, /invalid_resolution_note/],
     ] as const) {
-      await expect(incidentsResolveHandler({ incidentId: "INC-1", resolutionNote: note as never }, ctx)).rejects.toThrow(
-        error,
-      )
+      await expect(
+        incidentsResolveHandler({ incidentId: "INC-1", resolutionNote: note as never }, ctx),
+      ).rejects.toThrow(error)
       expect(row.status).toBe("open")
       expect(spy.emits.length).toBe(emits)
     }
-    await incidentsResolveHandler({ incidentId: "INC-1", resolutionNote: `  ${"n".repeat(4000)}  ` }, ctx)
+    await incidentsResolveHandler(
+      { incidentId: "INC-1", resolutionNote: `  ${"n".repeat(4000)}  ` },
+      ctx,
+    )
     expect(row.resolution_note).toBe("n".repeat(4000))
 
     const other = incidents(spy)[1]!
@@ -179,7 +197,7 @@ describe("incidentsResolveHandler", () => {
   it("stamps a system actor (non-uuid user id) as null on ack and resolve instead of failing", async () => {
     const { ctx, spy } = makeCtx()
     await seed(ctx)
-    ;setActor(ctx, "system")
+    setActor(ctx, "system")
     await incidentsAckHandler({ incidentId: "INC-1" }, ctx)
     await incidentsResolveHandler({ incidentId: "INC-1" }, ctx)
     const row = incidents(spy)[0]!
@@ -246,12 +264,20 @@ describe("incident refs in the triage tools", () => {
   it("incidents_get accepts the ref in any case, trimmed, and still the UUID", async () => {
     const { ctx, spy } = makeCtx()
     await seed(ctx)
-    expect((await incidentsGetHandler({ incidentId: "inc-2" }, ctx)).data.title).toBe("Marketing site slow")
-    expect((await incidentsGetHandler({ incidentId: "  INC-2 " }, ctx)).data.title).toBe("Marketing site slow")
+    expect((await incidentsGetHandler({ incidentId: "inc-2" }, ctx)).data.title).toBe(
+      "Marketing site slow",
+    )
+    expect((await incidentsGetHandler({ incidentId: "  INC-2 " }, ctx)).data.title).toBe(
+      "Marketing site slow",
+    )
     const id = String(incidents(spy)[0]!.id)
     expect((await incidentsGetHandler({ incidentId: id }, ctx)).data.ref).toBe("INC-1")
-    await expect(incidentsGetHandler({ incidentId: "INC-99" }, ctx)).rejects.toThrow(/incident_not_found/)
-    await expect(incidentsGetHandler({ incidentId: "nope" }, ctx)).rejects.toThrow(/incident_not_found/)
+    await expect(incidentsGetHandler({ incidentId: "INC-99" }, ctx)).rejects.toThrow(
+      /incident_not_found/,
+    )
+    await expect(incidentsGetHandler({ incidentId: "nope" }, ctx)).rejects.toThrow(
+      /incident_not_found/,
+    )
   })
 
   it("ack by ref acts on the resolved row id and emits ref/refLabel", async () => {
@@ -312,7 +338,8 @@ describe("incident refs in the triage tools", () => {
 // incidents_get returns the comments and archived episodes (oldest first, newest 200),
 // and incidents_ack takes an optional note saved as a comment after the ack (best effort).
 describe("incident comments in incidents_get and the ack note", () => {
-  const commentsOf = (spy: ReturnType<typeof makeCtx>["spy"]) => spy.rows.get("incident_comments") ?? []
+  const commentsOf = (spy: ReturnType<typeof makeCtx>["spy"]) =>
+    spy.rows.get("incident_comments") ?? []
 
   async function oneIncident() {
     const made = makeCtx()
@@ -320,9 +347,17 @@ describe("incident comments in incidents_get and the ack note", () => {
     return { ...made, row: incidents(made.spy)[0]! }
   }
 
-  async function insertComments(ctx: ReturnType<typeof makeCtx>["ctx"], incidentId: string, n: number) {
+  async function insertComments(
+    ctx: ReturnType<typeof makeCtx>["ctx"],
+    incidentId: string,
+    n: number,
+  ) {
     for (let i = 1; i <= n; i++) {
-      await ctx.db.insert("incident_comments", { incident_id: incidentId, kind: "comment", body: `c-${i}` })
+      await ctx.db.insert("incident_comments", {
+        incident_id: incidentId,
+        kind: "comment",
+        body: `c-${i}`,
+      })
     }
   }
 
@@ -330,7 +365,10 @@ describe("incident comments in incidents_get and the ack note", () => {
     const { ctx, spy, row } = await oneIncident()
     const R0 = "2026-07-05T04:00:00.000Z"
     Object.assign(row, { status: "resolved", resolved_at: R0, resolution_note: "restarted" })
-    await alertWebhookHandler({ ...ALERT, title: "API p99 latency > 8s", ts: "2026-07-05T05:00:00Z" }, ctx)
+    await alertWebhookHandler(
+      { ...ALERT, title: "API p99 latency > 8s", ts: "2026-07-05T05:00:00Z" },
+      ctx,
+    )
     await incidentsCommentHandler({ incidentId: "INC-1", body: "first" }, ctx)
     await incidentsCommentHandler({ incidentId: "INC-1", body: "second" }, ctx)
     // An update moves updated_at: the view must read created_at.
@@ -370,13 +408,20 @@ describe("incident comments in incidents_get and the ack note", () => {
     await alertWebhookHandler({ ...ALERT, dedupKey: "b", title: "B" }, ctx)
     const [a, b] = incidents(spy)
     for (const row of [a!, b!]) {
-      Object.assign(row, { status: "resolved", resolved_at: "2026-07-05T04:00:00Z", resolution_note: `fixed ${row.title}` })
+      Object.assign(row, {
+        status: "resolved",
+        resolved_at: "2026-07-05T04:00:00Z",
+        resolution_note: `fixed ${row.title}`,
+      })
     }
     // Interleave writes on A and B: comment, reopen (episode), comment.
     await incidentsCommentHandler({ incidentId: "INC-1", body: "a1" }, ctx)
     await incidentsCommentHandler({ incidentId: "INC-2", body: "b1" }, ctx)
     await alertWebhookHandler({ ...ALERT, ts: "2026-07-05T05:00:00Z" }, ctx)
-    await alertWebhookHandler({ ...ALERT, dedupKey: "b", title: "B", ts: "2026-07-05T05:00:00Z" }, ctx)
+    await alertWebhookHandler(
+      { ...ALERT, dedupKey: "b", title: "B", ts: "2026-07-05T05:00:00Z" },
+      ctx,
+    )
     await incidentsCommentHandler({ incidentId: "INC-2", body: "b2" }, ctx)
     await incidentsCommentHandler({ incidentId: "INC-1", body: "a2" }, ctx)
 
@@ -436,7 +481,12 @@ describe("incident comments in incidents_get and the ack note", () => {
     expect(res.data.status).toBe("acknowledged")
     expect(row.status).toBe("acknowledged")
     expect(commentsOf(spy).length).toBe(1)
-    expect(commentsOf(spy)[0]).toMatchObject({ incident_id: row.id, kind: "comment", body: "looking at it", author_id: USER })
+    expect(commentsOf(spy)[0]).toMatchObject({
+      incident_id: row.id,
+      kind: "comment",
+      body: "looking at it",
+      author_id: USER,
+    })
     expect(spy.emits.map((e) => e.action).slice(-2)).toEqual(["acknowledged", "commented"])
     const commented = spy.emits.at(-1)!
     expect(commented.entityId).toBe(row.id)
@@ -476,7 +526,9 @@ describe("incident comments in incidents_get and the ack note", () => {
   it("a failed note insert leaves the incident acknowledged and a retry saves the note", async () => {
     const { ctx, spy, row } = await oneIncident()
     spy.failNextInsert = "incident_comments"
-    await expect(incidentsAckHandler({ incidentId: "INC-1", note: "ticket 77" }, ctx)).rejects.toThrow()
+    await expect(
+      incidentsAckHandler({ incidentId: "INC-1", note: "ticket 77" }, ctx),
+    ).rejects.toThrow()
     expect(row.status).toBe("acknowledged")
     expect(commentsOf(spy).length).toBe(0)
     expect(spy.emits.at(-1)!.action).toBe("acknowledged")

@@ -4,9 +4,9 @@
 //   label (orientation-normalized via a unary kernel merge) + invoice (A4,
 //   1 copy EU/domestic, 3 copies export non-EU). Never one combined PDF.
 import { describe, expect, it } from "bun:test"
+import type { BoxtalToolCtx } from "./ctx"
 import { invoiceCopiesFor, printPack } from "./print-pack"
 import { createMockDb } from "./test-db"
-import type { BoxtalToolCtx } from "./ctx"
 
 /** Shipment row ids are UUIDs: only a UUID-shaped ref is looked up by row id. */
 const ROW_1 = "5a1e0000-0000-4000-8000-000000000001"
@@ -58,9 +58,7 @@ function makeCtx(opts: MakeOpts = {}) {
           kind: "outbound",
         },
       ],
-      app_config: [
-        { id: "cfg-sender", key: "sender_address", value: { countryIsoCode: "FR" } },
-      ],
+      app_config: [{ id: "cfg-sender", key: "sender_address", value: { countryIsoCode: "FR" } }],
     },
   })
   if (opts.strictUuid) {
@@ -77,7 +75,11 @@ function makeCtx(opts: MakeOpts = {}) {
   const importCalls: string[] = []
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/shipping-document")) {
       return {
@@ -86,11 +88,17 @@ function makeCtx(opts: MakeOpts = {}) {
         body: JSON.stringify({
           status: 200,
           timestamp: "t",
-          content: opts.labelDocs ?? [{ url: "https://document.boxtal.com/label.pdf", type: "LABEL", format: "PDF_A4" }],
+          content: opts.labelDocs ?? [
+            { url: "https://document.boxtal.com/label.pdf", type: "LABEL", format: "PDF_A4" },
+          ],
         }),
       }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const executeTool = async (target: string, args: unknown) => {
     crossCalls.push({ target, args })
@@ -102,7 +110,11 @@ function makeCtx(opts: MakeOpts = {}) {
     if (target === "invoicing:documents_get") {
       return {
         status: "completed",
-        result: { id: "doc-1", status: opts.docStatus ?? "issued", counterparty_country: opts.destinationCountry ?? "US" },
+        result: {
+          id: "doc-1",
+          status: opts.docStatus ?? "issued",
+          counterparty_country: opts.destinationCountry ?? "US",
+        },
       }
     }
     if (target === "invoicing:documents_retry_pdf") {
@@ -129,7 +141,9 @@ function makeCtx(opts: MakeOpts = {}) {
     files_importFromUrl: async (json: string) => {
       importCalls.push(json)
       // One stored file per imported label: the first keeps the historical id.
-      return JSON.stringify({ id: importCalls.length === 1 ? "f-label-raw" : `f-label-raw-${importCalls.length}` })
+      return JSON.stringify({
+        id: importCalls.length === 1 ? "f-label-raw" : `f-label-raw-${importCalls.length}`,
+      })
     },
     connections: {
       boxtal: {
@@ -167,8 +181,16 @@ describe("print_pack — two separate jobs, never merged together", () => {
   it("a multi-parcel shipment prints every parcel's label, in order, in one document", async () => {
     const { ctx, crossCalls, importCalls } = makeCtx({
       labelDocs: [
-        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
-        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+        {
+          url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf",
+          type: "LABEL",
+          format: "PDF_A4",
+        },
+        {
+          url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf",
+          type: "LABEL",
+          format: "PDF_A4",
+        },
       ],
     })
     const res = await printPack(ctx, { shipment_id: ROW_1 })
@@ -180,7 +202,10 @@ describe("print_pack — two separate jobs, never merged together", () => {
     const merges = crossCalls.filter((c) => c.target === "kernel:files_merge_pdfs")
     // ONE merge: it normalizes the orientation and combines the parcels in the same pass.
     expect(merges).toHaveLength(1)
-    expect((merges[0]!.args as { file_ids: string[] }).file_ids).toEqual(["f-label-raw", "f-label-raw-2"])
+    expect((merges[0]!.args as { file_ids: string[] }).file_ids).toEqual([
+      "f-label-raw",
+      "f-label-raw-2",
+    ])
     expect(res.label).toMatchObject({ file_id: "f-normalized" })
     expect(res.label_error).toBeUndefined()
   })
@@ -189,8 +214,16 @@ describe("print_pack — two separate jobs, never merged together", () => {
     const { ctx } = makeCtx({
       mergeFails: true,
       labelDocs: [
-        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
-        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+        {
+          url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf",
+          type: "LABEL",
+          format: "PDF_A4",
+        },
+        {
+          url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf",
+          type: "LABEL",
+          format: "PDF_A4",
+        },
       ],
     })
     const res = await printPack(ctx, { shipment_id: ROW_1 })
@@ -252,7 +285,10 @@ describe("print_pack — an issued invoice with no PDF yet", () => {
   it("a render that fails says what to do instead of 'no rendered PDF yet'", async () => {
     const { ctx } = makeCtx({
       invoicePdfFileId: null,
-      retry: { status: "completed", result: { status: "error", error: { code: "render_failed", message: "template error" } } },
+      retry: {
+        status: "completed",
+        result: { status: "error", error: { code: "render_failed", message: "template error" } },
+      },
     })
     const res = await printPack(ctx, { shipment_id: ROW_1 })
     expect(res.invoice.file_id).toBeNull()
@@ -292,13 +328,34 @@ describe("print_pack — the order's generated papers ride with the invoice", ()
       category: "sale",
       excluded: false,
       documents: [
-        { template_id: "t1", template_name: "Declaration A", file_id: "f-a", filename: "Declaration A.pdf", fingerprint: "x", tracking_number: "TRK123", generated_at: "2026-11-09T00:00:00Z", blanks: [] },
-        { template_id: "t2", template_name: "Certificate B", file_id: "f-b", filename: "Certificate B.pdf", fingerprint: "x", tracking_number: "TRK123", generated_at: "2026-11-09T00:00:00Z", blanks: ["Delivery phone"] },
+        {
+          template_id: "t1",
+          template_name: "Declaration A",
+          file_id: "f-a",
+          filename: "Declaration A.pdf",
+          fingerprint: "x",
+          tracking_number: "TRK123",
+          generated_at: "2026-11-09T00:00:00Z",
+          blanks: [],
+        },
+        {
+          template_id: "t2",
+          template_name: "Certificate B",
+          file_id: "f-b",
+          filename: "Certificate B.pdf",
+          fingerprint: "x",
+          tracking_number: "TRK123",
+          generated_at: "2026-11-09T00:00:00Z",
+          blanks: ["Delivery phone"],
+        },
       ],
     })
     const res = await printPack(ctx, { shipment_id: ROW_1 })
     expect(res.documents.map((d) => d.file_id)).toEqual(["f-a", "f-b"])
-    expect(res.documents[1]).toMatchObject({ template_name: "Certificate B", blanks: ["Delivery phone"] })
+    expect(res.documents[1]).toMatchObject({
+      template_name: "Certificate B",
+      blanks: ["Delivery phone"],
+    })
     expect(res.invoice.file_id).toBe("f-invoice")
   })
 

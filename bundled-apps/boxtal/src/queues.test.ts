@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { exceptionsList, queueCounts, readyList, returnsList, shipmentHasLabel, stuckList, toPrepareList } from "./queues"
-import { readySetPacked } from "./packed"
-import { buildOfferWithInsurance } from "./shipment"
-import type { Offer } from "./lib/boxtal-v1-client"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { createMockDb } from "./test-db"
 import { makeOrderScanStub, type OrderScanStubOptions } from "./__fixtures__/order-scan"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
+import type { Offer } from "./lib/boxtal-v1-client"
+import { readySetPacked } from "./packed"
+import {
+  exceptionsList,
+  queueCounts,
+  readyList,
+  returnsList,
+  shipmentHasLabel,
+  stuckList,
+  toPrepareList,
+} from "./queues"
+import { buildOfferWithInsurance } from "./shipment"
+import { createMockDb } from "./test-db"
 
 function baseOffer(): Offer {
   return {
@@ -31,7 +39,13 @@ function baseOffer(): Offer {
 // real MockDb so the reads exercise actual where/filter logic.
 function makeCtx(opts: {
   seed?: Record<string, Array<Record<string, unknown>>>
-  invoices?: Array<{ id: string; number?: string; channel?: string; counterparty_name?: string; counterparty_country?: string }>
+  invoices?: Array<{
+    id: string
+    number?: string
+    channel?: string
+    counterparty_name?: string
+    counterparty_country?: string
+  }>
   // A SINGLE doc (all candidates resolve to it — the common single-invoice test), OR a list of distinct
   // docs routed by `id` (a MULTI-invoice worklist test, where documents_get must return the matching doc).
   docs?: Record<string, unknown> | Array<{ id: string; [k: string]: unknown }>
@@ -42,13 +56,19 @@ function makeCtx(opts: {
   // The worklist is ORDER-driven now: one synthetic open order per invoice fixture, joined back to
   // it through documents_for_orders, so a test still expresses itself as "these invoices exist".
   const scanStub = makeOrderScanStub(opts.invoices ?? [], opts.scan ?? {})
-  const executeTool = async (target: string, args?: Record<string, unknown>): Promise<CrossAppEnvelope> => {
+  const executeTool = async (
+    target: string,
+    args?: Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> => {
     const scanned = scanStub(target, args)
     if (scanned) return scanned
     if (target === "invoicing:documents_search") {
       // Fixture invoices stand in for Shopify-generated goods invoices (the only
       // kind the worklist covers); a test can override channel to assert exclusion.
-      return { status: "completed", result: (opts.invoices ?? []).map((d) => ({ channel: "shopify", ...d })) }
+      return {
+        status: "completed",
+        result: (opts.invoices ?? []).map((d) => ({ channel: "shopify", ...d })),
+      }
     }
     if (target === "invoicing:documents_get") {
       // toPrepareList calls documents_get per candidate via shipmentDraftCreate. The id is passed in
@@ -78,20 +98,60 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "s1", order_status: "CONFIRMED", recipient_summary: "Globex", offer_code: "CHRP-Chrono13", tracking_number: "T1", declared_total: 899, label_cost_ttc: 25, document_ref: "inv-1", documents: [{ type: "LABEL", format: "PDF_A4" }] },
+          {
+            id: "s1",
+            order_status: "CONFIRMED",
+            recipient_summary: "Globex",
+            offer_code: "CHRP-Chrono13",
+            tracking_number: "T1",
+            declared_total: 899,
+            label_cost_ttc: 25,
+            document_ref: "inv-1",
+            documents: [{ type: "LABEL", format: "PDF_A4" }],
+          },
           // A freshly bought label sits at PENDING until Boxtal confirms; the print
           // station must still see it (regression: the day's labels were invisible).
-          { id: "s2", order_status: "PENDING", recipient_summary: "Acme", document_ref: "inv-2", documents: [{ type: "LABEL", format: "PDF_A4" }] },
-          { id: "s3", order_status: "CONFIRMED", recipient_summary: "Returned Co", kind: "return", document_ref: "pro-1" },
-          { id: "s4", order_status: "CONFIRMED", recipient_summary: "NoLabel", document_ref: "inv-4", documents: [] },
-          { id: "s5", order_status: "CANCELLED", recipient_summary: "Void Co", document_ref: "inv-5" },
+          {
+            id: "s2",
+            order_status: "PENDING",
+            recipient_summary: "Acme",
+            document_ref: "inv-2",
+            documents: [{ type: "LABEL", format: "PDF_A4" }],
+          },
+          {
+            id: "s3",
+            order_status: "CONFIRMED",
+            recipient_summary: "Returned Co",
+            kind: "return",
+            document_ref: "pro-1",
+          },
+          {
+            id: "s4",
+            order_status: "CONFIRMED",
+            recipient_summary: "NoLabel",
+            document_ref: "inv-4",
+            documents: [],
+          },
+          {
+            id: "s5",
+            order_status: "CANCELLED",
+            recipient_summary: "Void Co",
+            document_ref: "inv-5",
+          },
         ],
       },
     })
     const { rows } = await readyList(ctx)
     expect(rows.map((r) => r.id).sort()).toEqual(["s1", "s2", "s4"]) // return + CANCELLED excluded
     const s1 = rows.find((r) => r.id === "s1")!
-    expect(s1).toMatchObject({ recipient: "Globex", carrier: "CHRP-Chrono13", tracking_number: "T1", cost: 25, has_label: true, invoice_ref: "inv-1" })
+    expect(s1).toMatchObject({
+      recipient: "Globex",
+      carrier: "CHRP-Chrono13",
+      tracking_number: "T1",
+      cost: 25,
+      has_label: true,
+      invoice_ref: "inv-1",
+    })
     expect(rows.find((r) => r.id === "s2")!.has_label).toBe(true)
     expect(rows.find((r) => r.id === "s4")!.has_label).toBe(false)
   })
@@ -106,18 +166,65 @@ describe("readyList", () => {
       seed: {
         shipment: [
           // Still on the bench: no carrier event at all.
-          { id: "w1", order_status: "PENDING", recipient_summary: "Not announced", document_ref: "inv-1" },
+          {
+            id: "w1",
+            order_status: "PENDING",
+            recipient_summary: "Not announced",
+            document_ref: "inv-1",
+          },
           // Announced to the carrier but NOT yet collected — still the operator's work.
-          { id: "w2", order_status: "CONFIRMED", tracking_status: "ANNOUNCED", recipient_summary: "Awaiting pickup", document_ref: "inv-2" },
+          {
+            id: "w2",
+            order_status: "CONFIRMED",
+            tracking_status: "ANNOUNCED",
+            recipient_summary: "Awaiting pickup",
+            document_ref: "inv-2",
+          },
           // Everything below has left the building.
-          { id: "g1", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT", recipient_summary: "Moving", document_ref: "inv-3" },
-          { id: "g2", order_status: "CONFIRMED", tracking_status: "OUT_FOR_DELIVERY", recipient_summary: "Last mile", document_ref: "inv-4" },
-          { id: "g3", order_status: "CONFIRMED", tracking_status: "DELIVERED", recipient_summary: "Delivered", document_ref: "inv-5" },
-          { id: "g4", order_status: "CONFIRMED", tracking_status: "EXCEPTION", recipient_summary: "Customs hold", document_ref: "inv-6" },
-          { id: "g5", order_status: "CONFIRMED", tracking_status: "RETURNED", recipient_summary: "Back to sender", document_ref: "inv-7" },
+          {
+            id: "g1",
+            order_status: "CONFIRMED",
+            tracking_status: "IN_TRANSIT",
+            recipient_summary: "Moving",
+            document_ref: "inv-3",
+          },
+          {
+            id: "g2",
+            order_status: "CONFIRMED",
+            tracking_status: "OUT_FOR_DELIVERY",
+            recipient_summary: "Last mile",
+            document_ref: "inv-4",
+          },
+          {
+            id: "g3",
+            order_status: "CONFIRMED",
+            tracking_status: "DELIVERED",
+            recipient_summary: "Delivered",
+            document_ref: "inv-5",
+          },
+          {
+            id: "g4",
+            order_status: "CONFIRMED",
+            tracking_status: "EXCEPTION",
+            recipient_summary: "Customs hold",
+            document_ref: "inv-6",
+          },
+          {
+            id: "g5",
+            order_status: "CONFIRMED",
+            tracking_status: "RETURNED",
+            recipient_summary: "Back to sender",
+            document_ref: "inv-7",
+          },
           // A PENDING order can be delivered too: order_status simply never moved.
           // This is the "already delivered but still shows pending" report.
-          { id: "g6", order_status: "PENDING", tracking_status: "DELIVERED", recipient_summary: "Pending yet delivered", document_ref: "inv-8" },
+          {
+            id: "g6",
+            order_status: "PENDING",
+            tracking_status: "DELIVERED",
+            recipient_summary: "Pending yet delivered",
+            document_ref: "inv-8",
+          },
         ],
       },
     })
@@ -127,19 +234,43 @@ describe("readyList", () => {
 
   it("orders the products column by the org's display rank, and keeps the stored order without one", async () => {
     const shipment = [
-      { id: "r1", order_status: "CONFIRMED", recipient_summary: "A", document_ref: "inv-1", queue_facts: { products: "1xMP, 1xBSkin, 1xSOUND, 1xET2" } },
-      { id: "r2", order_status: "CONFIRMED", recipient_summary: "B", document_ref: "inv-2", queue_facts: { products: "1xSOUND, 1xET2, 1xBSkin, 1xMP" } },
+      {
+        id: "r1",
+        order_status: "CONFIRMED",
+        recipient_summary: "A",
+        document_ref: "inv-1",
+        queue_facts: { products: "1xMP, 1xBSkin, 1xSOUND, 1xET2" },
+      },
+      {
+        id: "r2",
+        order_status: "CONFIRMED",
+        recipient_summary: "B",
+        document_ref: "inv-2",
+        queue_facts: { products: "1xSOUND, 1xET2, 1xBSkin, 1xMP" },
+      },
     ]
     const ranked = makeCtx({
       seed: {
         shipment,
-        app_config: [{ id: "pc", key: "product_code_aliases", value: { aliases: {}, ranks: { ET2: 1, MP: 2, SOUND: 1000 } } }],
+        app_config: [
+          {
+            id: "pc",
+            key: "product_code_aliases",
+            value: { aliases: {}, ranks: { ET2: 1, MP: 2, SOUND: 1000 } },
+          },
+        ],
       },
     })
     const { rows } = await readyList(ranked)
-    expect(rows.map((r) => r.products)).toEqual(["1xET2, 1xMP, 1xBSkin, 1xSOUND", "1xET2, 1xMP, 1xBSkin, 1xSOUND"])
+    expect(rows.map((r) => r.products)).toEqual([
+      "1xET2, 1xMP, 1xBSkin, 1xSOUND",
+      "1xET2, 1xMP, 1xBSkin, 1xSOUND",
+    ])
     const plain = await readyList(makeCtx({ seed: { shipment } }))
-    expect(plain.rows.map((r) => r.products)).toEqual(["1xMP, 1xBSkin, 1xSOUND, 1xET2", "1xSOUND, 1xET2, 1xBSkin, 1xMP"])
+    expect(plain.rows.map((r) => r.products)).toEqual([
+      "1xMP, 1xBSkin, 1xSOUND, 1xET2",
+      "1xSOUND, 1xET2, 1xBSkin, 1xMP",
+    ])
   })
 
   it("treats an unmodelled carrier status as handed over, not as warehouse work", async () => {
@@ -148,9 +279,27 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "u1", order_status: "CONFIRMED", tracking_status: "SOME_NEW_CARRIER_STATE", recipient_summary: "Unknown", document_ref: "inv-9" },
-          { id: "u2", order_status: "CONFIRMED", tracking_status: null, recipient_summary: "Null", document_ref: "inv-10" },
-          { id: "u3", order_status: "CONFIRMED", tracking_status: "", recipient_summary: "Empty", document_ref: "inv-11" },
+          {
+            id: "u1",
+            order_status: "CONFIRMED",
+            tracking_status: "SOME_NEW_CARRIER_STATE",
+            recipient_summary: "Unknown",
+            document_ref: "inv-9",
+          },
+          {
+            id: "u2",
+            order_status: "CONFIRMED",
+            tracking_status: null,
+            recipient_summary: "Null",
+            document_ref: "inv-10",
+          },
+          {
+            id: "u3",
+            order_status: "CONFIRMED",
+            tracking_status: "",
+            recipient_summary: "Empty",
+            document_ref: "inv-11",
+          },
         ],
       },
     })
@@ -164,8 +313,18 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "held", order_status: "CONFIRMED", document_ref: "inv-held", recipient_summary: "Held Co" },
-          { id: "plain", order_status: "CONFIRMED", document_ref: "inv-plain", recipient_summary: "Plain Co" },
+          {
+            id: "held",
+            order_status: "CONFIRMED",
+            document_ref: "inv-held",
+            recipient_summary: "Held Co",
+          },
+          {
+            id: "plain",
+            order_status: "CONFIRMED",
+            document_ref: "inv-plain",
+            recipient_summary: "Plain Co",
+          },
         ],
         prep_meta: [
           { id: "m1", document_ref: "inv-held", shopify_order_id: "5551" },
@@ -187,8 +346,21 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "s1", order_status: "CONFIRMED", recipient_summary: "No carrier number yet", document_ref: "inv-1", boxtal_shipment_ref: "2609141542FEDX1CS3FR" },
-          { id: "s2", order_status: "CONFIRMED", recipient_summary: "Tracked", document_ref: "inv-2", tracking_number: "877164440733", boxtal_shipment_ref: "2609141542FEDX1CS0US" },
+          {
+            id: "s1",
+            order_status: "CONFIRMED",
+            recipient_summary: "No carrier number yet",
+            document_ref: "inv-1",
+            boxtal_shipment_ref: "2609141542FEDX1CS3FR",
+          },
+          {
+            id: "s2",
+            order_status: "CONFIRMED",
+            recipient_summary: "Tracked",
+            document_ref: "inv-2",
+            tracking_number: "877164440733",
+            boxtal_shipment_ref: "2609141542FEDX1CS0US",
+          },
         ],
       },
     })
@@ -199,7 +371,18 @@ describe("readyList", () => {
     // An internal numeric id is NOT a reference anyone can look up: it reads as a tracking
     // number beside one and sends the operator hunting for a parcel that code cannot find.
     const internal = await readyList(
-      makeCtx({ seed: { shipment: [{ id: "n1", order_status: "CONFIRMED", document_ref: "inv-9", boxtal_shipment_ref: "24315896" }] } }),
+      makeCtx({
+        seed: {
+          shipment: [
+            {
+              id: "n1",
+              order_status: "CONFIRMED",
+              document_ref: "inv-9",
+              boxtal_shipment_ref: "24315896",
+            },
+          ],
+        },
+      }),
     )
     expect(internal.rows[0]!.shipment_ref).toBeNull()
     // The two references coexist: the reference never replaces a real carrier number.
@@ -216,9 +399,24 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "r1", order_status: "REQUESTED", recipient_summary: "Irsi Leka", document_ref: "inv-1" },
-          { id: "r2", order_status: "PENDING", recipient_summary: "Fresh label", document_ref: "inv-2" },
-          { id: "r3", order_status: "CONFIRMED", recipient_summary: "Confirmed", document_ref: "inv-3" },
+          {
+            id: "r1",
+            order_status: "REQUESTED",
+            recipient_summary: "Irsi Leka",
+            document_ref: "inv-1",
+          },
+          {
+            id: "r2",
+            order_status: "PENDING",
+            recipient_summary: "Fresh label",
+            document_ref: "inv-2",
+          },
+          {
+            id: "r3",
+            order_status: "CONFIRMED",
+            recipient_summary: "Confirmed",
+            document_ref: "inv-3",
+          },
           { id: "r4", order_status: "CANCELLED", recipient_summary: "Void", document_ref: "inv-4" },
         ],
       },
@@ -236,10 +434,33 @@ describe("readyList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "s1", order_status: "CONFIRMED", recipient_summary: "Newest", document_ref: "inv-new", created_at: "2026-09-14 13:42:43.000000+00" },
-          { id: "s2", order_status: "CONFIRMED", recipient_summary: "Oldest", document_ref: "inv-old", created_at: "2026-09-12 09:15:00.000000+00" },
-          { id: "s3", order_status: "CONFIRMED", recipient_summary: "Middle", document_ref: "inv-mid", created_at: "2026-09-14 13:42:39.000000+00" },
-          { id: "s4", order_status: "CONFIRMED", recipient_summary: "No date", document_ref: "inv-none" },
+          {
+            id: "s1",
+            order_status: "CONFIRMED",
+            recipient_summary: "Newest",
+            document_ref: "inv-new",
+            created_at: "2026-09-14 13:42:43.000000+00",
+          },
+          {
+            id: "s2",
+            order_status: "CONFIRMED",
+            recipient_summary: "Oldest",
+            document_ref: "inv-old",
+            created_at: "2026-09-12 09:15:00.000000+00",
+          },
+          {
+            id: "s3",
+            order_status: "CONFIRMED",
+            recipient_summary: "Middle",
+            document_ref: "inv-mid",
+            created_at: "2026-09-14 13:42:39.000000+00",
+          },
+          {
+            id: "s4",
+            order_status: "CONFIRMED",
+            recipient_summary: "No date",
+            document_ref: "inv-none",
+          },
         ],
         prep_meta: [
           { id: "m1", document_ref: "inv-new", order_created_at: "2026-09-10T08:00:00.000Z" },
@@ -274,13 +495,40 @@ describe("readyList", () => {
       created_at: `2026-08-01 10:${String(i % 60).padStart(2, "0")}:00+00`,
     }))
     const live = [
-      { id: "aa-1", order_status: "CONFIRMED", tracking_status: null, document_ref: "inv-a", created_at: "2026-10-01 09:00:00+00" },
-      { id: "aa-2", order_status: "PENDING", document_ref: "inv-b", created_at: "2026-10-01 08:00:00+00" },
-      { id: "aa-3", order_status: "CONFIRMED", tracking_status: "ANNOUNCED", document_ref: "inv-c", created_at: "2026-10-01 10:00:00+00" },
+      {
+        id: "aa-1",
+        order_status: "CONFIRMED",
+        tracking_status: null,
+        document_ref: "inv-a",
+        created_at: "2026-10-01 09:00:00+00",
+      },
+      {
+        id: "aa-2",
+        order_status: "PENDING",
+        document_ref: "inv-b",
+        created_at: "2026-10-01 08:00:00+00",
+      },
+      {
+        id: "aa-3",
+        order_status: "CONFIRMED",
+        tracking_status: "ANNOUNCED",
+        document_ref: "inv-c",
+        created_at: "2026-10-01 10:00:00+00",
+      },
     ]
     const stuck = [
-      { id: "ab-1", order_status: "CONFIRMED", tracking_status: "EXCEPTION", document_ref: "inv-x" },
-      { id: "ab-2", order_status: "CONFIRMED", tracking_status: "FAILED_ATTEMPT", document_ref: "inv-y" },
+      {
+        id: "ab-1",
+        order_status: "CONFIRMED",
+        tracking_status: "EXCEPTION",
+        document_ref: "inv-x",
+      },
+      {
+        id: "ab-2",
+        order_status: "CONFIRMED",
+        tracking_status: "FAILED_ATTEMPT",
+        document_ref: "inv-y",
+      },
     ]
     const ctx = makeCtx({ seed: { shipment: [...history, ...live, ...stuck] } })
     const { rows } = await readyList(ctx)
@@ -294,7 +542,12 @@ describe("readyList", () => {
       seed: {
         shipment: [
           { id: "a", order_status: "CONFIRMED", document_ref: "inv-1" },
-          { id: "b", order_status: "CONFIRMED", tracking_status: "DELIVERED", document_ref: "inv-2" },
+          {
+            id: "b",
+            order_status: "CONFIRMED",
+            tracking_status: "DELIVERED",
+            document_ref: "inv-2",
+          },
         ],
       },
       invoices: [],
@@ -327,7 +580,14 @@ describe("every queue speaks the same row shape", () => {
     return makeCtx({
       seed: {
         shipment: [
-          { id: "s1", order_status: "CONFIRMED", recipient_summary: "Irsi Leka", document_ref: "inv-1", queue_facts: FACTS, ...extra },
+          {
+            id: "s1",
+            order_status: "CONFIRMED",
+            recipient_summary: "Irsi Leka",
+            document_ref: "inv-1",
+            queue_facts: FACTS,
+            ...extra,
+          },
         ],
       },
     })
@@ -335,12 +595,24 @@ describe("every queue speaks the same row shape", () => {
 
   it("ready_list carries the buy-time snapshot", async () => {
     const { rows } = await readyList(ctxWith({}))
-    expect(rows[0]).toMatchObject({ items: 2, weight: 10.5, package_count: 1, category: "repair", order_name: "#3438", staff_note: "fragile" })
+    expect(rows[0]).toMatchObject({
+      items: 2,
+      weight: 10.5,
+      package_count: 1,
+      category: "repair",
+      order_name: "#3438",
+      staff_note: "fragile",
+    })
   })
 
   it("returns_list carries it too", async () => {
     const { rows } = await returnsList(ctxWith({ kind: "return" }))
-    expect(rows[0]).toMatchObject({ items: 2, weight: 10.5, category: "repair", order_name: "#3438" })
+    expect(rows[0]).toMatchObject({
+      items: 2,
+      weight: 10.5,
+      category: "repair",
+      order_name: "#3438",
+    })
   })
 
   it("exceptions_list and stuck_list carry it too", async () => {
@@ -351,7 +623,16 @@ describe("every queue speaks the same row shape", () => {
 
   it("a row bought before the snapshot existed reads as dashes, not as an error", async () => {
     const ctx = makeCtx({
-      seed: { shipment: [{ id: "old", order_status: "CONFIRMED", recipient_summary: "Legacy", document_ref: "inv-old" }] },
+      seed: {
+        shipment: [
+          {
+            id: "old",
+            order_status: "CONFIRMED",
+            recipient_summary: "Legacy",
+            document_ref: "inv-old",
+          },
+        ],
+      },
     })
     const row = (await readyList(ctx)).rows[0]!
     expect(row.items).toBeNull()
@@ -378,8 +659,19 @@ describe("ready_set_packed: the warehouse bench mark", () => {
     return makeCtx({
       seed: {
         shipment: [
-          { id: S1_ID, order_status: "CONFIRMED", recipient_summary: "Globex", document_ref: "inv-1", boxtal_order_id: "BX-777" },
-          { id: S2_ID, order_status: "CONFIRMED", recipient_summary: "Acme", document_ref: "inv-2" },
+          {
+            id: S1_ID,
+            order_status: "CONFIRMED",
+            recipient_summary: "Globex",
+            document_ref: "inv-1",
+            boxtal_order_id: "BX-777",
+          },
+          {
+            id: S2_ID,
+            order_status: "CONFIRMED",
+            recipient_summary: "Acme",
+            document_ref: "inv-2",
+          },
         ],
       },
     })
@@ -394,10 +686,15 @@ describe("ready_set_packed: the warehouse bench mark", () => {
     expect(res.packed).toBe(true)
     expect(typeof res.packed_at).toBe("string")
     expect(new Date(res.packed_at as string).getTime()).toBeGreaterThanOrEqual(before - 1000)
-    const stored = (await ctx.db.findMany("shipment", { where: { id: S1_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const stored = (await ctx.db.findMany("shipment", {
+      where: { id: S1_ID },
+      limit: 1,
+    })) as Array<{ packed_at?: string | null }>
     expect(stored[0]!.packed_at).toBe(res.packed_at)
     // The sibling row is untouched: the mark is per parcel.
-    const other = (await ctx.db.findMany("shipment", { where: { id: S2_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const other = (await ctx.db.findMany("shipment", { where: { id: S2_ID }, limit: 1 })) as Array<{
+      packed_at?: string | null
+    }>
     expect(other[0]!.packed_at ?? null).toBeNull()
   })
 
@@ -408,7 +705,10 @@ describe("ready_set_packed: the warehouse bench mark", () => {
     expect(res.error).toBeUndefined()
     expect(res.packed).toBe(false)
     expect(res.packed_at).toBeNull()
-    const stored = (await ctx.db.findMany("shipment", { where: { id: S1_ID }, limit: 1 })) as Array<{ packed_at?: string | null }>
+    const stored = (await ctx.db.findMany("shipment", {
+      where: { id: S1_ID },
+      limit: 1,
+    })) as Array<{ packed_at?: string | null }>
     expect(stored[0]!.packed_at).toBeNull()
   })
 
@@ -447,7 +747,7 @@ describe("ready_set_packed: the warehouse bench mark", () => {
   })
 })
 
-describe("shipmentHasLabel: one definition of \"the label is ready\"", () => {
+describe('shipmentHasLabel: one definition of "the label is ready"', () => {
   it("is true only when the shipment carries a LABEL document", () => {
     expect(shipmentHasLabel({ documents: [{ type: "LABEL" }] })).toBe(true)
     expect(shipmentHasLabel({ documents: [{ type: "LABEL" }, { type: "CN23" }] })).toBe(true)
@@ -467,8 +767,26 @@ describe("returnsList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "r1", kind: "return", recipient_summary: "Globex", return_reason: "Defective", document_ref: "pro-220", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT", created_by: "agent", documents: [{ type: "LABEL", format: "PDF_A4" }] },
-          { id: "r2", kind: "return", recipient_summary: "Stark", return_reason: "Wrong item", document_ref: "pro-221", order_status: "PENDING", created_by: "user" },
+          {
+            id: "r1",
+            kind: "return",
+            recipient_summary: "Globex",
+            return_reason: "Defective",
+            document_ref: "pro-220",
+            order_status: "CONFIRMED",
+            tracking_status: "IN_TRANSIT",
+            created_by: "agent",
+            documents: [{ type: "LABEL", format: "PDF_A4" }],
+          },
+          {
+            id: "r2",
+            kind: "return",
+            recipient_summary: "Stark",
+            return_reason: "Wrong item",
+            document_ref: "pro-221",
+            order_status: "PENDING",
+            created_by: "user",
+          },
           { id: "r3", kind: "return", recipient_summary: "Cancelled", order_status: "CANCELLED" },
           { id: "o1", order_status: "CONFIRMED", recipient_summary: "Outbound" }, // not a return
         ],
@@ -476,22 +794,46 @@ describe("returnsList", () => {
     })
     const { rows } = await returnsList(ctx)
     expect(rows.map((r) => r.id).sort()).toEqual(["r1", "r2"]) // cancelled + outbound excluded
-    expect(rows.find((r) => r.id === "r1")).toMatchObject({ customer: "Globex", reason: "Defective", proforma_ref: "pro-220", created_by: "agent", label_ready: true })
-    expect(rows.find((r) => r.id === "r2")).toMatchObject({ created_by: "user", label_ready: false })
+    expect(rows.find((r) => r.id === "r1")).toMatchObject({
+      customer: "Globex",
+      reason: "Defective",
+      proforma_ref: "pro-220",
+      created_by: "agent",
+      label_ready: true,
+    })
+    expect(rows.find((r) => r.id === "r2")).toMatchObject({
+      created_by: "user",
+      label_ready: false,
+    })
   })
 
   it("names each return's proforma by its NUMBER, never its raw id", async () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "r1", kind: "return", recipient_summary: "Globex", document_ref: "pro-220", order_status: "CONFIRMED" },
-          { id: "r2", kind: "return", recipient_summary: "Stark", document_ref: "pro-unknown", order_status: "PENDING" },
+          {
+            id: "r1",
+            kind: "return",
+            recipient_summary: "Globex",
+            document_ref: "pro-220",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "r2",
+            kind: "return",
+            recipient_summary: "Stark",
+            document_ref: "pro-unknown",
+            order_status: "PENDING",
+          },
         ],
       },
       invoices: [{ id: "pro-220", number: "PRO-2026-0007" }],
     })
     const { rows } = await returnsList(ctx)
-    expect(rows.find((r) => r.id === "r1")).toMatchObject({ proforma_ref: "pro-220", proforma_number: "PRO-2026-0007" })
+    expect(rows.find((r) => r.id === "r1")).toMatchObject({
+      proforma_ref: "pro-220",
+      proforma_number: "PRO-2026-0007",
+    })
     // Unresolvable: no number, and the UI shows a neutral label rather than the id.
     expect(rows.find((r) => r.id === "r2")?.proforma_number).toBeNull()
   })
@@ -503,7 +845,13 @@ describe("returnsList", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "r9", kind: "return", recipient_summary: "Waiting", order_status: "CONFIRMED", documents: [] },
+          {
+            id: "r9",
+            kind: "return",
+            recipient_summary: "Waiting",
+            order_status: "CONFIRMED",
+            documents: [],
+          },
         ],
       },
     })
@@ -514,9 +862,28 @@ describe("returnsList", () => {
 
 // toPrepareList exercises the shipmentDraftCreate resolver per candidate. We seed
 // the catalog + app_config sender and route documents_get through the stub.
-const SENDER_CONFIG = { id: "cfg1", key: "sender_address", value: JSON.stringify({ name: "Fabrikam", phone: "+33100000000", street: "1 rue", city: "Paris", postalCode: "75001", countryIsoCode: "FR" }) }
+const SENDER_CONFIG = {
+  id: "cfg1",
+  key: "sender_address",
+  value: JSON.stringify({
+    name: "Fabrikam",
+    phone: "+33100000000",
+    street: "1 rue",
+    city: "Paris",
+    postalCode: "75001",
+    countryIsoCode: "FR",
+  }),
+}
 
-function invoiceDoc(over: Partial<{ id: string; counterparty_country: string; counterparty_name: string; lines: unknown[]; requires_hs_code: boolean | null }> = {}) {
+function invoiceDoc(
+  over: Partial<{
+    id: string
+    counterparty_country: string
+    counterparty_name: string
+    lines: unknown[]
+    requires_hs_code: boolean | null
+  }> = {},
+) {
   return {
     id: over.id ?? "inv-x",
     currency: "EUR",
@@ -525,7 +892,17 @@ function invoiceDoc(over: Partial<{ id: string; counterparty_country: string; co
     counterparty_name: over.counterparty_name ?? "Globex US",
     requires_hs_code: over.requires_hs_code === undefined ? true : over.requires_hs_code,
     lines: over.lines ?? [
-      { id: "l1", description: "Kestrel 2", quantity: 1, unit_price_minor: "59900", hs_code: "92071000", country_of_origin: "FR", customs_description: "Controller", product_source: "shopify", external_id: "V1" },
+      {
+        id: "l1",
+        description: "Kestrel 2",
+        quantity: 1,
+        unit_price_minor: "59900",
+        hs_code: "92071000",
+        country_of_origin: "FR",
+        customs_description: "Controller",
+        product_source: "shopify",
+        external_id: "V1",
+      },
     ],
   }
 }
@@ -536,7 +913,12 @@ describe("toPrepareList", () => {
       seed: { app_config: [SENDER_CONFIG] },
       invoices: [
         { id: "inv-shop", counterparty_name: "Globex US", counterparty_country: "US" },
-        { id: "inv-repair", channel: "manual", counterparty_name: "Adam Lindsay", counterparty_country: "AU" },
+        {
+          id: "inv-repair",
+          channel: "manual",
+          counterparty_name: "Adam Lindsay",
+          counterparty_country: "AU",
+        },
       ],
       docs: invoiceDoc({ id: "inv-shop" }),
     })
@@ -558,7 +940,12 @@ describe("toPrepareList", () => {
           counterparty_country: "CA",
           lines: [{ product_source: null }],
         } as never,
-        { id: "inv-goods", counterparty_name: "Globex US", counterparty_country: "US", lines: [{ product_source: "shopify" }] } as never,
+        {
+          id: "inv-goods",
+          counterparty_name: "Globex US",
+          counterparty_country: "US",
+          lines: [{ product_source: "shopify" }],
+        } as never,
       ],
       docs: invoiceDoc({ id: "inv-goods" }),
     })
@@ -573,14 +960,36 @@ describe("toPrepareList", () => {
     const ctx = makeCtx({
       seed: { app_config: [SENDER_CONFIG] },
       invoices: [{ id: "inv-svc", counterparty_name: "Consulting Co", counterparty_country: "FR" }],
-      docs: invoiceDoc({ id: "inv-svc", lines: [{ id: "l1", line_kind: "software", description: "Consulting", quantity: 1, unit_price_minor: "10000", hs_code: null, country_of_origin: null, customs_description: null, product_source: null, external_id: null }] }),
+      docs: invoiceDoc({
+        id: "inv-svc",
+        lines: [
+          {
+            id: "l1",
+            line_kind: "software",
+            description: "Consulting",
+            quantity: 1,
+            unit_price_minor: "10000",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+            product_source: null,
+            external_id: null,
+          },
+        ],
+      }),
     })
     const { rows } = await toPrepareList(ctx)
     // Previously dropped as "services-only" — but the badge estimate counts every
     // unlinked issued invoice, so a dropped row makes the badge point at an empty
     // list (free-text/backfilled invoices hit this constantly). Now a blocked row.
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: "inv-svc", customer: "Consulting Co", destination: "FR", prep_status: "needs_fix", reason: "No shippable lines" })
+    expect(rows[0]).toMatchObject({
+      id: "inv-svc",
+      customer: "Consulting Co",
+      destination: "FR",
+      prep_status: "needs_fix",
+      reason: "No shippable lines",
+    })
   })
 
   it("flags a physical line with no shipping profile as needs-fix (Unresolved pack)", async () => {
@@ -591,7 +1000,12 @@ describe("toPrepareList", () => {
     })
     const { rows } = await toPrepareList(ctx)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: "inv-x", customer: "Globex US", destination: "US", prep_status: "needs_fix" })
+    expect(rows[0]).toMatchObject({
+      id: "inv-x",
+      customer: "Globex US",
+      destination: "US",
+      prep_status: "needs_fix",
+    })
     expect(rows[0]!.reason).toMatch(/Unresolved pack|Missing/)
   })
 
@@ -600,7 +1014,10 @@ describe("toPrepareList", () => {
   // LIVE scan path (toPrepareList's default), since that path never dropped an order row before.
   it("a live scan drops an order row whose shipment is already live", async () => {
     const ctx = makeCtx({
-      seed: { app_config: [SENDER_CONFIG], shipment: [{ id: "s1", document_ref: "inv-x", order_status: "PENDING" }] },
+      seed: {
+        app_config: [SENDER_CONFIG],
+        shipment: [{ id: "s1", document_ref: "inv-x", order_status: "PENDING" }],
+      },
       invoices: [{ id: "inv-x", counterparty_name: "Globex", counterparty_country: "US" }],
       docs: invoiceDoc({ id: "inv-x" }),
     })
@@ -635,41 +1052,131 @@ describe("toPrepareList", () => {
       seed: {
         app_config: [SENDER_CONFIG],
         // profile resolves a parcel (weight + dims), so the line is NOT parcel-unresolved …
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
       invoices: [{ id: "inv-x", counterparty_name: "Globex US", counterparty_country: "US" }],
       // … but the export customs article has no hs_code → incomplete.
-      docs: invoiceDoc({ id: "inv-x", lines: [{ id: "l1", description: "Kestrel 2", quantity: 1, unit_price_minor: "59900", hs_code: null, country_of_origin: "FR", customs_description: "Controller", product_source: "shopify", external_id: "V1" }] }),
+      docs: invoiceDoc({
+        id: "inv-x",
+        lines: [
+          {
+            id: "l1",
+            description: "Kestrel 2",
+            quantity: 1,
+            unit_price_minor: "59900",
+            hs_code: null,
+            country_of_origin: "FR",
+            customs_description: "Controller",
+            product_source: "shopify",
+            external_id: "V1",
+          },
+        ],
+      }),
     })
     const { rows } = await toPrepareList(ctx)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: "inv-x", prep_status: "needs_fix", reason: "Missing HS code" })
+    expect(rows[0]).toMatchObject({
+      id: "inv-x",
+      prep_status: "needs_fix",
+      reason: "Missing HS code",
+    })
   })
 
   it("flags an export whose customs line has a zero customs value as needs-fix (Missing customs value)", async () => {
     const ctx = makeCtx({
       seed: {
         app_config: [SENDER_CONFIG],
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
-      invoices: [{ id: "inv-x", counterparty_name: "Tokyo Modular KK", counterparty_country: "JP" }],
+      invoices: [
+        { id: "inv-x", counterparty_name: "Tokyo Modular KK", counterparty_country: "JP" },
+      ],
       // hs_code present (so it is NOT a HS-code defect) but the unit price is zero → no customs value.
-      docs: invoiceDoc({ id: "inv-x", lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "0", hs_code: "92079000", country_of_origin: "FR", customs_description: "Instrument", product_source: "shopify", external_id: "V1" }] }),
+      docs: invoiceDoc({
+        id: "inv-x",
+        lines: [
+          {
+            id: "l1",
+            description: "Kestrel 6",
+            quantity: 1,
+            unit_price_minor: "0",
+            hs_code: "92079000",
+            country_of_origin: "FR",
+            customs_description: "Instrument",
+            product_source: "shopify",
+            external_id: "V1",
+          },
+        ],
+      }),
     })
     const { rows } = await toPrepareList(ctx)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id: "inv-x", prep_status: "needs_fix", reason: "Missing customs value" })
+    expect(rows[0]).toMatchObject({
+      id: "inv-x",
+      prep_status: "needs_fix",
+      reason: "Missing customs value",
+    })
   })
 
   it("does NOT apply customs defects to an intra-EU (customs-free) row — it stays ready", async () => {
     const ctx = makeCtx({
       seed: {
         app_config: [SENDER_CONFIG],
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
       invoices: [{ id: "inv-eu", counterparty_name: "Klangbau GmbH", counterparty_country: "DE" }],
       // DE (intra-EU) export, no hs_code — but intra-EU needs no customs, so this is READY not needs-fix.
-      docs: invoiceDoc({ id: "inv-eu", counterparty_country: "DE", requires_hs_code: null, lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", hs_code: null, country_of_origin: null, customs_description: null, product_source: "shopify", external_id: "V1" }] }),
+      docs: invoiceDoc({
+        id: "inv-eu",
+        counterparty_country: "DE",
+        requires_hs_code: null,
+        lines: [
+          {
+            id: "l1",
+            description: "Kestrel 6",
+            quantity: 1,
+            unit_price_minor: "59900",
+            hs_code: null,
+            country_of_origin: null,
+            customs_description: null,
+            product_source: "shopify",
+            external_id: "V1",
+          },
+        ],
+      }),
     })
     const { rows } = await toPrepareList(ctx)
     expect(rows).toHaveLength(1)
@@ -681,7 +1188,18 @@ describe("toPrepareList", () => {
     const ctx = makeCtx({
       seed: {
         app_config: [SENDER_CONFIG],
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
       invoices: [{ id: "inv-x", counterparty_name: "Globex US", counterparty_country: "US" }],
       docs: invoiceDoc({ id: "inv-x" }),
@@ -704,11 +1222,36 @@ describe("toPrepareList", () => {
     const okCtx = makeCtx({
       seed: {
         app_config: [SENDER_CONFIG],
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
       invoices: [{ id: "inv-ok", counterparty_name: "Globex US", counterparty_country: "US" }],
       // intra-EU (DE) so no customs articles are required → resolves clean → ready_to_prepare.
-      docs: invoiceDoc({ id: "inv-ok", counterparty_country: "DE", requires_hs_code: null, lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", product_source: "shopify", external_id: "V1" }] }),
+      docs: invoiceDoc({
+        id: "inv-ok",
+        counterparty_country: "DE",
+        requires_hs_code: null,
+        lines: [
+          {
+            id: "l1",
+            description: "Kestrel 6",
+            quantity: 1,
+            unit_price_minor: "59900",
+            product_source: "shopify",
+            external_id: "V1",
+          },
+        ],
+      }),
     })
     const { rows: okRows } = await toPrepareList(okCtx)
     expect(okRows).toHaveLength(1)
@@ -721,8 +1264,22 @@ describe("toPrepareList", () => {
     // An unprofiled physical line → prep_status "needs_fix", same field-shape guarantees.
     const badCtx = makeCtx({
       seed: { app_config: [SENDER_CONFIG] }, // no shipping_profile → the line never resolves
-      invoices: [{ id: "inv-bad", counterparty_name: "Acme NoProfile", counterparty_country: "US" }],
-      docs: invoiceDoc({ id: "inv-bad", lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", product_source: "shopify", external_id: "V-NONE" }] }),
+      invoices: [
+        { id: "inv-bad", counterparty_name: "Acme NoProfile", counterparty_country: "US" },
+      ],
+      docs: invoiceDoc({
+        id: "inv-bad",
+        lines: [
+          {
+            id: "l1",
+            description: "Kestrel 6",
+            quantity: 1,
+            unit_price_minor: "59900",
+            product_source: "shopify",
+            external_id: "V-NONE",
+          },
+        ],
+      }),
     })
     const { rows: badRows } = await toPrepareList(badCtx)
     expect(badRows).toHaveLength(1)
@@ -745,23 +1302,101 @@ describe("toPrepareList", () => {
       seed: {
         app_config: [SENDER_CONFIG],
         // ONE good profile (resolves V1) → the V1 export is READY; V-MISS has no profile → needs_fix.
-        shipping_profile: [{ id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.8, solo_length: 30, solo_width: 20, solo_height: 12, content_category: "content:v1:50360" }],
+        shipping_profile: [
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.8,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 12,
+            content_category: "content:v1:50360",
+          },
+        ],
       },
       invoices: [
         { id: "inv-ready-eu", counterparty_name: "Paris Modular", counterparty_country: "FR" },
         { id: "inv-ready-export", counterparty_name: "Boston Modular", counterparty_country: "US" },
-        { id: "inv-needsfix-hs", counterparty_name: "Manchester Modular", counterparty_country: "GB" },
-        { id: "inv-needsfix-profile", counterparty_name: "Osaka Modular", counterparty_country: "JP" },
+        {
+          id: "inv-needsfix-hs",
+          counterparty_name: "Manchester Modular",
+          counterparty_country: "GB",
+        },
+        {
+          id: "inv-needsfix-profile",
+          counterparty_name: "Osaka Modular",
+          counterparty_country: "JP",
+        },
       ],
       docs: [
         // intra-EU customs-free, V1 resolves → READY
-        invoiceDoc({ id: "inv-ready-eu", counterparty_country: "FR", requires_hs_code: null, lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", product_source: "shopify", external_id: "V1" }] }),
+        invoiceDoc({
+          id: "inv-ready-eu",
+          counterparty_country: "FR",
+          requires_hs_code: null,
+          lines: [
+            {
+              id: "l1",
+              description: "Kestrel 6",
+              quantity: 1,
+              unit_price_minor: "59900",
+              product_source: "shopify",
+              external_id: "V1",
+            },
+          ],
+        }),
         // US export, full customs snapshot, V1 resolves → READY
-        invoiceDoc({ id: "inv-ready-export", counterparty_country: "US", lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", hs_code: "92079000", country_of_origin: "FR", customs_description: "Instrument", product_source: "shopify", external_id: "V1" }] }),
+        invoiceDoc({
+          id: "inv-ready-export",
+          counterparty_country: "US",
+          lines: [
+            {
+              id: "l1",
+              description: "Kestrel 6",
+              quantity: 1,
+              unit_price_minor: "59900",
+              hs_code: "92079000",
+              country_of_origin: "FR",
+              customs_description: "Instrument",
+              product_source: "shopify",
+              external_id: "V1",
+            },
+          ],
+        }),
         // GB export missing its HS code → needs_fix (Missing HS code)
-        invoiceDoc({ id: "inv-needsfix-hs", counterparty_country: "GB", lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", hs_code: null, country_of_origin: "FR", customs_description: "Instrument", product_source: "shopify", external_id: "V1" }] }),
+        invoiceDoc({
+          id: "inv-needsfix-hs",
+          counterparty_country: "GB",
+          lines: [
+            {
+              id: "l1",
+              description: "Kestrel 6",
+              quantity: 1,
+              unit_price_minor: "59900",
+              hs_code: null,
+              country_of_origin: "FR",
+              customs_description: "Instrument",
+              product_source: "shopify",
+              external_id: "V1",
+            },
+          ],
+        }),
         // JP export whose line has no resolving profile (V-MISS) → needs_fix (Unresolved pack)
-        invoiceDoc({ id: "inv-needsfix-profile", counterparty_country: "JP", lines: [{ id: "l1", description: "Kestrel 6", quantity: 1, unit_price_minor: "59900", product_source: "shopify", external_id: "V-MISS" }] }),
+        invoiceDoc({
+          id: "inv-needsfix-profile",
+          counterparty_country: "JP",
+          lines: [
+            {
+              id: "l1",
+              description: "Kestrel 6",
+              quantity: 1,
+              unit_price_minor: "59900",
+              product_source: "shopify",
+              external_id: "V-MISS",
+            },
+          ],
+        }),
       ],
     })
     const out = await toPrepareList(ctx)
@@ -785,7 +1420,9 @@ describe("toPrepareList", () => {
 
     // Every ready row really is ready_to_prepare; every needs_fix row carries a reason.
     expect(out.ready_to_prepare.every((r) => r.prep_status === "ready_to_prepare")).toBe(true)
-    expect(out.needs_fix.every((r) => r.prep_status === "needs_fix" && typeof r.reason === "string")).toBe(true)
+    expect(
+      out.needs_fix.every((r) => r.prep_status === "needs_fix" && typeof r.reason === "string"),
+    ).toBe(true)
   })
 })
 
@@ -914,10 +1551,36 @@ describe("boxtal exceptions_list", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "S1", tracking_status: "DELIVERED", recipient_summary: "Globex", offer_code: "CHRP", tracking_number: "T1", order_status: "CONFIRMED" },
-          { id: "S2", tracking_status: "INCIDENT", recipient_summary: "Acme", offer_code: "CHRP", tracking_number: "T2", order_status: "CONFIRMED" },
-          { id: "S3", tracking_status: "LOST", recipient_summary: "Stark", offer_code: "MONR", tracking_number: "T3", order_status: "CONFIRMED" },
-          { id: "S4", tracking_status: "IN_TRANSIT", recipient_summary: "Wayne", order_status: "CONFIRMED" },
+          {
+            id: "S1",
+            tracking_status: "DELIVERED",
+            recipient_summary: "Globex",
+            offer_code: "CHRP",
+            tracking_number: "T1",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "S2",
+            tracking_status: "INCIDENT",
+            recipient_summary: "Acme",
+            offer_code: "CHRP",
+            tracking_number: "T2",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "S3",
+            tracking_status: "LOST",
+            recipient_summary: "Stark",
+            offer_code: "MONR",
+            tracking_number: "T3",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "S4",
+            tracking_status: "IN_TRANSIT",
+            recipient_summary: "Wayne",
+            order_status: "CONFIRMED",
+          },
         ],
       },
     })
@@ -936,8 +1599,22 @@ describe("boxtal exceptions_list", () => {
     const ctx = makeCtx({
       seed: {
         shipment: [
-          { id: "E1", tracking_status: "EXCEPTION", external_id: "#EMB-2026-00731", recipient_summary: "Aki Sato", offer_code: "UPS", tracking_number: "1Z-9", order_status: "CONFIRMED" },
-          { id: "E2", tracking_status: "DELIVERED", external_id: "#EMB-2026-00701", recipient_summary: "Healthy", order_status: "CONFIRMED" },
+          {
+            id: "E1",
+            tracking_status: "EXCEPTION",
+            external_id: "#EMB-2026-00731",
+            recipient_summary: "Aki Sato",
+            offer_code: "UPS",
+            tracking_number: "1Z-9",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "E2",
+            tracking_status: "DELIVERED",
+            external_id: "#EMB-2026-00701",
+            recipient_summary: "Healthy",
+            order_status: "CONFIRMED",
+          },
         ],
       },
     })
@@ -981,20 +1658,83 @@ describe("boxtal stuck_list", () => {
       seed: {
         shipment: [
           // family=exception (customs hold) — carries a merchant external_id
-          { id: "X1", tracking_status: "EXCEPTION", external_id: "#ORD-CUSTOMS", boxtal_order_id: "BX-CUST", recipient_summary: "Aki Sato", offer_code: "UPS", tracking_number: "1Z-CUST", order_status: "CONFIRMED" },
+          {
+            id: "X1",
+            tracking_status: "EXCEPTION",
+            external_id: "#ORD-CUSTOMS",
+            boxtal_order_id: "BX-CUST",
+            recipient_summary: "Aki Sato",
+            offer_code: "UPS",
+            tracking_number: "1Z-CUST",
+            order_status: "CONFIRMED",
+          },
           // family=failed_delivery
-          { id: "X2", tracking_status: "FAILED_ATTEMPT", external_id: "#ORD-FAILED", boxtal_order_id: "BX-FAIL", recipient_summary: "Mason Reed", offer_code: "Chronopost", tracking_number: "CHR-FAIL", order_status: "CONFIRMED" },
+          {
+            id: "X2",
+            tracking_status: "FAILED_ATTEMPT",
+            external_id: "#ORD-FAILED",
+            boxtal_order_id: "BX-FAIL",
+            recipient_summary: "Mason Reed",
+            offer_code: "Chronopost",
+            tracking_number: "CHR-FAIL",
+            order_status: "CONFIRMED",
+          },
           // family=pickup_expiring — NO merchant external_id (the exception-sweep fixture shape) → order_ref falls back to boxtal_order_id
-          { id: "X3", tracking_status: "REACHED_DELIVERY_PICKUP_POINT", external_id: null, boxtal_order_id: "BX-PICK", recipient_summary: "Lena Vogt", offer_code: "Mondial Relay", tracking_number: "MR-PICK", order_status: "CONFIRMED" },
+          {
+            id: "X3",
+            tracking_status: "REACHED_DELIVERY_PICKUP_POINT",
+            external_id: null,
+            boxtal_order_id: "BX-PICK",
+            recipient_summary: "Lena Vogt",
+            offer_code: "Mondial Relay",
+            tracking_number: "MR-PICK",
+            order_status: "CONFIRMED",
+          },
           // healthy distractors — MUST NOT appear
-          { id: "H1", tracking_status: "IN_TRANSIT", external_id: "#ORD-IT", recipient_summary: "Healthy InTransit", order_status: "CONFIRMED" },
-          { id: "H2", tracking_status: "OUT_FOR_DELIVERY", external_id: "#ORD-OFD", recipient_summary: "Healthy OFD", order_status: "CONFIRMED" },
-          { id: "H3", tracking_status: "DELIVERED", external_id: "#ORD-DLV", recipient_summary: "Healthy Delivered", order_status: "CONFIRMED" },
-          { id: "H4", tracking_status: "ANNOUNCED", external_id: "#ORD-ANN", recipient_summary: "Healthy Announced", order_status: "CONFIRMED" },
+          {
+            id: "H1",
+            tracking_status: "IN_TRANSIT",
+            external_id: "#ORD-IT",
+            recipient_summary: "Healthy InTransit",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "H2",
+            tracking_status: "OUT_FOR_DELIVERY",
+            external_id: "#ORD-OFD",
+            recipient_summary: "Healthy OFD",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "H3",
+            tracking_status: "DELIVERED",
+            external_id: "#ORD-DLV",
+            recipient_summary: "Healthy Delivered",
+            order_status: "CONFIRMED",
+          },
+          {
+            id: "H4",
+            tracking_status: "ANNOUNCED",
+            external_id: "#ORD-ANN",
+            recipient_summary: "Healthy Announced",
+            order_status: "CONFIRMED",
+          },
           // a CANCELLED exception — MUST NOT appear (no longer in play)
-          { id: "C1", tracking_status: "EXCEPTION", external_id: "#ORD-CXL", recipient_summary: "Cancelled", order_status: "CANCELLED" },
+          {
+            id: "C1",
+            tracking_status: "EXCEPTION",
+            external_id: "#ORD-CXL",
+            recipient_summary: "Cancelled",
+            order_status: "CANCELLED",
+          },
           // a row with no tracking_status — MUST NOT appear
-          { id: "N1", tracking_status: null, external_id: "#ORD-NULL", recipient_summary: "No status", order_status: "CONFIRMED" },
+          {
+            id: "N1",
+            tracking_status: null,
+            external_id: "#ORD-NULL",
+            recipient_summary: "No status",
+            order_status: "CONFIRMED",
+          },
         ],
       },
     })
@@ -1028,9 +1768,27 @@ describe("boxtal stuck_list", () => {
   it("is a strict SUPERSET of exceptions_list (catches FAILED_ATTEMPT + pickup-expiring exceptions_list misses)", async () => {
     const seed = {
       shipment: [
-        { id: "E1", tracking_status: "EXCEPTION", external_id: "#A", recipient_summary: "Customs", order_status: "CONFIRMED" },
-        { id: "F1", tracking_status: "FAILED_ATTEMPT", external_id: "#B", recipient_summary: "Failed", order_status: "CONFIRMED" },
-        { id: "P1", tracking_status: "REACHED_DELIVERY_PICKUP_POINT", external_id: "#C", recipient_summary: "Pickup", order_status: "CONFIRMED" },
+        {
+          id: "E1",
+          tracking_status: "EXCEPTION",
+          external_id: "#A",
+          recipient_summary: "Customs",
+          order_status: "CONFIRMED",
+        },
+        {
+          id: "F1",
+          tracking_status: "FAILED_ATTEMPT",
+          external_id: "#B",
+          recipient_summary: "Failed",
+          order_status: "CONFIRMED",
+        },
+        {
+          id: "P1",
+          tracking_status: "REACHED_DELIVERY_PICKUP_POINT",
+          external_id: "#C",
+          recipient_summary: "Pickup",
+          order_status: "CONFIRMED",
+        },
       ],
     }
     const exc = await exceptionsList(makeCtx({ seed }))
@@ -1188,14 +1946,51 @@ describe("readyList: the documents the org's document rules ask for", () => {
       seed: {
         shipment: [
           // A plate-only parcel to the US: the snapshot carries its SKU.
-          { id: "p1", order_status: "CONFIRMED", recipient_summary: "US buyer", offer_code: "FEDX-InternationalEconomy", document_ref: "inv-1", queue_facts: { destination: "US", products: "1xMP", skus: ["SKU-PLATE"], carrier_family: "fedex" } },
+          {
+            id: "p1",
+            order_status: "CONFIRMED",
+            recipient_summary: "US buyer",
+            offer_code: "FEDX-InternationalEconomy",
+            document_ref: "inv-1",
+            queue_facts: {
+              destination: "US",
+              products: "1xMP",
+              skus: ["SKU-PLATE"],
+              carrier_family: "fedex",
+            },
+          },
           // The same, bought before SKUs were kept: no skus sent, never a throw.
-          { id: "p2", order_status: "CONFIRMED", recipient_summary: "Old row", offer_code: "UPSE-StandardAP", document_ref: "inv-2", queue_facts: { destination: "US" } },
-          { id: "p3", order_status: "PENDING", recipient_summary: "EU buyer", document_ref: "inv-3", queue_facts: { destination: "DE", skus: ["SKU-PLATE"] } },
+          {
+            id: "p2",
+            order_status: "CONFIRMED",
+            recipient_summary: "Old row",
+            offer_code: "UPSE-StandardAP",
+            document_ref: "inv-2",
+            queue_facts: { destination: "US" },
+          },
+          {
+            id: "p3",
+            order_status: "PENDING",
+            recipient_summary: "EU buyer",
+            document_ref: "inv-3",
+            queue_facts: { destination: "DE", skus: ["SKU-PLATE"] },
+          },
           // Billed to FR, shipped to the US: the rule must see the US.
-          { id: "p4", order_status: "CONFIRMED", recipient_summary: "FR billed", document_ref: "inv-4", queue_facts: { destination: "FR", to_country: "US", skus: ["SKU-PLATE"] } },
+          {
+            id: "p4",
+            order_status: "CONFIRMED",
+            recipient_summary: "FR billed",
+            document_ref: "inv-4",
+            queue_facts: { destination: "FR", to_country: "US", skus: ["SKU-PLATE"] },
+          },
           // Billed and shipped to FR: the rule must not see the US.
-          { id: "p5", order_status: "CONFIRMED", recipient_summary: "FR shipped", document_ref: "inv-5", queue_facts: { destination: "FR", to_country: "FR", skus: ["SKU-PLATE"] } },
+          {
+            id: "p5",
+            order_status: "CONFIRMED",
+            recipient_summary: "FR shipped",
+            document_ref: "inv-5",
+            queue_facts: { destination: "FR", to_country: "FR", skus: ["SKU-PLATE"] },
+          },
         ],
       },
     })
@@ -1209,7 +2004,11 @@ describe("readyList: the documents the org's document rules ask for", () => {
         const records = args.records as Array<{ id: string; skus?: string[]; countryIso2?: string }>
         const matches = records
           .filter((r) => r.countryIso2 === "US" && (r.skus ?? []).includes("SKU-PLATE"))
-          .map((r) => ({ recordId: r.id, rules: [{ id: "rule-1", name: "Plate to the US" }], templates: [TSCA, STEEL, SMELT] }))
+          .map((r) => ({
+            recordId: r.id,
+            rules: [{ id: "rule-1", name: "Plate to the US" }],
+            templates: [TSCA, STEEL, SMELT],
+          }))
         return { status: "completed", result: { matches } } satisfies CrossAppEnvelope
       }) as BoxtalToolCtx["executeTool"],
     }
@@ -1223,11 +2022,25 @@ describe("readyList: the documents the org's document rules ask for", () => {
     // the row's goods invoice.
     expect(calls.map((c) => c.args.recordType)).toEqual(["boxtal:shipment", "boxtal:order"])
     const orders = calls[1]!.args.records as Array<Record<string, unknown>>
-    expect(orders.find((r) => r.id === "inv-1")).toEqual({ id: "inv-1", skus: ["SKU-PLATE"], countryIso2: "US", carrier_family: "fedex" })
+    expect(orders.find((r) => r.id === "inv-1")).toEqual({
+      id: "inv-1",
+      skus: ["SKU-PLATE"],
+      countryIso2: "US",
+      carrier_family: "fedex",
+    })
     const records = calls[0]!.args.records as Array<Record<string, unknown>>
-    expect(records.find((r) => r.id === "p1")).toEqual({ id: "p1", skus: ["SKU-PLATE"], countryIso2: "US", carrier_family: "fedex" })
+    expect(records.find((r) => r.id === "p1")).toEqual({
+      id: "p1",
+      skus: ["SKU-PLATE"],
+      countryIso2: "US",
+      carrier_family: "fedex",
+    })
     // The old row sends no SKUs; its carrier family comes from its (unchanging) offer code.
-    expect(records.find((r) => r.id === "p2")).toEqual({ id: "p2", countryIso2: "US", carrier_family: "ups" })
+    expect(records.find((r) => r.id === "p2")).toEqual({
+      id: "p2",
+      countryIso2: "US",
+      carrier_family: "ups",
+    })
   })
 
   it("a plate-only US parcel gets ONE mark naming the three templates, and their ids for the print control", async () => {
@@ -1235,7 +2048,11 @@ describe("readyList: the documents the org's document rules ask for", () => {
     const { rows } = await readyList(ctx)
     const p1 = rows.find((r) => r.id === "p1")!
     expect(p1.attention).not.toBeNull()
-    expect(p1.attention!.documents.map((d) => d.template_id)).toEqual(["tpl-tsca", "tpl-steel", "tpl-smelt"])
+    expect(p1.attention!.documents.map((d) => d.template_id)).toEqual([
+      "tpl-tsca",
+      "tpl-steel",
+      "tpl-smelt",
+    ])
     expect(p1.attention!.rules).toEqual(["Plate to the US"])
     expect(p1.attention!.summary).toBe(
       "Needs: TSCA certificate, Steel content statement, Smelt and cast declaration (Plate to the US)",

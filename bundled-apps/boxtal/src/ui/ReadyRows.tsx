@@ -7,10 +7,13 @@
 // They are rows of the ONE worklist table (PrepGrid.tsx), beside the orders still to prepare, with
 // their state on every row. This file owns their data (createReadyWorklist) and their row
 // (ReadyRowView); it composes only the shared Boxtal kit and the kernel's theme tokens.
-import { type Component, createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
-import { app } from "@liaison/host"
+
 import { ConfirmDialog } from "@liaison/app-ui/kit"
 import { PrintDocuments } from "@liaison/app-ui/print-documents"
+import { app } from "@liaison/host"
+import { type Component, createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
+import { countryName } from "./country"
+import { loadFileInto, openPreparingTab } from "./file-open"
 import {
   Button,
   CategoryBadge,
@@ -22,14 +25,27 @@ import {
   Money,
   OrderStatusBadge,
 } from "./kit"
-import { loadFileInto, openPreparingTab } from "./file-open"
 import { keepUnchangedRows, rowTintClass } from "./prep-row-logic"
-import { countryName } from "./country"
-import { packedToggleAction, READY_STATE_LABELS, readyRowClass, readyRowState } from "./worklist-logic"
+import {
+  packedToggleAction,
+  READY_STATE_LABELS,
+  readyRowClass,
+  readyRowState,
+} from "./worklist-logic"
 
 // ── Icons (inline, theme-colored via currentColor) ────────────────────────────
 const PrinterIcon: Component = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <svg
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
     <polyline points="6 9 6 2 18 2 18 9" />
     <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
     <rect x="6" y="14" width="12" height="8" />
@@ -37,14 +53,34 @@ const PrinterIcon: Component = () => (
 )
 
 const PaperclipIcon: Component = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <svg
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
   </svg>
 )
 
 /** The attention mark's glyph: a triangle, the one shape that already means "check this". */
 const AlertIcon: Component = () => (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <svg
+    width="11"
+    height="11"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
     <line x1="12" y1="9" x2="12" y2="13" />
     <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -67,7 +103,10 @@ const PackedOffIcon: Component = () => (
  *  theme's success token colour the whole glyph. */
 const PackedOnIcon: Component = () => (
   <svg width="13" height="13" viewBox="0 0 255.12 255.1" fill="currentColor" aria-hidden="true">
-    <path fill-opacity="0.3" d="M181.28,247.92H16.19c-4.96,0-9.01-2.76-9.01-8.09V70.45S67.59,9.64,67.59,9.64c1.2-1.21,3.72-2.06,5.65-2.46l167.52.05c4.1,0,7.16,4.16,7.16,7.99v169.64s-60.39,60.57-60.39,60.57c-1.3,1.31-3.53,2.02-6.26,2.49Z" />
+    <path
+      fill-opacity="0.3"
+      d="M181.28,247.92H16.19c-4.96,0-9.01-2.76-9.01-8.09V70.45S67.59,9.64,67.59,9.64c1.2-1.21,3.72-2.06,5.65-2.46l167.52.05c4.1,0,7.16,4.16,7.16,7.99v169.64s-60.39,60.57-60.39,60.57c-1.3,1.31-3.53,2.02-6.26,2.49Z"
+    />
     <path d="M181.28,247.92H16.19c-4.96,0-9.01-2.76-9.01-8.09V70.45S67.59,9.64,67.59,9.64c1.2-1.21,3.72-2.06,5.65-2.46l167.52.05c4.1,0,7.16,4.16,7.16,7.99v169.64s-60.39,60.57-60.39,60.57c-1.3,1.31-3.53,2.02-6.26,2.49ZM98.31,71.36l47.69-48.18-68.79-.11-47.93,48.27,69.03.02ZM178.18,71.34l48.21-48.19-68.97-.04-48.01,48.21,68.77.03ZM183.8,225.83l48.05-47.82-.07-148.81-48.07,47.8.09,148.83ZM23.24,79.37v152.61h152.5V79.37H23.24Z" />
     <path d="M159.81,155.62c0,33.28-26.98,60.25-60.25,60.25s-60.25-26.98-60.25-60.25,26.98-60.25,60.25-60.25,60.25,26.98,60.25,60.25ZM143.55,155.83c0-24.43-19.8-44.23-44.23-44.23s-44.23,19.8-44.23,44.23,19.8,44.23,44.23,44.23,44.23-19.8,44.23-44.23Z" />
     <path d="M89.22,174.84l-12.81-12.43c-1.06-1.02-1.24-4.02-.47-5.19s4.74-2.03,5.89-.88l9.77,9.75,24.62-24.92c1.51-1.53,3.9-2.45,5.75-1.56,1.64.79,2.49,4.81,1.04,6.26l-28.64,28.68c-.94.94-4.14,1.3-5.16.31Z" />
@@ -134,7 +173,12 @@ async function fetchReady(): Promise<ReadyRow[]> {
 // ── Batch print: the same two jobs, merged one document per job ──────────────
 interface PrintPackBatchToolResult {
   labels: { file_id: string; filename: string; shipment_count: number } | null
-  invoices: { file_id: string; filename: string; shipment_count: number; page_copies: number } | null
+  invoices: {
+    file_id: string
+    filename: string
+    shipment_count: number
+    page_copies: number
+  } | null
   skipped: Array<{ shipment_id: string; what: string; reason: string }>
   error?: { code: string; message: string }
 }
@@ -157,7 +201,9 @@ export function printPackBatchSummary(res: PrintPackBatchToolResult): string {
   )
   if (res.skipped.length > 0) {
     const rows = new Set(res.skipped.map((s) => s.shipment_id))
-    parts.push(`${rows.size} ${rows.size === 1 ? "row" : "rows"} incomplete: ${res.skipped[0]!.reason}`)
+    parts.push(
+      `${rows.size} ${rows.size === 1 ? "row" : "rows"} incomplete: ${res.skipped[0]!.reason}`,
+    )
   }
   return `${parts.join(". ")}.`
 }
@@ -176,7 +222,9 @@ interface PrintPackToolResult {
  *  (unit-tested in ui-logic.test.tsx). No dash punctuation. */
 export function printPackSummary(res: PrintPackToolResult): string {
   if (res.error) return res.error.message
-  const labelPart = res.label ? "Label: opened (label printer)" : `Label: ${res.label_error ?? "not ready"}`
+  const labelPart = res.label
+    ? "Label: opened (label printer)"
+    : `Label: ${res.label_error ?? "not ready"}`
   const invoicePart = res.invoice.file_id
     ? `Invoice: opened, print ${res.invoice.copies} ${res.invoice.copies === 1 ? "copy" : "copies"} on A4 (${res.invoice.reason === "export_non_eu" ? "export outside EU" : "EU or domestic"})`
     : `Invoice: ${res.invoice_error ?? "unavailable"}`
@@ -291,7 +339,8 @@ export function createReadyWorklist() {
         ...(res.tracking_number ? { tracking_number: res.tracking_number } : {}),
       })
       if (res.notice) setPackStatus((m) => ({ ...m, [row.id]: res.notice as string }))
-      const askNumber = res.error?.code === "no_tracking" || res.error?.code === "invalid_tracking_number"
+      const askNumber =
+        res.error?.code === "no_tracking" || res.error?.code === "invalid_tracking_number"
       setTrackingAsk((m) => ({ ...m, [row.id]: askNumber }))
     } catch (err) {
       patchReadyRow(row.id, {
@@ -307,7 +356,8 @@ export function createReadyWorklist() {
   // selection that survived a reload would be a selection the operator did not make.
   const [selected, setSelected] = createSignal<Record<string, boolean>>({})
   /** The selected rows among those on screen (a row filtered away is never printed). */
-  const selectedIds = (visible: ReadyRow[]): string[] => visible.map((r) => r.id).filter((id) => selected()[id])
+  const selectedIds = (visible: ReadyRow[]): string[] =>
+    visible.map((r) => r.id).filter((id) => selected()[id])
   const allSelected = (visible: ReadyRow[]): boolean =>
     visible.length > 0 && selectedIds(visible).length === visible.length
   const toggleRow = (id: string) => setSelected((m) => ({ ...m, [id]: !m[id] }))
@@ -385,7 +435,9 @@ export function createReadyWorklist() {
       if (!fileId) {
         win?.close()
         throw new Error(
-          which === "label" ? (res.label_error ?? "label not ready") : (res.invoice_error ?? "invoice unavailable"),
+          which === "label"
+            ? (res.label_error ?? "label not ready")
+            : (res.invoice_error ?? "invoice unavailable"),
         )
       }
       await loadFileInto(fileId, win, which)
@@ -451,7 +503,9 @@ export const ReadyUnpackDialog: Component<{ ready: ReadyWorklist }> = (props) =>
 )
 
 /** Select all over the bought labels on screen, and the batch print once something is selected. */
-export const ReadySelectionBar: Component<{ ready: ReadyWorklist; visible: ReadyRow[] }> = (props) => {
+export const ReadySelectionBar: Component<{ ready: ReadyWorklist; visible: ReadyRow[] }> = (
+  props,
+) => {
   const r = props.ready
   return (
     <div class="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-1.5 text-[11px] text-text-secondary">
@@ -478,9 +532,15 @@ export const ReadySelectionBar: Component<{ ready: ReadyWorklist; visible: Ready
             onClick={() => void r.runBatchPrint(props.visible)}
           >
             <PrinterIcon />
-            <span>{r.batchBusy() ? "Preparing" : `Print ${r.selectedIds(props.visible).length} packs`}</span>
+            <span>
+              {r.batchBusy() ? "Preparing" : `Print ${r.selectedIds(props.visible).length} packs`}
+            </span>
           </Button>
-          <Button variant="ghost" testid="boxtal-ready-batch-clear" onClick={() => r.setSelected({})}>
+          <Button
+            variant="ghost"
+            testid="boxtal-ready-batch-clear"
+            onClick={() => r.setSelected({})}
+          >
             Clear
           </Button>
           <Show when={r.batchStatus()}>
@@ -571,7 +631,10 @@ export const ReadyRowView: Component<{
       <td class={props.cellClass}>
         {/* A held parcel must look held on every row it appears on (the prep grid's rule). */}
         <span
-          class={cx("block max-w-[92px] truncate text-text", props.row.status === "on_hold" ? rowTintClass(props.row.status, false) : "")}
+          class={cx(
+            "block max-w-[92px] truncate text-text",
+            props.row.status === "on_hold" ? rowTintClass(props.row.status, false) : "",
+          )}
           title={row.recipient}
         >
           {row.recipient}
@@ -581,16 +644,24 @@ export const ReadyRowView: Component<{
         class={cx(props.cellClass, "font-mono text-text-secondary", phoneCell("country"))}
         data-phone-column="country"
       >
-        <span data-testid={`boxtal-ready-country-${row.id}`} title={countryName(props.row.destination)}>
+        <span
+          data-testid={`boxtal-ready-country-${row.id}`}
+          title={countryName(props.row.destination)}
+        >
           {props.row.destination || "-"}
         </span>
       </td>
-      <td class={cx(props.cellClass, "text-text-secondary", phoneCell("products"))} data-phone-column="products">
+      <td
+        class={cx(props.cellClass, "text-text-secondary", phoneCell("products"))}
+        data-phone-column="products"
+      >
         <span class="flex flex-wrap items-center gap-1">
           <span class="flex flex-col leading-[1.3]">
             <span class="tabular-nums">{props.row.items ?? "-"}</span>
             <Show when={props.row.products}>
-              <span class="whitespace-nowrap font-mono text-[10.5px] text-text-tertiary">{props.row.products}</span>
+              <span class="whitespace-nowrap font-mono text-[10.5px] text-text-tertiary">
+                {props.row.products}
+              </span>
             </Show>
           </span>
           {/* The paperwork mark: a customs declaration nobody knew was needed becomes a week of
@@ -600,6 +671,7 @@ export const ReadyRowView: Component<{
             <span
               data-testid={`boxtal-ready-attention-${row.id}`}
               title={props.row.attention!.summary}
+              role="img"
               aria-label={props.row.attention!.summary}
               class="inline-flex shrink-0 cursor-help items-center gap-1 rounded-md border border-warning-border bg-warning-glow px-1.5 py-0.5 text-[10.5px] font-medium leading-none text-warning"
             >
@@ -636,12 +708,17 @@ export const ReadyRowView: Component<{
                     >
                       Tracking to confirm
                       <Show when={props.row.shipment_ref}>
-                        <span class="ml-1 font-mono text-[10.5px] text-text-tertiary">({props.row.shipment_ref})</span>
+                        <span class="ml-1 font-mono text-[10.5px] text-text-tertiary">
+                          ({props.row.shipment_ref})
+                        </span>
                       </Show>
                     </span>
                   }
                 >
-                  <Show when={props.row.shipment_ref} fallback={<span class="text-text-tertiary">{"-"}</span>}>
+                  <Show
+                    when={props.row.shipment_ref}
+                    fallback={<span class="text-text-tertiary">{"-"}</span>}
+                  >
                     <span
                       class="font-mono text-text-tertiary"
                       title="Boxtal shipment reference. The carrier tracking number appears once the carrier acknowledges the parcel."
@@ -659,7 +736,9 @@ export const ReadyRowView: Component<{
           <Show when={props.row.package_count}>
             <span class="font-mono text-[10.5px] tabular-nums text-text-tertiary">
               {`${props.row.package_count} · ${formatQueueParcels(props.row.parcels)}`}
-              <Show when={props.row.weight != null}>{` · ${formatWeight(props.row.weight as number)}`}</Show>
+              <Show
+                when={props.row.weight != null}
+              >{` · ${formatWeight(props.row.weight as number)}`}</Show>
             </span>
           </Show>
         </div>
@@ -669,7 +748,10 @@ export const ReadyRowView: Component<{
       </td>
       <td class={cx(props.cellClass, phoneCell("document"))} data-phone-column="document">
         <span class="flex flex-col items-start gap-0.5 leading-[1.3]">
-          <OrderStatusBadge status={props.row.order_status} testid={`boxtal-ready-status-${row.id}`} />
+          <OrderStatusBadge
+            status={props.row.order_status}
+            testid={`boxtal-ready-status-${row.id}`}
+          />
           <span
             class="block max-w-[120px] truncate whitespace-nowrap font-mono text-text"
             title={props.row.invoice_ref || undefined}
@@ -787,14 +869,21 @@ export const ReadyRowView: Component<{
             testid={`boxtal-print-documents-${row.id}`}
           />
           <Show when={r.packStatus()[row.id]}>
-            <div data-testid={`boxtal-print-status-${row.id}`} class="text-[11px] text-text-tertiary">
+            <div
+              data-testid={`boxtal-print-status-${row.id}`}
+              class="text-[11px] text-text-tertiary"
+            >
               {r.packStatus()[row.id]}
             </div>
           </Show>
           {/* The fulfillment's own failure, explicit on the row: the box refused to stay ticked,
               and this says why. */}
           <Show when={props.row.fulfillment_error}>
-            <div data-testid={`boxtal-ready-fulfillment-error-${row.id}`} role="alert" class="text-[11px] font-medium text-error">
+            <div
+              data-testid={`boxtal-ready-fulfillment-error-${row.id}`}
+              role="alert"
+              class="text-[11px] font-medium text-error"
+            >
               {props.row.fulfillment_error}
             </div>
           </Show>
@@ -834,7 +923,9 @@ export const ReadyRowView: Component<{
               <button
                 data-testid={`boxtal-ready-typed-tracking-submit-${row.id}`}
                 type="submit"
-                disabled={r.packedBusy()[row.id] === true || !(r.typedTracking()[row.id] ?? "").trim()}
+                disabled={
+                  r.packedBusy()[row.id] === true || !(r.typedTracking()[row.id] ?? "").trim()
+                }
                 onClick={(e) => e.stopPropagation()}
                 class="h-7 rounded-md px-2 text-[11.5px] font-medium hover:bg-surface-active disabled:cursor-not-allowed disabled:opacity-50"
               >

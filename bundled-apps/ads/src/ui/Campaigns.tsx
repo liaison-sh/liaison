@@ -1,11 +1,29 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { type Component, createMemo, createResource, createSignal, Show } from "solid-js"
-import { app, navigate } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app, navigate } from "@liaison/host"
+import { type Component, createMemo, createResource, createSignal, Show } from "solid-js"
 import {
-  Badge, Button, Card, ConfirmDialog, cx, EmptyState, MetaIssueNote, Money, PageHeader, SectionLabel, StatusBadge,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  cx,
+  EmptyState,
+  MetaIssueNote,
+  Money,
+  PageHeader,
+  SectionLabel,
+  StatusBadge,
 } from "./kit"
-import { budgetMinorToMajor, type MetaIssue, metaIssueFromError, toolData, toolErrorCode, toolRows } from "./ui-logic"
+import {
+  budgetMinorToMajor,
+  type MetaIssue,
+  metaIssueFromError,
+  toolData,
+  toolErrorCode,
+  toolRows,
+} from "./ui-logic"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -61,10 +79,13 @@ interface GoogleCampaignsResult {
 // Google status → delivery tone. ENABLED delivers; PAUSED/REMOVED do not.
 function googleStatusTone(status: string): "success" | "muted" | "neutral" {
   switch (status) {
-    case "ENABLED": return "success"
+    case "ENABLED":
+      return "success"
     case "PAUSED":
-    case "REMOVED": return "muted"
-    default: return "neutral"
+    case "REMOVED":
+      return "muted"
+    default:
+      return "neutral"
   }
 }
 
@@ -80,13 +101,25 @@ export const CampaignDetailPanel: Component<{
   // cid resolves from either the kernel detail mount (props.id) or inline seed (props.campaignRow.id)
   const cid = createMemo(() => props.campaignRow?.id ?? props.id ?? null)
 
-  const [acct] = app.createResource(() => app.invokeTool<AccountInfo>("account_info", {}).catch(() => null))
-  const [adsets] = createResource(cid, (id) => app.invokeTool<{ data: AdSetRow[] }>("adsets_list", { campaign_id: id }).catch(() => null))
-  const [ads] = createResource(cid, (id) => app.invokeTool<{ data: AdRow[] }>("ads_list", { campaign_id: id }).catch(() => null))
+  const [acct] = app.createResource(() =>
+    app.invokeTool<AccountInfo>("account_info", {}).catch(() => null),
+  )
+  const [adsets] = createResource(cid, (id) =>
+    app.invokeTool<{ data: AdSetRow[] }>("adsets_list", { campaign_id: id }).catch(() => null),
+  )
+  const [ads] = createResource(cid, (id) =>
+    app.invokeTool<{ data: AdRow[] }>("ads_list", { campaign_id: id }).catch(() => null),
+  )
   const adsetRows = createMemo(() => toolRows<AdSetRow>(adsets()))
   const adRows = createMemo(() => toolRows<AdRow>(ads()))
   const [insights] = createResource(cid, (id) =>
-    app.invokeTool<{ data: unknown[] }>("insights_query", { level: "campaign", date_preset: "last_30d", campaign_id: id }).catch(() => null)
+    app
+      .invokeTool<{ data: unknown[] }>("insights_query", {
+        level: "campaign",
+        date_preset: "last_30d",
+        campaign_id: id,
+      })
+      .catch(() => null),
   )
 
   const [pauseOpen, setPauseOpen] = createSignal(false)
@@ -138,7 +171,9 @@ export const CampaignDetailPanel: Component<{
       setBusy(true)
       setNote(null)
       try {
-        const res = await app.invokeTool<{ blocked?: { reason?: string } }>("pause", { object_id: id })
+        const res = await app.invokeTool<{ blocked?: { reason?: string } }>("pause", {
+          object_id: id,
+        })
         if (res && typeof res === "object" && "blocked" in res && res.blocked) {
           setNote({ kind: "ok", text: "Pause requested: pending approval" })
         } else {
@@ -164,7 +199,9 @@ export const CampaignDetailPanel: Component<{
     <Show
       when={cid()}
       keyed
-      fallback={<EmptyState title="No campaign selected">Pick a campaign from the list.</EmptyState>}
+      fallback={
+        <EmptyState title="No campaign selected">Pick a campaign from the list.</EmptyState>
+      }
     >
       {(id) => (
         <div
@@ -212,7 +249,10 @@ export const CampaignDetailPanel: Component<{
             confirmLabel="Pause"
             danger
             busy={busy()}
-            onConfirm={() => { setPauseOpen(false); doPause() }}
+            onConfirm={() => {
+              setPauseOpen(false)
+              doPause()
+            }}
             onCancel={() => setPauseOpen(false)}
           />
           <ConfirmDialog
@@ -221,14 +261,20 @@ export const CampaignDetailPanel: Component<{
             body="This restarts spend."
             confirmLabel="Resume"
             busy={busy()}
-            onConfirm={() => { setResumeOpen(false); doResume() }}
+            onConfirm={() => {
+              setResumeOpen(false)
+              doResume()
+            }}
             onCancel={() => setResumeOpen(false)}
           />
 
           {/* Ad sets */}
           <Card>
             <SectionLabel>Ad Sets</SectionLabel>
-            <Show when={adsetRows().length > 0} fallback={<span class="text-[12px] text-text-tertiary">No ad sets.</span>}>
+            <Show
+              when={adsetRows().length > 0}
+              fallback={<span class="text-[12px] text-text-tertiary">No ad sets.</span>}
+            >
               <CardTable
                 rows={adsetRows()}
                 rowKey={(s) => s.id}
@@ -248,7 +294,10 @@ export const CampaignDetailPanel: Component<{
                       numeric: true,
                       cell: (s) => (
                         <Money
-                          value={budgetMinorToMajor(s.daily_budget ?? s.lifetime_budget ?? null, currency())}
+                          value={budgetMinorToMajor(
+                            s.daily_budget ?? s.lifetime_budget ?? null,
+                            currency(),
+                          )}
                           currency={currency()}
                         />
                       ),
@@ -284,7 +333,10 @@ export const CampaignsTab: Component = () => {
   const [acct, { refetch: refetchAcct }] = app.createResource(() =>
     app
       .invokeTool<AccountInfo>("account_info", {})
-      .then((r) => { setAcctIssue(null); return r })
+      .then((r) => {
+        setAcctIssue(null)
+        return r
+      })
       .catch((e) => {
         setAcctIssue(toolErrorCode(e) === "meta_not_connected" ? null : metaIssueFromError(e))
         return null
@@ -294,8 +346,14 @@ export const CampaignsTab: Component = () => {
   const [rows, { refetch }] = app.createResource(() =>
     app
       .invokeTool<{ data: CampaignRow[] }>("campaigns_list", {})
-      .then((r) => { setListIssue(null); return r })
-      .catch((e) => { setListIssue(metaIssueFromError(e)); return null }),
+      .then((r) => {
+        setListIssue(null)
+        return r
+      })
+      .catch((e) => {
+        setListIssue(metaIssueFromError(e))
+        return null
+      }),
   )
   // Accordion: id of the expanded row, or null (collapsed). Clicking a row
   // toggles its inline detail; only one row is expanded at a time.
@@ -307,13 +365,17 @@ export const CampaignsTab: Component = () => {
   // (never throws), so a bare .catch here only guards a genuine transport
   // failure; the "not connected" note is driven by the returned error code.
   const [googleAcct] = app.createResource(() =>
-    app.invokeTool<{ currency?: string; error?: { code?: string } }>("google_account_info", {}).catch(() => null),
+    app
+      .invokeTool<{ currency?: string; error?: { code?: string } }>("google_account_info", {})
+      .catch(() => null),
   )
   const [google] = app.createResource(() =>
     app.invokeTool<GoogleCampaignsResult>("google_campaigns_list", {}).catch(() => null),
   )
   const googleNotConnected = createMemo(
-    () => google()?.error?.code === "google_not_connected" || googleAcct()?.error?.code === "google_not_connected",
+    () =>
+      google()?.error?.code === "google_not_connected" ||
+      googleAcct()?.error?.code === "google_not_connected",
   )
   const googleRows = createMemo<GoogleCampaignRow[]>(() =>
     toolRows<GoogleCampaignRow>(google(), "campaigns"),
@@ -330,13 +392,17 @@ export const CampaignsTab: Component = () => {
   // read: without this, a workspace with nothing connected skipped the connect
   // prompt and painted an empty campaigns table instead.
   const noAccount = createMemo(
-    () => !acctIssue() && (acct.error !== undefined || (!acct.loading && toolData(acct()) === null)),
+    () =>
+      !acctIssue() && (acct.error !== undefined || (!acct.loading && toolData(acct()) === null)),
   )
   const metaIssue = createMemo(() => acctIssue() ?? listIssue())
 
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <PageHeader title="Campaigns" subtitle="Ad campaigns with effective delivery status and budget" />
+      <PageHeader
+        title="Campaigns"
+        subtitle="Ad campaigns with effective delivery status and budget"
+      />
       <Show when={metaIssue()}>
         {(issue) => (
           <MetaIssueNote
@@ -352,7 +418,10 @@ export const CampaignsTab: Component = () => {
       </Show>
       <Show when={noAccount()}>
         <div class="p-4 text-[13px] text-text-secondary">
-          No Meta Ads connection. <a href="/settings/apps/ads" class="text-accent underline">Connect in Settings</a>
+          No Meta Ads connection.{" "}
+          <a href="/settings/apps/ads" class="text-accent underline">
+            Connect in Settings
+          </a>
         </div>
       </Show>
       <div class="min-h-0 flex-1 overflow-y-auto">
@@ -363,7 +432,7 @@ export const CampaignsTab: Component = () => {
             <SectionLabel>Meta Ads</SectionLabel>
           </div>
           <Show
-            when={(visible()).length > 0}
+            when={visible().length > 0}
             fallback={
               <Show when={!metaIssue()}>
                 <EmptyState title="No campaigns yet">Create a campaign in Ads Manager.</EmptyState>
@@ -385,7 +454,11 @@ export const CampaignsTab: Component = () => {
                       data-testid={`ads-campaign-detail-row-${r.id}`}
                       class="border-t border-border-subtle bg-elevated"
                     >
-                      <CampaignDetailPanel inline campaignRow={r} onChanged={() => void refetch()} />
+                      <CampaignDetailPanel
+                        inline
+                        campaignRow={r}
+                        onChanged={() => void refetch()}
+                      />
                     </div>
                   ) : null
                 }
@@ -421,7 +494,10 @@ export const CampaignsTab: Component = () => {
                           fallback={<span class="text-text-tertiary">-</span>}
                         >
                           <Money
-                            value={budgetMinorToMajor(r.daily_budget ?? r.lifetime_budget ?? null, currency())}
+                            value={budgetMinorToMajor(
+                              r.daily_budget ?? r.lifetime_budget ?? null,
+                              currency(),
+                            )}
                             currency={currency()}
                           />
                         </Show>
@@ -461,8 +537,14 @@ export const CampaignsTab: Component = () => {
         <Show
           when={!googleNotConnected()}
           fallback={
-            <div data-testid="ads-google-not-connected" class="px-4 pb-4 text-[12.5px] text-text-tertiary">
-              Google Ads not connected. <a href="/settings/apps/ads" class="text-accent underline">Connect in Settings</a>
+            <div
+              data-testid="ads-google-not-connected"
+              class="px-4 pb-4 text-[12.5px] text-text-tertiary"
+            >
+              Google Ads not connected.{" "}
+              <a href="/settings/apps/ads" class="text-accent underline">
+                Connect in Settings
+              </a>
             </div>
           }
         >

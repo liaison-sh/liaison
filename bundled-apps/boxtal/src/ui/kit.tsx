@@ -30,12 +30,8 @@ export {
   Th,
 } from "@liaison/app-ui/kit"
 
-
 // ── Money / weight ───────────────────────────────────────────────────────────
-export function formatMoney(
-  value: number | string | null | undefined,
-  currency?: string,
-): string {
+export function formatMoney(value: number | string | null | undefined, currency?: string): string {
   if (value === null || value === undefined || value === "") return "-"
   const n = Number(value)
   if (!Number.isFinite(n)) return "-"
@@ -49,8 +45,23 @@ export function formatMoney(
 // Mirrors invoicing/src/money.ts (bundled apps can't share code across the
 // purity boundary) and the boxtal backend's src/money.ts.
 export const ZERO_DECIMAL_CURRENCIES: ReadonlySet<string> = new Set([
-  "BIF", "CLP", "DJF", "GNF", "HUF", "ISK", "JPY", "KMF", "KRW", "PYG",
-  "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "HUF",
+  "ISK",
+  "JPY",
+  "KMF",
+  "KRW",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
 ])
 
 export function currencyExponent(currency: string): number {
@@ -103,7 +114,9 @@ export function formatWeight(kg: number | null | undefined): string {
 }
 
 const humanize = (s: string): string =>
-  s.replace(/_/g, " ").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+  s
+    .replace(/_/g, " ")
+    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
 
 // ── Shipping status → tone (single source of truth) ──────────────────────────
 // Order status: the administrative/label-readiness lifecycle.
@@ -126,18 +139,26 @@ const TRACKING_TONE: Record<string, BadgeTone> = {
   EXCEPTION: "error",
 }
 
-export function orderStatusMeta(status: string | null | undefined): { tone: BadgeTone; label: string } {
+export function orderStatusMeta(status: string | null | undefined): {
+  tone: BadgeTone
+  label: string
+} {
   if (!status) return { tone: "muted", label: "-" }
   return { tone: ORDER_TONE[status] ?? "neutral", label: humanize(status) }
 }
-export function trackingStatusMeta(status: string | null | undefined): { tone: BadgeTone; label: string } {
+export function trackingStatusMeta(status: string | null | undefined): {
+  tone: BadgeTone
+  label: string
+} {
   if (!status) return { tone: "muted", label: "Not shipped" }
   return { tone: TRACKING_TONE[status] ?? "neutral", label: humanize(status) }
 }
 
 // `whitespace-nowrap`: a status badge is an atom. Left to wrap it broke
 // "In transit" over two lines inside a squeezed column and read as blank.
-export const OrderStatusBadge: Component<{ status: string | null | undefined; testid?: string }> = (props) => {
+export const OrderStatusBadge: Component<{ status: string | null | undefined; testid?: string }> = (
+  props,
+) => {
   const m = () => orderStatusMeta(props.status)
   return (
     <Badge tone={m().tone} dot testid={props.testid} variant={m().tone} class="whitespace-nowrap">
@@ -145,7 +166,10 @@ export const OrderStatusBadge: Component<{ status: string | null | undefined; te
     </Badge>
   )
 }
-export const TrackingStatusBadge: Component<{ status: string | null | undefined; testid?: string }> = (props) => {
+export const TrackingStatusBadge: Component<{
+  status: string | null | undefined
+  testid?: string
+}> = (props) => {
   const m = () => trackingStatusMeta(props.status)
   return (
     <Badge tone={m().tone} dot testid={props.testid} variant={m().tone} class="whitespace-nowrap">
@@ -225,4 +249,3 @@ export const CategoryBadge: Component<{ category: string | null | undefined; tes
     </Badge>
   </Show>
 )
-

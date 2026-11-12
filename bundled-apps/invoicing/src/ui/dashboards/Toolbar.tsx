@@ -4,8 +4,9 @@
 // market / channel), and an "Export CSV" action. Each dashboard mounts this
 // above its table; the toolbar emits the current `DashboardFilter` upward via
 // `onChange` so the dashboard re-runs its search and re-renders.
-import { tr } from "../i18n"
+
 import { type Component, createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js"
+import { tr } from "../i18n"
 import { Button, dateRangeInputClass, inputClass, Segmented } from "../kit"
 import type { ChannelFilter, DashboardFilter, MarketFilter, SortOrder, StatusFilter } from "./types"
 
@@ -143,70 +144,74 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       <Show when={showFilters()}>
         <>
-        {/* Date range: one unit. The pair never splits; it wraps to the next
+          {/* Date range: one unit. The pair never splits; it wraps to the next
             toolbar line as a whole, and on a 390 px phone the two fields shrink
             rather than overflow the right edge. The fields take an explicit
             width (dateRangeInputClass has no `w-full`): with the kit's
             `w-full` each field filled the row and the pair stacked. */}
-        <div
-          data-testid="invoicing-dashboard-date-range"
-          class="flex min-w-0 max-w-full flex-nowrap items-center gap-1.5"
-        >
-          <input
-            type="date"
-            value={props.filter.date_from ?? ""}
-            onInput={(e) => set("date_from", e.currentTarget.value || null)}
-            data-testid="invoicing-dashboard-date-from"
-            aria-label={tr("From date")}
-            class={`${dateRangeInputClass} w-[8.5rem] min-w-0 shrink`}
-          />
-          <span class="text-text-tertiary">{tr("to")}</span>
-          <input
-            type="date"
-            value={props.filter.date_to ?? ""}
-            onInput={(e) => set("date_to", e.currentTarget.value || null)}
-            data-testid="invoicing-dashboard-date-to"
-            aria-label={tr("To date")}
-            class={`${dateRangeInputClass} w-[8.5rem] min-w-0 shrink`}
-          />
-        </div>
+          <div
+            data-testid="invoicing-dashboard-date-range"
+            class="flex min-w-0 max-w-full flex-nowrap items-center gap-1.5"
+          >
+            <input
+              type="date"
+              value={props.filter.date_from ?? ""}
+              onInput={(e) => set("date_from", e.currentTarget.value || null)}
+              data-testid="invoicing-dashboard-date-from"
+              aria-label={tr("From date")}
+              class={`${dateRangeInputClass} w-[8.5rem] min-w-0 shrink`}
+            />
+            <span class="text-text-tertiary">{tr("to")}</span>
+            <input
+              type="date"
+              value={props.filter.date_to ?? ""}
+              onInput={(e) => set("date_to", e.currentTarget.value || null)}
+              data-testid="invoicing-dashboard-date-to"
+              aria-label={tr("To date")}
+              class={`${dateRangeInputClass} w-[8.5rem] min-w-0 shrink`}
+            />
+          </div>
 
-        <Segmented
-          options={SORT_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
-          value={props.filter.sort}
-          onChange={(v) => set("sort", v)}
-          testidPrefix="invoicing-dashboard-sort"
-          ariaLabel={tr("Sort by date")}
-        />
-        <Segmented
-          options={statusOpts()}
-          value={props.filter.status}
-          onChange={(v) => set("status", v)}
-          testidPrefix="invoicing-dashboard-status"
-          ariaLabel={tr("Filter by status")}
-        />
-        <Segmented
-          options={MARKET_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
-          value={props.filter.market as MarketFilter}
-          onChange={(v) => set("market", v)}
-          testidPrefix="invoicing-dashboard-market"
-          ariaLabel={tr("Filter by market")}
-        />
-        <Segmented
-          options={CHANNEL_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
-          value={props.filter.channel}
-          onChange={(v) => set("channel", v)}
-          testidPrefix="invoicing-dashboard-channel"
-          ariaLabel={tr("Filter by channel")}
-        />
+          <Segmented
+            options={SORT_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
+            value={props.filter.sort}
+            onChange={(v) => set("sort", v)}
+            testidPrefix="invoicing-dashboard-sort"
+            ariaLabel={tr("Sort by date")}
+          />
+          <Segmented
+            options={statusOpts()}
+            value={props.filter.status}
+            onChange={(v) => set("status", v)}
+            testidPrefix="invoicing-dashboard-status"
+            ariaLabel={tr("Filter by status")}
+          />
+          <Segmented
+            options={MARKET_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
+            value={props.filter.market as MarketFilter}
+            onChange={(v) => set("market", v)}
+            testidPrefix="invoicing-dashboard-market"
+            ariaLabel={tr("Filter by market")}
+          />
+          <Segmented
+            options={CHANNEL_OPTS.map((o) => ({ ...o, label: tr(o.label) }))}
+            value={props.filter.channel}
+            onChange={(v) => set("channel", v)}
+            testidPrefix="invoicing-dashboard-channel"
+            ariaLabel={tr("Filter by channel")}
+          />
 
-        <div class="flex-1" />
-        {props.trailing}
-        <Show when={!!props.onExportCsv}>
-          <Button variant="secondary" testid="invoicing-dashboard-export" onClick={props.onExportCsv}>
-            {tr("Export CSV")}
-          </Button>
-        </Show>
+          <div class="flex-1" />
+          {props.trailing}
+          <Show when={!!props.onExportCsv}>
+            <Button
+              variant="secondary"
+              testid="invoicing-dashboard-export"
+              onClick={props.onExportCsv}
+            >
+              {tr("Export CSV")}
+            </Button>
+          </Show>
         </>
       </Show>
     </div>

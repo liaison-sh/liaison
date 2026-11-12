@@ -42,7 +42,12 @@ export interface PrepQuoteView {
 export type PrepRowState = "ready" | "needs_fix" | "quote_missing" | "not_synced" | "needs_document"
 export type PrepCategory = "sale" | "repair" | "gift" | "return"
 export type PrepStatus = "to_prepare" | "validated" | "on_hold"
-export type PrepInvoiceState = "issued" | "pending_approval" | "generating" | "missing" | "not_available"
+export type PrepInvoiceState =
+  | "issued"
+  | "pending_approval"
+  | "generating"
+  | "missing"
+  | "not_available"
 export type AnchorKind = "invoice" | "proforma"
 
 export interface PrepParcel {
@@ -291,7 +296,8 @@ export function shipDisabledReason(row: PrepRow): string | null {
   }
   if (!row.document_ref) return row.reason ?? "This row has no shipping document yet."
   if (row.invoice.state !== "issued") return "The shipping document is not issued yet."
-  if (row.state === "not_synced") return "This row has not been synced yet. Sync it to get packages and a price."
+  if (row.state === "not_synced")
+    return "This row has not been synced yet. Sync it to get packages and a price."
   if (row.state === "needs_fix") return row.reason ?? "This row needs a fix before it can ship."
   if (row.quote.offers.length === 0) return "No carrier offer for this row yet. Quote it first."
   if (row.quote.stale) return "The quote is out of date since the packages changed. Re-quote it."
@@ -359,7 +365,13 @@ export function shipParams(row: PrepRow): CreateShipmentParams | null {
     quoted_price_ttc: quotedPriceMajor(offer),
     quoted_currency: offer.currency,
     ...(r?.phone ? { recipient_phone: r.phone } : {}),
-    ...(row.recipient_edited && r && r.name && r.street && r.city && r.postalCode && r.countryIsoCode
+    ...(row.recipient_edited &&
+    r &&
+    r.name &&
+    r.street &&
+    r.city &&
+    r.postalCode &&
+    r.countryIsoCode
       ? {
           recipient_address: {
             name: r.name,
@@ -493,13 +505,28 @@ export function quoteButtonState(row: PrepRow): QuoteButtonState {
     }
   }
   if (row.state === "not_synced") {
-    return { label: "Sync", disabled: false, tone: "neutral", tooltip: "Resolve the packages and get a price." }
+    return {
+      label: "Sync",
+      disabled: false,
+      tone: "neutral",
+      tooltip: "Resolve the packages and get a price.",
+    }
   }
   if (row.state === "needs_fix") {
-    return { label: "Re-quote", disabled: false, tone: "danger", tooltip: row.reason ?? "This row needs a fix." }
+    return {
+      label: "Re-quote",
+      disabled: false,
+      tone: "danger",
+      tooltip: row.reason ?? "This row needs a fix.",
+    }
   }
   if (row.quote.offers.length === 0) {
-    return { label: "No offers", disabled: false, tone: "danger", tooltip: "No carrier quoted this parcel. Try again." }
+    return {
+      label: "No offers",
+      disabled: false,
+      tone: "danger",
+      tooltip: "No carrier quoted this parcel. Try again.",
+    }
   }
   if (row.quote.stale) {
     return {
@@ -534,7 +561,8 @@ export function rowTintClass(
   if (status === "on_hold") return "bg-error-glow/40 border-l-2 border-l-error"
   // Done, and quiet about it: a light grey ground plus muted text, so the eye lands on the rows
   // that still need work (ticket-10507, ticket-10522).
-  if (packed === true) return "bg-surface-hover/60 text-text-tertiary border-l-2 border-l-border-strong"
+  if (packed === true)
+    return "bg-surface-hover/60 text-text-tertiary border-l-2 border-l-border-strong"
   if (status === "validated") return "bg-success/5 border-l-2 border-l-success"
   return "border-l-2 border-l-transparent"
 }
@@ -590,7 +618,11 @@ export function categoryLockReason(row: PrepRow): string | null {
  * re-render one row instead of the grid. A key that was asked for and came back absent is dropped,
  * which is how an excluded or fulfilled row leaves without a whole-list read.
  */
-export function mergeRows(current: PrepRow[], fresh: PrepRow[], requestedKeys?: string[]): PrepRow[] {
+export function mergeRows(
+  current: PrepRow[],
+  fresh: PrepRow[],
+  requestedKeys?: string[],
+): PrepRow[] {
   const byKey = new Map(fresh.map((r) => [r.order_key, r]))
   const asked = new Set(requestedKeys ?? fresh.map((r) => r.order_key))
   const out: PrepRow[] = []
@@ -627,7 +659,11 @@ export function sameRowData(a: unknown, b: unknown): boolean {
  * flash, hover and open folds intact). Order, additions and removals follow the fresh read. A
  * background refresh that replaced every object rebuilt every row of the worklist on each tick.
  */
-export function keepUnchangedRows<T>(prev: readonly T[] | undefined, next: T[], key: (row: T) => string): T[] {
+export function keepUnchangedRows<T>(
+  prev: readonly T[] | undefined,
+  next: T[],
+  key: (row: T) => string,
+): T[] {
   if (!prev || prev.length === 0) return next
   const byKey = new Map(prev.map((r) => [key(r), r]))
   let reused = 0
@@ -661,8 +697,10 @@ export const NO_POLL: PollPlan = { intervalMs: null, timeoutMs: 0, reason: null 
  * arrived, or a PDF still rendering. Never in the list read, and never open-ended.
  */
 export function pollPlan(row: PrepRow, now: number = Date.now()): PollPlan {
-  if (labelState(row, now) === "waiting") return { intervalMs: 5000, timeoutMs: LABEL_WAIT_MS, reason: "label" }
-  if (row.invoice.state === "generating") return { intervalMs: 3000, timeoutMs: 60_000, reason: "invoice_pdf" }
+  if (labelState(row, now) === "waiting")
+    return { intervalMs: 5000, timeoutMs: LABEL_WAIT_MS, reason: "label" }
+  if (row.invoice.state === "generating")
+    return { intervalMs: 3000, timeoutMs: 60_000, reason: "invoice_pdf" }
   return NO_POLL
 }
 

@@ -42,7 +42,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   },
   { glob: "apps/api/src/tests/security/**", suites: ["security", "integration"] },
   { glob: "scripts/db-readonly-role*", suites: ["security"] },
-  { glob: "apps/api/src/apps/database/generated/**", suites: ["unit", "integration", "e2e-parallel", "security"] },
+  { glob: "apps/api/src/modules/apps/connections/sql/generated/**", suites: ["unit", "integration", "e2e-parallel", "security"] },
   // The WebSocket state is one Redis implementation: its tests are unit tests
   // against real Redis, and the cell scenarios prove it across replicas.
   { glob: "apps/api/src/infra/websocket*", suites: ["unit", "cell"] },

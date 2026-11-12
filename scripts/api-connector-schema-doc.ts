@@ -23,7 +23,10 @@ import { ROLE_REGISTRY, type RoleSpec } from "../packages/api-connector-core/src
 const ROOT = join(import.meta.dir, "..")
 export const SCHEMA_FILE = join(ROOT, "packages/api-connector-core/adapter.schema.json")
 export const DOC_FILE = join(ROOT, "docs/api-connector.md")
-export const REFERENCE_FILE = join(ROOT, "apps/api/src/modules/apps/connections/api/reference/authoring.md")
+export const REFERENCE_FILE = join(
+  ROOT,
+  "apps/api/src/modules/apps/connections/api/reference/authoring.md",
+)
 /** Every file carrying the generated blocks. */
 export const GENERATED_FILES = [DOC_FILE, REFERENCE_FILE]
 export const BEGIN_MARKER =

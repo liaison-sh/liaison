@@ -36,7 +36,6 @@ import type { ProvisioningConfig } from "~/cli/config/schema"
 import {
   verifyProbeRegistry as defaultVerifyProbeRegistry,
   type VerifyProbe,
-  type VerifyProbeResult,
 } from "~/cli/provisioners/verify-probes"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"

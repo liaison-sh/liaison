@@ -12,8 +12,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { eq } from "drizzle-orm"
 import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
-import { messages } from "~/db/schema/kernel"
+import { messages, threadParticipants } from "~/db/schema/kernel"
 import { initEventBus, resetEventBus } from "~/infra/events/event-bus"
 import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { handleThreadsCreate, handleThreadsReply } from "~/modules/agent/tools/chat-tools"
@@ -29,6 +30,8 @@ import {
   userContextFor,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall, type ToolCallCtx } from "~/modules/mcp/tool-call"
+import { insertThreadWithParticipants } from "~/modules/threads/thread"
+import { seedUserRow } from "~/seed/factories/org/rows"
 
 const READ = "test:items:read"
 const THREADS = ["kernel:threads:read", "kernel:threads:write"]
@@ -71,8 +74,14 @@ describe("rule 14: posts from a connection bound to no agent", () => {
 
   async function person(orgId: string, name: string, scopes: string[]): Promise<string> {
     const id = crypto.randomUUID()
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${id}, ${orgId}, ${`${name}-${id.slice(0, 8)}@test.com`}, 'hash', ${name}, 'active')`
+    await seedUserRow({
+      id,
+      orgId,
+      email: `${name}-${id.slice(0, 8)}@test.com`,
+      passwordHash: "hash",
+      name,
+      status: "active",
+    })
     for (const scope of scopes) await grantScope(orgId, id, scope)
     grants.set(id, scopes)
     return id
@@ -96,16 +105,23 @@ describe("rule 14: posts from a connection bound to no agent", () => {
   }
 
   async function thread(w: World, people: string[], title: string | null = null) {
-    const id = crypto.randomUUID()
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, title)
-      VALUES (${id}, ${w.orgId}, ${`r14-${id.slice(0, 8)}`}, 'thread', ${w.ownerId}, ${title})`
-    for (const userId of people) await join(w, id, userId)
-    return id
+    const created = await withPrivilegedDb(w.orgId, "test-rule14-thread", (tx) =>
+      insertThreadWithParticipants(tx, {
+        orgId: w.orgId,
+        userId: w.ownerId,
+        participantIds: people,
+        title,
+        isPinned: false,
+        createdFrom: null,
+      }),
+    )
+    return created.thread.id as string
   }
 
   async function join(w: World, threadId: string, userId: string) {
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-      VALUES (${threadId}, ${userId}, ${w.orgId})`
+    await withPrivilegedDb(w.orgId, "test-rule14-join", (tx) =>
+      tx.insert(threadParticipants).values({ threadId, userId, orgId: w.orgId }),
+    )
   }
 
   /** A fresh agentless connection of `userId` (a new request each call: the transport is stateless). */

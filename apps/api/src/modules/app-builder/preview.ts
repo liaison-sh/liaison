@@ -30,8 +30,10 @@
 //    declares (the bridge and the database session alike);
 //  - the entry point is looked up in the draft manifest in memory; the run
 //    lasts 30 s at most, counts against the org's share of the sandbox pool
-//    (a draft's name is its custom app name: sandboxTenantKey), and never goes
-//    to the Workers executor (no installed identity);
+//    (a draft's name is its custom app name: sandboxTenantKey), and runs where
+//    an installed app would (the app loader or the sandbox service, on the
+//    worker.js the draft's build made, workers/adhoc-module.ts; else QuickJS),
+//    with the preview's limits;
 //  - its ctx.logger lines go to kernel.app_logs under the draft, readable by
 //    this person only (logs.ts), and come back with the result.
 // Whoever puts the result or the lines in an agent's context marks the turn as
@@ -65,7 +67,8 @@ import {
   type AppManifestForBridge,
   createSessionRpcBridge,
 } from "~/modules/apps/sandbox/rpc-bridge"
-import { runApp } from "~/modules/apps/sandbox/run-app"
+import { type RunAppOptions, runApp } from "~/modules/apps/sandbox/run-app"
+import { ensureBuiltModule } from "~/modules/apps/workers/adhoc-module"
 import { draftStoreApp } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -424,6 +427,22 @@ export async function previewDraft(
       session,
       neverPublished,
       base: { ...base, storeWiped: wiped },
+      workerModule: async () => {
+        const workerSha = built.build.ok ? built.build.workerSha256 : undefined
+        if (!workerSha) return null
+        const sha256 = await ensureBuiltModule({
+          origin: "draft",
+          orgId: actor.orgId,
+          sha256: workerSha,
+          bytes: () =>
+            db.run(
+              async (tx) =>
+                (await getBuildArtifact(tx, { draftId: built.draft.id, sha256: workerSha }))
+                  ?.bytes ?? null,
+            ),
+        })
+        return sha256 ? { sha256, version: `draft-${n}` } : null
+      },
     })
   } finally {
     await db.run((tx) => releaseDraftPreview(tx, built.draft.id)).catch(() => undefined)
@@ -440,6 +459,8 @@ async function runPreview(args: {
   callerScopes: string[]
   session: ReturnType<typeof createRlsSession>
   neverPublished: boolean
+  /** The version's Worker module (its build's worker.js), for a remote executor. */
+  workerModule: NonNullable<RunAppOptions["workerModule"]>
   base: Pick<
     PreviewResult,
     "draftId" | "n" | "entry" | "storeNamespace" | "neverPublished" | "storeWiped"
@@ -478,8 +499,10 @@ async function runPreview(args: {
       trusted: false,
       appName: built.target.appName,
       orgId: actor.orgId,
-      // Not installed: never the Workers executor, never an installed bundle.
+      // Not installed: the version's own worker.js on a remote executor, never
+      // an installed bundle.
       installed: null,
+      workerModule: args.workerModule,
       bundleSource: esmExportsToGlobalThis(args.bundle),
       exportName,
       params: input.params ?? {},

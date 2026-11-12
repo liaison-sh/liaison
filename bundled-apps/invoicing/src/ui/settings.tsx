@@ -216,12 +216,12 @@ export async function uploadIssuerLogo(file: File, issuerProfileId: string): Pro
   }
 
   // The presigned URL is absolute (object storage) and carries its own auth.
-  const put = await window.fetch(presign.uploadUrl, {
-    // purity-allow: absolute-url
+  const putInit: RequestInit = {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
-  })
+  }
+  const put = await window.fetch(presign.uploadUrl, putInit) // purity-allow: absolute-url
   if (!put.ok) {
     throw new Error(`Logo upload failed (${put.status}).`)
   }

@@ -30,7 +30,11 @@ import { sql as drizzleSql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
+
+const K = drizzleSql.raw(schemaRef("kernel"))
+const KNOWLEDGE = drizzleSql.raw(schemaRef("app_knowledge"))
 
 /** Move one key of the org's settings into the app's own store (`ctx.store`). */
 export interface OrgSettingToStoreStep {
@@ -94,7 +98,7 @@ export async function usedMovedApps(
   if (names.length === 0) return []
   const rows = extractRows<{ name: string }>(
     await db.execute(drizzleSql`
-      SELECT DISTINCT name FROM kernel.apps
+      SELECT DISTINCT name FROM ${K}.apps
       WHERE name IN (${drizzleSql.join(
         names.map((n) => drizzleSql`${n}`),
         drizzleSql`, `,
@@ -117,7 +121,7 @@ export interface AdoptionResult {
 
 async function completedSteps(db: PrivilegedDb, app: string): Promise<Set<string>> {
   const rows = extractRows<{ step_id: string }>(
-    await db.execute(drizzleSql`SELECT step_id FROM kernel.app_adoptions WHERE app_name = ${app}`),
+    await db.execute(drizzleSql`SELECT step_id FROM ${K}.app_adoptions WHERE app_name = ${app}`),
   )
   return new Set(rows.map((r) => r.step_id))
 }
@@ -129,7 +133,7 @@ async function recordStep(
   report: Record<string, unknown>,
 ): Promise<void> {
   await db.execute(drizzleSql`
-    INSERT INTO kernel.app_adoptions (app_name, step_id, report)
+    INSERT INTO ${K}.app_adoptions (app_name, step_id, report)
     VALUES (${app}, ${stepId}, ${JSON.stringify(report)}::jsonb)
     ON CONFLICT (app_name, step_id) DO NOTHING
   `)
@@ -144,7 +148,7 @@ async function runOrgSettingToStore(
   const orgs = extractRows<{ id: string; value: unknown }>(
     await db.execute(drizzleSql`
       SELECT id, settings #> ${path}::text[] AS value
-      FROM kernel.organizations
+      FROM ${K}.organizations
       WHERE settings #> ${path}::text[] IS NOT NULL
         AND jsonb_typeof(settings #> ${path}::text[]) <> 'null'
       ORDER BY id
@@ -193,12 +197,12 @@ async function runSyncedSourcesToKind(
 ): Promise<StepOutcome> {
   // The columns come with the knowledge app's schema (knowledge 1.0.9). On an
   // instance whose knowledge schema is older the step waits for a later boot.
-  if (!(await columnExists(db, "app_knowledge", "synced_sources", "source_kind"))) {
+  if (!(await columnExists(db, schemaRef("app_knowledge"), "synced_sources", "source_kind"))) {
     return { state: "deferred", reason: "app_knowledge.synced_sources.source_kind is missing" }
   }
   const rows = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
-      UPDATE app_knowledge.synced_sources
+      UPDATE ${KNOWLEDGE}.synced_sources
       SET source_kind = ${step.sourceKind},
           source_config = COALESCE(source_config, '{}'::jsonb),
           updated_at = now()
@@ -229,7 +233,7 @@ export async function adoptMovedApps(db: PrivilegedDb): Promise<AdoptionResult[]
     if (app.steps.length === 0) continue
     const active = extractRows(
       await db.execute(
-        drizzleSql`SELECT 1 FROM kernel.apps_active_version WHERE name = ${app.name}`,
+        drizzleSql`SELECT 1 FROM ${K}.apps_active_version WHERE name = ${app.name}`,
       ),
     )
     if (active.length === 0) continue

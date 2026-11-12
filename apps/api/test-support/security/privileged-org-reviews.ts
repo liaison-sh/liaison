@@ -592,6 +592,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "posted message dispatch: the org of the thread the message was posted in",
   "apps/api/src/modules/apps/sandbox/event-handler-bridge.ts#createEventHandlerBridge":
     "event handler bridge: built for the org the event was emitted in",
+  "apps/api/src/modules/apps/sandbox/event-handler-bridge.ts#createEventHandlerSessionBridge":
+    "event handler session bridge: built for the org the event was emitted in, as createEventHandlerBridge",
   "apps/api/src/modules/apps/sandbox/worker-pool.ts#SandboxWorkerPool.drainQueue":
     "sandbox worker pool: a queued request, carrying the org its caller runs the app for",
   "apps/api/src/modules/auth/magic-link.ts#verifyMagicLink":

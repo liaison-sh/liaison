@@ -1,0 +1,132 @@
+[
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyOrderCreated",
+    "reason": "issues a numbered document: the number allocation, the document and its lines must commit together (a failed run would leave a gap in the legal numbering)"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyOrderUpdated",
+    "reason": "issues the invoice of a missed paid order (number, document and lines commit together), or updates an issued document and reissues it"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyOrderCancelled",
+    "reason": "issues a numbered credit note and updates the invoice it credits: both must commit together"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyRefundCreated",
+    "reason": "issues a numbered credit note and updates the invoice's payment status: both must commit together"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyDraftOrderCreated",
+    "reason": "creates and issues a numbered quote (number, document and lines commit together)"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyDraftOrderUpdated",
+    "reason": "rewrites a quote's lines and totals in several writes that must commit together"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:onShopifyDraftOrderCompleted",
+    "reason": "resyncs a quote's lines, then marks it invoiced: the writes must commit together"
+  },
+  {
+    "app": "boxtal",
+    "entry": "webhook:trackingChangedHandler",
+    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
+  },
+  {
+    "app": "boxtal",
+    "entry": "webhook:documentCreatedHandler",
+    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:ordersCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:ordersUpdatedHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:ordersFulfilledHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:ordersCancelledHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:customersCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:customersUpdateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:customersDeleteHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:refundsCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:returnsRequestedHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:fulfillmentsCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:inventoryLevelsUpdateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:productsCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:productsUpdateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:draftOrdersCreateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:draftOrdersUpdateHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:draftOrdersDeleteHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  },
+  {
+    "app": "shopify",
+    "entry": "webhook:appUninstalledHandler",
+    "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"
+  }
+]

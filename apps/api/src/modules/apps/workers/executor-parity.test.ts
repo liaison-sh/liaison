@@ -31,6 +31,7 @@ import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { clearInstalledIdentityCache, runApp } from "~/modules/apps/sandbox/run-app"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { runDeferredAppEvent } from "~/modules/apps/usage/deferred-event"
 import { getDeclaredCollection } from "~/modules/data-store/declared"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -80,6 +81,8 @@ const bundles: Record<string, string> = {}
 /** The credential values the carrier stub received (host-side injection). */
 const injectedKeys: string[] = []
 const loaderFiles: Record<string, { workerPath: string; corePath: string }> = {}
+/** Backends sitting in an open transaction while an event handler asked the carrier. */
+const openAtEventFetch: number[] = []
 
 type Mutable = Record<string, unknown>
 
@@ -263,6 +266,12 @@ beforeAll(async () => {
       return new Response('{"n":1}\n{"n":2}\n{"n":3}\n', {
         headers: { "content-type": "application/x-ndjson" },
       })
+    }
+    if (u.pathname.startsWith("/event/")) {
+      const [r] = await sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+          AND state LIKE 'idle in transaction%'`
+      openAtEventFetch.push(r!.n as number)
     }
     const headers = new Headers(init?.headers)
     if (headers.get("x-api-key")) injectedKeys.push(headers.get("x-api-key") as string)
@@ -524,7 +533,7 @@ describe("Workers executor parity with the QuickJS pool", () => {
     }
   }, 60_000)
 
-  it("a webhook delivery inside its transaction", async () => {
+  it("a webhook delivery: a short transaction per bridge call", async () => {
     const post = (title: string) =>
       app.request(`http://localhost/webhooks/${orgId}/wparity/ping`, {
         method: "POST",
@@ -540,6 +549,56 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(await countTitled("hook-quickjs")).toBe(1)
     expect(await countTitled("hook-workers")).toBe(1)
     expect(lastRun("webhook-verify:verifyPing")?.executor).toBe("workers")
+  })
+
+  it("a webhook delivery that fails after its write: the same answer, row and inbox status", async () => {
+    const post = (title: string) =>
+      app.request(`http://localhost/webhooks/${orgId}/wparity/pingfail`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title }),
+      })
+    const inbox = async (title: string) => {
+      const [r] = await sql<{ status: string; attempts: number }[]>`
+        SELECT status, attempts FROM kernel.webhook_inbox
+        WHERE org_id = ${orgId} AND endpoint_name = 'pingfail' AND payload->>'title' = ${title}`
+      return r
+    }
+    const r = await both("webhook:onPingFail", async (mode) => {
+      const res = await post(`hookfail-${mode}`)
+      return { status: res.status, inbox: await inbox(`hookfail-${mode}`) }
+    })
+    expect(r.quickjs).toEqual({ status: 500, inbox: { status: "pending", attempts: 1 } })
+    expect(r.workers).toEqual(r.quickjs)
+    // The write committed on its own; the replay dedups like any redelivery.
+    expect(await countTitled("hookfail-quickjs")).toBe(1)
+    expect(await countTitled("hookfail-workers")).toBe(1)
+  })
+
+  it("an event handler: no transaction open across its provider call, the same rows", async () => {
+    openAtEventFetch.length = 0
+    const r = await both("event:onProbe", async (mode) => {
+      await runDeferredAppEvent({
+        orgId,
+        appName: "wparity",
+        eventType: "probe:fired",
+        exportName: "onProbe",
+        event: {
+          app: "wparity",
+          entity: "probe",
+          action: "fired",
+          entityId: mode,
+          data: { marker: `event-${mode}` },
+          actorId: "system:wparity",
+          actorType: "system",
+          orgId,
+          timestamp: new Date().toISOString(),
+        },
+      })
+      return countTitled(`event-${mode}:200`)
+    })
+    expect(r).toEqual({ quickjs: 1, workers: 1 })
+    expect(openAtEventFetch).toEqual([0, 0])
   })
 })
 

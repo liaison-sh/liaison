@@ -262,10 +262,11 @@ describe("two views at once on the api's privileged pool", () => {
 
   // Measured (holds of 3-55 ms, no nested acquisition): the card's privileged
   // work is many short transactions, so a small pool queues them rather than
-  // deadlocking. Two views want about 6 slots at once: a pool of 3 runs full
-  // (anything else on the process then waits behind the cards), the floor of
-  // 10 keeps room beside them for auth checks and other requests.
-  it("complete within DB_ACQUIRE_TIMEOUT_MS on a pool of API_PRIVILEGED_FLOOR; a pool of 3 saturates and queues", async () => {
+  // deadlocking. Since the card runs as the app's tools (each call a sandboxed
+  // run around short platform reads), two views want 3 to 4 slots at once: the
+  // floor of 10 keeps room beside them for auth checks and other requests, and
+  // a pool of 3 still serves both views, its callers queueing behind each other.
+  it("complete within DB_ACQUIRE_TIMEOUT_MS on a pool of API_PRIVILEGED_FLOOR, and on a pool of 3", async () => {
     const roomy = await twoViewsOn(ten, API_PRIVILEGED_FLOOR)
     expect(roomy.statuses).toEqual([
       [200, 200, 200, 200],
@@ -273,11 +274,10 @@ describe("two views at once on the api's privileged pool", () => {
     ])
     expect(roomy.elapsedMs).toBeLessThan(env.DB_ACQUIRE_TIMEOUT_MS)
     expect(roomy.peak).toBeLessThan(API_PRIVILEGED_FLOOR)
-    // Two views want more than 3 at once...
-    expect(roomy.peak).toBeGreaterThan(3)
 
-    // ...so a pool of 3 runs full and its callers queue behind each other.
     const tight = await twoViewsOn(three, 3)
-    expect(tight.peak).toBe(3)
+    expect(tight.statuses).toEqual(roomy.statuses)
+    expect(tight.elapsedMs).toBeLessThan(env.DB_ACQUIRE_TIMEOUT_MS)
+    expect(tight.peak).toBeLessThanOrEqual(3)
   }, 90_000)
 })

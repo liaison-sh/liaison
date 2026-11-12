@@ -1110,8 +1110,9 @@ export async function onShopifyOrderPaid(
   await warmFxRate(ctx as OrderPaidCtx & FxFetchCtx, payload.currency, fxIssueDate(when.issued_at))
   for (const split of splits) {
     let issueResult: Awaited<ReturnType<typeof issueDocument>>
+    const issueInput = buildIssueInput(split.scope, split.items, when, paidAt)
     try {
-      issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items, when, paidAt))
+      issueResult = await issueDocument(ctx, issueInput)
     } catch (err) {
       // A foreign-currency e-invoice the ECB could not price is refused before numbering (its
       // Factur-X needs the EUR VAT total). Defer it: the deferred retry re-runs this handler,
@@ -1145,10 +1146,9 @@ export async function onShopifyOrderPaid(
       // Another run of the same order event issued this scope between our check and our commit
       // (orderInvoiceRef): nothing of ours was persisted, and that run delivers its own invoice.
       if (isUniqueViolation(err)) {
-        const held = await ctx.db.findMany("documents", {
-          where: { external_ref: orderInvoiceRef(payload.id, split.scope) },
-          limit: 1,
-        })
+        const held = issueInput.external_ref
+          ? await ctx.db.findMany("documents", { where: { external_ref: issueInput.external_ref }, limit: 1 })
+          : []
         if (held.length > 0) continue
       }
       throw err

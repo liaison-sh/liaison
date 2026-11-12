@@ -1242,7 +1242,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "bundled-apps/invoicing/src/handlers/shopify-order-paid.ts",
-    "issueResult = await issueDocument(ctx, buildIssueInput(split.scope, split.items, when, paidAt))",
+    "const issueInput = buildIssueInput(split.scope, split.items, when, paidAt)",
     REASONS.DOC,
   ],
   [

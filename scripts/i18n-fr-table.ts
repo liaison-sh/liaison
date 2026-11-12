@@ -4961,6 +4961,7 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
+  "kernel.homeRouting.heldGroup": "Mis de côté jusqu'à leur retour",
   "kernel.demo.paymentsUnsupported":
     "Ceci est une instance de démonstration : le simulateur de paiements par carte ne reproduit pas {{what}}. Les clients, abonnements, factures, paiements, remboursements et litiges peuvent être lus, et les remboursements et résiliations en fin de période n'agissent que sur le simulateur.",
   "kernel.demo.need.money": "Abonnements et paiements par IA",

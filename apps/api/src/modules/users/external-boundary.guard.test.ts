@@ -112,6 +112,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/agent/tools/kernel-tools.ts": ["one-row", "the merge tool's declared write table"],
   "modules/agent/tools/setup-guide-tools.ts": ["one-row", "the caller's locale"],
   "modules/agent/tools/skills-routines-tools.ts": ["one-row", "a routine's own actor"],
+  "modules/dashboards/export.ts": [
+    "one-row",
+    "a dashboard snapshot's recipients, checked by id for a name and a status",
+  ],
   "modules/agent/tools/contact-tools.ts": [
     "one-row",
     "the member a data export names, for its approval summary",

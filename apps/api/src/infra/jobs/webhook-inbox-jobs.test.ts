@@ -324,16 +324,15 @@ describe("webhook inbox: claims, privacy and retention", () => {
   // Settled rows hold no payload; they are kept only while their identity
   // dedups a redelivery. A dead row keeps its payload for diagnosis, briefly.
   it("deletes a settled row once its dedup window closed, a dead row after its short window", async () => {
+    // Stored through the inbox, then aged in place.
     const make = async (status: string, dedupAgo: string, settledAgo: string) => {
-      const [r] = await sql<{ id: string }[]>`
-        INSERT INTO kernel.webhook_inbox (org_id, app_name, endpoint_name, delivery_hash,
-          dedup_until, payload, status, attempts, settled_at)
-        VALUES (${ORG}, ${APP}, ${ENDPOINT}, ${randomUUID()},
-          now() - ${dedupAgo}::interval,
-          ${status === "dead" ? JSON.stringify({ order: 1 }) : null}::jsonb,
-          ${status}, 1, now() - ${settledAgo}::interval)
-        RETURNING id`
-      return r!.id
+      const stored = await storeDelivery(delivery(), { claimLeaseMs: 60_000 })
+      if (!stored) throw new Error("not stored")
+      await sql`UPDATE kernel.webhook_inbox SET status = ${status}, claim_token = NULL,
+          dedup_until = now() - ${dedupAgo}::interval, settled_at = now() - ${settledAgo}::interval,
+          payload = CASE WHEN ${status} = 'dead' THEN payload ELSE NULL END
+        WHERE id = ${stored.id}`
+      return stored.id
     }
     const doneClosed = await make("done", "1 minute", "1 hour")
     const doneOpen = await make("done", "-1 hour", "1 minute")

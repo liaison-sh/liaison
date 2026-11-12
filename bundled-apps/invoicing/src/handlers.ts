@@ -176,6 +176,9 @@ export { backfillOrderNumbersJobHandler } from "./handlers/backfill-order-number
 // Writes the Boxtal shipment(s) created against an invoice back onto it (external_refs.shipments)
 // through boxtal's public search tool, so invoice and parcel resolve each other in one hop.
 export { linkShipmentsJobHandler } from "./handlers/link-shipments"
+// Issues a dead run left numbered but unrendered: their render and owed email are parked for
+// deferred-retry (handlers/resume-interrupted.ts).
+export { resumeInterruptedIssuesJobHandler } from "./handlers/resume-interrupted"
 import { deferredTaxOverride, deferredTaxOverridePreflight } from "./handlers/tax-override"
 import { backfillOrderNumbers } from "./handlers/backfill-order-numbers"
 

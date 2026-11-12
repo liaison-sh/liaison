@@ -1,0 +1,18 @@
+{
+  "entry": "tool:einvoicing_backfill_legacy_originals",
+  "params": {
+    "dry_run": true,
+    "limit": 20
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"legal_original_id\":null},\"orderBy\":{\"id\":\"asc\"},\"select\":[\"id\",\"number\",\"pdf_file_id\",\"external_refs\"],\"limit\":500,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"2d8567cf-dc8e-481a-ae23-7e351146d7f3\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"5c2e8bf9-1496-4223-8fda-4c98260e9353\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"6d484a21-3f96-434b-8faa-f1f466720db8\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"7b64a5e5-16a9-4c3a-9e0b-29706892a0aa\",\"number\":\"DEV-2026-0001\",\"pdf_file_id\":\"c1a3b036-403d-49d5-9ab8-c26bc21a5259\",\"external_refs\":{\"po_number\":\"RFQ-118-B\",\"customer_reference\":\"RFQ-118\"}},{\"id\":\"8a50a619-31ea-41ec-9617-3ac75ce5ebcc\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}}]"
+    }
+  ]
+}

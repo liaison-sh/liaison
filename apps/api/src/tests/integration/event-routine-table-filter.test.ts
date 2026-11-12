@@ -17,6 +17,9 @@ import {
   resetEventBus,
 } from "~/infra/events/event-bus"
 import { tableRowFilterMatches } from "~/infra/jobs/event-routine-gate"
+import { seedContext } from "~/seed/context"
+import { seedRoutine } from "~/seed/factories/agent/routines"
+import * as minimal from "~/seed/tiers/minimal"
 
 const enqueued: unknown[][] = []
 const realJobs = await import("~/infra/jobs/jobs")
@@ -47,10 +50,10 @@ afterAll(() => EventRoutineSubscriberTestAccess.setCoalesceMs())
 
 const ticks = () => enqueued.filter(([app, job]) => app === "kernel" && job === "routine-tick")
 
-const ORG = randomUUID()
-const OWNER = randomUUID()
-const OTHER = randomUUID()
-const ROUTINE = randomUUID()
+let ORG = ""
+let OWNER = ""
+let OTHER = ""
+let ROUTINE = ""
 const EVENT = "kernel:dashboard_table_row:updated"
 
 const ctx = (userId: string): UserContext => ({
@@ -115,28 +118,31 @@ async function fire(evt: {
 const FILTER = () => ({ tableId, column: "status", to: "arrived" })
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'Table Routine Org', ${`table-routine-${ORG}`})`
-  for (const [id, name] of [
-    [OWNER, "Owner"],
-    [OTHER, "Other"],
-  ] as const) {
-    await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
-      VALUES (${id}, ${ORG}, ${`${id}@tables.test`}, ${name}, 'active', 'hash')`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${id}, ${ORG}, '*')`
-  }
+  ORG = (await minimal.secondOrg({ name: "Table Routine Org" })).orgId
+  OWNER = (await minimal.person(ORG, { name: "Owner" })).id
+  OTHER = (await minimal.person(ORG, { name: "Other" })).id
+  for (const id of [OWNER, OTHER]) await minimal.grantScope(id, "*")
   initEventBus()
   tableId = (await createTable(ctx(OWNER), { name: "Inbound batches", columns: COLUMNS })).id
   otherTableId = (await createTable(ctx(OWNER), { name: "Repairs", columns: COLUMNS })).id
   // Restricted to OTHER: the routine's owner cannot read it.
   hiddenTableId = (await createTable(ctx(OTHER), { name: "Private list", columns: COLUMNS })).id
   await setTableSharing(ctx(OWNER), tableId, { orgAccess: "editor" })
-  await sql`INSERT INTO kernel.routines
-      (id, org_id, owner_user_id, name, description, kind, event, prompt, scopes, created_by_actor_type, event_filter)
-    VALUES (${ROUTINE}, ${ORG}, ${OWNER}, 'Inbound follow-up', 'follow-up', 'event', ${EVENT},
-            'react', ${sql.array(["kernel:dashboards:read"])}, 'user',
-            ${JSON.stringify({ tableId, column: "status", to: "arrived" })}::jsonb)`
+  ROUTINE = await seedRoutine(seedContext({ orgId: ORG, now: new Date() }), {
+    createdByUserId: OWNER,
+    ownerScopes: ["*"],
+    enabled: true,
+    routine: {
+      name: "Inbound follow-up",
+      description: "follow-up",
+      kind: "event",
+      event: EVENT,
+      eventFilter: { tableId, column: "status", to: "arrived" },
+      ownerUserId: OWNER,
+      scopes: ["kernel:dashboards:read"],
+      prompt: "react",
+    },
+  })
 }, 120_000)
 
 afterAll(async () => {
@@ -147,9 +153,6 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.dashboard_tables WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.pending_events WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.routines WHERE org_id = ${ORG}`
-  await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
-  await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
-  await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })
 
 beforeEach(async () => {

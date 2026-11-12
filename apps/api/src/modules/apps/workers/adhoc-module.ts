@@ -32,12 +32,13 @@
 // ES module, so the script runs in strict mode, as on the loader.
 
 import { createHash } from "node:crypto"
-import { and, eq, isNull, lt, sql } from "drizzle-orm"
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { type AppCodeModuleOrigin, appCodeModules } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { buildWorkerModule } from "~/modules/app-builder/build/freeze-core"
+import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "apps-adhoc-module" })
 
@@ -322,14 +323,24 @@ export async function readAdhocModule(sha256: string): Promise<Uint8Array | null
   return null
 }
 
-/** Delete modules no run has looked up for the retention period. Returns how many went. */
+/**
+ * Delete modules no run has looked up for the retention period, never those of
+ * an org being moved to another server. Returns how many went.
+ */
 export async function pruneAdhocModules(now = new Date()): Promise<number> {
   const before = new Date(now.getTime() - ADHOC_MODULE_RETENTION_DAYS * 86_400_000)
-  const gone = await withSystemDb("adhoc-module:prune", (db) =>
-    db
-      .delete(appCodeModules)
-      .where(lt(appCodeModules.lastUsedAt, before))
-      .returning({ id: appCodeModules.id }),
+  const gone = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("adhoc-module:prune", (db) =>
+      db
+        .delete(appCodeModules)
+        .where(
+          and(
+            lt(appCodeModules.lastUsedAt, before),
+            or(isNull(appCodeModules.orgId), notMoving(sql`${appCodeModules.orgId}`)),
+          ),
+        )
+        .returning({ id: appCodeModules.id }),
+    ),
   )
   cache.clear()
   return gone.length

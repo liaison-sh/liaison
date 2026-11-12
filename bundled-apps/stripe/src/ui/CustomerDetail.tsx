@@ -229,7 +229,7 @@ export const StripeCustomerDetail: Component<{ entityId?: string }> = (props) =>
                             <a
                               data-testid={`stripe-customer-invoice-document-${i.id}`}
                               href={`/invoicing/document/${doc()}`}
-                              class="font-mono underline-offset-2 hover:underline"
+                              class="inline-flex min-h-11 items-center font-mono underline-offset-2 hover:underline md:min-h-0"
                               onClick={(e) => {
                                 e.preventDefault()
                                 navigate(`/invoicing/document/${doc()}`)

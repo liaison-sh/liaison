@@ -473,8 +473,8 @@ export function createApiConnectionMethods(
       }
       return JSON.stringify({ ok: true, pinnedParams: { target } })
     },
-    api_read: (paramsJson?: unknown) => call(paramsJson, "read"),
-    api_write: (paramsJson?: unknown) => call(paramsJson, "write"),
+    api_read: async (paramsJson?: unknown): Promise<string> => call(paramsJson, "read"),
+    api_write: async (paramsJson?: unknown): Promise<string> => call(paramsJson, "write"),
 
     // --- Adapter authoring (admin) --------------------------------------------
 

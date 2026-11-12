@@ -1,0 +1,14 @@
+{
+  "entry": "tool:connector_adapter_versions",
+  "params": {
+    "identifier": "crm"
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": [
+    {
+      "method": "api_adapterVersions",
+      "args": ["{\"identifier\":\"crm\"}"],
+      "reply": "{\"identifier\":\"crm\",\"current\":{\"adapterVersion\":\"1.0.0\",\"target\":\"http://127.0.0.1:4010, apiKey, header X-Api-Key\"},\"versions\":[{\"id\":\"b0323c38-d112-4674-ac75-e687a6f150d7\",\"adapterVersion\":\"0.9.0\",\"name\":\"Fixture CRM\",\"savedBy\":null,\"savedByName\":null,\"savedAt\":\"2026-11-12T14:57:00.970Z\",\"target\":\"http://127.0.0.1:4010, apiKey, header X-Api-Key\",\"targetDiffers\":false}]}"
+    }
+  ]
+}

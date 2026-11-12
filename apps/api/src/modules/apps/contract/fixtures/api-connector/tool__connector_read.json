@@ -1,0 +1,20 @@
+{
+  "entry": "tool:connector_read",
+  "params": {
+    "connection": "crm",
+    "operation": "find_customers",
+    "params": {
+      "email": "person1@example.com"
+    }
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": [
+    {
+      "method": "api_read",
+      "args": [
+        "{\"connection\":\"crm\",\"operation\":\"find_customers\",\"params\":{\"email\":\"person1@example.com\"}}"
+      ],
+      "reply": "{\"connection\":\"crm\",\"operation\":\"find_customers\",\"status\":200,\"count\":1,\"truncated\":false,\"items\":\"<external-content source=\\\"untrusted\\\">\\n[{\\\"id\\\":\\\"cmp_001\\\",\\\"name\\\":\\\"Acme Instruments\\\",\\\"domain\\\":\\\"acme-instruments.example\\\",\\\"city\\\":\\\"Lyon\\\",\\\"country\\\":\\\"FR\\\",\\\"tier\\\":\\\"gold\\\"}]\\n</external-content>\"}"
+    }
+  ]
+}

@@ -98,11 +98,130 @@ export interface MockDb {
     entity: string,
     opts?: { where?: Record<string, unknown>; search?: { fields: string[]; query: string } },
   ): Promise<number>
+  /** The bridge's `ctx.db.batch`, in memory (`applyMockBatch`); sequences live in `__sequences`. */
+  batch(spec: MockBatchSpec): Promise<MockBatchResult>
 
   // Inspection helpers
+  /** The mock's sequences (key -> last value handed out), as `ctx.db.batch` allocates them. */
+  __sequences: Map<string, number>
   __all(entity: string): Array<Record<string, unknown>>
   __seed(entity: string, rows: Array<Record<string, unknown>>): void
   __reset(): void
+}
+
+// -- ctx.db.batch, in memory ----------------------------------------------------
+
+/** The bridge's `ctx.db.batch` spec (apps/api sandbox/bridge/batch.ts). */
+export interface MockBatchSpec {
+  sequence?: {
+    key: string
+    format?: { prefix: string; pad?: number }
+    unique?: { entity: string; field: string; where?: Record<string, unknown> }
+  }
+  ops: Array<Record<string, unknown>>
+}
+
+export interface MockBatchResult {
+  sequence?: { value: number; formatted?: string }
+  rows: Record<string, Record<string, unknown> & { id: string }>
+}
+
+/** The writes and the sequence a batch runs on, plus a snapshot to undo them. */
+export interface MockBatchTarget {
+  insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
+  update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  delete(entity: string, id: string): Promise<void>
+  updateMany(
+    entity: string,
+    opts: { where: Record<string, unknown>; data: Record<string, unknown> },
+  ): Promise<{ count: number }>
+  count(entity: string, opts?: { where?: Record<string, unknown> }): Promise<number>
+  allocate(key: string): Promise<number>
+  snapshot(): () => void
+}
+
+/**
+ * The bridge's batch semantics on any in-memory target: ops in order, the
+ * sequence allocated first (stepping past `unique` values already held), the
+ * `$seq` / `$ref` placeholders resolved, and every write undone when one op
+ * throws (the bridge's savepoint), the sequence included.
+ */
+export async function applyMockBatch(
+  target: MockBatchTarget,
+  spec: MockBatchSpec,
+): Promise<MockBatchResult> {
+  if (!spec || !Array.isArray(spec.ops) || spec.ops.length === 0) {
+    throw new Error("ctx.db.batch: expects { ops: [...] } with at least one op")
+  }
+  const undo = target.snapshot()
+  try {
+    const out: MockBatchResult = { rows: {} }
+    let value: number | null = null
+    let formatted: string | undefined
+    if (spec.sequence) {
+      const seq = spec.sequence
+      value = await target.allocate(seq.key)
+      if (seq.unique) {
+        const u = seq.unique
+        while (
+          (await target.count(u.entity, { where: { ...(u.where ?? {}), [u.field]: value } })) > 0
+        ) {
+          value = await target.allocate(seq.key)
+        }
+      }
+      if (seq.format)
+        formatted = seq.format.prefix + String(value).padStart(seq.format.pad ?? 0, "0")
+      out.sequence = { value, ...(formatted !== undefined ? { formatted } : {}) }
+    }
+    const resolve = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(resolve)
+      if (v === null || typeof v !== "object") return v
+      const o = v as Record<string, unknown>
+      const keys = Object.keys(o)
+      if (keys.length === 1 && keys[0] === "$seq") {
+        if (value === null) throw new Error("ctx.db.batch: $seq without a sequence")
+        if (o.$seq === "formatted") {
+          if (formatted === undefined) throw new Error("ctx.db.batch: $seq formatted needs format")
+          return formatted
+        }
+        return value
+      }
+      if (keys.length === 1 && keys[0] === "$ref") {
+        const row = out.rows[String(o.$ref)]
+        if (!row) throw new Error(`ctx.db.batch: $ref ${String(o.$ref)} names no earlier insert`)
+        return row.id
+      }
+      return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, resolve(x)]))
+    }
+    for (const op of spec.ops) {
+      if (typeof op.insert === "string") {
+        const row = (await target.insert(
+          op.insert,
+          resolve(op.data) as Record<string, unknown>,
+        )) as Record<string, unknown> & { id: string }
+        if (typeof op.as === "string") out.rows[op.as] = row
+      } else if (typeof op.update === "string") {
+        await target.update(
+          op.update,
+          String(resolve(op.id)),
+          resolve(op.data) as Record<string, unknown>,
+        )
+      } else if (typeof op.delete === "string") {
+        await target.delete(op.delete, String(resolve(op.id)))
+      } else if (typeof op.updateMany === "string") {
+        await target.updateMany(op.updateMany, {
+          where: resolve(op.where) as Record<string, unknown>,
+          data: resolve(op.data) as Record<string, unknown>,
+        })
+      } else {
+        throw new Error("ctx.db.batch: an op is none of insert, update, delete, updateMany")
+      }
+    }
+    return out
+  } catch (err) {
+    undo()
+    throw err
+  }
 }
 
 const BASE_ENTITY_FIELDS = new Set(["id", "createdAt", "updatedAt"])
@@ -221,7 +340,38 @@ export function createMockDb(opts: MockDbOptions = {}, behavior: MockDbBehavior 
     seed(entity, rows)
   }
 
+  const sequences = new Map<string, number>()
   const db: MockDb = {
+    __sequences: sequences,
+    async batch(spec) {
+      return applyMockBatch(
+        {
+          insert: (e, d) => db.insert(e, d),
+          update: (e, id, d) => db.update(e, id, d),
+          delete: (e, id) => db.delete(e, id),
+          updateMany: (e, o) => db.updateMany(e, o),
+          count: (e, o) => db.count(e, o),
+          allocate: async (key) => {
+            const next = (sequences.get(key) ?? 0) + 1
+            sequences.set(key, next)
+            return next
+          },
+          snapshot: () => {
+            const tables = new Map([...store].map(([k, t]) => [k, new Map(t)]))
+            const seqs = new Map(sequences)
+            const counter = nextIdCounter
+            return () => {
+              store.clear()
+              for (const [k, t] of tables) store.set(k, t)
+              sequences.clear()
+              for (const [k, v] of seqs) sequences.set(k, v)
+              nextIdCounter = counter
+            }
+          },
+        },
+        spec,
+      )
+    },
     async findMany(entity, opts) {
       const t = tableOf(entity)
       let rows = Array.from(t.values()).filter(
@@ -303,6 +453,7 @@ export function createMockDb(opts: MockDbOptions = {}, behavior: MockDbBehavior 
     },
     __reset() {
       store.clear()
+      sequences.clear()
       nextIdCounter = 1
     },
   }

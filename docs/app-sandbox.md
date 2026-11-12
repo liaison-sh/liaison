@@ -96,7 +96,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Category | Methods |
 |----------|---------|
 | Identity | `getUserId()`, `getOrgId()` |
-| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, and `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call") |
+| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call"), and `db_batch` (writes that commit together, see "Commit several writes together") |
 | Events | `emit(event)` — declared emits only |
 | Jobs | `jobs_enqueue(name, payload, opts)` (`ctx.jobs.enqueue`; `enqueueJob` is its flat name), `timers_wakeIn(seconds, name, payload, opts)` (`ctx.timers.wakeIn`), `steps_get`, `steps_reset` and the hidden `_steps_begin` / `_steps_save` behind `ctx.steps.run` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`; on a read-only run it only looks a contact up, returning it unchanged or null, and `clear` is refused) |
@@ -419,7 +419,7 @@ export const { listItems, createItem } = defineHandlers({
 |----------|------|-------------|
 | `userId` | `string` | Current actor |
 | `orgId` | `string` | Current organization |
-| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow` |
+| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow`, `batch` |
 | `emit(event)` | `Promise<void>` | Emit declared event |
 | `enqueueJob(name, payload, opts?)` | `Promise<void>` | Same call as `jobs.enqueue` |
 | `jobs.enqueue(name, payload?, { delay?, jobId? })` | `Promise<void>` | Run a declared job now, or after `delay` ms (at most 15 min) |
@@ -571,6 +571,31 @@ await ctx.db.updateNow("purchases", intent.id, { state: "done", provider_id: bou
 - The run's own transaction sees the committed row and can keep updating it. Do not commit-now a row the run already changed with a plain write: the second transaction waits for the run's lock, and gives up after 5 seconds with a lock timeout error.
 - Give the intent row a state that says the outside call has started, and a sweep that finds rows still in that state after a while and settles them: ask the provider what happened, or show them to a person with what to check. Boxtal's label reservation works this way (`bundled-apps/boxtal/src/link-store.ts`, `reconcile-tracking.ts`).
 - The effect ledger (`ctx.effects`, `@liaison/app-sdk/effects`) also commits its claim at once, and is the tool for "do this outside call once". An intent row is for a record the app itself has to list and act on later.
+
+### Commit several writes together (`ctx.db.batch`)
+
+A sandboxed event handler, webhook delivery, job or ordinary tool call holds no transaction across its run: each bridge call commits on its own. Writes that must land as one go in a single `ctx.db.batch` call, which runs them in order and commits all of them or none:
+
+```typescript
+const done = await ctx.db.batch({
+  sequence: {
+    key: `myapp:invoice:${year}`,
+    format: { prefix: `INV-${year}-`, pad: 4 },
+    unique: { entity: "invoices", field: "number_int", where: { year } },
+  },
+  ops: [
+    { insert: "invoices", as: "invoice", data: { year, number: { $seq: "formatted" }, number_int: { $seq: "value" } } },
+    { insert: "invoice_lines", data: { invoice_id: { $ref: "invoice" }, label: "Service" } },
+    { delete: "drafts", id: draftId },
+  ],
+})
+// done.sequence = { value: 1, formatted: "INV-2026-0001" }, done.rows.invoice = the inserted row
+```
+
+- Ops are `insert` (with an optional `as` name), `update`, `delete` and `updateMany`, each with the checks of its single-call twin: the app's own declared tables and fields, the run's organization and RLS actor, refused on a read-only run. At most 500 ops.
+- `sequence` allocates the next value of one of the app's sequences inside the same commit (the `sequences.allocate` capability): a batch that fails consumes no value, and batches running at the same time never get the same one, so a numbering built on it has no gap and no duplicate. `unique` names a column that may already hold values written another way (an import): the allocator steps past them.
+- Placeholders anywhere in an op's `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (the prefix and the value padded to `pad`) and `{ $ref: "<as>" }` (the id of an earlier insert).
+- What comes after the batch (a render, a mail) is a separate step: make it safe to run again, since a run that dies after the batch leaves the batch's rows committed. The invoicing app numbers its legal documents this way (`bundled-apps/invoicing/src/issue.ts`).
 
 ---
 

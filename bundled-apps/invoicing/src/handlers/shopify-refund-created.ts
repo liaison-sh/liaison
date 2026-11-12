@@ -13,7 +13,7 @@
 // Credit-note issuance needs the full issue pipeline (numbering, PDF, cross-app
 // customs). The kernel injects that same pipeline into every `events.subscribes`
 // handler (it is what lets onShopifyOrderPaid issue invoices), so at runtime this
-// handler's ctx carries `pdf`/`sequences`/`requestApproval`/`executeTool`. Those
+// handler's ctx carries `pdf`/`db.batch`/`requestApproval`/`executeTool`. Those
 // are typed OPTIONAL below so the handler stays unit-testable with a db-only ctx:
 // when the pipeline is absent the refund is still recorded, the credit note is
 // simply skipped.
@@ -94,7 +94,6 @@ export interface RefundCtx {
   // refund also AUTO-ISSUES the reversing credit note(s). Typed against
   // MutationsCtx's fields so `creditNoteCreateAndIssue` can run with this ctx.
   pdf?: MutationsCtx["pdf"]
-  sequences?: MutationsCtx["sequences"]
   requestApproval?: MutationsCtx["requestApproval"]
   executeTool?: MutationsCtx["executeTool"]
   messages?: MutationsCtx["messages"]
@@ -110,7 +109,7 @@ export interface RefundCtx {
 
 /** True when the runtime ctx carries the issue pipeline (so a credit note can be issued). */
 function hasIssuePipeline(ctx: RefundCtx): boolean {
-  return typeof ctx.pdf?.render === "function" && typeof ctx.sequences?.allocate === "function"
+  return typeof ctx.pdf?.render === "function" && typeof (ctx.db as { batch?: unknown }).batch === "function"
 }
 
 /** The shape of an original invoice line this builder needs to allocate a partial reversal. */
@@ -663,11 +662,6 @@ async function handleAttributedRefund(
     const alreadyRecorded =
       refundId !== "" &&
       doc.lifecycle_log.some((e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId)
-    if (alreadyRecorded) {
-      lastDocId = doc.id
-      lastStatus = doc.payment_status
-      continue
-    }
     const docTotal = doc.grand_total_minor < 0n ? -doc.grand_total_minor : doc.grand_total_minor
     const cumulative = sumPriorRefundedMinor(doc.lifecycle_log, refundId) + amount
     const docFullyRefunded = doc.payment_status === "refunded" || cumulative >= docTotal
@@ -682,7 +676,12 @@ async function handleAttributedRefund(
         shopify_refund_id: refundId,
       },
     ]
-    await ctx.db.update("documents", doc.id, { payment_status: newStatus, lifecycle_log: newLog })
+    // Recorded once per refund id. A re-run (the event's retry after a run that died between the
+    // record and the credit note: nothing is held across the run) skips the record and still
+    // issues the credit note, which is found instead of issued twice when it already exists.
+    if (!alreadyRecorded) {
+      await ctx.db.update("documents", doc.id, { payment_status: newStatus, lifecycle_log: newLog })
+    }
 
     if (hasIssuePipeline(ctx)) {
       try {
@@ -706,7 +705,7 @@ async function handleAttributedRefund(
     }
 
     lastDocId = doc.id
-    lastStatus = newStatus
+    lastStatus = alreadyRecorded ? doc.payment_status : newStatus
   }
 
   if (!lastDocId) {
@@ -785,10 +784,6 @@ export async function onShopifyRefundCreated(
     doc.lifecycle_log.some(
       (e) => normalizeRefundId(String(e.shopify_refund_id ?? "")) === refundId,
     )
-  if (alreadyRecorded) {
-    return { status: "ok", document_id: doc.id, payment_status: doc.payment_status }
-  }
-
   const refundAmt = resolveRefundMinor(payload)
   // Status must reflect the CUMULATIVE refund total, not this webhook alone —
   // a refund split across multiple `refunds/create` events (or a webhook plus a
@@ -815,11 +810,15 @@ export async function onShopifyRefundCreated(
       shopify_refund_id: refundId,
     },
   ]
-  await ctx.db.update("documents", doc.id, {
-    payment_status: newStatus,
-    lifecycle_log: newLog,
-  })
-  if (fullyRefunded) {
+  // Recorded once per refund id; a re-run skips the record and still makes sure of the credit
+  // notes below (each found instead of issued twice when an earlier run already issued it).
+  if (!alreadyRecorded) {
+    await ctx.db.update("documents", doc.id, {
+      payment_status: newStatus,
+      lifecycle_log: newLog,
+    })
+  }
+  if (fullyRefunded && !alreadyRecorded) {
     // The whole order's money came back — the sibling document(s) are refunded
     // too (their lifecycle carries a reference entry, amount attributed above).
     for (const sibling of docs) {
@@ -866,6 +865,6 @@ export async function onShopifyRefundCreated(
   return {
     status: "ok",
     document_id: doc.id,
-    payment_status: newStatus,
+    payment_status: alreadyRecorded ? doc.payment_status : newStatus,
   }
 }

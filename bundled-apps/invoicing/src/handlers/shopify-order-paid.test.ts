@@ -160,22 +160,6 @@ function makeCtx(opts?: {
     approval: opts?.approval ?? null,
     db,
     time: testTime(),
-    sequences: {
-      async allocate({ key }) {
-        const existing = await db.findMany("__sequences", {
-          where: { key },
-          limit: 1,
-        })
-        const current = existing[0] as { value?: number; id?: string } | undefined
-        const next = (current?.value ?? 0) + 1
-        if (current?.id) {
-          await db.update("__sequences", String(current.id), { value: next })
-        } else {
-          await db.insert("__sequences", { key, value: next })
-        }
-        return { value: next }
-      },
-    },
     pdf: {
       async render(p) {
         extras.renderCalls.push(p)
@@ -375,7 +359,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
 
     expect(res).toMatchObject({ status: "deferred", reason: "awaiting_config" })
     expect(db.__all("documents")).toHaveLength(0)
-    expect(db.__all("__sequences")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
     const [park] = db.__all("deferred_events")
     expect(park).toMatchObject({
       status: "awaiting_config",

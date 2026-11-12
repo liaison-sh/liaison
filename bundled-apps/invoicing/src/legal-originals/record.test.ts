@@ -53,12 +53,6 @@ function makeCtx() {
     getUserId: async () => "user-1",
     db,
     time: testTime(),
-    sequences: {
-      async allocate() {
-        seq += 1
-        return { value: seq }
-      },
-    },
     pdf: {
       async render(p) {
         renders.push(p as RenderCall)

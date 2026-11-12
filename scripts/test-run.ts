@@ -692,6 +692,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/morning-brief-template.test.ts",
             "src/tests/integration/rpc-bridge.security-b1.test.ts",
             "src/tests/integration/sandbox-bridge-savepoints.test.ts",
+            // ctx.db.batch on a real database: one commit, numbering with no gap, concurrency.
+            "src/tests/integration/sandbox-bridge-batch.test.ts",
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),
@@ -1406,6 +1408,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // a credit note inherits its original invoice's shopify_order_id, so every
             // "billing documents for this order" consumer must exclude it centrally.
             "src/handlers/billing-documents.test.ts",
+            // The sweep that resumes issues a dead run left numbered but unrendered.
+            "src/handlers/resume-interrupted.test.ts",
             "src/ui/Editor.test.tsx",
             // The editor links a contact by name (search + pick), never by raw id.
             "src/ui/ContactPicker.test.tsx",

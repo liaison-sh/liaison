@@ -107,6 +107,13 @@ import {
 } from "~/modules/notifications/agent-tools"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
 import { createScopeRequest } from "~/modules/scope-requests/service"
+import {
+  handleSidebarAppsGet,
+  handleSidebarAppsSet,
+  type SidebarToolContext,
+  sidebarAppsGetParams,
+  sidebarAppsSetParams,
+} from "~/modules/users/sidebar-agent-tools"
 
 const log = rootLogger.child({ module: "skills-routines-tools" })
 
@@ -1788,9 +1795,45 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     handler: notifHandler(handleThreadMuteSet),
     writesToTable: "kernel.user_thread_state",
   })
+  // The apps hidden from a person's sidebar (0293). The caller's own by default
+  // (same always-held scope as notifications_set); another member's needs
+  // kernel:users:admin, checked in the handler with the org. Not gated: hiding
+  // changes no access, the app still opens from search and links.
+  const sidebarHandler = (h: (p: never, c: SidebarToolContext) => Promise<unknown>) =>
+    h as unknown as (p: unknown, c: unknown) => Promise<unknown>
+  toolRegistry.set([orgId, "kernel", "sidebar_apps_get"], {
+    appName: "kernel",
+    name: "sidebar_apps_get",
+    deferLoading: true,
+    readOnly: true,
+    description:
+      "Read which apps are hidden from a person's sidebar (the desktop rail and the phone Work list), as sidebar entry ids: kernel entries such as `sessions`, `dashboards`, `messages`, `search`, and installed apps by their app name (`monitoring`, `tickets`, `projects`). Omit userId for the user asking; another member's needs kernel:users:admin. Hiding never removes access.",
+    searchKeywords: ["sidebar", "barre latérale", "masquer", "hide", "apps", "rail"],
+    requiredScopes: ["kernel:agent:memory"],
+    params: sidebarAppsGetParams,
+    handler: sidebarHandler(handleSidebarAppsGet),
+  })
+  toolRegistry.set([orgId, "kernel", "sidebar_apps_set"], {
+    appName: "kernel",
+    name: "sidebar_apps_set",
+    deferLoading: true,
+    description:
+      "Hide apps from, or show them again in, a person's sidebar (the desktop rail and the phone Work list). Pass sidebar entry ids in `hide` and/or `show`: kernel entries such as `sessions`, `dashboards`, `messages`, `search`, and installed apps by their app name (`monitoring`, `tickets`, `projects`). Only the ids named change. Omit userId for the user asking; another member's needs kernel:users:admin, and they can show the app again themselves. Hiding never removes access: a hidden app still opens from search, the command palette and links. Confirm only what the result says.",
+    searchKeywords: ["sidebar", "barre latérale", "masquer", "afficher", "hide", "apps", "rail"],
+    requiredScopes: ["kernel:agent:memory"],
+    params: sidebarAppsSetParams,
+    handler: sidebarHandler(handleSidebarAppsSet),
+    writesToTable: "kernel.user_preferences",
+  })
+
   // The user's own settings: should one park (a tainted turn, an org policy), the user alone
   // decides it and reads it, never the org's approvers (scope-taint.ts, rule 13).
-  for (const ownSetting of ["notifications_set", "notification_rules_set", "thread_mute_set"]) {
+  for (const ownSetting of [
+    "notifications_set",
+    "notification_rules_set",
+    "thread_mute_set",
+    "sidebar_apps_set",
+  ]) {
     approvalResourceOwnerRegistry.set([orgId, "kernel", ownSetting], { requesterAlways: true })
   }
 

@@ -174,7 +174,9 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
           : {}),
       } as never,
     ) as AppBridge
-  const only = process.env.CONTRACT_RECORD_ONLY ? new Set(process.env.CONTRACT_RECORD_ONLY.split(",")) : null
+  const only = process.env.CONTRACT_RECORD_ONLY
+    ? new Set(process.env.CONTRACT_RECORD_ONLY.split(","))
+    : null
   const report: string[] = []
   try {
     for (const step of opts.plan) {
@@ -207,7 +209,10 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
       await step.after?.(answer, opts.state)
-      const summary = JSON.stringify(answer)?.slice(0, process.env.CONTRACT_RECORD_DEBUG ? 3000 : 160)
+      const summary = JSON.stringify(answer)?.slice(
+        0,
+        process.env.CONTRACT_RECORD_DEBUG ? 3000 : 160,
+      )
       if ((only && !only.has(step.entry)) || step.record === false) {
         report.push(`  (prereq) ${step.entry}: ${summary}`)
         continue
@@ -226,7 +231,14 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       const stored = fixture.calls
         .filter((c) => c.method === "config_setSecret" && typeof c.args[1] === "string")
         .map((c) => ({ from: c.args[1] as string, to: "redacted" }))
-      const scrubbed = scrubFixture(fixture, [...opts.replacements, ...stored])
+      // A step's claim token sits under a `token` key in `_steps_begin`'s answer, which the
+      // key-based scrub redacts: the same stand-in in the `_steps_save` arguments keeps them paired.
+      const claims = fixture.calls.flatMap((c) => {
+        if (c.method !== "_steps_begin" || typeof c.reply !== "string") return []
+        const token = (JSON.parse(c.reply) as { token?: unknown } | null)?.token
+        return typeof token === "string" ? [{ from: token, to: "redacted" }] : []
+      })
+      const scrubbed = scrubFixture(fixture, [...opts.replacements, ...stored, ...claims])
       const problem = await verifyFixture({
         isolate,
         entry,
@@ -235,6 +247,13 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
         limits: productionLimits(entry),
       })
       if (problem) {
+        if (process.env.CONTRACT_RECORD_DEBUG) {
+          const { writeFileSync } = await import("node:fs")
+          writeFileSync(
+            `${process.env.TMPDIR ?? "/tmp"}/failed-${step.entry.replace(/[:/]/g, "_")}.json`,
+            JSON.stringify(scrubbed, null, 1),
+          )
+        }
         report.push(`FAIL ${step.entry}: ${problem} | ${summary}`)
         continue
       }

@@ -36,15 +36,45 @@ import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "activity" })
 
-/** One deadline for every source together. */
+/**
+ * One deadline for every source together, for a page of the timeline a person
+ * opens: the panel shows what answered and offers a Retry for the rest.
+ */
 export const ACTIVITY_DEADLINE_MS = 800
-let defaultDeadlineMs = ACTIVITY_DEADLINE_MS
+/**
+ * The deadline of an agent's read (a caller that passes none: contacts_read,
+ * companies_read, company_timeline). A source the agent hears nothing from is
+ * reported as "no answer", and the agent has no Retry, so the deadline covers
+ * a source's first, cold read rather than a panel's latency budget. Sized from
+ * that cold cost: a sandboxed app's first run in a process pays a worker spawn
+ * (about 1 s, worker-pool.ts) and its bundle's first evaluation (measured 250
+ * to 370 ms for the largest one, invoicing, in a freshly seeded visitor org,
+ * against 30 to 60 ms for an in-process app), and one agent step runs up to
+ * three such reads at once (a company, a contact, a timeline). About 1.4 s
+ * cold, so 3 s: twice that, and below the 5 s a production sandbox run may
+ * take at most, so a source still within its own run limit is never reported
+ * as silent. 800 ms was below the cold cost: a first read heard from no app.
+ */
+export const AGENT_READ_DEADLINE_MS = 3_000
+let defaultDeadlineMs = AGENT_READ_DEADLINE_MS
+/** What each linked-records read asked, for tests (null: nobody listens). */
+let linkedObserver: ((asked: LinkedRecordsAsked) => void) | null = null
+
+/** One linked-records read: each source asked, and whether it answered. */
+export interface LinkedRecordsAsked {
+  target: { contactId: string } | { companyId: string }
+  sources: Array<{ source: string; app: string; answered: boolean; reason?: "timeout" | "error" }>
+}
 
 /** Test seam: a run whose callers pass no deadline of their own (an agent tool's read). */
 export const ActivityTestAccess = {
   /** The deadline a read without its own `deadlineMs` waits (null: the shipped one). */
   setDefaultDeadlineMs(ms: number | null): void {
-    defaultDeadlineMs = ms ?? ACTIVITY_DEADLINE_MS
+    defaultDeadlineMs = ms ?? AGENT_READ_DEADLINE_MS
+  },
+  /** Hears every linked-records read: the sources it asked and which answered. */
+  observeLinkedRecords(fn: ((asked: LinkedRecordsAsked) => void) | null): void {
+    linkedObserver = fn
   },
 }
 /** The people of a company each source is asked about, most recently active first. */
@@ -675,6 +705,15 @@ export async function readLinkedRecords(
     ),
   )
   clearTimeout(timer)
+  linkedObserver?.({
+    target,
+    sources: asked.map((a) => ({
+      source: a.decl.filterKey,
+      app: a.decl.app,
+      answered: a.ok,
+      ...(a.ok ? {} : { reason: a.reason }),
+    })),
+  })
 
   const apps: LinkedApp[] = []
   const unavailable: ActivityUnavailable[] = []

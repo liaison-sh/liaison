@@ -9,13 +9,13 @@ import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { enqueueRoutineDecisionTurn } from "~/modules/approvals/approval-result-turn"
-import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
 import {
   cascadeDeferredDependents,
   executeApprovedStep,
   type SendGuardOverride,
 } from "~/modules/approvals/cascade"
 import { failBundle, stampExecutionFailure } from "~/modules/approvals/cascade-fail"
+import { mayDecideApproval } from "~/modules/approvals/decider"
 import {
   cancelDeferredBundleSiblings,
   cancelDeferredDependents,
@@ -45,18 +45,13 @@ import {
   readAwayWorld,
   readLockedApprovalRoute,
 } from "~/modules/approvals/route-world"
-import { rowTaintMustHold } from "~/modules/approvals/taint-narrow"
 import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
   HandlerToolMissingError,
   RequesterLostScopeError,
 } from "~/modules/apps/run-approved-handler"
 import { isManagedApprovalPayload } from "~/modules/mailbox-crypto/managed-approval"
-import {
-  bypassesDimensionConstraint,
-  dimensionGrantCovers,
-} from "~/modules/permissions/eligible-approvers"
-import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -229,9 +224,6 @@ export async function decideApproval(args: DecideArgs): Promise<DecideResult> {
   // `<app>:approve`, and an optional dimension constraint must be covered by
   // the decider's own dimension grants (unless a super-admin bypass applies).
   // The scope derivation is the shared authority answer — never recomputed here.
-  const approveScope = decidingScope(authorityFacts(row))
-  const constraint = row.dimension_constraint
-
   // Eligibility: an approver is in the request's audience AND currently holds the
   // app's `:approve` scope (re-loaded from the DB so a revoked scope can't decide).
   // Shared-surface drafts (ticket/mail replies) widen "audience" to anyone who
@@ -244,35 +236,21 @@ export async function decideApproval(args: DecideArgs): Promise<DecideResult> {
   // the OWNER decides them, with or without the app's `:approve` scope — it is
   // their own mailbox/resource. The shared-surface widening never applies to
   // them (isSharedSurfaceApproval is ownership-aware).
+  // The one decider answer, shared with the edit path (`decider.ts`): fresh grants, the row's own
+  // deciding scope, every taint scope of a tainted proposal (rule 8c) and dimension coverage.
   const isResourceOwner = row.resource_owner_id === args.actor.userId
-  const inAudience =
-    isSharedSurfaceApproval(row) ||
-    row.notify_user_ids.includes(args.actor.userId) ||
-    isResourceOwner
-  let isEligibleApprover = isResourceOwner
-  if (!isEligibleApprover && inAudience) {
-    const deciderPerms = await withPrivilegedDb(args.orgId, "approval-load-decider-perms", (pdb) =>
-      loadEffectivePermissions(pdb, args.actor.userId, args.orgId),
-    )
-    // A tainted proposal (scope-taint.ts, rule 8c) is decided only by a holder of every scope
-    // its turn read: `approve_scope` is one column, and a disclosure decision (rule 8h) persists
-    // only the first of them there. Re-checked on fresh grants, as the deciding scope is.
-    isEligibleApprover =
-      hasScope(approveScope, deciderPerms.scopes) &&
-      rowTaintMustHold(row.metadata).every((scope) => hasScope(scope, deciderPerms.scopes))
-    // Enforce the dimension constraint: the decider's own dimension grants on
-    // constraint.key must cover its values (or "*"), unless they bypass as a
-    // super-admin ('*' / kernel / kernel:approvals:admin scope). The
-    // resource-owner path is unaffected (that branch never reaches here).
-    if (
-      isEligibleApprover &&
-      constraint &&
-      !bypassesDimensionConstraint(deciderPerms.scopes) &&
-      !dimensionGrantCovers(deciderPerms.dimensionGrants, constraint.key, constraint.values)
-    ) {
-      isEligibleApprover = false
-    }
-  }
+  const isEligibleApprover = await withPrivilegedDb(
+    args.orgId,
+    "approval-load-decider-perms",
+    (tx) =>
+      mayDecideApproval({
+        orgId: args.orgId,
+        userId: args.actor.userId,
+        row,
+        sharedSurface: isSharedSurfaceApproval(row),
+        tx,
+      }),
+  )
   const isRequester = row.requested_by === args.actor.userId
 
   if (args.decision === "approve") {

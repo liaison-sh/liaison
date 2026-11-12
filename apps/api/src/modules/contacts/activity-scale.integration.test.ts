@@ -151,6 +151,8 @@ describe("the timeline at a real customer's size", () => {
         before,
         source,
         limit: 30,
+        // The route's own deadline: the panel's budget, not an agent's read.
+        deadlineMs: ACTIVITY_DEADLINE_MS,
       })
       return { ms: performance.now() - started, page }
     }

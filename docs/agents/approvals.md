@@ -88,6 +88,8 @@ An approved action can still fail. When it only reads (a lookup, a read on a con
 
 Some fields can be edited by the person who asked or by an approver, for example the text of a ticket reply or the name, prompt and schedule of a routine.
 
+Anyone who may approve a request may edit it, even when the request waits in a conversation they never joined, such as a team channel an agent posted it in. The edit is then kept on the request and its history, without a note in that conversation. Someone who may not approve it, and is not in that conversation, cannot edit it.
+
 1. On the card, click **Edit**.
 2. Change the text.
 3. Click **Save** (or **Cancel** to drop the change), then click **Approve**.

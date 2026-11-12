@@ -7640,7 +7640,8 @@ export const FR_BY_KEY: Record<string, string> = {
     "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »",
   "kernel.dashboards.editStart": "Modifier",
   "kernel.dashboards.editDone": "Terminé",
-  "kernel.dashboards.editHint": "Faites glisser un bloc pour le déplacer, ou utilisez ses flèches. Chaque modification est enregistrée aussitôt.",
+  "kernel.dashboards.editHint":
+    "Faites glisser un bloc pour le déplacer, ou utilisez ses flèches. Chaque modification est enregistrée aussitôt.",
   "kernel.dashboards.undo": "Annuler",
   "kernel.dashboards.titleLabel": "Titre du tableau de bord",
   "kernel.dashboards.descriptionLabel": "Description",
@@ -7662,8 +7663,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.duplicateBlock": "Dupliquer",
   "kernel.dashboards.deleteBlock": "Supprimer",
   "kernel.dashboards.deleteBlockTitle": "Supprimer ce bloc ?",
-  "kernel.dashboards.deleteBlockBody": "« {{title}} » quitte le tableau de bord. Annuler ou l'historique des versions le ramène.",
-  "kernel.dashboards.editConflict": "Quelqu'un d'autre a modifié ce tableau de bord. Il est rechargé : refaites votre modification.",
+  "kernel.dashboards.deleteBlockBody":
+    "« {{title}} » quitte le tableau de bord. Annuler ou l'historique des versions le ramène.",
+  "kernel.dashboards.editConflict":
+    "Quelqu'un d'autre a modifié ce tableau de bord. Il est rechargé : refaites votre modification.",
   "kernel.dashboards.editFailed": "La modification n'a pas pu être enregistrée.",
   "kernel.dashboards.editFailedWhy": "La modification n'a pas pu être enregistrée : {{reason}}",
   "kernel.dashboards.exportMenu": "Exporter",
@@ -7690,18 +7693,23 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.historyShowBlocks": "Voir les blocs",
   "kernel.dashboards.historyHideBlocks": "Masquer les blocs",
   "kernel.dashboards.historyRestore": "Restaurer",
-  "kernel.dashboards.historyRestored": "La version {{version}} est revenue, enregistrée comme nouvelle version.",
-  "kernel.dashboards.historyEmpty": "Aucune version enregistrée pour l'instant. La prochaine modification commence l'historique.",
+  "kernel.dashboards.historyRestored":
+    "La version {{version}} est revenue, enregistrée comme nouvelle version.",
+  "kernel.dashboards.historyEmpty":
+    "Aucune version enregistrée pour l'instant. La prochaine modification commence l'historique.",
   "kernel.dashboards.historyFailed": "L'historique n'a pas pu être lu. Réessayez dans un instant.",
   "kernel.dashboards.duplicateDashboard": "Dupliquer pour moi",
   "kernel.dashboards.duplicateFailed": "La copie n'a pas pu être créée.",
   "kernel.dashboards.duplicateFailedWhy": "La copie n'a pas pu être créée : {{reason}}",
   "kernel.dashboards.sendRegularly": "Envoyer régulièrement…",
-  "kernel.dashboards.sendRegularlyHint": "Votre agent le met en place comme une routine. Demandez-le dans le chat, par exemple :",
-  "kernel.dashboards.sendRegularlyExample": "« Chaque lundi à 8 h, envoie-moi le tableau de bord {{title}} en PDF. »",
+  "kernel.dashboards.sendRegularlyHint":
+    "Votre agent le met en place comme une routine. Demandez-le dans le chat, par exemple :",
+  "kernel.dashboards.sendRegularlyExample":
+    "« Chaque lundi à 8 h, envoie-moi le tableau de bord {{title}} en PDF. »",
   "kernel.dashboards.filterSearch": "Rechercher dans {{label}}",
   "kernel.dashboards.filterSearchPlaceholder": "Rechercher",
-  "kernel.dashboards.filterTruncatedSearch": "Seules les 200 premières valeurs sont listées. Recherchez pour trouver les autres.",
+  "kernel.dashboards.filterTruncatedSearch":
+    "Seules les 200 premières valeurs sont listées. Recherchez pour trouver les autres.",
   "kernel.dashboards.filterNoMatch": "Aucune valeur ne correspond.",
   "kernel.dashboards.visibilityPersonal": "Personnel",
   "kernel.dashboards.visibilityOrg": "Organisation",

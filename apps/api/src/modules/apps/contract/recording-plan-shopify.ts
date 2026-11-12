@@ -342,7 +342,7 @@ const orderUpdate = (s: PlanState) =>
   params({
     input: { id: ORDER(s), tags: ["contract-fixture", "recorded"], note: "Recorded order" },
   })
-const fulfill = (s: PlanState, order: string, line: string) =>
+const fulfill = (_s: PlanState, order: string, line: string) =>
   params({
     orderId: order,
     lineItems: [{ orderLineItemId: line, quantity: 1 }],
@@ -846,52 +846,72 @@ export const SHOPIFY_RECORDING_PLAN: PlanStep[] = [
   {
     entry: "tool:locations_list",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.locations = a),
+    after: (a, s) => {
+      s.values.locations = a
+    },
   },
   {
     entry: "tool:markets_list",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.markets = a),
+    after: (a, s) => {
+      s.values.markets = a
+    },
   },
   {
     entry: "tool:products_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.products = a),
+    after: (a, s) => {
+      s.values.products = a
+    },
   },
   {
     entry: "tool:variants_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.variants = a),
+    after: (a, s) => {
+      s.values.variants = a
+    },
   },
   {
     entry: "tool:orders_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.orders = a),
+    after: (a, s) => {
+      s.values.orders = a
+    },
   },
   {
     entry: "tool:customers_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.customers = a),
+    after: (a, s) => {
+      s.values.customers = a
+    },
   },
   {
     entry: "tool:draft_orders_list",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.drafts = a),
+    after: (a, s) => {
+      s.values.drafts = a
+    },
   },
   {
     entry: "tool:discounts_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.discounts = a),
+    after: (a, s) => {
+      s.values.discounts = a
+    },
   },
   {
     entry: "tool:companies_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.companies = a),
+    after: (a, s) => {
+      s.values.companies = a
+    },
   },
   {
     entry: "tool:returns_search",
     input: () => params({ limit: 5 }),
-    after: (a, s) => void (s.values.returns = a),
+    after: (a, s) => {
+      s.values.returns = a
+    },
   },
   {
     entry: "tool:orders_get",

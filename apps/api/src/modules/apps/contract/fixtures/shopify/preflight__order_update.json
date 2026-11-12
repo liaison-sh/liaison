@@ -3,10 +3,7 @@
   "params": {
     "input": {
       "id": "gid://shopify/Order/19010984706214",
-      "tags": [
-        "contract-fixture",
-        "recorded"
-      ],
+      "tags": ["contract-fixture", "recorded"],
       "note": "Recorded order"
     }
   },

@@ -5,9 +5,7 @@
   "calls": [
     {
       "method": "listContactsByExternalId",
-      "args": [
-        50
-      ],
+      "args": [50],
       "reply": "{\"contacts\":[],\"nextCursor\":null}"
     }
   ]

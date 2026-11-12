@@ -11,9 +11,7 @@
   "calls": [
     {
       "method": "connections_getAccounts",
-      "args": [
-        "shop"
-      ],
+      "args": ["shop"],
       "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {

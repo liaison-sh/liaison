@@ -4,10 +4,7 @@
     "input": {
       "id": "gid://shopify/Product/15992372494502",
       "title": "Contract Fixture Synth II",
-      "tags": [
-        "contract-fixture",
-        "updated"
-      ]
+      "tags": ["contract-fixture", "updated"]
     }
   },
   "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",

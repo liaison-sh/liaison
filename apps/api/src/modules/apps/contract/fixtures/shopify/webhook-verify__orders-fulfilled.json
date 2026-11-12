@@ -16,9 +16,7 @@
   "calls": [
     {
       "method": "config_has",
-      "args": [
-        "shopifyWebhookSecret"
-      ],
+      "args": ["shopifyWebhookSecret"],
       "reply": true
     },
     {

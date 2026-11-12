@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "webhook_deliveries",
-        "{\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":200}"
-      ],
+      "args": ["webhook_deliveries", "{\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":200}"],
       "reply": "[]"
     }
   ]

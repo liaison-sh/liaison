@@ -229,7 +229,7 @@ export async function main(
   }
   for (const i of issues) {
     console.error(
-      `[check-bundled-app-version] the package of bundled-apps/${i.app} changed (${i.files.slice(0, 5).join(", ")}${i.files.length > 5 ? ", ..." : ""}) but its version is ${i.head} (was ${i.base} on ${base}). Raise "version" in bundled-apps/${i.app}/app.manifest.json (and its manifest.test.ts): an installed version directory is never rewritten, so the same version with other files fails the deploy's migrate step.`,
+      `[check-bundled-app-version] the package of bundled-apps/${i.app} changed (${i.files.slice(0, 5).join(", ")}${i.files.length > 5 ? ", ..." : ""}) but its version is ${i.head} (was ${i.base} on ${base}). Raise "version" in bundled-apps/${i.app}/app.manifest.json: an installed version directory is never rewritten, so the same version with other files fails the deploy's migrate step.`,
     )
   }
   return 1

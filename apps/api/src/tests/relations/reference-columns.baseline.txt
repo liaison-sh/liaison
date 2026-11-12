@@ -201,6 +201,8 @@ kernel.dashboard_versions.dashboard_id
 kernel.dashboard_versions.saved_by
 kernel.dashboard_viewer_states.dashboard_id
 kernel.dashboard_viewer_states.user_id
+kernel.dashboards.acl_role_ids
+kernel.dashboards.acl_user_ids
 kernel.demo_leads.demo_org_id
 kernel.demo_world_marks.beat_id
 kernel.demo_world_marks.tour_id

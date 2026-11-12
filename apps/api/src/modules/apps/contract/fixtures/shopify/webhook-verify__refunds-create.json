@@ -1,0 +1,41 @@
+{
+  "entry": "webhook-verify:refunds-create",
+  "params": {
+    "headers": {
+      "x-shopify-hmac-sha256": "3hgEqZQXZaZaoXMS0OpIunI2iDv/Jk5CGPRMaYuJsRQ=",
+      "x-shopify-webhook-id": "contract-refunds-create-8",
+      "x-shopify-topic": "refunds/create",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    },
+    "body": "{\"id\":1214628561062,\"order_id\":19010984706214,\"created_at\":\"2026-11-12T03:18:22-05:00\",\"note\":\"Goodwill refund\",\"user_id\":null,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"duties\":[],\"total_duties_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"return\":null,\"refund_shipping_lines\":[],\"restock\":false,\"admin_graphql_api_id\":\"gid://shopify/Refund/1214628561062\",\"order_adjustments\":[{\"id\":619333222566,\"order_id\":19010984706214,\"refund_id\":1214628561062,\"amount\":\"875.95\",\"tax_amount\":\"0.00\",\"kind\":\"refund_discrepancy\",\"reason\":\"Refund discrepancy\",\"amount_set\":{\"shop_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"}},\"tax_amount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}}}],\"refund_line_items\":[],\"transactions\":[{\"id\":20951765090470,\"order_id\":19010984706214,\"kind\":\"refund\",\"gateway\":\"manual\",\"status\":\"success\",\"message\":\"Refunded 10.00 USD from manual gateway\",\"created_at\":\"2026-11-12T03:18:22-05:00\",\"test\":false,\"authorization\":null,\"location_id\":null,\"user_id\":null,\"parent_id\":20951764566182,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"device_id\":null,\"error_code\":null,\"source_name\":\"372991328257\",\"receipt\":{},\"amount\":\"10.00\",\"currency\":\"USD\",\"payment_id\":\"#2802.1\",\"total_unsettled_set\":{\"presentment_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"},\"shop_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"}},\"manual_payment_gateway\":true,\"amount_rounding\":null,\"admin_graphql_api_id\":\"gid://shopify/OrderTransaction/20951765090470\"}]}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": ["shopifyWebhookSecret"],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "shopifyWebhookSecret",
+        "{\"id\":1214628561062,\"order_id\":19010984706214,\"created_at\":\"2026-11-12T03:18:22-05:00\",\"note\":\"Goodwill refund\",\"user_id\":null,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"duties\":[],\"total_duties_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"return\":null,\"refund_shipping_lines\":[],\"restock\":false,\"admin_graphql_api_id\":\"gid://shopify/Refund/1214628561062\",\"order_adjustments\":[{\"id\":619333222566,\"order_id\":19010984706214,\"refund_id\":1214628561062,\"amount\":\"875.95\",\"tax_amount\":\"0.00\",\"kind\":\"refund_discrepancy\",\"reason\":\"Refund discrepancy\",\"amount_set\":{\"shop_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"}},\"tax_amount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}}}],\"refund_line_items\":[],\"transactions\":[{\"id\":20951765090470,\"order_id\":19010984706214,\"kind\":\"refund\",\"gateway\":\"manual\",\"status\":\"success\",\"message\":\"Refunded 10.00 USD from manual gateway\",\"created_at\":\"2026-11-12T03:18:22-05:00\",\"test\":false,\"authorization\":null,\"location_id\":null,\"user_id\":null,\"parent_id\":20951764566182,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"device_id\":null,\"error_code\":null,\"source_name\":\"372991328257\",\"receipt\":{},\"amount\":\"10.00\",\"currency\":\"USD\",\"payment_id\":\"#2802.1\",\"total_unsettled_set\":{\"presentment_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"},\"shop_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"}},\"manual_payment_gateway\":true,\"amount_rounding\":null,\"admin_graphql_api_id\":\"gid://shopify/OrderTransaction/20951765090470\"}]}",
+        "3hgEqZQXZaZaoXMS0OpIunI2iDv/Jk5CGPRMaYuJsRQ=",
+        "base64"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "shopify-delivery",
+        "{\"id\":1214628561062,\"order_id\":19010984706214,\"created_at\":\"2026-11-12T03:18:22-05:00\",\"note\":\"Goodwill refund\",\"user_id\":null,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"duties\":[],\"total_duties_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"return\":null,\"refund_shipping_lines\":[],\"restock\":false,\"admin_graphql_api_id\":\"gid://shopify/Refund/1214628561062\",\"order_adjustments\":[{\"id\":619333222566,\"order_id\":19010984706214,\"refund_id\":1214628561062,\"amount\":\"875.95\",\"tax_amount\":\"0.00\",\"kind\":\"refund_discrepancy\",\"reason\":\"Refund discrepancy\",\"amount_set\":{\"shop_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"875.95\",\"currency_code\":\"USD\"}},\"tax_amount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}}}],\"refund_line_items\":[],\"transactions\":[{\"id\":20951765090470,\"order_id\":19010984706214,\"kind\":\"refund\",\"gateway\":\"manual\",\"status\":\"success\",\"message\":\"Refunded 10.00 USD from manual gateway\",\"created_at\":\"2026-11-12T03:18:22-05:00\",\"test\":false,\"authorization\":null,\"location_id\":null,\"user_id\":null,\"parent_id\":20951764566182,\"processed_at\":\"2026-11-12T03:18:22-05:00\",\"device_id\":null,\"error_code\":null,\"source_name\":\"372991328257\",\"receipt\":{},\"amount\":\"10.00\",\"currency\":\"USD\",\"payment_id\":\"#2802.1\",\"total_unsettled_set\":{\"presentment_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"},\"shop_money\":{\"amount\":\"0.0\",\"currency\":\"USD\"}},\"manual_payment_gateway\":true,\"amount_rounding\":null,\"admin_graphql_api_id\":\"gid://shopify/OrderTransaction/20951765090470\"}]}"
+      ],
+      "reply": "WmADPUrBcfmHogfypbqkrCAtlOFhIqe5UMapFcqhZdk="
+    }
+  ]
+}

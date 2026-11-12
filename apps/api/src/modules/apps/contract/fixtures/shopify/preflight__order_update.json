@@ -1,0 +1,12 @@
+{
+  "entry": "preflight:order_update",
+  "params": {
+    "input": {
+      "id": "gid://shopify/Order/19010984706214",
+      "tags": ["contract-fixture", "recorded"],
+      "note": "Recorded order"
+    }
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": []
+}

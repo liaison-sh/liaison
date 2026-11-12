@@ -641,21 +641,11 @@ async function reconcileGoogleLogin(orgId: string): Promise<void> {
 
 /**
  * The org's setup work that follows a registration with a stale stamp: the
- * manifest-declared default saved views, and the org Drive content check
- * (apps/google-drive/org-drive-content.ts). Idempotent.
+ * manifest-declared default saved views. Idempotent.
  */
 async function runOrgSetupHooks(orgId: string): Promise<void> {
   const { runBackfillForOrg } = await import("~/modules/saved-views/backfill")
   await runBackfillForOrg(orgId)
-  // Knowledge an organization Drive connection synced before it read only its
-  // chosen shared drives: hidden (none chosen) or synced again (drives chosen).
-  // Best effort: a failure is logged and the sync's own check still applies.
-  try {
-    const { hideUnscopedOrgDriveContent } = await import("~/apps/google-drive/org-drive-content")
-    await hideUnscopedOrgDriveContent(orgId)
-  } catch (err) {
-    log.error({ err, orgId }, "Hiding org Drive content outside its shared drives failed")
-  }
 }
 
 /**

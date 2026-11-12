@@ -104,6 +104,49 @@ function upstreamConnectionClosed(url: string, cause: unknown): Error {
   return err
 }
 
+/** The largest workbook `convert: "xlsx-text"` downloads to turn into text. */
+export const SANDBOX_FETCH_MAX_CONVERT_BYTES = 10 * 1024 * 1024
+
+/** The bytes of a response, streamed under `maxBytes` (cut off past it, never buffered whole). */
+async function readResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array()
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel("response_too_large")
+      throw new Error(`Response body exceeds ${maxBytes} bytes`)
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.byteLength
+  }
+  return out
+}
+
+/** A workbook response as text (modules/imports/xlsx-text.ts); a non-workbook throws. */
+async function xlsxResponseText(response: Response): Promise<string> {
+  const bytes = await readResponseBytes(response, SANDBOX_FETCH_MAX_CONVERT_BYTES)
+  const { xlsxToText } = await import("~/modules/imports/xlsx-text")
+  try {
+    return await xlsxToText(bytes, "workbook.xlsx")
+  } catch (err) {
+    throw typedError(
+      422,
+      "not_a_workbook",
+      `ctx.fetch convert xlsx-text: the response is not a readable workbook (${(err as Error).message})`,
+    )
+  }
+}
+
 async function readResponseBody(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) return ""
 
@@ -278,6 +321,13 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       const grantedAuthDeps: FetchAuthDeps = { ...authDeps, manifest: granted }
       const auth = parseFetchAuth(opts.auth)
       const configSecrets = parseConfigSecrets(opts.configSecrets)
+      if (opts.convert !== undefined && opts.convert !== "xlsx-text") {
+        throw typedError(
+          400,
+          "invalid_request",
+          `ctx.fetch: unknown convert "${String(opts.convert)}"`,
+        )
+      }
       // A multipart body is assembled HERE from the parts the app names: text fields as given,
       // file parts read from kernel.files under this bridge's own RLS context (so only a file the
       // calling app may read can leave), capped at 25 MB, each part fingerprinted.
@@ -299,6 +349,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           ctx,
           (body as { multipart: unknown[] }).multipart,
           SANDBOX_MULTIPART_MAX_REQUEST_BYTES,
+          (body as { related?: unknown }).related === true ? "related" : "form-data",
         )
         body = upload.body
       } else if (body !== undefined && body !== null && typeof body !== "string") {
@@ -594,8 +645,13 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           if (pauseMs !== null) await pauseConnection(limiterKey, pauseMs)
         }
         // Nothing the host injected comes back to the app, even when the upstream echoes it.
+        // `convert: "xlsx-text"`: a workbook the app could not read as a string (the
+        // sandbox has no binary type) is turned into text here, from at most 10 MB.
+        const convert = response.ok && opts.convert === "xlsx-text"
         responseBody = redactSecrets(
-          await readResponseBody(response, SANDBOX_FETCH_MAX_RESPONSE_BYTES),
+          convert
+            ? await xlsxResponseText(response)
+            : await readResponseBody(response, SANDBOX_FETCH_MAX_RESPONSE_BYTES),
           injected.secrets,
         )
       } finally {

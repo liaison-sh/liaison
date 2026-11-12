@@ -184,7 +184,8 @@ liaison erase-user <userId>
   account on the server's unverified client). The CLI cannot run Google's
   file picker: in picked mode it prints the link to the Drive page in
   Settings (`drivePicker.url`), where **Choose files** opens it, and says when
-  the server lacks `GOOGLE_PICKER_API_KEY` / `GOOGLE_CLOUD_PROJECT_NUMBER`.
+  the server lacks `GOOGLE_PICKER_API_KEY` / `GOOGLE_CLOUD_PROJECT_NUMBER` (an
+  organization may set the google-drive app's config `pickerApiKey` / `pickerAppId` instead).
   `server` prints what the person who runs the server sets up (address and
   https, the mail sender and its SPF, DKIM and DMARC records, model keys,
   backups, Sign in with Google, the server's OAuth clients, the Google Picker,

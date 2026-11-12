@@ -155,7 +155,7 @@ describe("tool names in model-facing guidance", () => {
       path.join(AGENT, "routines/routine-draft-claim-guard.ts"),
       path.join(API_SRC, "apps/tickets/admin.ts"),
       path.join(API_SRC, "apps/tickets/tools.ts"),
-      path.join(API_SRC, "apps/google-drive/tools.ts"),
+      path.join(REPO, "bundled-apps/google-drive/src/tools.ts"),
       path.join(REPO, "bundled-apps/boxtal/src/shipment.ts"),
       path.join(REPO, "bundled-apps/boxtal/src/proforma.ts"),
       path.join(REPO, "bundled-apps/ads/src/merchant-reads.ts"),

@@ -7,8 +7,6 @@ import { bodyLimit } from "hono/body-limit"
 import { every } from "hono/combine"
 import { cors } from "hono/cors"
 import { pinoLogger } from "hono-pino"
-import { drivePickerRoutes } from "~/apps/google-drive/picker-routes"
-import { driveSharedDrivesRoutes } from "~/apps/google-drive/shared-drives-routes"
 import { knowledgeRoutes } from "~/apps/knowledge/routes"
 import { mcpManagerAuditRoutes } from "~/apps/mcp-manager/audit-routes"
 import { mcpManagerOAuthRoutes } from "~/apps/mcp-manager/oauth-routes"
@@ -1278,19 +1276,6 @@ app.route("/api/connections", connectionRoutes)
 // session in the path is the credential; the app's handler runs as the person
 // the link was minted for.
 app.route("/api/app-pages", appPageRoutes)
-// The Google Picker page (google-drive/picker-page.ts): public, its one-time
-// ticket in the path is the only credential; it renders once per ticket.
-app.get("/api/drive-picker/:ticket", async (c) => {
-  const { drivePickerPage } = await import("~/apps/google-drive/picker-page")
-  return drivePickerPage(c)
-})
-app.post("/api/drive-picker/:ticket/items", async (c) => {
-  const { drivePickerPageSave } = await import("~/apps/google-drive/picker-page")
-  return drivePickerPageSave(c)
-})
-app.use("/api/google-drive/*", authMw, orgLimiter)
-app.route("/api/google-drive", drivePickerRoutes)
-app.route("/api/google-drive", driveSharedDrivesRoutes)
 
 app.use("/api/mail", authMw, orgLimiter)
 app.use("/api/mail/*", authMw, orgLimiter)

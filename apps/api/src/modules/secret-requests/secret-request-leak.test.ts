@@ -369,10 +369,10 @@ describe("S8: a secret typed into the card is stored and found nowhere else", ()
         }),
       ),
     )
-    const oauth = await agentAsks("oauth_client", { app: "google-drive", connection: "drive" })
+    const oauth = await agentAsks("oauth_client", { app: "test", connection: "gitlab" })
     responses.push(
       await personSaves(oauth, () =>
-        call("/api/connections/google-drive/drive/oauth-client", "PUT", {
+        call("/api/connections/test/gitlab/oauth-client", "PUT", {
           clientId: "client-1234567.example",
           clientSecret: S.oauth,
         }),

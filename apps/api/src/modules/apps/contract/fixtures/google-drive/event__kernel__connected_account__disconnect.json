@@ -1,0 +1,22 @@
+{
+  "entry": "event:kernel/connected_account:disconnect",
+  "params": {
+    "app": "kernel",
+    "entity": "connected_account",
+    "action": "disconnect",
+    "data": {
+      "id": "00000000-0000-4000-8000-00000000d003",
+      "appName": "google-drive"
+    }
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "knowledge_appSourceWrite",
+      "args": [
+        "{\"op\":\"purgeAccount\",\"connectionId\":\"00000000-0000-4000-8000-00000000d003\"}"
+      ],
+      "reply": "{\"kept\":false,\"syncedSources\":0,\"documents\":0,\"sourceLinks\":0,\"cacheEntries\":0}"
+    }
+  ]
+}

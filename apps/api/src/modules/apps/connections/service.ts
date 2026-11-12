@@ -32,7 +32,10 @@ import { UUID_RE } from "~/lib/uuid"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
-import type { KernelAccountMetadataKey } from "~/modules/apps/connections/kernel-account-metadata"
+import {
+  isKernelAccountMetadataKey,
+  type KernelAccountMetadataKey,
+} from "~/modules/apps/connections/kernel-account-metadata"
 import { assertMailboxAllowed } from "~/modules/apps/connections/mail-domains"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { MINTING_CLIENT_GONE_MESSAGE } from "~/modules/apps/connections/oauth-client"
@@ -3379,34 +3382,23 @@ async function persistOAuthGrant(
         ownerType: connectedAccounts.ownerType,
         ownerId: connectedAccounts.ownerId,
       })
-    // Items the person picked at the provider (Google Picker, drive.file) rest on
-    // a grant Google keeps across a reconnect, so the new row keeps them, but only
-    // for the same owner: another owner's picks never follow the account.
-    const pickedItems = replaced
-      .filter(
-        (r) =>
-          r.ownerType === resolvedOwnerType && (r.ownerId ?? null) === (resolvedOwnerId ?? null),
-      )
-      .map((r) => r.metadata?.pickedItems)
-      .find((items) => Array.isArray(items) && items.length > 0)
-    // Likewise the shared drives an admin chose for an organization's Drive
-    // connection (google-drive/drive-scope.ts): a reconnect of the same org
-    // account keeps sharing the same drives, never more.
-    const sharedDrives = replaced
-      .filter(
-        (r) =>
-          r.ownerType === resolvedOwnerType && (r.ownerId ?? null) === (resolvedOwnerId ?? null),
-      )
-      .map((r) => r.metadata?.sharedDrives)
-      .find((drives) => Array.isArray(drives) && drives.length > 0)
-    // Kernel-owned keys only (connections/kernel-account-metadata.ts): app code
-    // may not write them through ctx.accounts.setMetadata.
-    const accountMetadata: Partial<Record<KernelAccountMetadataKey, unknown>> = {
+    // What the app keeps on the account (`ctx.accounts.setMetadata`: a choice made
+    // on it, such as the files a person picked at the provider or the shared drives
+    // an admin chose) belongs to the account, so a reconnect of the same account by
+    // the same owner keeps it; another owner's never follows the account.
+    const previous = replaced.find(
+      (r) => r.ownerType === resolvedOwnerType && (r.ownerId ?? null) === (resolvedOwnerId ?? null),
+    )
+    const appMetadata = Object.fromEntries(
+      Object.entries(previous?.metadata ?? {}).filter(([k]) => !isKernelAccountMetadataKey(k)),
+    )
+    // Kernel-owned keys (connections/kernel-account-metadata.ts) are this connect's
+    // own: app code may not write them through ctx.accounts.setMetadata.
+    const kernelMetadata: Partial<Record<KernelAccountMetadataKey, unknown>> = {
       ...(grantedOAuthScopes.length > 0 ? { grantedOAuthScopes } : {}),
-      ...(pickedItems ? { pickedItems } : {}),
-      ...(sharedDrives ? { sharedDrives } : {}),
       ...(tokenExpiry ? { tokenExpiry } : {}),
     }
+    const accountMetadata: Record<string, unknown> = { ...appMetadata, ...kernelMetadata }
     await announceTakenOverAccounts(tx, {
       orgId,
       actorId: userId,

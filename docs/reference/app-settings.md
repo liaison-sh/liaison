@@ -150,6 +150,15 @@ Section `connection`, scope `user`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | drive | connections |
+|  | DrivePickedFiles | custom |
+
+### Shared drives
+
+Section `shared-drives`, scope `org`, edited with `google-drive:accounts:admin`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | DriveSharedDrives | custom |
 
 ## invoicing
 

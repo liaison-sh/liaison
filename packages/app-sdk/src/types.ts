@@ -680,7 +680,12 @@ export interface AppContext {
     opts?: {
       method?: string
       headers?: Record<string, string>
-      body?: string | { multipart: FetchMultipartPart[] }
+      /**
+       * `{ multipart }` is multipart/form-data; with `related: true` it is
+       * multipart/related (each part only its Content-Type, in order), as Google's
+       * upload APIs take a JSON metadata part then the media.
+       */
+      body?: string | { multipart: FetchMultipartPart[]; related?: boolean }
       timeoutMs?: number
       /** A connection credential the host adds (see `FetchAuth`). */
       auth?: FetchAuth
@@ -690,6 +695,13 @@ export interface AppContext {
        * stands, verbatim. Only to a host of the connection that declares the key.
        */
       configSecrets?: Record<string, string>
+      /**
+       * `"xlsx-text"`: the host downloads an Excel workbook (up to 10 MB) and answers it as
+       * text, each sheet under a `Sheet: <name>` line then its rows as CSV (at most 20 000 rows
+       * and 1 000 000 characters, a closing line says when it was cut). A body that is not a
+       * workbook rejects with `not_a_workbook`. Only a successful answer is converted.
+       */
+      convert?: "xlsx-text"
     },
   ): Promise<{
     status: number
@@ -940,7 +952,9 @@ export interface AppContext {
 
 /** One part of a `ctx.fetch` multipart upload: a text field, or a kernel file the app may read. */
 export type FetchMultipartPart =
-  | { name: string; value: string }
+  | { name: string; value: string; contentType?: string }
+  /** Bytes the app holds as base64, decoded by the host. */
+  | { name: string; base64: string; filename?: string; contentType?: string }
   | { name: string; fileId: string; filename?: string; contentType?: string; expectSha256?: string }
 
 /**
@@ -979,6 +993,8 @@ export interface KnowledgeSyncInput<Cursor = unknown> {
   kind: string
   config: Record<string, unknown>
   cursor: Cursor | null
+  /** Whose source it is: one person's own (the run acts for them), or the organization's. */
+  scope?: "personal" | "organization"
 }
 
 /** One document of a knowledge source page. */

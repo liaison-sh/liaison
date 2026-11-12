@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { createGoogleDriveAdapter, type GoogleDriveAdapterDeps } from "~/apps/google-drive/adapter"
-import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
 import type { KnowledgeSourceRegistry } from "~/apps/knowledge/federated-search"
 import { createKnowledgeSourceRegistry } from "~/apps/knowledge/federated-search"
 import type { KnowledgeActor } from "~/apps/knowledge/service"
@@ -9,82 +7,24 @@ import {
   isFolderSourceCapable,
   type KnowledgeSourceAdapter,
 } from "~/apps/knowledge/source-protocol"
-import { loadSourcePolicy } from "~/apps/knowledge/sources"
 import type { RlsClient } from "~/db"
-import { hasScope } from "~/modules/permissions/permissions"
-
 /**
- * The scope that lets a user READ each connected source app: the same scope that
- * gates the app's own tools. Shared with the sync worker so a source cannot be
- * mounted, searched or synced through a credential its owner may not use.
- */
-export const KNOWLEDGE_SOURCE_READ_SCOPE = {
-  "google-drive": "google-drive:accounts:read",
-} as const
-
-/**
- * Build a request-scoped registry whose Drive adapter uses the connections
- * store to resolve a short-lived OAuth token, then issues real Drive REST calls.
- * Caller passes the active RLS-bound tx + auth context; the resulting registry
- * is safe to discard at end of request — there is no shared mutable state.
- *
- * Use this in route handlers / sandbox bridges when a real Drive fan-out is
- * needed. Unit-test paths construct an explicit registry via
+ * Build a request-scoped registry of kernel source adapters. Every connector
+ * now syncs through its own app's source kinds (app-sources.ts), so the
+ * default registry is empty; route handlers and sandbox bridges still take it
+ * from here, and unit tests construct an explicit registry via
  * `createKnowledgeSourceRegistry()` + `.register(...)` with their own stub
  * adapters.
  */
-export function registerDefaultKnowledgeSources(input: {
+export function registerDefaultKnowledgeSources(_input: {
   tx: RlsClient
   orgId: string
   userId: string
-  /**
-   * The caller's effective scopes. A source adapter resolves the connected
-   * account's credential on the caller's behalf, and an org-owned connection is
-   * shared by everyone, so the source app's own read scope gates the adapter
-   * here: a member whose role excludes the Drive app gets no adapter
-   * (search skips it, creating a synced source from it is refused).
-   */
+  /** The caller's effective scopes (kept for adapters that gate on them). */
   scopes: readonly string[]
   identifier?: string
 }): KnowledgeSourceRegistry {
-  // The Drive connection is the manifest's `drive` key (drive-access.ts).
-  const { tx, orgId, userId, scopes, identifier } = input
-  // The token and the read scope come from one lookup: an organization's
-  // connection reads only the shared drives an admin chose (drive-scope.ts).
-  const getAccess = async () => {
-    const { resolveDriveAccess } = await import("~/apps/google-drive/drive-access")
-    return resolveDriveAccess(tx, orgId, userId, identifier ? { identifier } : undefined)
-  }
-  const getToken = async (): Promise<string> => (await getAccess()).token
-  // Real Drive REST IO — fetchDrive (list), getMetadata, download, exportGoogleDoc.
-  const fetchers = makeDriveFetchers(getAccess)
-  // getPolicy reads the per-org source policy row so broadSearchEnabled is
-  // honored on every search. Falls back to defaults when no row exists.
-  const getPolicy = async () => {
-    const actor = {
-      orgId,
-      userId,
-      scopes: ["knowledge:sources:read"],
-      dimensionGrants: {},
-    }
-    const row = await loadSourcePolicy(tx, "google-drive", actor)
-    return {
-      connectionMode: row.connectionMode,
-      broadSearchEnabled: row.broadSearchEnabled,
-    }
-  }
-  const registry = createKnowledgeSourceRegistry()
-  if (hasScope(KNOWLEDGE_SOURCE_READ_SCOPE["google-drive"], [...scopes])) {
-    registry.register(
-      createGoogleDriveAdapter({
-        getToken,
-        ...fetchers,
-        getPolicy,
-      } satisfies GoogleDriveAdapterDeps),
-    )
-  }
-
-  return registry
+  return createKnowledgeSourceRegistry()
 }
 
 /**

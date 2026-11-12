@@ -105,6 +105,15 @@ export function scrubValue(value: unknown, replacements: Replacement[]): unknown
     if (!r.from) continue
     text = text.split(r.from).join(r.to)
   }
+  // A credential-named value (a lease token, a checkout token) goes everywhere
+  // it appears, the same stand-in each time: a later call that passes it back
+  // must still match its recording.
+  let n = 0
+  for (const secret of [...secretValues(JSON.parse(text))].sort((a, b) => b.length - a.length)) {
+    if (secret.startsWith("redacted")) continue
+    n++
+    text = text.split(secret).join(n === 1 ? "redacted" : `redacted-${n}`)
+  }
   const emails = new Map<string, string>()
   text = text.replace(EMAIL_RE, (m) => {
     const key = m.toLowerCase()
@@ -156,9 +165,28 @@ const SECRET_KEY_RE = /(^|_)(token|secret|password|api_key|access_key)$/i
 /** A credential in a URL's query (`?key=…`, `&token=…`). */
 const SECRET_QUERY_RE = /([?&](?:key|token|access_token|signature)=)[^&"\\\s]+/gi
 
+/** Every non-empty string held under a credential-named key, JSON inside strings included. */
+function secretValues(v: unknown, key = "", out = new Set<string>()): Set<string> {
+  if (typeof v === "string") {
+    if (SECRET_KEY_RE.test(key) && v.length > 0) out.add(v)
+    else if ((v.startsWith("{") || v.startsWith("[")) && v.length > 1) {
+      try {
+        secretValues(JSON.parse(v), key, out)
+      } catch {
+        // not JSON: an ordinary string
+      }
+    }
+  } else if (Array.isArray(v)) {
+    for (const x of v) secretValues(x, key, out)
+  } else if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) secretValues(x, k, out)
+  }
+  return out
+}
+
 function scrubPhones(v: unknown, key = ""): unknown {
   if (typeof v === "string") {
-    if (SECRET_KEY_RE.test(key) && v.length > 0) return "redacted"
+    if (SECRET_KEY_RE.test(key) && v.length > 0 && !v.startsWith("redacted")) return "redacted"
     // A phone field's whole value goes (a partial match would keep a country code).
     if (/phone/i.test(key)) return (v.match(/\d/g)?.length ?? 0) >= 6 ? "+15550100000" : v
     const unqueried = v.replace(SECRET_QUERY_RE, "$1redacted")

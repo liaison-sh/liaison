@@ -5,7 +5,7 @@
  * Spawns the REAL `liaison config apply` CLI as a child process against
  * `liaison_test` with a config carrying three distinct secrets:
  *   - a BYOK provider API key,
- *   - an app connection token (the gitlab connection's `token` credential),
+ *   - an app connection token (a credentials connection's `token` field),
  *   - the admin account password.
  *
  * It then captures BOTH stdout and stderr and asserts NONE of those secret
@@ -81,13 +81,13 @@ describe("config apply — no secret on stdout/stderr (§8.7)", () => {
       },
       apps: [
         {
-          name: "gitlab",
+          name: "test",
           enable: true,
           connection: {
-            name: "gitlab",
-            identifier: `gitlab-${suffix}`,
+            name: "service",
+            identifier: `service-${suffix}`,
             ownerType: "org",
-            // `token` + `group` are the gitlab connection's credentialFields.
+            // `token` + `group` are the test app's `service` credentialFields.
             credentials: { token: connectionToken, group: "fabrikam" },
           },
         },

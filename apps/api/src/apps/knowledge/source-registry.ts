@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { createGitlabAdapter } from "~/apps/gitlab/adapter"
-import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { createGoogleDriveAdapter, type GoogleDriveAdapterDeps } from "~/apps/google-drive/adapter"
 import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
 import type { KnowledgeSourceRegistry } from "~/apps/knowledge/federated-search"
@@ -22,7 +20,6 @@ import { hasScope } from "~/modules/permissions/permissions"
  */
 export const KNOWLEDGE_SOURCE_READ_SCOPE = {
   "google-drive": "google-drive:accounts:read",
-  gitlab: "gitlab:repo:read",
 } as const
 
 /**
@@ -44,7 +41,7 @@ export function registerDefaultKnowledgeSources(input: {
    * The caller's effective scopes. A source adapter resolves the connected
    * account's credential on the caller's behalf, and an org-owned connection is
    * shared by everyone, so the source app's own read scope gates the adapter
-   * here: a member whose role excludes the GitLab or Drive app gets no adapter
+   * here: a member whose role excludes the Drive app gets no adapter
    * (search skips it, creating a synced source from it is refused).
    */
   scopes: readonly string[]
@@ -84,36 +81,6 @@ export function registerDefaultKnowledgeSources(input: {
         ...fetchers,
         getPolicy,
       } satisfies GoogleDriveAdapterDeps),
-    )
-  }
-
-  // GitLab — registered UNCONDITIONALLY (connection-absence is handled later by
-  // `searchRemote` returning a `skipped`/`error` status, NOT by `listEnabled`,
-  // which only filters by the explicit `filters.sources` allow-list).
-  // Serves both (a) federated `knowledge:search` and (b) the create-route precheck
-  // (`POST /synced-sources` → registry.find(source==='gitlab')).
-  // Creds resolved via RLS tx — correct for the request context; no widening needed.
-  // The connected `group` is threaded into the adapter as `resolveDefaultGroupId`
-  // (resolved lazily at search time) so federated blob search is scoped to it
-  // rather than falling through to the global `/search` endpoint.
-  const loadGitlabCreds = async (): Promise<Record<string, string>> => {
-    const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
-    return getCredentialsForConnection(tx, orgId, userId, "gitlab", "gitlab")
-  }
-  const getGitlabToken = async (): Promise<string> => String((await loadGitlabCreds()).token)
-  const gitlabClient = makeGitlabFetchers(getGitlabToken)
-  const resolveGitlabGroup = async (): Promise<string | undefined> => {
-    try {
-      const group = (await loadGitlabCreds()).group
-      return group ? String(group) : undefined
-    } catch {
-      // No connection / no creds — leave the group undefined; searchRemote degrades.
-      return undefined
-    }
-  }
-  if (hasScope(KNOWLEDGE_SOURCE_READ_SCOPE.gitlab, [...scopes])) {
-    registry.register(
-      createGitlabAdapter({ client: gitlabClient, resolveDefaultGroupId: resolveGitlabGroup }),
     )
   }
 

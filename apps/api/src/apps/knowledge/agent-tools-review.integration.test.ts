@@ -648,6 +648,56 @@ describe("knowledge add_folder_source — generalized across google-drive / gitl
     }
   })
 
+  it("an app source kind that takes a ref gets it as its config: one source per ref, checked by the kind's schema", async () => {
+    knowledgeSourceKindRegistry.set([orgId, "repoapp"], {
+      kinds: {
+        folder: {
+          title: "Repo folder",
+          handler: "syncFolder",
+          configSchema: {
+            type: "object",
+            required: ["ref"],
+            additionalProperties: false,
+            properties: { ref: { type: "string", pattern: "^[^:]+:[^:]+:.*$" } },
+          },
+        },
+      },
+      dispatch: async () => ({ done: true }),
+    })
+    try {
+      const add = (ref?: string) =>
+        callKnowledgeTool<{ syncedSourceId?: string; kind?: string }>(
+          "add_folder_source",
+          { source: "repoapp", scope: "organization", ...(ref ? { ref } : {}) },
+          sourcesManageActor,
+          multiSourceRegistry(),
+        )
+      const docs = await add("123:main:docs")
+      const [row] = extractRows<{
+        source_kind: string
+        source_config: unknown
+        folder_ref: string
+      }>(
+        await db.execute(
+          sql`SELECT source_kind, source_config, folder_ref FROM ${knowledgeRel("synced_sources")} WHERE id = ${docs.syncedSourceId}::uuid`,
+        ),
+      )
+      expect(row).toEqual({
+        source_kind: "folder",
+        source_config: { ref: "123:main:docs" },
+        folder_ref: "123:main:docs",
+      })
+      expect((await add("123:main:docs")).syncedSourceId).toBe(docs.syncedSourceId)
+      const guides = await add("123:main:guides")
+      expect(guides.syncedSourceId).toBeTruthy()
+      expect(guides.syncedSourceId).not.toBe(docs.syncedSourceId)
+      await expect(add()).rejects.toThrow(/ref/)
+      await expect(add("not-a-ref")).rejects.toThrow(/config/)
+    } finally {
+      knowledgeSourceKindRegistry.delete([orgId, "repoapp"])
+    }
+  })
+
   it("rejects an unconnected/unregistered source with a clear 'connect the app first' error", async () => {
     // multiSourceRegistry has drive+gitlab+database; "confluence" is not registered.
     await expect(

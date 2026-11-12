@@ -23,7 +23,6 @@ import {
   type TestInfo,
 } from "@playwright/test"
 import type { MockDriveHandle } from "../../../../../api/src/tests/e2e/helpers/mock-drive"
-import type { MockGitlabHandle } from "../../../../../api/src/tests/e2e/helpers/mock-gitlab"
 import type { MockMcpHandle } from "../../../../../api/src/tests/e2e/helpers/mock-mcp"
 import type { MockMcpOauthHandle } from "../../../../../api/src/tests/e2e/helpers/mock-mcp-oauth"
 import {
@@ -44,11 +43,6 @@ async function startMockDriveLazy(port: number): Promise<MockDriveHandle> {
   return mod.startMockDrive(port)
 }
 
-async function startMockGitlabLazy(port: number): Promise<MockGitlabHandle> {
-  const mod = await import("../../../../../api/src/tests/e2e/helpers/mock-gitlab")
-  return mod.startMockGitlab(port)
-}
-
 async function startMockMcpLazy(port: number): Promise<MockMcpHandle> {
   const mod = await import("../../../../../api/src/tests/e2e/helpers/mock-mcp")
   return mod.startMockMcp(port)
@@ -61,8 +55,6 @@ async function startMockMcpOauthLazy(port: number): Promise<MockMcpOauthHandle> 
 
 export type WorkerEnvWithDrive = WorkerEnv & {
   mockDrive?: MockDriveHandle
-  /** In-process mock GitLab REST v4 server bound to `localhost`. */
-  mockGitlab?: MockGitlabHandle
   /** In-process MCP HTTP server bound to `127.0.0.1`. */
   mockMcp?: MockMcpHandle
   /** In-process OAuth fixture bound to `127.0.0.1`. */
@@ -233,13 +225,12 @@ export async function loginAs(page: Page, env: WorkerEnv, email: string, passwor
 
 interface MockHandles {
   mockDrive?: MockDriveHandle
-  mockGitlab?: MockGitlabHandle
   mockMcp?: MockMcpHandle
   mockMcpOauth?: MockMcpOauthHandle
 }
 
 /**
- * Start the in-process fixture servers on ports [2..5]. Each is optional: if
+ * Start the in-process fixture servers on ports [2..4]. Each is optional: if
  * one fails to start, the scenarios that need it skip themselves and every
  * other scenario still runs. A worker replacing a failed one binds the same
  * ports the moment the old process is gone, so a busy port is retried briefly.
@@ -263,13 +254,11 @@ async function startMocks(ports: number[]): Promise<MockHandles> {
     mockDrive: await start("mock-drive", ports[2]!, startMockDriveLazy),
     mockMcp: await start("mock-mcp", ports[3]!, startMockMcpLazy),
     mockMcpOauth: await start("mock-mcp-oauth", ports[4]!, startMockMcpOauthLazy),
-    mockGitlab: await start("mock-gitlab", ports[5]!, startMockGitlabLazy),
   }
 }
 
 async function killMocks(m: MockHandles): Promise<void> {
   if (m.mockDrive) await m.mockDrive.kill().catch(() => {})
-  if (m.mockGitlab) await m.mockGitlab.kill().catch(() => {})
   if (m.mockMcp) await m.mockMcp.kill().catch(() => {})
   if (m.mockMcpOauth) await m.mockMcpOauth.kill().catch(() => {})
 }
@@ -277,7 +266,6 @@ async function killMocks(m: MockHandles): Promise<void> {
 function enrich(env: WorkerEnv, mocks: MockHandles): WorkerEnvWithDrive {
   const enriched = env as WorkerEnvWithDrive
   if (mocks.mockDrive) enriched.mockDrive = mocks.mockDrive
-  if (mocks.mockGitlab) enriched.mockGitlab = mocks.mockGitlab
   if (mocks.mockMcp) enriched.mockMcp = mocks.mockMcp
   if (mocks.mockMcpOauth) enriched.mockMcpOauth = mocks.mockMcpOauth
   enriched.encryptionKey = PW_ENCRYPTION_KEY

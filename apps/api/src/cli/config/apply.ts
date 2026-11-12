@@ -44,7 +44,7 @@ import {
   type ProvisionDbSeams,
   resolvePlanOrgId,
 } from "~/cli/provisioners/types"
-import { type VerifyProbe, verifyProbeRegistry } from "~/cli/provisioners/verify-probes"
+import { appVerifyProbe, type VerifyProbe } from "~/cli/provisioners/verify-probes"
 import {
   applySections,
   CANONICAL_ORDER,
@@ -96,9 +96,9 @@ export interface RunConfigApplyOptions {
   log?: (msg: string) => void
   /** Config-file directory — relative `contentFile` refs resolve here (Task 12). */
   configDir?: string
-  /** Post-apply connection health probes; defaults to the `config verify`
-   *  registry. `{}` turns the health check off (every connection SKIPPED). */
-  connectionProbes?: Partial<Record<string, VerifyProbe>>
+  /** Post-apply connection health check; defaults to the `config verify`
+   *  one (the app's `provisioning.verify`). `null` turns it off. */
+  connectionProbe?: VerifyProbe | null
   /** `--only` paths: apply (and check) just these; empty or absent: everything. */
   only?: string[]
   /** `--prefer` resolutions for conflicting paths. */
@@ -215,7 +215,9 @@ export async function runConfigApply(opts: RunConfigApplyOptions): Promise<RunCo
     validateByok: opts.validateByok,
     seams: opts.seams,
     ...(opts.configDir !== undefined ? { configDir: opts.configDir } : {}),
-    connectionProbes: opts.connectionProbes ?? verifyProbeRegistry,
+    ...(opts.connectionProbe === null
+      ? {}
+      : { connectionProbe: opts.connectionProbe ?? appVerifyProbe }),
   })
 
   const report: ConfigReport = { ok: true, sections: {}, pending: [], changed: [], unchanged: [] }

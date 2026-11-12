@@ -11,15 +11,18 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { eq } from "drizzle-orm"
+import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
 import { sql } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
 import { ActivationSyncTestAccess } from "~/modules/apps/activation"
-import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { knowledgeSourceKindRegistry, resetAppRegistries } from "~/modules/apps/app-registries"
 import { reconcileCatalogApps, resetCatalogCache } from "~/modules/apps/catalog"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { MOVED_APPS, MovedAppsTestAccess } from "~/modules/apps/moved-apps"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { syncGitlabFolder } from "../../../../../bundled-apps/gitlab/src/knowledge"
+import { asCtx, fakeCtx, fileAnswer, json } from "../../../../../bundled-apps/gitlab/src/test-ctx"
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
 const ORG = "00000000-0000-0000-0000-0000000ad001"
@@ -505,5 +508,327 @@ describe("the database app's move", () => {
     const second = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
     expect(second.failed).toEqual([])
     expect(await dbSnapshot()).toEqual(after)
+  })
+})
+
+// The GitLab app's move. What an instance holds for it, as the in-tree folder
+// reconciler wrote it: the registration, the org's credentials connection, a
+// synced folder `7:main:docs` (no source kind, folder_ref the reference, no
+// cursor), a subfolder collection found by its marker, and documents keyed by
+// `<project>:<branch>:<path>` identities, filed in the root and the subfolder.
+// After the upgrade every one of those rows is the same row; the source gains
+// the `folder` kind with its reference as config. Then the first sync, run by
+// the knowledge job through the app's own handler, updates the same documents
+// in place, keeps the same folder, files a new file in it, archives a file
+// removed upstream, and leaves the branch head as the cursor.
+describe("the gitlab app's move", () => {
+  const GL = "gitlab"
+  const GL_ACCOUNT = "00000000-0000-0000-0000-0000000ad031"
+  const GL_ROOT = "00000000-0000-0000-0000-0000000ad032"
+  const GL_GUIDES = "00000000-0000-0000-0000-0000000ad033"
+  const GL_SOURCE = "00000000-0000-0000-0000-0000000ad034"
+  const REF = "7:main:docs"
+  const FILES = [
+    { key: "intro", path: "docs/intro.md", folder: GL_ROOT, body: "# Intro" },
+    { key: "setup", path: "docs/guides/setup.md", folder: GL_GUIDES, body: "# Setup v1" },
+    { key: "old", path: "docs/old.md", folder: GL_ROOT, body: "# Removed upstream" },
+  ].map((f, i) => ({
+    ...f,
+    identity: `00000000-0000-0000-0000-0000000ad04${i}`,
+    document: `00000000-0000-0000-0000-0000000ad05${i}`,
+  }))
+  const json_ = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
+
+  async function seedGitlabApp(): Promise<void> {
+    const rows: Array<[string, Record<string, RowValue>]> = [
+      [
+        "kernel.apps",
+        { org_id: ORG, name: GL, version: "1.0.2", status: "active", config: json_({}) },
+      ],
+      [
+        "kernel.connected_accounts",
+        {
+          id: GL_ACCOUNT,
+          org_id: ORG,
+          app_name: GL,
+          connection_name: "gitlab",
+          owner_type: "org",
+          provider_type: "credentials",
+          identifier: "acme",
+          credentials_encrypted: "enc:v1:gitlab-token-and-group",
+          created_by: USER,
+        },
+      ],
+      ["app_knowledge.collections", { id: GL_ROOT, org_id: ORG, name: "docs" }],
+      [
+        "app_knowledge.collections",
+        {
+          id: GL_GUIDES,
+          org_id: ORG,
+          name: "guides",
+          description: `synced:${GL_SOURCE}:7:main:docs/guides`,
+          parent_collection_id: GL_ROOT,
+        },
+      ],
+      [
+        "app_knowledge.synced_sources",
+        {
+          id: GL_SOURCE,
+          org_id: ORG,
+          app_name: GL,
+          folder_ref: REF,
+          display_name: "gitlab folder 7:main:docs",
+          root_collection_id: GL_ROOT,
+          default_sensitivity: "internal",
+          last_sync_status: "ok",
+          created_by: USER,
+        },
+      ],
+    ]
+    for (const f of FILES) {
+      rows.push(
+        [
+          "app_knowledge.source_identities",
+          {
+            id: f.identity,
+            org_id: ORG,
+            source: GL,
+            external_id: `7:main:${f.path}`,
+            mime_type: "text/markdown",
+          },
+        ],
+        [
+          "app_knowledge.documents",
+          {
+            id: f.document,
+            org_id: ORG,
+            title: f.path.split("/").pop() as string,
+            body: f.body,
+            sensitivity: "internal",
+            created_by: USER,
+            synced_source_id: GL_SOURCE,
+            source_identity_id: f.identity,
+            external_path: f.path.split("/").pop() as string,
+            external_rev: `blob-${f.key}-1`,
+            required_scopes: { raw: "'{}'::text[]" },
+          },
+        ],
+        [
+          "app_knowledge.collection_memberships",
+          {
+            org_id: ORG,
+            collection_id: f.folder,
+            target_type: "document",
+            target_id: f.document,
+            created_by: USER,
+          },
+        ],
+      )
+    }
+    for (const [table, row] of rows) await sql.unsafe(insertSql(table, row))
+  }
+
+  async function glSnapshot(): Promise<Record<string, Array<Record<string, unknown>>>> {
+    const strip = (rows: readonly unknown[]) =>
+      rows.map((r) => {
+        const { updated_at: _u, ...rest } = r as Record<string, unknown>
+        return rest
+      })
+    return {
+      apps: strip(
+        await sql`SELECT id, name, status, config FROM kernel.apps
+        WHERE org_id = ${ORG} AND name = ${GL}`,
+      ),
+      accounts: strip(
+        await sql`SELECT * FROM kernel.connected_accounts
+        WHERE org_id = ${ORG} AND app_name = ${GL}`,
+      ),
+      sources: strip(await sql`SELECT * FROM app_knowledge.synced_sources WHERE id = ${GL_SOURCE}`),
+      identities: strip(
+        await sql`SELECT * FROM app_knowledge.source_identities
+        WHERE org_id = ${ORG} AND source = ${GL} ORDER BY external_id`,
+      ),
+      documents: strip(
+        await sql`SELECT * FROM app_knowledge.documents
+        WHERE synced_source_id = ${GL_SOURCE} ORDER BY id`,
+      ),
+      collections: strip(
+        await sql`SELECT * FROM app_knowledge.collections
+        WHERE id IN (${GL_ROOT}, ${GL_GUIDES}) OR description LIKE ${`synced:${GL_SOURCE}:%`}
+        ORDER BY id`,
+      ),
+      memberships: strip(
+        await sql`SELECT m.collection_id, m.target_id FROM app_knowledge.collection_memberships m
+        JOIN app_knowledge.documents d ON d.id = m.target_id
+        WHERE d.synced_source_id = ${GL_SOURCE} ORDER BY m.target_id`,
+      ),
+      adoptions: strip(
+        await sql`SELECT step_id, report FROM kernel.app_adoptions
+        WHERE app_name = ${GL} ORDER BY step_id`,
+      ),
+    }
+  }
+
+  /** GitLab after the upgrade: intro unchanged, setup edited, new.md added, old.md removed. */
+  function upstream() {
+    const tree =
+      "/projects/7/repository/tree?ref=HEAD2&recursive=true&per_page=100&pagination=keyset&path=docs"
+    return fakeCtx({
+      routes: {
+        "/projects/7/repository/branches/main": json({ commit: { id: "HEAD2" } }),
+        "/projects/7": json({ path_with_namespace: "acme/manuals" }),
+        [tree]: json([
+          { id: "t", name: "guides", type: "tree", path: "docs/guides" },
+          { id: "a", name: "intro.md", type: "blob", path: "docs/intro.md" },
+          { id: "b", name: "setup.md", type: "blob", path: "docs/guides/setup.md" },
+          { id: "c", name: "new.md", type: "blob", path: "docs/guides/new.md" },
+        ]),
+        "/projects/7/repository/files/docs%2Fintro.md?ref=HEAD2": fileAnswer(
+          "# Intro",
+          "blob-intro-1",
+          "C1",
+        ),
+        "/projects/7/repository/files/docs%2Fguides%2Fsetup.md?ref=HEAD2": fileAnswer(
+          "# Setup v2",
+          "blob-setup-2",
+          "C2",
+        ),
+        "/projects/7/repository/files/docs%2Fguides%2Fnew.md?ref=HEAD2": fileAnswer(
+          "# New",
+          "blob-new-1",
+          "C2",
+        ),
+      },
+    })
+  }
+
+  afterEach(async () => {
+    await withSystemDb("moved-apps-gl-test-cleanup", async (db) => {
+      await db.delete(appsInstalled).where(eq(appsInstalled.name, GL))
+      await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, GL))
+    })
+    await sql`DELETE FROM kernel.app_adoptions WHERE app_name = ${GL}`
+    await sql`DELETE FROM app_knowledge.collection_memberships WHERE org_id = ${ORG}`
+    await sql`DELETE FROM app_knowledge.collections WHERE org_id = ${ORG} AND parent_collection_id IS NOT NULL`
+  })
+
+  it("keeps every row, hands the folder to the app's source kind, then syncs it in place", async () => {
+    MovedAppsTestAccess.set(null)
+    bakeCatalog(true, GL)
+    await seedGitlabApp()
+    const before = await glSnapshot()
+    expect(before.documents.length).toBe(3)
+
+    const first = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(first.failed).toEqual([])
+    expect(first.repaired).toContain(GL)
+    const adopted = await glSnapshot()
+    for (const table of [
+      "apps",
+      "accounts",
+      "identities",
+      "documents",
+      "collections",
+      "memberships",
+    ] as const) {
+      expect({ table, rows: adopted[table] }).toEqual({ table, rows: before[table] })
+    }
+    const [sourceBefore] = before.sources
+    expect(sourceBefore?.source_kind).toBeNull()
+    expect(sourceBefore?.sync_cursor).toBeNull()
+    expect(adopted.sources).toEqual([
+      { ...sourceBefore, source_kind: "folder", source_config: { ref: REF } },
+    ])
+    // The step is instance-wide: other orgs' GitLab folders in this database move too.
+    expect(adopted.adoptions.map((a) => a.step_id)).toEqual(["knowledge-sources-to-folder"])
+    expect(
+      (adopted.adoptions[0]?.report as { sources: number } | undefined)?.sources,
+    ).toBeGreaterThanOrEqual(1)
+    // Idempotent: a second boot changes nothing.
+    expect((await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })).failed).toEqual([])
+    expect(await glSnapshot()).toEqual(adopted)
+
+    // The first sync after the upgrade: the job wakes the app's `folder` handler.
+    const gitlab = upstream()
+    knowledgeSourceKindRegistry.set([ORG, GL], {
+      kinds: {
+        folder: {
+          title: "GitLab folder",
+          handler: "syncGitlabFolder",
+          readScope: "gitlab:repo:read",
+        },
+      },
+      dispatch: (_kind, input) => syncGitlabFolder(input as never, asCtx(gitlab)),
+    })
+    await runSyncWorker(
+      { sourceId: GL_SOURCE, trigger: "schedule" },
+      {
+        appSource: {
+          setUpAppSourceOrg: async () => undefined,
+          ownerScopes: async () => ["gitlab:repo:read"],
+          enqueueContinuation: async () => {
+            throw new Error("one page holds this folder")
+          },
+        },
+      },
+    )
+    const synced = await glSnapshot()
+    const doc = (rows: Array<Record<string, unknown>>, id: string) => rows.find((r) => r.id === id)
+    const [intro, setup, old] = FILES
+
+    // The same documents: same ids, same identities, same folders.
+    expect(doc(synced.documents, intro!.document)).toMatchObject({
+      body: "# Intro",
+      archived_at: null,
+      source_identity_id: intro!.identity,
+      external_rev: "blob-intro-1",
+    })
+    expect(doc(synced.documents, setup!.document)).toMatchObject({
+      body: "# Setup v2",
+      archived_at: null,
+      source_identity_id: setup!.identity,
+      external_rev: "blob-setup-2",
+    })
+    // Removed upstream: archived, as the folder reconciler did (never deleted).
+    expect(doc(synced.documents, old!.document)?.archived_at).not.toBeNull()
+    // One new document, filed in the existing `guides` folder (no second folder).
+    const added = synced.documents.filter((d) => !FILES.some((f) => f.document === d.id))
+    expect(added.map((d) => d.title)).toEqual(["new.md"])
+    expect(synced.collections.map((c) => c.id)).toEqual([GL_ROOT, GL_GUIDES])
+    expect(synced.collections.every((c) => c.archived_at === null)).toBe(true)
+    const memberships = new Map(synced.memberships.map((m) => [m.target_id, m.collection_id]))
+    expect(memberships.get(intro!.document)).toBe(GL_ROOT)
+    expect(memberships.get(setup!.document)).toBe(GL_GUIDES)
+    expect(memberships.get(added[0]!.id as string)).toBe(GL_GUIDES)
+    // Identities kept (the link to GitLab is filled in now).
+    for (const f of FILES) {
+      expect(synced.identities.find((i) => i.id === f.identity)?.external_id).toBe(
+        `7:main:${f.path}`,
+      )
+    }
+    expect(synced.sources[0]).toMatchObject({
+      source_kind: "folder",
+      source_config: { ref: REF },
+      sync_cursor: { head: "HEAD2" },
+      last_sync_status: "ok",
+      sync_pass_started_at: null,
+    })
+    // Unchanged branch: the next sync reads nothing but the branch head.
+    const calls = gitlab.calls.length
+    await runSyncWorker(
+      { sourceId: GL_SOURCE, trigger: "schedule" },
+      {
+        appSource: {
+          setUpAppSourceOrg: async () => undefined,
+          ownerScopes: async () => ["gitlab:repo:read"],
+          enqueueContinuation: async () => undefined,
+        },
+      },
+    )
+    expect(gitlab.calls.length).toBe(calls + 1)
+    const again = await glSnapshot()
+    expect(again.documents.map((d) => [d.id, d.body, d.archived_at === null])).toEqual(
+      synced.documents.map((d) => [d.id, d.body, d.archived_at === null]),
+    )
   })
 })

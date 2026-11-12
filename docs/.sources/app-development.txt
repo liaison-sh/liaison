@@ -112,3 +112,6 @@ OAuth client key <app>:<connection> or connections.<n>.oauthClient.key in the ap
 ctx.db.batch commits several writes and a sequence value together -> packages/app-sdk/src/types.ts:46 ; apps/api/src/modules/apps/sandbox/bridge/batch.ts:1
 Apps hash and sign with WebCrypto through @liaison/app-sdk/bytes on every executor -> packages/app-sdk/src/bytes.ts:48 ; packages/app-sdk/src/bytes.ts:80 ; packages/app-sdk/src/bytes.ts:91 ; packages/app-sdk/src/bytes.ts:96 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:276
 ctx.db.batch can append to or merge into json fields at commit -> packages/app-sdk/src/types.ts:44-46 ; packages/app-sdk/src/types.ts:54-59
+verify doubles as the connection health check, config {} without a provision block -> apps/api/src/cli/provisioners/verify-probes.ts:33-46
+add_folder_source ref becomes an app source's config { ref }, same ref same source -> apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts:16-19
+database connector reads through ctx.sql -> bundled-apps/database/src/knowledge.ts:1-12

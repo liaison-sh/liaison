@@ -1,0 +1,22 @@
+{
+  "entry": "tool:gitlab_list_labels",
+  "params": {
+    "project": "22738259"
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["gitlab"],
+      "reply": "{\"values\":{\"group\":\"gitlab-examples\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/projects/22738259/labels?per_page=100&with_counts=true",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\",\"link\":\"<https://gitlab.com/api/v4/projects/22738259/labels?id=22738259&include_ancestor_groups=true&page=1&per_page=100&with_counts=true>; rel=\\\"first\\\", <https://gitlab.com/api/v4/projects/22738259/labels?id=22738259&include_ancestor_groups=true&page=1&per_page=100&with_counts=true>; rel=\\\"last\\\"\",\"x-next-page\":\"\"},\"body\":\"[]\"}"
+    }
+  ]
+}

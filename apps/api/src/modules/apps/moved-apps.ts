@@ -57,6 +57,12 @@ export interface SyncedSourcesToKindStep {
   id: string
   kind: "synced-sources-to-kind"
   sourceKind: string
+  /**
+   * The config key that carries each source's folder reference (`folder_ref`,
+   * what the in-tree adapter synced) for the kind's handler: `{ [key]: folder_ref }`.
+   * Absent: the config stays as it is (`{}` when none).
+   */
+  configFromFolderRef?: string
 }
 
 export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
@@ -82,6 +88,22 @@ export const MOVED_APPS: readonly MovedApp[] = [
         docId: "domain_access",
       },
       { id: "knowledge-sources-to-catalog", kind: "synced-sources-to-kind", sourceKind: "catalog" },
+    ],
+  },
+  {
+    // The GitLab knowledge sources move from the kernel's folder adapter to the
+    // app's `folder` source kind (bundled-apps/gitlab/src/knowledge.ts), which
+    // reads the same `<project>:<branch>:<path>` reference from its config and
+    // keeps the same document and folder identities. Credentials, the
+    // connection and every other row are keyed by the app's name: unchanged.
+    name: "gitlab",
+    steps: [
+      {
+        id: "knowledge-sources-to-folder",
+        kind: "synced-sources-to-kind",
+        sourceKind: "folder",
+        configFromFolderRef: "ref",
+      },
     ],
   },
 ]
@@ -217,11 +239,14 @@ async function runSyncedSourcesToKind(
   if (!(await columnExists(db, schemaRef("app_knowledge"), "synced_sources", "source_kind"))) {
     return { state: "deferred", reason: "app_knowledge.synced_sources.source_kind is missing" }
   }
+  const config = step.configFromFolderRef
+    ? drizzleSql`COALESCE(source_config, '{}'::jsonb) || jsonb_build_object(${step.configFromFolderRef}::text, folder_ref)`
+    : drizzleSql`COALESCE(source_config, '{}'::jsonb)`
   const rows = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
       UPDATE ${KNOWLEDGE}.synced_sources
       SET source_kind = ${step.sourceKind},
-          source_config = COALESCE(source_config, '{}'::jsonb),
+          source_config = ${config},
           updated_at = now()
       WHERE app_name = ${app} AND source_kind IS NULL
       RETURNING id

@@ -1,0 +1,9 @@
+{
+  "entry": "provision:handler",
+  "params": {
+    "config": {},
+    "dryRun": false
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": []
+}

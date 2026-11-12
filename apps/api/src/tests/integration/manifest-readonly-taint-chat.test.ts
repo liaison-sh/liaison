@@ -8,7 +8,7 @@
 //
 // The apps are the real in-tree registrations (ensureAppsForOrg reads the real manifests
 // through the real trust rule); only each handler is swapped for a spy, so the test asserts
-// what actually ran without touching tickets, knowledge or GitLab data.
+// what actually ran without touching tickets, knowledge or Drive data.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { z } from "zod"
@@ -104,7 +104,7 @@ describe("chat turn: manifest reads survive scope taint, manifest writes do not"
     spyOn("tickets", "setStatus")
     spyOn("tickets", "markRead")
     spyOn("knowledge", "search")
-    spyOn("gitlab", "gitlab_list_projects")
+    spyOn("google-drive", "shared_drives")
     // A tool with neither a write target nor a readOnly mark, so the undeclared
     // refusal keeps a case of its own. Registered here because every real tickets
     // tool now declares one.
@@ -148,13 +148,13 @@ describe("chat turn: manifest reads survive scope taint, manifest writes do not"
     expect(ran).toEqual(["tickets:search", "tickets:search", "knowledge:search"])
   })
 
-  it("a first-party sandboxed read (gitlab) runs on a tainted turn", async () => {
+  it("a first-party sandboxed read (google-drive) runs on a tainted turn", async () => {
     ran.length = 0
     const frame = chatTurnFrame()
     await call(frame, "tickets__search")
-    const result = await call(frame, "gitlab__gitlab_list_projects")
+    const result = await call(frame, "google-drive__shared_drives")
     expect((result as { code?: string }).code).not.toBe("E_SCOPE_TAINT_BLOCKED")
-    expect(ran).toEqual(["tickets:search", "gitlab:gitlab_list_projects"])
+    expect(ran).toEqual(["tickets:search", "google-drive:shared_drives"])
   })
 
   it("a ticket update never runs inline after a read tainted the turn: it parks for approval", async () => {

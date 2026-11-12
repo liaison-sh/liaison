@@ -13,6 +13,9 @@ import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
  * app's own handler syncs it (app-sources.ts). The same app, kind and owner
  * reuse their source (reactivated when archived), so its documents keep their
  * identities. The first pass runs on the sync schedule, not inside this call.
+ * A `ref` (the connector's folder reference) becomes the source's config
+ * `{ ref }`, checked against the kind's config schema; the same app, kind,
+ * owner and config find the same source.
  */
 async function addAppSource(input: {
   txDb: unknown
@@ -21,7 +24,13 @@ async function addAppSource(input: {
   source: string
   kinds: Array<{ kind: string; title: string }>
   scope: "personal" | "organization"
-  params: { kind?: string; displayName?: string; defaultSensitivity?: string; oneShot?: boolean }
+  params: {
+    kind?: string
+    ref?: string
+    displayName?: string
+    defaultSensitivity?: string
+    oneShot?: boolean
+  }
 }): Promise<Record<string, unknown>> {
   const { txDb, orgId, actor, source, kinds, scope, params: p } = input
   if (p.oneShot) {
@@ -39,10 +48,12 @@ async function addAppSource(input: {
   }
   const { knowledgeRel } = await import("~/apps/knowledge/schema-refs")
   const owner = scope === "organization" ? null : actor.userId
+  const config: Record<string, unknown> = p.ref ? { ref: p.ref } : {}
   const [existing] = extractRows<{ id: string; last_sync_status: string | null }>(
     await (txDb as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
       SELECT id, last_sync_status FROM ${knowledgeRel("synced_sources")}
       WHERE org_id = ${orgId}::uuid AND app_name = ${source} AND source_kind = ${chosen.kind}
+        AND COALESCE(source_config, '{}'::jsonb) = ${JSON.stringify(config)}::jsonb
         AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
       ORDER BY archived_at IS NULL DESC, created_at DESC
       LIMIT 1
@@ -67,9 +78,9 @@ async function addAppSource(input: {
     {
       appName: source,
       sourceKind: chosen.kind,
-      sourceConfig: {},
-      folderRef: `app-source:${chosen.kind}`,
-      displayName: p.displayName ?? chosen.title,
+      sourceConfig: config,
+      folderRef: p.ref ?? `app-source:${chosen.kind}`,
+      displayName: p.displayName ?? (p.ref ? `${chosen.title} ${p.ref}` : chosen.title),
       scope,
       syncIntervalSeconds: 3600,
       defaultSensitivity:
@@ -277,7 +288,7 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       })
     },
     // knowledge_addFolderSource — GENERIC folder-source harvest, unified across
-    // every folder-capable connector (google-drive | gitlab). `source` selects
+    // every folder-capable connector (google-drive). `source` selects
     // the connector (default "google-drive" for back-compat with callers that
     // never passed it); `ref` is that connector's folder reference — for
     // google-drive the legacy `folderId` param is still accepted as an alias for
@@ -286,8 +297,8 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
     // uses (`registerDefaultKnowledgeSources`), so any registered, enabled,
     // folder-capable source works here with zero per-source code. A `source`
     // that is an installed app declaring a knowledge source kind (manifest
-    // `knowledgeSources`, app-sources.ts) becomes an app source of that kind
-    // instead: no `ref`, the app's own handler decides what syncs.
+    // `knowledgeSources`, app-sources.ts, e.g. gitlab) becomes an app source of
+    // that kind instead: its `ref`, when given, is the source's config `{ ref }`.
     // The settings page's synced sources list (tools synced_sources.list /
     // archive / run_now): the same reads, checks and job as GET / DELETE
     // /api/knowledge/synced-sources and POST .../:id/run-now. Refusals come
@@ -405,7 +416,15 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
           throw new Error(`connect the ${source} app first: source is not connected/enabled`)
         }
         return JSON.stringify(
-          await addAppSource({ txDb, orgId, actor, source, kinds, scope, params: p }),
+          await addAppSource({
+            txDb,
+            orgId,
+            actor,
+            source,
+            kinds,
+            scope,
+            params: { ...p, ...(ref ? { ref } : {}) },
+          }),
         )
       }
       if (!ref) {

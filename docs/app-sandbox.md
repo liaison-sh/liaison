@@ -621,6 +621,7 @@ const done = await ctx.db.batch({
 - Ops are `insert` (with an optional `as` name), `update`, `delete` and `updateMany`, each with the checks of its single-call twin: the app's own declared tables and fields, the run's organization and RLS actor, refused on a read-only run. At most 500 ops.
 - `sequence` allocates the next value of one of the app's sequences inside the same commit (the `sequences.allocate` capability): a batch that fails consumes no value, and batches running at the same time never get the same one, so a numbering built on it has no gap and no duplicate. `unique` names a column that may already hold values written another way (an import): the allocator steps past them.
 - Placeholders anywhere in an op's `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (the prefix and the value padded to `pad`) and `{ $ref: "<as>" }` (the id of an earlier insert).
+- An `update` may also `append` items to json array fields and `merge` keys into json object fields: they apply to the row as it is when the batch commits, so a log entry or a reference another writer added between your read and the batch is kept (`{ update: "invoices", id, append: { log: [entry] }, merge: { refs: { shipment: id } } }`).
 - What comes after the batch (a render, a mail) is a separate step: make it safe to run again, since a run that dies after the batch leaves the batch's rows committed. The invoicing app numbers its legal documents this way (`bundled-apps/invoicing/src/issue.ts`).
 
 ---

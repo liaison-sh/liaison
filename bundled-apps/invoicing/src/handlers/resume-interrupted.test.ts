@@ -18,7 +18,7 @@ function docRow(id: string, over: Record<string, unknown>) {
     pdf_status: "pending",
     counterparty_email: "buyer@example.test",
     lifecycle_log: [{ event: "issued" }],
-    created_at: ago(INTERRUPTED_AFTER_MS + 60_000),
+    updated_at: ago(INTERRUPTED_AFTER_MS + 60_000),
     ...over,
   }
 }
@@ -36,7 +36,7 @@ describe("parkInterruptedIssues", () => {
           // A manual invoice: its render is owed, never an email nobody asked for.
           docRow("00000000-0000-4000-8000-000000000002", {}),
           // Still inside a run's lifetime: maybe in flight, left alone.
-          docRow("00000000-0000-4000-8000-000000000003", { created_at: ago(60_000) }),
+          docRow("00000000-0000-4000-8000-000000000003", { updated_at: ago(60_000) }),
           // Rendered: nothing owed.
           docRow("00000000-0000-4000-8000-000000000004", { pdf_status: "ready" }),
         ],

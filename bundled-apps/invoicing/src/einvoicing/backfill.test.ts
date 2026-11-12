@@ -115,7 +115,6 @@ function setup(results: Record<string, Record<string, unknown>> = { [VAT_SIREN]:
   return { ctx: ctx as never, db, reg }
 }
 
-const sleep = { sleep: async () => {} }
 const byContact = (db: ReturnType<typeof createMockDb>, id: string) =>
   db.__all("counterparty_identities").find((r) => r.contact_id === id)
 
@@ -139,7 +138,7 @@ describe("einvoicing_backfill_identities", () => {
       d: s.db.__all("documents"),
       p: s.db.__all("issuer_profiles"),
     })
-    const r = (await backfillIdentities(s.ctx, { dry_run: true }, sleep)) as Record<string, unknown>
+    const r = (await backfillIdentities(s.ctx, { dry_run: true })) as Record<string, unknown>
     expect(r.status).toBe("ok")
     expect(r.dry_run).toBe(true)
     expect(r.scanned).toBe(5)
@@ -154,7 +153,7 @@ describe("einvoicing_backfill_identities", () => {
 
   test("real run: every contact gets a kind; the VAT one is registry-confirmed; billing filled from the blob", async () => {
     const s = setup()
-    const r = (await backfillIdentities(s.ctx, { dry_run: false }, sleep)) as Record<string, unknown>
+    const r = (await backfillIdentities(s.ctx, { dry_run: false })) as Record<string, unknown>
     expect(r.status).toBe("ok")
     expect(r.written).toBeGreaterThan(0)
     expect(byContact(s.db, C_DE)).toMatchObject({ customer_kind: "individual", source: "derived", siren: null })
@@ -180,7 +179,7 @@ describe("einvoicing_backfill_identities", () => {
 
   test("a registry mismatch is never written; the counterparty stays on the readiness list", async () => {
     const s = setup()
-    const r = (await backfillIdentities(s.ctx, { dry_run: false }, sleep)) as Record<string, unknown>
+    const r = (await backfillIdentities(s.ctx, { dry_run: false })) as Record<string, unknown>
     const row = byContact(s.db, C_MISMATCH)
     expect(row).toMatchObject({ customer_kind: "business", source: "derived" })
     expect(row!.siren ?? null).toBeNull()
@@ -193,7 +192,7 @@ describe("einvoicing_backfill_identities", () => {
   test("a ceased SIREN is never confirmed, even under the counterparty's own name", async () => {
     const ceased = registryResultWith({ siren: VAT_SIREN, nom_complet: "EXEMPLE INDUSTRIES", etat_administratif: "C" })
     const s = setup({ [VAT_SIREN]: ceased, [MISMATCH_SIREN]: MISMATCH_HIT })
-    await backfillIdentities(s.ctx, { dry_run: false }, sleep)
+    await backfillIdentities(s.ctx, { dry_run: false })
     const row = byContact(s.db, C_VAT)
     expect(row).toMatchObject({ customer_kind: "business" })
     expect(row!.confirmed_via ?? null).toBeNull()
@@ -203,7 +202,7 @@ describe("einvoicing_backfill_identities", () => {
   test("never overwrites an identity a person recorded", async () => {
     const s = setup()
     const before = { ...byContact(s.db, C_HUMAN)! }
-    await backfillIdentities(s.ctx, { dry_run: false }, sleep)
+    await backfillIdentities(s.ctx, { dry_run: false })
     expect(byContact(s.db, C_HUMAN)).toEqual(before)
     // No registry call for it: its VAT SIREN belongs to the mismatching company, looked up once for C_MISMATCH only.
     expect(s.reg.calls.filter((u) => u.includes(`q=${MISMATCH_SIREN}`))).toHaveLength(1)
@@ -211,32 +210,32 @@ describe("einvoicing_backfill_identities", () => {
 
   test("idempotent: a second run writes nothing", async () => {
     const s = setup()
-    await backfillIdentities(s.ctx, { dry_run: false }, sleep)
+    await backfillIdentities(s.ctx, { dry_run: false })
     const snapshot = JSON.stringify({ i: s.db.__all("counterparty_identities"), d: s.db.__all("documents"), p: s.db.__all("issuer_profiles") })
-    const again = (await backfillIdentities(s.ctx, { dry_run: false }, sleep)) as Record<string, unknown>
+    const again = (await backfillIdentities(s.ctx, { dry_run: false })) as Record<string, unknown>
     expect(again.written).toBe(0)
     expect(JSON.stringify({ i: s.db.__all("counterparty_identities"), d: s.db.__all("documents"), p: s.db.__all("issuer_profiles") })).toBe(snapshot)
   })
 
   test("issuer SIREN / SIRET backfilled from a Luhn-valid registration id, never over a recorded one", async () => {
     const s = setup()
-    await backfillIdentities(s.ctx, { dry_run: false }, sleep)
+    await backfillIdentities(s.ctx, { dry_run: false })
     expect(s.db.__all("issuer_profiles")[0]).toMatchObject({ siren: "900000001", siret: "90000000100017" })
 
     const s2 = setup()
     await s2.db.update("issuer_profiles", ISSUER, { siren: "902000009", tax_registration_id: "123" })
-    await backfillIdentities(s2.ctx, { dry_run: false }, sleep)
+    await backfillIdentities(s2.ctx, { dry_run: false })
     expect(s2.db.__all("issuer_profiles")[0]).toMatchObject({ siren: "902000009", siret: null })
   })
 
   test("registry lookups are bounded per call; the cursor resumes where it stopped", async () => {
     const s = setup()
-    const first = (await backfillIdentities(s.ctx, { dry_run: false, limit: 1 }, sleep)) as Record<string, unknown>
+    const first = (await backfillIdentities(s.ctx, { dry_run: false, limit: 1 })) as Record<string, unknown>
     expect(s.reg.calls).toHaveLength(1)
     expect(first.next_cursor).toBeTruthy()
     let cursor = first.next_cursor as string | null
     for (let i = 0; i < 10 && cursor; i++) {
-      const next = (await backfillIdentities(s.ctx, { dry_run: false, limit: 1, cursor }, sleep)) as Record<string, unknown>
+      const next = (await backfillIdentities(s.ctx, { dry_run: false, limit: 1, cursor })) as Record<string, unknown>
       cursor = next.next_cursor as string | null
     }
     expect(cursor).toBeNull()
@@ -246,7 +245,7 @@ describe("einvoicing_backfill_identities", () => {
 
   test("limit is capped at 50", async () => {
     const s = setup()
-    const r = (await backfillIdentities(s.ctx, { dry_run: true, limit: 500 }, sleep)) as Record<string, unknown>
+    const r = (await backfillIdentities(s.ctx, { dry_run: true, limit: 500 })) as Record<string, unknown>
     expect(r.limit).toBe(50)
   })
 })
@@ -282,7 +281,7 @@ describe("identity-confirm job", () => {
     const changedBefore = new Map([[C_VAT, new Date(Date.now() - 3_600_000)]])
     expect(await retryEligible({ db } as never, { identityChangedAt: changedBefore })).toHaveLength(0)
 
-    const r = await identityConfirmJob(ctx as never, sleep)
+    const r = await identityConfirmJob(ctx as never)
     expect(r).toMatchObject({ checked: 1, confirmed: 1 })
     const row = db.__all("counterparty_identities")[0]!
     expect(row).toMatchObject({ siren: VAT_SIREN, confirmed_via: "auto", source: "vat_derived", registry_name: "EXEMPLE INDUSTRIES" })
@@ -303,14 +302,14 @@ describe("identity-confirm job", () => {
     })
     const reg = registry({ [MISMATCH_SIREN]: MISMATCH_HIT })
     const ctx = { db, fetch: reg.fetch }
-    const r = await identityConfirmJob(ctx as never, sleep)
+    const r = await identityConfirmJob(ctx as never)
     expect(r).toMatchObject({ checked: 1, confirmed: 0 })
     const row = db.__all("counterparty_identities")[0]!
     expect(row.confirmed_via ?? null).toBeNull()
     expect(row.registry_name ?? null).toBeNull()
     expect(new Date(String(row.changed_at)).toISOString()).toBe("2026-09-01T00:00:00.000Z")
     expect(row.registry_checked_at).toBeTruthy()
-    const again = await identityConfirmJob(ctx as never, sleep)
+    const again = await identityConfirmJob(ctx as never)
     expect(again).toMatchObject({ checked: 0 })
     expect(reg.calls).toHaveLength(1)
   })
@@ -327,7 +326,7 @@ describe("identity-confirm job", () => {
       },
     })
     const reg = registry({ [VAT_SIREN]: ceased })
-    const r = await identityConfirmJob({ db, fetch: reg.fetch } as never, sleep)
+    const r = await identityConfirmJob({ db, fetch: reg.fetch } as never)
     expect(r).toMatchObject({ checked: 1, confirmed: 0 })
     const row = db.__all("counterparty_identities")[0]!
     expect(row.confirmed_via ?? null).toBeNull()
@@ -346,7 +345,7 @@ describe("identity-confirm job", () => {
     rows.push({ id: "idn-manual", contact_id: C_HUMAN, customer_kind: "business", siren: VAT_SIREN, source: "manual", confirmed_via: null })
     const db = createMockDb({ seed: { counterparty_identities: rows } })
     const reg = registry({})
-    const r = await identityConfirmJob({ db, fetch: reg.fetch } as never, sleep)
+    const r = await identityConfirmJob({ db, fetch: reg.fetch } as never)
     expect(r.checked).toBe(20)
     expect(reg.calls).toHaveLength(20)
     expect(db.__all("counterparty_identities").find((x) => x.id === "idn-manual")!.registry_checked_at ?? null).toBeNull()

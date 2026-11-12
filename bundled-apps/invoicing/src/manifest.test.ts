@@ -1504,7 +1504,10 @@ describe("invoicing manifest", () => {
     //   the writes that go with it (the draft it replaces, the invoice a credit note credits) in one
     //   batch; automatic credit notes carry a dedup key; the deferred-retry sweep resumes issues a
     //   dead run left unrendered.
-    expect(m.version).toBe("0.21.0")
+    // 0.21.1: the deferred-retry, payment reconcile, order-number backfill and shipment link jobs hold
+    //   no transaction (each write commits on its own; the shipment link merges in the database);
+    //   resume-interrupted-issues wakes only while a document waits for its PDF.
+    expect(m.version).toBe("0.21.1")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

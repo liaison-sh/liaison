@@ -93,7 +93,7 @@ export async function provisionBridge(
   appName: string,
   orgId: string,
   readOnly: boolean,
-): Promise<Record<string, unknown>> {
+): Promise<ReturnType<typeof import("~/modules/apps/sandbox/rpc-bridge").createSessionRpcBridge>> {
   const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
   const manifest = appBridgeManifest(orgId, appName) ?? { name: appName }
   const session = createRlsSession(

@@ -10,9 +10,17 @@
 // else the one this person last picked here (kept by the server), else the
 // dashboard's default. A pick is remembered for the person and written into the
 // tab's URL, so a copied link carries it.
+//
+// Filters (when the dashboard declares some) sit in a row under the toolbar and
+// follow the same rule, filter by filter: the link's (`?f.market=FR`), else the
+// person's remembered values, else the dashboard's defaults.
+//
+// Picking a figure (a bar, a slice, a stage, a table row, a metric) opens the
+// rows behind it in a panel on the right, beside the grid (over it on a phone).
 import { RefreshCw } from "lucide-solid"
 import {
   type Component,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -30,14 +38,20 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { tabStore, updateTabRoutePath } from "~/modules/shell/tab-store"
 import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
+import { BlockDrillPanel, openRecordLink } from "./BlockDrillPanel"
 import { BlockCard } from "./blocks/BlockCard"
 import {
   type BlockReadInfo,
   clearViewerRange,
   type Dashboard,
   type DashboardBlockSpec,
+  type DrillTarget,
+  type FilterValues,
   getBlockData,
+  getBlockRows,
   getDashboard,
+  getFilterOptions,
+  saveViewerFilters,
   saveViewerRange,
 } from "./dashboards-client"
 import {
@@ -46,6 +60,17 @@ import {
   reloadDashboard,
   rememberDashboard,
 } from "./dashboards-store"
+import { FilterBar } from "./FilterBar"
+import {
+  defaultOf,
+  effectiveFilters,
+  filtersFromQuery,
+  filtersKey,
+  hasFiltersInQuery,
+  sameFilters,
+  withFiltersInPath,
+  withoutFiltersInPath,
+} from "./filters"
 import { TimeRangePicker } from "./TimeRangePicker"
 import {
   choiceFromQuery,
@@ -116,6 +141,44 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   )
   const [picked, setPicked] = createSignal<RangeChoice | null>(null)
   const [reported, setReported] = createSignal<ReturnType<typeof windowsFromInfo>>(null)
+  // Filter values: the person's remembered ones as the server keeps them, and their picks here.
+  const [rememberedFilters, setRememberedFilters] = createSignal<{
+    values: FilterValues
+    saved: boolean
+  } | null>(null)
+  const [pickedFilters, setPickedFilters] = createSignal<FilterValues | null>(null)
+  const [drill, setDrill] = createSignal<{ block: DashboardBlockSpec; target: DrillTarget } | null>(
+    null,
+  )
+  /** What had focus when the rows opened (a bar's pick, a table row): focus goes back on close. */
+  let drillOpener: HTMLElement | null = null
+  const openDrill = (block: DashboardBlockSpec, target: DrillTarget) => {
+    if (!drill()) {
+      const active = document.activeElement
+      drillOpener = active instanceof HTMLElement && active !== document.body ? active : null
+    }
+    setDrill({ block, target })
+  }
+  const closeDrill = () => {
+    setDrill(null)
+    const back = drillOpener
+    drillOpener = null
+    if (back?.isConnected) back.focus()
+  }
+  // Escape closes the rows from anywhere on the page while they are open (focus may be on the
+  // grid after a pick), unless a menu or a dialog takes it first.
+  createEffect(() => {
+    if (!drill()) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return
+      const t = e.target
+      if (t instanceof Element && t.closest('[role="menu"],[role="dialog"],[role="listbox"]'))
+        return
+      closeDrill()
+    }
+    document.addEventListener("keydown", onKey)
+    onCleanup(() => document.removeEventListener("keydown", onKey))
+  })
   onMount(() => {
     const timer = setInterval(() => {
       if (pageVisible()) setNow(Date.now())
@@ -148,6 +211,9 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
           choice: saved ?? serverChoice(d.defaultRange) ?? DEFAULT_CHOICE,
           saved: d.range?.saved === true,
         })
+        if (d.filters) {
+          setRememberedFilters({ values: d.filters.values ?? {}, saved: d.filters.saved === true })
+        }
         // The same version keeps the same object, so its blocks stay mounted (Refresh all then
         // refreshes them in place); a new version remounts them on the new spec.
         if (shown?.id !== d.id || shown.version !== d.version) shown = d
@@ -224,8 +290,63 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     setRemembered({ choice: fallback, saved: false })
     const t = tab()
     if (t?.routePath) updateTabRoutePath(t.id, withoutChoiceInPath(t.routePath))
-    void clearViewerRange(api, props.entityId).catch(() => {})
+    // Forgetting the range forgets the filters too on the server: the ones the person keeps
+    // are remembered again right after.
+    const keep = rememberedFilters()?.saved ? filterValues() : null
+    void clearViewerRange(api, props.entityId)
+      .then(() => (keep ? saveViewerFilters(api, props.entityId, keep) : undefined))
+      .catch(() => {})
   }
+  // ── filters ────────────────────────────────────────────────────────────────
+  const filterDefs = () => loaded()?.spec.filters ?? []
+  const defaultFilters = (): FilterValues => {
+    const d = loaded()
+    const out: FilterValues = {}
+    for (const def of filterDefs()) out[def.id] = d?.defaultFilters?.[def.id] ?? defaultOf(def)
+    return out
+  }
+  /** The values shown: the link's, else the pick here, else the remembered ones, else defaults. */
+  const filterValues = createMemo(
+    () =>
+      effectiveFilters(filterDefs(), {
+        url: filtersFromQuery(queryOf(tab()?.routePath), filterDefs()),
+        picked: pickedFilters(),
+        remembered: rememberedFilters()?.values ?? null,
+        defaults: defaultFilters(),
+      }),
+    undefined,
+    { equals: sameFilters },
+  )
+  const filterKey = createMemo(() => (filterDefs().length ? filtersKey(filterValues()) : undefined))
+  const wireFilters = () => (filterDefs().length ? filterValues() : undefined)
+
+  const pickFilter = (id: string, values: string[]) => {
+    const next = { ...filterValues(), [id]: values }
+    if (sameFilters(next, filterValues())) return
+    setPickedFilters(next)
+    setRememberedFilters({ values: next, saved: true })
+    const t = tab()
+    if (t)
+      updateTabRoutePath(
+        t.id,
+        withFiltersInPath(t.routePath ?? `/dashboard/${props.entityId}`, next),
+      )
+    void saveViewerFilters(api, props.entityId, next).catch(() => {})
+  }
+  const resetFilters = () => {
+    const defaults = defaultFilters()
+    setPickedFilters(null)
+    setRememberedFilters({ values: defaults, saved: false })
+    const t = tab()
+    if (t?.routePath) updateTabRoutePath(t.id, withoutFiltersInPath(t.routePath))
+    // `{}` forgets the person's filters; their range stays remembered.
+    void saveViewerFilters(api, props.entityId, {}).catch(() => {})
+  }
+  const filtersChanged = () =>
+    rememberedFilters()?.saved === true ||
+    hasFiltersInQuery(queryOf(tab()?.routePath)) ||
+    !sameFilters(filterValues(), defaultFilters())
+
   /** Does this block follow the dashboard's range (the server says; a fixed one keeps its own)? */
   const follows = (d: Dashboard, blockId: string) => d.blockTimeRange?.[blockId] !== "fixed"
   /** Blocks re-read on their own cadence only while this tab is the one on screen. */
@@ -253,7 +374,10 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                       choice={choice()}
                       label={rangeLabel()}
                       window={windows().window}
-                      saved={remembered()?.saved === true}
+                      saved={
+                        remembered()?.saved === true ||
+                        Object.keys(choiceFromQuery(queryOf(tab()?.routePath))).length > 0
+                      }
                       onChange={(next) => {
                         if (!sameChoice(next, choice())) pick(next)
                       }}
@@ -288,68 +412,128 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
           </Match>
         </Switch>
       </header>
-      <div class="@container min-h-0 flex-1 overflow-y-auto p-4">
-        <Switch>
-          <Match when={dashboard.loading && !dashboard()}>
-            <div data-testid="dashboard-loading" class="space-y-3">
-              <Skeleton class="h-24 w-full" />
-              <Skeleton class="h-24 w-full" />
-            </div>
-          </Match>
-          <Match when={dashboard() && !dashboard()?.ok}>
-            <p
-              data-testid="dashboard-not-found"
-              class="py-8 text-center text-[13px] text-text-tertiary"
-            >
-              {(dashboard() as { missing?: boolean })?.missing
-                ? i18n.t("kernel.dashboards.notFound")
-                : i18n.t("kernel.dashboards.loadFailed")}
-            </p>
-          </Match>
-          <Match when={loaded() && loaded()?.spec.blocks.length === 0}>
-            <div data-testid="dashboard-empty" class="py-10 text-center">
-              <p class="text-[13px] text-text-secondary">
-                {i18n.t("kernel.dashboards.emptyTitle")}
-              </p>
-              <p class="mt-1 text-[12.5px] text-text-tertiary">
-                {i18n.t("kernel.dashboards.emptyHint")}
-              </p>
-            </div>
-          </Match>
-          <Match when={loaded()}>
-            {(d) => (
-              <div
-                data-testid="dashboard-grid"
-                class="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3"
-              >
-                <For each={d().spec.blocks}>
-                  {(block) => (
-                    <BlockCard
-                      block={block}
-                      class={cn(blockSpanClass(block.width))}
-                      refreshTick={tick()}
-                      rangeKey={follows(d(), block.id) ? rangeKey() : undefined}
-                      showOwnWindow={usesRange() && !follows(d(), block.id)}
-                      now={now()}
-                      visible={onScreen()}
-                      onRead={(info) => {
-                        const w = windowsFromInfo(info)
-                        if (w) setReported(w)
-                      }}
-                      load={(refresh) =>
-                        getBlockData(api, d().id, block.id, {
-                          refresh,
-                          signal: reads.signal,
-                          ...(usesRange() && follows(d(), block.id) ? { range: choice() } : {}),
-                        })
-                      }
-                    />
-                  )}
-                </For>
+      <Show when={loaded() && filterDefs().length > 0}>
+        <FilterBar
+          filters={filterDefs()}
+          values={filterValues()}
+          onChange={pickFilter}
+          canReset={filtersChanged()}
+          onReset={resetFilters}
+          loadOptions={(filterId) => {
+            const { [filterId]: _own, ...others } = filterValues()
+            return getFilterOptions(api, props.entityId, filterId, {
+              ...(usesRange() ? { range: choice() } : {}),
+              filters: others,
+              signal: reads.signal,
+            })
+          }}
+        />
+      </Show>
+      <div class="@container relative flex min-h-0 flex-1">
+        <div class="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
+          <Switch>
+            <Match when={dashboard.loading && !dashboard()}>
+              <div data-testid="dashboard-loading" class="space-y-3">
+                <Skeleton class="h-24 w-full" />
+                <Skeleton class="h-24 w-full" />
               </div>
-            )}
-          </Match>
-        </Switch>
+            </Match>
+            <Match when={dashboard() && !dashboard()?.ok}>
+              <p
+                data-testid="dashboard-not-found"
+                class="py-8 text-center text-[13px] text-text-tertiary"
+              >
+                {(dashboard() as { missing?: boolean })?.missing
+                  ? i18n.t("kernel.dashboards.notFound")
+                  : i18n.t("kernel.dashboards.loadFailed")}
+              </p>
+            </Match>
+            <Match when={loaded() && loaded()?.spec.blocks.length === 0}>
+              <div data-testid="dashboard-empty" class="py-10 text-center">
+                <p class="text-[13px] text-text-secondary">
+                  {i18n.t("kernel.dashboards.emptyTitle")}
+                </p>
+                <p class="mt-1 text-[12.5px] text-text-tertiary">
+                  {i18n.t("kernel.dashboards.emptyHint")}
+                </p>
+              </div>
+            </Match>
+            <Match when={loaded()}>
+              {(d) => (
+                <div
+                  data-testid="dashboard-grid"
+                  class="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3"
+                >
+                  <For each={d().spec.blocks}>
+                    {(block) => (
+                      <BlockCard
+                        block={block}
+                        class={cn(blockSpanClass(block.width))}
+                        refreshTick={tick()}
+                        rangeKey={follows(d(), block.id) ? rangeKey() : undefined}
+                        filtersKey={filterKey()}
+                        onDrill={(target) => openDrill(block, target)}
+                        showOwnWindow={usesRange() && !follows(d(), block.id)}
+                        now={now()}
+                        visible={onScreen()}
+                        onRead={(info) => {
+                          const w = windowsFromInfo(info)
+                          if (w) setReported(w)
+                        }}
+                        load={(refresh) =>
+                          getBlockData(api, d().id, block.id, {
+                            refresh,
+                            signal: reads.signal,
+                            ...(usesRange() && follows(d(), block.id) ? { range: choice() } : {}),
+                            ...(wireFilters() ? { filters: wireFilters() } : {}),
+                          })
+                        }
+                      />
+                    )}
+                  </For>
+                </div>
+              )}
+            </Match>
+          </Switch>
+        </div>
+        <Show when={drill()}>
+          {(open) => (
+            <BlockDrillPanel
+              blockId={open().block.id}
+              blockTitle={open().block.title}
+              target={open().target}
+              contextKey={`${rangeKey() ?? ""}|${filterKey() ?? ""}`}
+              windowNote={
+                open().target.previous && windows().compareWindow
+                  ? formatWindow(windows().compareWindow!, i18n.locale())
+                  : undefined
+              }
+              load={(offset) => {
+                const d = loaded()
+                const b = open().block
+                const t = open().target
+                const cw = windows().compareWindow
+                // A comparison bar's rows: the comparison window, as a custom range.
+                const range =
+                  t.previous && cw
+                    ? {
+                        timeRange: { preset: "custom" as const, from: cw.from, to: cw.to },
+                        compare: "none" as const,
+                      }
+                    : choice()
+                return getBlockRows(api, props.entityId, b.id, {
+                  target: t,
+                  offset,
+                  ...(usesRange() && d && follows(d, b.id) ? { range } : {}),
+                  ...(wireFilters() ? { filters: wireFilters() } : {}),
+                  signal: reads.signal,
+                })
+              }}
+              open={(link) => openRecordLink(api, link)}
+              onClose={closeDrill}
+            />
+          )}
+        </Show>
       </div>
     </section>
   )

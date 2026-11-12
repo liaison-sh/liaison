@@ -30,23 +30,51 @@ export const approvalSummaryLinkSchema = z.union([
  */
 export const APPROVAL_SUMMARY_LINE_MAX = 500
 
-export const approvalSummarySchema = z.object({
-  kind: z.string().min(1).max(100),
-  title: z.string().min(1).max(200),
-  subtitle: z.string().max(200).optional(),
-  lines: z.array(z.string().max(APPROVAL_SUMMARY_LINE_MAX)).max(8),
-  links: z.array(approvalSummaryLinkSchema).max(10).optional(),
-  // Per-call blast-radius override for the attention feed. A summarizer sees
-  // the actual params at gate time, so it can refine the manifest's static
-  // `approvalImpact` for param-dependent tools (e.g. tickets close: silent
-  // close is internal, but a close WITH a body emails the customer, external).
-  // Frozen with the summary on the approval row; when absent, consumers fall
-  // back to the manifest declaration, then to "external".
-  impact: z.enum(["external", "internal"]).optional(),
-  // The id of the record acted on (`ticket-B2B-123`), shown first on the card
-  // as a monospace chip so a reviewer knows WHICH record before reading more.
-  ref: z.string().max(40).optional(),
-})
+/** How many lines a card lists: few, so a card stays a card. */
+export const APPROVAL_SUMMARY_LINES_MAX = 8
+
+/**
+ * The card kinds that list one numbered line per change, however many a request pools
+ * (a dashboard edit: one request, one card, owner decision 2026-11-11; a new dashboard,
+ * listed as the operations that build it), bounded against
+ * abuse by APPROVAL_SUMMARY_LONG_LINES_MAX. The web card scrolls a long list.
+ */
+export const APPROVAL_SUMMARY_LONG_KINDS: ReadonlySet<string> = new Set([
+  "dashboard_create",
+  "dashboard_edit",
+  "dashboard_update",
+])
+export const APPROVAL_SUMMARY_LONG_LINES_MAX = 50
+
+/** The most lines a card of this kind lists. */
+export function approvalSummaryLinesMax(kind: string): number {
+  return APPROVAL_SUMMARY_LONG_KINDS.has(kind)
+    ? APPROVAL_SUMMARY_LONG_LINES_MAX
+    : APPROVAL_SUMMARY_LINES_MAX
+}
+
+export const approvalSummarySchema = z
+  .object({
+    kind: z.string().min(1).max(100),
+    title: z.string().min(1).max(200),
+    subtitle: z.string().max(200).optional(),
+    lines: z.array(z.string().max(APPROVAL_SUMMARY_LINE_MAX)).max(APPROVAL_SUMMARY_LONG_LINES_MAX),
+    links: z.array(approvalSummaryLinkSchema).max(10).optional(),
+    // Per-call blast-radius override for the attention feed. A summarizer sees
+    // the actual params at gate time, so it can refine the manifest's static
+    // `approvalImpact` for param-dependent tools (e.g. tickets close: silent
+    // close is internal, but a close WITH a body emails the customer, external).
+    // Frozen with the summary on the approval row; when absent, consumers fall
+    // back to the manifest declaration, then to "external".
+    impact: z.enum(["external", "internal"]).optional(),
+    // The id of the record acted on (`ticket-B2B-123`), shown first on the card
+    // as a monospace chip so a reviewer knows WHICH record before reading more.
+    ref: z.string().max(40).optional(),
+  })
+  .refine((s) => s.lines.length <= approvalSummaryLinesMax(s.kind), {
+    path: ["lines"],
+    message: "too many lines for this kind of card",
+  })
 
 export type ApprovalSummary = z.infer<typeof approvalSummarySchema>
 export type ApprovalSummaryLink = z.infer<typeof approvalSummaryLinkSchema>
@@ -61,7 +89,7 @@ export function truncateApprovalSummary(s: ApprovalSummary): ApprovalSummary {
     // A line past the cap ends on "…" so a reviewer can tell it was cut (the
     // full value stays in the card's exact payload).
     lines: s.lines
-      .slice(0, 8)
+      .slice(0, approvalSummaryLinesMax(s.kind))
       .map((line) =>
         line.length > APPROVAL_SUMMARY_LINE_MAX
           ? `${line.slice(0, APPROVAL_SUMMARY_LINE_MAX - 1)}…`

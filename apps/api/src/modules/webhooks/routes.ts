@@ -47,6 +47,7 @@ import {
   runWebhookHandler,
   type WebhookRegistration,
   webhookActorFor,
+  webhookRunHoldsTx,
 } from "~/modules/webhooks/handler-run"
 import {
   type ClaimedDelivery,
@@ -609,14 +610,17 @@ async function dispatchVerifiedWebhook(
 
   let handlerResult: unknown
   try {
-    // The handler runs in its own RLS transaction on the background pool
-    // (handler-run.ts), never the interactive request pool.
+    // The handler runs on the background pool (handler-run.ts), never the
+    // interactive request pool.
     //
-    // A handler that declares a budget may hold that connection for up to
-    // 29 s, against 5 s for the rest: it waits for a pinned slot first, as the
-    // replay job does (infra/jobs/pinned-jobs-gate.ts), so a burst of them cannot
-    // starve the jobs pool. The wait is bounded so the run still ends inside the
-    // request ceiling; past it the delivery stays in the inbox for the replay, unrun.
+    // A handler that holds one transaction for its run (a core app's, a listed
+    // exception's: webhookRunHoldsTx) and declares a budget may hold that
+    // connection for up to 29 s, against 5 s for the rest: it waits for a pinned
+    // slot first, as the replay job does (infra/jobs/pinned-jobs-gate.ts), so a
+    // burst of them cannot starve the jobs pool. The wait is bounded so the run
+    // still ends inside the request ceiling; past it the delivery stays in the
+    // inbox for the replay, unrun. A sandboxed handler holds no connection
+    // across its run, so it takes no slot.
     const budget = deliveryBudget(registration.timeoutMs, env.REQUEST_TIMEOUT_MS)
     const runDelivery = () =>
       runWebhookHandler({
@@ -629,13 +633,14 @@ async function dispatchVerifiedWebhook(
         headers: headerDict,
         ...(budget ? { timeoutMs: budget.timeoutMs } : {}),
       })
-    handlerResult = budget
-      ? await withPinnedJobSlot(
-          `webhook:${appName}`,
-          runDelivery,
-          AbortSignal.timeout(budget.slotWaitMs),
-        )
-      : await runDelivery()
+    handlerResult =
+      budget && webhookRunHoldsTx(registration, appName)
+        ? await withPinnedJobSlot(
+            `webhook:${appName}`,
+            runDelivery,
+            AbortSignal.timeout(budget.slotWaitMs),
+          )
+        : await runDelivery()
   } catch (err) {
     // The handler threw (vs. returning a status). Treat as transient: release
     // the replay claim and leave the delivery to the inbox replay. Surface 500

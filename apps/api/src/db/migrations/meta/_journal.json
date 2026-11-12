@@ -2038,6 +2038,20 @@
       "when": 1900003382000,
       "tag": "0289_webhook_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1900003383000,
+      "tag": "0290_dashboard_viewer_filters",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1900003384000,
+      "tag": "0291_dashboard_versions",
+      "breakpoints": true
     }
   ]
 }

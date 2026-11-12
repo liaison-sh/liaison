@@ -1,21 +1,29 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// THE ONE CHART. Bar, line and pie over chart.js, loaded on first use (the
-// library stays out of the main bundle) and registering only the pieces these
-// three kinds draw. Exported for reuse: a dashboard block draws through it, and
-// an app view may embed it the same way.
-import { type Component, createEffect, on, onCleanup } from "solid-js"
+// THE ONE CHART. Bar, line, area, combo (bars and lines) and pie over chart.js,
+// loaded on first use (the library stays out of the main bundle) and
+// registering only the pieces these kinds draw. Bars and areas may stack, bars
+// may lie horizontal, a combo's lines may read against a right-hand axis.
+// Exported for reuse: a dashboard block draws through it, and an app view may
+// embed it the same way.
+//
+// With `onPick`, a click on a bar, a point or a slice picks it (the dashboard
+// opens the rows behind it), and the canvas's fallback content lists one button
+// per category, so the same pick is reachable from the keyboard.
+import { type Component, createEffect, For, on, onCleanup, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type { ValueFormat } from "../dashboards-client"
 import { formatAxisLabel, formatValue } from "./format"
 
-export type ChartKind = "bar" | "line" | "pie"
+export type ChartKind = "bar" | "line" | "pie" | "area" | "combo"
 
 export interface ChartDataset {
   label: string
   values: Array<number | null>
   /** A comparison series: drawn lighter (muted, dashed for a line), behind the current one. */
   previous?: boolean
+  /** In a combo: this series is drawn as a line (the rest are bars). */
+  asLine?: boolean
 }
 
 export interface ChartProps {
@@ -29,6 +37,16 @@ export interface ChartProps {
   testid?: string
   /** Accessible name of the drawing (the block's title). */
   label?: string
+  /** Bars, areas (or a combo's bars) stacked. */
+  stacked?: boolean
+  /** Bars lying along the vertical axis. */
+  horizontal?: boolean
+  /** A combo's lines read against a right-hand axis. */
+  secondaryAxis?: boolean
+  /** A bar, point or slice picked: its category index and the dataset it belongs to. */
+  onPick?: (index: number, datasetIndex: number) => void
+  /** The keyboard button's name for a category ("Show rows for {label}"). */
+  pickLabel?: (label: string) => string
 }
 
 type ChartModule = typeof import("chart.js")
@@ -44,6 +62,7 @@ export function loadChartJs(): Promise<ChartModule> {
         m.LineController,
         m.LineElement,
         m.PointElement,
+        m.Filler,
         m.PieController,
         m.ArcElement,
         m.CategoryScale,
@@ -103,38 +122,56 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
             },
           },
         },
+        ...pickOptions(props),
       },
     }
   }
   const current = props.datasets.filter((d) => !d.previous)
   const colors = chartPalette(current.length)
   const muted = cssVar("--color-border", "#3a3a42")
+  const area = props.type === "area"
+  const combo = props.type === "combo"
+  const horizontal = props.type === "bar" && props.horizontal === true
+  const stacked = props.stacked === true && (props.type === "bar" || area || combo)
+  // A combo's lines never stack on its bars: they go on their own unstacked axis on the right,
+  // asked for (secondaryAxis) or because the bars stack.
+  const rightAxis = combo && (props.secondaryAxis === true || stacked)
   let next = 0
   return {
-    type: props.type,
+    // An area is a filled line; a combo is bars with some datasets drawn as lines.
+    type: area ? "line" : combo ? "bar" : props.type,
     data: {
       labels,
       datasets: props.datasets.map((d) => {
         const color = d.previous ? muted : colors[next++]
+        const line = props.type === "line" || area || (combo && d.asLine === true)
+        const bar = !line
         return {
+          ...(combo && line ? { type: "line" } : {}),
           label: d.label,
           data: d.values,
-          backgroundColor: color,
-          borderColor: d.previous && props.type === "line" ? text : color,
-          borderRadius: props.type === "bar" ? 3 : undefined,
-          maxBarThickness: props.type === "bar" ? 40 : undefined,
-          tension: props.type === "line" ? 0.25 : undefined,
-          pointRadius: props.type === "line" ? (d.previous ? 0 : 2) : undefined,
-          borderWidth: props.type === "line" && d.previous ? 1.5 : undefined,
-          borderDash: props.type === "line" && d.previous ? [4, 4] : undefined,
-          // Drawn behind the current series.
-          order: d.previous ? 1 : 0,
+          // An area's fill is the series' colour, faint (calm: hues, never alarms).
+          backgroundColor: area && !d.previous ? `${color}40` : color,
+          borderColor: d.previous && line ? text : color,
+          borderRadius: bar ? 3 : undefined,
+          maxBarThickness: bar ? 40 : undefined,
+          tension: line ? 0.25 : undefined,
+          pointRadius: line ? (d.previous ? 0 : 2) : undefined,
+          borderWidth: line && d.previous ? 1.5 : undefined,
+          borderDash: line && d.previous ? [4, 4] : undefined,
+          fill: area && !d.previous ? (stacked ? (next === 1 ? "origin" : "-1") : "origin") : false,
+          ...(rightAxis && line ? { yAxisID: "y1" } : {}),
+          ...(stacked && !d.previous && !(combo && line) ? { stack: "current" } : {}),
+          // Drawn behind the current series; a combo's lines over its bars.
+          order: d.previous ? 1 : combo && line ? -1 : 0,
         }
       }),
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      ...(horizontal ? { indexAxis: "y" } : {}),
+      ...pickOptions(props),
       plugins: {
         legend: { display: props.datasets.length > 1, labels: { color: text, boxWidth: 10 } },
         tooltip: {
@@ -144,14 +181,51 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
           },
         },
       },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: text } },
-        y: {
-          beginAtZero: true,
-          grid: { color: grid },
-          ticks: { color: text, callback: (v: unknown) => fmt(v) },
-        },
-      },
+      scales: horizontal
+        ? {
+            x: {
+              beginAtZero: true,
+              stacked,
+              grid: { color: grid },
+              ticks: { color: text, callback: (v: unknown) => fmt(v) },
+            },
+            y: { stacked, grid: { display: false }, ticks: { color: text } },
+          }
+        : {
+            x: { stacked, grid: { display: false }, ticks: { color: text } },
+            y: {
+              beginAtZero: true,
+              stacked,
+              grid: { color: grid },
+              ticks: { color: text, callback: (v: unknown) => fmt(v) },
+            },
+            ...(rightAxis
+              ? {
+                  y1: {
+                    position: "right",
+                    beginAtZero: true,
+                    grid: { display: false },
+                    ticks: { color: text, callback: (v: unknown) => fmt(v) },
+                  },
+                }
+              : {}),
+          },
+    },
+  }
+}
+
+/** A click on a drawn element picks it; the pointer says it can be clicked. */
+function pickOptions(props: ChartProps): Record<string, unknown> {
+  const pick = props.onPick
+  if (!pick) return {}
+  return {
+    onClick: (_e: unknown, elements: Array<{ index: number; datasetIndex: number }>) => {
+      const hit = elements[0]
+      if (hit) pick(hit.index, hit.datasetIndex)
+    },
+    onHover: (e: { native?: { target?: { style?: { cursor: string } } } }, elements: unknown[]) => {
+      const style = e.native?.target?.style
+      if (style) style.cursor = elements.length ? "pointer" : "default"
     },
   }
 }
@@ -166,7 +240,17 @@ export const Chart: Component<ChartProps> = (props) => {
   createEffect(
     on(
       () =>
-        [props.type, props.labels, props.datasets, props.format, props.currency, locale()] as const,
+        [
+          props.type,
+          props.labels,
+          props.datasets,
+          props.format,
+          props.currency,
+          props.stacked,
+          props.horizontal,
+          props.secondaryAxis,
+          locale(),
+        ] as const,
       async () => {
         const mine = ++run
         const m = await loadChartJs().catch(() => null)
@@ -189,7 +273,30 @@ export const Chart: Component<ChartProps> = (props) => {
       data-chart-type={props.type}
       class="relative h-56 w-full"
     >
-      <canvas ref={canvas} role="img" aria-label={props.label ?? props.type} />
+      <canvas ref={canvas} role="img" aria-label={props.label ?? props.type}>
+        <Show when={props.onPick}>
+          {(pick) => (
+            <ul data-testid="dashboard-chart-picks">
+              <For each={props.labels}>
+                {(label, i) => {
+                  const text = formatAxisLabel(label, locale())
+                  return (
+                    <li>
+                      <button
+                        type="button"
+                        data-testid={`dashboard-chart-pick-${i()}`}
+                        onClick={() => pick()(i(), 0)}
+                      >
+                        {props.pickLabel ? props.pickLabel(text) : text}
+                      </button>
+                    </li>
+                  )
+                }}
+              </For>
+            </ul>
+          )}
+        </Show>
+      </canvas>
     </div>
   )
 }

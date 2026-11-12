@@ -11,8 +11,9 @@
 //            startOfYear, endOfWeek (Sunday), endOfMonth, endOfQuarter, endOfYear,
 //            range.from, range.to (the dashboard's time range, both days inclusive)
 //   offset:  +N or -N with a unit: d (days), w (weeks), M (months), y (years)
-// plus two date-times without offset: range.fromTime (the range's first instant) and
-// range.toTime (its last second), ISO 8601 with the org's UTC offset.
+// plus date-times without offset, ISO 8601 with the org's UTC offset: range.fromTime (the
+// range's first instant), range.toTime (its last second) and range.endExclusive (the first
+// instant after the range: midnight of the next day, for a filter written `< end`).
 // Dates are the calendar dates of the org's timezone. A month or year offset keeps the
 // day and clamps it to the target month's last day (2026-03-31 -1M is 2026-02-28); on an
 // endOf anchor it moves the period first, so {{endOfMonth-1M}} is last month's last day.
@@ -43,11 +44,14 @@ const TOKEN = /\{\{([^{}]*)\}\}/g
 const TOKEN_BODY = new RegExp(
   `^(${[...CALENDAR_ANCHORS, "range\\.from", "range\\.to"].join("|")})(?:([+-])(\\d{1,4})([dwMy]))?$`,
 )
-const DATETIME_BODY = /^range\.(fromTime|toTime)$/
+const DATETIME_BODY = /^range\.(fromTime|toTime|endExclusive)$/
 const RANGE_TOKEN = /\{\{range\.[^{}]*\}\}/
+/** A dashboard filter's value (filters.ts resolves it before the dates): `{{filter.market}}`. */
+export const FILTER_TOKEN_BODY = /^filter\.([A-Za-z][A-Za-z0-9_]{0,39})$/
+const isFilterToken = (body: string) => FILTER_TOKEN_BODY.test(body)
 
 export const DATE_TOKEN_HELP =
-  "a date token is {{today}}, {{yesterday}}, {{startOfWeek}}, {{startOfMonth}}, {{startOfQuarter}}, {{startOfYear}}, {{endOfWeek}}, {{endOfMonth}}, {{endOfQuarter}}, {{endOfYear}}, or the dashboard range {{range.from}} / {{range.to}}, optionally with one offset such as {{today-30d}}, {{startOfMonth-1M}}, {{today+1w}} or {{startOfYear-1y}} (d days, w weeks, M months, y years); {{range.fromTime}} and {{range.toTime}} give the range's first and last instant as date-times"
+  "a date token is {{today}}, {{yesterday}}, {{startOfWeek}}, {{startOfMonth}}, {{startOfQuarter}}, {{startOfYear}}, {{endOfWeek}}, {{endOfMonth}}, {{endOfQuarter}}, {{endOfYear}}, or the dashboard range {{range.from}} / {{range.to}}, optionally with one offset such as {{today-30d}}, {{startOfMonth-1M}}, {{today+1w}} or {{startOfYear-1y}} (d days, w weeks, M months, y years); {{range.fromTime}} and {{range.toTime}} give the range's first and last second as date-times, {{range.endExclusive}} the first instant after it (filter with < on it)"
 
 /** The presets of a dashboard time range. */
 export const TIME_PRESETS = [
@@ -85,11 +89,16 @@ export const DEFAULT_COMPARE: CompareMode = "lastYear"
 
 type ParsedToken =
   | { kind: "date"; anchor: Anchor; offset: number; unit: Unit }
-  | { kind: "datetime"; edge: "from" | "to" }
+  | { kind: "datetime"; edge: "from" | "to" | "endExclusive" }
 
 function parseToken(body: string): ParsedToken | null {
   const dt = DATETIME_BODY.exec(body)
-  if (dt) return { kind: "datetime", edge: dt[1] === "fromTime" ? "from" : "to" }
+  if (dt) {
+    return {
+      kind: "datetime",
+      edge: dt[1] === "fromTime" ? "from" : dt[1] === "toTime" ? "to" : "endExclusive",
+    }
+  }
   const m = TOKEN_BODY.exec(body)
   if (!m) return null
   const sign = m[2] === "-" ? -1 : 1
@@ -141,16 +150,33 @@ export function parseDay(s: string): CalendarDate | null {
   return c
 }
 
+/** One formatter per zone: building an Intl.DateTimeFormat is the slow part of a conversion. */
+const dayFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function dayFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = dayFormatters.get(timeZone)
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    dayFormatters.set(timeZone, f)
+  }
+  return f
+}
+
 /** Today's calendar date in `timeZone` (an IANA name) at `now`. */
 export function todayIn(timeZone: string, now: Date): CalendarDate {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now)
+  const parts = dayFormatter(timeZone).formatToParts(now)
   const part = (type: string) => Number(parts.find((p) => p.type === type)?.value)
   return { y: part("year"), m: part("month"), d: part("day") }
+}
+
+/** The calendar day (YYYY-MM-DD) an instant falls on in `timeZone`. */
+export function dayIn(timeZone: string, instant: Date): string {
+  return format(todayIn(timeZone, instant))
 }
 
 type Period = "week" | "month" | "quarter" | "year"
@@ -253,18 +279,25 @@ function offsetMinutes(timeZone: string, instant: number): number {
 function zonedDateTime(c: CalendarDate, time: "00:00:00" | "23:59:59", timeZone: string): string {
   const [h, mi, s] = time.split(":").map(Number) as [number, number, number]
   const wall = Date.UTC(c.y, c.m - 1, c.d, h, mi, s)
-  let offset = offsetMinutes(timeZone, wall)
-  offset = offsetMinutes(timeZone, wall - offset * 60_000)
+  const first = wall - offsetMinutes(timeZone, wall) * 60_000
+  let offset = offsetMinutes(timeZone, first)
+  let instant = wall - offset * 60_000
+  // A wall time the zone skips (a DST change at midnight): the day starts at the change.
+  if (offsetMinutes(timeZone, instant) !== offset) {
+    instant = first
+    offset = offsetMinutes(timeZone, first)
+  }
+  const local = new Date(instant + offset * 60_000).toISOString().slice(0, 19)
   const sign = offset < 0 ? "-" : "+"
-  return `${format(c)}T${time}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`
+  return `${local}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`
 }
 
 function resolveToken(t: ParsedToken, ctx: TokenContext, raw: string): string {
   if (t.kind === "date") return resolveDate(t, ctx, raw)
   if (!ctx.range) throw new DateTokenError(`${raw} needs the dashboard's time range`)
-  return t.edge === "from"
-    ? zonedDateTime(ctx.range.from, "00:00:00", ctx.timeZone)
-    : zonedDateTime(ctx.range.to, "23:59:59", ctx.timeZone)
+  if (t.edge === "from") return zonedDateTime(ctx.range.from, "00:00:00", ctx.timeZone)
+  if (t.edge === "to") return zonedDateTime(ctx.range.to, "23:59:59", ctx.timeZone)
+  return zonedDateTime(addDays(ctx.range.to, 1), "00:00:00", ctx.timeZone)
 }
 
 /** The problems of one string: each unknown token, or a stray `{{` / `}}`. */
@@ -272,7 +305,9 @@ function stringProblems(s: string): string[] {
   if (!s.includes("{{") && !s.includes("}}")) return []
   const out: string[] = []
   for (const m of s.matchAll(TOKEN)) {
-    if (!parseToken(m[1]!)) out.push(`unknown date token ${m[0]}: ${DATE_TOKEN_HELP}`)
+    if (!parseToken(m[1]!) && !isFilterToken(m[1]!)) {
+      out.push(`unknown date token ${m[0]}: ${DATE_TOKEN_HELP}`)
+    }
   }
   const rest = s.replace(TOKEN, "")
   if (rest.includes("{{") || rest.includes("}}")) {
@@ -318,11 +353,23 @@ export function hasRangeTokens(value: unknown): boolean {
   return found
 }
 
-/** The distinct tokens in `value`, in order of appearance (`{{today-30d}}`). */
+/** The distinct date tokens in `value`, in order of appearance (`{{today-30d}}`); filter tokens are not. */
 export function dateTokensIn(value: unknown): string[] {
   const seen = new Set<string>()
   walk(value, "", (s) => {
-    for (const m of s.matchAll(TOKEN)) seen.add(m[0])
+    for (const m of s.matchAll(TOKEN)) if (!isFilterToken(m[1]!)) seen.add(m[0])
+  })
+  return [...seen]
+}
+
+/** The distinct filter ids `value` reads through `{{filter.<id>}}`, in order of appearance. */
+export function filterTokensIn(value: unknown): string[] {
+  const seen = new Set<string>()
+  walk(value, "", (s) => {
+    for (const m of s.matchAll(TOKEN)) {
+      const f = FILTER_TOKEN_BODY.exec(m[1]!)
+      if (f) seen.add(f[1]!)
+    }
   })
   return [...seen]
 }
@@ -347,7 +394,12 @@ export function resolveDateTokens<T>(
     if (!s.includes("{{") && !s.includes("}}")) return s
     const problems = stringProblems(s)
     if (problems.length) throw new DateTokenError(problems.join("; "))
-    return s.replace(TOKEN, (raw, body: string) => resolveToken(parseToken(body)!, ctx, raw))
+    return s.replace(TOKEN, (raw, body: string) => {
+      const t = parseToken(body)
+      // A filter token is resolved before the dates (filters.ts); one left here never reaches a tool.
+      if (!t) throw new DateTokenError(`${raw} is a filter token that was not resolved`)
+      return resolveToken(t, ctx, raw)
+    })
   }
   const visit = (v: unknown): unknown => {
     if (typeof v === "string") return resolveString(v)
@@ -445,7 +497,8 @@ const CALENDAR_STEP: Partial<Record<TimePreset, number>> = {
 }
 
 /**
- * The window a range is compared with: `lastYear` the same days a year earlier;
+ * The window a range is compared with: `lastYear` the same days a year earlier (a calendar
+ * preset keeps its month ends; a rolling or custom range keeps its number of days);
  * `previousPeriod` the month, quarter or year before for a calendar preset (the same
  * day span: month to date Nov 1-11 compares with Oct 1-11), else the equal-length span
  * just before. `none`: null.
@@ -457,9 +510,14 @@ export function compareWindow(
 ): DayWindow | null {
   if (mode === "none") return null
   const w = windowDates(window)
-  if (mode === "lastYear") return shiftWindowMonths(w, -12)
   const step = CALENDAR_STEP[preset]
-  if (step) return shiftWindowMonths(w, -step)
   const days = dayNumber(w.to) - dayNumber(w.from) + 1
+  if (mode === "lastYear") {
+    if (step) return shiftWindowMonths(w, -12)
+    // A rolling or custom range keeps its length (29 Feb is no reason for a 6- or 8-day week).
+    const from = addMonths(w.from, -12)
+    return { from: format(from), to: format(addDays(from, days - 1)) }
+  }
+  if (step) return shiftWindowMonths(w, -step)
   return { from: format(addDays(w.from, -days)), to: format(addDays(w.from, -1)) }
 }

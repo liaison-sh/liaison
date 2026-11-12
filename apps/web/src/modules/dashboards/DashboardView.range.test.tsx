@@ -211,6 +211,17 @@ describe("DashboardView time range", () => {
     expect(blockReads(get, "m")[1]).toContain("range=last30d&compare=lastYear")
   })
 
+  it("offers the default back when only the link carries a range", async () => {
+    setRoute("/dashboard/d1?range=qtd&compare=none")
+    const { get } = mount(undefined)
+    await waitFor(() => expect(blockReads(get, "m").length).toBe(1))
+    await openMenu()
+    choose("dashboard-range-reset")
+    expect(updateRoute).toHaveBeenCalledWith("kernel:dashboard:d1", "/dashboard/d1")
+    await waitFor(() => expect(blockReads(get, "m").length).toBe(2))
+    expect(blockReads(get, "m")[1]).toContain("range=last30d&compare=lastYear")
+  })
+
   it("a block keeping its own window shows it as a chip", async () => {
     mount(undefined)
     await waitFor(() => expect(screen.getByTestId("dashboard-block-window-t")).toBeTruthy())

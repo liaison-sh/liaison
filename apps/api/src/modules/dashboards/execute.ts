@@ -19,8 +19,11 @@
 // the org's timezone (kernel.organizations.timezone; UTC when unset or not a valid zone), so
 // eligibility, the cache key (service.ts) and the tool call all see the dates of this run.
 //
+// A source is read on its own (runSource) and mapped apart (transform.ts), so a dataset
+// shared by several blocks is read once and mapped per block (service.ts).
+//
 // Every run writes one audit row (`dashboard.block_run`) naming the dashboard
-// and the block.
+// and the block (or the dataset, or the filter whose options it lists).
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
 import { eq } from "drizzle-orm"
@@ -36,6 +39,7 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { DASHBOARD_NOT_ALLOWED_CODE, executeToolCore } from "~/modules/apps/execute-tool"
 import { writeAuditLog } from "~/modules/audit/service"
+import type { ResolvedWhere } from "~/modules/dashboards/filters"
 import {
   DateTokenError,
   type DayWindow,
@@ -48,9 +52,14 @@ import {
   type SourceRefusalCode,
 } from "~/modules/dashboards/sources"
 import {
+  type BlockSource,
+  blockSourceOf,
+  calcDatasets,
   type DashboardBlock,
+  type DashboardSpec,
   MAX_SOURCE_ROWS,
   type StoreSource,
+  sourceValue,
   type ToolSource,
 } from "~/modules/dashboards/spec"
 import {
@@ -217,11 +226,19 @@ async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
   return { result: rows }
 }
 
-async function auditRun(ctx: BlockRunContext, block: DashboardBlock, outcome: BlockOutcome) {
-  const source =
-    block.source.kind === "tool"
-      ? block.source.tool
-      : `store:${block.source.app}/${block.source.collection}`
+/** What a source run is for, as its audit row names it. */
+export type RunTarget = { blockId: string } | { datasetId: string } | { filterId: string }
+
+function sourceLabel(source: BlockSource): string {
+  return source.kind === "tool" ? source.tool : `store:${source.app}/${source.collection}`
+}
+
+async function auditRun(
+  ctx: BlockRunContext,
+  target: RunTarget,
+  source: BlockSource,
+  outcome: { ok: true } | { ok: false; error: BlockErrorCode },
+) {
   try {
     await withPrivilegedDb(ctx.viewer.orgId, "dashboard-block-audit", (tx) =>
       writeAuditLog(tx, {
@@ -234,17 +251,14 @@ async function auditRun(ctx: BlockRunContext, block: DashboardBlock, outcome: Bl
         action: ctx.dashboardId ? "dashboard.block_run" : "dashboard.block_preview",
         metadata: {
           dashboardId: ctx.dashboardId,
-          blockId: block.id,
-          source,
+          ...target,
+          source: sourceLabel(source),
           outcome: outcome.ok ? "ok" : outcome.error,
         },
       }),
     )
   } catch (err) {
-    log.error(
-      { err, dashboardId: ctx.dashboardId, blockId: block.id },
-      "dashboard block audit row failed",
-    )
+    log.error({ err, dashboardId: ctx.dashboardId, ...target }, "dashboard block audit row failed")
   }
 }
 
@@ -270,66 +284,180 @@ export async function dashboardTimezone(orgId: string): Promise<string> {
 }
 
 /**
- * The block with its source's date tokens replaced by the dates of `now` in the org's
- * timezone, its range tokens by `range`. A block without tokens is returned as it is (no
- * lookup). Throws DateTokenError on an unknown token, or a range token without a range.
+ * `source` with its date tokens replaced by the dates of `now` in the org's timezone, its range
+ * tokens by `range`. A source without tokens is returned as it is (no lookup). Filter tokens
+ * must be resolved first (filters.ts). Throws DateTokenError on an unknown token, or a range
+ * token without a range.
  */
-export async function resolveBlockDates<B extends DashboardBlock>(
-  block: B,
+export async function resolveSourceDates<S extends BlockSource>(
+  source: S,
   orgId: string,
   now: Date = new Date(),
   range: DayWindow | null = null,
-): Promise<B> {
-  const source = block.source
-  const value = source.kind === "tool" ? source.params : source.query
-  if (!hasDateTokens(value)) return block
+): Promise<S> {
+  const value = sourceValue(source)
+  if (!hasDateTokens(value)) return source
   const resolved = resolveDateTokens(value, {
     timeZone: await dashboardTimezone(orgId),
     now,
     range,
   })
-  return {
-    ...block,
-    source:
-      source.kind === "tool" ? { ...source, params: resolved } : { ...source, query: resolved },
-  }
+  return source.kind === "tool" ? { ...source, params: resolved } : { ...source, query: resolved }
 }
 
-/** Runs one block's source as the viewer and maps it into what the chart draws. */
-export async function computeBlock(
-  block: DashboardBlock,
+/** A source's rows as read: at most MAX_SOURCE_ROWS, or the one object it answered. */
+export interface SourceRows {
+  rows: Record<string, unknown>[] | null
+  /** The result itself when it holds no rows (a metric reads a path into it); else null. */
+  object: unknown
+  /** Rows the source returned, before the cut. */
+  totalRows: number
+}
+
+export type SourceOutcome =
+  | { ok: true; read: SourceRows }
+  | { ok: false; error: BlockErrorCode; message: string }
+
+/**
+ * Reads one source (its tokens resolved) as the viewer: one run, one audit row. The rows are
+ * found as the map would find them (rowsPath, a list field), cut to MAX_SOURCE_ROWS.
+ */
+export async function runSource(
+  source: BlockSource,
   ctx: BlockRunContext,
-): Promise<BlockOutcome> {
-  let outcome: BlockOutcome
+  target: RunTarget,
+): Promise<SourceOutcome> {
+  let outcome: SourceOutcome
   try {
-    // A no-op when the caller resolved it already (service.ts, for the cache key).
-    const run = await resolveBlockDates(block, ctx.viewer.orgId, new Date(), ctx.range ?? null)
-    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${run.id}`
+    const name =
+      "blockId" in target
+        ? target.blockId
+        : "datasetId" in target
+          ? `ds-${target.datasetId}`
+          : `filter-${target.filterId}`
+    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${name}`
     const read =
-      run.source.kind === "tool"
-        ? await readToolSource(run.source, ctx, runId)
-        : await readStoreSource(run.source, ctx)
+      source.kind === "tool"
+        ? await readToolSource(source, ctx, runId)
+        : await readStoreSource(source, ctx)
     if ("outcome" in read && read.outcome) {
-      outcome = read.outcome
+      outcome = read.outcome as SourceOutcome
     } else {
       const paged = "paged" in read && read.paged === true
-      const rowsPath = run.source.kind === "tool" && !paged ? run.source.rowsPath : undefined
+      const rowsPath = source.kind === "tool" && !paged ? source.rowsPath : undefined
+      const { rows, object } = extractRows(read.result, rowsPath)
       outcome = {
         ok: true,
-        data: transformBlock(run.type, run.map, read.result, {
-          rowsPath,
-          window: ctx.range ?? null,
-        }),
+        read: rows
+          ? { rows: rows.slice(0, MAX_SOURCE_ROWS), object: null, totalRows: rows.length }
+          : { rows: null, object, totalRows: 0 },
       }
     }
   } catch (err) {
     if (err instanceof TransformError || err instanceof DateTokenError) {
-      outcome = fail("invalid_map", err.message)
+      outcome = { ok: false, error: "invalid_map", message: err.message }
     } else {
-      log.error({ err, dashboardId: ctx.dashboardId, blockId: block.id }, "dashboard block failed")
-      outcome = fail("source_failed", err instanceof Error ? err.message : String(err))
+      log.error({ err, dashboardId: ctx.dashboardId, ...target }, "dashboard source failed")
+      outcome = {
+        ok: false,
+        error: "source_failed",
+        message: err instanceof Error ? err.message : String(err),
+      }
     }
   }
-  await auditRun(ctx, block, outcome)
+  await auditRun(ctx, target, source, outcome)
   return outcome
+}
+
+/** The app a source's records belong to (an entity link's default). */
+export function sourceApp(source: BlockSource | null): string | undefined {
+  if (!source) return undefined
+  return source.kind === "tool" ? source.tool.slice(0, source.tool.indexOf(":")) : source.app
+}
+
+/** Maps a read source into what one block draws. */
+export function mapBlock(
+  block: DashboardBlock,
+  read: SourceRows,
+  opts: {
+    window?: DayWindow | null
+    where?: ResolvedWhere[]
+    linkApp?: string
+    timeZone?: string
+    datasetRows?: Record<string, Record<string, unknown>[] | null>
+  },
+): BlockOutcome {
+  try {
+    return {
+      ok: true,
+      data: transformBlock(block.type, block.map, read.rows ?? read.object, {
+        window: opts.window ?? null,
+        totalRows: read.totalRows,
+        ...(opts.where ? { where: opts.where } : {}),
+        ...(opts.linkApp ? { linkApp: opts.linkApp } : {}),
+        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+        ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
+        ...(block.text !== undefined ? { text: block.text } : {}),
+      }),
+    }
+  } catch (err) {
+    if (err instanceof TransformError) return fail("invalid_map", err.message)
+    throw err
+  }
+}
+
+/**
+ * Runs one block's source as the viewer and maps it (a preview: no cache). A dataset block
+ * reads `datasets`; its filter tokens must be resolved already.
+ */
+export async function computeBlock(
+  block: DashboardBlock,
+  ctx: BlockRunContext & {
+    datasets?: DashboardSpec["datasets"]
+    where?: ResolvedWhere[]
+    /** A dataset with this request's filter values in (a preview resolves its filter tokens). */
+    resolveDataset?: (source: BlockSource) => BlockSource
+  },
+): Promise<BlockOutcome> {
+  if (block.type === "text") {
+    return mapBlock(block, { rows: [], object: null, totalRows: 0 }, {})
+  }
+  const saved = blockSourceOf(block, ctx.datasets)
+  if (!saved) return fail("invalid_map", `no dataset '${block.dataset ?? ""}' for this block`)
+  let source: BlockSource
+  try {
+    source = await resolveSourceDates(saved, ctx.viewer.orgId, new Date(), ctx.range ?? null)
+  } catch (err) {
+    if (err instanceof DateTokenError) return fail("invalid_map", err.message)
+    throw err
+  }
+  const outcome = await runSource(source, ctx, { blockId: block.id })
+  if (!outcome.ok) return outcome
+  const datasetRows: Record<string, Record<string, unknown>[] | null> = {}
+  for (const id of calcDatasets(block)) {
+    const ds = ctx.datasets?.[id]
+    if (!ds) return fail("invalid_map", `no dataset '${id}' for this block`)
+    let resolved: BlockSource
+    try {
+      resolved = await resolveSourceDates(
+        ctx.resolveDataset ? ctx.resolveDataset(ds) : ds,
+        ctx.viewer.orgId,
+        new Date(),
+        ctx.range ?? null,
+      )
+    } catch (err) {
+      if (err instanceof DateTokenError) return fail("invalid_map", err.message)
+      throw err
+    }
+    const read = await runSource(resolved, ctx, { datasetId: id })
+    if (!read.ok) return read
+    datasetRows[id] = read.read.rows
+  }
+  return mapBlock(block, outcome.read, {
+    ...(Object.keys(datasetRows).length ? { datasetRows } : {}),
+    window: ctx.range ?? null,
+    timeZone: await dashboardTimezone(ctx.viewer.orgId),
+    ...(ctx.where ? { where: ctx.where } : {}),
+    ...(sourceApp(source) ? { linkApp: sourceApp(source)! } : {}),
+  })
 }

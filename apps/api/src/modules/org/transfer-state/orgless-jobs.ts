@@ -111,8 +111,12 @@ export const ORGLESS_WORKER_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
     "the leader works off removed connections' provider calls from an instance-level table; it writes no org's rows",
   ),
   "infra/boot-phase10.ts": audited(
-    "the leader's files-policy check changes the catalog's policy, not per-org rows",
+    "the leader's files-policy check changes the catalog's policy, not per-org rows; the approval summary backfill singleton only queues its job (summary-backfill.ts)",
   ),
+  // The attention refresh job's payload names its org as `org`, not `orgId`: each run is one org's write in writeUnlessMoving.
+  "modules/apps/attention-store.ts": skips("modules/apps/attention-store.ts"),
+  // A pass over every org's pending approvals: each org's summaries are stored in writeUnlessMoving.
+  "modules/approvals/summary-backfill.ts": skips("modules/approvals/summary-backfill.ts"),
   "infra/events/outbox-worker.ts": skips("infra/events/outbox-worker.ts"),
   "infra/instance-registry.ts": audited("sweeps the instance registry, an instance-level table"),
   "infra/jobs/embedding-backfill.ts": audited(PAYLOAD_HOLD),

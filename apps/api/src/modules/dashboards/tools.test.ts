@@ -152,7 +152,7 @@ describe("writes", () => {
     })
     expect(res.blocked?.approvalRequestId).toBeString()
     expect(res.blocked?.summary?.title).toContain("Team orders")
-    expect(res.blocked?.summary?.lines.join("\n")).toContain(`from ${APP}:orders_list`)
+    expect(res.blocked?.summary?.lines.join("\n")).toContain(`reading ${APP}:orders_list`)
     // The owner holds share, not admin: the card is not theirs to decide.
     expect(res.blocked?.requesterCanApprove).toBe(false)
     expect((await listDashboards(as(other, [WRITE]))).length).toBe(before)
@@ -170,9 +170,7 @@ describe("writes", () => {
     })
     // The test org's timezone is the default, UTC.
     const month = new Date().toISOString().slice(0, 7)
-    expect(res.blocked?.summary?.lines.join("\n")).toContain(
-      `dates {{startOfMonth}} = ${month}-01 (today, rolling)`,
-    )
+    expect(res.blocked?.summary?.lines.join("\n")).toContain(`{{startOfMonth}} = ${month}-01 today`)
   })
 
   it("an agent's edit or delete of an org dashboard always stages, even for its owner with share", async () => {
@@ -236,6 +234,31 @@ describe("preview and sources", () => {
       },
     })
     expect((await listDashboards(as(owner, [WRITE]))).length).toBe(before)
+  })
+
+  it("preview_block reads a dataset and applies filter values to the rows", async () => {
+    const res = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: {
+        id: "by-status",
+        type: "metric",
+        title: "Completed",
+        dataset: "orders",
+        map: {
+          value: "total",
+          where: [{ field: "status", op: "eq", value: { filter: "status" } }],
+        },
+      },
+      datasets: { orders: { kind: "tool", tool: `${APP}:orders_list` } },
+      filters: [
+        { id: "status", label: "Status", type: "select", options: ["completed", "refunded"] },
+      ],
+      filterValues: { status: ["refunded"] },
+    })
+    expect(res.data).toMatchObject({ ok: true, data: { kind: "metric", value: 5 } })
+    const missing = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: { id: "x", type: "metric", title: "X", dataset: "nope", map: { agg: "count" } },
+    })
+    expect(missing.data).toMatchObject({ ok: false, reason: "invalid_block" })
   })
 
   it("a refused preview names why and the eligible alternatives", async () => {
@@ -305,6 +328,32 @@ describe("preview and sources", () => {
     expect(personal.lines.join("\n")).not.toContain("Everyone in the organisation")
     const org = await card("org")
     expect(org.title).toBe('Share the dashboard "Leads" with the organisation')
+  })
+
+  it("a new org dashboard's card lists its datasets, filters and notes in full", async () => {
+    const text = `${"Harmless intro. ".repeat(20)}[Renew your access](https://phish.example/x)`
+    const card = await generateApprovalSummary(
+      orgId,
+      "kernel",
+      "dashboards_create",
+      {
+        title: "Leads",
+        visibility: "org",
+        spec: {
+          v: 1,
+          datasets: { orders: { kind: "tool", tool: `${APP}:orders_list` } },
+          filters: [{ id: "market", label: "Market", type: "select", options: ["FR", "DE"] }],
+          blocks: [pieBlock(), { id: "n", type: "text", title: "Notes", text }],
+        },
+      },
+      {} as never,
+      "kernel:dashboards_create",
+    )
+    const all = card.lines.join("\n")
+    expect(all).toContain("Add the shared dataset 'orders'")
+    expect(all).toContain('Add the filter "Market"')
+    expect(all).toContain("Links in the note: https://phish.example/x")
+    expect(all.replace(/\n\s+Note text \(\d\/\d\): /g, "")).toContain("[Renew your access]")
   })
 
   it("preview runs with the caller's roles, as the saved dashboard will for them", async () => {
@@ -461,6 +510,108 @@ describe("dashboards_edit", () => {
     expect(after.title).toBe("Sales direction")
     expect(after.spec.blocks.map((b) => b.id)).toEqual(["spend", "b"])
     expect(after.blockTimeRange).toEqual({ spend: "dashboard", b: "fixed" })
+  })
+
+  it("an org edit that cannot apply is refused before any approval is staged", async () => {
+    const author = (await minimal.person(orgId)).id
+    for (const scope of [WRITE, SHARE, READ]) await minimal.grantScope(author, scope)
+    const shared = await createDashboard(as(author, [WRITE, SHARE, READ]), {
+      title: "Checked first",
+      visibility: "org",
+      spec: { v: 1, blocks: [metric("a")] },
+    })
+    const pending = async () =>
+      Number(
+        (
+          await sql`SELECT count(*)::int AS n FROM kernel.approval_requests
+            WHERE org_id = ${orgId} AND tool_name = 'kernel:dashboards_edit'
+              AND current_payload->>'dashboardId' = ${shared.id}`
+        )[0]!.n,
+      )
+    const edit = (ifVersion: number, operations: unknown[]) =>
+      call(author, [WRITE, SHARE, READ], "dashboards_edit", {
+        dashboardId: shared.id,
+        ifVersion,
+        operations,
+      })
+    await expect(
+      edit(1, [{ op: "updateBlock", blockId: "nope", changes: { title: "x" } }]),
+    ).rejects.toMatchObject({
+      code: "invalid_spec",
+      message: expect.stringContaining("no block 'nope'"),
+    })
+    await expect(edit(1, [{ op: "addBlock", block: metric("a") }])).rejects.toMatchObject({
+      code: "invalid_spec",
+      message: expect.stringContaining("already on the dashboard"),
+    })
+    await expect(
+      edit(1, [{ op: "addBlock", block: { ...metric("m"), map: { columns: "bad" } } }]),
+    ).rejects.toMatchObject({ code: "invalid_spec" })
+    await expect(
+      edit(1, [
+        {
+          op: "addBlock",
+          block: { ...metric("r"), source: { kind: "tool", tool: `${ROLES_APP}:my_roles` } },
+        },
+      ]),
+    ).rejects.toMatchObject({ code: "invalid_spec", message: expect.stringContaining("no_access") })
+    await expect(edit(7, [{ op: "setTitle", title: "Late" }])).rejects.toMatchObject({
+      code: "version_conflict",
+    })
+    expect(await pending()).toBe(0)
+    // The same request, valid, stages its one card.
+    const ok = await edit(1, [{ op: "setTitle", title: "Fine" }])
+    expect(ok.blocked?.approvalRequestId).toBeString()
+    expect(await pending()).toBe(1)
+  })
+
+  it("more changes than one card lists are refused, saying to split and wait", async () => {
+    const mine = await createDashboard(as(owner, [WRITE, READ]), {
+      title: "Many",
+      visibility: "personal",
+      spec: { v: 1, blocks: [metric("a")] },
+    })
+    const operations = Array.from({ length: 51 }, (_, i) => ({ op: "setTitle", title: `T${i}` }))
+    await expect(
+      call(owner, [WRITE, READ], "dashboards_edit", {
+        dashboardId: mine.id,
+        ifVersion: 1,
+        operations,
+      }),
+    ).rejects.toMatchObject({
+      code: "too_many_changes",
+      message: expect.stringContaining("send the rest only once that approval is decided"),
+    })
+  })
+
+  it("a whole-spec update of an org dashboard lists every change on its card", async () => {
+    const author = (await minimal.person(orgId)).id
+    for (const scope of [WRITE, SHARE, READ]) await minimal.grantScope(author, scope)
+    const shared = await createDashboard(as(author, [WRITE, SHARE, READ]), {
+      title: "Rebuilt",
+      visibility: "org",
+      spec: { v: 1, blocks: [metric("a"), metric("b"), metric("c")] },
+    })
+    const res = await call(author, [WRITE, SHARE, READ], "dashboards_update", {
+      id: shared.id,
+      ifVersion: 1,
+      spec: {
+        v: 1,
+        timeRange: { preset: "lastMonth" },
+        blocks: [metric("c"), { ...metric("a"), map: { value: "total", agg: "avg" } }],
+      },
+    })
+    const summary = res.blocked?.summary
+    expect(summary?.kind).toBe("dashboard_update")
+    expect(summary?.title).toBe('Change the org dashboard "Rebuilt": 4 changes')
+    expect(summary?.lines[0]).toStartWith(
+      "1. Default time range: the dashboard opens on last month",
+    )
+    expect(summary?.lines[1]).toStartWith('2. Remove the metric block "Tile b"')
+    expect(summary?.lines[2]).toBe('3. Change the block "Tile a": now shows avg of total.')
+    expect(summary?.lines[3]).toStartWith(
+      '4. Move the block "Tile c" from position 2 to position 1 of 2',
+    )
   })
 
   it("an edit written against an older version is refused, naming the conflict", async () => {

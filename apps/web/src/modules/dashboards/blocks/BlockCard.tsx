@@ -5,11 +5,26 @@
 // Under the data: when it was read ("Updated 4 min ago"), and rows the server
 // left out. A block that keeps its own window while the dashboard has a range
 // shows that window as a chip beside its title.
-import { RefreshCw, Rows3 } from "lucide-solid"
+//
+// Its menu (the dots) downloads its data or the rows behind it as CSV. In the dashboard's edit
+// mode the block can also be renamed in place, moved (drag it, or the arrow buttons from the
+// keyboard), resized, duplicated and deleted (after a light confirm).
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  GripVertical,
+  MoreHorizontal,
+  RefreshCw,
+  Rows3,
+} from "lucide-solid"
 import {
   type Component,
   createEffect,
   createSignal,
+  For,
   Match,
   on,
   onCleanup,
@@ -19,16 +34,22 @@ import {
 } from "solid-js"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { Button } from "~/ui/Button"
+import { Dialog } from "~/ui/Dialog"
+import { PopupMenu } from "~/ui/PopupMenu"
 import { Skeleton } from "~/ui/Skeleton"
 import type {
   BlockData,
   BlockErrorKind,
+  BlockHeight,
   BlockReadInfo,
   BlockResult,
+  BlockWidth,
   BlockWindow,
   DashboardBlockSpec,
   DrillTarget,
 } from "../dashboards-client"
+import type { MoveDirection } from "../edit-mode"
 import { formatDay, formatWindow } from "../time-range"
 import { BlockRenderer } from "./BlockRenderer"
 
@@ -54,6 +75,43 @@ export interface BlockCardProps {
   onRead?: (info: BlockReadInfo | undefined) => void
   locale?: string
   class?: string
+  /** Today in the org's time zone (YYYY-MM-DD): "this year" in the empty state follows it. */
+  today?: string
+  /** The org's time zone: timestamps read in it. */
+  timeZone?: string
+  /** Downloads the block's mapped data or the rows behind it as CSV. */
+  onExport?: (kind: "data" | "rows") => void
+  /** The dashboard is in edit mode: these change the block. */
+  edit?: BlockEditActions
+}
+
+/** What edit mode can do to a block; each is one operation sent to the server. */
+export interface BlockEditActions {
+  rename: (title: string) => void
+  /** False when the block cannot move that way (first, last, top or bottom row). */
+  canMove: (direction: MoveDirection) => boolean
+  move: (direction: MoveDirection) => void
+  resize: (size: { width?: BlockWidth; height?: BlockHeight }) => void
+  duplicate: () => void
+  remove: () => void
+  /** Drag and drop: this block is picked up, or another one is dropped on it. */
+  onDragStart: () => void
+  onDragEnd: () => void
+  onDrop: () => void
+  /** A change is being saved: the controls wait. */
+  busy?: boolean
+}
+
+const MOVES: { dir: MoveDirection; key: string; icon: typeof ArrowUp }[] = [
+  { dir: "left", key: "kernel.dashboards.moveLeft", icon: ArrowLeft },
+  { dir: "up", key: "kernel.dashboards.moveUp", icon: ArrowUp },
+  { dir: "down", key: "kernel.dashboards.moveDown", icon: ArrowDown },
+  { dir: "right", key: "kernel.dashboards.moveRight", icon: ArrowRight },
+]
+
+/** The card's minimum height for its grid rows: a two-row block is about twice as tall. */
+export function blockHeightClass(height: BlockHeight | undefined): string {
+  return height === 2 ? "@2xl:row-span-2 min-h-[30rem]" : ""
 }
 
 export type BlockStatus = "loading" | "ready" | "error"
@@ -175,7 +233,8 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
     const w = info()?.window
     if (w?.mode !== "dashboard") return undefined
     const sameYear = w.from.slice(0, 4) === w.to.slice(0, 4)
-    const thisYear = w.to.slice(0, 4) === String(new Date(props.now ?? Date.now()).getFullYear())
+    const year = props.today?.slice(0, 4) ?? String(new Date(props.now ?? Date.now()).getFullYear())
+    const thisYear = w.to.slice(0, 4) === year
     return i18n.t("kernel.dashboards.noDataBetween", {
       from: formatDay(w.from, locale(), !sameYear),
       to: formatDay(w.to, locale(), !thisYear || !sameYear),
@@ -186,31 +245,119 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
     return at ? updatedAgo(at, props.now ?? Date.now(), t, locale()) : null
   }
 
+  // A metric read from one object (not a list) has no rows behind it: nothing to drill into.
+  const drillable = () =>
+    !!props.onDrill &&
+    props.block.type !== "text" &&
+    !props.edit &&
+    !(data()?.kind === "metric" && info()?.sourceRows === 0)
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  const [confirmDelete, setConfirmDelete] = createSignal(false)
+  const [dropping, setDropping] = createSignal(false)
+  // The card is draggable only from its grip: a drag that starts in the title field selects text.
+  const [armed, setArmed] = createSignal(false)
+  const hasMenu = () => !!props.edit || (!!props.onExport && props.block.type !== "text")
+  let titleInput: HTMLInputElement | undefined
+  const commitTitle = (raw: string) => {
+    const v = raw.trim()
+    if (!v) {
+      if (titleInput) titleInput.value = props.block.title
+      return
+    }
+    if (v !== props.block.title) props.edit?.rename(v)
+  }
+
   // A refusal to refresh again so soon keeps the figures already on screen.
   const keepsData = () => error()?.error === "rate_limited" && data() !== null
   const status = (): BlockStatus =>
     error() && !keepsData() ? "error" : data() ? "ready" : busy() ? "loading" : "error"
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drag and drop is the pointer path; the arrow buttons are its keyboard equivalent
     <section
       data-testid={`dashboard-block-${props.block.id}`}
       data-block-type={props.block.type}
       data-state={status()}
       data-error={error()?.error}
+      data-editing={props.edit ? "true" : undefined}
+      data-width={props.block.width}
+      data-height={props.block.height ?? 1}
       aria-busy={busy() ? "true" : undefined}
+      draggable={props.edit && armed() ? true : undefined}
+      onDragStart={(e) => {
+        if (!props.edit) return
+        e.dataTransfer?.setData("text/plain", props.block.id)
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+        props.edit.onDragStart()
+      }}
+      onDragEnd={() => {
+        setDropping(false)
+        setArmed(false)
+        props.edit?.onDragEnd()
+      }}
+      onDragOver={(e) => {
+        if (!props.edit) return
+        e.preventDefault()
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move"
+        setDropping(true)
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(e) => {
+        if (!props.edit) return
+        e.preventDefault()
+        setDropping(false)
+        props.edit.onDrop()
+      }}
       class={cn(
         "flex min-w-0 flex-col rounded-lg border border-border-subtle bg-surface p-3",
+        props.edit && "border-dashed",
+        dropping() && "border-accent",
+        blockHeightClass(props.block.height),
         props.class,
       )}
     >
       <header class="mb-1 flex items-center gap-2">
-        <h2
-          data-testid="dashboard-block-title"
-          class="min-w-0 flex-1 truncate text-[13px] font-medium text-text-secondary"
-          title={props.block.title}
+        <Show
+          when={props.edit}
+          fallback={
+            <h2
+              data-testid="dashboard-block-title"
+              class="min-w-0 flex-1 truncate text-[13px] font-medium text-text-secondary"
+              title={props.block.title}
+            >
+              {props.block.title}
+            </h2>
+          }
         >
-          {props.block.title}
-        </h2>
+          <span
+            data-testid={`dashboard-block-grip-${props.block.id}`}
+            aria-hidden="true"
+            title={i18n.t("kernel.dashboards.dragHint")}
+            onPointerDown={() => setArmed(true)}
+            onPointerUp={() => setArmed(false)}
+            class="flex shrink-0 cursor-grab touch-none text-text-tertiary"
+          >
+            <GripVertical size={14} />
+          </span>
+          <input
+            ref={titleInput}
+            data-testid={`dashboard-block-title-input-${props.block.id}`}
+            aria-label={i18n.t("kernel.dashboards.blockTitleLabel")}
+            value={props.block.title}
+            maxLength={120}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commitTitle(e.currentTarget.value)
+              } else if (e.key === "Escape") {
+                e.currentTarget.value = props.block.title
+                e.currentTarget.blur()
+              }
+            }}
+            onBlur={(e) => commitTitle(e.currentTarget.value)}
+            class="h-7 min-w-0 flex-1 rounded border border-border-subtle bg-bg px-2 text-[13px] font-medium text-text outline-none focus:border-accent"
+          />
+        </Show>
         <Show when={ownWindow()}>
           {(text) => (
             <span
@@ -222,7 +369,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
             </span>
           )}
         </Show>
-        <Show when={props.onDrill && props.block.type !== "text"}>
+        <Show when={drillable()}>
           <button
             type="button"
             data-testid={`dashboard-block-rows-${props.block.id}`}
@@ -233,6 +380,137 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
           >
             <Rows3 size={13} />
           </button>
+        </Show>
+        <Show when={props.edit}>
+          {(edit) => (
+            <fieldset
+              aria-label={i18n.t("kernel.dashboards.moveGroup")}
+              class="m-0 flex shrink-0 items-center border-0 p-0"
+            >
+              <For each={MOVES}>
+                {(m) => (
+                  <button
+                    type="button"
+                    data-testid={`dashboard-block-move-${m.dir}-${props.block.id}`}
+                    aria-label={i18n.t(m.key)}
+                    title={i18n.t(m.key)}
+                    disabled={edit().busy || !edit().canMove(m.dir)}
+                    onClick={() => edit().move(m.dir)}
+                    class="flex h-6 w-6 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary disabled:opacity-30"
+                  >
+                    <m.icon size={13} />
+                  </button>
+                )}
+              </For>
+            </fieldset>
+          )}
+        </Show>
+        <Show when={hasMenu()}>
+          <PopupMenu open={menuOpen()} onOpenChange={setMenuOpen}>
+            <PopupMenu.Trigger
+              data-testid={`dashboard-block-menu-${props.block.id}`}
+              aria-label={i18n.t("kernel.dashboards.blockMenu")}
+              title={i18n.t("kernel.dashboards.blockMenu")}
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+            >
+              <MoreHorizontal size={14} />
+            </PopupMenu.Trigger>
+            <PopupMenu.Content data-testid={`dashboard-block-menu-content-${props.block.id}`}>
+              <Show when={props.onExport && props.block.type !== "text"}>
+                <PopupMenu.Group>
+                  <PopupMenu.Label>{i18n.t("kernel.dashboards.exportLabel")}</PopupMenu.Label>
+                  <PopupMenu.Item
+                    data-testid={`dashboard-block-csv-data-${props.block.id}`}
+                    onSelect={() => props.onExport?.("data")}
+                  >
+                    {i18n.t("kernel.dashboards.exportBlockData")}
+                  </PopupMenu.Item>
+                  <PopupMenu.Item
+                    data-testid={`dashboard-block-csv-rows-${props.block.id}`}
+                    onSelect={() => props.onExport?.("rows")}
+                  >
+                    {i18n.t("kernel.dashboards.exportBlockRows")}
+                  </PopupMenu.Item>
+                </PopupMenu.Group>
+              </Show>
+              <Show when={props.edit}>
+                {(edit) => (
+                  <>
+                    <Show when={props.onExport && props.block.type !== "text"}>
+                      <PopupMenu.Separator />
+                    </Show>
+                    <PopupMenu.Group>
+                      <PopupMenu.Label>{i18n.t("kernel.dashboards.widthLabel")}</PopupMenu.Label>
+                      <For each={[1, 2, 3] as BlockWidth[]}>
+                        {(w) => (
+                          <PopupMenu.Item
+                            data-testid={`dashboard-block-width-${w}-${props.block.id}`}
+                            disabled={edit().busy}
+                            onSelect={() => {
+                              if (w !== props.block.width) edit().resize({ width: w })
+                            }}
+                          >
+                            <Check
+                              size={13}
+                              aria-hidden="true"
+                              class={props.block.width === w ? "" : "invisible"}
+                            />
+                            {i18n.t(
+                              w === 1
+                                ? "kernel.dashboards.widthOne"
+                                : "kernel.dashboards.widthMany",
+                              { count: w },
+                            )}
+                          </PopupMenu.Item>
+                        )}
+                      </For>
+                    </PopupMenu.Group>
+                    <PopupMenu.Group>
+                      <PopupMenu.Label>{i18n.t("kernel.dashboards.heightLabel")}</PopupMenu.Label>
+                      <For each={[1, 2] as BlockHeight[]}>
+                        {(h) => (
+                          <PopupMenu.Item
+                            data-testid={`dashboard-block-height-${h}-${props.block.id}`}
+                            disabled={edit().busy}
+                            onSelect={() => {
+                              if (h !== (props.block.height ?? 1)) edit().resize({ height: h })
+                            }}
+                          >
+                            <Check
+                              size={13}
+                              aria-hidden="true"
+                              class={(props.block.height ?? 1) === h ? "" : "invisible"}
+                            />
+                            {i18n.t(
+                              h === 1
+                                ? "kernel.dashboards.heightOne"
+                                : "kernel.dashboards.heightTwo",
+                            )}
+                          </PopupMenu.Item>
+                        )}
+                      </For>
+                    </PopupMenu.Group>
+                    <PopupMenu.Separator />
+                    <PopupMenu.Item
+                      data-testid={`dashboard-block-duplicate-${props.block.id}`}
+                      disabled={edit().busy}
+                      onSelect={() => edit().duplicate()}
+                    >
+                      {i18n.t("kernel.dashboards.duplicateBlock")}
+                    </PopupMenu.Item>
+                    <PopupMenu.Item
+                      data-testid={`dashboard-block-delete-${props.block.id}`}
+                      variant="danger"
+                      disabled={edit().busy}
+                      onSelect={() => setConfirmDelete(true)}
+                    >
+                      {i18n.t("kernel.dashboards.deleteBlock")}
+                    </PopupMenu.Item>
+                  </>
+                )}
+              </Show>
+            </PopupMenu.Content>
+          </PopupMenu>
         </Show>
         <button
           type="button"
@@ -274,7 +552,9 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
                 locale={props.locale}
                 compareMode={compareMode()}
                 emptyText={emptyText()}
-                onDrill={props.block.type === "text" ? undefined : props.onDrill}
+                onDrill={drillable() ? props.onDrill : undefined}
+                timeZone={props.timeZone}
+                tall={props.block.height === 2}
               />
               <Show when={d().truncated}>
                 <p
@@ -325,6 +605,35 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
           </p>
         )}
       </Show>
+      <Dialog open={confirmDelete()} onOpenChange={setConfirmDelete}>
+        <Dialog.Content>
+          <Dialog.Title>{i18n.t("kernel.dashboards.deleteBlockTitle")}</Dialog.Title>
+          <p data-testid="dashboard-block-delete-text" class="mt-3 text-[13px] text-text-secondary">
+            {i18n.t("kernel.dashboards.deleteBlockBody", { title: props.block.title })}
+          </p>
+          <div class="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="dashboard-block-delete-cancel"
+              onClick={() => setConfirmDelete(false)}
+            >
+              {i18n.t("kernel.common.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              data-testid="dashboard-block-delete-confirm"
+              onClick={() => {
+                setConfirmDelete(false)
+                props.edit?.remove()
+              }}
+            >
+              {i18n.t("kernel.common.delete")}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog>
     </section>
   )
 }

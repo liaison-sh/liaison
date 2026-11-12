@@ -1208,38 +1208,44 @@ async function readSourceCached(
     }
   }
   const ttl = ttlOverride ?? sourceTtlSec(dashboard.spec, sourceKey)
-  return singleFlight(`${key}${opts.refresh ? ":refresh" : ""}`, async () => {
-    const outcome = await withViewerSlot(viewer, () =>
-      runSource(
-        source,
-        {
-          viewer,
-          dashboardId: dashboard.row.id,
-          range,
-          ...(opts.signal ? { signal: opts.signal } : {}),
-        },
-        runTargetOf(sourceKey),
-      ),
-    )
-    if (!outcome.ok) {
-      // A read the viewer abandoned says nothing about the source: never cached.
-      if (!opts.signal?.aborted) {
-        await writeCachedBlock(
-          failedKey,
-          { error: outcome.error, message: outcome.message } satisfies CachedFailure,
-          Math.min(FAILED_BLOCK_TTL_SEC, ttl),
-        )
+  // The shared run's own signal stops it only once every viewer waiting on it has gone.
+  return singleFlight(
+    `${key}${opts.refresh ? ":refresh" : ""}`,
+    async (shared) => {
+      const outcome = await withViewerSlot(viewer, () =>
+        runSource(
+          source,
+          {
+            viewer,
+            dashboardId: dashboard.row.id,
+            range,
+            signal: shared,
+          },
+          runTargetOf(sourceKey),
+        ),
+      )
+      if (!outcome.ok) {
+        // A read every viewer abandoned says nothing about the source: never cached.
+        if (!shared.aborted) {
+          await writeCachedBlock(
+            failedKey,
+            { error: outcome.error, message: outcome.message } satisfies CachedFailure,
+            Math.min(FAILED_BLOCK_TTL_SEC, ttl),
+          )
+        }
+        return { ok: false, error: outcome.error, message: outcome.message }
       }
-      return { ok: false, error: outcome.error, message: outcome.message }
-    }
-    const read = project(outcome.read, projectionFields(dashboard.spec, sourceKey))
-    const computedAt = new Date().toISOString()
-    const entry: CachedSource = { read, computedAt, ...(opts.refresh ? { forced: true } : {}) }
-    const json = JSON.stringify(entry)
-    const kept = json.length <= MAX_CACHED_SOURCE_BYTES && (await writeCachedBlock(key, entry, ttl))
-    if (!kept) await markUncacheable(key, ttl)
-    return { ok: true, read, cached: false, computedAt }
-  })
+      const read = project(outcome.read, projectionFields(dashboard.spec, sourceKey))
+      const computedAt = new Date().toISOString()
+      const entry: CachedSource = { read, computedAt, ...(opts.refresh ? { forced: true } : {}) }
+      const json = JSON.stringify(entry)
+      const kept =
+        json.length <= MAX_CACHED_SOURCE_BYTES && (await writeCachedBlock(key, entry, ttl))
+      if (!kept) await markUncacheable(key, ttl)
+      return { ok: true, read, cached: false, computedAt }
+    },
+    opts.signal,
+  )
 }
 
 /** A source with this request's filters and dates in, and the windows it reads. */

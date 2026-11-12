@@ -10,7 +10,11 @@
 //                                                    for the range the viewer looks at
 //   GET|PUT|DELETE /dashboards/:id/viewer-state      the range and filters this person last chose
 //   GET /dashboards/:id/blocks/:blockId/rows         the rows behind one figure (drill-down)
-//   GET /dashboards/:id/filters/:filterId/options    the values a filter offers
+//   GET /dashboards/:id/filters/:filterId/options    the values a filter offers (`?q=` searches them)
+//   POST /dashboards/:id/edit                        a person's own edit, by operations
+//   POST /dashboards/:id/duplicate                   a personal copy for the caller
+//   GET /dashboards/:id/versions[/:version]          the saved versions (history)
+//   GET /dashboards/:id/export.pdf, .../blocks/:blockId/data.csv|rows.csv   downloads
 //
 // Filter values ride every read as `f.<id>=<value>` (repeated for a multi; `f.<id>=` = all).
 //
@@ -50,15 +54,29 @@ export interface DashboardBlockMap {
   currency?: string
   /** A metric's goal: shown as "x of y" with a thin bar. */
   target?: number
-  sparkline?: { field: string; bucket?: "day" | "week" | "month" }
+  sparkline?: { field: string; bucket?: DateBucket }
+  /** Every value multiplied by this (0.01: cents to units). The server applies it. */
+  scale?: number
+  /** Each value of a chart is its share of its series' total, in percent (0-100). */
+  percentOfTotal?: boolean
+  /** A metric computed from named values (the server evaluates it). */
+  expr?: string
   [key: string]: unknown
 }
+
+/** A date bucket: "2026-11-07", Monday "2026-11-02", "2026-11", "2026-Q4", "2026". */
+export type DateBucket = "day" | "week" | "month" | "quarter" | "year"
+
+export type BlockWidth = 1 | 2 | 3
+export type BlockHeight = 1 | 2
 
 export interface DashboardBlockSpec {
   id: string
   type: DashboardBlockType
   title: string
-  width: 1 | 2 | 3
+  width: BlockWidth
+  /** Rows of the grid the block spans (default 1). */
+  height?: BlockHeight
   /** Absent on a text block, and on a block reading a shared dataset. */
   source?: Record<string, unknown>
   dataset?: string
@@ -94,6 +112,8 @@ export interface DashboardSpec {
   compare?: CompareMode
   filters?: DashboardFilterDef[]
   datasets?: Record<string, unknown>
+  /** Plain text under the title. */
+  description?: string
 }
 
 /** The range a dashboard opens on for this viewer, as the server resolved it today. */
@@ -128,6 +148,12 @@ export interface Dashboard extends DashboardSummary {
   /** The viewer's remembered filter values (else the defaults), and whether they are theirs. */
   filters?: { values: FilterValues; saved: boolean }
   defaultFilters?: FilterValues
+  /** The viewer may change this dashboard (edit mode, Restore). */
+  canEdit?: boolean
+  /** Today in the org's time zone (YYYY-MM-DD): presets resolve from it, never the browser's date. */
+  today?: string
+  /** The org's IANA time zone (UTC when unset). */
+  timeZone?: string
 }
 
 /** The window a block's data covers, as the server reports it. */
@@ -150,6 +176,8 @@ export interface BlockReadInfo {
   skippedRows?: number
   /** The comparison run failed: the current figures still show. */
   previousError?: { error: string; message?: string }
+  /** Rows the source returned (0 when it returned one object: no rows to drill into). */
+  sourceRows?: number
 }
 
 /** A chart's comparison values, index by index with its labels and series (null: no match). */
@@ -356,6 +384,7 @@ function infoFrom(body: Record<string, unknown>): BlockReadInfo | undefined {
   if (window) info.window = window
   const cw = compareWindowFrom(body.compareWindow)
   if (cw !== undefined) info.compareWindow = cw
+  if (typeof meta.sourceRows === "number") info.sourceRows = meta.sourceRows
   if (typeof meta.skippedRows === "number" && meta.skippedRows > 0) {
     info.skippedRows = meta.skippedRows
   }
@@ -585,13 +614,7 @@ export async function getDashboard(
     ...init,
     suppressGlobalError: true,
   })
-  const row = isRecord(body) && isRecord(body.dashboard) ? body.dashboard : body
-  if (!isRecord(row) || !isRecord(row.spec)) throw new ApiError("Not found", 404, "not_found")
-  const spec = row.spec as unknown as DashboardSpec
-  return {
-    ...(row as unknown as Dashboard),
-    spec: { ...spec, blocks: Array.isArray(spec.blocks) ? spec.blocks : [] },
-  }
+  return dashboardFrom(body)
 }
 
 // At most four block reads in flight from this page: the server runs each
@@ -834,11 +857,13 @@ export async function getFilterOptions(
   api: DashboardsApi,
   dashboardId: string,
   filterId: string,
-  opts: { range?: RangeChoice; filters?: FilterValues; signal?: AbortSignal },
+  opts: { range?: RangeChoice; filters?: FilterValues; signal?: AbortSignal; q?: string },
 ): Promise<FilterOptionsResult> {
   const q = new URLSearchParams()
   appendRange(q, opts.range, false)
   appendFilterParams(q, opts.filters)
+  const search = opts.q?.trim()
+  if (search) q.set("q", search)
   const s = q.toString()
   const path = `/dashboards/${encodeURIComponent(dashboardId)}/filters/${encodeURIComponent(filterId)}/options${s ? `?${s}` : ""}`
   try {
@@ -858,4 +883,201 @@ export async function getFilterOptions(
   } catch (err) {
     return blockErrorFrom(err)
   }
+}
+
+// ── editing, history, duplicate (step 3) ─────────────────────────────────────
+
+/** Where a block goes: an index (0 = first), or before / after another block. */
+export type BlockPosition = number | { before: string } | { after: string }
+
+/** A person's change to a dashboard (the same operations the agent's edit tool takes). */
+export type EditOperation =
+  | { op: "moveBlock"; blockId: string; position: BlockPosition }
+  | { op: "resizeBlock"; blockId: string; width?: BlockWidth; height?: BlockHeight }
+  | { op: "updateBlock"; blockId: string; changes: { title: string } }
+  | { op: "duplicateBlock"; blockId: string; title?: string; position?: BlockPosition }
+  | { op: "removeBlock"; blockId: string }
+  | { op: "setTitle"; title: string }
+  | { op: "setDescription"; description: string | null }
+  | { op: "revert"; toVersion: number }
+
+/** The calls that change a dashboard. */
+export interface DashboardsEditApi {
+  post: <T = unknown>(
+    path: string,
+    body?: unknown,
+    init?: { suppressGlobalError?: boolean },
+  ) => Promise<T>
+}
+
+const dashPath = (id: string) => `/dashboards/${encodeURIComponent(id)}`
+
+/** A dashboard record as the server answered it (a GET, an edit, a copy), checked. */
+function dashboardFrom(body: unknown): Dashboard {
+  const row = isRecord(body) && isRecord(body.dashboard) ? body.dashboard : body
+  if (!isRecord(row) || !isRecord(row.spec)) throw new ApiError("Not found", 404, "not_found")
+  const spec = row.spec as unknown as DashboardSpec
+  return {
+    ...(row as unknown as Dashboard),
+    spec: { ...spec, blocks: Array.isArray(spec.blocks) ? spec.blocks : [] },
+  }
+}
+
+/**
+ * Applies `operations` to the dashboard at `ifVersion`, all or nothing, and answers it as it
+ * is now. Rejects with the API's error: 409 VERSION_CONFLICT when someone saved in between.
+ */
+export async function editDashboard(
+  api: DashboardsEditApi,
+  id: string,
+  ifVersion: number,
+  operations: EditOperation[],
+): Promise<Dashboard> {
+  const body = await api.post<unknown>(
+    `${dashPath(id)}/edit`,
+    { ifVersion, operations },
+    { suppressGlobalError: true },
+  )
+  return dashboardFrom(body)
+}
+
+/** Was this rejection a stale version (someone else saved first)? */
+export function isVersionConflict(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 409 || err.code === "VERSION_CONFLICT")
+}
+
+/** A personal copy of the dashboard for the caller. */
+export async function duplicateDashboard(
+  api: DashboardsEditApi,
+  id: string,
+  title?: string,
+): Promise<Dashboard> {
+  const body = await api.post<unknown>(`${dashPath(id)}/duplicate`, title ? { title } : {}, {
+    suppressGlobalError: true,
+  })
+  return dashboardFrom(body)
+}
+
+export interface DashboardVersionSummary {
+  version: number
+  title: string
+  savedAt: string
+  savedBy: string | null
+  savedByName: string | null
+  blockCount: number
+  current: boolean
+}
+
+export interface DashboardVersionDetail {
+  version: number
+  title: string
+  spec: DashboardSpec
+  savedAt: string
+  savedBy: string | null
+  savedByName: string | null
+}
+
+/** The saved versions, newest first. */
+export async function listVersions(
+  api: DashboardsApi,
+  id: string,
+  init?: { signal?: AbortSignal },
+): Promise<DashboardVersionSummary[]> {
+  const body = await api.get<unknown>(`${dashPath(id)}/versions`, {
+    ...init,
+    suppressGlobalError: true,
+  })
+  const rows = isRecord(body) && Array.isArray(body.versions) ? body.versions : []
+  return rows.filter(
+    (r): r is DashboardVersionSummary =>
+      isRecord(r) && typeof r.version === "number" && typeof r.title === "string",
+  )
+}
+
+/** One saved version with its blocks. */
+export async function getVersion(
+  api: DashboardsApi,
+  id: string,
+  version: number,
+  init?: { signal?: AbortSignal },
+): Promise<DashboardVersionDetail> {
+  const body = await api.get<unknown>(`${dashPath(id)}/versions/${version}`, {
+    ...init,
+    suppressGlobalError: true,
+  })
+  if (!isRecord(body) || !isRecord(body.spec)) throw new ApiError("Not found", 404, "not_found")
+  const spec = body.spec as unknown as DashboardSpec
+  return {
+    ...(body as unknown as DashboardVersionDetail),
+    spec: { ...spec, blocks: Array.isArray(spec.blocks) ? spec.blocks : [] },
+  }
+}
+
+// ── exports ──────────────────────────────────────────────────────────────────
+
+/** The query an export carries: the range and the filter values the view shows. */
+export function exportQuery(opts: { range?: RangeChoice; filters?: FilterValues }): string {
+  const q = new URLSearchParams()
+  appendRange(q, opts.range, true)
+  appendFilterParams(q, opts.filters)
+  const s = q.toString()
+  return s ? `?${s}` : ""
+}
+
+/** The dashboard's PDF, for the range and filters shown. */
+export function dashboardPdfPath(
+  id: string,
+  opts: { range?: RangeChoice; filters?: FilterValues },
+): string {
+  return `${dashPath(id)}/export.pdf${exportQuery(opts)}`
+}
+
+/** A block's CSV: its mapped `data`, or the raw `rows` behind it. */
+export function blockCsvPath(
+  id: string,
+  blockId: string,
+  kind: "data" | "rows",
+  opts: { range?: RangeChoice; filters?: FilterValues },
+): string {
+  return `${dashPath(id)}/blocks/${encodeURIComponent(blockId)}/${kind}.csv${exportQuery(opts)}`
+}
+
+/** The file name a download answer gives (`Content-Disposition`), else `fallback`. */
+export function downloadName(disposition: string | null, fallback: string): string {
+  const m = disposition ? /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition) : null
+  if (!m?.[1]) return fallback
+  try {
+    return decodeURIComponent(m[1])
+  } catch {
+    return m[1]
+  }
+}
+
+/** The raw download a file export needs. */
+export interface DashboardsDownloadApi {
+  rawGet: (path: string, init?: { suppressGlobalError?: boolean }) => Promise<Response>
+}
+
+/** Downloads an export to the person's machine. Rejects with the API's error. */
+export async function downloadExport(
+  api: DashboardsDownloadApi,
+  path: string,
+  fallbackName: string,
+  save: (blob: Blob, name: string) => void = saveBlob,
+): Promise<void> {
+  const res = await api.rawGet(path, { suppressGlobalError: true })
+  const blob = await res.blob()
+  save(blob, downloadName(res.headers.get("Content-Disposition"), fallbackName))
+}
+
+/** Saves a blob through a temporary link. */
+export function saveBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }

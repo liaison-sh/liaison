@@ -27,6 +27,18 @@ export interface BlockRendererProps {
   emptyText?: string
   /** A figure picked (a bar, a slice, a stage, a row): the dashboard opens the rows behind it. */
   onDrill?: (target: DrillTarget) => void
+  /** The org's time zone: timestamps read in it. */
+  timeZone?: string
+  /** The block spans two grid rows: charts take the room. */
+  tall?: boolean
+}
+
+/**
+ * A chart whose map asks for each value as a share of its series' total (`percentOfTotal`):
+ * the server sends percent points (0-100), shown as percentages.
+ */
+export function sharesOf<T extends Array<number | null>>(values: T): Array<number | null> {
+  return values.map((v) => (typeof v === "number" ? v / 100 : v))
 }
 
 const SERIES_KINDS = new Set(["bar", "line", "area", "combo"])
@@ -90,6 +102,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
       ? i18n.t("kernel.dashboards.comparePrevious")
       : i18n.t("kernel.dashboards.compareLastYear")
   const format = () => props.map?.format
+  const share = () => props.map?.percentOfTotal === true
   const currency = () => props.map?.currency
   const empty = (
     <p data-testid="block-empty" class="py-4 text-[13px] text-text-tertiary">
@@ -139,6 +152,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
         {(d) => (
           <TableBlock
             data={d() as Extract<BlockData, { kind: "table" }>}
+            timeZone={props.timeZone}
             currency={currency()}
             locale={props.locale}
             emptyText={props.emptyText}
@@ -148,7 +162,23 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
       </Match>
       <Match when={SERIES_KINDS.has(props.data.kind) && props.data}>
         {(d) => {
-          const s = () => d() as SeriesData
+          const raw = () => d() as SeriesData
+          const s = (): SeriesData => {
+            const r = raw()
+            if (!share()) return r
+            return {
+              ...r,
+              series: r.series.map((x) => ({ ...x, values: sharesOf(x.values) })),
+              ...(r.previous
+                ? {
+                    previous: {
+                      ...r.previous,
+                      series: r.previous.series.map((x) => ({ ...x, values: sharesOf(x.values) })),
+                    },
+                  }
+                : {}),
+            }
+          }
           return seriesEmpty(s()) ? (
             empty
           ) : (
@@ -156,7 +186,9 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               type={s().kind}
               labels={s().x}
               datasets={seriesDatasets(s(), previousName())}
-              format={s().format ?? format()}
+              format={share() ? "percent" : (s().format ?? format())}
+              timeZone={props.timeZone}
+              tall={props.tall}
               currency={s().currency ?? currency()}
               locale={props.locale}
               label={props.title}
@@ -179,7 +211,15 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
       <Match when={props.data.kind === "funnel" && props.data}>
         {(d) => (
           <FunnelBlock
-            data={d() as FunnelData}
+            data={
+              share()
+                ? {
+                    ...(d() as FunnelData),
+                    values: (d() as FunnelData).values.map((v) => v / 100),
+                    format: "percent",
+                  }
+                : (d() as FunnelData)
+            }
             format={format()}
             currency={currency()}
             locale={props.locale}
@@ -204,8 +244,12 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
             <Chart
               type="pie"
               labels={p().labels}
-              datasets={[{ label: props.title ?? "", values: p().values }]}
-              format={p().format ?? format()}
+              datasets={[
+                { label: props.title ?? "", values: share() ? sharesOf(p().values) : p().values },
+              ]}
+              format={share() ? "percent" : (p().format ?? format())}
+              timeZone={props.timeZone}
+              tall={props.tall}
               currency={p().currency ?? currency()}
               locale={props.locale}
               label={props.title}

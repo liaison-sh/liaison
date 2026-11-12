@@ -7,8 +7,12 @@
 // when its menu closes, so one menu session is one read of the blocks; a text
 // filter is a small field, applied on Enter or when it loses focus. "All" is the empty state. A reset
 // goes back to the dashboard's defaults. The row wraps on a phone.
-import { Check, ListFilter, RotateCcw } from "lucide-solid"
-import { type Component, createSignal, For, Show } from "solid-js"
+//
+// A menu whose values come from a source has a search box at its top: the server searches every
+// value (`?q=`), so a value past the first 200 listed can still be found. A long static list is
+// searched in place.
+import { Check, ListFilter, RotateCcw, Search } from "lucide-solid"
+import { type Component, createSignal, For, onCleanup, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { Button } from "~/ui/Button"
 import { PopupMenu } from "~/ui/PopupMenu"
@@ -23,8 +27,13 @@ export interface FilterBarProps {
   canReset: boolean
   onReset: () => void
   /** Reads a filter's options from the server (for the range and the other values shown). */
-  loadOptions: (filterId: string) => Promise<FilterOptionsResult>
+  loadOptions: (filterId: string, q?: string) => Promise<FilterOptionsResult>
 }
+
+/** A static list longer than this gets a search box too. */
+const STATIC_SEARCH_MIN = 10
+/** The pause after typing before the server is asked. */
+export const FILTER_SEARCH_DEBOUNCE_MS = 250
 
 export const FilterBar: Component<FilterBarProps> = (props) => {
   const i18n = useI18n()
@@ -44,7 +53,7 @@ export const FilterBar: Component<FilterBarProps> = (props) => {
                 def={def}
                 values={props.values[def.id] ?? []}
                 onChange={(v) => props.onChange(def.id, v)}
-                loadOptions={() => props.loadOptions(def.id)}
+                loadOptions={(q) => props.loadOptions(def.id, q)}
               />
             }
           >
@@ -80,7 +89,7 @@ const ChoiceFilter: Component<{
   def: DashboardFilterDef
   values: string[]
   onChange: (values: string[]) => void
-  loadOptions: () => Promise<FilterOptionsResult>
+  loadOptions: (q?: string) => Promise<FilterOptionsResult>
 }> = (props) => {
   const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
@@ -98,27 +107,45 @@ const ChoiceFilter: Component<{
     if (!same) props.onChange(d)
   }
   let seq = 0
+  const [query, setQuery] = createSignal("")
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(searchTimer))
+  const fixed = () => staticOptions(props.def)
+  /** The menu has a search box: values read from a source, or a long static list. */
+  const searchable = () => {
+    const f = fixed()
+    return !f || f.length > STATIC_SEARCH_MIN
+  }
 
-  const load = async () => {
-    const fixed = staticOptions(props.def)
-    if (fixed) {
-      setState({ status: "ready", options: fixed, truncated: false })
+  const load = async (q = query()) => {
+    const f = fixed()
+    if (f) {
+      setState({ status: "ready", options: f, truncated: false })
       return
     }
     const mine = ++seq
     // The options shown stay while they are read again (the range or another filter moved).
     if (state().status !== "ready") setState({ status: "loading" })
-    const r = await props.loadOptions()
+    const r = await props.loadOptions(q.trim() || undefined)
     if (mine !== seq) return
     setState(
       r.ok ? { status: "ready", options: r.options, truncated: r.truncated } : { status: "error" },
     )
   }
+  const search = (q: string) => {
+    setQuery(q)
+    clearTimeout(searchTimer)
+    if (fixed()) return
+    searchTimer = setTimeout(() => void load(q), FILTER_SEARCH_DEBOUNCE_MS)
+  }
   /** The options, with the values picked first kept even when the source no longer holds them. */
   const options = () => {
     const s = state()
-    const listed = s.status === "ready" ? s.options : []
-    const missing = current().filter((v) => !listed.includes(v))
+    let listed = s.status === "ready" ? s.options : []
+    const q = query().trim().toLowerCase()
+    // A static list is searched here; a source's values were searched by the server.
+    if (q && fixed()) listed = listed.filter((o) => o.toLowerCase().includes(q))
+    const missing = q ? [] : current().filter((v) => !listed.includes(v))
     return [...missing, ...listed]
   }
   const toggle = (v: string) => {
@@ -136,8 +163,13 @@ const ChoiceFilter: Component<{
       open={open()}
       onOpenChange={(o) => {
         setOpen(o)
-        if (o) void load()
-        else commit()
+        if (o) {
+          setQuery("")
+          void load("")
+        } else {
+          clearTimeout(searchTimer)
+          commit()
+        }
       }}
     >
       <PopupMenu.Trigger
@@ -160,6 +192,28 @@ const ChoiceFilter: Component<{
         data-testid={`dashboard-filter-menu-${props.def.id}`}
         class="max-h-[60vh] min-w-[12rem] overflow-y-auto"
       >
+        <Show when={searchable()}>
+          <div class="flex items-center gap-1.5 border-b border-border-subtle px-2.5 py-1.5">
+            <Search size={12} aria-hidden="true" class="shrink-0 text-text-tertiary" />
+            <input
+              type="search"
+              data-testid={`dashboard-filter-search-${props.def.id}`}
+              aria-label={i18n.t("kernel.dashboards.filterSearch", { label: props.def.label })}
+              placeholder={i18n.t("kernel.dashboards.filterSearchPlaceholder")}
+              value={query()}
+              maxLength={200}
+              ref={(el) => setTimeout(() => el.focus(), 0)}
+              onInput={(e) => search(e.currentTarget.value)}
+              // The menu's own keys (type to jump, arrows) must not take the letters typed here.
+              onKeyDown={(e) => {
+                if (e.key !== "Escape" && e.key !== "Tab" && e.key !== "ArrowDown") {
+                  e.stopPropagation()
+                }
+              }}
+              class="h-7 min-w-0 flex-1 bg-transparent text-[12.5px] text-text outline-none placeholder:text-text-tertiary"
+            />
+          </div>
+        </Show>
         <PopupMenu.Group>
           <PopupMenu.Label>{props.def.label}</PopupMenu.Label>
           <PopupMenu.Item
@@ -216,8 +270,23 @@ const ChoiceFilter: Component<{
             return s.status === "ready" && s.truncated
           })()}
         >
-          <p class="px-3 py-1.5 text-[12px] text-text-tertiary">
-            {i18n.t("kernel.dashboards.filterTruncated")}
+          <p
+            data-testid={`dashboard-filter-truncated-${props.def.id}`}
+            class="px-3 py-1.5 text-[12px] text-text-tertiary"
+          >
+            {i18n.t(
+              searchable()
+                ? "kernel.dashboards.filterTruncatedSearch"
+                : "kernel.dashboards.filterTruncated",
+            )}
+          </p>
+        </Show>
+        <Show when={query().trim() !== "" && state().status === "ready" && options().length === 0}>
+          <p
+            data-testid={`dashboard-filter-nomatch-${props.def.id}`}
+            class="px-3 py-1.5 text-[12px] text-text-tertiary"
+          >
+            {i18n.t("kernel.dashboards.filterNoMatch")}
           </p>
         </Show>
       </PopupMenu.Content>

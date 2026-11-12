@@ -43,6 +43,8 @@ export const RUN_ENTRY_KINDS = [
   "import-transform",
   "pdf-template",
   "summarizer",
+  "route",
+  "provision",
 ] as const
 
 export type RunEntryKind = (typeof RUN_ENTRY_KINDS)[number]
@@ -127,6 +129,11 @@ export const RUN_LIMIT_TABLE: Readonly<Record<RunEntryKind, KindRow>> = Object.f
   "pdf-template": { wall: { rule: "fixed", ms: 30_000 }, memory: SANDBOX },
   // runtime.ts: an app's approval summarizer, 5 s.
   summarizer: { wall: { rule: "fixed", ms: 5_000 }, memory: SANDBOX },
+  // app-pages.ts: a page's call to one of the app's routes, like a tool.
+  route: { wall: { rule: "base" }, memory: SANDBOX },
+  // app-provisioning.ts: `config apply` / `config verify` running the app's
+  // provisioning handler (a person waits on the CLI, like a disconnect hook).
+  provision: { wall: { rule: "fixed", ms: 60_000 }, memory: SANDBOX },
 })
 
 type Env = NodeJS.ProcessEnv

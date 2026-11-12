@@ -138,8 +138,11 @@ export function timerHoldUntil(data: unknown, now: number): number | null {
   const wakeAt = (data as { _wakeAt?: unknown } | null | undefined)?._wakeAt
   if (typeof wakeAt !== "number" || !Number.isFinite(wakeAt)) return null
   if (wakeAt - now <= TIMER_DUE_TOLERANCE_MS) return null
-  return Math.min(wakeAt, now + TIMER_HOP_MAX_MS)
+  return Math.min(wakeAt, now + timerHopMaxMs)
 }
+
+/** One hop's length; a test shortens it (JobsTestAccess.setTimerHopMaxMs). */
+let timerHopMaxMs = TIMER_HOP_MAX_MS
 
 /** How long a held job waits before it is looked at again. */
 export const TRANSFER_HELD_JOB_DELAY_MS = 5_000
@@ -2205,6 +2208,11 @@ export async function closeAllQueues(): Promise<void> {
  * production surface carries a single named door. Production code never calls it.
  */
 export const JobsTestAccess = {
+  /** Shorten a long timer's hop (default TIMER_HOP_MAX_MS) so a test sees several. */
+  setTimerHopMaxMs(ms: number = TIMER_HOP_MAX_MS): void {
+    timerHopMaxMs = ms
+  },
+
   /** Run one job through the worker's dispatch (gates included), as a BullMQ worker would.
    *  `repeatJobKey`: the scheduler the job came from, as BullMQ sets it; `id`: its BullMQ id. */
   processJob(

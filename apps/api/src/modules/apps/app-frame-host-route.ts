@@ -7,7 +7,7 @@
 // answered here and nowhere else (the gate in app.ts runs before every route;
 // lib/server.ts serves such a host no web app and no socket). The host serves
 // exactly one thing, `GET /frame/<version>?t=<token>`: the frame document of that
-// app, for that org. Everything else (`/`, `/api/*`, `/api/auth/*`, `/assets/*`,
+// app, for that org (and the app's pages, `/page/...`, app-pages.ts). Everything else (`/`, `/api/*`, `/api/auth/*`, `/assets/*`,
 // webhooks, the bridge) is 404. No cookie is read or set here, and the org's
 // own cookies are host-only (`__Host-`), so none ever reaches this host.
 //
@@ -47,6 +47,7 @@ import { type HostBinding, orgIdForSlug } from "~/lib/org-host"
 import { instanceAppOrigin, orgPublicBaseUrlForSlug, orgSlugById } from "~/lib/org-public-url"
 import { appFrameRuntime } from "~/modules/apps/app-frame"
 import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
+import { frameHostPageRest, serveAppPageRequest } from "~/modules/apps/app-pages"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
 import { grantedSubset } from "~/modules/apps/egress-grants"
 import { getInstallTrust } from "~/modules/apps/install-trust"
@@ -231,6 +232,19 @@ export async function serveAppFrameHost(
   c: Context,
   binding: Extract<HostBinding, { kind: "app-frame" }>,
 ): Promise<Response> {
+  // An app page (app-pages.ts) on the app's own origin: its document, script and
+  // route calls, bound to this host's app and org.
+  const pageRest = frameHostPageRest(c.req.path)
+  if (pageRest !== null) {
+    const orgId = await orgIdForSlug(binding.slug)
+    if (!orgId) return notFound()
+    return serveAppPageRequest(
+      c,
+      pageRest,
+      { kind: "frame", app: binding.app, orgId },
+      appFrameOriginOf(binding.host),
+    )
+  }
   if (c.req.method !== "GET" && c.req.method !== "HEAD") return notFound()
   const version = APP_FRAME_HOST_PATH.exec(c.req.path)?.[1]
   if (!version) return notFound()

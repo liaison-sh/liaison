@@ -6,7 +6,8 @@
 // block that follows the dashboard's time range reads again when a period is
 // picked, and the link carries the period. A filter narrows the blocks of a
 // shared dataset and goes into the link; a figure opens the rows behind it in
-// the side panel, and a row's link opens its page.
+// the side panel, and a row's link opens its page. In edit mode a block is resized and
+// the change is saved; the PDF and a block's CSV download for the range shown.
 import { api, login } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
 import { seedFactory } from "./helpers/seed"
@@ -300,4 +301,98 @@ test("a filter narrows the blocks, and a figure opens its rows in the side panel
   await expect(panel.getByTestId("dashboard-drill-row-1")).toHaveCount(0)
   await panel.getByTestId("dashboard-drill-open-0").click()
   await expect(page).toHaveURL(/\/dashboards$/)
+})
+
+test("edit mode resizes a block, and the PDF and a block's CSV download", async ({
+  authenticatedPage,
+  env,
+  world,
+}) => {
+  const page = authenticatedPage
+  const { accessToken } = await login(env.serverUrl, "admin@test.com", "12345678")
+  for (const [id, total] of [
+    ["e1", 4],
+    ["e2", 6],
+  ] as const) {
+    await seedFactory(env, world.org.id, "appDocument", {
+      app: "agent",
+      collection: "e2e_edit_orders",
+      id,
+      data: { title: `Order ${id}`, total },
+    })
+  }
+  const source = { kind: "store", app: "agent", collection: "e2e_edit_orders", query: {} }
+  const created = await api(env.serverUrl, "/api/dashboards", {
+    method: "POST",
+    token: accessToken,
+    body: {
+      title: "E2E edit",
+      visibility: "personal",
+      spec: {
+        v: 1,
+        layout: "grid",
+        blocks: [
+          {
+            id: "total",
+            type: "metric",
+            title: "Total",
+            width: 1,
+            source,
+            map: { value: "total", agg: "sum" },
+          },
+          {
+            id: "list",
+            type: "table",
+            title: "Orders",
+            width: 1,
+            source,
+            map: { columns: [{ field: "title", label: "Title" }] },
+          },
+        ],
+      },
+    },
+  })
+  expect([200, 201]).toContain(created.status)
+  const id = (created.body.data ?? created.body).id as string
+
+  await page.goto(`http://localhost:${env.ports[1]}/dashboard/${id}`)
+  await page.waitForSelector("[data-shell]", { timeout: 30_000 })
+  const total = page.getByTestId("dashboard-block-total")
+  await expect(total).toHaveAttribute("data-state", "ready", { timeout: 20_000 })
+
+  // Edit: widen the metric to two columns; the change is saved on the server.
+  await page.getByTestId("dashboard-edit-toggle").click()
+  await expect(page.getByTestId("dashboard-title-input")).toHaveValue("E2E edit")
+  await page.getByTestId("dashboard-block-menu-total").click()
+  const saved = page.waitForResponse(
+    (r) => r.url().includes(`/api/dashboards/${id}/edit`) && r.request().method() === "POST",
+  )
+  await page.getByTestId("dashboard-block-width-2-total").click()
+  expect((await saved).status()).toBe(200)
+  await expect(total).toHaveAttribute("data-width", "2")
+  const after = await api(env.serverUrl, `/api/dashboards/${id}`, { token: accessToken })
+  const spec = (after.body.data ?? after.body).spec as { blocks: { id: string; width: number }[] }
+  expect(spec.blocks.find((b) => b.id === "total")?.width).toBe(2)
+  await page.getByTestId("dashboard-edit-toggle").click()
+
+  // Export: the PDF, then the table's CSV.
+  await page.getByTestId("dashboard-export").click()
+  const pdf = page.waitForResponse((r) => r.url().includes(`/api/dashboards/${id}/export.pdf`))
+  await page.getByTestId("dashboard-export-pdf").click()
+  const pdfResponse = await pdf
+  expect(pdfResponse.status()).toBe(200)
+  expect(pdfResponse.headers()["content-type"]).toContain("application/pdf")
+
+  await page.getByTestId("dashboard-block-menu-list").click()
+  const csv = page.waitForResponse((r) => r.url().includes(`/blocks/list/data.csv`))
+  await page.getByTestId("dashboard-block-csv-data-list").click()
+  const csvResponse = await csv
+  expect(csvResponse.status()).toBe(200)
+  expect(csvResponse.headers()["content-type"]).toContain("text/csv")
+  // The page saves the body as a file; the same link read directly holds the rows.
+  const direct = await fetch(`${env.serverUrl}${new URL(csvResponse.url()).pathname}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  expect(direct.status).toBe(200)
+  expect(await direct.text()).toContain("Order e1")
 })

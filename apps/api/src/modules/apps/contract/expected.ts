@@ -22,6 +22,39 @@ export const BASELINE_PATH = join(import.meta.dir, "expected-failures.baseline.j
 
 export const keyOf = (f: ExpectedFailure) => `${f.app} ${f.entry} ${f.reason}`
 
+/**
+ * Per app, how many entries pass only trivially (harness.ts: no fixture, every
+ * run rejected its empty input). An app is not done with the contract while
+ * its count is above zero, even with no expected failure left. The count only
+ * shrinks (expected-failures.guard.test.ts against the frozen baseline).
+ */
+export const TRIVIAL_PASSES_PATH = join(import.meta.dir, "trivial-passes.json")
+export const TRIVIAL_BASELINE_PATH = join(import.meta.dir, "trivial-passes.baseline.json")
+
+export type TrivialCounts = Record<string, number>
+
+export function readTrivialCounts(path: string): TrivialCounts {
+  return JSON.parse(readFileSync(path, "utf8")) as TrivialCounts
+}
+
+/** Apps in name order, zero counts left out. */
+export function writeTrivialCounts(path: string, counts: TrivialCounts): void {
+  const sorted = Object.fromEntries(
+    Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  )
+  writeFileSync(path, `${JSON.stringify(sorted, null, 2)}\n`)
+}
+
+/** The trivially passing entries of one app's verdicts. */
+export function trivialEntriesOf(verdicts: EntryVerdict[]): string[] {
+  return verdicts
+    .filter((v) => v.trivial)
+    .map((v) => v.entry)
+    .sort()
+}
+
 export function readFailures(path: string): ExpectedFailure[] {
   return JSON.parse(readFileSync(path, "utf8")) as ExpectedFailure[]
 }

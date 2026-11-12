@@ -191,6 +191,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["mcp_listConnections", "async"],
   ["messages_post", "async"],
   ["nextHandle", "async"],
+  ["pages_link", "async"],
   ["pdf_render", "async"],
   ["projects_activityRead", "async"],
   ["projects_addComment", "async"],

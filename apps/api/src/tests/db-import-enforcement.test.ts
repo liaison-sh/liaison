@@ -509,6 +509,10 @@ describe("db import enforcement", () => {
     // own access check) or the org's active connections (org purge) to run the
     // owning app's cleanup while the token is still valid; org-scoped in SQL.
     "modules/apps/connections/before-disconnect.ts",
+    // App pages: checks the page's person is active in the org (a system read of
+    // one user row) and loads their current permissions before a route runs as
+    // them (app-pages.ts); org-scoped in SQL.
+    "modules/apps/app-pages.ts",
     // Knowledge synced-sources: the reconciler and CRUD service write under
     // withPrivilegedDb because they materialize collections + documents
     // outside any per-request RLS scope (system-trusted sync flow).

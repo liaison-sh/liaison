@@ -734,6 +734,25 @@ The section replaces the stored map and is reported `changed` or `unchanged`
 the stored map as it is. It is set through `config apply` only, not the
 agent's `config_apps` tool.
 
+An app that declares `provisioning` in its manifest takes a `provision` block:
+its own setup, in the shape the app's schema defines
+([Set your app up from a config file](app-development.md#16-set-your-app-up-from-a-config-file)):
+
+```yaml
+apps:
+  - name: my-app
+    enable: true
+    provision:
+      folders: [Contracts, Invoices]
+```
+
+A block that does not match the app's schema is a usage error (exit `2`) before
+anything is written. `config apply` runs the app's provisioning handler once the
+app's connection is set up and reports each line it changed
+(`apps.my-app.provision: <line>`), or `unchanged`. `config verify` runs the
+handler without writing: a line it would change is `DRIFT`; then the app's own
+check, when it has one, is `PASS` or `FAIL`.
+
 ### `apiConnectors`
 
 ```yaml

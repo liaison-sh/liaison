@@ -40,7 +40,11 @@
           "type": "password"
         }
       ],
-      "sql": { "rawQuery": { "scope": "wparity:items:read" } }
+      "sql": {
+        "rawQuery": {
+          "scope": "wparity:items:read"
+        }
+      }
     }
   },
   "schema": {
@@ -177,5 +181,12 @@
   "webhookHealth": {
     "probe": null,
     "reason": "test fixture"
+  },
+  "pages": {
+    "hello": {
+      "source": "pages/hello.ts",
+      "title": "Parity page",
+      "scope": "wparity:items:read"
+    }
   }
 }

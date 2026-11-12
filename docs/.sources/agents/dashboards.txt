@@ -176,3 +176,32 @@ Scheduled send is a routine calling dashboards_snapshot / dashboards_pdf -> apps
 Recipients checked: active member, opens the dashboard, reads every source -> apps/api/src/modules/dashboards/export.ts:340 ; apps/api/src/modules/dashboards/export.ts:385
 API: today and timeZone on GET -> apps/api/src/modules/dashboards/service.ts:468
 API: versions routes -> apps/api/src/modules/dashboards/routes.ts:285 ; apps/api/src/modules/dashboards/routes.ts:293
+Edit toggle shown only when the record's canEdit -> apps/web/src/modules/dashboards/DashboardView.tsx:684
+Edit / Done labels -> packages/shared/src/i18n/locales/en/kernel.json:6533
+Title and description fields in edit mode, saved on Enter or leaving -> apps/web/src/modules/dashboards/DashboardView.tsx:382
+Add a description (optional) -> packages/shared/src/i18n/locales/en/kernel.json:6539
+Block title becomes a field in edit mode -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:339
+Drag a block onto another: it takes that block's place -> apps/web/src/modules/dashboards/edit-mode.ts:30
+Arrow buttons: earlier/later one place, up/down one row of the grid as drawn -> apps/web/src/modules/dashboards/edit-mode.ts:15
+Move earlier / later / up a row / down a row labels -> packages/shared/src/i18n/locales/en/kernel.json:6543
+Width 1-3 columns, Height Normal or Tall (2 rows) -> packages/shared/src/i18n/locales/en/kernel.json:6548
+Duplicate and Delete in the block menu; Delete asks first -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:621
+Each change is one operation sent with the version shown -> apps/web/src/modules/dashboards/DashboardView.tsx:318
+Undo reverts to the version before the last change -> apps/web/src/modules/dashboards/DashboardView.tsx:356
+Conflict message -> packages/shared/src/i18n/locales/en/kernel.json:6558
+More actions menu: Version history, Duplicate as my own, Send regularly -> apps/web/src/modules/dashboards/DashboardView.tsx:722
+Duplicate as my own opens the copy -> apps/web/src/modules/dashboards/DashboardView.tsx:406
+Version history panel on the right, over the dashboard on a phone -> apps/web/src/modules/dashboards/VersionHistoryPanel.tsx:103
+What a version changed against the one before -> apps/web/src/modules/dashboards/edit-mode.ts:58
+History labels (Show blocks, Restore, 1 block added, Blocks or layout changed) -> packages/shared/src/i18n/locales/en/kernel.json:6569
+Restore only for someone who may edit -> apps/web/src/modules/dashboards/DashboardView.tsx:982
+Export then Download PDF with the range and filters shown -> apps/web/src/modules/dashboards/DashboardView.tsx:437
+Data (CSV) and Rows behind it (CSV) in the block menu; own-dates block exports its dates -> apps/web/src/modules/dashboards/DashboardView.tsx:441
+Export labels -> packages/shared/src/i18n/locales/en/kernel.json:6561
+Send regularly hint with an example request -> packages/shared/src/i18n/locales/en/kernel.json:6592
+Filter Search box: source values searched on the server, fixed list over 10 values -> apps/web/src/modules/dashboards/FilterBar.tsx:115
+Search label -> packages/shared/src/i18n/locales/en/kernel.json:6595
+Periods start from today in the org's time zone -> apps/web/src/modules/dashboards/DashboardView.tsx:492
+Month, quarter (Q4 2026, T4 2026) and year labels -> apps/web/src/modules/dashboards/blocks/format.ts:66
+Percentage of total read as a percent -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:40
+Metric read from a single record has no rows button -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:253

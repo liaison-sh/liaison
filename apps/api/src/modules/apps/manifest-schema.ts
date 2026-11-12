@@ -473,6 +473,17 @@ const connectionSchema = {
       type: "array",
       items: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_]{0,63}$" },
     },
+    // OAuth2: the key the connection's client is stored and resolved under
+    // (oauth-client.ts), when it is not `<app>:<connection>`: two connections of
+    // one app share a client by naming the same key. Always in the app's own
+    // namespace (`<app>:<name>`).
+    oauthClient: {
+      type: "object",
+      properties: {
+        key: { type: "string", pattern: "^[a-z][a-z0-9-]*:[a-z][a-z0-9_-]{0,63}$" },
+      },
+      additionalProperties: false,
+    },
     // Operator-facing "how to connect" guide, surfaced in the UI next to the
     // connect form (the `?` popover), `liaison guide` and the setup reference.
     // Ships + versions with the app manifest. A step is a string (a HUMAN step,
@@ -1930,6 +1941,91 @@ export const appManifestJsonSchema = {
           },
         },
       },
+    },
+    // Pages an app serves outside the web app (app-pages.ts): a document of its own,
+    // opened from a link the platform mints for one person, with the hosts its
+    // scripts, frames and calls may reach, and the routes it may call. A route
+    // runs the app's handler as that person.
+    pages: {
+      type: "object",
+      maxProperties: 20,
+      propertyNames: { pattern: "^[a-z][a-z0-9-]{0,39}$" },
+      additionalProperties: {
+        type: "object",
+        properties: {
+          source: { type: "string", pattern: "^pages/[a-z][a-z0-9-]{0,39}\\.ts$" },
+          title: { type: "string", minLength: 1, maxLength: 120 },
+          scope: { type: "string", minLength: 3 },
+          routes: {
+            type: "array",
+            maxItems: 20,
+            items: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" },
+          },
+          hosts: {
+            type: "object",
+            properties: {
+              script: {
+                type: "array",
+                maxItems: 10,
+                items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+              },
+              frame: {
+                type: "array",
+                maxItems: 10,
+                items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+              },
+              connect: {
+                type: "array",
+                maxItems: 10,
+                items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+              },
+              image: {
+                type: "array",
+                maxItems: 10,
+                items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+              },
+              style: {
+                type: "array",
+                maxItems: 10,
+                items: { type: "string", pattern: IMAGE_HOST_PATTERN },
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["source", "scope"],
+        additionalProperties: false,
+      },
+    },
+    // The handlers an app page calls (pages.<page>.routes), run as the person the
+    // page was opened for. (Not `routes`: that names the app's bare web paths.)
+    pageRoutes: {
+      type: "object",
+      maxProperties: 50,
+      propertyNames: { pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" },
+      additionalProperties: {
+        type: "object",
+        properties: {
+          handler: { type: "string", minLength: 1 },
+          scope: { type: "string", minLength: 3 },
+        },
+        required: ["handler"],
+        additionalProperties: false,
+      },
+    },
+    // The app's org-level setup as data (app-provisioning.ts): `liaison config apply`
+    // validates an `apps[].provision` block against `schema` and runs `handler` as a
+    // sandboxed run of the app; `config verify` runs it as a dry run (drift) and
+    // runs `verify` when declared.
+    provisioning: {
+      type: "object",
+      properties: {
+        schema: { type: "object" },
+        handler: { type: "string", minLength: 1 },
+        verify: { type: "string", minLength: 1 },
+      },
+      required: ["schema", "handler"],
+      additionalProperties: false,
     },
     slots: {
       type: "object",

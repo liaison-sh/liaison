@@ -267,3 +267,20 @@ export async function pages(p: { total: number; tag: string }, ctx: Ctx) {
     return { done: page + 1 >= p.total, cursor: page + 1 }
   })
 }
+
+/** `ctx.pages.link`: a link for the run's person; an unknown page refused alike. */
+export async function pageLink(_p: unknown, ctx: Ctx) {
+  const link = await ctx.pages.link("hello", { from: "parity" })
+  let missing: unknown
+  try {
+    await ctx.pages.link("nope")
+    missing = { thrown: false }
+  } catch (err: any) {
+    missing = { thrown: true, code: err.code ?? null, status: err.status ?? null }
+  }
+  return {
+    url: /\/api\/app-pages\/[A-Za-z0-9_-]{43}$/.test(link.url),
+    expiresInSeconds: link.expiresInSeconds,
+    missing,
+  }
+}

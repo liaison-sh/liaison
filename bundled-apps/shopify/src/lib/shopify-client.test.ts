@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { ShopifyClient, type ShopifyFetchResponse } from "./shopify-client"
-import { createPollPacer, pollBackoffMs, sleep } from "./timers"
-import { withTimer } from "./timers.testutil"
+import { ShopifyClient, type ShopifyFetchResponse, throttlePauseFor } from "./shopify-client"
 
 const COST_OK = { cost: { throttleStatus: { currentlyAvailable: 1000, restoreRate: 50 } } }
 const COST_LOW = { cost: { throttleStatus: { currentlyAvailable: 50, restoreRate: 50 } } }
@@ -73,35 +71,82 @@ describe("ShopifyClient", () => {
     expect(n).toBe(1)
   })
 
-  it("pauses ~1s between calls when throttleStatus drops below 100", async () => {
-    const calls: number[] = []
-    const client = new ShopifyClient({
-      shop: "demo",
-      fetch: async () => {
-        calls.push(Date.now())
-        return okResponse({ data: { ok: true }, extensions: COST_LOW })
-      },
-      // shorten the pause for the test
-      throttlePauseMs: 50,
-      throttleLowWatermark: 100,
-    })
-    await client.query("query { ok }", {})
-    await client.query("query { ok }", {})
-    expect(calls[1]! - calls[0]!).toBeGreaterThanOrEqual(45)
-  })
-
-  it("retries 429 up to 3 times then throws", async () => {
+  it("reports a pause for a low cost bucket, long enough to refill to the watermark", async () => {
+    const pauses: number[] = []
     let n = 0
     const client = new ShopifyClient({
       shop: "demo",
       fetch: async () => {
         n++
-        return { status: 429, headers: { "retry-after": "0" }, body: "" }
+        return okResponse({ data: { ok: true }, extensions: COST_LOW })
       },
-      retryDelayMs: 0,
+      throttleLowWatermark: 100,
+      onThrottle: (ms) => {
+        pauses.push(ms)
+      },
     })
+    const started = Date.now()
+    await client.query("query { ok }", {})
+    await client.query("query { ok }", {})
+    // (100 - 50) points at 50 points/s: one second, reported, never waited in the run.
+    expect(pauses).toEqual([1000, 1000])
+    expect(n).toBe(2)
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
+  it("reports no pause while the bucket holds the watermark", async () => {
+    const pauses: number[] = []
+    const client = new ShopifyClient({
+      shop: "demo",
+      fetch: async () => okResponse({ data: { ok: true }, extensions: COST_OK }),
+      onThrottle: (ms) => {
+        pauses.push(ms)
+      },
+    })
+    await client.query("query { ok }", {})
+    expect(pauses).toEqual([])
+  })
+
+  it("a failing pause report never fails the call", async () => {
+    const client = new ShopifyClient({
+      shop: "demo",
+      fetch: async () => okResponse({ data: { ok: true }, extensions: COST_LOW }),
+      onThrottle: async () => {
+        throw new Error("limiter unavailable")
+      },
+    })
+    const r = await client.query<{ ok: boolean }>("query { ok }", {})
+    expect(r.ok).toBe(true)
+  })
+
+  it("retries 429 up to 3 times, at once, then throws", async () => {
+    let n = 0
+    const client = new ShopifyClient({
+      shop: "demo",
+      fetch: async () => {
+        n++
+        return { status: 429, headers: { "retry-after": "30" }, body: "" }
+      },
+    })
+    const started = Date.now()
     await expect(client.query("query{}", {})).rejects.toThrow(/429/)
     expect(n).toBe(4) // initial + 3 retries
+    // The limiter holds the retries for Retry-After; the client itself never waits.
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
+  it("a fail-fast client throws RATE_LIMIT on the first 429", async () => {
+    let n = 0
+    const client = new ShopifyClient({
+      shop: "demo",
+      failFast: true,
+      fetch: async () => {
+        n++
+        return { status: 429, headers: { "retry-after": "1" }, body: "" }
+      },
+    })
+    await expect(client.query("query{}", {})).rejects.toMatchObject({ code: "RATE_LIMIT" })
+    expect(n).toBe(1)
   })
 
   it("propagates 401 immediately as CONNECTION_LOST (no retry)", async () => {
@@ -193,94 +238,33 @@ describe("ShopifyClient", () => {
     expect(urls[0]).toBe("https://demo.myshopify.com/admin/api/2026-04/graphql.json")
   })
 
-  it("malformed extensions.cost defaults to 'no throttle' (no pause forced)", async () => {
-    const calls: number[] = []
+  it("malformed extensions.cost defaults to 'no throttle' (no pause reported)", async () => {
+    const pauses: number[] = []
     const client = new ShopifyClient({
       shop: "demo",
-      fetch: async () => {
-        calls.push(Date.now())
-        return okResponse({ data: { ok: true } })
+      fetch: async () => okResponse({ data: { ok: true }, extensions: { cost: "nope" } }),
+      onThrottle: (ms) => {
+        pauses.push(ms)
       },
-      throttlePauseMs: 500,
     })
     await client.query("query {}", {})
-    await client.query("query {}", {})
-    expect(calls[1]! - calls[0]!).toBeLessThan(100)
+    expect(pauses).toEqual([])
   })
 })
 
-describe("ShopifyClient on a runtime without timers", () => {
-  it("a throttle wait is a no-op instead of a ReferenceError", async () => {
-    let n = 0
-    const client = new ShopifyClient({
-      shop: "demo",
-      fetch: async () => {
-        n++
-        return okResponse({ data: { ok: true }, extensions: COST_LOW })
-      },
-      throttlePauseMs: 60_000,
-      throttleLowWatermark: 100,
-    })
-    await withTimer("absent", async () => {
-      await client.query("query {}", {})
-      // The bucket is low, so this call must wait first: with no timer it proceeds at once.
-      await client.query("query {}", {})
-    })
-    expect(n).toBe(2)
+describe("throttlePauseFor", () => {
+  it("is the refill time to the watermark at the restore rate", () => {
+    expect(throttlePauseFor({ currentlyAvailable: 50, restoreRate: 50 }, 100, 1000)).toBe(1000)
+    expect(throttlePauseFor({ currentlyAvailable: 90, restoreRate: 100 }, 100, 1000)).toBe(100)
   })
 
-  it("a 429 retry proceeds without a timer", async () => {
-    let n = 0
-    const client = new ShopifyClient({
-      shop: "demo",
-      fetch: async () => {
-        n++
-        if (n === 1) return { status: 429, headers: { "retry-after": "2" }, body: "" }
-        return okResponse({ data: { ok: true }, extensions: COST_OK })
-      },
-    })
-    const r = await withTimer("absent", () => client.query<{ ok: boolean }>("query {}", {}))
-    expect(r.ok).toBe(true)
-    expect(n).toBe(2)
-  })
-})
-
-describe("sleep", () => {
-  it("resolves at once and touches no timer when the runtime has none", async () => {
-    await withTimer("absent", async () => {
-      await expect(sleep(1_000)).resolves.toBeUndefined()
-    })
+  it("is the fallback without a restore rate, 0 at or above the watermark", () => {
+    expect(throttlePauseFor({ currentlyAvailable: 10 }, 100, 1000)).toBe(1000)
+    expect(throttlePauseFor({ currentlyAvailable: 100, restoreRate: 50 }, 100, 1000)).toBe(0)
+    expect(throttlePauseFor(undefined, 100, 1000)).toBe(0)
   })
 
-  it("waits through setTimeout when the runtime has one", async () => {
-    const delays = await withTimer("recording", async (d) => {
-      await sleep(750)
-      return d
-    })
-    expect(delays).toEqual([750])
-  })
-
-  it("never schedules a zero or negative wait", async () => {
-    const delays = await withTimer("recording", async (d) => {
-      await sleep(0)
-      await sleep(-5)
-      return d
-    })
-    expect(delays).toEqual([])
-  })
-})
-
-describe("createPollPacer", () => {
-  it("backs off 250 ms doubling to a 2 s cap", () => {
-    expect([0, 1, 2, 3, 4, 9].map(pollBackoffMs)).toEqual([250, 500, 1000, 2000, 2000, 2000])
-  })
-
-  it("clips the waits to the budget, then stops waiting", async () => {
-    const waits: number[] = []
-    const pace = createPollPacer(2_500, async (ms) => {
-      waits.push(ms)
-    })
-    for (let i = 0; i < 6; i++) await pace(i)
-    expect(waits).toEqual([250, 500, 1000, 750])
+  it("never exceeds the limiter's 60 s cap", () => {
+    expect(throttlePauseFor({ currentlyAvailable: 0, restoreRate: 0.5 }, 100, 1000)).toBe(60_000)
   })
 })

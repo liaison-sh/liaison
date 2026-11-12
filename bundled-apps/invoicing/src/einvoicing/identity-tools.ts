@@ -13,7 +13,6 @@ import { readEinvoiceRowColumns } from "./issue-gate"
 import {
   type RegistryCandidate,
   type RegistryFetchCtx,
-  type RegistrySearchOptions,
   candidateMatchesName,
   registrySearch,
   registrySearchUrl,
@@ -249,7 +248,6 @@ export async function counterpartyIdentityGet(
 export async function counterpartyIdentityLookup(
   ctx: IdentityToolsCtx,
   input: { contact_id?: string | null; query?: string | null; siren?: string | null; postcode?: string | null },
-  opts: RegistrySearchOptions = {},
 ): Promise<Row | ToolError> {
   const siren = digits(input?.siren)
   if (siren && !isValidSiren(siren)) return fail("siren_invalid", `SIREN ${siren} fails the checksum: it cannot be a registered company.`)
@@ -263,7 +261,7 @@ export async function counterpartyIdentityLookup(
   const derived = !siren && cp?.vatId ? sirenFromFrVat(cp.vatId, { billingCountry: cp.billingCountry }) : null
   let q = siren ?? derived ?? str(input?.query) ?? cp?.names[0] ?? null
   if (!q) return fail("invalid_input", "pass a query, a siren, or a contact_id whose name is known")
-  let res = await registrySearch(ctx, siren || derived ? { siren: siren ?? derived } : { q, postcode: input?.postcode }, opts)
+  let res = await registrySearch(ctx, siren || derived ? { siren: siren ?? derived } : { q, postcode: input?.postcode })
   // A free-text search for a known contact that finds nothing is retried under the name the
   // contact is recorded with: a caller's typo must not read as "the registry does not know it".
   const recorded = cp?.names[0] ?? null
@@ -276,7 +274,7 @@ export async function counterpartyIdentityLookup(
     recorded.trim().toLowerCase() !== q.trim().toLowerCase()
   ) {
     q = recorded
-    res = await registrySearch(ctx, { q, postcode: input?.postcode }, opts)
+    res = await registrySearch(ctx, { q, postcode: input?.postcode })
   }
   if (res.status !== "ok") {
     return {
@@ -391,7 +389,6 @@ async function upsertIdentity(ctx: IdentityToolsCtx, contactId: string, existing
 export async function counterpartyIdentitySet(
   ctx: IdentityToolsCtx,
   input: IdentitySetInput,
-  opts: RegistrySearchOptions = {},
 ): Promise<Row | ToolError> {
   const source = oneOf(input?.source, SOURCES)
   if (!source) return fail("invalid_input", `source must be one of ${SOURCES.join(", ")}`)
@@ -476,7 +473,7 @@ export async function counterpartyIdentitySet(
   }
 
   const now = new Date()
-  const res = await registrySearch(ctx, { siren }, opts)
+  const res = await registrySearch(ctx, { siren })
   const candidate = res.status === "ok" ? (res.candidates[0] ?? null) : null
   const approved = !!ctx.approval
   const flags: Flags = {

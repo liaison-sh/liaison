@@ -242,6 +242,8 @@ export const inventory_adjust = gatedMutation(mutationHandlers.inventory_adjust)
 export const inventory_set_on_hand = gatedMutation(mutationHandlers.inventory_set_on_hand)
 export const discounts_create = gatedMutation(mutationHandlers.discounts_create)
 export const discounts_bulk_create = gatedMutation(mutationHandlers.discounts_bulk_create)
+// The tool's `pollHandler`: asked by the kernel's poll job while the codes are still being added.
+export const discounts_bulk_create_poll = mutationHandlers.discounts_bulk_create_poll
 export const discounts_update = gatedMutation(mutationHandlers.discounts_update)
 export const discounts_delete = gatedMutation(mutationHandlers.discounts_delete)
 export const returns_request = gatedMutation(mutationHandlers.returns_request)

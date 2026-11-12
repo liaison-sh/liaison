@@ -1,0 +1,26 @@
+{
+  "entry": "tool:legal_originals_verify",
+  "params": {
+    "document_id": "03578b32-ebd7-4468-960c-80740d2a251f"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "legal_originals",
+        "{\"where\":{\"document_id\":\"03578b32-ebd7-4468-960c-80740d2a251f\"},\"orderBy\":{\"recorded_at\":\"asc\"},\"limit\":21,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"13ace114-ac17-4031-8e40-6a2be9d842bb\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:22.433918+00\",\"updated_at\":\"2026-11-12 09:09:22.552475+00\",\"document_id\":\"03578b32-ebd7-4468-960c-80740d2a251f\",\"received_id\":null,\"kind\":\"issued_pdf\",\"file_id\":\"c0749001-b785-48e7-b8f0-9df58b567bae\",\"sha256\":\"df2a4c5d867c85e4bafed39ef8b0871f35d1517897a3ad7148e524491fed676c\",\"byte_size\":\"38971\",\"recorded_at\":\"2026-01-01 00:00:00+00\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}]"
+    },
+    {
+      "method": "files_getAttachmentBytes",
+      "args": [
+        "{\"fileId\":\"c0749001-b785-48e7-b8f0-9df58b567bae\",\"allowedParents\":[{\"app\":\"invoicing\",\"entityType\":\"legal_original\",\"entityId\":\"13ace114-ac17-4031-8e40-6a2be9d842bb\"}]}"
+      ],
+      "error": {
+        "message": "forbidden"
+      }
+    }
+  ]
+}

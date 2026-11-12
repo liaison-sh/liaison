@@ -101,7 +101,7 @@
   },
   "app_knowledge.synced_sources": {
     "rows": 2,
-    "digest": "ec2fdecc59c1b262"
+    "digest": "93efcec581b9b016"
   },
   "app_knowledge.taggings": {
     "rows": 69,
@@ -217,7 +217,7 @@
   },
   "kernel.agents": {
     "rows": 12,
-    "digest": "049966a58adc7c94"
+    "digest": "34e926a219721575"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,

@@ -373,13 +373,16 @@ export async function replyToFinding(
       metadata: { ...(finding.metadata ?? {}), last_reply_failure: failure },
     })
     ctx.logger?.warn?.("social: reply_to_finding failed", { findingId: finding.id, platform: finding.platform, ...failure })
-    // The platform refused it: nothing was posted.
+    // The platform refused it: nothing was posted. A gone or blocked parent refuses
+    // the same reply again, so the approval closes (`final`) instead of waiting to be
+    // approved again; a rate limit leaves it pending for a later approval.
     if (ctx.approval) {
       await ctx.approval_recordFailedNoEffect?.(
         REPLY_TOOL,
         JSON.stringify({
           code: `reply_${verdict}`,
           message: `The platform refused the reply (HTTP ${res.status})${failure.provider_error ? `: ${failure.provider_error}` : ""}`,
+          ...(verdict === "rate_limited" ? {} : { final: true }),
         }),
       )
     }

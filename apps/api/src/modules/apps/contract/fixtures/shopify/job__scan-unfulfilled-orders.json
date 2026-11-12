@@ -1,0 +1,36 @@
+{
+  "entry": "job:scan-unfulfilled-orders",
+  "params": {},
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query UnfulfilledOrders($query: String!) {\\\\n    orders(first: 100, query: $query) {\\\\n      edges {\\\\n        node {\\\\n          id name createdAt displayFulfillmentStatus\\\\n          currencyCode presentmentCurrencyCode\\\\n          tags\\\\n        }\\\\n      }\\\\n      pageInfo { hasNextPage endCursor }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"query\\\":\\\"status:open fulfillment_status:unfulfilled created_at:<2025-12-31T00:00:00.000Z created_at:>2025-11-02T00:00:00.000Z\\\"}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"orders\\\":{\\\"edges\\\":[],\\\"pageInfo\\\":{\\\"hasNextPage\\\":false,\\\"endCursor\\\":null}}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":11,\\\"actualQueryCost\\\":2,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19998,\\\"restoreRate\\\":1000}},\\\"search\\\":[{\\\"path\\\":[\\\"orders\\\"],\\\"query\\\":\\\"status:open fulfillment_status:unfulfilled created_at:<2025-12-31T00:00:00.000Z created_at:>2025-11-02T00:00:00.000Z\\\",\\\"parsed\\\":{\\\"and\\\":[{\\\"field\\\":\\\"created_at\\\",\\\"range_gt\\\":\\\"2025-11-02T00:00:00-04:00\\\",\\\"range_lt\\\":\\\"2025-12-31T23:59:59-05:00\\\"},{\\\"field\\\":\\\"status\\\",\\\"match_all\\\":\\\"open\\\"},{\\\"field\\\":\\\"fulfillment_status\\\",\\\"match_all\\\":\\\"unfulfilled\\\"},{\\\"field\\\":\\\"00\\\",\\\"match_all\\\":\\\"00.000Z\\\"}]},\\\"warnings\\\":[{\\\"field\\\":\\\"00\\\",\\\"message\\\":\\\"Invalid search field for this query.\\\",\\\"code\\\":\\\"invalid_field\\\"}]}]}}\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"orders\",\"action\":\"unfulfilled_digest\",\"entityId\":\"unfulfilled-orders\",\"data\":{\"count\":0,\"thresholdHours\":24,\"oldestAgeHours\":0,\"orderNames\":[]}}"
+      ]
+    }
+  ]
+}

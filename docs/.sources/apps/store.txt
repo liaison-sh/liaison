@@ -209,3 +209,10 @@ B2B line price never becomes a discount (priceOverride) -> bundled-apps/shopify/
 approval card shows company, location, price basis -> bundled-apps/shopify/src/summarizers.ts:457
 draft_orders_update preflight runs the same guard -> bundled-apps/shopify/src/mutations/draft-orders.ts:202
 draft_orders_get customAttributes (order and lines) -> bundled-apps/shopify/src/reads.ts:1177
+customer backfill runs in several job runs (export, wake later, import in chunks) -> bundled-apps/shopify/src/handlers/backfill-customers.ts:223
+backfill imports a few hundred customers per chunk -> bundled-apps/shopify/src/handlers/backfill-customers.ts:95
+backfill progress shown in settings (backfill_progress) -> bundled-apps/shopify/src/handlers/settings.ts:233
+bulk codes still being added: approved action finishes when they are in -> bundled-apps/shopify/src/mutations/discounts.ts:702
+bulk codes poll handler returns the codes -> bundled-apps/shopify/src/mutations/discounts.ts:727
+calls to one store limited to four at a time across runs -> bundled-apps/shopify/app.manifest.json:371
+low query budget pauses the store's next calls -> bundled-apps/shopify/src/lib/get-client.ts:284

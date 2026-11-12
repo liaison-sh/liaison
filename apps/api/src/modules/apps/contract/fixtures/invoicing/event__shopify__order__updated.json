@@ -1,0 +1,85 @@
+{
+  "entry": "event:shopify/order:updated",
+  "params": {
+    "entity": "order",
+    "action": "updated",
+    "entityId": "12992208404646",
+    "data": {
+      "orderId": "12992208404646",
+      "name": "#2745",
+      "customer": {
+        "id": "24929659846822",
+        "email": "marie@example.com",
+        "first_name": "Marie",
+        "last_name": "Dupont",
+        "country": "FR",
+        "external_ids": {
+          "shopify": "24929659846822"
+        }
+      },
+      "customerId": "24929659846822",
+      "poNumber": null,
+      "buyerTaxId": null,
+      "note": null,
+      "totalPrice": {
+        "amount": "885.95",
+        "currencyCode": "USD"
+      },
+      "taxesIncluded": false,
+      "billingAddress": null,
+      "shippingAddress": {
+        "firstName": "Marie",
+        "lastName": "Dupont",
+        "company": null,
+        "address1": "12 Rue de Rivoli",
+        "address2": null,
+        "city": "Paris",
+        "zip": "75004",
+        "province": null,
+        "countryCode": "FR",
+        "phone": null
+      },
+      "lineItems": [
+        {
+          "id": "37391682109606",
+          "title": "The Minimal Snowboard",
+          "quantity": 1,
+          "priceSet": {
+            "amount": "885.95",
+            "currencyCode": "USD"
+          },
+          "requiresShipping": true,
+          "taxLines": [],
+          "discountAllocations": [],
+          "variant": {
+            "id": "56534760784038",
+            "title": null,
+            "sku": null
+          }
+        }
+      ],
+      "shippingLines": [],
+      "fulfillmentStatus": null,
+      "financialStatus": "paid",
+      "marketId": null,
+      "shopDomain": "contract-shop.myshopify.com"
+    },
+    "changedFields": ["note"]
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["documents", "{\"where\":{\"shopify_order_id\":\"12992208404646\"},\"limit\":10}"],
+      "reply": "[{\"id\":\"1c1ed43d-ae19-44fe-aeee-57b25d8375b4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:31.230303+00\",\"updated_at\":\"2026-11-12 09:09:31.350398+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"counterparty_contact_id\":\"1cc70192-ee73-4395-adf9-d8e8a14ddbe4\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"08793157-c7ad-4cba-9eec-e46f7dd305e7\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"b43863db79328a10d80a97d00cf143c4d1abb25dc76f387a9fc7e0210a7f1481\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"b4da6c56-38cd-41ac-b059-79ccd8a98498\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "1c1ed43d-ae19-44fe-aeee-57b25d8375b4",
+        "{\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"event\":\"downstream_change_observed\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"shopify_order_id\":\"12992208404646\",\"changed_fields\":[]}],\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"shopify_order_number\":\"#2745\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\"}}"
+      ]
+    }
+  ]
+}

@@ -394,7 +394,13 @@ export interface IssueDb {
 /** One write of a `ctx.db.batch` (see the SDK's `DbBatchOp`). */
 export type IssueBatchOp =
   | { insert: string; data: Record<string, unknown>; as?: string }
-  | { update: string; id: string | { $ref: string }; data: Record<string, unknown> }
+  | {
+      update: string
+      id: string | { $ref: string }
+      data?: Record<string, unknown>
+      append?: Record<string, unknown[]>
+      merge?: Record<string, Record<string, unknown>>
+    }
   | { delete: string; id: string | { $ref: string } }
 
 export interface IssueBatchSpec {

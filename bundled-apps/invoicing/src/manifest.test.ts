@@ -1569,7 +1569,11 @@ describe("invoicing manifest", () => {
     //   batch; automatic credit notes carry a dedup key; the deferred-retry sweep resumes issues a
     //   dead run left unrendered.
     // 0.21.1: above the 0.21.0 main took meanwhile, merged.
-    expect(m.version).toBe("0.21.1")
+    // 0.21.1: the deferred-retry, payment reconcile, order-number backfill and shipment link jobs hold
+    //   no transaction (each write commits on its own; the shipment link merges in the database);
+    //   resume-interrupted-issues wakes only while a document waits for its PDF.
+    // 0.21.2: the branch's 0.21.1 and main's 0.21.1 (jobs without a held transaction), merged.
+    expect(m.version).toBe("0.21.2")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

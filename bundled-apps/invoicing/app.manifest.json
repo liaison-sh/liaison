@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.21.1",
+  "version": "0.21.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6745,7 +6745,6 @@
     },
     "deferred-retry": {
       "handler": "deferredRetryJobHandler",
-      "atomic": true,
       "runsFor": {"rows": {"entity": "deferred_events", "where": {"status": {"in": ["awaiting_config", "awaiting_data", "awaiting_dependency", "render_failed", "email_failed"]}}}},
       "schedule": "*/5 * * * *",
       "timeoutMs": 120000
@@ -6764,24 +6763,27 @@
     },
     "reconcile-shopify-payments": {
       "handler": "reconcileShopifyPaymentsJobHandler",
-      "atomic": true,
       "runsFor": {"connection": "shopify:shop"},
       "schedule": "*/10 * * * *",
       "timeoutMs": 120000
     },
     "backfill-order-numbers": {
       "handler": "backfillOrderNumbersJobHandler",
-      "atomic": true,
       "runsFor": {"connection": "shopify:shop"},
       "schedule": "17 * * * *",
       "timeoutMs": 120000
     },
     "link-shipments": {
       "handler": "linkShipmentsJobHandler",
-      "atomic": true,
       "runsFor": {"connection": "boxtal:boxtal"},
       "schedule": "*/15 * * * *",
       "timeoutMs": 120000
+    },
+    "resume-interrupted-issues": {
+      "handler": "resumeInterruptedIssuesJobHandler",
+      "runsFor": {"rows": {"entity": "documents", "where": {"pdf_status": "pending"}}},
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 60000
     },
     "identity-confirm": {
       "handler": "identityConfirmJobHandler",

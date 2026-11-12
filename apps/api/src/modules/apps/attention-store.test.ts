@@ -8,12 +8,16 @@ import type { AttentionItem } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { redis } from "~/lib/redis"
 import { attentionItemsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import {
   type AttentionRefreshJob,
   AttentionStoreTestAccess,
+  attentionAudience,
   attentionRefreshesSettled,
+  markAttentionReader,
+  ORG_PROVIDER_RUNS_PER_MINUTE,
   ORG_REFRESHES_PER_MINUTE,
   processAttentionRefreshJob,
   REFRESH_MIN_INTERVAL_MS,
@@ -93,6 +97,8 @@ describe("stored app attention", () => {
       ...deps,
       ensureOrgApps: async () => {},
       enqueue: (job) => processAttentionRefreshJob(job.payload),
+      // The reader is around already: a read wakes only a missing list.
+      markReader: async () => false,
     })
     wireAttentionRefreshWakes()
   })
@@ -325,8 +331,116 @@ describe("stored app attention", () => {
         ...deps,
         ensureOrgApps: async () => {},
         enqueue: (job) => processAttentionRefreshJob(job.payload),
+        markReader: async () => false,
       })
     }
+  })
+
+  const fiftyPeople = () =>
+    Array.from({ length: 50 }, (_, i) => `00000000-0000-4000-9000-${String(i).padStart(12, "0")}`)
+
+  it("a refresh runs the provider only for the people around: 50 members, 3 runs", async () => {
+    const people = fiftyPeople()
+    const [online, away, offline, reader] = people as [string, string, string, string]
+    const keys = people.map((u) => `presence:${orgId}:${u}`)
+    try {
+      await redis.set(`presence:${orgId}:${online}`, "online", "EX", 60)
+      await redis.set(`presence:${orgId}:${away}`, "away", "EX", 60)
+      await redis.set(`presence:${orgId}:${offline}`, "offline", "EX", 60)
+      // Read their feed a minute ago, not online now.
+      await markAttentionReader(orgId, reader, Date.now() - 60_000)
+      expect((await attentionAudience(orgId, people)).sort()).toEqual([online, away, reader].sort())
+      let runs = 0
+      await processAttentionRefreshJob(
+        { org: orgId, app: APP },
+        {
+          ...deps,
+          ensureOrgApps: async () => {},
+          takeOrgBudget: async () => true,
+          listActiveUsers: (o) => attentionAudience(o, people),
+          invoke: async (_reg: unknown, appName: string) => {
+            if (appName === APP) runs++
+            return []
+          },
+        },
+      )
+      expect(runs).toBe(3)
+    } finally {
+      await redis.del(...keys, `attention:seen:${orgId}`)
+    }
+  })
+
+  it("a reader back from away has every app recomputed on their feed read; a reader around does not", async () => {
+    const queued: string[] = []
+    AttentionStoreTestAccess.setWakeDeps({
+      ...deps,
+      ensureOrgApps: async () => {},
+      now: () => Date.UTC(2026, 0, 1, 12, 0, 1),
+      enqueue: async (job) => {
+        queued.push(job.payload.app)
+      },
+    })
+    try {
+      await redis.del(`attention:seen:${orgId}`)
+      await refreshAppAttention(orgId, APP, { ...deps, userIds: [userId] })
+      const read = () =>
+        withRlsContext(
+          { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: {} },
+          (tx) => readStoredAttention(tx, orgId, userId, [APP]),
+        )
+      // Their list is stored, but they were away: it is recomputed.
+      expect((await read()).has(APP)).toBe(true)
+      await attentionRefreshesSettled()
+      expect(queued).toEqual([APP])
+      // Around now: the stored list is read as it is.
+      AttentionStoreTestAccess.setWakeDeps({
+        ...deps,
+        ensureOrgApps: async () => {},
+        now: () => Date.UTC(2026, 0, 1, 12, 0, 31),
+        enqueue: async (job) => {
+          queued.push(job.payload.app)
+        },
+      })
+      await read()
+      await attentionRefreshesSettled()
+      expect(queued).toEqual([APP])
+    } finally {
+      await redis.del(`attention:seen:${orgId}`)
+      AttentionStoreTestAccess.setWakeDeps({
+        ...deps,
+        ensureOrgApps: async () => {},
+        enqueue: (job) => processAttentionRefreshJob(job.payload),
+        markReader: async () => false,
+      })
+    }
+  })
+
+  it("an org runs at most its per-minute cap of provider runs; the rest move to the next minute", async () => {
+    const people = fiftyPeople()
+    const now = Date.UTC(2026, 0, 1, 13, 45, 10)
+    const deferred: AttentionRefreshJob[] = []
+    let runs = 0
+    const jobDeps = {
+      ...deps,
+      ensureOrgApps: async () => {},
+      now: () => now,
+      takeOrgBudget: async () => true,
+      listActiveUsers: async () => people,
+      invoke: async (_reg: unknown, appName: string) => {
+        if (appName === APP) runs++
+        return []
+      },
+      enqueue: async (job: AttentionRefreshJob) => {
+        deferred.push(job)
+      },
+    }
+    const fits = Math.floor(ORG_PROVIDER_RUNS_PER_MINUTE / people.length)
+    for (let i = 0; i < fits + 2; i++) {
+      await processAttentionRefreshJob({ org: orgId, app: APP }, jobDeps)
+    }
+    expect(runs).toBe(fits * people.length)
+    expect(deferred.length).toBe(2)
+    expect(deferred[0]?.delay).toBe(Math.ceil(now / 60_000) * 60_000 - now)
   })
 
   it("an org runs at most its per-minute cap of refreshes; the rest move to the next minute", async () => {

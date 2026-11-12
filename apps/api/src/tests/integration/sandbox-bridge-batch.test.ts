@@ -10,7 +10,9 @@
 //     the next batch takes the number the failed one would have had;
 //   - the allocator steps past numbers rows written another way already hold;
 //   - batches running at the same time never share a number and, with some of
-//     them failing, still leave no gap: the committed numbers are exactly 1..n.
+//     them failing, still leave no gap: the committed numbers are exactly 1..n;
+//   - `append` / `merge` add to json fields of the row as it is at commit, so a
+//     write made between the app's read and the batch is kept.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { RlsClient } from "~/db"
 import { sql } from "~/db/connection"
@@ -34,7 +36,13 @@ const manifest = {
   scopes: ["batch-bridge:docs:read", "batch-bridge:doc_lines:read"],
   schema: {
     docs: {
-      fields: { series: "string", number: "string?", number_int: "integer?" },
+      fields: {
+        series: "string",
+        number: "string?",
+        number_int: "integer?",
+        log: { type: "json", required: false },
+        refs: { type: "json", required: false },
+      },
       constraints: {
         unique: [{ columns: ["series", "number_int"], where: "number_int IS NOT NULL" }],
       },
@@ -191,5 +199,49 @@ describe("ctx.db.batch", () => {
       `SELECT count(*)::int AS n FROM "${SCHEMA}".docs WHERE series = 'E'`,
     )
     expect(all[0]?.n).toBe(0)
+  })
+
+  it("append and merge keep what another writer added between the read and the batch", async () => {
+    const created = JSON.parse(
+      await bridge().db_batch(
+        JSON.stringify({
+          ops: [
+            {
+              insert: "docs",
+              as: "d",
+              data: { series: "F", log: [{ e: "issued" }], refs: { a: 1 } },
+            },
+          ],
+        }),
+      ),
+    ) as { rows: { d: { id: string } } }
+    const id = created.rows.d.id
+    // Another writer appends after our read.
+    await bridge().db_update(
+      "docs",
+      id,
+      JSON.stringify({ log: [{ e: "issued" }, { e: "refunded" }] }),
+    )
+    await bridge().db_batch(
+      JSON.stringify({
+        ops: [
+          { update: "docs", id, append: { log: [{ e: "linked" }] }, merge: { refs: { b: 2 } } },
+        ],
+      }),
+    )
+    const rows = await sql.unsafe(`SELECT log, refs FROM "${SCHEMA}".docs WHERE id = $1`, [id])
+    expect(rows[0]?.log).toEqual([{ e: "issued" }, { e: "refunded" }, { e: "linked" }])
+    expect(rows[0]?.refs).toEqual({ a: 1, b: 2 })
+    // A null column starts empty.
+    const bare = JSON.parse(
+      await bridge().db_batch(
+        JSON.stringify({ ops: [{ insert: "docs", as: "d", data: { series: "F" } }] }),
+      ),
+    ) as { rows: { d: { id: string } } }
+    await bridge().db_batch(
+      JSON.stringify({ ops: [{ update: "docs", id: bare.rows.d.id, append: { log: [1] } }] }),
+    )
+    const b = await sql.unsafe(`SELECT log FROM "${SCHEMA}".docs WHERE id = $1`, [bare.rows.d.id])
+    expect(b[0]?.log).toEqual([1])
   })
 })

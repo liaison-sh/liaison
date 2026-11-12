@@ -999,6 +999,26 @@ const MessageRow: Component<MessageRowProps> = (props) => {
       </div>
     )
   }
+  // The reminder sweep's line in a person's conversation with their agent
+  // (approvals/reminders.ts): the trigger of the agent's reminder turn, which
+  // follows it. The sweep stamps the PERSON's id on the row, so it drew as
+  // their own post ("Reminder: 1 of your requests ...") under their name. The
+  // reminder itself is the agent's reply; this is the platform's line.
+  if (
+    props.message.authorType === "system" &&
+    props.message.metadata?.type === "approval-reminder"
+  ) {
+    return (
+      <div
+        data-testid="message-row-system-line"
+        data-message-id={props.message.id}
+        data-system-line="approval-reminder"
+        class="mt-2 flex justify-center px-1 py-0.5"
+      >
+        <span class="text-[11.5px] text-text-tertiary">{props.message.content}</span>
+      </div>
+    )
+  }
   // A routine's run in the conversation it posts to: one calm line, "is
   // running" while the tick works, settled in place when it ends. Its owner
   // gets the link to the full run (the output thread seats them).

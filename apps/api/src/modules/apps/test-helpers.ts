@@ -90,6 +90,7 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     batch: async (spec) =>
       (await applyMockBatch(
         {
+          findOne: (e, id) => db.findOne(e, id),
           insert: (e, d) => db.insert(e, d),
           update: (e, id, d) => db.update(e, id, d),
           delete: (e, id) => db.delete(e, id),
@@ -210,13 +211,15 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
         })
       },
     },
-    // A page link names the page and its params; no ticket is stored.
+    // A page handle names the page and its params; nothing is stored.
     pages: {
       link: async (page, params) => ({
-        url: `https://liaison.test/api/app-pages/test-${page}?${new URLSearchParams(
+        handle: `lpg_test-${page}-${new URLSearchParams(
           Object.entries(params ?? {}).map(([k, v]): [string, string] => [k, String(v)]),
         )}`,
-        expiresInSeconds: 900,
+        app: "test-app",
+        page,
+        expiresInSeconds: 300,
       }),
     },
     // No shared limiter in a unit test: a pause is answered as set, nothing waits.

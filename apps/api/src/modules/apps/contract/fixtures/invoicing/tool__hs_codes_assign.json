@@ -1,0 +1,42 @@
+{
+  "entry": "tool:hs_codes_assign",
+  "params": {
+    "product_source": "manual",
+    "external_id": "SKU-MON-2",
+    "hs_code": "851822",
+    "country_of_origin": "FR",
+    "customs_description": "Loudspeakers"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "product_customs_overlay",
+        "{\"where\":{\"source\":\"manual\",\"external_id\":\"SKU-MON-2\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "product_customs_overlay",
+        "{\"source\":\"manual\",\"external_id\":\"SKU-MON-2\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\",\"updated_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\"}"
+      ],
+      "reply": "{\"id\":\"5ebb7d1f-c536-4001-9c6d-855d7b249e64\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:24.909071+00\",\"updated_at\":\"2026-11-12 09:09:24.909071+00\",\"source\":\"manual\",\"external_id\":\"SKU-MON-2\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\",\"updated_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["hs_code_library", "{\"where\":{\"code\":\"851822\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"a66665c8-c60a-474e-9095-e4b415112766\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.179582+00\",\"updated_at\":\"2026-11-12 09:09:21.179582+00\",\"code\":\"851822\",\"description\":\"Multiple loudspeakers, mounted in one enclosure\",\"last_used_at\":null}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "hs_code_library",
+        "a66665c8-c60a-474e-9095-e4b415112766",
+        "{\"description\":\"Loudspeakers\",\"last_used_at\":\"2026-01-01T00:00:00.000Z\"}"
+      ]
+    }
+  ]
+}

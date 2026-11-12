@@ -23,6 +23,7 @@ import { appBridgeManifest } from "~/modules/apps/app-registries"
 import { type AppSurface, appSurfaceRegistry } from "~/modules/apps/app-surface"
 import { createParamValidatorCache } from "~/modules/apps/param-validator"
 import { runLimits } from "~/modules/apps/run-limits"
+import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 
 const compiled = createParamValidatorCache({
   allErrors: true,
@@ -79,29 +80,50 @@ export type ProvisionExecutor = (args: {
   orgId: string
   exportName: string
   params: unknown
+  /** A dry run or a verify: the bridge refuses every write. */
+  readOnly: boolean
 }) => Promise<unknown>
+
+/**
+ * The bridge a provisioning handler runs on: the app itself, under its own
+ * scopes, one short transaction per call. `readOnly` (a dry run, `config
+ * verify`) marks it a read-only run, so the bridge refuses every write: "writes
+ * nothing" is enforced, not a promise of the handler.
+ */
+export async function provisionBridge(
+  appName: string,
+  orgId: string,
+  readOnly: boolean,
+): Promise<AppBridge> {
+  const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
+  const manifest = appBridgeManifest(orgId, appName) ?? { name: appName }
+  const session = createRlsSession(
+    { actorType: "system", orgId, purpose: "job", scopes: [`${appName}:*`] },
+    { pool: "jobs" },
+  )
+  return createSessionRpcBridge(
+    appName,
+    `system:${appName}`,
+    orgId,
+    session,
+    manifest as Parameters<typeof createSessionRpcBridge>[4],
+    undefined,
+    "system",
+    undefined,
+    readOnly ? { readOnlyRunOverride: true } : undefined,
+  )
+}
 
 const defaultProvisionExecutor: ProvisionExecutor = async ({
   surface,
   orgId,
   exportName,
   params,
+  readOnly,
 }) => {
-  const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
   const { runApp } = await import("~/modules/apps/sandbox/run-app")
   const appName = surface.appName
-  const manifest = appBridgeManifest(orgId, appName) ?? { name: appName }
-  const session = createRlsSession(
-    { actorType: "system", orgId, purpose: "job", scopes: [`${appName}:*`] },
-    { pool: "jobs" },
-  )
-  const bridge = createSessionRpcBridge(
-    appName,
-    `system:${appName}`,
-    orgId,
-    session,
-    manifest as Parameters<typeof createSessionRpcBridge>[4],
-  )
+  const bridge = await provisionBridge(appName, orgId, readOnly)
   return runApp({
     trusted: surface.trusted,
     appName,
@@ -150,6 +172,7 @@ export async function runAppProvisioning(input: {
     exportName: surface.provisioning.handler,
     orgId: input.orgId,
     params: { config: input.config, dryRun: input.dryRun },
+    readOnly: input.dryRun,
   })
   const changed = stringList((result as { changed?: unknown } | null)?.changed)
   return { changed }
@@ -168,6 +191,7 @@ export async function runAppProvisioningVerify(input: {
     exportName: surface.provisioning.verify,
     orgId: input.orgId,
     params: { config: input.config },
+    readOnly: true,
   })) as { ok?: unknown; problems?: unknown; identity?: unknown } | null
   return {
     ok: result?.ok === true,

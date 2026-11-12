@@ -281,6 +281,29 @@ describe("MessageRow — a refused agent turn is said once, by the system", () =
   })
 })
 
+describe("MessageRow — an approval reminder is the system's line, not the person's", () => {
+  // The reminder sweep stamps the person's id on its line in their DM with
+  // their agent, so it drew as a post by the person themselves.
+  it("renders the reminder line muted, with no byline", () => {
+    const { getByTestId, queryByTestId, container } = renderRow(
+      makeMessage({
+        id: "sys-reminder",
+        authorType: "system",
+        authorName: "Walk Tester",
+        content: "Reminder: 1 of your requests has waited more than a day for a decision.",
+        metadata: { type: "approval-reminder" },
+      }),
+    )
+    const line = getByTestId("message-row-system-line")
+    expect(line.getAttribute("data-system-line")).toBe("approval-reminder")
+    expect(line.textContent).toBe(
+      "Reminder: 1 of your requests has waited more than a day for a decision.",
+    )
+    expect(queryByTestId("message-row")).toBeNull()
+    expect(container.textContent).not.toContain("Walk Tester")
+  })
+})
+
 describe("MessageRow — a node answer posted back to the asking thread (D22)", () => {
   // Walk 2026-10-12 (N8): the asker got a link into the node owner's own
   // thread with the agent, which only the owner can open. The answer itself is

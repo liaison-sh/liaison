@@ -8515,6 +8515,16 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
     expect((await settingsIssuerProfileDelete(admin.ctx, { id: "iss-1" })).status).toBe("completed")
   })
 
+  test("a profile that issued documents is refused, typed, before the database would refuse it", async () => {
+    const admin = makeCtx({ scopes: ["invoicing:issuer:admin"] })
+    await admin.db.insert("documents", { type: "invoice", status: "issued", issuer_profile_id: "iss-1", number: "INV-2026-0001" })
+    const pf = await settingsIssuerProfileWritePreflight(admin.ctx, "delete", { id: "iss-1" })
+    expect("error" in pf && pf.error.code).toBe("issuer_in_use")
+    const del = await settingsIssuerProfileDelete(admin.ctx, { id: "iss-1" })
+    expect(del.status === "error" && del.error.code).toBe("issuer_in_use")
+    expect(admin.db.__all("issuer_profiles").some((r) => r.id === "iss-1")).toBe(true)
+  })
+
   test("the approval card lists each changed column as old -> new", async () => {
     const s = await summarizeIssuerProfileChange(
       { id: "iss-1", iban: "NEW-IBAN", country: "FR" },

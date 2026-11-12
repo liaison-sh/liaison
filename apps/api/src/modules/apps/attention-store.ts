@@ -10,8 +10,13 @@
 // code (attention-aggregator.ts).
 //
 // The platform runs the provider when what it lists can have changed, as each
-// person who may see the app's items, and stores each person's whole list
-// (replacing the last one, so an item the provider no longer lists is cleared):
+// person who may see the app's items AND is around (`attentionAudience`: online
+// now, or read their feed within SEEN_WINDOW_MS), and stores each person's whole
+// list (replacing the last one, so an item the provider no longer lists is
+// cleared). A person who is away is not recomputed on every wake: when they come
+// back, their first feed read finds them not seen and queues a refresh of the
+// org's apps, which now includes them. So a refresh costs one run per person
+// around, not one per member of the org.
 //   - after a run of the app that may have written (`onRunSettled`): an event
 //     handler, a job, a webhook, a poll, a tool not declared read-only. A run
 //     that only reads (a read-only tool, a search, an export, a preview, a
@@ -31,7 +36,8 @@
 // the job is due at the end of the interval the wake fell in, so it reads
 // every write of that interval, and an (org, app) refreshes at most once per
 // interval however busy it is. An org runs at most ORG_REFRESHES_PER_MINUTE
-// refreshes a minute, all its apps together; the rest move to the next minute.
+// refreshes and ORG_PROVIDER_RUNS_PER_MINUTE provider runs (one per person of
+// a refresh) a minute, all its apps together; the rest move to the next minute.
 //
 // Two refreshes of one (org, app) may still overlap (two processes, a slow
 // refresh and the next interval's): each person's list is written with the
@@ -50,6 +56,7 @@ import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { type AppEvent, onEvent } from "~/infra/events/event-bus"
 import { enqueueAppJob, registerJobWorker } from "~/infra/jobs/jobs"
+import { bounded } from "~/infra/websocket-state/redis"
 import { appsLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
@@ -84,6 +91,14 @@ export const PROVIDER_ITEM_CAP = 200
 export const REFRESH_MIN_INTERVAL_MS = 15_000
 /** Refreshes one org runs per minute at most, all its apps together. */
 export const ORG_REFRESHES_PER_MINUTE = 12
+/** Provider runs (one per person of a refresh) one org runs per minute at most. */
+export const ORG_PROVIDER_RUNS_PER_MINUTE = 120
+/** A person who read their feed this recently is refreshed even when not online. */
+export const SEEN_WINDOW_MS = 30 * 60_000
+/** How long a feed read or a refresh waits on Redis for the audience. */
+const REDIS_ANSWER_MS = 2_000
+const seenKey = (orgId: string) => `attention:seen:${orgId}`
+const presenceKey = (orgId: string, userId: string) => `presence:${orgId}:${userId}`
 /** The attention queue (`app-attention-refresh`): its own worker, never the cron class. */
 export const ATTENTION_REFRESH_QUEUE_APP = "attention-refresh"
 export const ATTENTION_REFRESH_JOB = "attention-refresh"
@@ -227,6 +242,7 @@ export function normalizeProviderItems(raw: unknown): {
 }
 
 export interface AttentionStoreDeps {
+  /** The people a refresh runs for (default: the org's active members who are around). */
   listActiveUsers: (orgId: string) => Promise<string[]>
   loadPersonActor: (orgId: string, userId: string) => Promise<UserContext>
   invoke: (
@@ -258,8 +274,69 @@ async function defaultLoadPersonActor(orgId: string, userId: string): Promise<Us
   return { actorType: "user", userId, orgId, scopes, dimensionGrants }
 }
 
+/**
+ * Of `active`, the people around: online now (a live presence entry that is not
+ * "offline") or seen reading their feed within SEEN_WINDOW_MS. Redis unanswered:
+ * everyone (a refresh is never skipped for want of an answer).
+ */
+export async function attentionAudience(
+  orgId: string,
+  active: string[],
+  now = Date.now(),
+): Promise<string[]> {
+  if (active.length === 0) return []
+  try {
+    const [presence, seen] = await bounded(
+      Promise.all([
+        redis.mget(...active.map((u) => presenceKey(orgId, u))),
+        redis.zrangebyscore(seenKey(orgId), now - SEEN_WINDOW_MS, "+inf"),
+      ]),
+      REDIS_ANSWER_MS,
+      "attention audience",
+    )
+    const recent = new Set(seen)
+    return active.filter((u, i) => {
+      const status = presence[i]
+      return (typeof status === "string" && status !== "offline") || recent.has(u)
+    })
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention audience unavailable; refreshing everyone")
+    return active
+  }
+}
+
+/**
+ * The reader read their feed: they are around. Answers whether they were away
+ * (not seen within SEEN_WINDOW_MS), so their stored lists may be stale.
+ */
+export async function markAttentionReader(
+  orgId: string,
+  userId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const key = seenKey(orgId)
+  try {
+    const res = await bounded(
+      redis
+        .multi()
+        .zscore(key, userId)
+        .zadd(key, now, userId)
+        .zremrangebyscore(key, "-inf", now - SEEN_WINDOW_MS)
+        .expire(key, Math.ceil((2 * SEEN_WINDOW_MS) / 1000))
+        .exec(),
+      REDIS_ANSWER_MS,
+      "attention reader mark",
+    )
+    const last = Number(res?.[0]?.[1] ?? Number.NaN)
+    return !Number.isFinite(last) || last < now - SEEN_WINDOW_MS
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention reader mark unavailable")
+    return false
+  }
+}
+
 const defaultDeps: AttentionStoreDeps = {
-  listActiveUsers: defaultListActiveUsers,
+  listActiveUsers: async (orgId) => attentionAudience(orgId, await defaultListActiveUsers(orgId)),
   loadPersonActor: defaultLoadPersonActor,
   invoke: invokeAppProvider,
   notify: (orgId, userId, appName) =>
@@ -482,6 +559,10 @@ type WakeDeps = Partial<AttentionStoreDeps> & {
   now?: () => number
   /** Count one refresh against the org's minute; false once the cap is spent. */
   takeOrgBudget?: (orgId: string, now: number) => Promise<boolean>
+  /** Count `runs` provider runs against the org's minute; false once the cap is spent. */
+  takeOrgRunBudget?: (orgId: string, runs: number, now: number) => Promise<boolean>
+  /** Mark a feed reader seen; true when they were away (default: Redis). */
+  markReader?: (orgId: string, userId: string) => Promise<boolean>
 }
 
 /** What a woken refresh runs with: the defaults, unless a test set its doubles. */
@@ -517,6 +598,26 @@ async function defaultTakeOrgBudget(orgId: string, now: number): Promise<boolean
     return count <= ORG_REFRESHES_PER_MINUTE
   } catch (err) {
     log.warn({ err, orgId }, "Attention refresh budget unavailable; refreshing")
+    return true
+  }
+}
+
+/**
+ * INCRBY of the org's provider-run minute counter. A refresh larger than the
+ * whole cap still runs as the minute's first (else it would never run); a
+ * refused one gives its count back. A Redis failure lets the refresh run.
+ */
+async function defaultTakeOrgRunBudget(orgId: string, runs: number, now: number): Promise<boolean> {
+  if (runs <= 0) return true
+  const key = `attention:run-budget:${orgId}:${Math.floor(now / 60_000)}`
+  try {
+    const res = await redis.multi().incrby(key, runs).expire(key, 120).exec()
+    const total = Number(res?.[0]?.[1] ?? 0)
+    if (total <= ORG_PROVIDER_RUNS_PER_MINUTE || total === runs) return true
+    await redis.decrby(key, runs)
+    return false
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention run budget unavailable; refreshing")
     return true
   }
 }
@@ -599,23 +700,29 @@ export async function processAttentionRefreshJob(
   // A wake from now on falls after this run started: it queues a new job.
   queuedInterval.delete(keyOf(orgId, appName))
   const now = (deps.now ?? Date.now)()
-  if (!(await (deps.takeOrgBudget ?? defaultTakeOrgBudget)(orgId, now))) {
+  const nextMinute = async (): Promise<void> => {
     const minute = Math.floor(now / 60_000) + 1
     await (deps.enqueue ?? defaultEnqueue)({
       jobId: jobIdOf(orgId, appName, `m${minute}`),
       delay: minute * 60_000 - now,
       payload: { org: orgId, app: appName },
     })
-    return
   }
+  if (!(await (deps.takeOrgBudget ?? defaultTakeOrgBudget)(orgId, now))) return nextMinute()
   if (deps.ensureOrgApps) await deps.ensureOrgApps(orgId)
   else {
     const { awaitOrgApps } = await import("~/modules/apps/init")
     await awaitOrgApps(orgId)
   }
+  if (!providerOf(orgId, appName)) return
+  // The people around, counted against the org's provider runs of the minute.
+  const userIds = await (deps.listActiveUsers ?? defaultDeps.listActiveUsers)(orgId)
+  if (!(await (deps.takeOrgRunBudget ?? defaultTakeOrgRunBudget)(orgId, userIds.length, now))) {
+    return nextMinute()
+  }
   // An org being moved is left alone (the transfer hold keys on `orgId`, which
   // this payload does not carry): its new home recomputes on its first read.
-  await writeUnlessMoving(orgId, () => refreshAppAttention(orgId, appName, deps))
+  await writeUnlessMoving(orgId, () => refreshAppAttention(orgId, appName, { ...deps, userIds }))
 }
 
 /** Resolves once no enqueue (or, under a test double, no refresh) is in flight. */
@@ -736,8 +843,15 @@ export async function readStoredAttention(
       error: (r.error as StoredAttention["error"]) ?? null,
     })
   }
-  // Queued, never run here: the read runs no app code.
+  // Queued, never run here: the read runs no app code. A reader back from
+  // away was left out of the refreshes meanwhile: every app is recomputed.
+  // The mark is not awaited here: the read may hold a transaction.
   for (const app of apps) if (!out.has(app)) scheduleAttentionRefresh(orgId, app)
+  track(
+    (wakeDeps.markReader ?? markAttentionReader)(orgId, userId).then((returning) => {
+      if (returning) for (const app of out.keys()) scheduleAttentionRefresh(orgId, app)
+    }),
+  )
   return out
 }
 

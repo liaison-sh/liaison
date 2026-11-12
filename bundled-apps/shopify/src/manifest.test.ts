@@ -947,7 +947,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.19: the branch's 0.4.18 merged with main's 0.4.16 to 0.4.18 (B2B drafts and catalogs).
     // 0.4.20: above main's 0.4.19 (references to the new repository), merged.
     // 0.4.21: above main's 0.4.20 (b2bOrderTags; companies_search returns catalogs), merged.
-    expect(m.version).toBe("0.4.21")
+    // 0.4.22: the branch's 0.4.21 and main's 0.4.21 (contract fixtures, resumable backfill), merged.
+    expect(m.version).toBe("0.4.22")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

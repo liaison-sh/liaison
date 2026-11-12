@@ -1393,6 +1393,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // and never inserts (scope taint refuses a read that writes); the hourly scan
             // job persists the heal. Mock-driven ctx, no Postgres/shop creds.
             "src/lib/get-client.test.ts",
+            "src/lib/run-identity.test.ts",
             "src/handlers/scan-unfulfilled.test.ts",
             // Webhook upstream probe: what the kernel's silence signal trusts. Mock ctx.
             "src/handlers/probe-webhook-upstream.test.ts",

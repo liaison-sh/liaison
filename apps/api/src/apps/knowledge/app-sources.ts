@@ -651,7 +651,8 @@ export async function runAppSourceSyncJob(
   opts: {
     enqueueContinuation: (sourceId: string, generation: number) => Promise<void>
     setUpAppSourceOrg?: (orgId: string) => Promise<void>
-    ownerScopes?: (orgId: string, userId: string) => Promise<readonly string[]>
+    /** The owner's scopes; null when the owner is no longer an active member. */
+    ownerScopes?: (orgId: string, userId: string) => Promise<readonly string[] | null>
     dispatch?: AppSourceSyncDeps["dispatch"]
     store?: AppSourceStore
     limits?: Partial<AppSourceLimits>
@@ -677,11 +678,12 @@ export async function runAppSourceSyncJob(
   if (!entry || !decl) {
     return refuse(`${source.appName} no longer offers the knowledge source "${kind}"`)
   }
-  if (decl.readScope) {
-    const scopes = await (opts.ownerScopes ?? loadOwnerScopes)(source.orgId, userId)
-    if (!hasScope(decl.readScope, [...scopes])) {
-      return refuse(`the source owner no longer holds ${decl.readScope}`)
-    }
+  // The owner as they are now: a deactivated owner's sources stop, whatever
+  // roles they still carry.
+  const scopes = await (opts.ownerScopes ?? loadAppSourceOwnerScopes)(source.orgId, userId)
+  if (scopes === null) return refuse("the source owner is no longer an active member")
+  if (decl.readScope && !hasScope(decl.readScope, [...scopes])) {
+    return refuse(`the source owner no longer holds ${decl.readScope}`)
   }
   const dispatch =
     opts.dispatch ??
@@ -694,11 +696,22 @@ export async function runAppSourceSyncJob(
   })
 }
 
-async function loadOwnerScopes(orgId: string, userId: string): Promise<readonly string[]> {
+/** The owner's current scopes, or null when they are not an active member of the org. */
+export async function loadAppSourceOwnerScopes(
+  orgId: string,
+  userId: string,
+): Promise<readonly string[] | null> {
   const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
   const { withSystemDb } = await import("~/db/privileged")
-  const effective = await withSystemDb("knowledge-app-source-owner-scopes", (db) =>
-    loadEffectivePermissions(db, userId, orgId),
-  )
-  return effective.scopes
+  const { users } = await import("~/db/schema/kernel")
+  const { and, eq } = await import("drizzle-orm")
+  return withSystemDb("knowledge-app-source-owner-scopes", async (db) => {
+    const [row] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.orgId, orgId), eq(users.status, "active")))
+      .limit(1)
+    if (!row) return null
+    return (await loadEffectivePermissions(db, userId, orgId)).scopes
+  })
 }

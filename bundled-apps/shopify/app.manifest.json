@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.21",
+  "version": "0.4.22",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -376,6 +376,9 @@
       "allowedDomains": [
         "*.myshopify.com"
       ],
+      "limits": {
+        "concurrency": 4
+      },
       "templateVars": {
         "shop": {
           "lowercase": true,
@@ -3098,6 +3101,7 @@
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_bulk_create",
       "preflight": "discounts_bulk_create_preflight",
+      "pollHandler": "discounts_bulk_create_poll",
       "summarizer": "summarizeDiscountsBulkCreate",
       "gated": true,
       "approvalImpact": "external",

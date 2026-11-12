@@ -1,0 +1,90 @@
+{
+  "entry": "pdf-template:invoicing:credit_note_v1",
+  "params": {
+    "document": {
+      "type": "invoice",
+      "scope": null,
+      "number": "FAC-2026-0001",
+      "issued_at": "2026-11-12",
+      "due_at": "2026-02-15 00:00:00+00",
+      "currency": "EUR",
+      "subtotal_minor": "98880",
+      "tax_total_minor": "19776",
+      "grand_total_minor": "118656",
+      "tax_treatment": "eu_domestic",
+      "incoterm": "DAP",
+      "payment_status": null,
+      "paid_at": null,
+      "original_invoice_number": null,
+      "original_invoice_date": null,
+      "reason": null,
+      "operation_label": "Livraison de biens",
+      "vat_on_debits": false,
+      "shopify_order_number": null,
+      "po_number": null,
+      "customer_reference": null,
+      "notes": "Delivery by appointment"
+    },
+    "issuer": {
+      "legal_name": "Resonance Atelier SARL",
+      "country": "FR",
+      "vat_id": "FR86902000009",
+      "address": "1 rue de Test, 75001 Paris, France",
+      "iban": "FR7630006000011234567890189",
+      "swift_bic": "AGRIFRPP",
+      "bank_name": "Banque Exemple Paris",
+      "default_language": "fr",
+      "logo_file_id": null,
+      "siren": "902000009",
+      "legal_form": null,
+      "share_capital": null,
+      "rcs_city": null
+    },
+    "counterparty": {
+      "legal_name": "Atelier Lumen SAS",
+      "country": "FR",
+      "vat_id": "FR40900000001",
+      "address": "12 rue des Lilas, 69003 Lyon, France",
+      "shipping_address": null,
+      "shipping_name": null,
+      "email": "person1@example.com",
+      "siren": null
+    },
+    "line_items": [
+      {
+        "position": 1,
+        "description": "Studio monitor, pair",
+        "quantity": "2.000",
+        "unit_price_minor": "41940",
+        "discount_minor": "0",
+        "line_kind": "goods",
+        "tax_rate_bp": 2000,
+        "subtotal_minor": "83880",
+        "tax_minor": "16776",
+        "total_minor": "100656",
+        "hs_code": "851822",
+        "country_of_origin": "FR",
+        "customs_description": "Loudspeakers"
+      },
+      {
+        "position": 2,
+        "description": "Installation",
+        "quantity": "1.000",
+        "unit_price_minor": "15000",
+        "discount_minor": "0",
+        "line_kind": "goods",
+        "tax_rate_bp": 2000,
+        "subtotal_minor": "15000",
+        "tax_minor": "3000",
+        "total_minor": "18000",
+        "hs_code": null,
+        "country_of_origin": null,
+        "customs_description": null
+      }
+    ],
+    "legal_mention": "",
+    "requires_hs_code": false
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": []
+}

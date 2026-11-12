@@ -31,7 +31,7 @@ Switch between **List view** and **Kanban view**. On the board, drag a card to a
 
 ## Work on a task
 
-Open a task to set its **Assignee** (or **Assign to me**), **Due date**, **Priority**, **Release** (**Add release**) and whether it is **Blocked**. A task can have subtasks.
+Open a task to set its **Assignee** (or **Assign to me**), **Due date**, **Priority**, **Release** (**Add release**) and whether it is **Blocked**. A task shows its status by name and its due date in one date style. A task can have subtasks.
 
 - **Discussion**: write in **Add a comment… (Cmd+Enter to send)** and click **Comment**. **Promote to thread list** adds the task's discussion to your [chat](chat.md) sidebar.
   Type `@` to bring an agent into the discussion. Its answer shows there as it works, the same as in a chat: **Working** while it runs, each tool it uses, and any approval it asks for, inline.

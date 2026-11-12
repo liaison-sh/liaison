@@ -3,6 +3,7 @@ import { type Component, createSignal, For, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { log as logger } from "~/lib/logger"
 import { handleTaskEvent, type ProjectStatus, type Task } from "~/modules/projects/project-store"
+import { prettyStatus } from "~/modules/projects/status-label"
 
 interface StatusPillPopoverProps {
   api: ApiClient
@@ -55,7 +56,7 @@ export const StatusPillPopover: Component<StatusPillPopoverProps> = (props) => {
           class="h-1.5 w-1.5 rounded-full"
           style={{ background: props.current?.color ?? "var(--color-text-tertiary)" }}
         />
-        {props.current?.label ?? "-"}
+        {props.current ? prettyStatus(props.current.label) : "-"}
       </button>
       <Show when={open() && !props.disabled}>
         <div
@@ -79,7 +80,7 @@ export const StatusPillPopover: Component<StatusPillPopoverProps> = (props) => {
                   class="h-1.5 w-1.5 rounded-full"
                   style={{ background: s.color ?? "var(--color-text-tertiary)" }}
                 />
-                {s.label}
+                {prettyStatus(s.label)}
               </button>
             )}
           </For>

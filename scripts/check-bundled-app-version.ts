@@ -23,6 +23,13 @@
 // be made (a file new or deleted since the base that it needs, a JSX file of a
 // UI bundle), the app counts as changed.
 //
+// A change to the app's own files is weighed the same way: the app is frozen as
+// it is and with those files at their base contents, and only a package that
+// differs asks for a bump (a manifest change always does, and so does a file
+// the package copies verbatim, new or deleted since the base). Two pull requests
+// that each touch an app without changing what ships then never both raise its
+// version, the line they used to collide on.
+//
 // The base is `--base`, else `origin/$GITHUB_BASE_REF`; without either (a push to
 // main) the check is skipped. Paths the source digest leaves out
 // (scripts/app-signing/source-digest.ts: build output, installs, logs) and test
@@ -138,6 +145,41 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * A changed file is an app's own file under `bundled-apps/<app>/`, or a workspace package
  * file (`packages/...`) whose change reaches the app's package (see the header).
  */
+/** Files the bundlers read (the overlay serves them); a package file of another kind is a raw copy. */
+const BUNDLED = /\.(?:[cm]?[jt]sx?|json)$/
+
+/**
+ * Whether the app's package is byte for byte the same with its own changed files (relative to
+ * `bundled-apps/<app>/`) at their base contents. A manifest change, a file new or deleted since
+ * the base, a file the package copies verbatim (README.md, CHANGELOG.md, LICENSE), or a package
+ * that cannot be made either way counts as a change.
+ */
+async function ownChangeKeepsPackage(
+  root: string,
+  base: string,
+  app: string,
+  files: readonly string[],
+  freeze: FreezePackage,
+): Promise<boolean> {
+  if (files.includes("app.manifest.json")) return false
+  const before = new Map<string, string>()
+  for (const file of files) {
+    const path = `bundled-apps/${app}/${file}`
+    if (!existsSync(join(root, path))) return false
+    const r = git(root, ["show", `${base}:${path}`])
+    if (!r.ok) return false
+    before.set(path, r.out)
+  }
+  try {
+    const now = await freeze(root, app)
+    const raw = [...before.keys()].filter((p) => now.sources.includes(p) && !BUNDLED.test(p))
+    if (raw.length > 0) return false
+    return sameBytes(now.bytes, (await freeze(root, app, before)).bytes)
+  } catch {
+    return false
+  }
+}
+
 export async function checkBundledAppVersions(
   root: string,
   base: string,
@@ -153,6 +195,8 @@ export async function checkBundledAppVersions(
     changed.set(app, list)
   }
   const shared = new Set<string>()
+  /** Apps a shared change reached (their bytes already differ). */
+  const sharedReached = new Set<string>()
   for (const raw of `${committed.out}\n${local.out}`.split("\n")) {
     const path = raw.trim()
     const m = /^bundled-apps\/([^/]+)\/(.+)$/.exec(path)
@@ -187,7 +231,10 @@ export async function checkBundledAppVersions(
       } catch {
         // The package cannot be made with the base contents: count it as changed.
       }
-      if (differs) for (const source of reached) add(app, source)
+      if (differs) {
+        sharedReached.add(app)
+        for (const source of reached) add(app, source)
+      }
     }
   }
   const issues: VersionIssue[] = []
@@ -196,7 +243,13 @@ export async function checkBundledAppVersions(
     if (!before) continue // a new app
     const after = versionAt(root, null, app)
     if (after === null) continue // the app was removed
-    if (!newer(after, before)) issues.push({ app, base: before, head: after, files })
+    if (newer(after, before)) continue
+    // Only the app's own files changed: its package decides, like a shared change. The same
+    // bytes with the base contents of those files (a comment, a docs line, a file the bundler
+    // drops) ask for no bump, so concurrent PRs do not collide on the version line for nothing.
+    if (!sharedReached.has(app) && (await ownChangeKeepsPackage(root, base, app, files, freeze)))
+      continue
+    issues.push({ app, base: before, head: after, files })
   }
   return issues
 }

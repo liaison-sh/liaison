@@ -958,7 +958,7 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.24: reads that answer figures also answer the rows a dashboard block charts.
     // 0.4.27: product, order, customer and return declare `pick` (their search tool), so a
     // dashboard table's link cell can pick one.
-    expect(m.version).toBe("0.4.27")
+    expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

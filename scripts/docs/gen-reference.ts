@@ -1512,6 +1512,18 @@ export function generateAll(root: string = ROOT): Map<string, string> {
 }
 
 /**
+ * The generated pages keyed by their file under docs/ (`reference/env.md`), for a docs build or
+ * check that reads them fresh from the source instead of the committed copies.
+ */
+export function generatedPageOverrides(
+  generated: Map<string, string> = generateAll(ROOT),
+): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [rel, content] of generated) out.set(rel.replace(/^docs\//, ""), content)
+  return out
+}
+
+/**
  * Write `files` under `root`, or with `check` only compare. Returns the paths
  * that were (or, with `check`, would be) changed.
  */

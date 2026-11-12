@@ -9,16 +9,31 @@
 //
 // Bundle-pure: only @liaison/app-sdk types may be imported; no `node:*`.
 
-export type AnalyticsMetric = "revenue" | "net_sales" | "aov" | "units" | "orders"
-export type AnalyticsGroupBy = "none" | "sku" | "market"
+export type AnalyticsMetric =
+  | "revenue"
+  | "net_sales"
+  | "aov"
+  | "units"
+  | "orders"
+  | "sessions"
+  | "conversion_rate"
+export type AnalyticsGroupBy = "none" | "sku" | "product" | "market"
+export type AnalyticsTimeGrain = "day" | "week" | "month"
 
 export interface AnalyticsSpec {
   metric: AnalyticsMetric
   period: { since: string; until: string }
   groupBy: AnalyticsGroupBy
+  /** Optional time bucket: one row per bucket (per group when grouped), oldest first. */
+  timeGrain?: AnalyticsTimeGrain | null
 }
 
-export type AnalyticsSpecErrorCode = "INVALID_METRIC" | "INVALID_GROUP_BY" | "INVALID_PERIOD"
+export type AnalyticsSpecErrorCode =
+  | "INVALID_METRIC"
+  | "INVALID_GROUP_BY"
+  | "INVALID_PERIOD"
+  | "INVALID_TIME_GRAIN"
+  | "UNSUPPORTED_COMBINATION"
 
 /**
  * The builder's spec error carries a stable `code` (the security-relevant
@@ -50,12 +65,32 @@ const METRIC_COLUMN: Record<AnalyticsMetric, string> = {
   aov: "average_order_value",
   units: "net_items_sold",
   orders: "orders",
+  sessions: "sessions",
+  conversion_rate: "conversion_rate",
 }
 
+// The ShopifyQL dataset each metric reads. `sessions` (online store visits) has no product or
+// billing-region dimension, so a sessions metric only supports groupBy=none (with or without a
+// timeGrain).
+const METRIC_DATASET: Record<AnalyticsMetric, "sales" | "sessions"> = {
+  revenue: "sales",
+  net_sales: "sales",
+  aov: "sales",
+  units: "sales",
+  orders: "sales",
+  sessions: "sessions",
+  conversion_rate: "sessions",
+}
+
+// `sku` keeps its single dimension when no timeGrain is set (unchanged output for existing
+// callers); with a timeGrain it also carries product_title so a time series can be labelled.
 const GROUP_DIM: Record<Exclude<AnalyticsGroupBy, "none">, string> = {
   sku: "product_variant_sku",
+  product: "product_title",
   market: "billing_region",
 }
+
+const TIME_GRAINS: Record<AnalyticsTimeGrain, true> = { day: true, week: true, month: true }
 
 /**
  * Strict `YYYY-MM-DD` check WITHOUT a regex. The sandboxed bundle runs under
@@ -87,9 +122,24 @@ function isIsoDate(v: unknown): boolean {
  * path throw-free. `buildAnalyticsQuery` (which throws) is the ergonomic form for
  * host-side unit tests.
  */
+// An own-key check, not `in`: `"toString" in METRIC_COLUMN` is true through the prototype, which
+// would let an inherited name past the allowlist.
+function isOwnKey(table: object, key: unknown): boolean {
+  return typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key)
+}
+
+/** True when the metric reads the sessions dataset (no bounded order-tally fallback exists). */
+export function isSessionsMetric(metric: AnalyticsMetric): boolean {
+  return METRIC_DATASET[metric] === "sessions"
+}
+
 export function validateAnalyticsSpec(spec: AnalyticsSpec): AnalyticsSpecErrorCode | null {
-  if (!(spec.metric in METRIC_COLUMN)) return "INVALID_METRIC"
-  if (spec.groupBy !== "none" && !(spec.groupBy in GROUP_DIM)) return "INVALID_GROUP_BY"
+  if (!isOwnKey(METRIC_COLUMN, spec.metric)) return "INVALID_METRIC"
+  if (spec.groupBy !== "none" && !isOwnKey(GROUP_DIM, spec.groupBy)) return "INVALID_GROUP_BY"
+  if (spec.timeGrain != null && !isOwnKey(TIME_GRAINS, spec.timeGrain)) return "INVALID_TIME_GRAIN"
+  if (METRIC_DATASET[spec.metric] === "sessions" && spec.groupBy !== "none") {
+    return "UNSUPPORTED_COMBINATION"
+  }
   if (!isIsoDate(spec.period.since) || !isIsoDate(spec.period.until)) return "INVALID_PERIOD"
   return null
 }
@@ -100,7 +150,17 @@ function assembleAnalyticsQuery(spec: AnalyticsSpec): {
   variables: Record<string, string>
 } {
   const col = METRIC_COLUMN[spec.metric]
-  const groupClause = spec.groupBy === "none" ? "" : ` GROUP BY ${GROUP_DIM[spec.groupBy]}`
+  const dataset = METRIC_DATASET[spec.metric]
+  const grain = spec.timeGrain ?? null
+  const dims: string[] = []
+  if (spec.groupBy !== "none") dims.push(GROUP_DIM[spec.groupBy])
+  if (spec.groupBy === "sku" && grain) dims.push("product_title")
+  // A grouped time series lists the time dimension in GROUP BY too and TIMESERIES fills the empty
+  // buckets (Shopify's documented `GROUP BY <dim>, day ... TIMESERIES day` form).
+  if (dims.length > 0 && grain) dims.push(grain)
+  const groupClause = dims.length > 0 ? ` GROUP BY ${dims.join(", ")}` : ""
+  const timeClause = grain ? ` TIMESERIES ${grain}` : ""
+  const orderClause = grain ? ` ORDER BY ${grain} ASC` : ""
   // ShopifyQL assembled ONLY from allowlisted columns/dims (METRIC_COLUMN / GROUP_DIM) + the two
   // dates, which validateAnalyticsSpec has already `isIsoDate`-checked (strict YYYY-MM-DD, no quotes
   // or special chars) — so direct interpolation into the ShopifyQL string is injection-safe. SINCE/
@@ -109,7 +169,7 @@ function assembleAnalyticsQuery(spec: AnalyticsSpec): {
   // substituted). API 2026-01: `ShopifyqlTableData` exposes `rows` (JSON) + `columns { name }` (NOT
   // `rowData`), and `parseErrors` is a `[String]` scalar list (NOT `{ code, message }` objects).
   const query = `query Analytics {
-    shopifyqlQuery(query: "FROM sales SHOW ${col}${groupClause} SINCE ${spec.period.since} UNTIL ${spec.period.until}") {
+    shopifyqlQuery(query: "FROM ${dataset} SHOW ${col}${groupClause}${timeClause} SINCE ${spec.period.since} UNTIL ${spec.period.until}${orderClause}") {
       tableData { rows columns { name } } parseErrors
     }
   }`
@@ -153,5 +213,9 @@ function analyticsSpecMessage(code: AnalyticsSpecErrorCode, spec: AnalyticsSpec)
       return `groupBy ${spec.groupBy} not allowed`
     case "INVALID_PERIOD":
       return "period dates must be YYYY-MM-DD"
+    case "INVALID_TIME_GRAIN":
+      return `timeGrain ${spec.timeGrain} not allowed: use day, week or month`
+    case "UNSUPPORTED_COMBINATION":
+      return `metric ${spec.metric} supports groupBy none only (optionally with timeGrain day, week or month); groupBy ${spec.groupBy} needs a sales metric (revenue, net_sales, aov, units, orders)`
   }
 }

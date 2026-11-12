@@ -2245,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "liaison-desktop"
-version = "0.1.45"
+version = "0.1.46"
 dependencies = [
  "base64 0.22.1",
  "block2",

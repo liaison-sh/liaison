@@ -46,6 +46,7 @@ import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
 import { isFullyCredited } from "../mutations"
+import { isUniqueViolation } from "../mutations/quote-proforma-po"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 
 export interface OrderPaidPayload {
@@ -572,6 +573,19 @@ async function parkForTaxReview(
   return { status: "deferred", deferred_id: def.id, reason: park_.status }
 }
 
+/**
+ * The database key of the invoice this handler issues for one scope of one order
+ * (`documents.external_ref`, unique). The read-then-issue check above is not atomic: an order
+ * event delivered twice (a webhook re-emitted after a failed ledger write) can run twice at once,
+ * both read "no document", and both issue. The unique key makes the second issuing commit fail
+ * (its number is not consumed: the number commits in the same batch), and that run skips the
+ * scope. Invoices for the same order issued another way (a re-issue after an order edit, a
+ * manual invoice) carry no such key, so they are never blocked by it.
+ */
+export function orderInvoiceRef(shopifyOrderId: string, scope: "goods" | "software"): string {
+  return `shopify-order:${shopifyOrderId}:${scope}`
+}
+
 /** True when the live Shopify order was cancelled or its payment voided: there is nothing to
  *  invoice, so the order must neither park nor stay parked. */
 function isCancelledOrder(order: ShopifyOrderFetch | null): boolean {
@@ -912,6 +926,7 @@ export async function onShopifyOrderPaid(
   ): IssueInput => ({
     type: "invoice",
     scope,
+    external_ref: orderInvoiceRef(payload.id, scope),
     issuer: issuerInput,
     counterparty: counterpartyInput,
     settlement: settled ? { paid_at: paidAt, source: "shopify_order_paid" } : null,
@@ -1127,6 +1142,15 @@ export async function onShopifyOrderPaid(
         })
         return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
       }
+      // Another run of the same order event issued this scope between our check and our commit
+      // (orderInvoiceRef): nothing of ours was persisted, and that run delivers its own invoice.
+      if (isUniqueViolation(err)) {
+        const held = await ctx.db.findMany("documents", {
+          where: { external_ref: orderInvoiceRef(payload.id, split.scope) },
+          limit: 1,
+        })
+        if (held.length > 0) continue
+      }
       throw err
     }
     issued.push({
@@ -1159,6 +1183,11 @@ export async function onShopifyOrderPaid(
         ],
       })
     }
+  }
+
+  // Every split was issued by a concurrent run of the same event: that run finishes the order.
+  if (issued.length === 0) {
+    return { status: "skipped", reason: "duplicate_document" }
   }
 
   // Payment settlement is threaded through issuance (see `settled`/`buildIssueInput` above): a paid

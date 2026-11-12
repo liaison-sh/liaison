@@ -881,6 +881,64 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     expect(def!.status).toBe("awaiting_dependency")
   })
 
+  test("idempotency: the same order event run twice AT ONCE issues one invoice and consumes one number", async () => {
+    const { ctx, db } = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+    })
+    // The database's unique index on documents.external_ref, which the in-memory mock does not
+    // enforce: a batch inserting a document whose key is already held fails as Postgres would.
+    // Batches commit one at a time, as the database serialises them on that index.
+    const batch = db.batch.bind(db)
+    let commits: Promise<unknown> = Promise.resolve()
+    db.batch = (spec) => {
+      const run = commits.then(async () => {
+        for (const op of spec.ops as Array<Record<string, unknown>>) {
+          const data = op.data as Record<string, unknown> | undefined
+          if (op.insert === "documents" && data?.external_ref) {
+            if (db.__all("documents").some((d) => d.external_ref === data.external_ref)) {
+              throw new Error('duplicate key value violates unique constraint "documents_external_ref" (23505)')
+            }
+          }
+        }
+        return batch(spec)
+      })
+      commits = run.catch(() => {})
+      return run
+    }
+    // Both runs read "no document for this order" before either commits (the race the read check
+    // alone cannot close).
+    const findMany = db.findMany.bind(db)
+    let waiting = 0
+    let release: () => void = () => {}
+    const bothRead = new Promise<void>((r) => {
+      release = r
+    })
+    db.findMany = async (entity, opts) => {
+      const rows = await findMany(entity, opts)
+      const where = (opts as { where?: Record<string, unknown> } | undefined)?.where
+      if (entity === "documents" && where?.shopify_order_id !== undefined) {
+        waiting++
+        if (waiting === 2) release()
+        await bothRead
+      }
+      return rows
+    }
+    const [r1, r2] = await Promise.all([
+      onShopifyOrderPaid(basePayload(), ctx),
+      onShopifyOrderPaid(basePayload(), ctx),
+    ])
+    const statuses = [r1.status, r2.status].sort()
+    expect(statuses).toEqual(["ok", "skipped"])
+    const skipped = (r1.status === "skipped" ? r1 : r2) as { status: "skipped"; reason: string }
+    expect(skipped.reason).toBe("duplicate_document")
+    const docs = db.__all("documents")
+    expect(docs).toHaveLength(1)
+    expect(docs[0]!.external_ref).toBe("shopify-order:shopify-order-1:goods")
+    // The losing commit rolled back with its number: the next invoice is still number 1.
+    expect(docs[0]!.number_int).toBe(1)
+    expect([...db.__sequences.values()]).toEqual([1])
+  })
+
   test("idempotency: same shopify order_id processed twice → exactly one document", async () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],

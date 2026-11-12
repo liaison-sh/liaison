@@ -1305,11 +1305,8 @@ export interface TableInfo {
   rowCount: number
   version: number
   updatedAt: string
-  /**
-   * Keys of dropped columns: retired, never re-added. Not in the contract yet; read when the
-   * server sends it.
-   */
-  droppedKeys?: string[]
+  /** Keys of dropped columns: retired, never re-added. */
+  droppedKeys: string[]
 }
 
 /** Keys the row itself uses: no column may take them. */
@@ -1365,7 +1362,10 @@ export interface TablePatch {
 
 export type TableErrorCode =
   | "invalid_cell"
+  | "invalid_request"
   | "version_conflict"
+  /** A table of that name exists already (409). */
+  | "conflict"
   | "not_found"
   | "forbidden"
   | "limit"
@@ -1407,14 +1407,16 @@ function tablesPath(id?: string): string {
   return id ? `/dashboards/tables/${encodeURIComponent(id)}` : "/dashboards/tables"
 }
 
-/** An answer whether the server sends it bare or in a `{data}` envelope. */
+/** A success body's payload: the API answers every table call in the `{data}` envelope. */
 function unwrapData(body: unknown): unknown {
-  return isRecord(body) && "data" in body && Object.keys(body).length <= 2 ? body.data : body
+  return isRecord(body) ? body.data : undefined
 }
 
 const TABLE_ERROR_CODES: ReadonlySet<string> = new Set([
   "invalid_cell",
+  "invalid_request",
   "version_conflict",
+  "conflict",
   "not_found",
   "forbidden",
   "limit",
@@ -1456,11 +1458,20 @@ export function tableErrorFrom(err: unknown): TableError {
 /** The tables the caller can see. */
 export async function listTables(api: Pick<TablesApi, "get">): Promise<TableInfo[]> {
   const body = unwrapData(await api.get<unknown>(tablesPath(), QUIET))
-  const rows =
-    isRecord(body) && Array.isArray(body.tables) ? body.tables : Array.isArray(body) ? body : []
+  const rows = isRecord(body) && Array.isArray(body.tables) ? body.tables : []
   return rows.filter(
     (t): t is TableInfo => isRecord(t) && typeof t.id === "string" && typeof t.name === "string",
   )
+}
+
+/** A new table (the caller owns it). A name already taken answers `conflict`. */
+export async function createTable(
+  api: Pick<TablesApi, "post">,
+  input: { name: string; description?: string; columns?: TableColumn[] },
+): Promise<TableInfo> {
+  return unwrapData(
+    await api.post<unknown>(tablesPath(), { columns: [], ...input }, QUIET),
+  ) as TableInfo
 }
 
 export async function getTable(api: Pick<TablesApi, "get">, id: string): Promise<TableInfo> {
@@ -1575,8 +1586,8 @@ export async function undoTableChange(
 export interface LinkPickItem {
   id: string
   label: string
-  app?: string
-  entityType?: string
+  app: string
+  entityType: string
 }
 
 /**
@@ -1594,7 +1605,11 @@ export async function searchTableLinks(
   const items = isRecord(body) && Array.isArray(body.items) ? body.items : []
   return items.filter(
     (i): i is LinkPickItem =>
-      isRecord(i) && typeof i.id === "string" && typeof i.label === "string",
+      isRecord(i) &&
+      typeof i.id === "string" &&
+      typeof i.label === "string" &&
+      typeof i.app === "string" &&
+      typeof i.entityType === "string",
   )
 }
 

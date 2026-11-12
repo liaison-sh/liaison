@@ -6725,7 +6725,12 @@
         "checkbox": "Case à cocher",
         "person": "Personne",
         "link": "Lien"
-      }
+      },
+      "newTable": "Nouvelle table",
+      "newTableName": "Nom de la table",
+      "nameTaken": "Une table nommée {{name}} existe déjà.",
+      "createForbidden": "Vous ne pouvez pas créer de table.",
+      "createFailed": "La table n'a pas pu être créée. Réessayez."
     }
   },
   "appBuilder": {

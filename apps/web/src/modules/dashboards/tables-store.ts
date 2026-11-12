@@ -2,7 +2,9 @@
 //
 // The tables the viewer can see, as the shell knows them: the Tables section of the
 // Dashboards sidebar and each open table tab's title (`resolveLabel`). A failed read keeps the
-// last list, so the sidebar never flickers empty.
+// last list, so the sidebar never flickers empty. The realtime frames of a table
+// (`kernel:dashboard_table*`, sent only to its readers) bump a per-table revision its open grids
+// read again on.
 import { createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
@@ -13,6 +15,8 @@ export const TABLE_TAB_TYPE = "kernel:dashboard-table"
 
 const [list, setList] = createSignal<TableInfo[]>([])
 const [titles, setTitles] = createStore<Record<string, string>>({})
+// Per table: how many times its rows (`rows`) or its columns and settings (`table`) changed.
+const [revisions, setRevisions] = createStore<Record<string, { rows: number; table: number }>>({})
 let pending: Promise<void> | null = null
 
 export function tablesList(): TableInfo[] {
@@ -49,6 +53,36 @@ export function rememberTable(t: TableInfo): void {
   )
 }
 
+/** The revision an open grid of table `id` reads again on (rows, or the table itself). */
+export function tableRevision(id: string, kind: "rows" | "table"): number {
+  return revisions[id]?.[kind] ?? 0
+}
+
+export interface TableEventData {
+  tableId?: string
+}
+
+/**
+ * A table or its rows changed somewhere (another person, an agent, a routine, this window): an
+ * open grid of it reads it again, and a created, renamed or deleted table updates the list.
+ */
+export function handleTableEvent(
+  api: Pick<TablesApi, "get">,
+  kind: "rows" | "table",
+  action: string,
+  data: TableEventData | undefined,
+): Promise<void> | undefined {
+  const id = data?.tableId
+  if (!id) return undefined
+  setRevisions(id, (r) => ({
+    rows: (r?.rows ?? 0) + (kind === "rows" ? 1 : 0),
+    table: (r?.table ?? 0) + (kind === "table" ? 1 : 0),
+  }))
+  if (kind !== "table") return undefined
+  if (action === "deleted") setList((rows) => rows.filter((r) => r.id !== id))
+  return loadTables(api)
+}
+
 export function openTable(t: Pick<TableInfo, "id" | "name">): void {
   openTab({ type: TABLE_TAB_TYPE, entityId: t.id, label: t.name })
 }
@@ -56,6 +90,7 @@ export function openTable(t: Pick<TableInfo, "id" | "name">): void {
 export function resetTablesStore(): void {
   setList([])
   setTitles({})
+  setRevisions({})
   pending = null
 }
 

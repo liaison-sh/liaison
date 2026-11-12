@@ -93,7 +93,7 @@ async function viaTool(
 
 async function viaIndex(
   viewer: UserContext,
-  app: string,
+  app: string | undefined,
   entityType: string | undefined,
   q: string,
 ): Promise<LinkTarget[]> {
@@ -108,35 +108,42 @@ async function viaIndex(
     q,
     limit: 50,
   })
-  return hits
-    .filter((h) => h.app === app && (!entityType || (h.entityType ?? h.type) === entityType))
-    .slice(0, LINK_SEARCH_LIMIT)
-    .map((h) => ({
-      id: h.id,
-      label: h.label.slice(0, 200),
-      app,
-      entityType: h.entityType ?? h.type,
-    }))
+  const out: LinkTarget[] = []
+  for (const h of hits) {
+    // A link cell names its app: a hit without one cannot be linked.
+    if (!h.app || (app && h.app !== app)) continue
+    const type = h.entityType ?? h.type
+    if (entityType && type !== entityType) continue
+    out.push({ id: h.id, label: h.label.slice(0, 200), app: h.app, entityType: type })
+    if (out.length >= LINK_SEARCH_LIMIT) break
+  }
+  return out
 }
 
-/** The records of `app` (one entity type, or all of them) matching `q`, as the person sees them. */
+/**
+ * The records of `app` (one entity type, or all of them) matching `q`, as the person sees them.
+ * Without an app (a link column with no `linkTo`), the search index across every app: an outside
+ * service's pick tool is searched only when its app is named.
+ */
 export async function searchLinkTargets(
   viewer: UserContext,
-  input: { app: string; entityType?: string; q: string },
+  input: { app?: string; entityType?: string; q: string },
 ): Promise<LinkTarget[]> {
+  if (!input.app) return viaIndex(viewer, undefined, input.entityType, input.q)
+  const app = input.app
   const { awaitOrgApps } = await import("~/modules/apps/init")
   await awaitOrgApps(viewer.orgId)
   const entities: Array<[string, { pick?: PickDeclaration }]> = []
-  for (const [[orgId, app, entity], decl] of entityRegistry.entriesOf(viewer.orgId)) {
-    if (orgId !== viewer.orgId || app !== input.app) continue
+  for (const [[orgId, appName, entity], decl] of entityRegistry.entriesOf(viewer.orgId)) {
+    if (orgId !== viewer.orgId || appName !== app) continue
     if (input.entityType && entity !== input.entityType) continue
     entities.push([entity, decl as { pick?: PickDeclaration }])
   }
   const picked = entities.filter(([, d]) => d.pick)
-  if (picked.length === 0) return viaIndex(viewer, input.app, input.entityType, input.q)
+  if (picked.length === 0) return viaIndex(viewer, app, input.entityType, input.q)
   const out: LinkTarget[] = []
   for (const [entity, decl] of picked) {
-    out.push(...(await viaTool(viewer, input.app, entity, decl.pick!, input.q)))
+    out.push(...(await viaTool(viewer, app, entity, decl.pick!, input.q)))
     if (out.length >= LINK_SEARCH_LIMIT) break
   }
   return out.slice(0, LINK_SEARCH_LIMIT)

@@ -109,7 +109,11 @@ const changesQuery = z.object({
   cursor: z.string().max(4096).optional(),
 })
 const linkQuery = z.object({
-  app: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
+  // Absent for a link column with no `linkTo`: any record the person can find.
+  app: z
+    .string()
+    .regex(/^[a-z][a-z0-9_-]{0,62}$/)
+    .optional(),
   entityType: z.string().max(63).optional(),
   q: z.string().max(100).default(""),
 })

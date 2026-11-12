@@ -15,10 +15,12 @@ function mount(column: TableColumn, value: unknown, extra: { inline?: boolean } 
   const get = vi.fn(async (path: string) => {
     if (path.startsWith("/dashboards/tables/link-search?")) {
       return {
-        items: [
-          { id: "p1", label: "Touch stand" },
-          { id: "p2", label: "Stand bag" },
-        ],
+        data: {
+          items: [
+            { id: "p1", label: "Touch stand", app: "shop", entityType: "product" },
+            { id: "p2", label: "Stand bag", app: "shop", entityType: "product" },
+          ],
+        },
       }
     }
     throw new Error(`unexpected ${path}`)

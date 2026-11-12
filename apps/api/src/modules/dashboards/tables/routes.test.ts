@@ -20,7 +20,6 @@ async function req(userId: string, method: string, path: string, body?: unknown)
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
-  // biome-ignore lint/suspicious/noExplicitAny: a test reads the JSON as sent
   return { status: res.status, body: (await res.json()) as { data?: any; error?: any } }
 }
 
@@ -126,5 +125,22 @@ describe("tables REST", () => {
     expect(write.status).toBe(404)
     const mine = await req(other, "GET", "/api/dashboards/tables")
     expect(mine.body.data.tables.map((x: { id: string }) => x.id)).not.toContain(id)
+  })
+
+  // A link column without `linkTo` names no app: its picker searches every app (it was a 400).
+  it("searches link targets without an app", async () => {
+    const any = await req(owner, "GET", "/api/dashboards/tables/link-search?q=")
+    expect(any.status).toBe(200)
+    expect(any.body.data.items).toEqual([])
+    const one = await req(owner, "GET", "/api/dashboards/tables/link-search?app=kernel&q=")
+    expect(one.status).toBe(200)
+    expect(Array.isArray(one.body.data.items)).toBe(true)
+  })
+
+  it("answers conflict for a name already taken", async () => {
+    await req(owner, "POST", "/api/dashboards/tables", { name: "Twice", columns: [] })
+    const again = await req(owner, "POST", "/api/dashboards/tables", { name: "Twice", columns: [] })
+    expect(again.status).toBe(409)
+    expect(again.body.error.code).toBe("conflict")
   })
 })

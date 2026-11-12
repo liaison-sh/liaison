@@ -6728,7 +6728,12 @@
         "checkbox": "Checkbox",
         "person": "Person",
         "link": "Link"
-      }
+      },
+      "newTable": "New table",
+      "newTableName": "Table name",
+      "nameTaken": "A table named {{name}} exists already.",
+      "createForbidden": "You cannot create tables.",
+      "createFailed": "The table could not be created. Try again."
     }
   },
   "appBuilder": {

@@ -379,14 +379,9 @@ const PersonEditor: Component<CellEditorProps> = (props) => {
   )
 }
 
-/** A picked record as a link cell: its app and entity type from the item, else the column's. */
-export function linkCellFrom(column: TableColumn, item: LinkPickItem): LinkCell {
-  return {
-    app: item.app ?? column.linkTo?.app ?? "",
-    entityType: item.entityType ?? column.linkTo?.entityType ?? "",
-    id: item.id,
-    label: item.label,
-  }
+/** A picked record as a link cell: the search names its app and entity type. */
+export function linkCellFrom(item: LinkPickItem): LinkCell {
+  return { app: item.app, entityType: item.entityType, id: item.id, label: item.label }
 }
 
 const LinkEditor: Component<CellEditorProps> = (props) => {
@@ -411,7 +406,7 @@ const LinkEditor: Component<CellEditorProps> = (props) => {
       key={(r) => r.id}
       text={(r) => r.label}
       onPick={(r) => {
-        const cell = r ? linkCellFrom(props.column, r) : null
+        const cell = r ? linkCellFrom(r) : null
         setChosen(cell)
         props.onCommit(cell)
       }}

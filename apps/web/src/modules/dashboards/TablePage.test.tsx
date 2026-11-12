@@ -17,10 +17,12 @@ const TABLE: TableInfo = {
   rowCount: 1,
   version: 2,
   updatedAt: "2026-11-12T08:00:00Z",
+  droppedKeys: [],
 }
 
 function mount() {
-  const get = vi.fn(async (path: string) => {
+  const get = vi.fn(async (path: string) => ({ data: await body(path) }))
+  async function body(path: string): Promise<unknown> {
     if (path === "/dashboards/tables/t1") return TABLE
     if (path.startsWith("/dashboards/tables/t1/rows?")) {
       return {
@@ -54,7 +56,7 @@ function mount() {
       }
     }
     throw new Error(`unexpected ${path}`)
-  })
+  }
   const getEnvelope = vi.fn(async () => ({ data: [] }))
   const api = { get, getEnvelope } as unknown as ApiClient
   render(() => (

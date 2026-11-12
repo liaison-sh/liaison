@@ -27,10 +27,11 @@ const TABLE: TableInfo = {
 }
 
 function mount(table: TableInfo = TABLE, patch?: (body: Record<string, unknown>) => unknown) {
-  const patchFn = vi.fn(async (_path: string, body: Record<string, unknown>) =>
-    patch ? patch(body) : { ...table, version: table.version + 1 },
-  )
-  const get = vi.fn(async () => ({ ...table, version: 9 }))
+  // The API answers in the `{data}` envelope.
+  const patchFn = vi.fn(async (_path: string, body: Record<string, unknown>) => ({
+    data: patch ? patch(body) : { ...table, version: table.version + 1 },
+  }))
+  const get = vi.fn(async () => ({ data: { ...table, version: 9 } }))
   const api = { get, patch: patchFn } as unknown as ApiClient
   const [current, setCurrent] = createSignal(table)
   render(() => (

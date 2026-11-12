@@ -194,5 +194,8 @@ describe("client helpers", () => {
       column: "units",
     })
     expect(tableErrorFrom(new ApiError("x", 404)).code).toBe("not_found")
+    // A taken table name is a 409 too, but not a stale row: its own code.
+    expect(tableErrorFrom(new ApiError("exists", 409, "conflict")).code).toBe("conflict")
+    expect(tableErrorFrom(new ApiError("bad", 400, "invalid_request")).code).toBe("invalid_request")
   })
 })

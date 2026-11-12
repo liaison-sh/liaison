@@ -66,7 +66,7 @@ import {
   handleDashboardEvent,
   reloadDashboard,
 } from "~/modules/dashboards/dashboards-store"
-import { tableTitle } from "~/modules/dashboards/tables-store"
+import { handleTableEvent, tableTitle } from "~/modules/dashboards/tables-store"
 import { handleFileEvent } from "~/modules/files/file-events"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { importRunStore } from "~/modules/imports/import-run-store"
@@ -1154,6 +1154,17 @@ export function bootstrapKernelApps(): void {
       dashboard: (action, data) => {
         const api = getAttentionApi()
         if (api) void handleDashboardEvent(api, action, data)
+      },
+      // A table's rows or the table itself changed: an open grid of it reads it again, the
+      // sidebar's Tables list follows. Sent only to the table's readers (websocket.ts
+      // `hasDashboardTableAudience`); the frame carries ids only.
+      dashboard_table_row: (action, data) => {
+        const api = getAttentionApi()
+        if (api) void handleTableEvent(api, "rows", action, data)
+      },
+      dashboard_table: (action, data) => {
+        const api = getAttentionApi()
+        if (api) void handleTableEvent(api, "table", action, data)
       },
       // A secret card changed (saved, cancelled, expired): the card on screen
       // re-reads its row. The frame carries the id and status only.

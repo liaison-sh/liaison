@@ -39,6 +39,7 @@ import {
   tableErrorFrom,
   writeTableRows,
 } from "../dashboards-client"
+import { tableRevision } from "../tables-store"
 import { CellEditor } from "./CellEditor"
 import { RowHistoryPanel } from "./RowHistoryPanel"
 import { TableConfirmDialog } from "./TableConfirmDialog"
@@ -160,6 +161,26 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     on(
       () => [props.tableId, props.reloadKey] as const,
       () => void load(),
+    ),
+  )
+  // Live: another person's, an agent's or a routine's change reaches this grid (tables-store).
+  // A changed table (its columns) reads everything again; changed rows read the page again,
+  // unless a cell is being edited or saved (the save reads its row itself).
+  createEffect(
+    on(
+      () => tableRevision(props.tableId, "table"),
+      () => void load(),
+      { defer: true },
+    ),
+  )
+  createEffect(
+    on(
+      () => tableRevision(props.tableId, "rows"),
+      () => {
+        if (status() !== "ready" || editing() || saving()) return
+        void reloadRows().catch(() => {})
+      },
+      { defer: true },
     ),
   )
 

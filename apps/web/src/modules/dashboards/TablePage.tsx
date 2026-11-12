@@ -30,9 +30,15 @@ export const TablePage: Component<{ entityId: string }> = (props) => {
     rememberTable(t)
   }
   // The grid reads it too; this read names the tab even when Settings or History opens first.
+  // A table with no column yet (just created) opens on Settings, where columns are added.
   onMount(() => {
     void getTable(api, props.entityId)
-      .then(seen)
+      .then((t) => {
+        seen(t)
+        if (t.columns.length === 0 && (t.myRole === "editor" || t.myRole === "owner")) {
+          setTab("settings")
+        }
+      })
       .catch(() => {})
   })
 

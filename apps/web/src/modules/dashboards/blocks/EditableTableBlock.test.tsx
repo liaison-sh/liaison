@@ -5,6 +5,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import type { TableInfo, TableRow } from "../dashboards-client"
+import { handleTableEvent } from "../tables-store"
 import { EditableTableBlock } from "./EditableTableBlock"
 import { resetTablePeople } from "./table-people"
 
@@ -31,6 +32,7 @@ const TABLE: TableInfo = {
   rowCount: 2,
   version: 1,
   updatedAt: "2026-11-12T08:00:00Z",
+  droppedKeys: [],
 }
 
 const row = (
@@ -60,7 +62,10 @@ interface Mock {
 }
 
 function mount(m: Mock = {}, props: Partial<Parameters<typeof EditableTableBlock>[0]> = {}) {
-  const get = vi.fn(async (path: string) => {
+  // The API answers in the `{data}` envelope.
+  const get = vi.fn(async (path: string) => ({ data: await getBody(path) }))
+  const post = vi.fn(async (path: string, body: unknown) => ({ data: await postBody(path, body) }))
+  async function getBody(path: string): Promise<unknown> {
     if (path === "/dashboards/tables/t1")
       return typeof m.table === "function" ? m.table() : (m.table ?? TABLE)
     if (path.startsWith("/dashboards/tables/t1/rows?")) {
@@ -70,13 +75,13 @@ function mount(m: Mock = {}, props: Partial<Parameters<typeof EditableTableBlock
     if (path.startsWith("/dashboards/tables/t1/changes?"))
       return m.changes ? m.changes() : { changes: [], nextCursor: null }
     throw new Error(`unexpected GET ${path}`)
-  })
-  const post = vi.fn(async (path: string, body: unknown) => {
+  }
+  async function postBody(path: string, body: unknown): Promise<unknown> {
     if (path === "/dashboards/tables/t1/rows")
       return m.write?.(body as { ops: Array<Record<string, unknown>> })
     if (path.endsWith("/undo")) return m.undo?.()
     throw new Error(`unexpected POST ${path}`)
-  })
+  }
   const getEnvelope = vi.fn(async () => ({ data: [{ id: "u1", name: "Nico", email: "n@x.test" }] }))
   const api = { get, post, getEnvelope } as unknown as ApiClient
   render(() => (
@@ -388,6 +393,27 @@ describe("EditableTableBlock", () => {
     fireEvent.click(await screen.findByTestId("table-block-row-history-undo-c2"))
     expect((await screen.findByTestId("table-block-row-history-notice")).textContent).toBe(
       "Not undone: Nico changed the row since.",
+    )
+  })
+
+  it("reads the page again when a row change of its table arrives live, not another's", async () => {
+    let units = 120
+    const { get } = mount({
+      rows: () => ({
+        rows: [row("r1", { batch: "B4", units, status: "In transit" })],
+        nextCursor: null,
+      }),
+    })
+    await screen.findByTestId("table-block-row-r1")
+    const rowReads = () => get.mock.calls.filter((c) => String(c[0]).includes("/rows?")).length
+    const before = rowReads()
+    const api = { get } as unknown as ApiClient
+    void handleTableEvent(api, "rows", "updated", { tableId: "other" })
+    units = 150
+    void handleTableEvent(api, "rows", "updated", { tableId: "t1" })
+    await waitFor(() => expect(rowReads()).toBe(before + 1))
+    await waitFor(() =>
+      expect(screen.getByTestId("table-block-cell-r1-units").textContent).toBe("150"),
     )
   })
 })

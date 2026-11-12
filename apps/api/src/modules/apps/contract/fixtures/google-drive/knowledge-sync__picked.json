@@ -13,13 +13,17 @@
   "calls": [
     {
       "method": "accounts_list",
-      "args": ["drive"],
-      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:25.761Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:25.450Z\",\"canManage\":true}]"
+      "args": [
+        "drive"
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:40.182Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.846Z\",\"canManage\":true}]"
     },
     {
       "method": "accounts_list",
-      "args": ["drive"],
-      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:25.761Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:25.450Z\",\"canManage\":true}]"
+      "args": [
+        "drive"
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:40.182Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.846Z\",\"canManage\":true}]"
     },
     {
       "method": "fetch",

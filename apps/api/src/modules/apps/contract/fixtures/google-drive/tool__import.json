@@ -7,8 +7,11 @@
   "calls": [
     {
       "method": "accounts_list",
-      "args": ["drive", null],
-      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:24.936Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:24.939Z\",\"canManage\":true}]"
+      "args": [
+        "drive",
+        null
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.418Z\",\"canManage\":true}]"
     },
     {
       "method": "fetch",
@@ -24,14 +27,14 @@
         "imports",
         "{\"owner_type\":\"user\",\"owner_id\":\"00000000-0000-4000-8000-00000000c0df\",\"drive_file_id\":\"scan0001\",\"filename\":\"Scan.pdf\"}"
       ],
-      "reply": "{\"id\":\"778f6bd0-c6ef-46e4-b3b2-e2e8a2d64cec\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 15:31:25.205165+00\",\"updated_at\":\"2026-11-12 15:31:25.205165+00\",\"owner_type\":\"user\",\"owner_id\":\"00000000-0000-4000-8000-00000000c0df\",\"drive_file_id\":\"scan0001\",\"filename\":\"Scan.pdf\"}"
+      "reply": "{\"id\":\"43c770d6-01a2-43bf-8dcc-c33b395b5ea0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 15:43:39.64559+00\",\"updated_at\":\"2026-11-12 15:43:39.64559+00\",\"owner_type\":\"user\",\"owner_id\":\"00000000-0000-4000-8000-00000000c0df\",\"drive_file_id\":\"scan0001\",\"filename\":\"Scan.pdf\"}"
     },
     {
       "method": "files_importFromUrl",
       "args": [
-        "{\"targetApp\":\"google-drive\",\"targetEntityType\":\"import\",\"targetEntityId\":\"778f6bd0-c6ef-46e4-b3b2-e2e8a2d64cec\",\"url\":\"https://www.googleapis.com/drive/v3/files/scan0001?alt=media&supportsAllDrives=true\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"headers\":{},\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"},\"disposition\":\"attachment\"}"
+        "{\"targetApp\":\"google-drive\",\"targetEntityType\":\"import\",\"targetEntityId\":\"43c770d6-01a2-43bf-8dcc-c33b395b5ea0\",\"url\":\"https://www.googleapis.com/drive/v3/files/scan0001?alt=media&supportsAllDrives=true\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"headers\":{},\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"},\"disposition\":\"attachment\"}"
       ],
-      "reply": "{\"id\":\"8f91e940-eaa2-485e-a78c-1e228e50201b\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"sizeBytes\":17,\"sha256\":\"e777d7d0401073d454c3eab01d4fdbcfe849a855ea49aa71ce69d3bc44720c3a\",\"storageKey\":\"orgs/00000000-0000-4000-8000-00000000c0de/google-drive/import/778f6bd0-c6ef-46e4-b3b2-e2e8a2d64cec/8f91e940-eaa2-485e-a78c-1e228e50201b/Scan.pdf\",\"disposition\":\"attachment\",\"contentId\":null}"
+      "reply": "{\"id\":\"13688ed2-809e-4e64-a67d-1242114341c7\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"sizeBytes\":17,\"sha256\":\"e777d7d0401073d454c3eab01d4fdbcfe849a855ea49aa71ce69d3bc44720c3a\",\"storageKey\":\"orgs/00000000-0000-4000-8000-00000000c0de/google-drive/import/43c770d6-01a2-43bf-8dcc-c33b395b5ea0/13688ed2-809e-4e64-a67d-1242114341c7/Scan.pdf\",\"disposition\":\"attachment\",\"contentId\":null}"
     }
   ]
 }

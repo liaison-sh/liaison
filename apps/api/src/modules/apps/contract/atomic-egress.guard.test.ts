@@ -15,6 +15,7 @@ import {
   ATOMIC_LOCAL_METHODS,
   ATOMIC_REFUSED_EGRESS_METHODS,
   type AtomicEgressAllowance,
+  type AtomicToolAllowance,
   guardAtomicJobEgress,
   guardAtomicToolEgress,
   isAtomicLocalMethod,
@@ -25,6 +26,10 @@ const ALLOWLIST_PATH = join(import.meta.dir, "atomic-egress.allowlist.json")
 const BASELINE_PATH = join(import.meta.dir, "atomic-egress.baseline.json")
 const BASELINE_SHA256 = "4c5714abad56abddba3c2df9d858b9a2d9888461289121a7b4274b12b7b263b4"
 const BUNDLED = join(import.meta.dir, "../../../../../../bundled-apps")
+const IN_TREE = join(import.meta.dir, "../../../apps")
+const TOOLS_ALLOWLIST_PATH = join(import.meta.dir, "atomic-tools.allowlist.json")
+const TOOLS_BASELINE_PATH = join(import.meta.dir, "atomic-tools.baseline.json")
+const TOOLS_BASELINE_SHA256 = "0f58474e39c447d12f698cd352076d37327a3e96701a2c0d87643be550aa3b30"
 
 const read = (p: string) => JSON.parse(readFileSync(p, "utf8")) as AtomicEgressAllowance[]
 const keyOf = (r: AtomicEgressAllowance) => `${r.app}:${r.job}`
@@ -57,23 +62,39 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
   })
 
   // D10: no sandboxed run holds a host transaction across a call outside. A tool that needs
-  // several writes to land together uses one `ctx.db.batch` call, so no bundled app keeps an
-  // atomic tool (none is allowed, so there is no allowlist for tools).
-  it("no bundled app declares an atomic tool", () => {
-    const atomicTools: string[] = []
-    for (const app of readdirSync(BUNDLED, { withFileTypes: true })) {
+  // several writes to land together uses one `ctx.db.batch` call. No bundled app declares an
+  // atomic tool; the in-tree ones still atomic are listed (atomic-tools.allowlist.json), and the
+  // list only shrinks.
+  const atomicToolsIn = (root: string): string[] => {
+    const out: string[] = []
+    for (const app of readdirSync(root, { withFileTypes: true })) {
       if (!app.isDirectory()) continue
-      let manifest: { tools?: Record<string, { atomic?: boolean }> }
+      let manifest: { name?: string; tools?: Record<string, { atomic?: boolean }> }
       try {
-        manifest = JSON.parse(readFileSync(join(BUNDLED, app.name, "app.manifest.json"), "utf8"))
+        manifest = JSON.parse(readFileSync(join(root, app.name, "app.manifest.json"), "utf8"))
       } catch {
         continue
       }
       for (const [name, tool] of Object.entries(manifest.tools ?? {})) {
-        if (tool.atomic === true) atomicTools.push(`${app.name}:${name}`)
+        if (tool.atomic === true) out.push(`${manifest.name ?? app.name}:${name}`)
       }
     }
-    expect(atomicTools).toEqual([])
+    return out.sort()
+  }
+  const toolRows = (p: string) =>
+    (JSON.parse(readFileSync(p, "utf8")) as AtomicToolAllowance[]).map((r) => `${r.app}:${r.tool}`)
+
+  it("no bundled app declares an atomic tool", () => {
+    expect(atomicToolsIn(BUNDLED)).toEqual([])
+  })
+
+  it("the in-tree atomic tools are exactly the listed ones, and the list only shrinks", () => {
+    const sha = createHash("sha256").update(readFileSync(TOOLS_BASELINE_PATH)).digest("hex")
+    expect(sha).toBe(TOOLS_BASELINE_SHA256)
+    const baseline = new Set(toolRows(TOOLS_BASELINE_PATH))
+    const listed = toolRows(TOOLS_ALLOWLIST_PATH)
+    expect(listed.filter((k) => !baseline.has(k))).toEqual([])
+    expect(atomicToolsIn(IN_TREE)).toEqual([...listed].sort())
   })
 
   it("an atomic tool's egress methods refuse, its local ones are left alone", async () => {
@@ -81,6 +102,10 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
     const bridge: Record<string, unknown> = { db_findMany: original, db_batch: original }
     for (const m of ATOMIC_REFUSED_EGRESS_METHODS) bridge[m] = original
     guardAtomicToolEgress(bridge, "pennylane", "refresh-snapshots")
+    // A listed in-tree tool keeps its bridge as it is.
+    const listed: Record<string, unknown> = { fetch: original }
+    guardAtomicToolEgress(listed, "tickets", "convertToMail")
+    expect(listed.fetch).toBe(original)
     expect(bridge.db_findMany).toBe(original)
     expect(bridge.db_batch).toBe(original)
     for (const m of ATOMIC_REFUSED_EGRESS_METHODS) {

@@ -18,13 +18,15 @@
 // (atomic-egress.guard.test.ts pins it under a frozen baseline): an app whose
 // job is split removes its row.
 //
-// A sandboxed TOOL declared `atomic: true` gets the same refusal, with no
-// allowlist: a tool that needs several writes to land together uses one
-// `ctx.db.batch` call and does its outside calls before or after it. No
-// bundled app declares an atomic tool (atomic-egress.guard.test.ts).
+// A sandboxed TOOL declared `atomic: true` gets the same refusal: a tool that
+// needs several writes to land together uses one `ctx.db.batch` call and does
+// its outside calls before or after it. No bundled app declares an atomic
+// tool; the in-tree tools still atomic are listed in
+// contract/atomic-tools.allowlist.json, shrink-only (atomic-egress.guard.test.ts).
 //
 // Core apps are not concerned: their jobs declare no `atomic`.
 import allowlist from "./contract/atomic-egress.allowlist.json"
+import toolAllowlist from "./contract/atomic-tools.allowlist.json"
 
 /**
  * Prefixes of bridge methods an atomic job keeps: the app's own rows and data
@@ -136,6 +138,17 @@ export interface AtomicEgressAllowance {
   egress: string
 }
 
+export interface AtomicToolAllowance {
+  app: string
+  tool: string
+  /** Why it is still atomic, for whoever splits it. */
+  why: string
+}
+
+const ALLOWED_TOOLS = new Set(
+  (toolAllowlist as AtomicToolAllowance[]).map((r) => `${r.app}\u0000${r.tool}`),
+)
+
 const ALLOWED = new Set((allowlist as AtomicEgressAllowance[]).map((r) => `${r.app}\u0000${r.job}`))
 
 /** True when `app`'s atomic job `job` may still call outside (a listed offender). */
@@ -168,14 +181,16 @@ export function guardAtomicJobEgress(
 }
 
 /**
- * Refuse every non-local method of an atomic TOOL's bridge (mutated in place).
- * No allowlist: no tool may call outside while it holds its run's transaction.
+ * Refuse every non-local method of an atomic TOOL's bridge (mutated in place),
+ * unless the tool is a listed offender (contract/atomic-tools.allowlist.json:
+ * in-tree tools that have not been split yet; the list only shrinks).
  */
 export function guardAtomicToolEgress(
   bridge: Record<string, unknown>,
   app: string,
   tool: string,
 ): void {
+  if (ALLOWED_TOOLS.has(`${app}\u0000${tool}`)) return
   refuseEgress(bridge, app, tool, "tool")
 }
 

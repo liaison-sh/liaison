@@ -145,6 +145,8 @@ jobs:
           docker compose up -d --wait --wait-timeout 600 app sandbox
           sudo sh ./sandbox-firewall.sh apply
           docker compose exec -T sandbox bun --eval "fetch('http://localhost:8790/stats').then(r => r.json()).then(j => console.log(JSON.stringify(j.pool ?? j)))"
+          # Docker's name service as gVisor sees it (diagnostic only).
+          docker compose exec -T sandbox bun --eval "require('node:dns').promises.lookup('app-bridge').then(a => console.log('dns app-bridge:', JSON.stringify(a)), e => console.log('dns app-bridge:', e.code))"
           sh ./sandbox-firewall.sh check
           # The app is healthy with the service configured, and the bridge port
           # is not the API: its health page is 404 there.

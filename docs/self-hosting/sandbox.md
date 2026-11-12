@@ -36,7 +36,7 @@ COMPOSE_PROFILES=sandbox
 LIAISON_SANDBOX_URL=http://sandbox:8790
 ```
 
-Then `docker compose up -d` from `deploy/`. The app gets a second listener on port 3100 (`LIAISON_APP_BRIDGE_PORT`) that answers `/api/app-bridge/<run>` and nothing else; the sandbox network reaches the app under the name `app-bridge`. Each sandboxed app whose installed version carries a Worker module (`worker.js`, every bundled app does) runs on the service; its timing lines say `executor: "workerd"` and its usage rows count under `workerd`.
+Then `docker compose up -d` from `deploy/`. The app gets a second listener on port 3100 (`LIAISON_APP_BRIDGE_PORT`) that answers `/api/app-bridge/<run>` and nothing else. Under gVisor the sandbox cannot use Docker's name service, so the app has a fixed address on the sandbox network (`LIAISON_APP_SANDBOX_IP`, 172.31.250.2) and the service calls that address. In this release the service works with the single `app` container; the rolling `api` and `worker` processes are not on the sandbox network. Each sandboxed app whose installed version carries a Worker module (`worker.js`, every bundled app does) runs on the service; its timing lines say `executor: "workerd"` and its usage rows count under `workerd`.
 
 To go back for a while, set `LIAISON_APP_RUNTIME=quickjs` and restart the app: every app runs on the local sandbox again, whatever else is set. This switch exists in this release only.
 
@@ -51,7 +51,7 @@ sudo deploy/sandbox-firewall.sh install   # rules now, and a systemd unit for ev
 deploy/sandbox-firewall.sh check          # from inside the sandbox: only the bridge port answers
 ```
 
-`check` prints one line per probe (the app's bridge port must answer; the app's main port, the host's SSH port, the cloud metadata address and a public address must be blocked) and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away. The script reads the compose file's defaults (`LIAISON_SANDBOX_IP` 172.31.250.10, `LIAISON_SANDBOX_SUBNET` 172.31.250.0/24, `LIAISON_SANDBOX_BRIDGE` liaison-sbx0, `LIAISON_APP_BRIDGE_PORT` 3100); change them in both places together.
+`check` prints one line per probe (the app's bridge port must answer; the app's main port, the host's SSH port, the cloud metadata address and a public address must be blocked) and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away. The script reads the compose file's defaults (`LIAISON_SANDBOX_IP` 172.31.250.10, `LIAISON_APP_SANDBOX_IP` 172.31.250.2, `LIAISON_SANDBOX_SUBNET` 172.31.250.0/24, `LIAISON_SANDBOX_BRIDGE` liaison-sbx0, `LIAISON_APP_BRIDGE_PORT` 3100); change them in both places together.
 
 ## Size it
 

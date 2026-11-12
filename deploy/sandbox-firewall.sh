@@ -27,7 +27,8 @@
 #                                               bridge port answers
 #
 # Settings (the compose file's, same defaults): LIAISON_SANDBOX_IP
-# (172.31.250.10), LIAISON_SANDBOX_SUBNET (172.31.250.0/24),
+# (172.31.250.10), LIAISON_APP_SANDBOX_IP (172.31.250.2),
+# LIAISON_SANDBOX_SUBNET (172.31.250.0/24),
 # LIAISON_SANDBOX_BRIDGE (liaison-sbx0), LIAISON_APP_BRIDGE_PORT (3100).
 # Change them in the compose environment and here together.
 set -eu
@@ -36,6 +37,7 @@ SANDBOX_IP="${LIAISON_SANDBOX_IP:-172.31.250.10}"
 SUBNET="${LIAISON_SANDBOX_SUBNET:-172.31.250.0/24}"
 BRIDGE="${LIAISON_SANDBOX_BRIDGE:-liaison-sbx0}"
 BRIDGE_PORT="${LIAISON_APP_BRIDGE_PORT:-3100}"
+APP_IP="${LIAISON_APP_SANDBOX_IP:-172.31.250.2}"
 CHAIN_FWD="LIAISON-SANDBOX-FWD"
 CHAIN_IN="LIAISON-SANDBOX-IN"
 UNIT="/etc/systemd/system/liaison-sandbox-firewall.service"
@@ -151,13 +153,13 @@ const tcp = (hostname, port) => new Promise((done) => {
   Bun.connect({ hostname, port, socket: {
     open(s) { clearTimeout(timer); s.end(); done('open') },
     data() {},
-    error() { clearTimeout(timer); done('blocked') },
-    connectError() { clearTimeout(timer); done('blocked') },
-  } }).catch(() => { clearTimeout(timer); done('blocked') })
+    error(_s, e) { clearTimeout(timer); done('blocked (' + (e && e.code || e) + ')') },
+    connectError(_s, e) { clearTimeout(timer); done('blocked (' + (e && e.code || e) + ')') },
+  } }).catch((e) => { clearTimeout(timer); done('blocked (' + (e && e.code || e) + ')') })
 })
 const want = [
-  ['app-bridge', $BRIDGE_PORT, 'open'],
-  ['app-bridge', 3000, 'blocked'],
+  ['$APP_IP', $BRIDGE_PORT, 'open'],
+  ['$APP_IP', 3000, 'blocked'],
   ['$gateway', 22, 'blocked'],
   ['$gateway', 3000, 'blocked'],
   ['169.254.169.254', 80, 'blocked'],
@@ -171,10 +173,10 @@ for (const [host, port, expected] of want) {
   console.log((ok ? 'ok    ' : 'FAIL  ') + host + ':' + port + ' -> ' + got)
 }
 // The bridge port answers a run's call path, and nothing else.
-const r = await fetch('http://app-bridge:$BRIDGE_PORT/healthz', { signal: AbortSignal.timeout(3000) }).catch(() => null)
-const health = r ? r.status : 'no answer'
+const r = await fetch('http://$APP_IP:$BRIDGE_PORT/healthz', { signal: AbortSignal.timeout(3000) }).catch((e) => String(e))
+const health = typeof r === 'string' ? r : r.status
 if (health !== 404) bad++
-console.log((health === 404 ? 'ok    ' : 'FAIL  ') + 'app-bridge:$BRIDGE_PORT/healthz -> ' + health)
+console.log((health === 404 ? 'ok    ' : 'FAIL  ') + '$APP_IP:$BRIDGE_PORT/healthz -> ' + health)
 process.exit(bad ? 1 : 0)
 "
 }

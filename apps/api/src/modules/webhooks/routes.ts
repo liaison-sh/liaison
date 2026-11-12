@@ -47,12 +47,14 @@ import {
   runWebhookHandler,
   type WebhookRegistration,
   webhookActorFor,
+  webhookRunHoldsTx,
 } from "~/modules/webhooks/handler-run"
 import {
   type ClaimedDelivery,
   type InboxDelivery,
   settleDeliveryQuietly,
   storeDelivery,
+  storedWebhookHeaders,
   wakeAfterSettle,
   wakeReplay,
 } from "~/modules/webhooks/inbox"
@@ -517,12 +519,14 @@ async function dispatchVerifiedWebhook(
   // Lowercased inbound header dict — passed as the 3rd handler arg (the manifest
   // webhook signature is `(payload, ctx, headers)`; bundle code reads e.g.
   // `x-shopify-webhook-id` for dedup) and stored in the inbox so a replay
-  // re-supplies the same headers. Lowercased + JSON-cloned so the sandbox sees
-  // a plain dict.
-  const headerDict: Record<string, string> = {}
+  // re-supplies the same headers. Only the provider's event headers
+  // (storedWebhookHeaders: no credentials, cookies, signatures or client
+  // address), the same set inline and on a replay. A plain dict for the sandbox.
+  const rawHeaders: Record<string, string> = {}
   for (const [k, v] of c.req.raw.headers.entries()) {
-    headerDict[k.toLowerCase()] = v
+    rawHeaders[k.toLowerCase()] = v
   }
+  const headerDict = storedWebhookHeaders(rawHeaders)
 
   // Release the replay claim so a provider retry re-reaches the route. Called
   // when the delivery did NOT durably succeed.
@@ -606,14 +610,17 @@ async function dispatchVerifiedWebhook(
 
   let handlerResult: unknown
   try {
-    // The handler runs in its own RLS transaction on the background pool
-    // (handler-run.ts), never the interactive request pool.
+    // The handler runs on the background pool (handler-run.ts), never the
+    // interactive request pool.
     //
-    // A handler that declares a budget may hold that connection for up to
-    // 29 s, against 5 s for the rest: it waits for a pinned slot first, as the
-    // replay job does (infra/jobs/pinned-jobs-gate.ts), so a burst of them cannot
-    // starve the jobs pool. The wait is bounded so the run still ends inside the
-    // request ceiling; past it the delivery stays in the inbox for the replay, unrun.
+    // A handler that holds one transaction for its run (a core app's, a listed
+    // exception's: webhookRunHoldsTx) and declares a budget may hold that
+    // connection for up to 29 s, against 5 s for the rest: it waits for a pinned
+    // slot first, as the replay job does (infra/jobs/pinned-jobs-gate.ts), so a
+    // burst of them cannot starve the jobs pool. The wait is bounded so the run
+    // still ends inside the request ceiling; past it the delivery stays in the
+    // inbox for the replay, unrun. A sandboxed handler holds no connection
+    // across its run, so it takes no slot.
     const budget = deliveryBudget(registration.timeoutMs, env.REQUEST_TIMEOUT_MS)
     const runDelivery = () =>
       runWebhookHandler({
@@ -626,13 +633,14 @@ async function dispatchVerifiedWebhook(
         headers: headerDict,
         ...(budget ? { timeoutMs: budget.timeoutMs } : {}),
       })
-    handlerResult = budget
-      ? await withPinnedJobSlot(
-          `webhook:${appName}`,
-          runDelivery,
-          AbortSignal.timeout(budget.slotWaitMs),
-        )
-      : await runDelivery()
+    handlerResult =
+      budget && webhookRunHoldsTx(registration, appName)
+        ? await withPinnedJobSlot(
+            `webhook:${appName}`,
+            runDelivery,
+            AbortSignal.timeout(budget.slotWaitMs),
+          )
+        : await runDelivery()
   } catch (err) {
     // The handler threw (vs. returning a status). Treat as transient: release
     // the replay claim and leave the delivery to the inbox replay. Surface 500

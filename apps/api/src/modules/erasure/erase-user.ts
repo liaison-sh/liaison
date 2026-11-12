@@ -1243,6 +1243,25 @@ export async function eraseUser(
       )
       await tx.execute(drizzleSql`DELETE FROM ${K}.attention_events WHERE user_id = ${userId}`)
       await tx.execute(drizzleSql`DELETE FROM ${K}.app_attention_items WHERE user_id = ${userId}`)
+      // The webhook inbox has no user column, but a delivery waiting for a
+      // retry (or kept dead for diagnosis) holds the provider's payload, which
+      // may name the person (their id or email). Clear every such payload; an
+      // unsettled delivery carrying one is dropped rather than run later.
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.webhook_inbox
+        SET payload = NULL, headers = NULL, claim_token = NULL,
+            status = CASE WHEN status IN ('pending', 'held', 'processing') THEN 'dropped' ELSE status END,
+            settled_at = coalesce(settled_at, now()),
+            last_error = CASE WHEN status IN ('pending', 'held', 'processing')
+              THEN 'payload erased with a person' ELSE last_error END,
+            updated_at = now()
+        WHERE org_id = ${orgId}
+          AND (payload IS NOT NULL OR headers IS NOT NULL)
+          AND (
+            strpos(lower(coalesce(payload::text, '') || coalesce(headers::text, '')), lower(${email})) > 0
+            OR strpos(coalesce(payload::text, '') || coalesce(headers::text, ''), ${userId}) > 0
+          )
+      `)
       await tx.execute(drizzleSql`DELETE FROM ${K}.disabled_app_skills WHERE user_id = ${userId}`)
       await tx.execute(
         drizzleSql`DELETE FROM ${K}.file_upload_sessions WHERE created_by = ${userId}`,

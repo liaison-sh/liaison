@@ -24,17 +24,10 @@
 import { SCENARIO_TOURS } from "@liaison/shared"
 import { and, eq, gt, or } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
-import { type ActorContext, withRlsContext } from "~/db/rls"
 import { demoWorldMarks } from "~/db/schema/kernel"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
-import {
-  isManifestHandler,
-  type ManifestHandlerRef,
-  webhookHandlers,
-} from "~/modules/apps/app-registries"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { isManifestHandler, webhookHandlers } from "~/modules/apps/app-registries"
 import { isVisitorDemoOrgId } from "~/modules/demo/demo-org"
 import {
   DEMO_ORDER_COUNT,
@@ -45,7 +38,7 @@ import {
 import { addWorldOrder, worldOrdersFor } from "~/modules/demo/shopify/overlay"
 import { DEMO_SHOP_DOMAIN } from "~/modules/demo/shopify/sentinel"
 import type { WorldInjector } from "~/modules/demo/world/registry"
-import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
+import { runWebhookHandler } from "~/modules/webhooks/handler-run"
 import { resolveHandlerScopes } from "~/modules/webhooks/verification"
 import { worldId, worldRunKey } from "~/seed/world/people"
 
@@ -205,50 +198,22 @@ async function deliverOrdersCreate(orgId: string, payload: unknown, webhookId: s
   if (!registration || !isManifestHandler(registration.handler)) {
     throw new Error("demo world: the Shopify app's orders/create handler is not registered")
   }
-  const handlerRef: ManifestHandlerRef = registration.handler
-  const manifest = registration._manifest ?? {
-    name: "shopify",
-    schema: {},
-    events: {},
-    connections: {},
-    network: {},
-  }
   const scopes = resolveHandlerScopes("shopify", [], { thirdParty: false, grantedScopes: [] })
   const headers = {
     "x-shopify-webhook-id": webhookId,
     "x-shopify-shop-domain": DEMO_SHOP_DOMAIN,
     "x-shopify-topic": "orders/create",
   }
-  const actor: ActorContext = { actorType: "system", orgId, purpose: "webhook", scopes }
-  return withRlsContext(
-    actor,
-    async (tx) => {
-      const bridge = createRpcBridge(
-        "shopify",
-        "system",
-        orgId,
-        tx,
-        manifest,
-        scopes,
-        "system",
-        undefined,
-        {
-          actor,
-        },
-      )
-      return executeManifestWebhook({
-        appName: "shopify",
-        orgId,
-        holdsTx: true,
-        handlerRef,
-        bundleSource: await loadBundle(handlerRef.bundlePath),
-        params: payload,
-        bridge,
-        extraArgs: [headers],
-      })
-    },
-    { pool: "jobs" },
-  )
+  // The same run as a real delivery (handler-run.ts): actor, bridge and transaction.
+  return runWebhookHandler({
+    registration,
+    appName: "shopify",
+    orgId,
+    scopes,
+    userActorId: null,
+    payload,
+    headers,
+  })
 }
 
 /** The scenario beat that injects the order: its once-mark says whether it ran. */

@@ -18,8 +18,9 @@ import {
   type webhookHandlers,
 } from "~/modules/apps/app-registries"
 import { createAppContext } from "~/modules/apps/context"
+import { handlerRunHoldsTx } from "~/modules/apps/run-wide-tx"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
 
 export type WebhookRegistration = NonNullable<ReturnType<typeof webhookHandlers.get>>
@@ -65,14 +66,37 @@ export function webhookActorFor(
     : { actorType: "system", orgId, purpose: "webhook", scopes }
 }
 
+function emptyManifest(appName: string) {
+  return { name: appName, schema: {}, events: {}, connections: {}, network: {} }
+}
+
 /** Injectable seam so tests can observe the handler call without a sandbox. */
 type ManifestExecutor = typeof executeManifestWebhook
 let manifestExecutor: ManifestExecutor = executeManifestWebhook
 
 /**
- * Run the handler once in its own RLS transaction on the background pool
- * (never the interactive request pool: a burst of deliveries must not starve
- * MCP/HTTP/agent traffic). Returns what the handler returned.
+ * Whether a delivery of `registration` holds one transaction for the handler's
+ * whole run (run-wide-tx.ts): a host (non-manifest) handler, a core app's, or a
+ * listed exception's. A sandboxed app's handler otherwise opens a short
+ * transaction per bridge call, and its caller takes no pinned jobs slot for it.
+ */
+export function webhookRunHoldsTx(registration: WebhookRegistration, appName: string): boolean {
+  if (!isManifestHandler(registration.handler)) return true
+  const ref = registration.handler as ManifestHandlerRef
+  return handlerRunHoldsTx({
+    trusted: ref.trusted === true,
+    app: appName,
+    entry: `webhook:${ref.exportName}`,
+  })
+}
+
+/**
+ * Run the handler once on the background pool (never the interactive request
+ * pool: a burst of deliveries must not starve MCP/HTTP/agent traffic), as the
+ * delivery's actor. A sandboxed app's handler gets a short transaction per
+ * bridge call (none is open while it calls a provider); a core app's, a listed
+ * exception's and a host handler run inside one transaction. Returns what the
+ * handler returned.
  */
 export async function runWebhookHandler(args: {
   registration: WebhookRegistration
@@ -86,18 +110,39 @@ export async function runWebhookHandler(args: {
 }): Promise<unknown> {
   const { registration, appName, orgId, scopes, userActorId, payload, headers } = args
   const actor = webhookActorFor(orgId, scopes, userActorId)
+  if (!webhookRunHoldsTx(registration, appName)) {
+    const handlerRef = registration.handler as ManifestHandlerRef
+    const bridge = createSessionRpcBridge(
+      appName,
+      userActorId ?? "system",
+      orgId,
+      { run: (fn) => withRlsContext(actor, fn, { pool: "jobs" }) },
+      registration._manifest ?? emptyManifest(appName),
+      scopes,
+      userActorId ? "user" : "system",
+      undefined,
+      { actor },
+    )
+    return manifestExecutor({
+      appName,
+      orgId,
+      holdsTx: false,
+      handlerRef,
+      bundleSource: await loadBundle(handlerRef.bundlePath),
+      params: payload,
+      bridge,
+      // The lowercased inbound header dict, the handler's 3rd argument
+      // (e.g. Shopify dedups off x-shopify-webhook-id).
+      extraArgs: [headers],
+      ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
+    })
+  }
   return withRlsContext(
     actor,
     async (tx) => {
       if (isManifestHandler(registration.handler)) {
         const handlerRef = registration.handler as ManifestHandlerRef
-        const manifest = registration._manifest ?? {
-          name: appName,
-          schema: {},
-          events: {},
-          connections: {},
-          network: {},
-        }
+        const manifest = registration._manifest ?? emptyManifest(appName)
         const bridge = createSandboxRpcBridge(
           appName,
           userActorId ?? "system",

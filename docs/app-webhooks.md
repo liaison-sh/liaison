@@ -16,7 +16,7 @@ Manifest-driven apps that accept external webhooks declare two bundle exports pe
 
 Webhook keys must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`: lowercase alphanumerics and hyphens only, no slashes.
 
-A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A delivery with a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and stays in the inbox for a replay, unrun.
+A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A sandboxed app's handler holds no database transaction across its run: each `ctx` call commits on its own, so what it wrote before it failed stays written and the replay runs it again over those writes ([Event handlers and webhooks commit each call on its own](app-sandbox.md#event-handlers-and-webhooks-commit-each-call-on-its-own)). A delivery that does hold one for its whole run (a core app's, or a listed exception's) and declares a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and stays in the inbox for a replay, unrun.
 
 ## Verifier signature
 
@@ -56,7 +56,7 @@ The kernel runs, in strict order:
 
 ### The webhook inbox
 
-Every accepted delivery is written to the inbox (`kernel.webhook_inbox`) before its handler runs, with its payload, its lowercased headers and the handler's scopes (`modules/webhooks/inbox.ts`). What happens next depends on the handler:
+Every accepted delivery is written to the inbox (`kernel.webhook_inbox`) before its handler runs, with its payload, the provider's event headers and the handler's scopes (`modules/webhooks/inbox.ts`). Only the `x-*` headers, `content-type` and `user-agent` are kept, minus credentials, cookies, signatures, tokens, API keys and the forwarding and client-address headers (`storedWebhookHeaders`); the handler receives the same set, inline and on a replay, so read signatures in the verifier, not the handler. What happens next depends on the handler:
 
 - It succeeds (2xx, or returns nothing): the delivery is marked done and its payload and headers are cleared.
 - It returns a 4xx other than 408 or 429: the delivery is refused, not retried; the status and the handler's message go back to the sender.
@@ -65,7 +65,9 @@ Every accepted delivery is written to the inbox (`kernel.webhook_inbox`) before 
 
 A second delivery with the same replay key is not processed again while the verifier's replay window (`replayTtlSeconds`, default 24 h) lasts, even if the replay lookup missed it. A redelivery of a delivery that is waiting for a retry, was refused or is dead runs it at once. When the app is turned Off before a replay, the replay is dropped.
 
-Done and refused deliveries are deleted 2 days after their replay window; dead ones, which keep their payload for diagnosis, after 30 days (`webhook-inbox-retention`). A deleted organization's deliveries go with it.
+Done and refused deliveries hold no payload and are deleted as soon as their replay window closes; dead ones, which keep their payload for diagnosis, 7 days after they died (`webhook-inbox-retention`, hourly). Erasing a member clears every stored payload that names them (their id or email) and drops the unsettled deliveries carrying one. A deleted organization's deliveries go with it. The inbox is an ordinary table: a stored payload is in the database's write-ahead log and backups until they roll over, which is why the stored headers and the retention are kept short.
+
+The replays, the sweep and the retention run on their own job queue (`kernel-webhook`, one slot), so a burst of replays never delays the kernel's minute sweeps on `kernel-cron`; a sweep wakes at most 100 due deliveries a minute.
 
 A handler may therefore see a delivery more than once (a replay after a server stopped mid-run): keep dedup on the provider's own event id.
 

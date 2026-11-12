@@ -18,9 +18,15 @@
  *   is waiting for a retry (`pending`), was refused (`rejected`), dropped or
  *   dead is taken over by the redelivery, which runs it now.
  *
- * A settled row keeps no payload and no headers; a dead row keeps them for
- * diagnosis until retention deletes it. Written and read only through the
- * privileged connection (the table is deny-all to the request roles).
+ * Privacy. The table is in the database's backups, so it holds as little as
+ * a replay needs: only the provider's event headers are stored
+ * (`storedWebhookHeaders`: never credentials, cookies, signatures or the
+ * client's address), a settled row keeps no payload and no headers and is
+ * deleted once its dedup window closes, and a dead row keeps them for
+ * diagnosis for `WEBHOOK_INBOX_DEAD_RETENTION_DAYS` only. Erasing a person
+ * clears every payload that names them (modules/erasure/erase-user.ts).
+ * Written and read only through the privileged connection (the table is
+ * deny-all to the request roles).
  */
 import { randomUUID } from "node:crypto"
 import { and, eq, inArray, lt, lte, or, sql } from "drizzle-orm"
@@ -45,10 +51,36 @@ export function webhookInboxBackoffMs(attempts: number): number {
 /** How long a replay's claim holds before the row counts as abandoned. */
 export const REPLAY_LEASE_MS = 10 * 60_000
 
-/** Settled rows are kept this long after their dedup window closed. */
-export const WEBHOOK_INBOX_SETTLED_RETENTION_DAYS = 2
-/** Dead rows (payload kept for diagnosis) are deleted after this many days. */
-export const WEBHOOK_INBOX_DEAD_RETENTION_DAYS = 30
+/**
+ * Dead rows (payload kept for diagnosis) are deleted this many days after
+ * they died: long enough to look at a failure over a weekend, short enough
+ * that customer data in a payload does not linger. Settled rows hold no
+ * payload and go as soon as their dedup window closes.
+ */
+export const WEBHOOK_INBOX_DEAD_RETENTION_DAYS = 7
+
+/** Headers that carry no provider event data: never stored, never handed to a handler. */
+const DROPPED_HEADER =
+  /^(x-forwarded-|x-real-ip$|x-client-ip$|x-cluster-client-ip$|x-original-forwarded-for$|x-envoy-|x-amzn-trace-id$)|(^|-)(authorization|cookie|token|secret|password|signature|hmac|api-key|apikey|auth|session|csrf)(-|$)/
+
+/**
+ * The headers of a delivery that are kept: what a handler reads to identify
+ * and route an event (the provider's `x-*` event, topic and delivery-id
+ * headers), plus `content-type` and `user-agent`. Everything else goes:
+ * credentials and cookies, signatures (the verifier already checked them; a
+ * replay does not verify again), the forwarding and client-address headers,
+ * and the transport ones (`host`, `cf-*`, `forwarded`, ...). Names are
+ * lowercased. The handler gets the same set inline and on a replay.
+ */
+export function storedWebhookHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [rawName, value] of Object.entries(headers)) {
+    const name = rawName.toLowerCase()
+    const kept = name === "content-type" || name === "user-agent" || name.startsWith("x-")
+    if (kept && !DROPPED_HEADER.test(name) && typeof value === "string") out[name] = value
+  }
+  return out
+}
 
 const MAX_ERROR_LENGTH = 1_000
 
@@ -124,7 +156,7 @@ export async function storeDelivery(
         deliveryHash: d.deliveryHash,
         dedupUntil: inFuture(d.dedupTtlSeconds * 1000),
         payload: d.payload,
-        headers: d.headers,
+        headers: storedWebhookHeaders(d.headers),
         scopes: d.scopes,
         status: claiming ? "processing" : "held",
         attempts: claiming ? 1 : 0,
@@ -353,11 +385,11 @@ export async function listDueDeliveries(
 }
 
 /**
- * Retention: settled rows once their dedup window closed plus a margin, dead
- * rows after their own (longer) window.
+ * Retention (hourly): settled rows once their dedup window closed (they hold
+ * no payload, only the identity that dedups a redelivery), dead rows after
+ * their own short window.
  */
 export async function pruneWebhookInbox(
-  settledDays: number = WEBHOOK_INBOX_SETTLED_RETENTION_DAYS,
   deadDays: number = WEBHOOK_INBOX_DEAD_RETENTION_DAYS,
 ): Promise<{ deleted: number }> {
   return sweepSkippingMoving((notMoving) =>
@@ -369,7 +401,7 @@ export async function pruneWebhookInbox(
             or(
               and(
                 inArray(webhookInbox.status, ["done", "rejected", "dropped"]),
-                lt(webhookInbox.dedupUntil, sql`now() - make_interval(days => ${settledDays})`),
+                lt(webhookInbox.dedupUntil, sql`now()`),
               ),
               and(
                 eq(webhookInbox.status, "dead"),
@@ -414,7 +446,7 @@ export async function insertLegacyRetry(args: {
         deliveryHash: args.deliveryHash,
         dedupUntil: sql`now()`,
         payload: args.payload,
-        headers: args.headers,
+        headers: storedWebhookHeaders(args.headers),
         // The previous release ran its retries with the app's own namespace.
         scopes: [`${args.appName}:*`],
         status: "pending",

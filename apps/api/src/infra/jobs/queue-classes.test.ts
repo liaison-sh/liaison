@@ -92,8 +92,18 @@ describe("kernel queue classes: the table", () => {
     expect(resolveJobQueue("kernel", "agent-subrun").queueName).toBe("kernel-agent")
     expect(resolveJobQueue("kernel", "files-thumbnail").queueName).toBe("kernel-media")
     const physical = new Set(Object.values(KERNEL_QUEUE_CLASSES).map((c) => c.queueName))
-    expect(physical.size).toBe(4)
+    expect(physical.size).toBe(Object.keys(KERNEL_QUEUE_CLASSES).length)
     expect(physical.has(LEGACY_KERNEL_QUEUE)).toBe(false)
+  })
+
+  // A burst of replays (the minute sweep wakes every due row; at UTC midnight
+  // every delivery held at a day cap comes due at once) must not hold the
+  // lane the minute sweeps and expiries run in.
+  it("runs the webhook inbox's replays, sweep and retention on their own queue, not the cron lane", () => {
+    for (const name of ["webhook-inbox-replay", "webhook-inbox-sweep", "webhook-inbox-retention"]) {
+      expect(resolveJobQueue("kernel", name).queueName).toBe("kernel-webhook")
+    }
+    expect(KERNEL_QUEUE_CLASSES.cron.queueName).not.toBe("kernel-webhook")
   })
 
   it("routes an app's jobs to its own queue and refuses an unclassified kernel job", () => {
@@ -129,7 +139,7 @@ describe("kernel queue classes: the table", () => {
 
     // A tiny pool still gives every class one slot.
     const tiny = planKernelSlots({}, 3)
-    expect(Object.values(tiny.slots)).toEqual([1, 1, 1, 1])
+    expect(Object.values(tiny.slots).every((n) => n === 1)).toBe(true)
   })
 
   it("parses per-class concurrency overrides and ignores junk", () => {
@@ -151,6 +161,10 @@ describe("kernel queue classes: isolation", () => {
     const BULK_MS = 40
     const bulkQueue = getJobQueue("kernel", "search-index-upsert")
     await bulkQueue.obliterate({ force: true })
+    // The cron lane too: a file run before this one in the same process may
+    // have left cron jobs waiting, and the cron job below must start alone.
+    const cronQueue = getJobQueue("kernel", "local-claim-lapse-sweep")
+    await cronQueue.obliterate({ force: true })
     let bulkDone = 0
     registerJobWorker("kernel", "search-index-upsert", async () => {
       await new Promise((r) => setTimeout(r, BULK_MS))
@@ -185,5 +199,6 @@ describe("kernel queue classes: isolation", () => {
     expect(cronWaitMs).toBeLessThan(500)
     await JobsTestAccess.getWorkerForQueue("kernel-bulk")?.close(true)
     await bulkQueue.obliterate({ force: true })
+    await cronQueue.obliterate({ force: true })
   }, 30_000)
 })

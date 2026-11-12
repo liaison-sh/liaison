@@ -122,6 +122,7 @@ import {
 } from "~/modules/apps/reconcile-assets"
 import { APP_REGISTRATION_CODE_FILES } from "~/modules/apps/registration-code-files"
 import { runLimits } from "~/modules/apps/run-limits"
+import { handlerRunHoldsTx } from "~/modules/apps/run-wide-tx"
 import {
   buildManifestSettingsEntry,
   materialiseSections,
@@ -3949,26 +3950,18 @@ async function registerSingleApp(
               const source = await loadBundle(bundlePath)
               const actorId: string = event.actorId ?? `system:${appName}`
 
-              const runHandler = async (txDb: any) => {
-                const bridge = createEventHandlerBridge({
-                  appName,
-                  actorId,
-                  orgId: eventOrgId,
-                  txDb,
-                  manifest: bridgeManifest,
-                  actorType:
-                    event.actorType ??
-                    (actorId === "system" || actorId.startsWith("system:") ? "system" : "user"),
-                })
+              const bridgeActorType =
+                event.actorType ??
+                (actorId === "system" || actorId.startsWith("system:") ? "system" : "user")
+              const runOn = async (bridge: Record<string, any>, holdsTx: boolean) => {
                 // Event handlers execute in the OUT-OF-PROCESS worker pool, never on
                 // the main thread's in-process QuickJS pool: an event burst (or one
                 // slow handler) used to stall the host event loop in multi-second
                 // synchronous chunks -- the post-deploy run-tool 504 class. Bridge
                 // calls still arrive back on THIS process over IPC and run these
-                // same closures, so the ambient jobs-pool transaction and RLS /
-                // privileged wrappers behave exactly as before. Background priority:
-                // events must not starve interactive tool calls (same rule as
-                // manifest webhooks).
+                // same closures, so the transaction and RLS / privileged wrappers
+                // behave exactly as before. Background priority: events must not
+                // starve interactive tool calls (same rule as manifest webhooks).
                 await runApp({
                   trusted: false,
                   appName,
@@ -3982,81 +3975,109 @@ async function registerSingleApp(
                   timeoutMs: runLimits("event").wallMs,
                   priority: "background",
                   appId: appName,
-                  // The bridge runs on the handler's ambient transaction (txDb).
-                  holdsTx: true,
+                  holdsTx,
                 })
+              }
+
+              // The handler's database identity, the same whether one
+              // transaction spans its run or each bridge call opens its own.
+              const isSystemEvent = isCrossAppKernel || (event.actorType ?? "system") === "system"
+              const inTx = async <T>(fn: (tx: any) => Promise<T>): Promise<T> => {
+                if (isSystemEvent && !hasPrivilegedBridge(desc)) {
+                  // An app nobody vouched for never holds a handle that bypasses
+                  // RLS: its cross-app and system events run as the app itself,
+                  // under its own scopes, like its webhooks and crons.
+                  const { withRlsContext } = await import("~/db/rls")
+                  return withRlsContext(
+                    {
+                      actorType: "system",
+                      orgId: eventOrgId,
+                      purpose: "job",
+                      scopes: [`${appName}:*`],
+                    },
+                    fn,
+                    { pool: "jobs" },
+                  )
+                }
+                if (isSystemEvent) {
+                  // Cross-app or system events: the handler needs privileged DB to
+                  // see all rows. It acts as the app: a scope check in the database
+                  // (a task number, say) reads the scopes its manifest declares.
+                  // The built-in projects app declares none, and needs none: it
+                  // subscribes to no event and declares no poll, so no privileged
+                  // handler runs as it (its CI webhook runs under RLS as `projects:*`).
+                  const { withPrivilegedDb } = await import("~/db/privileged")
+                  return withPrivilegedDb(eventOrgId, `event:${appName}:${exportName}`, fn, {
+                    pool: "jobs",
+                    actor: { scopes: bridgeManifest.scopes ?? [] },
+                  })
+                }
+                // Same-app user/agent events: standard RLS context.
+                const { withRlsContext } = await import("~/db/rls")
+                return withRlsContext(
+                  {
+                    actorType: event.actorType,
+                    userId: actorId,
+                    orgId: eventOrgId,
+                    scopes: [`${appName}:*`],
+                    dimensionGrants: {},
+                  },
+                  fn,
+                  { pool: "jobs" },
+                )
+              }
+
+              // A sandboxed app's handler holds no transaction across its run
+              // (run-wide-tx.ts): each bridge call opens its own short one, so
+              // nothing stays open while it calls a provider. A core app's, and a
+              // listed exception's, still runs on one transaction for the whole run.
+              if (
+                !handlerRunHoldsTx({
+                  trusted: desc.trusted !== false,
+                  app: appName,
+                  entry: `event:${exportName}`,
+                })
+              ) {
+                const { createEventHandlerSessionBridge } = await import(
+                  "~/modules/apps/sandbox/event-handler-bridge"
+                )
+                await runOn(
+                  createEventHandlerSessionBridge({
+                    appName,
+                    actorId,
+                    orgId: eventOrgId,
+                    session: { run: inTx },
+                    manifest: bridgeManifest,
+                    actorType: bridgeActorType,
+                  }),
+                  false,
+                )
+                return
               }
 
               // The handler's transaction holds a jobs connection for its whole
               // run: it waits for admission first (infra/jobs/pinned-jobs-gate.ts).
               // The wait ends when the event bus gives up on this handler
               // (its signal), and never outlasts the bus's handler timeout.
-              const pinnedLabel = `event:${appName}:${exportName}`
               const admission = currentHandlerSignal() ?? AbortSignal.timeout(HANDLER_TIMEOUT_MS)
-              if (
-                (isCrossAppKernel || (event.actorType ?? "system") === "system") &&
-                !hasPrivilegedBridge(desc)
-              ) {
-                // An app nobody vouched for never holds a handle that bypasses
-                // RLS: its cross-app and system events run as the app itself,
-                // under its own scopes, like its webhooks and crons.
-                const { withRlsContext } = await import("~/db/rls")
-                await withPinnedJobSlot(
-                  pinnedLabel,
-                  () =>
-                    withRlsContext(
-                      {
-                        actorType: "system",
+              await withPinnedJobSlot(
+                `event:${appName}:${exportName}`,
+                () =>
+                  inTx((txDb) =>
+                    runOn(
+                      createEventHandlerBridge({
+                        appName,
+                        actorId,
                         orgId: eventOrgId,
-                        purpose: "job",
-                        scopes: [`${appName}:*`],
-                      },
-                      runHandler,
-                      { pool: "jobs" },
+                        txDb,
+                        manifest: bridgeManifest,
+                        actorType: bridgeActorType,
+                      }),
+                      true,
                     ),
-                  admission,
-                )
-              } else if (isCrossAppKernel || (event.actorType ?? "system") === "system") {
-                // Cross-app or system events: handler needs privileged DB to see all rows
-                const { withPrivilegedDb } = await import("~/db/privileged")
-                // Background pool: tx held across the sandboxed handler run —
-                // keep the privileged pool free for short nested reads.
-                // The handler acts as the app: a scope check in the database
-                // (a task number, say) reads the scopes its manifest declares.
-                // The built-in projects app declares none, and needs none: it
-                // subscribes to no event and declares no poll, so no privileged
-                // handler runs as it (its CI webhook runs under RLS as `projects:*`).
-                await withPinnedJobSlot(
-                  pinnedLabel,
-                  () =>
-                    withPrivilegedDb(eventOrgId, `event:${appName}:${exportName}`, runHandler, {
-                      pool: "jobs",
-                      actor: { scopes: bridgeManifest.scopes ?? [] },
-                    }),
-                  admission,
-                )
-              } else {
-                // Same-app user/agent events: run under standard RLS context
-                const { withRlsContext } = await import("~/db/rls")
-                await withPinnedJobSlot(
-                  pinnedLabel,
-                  () =>
-                    withRlsContext(
-                      {
-                        actorType: event.actorType,
-                        userId: actorId,
-                        orgId: eventOrgId,
-                        scopes: [`${appName}:*`],
-                        dimensionGrants: {},
-                      },
-                      runHandler,
-                      // Event-subscription handlers run sandboxed with the tx held
-                      // open — background pool, same as job handlers.
-                      { pool: "jobs" },
-                    ),
-                  admission,
-                )
-              }
+                  ),
+                admission,
+              )
             }
             {
               const { registerDeferrableEventHandler } = await import(

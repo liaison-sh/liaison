@@ -7,6 +7,9 @@
     "comment": "Quantities differ from the delivery note."
   },
   "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "expectError": {
+    "reason": "the sandbox company has no supplier invoice that arrived through the e-invoicing network (the plan's supplier invoice is uploaded, not received), so the platform refuses it as not a received e-invoice: pins that refusal; the received path needs a sandbox invoice received through the network"
+  },
   "calls": [
     {
       "method": "connections_getCredentials",

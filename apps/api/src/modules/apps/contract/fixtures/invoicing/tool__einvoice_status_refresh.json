@@ -1,15 +1,18 @@
 {
   "entry": "tool:einvoice_status_refresh",
   "params": {
-    "document_id": "078402f4-6ee8-43f6-b7be-bc9615536870"
+    "document_id": "2a8484fa-da58-4b14-a9e5-f7cedbe948f6"
   },
   "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "expectError": {
+    "reason": "a document never transmitted has no status to refresh; the recording org has no e-invoicing platform (PA) account, so this pins the refusal an org gets before one is set up; the platform path is still to record against a PA sandbox"
+  },
   "calls": [
     {
       "method": "db_findMany",
       "args": [
         "einvoice_transmissions",
-        "{\"where\":{\"document_id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"action\":\"send_einvoice\"},\"limit\":100}"
+        "{\"where\":{\"document_id\":\"2a8484fa-da58-4b14-a9e5-f7cedbe948f6\",\"action\":\"send_einvoice\"},\"limit\":100}"
       ],
       "reply": "[]"
     }

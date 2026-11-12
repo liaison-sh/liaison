@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.65",
+  "version": "0.6.66",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {
@@ -767,7 +767,6 @@
       "description": "Promote a SPECIFIC post/video/thread to a watched object so its FUTURE comments keep getting caught, and backfill-link its existing findings. THIS is the action to take whenever the user asks you to 'keep a close eye on / monitor / watch' a specific post — identify the post from a finding's parent_external_id (or permalink) and call this to actually start watching it. Listing watched objects (watched_list) does NOT watch anything; only THIS call does. Ungated internal metadata, no external effect.",
       "searchKeywords": ["surveiller", "suivre", "post", "publication"],
       "requiredScopes": ["social:watched:write"],
-      "atomic": true,
       "handler": "watchObjectHandler",
       "params": {
         "type": "object",

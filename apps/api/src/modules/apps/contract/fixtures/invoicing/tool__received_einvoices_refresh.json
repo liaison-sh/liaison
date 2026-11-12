@@ -2,6 +2,9 @@
   "entry": "tool:received_einvoices_refresh",
   "params": {},
   "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "expectError": {
+    "reason": "an org without a reception platform is refused; the recording org has no e-invoicing platform (PA) account, so this pins the refusal an org gets before one is set up; the platform path is still to record against a PA sandbox"
+  },
   "calls": [
     {
       "method": "db_findMany",

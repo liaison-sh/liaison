@@ -218,19 +218,9 @@ export async function documentsConvertToInvoice(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
 
-  await ctx.db.update("documents", source.id, {
-    status: trans.next,
-    lifecycle_log: [
-      ...source.lifecycle_log,
-      {
-        event: "converted_to_invoice",
-        actor: await ctx.getUserId(),
-        ts: new Date().toISOString(),
-      },
-    ],
-  })
-
-  // Issue a new invoice referencing the source. UI/agent flow seeds lines.
+  // Issue a new invoice referencing the source. UI/agent flow seeds lines. The source's new
+  // status commits with the invoice (`commit_with`): a refused or failed issue leaves the source
+  // as it was, and an issued invoice never leaves its source unconverted.
   const cat = convertCategory(input, source)
   const issueInput = {
     type: "invoice" as const,
@@ -255,6 +245,18 @@ export async function documentsConvertToInvoice(
       notes: (notes.value === undefined ? source.notes : notes.value) ?? null,
       lines: sourceLines,
     },
+    commit_with: [
+      {
+        update: "documents",
+        id: source.id,
+        data: { status: trans.next },
+        append: {
+          lifecycle_log: [
+            { event: "converted_to_invoice", actor: await ctx.getUserId(), ts: new Date().toISOString() },
+          ],
+        },
+      },
+    ],
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error

@@ -116,6 +116,11 @@ export async function isFullyCredited(
 export async function assertNoLiveInvoiceForOrder(
   db: Pick<MutationsDb, "findMany" | "findOne">,
   shopifyOrderId: string,
+  opts: {
+    /** An issued invoice that a credit note committed together with the new invoice fully
+     *  reverses (order_reissue_apply): it is skipped, as it would be once credited. */
+    creditedInSameCommit?: string
+  } = {},
 ): Promise<void> {
   const existing = (await db.findMany("documents", {
     where: { shopify_order_id: shopifyOrderId },
@@ -126,6 +131,9 @@ export async function assertNoLiveInvoiceForOrder(
     // must never block a new one.
     if (dup.type === "credit_note") continue
     const status = String(dup.status ?? "draft")
+    if (opts.creditedInSameCommit && String(dup.id) === opts.creditedInSameCommit && status !== "draft") {
+      continue
+    }
     const label = dup.number ? `${String(dup.id)} / ${String(dup.number)}` : `${String(dup.id)}, still a draft`
     if (status === "draft") {
       throw new Error(

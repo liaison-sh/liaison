@@ -139,6 +139,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/export/**", pages: ["admin/backups"] },
   { glob: "apps/api/src/modules/imports/**", pages: ["admin/settings", "app-development"] },
   { glob: "apps/web/src/modules/imports/**", pages: ["admin/settings", "agents/how-agents-work"] },
+  { glob: "apps/web/src/modules/app-pages/**", pages: ["app-development"] },
   { glob: "apps/api/src/modules/erasure/**", pages: ["admin/backups"] },
   { glob: "apps/api/src/modules/mailbox-keys/**", pages: ["runbooks/key-rotation"] },
 

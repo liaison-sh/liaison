@@ -6,6 +6,8 @@ import { env } from "~/lib/env"
 import ScopeRequestToolCard from "~/modules/admin-scope-requests/ScopeRequestToolCard"
 import { formatToolName } from "~/modules/agent/format-tool-name"
 import { SetupChecklistCard, setupStateResult } from "~/modules/agent/SetupChecklistCard"
+import { pageHandleOf } from "~/modules/app-pages/open-page"
+import { PageHandleCard } from "~/modules/app-pages/PageHandleCard"
 import ApprovalCard from "~/modules/approvals/ApprovalCard"
 import { ensureLoaded, getById } from "~/modules/approvals/approvals-store"
 import { BugReportDraftCard } from "~/modules/bug-report/BugReportDraftCard"
@@ -178,7 +180,8 @@ export function drawsCard(toolCall: ToolCallState): boolean {
     requestedScopeId(toolCall) !== null ||
     reportBugDraftId(toolCall) !== null ||
     importRunRef(toolCall) !== null ||
-    mailboxSetupCardRef(toolCall) !== null
+    mailboxSetupCardRef(toolCall) !== null ||
+    pageHandleOf(toolCall) !== null
   )
 }
 
@@ -319,6 +322,9 @@ function SingleToolCallRow(props: ToolCallRowProps) {
           origin={drivePickerOrigin(props.toolCall)}
           threadId={drivePickerThread(props.toolCall)}
         />
+      </Show>
+      <Show when={pageHandleOf(props.toolCall)}>
+        {(handle) => <PageHandleCard handle={handle()} />}
       </Show>
       <Show when={mailboxSetupCardRef(props.toolCall)}>
         {(ref) => <MailboxSetupCard email={ref().email} makePrivate={ref().makePrivate} />}

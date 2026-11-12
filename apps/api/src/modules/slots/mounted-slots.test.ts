@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
-import exampleManifest from "~/apps/example/app.manifest.json"
+import exampleManifest from "../../../test-support/apps/example/app.manifest.json"
 import ticketsManifest from "~/apps/tickets/app.manifest.json"
 import { slotRegistry } from "~/modules/apps/app-registries"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"

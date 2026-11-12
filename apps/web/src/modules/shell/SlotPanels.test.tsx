@@ -13,7 +13,7 @@ import { setTokens } from "~/modules/auth/auth-store"
 import { ApiProvider } from "~/modules/shell/ApiContext"
 import { SlotPanels, type SlotPosition } from "~/modules/shell/SlotPanels"
 import { mockApiClient } from "~/tests/helpers/mock-api"
-import exampleManifest from "../../../../api/src/apps/example/app.manifest.json"
+import exampleManifest from "../../../../api/test-support/apps/example/app.manifest.json"
 
 function makeJwt(): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))

@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { app } from "~/app"
-import { exampleAppManifest } from "~/apps/example/manifest-descriptor"
+import { exampleAppManifest } from "../../../test-support/apps/example/manifest-descriptor"
 import type { UserContext } from "~/db/rls"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { toolRegistry } from "~/modules/apps/app-registries"

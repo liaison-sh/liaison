@@ -12,6 +12,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn
 import * as dnsPromises from "node:dns/promises"
 import { type Adapter, validateAdapter } from "@liaison/api-connector-core"
 import { app } from "~/app"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createPool } from "~/db/connection"
@@ -103,11 +104,21 @@ async function openConversation(v: View): Promise<number[]> {
     await res.arrayBuffer()
     return res.status
   }
+  // The app's settings list and its customer card: tools of the app, run in its sandbox.
+  const tool = async (name: string, params: Record<string, unknown>) => {
+    const res = await app.request(`/api/apps/api-connector/tools/${name}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${v.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    })
+    await res.arrayBuffer()
+    return res.status
+  }
   return Promise.all([
     get(`/api/threads/${v.threadId}`),
     get(`/api/threads/${v.threadId}/messages`),
-    get("/api/api-connector/adapters"),
-    get(`/api/api-connector/customer?email=${encodeURIComponent(v.email)}`),
+    tool("settings_connections", {}),
+    tool("customer_lookup", { email: v.email }),
   ])
 }
 
@@ -138,6 +149,7 @@ beforeAll(async () => {
   await acquireTestLock()
   const p = await viewer("plain")
   plain = { ...p.view, email: "jane@acme.test" }
+  await registerApiConnectorApp(p.orgId)
   await upsertAdapterRow(p.orgId, "crm", CRM, p.userId)
   await withPrivilegedDb(p.orgId, "card-peak-test", (tx) =>
     createCredentialConnection(tx, p.orgId, p.userId, "api-connector", "api", {
@@ -148,6 +160,7 @@ beforeAll(async () => {
   )
   const d = await viewer("demo")
   demo = { ...d.view, email: "jane.doe@acme-instruments.example" }
+  await registerApiConnectorApp(d.orgId)
   await markOrgAsDemo(d.orgId, visitorMarker(24))
   DemoModeTestAccess.set(true)
   invalidateDemoMarker()

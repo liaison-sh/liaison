@@ -48,7 +48,10 @@ DO $$ BEGIN
 END $$;
 --> statement-breakpoint
 -- liaison_request is a member of liaison_rls only; liaison_definer of nothing,
--- and no runtime role is a member of either.
+-- and no runtime role is a member of either. liaison_portal, which a later
+-- migration creates and gives to liaison_request, is left alone: roles are
+-- cluster wide, and a replay of this file on another database of the same
+-- cluster must not take back what the later migration gave.
 DO $$
 DECLARE
   m record;
@@ -58,7 +61,7 @@ BEGIN
       FROM pg_auth_members a
       JOIN pg_roles r ON r.oid = a.roleid
       JOIN pg_roles u ON u.oid = a.member
-     WHERE (u.rolname = 'liaison_request' AND r.rolname <> 'liaison_rls')
+     WHERE (u.rolname = 'liaison_request' AND r.rolname NOT IN ('liaison_rls', 'liaison_portal'))
         OR u.rolname = 'liaison_definer'
         OR (r.rolname IN ('liaison_request', 'liaison_definer') AND u.rolname <> current_user)
   LOOP

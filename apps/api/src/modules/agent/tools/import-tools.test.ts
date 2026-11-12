@@ -146,6 +146,9 @@ beforeAll(async () => {
   adminId = a.userId
   admin = a.actor
   threadId = await minimal.thread(orgId, adminId)
+  // API transforms pull through an app that declares an import source.
+  await ensureAppsForOrg(orgId, {})
+  await registerApiConnectorApp(orgId)
   registerImportTools(orgId)
   registerImportJobWorker()
   // This file's own files_select policy (thread parents), whatever ran before.

@@ -255,6 +255,28 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/cli/api-connector/run.ts#runApiConnectorTest":
+    "operator command: the org resolveOrgId resolved from the operator's --org (or the only org); the API connection is one findAdapterConnections read for that same org (its conn carries that org id)",
+  "apps/api/src/modules/agent/context/connected-systems.ts#loadConnectedSystems":
+    "the turn's own org (context.ts and tool-search pass ctx.orgId); each connection comes from customerContextConnections(orgId), whose entries carry that same org id",
+  "apps/api/src/modules/agent/tools/secret-request-tools.ts#adapterProblem":
+    "the request_secret tool call's own org (ctx.orgId); the connection is apiConnFor(orgId, target.app), built with that same org id (null when the app declares none)",
+  "apps/api/src/modules/apps/connections/api/customer.ts#customerLookupConfigured":
+    "the caller's own org (the tours context's orgId); each connection comes from customerContextConnections(orgId), carrying that same org id",
+  "apps/api/src/modules/apps/connections/api/declarations.ts#importSourceConnection":
+    "the import's own org (the tool call's ctx.orgId, or the import run row's org); each connection comes from importSourceConnections(orgId), carrying that same org id",
+  "apps/api/src/modules/provisioning/config-export.ts#exportOrgConfig":
+    "the export's own org (the CLI's resolved org or the config tool's ctx.orgId); each app's API connection is apiConnFor(orgId, name), built with that same org id",
+  "apps/api/src/modules/secret-requests/routes.ts#formFor":
+    "the secret request row's own org, read for the authenticated caller's org (viewOf passes c.get('orgId')); the API connection is apiConnFor(orgId, target.app), built with that same org id",
+  "apps/api/src/modules/agent/context/customer-context.ts#lookupConnection":
+    "the turn's own org (input.orgId from the context assembler); each connection is one of customerContextConnections(input.orgId), carrying that same org id",
+  "apps/api/src/modules/agent/context/customer-context.ts#buildBlock":
+    "the turn's own org (input.orgId from the context assembler); the connection is one of customerContextConnections(input.orgId), carrying that same org id",
+  "apps/api/src/modules/provisioning/setup-state.ts#countUsableConnectors":
+    "computeSetupState's org (the caller's own org); each connection comes from apiConnectionsOf(orgId), carrying that same org id",
+  "apps/api/src/modules/apps/connections/api/authoring-tools.ts#registerAdapterAuthoringTools":
+    "the adapter save and restore tools and their summarizers, registered per [orgId, app] at that app's registration; the closures build the connection from the call's own ctx.orgId (connOf), as the tool pipeline and the approval pipeline pass it",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":

@@ -71,7 +71,8 @@ export function apiConnectionOf(
 /** `app`'s API connection in `orgId` (registered for the org), or null. */
 export function apiConnFor(orgId: string, app: string): ApiConnDecl | null {
   const found = apiConnectionOf(appBridgeManifest(orgId, app) as ManifestWithConnections)
-  return found ? { orgId, app, ...found } : null
+  if (!found) return null
+  return { orgId, app, connection: found.connection, decl: found.decl }
 }
 
 /** Every app of the org that declares an API connection, by app name. */

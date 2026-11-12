@@ -14,6 +14,13 @@ import { createApiConnectionMethods } from "./bridge"
 import { apiConnectionOf } from "./declarations"
 import { deleteConnection, listAdapterRows, upsertAdapterRow } from "./store"
 
+/** A valid multi-account credentials connection, as the api-connector app declares one. */
+const CRED = {
+  type: "credentials",
+  multiInstance: true,
+  allowedDomains: [],
+  credentialFields: [{ name: "token", type: "password", label: "Token", required: false }],
+}
 const DECL = { readScope: "acme:read", writeScope: "acme:write", adminScope: "acme:admin" }
 let ORG = ""
 
@@ -125,15 +132,14 @@ describe("platform-held API connections are generic", () => {
       validateAppManifest({ ...base, connections }).error ?? ""
     expect(
       errorsOf({
-        a: { type: "credentials", multiInstance: true, api: DECL },
-        b: { type: "credentials", multiInstance: true, api: DECL },
+        a: { ...CRED, api: DECL },
+        b: { ...CRED, api: DECL },
       }),
     ).toContain("at most one connection may carry an api block")
     expect(
       errorsOf({
         a: {
-          type: "credentials",
-          multiInstance: true,
+          ...CRED,
           api: {
             ...DECL,
             customerContext: { listTool: "read_it", readTool: "read_it", writeTool: "nope" },

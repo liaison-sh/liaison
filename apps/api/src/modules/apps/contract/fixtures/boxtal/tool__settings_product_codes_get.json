@@ -1,0 +1,12 @@
+{
+  "entry": "tool:settings_product_codes_get",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"79cedecb-19e3-4a32-9e06-ad888a8d99f0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:09.106775+00\",\"updated_at\":\"2026-11-12 09:01:25.136367+00\",\"key\":\"product_code_aliases\",\"value\":{\"aliases\":{\"HARDCOVER\":\"HC\"},\"strip_prefixes\":[\"RAL-\"],\"strip_suffixes\":[\"-B2B\"]}}]"
+    }
+  ]
+}

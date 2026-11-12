@@ -1,12 +1,1 @@
-[
-  {
-    "app": "boxtal",
-    "entry": "webhook:trackingChangedHandler",
-    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
-  },
-  {
-    "app": "boxtal",
-    "entry": "webhook:documentCreatedHandler",
-    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
-  }
-]
+[]

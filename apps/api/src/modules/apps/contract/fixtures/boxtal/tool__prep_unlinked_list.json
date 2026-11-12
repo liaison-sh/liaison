@@ -1,0 +1,17 @@
+{
+  "entry": "tool:prep_unlinked_list",
+  "params": {
+    "limit": 10
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:orders_search",
+        "{\"query\":\"fulfillment_status:unfulfilled\",\"limit\":10}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_not_found\",\"message\":\"tool shopify:orders_search not registered\",\"retryable\":false}}"
+    }
+  ]
+}

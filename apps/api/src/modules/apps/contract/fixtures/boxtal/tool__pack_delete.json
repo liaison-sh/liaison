@@ -1,0 +1,25 @@
+{
+  "entry": "tool:pack_delete",
+  "params": {
+    "id": "f99ecab9-61bd-4ba2-a3da-692cbae1f185"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "pack_component",
+        "{\"where\":{\"pack_id\":\"f99ecab9-61bd-4ba2-a3da-692cbae1f185\"},\"limit\":1000}"
+      ],
+      "reply": "[{\"id\":\"81e4cee7-7be2-49b5-a83e-e6342e7a5e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:23.389614+00\",\"updated_at\":\"2026-11-12 09:02:23.389614+00\",\"pack_id\":\"f99ecab9-61bd-4ba2-a3da-692cbae1f185\",\"product_source\":\"local\",\"product_id\":\"CT-CABLE-1\",\"quantity\":2}]"
+    },
+    {
+      "method": "db_delete",
+      "args": ["pack_component", "81e4cee7-7be2-49b5-a83e-e6342e7a5e34"]
+    },
+    {
+      "method": "db_delete",
+      "args": ["pack", "f99ecab9-61bd-4ba2-a3da-692cbae1f185"]
+    }
+  ]
+}

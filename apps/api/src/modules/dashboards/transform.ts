@@ -40,6 +40,7 @@ import {
   type BlockMap,
   type BlockType,
   type DateBucket,
+  type Layer,
   MAX_BLOCK_OUTPUT,
   MAX_BLOCK_SERIES,
   MAX_SOURCE_ROWS,
@@ -58,6 +59,36 @@ export interface ChartDisplay {
   horizontal?: true
   lineSeries?: string[]
   secondaryAxis?: true
+  /** A smooth curve between points (absent: straight segments). */
+  curve?: "smooth"
+  /** A layered chart: the series drawn against the right-hand axis. */
+  rightAxis?: string[]
+}
+
+/** One headline figure: a period total (agg-consistent) and the comparison's. */
+export interface HeadlineFigure {
+  /** "total", a series name, a layer id (a layer's total), or a headlineCalc label. */
+  key: string
+  label: string
+  value: number | null
+  /** The same figure over the comparison window, when one ran. */
+  previous?: number | null
+  /** A layered chart: the layer the figure comes from. */
+  layer?: string
+  /** Computed by a headlineCalc expression. */
+  calc?: true
+}
+
+/** A layered chart's layer as drawn: its series, its rows' notes, or why it failed. */
+export interface LayerInfo {
+  id: string
+  label: string
+  as: "bar" | "line"
+  axis: "left" | "right"
+  series: string[]
+  meta: BlockMeta
+  error?: { error: string; message: string }
+  previousError?: { error: string; message: string }
 }
 
 type Row = Record<string, unknown>
@@ -108,6 +139,12 @@ export type BlockData =
       meta: BlockMeta
       previous?: PreviousSeries
       display?: ChartDisplay
+      /** map.headline: the period's figures (and the comparison's). */
+      headline?: HeadlineFigure[]
+      /** The label of the bucket that holds today, when the window ends today: still filling. */
+      inProgressLabel?: string
+      /** A layered chart's layers, in spec order. */
+      layers?: LayerInfo[]
     }
   | { kind: "text"; markdown: string; meta: BlockMeta }
 
@@ -402,6 +439,8 @@ export interface TransformOptions {
   timeZone?: string
   /** Other shared datasets' rows, by id, for calculated values and measures that read them. */
   datasetRows?: Record<string, Row[] | null>
+  /** Today in the org's zone (YYYY-MM-DD): a date chart's bucket holding it is in progress. */
+  today?: string
 }
 
 /** The rows a block aggregates: the source's rows (cut to MAX_SOURCE_ROWS), where applied. */
@@ -570,17 +609,36 @@ export function transformBlock(
   const aggField = type === "pie" ? map.value : map.y
   const agg = map.agg ?? (aggField ? "sum" : "count")
   const groups = groupRows(rows, keyField, bucket, meta, opts.timeZone)
+  /** The rows that fall in a category (before any fill or limit): what a headline totals. */
+  const groupedRows = groups.flatMap((g) => g.rows)
+  const fill =
+    bucket &&
+    opts.window &&
+    (type === "bar" || type === "line" || type === "area" || type === "combo")
+      ? bucketKeysBetween(
+          opts.window.from,
+          opts.today && opts.today < opts.window.to && opts.today >= opts.window.from
+            ? opts.today
+            : opts.window.to,
+          bucket,
+        )
+      : null
+  if (fill) {
+    // Every bucket of the window, an empty one included: a quiet day is a 0, not a missing day.
+    const have = new Set(groups.map((g) => g.key))
+    for (const key of fill) if (!have.has(key)) groups.push({ key, rows: [] })
+  }
   const measures = map.measures
   if (!measures?.length && agg !== "count") noteAbsentField(rows, aggField, meta)
   const firstMeasure = measures?.[0]
   const totalOf = (g: Group) =>
     firstMeasure
-      ? (aggregate(
+      ? cellValue(
           firstMeasure.agg ?? (firstMeasure.field ? "sum" : "count"),
           g.rows,
           firstMeasure.field,
-        ) ?? 0)
-      : (aggregate(agg, g.rows, aggField) ?? 0)
+        )
+      : cellValue(agg, g.rows, aggField)
 
   const byCategory =
     type === "line" ||
@@ -592,7 +650,7 @@ export function transformBlock(
     dir: byCategory ? "asc" : "desc",
   })
 
-  const totals = new Map(groups.map((g) => [g.key, totalOf(g)]))
+  const totals = new Map<string, number | null>(groups.map((g) => [g.key, totalOf(g)]))
   let sorted = [...groups].sort((a, b) => {
     const c =
       by === "key" ? compare(a.key, b.key) : (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0)
@@ -602,7 +660,7 @@ export function transformBlock(
     const byKey = new Map(groups.map((g) => [g.key, g]))
     sorted = map.order.map((label) => byKey.get(label) ?? { key: label, rows: [] })
   }
-  const limit = map.limit ?? MAX_BLOCK_OUTPUT
+  const limit = map.limit ?? (fill ? Math.max(MAX_BLOCK_OUTPUT, fill.length) : MAX_BLOCK_OUTPUT)
   if (sorted.length > limit) meta.truncated = true
   const kept = sorted.slice(0, limit)
   const labels = kept.map((g) => g.key)
@@ -622,11 +680,110 @@ export function transformBlock(
       )
     : seriesField
       ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
-      : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
+      : [
+          {
+            name: aggField ?? DEFAULT_SERIES,
+            values: kept.map((g) => totals.get(g.key) ?? totalOf(g)),
+          },
+        ]
 
   const finished = finishSeries(series, map)
   const display = displayOf(type, map, finished)
-  return { kind: type, labels, series: finished, meta, ...(display ? { display } : {}) }
+  const headline = map.headline
+    ? headlineOf(map, groupedRows, finished, {
+        agg,
+        aggField,
+        seriesField,
+        keyField,
+        bucket,
+        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+        ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
+      })
+    : null
+  const today = opts.today
+  const inProgress =
+    bucket && today && opts.window && opts.window.from <= today && today <= opts.window.to
+      ? bucketOfDay(today, bucket)
+      : null
+  return {
+    kind: type,
+    labels,
+    series: finished,
+    meta,
+    ...(display ? { display } : {}),
+    ...(headline ? { headline } : {}),
+    ...(inProgress && labels.includes(inProgress) ? { inProgressLabel: inProgress } : {}),
+  }
+}
+
+/**
+ * A category's value: `agg` over its rows. An empty category (a bucket the window holds with no
+ * row) is 0 for sum and count, null (a gap) for avg, min and max; a category whose rows carry no
+ * number stays 0 as before.
+ */
+function cellValue(agg: Aggregation, rows: Row[], field: string | undefined): number | null {
+  if (rows.length === 0 && agg !== "sum" && agg !== "count") return null
+  return aggregate(agg, rows, field) ?? 0
+}
+
+/**
+ * A chart's headline: "total" is the block's aggregation over every row that falls in a category
+ * (sum stays a sum, avg the average of every row, never an average of averages); "series" one
+ * figure per series, each over its own rows, a computed measure from the other measures' totals.
+ * map.scale applies; percentOfTotal never does (the spec refuses it beside a headline).
+ */
+function headlineOf(
+  map: BlockMap,
+  rows: Row[],
+  series: { name: string }[],
+  ctx: {
+    agg: Aggregation
+    aggField: string | undefined
+    seriesField: string | undefined
+    keyField: string
+    bucket: DateBucket | undefined
+    timeZone?: string
+    datasetRows?: Record<string, Row[] | null>
+  },
+): HeadlineFigure[] {
+  const fig = (key: string, label: string, value: number | null): HeadlineFigure => ({
+    key,
+    label,
+    value: scaled(value, map.scale),
+  })
+  if (map.headline === "total" || (!map.measures && !ctx.seriesField)) {
+    const value = aggregate(ctx.agg, rows, ctx.aggField)
+    return map.headline === "total"
+      ? [fig("total", ctx.aggField ?? "count", value)]
+      : [fig(series[0]?.name ?? DEFAULT_SERIES, series[0]?.name ?? DEFAULT_SERIES, value)]
+  }
+  if (map.measures) {
+    const all = measureSeries(
+      map.measures,
+      [{ key: "", rows }],
+      {
+        keyField: ctx.keyField,
+        bucket: ctx.bucket,
+        whole: true,
+        ...(ctx.timeZone ? { timeZone: ctx.timeZone } : {}),
+        ...(ctx.datasetRows ? { datasetRows: ctx.datasetRows } : {}),
+      },
+      { sourceRows: 0, truncated: false, skippedRows: 0 },
+    )
+    return all.map((s) => fig(s.name, s.name, s.values[0] ?? null))
+  }
+  const field = ctx.seriesField!
+  return series.map((s) =>
+    fig(
+      s.name,
+      s.name,
+      aggregate(
+        ctx.agg,
+        rows.filter((r) => keyOf(readPath(r, field)) === s.name),
+        ctx.aggField,
+      ),
+    ),
+  )
 }
 
 /** `n` times `scale` (6 decimals), or `n` when there is no scale. */
@@ -674,6 +831,8 @@ function measureSeries(
     bucket: DateBucket | undefined
     timeZone?: string | undefined
     datasetRows?: Record<string, Row[] | null>
+    /** One group holding every row: a dataset measure reads all of its rows (a headline). */
+    whole?: boolean
   },
   meta: BlockMeta,
 ): { name: string; values: (number | null)[] }[] {
@@ -704,7 +863,9 @@ function measureSeries(
     if (m.expr) return { m, values: [] as (number | null)[] }
     const agg = m.agg ?? (m.field ? "sum" : "count")
     const values = m.dataset
-      ? kept.map((g) => aggregate(agg, otherGroups(m).get(g.key) ?? [], m.field))
+      ? ctx.whole
+        ? [aggregate(agg, [...otherGroups(m).values()].flat(), m.field)]
+        : kept.map((g) => aggregate(agg, otherGroups(m).get(g.key) ?? [], m.field))
       : kept.map((g) => aggregate(agg, g.rows, m.field))
     if (m.name) byName[m.name] = values
     return { m, values }
@@ -825,6 +986,9 @@ function displayOf(
 ): ChartDisplay | null {
   const d: ChartDisplay = {}
   if (map.stacked && (type === "bar" || type === "area" || type === "combo")) d.stacked = true
+  if (map.curve === "smooth" && (type === "line" || type === "area" || type === "combo")) {
+    d.curve = "smooth"
+  }
   if (map.horizontal && type === "bar") d.horizontal = true
   if (type === "combo") {
     const names = new Set(series.map((s) => s.name))
@@ -847,7 +1011,7 @@ function splitSeries(
   agg: Aggregation,
   aggField: string | undefined,
   meta: BlockMeta,
-): { name: string; values: number[] }[] {
+): { name: string; values: (number | null)[] }[] {
   const order = [...new Set(rows.map((r) => keyOf(readPath(r, field))))]
   const perGroup = kept.map((g) => {
     const byName = new Map<string, Row[]>()
@@ -861,11 +1025,12 @@ function splitSeries(
   })
   const all = order.map((name) => ({
     name,
-    values: perGroup.map((byName) => aggregate(agg, byName.get(name) ?? [], aggField) ?? 0),
+    values: perGroup.map((byName) => cellValue(agg, byName.get(name) ?? [], aggField)),
   }))
   if (all.length <= MAX_BLOCK_SERIES) return all
   meta.truncated = true
-  const weight = (s: { values: number[] }) => s.values.reduce((t, v) => t + Math.abs(v), 0)
+  const weight = (s: { values: (number | null)[] }) =>
+    s.values.reduce<number>((t, v) => t + Math.abs(v ?? 0), 0)
   const keep = new Set(
     [...all]
       .sort((a, b) => weight(b) - weight(a))
@@ -974,8 +1139,17 @@ export function attachPrevious(
   }
   const at = current.labels.map(match)
   const prevSeries = new Map(previous.series.map((s) => [s.name, s.values]))
+  const prevFigures = new Map((previous.headline ?? []).map((f) => [f.key, f.value]))
   return {
     ...current,
+    ...(current.headline
+      ? {
+          headline: current.headline.map((f) => ({
+            ...f,
+            previous: prevFigures.get(f.key) ?? null,
+          })),
+        }
+      : {}),
     previous: {
       labels: at.map((i) => (i === undefined ? null : (previous.labels[i] ?? null))),
       series: current.series.map((s) => {
@@ -986,5 +1160,146 @@ export function attachPrevious(
         }
       }),
     },
+  }
+}
+
+/** One layer of a layered chart as its run came out: its chart data, or its failure. */
+export interface LayerRun {
+  layer: Pick<Layer, "id" | "label" | "as" | "axis" | "map">
+  data?: BlockData
+  error?: { error: string; message: string }
+  previousError?: { error: string; message: string }
+}
+
+type ChartData = Extract<BlockData, { labels: string[] }>
+
+/**
+ * A layered (blended) chart from its layers' own charts: one combo over the union of their date
+ * buckets, every layer's series in layer order (an unsplit layer's one series named by its
+ * label; a name already taken gets " (<label>)"), lines from the `as: "line"` layers, the right
+ * axis from `axis: "right"`, headline figures layer by layer then the headlineCalc ones (an
+ * expression over the layers' totals, its previous over their previous totals). A failed layer
+ * draws nothing and says why in `layers`; every layer failed is the caller's refusal.
+ */
+export function mergeLayers(runs: LayerRun[], map: BlockMap): BlockData {
+  const ok = runs.filter((r): r is LayerRun & { data: ChartData } =>
+    Boolean(r.data && "labels" in r.data),
+  )
+  const labels = [...new Set(ok.flatMap((r) => r.data.labels))].sort()
+  const meta: BlockMeta = { sourceRows: 0, truncated: false, skippedRows: 0 }
+  if (map.format) meta.format = map.format
+  if (map.currency) meta.currency = map.currency
+  const series: ChartData["series"] = []
+  const prevSeries: PreviousSeries["series"] = []
+  const prevLabels: (string | null)[] = labels.map(() => null)
+  let compared = false
+  const lineSeries: string[] = []
+  const rightAxis: string[] = []
+  const headline: HeadlineFigure[] = []
+  const totals: Record<string, number | null> = {}
+  const prevTotals: Record<string, number | null> = {}
+  let stacked = false
+  let inProgress: string | undefined
+  const layers: LayerInfo[] = runs.map((r) => {
+    const label = r.layer.label ?? r.layer.id
+    const info: LayerInfo = {
+      id: r.layer.id,
+      label,
+      as: r.layer.as,
+      axis: r.layer.axis ?? "left",
+      series: [],
+      meta: { sourceRows: 0, truncated: false, skippedRows: 0 },
+      ...(r.error ? { error: r.error } : {}),
+      ...(r.previousError ? { previousError: r.previousError } : {}),
+    }
+    const data = r.data
+    if (!data || !("labels" in data)) return info
+    info.meta = data.meta
+    meta.sourceRows += data.meta.sourceRows
+    meta.skippedRows += data.meta.skippedRows
+    if (data.meta.truncated) meta.truncated = true
+    if (data.meta.filteredRows !== undefined) {
+      meta.filteredRows = (meta.filteredRows ?? 0) + data.meta.filteredRows
+    }
+    const unsplit = !r.layer.map.series && !r.layer.map.measures
+    const taken = new Set(series.map((s) => s.name))
+    const rename = (name: string) => {
+      const base = unsplit ? label : name
+      return taken.has(base) ? `${base} (${label})` : base
+    }
+    const index = new Map(data.labels.map((l, i) => [l, i]))
+    const names = new Map<string, string>()
+    for (const s of data.series) {
+      const name = rename(s.name)
+      names.set(s.name, name)
+      info.series.push(name)
+      series.push({
+        name,
+        values: labels.map((l) => {
+          const i = index.get(l)
+          return i === undefined ? null : (s.values[i] ?? null)
+        }),
+      })
+      if (r.layer.as === "line") lineSeries.push(name)
+      if (r.layer.axis === "right") rightAxis.push(name)
+      const prev = data.previous?.series.find((p) => p.name === s.name)
+      prevSeries.push({
+        name,
+        values: labels.map((l) => {
+          const i = index.get(l)
+          return i === undefined || !prev ? null : (prev.values[i] ?? null)
+        }),
+      })
+    }
+    if (data.previous) {
+      compared = true
+      labels.forEach((l, j) => {
+        const i = index.get(l)
+        if (prevLabels[j] === null && i !== undefined)
+          prevLabels[j] = data.previous!.labels[i] ?? null
+      })
+    }
+    if (r.layer.as === "bar" && data.display?.stacked) stacked = true
+    if (data.inProgressLabel) inProgress = data.inProgressLabel
+    for (const f of data.headline ?? []) {
+      const total = f.key === "total"
+      if (total) {
+        totals[r.layer.id] = f.value
+        if (f.previous !== undefined) prevTotals[r.layer.id] = f.previous
+      }
+      headline.push({
+        ...f,
+        key: total ? r.layer.id : (names.get(f.key) ?? f.key),
+        label: total || unsplit ? label : (names.get(f.label) ?? f.label),
+        layer: r.layer.id,
+      })
+    }
+    return info
+  })
+  for (const c of map.headlineCalc ?? []) {
+    const reads = namesRead(c.expr)
+    const hasPrev = reads.length > 0 && reads.every((n) => n in prevTotals)
+    headline.push({
+      key: c.label,
+      label: c.label,
+      value: evaluateExpr(c.expr, totals),
+      ...(hasPrev ? { previous: evaluateExpr(c.expr, prevTotals) } : {}),
+      calc: true,
+    })
+  }
+  const display: ChartDisplay = { lineSeries }
+  if (stacked) display.stacked = true
+  if (rightAxis.length) display.rightAxis = rightAxis
+  if (map.curve === "smooth") display.curve = "smooth"
+  return {
+    kind: "combo",
+    labels,
+    series,
+    meta,
+    display,
+    ...(compared ? { previous: { labels: prevLabels, series: prevSeries } } : {}),
+    ...(headline.length ? { headline } : {}),
+    ...(inProgress && labels.includes(inProgress) ? { inProgressLabel: inProgress } : {}),
+    layers,
   }
 }

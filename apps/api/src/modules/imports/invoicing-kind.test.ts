@@ -28,8 +28,12 @@ import { undoImportRun } from "~/modules/imports/undo"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
 import { allocateSequence } from "~/modules/sequences/allocate"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 let installRoot = ""
 let prevAppsDir: string | undefined
@@ -114,6 +118,7 @@ const invoice = (
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "invoicing-import-install-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -166,6 +171,7 @@ afterAll(async () => {
   if (prevAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

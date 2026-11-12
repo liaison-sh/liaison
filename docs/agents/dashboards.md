@@ -146,7 +146,16 @@ How each one reads on the dashboard:
 - A **combo** chart draws its bars and its lines together; when the lines have their own axis, it is on the right. When its bars are stacked, its lines always have their own axis on the right, so a line is never drawn on top of the bars' total.
 - A **text** note shows its formatting (bold, lists, links). Any HTML written in it shows as plain text. A link to a web page opens in a new tab; a link to a page of Liaison (such as `/projects`) opens it in place.
 
-## Filter a dashboard
+## Charts over time
+
+A chart by day, week, month, quarter or year that follows the dashboard's period shows every one of its days (or weeks, or months), up to 400 of them: a quiet day counts as 0, so the line never jumps over it. A day with no value for an average, a lowest or a highest figure is left as a gap. The compared period is laid out the same way, day for day. The day, week or month that holds today is marked as still in progress while the period ends today.
+
+Your agent can also give a chart:
+
+- a **headline**: the period's figure above the chart with its change against the compared period, worked out over every row (a total stays a total, an average is the average of every row, not of the daily averages), or one figure per series;
+- a **smooth** line instead of straight segments;
+- a **blended** chart: two or three sources in one combo chart, for example units sold per product as stacked bars and the shop's sessions as a line on the right axis. The sources join on the same day, week or month, never on anything else. A blended chart can add figures worked out from its sources' totals, such as units per session. When one source cannot be read, its reason is shown and the others still draw. The records behind a blended chart are read one source at a time.
+
 
 A dashboard can also have **filters** (at most 8), such as a market, a channel or a campaign. They sit in a row under the bar at the top, one button per filter, which reads its name and its value: "Market: All", "Market: FR", or "Channel: b2b, dtc". On a phone the row wraps.
 

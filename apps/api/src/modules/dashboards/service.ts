@@ -97,8 +97,11 @@ import {
   type DashboardSpec,
   dashboardDefaultRange,
   dashboardSpecSchema,
+  LAYER_SEP,
+  layerBlocks,
   MAX_SOURCE_ROWS,
   MAX_SOURCE_TTL_SEC,
+  runnableBlocks,
   sourceValue,
   specIssues,
   timeRangeSchema,
@@ -110,6 +113,7 @@ import {
   categoryField,
   categoryOf,
   linkFields,
+  mergeLayers,
   NONE_LABEL,
   projectRow,
   type RecordLink,
@@ -291,6 +295,15 @@ export async function validateSpec(author: DashboardViewer, raw: unknown): Promi
     if (!check.ok) problems.push(`datasets.${id}: ${check.code}: ${check.message}`)
   }
   for (const [i, block] of parsed.data.blocks.entries()) {
+    for (const [l, layer] of (block.layers ?? []).entries()) {
+      if (!layer.source) continue
+      const check = await sourceCheck(layer.source)
+      if (!check.ok) {
+        problems.push(
+          `blocks.${i}.layers.${l} (${block.id}, layer ${layer.id}): ${check.code}: ${check.message}`,
+        )
+      }
+    }
     if (!block.source) continue
     const check = await sourceCheck(block.source)
     if (!check.ok) problems.push(`blocks.${i} (${block.id}): ${check.code}: ${check.message}`)
@@ -1208,10 +1221,12 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
   const add = (f: string | undefined) => {
     if (f) fields.add(f.split(".")[0]!)
   }
+  // A layered block's layers read as blocks of their own (`blk:<block>~<layer>`, or a dataset).
+  const all = runnableBlocks(spec.blocks)
   const blocks = sourceKey.startsWith("blk:")
-    ? spec.blocks.filter((b) => `blk:${b.id}` === sourceKey)
+    ? all.filter((b) => `blk:${b.id}` === sourceKey)
     : sourceKey.startsWith("ds:")
-      ? spec.blocks.filter((b) => b.dataset && `ds:${b.dataset}` === sourceKey)
+      ? all.filter((b) => b.dataset && `ds:${b.dataset}` === sourceKey)
       : []
   for (const b of blocks) {
     const m = b.map
@@ -1230,7 +1245,7 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
   }
   // Calculated values and measures of any block that read this dataset by name.
   if (sourceKey.startsWith("ds:")) {
-    for (const b of spec.blocks) {
+    for (const b of all) {
       const m = b.map
       for (const v of Object.values(m.values ?? {})) {
         if (`ds:${v.dataset}` !== sourceKey) continue
@@ -1268,7 +1283,7 @@ function project(read: SourceRows, fields: Set<string> | null): SourceRows {
 /** How long a source is cached: the shortest interval of the blocks that read it. */
 function sourceTtlSec(spec: DashboardSpec, sourceKey: SourceKey): number {
   if (sourceKey.startsWith("opt:")) return OPTION_SOURCE_TTL_SEC
-  const ttls = spec.blocks
+  const ttls = runnableBlocks(spec.blocks)
     .filter((b) =>
       sourceKey.startsWith("blk:") ? `blk:${b.id}` === sourceKey : `ds:${b.dataset}` === sourceKey,
     )
@@ -1280,7 +1295,8 @@ function runTargetOf(sourceKey: SourceKey): RunTarget {
   const id = sourceKey.slice(sourceKey.indexOf(":") + 1)
   if (sourceKey.startsWith("ds:")) return { datasetId: id }
   if (sourceKey.startsWith("opt:")) return { filterId: id }
-  return { blockId: id }
+  // A layer runs for its block (`<block>~<layer>`).
+  return { blockId: id.split(LAYER_SEP)[0]! }
 }
 
 /**
@@ -1545,6 +1561,84 @@ export async function getBlockData(
       compareWindow: null,
     }
   }
+  if (block.layers) return layeredBlockData(viewer, dashboard, block, values, opts, now)
+  return runBlockData(viewer, dashboard, block, values, opts, now, true)
+}
+
+/**
+ * A layered (blended) block: each layer runs as a block of its own (its source, cache, budget,
+ * eligibility, filters and comparison), one refresh limit for the whole block, then the layers
+ * are joined on their date buckets (transform.ts mergeLayers). A failed layer shows on its own;
+ * every layer failed refuses the block with the first one's reason.
+ */
+async function layeredBlockData(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  block: DashboardBlock,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+): Promise<BlockDataResponse> {
+  const blockId = block.id
+  if (opts.refresh && !(await takeRefresh(viewer, dashboard.row.id, blockId))) {
+    return {
+      blockId,
+      ok: false,
+      error: "rate_limited",
+      message: "this block was refreshed less than 30 seconds ago",
+    }
+  }
+  const layers = block.layers ?? []
+  const outs = await Promise.all(
+    layerBlocks(block).map((lb) => runBlockData(viewer, dashboard, lb, values, opts, now, false)),
+  )
+  const okOuts = outs.filter((o): o is Extract<BlockDataResponse, { ok: true }> => o.ok)
+  if (okOuts.length === 0) {
+    const first = outs[0] as Extract<BlockDataResponse, { ok: false }>
+    const layer = layers[0]
+    return {
+      ...first,
+      blockId,
+      message: `layer '${layer?.id ?? ""}': ${first.message}`,
+    }
+  }
+  const data = mergeLayers(
+    layers.map((layer, i) => {
+      const o = outs[i]!
+      return o.ok
+        ? { layer, data: o.data, ...(o.previousError ? { previousError: o.previousError } : {}) }
+        : { layer, error: { error: o.error, message: o.message } }
+    }),
+    block.map,
+  )
+  const lead = okOuts.find((o) => o.window.mode === "dashboard") ?? okOuts[0]!
+  return {
+    blockId,
+    ok: true,
+    data,
+    cached: okOuts.every((o) => o.cached),
+    computedAt: okOuts.map((o) => o.computedAt).sort()[0]!,
+    window: lead.window,
+    compareWindow: lead.compareWindow,
+  }
+}
+
+/**
+ * One block's (or one layer's) data: its source read through the cache, mapped, compared.
+ * `checkRefresh`: this run holds the block's refresh limit (a layer's block took it already).
+ */
+async function runBlockData(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  block: DashboardBlock,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+  checkRefresh: boolean,
+): Promise<BlockDataResponse> {
+  const { spec } = dashboard
+  const blockId = block.id
+  const dashboardId = dashboard.row.id
   const sp = blockSourcePlan(spec, block)
   if (!sp) {
     return { blockId, ok: false, error: "invalid_map", message: `no dataset '${block.dataset}'` }
@@ -1569,7 +1663,7 @@ export async function getBlockData(
   const refused = await sourceRefusal(viewer, plan.resolved)
   if (refused) return { ...refused, blockId, window, compareWindow: compareRange }
 
-  if (opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
+  if (checkRefresh && opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
     return {
       blockId,
       ok: false,
@@ -1586,6 +1680,7 @@ export async function getBlockData(
     window: range,
     where,
     timeZone: plan.timeZone,
+    today: dayIn(plan.timeZone, now),
     ...(linkApp ? { linkApp } : {}),
   }
   const current = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
@@ -1672,6 +1767,8 @@ export interface BlockRowsOptions extends Omit<BlockDataOptions, "refresh" | "co
   series?: string
   /** A table row's index in the block's data rows. */
   row?: number
+  /** A layered block: the layer whose rows to read (required there). */
+  layer?: string
   offset?: number
   limit?: number
   /** A CSV export: the limit may reach every row read (DRILL_EXPORT_LIMIT). */
@@ -1733,9 +1830,22 @@ export async function getBlockRows(
 ): Promise<BlockRowsResponse> {
   const dashboard = await loadDashboard(viewer, dashboardId)
   const { spec } = dashboard
-  const block = findBlock(spec, blockId)
+  let block = findBlock(spec, blockId)
   if (block.type === "text") {
     throw new DashboardError("INVALID_REQUEST", "a text block has no rows")
+  }
+  if (block.layers) {
+    // A layered block's rows are one layer's: that layer read as a block of its own.
+    const i = block.layers.findIndex((l) => l.id === opts.layer)
+    if (i < 0) {
+      throw new DashboardError(
+        "INVALID_REQUEST",
+        `a layered block's rows are one layer's: give layer (${block.layers.map((l) => l.id).join(", ")})`,
+      )
+    }
+    block = layerBlocks(block)[i]!
+  } else if (opts.layer !== undefined) {
+    throw new DashboardError("INVALID_REQUEST", "this block has no layers")
   }
   const values = filterValuesFor(spec, opts.filters)
   const now = opts.now ?? new Date()

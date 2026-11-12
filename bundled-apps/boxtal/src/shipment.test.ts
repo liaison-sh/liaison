@@ -10,8 +10,6 @@ import {
   createShipmentPreflight,
   importLabelDocument,
   importLabelFile,
-  LABEL_IMPORT_ATTEMPTS,
-  LABEL_IMPORT_BUDGET_MS,
   quote,
   shipmentDraftCreate,
   shipmentDraftSetCustoms,
@@ -21,7 +19,6 @@ import {
 } from "./shipment"
 import { createMockDb } from "./test-db"
 import { deriveDraftFacts } from "./draft-cache"
-import { BOXTAL_CALL_BUDGET_MS } from "./lib/http-budget"
 import { stuckList } from "./queues"
 import { boxtalOrderProbe, type OrphanRow, reconcileOrphanedCreates } from "./reconcile-tracking"
 
@@ -2598,92 +2595,50 @@ describe("parseInvoiceAddress on a single comma-joined line", () => {
   })
 })
 
-// ── label import: bounded retries with real backoff ─────────────────────────
+// ── label import: one read per run, never a wait ────────────────────────────
 //
-// Prod, 2026-09: operators got "Request failed" (HTTP 504 at 30s) on the
-// shipping tools and print_pack was measured holding a sandbox worker for 37 to
-// 39s. The label-import loop retried with a bare `continue` (no pause, no
-// jitter) and print_pack reached it through a call site asking for EIGHT
-// attempts, each bounded only by the sandbox-wide 10s fetch cap: 8 x 10s = 80s
-// inside a 60s tool budget. These tests pin the arithmetic documented on
-// importLabelFile: 3 attempts x 10s + 3s of backoff = 33s worst case.
-describe("label import backoff and budget", () => {
-  /** A ctx with the host import bridge present but nothing importable. */
-  function bridgeCtx() {
-    return makeCtx({ filesImportFromUrl: async () => JSON.stringify({ id: "never" }) }).ctx
-  }
-  /** A client whose LABEL document is never ready, counting its reads. */
-  function notReadyClient(costMs = 0, clock?: { t: number }) {
+// A run is woken, does its work and ends: the label-import step reads Boxtal's
+// documents ONCE. A label Boxtal has not generated yet is picked up by a later
+// run (the create_shipment poll handler, the document-created webhook, or the
+// next import_label_document / print_pack), never by sleeping inside this one.
+describe("label import: one read per run", () => {
+  /** A client whose LABEL document is not generated yet, counting its reads. */
+  function notReadyClient() {
     const reads: string[] = []
     return {
       reads,
       v3: {
         getDocuments: async (id: string) => {
           reads.push(id)
-          if (clock) clock.t += costMs
           return [] as Array<{ url?: string; type: string; format: string }>
         },
       },
     }
   }
 
-  it("sleeps between attempts (exponential with jitter) and still degrades to null, never throws", async () => {
+  it("reads the documents once and degrades to null when the label is not ready, never throws", async () => {
     const client = notReadyClient()
-    const slept: number[] = []
-    const out = await importLabelFile(bridgeCtx(), client, "ord-1", "row-1", LABEL_IMPORT_ATTEMPTS, {
-      sleep: async (ms: number) => {
-        slept.push(ms)
-      },
-      // random()=1 is the TOP of the jitter window: the documented worst case.
-      random: () => 1,
-      now: () => 0,
-    })
-    // A label that is genuinely not ready yet is still a null, not a throw.
-    expect(out).toBeNull()
-    expect(client.reads).toHaveLength(3)
-    // One pause between each pair of attempts: 400ms then 800ms, capped at 1500ms.
-    expect(slept).toEqual([400, 800])
+    const { ctx } = makeCtx({ filesImportFromUrl: async () => JSON.stringify({ id: "never" }) })
+    expect(await importLabelFile(ctx, client, "ord-1", "row-1")).toBeNull()
+    expect(client.reads).toEqual(["ord-1"])
   })
 
-  it("keeps the worst case (3 attempts x 10s + backoff) well under the 60s tool budget", async () => {
-    const clock = { t: 0 }
-    // Every Boxtal read costs a FULL call budget: the degraded-upstream case.
-    const client = notReadyClient(BOXTAL_CALL_BUDGET_MS, clock)
-    const out = await importLabelFile(bridgeCtx(), client, "ord-1", "row-1", LABEL_IMPORT_ATTEMPTS, {
-      sleep: async (ms: number) => {
-        clock.t += ms
+  it("a failed read is a null for this run too (a later run asks again)", async () => {
+    let reads = 0
+    const client = {
+      v3: {
+        getDocuments: async () => {
+          reads++
+          throw new Error("503")
+        },
       },
-      random: () => 1,
-      now: () => clock.t,
-    })
-    expect(out).toBeNull()
-    expect(client.reads).toHaveLength(3)
-    // 3 x 10_000 + 400 + 800 = 31_200ms, inside the loop's own 35s deadline and
-    // leaving the rest of print_pack most of its 60s budget.
-    expect(clock.t).toBe(3 * BOXTAL_CALL_BUDGET_MS + 1_200)
-    expect(clock.t).toBeLessThan(LABEL_IMPORT_BUDGET_MS)
-    expect(clock.t).toBeLessThan(40_000)
+    }
+    const { ctx } = makeCtx({ filesImportFromUrl: async () => JSON.stringify({ id: "never" }) })
+    expect(await importLabelFile(ctx, client, "ord-1", "row-1")).toBeNull()
+    expect(reads).toBe(1)
   })
 
-  it("stops at its deadline instead of starting an attempt it cannot afford", async () => {
-    const clock = { t: 0 }
-    // A pathologically slow upstream: 20s per read (past any per-request cap).
-    const client = notReadyClient(20_000, clock)
-    const out = await importLabelFile(bridgeCtx(), client, "ord-1", "row-1", LABEL_IMPORT_ATTEMPTS, {
-      sleep: async (ms: number) => {
-        clock.t += ms
-      },
-      random: () => 1,
-      now: () => clock.t,
-    })
-    expect(out).toBeNull()
-    // Two reads, not three: the third would have started past LABEL_IMPORT_BUDGET_MS.
-    expect(client.reads).toHaveLength(2)
-    // Still under the 62s sandbox worker kill.
-    expect(clock.t).toBeLessThan(62_000)
-  })
-
-  it("import_label_document (the print_pack call site) asks for 3 attempts, not 8", async () => {
+  it("import_label_document (the print_pack call site) reads once and answers label_not_ready", async () => {
     const { ctx, db, fetchCalls } = makeCtx({
       filesImportFromUrl: async () => JSON.stringify({ id: "never" }),
     })
@@ -2693,12 +2648,10 @@ describe("label import backoff and budget", () => {
       link_state: "created",
       order_status: "PENDING",
     })
-    const res = await importLabelDocument(ctx, { id: "ord-1" }, { sleep: async () => {}, random: () => 1 })
-    // Degrades exactly as before: print_pack reports "Label not available yet".
+    const res = await importLabelDocument(ctx, { id: "ord-1" })
+    // print_pack reports "Label not available yet".
     expect(res.error?.code).toBe("label_not_ready")
-    const documentReads = fetchCalls.filter((c) => c.url.includes("/shipping-document"))
-    expect(documentReads).toHaveLength(LABEL_IMPORT_ATTEMPTS)
-    expect(documentReads.length).toBeLessThan(8)
+    expect(fetchCalls.filter((c) => c.url.includes("/shipping-document"))).toHaveLength(1)
   })
 })
 

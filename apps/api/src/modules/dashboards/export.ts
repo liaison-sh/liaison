@@ -33,6 +33,7 @@ import {
   blockSourceOf,
   calcDatasets,
   type DashboardBlock,
+  runnableBlocks,
 } from "~/modules/dashboards/spec"
 import type { BlockData } from "~/modules/dashboards/transform"
 import { renderRichText } from "~/modules/documents/rich-text"
@@ -429,7 +430,8 @@ async function recipientRefusal(ctx: UserContext, dashboardId: string): Promise<
     datasets?: Record<string, BlockSource>
   }
   const sources: BlockSource[] = []
-  for (const b of spec.blocks ?? []) {
+  // A layered block's layers each read a source of their own: every one is checked.
+  for (const b of runnableBlocks(spec.blocks ?? [])) {
     const s = blockSourceOf(b, spec.datasets)
     if (s) sources.push(s)
     for (const id of calcDatasets(b)) {

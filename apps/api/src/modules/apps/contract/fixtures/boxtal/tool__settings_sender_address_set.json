@@ -1,0 +1,29 @@
+{
+  "entry": "tool:settings_sender_address_set",
+  "params": {
+    "name": "Shipping desk",
+    "company": "Resonant Audio Labs SAS",
+    "email": "shipping@example.com",
+    "phone": "+15550100000",
+    "street": "14 rue des Ateliers",
+    "city": "Paris",
+    "postalCode": "75011",
+    "countryIsoCode": "FR"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"sender_address\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"ac7b66e2-dc9b-40ef-9b8c-d0c761b6e3b2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2025-11-20 12:00:00+00\",\"updated_at\":\"2026-08-17 12:00:00+00\",\"key\":\"sender_address\",\"value\":{\"city\":\"Paris\",\"name\":\"Shipping desk\",\"type\":\"BUSINESS\",\"email\":\"person1@example.com\",\"phone\":\"+15550100000\",\"street\":\"14 rue des Ateliers\",\"company\":\"Resonant Audio Labs SAS\",\"postalCode\":\"75011\",\"countryIsoCode\":\"FR\"}}]"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "app_config",
+        "ac7b66e2-dc9b-40ef-9b8c-d0c761b6e3b2",
+        "{\"value\":{\"name\":\"Shipping desk\",\"company\":\"Resonant Audio Labs SAS\",\"email\":\"shipping@example.com\",\"phone\":\"+15550100000\",\"street\":\"14 rue des Ateliers\",\"city\":\"Paris\",\"postalCode\":\"75011\",\"countryIsoCode\":\"FR\",\"type\":\"BUSINESS\"}}"
+      ]
+    }
+  ]
+}

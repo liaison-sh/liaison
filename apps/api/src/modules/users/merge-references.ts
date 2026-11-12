@@ -118,6 +118,11 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "app_projects.tasks.created_by": repoint,
   "app_projects.project_templates.created_by": repoint,
   "app_projects.task_checklist_items.created_by": repoint,
+  // A person's own time, days per week and cost rates, and who bills a project.
+  "app_projects.task_time.user_id": repoint,
+  "app_projects.person_capacity.user_id": repoint,
+  "app_projects.cost_rates.user_id": repoint,
+  "app_projects.project_time_plan.biller_id": repoint,
   "app_knowledge.documents.created_by": repoint,
   "app_knowledge.documents.owner_user_id": repoint,
   "app_knowledge.documents.updated_by": repoint,

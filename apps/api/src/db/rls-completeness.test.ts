@@ -109,6 +109,10 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // Restore drill markers (migration 0269): instance-wide, no org column,
   // privileged pool only.
   "kernel.restore_drill_markers",
+  // The data steps run when an in-tree app became a catalog app (migration
+  // 0293): instance-wide, no org column, written and read by the boot
+  // reconcile (modules/apps/moved-apps.ts) through the privileged pool only.
+  "kernel.app_adoptions",
   // The moves an org took part in, per instance (migration 0270): privileged
   // pool only, never read by a person.
   "kernel.org_transfer_ledger",

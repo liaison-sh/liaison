@@ -133,6 +133,8 @@ export interface AppSourceSyncInput {
   kind: string
   config: Record<string, unknown>
   cursor: unknown
+  /** Whose source it is: one person's own, or the organization's. */
+  scope: "personal" | "organization"
 }
 
 /** A page the app returned that breaks the contract: the sync records it and writes nothing. */
@@ -1114,6 +1116,7 @@ export async function runAppSourceSync(
         kind: source.sourceKind,
         config: source.sourceConfig ?? {},
         cursor: state.cursor,
+        scope: source.ownerUserId ? "personal" : "organization",
       })
       page = parseSyncResult(raw, limits)
     } catch (err) {

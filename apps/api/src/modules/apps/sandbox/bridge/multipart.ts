@@ -32,7 +32,8 @@ export interface MultipartUpload {
 }
 
 type PartSpec =
-  | { name: string; value: string }
+  | { name: string; value: string; contentType?: string }
+  | { name: string; base64: string; filename?: string; contentType?: string }
   | {
       name: string
       fileId: string
@@ -193,10 +194,19 @@ async function readVisibleFile(
   return { bytes: got.bytes, filename: row.filename, mimeType: row.mime_type }
 }
 
+/**
+ * `form-data` (default): each part named in a Content-Disposition. `related`
+ * (RFC 2387, `{ multipart, related: true }`): each part carries only its
+ * Content-Type, in order (a JSON metadata part, then the media, as an upload
+ * API like Google Drive's `uploadType=multipart` takes them).
+ */
+export type MultipartKind = "form-data" | "related"
+
 export async function buildMultipartBody(
   ctx: BridgeContext,
   rawParts: unknown[],
   maxBytes: number,
+  kind: MultipartKind = "form-data",
 ): Promise<MultipartUpload> {
   if (rawParts.length === 0 || rawParts.length > MAX_PARTS) {
     refuse("invalid_multipart", `multipart needs 1 to ${MAX_PARTS} parts`)
@@ -258,15 +268,50 @@ export async function buildMultipartBody(
       )
       push(
         enc.encode(
-          `--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
+          kind === "related"
+            ? `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`
+            : `--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
         ),
       )
       push(new Uint8Array(file.bytes))
       push(enc.encode("\r\n"))
       parts.push({ name: p.name, size: file.bytes.byteLength, sha256, fileId: p.fileId })
+    } else if ("base64" in p && typeof p.base64 === "string") {
+      // Bytes the app holds as base64 (it has no binary type): decoded here.
+      const compact = p.base64.replace(/\s+/g, "")
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) {
+        refuse("invalid_multipart", `part ${p.name}: base64 is not valid base64`)
+      }
+      const bytes = new Uint8Array(Buffer.from(compact, "base64"))
+      const contentType = headerSafe(p.contentType ?? "application/octet-stream", "contentType")
+      const filename = headerSafe(p.filename ?? p.name, "filename")
+      push(
+        enc.encode(
+          kind === "related"
+            ? `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`
+            : `--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
+        ),
+      )
+      push(bytes)
+      push(enc.encode("\r\n"))
+      parts.push({
+        name: p.name,
+        size: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      })
     } else if ("value" in p && typeof p.value === "string") {
       const v = enc.encode(p.value)
-      push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"\r\n\r\n`))
+      const valueType =
+        "contentType" in p && typeof p.contentType === "string"
+          ? headerSafe(p.contentType, "contentType")
+          : "text/plain; charset=UTF-8"
+      push(
+        enc.encode(
+          kind === "related"
+            ? `--${boundary}\r\nContent-Type: ${valueType}\r\n\r\n`
+            : `--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"\r\n\r\n`,
+        ),
+      )
       push(v)
       push(enc.encode("\r\n"))
       parts.push({
@@ -275,7 +320,7 @@ export async function buildMultipartBody(
         sha256: createHash("sha256").update(v).digest("hex"),
       })
     } else {
-      refuse("invalid_multipart", `part ${p.name}: give either value (string) or fileId`)
+      refuse("invalid_multipart", `part ${p.name}: give value (string), base64 or fileId`)
     }
   }
   push(enc.encode(`--${boundary}--\r\n`))
@@ -285,5 +330,5 @@ export async function buildMultipartBody(
     body.set(c, o)
     o += c.byteLength
   }
-  return { body, contentType: `multipart/form-data; boundary=${boundary}`, size, parts }
+  return { body, contentType: `multipart/${kind}; boundary=${boundary}`, size, parts }
 }

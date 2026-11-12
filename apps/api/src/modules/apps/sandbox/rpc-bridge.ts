@@ -28,6 +28,7 @@ import { createContractsMethods } from "~/modules/apps/sandbox/bridge/contracts"
 import { createConversionMethods } from "~/modules/apps/sandbox/bridge/conversion"
 import { createDbMethods } from "~/modules/apps/sandbox/bridge/db"
 import { createEffectsMethods } from "~/modules/apps/sandbox/bridge/effects"
+import { createAppSourceMethods } from "~/modules/apps/sandbox/bridge/app-sources"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
 import { createFilesMethods } from "~/modules/apps/sandbox/bridge/files"
 import { createIdentityMethods } from "~/modules/apps/sandbox/bridge/identity"
@@ -118,6 +119,7 @@ export function createRpcBridge(
     createPagesMethods(ctx),
     createSqlMethods(ctx),
     createAccountsMethods(ctx),
+    createAppSourceMethods(ctx),
   )
 
   // Merge this app's own bridge methods (registered at install time). App-specific
@@ -380,8 +382,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "projects_labelsUpdate",
   "projects_labelsArchive",
   "projects_labelsReorder",
-  // Google Drive (bridge extension, merged above)
-  "drive_onAccountDisconnected",
+  // An app's own knowledge sources: ensure, sync now, purge an account's content.
+  "knowledge_appSourceWrite",
 ])
 
 // `effects_*` (the effect ledger) write through the privileged pool, never txDb, and

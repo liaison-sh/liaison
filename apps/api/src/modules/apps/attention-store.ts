@@ -496,8 +496,9 @@ export async function refreshAppAttention(
 
 /**
  * Every app provider of the org, refreshed now, in this process, one app after
- * the other: for a caller that must find the lists stored when it returns (a
- * seeded demo workspace, one just claimed), never a wake. Wakes and the minute
+ * the other, for every active member (around or not): for a caller that must
+ * find the lists stored when it returns (a seeded demo workspace, one just
+ * claimed), never a wake. Wakes and the minute
  * tick queue jobs instead (scheduleAttentionRefresh,
  * scheduleAllAppAttentionRefresh). The people and each one's permissions are
  * read once for the whole pass, not once per app.
@@ -512,8 +513,9 @@ export async function refreshAllAppAttention(
   if (apps.length === 0) return
   let userIds: string[]
   try {
-    userIds =
-      partial.userIds ?? (await (partial.listActiveUsers ?? defaultDeps.listActiveUsers)(orgId))
+    // Every active member, not only the people around: the caller needs every
+    // list stored when this returns (nobody is around in a workspace just seeded).
+    userIds = partial.userIds ?? (await (partial.listActiveUsers ?? defaultListActiveUsers)(orgId))
   } catch (err) {
     log.warn({ err, orgId }, "Attention refresh failed: the org's people could not be read")
     return

@@ -147,6 +147,20 @@ describe("stored app attention", () => {
     }
   })
 
+  it("a pass over every app runs for every active member, also one who is not around", async () => {
+    // Nobody is around in a workspace just seeded: its lists must still be stored.
+    const ranFor: string[] = []
+    await refreshAllAppAttention(orgId, {
+      loadPersonActor: deps.loadPersonActor,
+      notify: deps.notify,
+      invoke: async (_reg, appName, actor) => {
+        if (appName === APP && actor.actorType === "user") ranFor.push(actor.userId)
+        return []
+      },
+    })
+    expect(ranFor).toEqual([userId])
+  })
+
   it("a feed poll runs no app code: it reads the stored list", async () => {
     listed = [item("a", 70), item("b", 30)]
     await refreshAppAttention(orgId, APP, deps)

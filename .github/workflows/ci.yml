@@ -228,6 +228,12 @@ jobs:
           JWT_SECRET: replace-with-at-least-32-char-secret
           ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
         run: bun test src/modules/apps/contract src/modules/apps/run-limits.test.ts
+      # The self-hosted sandbox service's probes, against real workerd processes
+      # (the pinned binary comes with bun install): CPU, wall and memory kills,
+      # no network but the bridge, processes driven by the supervisor only,
+      # recycling and the nesting cap. No database or service; about 15 s.
+      - name: Sandbox service probes (workerd)
+        run: bun test packages/sandbox-supervisor
       # Erasing a user refuses to run while a kernel user column has no rule, and
       # the live check needs a database. This reads the migrations instead.
       - name: Erasure rules

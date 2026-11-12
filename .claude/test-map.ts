@@ -152,6 +152,13 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // test stand-in (unit, integration) import it.
   { glob: "packages/app-loader/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/db-core/**", suites: ["workspace-packages", "unit", "integration"] },
+  // The self-hosted sandbox service (workerd). Its probes, the executor parity
+  // suite on workerd (unit) and the wake-up contract on workerd (api-guards);
+  // its package.json pins workerd, so a bump re-runs all three.
+  {
+    glob: "packages/sandbox-supervisor/**",
+    suites: ["workspace-packages", "unit", "api-guards"],
+  },
   { glob: "packages/test-helpers/src/{role-processes,cell-clients}*", suites: ["cell"] },
   // The lane attach handle (TestWorld) and the standard world every lane reads.
   {

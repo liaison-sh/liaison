@@ -19,7 +19,6 @@ import {
   ensureBrandingLoaded,
   ensureSignedInOrgNameLoaded,
 } from "~/modules/shell/branding-store"
-import { setShowPeerRequests } from "~/modules/shell/home-action-count"
 import {
   applyRemoteSidebarVisibility,
   resetSidebarVisibility,

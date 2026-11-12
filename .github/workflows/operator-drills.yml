@@ -86,7 +86,10 @@ jobs:
   # The app sandbox service under gVisor: the image built from this commit,
   # the `sandbox` profile up with the stack, the host firewall step installed,
   # then the probes from inside the sandbox (only the app's bridge port
-  # answers) and the app healthy with the service configured.
+  # answers) and the app healthy with the service configured (its `sandbox`
+  # dependency: same release, and the service reaches its bridge listener);
+  # then the rolling api and worker processes beside it, each probed and
+  # healthy the same way.
   sandbox-gvisor:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -150,13 +153,32 @@ jobs:
           sh ./sandbox-firewall.sh check
           # The app is healthy with the service configured, and the bridge port
           # is not the API: its health page is 404 there.
-          docker compose exec -T app bun --eval "fetch('http://localhost:3000/healthz').then(r => r.json()).then(b => { console.log(JSON.stringify(b.dependencies)); process.exit(Object.values(b.dependencies || {}).every(v => v === 'ok') ? 0 : 1) })"
+          docker compose exec -T app bun --eval "fetch('http://localhost:3000/healthz').then(r => r.json()).then(b => { console.log(JSON.stringify(b.dependencies)); process.exit(b.dependencies?.sandbox === 'ok' && Object.values(b.dependencies || {}).every(v => v === 'ok') ? 0 : 1) })"
+      - name: Rolling topology, api and worker processes beside app on one sandbox service
+        env:
+          LIAISON_IMAGE: liaison-sandbox-drill:ci
+          COMPOSE_PROFILES: sandbox,rolling
+          LIAISON_SANDBOX_URL: http://sandbox:8790
+          API_REPLICAS: "2"
+          WORKER_REPLICAS: "1"
+        run: |
+          set -euo pipefail
+          cd deploy
+          docker compose up -d --no-deps --wait --wait-timeout 600 --scale api=2 --scale worker=1 api worker
+          # Every app process (app, 2 api, 1 worker) answers on its own bridge
+          # port from inside the sandbox, and nothing else of it does.
+          sh ./sandbox-firewall.sh check
+          # Each process's /healthz: the sandbox service answers with its release
+          # and calls that process back on its own bridge listener.
+          for id in $(docker compose ps -q api worker); do
+            docker exec "$id" bun --eval "fetch('http://localhost:3000/healthz').then(r => r.json()).then(b => { console.log('$id', JSON.stringify(b.dependencies)); process.exit(b.dependencies?.sandbox === 'ok' ? 0 : 1) })"
+          done
       - name: Logs on failure
         if: failure()
-        run: cd deploy && docker compose logs --no-color --tail 200 sandbox app || true
+        run: cd deploy && docker compose --profile sandbox --profile rolling logs --no-color --tail 200 sandbox app api worker || true
       - name: Tear down
         if: always()
-        run: cd deploy && docker compose --profile sandbox down -v || true
+        run: cd deploy && docker compose --profile sandbox --profile rolling down -v || true
 
   # O5 — release workflow dry run reaches the digest-sign step.
   release-workflow-dry-run:

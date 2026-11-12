@@ -84,7 +84,13 @@ export class WorkerdPool {
   private waiters: Waiter[] = []
   private stopped = false
   private topping = false
-  private readonly workDir: string
+  /** Where process configs, sockets and the bridge relay's socket live. */
+  readonly workDir: string
+  /**
+   * Where a process's bridge calls go (`host:port` or `unix:<path>`): the
+   * supervisor's bridge relay (supervisor.ts). Unset: the configured address.
+   */
+  bridgeTarget: string | null = null
   private readonly ownWorkDir: boolean
   private readonly bin: string
   private readonly sweep: ReturnType<typeof setInterval>
@@ -260,7 +266,8 @@ export class WorkerdPool {
 
   private capnp(n: number, socket: string): string {
     const bridge = new URL(this.cfg.bridgeOrigin)
-    const address = this.cfg.bridgeAddress ?? `${bridge.hostname}:${bridge.port || "80"}`
+    const address =
+      this.bridgeTarget ?? this.cfg.bridgeAddress ?? `${bridge.hostname}:${bridge.port || "80"}`
     return `using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [

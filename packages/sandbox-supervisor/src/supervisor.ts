@@ -16,7 +16,28 @@
 //                          addressed, re-hashed here and again by the loader).
 //                          A run whose module was never pushed answers
 //                          `bundle_missing`; the cell pushes it and runs again.
-//   GET  /health, /stats
+//   GET  /health, /stats   (`/health?bridge=1` also says whether the caller's
+//                          bridge-only listener answers from here)
+//
+// Every request may carry the app's release (`x-liaison-sandbox-release`,
+// release.ts). One of another release is refused (409
+// `sandbox_release_mismatch`, saying how to recreate the service), and
+// /health answers 503 while only callers of another release reach the
+// service: after an upgrade that left this container on the old image, its
+// health check fails and every run says why.
+//
+// Bridge calls: a workerd process's only outbound address is this service's
+// bridge relay (a unix socket in the pool's work dir). The relay passes a call
+// (`POST /api/app-bridge/<runId>`, nothing else) to the app process that sent
+// that run, at the address the run came from, on the bridge port of
+// SANDBOX_BRIDGE_ORIGIN (or to SANDBOX_BRIDGE_ADDRESS when it is set). So any
+// number of app processes (a single `app`, or the rolling `api` and `worker`
+// processes) share one sandbox service, each reached on its own bridge-only
+// listener; a call for a run that is not running here goes nowhere.
+//
+// Each answer of /run carries the run's CPU time as the supervisor measured
+// it (`x-liaison-sandbox-cpu-ms`), and its peak resident memory
+// (`x-liaison-sandbox-rss-mb`), for the app's usage rows.
 //
 // Per-run limits, each by its own mechanism (workerd enforces none itself):
 //   wall      the run's deadline + SANDBOX_KILL_GRACE_MS, then SIGKILL
@@ -46,9 +67,20 @@ import type { SupervisorConfig } from "./config"
 import { hostWorkerSource } from "./host-build"
 import { PoolError, WorkerdPool, type WorkerdProcess } from "./pool"
 import { sampleProcess } from "./proc-meter"
+import {
+  RELEASE_HEADER,
+  RELEASE_MISMATCH_CODE,
+  releaseMismatchMessage,
+  sandboxRelease,
+} from "./release"
 import { pinnedWorkerdVersion } from "./workerd-bin"
 
 export const RUN_DEPTH_HEADER = "x-liaison-run-depth"
+export const CPU_HEADER = "x-liaison-sandbox-cpu-ms"
+export const RSS_HEADER = "x-liaison-sandbox-rss-mb"
+/** How long a caller's release counts toward /health. */
+export const RELEASE_WINDOW_MS = 120_000
+const BRIDGE_CALL = /^\/api\/app-bridge\/([^/]+)$/
 const MODULE_CACHE_BYTES = 256 * 1024 * 1024
 const SHA = /^[0-9a-f]{64}$/
 
@@ -67,8 +99,15 @@ export interface RunRecord {
   killed: KillReason | null
 }
 
+/** Where the request came from: the caller's address, when the server knows it. */
+export interface CallerInfo {
+  requestIP(req: Request): { address: string } | null
+}
+
 export interface Supervisor {
-  fetch(req: Request): Promise<Response>
+  fetch(req: Request, server?: CallerInfo): Promise<Response>
+  /** This service's release (release.ts). */
+  readonly release: string
   readonly pool: WorkerdPool
   /** The last runs' records (newest last), for tests and /stats. */
   readonly recent: RunRecord[]
@@ -87,8 +126,61 @@ function killAnswer(reason: KillReason, extra: Record<string, unknown>): Respons
   return Response.json({ ok: false, error, ...extra })
 }
 
-export async function createSupervisor(cfg: SupervisorConfig): Promise<Supervisor> {
+/** `host:port` for a caller's address (an IPv4-mapped IPv6 address as IPv4). */
+function hostPort(address: string, port: string): string {
+  const a = address.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "")
+  return a.includes(":") ? `[${a}]:${port}` : `${a}:${port}`
+}
+
+export async function createSupervisor(
+  cfg: SupervisorConfig,
+  opts: { release?: string } = {},
+): Promise<Supervisor> {
+  const release = opts.release ?? sandboxRelease()
   const pool = new WorkerdPool(cfg, await hostWorkerSource())
+  const origin = new URL(cfg.bridgeOrigin)
+  const bridgePort = origin.port || "80"
+  const fallbackTarget = cfg.bridgeAddress ?? `${origin.hostname}:${bridgePort}`
+  /**
+   * Running runs: where their bridge calls go, and how many /run requests
+   * name the id (a replayed body must not end the original's routing).
+   */
+  const runTargets = new Map<string, { target: string; n: number }>()
+  const seen = { match: 0, mismatch: 0, other: "" }
+  const relaySocket = `${pool.workDir}/bridge.sock`
+  const relay = Bun.serve({
+    unix: relaySocket,
+    maxRequestBodySize: 16 * 1024 * 1024,
+    async fetch(req) {
+      const path = new URL(req.url).pathname
+      const m = BRIDGE_CALL.exec(path)
+      const target =
+        m && req.method === "POST"
+          ? runTargets.get(decodeURIComponent(m[1] ?? ""))?.target
+          : undefined
+      if (!target) return new Response("Not Found", { status: 404 })
+      const headers = new Headers(req.headers)
+      headers.delete("host")
+      headers.delete("connection")
+      try {
+        const res = await fetch(`http://${target}${path}`, {
+          method: "POST",
+          headers,
+          body: await req.arrayBuffer(),
+          redirect: "manual",
+          // A bridge call may wait on a nested run: the run's deadline bounds it.
+          timeout: false,
+        } as RequestInit)
+        return new Response(res.body, { status: res.status, headers: res.headers })
+      } catch (e) {
+        return Response.json(
+          { error: `bridge unreachable: ${(e as Error).message}` },
+          { status: 502 },
+        )
+      }
+    },
+  })
+  pool.bridgeTarget = `unix:${relaySocket}`
   const modules = new Map<string, Uint8Array>()
   let moduleBytes = 0
   const recent: RunRecord[] = []
@@ -134,7 +226,7 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
     p.pushed.add(key)
   }
 
-  async function run(req: Request): Promise<Response> {
+  async function run(req: Request, caller: string | null): Promise<Response> {
     const raw = new Uint8Array(await req.arrayBuffer())
     let body: RunBody
     try {
@@ -156,6 +248,25 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
       })
     }
 
+    const target = cfg.bridgeAddress ?? (caller ? hostPort(caller, bridgePort) : fallbackTarget)
+    // The first request for a run id decides where its calls go; a replay of
+    // the same body adds a reference and never redirects them.
+    const entry = runTargets.get(body.runId) ?? { target, n: 0 }
+    entry.n++
+    runTargets.set(body.runId, entry)
+    try {
+      return await runOn(body, raw, depth, module)
+    } finally {
+      if (--entry.n === 0) runTargets.delete(body.runId)
+    }
+  }
+
+  async function runOn(
+    body: RunBody,
+    raw: Uint8Array,
+    depth: number,
+    module: Uint8Array,
+  ): Promise<Response> {
     const tq = Date.now()
     const deadlineAt = tq + deadlineDuration(body.deadlineMs, tq)
     const key = dynamicWorkerId(SANDBOX_CELL_ID, body)
@@ -188,6 +299,12 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
       killed: null,
     }
     const t0 = Date.now()
+    // The run's measured CPU and peak memory go back with its answer.
+    const answer = (r: Response): Response => {
+      r.headers.set(CPU_HEADER, String(Math.max(0, Math.round(rec.cpuMs))))
+      r.headers.set(RSS_HEADER, String(Math.round(rec.rssMaxMb)))
+      return r
+    }
     let killed: KillReason | null = null
     const killFor = (reason: KillReason) => {
       if (killed || !cfg.killEnabled) return
@@ -249,22 +366,30 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
         const reason: KillReason = killed ?? (heap ? "heap" : "crashed")
         pool.exitedUnderRun(p, reason)
         rec.killed = reason
-        return killAnswer(reason, {})
+        return answer(killAnswer(reason, {}))
       }
       if (killed) {
         rec.killed = killed
-        return killAnswer(killed, {})
+        return answer(killAnswer(killed, {}))
       }
+      // The run's CPU to its end (the poll may not have read the last of it).
+      try {
+        const end = await sampleProcess(p.pid)
+        rec.cpuMs = Math.max(rec.cpuMs, end.cpuMs - start.cpuMs)
+        if (end.rssMb > rec.rssMaxMb) rec.rssMaxMb = end.rssMb
+      } catch {}
       // The loader gave up on an awaited promise: the isolate may still hold
       // work, so its process is not reused.
       if (/"kind":"timeout"/.test(text.slice(0, 512))) pool.kill(p, "timeout")
-      return new Response(text, {
-        status: res.status,
-        headers: { "content-type": "application/json" },
-      })
+      return answer(
+        new Response(text, {
+          status: res.status,
+          headers: { "content-type": "application/json" },
+        }),
+      )
     } catch (e) {
       if (!p.dead) pool.kill(p, "crashed")
-      return fail(500, "loader_internal", `sandbox error: ${(e as Error).message}`)
+      return answer(fail(500, "loader_internal", `sandbox error: ${(e as Error).message}`))
     } finally {
       polling = false
       if (wallTimer) clearTimeout(wallTimer)
@@ -276,18 +401,84 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
     }
   }
 
-  async function handle(req: Request): Promise<Response> {
+  /**
+   * The caller's release against this service's: null when it may go on (the
+   * same release, or none stated), else the refusal.
+   */
+  function releaseCheck(req: Request): Response | null {
+    const theirs = req.headers.get(RELEASE_HEADER)
+    if (theirs === null) return null
+    if (theirs === release) {
+      seen.match = Date.now()
+      return null
+    }
+    seen.mismatch = Date.now()
+    seen.other = theirs.slice(0, 128)
+    return fail(409, "loader_internal", releaseMismatchMessage(release, seen.other), {
+      code: RELEASE_MISMATCH_CODE,
+    })
+  }
+
+  /**
+   * Whether the caller's bridge-only listener answers from here (any HTTP
+   * answer: a GET there is the listener's own 404), for `GET /health?bridge=1`.
+   */
+  async function bridgeReachable(caller: string | null): Promise<boolean> {
+    const target = cfg.bridgeAddress ?? (caller ? hostPort(caller, bridgePort) : fallbackTarget)
+    try {
+      const res = await fetch(`http://${target}/api/app-bridge/sandbox-probe`, {
+        signal: AbortSignal.timeout(1_000),
+      })
+      await res.arrayBuffer()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Healthy unless, lately, only callers of another release reached this service. */
+  async function health(req: Request, caller: string | null): Promise<Response> {
+    const now = Date.now()
+    const stale = now - seen.mismatch < RELEASE_WINDOW_MS && now - seen.match >= RELEASE_WINDOW_MS
+    if (stale) {
+      return Response.json(
+        {
+          ok: false,
+          release,
+          code: RELEASE_MISMATCH_CODE,
+          message: releaseMismatchMessage(release, seen.other),
+        },
+        { status: 503 },
+      )
+    }
+    if (new URL(req.url).searchParams.get("bridge") === "1") {
+      return Response.json({
+        ok: true,
+        release,
+        bridge: (await bridgeReachable(caller)) ? "ok" : "unreachable",
+      })
+    }
+    return Response.json({ ok: true, release })
+  }
+
+  async function handle(req: Request, server?: CallerInfo): Promise<Response> {
     const url = new URL(req.url)
-    if (url.pathname === "/health") return Response.json({ ok: true })
+    const refused = releaseCheck(req)
+    if (refused) return refused
+    const caller = server?.requestIP(req)?.address ?? null
+    if (url.pathname === "/health") return health(req, caller)
     if (url.pathname === "/stats" && req.method === "GET") {
       return Response.json({
         workerd: pinnedWorkerdVersion(),
+        release,
         modules: modules.size,
         pool: pool.stats(),
         recent: recent.slice(-20),
       })
     }
-    if (url.pathname === "/run" && req.method === "POST") return run(req)
+    if (url.pathname === "/run" && req.method === "POST") {
+      return run(req, caller)
+    }
     const m = /^\/modules\/([^/]+)$/.exec(url.pathname)
     if (m && req.method === "PUT") return putModule(req, m[1] ?? "")
     return new Response("not found", { status: 404 })
@@ -296,14 +487,18 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
   return {
     pool,
     recent,
-    async fetch(req) {
+    release,
+    async fetch(req, server) {
       try {
-        const res = await handle(req)
+        const res = await handle(req, server)
         return res
       } catch (e) {
         return fail(500, "loader_internal", `sandbox error: ${(e as Error).message}`)
       }
     },
-    stop: () => pool.stop(),
+    async stop() {
+      relay.stop(true)
+      await pool.stop()
+    },
   }
 }

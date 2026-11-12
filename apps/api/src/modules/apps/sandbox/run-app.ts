@@ -84,6 +84,7 @@ import {
   loaderBreaker,
 } from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import { appSandboxRelease } from "~/modules/apps/workers/sandbox-release"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
 // The run timing records subscribe to the run-settled event (timings.ts).
 import "~/modules/apps/workers/timings"
@@ -419,6 +420,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       ...(info.bridgeCalls !== undefined ? { bridgeCalls: info.bridgeCalls } : {}),
       ...(info.loader ? { loader: info.loader } : {}),
       ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+      ...(info.cpuMs !== undefined ? { cpuMs: info.cpuMs } : {}),
       ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
       ...(fallback ? { fallback } : {}),
       ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
@@ -507,6 +509,7 @@ async function runOnExecutor(
         ...(executor === "workerd"
           ? {
               ...fallbackTargetRunState(),
+              sandboxRelease: appSandboxRelease(),
               pushModule: async () =>
                 (await readInstalledWorkerModule(workersTarget.sha256))?.bytes ?? null,
             }

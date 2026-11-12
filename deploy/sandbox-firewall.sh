@@ -13,7 +13,11 @@
 #                new connection from the sandbox network to the host: dropped
 #   DOCKER-USER  packets from it to anything but the app's bridge-only port
 #                (LIAISON_APP_BRIDGE_PORT, 3100) on the sandbox subnet: dropped;
-#                replies on connections the app opened (app -> sandbox:8790) pass
+#                replies on connections the app opened (app -> sandbox:8790) pass.
+#                Any app process on the subnet qualifies (a single `app`, or the
+#                rolling `api` and `worker` processes, at whatever address
+#                Docker gave them): the service calls each run's bridge back at
+#                the address the run came from.
 #
 # br_netfilter is loaded and bridge-nf-call-iptables set, so traffic between
 # two containers on the same bridge goes through those chains too.
@@ -24,11 +28,11 @@
 #   sudo deploy/sandbox-firewall.sh remove     remove the rules and the unit
 #        deploy/sandbox-firewall.sh check      probe from inside the running
 #                                               sandbox container: only the
-#                                               bridge port answers
+#                                               bridge port of each running app
+#                                               process answers
 #
 # Settings (the compose file's, same defaults): LIAISON_SANDBOX_IP
-# (172.31.250.10), LIAISON_APP_SANDBOX_IP (172.31.250.2),
-# LIAISON_SANDBOX_SUBNET (172.31.250.0/24),
+# (172.31.250.10), LIAISON_SANDBOX_SUBNET (172.31.250.0/24),
 # LIAISON_SANDBOX_BRIDGE (liaison-sbx0), LIAISON_APP_BRIDGE_PORT (3100).
 # Change them in the compose environment and here together.
 set -eu
@@ -37,7 +41,6 @@ SANDBOX_IP="${LIAISON_SANDBOX_IP:-172.31.250.10}"
 SUBNET="${LIAISON_SANDBOX_SUBNET:-172.31.250.0/24}"
 BRIDGE="${LIAISON_SANDBOX_BRIDGE:-liaison-sbx0}"
 BRIDGE_PORT="${LIAISON_APP_BRIDGE_PORT:-3100}"
-APP_IP="${LIAISON_APP_SANDBOX_IP:-172.31.250.2}"
 CHAIN_FWD="LIAISON-SANDBOX-FWD"
 CHAIN_IN="LIAISON-SANDBOX-IN"
 UNIT="/etc/systemd/system/liaison-sandbox-firewall.service"
@@ -141,11 +144,27 @@ remove() {
   echo "sandbox-firewall: removed"
 }
 
-# From inside the sandbox container: only the app's bridge port accepts a
-# connection, and it serves a run's bridge call path only.
+# The sandbox-network address of every running app process (`app`, `api`,
+# `worker`), one per line.
+app_ips() {
+  prefix="$(echo "$SUBNET" | sed 's|\.0/[0-9]*$|.|')"
+  for id in $(docker compose -f "$HERE/docker-compose.yml" --profile rolling ps -q app api worker 2>/dev/null); do
+    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$id" |
+      tr ' ' '\n' | grep "^$prefix" || :
+  done
+}
+
+# From inside the sandbox container: only the bridge port of each app process
+# accepts a connection, and it serves a run's bridge call path only.
 check() {
   gateway="$(echo "$SUBNET" | sed 's|\.0/[0-9]*$|.1|')"
-  docker compose -f "$HERE/docker-compose.yml" exec -T sandbox bun --eval "
+  ips="$(app_ips | sort -u | tr '\n' ' ')"
+  if [ -z "$ips" ]; then
+    echo "sandbox-firewall: no app process on the sandbox network ($SUBNET)" >&2
+    exit 1
+  fi
+  echo "sandbox-firewall: app processes on the sandbox network: $ips"
+  docker compose -f "$HERE/docker-compose.yml" exec -T -e "APP_IPS=$ips" sandbox bun --eval "
 // A TCP connect: 'open' when something accepted it, else 'blocked' (dropped,
 // refused or unroutable).
 const tcp = (hostname, port) => new Promise((done) => {
@@ -157,9 +176,9 @@ const tcp = (hostname, port) => new Promise((done) => {
     connectError(_s, e) { clearTimeout(timer); done('blocked (' + (e && e.code || e) + ')') },
   } }).catch((e) => { clearTimeout(timer); done('blocked (' + (e && e.code || e) + ')') })
 })
+const apps = process.env.APP_IPS.trim().split(/\\s+/)
 const want = [
-  ['$APP_IP', $BRIDGE_PORT, 'open'],
-  ['$APP_IP', 3000, 'blocked'],
+  ...apps.flatMap((ip) => [[ip, $BRIDGE_PORT, 'open'], [ip, 3000, 'blocked']]),
   ['$gateway', 22, 'blocked'],
   ['$gateway', 3000, 'blocked'],
   ['169.254.169.254', 80, 'blocked'],
@@ -172,11 +191,13 @@ for (const [host, port, expected] of want) {
   if (!ok) bad++
   console.log((ok ? 'ok    ' : 'FAIL  ') + host + ':' + port + ' -> ' + got)
 }
-// The bridge port answers a run's call path, and nothing else.
-const r = await fetch('http://$APP_IP:$BRIDGE_PORT/healthz', { signal: AbortSignal.timeout(3000) }).catch((e) => String(e))
-const health = typeof r === 'string' ? r : r.status
-if (health !== 404) bad++
-console.log((health === 404 ? 'ok    ' : 'FAIL  ') + '$APP_IP:$BRIDGE_PORT/healthz -> ' + health)
+// Each bridge port answers a run's call path, and nothing else.
+for (const ip of apps) {
+  const r = await fetch('http://' + ip + ':$BRIDGE_PORT/healthz', { signal: AbortSignal.timeout(3000) }).catch((e) => String(e))
+  const health = typeof r === 'string' ? r : r.status
+  if (health !== 404) bad++
+  console.log((health === 404 ? 'ok    ' : 'FAIL  ') + ip + ':$BRIDGE_PORT/healthz -> ' + health)
+}
 process.exit(bad ? 1 : 0)
 "
 }

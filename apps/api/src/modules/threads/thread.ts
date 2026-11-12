@@ -507,7 +507,8 @@ async function findPlainThreadForParticipants(
  * `allIds`, sorted): what an untitled plain create lands in instead of opening
  * a new thread. Shared by createThread's dedup and the agent gate.
  */
-function untitledDmQuery(orgId: string, allIds: string[]) {
+/** The untitled plain thread of exactly these people (an untitled create lands in it). */
+export function untitledDmQuery(orgId: string, allIds: string[]) {
   const sch = drizzleSql.raw(schemaRef("kernel"))
   const idList = drizzleSql.join(
     allIds.map((id) => drizzleSql`${id}::uuid`),

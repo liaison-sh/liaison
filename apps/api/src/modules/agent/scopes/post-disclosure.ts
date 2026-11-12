@@ -39,6 +39,7 @@ import {
   threadPeopleIds,
 } from "~/modules/agent/scopes/taint-approval-audience"
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
+import { untitledDmQuery } from "~/modules/threads/thread"
 
 /** Metadata key on a post written by an approved disclosure: the approval that decided it. */
 export const TAINT_DISCLOSURE_APPROVAL_KEY = "taintDisclosureApprovalId"
@@ -91,24 +92,8 @@ export async function standingPostDisclosure(opts: {
 
 /** The untitled plain thread of exactly these people, the one an untitled create lands in. */
 async function existingConversationOf(orgId: string, people: string[]): Promise<string | null> {
-  const k = schemaRef("kernel")
-  const ids = drizzleSql.join(
-    people.map((id) => drizzleSql`${id}::uuid`),
-    drizzleSql`, `,
-  )
   const rows = await withPrivilegedDb(orgId, "agent-post-existing-conversation", async (tx) =>
-    extractRows<{ id: string }>(
-      await tx.execute(drizzleSql`
-        SELECT t.id FROM ${drizzleSql.raw(k)}.threads t
-        WHERE t.org_id = ${orgId}::uuid AND t.type = 'thread' AND t.title IS NULL
-          AND t.created_from IS NULL AND t.is_pinned = false
-          AND (SELECT count(*) FROM ${drizzleSql.raw(k)}.thread_participants tp
-               WHERE tp.thread_id = t.id AND tp.user_id IS NOT NULL) = ${people.length}
-          AND NOT EXISTS (SELECT 1 FROM ${drizzleSql.raw(k)}.thread_participants tp
-               WHERE tp.thread_id = t.id AND tp.user_id IS NOT NULL
-                 AND tp.user_id NOT IN (${ids}))
-        ORDER BY t.updated_at DESC LIMIT 1`),
-    ),
+    extractRows<{ id: string }>(await tx.execute(untitledDmQuery(orgId, [...people].sort()))),
   )
   return rows[0]?.id ?? null
 }

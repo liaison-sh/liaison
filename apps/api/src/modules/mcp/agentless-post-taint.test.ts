@@ -140,7 +140,7 @@ describe("rule 14: posts from a connection bound to no agent", () => {
   }
 
   async function rows(threadId: string) {
-    return sql<
+    const found = await sql<
       {
         content: string
         required_scopes: string[]
@@ -150,6 +150,7 @@ describe("rule 14: posts from a connection bound to no agent", () => {
     >`SELECT content, required_scopes, disclosure_list::text[] AS disclosure_list, metadata
       FROM kernel.messages WHERE thread_id = ${threadId} AND author_type = 'agent'
       ORDER BY created_at, id`
+    return [...found]
   }
 
   async function approvalCount(orgId: string): Promise<number> {

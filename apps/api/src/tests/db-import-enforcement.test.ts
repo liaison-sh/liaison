@@ -1247,6 +1247,10 @@ describe("db import enforcement", () => {
     // Knowledge pointers are an agent-asset table (privileged-write by design,
     // migration 0050), stamped after the knowledge write already passed RLS.
     "modules/agent/knowledge/knowledge-pointers.ts",
+    // A restricted dashboard's audience: the people and role members its grants
+    // name, read only to address its realtime frames (the acting editor may not
+    // see every role membership); org-scoped, read-only, no row content.
+    "modules/dashboards/service.ts",
     // Mention picker secondary labels: one fact per exact id the picker already
     // resolved; the rows themselves are not one actor's own.
     "modules/search/mention-secondary.ts",

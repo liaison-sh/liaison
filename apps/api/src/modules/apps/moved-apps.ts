@@ -27,8 +27,8 @@
 // repository: every name here has a `bundled-apps/<name>` and no in-tree dir.
 
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
 import type { PrivilegedDb } from "~/db"
+import { extractRows } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { appsLogger as log } from "~/lib/logger"
 

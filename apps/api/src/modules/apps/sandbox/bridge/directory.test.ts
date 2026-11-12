@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 
 const ORG = "00000000-0000-4000-8000-0000000d7001"
 const OTHER_ORG = "00000000-0000-4000-8000-0000000d7002"
@@ -33,23 +34,48 @@ async function call<T>(
 }
 
 beforeAll(async () => {
-  for (const [org, slug] of [
-    [ORG, "dir-org"],
-    [OTHER_ORG, "dir-other-org"],
-  ] as const) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${org}, ${slug}, ${slug}) ON CONFLICT (id) DO NOTHING`
+  const rows: Array<[string, Record<string, RowValue>[]]> = [
+    [
+      "kernel.organizations",
+      [
+        { id: ORG, name: "dir-org", slug: "dir-org" },
+        { id: OTHER_ORG, name: "dir-other-org", slug: "dir-other-org" },
+      ],
+    ],
+    [
+      "kernel.users",
+      [
+        {
+          id: USER,
+          org_id: ORG,
+          email: "Dir.Person@test.com",
+          name: "Dir",
+          password_hash: "hash-value",
+          totp_secret: "totp-value",
+        },
+        {
+          id: OTHER_USER,
+          org_id: OTHER_ORG,
+          email: "other@test.com",
+          name: "Other",
+          password_hash: "hash",
+          totp_secret: null,
+        },
+      ],
+    ],
+    [
+      "kernel.roles",
+      [
+        { id: ROLE, org_id: ORG, name: "dir-analysts" },
+        { id: OTHER_ROLE, org_id: OTHER_ORG, name: "dir-elsewhere" },
+      ],
+    ],
+    ["kernel.role_scope_grants", [{ role_id: ROLE, scope: "dirprobe:reports:read" }]],
+    ["kernel.user_roles", [{ user_id: USER, role_id: ROLE, org_id: ORG }]],
+  ]
+  for (const [table, list] of rows) {
+    await sql.unsafe(insertSql(table, list, { onConflictDoNothing: true }))
   }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, totp_secret)
-    VALUES (${USER}, ${ORG}, 'Dir.Person@test.com', 'Dir', 'hash-value', 'totp-value'),
-           (${OTHER_USER}, ${OTHER_ORG}, 'other@test.com', 'Other', 'hash', null)
-    ON CONFLICT (id) DO NOTHING`
-  await sql`INSERT INTO kernel.roles (id, org_id, name) VALUES
-    (${ROLE}, ${ORG}, 'dir-analysts'), (${OTHER_ROLE}, ${OTHER_ORG}, 'dir-elsewhere')
-    ON CONFLICT (id) DO NOTHING`
-  await sql`INSERT INTO kernel.role_scope_grants (role_id, scope) VALUES (${ROLE}, 'dirprobe:reports:read')
-    ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.user_roles (user_id, role_id, org_id) VALUES (${USER}, ${ROLE}, ${ORG})
-    ON CONFLICT DO NOTHING`
 })
 
 afterAll(async () => {

@@ -781,12 +781,6 @@ describe("runAgentChat run frame carries the effective scope", () => {
       [requester, bob, dan].sort(),
     )
 
-    // Someone joins between the park and the decision: the card counted one person, not them.
-    const carol = await userWith([BETA])
-    await withPrivilegedDb(orgId, "test-effective-scope-chat-join", (tx) =>
-      tx.insert(threadParticipants).values({ threadId: sharedThreadId, userId: carol, orgId }),
-    )
-
     // The requester decides it: holding what the turn read is the deciding authority (rule 8h).
     const decided = await decideApproval({
       orgId,
@@ -805,7 +799,11 @@ describe("runAgentChat run frame carries the effective scope", () => {
       ).filter((m) => m.authorType === "agent"),
     )
     expect(visibleToBob.map((m) => m.content)).toEqual(["posted from a scoped turn"])
-    // Carol joined after the post parked and lacks the scope: the approval did not cover her.
+    // Someone who joins later and lacks the scope does not read what was disclosed before them.
+    const carol = await userWith([BETA])
+    await withPrivilegedDb(orgId, "test-effective-scope-chat-join", (tx) =>
+      tx.insert(threadParticipants).values({ threadId: sharedThreadId, userId: carol, orgId }),
+    )
     const visibleToCarol = await withRlsContext(await actorFor(carol), async (tx) =>
       (
         await tx

@@ -19,12 +19,19 @@ import {
   type PostTarget,
   TAINT_DISCLOSURE_APPROVAL_KEY,
 } from "~/modules/agent/scopes/post-disclosure"
-import { toScopeTaintBlockedError, UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
+import {
+  SCOPE_TAINT_BLOCKED_MESSAGE,
+  SINK_KERNEL_MESSAGES,
+  toScopeTaintBlockedError,
+  UNKNOWN_TURN_TAINT,
+} from "~/modules/agent/scopes/scope-taint"
 import {
   holdsEveryScope,
   loadOrgMemberGrants,
+  peopleTaintGap,
   threadPeopleIds,
 } from "~/modules/agent/scopes/taint-approval-audience"
+import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import { attachFilesToParent, FileServiceError } from "~/modules/files/attach"
 import { publishMessageAttachments, sendMessage } from "~/modules/threads/message"
@@ -141,7 +148,7 @@ function postWouldBeHiddenError(gap: { missingScopes: string[]; lacking: number 
       : `${gap.lacking} ${gap.lacking === 1 ? "person" : "people"} in this conversation cannot see ${what} this session read`
   return {
     code: POST_WOULD_BE_HIDDEN_CODE,
-    message: `NOT POSTED. ${who}, so they would not see this message, and a message is never written hidden from the people it is meant for. Nothing was sent. Either write the message without that data, or tell the user: posting it needs their approval to share that data with this conversation, which Liaison asks for when the post is made through the normal tool call. Do not retry the same call unchanged.`,
+    message: `NOT POSTED. ${who}, so they would not see this message, and a message is never written hidden from the people it is meant for. Nothing was sent, and no approval was created. Tell the user it was not posted and why. You may post a version that leaves that data out; otherwise a person who can see that data shares it with these people themselves, or an admin adjusts their access. Do not retry the same message.`,
   }
 }
 
@@ -166,6 +173,24 @@ async function resolvePostVisibility(
   const snapshot = await approvedPostDisclosure(ctx)
   if (snapshot !== null) {
     const now = await people()
+    // Someone who joined after the post parked was not part of the decision. Writing it would
+    // hide it from them when they lack what it carries, so it is not written (rule 14e).
+    const newcomers = now.filter((u) => !snapshot.includes(u))
+    if (newcomers.length > 0) {
+      const gap = await peopleTaintGap({
+        orgId: ctx.orgId,
+        userIds: newcomers,
+        taintScopes: expandWildcardStamp(stamp, ctx.orgId),
+      })
+      if (gap !== null) {
+        return {
+          error: {
+            code: POST_WOULD_BE_HIDDEN_CODE,
+            message: `NOT POSTED. Since this message was approved, ${gap.lacking === null ? "someone" : gap.lacking === 1 ? "1 person" : `${gap.lacking} people`} joined this conversation who cannot see the data it carries, so they would not see it. Nothing was sent. Tell the user: to share it with everyone now in the conversation, send it again; it will ask for their approval once more.`,
+          },
+        }
+      }
+    }
     return {
       disclosureList: now.filter((u) => snapshot.includes(u)),
       ...(ctx.approvalRequestId
@@ -181,6 +206,20 @@ async function resolvePostVisibility(
   })
   if (decision.kind === "clear") return { disclosureList: null }
   if (decision.kind === "disclose") return { disclosureList: decision.disclosureList }
+  if (decision.kind === "requester_lacks") {
+    return {
+      error: {
+        code: POST_WOULD_BE_HIDDEN_CODE,
+        message: SCOPE_TAINT_BLOCKED_MESSAGE(
+          SINK_KERNEL_MESSAGES,
+          stamp,
+          "poster",
+          undefined,
+          decision,
+        ),
+      },
+    }
+  }
   rootLogger
     .child({ module: "chat-tools" })
     .warn(
@@ -585,21 +624,18 @@ export async function handleThreadsCreate(
   // the turn read. The participant list itself is the thread's membership, not data.
   // An approved disclosure (rule 11) was decided by the requester for exactly these people.
   const snapshot = await approvedPostDisclosure(ctx)
-  const target = { participantIds: params.participantIds }
+  // A titled or forced create writes into a thread of its own: no DM by dedupe, no standing
+  // disclosure of another thread applies to it (rule 14).
+  const target = {
+    participantIds: params.participantIds,
+    newThread: !!params.title || params.forceCreate === true,
+  }
   const audience = async () => [...new Set([ctx.userId, ...params.participantIds])]
+  // The title and references are unstamped and read by every later member: only an approval
+  // discloses them, never the direct-message or standing shortcut of the message body.
   if (snapshot === null && (params.title || (params.references?.length ?? 0) > 0)) {
-    // A direct message or the requester's standing disclosure covers them as it covers the
-    // message (rule 14); anything else is judged against the participants as before.
-    const covered = await decidePostDisclosure({
-      orgId: ctx.orgId,
-      requesterUserId: ctx.userId,
-      stamp: handlerTurnTaint(ctx),
-      target,
-    })
-    if (covered.kind !== "disclose") {
-      const refusal = await participantTaintRefusal(ctx, params.participantIds)
-      if (refusal) return { error: refusal }
-    }
+    const refusal = await participantTaintRefusal(ctx, params.participantIds)
+    if (refusal) return { error: refusal }
   }
   // Never written hidden (rule 14): the first message reaches every participant it addresses.
   const visibility = params.initialMessage

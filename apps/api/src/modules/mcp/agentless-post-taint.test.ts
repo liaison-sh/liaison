@@ -337,6 +337,165 @@ describe("rule 14: posts from a connection bound to no agent", () => {
     expect(n).toBe(0)
   }, 30_000)
 
+  // Review fixes (rule 14a, 14e).
+  it("a post carrying a scope the requester does not hold is refused even in a DM, and nothing is written", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    // The window read more than the owner holds (as a routine or agent turn can).
+    await saveConnectionTurnTaint(
+      w.orgId,
+      connectionTaintWindowId({ connectionId: conn().connectionId }),
+      [OTHER_READ],
+    )
+    const dm = await thread(w, [w.ownerId, w.bob])
+    const res = await reply(conn, dm, "audit figures")
+    expect(res.isError).toBe(true)
+    expect(JSON.stringify(res)).toContain("you do not hold all of those scopes yourself")
+    expect(await rows(dm)).toEqual([])
+    expect(await approvalCount(w.orgId)).toBe(0)
+
+    // The handler refuses the same post on its own (direct call, stamp from the caller).
+    const scopes = [...w.ownerScopes, OTHER_READ]
+    const direct = await withRlsContext(userContextFor(w.orgId, w.ownerId, scopes), (db) =>
+      handleThreadsReply(
+        { threadId: dm, content: "audit figures, direct" },
+        { userId: w.ownerId, orgId: w.orgId, db, scopes, actorType: "mcp" },
+      ),
+    )
+    expect((direct as { error?: { code?: string } }).error?.code).toBe("post_would_be_hidden")
+    expect(await rows(dm)).toEqual([])
+  }, 30_000)
+
+  it("someone who joined between the park and the approval stops the approved post; sending again asks again", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    await read(conn)
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const id = parkedId(await reply(conn, group, "parked before dave joined"))
+    const dave = await person(w.orgId, "Dave", THREADS)
+    await join(w, group, dave)
+    await decideApproval({
+      orgId: w.orgId,
+      requestId: id,
+      actor: userContextFor(w.orgId, w.ownerId, w.ownerScopes),
+      decision: "approve",
+    }).catch(() => null)
+    // Not written: Dave was not part of the decision and would not see it.
+    expect(await rows(group)).toEqual([])
+    parkedId(await reply(conn, group, "parked before dave joined"))
+  }, 60_000)
+
+  it("a reply-thread post approved for a member who reads the root by scope is not hidden from them", async () => {
+    const w = await world()
+    const group = await thread(w, [w.ownerId, w.bob, w.holder])
+    const asOwner = userContextFor(w.orgId, w.ownerId, w.ownerScopes)
+    const { sendMessage } = await import("~/modules/threads/message")
+    const root = await withRlsContext(asOwner, (db) =>
+      sendMessage(db, {
+        orgId: w.orgId,
+        userId: w.ownerId,
+        threadId: group,
+        content: "root",
+        authorType: "agent",
+        requiredScopes: [READ],
+        disclosureList: [w.ownerId, w.bob],
+      }),
+    )
+    // The reply carries more than the root; the holder reads the root by scope, not its list.
+    await withRlsContext(asOwner, (db) =>
+      sendMessage(db, {
+        orgId: w.orgId,
+        userId: w.ownerId,
+        threadId: group,
+        content: "reply",
+        authorType: "agent",
+        requiredScopes: [OTHER_READ],
+        disclosureList: [w.ownerId, w.bob, w.holder],
+        replyRootId: root?.id as string,
+      }),
+    )
+    const seen = await withRlsContext(
+      userContextFor(w.orgId, w.holder, grants.get(w.holder) ?? []),
+      (tx) =>
+        tx.select({ content: messages.content }).from(messages).where(eq(messages.threadId, group)),
+    )
+    expect(seen.map((r) => r.content).sort()).toEqual(["reply", "root"])
+  }, 30_000)
+
+  it("a titled or discoverable conversation of two people is no DM: the post parks", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    await read(conn)
+    const titled = await thread(w, [w.ownerId, w.bob], "Project X")
+    parkedId(await reply(conn, titled, "to a titled room of two"))
+    const open = await thread(w, [w.ownerId, w.bob])
+    await sql`UPDATE kernel.threads SET discoverable = true WHERE id = ${open}`
+    parkedId(await reply(conn, open, "to a discoverable room of two"))
+    expect(await rows(titled)).toEqual([])
+    expect(await rows(open)).toEqual([])
+  }, 30_000)
+
+  it("a soft-deleted approved post no longer counts as a standing disclosure", async () => {
+    const w = await world()
+    const conn = await connection(w)
+    await read(conn)
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    await approve(w, parkedId(await reply(conn, group, "approved, then deleted")))
+    await sql`UPDATE kernel.messages SET deleted_at = now() WHERE thread_id = ${group}`
+    parkedId(await reply(conn, group, "asks again"))
+  }, 60_000)
+
+  it("the handler's refusal says what happened without promising an approval", async () => {
+    const w = await world()
+    const group = await thread(w, [w.ownerId, w.bob, w.carol])
+    const res = await withRlsContext(userContextFor(w.orgId, w.ownerId, w.ownerScopes), (db) =>
+      handleThreadsReply(
+        { threadId: group, content: "hidden" },
+        { userId: w.ownerId, orgId: w.orgId, db, scopes: w.ownerScopes, actorType: "mcp" },
+      ),
+    )
+    const message = (res as { error?: { message?: string } }).error?.message ?? ""
+    expect(message).toContain("no approval was created")
+    expect(message).not.toContain("normal tool call")
+  }, 30_000)
+
+  it("a titled create's title is still judged even for one participant", async () => {
+    const w = await world()
+    const accumulator = (
+      await import("~/modules/agent/scopes/turn-scope-accumulator")
+    ).createTurnScopeAccumulator()
+    accumulator.recordInjected([READ])
+    const { runContextStore } = await import("~/modules/agent/runtime/run-context")
+    const runId = crypto.randomUUID()
+    const res = await runContextStore.run(
+      {
+        runId,
+        parentRunId: null,
+        rootRunId: runId,
+        nestingDepth: 0,
+        mcpGateway: true,
+        effectiveScope: w.ownerScopes,
+        turnScopeAccumulator: accumulator,
+      },
+      () =>
+        withRlsContext(userContextFor(w.orgId, w.ownerId, w.ownerScopes), (db) =>
+          handleThreadsCreate(
+            {
+              participantIds: [w.bob],
+              title: "Item count 3",
+              initialMessage: "see title",
+              forceCreate: true,
+            },
+            { userId: w.ownerId, orgId: w.orgId, db, scopes: w.ownerScopes, actorType: "mcp" },
+          ),
+        ),
+    )
+    expect((res as { error?: { code?: string } }).error?.code).toBe("E_SCOPE_TAINT_BLOCKED")
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.threads WHERE org_id = ${w.orgId} AND title = 'Item count 3'`
+    expect(n).toBe(0)
+  }, 30_000)
+
   describe("threads_create's first message", () => {
     async function create(ctx: () => ToolCallCtx, participantIds: string[], text: string) {
       return handleToolCall(ctx(), "kernel__threads_create", {

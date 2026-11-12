@@ -1222,8 +1222,12 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         (typeof p.title === "string" && p.title !== "") ||
         (Array.isArray(p.references) && p.references.length > 0)
       if (!posts || !Array.isArray(p.participantIds)) return null
+      const titled = typeof p.title === "string" && p.title !== ""
+      const referenced = Array.isArray(p.references) && p.references.length > 0
       return {
         participantIds: p.participantIds.filter((id): id is string => typeof id === "string"),
+        newThread: titled || (p as { forceCreate?: unknown }).forceCreate === true,
+        noShortcut: titled || referenced,
       }
     },
     // No externalEffect: a post lands in an internal thread, attributed to the agent

@@ -532,6 +532,8 @@ export interface SpawnParentFrame {
    * frame names none.
    */
   turnMessageId?: string
+  /** Captured from a person's own external client's gateway frame (`isPersonClientFrame`). */
+  personClient?: boolean
 }
 
 /**
@@ -564,6 +566,7 @@ export function captureSpawnParentFrame(
     agentId: frame.agentId,
     run: { runId: frame.runId, rootRunId: frame.rootRunId, nestingDepth: frame.nestingDepth },
     ...(frame.turnMessageId ? { turnMessageId: frame.turnMessageId } : {}),
+    ...(isPersonClientFrame(frame) ? { personClient: true } : {}),
     ...(account?.hardTokenLimit != null
       ? { tokenLimit: { accountId: account.id, hardTokenLimit: account.hardTokenLimit } }
       : {}),

@@ -4134,6 +4134,23 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         stamp: knownTaint,
         target: postAudience,
       })
+      // Rule 14a: a requester who does not hold what the post carries cannot disclose it, so it
+      // is refused now, never parked for a decision nobody entitled can make, never written hidden.
+      if (decision.kind === "requester_lacks") {
+        log.warn(
+          { toolName: opts.toolName },
+          "Tool dispatch refused by scope taint: the requester does not hold what the post carries",
+        )
+        if (taintFrame) taintFrame.scopeTaintRefused = true
+        return {
+          error: markPlatformTaintRefusal({
+            code: "E_SCOPE_TAINT_BLOCKED",
+            message: `tool ${opts.toolName}: ${SCOPE_TAINT_BLOCKED_MESSAGE(SINK_KERNEL_MESSAGES, knownTaint, "poster", undefined, decision)}`,
+            retryable: false,
+            status: 403,
+          }),
+        }
+      }
       const postGap = decision.kind === "gap" ? decision : null
       // An uncounted gap (an id that is no account of the org, an unknown taint, a failed lookup)
       // has nobody to disclose to: it is left to the handler's own checks, which refuse it.

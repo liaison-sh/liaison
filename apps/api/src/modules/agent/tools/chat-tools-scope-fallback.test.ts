@@ -76,6 +76,11 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
       await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status)
         VALUES (${id}, ${ORG}, ${`ctf-${name}-${tag}@test.com`}, ${name}, 'x', 'active')`
     }
+    // The author holds what it posts (rule 14a: a requester lacking it cannot disclose it).
+    for (const scope of CALLER_SCOPES) {
+      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+        VALUES (${AUTHOR}, ${ORG}, ${scope})`
+    }
     await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
       VALUES (${ROOM}, ${ORG}, ${`ctf-room-${tag}`}, 'thread', ${AUTHOR})`
     for (const userId of [AUTHOR, LACKER]) {
@@ -90,6 +95,7 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG}`
+    await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
     await releaseTestLock()
@@ -125,10 +131,9 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     const result = await withRlsContext(actor(AUTHOR, CALLER_SCOPES), (tx) =>
       handleThreadsCreate(
         {
+          // Untitled, one person: the direct message (a titled room of two is no DM, rule 14c).
           participantIds: [LACKER],
-          title: "ctf create",
           initialMessage: "Deal 42 closes Friday (create)",
-          forceCreate: true,
         },
         { userId: AUTHOR, orgId: ORG, db: tx, scopes: CALLER_SCOPES } as never,
       ),

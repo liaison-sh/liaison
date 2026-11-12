@@ -1649,6 +1649,13 @@ export function resetAppRegistries(): void {
   declaredEmits.clear()
   appCapabilitiesRegistry.clear()
   appStoreDeclarationsRegistry.clear()
+  // The registrations' event subscriptions go with them. Clearing only their disposers left
+  // the handlers on the bus: the org's next registration stacked another set, and every
+  // event then ran each app handler once per earlier reset. A disposer drops its handler
+  // before its first await, so the bus holds none of them when this returns.
+  for (const [, disposers] of eventSubscriptionDisposers.entries()) {
+    for (const dispose of disposers) void dispose().catch(() => {})
+  }
   eventSubscriptionDisposers.clear()
   // The apps an org registers are cached per catalog generation (init.ts
   // `getDefaultApps`). A test that resets the registries has usually also

@@ -408,6 +408,8 @@ describe("drill-down", () => {
     expect(out.columns.map((c) => c.field)).toEqual(["id", "market", "total"])
     // Only what the blocks read is kept from a row.
     expect(out.rows[0]).toEqual({ id: "o1", market: "FR", total: "10" })
+    // The names of every field the rows carry (never their values): what a filter can read.
+    expect(out.fields).toEqual(["channel", "day", "id", "market", "secret", "total"])
     const paged = await getBlockRows(viewer, id, "count", { limit: 3 })
     expect(paged).toMatchObject({ total: 4, nextOffset: 3, limit: 3 })
     const one = await getBlockRows(viewer, id, "list", { row: 0 })

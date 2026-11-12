@@ -56,7 +56,10 @@ async function checkConsent(
 ): Promise<ConsentCheck> {
   if (!ctx.executeTool) return "unreachable"
 
-  async function evaluate(rows: unknown): Promise<ConsentCheck> {
+  // database:db_read and db_query answer `{ rows, truncated }`; a bare array is
+  // accepted too (an older bridge or a fixture).
+  async function evaluate(result: unknown): Promise<ConsentCheck> {
+    const rows = Array.isArray(result) ? result : (result as { rows?: unknown } | null)?.rows
     const arr = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []
     if (arr.length === 0) return "no_source"
     return isGranted(arr[0]!) ? "granted" : "denied"

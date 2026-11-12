@@ -1,0 +1,27 @@
+{
+  "entry": "tool:merchant_product_issues",
+  "params": {
+    "limit": 50
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["merchant"],
+      "reply": "ads-token-stand-in-3"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://merchantapi.googleapis.com/products/v1/accounts/5550001234/products",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-3\",\"Content-Type\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"products\\\":[{\\\"name\\\":\\\"accounts/5550001234/products/en~FR~bt-120-anthracite\\\",\\\"offerId\\\":\\\"bt-120-anthracite\\\",\\\"contentLanguage\\\":\\\"en\\\",\\\"feedLabel\\\":\\\"FR\\\",\\\"productAttributes\\\":{\\\"title\\\":\\\"Bass trap 120 cm, anthracite\\\",\\\"price\\\":{\\\"amountMicros\\\":\\\"189000000\\\",\\\"currencyCode\\\":\\\"EUR\\\"}},\\\"productStatus\\\":{\\\"destinationStatuses\\\":[{\\\"reportingContext\\\":\\\"SHOPPING_ADS\\\",\\\"disapprovedCountries\\\":[\\\"FR\\\"]}],\\\"itemLevelIssues\\\":[{\\\"code\\\":\\\"missing_gtin\\\",\\\"severity\\\":\\\"DISAPPROVED\\\",\\\"resolution\\\":\\\"merchant_action\\\",\\\"attribute\\\":\\\"gtin\\\",\\\"reportingContext\\\":\\\"SHOPPING_ADS\\\",\\\"description\\\":\\\"Missing value [gtin]\\\",\\\"applicableCountries\\\":[\\\"FR\\\"]}]}}]}\"}"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "entry": "preflight:dealer_profile_upsert",
+  "params": {
+    "dealer_name": "Studio Shop Lyon",
+    "dealer_type": "boutique",
+    "coverage_area": "Auvergne-Rhône-Alpes",
+    "sku_match_hints": "BT-120, BT-60",
+    "reorder_cadence": "monthly"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": []
+}

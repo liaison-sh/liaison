@@ -1,0 +1,77 @@
+{
+  "entry": "tool:insights_query",
+  "params": {
+    "level": "ad",
+    "time_increment": "1",
+    "date_preset": "last_7d",
+    "fields": ["spend", "impressions", "clicks", "ctr"],
+    "currency": "EUR"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "store_get",
+      "args": [
+        "insights_reports",
+        "6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1"
+      ],
+      "reply": "null"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/insights",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"level=ad&date_preset=last_7d&time_increment=1&fields=spend%2Cimpressions%2Cclicks%2Cctr&async=true\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"report_run_id\\\":\\\"1234000000000001\\\"}\"}"
+    },
+    {
+      "method": "store_set",
+      "args": [
+        "insights_reports",
+        "6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1",
+        "{\"reportRunId\":\"1234000000000001\",\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"wakes\":0}",
+        "{\"ifVersion\":0}"
+      ],
+      "reply": "{\"id\":\"6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1\",\"data\":{\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\"},\"version\":1,\"updatedAt\":\"2026-11-12T10:16:45.009Z\"}"
+    },
+    {
+      "method": "timers_wakeIn",
+      "args": [
+        15,
+        "insights-report",
+        "{\"report\":\"6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1\"}",
+        "{\"jobId\":\"insights-report-6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1\"}"
+      ]
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/1234000000000001",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"1234000000000001\\\",\\\"async_status\\\":\\\"Job Completed\\\",\\\"async_percent_completion\\\":100}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/1234000000000001/insights",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"date_start\\\":\\\"2025-12-31\\\",\\\"date_stop\\\":\\\"2025-12-31\\\",\\\"spend\\\":\\\"31.40\\\",\\\"impressions\\\":\\\"18234\\\",\\\"clicks\\\":\\\"412\\\",\\\"cpm\\\":\\\"6.71\\\",\\\"ctr\\\":\\\"2.26\\\",\\\"account_currency\\\":\\\"EUR\\\",\\\"ad_id\\\":\\\"120210000000000301\\\",\\\"ad_name\\\":\\\"Bass trap carousel\\\",\\\"adset_id\\\":\\\"120210000000000201\\\"},{\\\"date_start\\\":\\\"2025-12-31\\\",\\\"date_stop\\\":\\\"2025-12-31\\\",\\\"spend\\\":\\\"15.70\\\",\\\"impressions\\\":\\\"18234\\\",\\\"clicks\\\":\\\"412\\\",\\\"cpm\\\":\\\"6.71\\\",\\\"ctr\\\":\\\"2.26\\\",\\\"account_currency\\\":\\\"EUR\\\",\\\"ad_id\\\":\\\"120210000000000302\\\",\\\"ad_name\\\":\\\"Studio tour video\\\",\\\"adset_id\\\":\\\"120210000000000201\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    },
+    {
+      "method": "store_delete",
+      "args": [
+        "insights_reports",
+        "6796320c2ab9803b80e858775ebf48764377919a44c755adde6a0e7f0a1febf1"
+      ],
+      "reply": "{\"deleted\":true}"
+    }
+  ]
+}

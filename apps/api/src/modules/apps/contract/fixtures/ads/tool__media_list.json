@@ -1,0 +1,23 @@
+{
+  "entry": "tool:media_list",
+  "params": {
+    "type": "images",
+    "limit": 25
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/adimages?fields=hash%2Cname%2Cstatus%2Cwidth%2Cheight%2Curl&limit=25",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"hash\\\":\\\"7c3e4f5a6b7c8d9e0f1a2b3c4d5e6f70\\\",\\\"name\\\":\\\"bass-trap-hero.jpg\\\",\\\"url\\\":\\\"https://scontent.example.com/bass-trap-hero.jpg\\\",\\\"width\\\":1080,\\\"height\\\":1080,\\\"created_time\\\":\\\"2025-12-10T09:30:00+0000\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    }
+  ]
+}

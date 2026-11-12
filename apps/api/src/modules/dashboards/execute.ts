@@ -316,6 +316,11 @@ export interface SourceRows {
   object: unknown
   /** Rows the source returned, before the cut. */
   totalRows: number
+  /**
+   * The fields the source's rows carried before the cache kept only what the dashboard reads
+   * (names only): what a person can add a filter on.
+   */
+  fieldNames?: string[]
 }
 
 export type SourceOutcome =

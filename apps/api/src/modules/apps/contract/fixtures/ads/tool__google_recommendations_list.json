@@ -1,0 +1,25 @@
+{
+  "entry": "tool:google_recommendations_list",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["google"],
+      "reply": "ads-token-stand-in-2"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT recommendation.resource_name, recommendation.type, recommendation.campaign, recommendation.dismissed FROM recommendation\\\"}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"recommendation\\\":{\\\"resourceName\\\":\\\"customers/1234567890/recommendations/21000000001~KEYWORD~1\\\",\\\"type\\\":\\\"KEYWORD\\\",\\\"campaign\\\":\\\"customers/1234567890/campaigns/21000000001\\\",\\\"dismissed\\\":false}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
+    }
+  ]
+}

@@ -8,7 +8,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { apiConnectorAppManifest } from "~/apps/api-connector/manifest-descriptor"
-import { gitlabAppManifest } from "~/apps/gitlab/manifest-descriptor"
 import { googleDriveAppManifest } from "~/apps/google-drive/manifest-descriptor"
 import type { RlsClient } from "~/db"
 import type { BridgeExtensionFactory } from "~/modules/apps/sandbox/bridge-extensions"
@@ -32,7 +31,6 @@ const FIXTURES_DIR = join(import.meta.dir, "fixtures")
 const IN_TREE: Record<string, { _bundlePath: string; _bridgeExtension?: BridgeExtensionFactory }> =
   {
     "api-connector": apiConnectorAppManifest,
-    gitlab: gitlabAppManifest,
     "google-drive": googleDriveAppManifest,
   }
 

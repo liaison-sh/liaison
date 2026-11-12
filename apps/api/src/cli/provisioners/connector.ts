@@ -324,31 +324,30 @@ export async function planConnection(
 
 /**
  * Post-apply health check of one active credentials connection: the app's
- * `config verify` probe (`verify-probes.ts`), one cheap authenticated read
- * through the app's own adapter with the STORED credentials. An app without a
- * probe is SKIPPED. Never throws, and never returns a credential value.
+ * `config verify` check (`verify-probes.ts`, its `provisioning.verify`
+ * handler), one cheap authenticated read through the app's connection, the
+ * stored credential added host-side. An app without one is SKIPPED. Never
+ * throws, and never returns a credential value.
  */
 export async function checkConnectionHealth(
   ctx: ProvisionContext,
-  probes: Partial<Record<string, VerifyProbe>>,
+  probe: VerifyProbe,
   appName: string,
   connName: string,
-  identifier: string,
+  provision?: Record<string, unknown>,
 ): Promise<ConnectionHealth> {
-  const probe = probes[appName]
-  if (!probe) {
-    ctx.log(`app '${appName}': connection '${connName}' health check SKIPPED (no probe)`)
-    return { status: "SKIPPED", error: "the app declares no health check" }
-  }
   try {
-    const credentials = await ctx.priv("cli-connector-health-creds", (tx) =>
-      getCredentialsForConnection(tx, ctx.orgId, ctx.actor.userId, appName, connName, identifier, {
-        actorType: "system",
-      }),
-    )
-    const { identity } = await probe(credentials)
-    ctx.log(`app '${appName}': connection '${connName}' health check PASS (${identity})`)
-    return { status: "PASS", identity }
+    const probed = await probe({
+      orgId: ctx.orgId,
+      appName,
+      ...(provision ? { provision } : {}),
+    })
+    if (!probed) {
+      ctx.log(`app '${appName}': connection '${connName}' health check SKIPPED (no probe)`)
+      return { status: "SKIPPED", error: "the app declares no health check" }
+    }
+    ctx.log(`app '${appName}': connection '${connName}' health check PASS (${probed.identity})`)
+    return { status: "PASS", identity: probed.identity }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     ctx.log(`warning: app '${appName}': connection '${connName}' health check FAIL: ${error}`)

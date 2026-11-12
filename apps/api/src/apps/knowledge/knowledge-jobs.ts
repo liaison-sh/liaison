@@ -16,8 +16,6 @@
  * BullMQ at boot.
  */
 import { sql as drizzleSql } from "drizzle-orm"
-import { createGitlabAdapter } from "~/apps/gitlab/adapter"
-import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { createGoogleDriveAdapter } from "~/apps/google-drive/adapter"
 import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
 import { loadPickedItems } from "~/apps/google-drive/picker"
@@ -84,10 +82,9 @@ async function assertOwnerMaySyncFrom(
 }
 
 /**
- * Resolve the adapter for a given app name + actor. Supports google-drive
- * and gitlab; an app that declares a knowledge source kind syncs through
- * app-sources.ts instead, and additional providers can be added here without
- * touching the worker.
+ * Resolve the adapter for a given app name + actor. Supports google-drive;
+ * an app that declares a knowledge source kind syncs through app-sources.ts
+ * instead.
  */
 function resolveAdapter(
   appName: string,
@@ -129,39 +126,6 @@ function resolveAdapter(
         ? loadPickedItems(source.orgId, source.sourceAccount, source.ownerUserId)
         : []
     return createGoogleDriveAdapter({ getToken, ...fetchers, getPickedItems })
-  }
-  if (appName === "gitlab") {
-    const userId = source.ownerUserId ?? source.createdBy
-    const loadCreds = async (): Promise<Record<string, string>> => {
-      await assertOwnerMaySyncFrom("gitlab", source.orgId, userId)
-      // The org's own privileged transaction: the credential read runs on it,
-      // with no second privileged connection.
-      return withPrivilegedDb(source.orgId, "knowledge-sync-gitlab-token", async (db) => {
-        const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
-        return getCredentialsForConnection(
-          db,
-          source.orgId,
-          userId,
-          "gitlab",
-          "gitlab",
-          undefined,
-          {
-            actorType: "system",
-          },
-        )
-      })
-    }
-    const getToken = async (): Promise<string> => String((await loadCreds()).token)
-    const resolveDefaultGroupId = async (): Promise<string | undefined> => {
-      try {
-        const group = (await loadCreds()).group
-        return group ? String(group) : undefined
-      } catch {
-        return undefined
-      }
-    }
-    const client = makeGitlabFetchers(getToken)
-    return createGitlabAdapter({ client, resolveDefaultGroupId })
   }
   throw new Error(`No adapter registered for app: ${appName}`)
 }

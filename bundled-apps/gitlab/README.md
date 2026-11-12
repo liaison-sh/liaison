@@ -2,8 +2,9 @@
 
 GitLab gives agents **read-only** access to a connected GitLab group: projects,
 commits, merge requests, issues, milestones, labels, releases, tags, repository
-files/tree, and search. It also syncs group manuals into the knowledge base. No
-write operations exist. When GitLab is not connected the tools surface a
+files/tree, and search. It also syncs repository folders into the knowledge base
+(knowledge source kind `folder`, config `{ ref: "<project>:<branch>:<path>" }`,
+`src/knowledge.ts`), with their folders as collections. No write operations exist. When GitLab is not connected the tools surface a
 `not_connected` error rather than fabricating data.
 
 ## Tools
@@ -28,10 +29,11 @@ it covers the shared machinery (credentials connections, ownership, egress
 allowlisting). This section is the GitLab-specific runbook.
 
 **Connection:** one `credentials` connection named `gitlab`. There is no OAuth —
-the operator pastes a token. `allowedDomains` pins egress to `gitlab.com` and its
-subdomains (the REST client additionally host-pins every request/redirect and
-refuses any host other than the configured API host, defaulting to
-`https://gitlab.com/api/v4`).
+the operator pastes a token. The app never reads it: every call goes through
+`ctx.fetch` with the connection named, and the host adds the token as an
+`Authorization: Bearer` header, only to `gitlab.com` and its subdomains (the
+connection's `allowedDomains`), paced by the connection's `limits` (4 calls in
+flight, 10 a second). Only the `group` field is readable by the app.
 
 ### What the connection needs, and where each part comes from
 
@@ -77,3 +79,17 @@ here, so prefer a Service Account PAT for an org-owned connection.
 | `RATE_LIMITED` (429) | GitLab rate limit hit | Honour `Retry-After` and retry. |
 | "egress refused" | a redirect or configured base URL pointed off gitlab.com | Expected host-pinning guard — the connector only talks to the configured GitLab host. |
 | Tool returns `not_connected` for some users only | connection is user-owned; caller/agent is a different user | Reconnect **org-owned** (`mode: "org"`, needs `gitlab:accounts:admin`). |
+
+## Checking the connection
+
+`liaison config verify` (and the check `config apply` runs after it applied the
+connection) runs the app's `provisioning.verify` handler: one read of the token
+owner's profile and of the connected group (`src/provisioning.ts`).
+
+## Moving from the in-tree app
+
+Releases before this one shipped GitLab inside the server. An instance that ran
+it keeps its connection, credentials and synced folders: the catalog app is
+installed under the same name and each synced folder becomes a `folder` source
+with its reference as config (`apps/api/src/modules/apps/moved-apps.ts`), so its
+documents keep their ids and folders.

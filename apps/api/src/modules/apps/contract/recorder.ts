@@ -296,7 +296,14 @@ export function scrubStoreIdentity(value: unknown): unknown {
 }
 
 /** Response headers a fetch fixture keeps: the ones apps read. The rest (request ids, CDN, CSP) go. */
-const KEPT_RESPONSE_HEADERS = new Set(["content-type", "retry-after", "link", "location"])
+const KEPT_RESPONSE_HEADERS = new Set([
+  "content-type",
+  "retry-after",
+  "link",
+  "location",
+  // GitLab's offset pagination (bundled-apps/gitlab/src/client.ts getList).
+  "x-next-page",
+])
 
 /** Drop a recorded `fetch` answer's response headers but the ones an app reads. */
 function trimFetchHeaders(fixture: EgressFixture): EgressFixture {

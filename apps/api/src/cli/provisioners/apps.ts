@@ -439,13 +439,13 @@ async function applyApps(
     // revoked token): probe the stored row when the app has a probe, and turn
     // a failure into a pending item instead of a silent success.
     let health: ConnectionHealth | undefined
-    if (ctx.connectionProbes && result.connected && result.identifier !== undefined) {
+    if (ctx.connectionProbe && result.connected && result.identifier !== undefined) {
       health = await checkConnectionHealth(
         ctx,
-        ctx.connectionProbes,
+        ctx.connectionProbe,
         app.name,
         app.connection.name,
-        result.identifier,
+        app.provision as Record<string, unknown> | undefined,
       )
       if (health.status === "FAIL") {
         pending.push({

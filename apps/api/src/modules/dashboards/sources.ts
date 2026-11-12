@@ -24,12 +24,16 @@
 // (execute.ts): its bridge refuses every write, whatever the tool declared.
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
+import { and, eq } from "drizzle-orm"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { dashboardTables } from "~/db/schema/kernel"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
 import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
+import type { BlockSource } from "~/modules/dashboards/spec"
 import { type DeclaredCollection, getDeclaredCollection } from "~/modules/data-store/declared"
 import { AGENT_STORE_APP } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -96,6 +100,11 @@ export const KERNEL_DASHBOARD_SOURCES: ReadonlySet<string> = new Set([
   "notifications_get",
   "sidebar_apps_get",
   "setup_state",
+  // Dashboard tables (modules/dashboards/tables), under the viewer's RLS: the tables, one
+  // table's columns and counts, its rows.
+  "tables_list",
+  "tables_get",
+  "tables_query",
 ])
 
 /**
@@ -335,4 +344,59 @@ export async function checkStoreSource(
     }
   }
   return { ok: true, declared }
+}
+
+export type TableSourceCheck =
+  | { ok: true; tableId: string }
+  | { ok: false; code: SourceRefusalCode; message: string }
+
+/**
+ * May `viewer` read this dashboard table on a block? Read scope plus viewer access to the table
+ * (its sharing, under their RLS). A table they cannot read is refused exactly like a missing one.
+ */
+export async function checkTableSource(
+  orgId: string,
+  tableId: string,
+  viewer: UserContext,
+): Promise<TableSourceCheck> {
+  if (!hasScope("kernel:dashboards:read", viewer.scopes)) {
+    return { ok: false, code: "no_access", message: "a table needs kernel:dashboards:read" }
+  }
+  const stamp = await tableStamp(viewer, tableId)
+  if (!stamp || viewer.orgId !== orgId) {
+    return { ok: false, code: "no_access", message: `no table ${tableId} you can read` }
+  }
+  return { ok: true, tableId }
+}
+
+/**
+ * What a table source's cached read is keyed on, read under the viewer's RLS: its rows
+ * generation (moves with every row write, in its transaction) and version (columns, sharing).
+ * Null when the viewer cannot read it. Read before the rows, so a read can never cache older
+ * rows under a newer stamp.
+ */
+export async function tableStamp(
+  viewer: UserContext,
+  tableId: string,
+): Promise<{ generation: number; version: number } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(tableId)) return null
+  const [row] = await withRlsContext(viewer, (tx) =>
+    tx
+      .select({ generation: dashboardTables.rowsGeneration, version: dashboardTables.version })
+      .from(dashboardTables)
+      .where(and(eq(dashboardTables.id, tableId), eq(dashboardTables.orgId, viewer.orgId)))
+      .limit(1),
+  )
+  return row ? { generation: Number(row.generation), version: row.version } : null
+}
+
+/** Any source's eligibility for `viewer`: a tool, a store collection or a dashboard table. */
+export async function checkSource(
+  orgId: string,
+  source: BlockSource,
+  viewer: UserContext,
+): Promise<{ ok: true } | { ok: false; code: SourceRefusalCode; message: string }> {
+  if (source.kind === "tool") return checkToolSource(orgId, source.tool, viewer)
+  if (source.kind === "store") return checkStoreSource(orgId, source.app, source.collection, viewer)
+  return checkTableSource(orgId, source.table, viewer)
 }

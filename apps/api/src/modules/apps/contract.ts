@@ -647,6 +647,44 @@ function parentMadeOnPrintErrors(
   return []
 }
 
+/**
+ * `entities.<e>.pick` names one of the app's own tools that is readOnly, ungated and takes
+ * `queryParam` (a JSON-schema params object is checked; a Zod one is not introspected).
+ */
+export function pickDeclarationErrors(app: unknown): string[] {
+  const root = asRecord(app)
+  const entities = asRecord(root?.entities)
+  if (!entities) return []
+  const tools = asRecord(root?.tools) ?? {}
+  const errors: string[] = []
+  for (const [entityName, rawEntity] of Object.entries(entities)) {
+    const pick = asRecord(asRecord(rawEntity)?.pick)
+    if (!pick) continue
+    const where = `entities.${entityName}.pick`
+    const toolName = typeof pick.tool === "string" ? pick.tool : ""
+    const tool = asRecord(tools[toolName])
+    if (!tool) {
+      errors.push(`pick_tool_invalid: ${where}.tool: "${toolName}" is not a tool of this app`)
+      continue
+    }
+    if (tool.readOnly !== true) {
+      errors.push(`pick_tool_invalid: ${where}.tool: tool "${toolName}" must be readOnly`)
+    }
+    if (tool.gated === true || tool.conditionalGate === true) {
+      errors.push(`pick_tool_invalid: ${where}.tool: tool "${toolName}" must not be gated`)
+    }
+    const params = asRecord(tool.params)
+    const properties = params && !("safeParse" in params) ? asRecord(params.properties) : undefined
+    const queryParam = typeof pick.queryParam === "string" ? pick.queryParam : ""
+    if (properties && !(queryParam in properties)) {
+      errors.push(
+        `pick_tool_invalid: ${where}.queryParam: tool "${toolName}" takes no parameter "${queryParam}"`,
+      )
+    }
+  }
+  return errors
+}
+
 export function printDeclarationErrors(app: unknown): string[] {
   const root = asRecord(app)
   const entities = asRecord(root?.entities)
@@ -772,6 +810,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   errors.push(...connectionAdminScopeErrors(data as Record<string, any>))
   errors.push(...dimensionReferenceErrors(descriptor))
   errors.push(...printDeclarationErrors(descriptor))
+  errors.push(...pickDeclarationErrors(descriptor))
 
   // Every tool scope must be prefixed with the app's scope namespace
   if (data.tools) {
@@ -1306,6 +1345,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   }
 
   errors.push(...printDeclarationErrors(manifest))
+  errors.push(...pickDeclarationErrors(manifest))
 
   // Cross-field: searchable entities must declare tableName + readScope
   if (manifest.entities) {

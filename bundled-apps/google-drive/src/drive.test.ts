@@ -104,7 +104,14 @@ describe("manifest", () => {
       resolve: "resolveDriveItem",
       searchByDefault: false,
     })
-    expect(manifest.pages.picker.connectionToken).toEqual({ connection: "drive" })
+    // The platform's Picker widget: no page script, a drive.file token only.
+    expect("source" in manifest.pages.picker).toBe(false)
+    expect(manifest.pages.picker.widget).toEqual({
+      kind: "google-picker",
+      connection: "drive",
+      route: "savePicks",
+      tokenScopes: ["https://www.googleapis.com/auth/drive.file"],
+    })
     expect(Object.keys(manifest.knowledgeSources).sort()).toEqual(["folder", "picked"])
     expect(manifest.connections.drive.oauthClient).toEqual({ key: "google-drive:drive" })
     expect(manifest.provisioning.handler).toBe("provisionDrive")

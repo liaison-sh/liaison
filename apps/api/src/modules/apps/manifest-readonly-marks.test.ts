@@ -65,9 +65,6 @@ const READ_ONLY: Record<string, string[]> = {
   mail: ["listAccounts", "getAccount", "getSyncStatus", "search", "read", "providers.get"],
   calendar: ["list_calendars", "list_events", "search_events", "list_accounts"],
   "mcp-manager": ["list_connections"],
-  // items_list is one findMany; external_fetch is a fixed GET to the example API with no
-  // caller data in it (2026-09-25).
-  example: ["items_list", "external_fetch"],
   gitlab: [
     "gitlab_list_projects",
     "gitlab_list_commits",
@@ -325,7 +322,6 @@ const READS_THAT_WRITE: Record<string, string[]> = {
     // Imports the label PDF into kernel.files.
     "import_label_document",
   ],
-  example: ["resolve_contact"], // resolves or CREATES the contact
 }
 
 // A tool whose name says it reads: one of these words and none of the write words. Only a

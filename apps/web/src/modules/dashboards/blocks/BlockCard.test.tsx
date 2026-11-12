@@ -104,4 +104,21 @@ describe("BlockCard", () => {
     ))
     await waitFor(() => expect(screen.getByTestId("dashboard-block-truncated")).toBeTruthy())
   })
+
+  it("draws a block that reads its own data (an editable table) without reading load", async () => {
+    const load = vi.fn(async () => metric(1))
+    render(() => (
+      <BlockCard
+        block={{ ...block, type: "table" }}
+        load={load}
+        locale="en"
+        content={(n) => <p data-testid="own-content">{`refreshed ${n()}`}</p>}
+      />
+    ))
+    expect(card().dataset.state).toBe("ready")
+    expect(screen.getByTestId("own-content").textContent).toBe("refreshed 0")
+    fireEvent.click(screen.getByTestId("dashboard-block-refresh-b1"))
+    await waitFor(() => expect(screen.getByTestId("own-content").textContent).toBe("refreshed 1"))
+    expect(load).not.toHaveBeenCalled()
+  })
 })

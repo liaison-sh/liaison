@@ -55,7 +55,7 @@ searchKeywords on a tool, single words -> apps/api/src/modules/apps/manifest-sch
 Keywords are read only by the search, folded for accents -> apps/api/src/modules/agent/tools/tool-rank.ts:72
 A page tells the host which record is open with app.trackOpenRecord -> packages/host-sdk/src/index.ts:438
 A turn sent from the tab names that record -> apps/web/src/modules/threads/thread-send.ts:42
-An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:141
+An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:142
 A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
 A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
 The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298
@@ -116,12 +116,18 @@ verify doubles as the connection health check, config {} without a provision blo
 add_folder_source ref becomes an app source's config { ref }, same ref same source -> apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts:16-19
 database connector reads through ctx.sql -> bundled-apps/database/src/knowledge.ts:1-12
 ctx.fetch auth account: exactly one oauth2 account by id, the org's or the acting person's own, else unknown_account; files_importFromUrl takes auth -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:130 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:209 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:43 ; apps/api/src/modules/apps/sandbox/bridge/files.ts:500
-Page connectionToken: the account named by params.account, the person's own or the org's with the connection admin scope, in liaisonPage.connectionToken; else 403 -> apps/api/src/modules/apps/app-surface.ts:33 ; apps/api/src/modules/apps/app-pages.ts:378
 Open button under a tool call that answers a page handle -> apps/web/src/modules/app-pages/PageHandleCard.tsx:14 ; apps/web/src/modules/app-pages/open-page.ts:43 ; apps/web/src/modules/agent/ToolCallRow.tsx:181
+Entity pick: own readOnly ungated tool, queryParam, idField, labelField, itemsPath -> apps/api/src/modules/apps/manifest-schema.ts:1282
+Registration refuses a bad pick tool -> apps/api/src/modules/apps/contract.ts:654
+Link search runs the pick tool as the person -> apps/api/src/modules/dashboards/tables/link-search.ts:53
 knowledge sync input scope; ctx.knowledge_appSource / knowledge_appSourceWrite ops get, list, ensure, sync, purgeAccount; add_folder_source ref to the folder kind -> apps/api/src/apps/knowledge/app-sources.ts:131 ; apps/api/src/modules/apps/sandbox/bridge/app-sources.ts:1 ; apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts:12
 App metadata kept across a reconnect by the same owner -> apps/api/src/modules/apps/connections/service.ts:3385 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.fetch convert xlsx-text; multipart related and base64 parts -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:107 ; apps/api/src/modules/apps/sandbox/bridge/multipart.ts:195
 ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPreconditionFailure reads it -> packages/app-sdk/src/types.ts (DbBatchExpect, DbClient.batch) ; packages/app-sdk/src/db-batch.ts ; apps/api/src/modules/apps/sandbox/bridge/batch.ts (BatchPreconditionError)
+
+Page widget: a page declares widget {kind, connection, route, tokenScopes}; the platform serves its script, the app gets only the picks; grant must be inside tokenScopes; org origin only; audited -> apps/api/src/modules/apps/page-widgets.ts:1 ; apps/api/src/modules/apps/app-pages.ts:378 ; apps/api/src/modules/apps/app-surface.ts:120
+Install screen lists widget pages -> apps/web/src/modules/settings/InstallAppDialog.tsx:105
+The page script is deferred; a widget's script waits for DOMContentLoaded -> apps/api/src/modules/apps/app-pages.ts:551 ; apps/api/src/modules/apps/page-widgets.ts:150
 Knowledge items: manifest knowledgeItems (search, resolve, readScope, searchByDefault, timeoutMs) -> apps/api/src/modules/apps/manifest-schema.ts (knowledgeItems) ; apps/api/src/modules/apps/contract.ts (knowledgeItemsErrors) ; apps/api/src/modules/apps/knowledge-sync-dispatch.ts (makeKnowledgeItemsDispatch)
 search answer mapped to hits, resolve answer {found,title,url,modifiedAt,text}, readScope and availability gate, policy else searchByDefault -> apps/api/src/apps/knowledge/source-registry.ts (registerDefaultKnowledgeSources, parseResolved, parseSearchAnswer)
 resolve failure leaves a link as it was (SOURCE_UNAVAILABLE), not found marks it stale -> apps/api/src/apps/knowledge/source-links.ts (probeRemoteVisible, verifySourceLink)

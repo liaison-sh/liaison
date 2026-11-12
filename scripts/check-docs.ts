@@ -217,14 +217,14 @@ export function loadPageTexts(docsDir: string, nav: Nav): Map<string, string> {
   return texts
 }
 
-/** Shipped apps (`apps/api/src/apps/*` except example, and `bundled-apps/*`) mapped to their page. */
+/** Shipped apps (`apps/api/src/apps/*` and `bundled-apps/*`) mapped to their page. */
 export function shippedApps(root: string, cfg: DocsMapConfig): CoverageInputs["apps"] {
   const out: CoverageInputs["apps"] = []
   for (const base of ["apps/api/src/apps", "bundled-apps"]) {
     const dir = join(root, base)
     if (!existsSync(dir)) continue
     for (const app of readdirSync(dir).sort()) {
-      if (app === "example" || app.startsWith(".")) continue
+      if (app.startsWith(".")) continue
       if (!statSync(join(dir, app)).isDirectory()) continue
       const rel = `${base}/${app}`
       const entry = cfg.map.find((e) => globMatch(e.glob, `${rel}/index.ts`))

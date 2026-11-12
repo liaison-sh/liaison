@@ -7,7 +7,7 @@
     "category": "Developer",
     "icon": "code",
     "summary": "Reference app showing every surface of the Liaison app SDK.",
-    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/example"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/test-support/apps/example"
   },
   "packageFormat": 1,
   "license": "MIT",
@@ -47,7 +47,6 @@
     "items_create": {
       "description": "Create an example item",
       "requiredScopes": ["example:items:write"],
-      "atomic": true,
       "handler": "items_create",
       "writesToTable": "app_example.items",
       "params": {
@@ -79,7 +78,9 @@
   },
   "jobs": {
     "nightly_summary": {
-      "runsFor": {"everyOrg": "The example app summarizes each org's own data every night; it needs no connection."},
+      "runsFor": {
+        "everyOrg": "The example app summarizes each org's own data every night; it needs no connection."
+      },
       "schedule": "0 0 * * *",
       "handler": "nightly_summary"
     }

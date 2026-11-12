@@ -71,6 +71,11 @@ export const SHAREABLE_RESOURCES: Record<string, ShareableResource> = {
   },
   "kernel.contact": { schema: "kernel", table: "contacts", aclUserColumns: ["owner_user_id"] },
   "kernel.dashboard": { schema: "kernel", table: "dashboards", aclUserColumns: ["owner_user_id"] },
+  "kernel.dashboard_table": {
+    schema: "kernel",
+    table: "dashboard_tables",
+    aclUserColumns: ["owner_user_id"],
+  },
 }
 
 function resourceFor(type: string): ShareableResource {

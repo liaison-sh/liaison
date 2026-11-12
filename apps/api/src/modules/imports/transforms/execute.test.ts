@@ -40,7 +40,7 @@ function batch(records: unknown[], firstRecord = 1, file = "tickets.csv"): Trans
   return { file, firstRecord, records, bytes: JSON.stringify(records).length }
 }
 
-const host = { kinds: ["tickets.ticket"] }
+const host = { orgId: "00000000-0000-0000-0000-0000000000a1", kinds: ["tickets.ticket"] }
 
 describe("transform executor: one call", () => {
   it("a transform emits 3 records through ctx.emitRecords", async () => {

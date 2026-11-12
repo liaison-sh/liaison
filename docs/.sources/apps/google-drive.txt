@@ -12,7 +12,7 @@ Shared drives chosen in settings, by the agent (gated), or provision.sharedDrive
 A change of shared drives syncs the org folders again -> bundled-apps/google-drive/src/shared-drives.ts:140
 Org folders hidden while no drive is chosen or outside the chosen drives -> bundled-apps/google-drive/src/knowledge.ts:120 ; apps/api/src/db/migrations/0297_org_drive_unscoped_content.sql:1
 Picked mode from the granted scopes -> bundled-apps/google-drive/src/model.ts:108
-Choose files opens Google's picker on the app's page with the person's own token -> bundled-apps/google-drive/src/ui/picked-files.tsx:80 ; bundled-apps/google-drive/pages/picker.ts:1 ; apps/api/src/modules/apps/app-pages.ts:383
+Choose files opens Google's picker on the app's page with the person's own token -> bundled-apps/google-drive/src/ui/picked-files.tsx:80 ; apps/api/src/modules/apps/page-widgets.ts:60 ; apps/api/src/modules/apps/app-pages.ts:383
 drive_picker answers an Open button (page handle) -> bundled-apps/google-drive/src/picker.ts:95 ; apps/web/src/modules/app-pages/PageHandleCard.tsx:14
 Picker key and project number: GOOGLE_PICKER_API_KEY / GOOGLE_CLOUD_PROJECT_NUMBER or config pickerApiKey / pickerAppId -> apps/api/src/modules/apps/instance-config-defaults.ts:36 ; bundled-apps/google-drive/src/picker.ts:39
 Picked items sync as the source Google Drive: <address> -> bundled-apps/google-drive/src/picker.ts:160
@@ -22,4 +22,5 @@ Disconnect deletes the content synced through the account -> bundled-apps/google
 Role member and admin scopes -> bundled-apps/google-drive/app.manifest.json:1
 google-drive:approve -> docs/reference/scopes.md:161
 search, read, import, upload, shared_drives, choose_shared_drives, drive_picker -> bundled-apps/google-drive/app.manifest.json:1
+The picker page is Liaison's own widget (drive.file grant only, org address, app gets only picks) -> apps/api/src/modules/apps/page-widgets.ts:1 ; bundled-apps/google-drive/app.manifest.json:427
 Link a Drive file in Knowledge; Drive search off until enabled -> bundled-apps/google-drive/src/items.ts (resolveDriveItem, searchDriveKnowledge) ; bundled-apps/google-drive/app.manifest.json (knowledgeItems.searchByDefault)

@@ -16,7 +16,7 @@ async function pageLink(p: { tag?: string }, ctx: Ctx) {
 }
 
 async function pickerLink(p: { account?: string }, ctx: Ctx) {
-  return ctx.pages.link("picker", { account: p.account ?? "" })
+  return ctx.pages.link("picker", { account: p.account ?? "", apiKey: "dev-key", appId: "1234" })
 }
 
 /** The page's route: answers with what it was given and who it ran as, and records it. */

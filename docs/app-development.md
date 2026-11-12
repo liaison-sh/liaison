@@ -75,7 +75,7 @@ no kernel files to edit.
 
 ## 3. Anatomy of an app
 
-The reference app at `apps/api/src/apps/example/` demonstrates every SDK surface
+The reference app at `apps/api/test-support/apps/example/` demonstrates every SDK surface
 in the smallest possible code. Read it alongside this section — each of its five
 handlers teaches exactly one thing.
 
@@ -759,6 +759,16 @@ app versions they were built from: during a rolling deploy, a process still on
 an older version of your app leaves them as the newer release built them, so
 raise your app's version whenever you change these declarations.
 
+**Let people pick a record your search does not index.** A dashboard table's
+link cell picks a record of an app ([Keep data in tables](agents/dashboard-tables.md)).
+An entity the search index does not hold (a record of an outside service) can
+declare `pick: { "tool", "queryParam", "idField", "labelField", "itemsPath"? }`:
+`tool` is one of your app's own read tools, `readOnly` and never gated, run as
+the person with `{ [queryParam]: <what they typed> }`. Each item of its result
+(at `itemsPath`, else the result itself or its only list) gives the record's id
+(`idField`) and label (`labelField`). Registration refuses a pick tool that is
+not yours, not read-only, gated, or takes no `queryParam`.
+
 **What the search index holds for an entity.** A searchable entity's
 `indexFields` names the columns its search document is built from: `title`,
 `handle`, `labelSecondary` and `body`. Two keys add more text to the body.
@@ -950,6 +960,7 @@ it as a page, with the routes it calls:
   A handle and a link each work once, for 5 minutes; a person gets at most 20 per app
   every 10 minutes.
 - `pages/picker.ts` is built for the browser into `pages/picker.js` in the package.
+  It runs once the document is parsed, so its `#root` element exists.
   The page reads `window.liaisonPage.params` and calls a route with
   `await window.liaisonPage.call("savePicks", body)`.
 - A route runs your handler as that person, with their scopes, under the route's
@@ -958,12 +969,19 @@ it as a page, with the routes it calls:
   against what the person may read or change: the route acts as them. The page may
   call only the routes it lists, at most 60 calls a minute; bodies and answers are
   capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
-- A page that runs a provider widget in the person's browser with their own grant
-  (a file picker) declares `"connectionToken": { "connection": "<oauth2 connection>" }`.
-  Mint its link with `ctx.pages.link(page, { account: "<account id>" })`: the page
-  then reads `window.liaisonPage.connectionToken` (`{ token, identifier, account }`).
+- A page that needs a provider widget in the person's browser with their own grant
+  (Google's file picker) ships no script: it declares
+  `"widget": { "kind": "google-picker", "connection": "<oauth2 connection>", "route": "<its route>", "tokenScopes": [...] }`
+  and Liaison serves the page itself. Mint its link with
+  `ctx.pages.link(page, { account: "<account id>", apiKey, appId })`. Your code never
+  receives the account's token: Liaison's own script runs the widget and your route
+  receives only what the person chose (`{ add: [{ id, name, mimeType }] }`).
   The account must be the person's own, or the organization's when they hold the
-  connection's admin scope; any other is refused (403) and the page does not open.
+  connection's admin scope; its granted scopes must all be in `tokenScopes` (plus
+  sign-in scopes), else the page answers 403 and does not open. `tokenScopes` must be
+  scopes of the connection and none of its restricted ones. The page opens only on the
+  workspace's own address, each opening is audited, and the install screen lists it
+  under the pages that put a connected account's access in your browser.
 - A route call carries the page session's key, which only the page's bootstrap
   holds (it is never in `liaisonPage` or the document), so a session id copied out of
   the page calls nothing.
@@ -1202,4 +1220,4 @@ Declare `knowledgeItems` in the manifest:
 - [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
 - [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent), a catalog app reading through platform-held SQL connections (`ctx.sql`)
 - [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
-- `apps/api/src/apps/example/` — the reference app
+- `apps/api/test-support/apps/example/` — the reference app

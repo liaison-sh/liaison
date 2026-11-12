@@ -3,5 +3,6 @@
 // @liaison/sandbox-supervisor: the self-hosted sandbox service (workerd).
 export * from "./config"
 export * from "./pool"
+export * from "./runtime-check"
 export * from "./supervisor"
 export * from "./workerd-bin"

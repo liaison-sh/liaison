@@ -380,6 +380,7 @@ describe("bound egress: answers and secrets", () => {
             return { nextCursor: null }
           }`,
       host: {
+        orgId: ORG,
         kinds: ["tickets.ticket"],
         apiGet: async (path: string) => {
           try {

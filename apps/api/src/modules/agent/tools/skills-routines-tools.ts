@@ -37,6 +37,7 @@ import {
   agents as agentsTbl,
   approvalPolicies,
   autoApprovePolicies,
+  dashboardTables,
   disabledAppSkills,
   routines as routinesTbl,
   skills as skillsTbl,
@@ -1521,7 +1522,7 @@ export interface RoutineListItem {
   /** Where each run happens (S21): cloud, node or node_else_cloud. */
   runsOn: string
   /** Sender filter of a mail:message:create routine (S26). Null = none. */
-  eventFilter: { fromContactIds?: string[]; fromGroupIds?: string[] } | null
+  eventFilter: StoredEventFilter | null
   /** Who decides the routine's gated drafts (S29): the default audience or its owner. */
   approver: "default" | "owner"
 }
@@ -2678,19 +2679,74 @@ async function refuseOwnerApprover(
 /** The one trigger a sender filter applies to (S26). */
 const MAIL_SENDER_FILTER_EVENT = "mail:message:create"
 
+/** The triggers a table row filter applies to (0298). */
+const TABLE_ROW_FILTER_EVENTS: readonly string[] = [
+  "kernel:dashboard_table_row:created",
+  "kernel:dashboard_table_row:updated",
+  "kernel:dashboard_table_row:deleted",
+]
+
+type StoredEventFilter = {
+  fromContactIds?: string[]
+  fromGroupIds?: string[]
+  tableId?: string
+  column?: string
+  to?: string | number | boolean | null
+}
+
+/** Whether a trigger keeps a stored filter of this shape. */
+function filterFitsEvent(
+  filter: StoredEventFilter | null | undefined,
+  event: string | null,
+): boolean {
+  if (!filter) return true
+  if (filter.tableId) return event !== null && TABLE_ROW_FILTER_EVENTS.includes(event)
+  return event === MAIL_SENDER_FILTER_EVENT
+}
+
 /**
- * Normalise a routine's sender filter (S26) against its trigger: empty lists
- * are dropped and an empty filter is stored as null. A filter on any trigger
- * other than `mail:message:create` is refused rather than stored inert.
+ * Normalise a routine's event filter against its trigger. A sender filter (S26) belongs to
+ * `mail:message:create`: empty lists are dropped and an empty filter is stored as null. A table
+ * row filter ({tableId, column?, to?}, 0298) belongs to the `kernel:dashboard_table_row:*`
+ * triggers; `to` needs a column. A filter on any other trigger is refused rather than stored inert.
  */
 function resolveRoutineEventFilter(
   kind: string,
   event: string | null,
-  filter: { fromContactIds?: string[]; fromGroupIds?: string[] } | null | undefined,
-):
-  | { filter: { fromContactIds?: string[]; fromGroupIds?: string[] } | null }
-  | { error: { code: string; message: string } } {
+  filter: StoredEventFilter | null | undefined,
+): { filter: StoredEventFilter | null } | { error: { code: string; message: string } } {
   if (!filter) return { filter: null }
+  if (filter.tableId !== undefined) {
+    if (kind !== "event" || event === null || !TABLE_ROW_FILTER_EVENTS.includes(event)) {
+      return {
+        error: {
+          code: "invalid_event_filter",
+          message:
+            "eventFilter {tableId, column?, to?} only applies to kind:'event' routines on 'kernel:dashboard_table_row:created|updated|deleted'.",
+        },
+      }
+    }
+    if (filter.fromContactIds?.length || filter.fromGroupIds?.length) {
+      return {
+        error: {
+          code: "invalid_event_filter",
+          message: "a table row filter takes no fromContactIds / fromGroupIds",
+        },
+      }
+    }
+    if (filter.to !== undefined && !filter.column) {
+      return {
+        error: { code: "invalid_event_filter", message: "eventFilter.to needs eventFilter.column" },
+      }
+    }
+    return {
+      filter: {
+        tableId: filter.tableId.toLowerCase(),
+        ...(filter.column ? { column: filter.column } : {}),
+        ...(filter.to !== undefined ? { to: filter.to } : {}),
+      },
+    }
+  }
   const contacts = [...new Set(filter.fromContactIds ?? [])]
   const groups = [...new Set(filter.fromGroupIds ?? [])]
   if (contacts.length === 0 && groups.length === 0) return { filter: null }
@@ -2709,6 +2765,41 @@ function resolveRoutineEventFilter(
       ...(groups.length > 0 ? { fromGroupIds: groups } : {}),
     },
   }
+}
+
+/**
+ * A table row filter names a table the routine's author can read (under their RLS: a table they
+ * cannot see reads as absent) and, when it names a column, one of the table's columns.
+ */
+async function checkTableRowFilter(
+  db: RlsClient,
+  orgId: string,
+  filter: StoredEventFilter | null,
+): Promise<{ error: { code: string; message: string } } | null> {
+  if (!filter?.tableId) return null
+  const [table] = await db
+    .select({ columns: dashboardTables.columns })
+    .from(dashboardTables)
+    .where(and(eq(dashboardTables.id, filter.tableId), eq(dashboardTables.orgId, orgId)))
+    .limit(1)
+  if (!table) {
+    return {
+      error: {
+        code: "invalid_event_filter",
+        message: `eventFilter.tableId: no table ${filter.tableId} you can read (kernel__tables_list)`,
+      },
+    }
+  }
+  const keys = (table.columns as Array<{ key?: unknown }>).map((c) => c.key)
+  if (filter.column && !keys.includes(filter.column)) {
+    return {
+      error: {
+        code: "invalid_event_filter",
+        message: `eventFilter.column: '${filter.column}' is not a column of that table (${keys.join(", ")})`,
+      },
+    }
+  }
+  return null
 }
 
 /**
@@ -3002,6 +3093,8 @@ export async function handleCreateRoutine(
     params.eventFilter,
   )
   if ("error" in filterCheck) return filterCheck
+  const tableFilterError = await checkTableRowFilter(ctx.db, ctx.orgId, filterCheck.filter)
+  if (tableFilterError) return tableFilterError
   // UPSTREAM COVERAGE GATE: the prepare-shipments coverage validation runs in the PRE-GATE
   // `createRoutinePreflight` (registered on the create_routine tool), NOT here — a rejection at this
   // EXECUTION layer (post-approval) would be a gated-action execution error that the chaos runner's
@@ -3773,8 +3866,10 @@ export async function handleUpdateRoutine(
   if (params.eventFilter !== undefined) {
     const filterCheck = resolveRoutineEventFilter(nextKind, nextEvent, params.eventFilter)
     if ("error" in filterCheck) return filterCheck
+    const tableFilterError = await checkTableRowFilter(ctx.db, ctx.orgId, filterCheck.filter)
+    if (tableFilterError) return tableFilterError
     updates.eventFilter = filterCheck.filter
-  } else if (prior.eventFilter && nextEvent !== MAIL_SENDER_FILTER_EVENT) {
+  } else if (prior.eventFilter && !filterFitsEvent(prior.eventFilter, nextEvent)) {
     updates.eventFilter = null
   }
   // Owner as approver (S29, F2): checked whenever it is set, and whenever the
@@ -4933,9 +5028,15 @@ export async function summarizeToggleAppSkill(params: unknown): Promise<unknown>
 }
 
 /** The approval-card line of a sender filter (S26), or null for none. */
-function describeEventFilter(
-  filter: { fromContactIds?: string[]; fromGroupIds?: string[] } | null | undefined,
-): string | null {
+function describeEventFilter(filter: StoredEventFilter | null | undefined): string | null {
+  if (filter?.tableId) {
+    const col = filter.column
+      ? filter.to !== undefined
+        ? `, when '${filter.column}' changes to ${JSON.stringify(filter.to)}`
+        : `, when '${filter.column}' changes`
+      : ""
+    return `Only for rows of table ${filter.tableId}${col}`
+  }
   const contacts = filter?.fromContactIds?.length ?? 0
   const groups = filter?.fromGroupIds?.length ?? 0
   if (contacts === 0 && groups === 0) return null

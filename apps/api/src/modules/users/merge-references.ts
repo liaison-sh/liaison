@@ -67,6 +67,10 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.dashboards.created_by": repoint,
   "kernel.dashboards.updated_by": repoint,
   "kernel.dashboard_versions.saved_by": repoint,
+  "kernel.dashboard_tables.owner_user_id": repoint,
+  "kernel.dashboard_tables.created_by": repoint,
+  "kernel.dashboard_tables.updated_by": repoint,
+  "kernel.dashboard_table_changes.actor_id": repoint,
   // App builder (0276): authors of drafts and versions, and whose run logged a line.
   "kernel.app_drafts.created_by": repoint,
   "kernel.app_drafts.updated_by": repoint,

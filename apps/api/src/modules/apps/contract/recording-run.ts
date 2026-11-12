@@ -48,6 +48,8 @@ export interface RecordingStep<S extends RecordingState = RecordingState> {
   after?: (answer: unknown, s: S) => void | Promise<void>
   /** False: run it (a prerequisite) without writing a fixture. */
   record?: boolean
+  /** Extra live-bridge options for this run (a provider-contract op's `contractFileGrant`). */
+  bridgeOptions?: (s: S) => Record<string, unknown>
   /** Run before the entry, outside the recording (seed a row the entry needs). */
   before?: (s: S) => void | Promise<void>
 }
@@ -150,7 +152,10 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
   const isolate: ContractIsolate = await quickJsContractExecutor.open(scripts.source, {
     memoryBytes: 64 * 1024 * 1024,
   })
-  const liveBridge = (job?: { name: string; payload: Record<string, unknown> }): AppBridge =>
+  const liveBridge = (
+    job?: { name: string; payload: Record<string, unknown> },
+    extra: Record<string, unknown> = {},
+  ): AppBridge =>
     createSessionRpcBridge(
       app,
       CONTRACT_USER_ID,
@@ -162,6 +167,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       undefined,
       {
         actor: RECORDING_ACTOR,
+        ...extra,
         ...(job
           ? {
               currentJob: {
@@ -197,7 +203,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
             appConfig: opts.appConfig,
             manifestConnections: manifest.connections as never,
           }) as AppBridge)
-        : liveBridge(job)
+        : liveBridge(job, step.bridgeOptions?.(opts.state))
       const { fixture, outcome } = await recordEntry({
         isolate,
         entry,

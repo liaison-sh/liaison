@@ -1493,10 +1493,12 @@ export async function resolveTurnScope(
   agentCeiling: string[]
   effectiveScope: string[]
   withheld: string[]
+  /** Who the room floor counts (scope-taint.ts, rule 15e); absent for a routine tick. */
+  roomPeople?: string[]
 } | null> {
   const agent = await resolveActingAgent(tx, orgId, actor.userId, routineId, actingAgentId)
   if (!agent) return null
-  const { effectiveScope, withheld } = await computeEffectiveScopeForTurn(
+  const { effectiveScope, withheld, roomPeople } = await computeEffectiveScopeForTurn(
     tx,
     orgId,
     threadId,
@@ -1508,6 +1510,7 @@ export async function resolveTurnScope(
     agentCeiling: agent.scopeCeiling,
     effectiveScope: intersectScopes(effectiveScope, actor.scopes),
     withheld,
+    ...(roomPeople ? { roomPeople } : {}),
   }
 }
 
@@ -1527,6 +1530,8 @@ async function resolveScopeOverride(
   agentCeiling: string[]
   effectiveScope: string[]
   withheld: string[]
+  /** Never set: the override bypasses the room floor, its people included (rule 15e). */
+  roomPeople?: string[]
 }> {
   const [agent] = await tx
     .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
@@ -2751,6 +2756,7 @@ async function runAgentChatTurn(
     // frame: every scoped row the assembler injects is filtered by THIS scope
     // and records itself here (spec-security.md D5).
     effectiveScope: runFrame.effectiveScope,
+    ...(runFrame.roomPeople ? { roomPeople: runFrame.roomPeople } : {}),
     // The kernel's prompt names only tools this turn holds (held-tool-mentions.ts).
     heldTools: runFrame.turnToolNames,
     turnScopeAccumulator: runFrame.turnScopeAccumulator,

@@ -3,10 +3,15 @@
 //
 // `bun run scripts/with-test-lock.ts -- <command> [args...]`
 // `bun run scripts/with-test-lock.ts --slot-only -- <command> [args...]`
+// `bun run scripts/with-test-lock.ts --light -- <command> [args...]`
 //
 // The one wrapper for heavy work on a shared machine. --slot-only holds a
 // machine-wide slot (scripts/lib/machine-slots.ts) and nothing else: a
 // typecheck, a docs check, an app build, a test that needs no database.
+// It queues in the heavy lane, except a tsgo or Biome command, which goes to
+// the light lane (its own slots and queue, no load gate) so a one-minute check
+// never waits behind hour-long suites. --light asks for the light lane for any
+// other job of about a minute that needs no database.
 //
 // Without it, runs one command while holding a machine-wide test slot, inside this
 // checkout's run namespace (its own database, Redis/Meili prefixes and port
@@ -26,6 +31,7 @@ import {
   namespaceForCheckout,
   resolveTestCoordinates,
 } from "../packages/test-helpers/src/test-namespace"
+import { isLightCommand } from "./lib/machine-slots"
 import { computeMemBudget, formatMemBudget } from "./lib/mem-budget"
 import { resolveTestRedisPrefix } from "./lib/redis-prefix"
 import {
@@ -40,11 +46,14 @@ import { prepareNamespaceDb } from "./lib/test-template"
 const ROOT = path.resolve(import.meta.dir, "..")
 
 const rawArgv = process.argv.slice(2)
-const slotOnly = rawArgv[0] === "--slot-only"
+const light = rawArgv[0] === "--light"
+const slotOnly = rawArgv[0] === "--slot-only" || light
 const argv = slotOnly ? rawArgv.slice(1) : rawArgv
 const cmd = argv[0] === "--" ? argv.slice(1) : argv
 if (cmd.length === 0) {
-  console.error("Usage: bun run scripts/with-test-lock.ts [--slot-only] -- <command> [args...]")
+  console.error(
+    "Usage: bun run scripts/with-test-lock.ts [--slot-only | --light] -- <command> [args...]",
+  )
   process.exit(2)
 }
 
@@ -59,7 +68,10 @@ async function runChild(env: Record<string, string | undefined>): Promise<never>
 
 if (slotOnly) {
   if (process.env.LIAISON_TEST_LOCK_HELD !== "1") {
-    await acquireTestLock({ cmd: cmd.join(" ") })
+    await acquireTestLock({
+      cmd: cmd.join(" "),
+      lane: light || isLightCommand(cmd) ? "light" : "heavy",
+    })
   }
   await runChild({ ...process.env, LIAISON_TEST_LOCK_HELD: "1" })
 }

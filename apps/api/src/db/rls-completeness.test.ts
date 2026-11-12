@@ -114,7 +114,7 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // reconcile (modules/apps/moved-apps.ts) through the privileged pool only.
   "kernel.app_adoptions",
   // The adapter documents of the platform-held API connections (migration
-  // 0298): read and written by connections/api/store.ts through the
+  // 0299): read and written by connections/api/store.ts through the
   // privileged pool only, scoped to the org explicitly.
   "kernel.api_adapters",
   "kernel.api_adapter_versions",

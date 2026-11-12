@@ -44,6 +44,8 @@ interface EntityProbe {
   /** Schema-qualified table, unquoted parts. */
   schema: string
   table: string
+  /** The probed id is this `data` key, not the event's entity id (a table row: its table). */
+  idDataKey?: string
   /** When the entity row is gone (a delete event), the parent whose
    *  visibility stands in for it, read from these `data` keys in order. */
   parents?: Array<{ dataKey: string; schema: string; table: string }>
@@ -77,6 +79,13 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
   "kernel:contact": { schema: "kernel", table: "contacts" },
   "mcp-manager:connection": { schema: "app_mcp_manager", table: "mcp_connections" },
   "knowledge:document": { schema: "app_knowledge", table: "documents" },
+  // A dashboard table's row (modules/dashboards/tables): the owner must read its table (0298).
+  "kernel:dashboard_table_row": {
+    schema: "kernel",
+    table: "dashboard_tables",
+    idDataKey: "tableId",
+  },
+  "kernel:dashboard_table": { schema: "kernel", table: "dashboard_tables", idDataKey: "tableId" },
 }
 
 function asUuid(v: unknown): string | null {
@@ -153,7 +162,9 @@ async function rowExists(
 export async function ownerCanSeeEventEntity(owner: UserContext, evt: GateEvent): Promise<boolean> {
   const probe = OWNER_SCOPED_FAMILIES[`${evt.app}:${evt.entity}`]
   if (!probe) return true
-  const id = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
+  const id = probe.idDataKey
+    ? asUuid(dataOf(evt)[probe.idDataKey])
+    : (asUuid(evt.entityId) ?? asUuid(dataOf(evt).id))
   if (!id) return false
   const visible = await withRlsContext(
     owner,
@@ -351,4 +362,98 @@ export async function triggerEventOrigin(evt: OriginEvent): Promise<"external" |
   } catch {
     return "external"
   }
+}
+
+// ── Dashboard table row filter (0298) ───────────────────────────────────────
+
+/**
+ * The filter of a `kernel:dashboard_table_row:*` routine: one table, optionally one column, and
+ * optionally the value that column changes TO. `to` matches when the change's `after[column]`
+ * equals it and, unless the row was created, `before[column]` did not.
+ */
+export interface TableRowFilter {
+  tableId: string
+  column?: string
+  to?: string | number | boolean | null
+}
+
+/** A routine's stored filter: a mail sender filter or a table row filter. */
+export type RoutineEventFilter = (MailSenderFilter & Partial<TableRowFilter>) | null
+
+export const TABLE_ROW_EVENTS = [
+  "kernel:dashboard_table_row:created",
+  "kernel:dashboard_table_row:updated",
+  "kernel:dashboard_table_row:deleted",
+] as const
+
+export function isTableRowEvent(evt: Pick<GateEvent, "app" | "entity">): boolean {
+  return evt.app === "kernel" && evt.entity === "dashboard_table_row"
+}
+
+/** Whether the filter is a table row filter (it names a table). */
+export function isTableRowFilter(filter: unknown): filter is TableRowFilter {
+  return Boolean(
+    filter &&
+      typeof filter === "object" &&
+      typeof (filter as { tableId?: unknown }).tableId === "string",
+  )
+}
+
+const sameValue = (a: unknown, b: unknown) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+/**
+ * Pure: does this table row event pass the filter, given the change (its before and after
+ * cells) as the owner reads it? A filter on another table, a column the change did not touch,
+ * or a `to` the column did not move to, drops the event.
+ */
+export function tableRowFilterMatches(
+  filter: TableRowFilter,
+  evt: GateEvent,
+  change: { before: Record<string, unknown> | null; after: Record<string, unknown> | null } | null,
+): boolean {
+  const data = dataOf(evt)
+  if (data.tableId !== filter.tableId) return false
+  if (!filter.column) return true
+  const changed = Array.isArray(data.changed) ? data.changed : []
+  if (!changed.includes(filter.column)) return false
+  if (filter.to === undefined) return true
+  if (!change?.after) return false
+  const after = change.after[filter.column]
+  if (!sameValue(after, filter.to)) return false
+  if (!change.before) return true
+  return !sameValue(change.before[filter.column], filter.to)
+}
+
+/**
+ * Evaluates a table row filter as the routine owner: the change is read under the owner's RLS
+ * (a table they cannot read yields nothing, so nothing matches). Fails closed.
+ */
+export async function ownerTableRowFilterMatches(
+  owner: UserContext,
+  filter: TableRowFilter,
+  evt: GateEvent,
+): Promise<boolean> {
+  const data = dataOf(evt)
+  if (data.tableId !== filter.tableId) return false
+  if (filter.to === undefined) return tableRowFilterMatches(filter, evt, null)
+  const changeId = asUuid(data.changeId)
+  if (!changeId) return false
+  const change = await withRlsContext(
+    owner,
+    async (tx) => {
+      const rows = extractRows<{
+        before: Record<string, unknown> | null
+        after: Record<string, unknown> | null
+      }>(
+        await tx.execute(drizzleSql`
+          SELECT before, after FROM ${K()}.dashboard_table_changes
+           WHERE id = ${changeId}::uuid AND org_id = ${owner.orgId}::uuid LIMIT 1`),
+      )
+      return rows[0] ?? null
+    },
+    { pool: "jobs" },
+  )
+  if (!change) return false
+  return tableRowFilterMatches(filter, evt, change)
 }

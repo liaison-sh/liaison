@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Adapter documents (`kernel.api_adapters`, kept versions in
- * `kernel.api_adapter_versions`, migration 0298) and the connection's
+ * `kernel.api_adapter_versions`, migration 0299) and the connection's
  * credentials (`kernel.connected_accounts`, multiInstance, org-owned), keyed by
  * (org, app, connection, identifier): the app is whichever declares the API
  * connection (declarations.ts). Rows are written only through the platform's

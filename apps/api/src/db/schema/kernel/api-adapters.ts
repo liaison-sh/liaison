@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The adapter documents of the platform-held HTTP API connections and their
-// kept previous versions (migration 0298, modules/apps/connections/api/store.ts),
+// kept previous versions (migration 0299, modules/apps/connections/api/store.ts),
 // keyed by (org, app, connection, identifier). Privileged pool only (RLS
 // forced, no policy).
 

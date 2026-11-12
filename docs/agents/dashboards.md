@@ -270,6 +270,24 @@ Each may carry one offset (not the two date and time forms): `+` or `-`, a numbe
 
 Changing a dashboard's layout, titles, sizes or description never reads its sources again: only a change to what a block reads, or to the fields it uses, does. A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval; a shared dataset follows the shortest interval of its blocks). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, a block that follows the time range keeps its figures per range, and a filter value its source reads is a new read. A filter that only keeps some rows never reads the source again. Blocks of one shared dataset that load together wait for the same read, and refreshing them one after the other within 30 seconds reads it once. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. The compared period lies in the past, so its figures are kept for 6 hours and **Refresh** reads only the current period again. Reads the cache cannot answer are budgeted: new dates of your choice (counting the compared period), new filter values a source is asked for, and every read of a source whose result is too large to keep (or while the cache is down). A block reads at most 12 of them per person per minute, and one person at most 60 across all blocks and dashboards; past that a block keeps its figures and says "Just refreshed. Try again in a few seconds." The listed periods, the dashboard's default and the filters' defaults never count while their result is kept. A filter that takes several values gives the same read whatever order they were ticked in. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
+## Edit a table's rows
+
+A table holds rows that people and agents write, such as incoming batches or repairs. Your agent creates a table; you then edit its rows on any dashboard that shows it, or on the table's own page.
+
+- The **Tables** section of the **Dashboards** sidebar lists the tables you can see. Click one to open it full width, at `/dashboard-table/<id>`, with three tabs at the top: **Grid**, **Settings** and **History**.
+- A table block on a dashboard shows the same rows. It may show only some columns, in its own order.
+- Click a cell to change it. Each column type has its editor: a text, number or date field (Enter saves, Escape cancels), an amount in the column's currency, a choice as chips, several choices as boxes to tick, a checkbox you tick in place, a person picked from the members, and a link picked from the records of the column's app.
+- **Add** opens a form at the top, required columns first. A missing required value or a word in a number column is refused before anything is saved.
+- The bin at the end of a row deletes it, after a confirm. The history keeps the row, and **Undo** brings it back.
+- **Last change** says who changed the row and when ("@logistics · 4 min ago"). Click it to open the row's history: each change, who made it, and **Undo** on a change that can still be undone.
+- If someone changed the row since you opened it, your change is not saved: the row reloads and says "Changed by Nico just now".
+- A block may mark rows not changed for some days as **To confirm**.
+- A record your access does not let you read shows as **Linked record**.
+- Rows come 50 a page, with **Previous** and **Next**. Click a column's name to sort by it, again to reverse.
+- With view access only, you see the rows without the editors.
+
+In **Settings**, an editor of the table adds a column, renames one, edits a choice column's choices or removes a column (after a confirm). Each change applies at once. A removed column's name cannot be used again, and its values stay in the history. **Who can see and edit** opens the same sharing dialog as a dashboard's. **Agent row writes need approval** makes an agent's row change wait for someone to approve it; off, agents write at once and every change is kept in the history.
+
 ## The dashboards API
 
 Signed-in requests, with the person's own access:
@@ -298,3 +316,5 @@ Signed-in requests, with the person's own access:
 | `DELETE /api/dashboards/:id/viewer-state` | Forget it: the dashboard opens on its defaults again. |
 
 A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, a note's `markdown`, and `meta`; with a comparison, `previous`; a metric's `target` and `sparkline`; how a chart is drawn in `display`; a table's `links`), with `computedAt`, `window` (the days it read, or its own dates) and `compareWindow`, or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named; an unknown filter or a value outside a filter's list answers 400.
+
+Tables a dashboard shows and edits have their own API and tools: [Keep data in tables](dashboard-tables.md).

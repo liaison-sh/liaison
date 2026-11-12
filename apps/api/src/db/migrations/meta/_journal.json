@@ -2098,8 +2098,15 @@
     {
       "idx": 299,
       "version": "7",
-      "when": 1900003390001,
-      "tag": "0298_api_adapters",
+      "when": 1900003391000,
+      "tag": "0298_dashboard_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1900003391001,
+      "tag": "0299_api_adapters",
       "breakpoints": true
     }
   ]

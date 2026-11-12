@@ -1,15 +1,29 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Task 5 (coverage) — drives the SANDBOXED push handlers (calendarPush -> pushCreate/pushUpdate/
-// pushDelete) through the real QuickJS bundle, mocking the ctx.fetch seam. The host-side sync.ts
-// helpers are unit-tested in outbound-sync.test.ts; this file covers the sandbox handler behavior
+// Task 5 (coverage) — drives the push handlers (calendarPush -> pushCreate/pushUpdate/
+// pushDelete) through the core module, mocking the ctx.fetch seam. The host-side sync.ts
+// helpers are unit-tested in outbound-sync.test.ts; this file covers the handler behavior
 // the review flagged as untested: the get->merge->PUT sequence, the If-Match header value, the
 // bounded 412 retry recursion (attempt < 2, capped at 3 total), sendUpdates=none on every write,
 // and preservation of an unmodelled Google-only field (colorId) across the update round-trip.
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { CORE_APP_MODULES } from "~/modules/apps/core/registry"
+import { runCoreHandler } from "~/modules/apps/core/run-core"
+
+/** Runs one calendar handler the way runApp does: the core module's export, in process. */
+function runCalendar(opts: {
+  exportName: string
+  params: unknown
+  bridge: Record<string, any>
+  extraArgs?: unknown[]
+  timeoutMs?: number
+}): Promise<unknown> {
+  return runCoreHandler({
+    module: CORE_APP_MODULES.calendar!,
+    appName: "calendar",
+    holdsTx: false,
+    ...opts,
+  })
+}
 
 interface FetchCall {
   url: string
@@ -40,7 +54,7 @@ function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, u
 
 /**
  * makeBridge — a mock bridge for the calendar push handlers. `fetchResponses` is a function that,
- * given the fetch call, returns the `{status, headers, body}` (as the sandbox sees it, JSON string).
+ * given the fetch call, returns the `{status, headers, body}` (as ctx.fetch answers it, JSON string).
  */
 function makeBridge(opts: {
   event: Record<string, unknown>
@@ -185,17 +199,9 @@ function makeBridge(opts: {
   }
 }
 
-describe("calendar push handlers (sandboxed, ctx.fetch seam)", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
+describe("calendar push handlers (core module, ctx.fetch seam)", () => {
   async function runPush(bridge: Record<string, any>, payload: unknown): Promise<void> {
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runCalendar({
       exportName: "calendarPush",
       params: payload,
       bridge,
@@ -1056,9 +1062,7 @@ describe("calendar push handlers (sandboxed, ctx.fetch seam)", () => {
 
     it("the periodic poll re-queues local edits still waiting for Google", async () => {
       const enqueued: Array<{ jobName: string; payload: any; opts?: any }> = []
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runCalendar({
         exportName: "calendarPollFallback",
         params: {},
         bridge: {
@@ -1434,9 +1438,7 @@ describe("calendar push handlers (sandboxed, ctx.fetch seam)", () => {
         pushed = true
         return baseApply(id, json)
       }
-      const result = (await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      const result = (await runCalendar({
         exportName: "calendarCreateEvent",
         params: {
           calendarId: "cal-1",
@@ -1463,22 +1465,14 @@ describe("calendar push handlers (sandboxed, ctx.fetch seam)", () => {
 // Regression (staging 2026-07-03): calendarImport crashed in QuickJS with
 // "'URLSearchParams' is not defined" — the import/sync handlers had never been driven
 // through the real sandbox (only via mock bridges), so missing sandbox globals shipped.
-// These tests run calendarImport and calendarInitialSync through the real QuickJS bundle.
-describe("calendar import + initial-sync handlers (sandboxed, real QuickJS)", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
+// These tests run calendarImport and calendarInitialSync through the core module, as runApp does.
+describe("calendar import + initial-sync handlers (core module)", () => {
   async function runHandler(
     exportName: string,
     bridge: Record<string, any>,
     payload: unknown,
   ): Promise<void> {
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runCalendar({
       exportName,
       params: payload,
       bridge: bridge as never,

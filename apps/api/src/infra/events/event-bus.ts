@@ -877,6 +877,14 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "dashboard:created",
   "dashboard:updated",
   "dashboard:deleted",
+  // Dashboard tables (modules/dashboards/tables/service.ts): ids, changed keys and the audience,
+  // never a cell or a name. Row events are routine triggers (filter {tableId, column?, to?}).
+  "dashboard_table:created",
+  "dashboard_table:updated",
+  "dashboard_table:deleted",
+  "dashboard_table_row:created",
+  "dashboard_table_row:updated",
+  "dashboard_table_row:deleted",
   // Module H — market-intelligence web-watch: `web_watch` queues this to the
   // outbox (not ephemeral) when a watched source's normalized extraction
   // changes across ticks, so downstream subscribers (timeline/notifications)

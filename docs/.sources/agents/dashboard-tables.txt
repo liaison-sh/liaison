@@ -1,0 +1,52 @@
+Column types text, number, amount, date, choice, choices, checkbox, person, link -> apps/api/src/modules/dashboards/tables/columns.ts:9
+At most 40 columns -> apps/api/src/modules/dashboards/tables/columns.ts:22
+Column key: lowercase letter then up to 39 a-z, 0-9, _ -> apps/api/src/modules/dashboards/tables/columns.ts:25
+Reserved keys id, updated_at, updated_by, created_at -> apps/api/src/modules/dashboards/tables/columns.ts:27
+An amount column names its currency -> apps/api/src/modules/dashboards/tables/columns.ts:105
+A person cell is an active member -> apps/api/src/modules/dashboards/tables/columns.ts:202
+A link cell {app, entityType, id, label}, linkTo restricts it -> apps/api/src/modules/dashboards/tables/columns.ts:207
+Required column filled on add, never emptied -> apps/api/src/modules/dashboards/tables/columns.ts:268
+A dropped key cannot be added again -> apps/api/src/modules/dashboards/tables/service.ts:1431
+Up to 50 ops per write, all or none -> apps/api/src/modules/dashboards/tables/service.ts:84
+Last 200 changes per row -> apps/api/src/modules/dashboards/tables/service.ts:87
+Unreadable link shows Linked record -> apps/api/src/modules/dashboards/tables/service.ts:90
+Undo only while the change is the row's latest -> apps/api/src/modules/dashboards/tables/service.ts:1125
+A table made from a dashboard copies its sharing -> apps/api/src/modules/dashboards/tables/service.ts:1298
+Delete: owner, or admin on an org-wide table -> apps/api/src/modules/dashboards/tables/service.ts:1531
+Row events carry ids and keys only -> apps/api/src/modules/dashboards/tables/service.ts:745
+History kept 400 days -> apps/api/src/infra/jobs/kernel-jobs.ts:418
+Edit rule (write scope + owner/editor, admin on org-wide) -> apps/api/src/db/migrations/0298_dashboard_tables.sql:121
+Read rule (owner, org access, grants; no admin bypass) -> apps/api/src/db/migrations/0298_dashboard_tables.sql:143
+Rows follow the table's sharing on every path -> apps/api/src/db/migrations/0298_dashboard_tables.sql:231
+100,000 rows of 256 KB at most -> apps/api/src/modules/data-store/service.ts:34
+Tools tables_list, tables_get, tables_query -> apps/api/src/modules/dashboards/tables/tools.ts:444
+tables_rows_write -> apps/api/src/modules/dashboards/tables/tools.ts:553
+Agent row writes wait when the switch is on -> apps/api/src/modules/dashboards/tables/tools.ts:576
+tables_edit always waits -> apps/api/src/modules/dashboards/tables/tools.ts:651
+Card to the owner of a restricted table, admins for an org-wide one -> apps/api/src/modules/dashboards/tables/tools.ts:133
+Table block source {kind: table, table, where} -> apps/api/src/modules/dashboards/spec.ts:138
+map.editable and map.staleAfterDays -> apps/api/src/modules/dashboards/spec.ts:300
+A block reads at most 2,000 rows; link as label, person as name -> apps/api/src/modules/dashboards/execute.ts:244
+Kept figures keyed on the table's generation -> apps/api/src/modules/dashboards/service.ts:1521
+Routine filter {tableId, column, to} -> apps/api/src/infra/jobs/event-routine-gate.ts:410
+Filter evaluated before the coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
+A routine never wakes on its own change -> apps/api/src/infra/jobs/event-routine-subscriber.ts:237
+The owner must read the table, the column must exist -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2774
+Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:146
+Manifest entities.<e>.pick -> apps/api/src/modules/apps/manifest-schema.ts:1282
+Shopify declares pick -> bundled-apps/shopify/app.manifest.json:423
+Boxtal declares pick -> bundled-apps/boxtal/app.manifest.json:225
+REST routes under /api/dashboards/tables -> apps/api/src/modules/dashboards/tables/routes.ts:33
+New table in the sidebar's Tables section -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:262 ; packages/shared/src/i18n/locales/en/kernel.json:6732
+Table name input, Enter creates -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:283 ; packages/shared/src/i18n/locales/en/kernel.json:6733
+A new table opens on Settings -> apps/web/src/modules/dashboards/TablePage.tsx:38
+Two tables cannot share a name -> packages/shared/src/i18n/locales/en/kernel.json:6734
+A link column with no linkTo searches every app -> apps/api/src/modules/dashboards/tables/routes.ts:112
+A removed column's cells are hidden from rows, history, search and filters -> apps/api/src/modules/dashboards/tables/service.ts:534 ; apps/api/src/modules/dashboards/tables/service.ts:547 ; apps/api/src/modules/dashboards/tables/service.ts:557
+An undo whose old values no longer fit is refused, naming the column -> apps/api/src/modules/dashboards/tables/service.ts:1239
+The grid search matches only what the reader sees -> apps/api/src/modules/dashboards/tables/service.ts:547
+A restricted table with no owner refuses an agent's gated change -> apps/api/src/modules/dashboards/tables/tools.ts:151
+After reading a restricted table, a write some readers cannot see waits for the requester -> apps/api/src/modules/apps/execute-tool.ts:4396
+A change waiting for an erased owner is cancelled with the erasure -> apps/api/src/modules/erasure/erase-user.ts:1362 ; apps/api/src/modules/dashboards/tables/ownerless.ts:29
+In a conversation, a restricted table is read only when everyone there can read it, else withheld by the room -> apps/api/src/modules/apps/execute-tool.ts:3785 ; apps/api/src/modules/agent/scopes/taint-approval-audience.ts:396
+A later answer leaves out an earlier read of it once someone who cannot read it has joined -> apps/api/src/modules/agent/context/context.ts:2324 ; apps/api/src/modules/agent/scopes/room-resource-history.ts:27

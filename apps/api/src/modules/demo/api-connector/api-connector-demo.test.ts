@@ -25,7 +25,7 @@ import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import {
   registerApiConnectorApp,
-  testApiConn,testApiConn 
+  testApiConn,
 } from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"

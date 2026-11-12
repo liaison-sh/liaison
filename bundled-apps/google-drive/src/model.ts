@@ -46,7 +46,7 @@ export interface DriveAccess {
   accountId: string
   identifier: string
   ownerType: "org" | "user"
-  scope: DriveScope
+  readScope: DriveScope
 }
 
 export const SHARED_DRIVES_NOT_CHOSEN_MESSAGE =
@@ -134,7 +134,7 @@ export function accessOf(account: AppAccount): DriveAccess {
     accountId: account.id,
     identifier: account.identifier,
     ownerType: account.ownerType,
-    scope: scopeOf(account),
+    readScope: scopeOf(account),
   }
 }
 

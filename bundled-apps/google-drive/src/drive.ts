@@ -184,7 +184,7 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
   }
 
   async function scopedMetadata(id: string): Promise<DriveFile> {
-    const drives = chosenDrives(access.scope)
+    const drives = chosenDrives(access.readScope)
     let meta: DriveFile
     try {
       meta = await metadataOnce(id)
@@ -205,13 +205,13 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
   }
 
   async function readable(file: DriveFile): Promise<void> {
-    if (chosenDrives(access.scope) && !inScope.has(file.id)) await scopedMetadata(file.id)
+    if (chosenDrives(access.readScope) && !inScope.has(file.id)) await scopedMetadata(file.id)
   }
 
   function writable(): void {
     // An organization connection writes nothing: its uploads would land in the
     // connecting account's own My Drive, outside the shared drives the team sees.
-    if (access.scope.kind !== "all") throw new DriveScopeError("ORG_UPLOAD_UNSUPPORTED")
+    if (access.readScope.kind !== "all") throw new DriveScopeError("ORG_UPLOAD_UNSUPPORTED")
   }
 
   const mediaHeaders = (file: DriveFile): Record<string, string> =>
@@ -221,7 +221,7 @@ export function driveClient(ctx: DriveFetch, access: DriveAccess): DriveClient {
   return {
     access,
     async list(params) {
-      const drives = chosenDrives(access.scope)
+      const drives = chosenDrives(access.readScope)
       if (!drives) return listOnce(params)
       // One listing per chosen drive, merged; the page token carries each
       // drive's own. `corpora`/`driveId` are ours: a caller cannot widen them.

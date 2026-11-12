@@ -160,7 +160,7 @@ export async function syncDriveFolder(input: SyncInput, ctx: DriveCtx): Promise<
   try {
     if (!cursor) {
       // A pass starts: the root must be readable through the account's scope.
-      if (client.access.scope.kind === "sharedDrives") await client.metadata(ref)
+      if (client.access.readScope.kind === "sharedDrives") await client.metadata(ref)
       cursor = { stack: [{ id: ref, parent: null }] }
     }
     return await walk(ctx, client, cursor)

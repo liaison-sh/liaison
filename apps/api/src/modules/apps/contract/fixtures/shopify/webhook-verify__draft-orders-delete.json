@@ -1,0 +1,38 @@
+{
+  "entry": "webhook-verify:draft-orders-delete",
+  "params": {
+    "headers": {
+      "x-shopify-hmac-sha256": "gktsO27yopb/2EOeYfdAKBG/fKMuX2NODEYFGTW7PQI=",
+      "x-shopify-webhook-id": "contract-draft-orders-delete-16",
+      "x-shopify-topic": "draft_orders/delete",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    },
+    "body": "{\"id\":1674823860390}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": ["shopifyWebhookSecret"],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "shopifyWebhookSecret",
+        "{\"id\":1674823860390}",
+        "gktsO27yopb/2EOeYfdAKBG/fKMuX2NODEYFGTW7PQI=",
+        "base64"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": ["shopify-delivery", "{\"id\":1674823860390}"],
+      "reply": "ChVJSdN+/xAbm4lH9iXZPw4G0UHJyR1tRDAXbJMn1fc="
+    }
+  ]
+}

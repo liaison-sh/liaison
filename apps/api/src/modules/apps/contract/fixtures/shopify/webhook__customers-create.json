@@ -1,0 +1,141 @@
+{
+  "entry": "webhook:customers-create",
+  "params": {
+    "id": 24929659846822,
+    "created_at": "2026-05-26T18:50:38-04:00",
+    "updated_at": "2026-11-12T03:18:26-05:00",
+    "first_name": "Marie",
+    "last_name": "Dupont",
+    "orders_count": 5,
+    "state": "disabled",
+    "total_spent": "5148.80",
+    "last_order_id": 19010985230502,
+    "note": null,
+    "verified_email": true,
+    "multipass_identifier": null,
+    "tax_exempt": false,
+    "tags": "liaison-seed, liaison-seed-cust-001, market:canada",
+    "last_order_name": "#2803",
+    "email": "marie@example.com",
+    "phone": null,
+    "currency": "USD",
+    "addresses": [
+      {
+        "id": 43906378104998,
+        "customer_id": 24929659846822,
+        "first_name": "Marie",
+        "last_name": "Dupont",
+        "company": null,
+        "address1": "1 Contract Street",
+        "address2": null,
+        "city": "Lyon",
+        "province": null,
+        "country": "France",
+        "zip": "69002",
+        "phone": null,
+        "name": "Marie Dupont",
+        "province_code": null,
+        "country_code": "FR",
+        "country_name": "France",
+        "default": false
+      },
+      {
+        "id": 36147297386662,
+        "customer_id": 24929659846822,
+        "first_name": "Marie",
+        "last_name": "Dupont",
+        "company": null,
+        "address1": "12 Rue de Rivoli",
+        "address2": null,
+        "city": "Paris",
+        "province": null,
+        "country": "France",
+        "zip": "75004",
+        "phone": null,
+        "name": "Marie Dupont",
+        "province_code": null,
+        "country_code": "FR",
+        "country_name": "France",
+        "default": true
+      }
+    ],
+    "tax_exemptions": [],
+    "email_marketing_consent": {
+      "state": "not_subscribed",
+      "opt_in_level": "single_opt_in",
+      "consent_updated_at": null
+    },
+    "sms_marketing_consent": null,
+    "admin_graphql_api_id": "gid://shopify/Customer/24929659846822",
+    "default_address": {
+      "id": 36147297386662,
+      "customer_id": 24929659846822,
+      "first_name": "Marie",
+      "last_name": "Dupont",
+      "company": null,
+      "address1": "12 Rue de Rivoli",
+      "address2": null,
+      "city": "Paris",
+      "province": null,
+      "country": "France",
+      "zip": "75004",
+      "phone": null,
+      "name": "Marie Dupont",
+      "province_code": null,
+      "country_code": "FR",
+      "country_name": "France",
+      "default": true
+    }
+  },
+  "extraArgs": [
+    {
+      "x-shopify-hmac-sha256": "9FaXpHje3LtGKEKMt2VLtjUDy9UgINcnOjfDzbtkDc8=",
+      "x-shopify-webhook-id": "contract-customers-create-5",
+      "x-shopify-topic": "customers/create",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    }
+  ],
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "webhook_deliveries",
+        "{\"where\":{\"webhookId\":\"contract-customers-create-5\"},\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "resolveContact",
+      "args": [
+        "{\"email\":\"marie@example.com\",\"name\":\"Marie Dupont\",\"externalId\":\"24929659846822\"}"
+      ],
+      "reply": "{\"id\":\"daae5c10-a387-44fc-8ebf-c2e405c0aaee\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-7\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T08:18:33.019Z\",\"updatedAt\":\"2026-11-12T08:18:34.591Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"customer\",\"action\":\"created\",\"entityId\":\"24929659846822\",\"data\":{\"id\":\"24929659846822\",\"email\":\"marie@example.com\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"external_ids\":{\"shopify\":\"24929659846822\"}},\"metadata\":{\"shopify_webhook_id\":\"contract-customers-create-5\"}}"
+      ]
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "webhook_deliveries",
+        "{\"webhookId\":\"contract-customers-create-5\",\"topic\":\"customers/create\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"9fc09922-f207-4d55-97fa-dcfec87a7a32\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:34.596192+00\",\"updated_at\":\"2026-11-12 08:18:34.596192+00\",\"webhook_id\":\"contract-customers-create-5\",\"topic\":\"customers/create\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+    }
+  ]
+}

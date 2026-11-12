@@ -53,6 +53,7 @@ import {
   seedSubAgentDefinition,
   setCreditBalance,
 } from "./agent"
+import { refreshStoredAppAttention } from "./attention"
 import { forceCalendarReauth, seedCalendarAccount } from "./calendar"
 import { expireApproval, stageGatedApproval } from "./gated-approval"
 import { injectInboundMail, injectThreadMessage } from "./inject"
@@ -817,6 +818,16 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
         messages: a.messages,
       })
     },
+  ),
+
+  /**
+   * Recompute the org's stored app attention lists now (every app provider, or
+   * `apps`), stored before the call returns: what the attention minute tick
+   * queues, run in place, for a test that reads the feed right after seeding.
+   */
+  "attention.refresh": factory(
+    zod.object({ apps: zod.array(zod.string().min(1)).optional() }),
+    (ctx, a) => refreshStoredAppAttention(ctx.orgId, a.apps),
   ),
 
   /** Close these tickets through the state machine (those a person's feed shows, say). */

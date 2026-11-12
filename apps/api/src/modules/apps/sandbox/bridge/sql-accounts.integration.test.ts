@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { KERNEL_ACCOUNT_METADATA_KEYS } from "~/modules/apps/connections/kernel-account-metadata"
 import {
   createCredentialConnection,
   disconnectConnection,
@@ -247,15 +248,50 @@ describe("ctx.accounts: the app's own accounts", () => {
   it("changes the org account's metadata only with the admin scope", async () => {
     await expect(
       asUser(ORG_A, ALICE, [], (b) =>
-        b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ sharedDrives: ["d1"] })),
+        b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ chosenFolder: "f1" })),
       ),
     ).rejects.toThrow(/accounts:admin/)
     const changed = JSON.parse(
       await asUser(ORG_A, ALICE, [`${APP}:accounts:admin`], (b) =>
-        b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ sharedDrives: ["d1"] })),
+        b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ chosenFolder: "f1" })),
       ),
     )
-    expect(changed.metadata).toEqual({ sharedDrives: ["d1"] })
+    expect(changed.metadata).toEqual({ chosenFolder: "f1" })
+  })
+
+  it("refuses the kernel's own keys for every caller, a system run included", async () => {
+    const system = (fn: (b: Record<string, any>) => Promise<unknown>) =>
+      withRlsContext(
+        { actorType: "system", orgId: ORG_A, scopes: [`${APP}:*`], dimensionGrants: {} } as never,
+        (tx) =>
+          fn(
+            createRpcBridge(
+              APP,
+              `system:${APP}`,
+              ORG_A,
+              tx as never,
+              manifest as never,
+              [`${APP}:*`],
+              "system",
+            ),
+          ),
+      )
+    for (const key of KERNEL_ACCOUNT_METADATA_KEYS) {
+      for (const value of [["widened"], null]) {
+        await expect(
+          system((b) => b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ [key]: value }))),
+        ).rejects.toThrow(/kept by the platform/)
+        await expect(
+          asUser(ORG_A, ALICE, [`${APP}:accounts:admin`], (b) =>
+            b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ ok: 1, [key]: value })),
+          ),
+        ).rejects.toThrow(/kept by the platform/)
+      }
+    }
+    const [row] = await sql<{ metadata: Record<string, unknown> | null }[]>`
+      SELECT metadata FROM kernel.connected_accounts WHERE id = ${ACC_A_ORG}`
+    for (const key of KERNEL_ACCOUNT_METADATA_KEYS)
+      expect(row?.metadata ?? {}).not.toHaveProperty(key)
   })
 
   it("never reaches another member's account or another org's", async () => {

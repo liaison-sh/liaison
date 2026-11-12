@@ -802,7 +802,11 @@ function changeWords(
   ctx: DescribeContext,
 ): string {
   const parts: string[] = []
-  for (const [k, v] of Object.entries(changes)) {
+  // Short, human parts first (title, dates, dataset), the long source and map words last:
+  // a line over the length cap loses its end, never the title change.
+  const rank = (k: string) => (k === "title" ? 0 : k === "source" || k === "map" ? 2 : 1)
+  const entries = Object.entries(changes).sort(([a], [b]) => rank(a) - rank(b))
+  for (const [k, v] of entries) {
     if (k === "id") continue
     if (k === "title") parts.push(`title "${String(before.title)}" → "${String(v)}"`)
     else if (k === "source") {
@@ -844,15 +848,24 @@ export function describeOperations(
 ): string[] {
   let state: EditableDashboard = current
   const lines: string[] = []
+  // Range tokens are explained with the default range the dashboard has once the whole
+  // request applied: a setTimeRange anywhere in the list is the range viewers open on, so
+  // describing them with the range before it would show dates nobody will see.
+  let finalSpec: DashboardSpec = current.spec
+  try {
+    finalSpec = applyOperations(current, operations, ctx.versions).spec as unknown as DashboardSpec
+  } catch {
+    // Described as asked; the save itself refuses it, naming the problem.
+  }
+  let window: DayWindow
+  try {
+    window = resolveTimeRange(dashboardDefaultRange(finalSpec).timeRange, ctx)
+  } catch {
+    window = resolveTimeRange({ preset: "last30d" }, ctx)
+  }
   operations.forEach((op, i) => {
     const blocks = (state.spec.blocks ?? []) as unknown as Record<string, unknown>[]
     const defaults = dashboardDefaultRange(state.spec)
-    let window: DayWindow
-    try {
-      window = resolveTimeRange(defaults.timeRange, ctx)
-    } catch {
-      window = resolveTimeRange({ preset: "last30d" }, ctx)
-    }
     let line: string
     /** Lines under this one (a revert's changes). */
     let sub: string[] = []

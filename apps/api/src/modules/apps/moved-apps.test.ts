@@ -748,7 +748,7 @@ describe("the google-drive app's move", () => {
     const sources = await sql<Array<{ id: string; last_sync_status: string }>>`
       SELECT id, last_sync_status FROM app_knowledge.synced_sources
       WHERE org_id = ${ORG} AND app_name = ${GD} ORDER BY id`
-    expect(sources).toEqual([
+    expect([...sources]).toEqual([
       // The org's folder: hidden, saying why.
       { id: FOLDER_SOURCE, last_sync_status: "error" },
       // A person's own picks, and a folder with no account recorded whose owner holds a

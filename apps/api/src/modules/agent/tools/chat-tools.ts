@@ -12,16 +12,18 @@ import {
   captureActingAgentId,
   currentRunContext,
   currentToolCallScopesBefore,
-  isPersonClientFrame,
+  isPersonExternalClientCall,
 } from "~/modules/agent/runtime/run-context"
 import {
   decidePostDisclosure,
   type PostTarget,
   TAINT_DISCLOSURE_APPROVAL_KEY,
+  TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY,
 } from "~/modules/agent/scopes/post-disclosure"
 import {
   SCOPE_TAINT_BLOCKED_MESSAGE,
   SINK_KERNEL_MESSAGES,
+  taintSourceApps,
   toScopeTaintBlockedError,
   UNKNOWN_TURN_TAINT,
 } from "~/modules/agent/scopes/scope-taint"
@@ -34,6 +36,7 @@ import {
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import { attachFilesToParent, FileServiceError } from "~/modules/files/attach"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { publishMessageAttachments, sendMessage } from "~/modules/threads/message"
 import { dispatchForPostedMessage } from "~/modules/threads/posted-message-dispatch"
 import { createThread, listThreads } from "~/modules/threads/thread"
@@ -63,28 +66,67 @@ interface ChatToolContext {
   approvalRequestId?: string
 }
 
+/** An approved disclosure (scope-taint.ts, rule 11b), as the approval row recorded it. */
+interface ApprovedPostDisclosure {
+  /** The people of the conversation when the post parked: approving disclosed it to them. */
+  audience: string[]
+  /** The post was a person's own external-client request, with that connection's scopes: the
+   *  dispatch recorded it when it parked, since the re-entry runs without the client's frame. */
+  externalClient: ExternalClientPoster | null
+}
+
+/** Who a person's external-client post wakes agents as: that person, never widened. */
+interface ExternalClientPoster {
+  /** The connection's scopes, as recorded when the post parked. */
+  scopes: string[]
+  /** The requester's own dimension grants. The re-entry's are the requester's widened by the
+   *  decider's (delegated authority to run the handler), which no woken turn may inherit. */
+  dimensionGrants: Record<string, string[]>
+}
+
 /**
- * The people an approved disclosure covers (scope-taint.ts, rule 11b), or null when this call
- * executes no such approval. The dispatch parked the post because some of its readers lack
- * what the turn read and recorded who the post would reach then; the requester, who holds the
- * taint, approved sharing it with exactly them. Read off the row, never assumed from a bare
- * approval id; a row without the snapshot discloses to nobody.
+ * The approved disclosure this call executes, or null when it executes no such approval. The
+ * dispatch parked the post because some of its readers lack what the turn read and recorded who
+ * the post would reach then; the requester, who holds the taint, approved sharing it with
+ * exactly them. Read off the row, never assumed from a bare approval id; a row without the
+ * snapshot discloses to nobody.
  */
-async function approvedPostDisclosure(ctx: ChatToolContext): Promise<string[] | null> {
+async function approvedPostDisclosure(
+  ctx: ChatToolContext,
+): Promise<ApprovedPostDisclosure | null> {
   const id = ctx.approvalRequestId
   if (!id) return null
   const rows = await withPrivilegedDb(ctx.orgId, "agent-post-disclosure", async (tx) =>
-    extractRows<{ disclosed: boolean | null; audience: unknown }>(
+    extractRows<{ disclosed: boolean | null; audience: unknown; external_client: unknown }>(
       await tx.execute(drizzleSql`
         SELECT (metadata->>'taintDisclosedToReaders')::boolean AS disclosed,
-               metadata->'taintDisclosureAudience' AS audience
+               metadata->'taintDisclosureAudience' AS audience,
+               metadata->${TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY} AS external_client
         FROM ${drizzleSql.raw(schemaRef("kernel"))}.approval_requests
         WHERE id = ${id}::uuid AND org_id = ${ctx.orgId}::uuid`),
     ),
   )
   const row = rows[0]
   if (row?.disclosed !== true || !Array.isArray(row.audience)) return null
-  return row.audience.filter((u): u is string => typeof u === "string")
+  const external = row.external_client as { scopes?: unknown } | null | undefined
+  const scopes =
+    external && Array.isArray(external.scopes)
+      ? external.scopes.filter((s): s is string => typeof s === "string")
+      : null
+  return {
+    audience: row.audience.filter((u): u is string => typeof u === "string"),
+    externalClient:
+      scopes === null
+        ? null
+        : {
+            scopes,
+            dimensionGrants: (
+              await withPrivilegedDb(ctx.orgId, "agent-post-disclosure-requester", (tx) =>
+                loadEffectivePermissions(tx, ctx.userId, ctx.orgId),
+              )
+            ).dimensionGrants,
+          },
+  }
 }
 
 // Where a new thread's title and references land (the thread row and kernel.thread_references).
@@ -102,11 +144,11 @@ const SINK_KERNEL_THREADS = "kernel.threads"
  * connection) has an acting agent or a live run frame and is unchanged.
  */
 function isHumanActor(ctx: ChatToolContext): boolean {
-  if (ctx.actorType !== "mcp") return false
-  if ((ctx.actingAgentId ?? captureActingAgentId()) !== null) return false
   // Its gateway frame (scope-taint.ts, rule 14) is the person's own, as no frame was before it.
-  const frame = currentRunContext()
-  return frame === undefined || isPersonClientFrame(frame)
+  return isPersonExternalClientCall({
+    mcp: ctx.actorType === "mcp",
+    actingAgentId: ctx.actingAgentId ?? captureActingAgentId(),
+  })
 }
 
 /**
@@ -140,7 +182,8 @@ function postWouldBeHiddenError(gap: { missingScopes: string[]; lacking: number 
   code: string
   message: string
 } {
-  const apps = [...new Set(gap.missingScopes.map((s) => s.split(":")[0]).filter(Boolean))]
+  // Only what the people lacking it lack, never the whole taint (they may hold most of it).
+  const apps = taintSourceApps(gap.missingScopes)
   const what = apps.length > 0 ? `${apps.join(", ")} data` : "data"
   const who =
     gap.lacking === null
@@ -153,7 +196,12 @@ function postWouldBeHiddenError(gap: { missingScopes: string[]; lacking: number 
 }
 
 type PostVisibility =
-  | { disclosureList: string[] | null; metadata?: Record<string, unknown> }
+  | {
+      disclosureList: string[] | null
+      metadata?: Record<string, unknown>
+      /** An approved post a person's external client requested: who it wakes agents as. */
+      externalClient?: ExternalClientPoster
+    }
   | { error: { code: string; message: string } }
 
 /**
@@ -170,8 +218,9 @@ async function resolvePostVisibility(
   target: PostTarget,
   people: () => Promise<string[]>,
 ): Promise<PostVisibility> {
-  const snapshot = await approvedPostDisclosure(ctx)
-  if (snapshot !== null) {
+  const approved = await approvedPostDisclosure(ctx)
+  if (approved !== null) {
+    const snapshot = approved.audience
     const now = await people()
     // Someone who joined after the post parked was not part of the decision. Writing it would
     // hide it from them when they lack what it carries, so it is not written (rule 14e).
@@ -196,6 +245,7 @@ async function resolvePostVisibility(
       ...(ctx.approvalRequestId
         ? { metadata: { [TAINT_DISCLOSURE_APPROVAL_KEY]: ctx.approvalRequestId } }
         : {}),
+      ...(approved.externalClient !== null ? { externalClient: approved.externalClient } : {}),
     }
   }
   const decision = await decidePostDisclosure({
@@ -921,7 +971,16 @@ async function postThreadReply(
       )
   if ("error" in visibility) return { error: visibility.error }
   const disclosedTo = visibility.disclosureList
-  const human = isHumanActor(ctx)
+  // A person's external client: live, or, on an approved re-entry (whose frame is the
+  // approval's), as the dispatch recorded it on the approval when the post parked. Then the
+  // connection's own scopes and the requester's own dimension grants, never the re-entry's (the
+  // requester's widened by the decider's).
+  const client: ExternalClientPoster | null = isHumanActor(ctx)
+    ? { scopes: ctx.scopes ?? [], dimensionGrants: ctx.dimensionGrants ?? {} }
+    : "externalClient" in visibility
+      ? (visibility.externalClient ?? null)
+      : null
+  const human = client !== null
   const agentAuthorLabel = await resolveAgentAuthorLabel(ctx)
   // A18: a reply-thread post names a live root of this thread that is not a
   // reply; anything else is refused here rather than posted to the channel.
@@ -1015,7 +1074,7 @@ async function postThreadReply(
   // mentioned agents, and in a 1:1 agent chat with no mention the agent seated
   // there. An agent's own post keeps starting nothing, which is why agents_ask
   // exists rather than "just reply with a mention".
-  if (human) {
+  if (client !== null) {
     try {
       await dispatchForPostedMessage(
         (fn) =>
@@ -1024,8 +1083,8 @@ async function postThreadReply(
               actorType: "user",
               userId: ctx.userId,
               orgId: ctx.orgId,
-              scopes: ctx.scopes ?? [],
-              dimensionGrants: ctx.dimensionGrants ?? {},
+              scopes: client.scopes,
+              dimensionGrants: client.dimensionGrants,
             },
             fn,
           ),
@@ -1043,12 +1102,12 @@ async function postThreadReply(
             authorAgentId: null,
             parentMessageId: result.parentMessageId ?? result.id,
           },
-          callerEffectiveScope: ctx.scopes ?? [],
+          callerEffectiveScope: client.scopes,
           actor: {
             userId: ctx.userId,
             orgId: ctx.orgId,
-            scopes: ctx.scopes ?? [],
-            dimensionGrants: ctx.dimensionGrants ?? {},
+            scopes: client.scopes,
+            dimensionGrants: client.dimensionGrants,
           },
         },
       )

@@ -90,13 +90,14 @@ liaison erase-user <userId>
   config file (details below). Never prompts. Connections that need a browser
   consent are reported as `pending`, not as errors.
 - **`config verify`**: read only. For each connector app in the config (or
-  only `--app <name>`), resolves the credential STORED for the org (the
-  encrypted row the connector really reads, not the environment) and drives
-  one cheap authenticated call through the app's own adapter. Prints a JSON
+  only `--app <name>`), runs the app's own `provisioning.verify` handler: one
+  cheap authenticated call through the app's connection, the credential STORED
+  for the org (the encrypted row the connector really reads, not the
+  environment) added by the server, never read by the CLI. Prints a JSON
   report (app, connection, `PASS` / `FAIL` / `SKIPPED`, the remote identity,
   never the secret) and exits `1` when any connector fails, so it can gate a
-  deploy. Apps without a probe in `cli/provisioners/verify-probes.ts` report
-  `SKIPPED` (GitLab has one). The `api-connector` app's own check probes each
+  deploy. Apps that declare no `verify` handler report `SKIPPED` (GitLab
+  declares one). The `api-connector` app's own check probes each
   connection with a read operation that takes no required params and is not
   `customer.lookup` (an unfiltered lookup may return every customer; skipped
   when there is none). Like `api-connector test`, it calls the API from the
@@ -615,9 +616,9 @@ org that already exists, and writes nothing. So a renamed host is corrected by
 editing the config and applying it again.
 
 After the connection is applied, changed or not, `config apply` runs the app's
-`config verify` probe against the stored connection when the app has one
-(`cli/provisioners/verify-probes.ts`). The result is the entry's `health`
-(`PASS`, `FAIL` or `SKIPPED` for an app without a probe). A failure does not
+`config verify` check (its `provisioning.verify` handler) against the stored
+connection when the app has one. The result is the entry's `health`
+(`PASS`, `FAIL` or `SKIPPED` for an app without one). A failure does not
 stop the run or change its exit code: it is reported as a `pending` item
 (`kind: "credentials"`, with the error) so a dead connection that the config
 still matches is visible. An `oauth2` connection stores

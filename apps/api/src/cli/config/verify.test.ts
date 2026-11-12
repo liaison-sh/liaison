@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Unit tests for `runConfigVerify` (the `liaison config verify` driver).
- * DB and probe calls are injected (`resolveOrgId` / `getCredentials` /
- * `probes`) so this suite never touches a live database or the network —
- * mirroring `apply.test.ts`'s seam-injection idiom.
+ * DB and probe calls are injected (`resolveOrgId` / `probe`) so this suite
+ * never touches a live database or the network, mirroring `apply.test.ts`'s
+ * seam-injection idiom. The production probe is the app's own
+ * `provisioning.verify` handler (verify-probes.ts): the driver never reads a
+ * credential.
  */
 import { describe, expect, test } from "bun:test"
 import type { Operation, RoleName } from "@liaison/api-connector-core"
@@ -29,44 +31,56 @@ const gitlabApp: NonNullable<ProvisioningConfig["apps"]>[number] = {
 }
 
 describe("runConfigVerify", () => {
-  test("PASS: probe succeeds → status PASS, identity reported, exit 0", async () => {
-    const logs: string[] = []
-    const probe: VerifyProbe = async (creds) => {
-      expect(creds.token).toBe(SECRET_TOKEN) // probe DOES receive the real credential
+  test("PASS: the app's check succeeds → status PASS, identity reported, exit 0", async () => {
+    const seen: unknown[] = []
+    const probe: VerifyProbe = async (input) => {
+      seen.push(input)
       return { identity: "alice" }
     }
     const res = await runConfigVerify({
       config: configWith([gitlabApp]),
-      log: (m) => logs.push(m),
+      log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({ token: SECRET_TOKEN, group: "acme-eng" }),
-      probes: { gitlab: probe },
+      probe,
     })
     expect(res.exitCode).toBe(0)
     expect(res.report.ok).toBe(true)
     expect(res.report.results).toEqual([
       { app: "gitlab", connection: "gitlab", status: "PASS", identity: "alice" },
     ])
+    // The check is asked by app and org: it never receives the credential.
+    expect(seen).toEqual([{ orgId: "org-1", appName: "gitlab" }])
   })
 
-  test("FAIL: probe throws → status FAIL, non-zero exit, HTTP status surfaced", async () => {
-    const logs: string[] = []
+  test("the app's provision block reaches its check", async () => {
+    const seen: unknown[] = []
+    await runConfigVerify({
+      config: configWith([{ ...gitlabApp, provision: { mode: "x" } }]),
+      log: () => {},
+      resolveOrgId: async () => "org-1",
+      probe: async (input) => {
+        seen.push(input)
+        return { identity: "alice" }
+      },
+      provisionCheck: async (_o, app) => ({ app, status: "PASS" }),
+    })
+    expect(seen).toEqual([{ orgId: "org-1", appName: "gitlab", provision: { mode: "x" } }])
+  })
+
+  test("FAIL: the check throws → status FAIL, non-zero exit, HTTP status surfaced", async () => {
     class FakeHttpError extends Error {
       status = 401
     }
-    const probe: VerifyProbe = async () => {
-      throw new FakeHttpError("GitLab authentication failed (AUTH_REVOKED)")
-    }
     const res = await runConfigVerify({
       config: configWith([gitlabApp]),
-      log: (m) => logs.push(m),
+      log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({ token: SECRET_TOKEN, group: "acme-eng" }),
-      probes: { gitlab: probe },
+      probe: async () => {
+        throw new FakeHttpError("AUTH_REVOKED: 401 Unauthorized")
+      },
     })
-    // This is the falsifiable assertion: without the fix, a driver that never
-    // propagates a probe failure to a non-zero exit would report exitCode 0
-    // here (a deploy gate that never gates).
+    // The falsifiable assertion: a driver that never propagates a failed
+    // check to a non-zero exit is a deploy gate that never gates.
     expect(res.exitCode).toBe(1)
     expect(res.report.ok).toBe(false)
     expect(res.report.results).toEqual([
@@ -74,21 +88,20 @@ describe("runConfigVerify", () => {
         app: "gitlab",
         connection: "gitlab",
         status: "FAIL",
-        error: "GitLab authentication failed (AUTH_REVOKED)",
+        error: "AUTH_REVOKED: 401 Unauthorized",
         httpStatus: 401,
       },
     ])
   })
 
-  test("SKIPPED: no probe registered for the app → SKIPPED, run still exits 0", async () => {
+  test("SKIPPED: the app declares no check → SKIPPED, run still exits 0", async () => {
     const res = await runConfigVerify({
       config: configWith([
         { name: "shopify", enable: true, connection: { name: "shop", credentials: {} } },
       ]),
       log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({}),
-      probes: { gitlab: async () => ({ identity: "unused" }) }, // no 'shopify' entry
+      probe: async () => null,
     })
     expect(res.exitCode).toBe(0)
     expect(res.report.results).toEqual([
@@ -96,43 +109,37 @@ describe("runConfigVerify", () => {
         app: "shopify",
         connection: "shop",
         status: "SKIPPED",
-        error: "no verify probe registered for this app",
+        error: "the app declares no verify check",
       },
     ])
   })
 
   test("a FAIL among several apps still fails the whole run (deploy-gate semantics)", async () => {
-    const gitlabOk: typeof gitlabApp = { ...gitlabApp, name: "gitlab-ok" }
-    const gitlabBad: typeof gitlabApp = { ...gitlabApp, name: "gitlab-bad" }
     const res = await runConfigVerify({
-      config: configWith([gitlabOk, gitlabBad]),
+      config: configWith([
+        { ...gitlabApp, name: "gitlab-ok" },
+        { ...gitlabApp, name: "gitlab-bad" },
+      ]),
       log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({ token: SECRET_TOKEN, group: "acme-eng" }),
-      probes: {
-        "gitlab-ok": async () => ({ identity: "alice" }),
-        "gitlab-bad": async () => {
-          throw new Error("revoked")
-        },
+      probe: async ({ appName }) => {
+        if (appName === "gitlab-bad") throw new Error("revoked")
+        return { identity: "alice" }
       },
     })
     expect(res.exitCode).toBe(1)
-    const statuses = res.report.results.map((r) => r.status)
-    expect(statuses).toEqual(["PASS", "FAIL"])
+    expect(res.report.results.map((r) => r.status)).toEqual(["PASS", "FAIL"])
   })
 
-  test("org not found → exit 1, no probe run", async () => {
+  test("org not found → exit 1, no check run", async () => {
     let probeCalled = false
     const res = await runConfigVerify({
       config: configWith([gitlabApp]),
       log: () => {},
       resolveOrgId: async () => undefined,
-      getCredentials: async () => ({ token: SECRET_TOKEN }),
-      probes: {
-        gitlab: async () => {
-          probeCalled = true
-          return { identity: "alice" }
-        },
+      probe: async () => {
+        probeCalled = true
+        return { identity: "alice" }
       },
     })
     expect(res.exitCode).toBe(1)
@@ -145,7 +152,6 @@ describe("runConfigVerify", () => {
       appFilter: "shopify",
       log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({}),
     })
     expect(res.exitCode).toBe(2)
   })
@@ -155,47 +161,26 @@ describe("runConfigVerify", () => {
       config: configWith([]),
       log: () => {},
       resolveOrgId: async () => "org-1",
-      getCredentials: async () => ({}),
     })
     expect(res.exitCode).toBe(0)
     expect(res.report.results).toEqual([])
   })
 
-  describe("no secret ever reaches log lines or the report", () => {
-    async function runAndCollect(probeThrows: boolean) {
+  test("the config file's secret never reaches log lines or the report", async () => {
+    for (const fails of [false, true]) {
       const logs: string[] = []
-      const probe: VerifyProbe = async (creds) => {
-        if (probeThrows) {
-          // A buggy probe that carelessly interpolates the credential into its
-          // own error message would leak it here — assert the DRIVER's own
-          // surfaces (log lines + report) never carry it regardless.
-          throw new Error(`upstream rejected token ${creds.token?.slice(0, 6)}...`)
-        }
-        return { identity: "alice" }
-      }
       const res = await runConfigVerify({
         config: configWith([gitlabApp]),
         log: (m) => logs.push(m),
         resolveOrgId: async () => "org-1",
-        getCredentials: async () => ({ token: SECRET_TOKEN, group: "acme-eng" }),
-        probes: { gitlab: probe },
+        probe: async () => {
+          if (fails) throw new Error("upstream rejected the token")
+          return { identity: "alice" }
+        },
       })
-      return { res, logs }
+      expect(JSON.stringify(res.report)).not.toContain(SECRET_TOKEN)
+      expect(logs.join("\n")).not.toContain(SECRET_TOKEN)
     }
-
-    test("PASS path", async () => {
-      const { res, logs } = await runAndCollect(false)
-      expect(JSON.stringify(res.report)).not.toContain(SECRET_TOKEN)
-      expect(logs.join("\n")).not.toContain(SECRET_TOKEN)
-    })
-
-    test("FAIL path", async () => {
-      const { res, logs } = await runAndCollect(true)
-      // The full secret must never appear, even truncated-echo probes only
-      // leak a prefix — assert the FULL token string is absent everywhere.
-      expect(JSON.stringify(res.report)).not.toContain(SECRET_TOKEN)
-      expect(logs.join("\n")).not.toContain(SECRET_TOKEN)
-    })
   })
 })
 

@@ -1726,6 +1726,18 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/database"),
   },
+  // GitLab bundled-app oracles: the tools' answers over a fake ctx.fetch, the
+  // knowledge source's pages and cursor, provisioning verify (src/test-ctx.ts).
+  "bundled-gitlab": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/gitlab.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/gitlab"),
+  },
   // API connector bundled-app oracles: the tools, the settings screen and card
   // tools, provisioning and verify over a fake ctx.api, the manifest, and the
   // params form. No Postgres needed: ctx.api is the platform's (connections/api).
@@ -2178,6 +2190,7 @@ if (suite === "full") {
     "bundled-boxtal",
     "bundled-monitoring",
     "bundled-database",
+    "bundled-gitlab",
     "bundled-api-connector",
     "bundled-pennylane",
     "bundled-calls",

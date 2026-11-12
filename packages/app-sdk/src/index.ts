@@ -111,6 +111,7 @@ export type {
   CrossAppEnvelope,
   DbBatchOp,
   DbBatchResult,
+  DbBatchSequence,
   DbBatchSpec,
   DbClient,
   EnqueueJobOptions,

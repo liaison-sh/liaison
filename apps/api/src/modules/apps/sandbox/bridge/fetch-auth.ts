@@ -5,6 +5,7 @@
 //   auth: {
 //     connection: "<name>",          // a connection the manifest declares
 //     identifier?: "<account>",      // which account (as for connections_getToken)
+//     account?: "<account id>",      // oauth2: exactly this account (an id ctx.accounts.list gave)
 //     scheme: "header:<Name>" | "bearer" | "basic",
 //     fields?: [...],                // a credentials connection: the field(s) to send
 //     exchange?: {                   // bearer only: client-credentials token exchange
@@ -50,6 +51,8 @@ export interface FetchAuthExchange {
 export interface FetchAuth {
   connection: string
   identifier?: string
+  /** oauth2: exactly this connected account (an id from `ctx.accounts.list`). */
+  account?: string
   scheme: string
   fields?: string[]
   exchange?: FetchAuthExchange
@@ -64,6 +67,8 @@ export interface FetchAuthDeps {
   readToken: (
     connection: string,
     identifier?: string,
+    /** Exactly this account; refused unless it is one `ctx.accounts.list` shows the run. */
+    account?: string,
   ) => Promise<{ token: string; identifier: string }>
   /** The connection's stored fields (connections_getCredentials' lookup). */
   readCredentials: (connection: string, identifier?: string) => Promise<Record<string, unknown>>
@@ -87,6 +92,8 @@ const PLACEHOLDER_RE = /^[A-Za-z0-9_{}:.-]{12,128}$/
 const TOKEN_SKEW_MS = 60_000
 /** A value shorter than this is never redacted (it would mangle unrelated text). */
 const MIN_REDACT_LENGTH = 6
+
+const ACCOUNT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function invalid(message: string): Error {
   return typedError(400, "invalid_fetch_auth", `ctx.fetch auth: ${message}`)
@@ -120,6 +127,12 @@ export function parseFetchAuth(raw: unknown): FetchAuth | null {
       throw invalid("identifier must be a string")
     }
     out.identifier = r.identifier
+  }
+  if (r.account !== undefined && r.account !== null) {
+    if (typeof r.account !== "string" || !ACCOUNT_ID_RE.test(r.account)) {
+      throw invalid("account must be a connected account id")
+    }
+    out.account = r.account.toLowerCase()
   }
   if (r.fields !== undefined) {
     if (!Array.isArray(r.fields) || r.fields.length === 0 || r.fields.length > 2) {
@@ -441,6 +454,9 @@ export async function injectFetchAuth(
   assertConnectionHost(deps.manifest, auth.connection, url)
   const declaration = connectionDeclaration(deps.manifest, auth.connection)
   const isCredentials = declaration.type === "credentials"
+  if (auth.account && isCredentials) {
+    throw invalid("account names an oauth2 account; a credentials connection uses identifier")
+  }
   const declared = new Set((declaration.credentialFields ?? []).map((f) => f.name))
 
   if (auth.exchange) {
@@ -479,7 +495,7 @@ export async function injectFetchAuth(
       auth.connection,
       url,
     )
-    const account = await deps.readToken(auth.connection, auth.identifier)
+    const account = await deps.readToken(auth.connection, auth.identifier, auth.account)
     value = account.token
     if (typeof value !== "string" || value.length === 0) {
       throw typedError(409, "credential_missing", `Connection "${auth.connection}" has no token`)

@@ -118,6 +118,23 @@ describe("watchObject / unwatchObject (B7 backfill-link)", () => {
     expect(findings.every((f) => f.watched_object_id === watch.id)).toBe(true)
   })
 
+  test("watch_object commits the watch with its backfilled links: a failing link leaves no watch", async () => {
+    const db = createMockDb()
+    await db.insert("finding", { id: "f1", platform: "facebook", external_id: "c1", relation: "comment_on_our_content", parent_external_id: "P1", status: "new" })
+    await db.insert("finding", { id: "f2", platform: "facebook", external_id: "c2", relation: "comment_on_our_content", parent_external_id: "P1", status: "new" })
+    const update = db.update.bind(db)
+    db.update = async (entity, id, data) => {
+      if (entity === "finding" && id === "f2") throw new Error("link refused")
+      return update(entity, id, data)
+    }
+    await expect(
+      watchObject(makeCtx(db), { platform: "facebook", external_id: "P1", object_type: "facebook_post" }),
+    ).rejects.toThrow("link refused")
+    expect(await db.count("watched_object", { where: { external_id: "P1" } })).toBe(0)
+    const f1 = (await db.findMany("finding", { where: { id: "f1" } }))[0] as { watched_object_id?: string | null }
+    expect(f1.watched_object_id ?? null).toBeNull()
+  })
+
   test("watch_object is idempotent on the [platform, external_id] key", async () => {
     const db = createMockDb()
     const ctx = makeCtx(db)

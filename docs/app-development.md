@@ -112,7 +112,9 @@ handlers teaches exactly one thing.
   end, so it may not call outside: `ctx.fetch`, `ctx.executeTool`, a contract
   call, an agent run and the other outside calls fail with
   `atomic_run_egress_refused`. Read, call the provider, then write in one
-  `ctx` call (or use `ctx.steps.run`) instead.
+  `ctx` call (or use `ctx.steps.run`) instead. A tool marked `atomic: true`
+  gets the same refusal; the bundled apps declare no atomic tool, and a tool
+  whose writes must land together commits them in one `ctx.db.batch`.
   A job marked `atomic: true`, an event-subscription handler and an import
   batch hold one database connection for their whole run, so each waits for
   a free slot before it starts, first come first served (the slots come from
@@ -436,6 +438,12 @@ await ctx.fetch(`https://${shop}/admin/api/graphql.json`, {
 `scheme` is `"header:<Name>"` (the oauth2 token, or one credentials field named
 in `fields`), `"bearer"` (with `exchange`, a client-credentials token the host
 obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
+`identifier` picks the account by its identifier; for an oauth2 connection,
+`account` names exactly one account by the id `ctx.accounts.list` gave (the
+organization's, or the acting person's own; any other is refused with
+`unknown_account`), for when one identifier has both an organization and a
+personal account. `files_importFromUrl` takes the same `auth` to download a file
+with a connection's token the app never holds.
 `configSecrets: { "<placeholder>": "<config key>" }` writes a declared config
 secret where the manifest's `secrets` map places it (below), and `ctx.config.has(key)`
 tells whether a secret is set without reading it. For the non-secret part of a
@@ -555,6 +563,15 @@ identity (product titles, SKUs, vendors, handles, customer and company names,
 street addresses), each replaced by a stable stand-in derived from its hash,
 so a re-recording neither publishes a real catalogue nor churns the fixture.
 Read what a recording wrote before you commit it.
+
+A fixture records the entry working. A run that ends in an error or a refusal
+(it threw, or answered with an `error`) is not written, and its replay fails
+the contract, unless the plan marks it a deliberate negative case:
+`expectError: { reason: "..." }` on the step's input, saying why that refusal
+is the path worth pinning. A marked fixture whose replay succeeds fails too.
+A gated tool is recorded on its approved path: the step's input carries the
+`approval` the run re-enters with, and the replay answers `ctx.approval` from
+it.
 
 ---
 
@@ -922,7 +939,9 @@ it as a page, with the routes it calls:
   (a tool), `ctx.pages.link("picker", params)` answers a handle (`lpg_...`), not a
   URL: return it to the person, and their signed-in app turns it into a link with
   `POST /api/apps/<app>/pages/open` `{ "handle": "lpg_..." }`. Your app's code never
-  holds a link it could open as the person. From your panel, the person's browser can
+  holds a link it could open as the person. A tool that answers a handle shows an Open button under its call
+  in a conversation; your own screen opens one with `POST /api/apps/<app>/pages/open`
+  through `@liaison/host` `fetch`, then opens the returned URL in a new window. From your panel, the person's browser can
   also ask `POST /api/apps/<app>/pages/<page>/link` (no `params`: it refuses them).
   A handle and a link each work once, for 5 minutes; a person gets at most 20 per app
   every 10 minutes.
@@ -935,6 +954,12 @@ it as a page, with the routes it calls:
   against what the person may read or change: the route acts as them. The page may
   call only the routes it lists, at most 60 calls a minute; bodies and answers are
   capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
+- A page that runs a provider widget in the person's browser with their own grant
+  (a file picker) declares `"connectionToken": { "connection": "<oauth2 connection>" }`.
+  Mint its link with `ctx.pages.link(page, { account: "<account id>" })`: the page
+  then reads `window.liaisonPage.connectionToken` (`{ token, identifier, account }`).
+  The account must be the person's own, or the organization's when they hold the
+  connection's admin scope; any other is refused (403) and the page does not open.
 - A route call carries the page session's key, which only the page's bootstrap
   holds (it is never in `liaisonPage` or the document), so a session id copied out of
   the page calls nothing.
@@ -975,6 +1000,10 @@ apps:
   would change: any line is DRIFT), then `verify({ config }, ctx)` when declared,
   which answers `{ ok, problems?, identity? }` from a live check, such as one call
   through your connection.
+- `verify` is also your connection's health check: `config verify` and
+  `config apply` run it for an app whose connection the config file sets, even
+  with no `provision` block (`config` is then `{}`). An app without `verify`
+  reports `SKIPPED` there.
 - Both run as your app (its own scopes), like a job.
 
 ## 17. Bring your own OAuth client
@@ -1021,7 +1050,9 @@ Liaison keeps its documents up to date. Declare the kind in the manifest:
 - `configSchema`: the JSON Schema of a source's settings, checked when the
   source is added (`POST /api/knowledge/synced-sources` with `appName`,
   `sourceKind` and `sourceConfig`; `GET /api/knowledge/synced-sources/kinds`
-  lists the kinds a person may add).
+  lists the kinds a person may add). An agent adds one with
+  `knowledge__add_folder_source` (`source`: your app, `kind`); the `ref` it
+  passes becomes the config `{ ref }`, and the same ref finds the same source.
 - `timeoutMs`: one page's time limit, 60 s when absent, at most 120 s.
 
 The handler gets `{ sourceId, kind, config, cursor }` and returns one page:
@@ -1118,6 +1149,6 @@ return {
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec
 - [`docs/app-sandbox.md`](app-sandbox.md) — the sandbox runtime internals
 - [`docs/sdk-gaps.md`](sdk-gaps.md) — the SDK gap log
-- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent) — a host-side bridge-extension app in the same in-tree shape as `gitlab`, built because raw DB sockets are a structural SDK gap (see the gap log entry)
+- [`docs/database-connector.md`](database-connector.md) — the `database` connector (read-only DB access for the agent), a catalog app reading through platform-held SQL connections (`ctx.sql`)
 - [`docs/api-connector.md`](api-connector.md): the `api-connector` app (an HTTP API described by an adapter file, for a CRM or ERP), same in-tree host-side bridge shape; adapters are written with the `api-connector-authoring` skill
 - `apps/api/src/apps/example/` — the reference app

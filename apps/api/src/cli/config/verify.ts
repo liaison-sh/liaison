@@ -1,46 +1,34 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * `config verify` driver — proves a connector's STORED credential still
- * works by driving one real authenticated call through the app's own
- * adapter. Companion to `config apply` (same file/command idiom,
- * `~/cli/config/apply.ts`), but READ-ONLY: it never writes a row, never
- * creates the org, and resolves credentials the SAME way the app's tools do
- * (`getCredentialsForConnection`, AES-256-GCM decrypt under the hood, see
- * `~/modules/apps/connections/service.ts`) — it never reads `process.env`
- * for the secret and never re-implements the decrypt.
+ * `config verify` driver: proves a connector's STORED credential still works
+ * by one real authenticated call, read-only. Companion to `config apply`
+ * (same file/command idiom, `~/cli/config/apply.ts`): it never writes a row
+ * and never creates the org.
  *
  * Real incident this guards against (2026-09-10): a revoked GitLab PAT was
  * rotated in the environment and "verified" with a raw `curl` against the
- * token STRING — which proved nothing about the ENCRYPTED DB ROW the
- * connector actually reads at request time (`kernel.connected_accounts`,
- * `credentials_encrypted`). `config verify` drives the request through that
- * same row, through the same adapter the connector's tools use.
- *
- * Per-app probes live in `~/cli/provisioners/verify-probes.ts` — a sparse
- * registry, not a switch statement. An app with no probe is reported
+ * token STRING, which proved nothing about the ENCRYPTED row the connector
+ * reads at request time. The check is the app's own `provisioning.verify`
+ * handler (`~/cli/provisioners/verify-probes.ts`), run as the app, its call
+ * carrying the stored credential host-side (`ctx.fetch` auth): the CLI never
+ * decrypts it. An app that declares no verify handler is reported
  * `SKIPPED (no verify probe)` and never fails the run.
  *
  * I/O discipline mirrors `config apply`: human progress → the injected `log`
  * (stderr by default); the CLI entry point writes the machine-readable
  * report to stdout. NEVER print, log, or include a secret value anywhere in
- * the report or a log line — only the probe's non-secret `identity`.
+ * the report or a log line, only the probe's non-secret `identity`.
  *
- * `resolveOrgId` / `getCredentials` are injectable (default to the real DB
- * seams below) so the unit suite exercises PASS/FAIL/SKIPPED without a live
- * database or network call — mirroring the `registry`/`seams` injection
- * points in `~/cli/config/apply.ts` and `~/cli/provisioners/types.ts`.
+ * `resolveOrgId` / `probe` are injectable so the unit suite exercises
+ * PASS/FAIL/SKIPPED without a live database or network call.
  */
 
 import { eq } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
-import {
-  verifyProbeRegistry as defaultVerifyProbeRegistry,
-  type VerifyProbe,
-} from "~/cli/provisioners/verify-probes"
+import { appVerifyProbe, type VerifyProbe } from "~/cli/provisioners/verify-probes"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
 import { canonicalJson, readAppConfig } from "~/modules/apps/app-config"
-import { getCredentialsForConnection } from "~/modules/apps/connections/service"
 
 export type VerifyStatus = "PASS" | "FAIL" | "SKIPPED"
 
@@ -96,18 +84,9 @@ export interface RunConfigVerifyOptions {
   log?: (msg: string) => void
   /** Resolve the org id from its slug, read-only. Injectable for tests. */
   resolveOrgId?: (slug: string) => Promise<string | undefined>
-  /** Resolve the STORED, decrypted credential map for one connection.
-   *  Injectable for tests; defaults to the real service call — never
-   *  re-implemented here. */
-  getCredentials?: (
-    orgId: string,
-    appName: string,
-    connectionName: string,
-    identifier: string | undefined,
-  ) => Promise<Record<string, string>>
-  /** Per-app probe registry. Defaults to the production registry
-   *  (`~/cli/provisioners/verify-probes.ts`); injectable for tests. */
-  probes?: Partial<Record<string, VerifyProbe>>
+  /** Check one app's connection. Defaults to the app's `provisioning.verify`
+   *  handler (`~/cli/provisioners/verify-probes.ts`); injectable for tests. */
+  probe?: VerifyProbe
   /** Read an app's stored `kernel.apps.config`. Injectable for tests. */
   readAppConfig?: (orgId: string, appName: string) => Promise<Record<string, unknown>>
   /** Check one `apps[].provision` block. Injectable for tests; defaults to the
@@ -173,26 +152,6 @@ async function defaultResolveOrgId(slug: string): Promise<string | undefined> {
   return row?.id
 }
 
-/**
- * Default `getCredentials` — the SAME service call the app's tools use
- * (see `connector.ts`'s own read-back), under a privileged, org-scoped
- * transaction with `actorType: 'system'` (a CLI verify run acts on behalf
- * of the org, not any particular user — matching the connector's own
- * privileged credential read, not a raw env/DB read).
- */
-async function defaultGetCredentials(
-  orgId: string,
-  appName: string,
-  connectionName: string,
-  identifier: string | undefined,
-): Promise<Record<string, string>> {
-  return withPrivilegedDb(orgId, "cli-verify-read-creds", (tx) =>
-    getCredentialsForConnection(tx, orgId, "", appName, connectionName, identifier, {
-      actorType: "system",
-    }),
-  )
-}
-
 async function defaultReadAppConfig(
   orgId: string,
   appName: string,
@@ -230,8 +189,7 @@ export async function runConfigVerify(
 ): Promise<RunConfigVerifyResult> {
   const log = opts.log ?? ((msg: string) => process.stderr.write(`${msg}\n`))
   const resolveOrgId = opts.resolveOrgId ?? defaultResolveOrgId
-  const getCredentials = opts.getCredentials ?? defaultGetCredentials
-  const probes = opts.probes ?? defaultVerifyProbeRegistry
+  const probe = opts.probe ?? appVerifyProbe
   const readConfig = opts.readAppConfig ?? defaultReadAppConfig
   const configApps = (opts.config.apps ?? []).filter(
     (a) => a.config !== undefined && (opts.appFilter === undefined || a.name === opts.appFilter),
@@ -273,23 +231,23 @@ export async function runConfigVerify(
 
   for (const app of connectorApps) {
     const connName = app.connection?.name ?? ""
-    const identifier = app.connection?.identifier
-    const probe = probes[app.name]
-
-    if (!probe) {
-      log(`app '${app.name}': SKIPPED (no verify probe)`)
-      results.push({
-        app: app.name,
-        connection: connName,
-        status: "SKIPPED",
-        error: "no verify probe registered for this app",
-      })
-      continue
-    }
-
     try {
-      const credentials = await getCredentials(orgId, app.name, connName, identifier)
-      const { identity } = await probe(credentials)
+      const probed = await probe({
+        orgId,
+        appName: app.name,
+        ...(app.provision ? { provision: app.provision as Record<string, unknown> } : {}),
+      })
+      if (!probed) {
+        log(`app '${app.name}': SKIPPED (no verify probe)`)
+        results.push({
+          app: app.name,
+          connection: connName,
+          status: "SKIPPED",
+          error: "the app declares no verify check",
+        })
+        continue
+      }
+      const { identity } = probed
       log(`app '${app.name}': PASS (identity: ${identity})`)
       results.push({ app: app.name, connection: connName, status: "PASS", identity })
     } catch (err) {

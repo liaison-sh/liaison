@@ -1,0 +1,23 @@
+{
+  "entry": "tool:gitlab_list_milestones",
+  "params": {
+    "project": "gitlab-org/cli",
+    "state": "active"
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["gitlab"],
+      "reply": "{\"values\":{\"group\":\"gitlab-examples\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/milestones?per_page=100&state=active",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\",\"link\":\"<https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/milestones?id=gitlab-org%2Fcli&include_ancestors=false&page=1&per_page=100&sort=due_date_asc&state=active>; rel=\\\"first\\\", <https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/milestones?id=gitlab-org%2Fcli&include_ancestors=false&page=1&per_page=100&sort=due_date_asc&state=active>; rel=\\\"last\\\"\",\"x-next-page\":\"\"},\"body\":\"[{\\\"id\\\":2527694,\\\"iid\\\":7,\\\"project_id\\\":34675721,\\\"title\\\":\\\"v2.0.0\\\",\\\"description\\\":\\\"\\\",\\\"state\\\":\\\"active\\\",\\\"created_at\\\":\\\"2020-08-28T10:47:36.000Z\\\",\\\"updated_at\\\":\\\"2021-01-08T22:44:59.000Z\\\",\\\"due_date\\\":null,\\\"start_date\\\":null,\\\"expired\\\":false,\\\"web_url\\\":\\\"https://gitlab.com/gitlab-org/cli/-/milestones/7\\\"}]\"}"
+    }
+  ]
+}

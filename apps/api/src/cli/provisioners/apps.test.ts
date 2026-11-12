@@ -4,7 +4,7 @@
  *
  * - enable-only (invoicing: no connections) → enabled, no pending, no connection;
  *   re-run → still ONE entry in settings.enabledApps (idempotent DISTINCT).
- * - credentials connection (gitlab) → connected_accounts row + derived identifier;
+ * - credentials connection (test/service) → connected_accounts row + derived identifier;
  *   re-run → NO new row (4-key precheck, count==1).
  * - oauth2 connection (shopify/shop) → pending, no write.
  */
@@ -336,17 +336,17 @@ describe("apps provisioner (Task 11)", () => {
   // by catalog.test.ts "reports installedVersion + detects an available upgrade",
   // and the install action itself by the "installed from the catalog" case above.
 
-  test("credentials connection (gitlab): connected_accounts row + derived identifier; re-run no dup", async () => {
+  test("credentials connection (test/service): connected_accounts row + derived identifier; re-run no dup", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const config: ProvisioningConfig = {
       org: { slug: "x", name: "X" },
       apps: [
         {
-          name: "gitlab",
+          name: "test",
           enable: true,
           connection: {
-            name: "gitlab",
+            name: "service",
             identifier: group,
             ownerType: "org",
             credentials: { token: "glpat-secret-1", group },
@@ -356,14 +356,14 @@ describe("apps provisioner (Task 11)", () => {
     }
 
     const r1 = await appsProvisioner.apply(ctx, { actions: [] }, config)
-    const e1 = findApp(r1, "gitlab")
+    const e1 = findApp(r1, "test")
     expect(e1.enabled).toBe(true)
     expect(e1.connected).toBe(true)
 
     const count1 = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'gitlab' AND connection_name = 'gitlab'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'test' AND connection_name = 'service'
           AND identifier = ${group} AND status = 'active'
       `),
     )
@@ -374,7 +374,7 @@ describe("apps provisioner (Task 11)", () => {
     const count2 = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'gitlab' AND connection_name = 'gitlab'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'test' AND connection_name = 'service'
           AND identifier = ${group} AND status = 'active'
       `),
     )
@@ -453,10 +453,10 @@ describe("apps provisioner (Task 11)", () => {
       org: { slug: org.slug, name: "X" },
       apps: [
         {
-          name: "gitlab",
+          name: "test",
           enable: true,
           connection: {
-            name: "gitlab",
+            name: "service",
             identifier,
             ownerType: "org",
             credentials: { group, token: "tok-SECRET-1" },
@@ -470,25 +470,24 @@ describe("apps provisioner (Task 11)", () => {
     const planCtx = buildProvisionContext({ log: () => {}, validateByok: false })
     const plan = await appsProvisioner.plan(planCtx, configWith("team-new"))
     expect(plan.actions).toContain(
-      `update app 'gitlab' connection 'gitlab': group "team-old" -> "team-new"`,
+      `update app 'test' connection 'service': group "team-old" -> "team-new"`,
     )
     const afterPlan = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", identifier, {
         actorType: "system",
       }),
     )
     expect(afterPlan.group).toBe("team-old")
 
     // Apply: replaced, reported, then probed.
-    ctx.connectionProbes = {
-      gitlab: async () => {
-        throw new Error("HTTP 404 from gate-new.example.com")
-      },
+    ctx.connectionProbe = async ({ appName }) => {
+      expect(appName).toBe("test")
+      throw new Error("HTTP 404 from gate-new.example.com")
     }
     const r = await appsProvisioner.apply(ctx, { actions: [] }, configWith("team-new"))
-    expect(r.changed).toContain("apps.gitlab.connection.group")
+    expect(r.changed).toContain("apps.test.connection.group")
     const entry = (r.section as { apps: Array<Record<string, unknown>> }).apps.find(
-      (a) => a.name === "gitlab",
+      (a) => a.name === "test",
     )
     expect(entry?.connectionChanges).toEqual([
       {
@@ -500,13 +499,13 @@ describe("apps provisioner (Task 11)", () => {
     ])
     expect(entry?.health).toEqual({ status: "FAIL", error: "HTTP 404 from gate-new.example.com" })
     const healthPending = (r.pending ?? []).find(
-      (p) => p.app === "gitlab" && p.kind === "credentials",
+      (p) => p.app === "test" && p.kind === "credentials",
     )
     expect(healthPending?.message).toContain("health check failed")
     expect(JSON.stringify(r)).not.toContain("tok-SECRET")
 
     const afterApply = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", identifier, {
         actorType: "system",
       }),
     )

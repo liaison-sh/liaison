@@ -21,7 +21,7 @@ import { join } from "node:path"
 import type { RunLimits } from "~/modules/apps/run-limits"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import type { ContractEntry } from "./entries"
-import type { BridgeSurface } from "./harness"
+import { type BridgeSurface, outcomeProblem } from "./harness"
 import type { ContractIsolate, ContractRunOutcome } from "./isolate"
 import {
   canonicalJson,
@@ -33,6 +33,11 @@ import {
 export interface RecordInput {
   params?: unknown
   extraArgs?: unknown[]
+  /** A deliberate negative case (replay-bridge.ts `EgressFixture.expectError`). */
+  expectError?: { reason: string }
+  /** The approval the run re-enters with (replay-bridge.ts `EgressFixture.approval`): the
+   *  recorder's live bridge must carry the same one. */
+  approval?: Record<string, unknown>
 }
 
 export interface RecordedRun {
@@ -63,6 +68,8 @@ export async function recordEntry(args: {
       ...(input.params !== undefined ? { params: input.params } : {}),
       ...(input.extraArgs ? { extraArgs: input.extraArgs } : {}),
       recordedFrom: args.recordedFrom,
+      ...(input.expectError ? { expectError: input.expectError } : {}),
+      ...(input.approval ? { approval: input.approval } : {}),
     },
     args.surface,
   )
@@ -289,7 +296,14 @@ export function scrubStoreIdentity(value: unknown): unknown {
 }
 
 /** Response headers a fetch fixture keeps: the ones apps read. The rest (request ids, CDN, CSP) go. */
-const KEPT_RESPONSE_HEADERS = new Set(["content-type", "retry-after", "link", "location"])
+const KEPT_RESPONSE_HEADERS = new Set([
+  "content-type",
+  "retry-after",
+  "link",
+  "location",
+  // GitLab's offset pagination (bundled-apps/gitlab/src/client.ts getList).
+  "x-next-page",
+])
 
 /** Drop a recorded `fetch` answer's response headers but the ones an app reads. */
 function trimFetchHeaders(fixture: EgressFixture): EgressFixture {
@@ -371,8 +385,11 @@ function scrubPhones(v: unknown, key = ""): unknown {
 
 /**
  * Replay `fixture` twice on `isolate` the way the harness does: the fixture is
- * usable when no run asks for a call it does not hold and both runs answer the
- * same. Returns the problem, or null.
+ * usable when no run asks for a call it does not hold, both runs answer the
+ * same, and the outcome matches its mark (harness.ts `outcomeProblem`): a run
+ * that ends in an error is written only as a marked negative case, so a
+ * recording of a failure is never counted as the entry working. Returns the
+ * problem, or null.
  */
 export async function verifyFixture(args: {
   isolate: ContractIsolate
@@ -395,6 +412,8 @@ export async function verifyFixture(args: {
       return `replay asked for unrecorded calls: ${[...new Set(replay.stats.missing)].join(", ")}`
     }
     if (outcome.overrun) return `replay overran its ${outcome.overrun} limit`
+    const problem = outcomeProblem(args.fixture, [{ outcome }])
+    if (problem) return problem
     answers.push(
       canonicalJson(
         outcome.ok ? { ok: true, result: outcome.result } : { ok: false, error: outcome.error },

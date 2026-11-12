@@ -379,6 +379,12 @@
   "app": {
     "name": "Liaison"
   },
+  "appPage": {
+    "open": "Open",
+    "opened": "Opened in a new window.",
+    "popupBlocked": "Your browser blocked the window. Allow pop-ups for Liaison and try again.",
+    "failed": "This link has expired or was already used. Ask again for a new one."
+  },
   "appLockFailed": "That did not unlock. Try again.",
   "appLockTitle": "Liaison is locked",
   "appLockUnlock": "Unlock",
@@ -6516,6 +6522,7 @@
     "filtersReset": "Reset filters",
     "chartRightAxis": "{{name}} (right axis)",
     "chartInProgress": "Today, still counting",
+    "chartTotal": "Total: {{value}}",
     "chartVs": "vs {{range}}",
     "layerFailed": "{{layer}}: {{reason}}",
     "filterEditorAria": "Edit filters",

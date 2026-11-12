@@ -24,6 +24,7 @@ import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-ac
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { TICKETS_ADMIN_READ_OPS } from "~/modules/apps/sandbox/bridge/tickets"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { resolveContact as resolveContactService } from "~/modules/contacts/service"
 import { ToolProjector } from "~/modules/mcp-client/projector"
@@ -48,6 +49,11 @@ const SELF_GUARDING = new Set([
   "executeTool",
   // Forwards the run's mark into the contract op's executeTool (bridge/contracts.ts:298).
   "contracts_call",
+  // Serves the tickets app's reads and writes: on a read-only run it runs only the ops in
+  // TICKETS_ADMIN_READ_OPS and refuses every other one (bridge/tickets.ts).
+  "tickets_admin",
+  // Lists the synced sources on a read-only run; refuses archive and run now (bridge/knowledge-curation.ts).
+  "knowledge_syncedSources",
   // Looks a contact up and returns it unchanged on a read-only run: no link, no enrichment,
   // no create, and `clear` refuses (bridge/db.ts resolveContact, contacts/service.ts lookupOnly).
   "resolveContact",
@@ -247,6 +253,56 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
         msg = String((err as Error).message)
       }
       expect(`${name}: ${msg}`.toLowerCase()).toContain("read_only_run")
+    }
+  })
+
+  it("tickets_admin on a read-only run refuses its write ops and lets its read ops through", async () => {
+    const ro = createRpcBridge(
+      "tickets",
+      "00000000-0000-4000-8000-0000000000aa",
+      "00000000-0000-4000-8000-0000000000bb",
+      POISON as any,
+      { name: "tickets", schema: {}, events: { emits: [] } },
+      ["tickets:tickets:read"],
+      "user",
+      undefined,
+      { readOnlyRunOverride: true, callChain: [] } as any,
+    )
+    for (const op of ["categoriesCreate", "addNote", "apiKeysCreate", "ticketsMove"]) {
+      const msg = await ro.tickets_admin(op, "{}").then(
+        () => "",
+        (err: Error) => String(err.message),
+      )
+      expect(`${op}: ${msg}`.toLowerCase()).toContain("read_only_run")
+    }
+    for (const op of TICKETS_ADMIN_READ_OPS) {
+      // A read op reaches the app (the poison database fails it there), never the refusal.
+      const msg = await ro.tickets_admin(op, "{}").then(
+        () => "",
+        (err: Error) => String(err.message),
+      )
+      expect(`${op}: ${msg}`.toLowerCase()).not.toContain("read_only_run")
+    }
+  })
+
+  it("knowledge_syncedSources on a read-only run refuses archive and run now", async () => {
+    const ro = createRpcBridge(
+      "knowledge",
+      "00000000-0000-4000-8000-0000000000aa",
+      "00000000-0000-4000-8000-0000000000bb",
+      POISON as any,
+      { name: "knowledge", schema: {}, events: { emits: [] } },
+      ["knowledge:documents:read"],
+      "user",
+      undefined,
+      { readOnlyRunOverride: true, callChain: [] } as any,
+    )
+    for (const op of ["archive", "run_now"]) {
+      const msg = await ro.knowledge_syncedSources(op, '{"id":"x"}').then(
+        () => "",
+        (err: Error) => String(err.message),
+      )
+      expect(`${op}: ${msg}`.toLowerCase()).toContain("read_only_run")
     }
   })
 

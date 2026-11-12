@@ -35,6 +35,13 @@ export const pageFixtureManifest = {
       readOnly: true,
       params: { type: "object", properties: { tag: { type: "string" } } },
     },
+    "picker.link": {
+      description: "A link to the picker page for one account",
+      requiredScopes: ["pagefx:items:read"],
+      handler: "pickerLink",
+      readOnly: true,
+      params: { type: "object", properties: { account: { type: "string" } } },
+    },
   },
   pages: {
     hello: {
@@ -43,6 +50,12 @@ export const pageFixtureManifest = {
       scope: "pagefx:items:read",
       routes: ["greet"],
       hosts: { script: ["apis.example.com"], frame: ["docs.example.com"] },
+    },
+    picker: {
+      source: "pages/picker.ts",
+      title: "Picker page",
+      scope: "pagefx:items:read",
+      connectionToken: { connection: "primary" },
     },
   },
   pageRoutes: {

@@ -358,12 +358,12 @@ describe("S8: a secret typed into the card is stored and found nowhere else", ()
       globalThis.fetch = realFetch
     }
     const gitlab = await agentAsks("connection_credentials", {
-      app: "gitlab",
-      connection: "gitlab",
+      app: "test",
+      connection: "service",
     })
     responses.push(
       await personSaves(gitlab, () =>
-        call("/api/connections/gitlab/gitlab/credentials", "POST", {
+        call("/api/connections/test/service/credentials", "POST", {
           mode: "org",
           credentials: { token: S.gitlab, group: "acme" },
         }),

@@ -1,0 +1,24 @@
+{
+  "entry": "tool:gitlab_list_tree",
+  "params": {
+    "project": "23764176",
+    "path": "doc",
+    "ref": "master"
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["gitlab"],
+      "reply": "{\"values\":{\"group\":\"gitlab-examples\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/projects/23764176/repository/tree?ref=master&recursive=false&per_page=100&pagination=keyset&path=doc",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"id\\\":\\\"8383cfe3dc77a63d501522464d445fb5827ae5ad\\\",\\\"name\\\":\\\"img\\\",\\\"type\\\":\\\"tree\\\",\\\"path\\\":\\\"doc/img\\\",\\\"mode\\\":\\\"040000\\\"},{\\\"id\\\":\\\"519ce347c23efd09e0fd03ad10b42f3751ff65c8\\\",\\\"name\\\":\\\"index.md\\\",\\\"type\\\":\\\"blob\\\",\\\"path\\\":\\\"doc/index.md\\\",\\\"mode\\\":\\\"100644\\\"}]\"}"
+    }
+  ]
+}

@@ -7,7 +7,6 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { gitlabAppManifest } from "~/apps/gitlab/manifest-descriptor"
 import { googleDriveAppManifest } from "~/apps/google-drive/manifest-descriptor"
 import type { RlsClient } from "~/db"
 import type { BridgeExtensionFactory } from "~/modules/apps/sandbox/bridge-extensions"
@@ -30,7 +29,6 @@ const FIXTURES_DIR = join(import.meta.dir, "fixtures")
 /** In-tree apps that run sandboxed, with their manifest descriptors. */
 const IN_TREE: Record<string, { _bundlePath: string; _bridgeExtension?: BridgeExtensionFactory }> =
   {
-    gitlab: gitlabAppManifest,
     "google-drive": googleDriveAppManifest,
   }
 

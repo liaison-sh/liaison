@@ -17,10 +17,16 @@
  * already holds values written another way (an import, a seed): the allocator
  * steps past every value a row matching `where` already holds.
  *
+ * With `sequences` (instead of `sequence`), the batch allocates several named
+ * sequences the same way, in name order (two batches lock them in the same
+ * order): two numbered documents that must land together (a credit note and
+ * the invoice that replaces the one it reverses) commit in one call.
+ *
  * Ops reference the batch's own results through placeholder values, anywhere
  * in an op's `data` (nested objects and arrays included) or as an op's `id`:
  *   `{ "$seq": "value" }`      the allocated integer
  *   `{ "$seq": "formatted" }`  `format.prefix` + the value zero-padded to `format.pad`
+ *   `{ "$seq": "<name>.value" }`, `{ "$seq": "<name>.formatted" }`  the same, of `sequences.<name>`
  *   `{ "$ref": "<as>" }`       the id of the row an earlier insert named `as`
  *
  * An `update` may also `append` items to json array fields and `merge` keys into
@@ -66,11 +72,21 @@ export interface BatchSequence {
 
 export interface BatchSpec {
   sequence?: BatchSequence
+  /** Several sequences, by name (see the header). Not together with `sequence`. */
+  sequences?: Record<string, BatchSequence>
   ops: BatchOp[]
 }
 
+/** What a batch allocated for one sequence. */
+export interface AllocatedValue {
+  value: number
+  formatted?: string
+}
+
 export interface BatchResult {
-  sequence?: { value: number; formatted?: string }
+  sequence?: AllocatedValue
+  /** The values `sequences` allocated, by name. */
+  sequences?: Record<string, AllocatedValue>
   /** The inserted rows an op named with `as`, by that name. */
   rows: Record<string, Row>
 }
@@ -87,6 +103,35 @@ function isObject(v: unknown): v is Row {
   return v !== null && typeof v === "object" && !Array.isArray(v)
 }
 
+const SEQUENCE_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+
+function checkSequence(seq: unknown, where: string): void {
+  if (!isObject(seq) || typeof seq.key !== "string" || seq.key.length === 0) {
+    throw new BatchSpecError(`${where}.key is required`)
+  }
+  if (seq.format !== undefined) {
+    const f = seq.format
+    if (
+      !isObject(f) ||
+      typeof f.prefix !== "string" ||
+      (f.pad !== undefined && (typeof f.pad !== "number" || f.pad < 0 || f.pad > 20))
+    ) {
+      throw new BatchSpecError(`${where}.format is { prefix: string, pad?: 0..20 }`)
+    }
+  }
+  if (seq.unique !== undefined) {
+    const u = seq.unique
+    if (
+      !isObject(u) ||
+      typeof u.entity !== "string" ||
+      typeof u.field !== "string" ||
+      (u.where !== undefined && !isObject(u.where))
+    ) {
+      throw new BatchSpecError(`${where}.unique is { entity, field, where? }`)
+    }
+  }
+}
+
 function parseSpec(raw: unknown): BatchSpec {
   const spec = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw
   if (!isObject(spec) || !Array.isArray(spec.ops)) {
@@ -96,31 +141,20 @@ function parseSpec(raw: unknown): BatchSpec {
   if (spec.ops.length > MAX_BATCH_OPS) {
     throw new BatchSpecError(`at most ${MAX_BATCH_OPS} ops per batch`)
   }
-  const seq = spec.sequence
-  if (seq !== undefined) {
-    if (!isObject(seq) || typeof seq.key !== "string" || seq.key.length === 0) {
-      throw new BatchSpecError("sequence.key is required")
+  if (spec.sequence !== undefined) checkSequence(spec.sequence, "sequence")
+  if (spec.sequences !== undefined) {
+    if (spec.sequence !== undefined) {
+      throw new BatchSpecError("sequence and sequences do not go together")
     }
-    if (seq.format !== undefined) {
-      const f = seq.format
-      if (
-        !isObject(f) ||
-        typeof f.prefix !== "string" ||
-        (f.pad !== undefined && (typeof f.pad !== "number" || f.pad < 0 || f.pad > 20))
-      ) {
-        throw new BatchSpecError("sequence.format is { prefix: string, pad?: 0..20 }")
-      }
+    const named = spec.sequences
+    if (!isObject(named) || Object.keys(named).length === 0) {
+      throw new BatchSpecError("sequences is { <name>: { key, format?, unique? } }")
     }
-    if (seq.unique !== undefined) {
-      const u = seq.unique
-      if (
-        !isObject(u) ||
-        typeof u.entity !== "string" ||
-        typeof u.field !== "string" ||
-        (u.where !== undefined && !isObject(u.where))
-      ) {
-        throw new BatchSpecError("sequence.unique is { entity, field, where? }")
+    for (const [name, seq] of Object.entries(named)) {
+      if (!SEQUENCE_NAME.test(name)) {
+        throw new BatchSpecError(`sequences: "${name}" is not a name (letters, digits, _ and -)`)
       }
+      checkSequence(seq, `sequences.${name}`)
     }
   }
   return spec as unknown as BatchSpec
@@ -140,20 +174,30 @@ export function createBatchMethods(
           ctx.refuseWriteOnReadOnlyRun(ctx.writeTarget(entity), "ctx.db.batch")
         }
       }
-      if (spec.sequence) ctx.requireCapability("sequences.allocate")
+      if (spec.sequence || spec.sequences) ctx.requireCapability("sequences.allocate")
       const result = await withReleasedSavepoint(ctx.txDb, async (sp) => {
         const tx = sp as unknown as RlsClient
         const db = dbMethodsOn(tx)
         const out: BatchResult = { rows: {} }
-        let seqValue: number | null = null
-        let seqFormatted: string | undefined
+        const allocateOne = async (seq: BatchSequence): Promise<AllocatedValue> => {
+          const value = await allocate(ctx, tx, db, seq)
+          const f = seq.format
+          return f
+            ? { value, formatted: f.prefix + String(value).padStart(f.pad ?? 0, "0") }
+            : { value }
+        }
+        // `""` is the unnamed `sequence`; named ones are allocated in name order.
+        const allocated = new Map<string, AllocatedValue>()
         if (spec.sequence) {
-          seqValue = await allocate(ctx, tx, db, spec.sequence)
-          const f = spec.sequence.format
-          if (f) seqFormatted = f.prefix + String(seqValue).padStart(f.pad ?? 0, "0")
-          out.sequence = {
-            value: seqValue,
-            ...(seqFormatted !== undefined ? { formatted: seqFormatted } : {}),
+          out.sequence = await allocateOne(spec.sequence)
+          allocated.set("", out.sequence)
+        }
+        if (spec.sequences) {
+          out.sequences = {}
+          for (const name of Object.keys(spec.sequences).sort()) {
+            const value = await allocateOne(spec.sequences[name] as BatchSequence)
+            out.sequences[name] = value
+            allocated.set(name, value)
           }
         }
         const resolve = (v: unknown, where: string): unknown => {
@@ -161,15 +205,28 @@ export function createBatchMethods(
           if (!isObject(v)) return v
           const keys = Object.keys(v)
           if (keys.length === 1 && keys[0] === "$seq") {
-            if (seqValue === null) throw new BatchSpecError(`${where}: $seq without a sequence`)
-            if (v.$seq === "value") return seqValue
-            if (v.$seq === "formatted") {
-              if (seqFormatted === undefined) {
-                throw new BatchSpecError(`${where}: $seq "formatted" needs sequence.format`)
-              }
-              return seqFormatted
+            const ref = typeof v.$seq === "string" ? v.$seq : ""
+            const dot = ref.lastIndexOf(".")
+            const name = dot === -1 ? "" : ref.slice(0, dot)
+            const part = dot === -1 ? ref : ref.slice(dot + 1)
+            const value = allocated.get(name)
+            if (!value) {
+              throw new BatchSpecError(
+                name
+                  ? `${where}: $seq names no sequence "${name}"`
+                  : `${where}: $seq without a sequence`,
+              )
             }
-            throw new BatchSpecError(`${where}: $seq is "value" or "formatted"`)
+            if (part === "value") return value.value
+            if (part === "formatted") {
+              if (value.formatted === undefined) {
+                throw new BatchSpecError(`${where}: $seq "${ref}" needs the sequence's format`)
+              }
+              return value.formatted
+            }
+            throw new BatchSpecError(
+              `${where}: $seq is "value" or "formatted", optionally "<name>." first`,
+            )
           }
           if (keys.length === 1 && keys[0] === "$ref") {
             const row = typeof v.$ref === "string" ? out.rows[v.$ref] : undefined

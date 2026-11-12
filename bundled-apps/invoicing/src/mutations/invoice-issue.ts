@@ -6,6 +6,7 @@ import {
   type Counterparty,
   type DraftLine,
   type DraftLineInput,
+  type IssueInput,
   counterpartyCompletenessError,
   taxCountryOf,
 } from "../issue"
@@ -286,6 +287,7 @@ export interface InvoiceCreateAndIssueInput {
 async function preflightInvoiceCreateAndIssueParams(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
+  opts: InvoiceCreateAndIssueOptions = {},
 ): Promise<
   | {
       ok: true
@@ -339,7 +341,9 @@ async function preflightInvoiceCreateAndIssueParams(
   // the reported "cannot invoice a modified order" symptom.
   if (input.shopify_order_id) {
     try {
-      await assertNoLiveInvoiceForOrder(ctx.db, input.shopify_order_id)
+      await assertNoLiveInvoiceForOrder(ctx.db, input.shopify_order_id, {
+        creditedInSameCommit: opts.replacesInvoiceId,
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return {
@@ -402,15 +406,53 @@ export async function invoiceCreateAndIssuePreflight(
   return toPreflightResult(await preflightInvoiceCreateAndIssueParams(ctx, rawInput))
 }
 
+type InvoiceCreateResult = MutationResult<{
+  document_id: string
+  number: string
+  einvoicing_warning?: EinvoicingWarning
+}>
+
+export interface InvoiceCreateAndIssueOptions {
+  /** The order's live invoice that a credit note issued IN THE SAME COMMIT fully reverses
+   *  (order_reissue_apply): it does not count as the order's live invoice. */
+  replacesInvoiceId?: string
+}
+
 export async function invoiceCreateAndIssue(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
-): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
+): Promise<InvoiceCreateResult> {
+  const prepared = await prepareInvoiceCreateAndIssue(ctx, rawInput)
+  if (!prepared.ok) return prepared.result
+  const issued = await issueWithFxRate(ctx, prepared.issueInput)
+  if (!issued.ok) return issued.error
+  const result = issued.result
+  return {
+    status: "completed",
+    document_id: result.document_id,
+    number: result.number,
+    ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
+  }
+}
+
+/**
+ * Everything `invoice_create_and_issue` does before issuing (the checks, the approval gate, the
+ * issuance input), with nothing written: the caller issues it, alone or in one commit with
+ * another document (order_reissue_apply).
+ */
+export async function prepareInvoiceCreateAndIssue(
+  ctx: MutationsCtx,
+  rawInput: InvoiceCreateAndIssueInput,
+  opts: InvoiceCreateAndIssueOptions = {},
+): Promise<
+  | { ok: true; issueInput: IssueInput }
+  | { ok: false; result: Exclude<InvoiceCreateResult, { status: "completed" }> }
+> {
   // The duplicate-invoice and issuer-resolution guards below ALSO run at stage time (the
   // preflight export above shares this exact code), but they stay here: an order can acquire a
   // live invoice between staging and approval, so the executed call re-checks rather than trusts.
-  const pre = await preflightInvoiceCreateAndIssueParams(ctx, rawInput)
-  if (!pre.ok) return pre.error
+  const pre = await preflightInvoiceCreateAndIssueParams(ctx, rawInput, opts)
+  if (!pre.ok) return { ok: false, result: pre.error }
   const { input, notes, issuer, buyer } = pre
 
   const createClassifyInput: ClassifyInput = {
@@ -466,13 +508,13 @@ export async function invoiceCreateAndIssue(
     })
     // Granted inline (a person's own call holding the deciding scope): issue now.
     if (!approval.auto_approved) {
-      return { status: "pending_approval", approval_id: approval.approval_id }
+      return { ok: false, result: { status: "pending_approval", approval_id: approval.approval_id } }
     }
   }
 
   const when = await issueDateParts(ctx, issuer)
-  if (!when.ok) return when.error
-  const issueInput = {
+  if (!when.ok) return { ok: false, result: when.error }
+  const issueInput: IssueInput = {
     type: "invoice" as const,
     issuer,
     counterparty: input.counterparty,
@@ -495,13 +537,5 @@ export async function invoiceCreateAndIssue(
       lines: input.items,
     },
   }
-  const issued = await issueWithFxRate(ctx, issueInput)
-  if (!issued.ok) return issued.error
-  const result = issued.result
-  return {
-    status: "completed",
-    document_id: result.document_id,
-    number: result.number,
-    ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
-  }
+  return { ok: true, issueInput }
 }

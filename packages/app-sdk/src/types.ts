@@ -43,6 +43,9 @@ export interface DbClient {
    * the value padded to `format.pad`), `{ $ref: "<as>" }` (the id of an earlier insert). An
    * `update` may `append` to json arrays and `merge` into json objects on the row as it is when
    * the batch commits, so an entry is never lost to a concurrent writer. At most 500 ops.
+   * `sequences` (instead of `sequence`) allocates several named sequences in one commit (two
+   * numbered documents that must land together), referenced as `{ $seq: "<name>.value" }` /
+   * `{ $seq: "<name>.formatted" }`, and answered in the result's `sequences`.
    */
   batch(spec: DbBatchSpec): Promise<DbBatchResult>
 }
@@ -61,17 +64,23 @@ export type DbBatchOp =
   | { delete: string; id: string | { $ref: string } }
   | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 
+export interface DbBatchSequence {
+  key: string
+  format?: { prefix: string; pad?: number }
+  unique?: { entity: string; field: string; where?: Record<string, unknown> }
+}
+
 export interface DbBatchSpec {
-  sequence?: {
-    key: string
-    format?: { prefix: string; pad?: number }
-    unique?: { entity: string; field: string; where?: Record<string, unknown> }
-  }
+  sequence?: DbBatchSequence
+  /** Several sequences by name (letters, digits, `_`, `-`); not together with `sequence`. */
+  sequences?: Record<string, DbBatchSequence>
   ops: DbBatchOp[]
 }
 
 export interface DbBatchResult {
   sequence?: { value: number; formatted?: string }
+  /** What `sequences` allocated, by name. */
+  sequences?: Record<string, { value: number; formatted?: string }>
   /** The rows inserted by ops that named themselves with `as`. */
   rows: Record<string, Record<string, unknown> & { id: string }>
 }
@@ -521,6 +530,12 @@ export interface FetchAuth {
   connection: string
   /** Which account, as for `getToken(identifier)`. */
   identifier?: string
+  /**
+   * oauth2: exactly this account, an id `ctx.accounts.list` gave (the organization's or
+   * the acting person's own). Use it when one identifier has both an organization and a
+   * personal account.
+   */
+  account?: string
   scheme: `header:${string}` | "bearer" | "basic"
   fields?: string[]
   exchange?: {

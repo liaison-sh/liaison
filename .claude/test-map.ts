@@ -172,6 +172,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "bundled-apps/invoicing/**", suites: ["api-guards", "bundled-invoicing", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/monitoring/**", suites: ["api-guards", "bundled-monitoring", "bundled-monitoring-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/database/**", suites: ["api-guards", "bundled-database", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  { glob: "bundled-apps/gitlab/**", suites: ["api-guards", "bundled-gitlab", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   // Its manifest is also the test template's api-connector schema and the app the
   // platform-held API connection tests register (apps/api/src/db/apply-app-schemas.ts).
   { glob: "bundled-apps/api-connector/**", suites: ["api-guards", "bundled-api-connector", "bundled-freeze", "e2e-parallel", "demo-seed", "unit", "integration"] },

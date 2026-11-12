@@ -77,7 +77,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/sharing/**", pages: ["apps/knowledge"] },
   { glob: "apps/api/src/apps/google-drive/**", pages: ["apps/google-drive"] },
   { glob: "apps/web/src/modules/drive-picker/**", pages: ["apps/google-drive"] },
-  { glob: "apps/api/src/apps/gitlab/**", pages: ["apps/gitlab"] },
+  { glob: "bundled-apps/gitlab/**", pages: ["apps/gitlab"] },
   { glob: "apps/api/src/apps/contacts/**", pages: ["apps/contacts", "sales/contacts"] },
   { glob: "apps/api/src/modules/contacts/**", pages: ["apps/contacts", "sales/contacts", "sales/duplicates"] },
   { glob: "apps/api/src/modules/product-attributes/**", pages: ["agents/tools"] },
@@ -138,6 +138,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/export/**", pages: ["admin/backups"] },
   { glob: "apps/api/src/modules/imports/**", pages: ["admin/settings", "app-development"] },
   { glob: "apps/web/src/modules/imports/**", pages: ["admin/settings", "agents/how-agents-work"] },
+  { glob: "apps/web/src/modules/app-pages/**", pages: ["app-development"] },
   { glob: "apps/api/src/modules/erasure/**", pages: ["admin/backups"] },
   { glob: "apps/api/src/modules/mailbox-keys/**", pages: ["runbooks/key-rotation"] },
 
@@ -209,6 +210,10 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   {
     glob: "apps/api/src/modules/setup-guides/**",
     reason: "former path of modules/connection-guides (renamed); the new path is mapped",
+  },
+  {
+    glob: "apps/api/src/apps/gitlab/**",
+    reason: "former path of the gitlab app (moved to bundled-apps/gitlab, which is mapped)",
   },
   {
     glob: "apps/api/src/apps/database/**",

@@ -39,7 +39,9 @@ describe("social manifest (B1)", () => {
     // declares an outcome reconciler.
     // 0.6.64: a reply the platform refuses as gone or blocked closes its approval.
     // 0.6.65: one deduplicated discovery run after a connect; job timeouts declared.
-    expect(manifest.version).toBe("0.6.65")
+    // 0.6.66: watch_object commits the watch and its backfilled finding links in one batch, with no
+    // transaction held across the run.
+    expect(manifest.version).toBe("0.6.66")
     expect(manifest.packageFormat).toBe(1)
   })
 

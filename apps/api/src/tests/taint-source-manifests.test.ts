@@ -18,7 +18,7 @@ const TAINT_SOURCES: Array<[string, string[]]> = [
   [join(API_APPS, "tickets", "app.manifest.json"), ["search", "get"]],
   [join(API_APPS, "calendar", "app.manifest.json"), ["list_events", "search_events"]],
   [
-    join(API_APPS, "gitlab", "app.manifest.json"),
+    join(BUNDLED, "gitlab", "app.manifest.json"),
     [
       "gitlab_list_issues",
       "gitlab_list_merge_requests",

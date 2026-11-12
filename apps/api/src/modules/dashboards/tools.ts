@@ -405,15 +405,25 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
   const datasets = ((spec as { datasets?: unknown })?.datasets ?? {}) as Record<string, unknown>
   const lines = blocks.slice(0, max).map((b) => {
     if (b.type === "text") return `text note "${String(b.title ?? b.id ?? "")}"`
-    const shared = typeof b.dataset === "string" ? datasets[b.dataset] : undefined
-    const source = (b.source ?? shared ?? {}) as Record<string, unknown>
-    const from =
-      source.kind === "store"
-        ? `store ${String(source.app)}/${String(source.collection)}`
-        : String(source.tool ?? "(no source)")
-    const dates = tokenDates(source, timeZone, range)
-    const via = typeof b.dataset === "string" ? ` (shared dataset '${b.dataset}')` : ""
-    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}${via}${dates ? `, dates ${dates} (today, rolling)` : ""}`
+    const fromOf = (x: Record<string, unknown>) => {
+      const shared = typeof x.dataset === "string" ? datasets[x.dataset] : undefined
+      const source = (x.source ?? shared ?? {}) as Record<string, unknown>
+      const from =
+        source.kind === "store"
+          ? `store ${String(source.app)}/${String(source.collection)}`
+          : String(source.tool ?? "(no source)")
+      const dates = tokenDates(source, timeZone, range)
+      const via = typeof x.dataset === "string" ? ` (shared dataset '${x.dataset}')` : ""
+      return `${from}${via}${dates ? `, dates ${dates} (today, rolling)` : ""}`
+    }
+    if (Array.isArray(b.layers)) {
+      const parts = (b.layers as Record<string, unknown>[]).map(
+        (l) =>
+          `${String(l.label ?? l.id)} (${l.as === "line" ? "line" : "bars"}) from ${fromOf(l)}`,
+      )
+      return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" blending ${parts.join("; ")}`
+    }
+    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${fromOf(b)}`
   })
   if (blocks.length > max) lines.push(`and ${blocks.length - max} more blocks`)
   if (blocks.length === 0) lines.push("No blocks.")
@@ -735,9 +745,17 @@ export function registerDashboardTools(orgId: string): void {
     // taint source: the preview marks the thread the same way. A tool source runs its tool
     // through the core with this thread, so that tool's own taintSource decides.
     taintSource: true,
-    taintSourceWhen: async (params: unknown) =>
-      (params as { block?: { source?: { kind?: unknown } } } | null)?.block?.source?.kind !==
-      "tool",
+    taintSourceWhen: async (params: unknown) => {
+      const block = (
+        params as {
+          block?: { source?: { kind?: unknown }; layers?: { source?: { kind?: unknown } }[] }
+        } | null
+      )?.block
+      // A layered block taints unless every layer runs a tool of its own.
+      if (Array.isArray(block?.layers))
+        return !block.layers.every((l) => l?.source?.kind === "tool")
+      return block?.source?.kind !== "tool"
+    },
     deferLoading: true,
     description:
       "Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. Preview every block until its data is right, then save with kernel__dashboards_create or kernel__dashboards_update. A refusal names the reason and eligible alternatives.",
@@ -747,7 +765,7 @@ export function registerDashboardTools(orgId: string): void {
       block: z
         .record(z.string(), z.unknown())
         .describe(
-          "One block: {id, type, title, source or dataset, map}, as in the spec (a text block needs no preview).",
+          "One block: {id, type, title, source or dataset, map}, as in the spec (a text block needs no preview); a blended chart is a combo with layers [{id, label, as: bar|line, axis, source or dataset, map}] instead of a source. The result carries headline figures, inProgressLabel (today's unfinished bucket) and, for layers, each layer's series or error.",
         ),
       timeRange: z
         .record(z.string(), z.unknown())
@@ -825,6 +843,7 @@ export function registerDashboardTools(orgId: string): void {
             src.kind === "tool"
               ? { ...src, params: resolveFilterTokens(src.params, values, spec) }
               : { ...src, query: resolveFilterTokens(src.query, values, spec) },
+          resolveWhere: (w) => resolveWhere(w, values),
           ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         },

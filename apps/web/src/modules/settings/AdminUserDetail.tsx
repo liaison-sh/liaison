@@ -15,6 +15,7 @@ import {
   DimensionPanels,
 } from "./DimensionPanels"
 import { PermissionGrid, type ScopeCatalogEntry } from "./PermissionGrid"
+import { SidebarAppsEditor } from "./sidebar-settings/SidebarAppsEditor"
 
 interface Role {
   id: string
@@ -188,6 +189,50 @@ const AdminUserDetail: Component = () => {
       await api.post(`/admin/roles/users/${userId()}/dimensions`, { dimension, values })
     }
     await refetch()
+  }
+
+  // The member's sidebar (0293): a starting point the admin sets, which the
+  // member can change back in their own Settings. Each switch saves at once.
+  const [sidebarHidden, { mutate: setSidebarHidden }] = createResource(
+    () => userId(),
+    async (id) => {
+      if (!id) return [] as string[]
+      const res = (await api.get(`/admin/users/${id}/hidden-apps`)) as
+        | { hiddenSidebarApps?: string[] }
+        | { data?: { hiddenSidebarApps?: string[] } }
+      const body = "data" in res && res.data ? res.data : (res as { hiddenSidebarApps?: string[] })
+      return body.hiddenSidebarApps ?? []
+    },
+  )
+
+  // Saves go out one at a time, each with the list as it is when it leaves, so
+  // quick toggles store the last one. A failure falls back to what the server
+  // last stored, unless a newer toggle is already queued.
+  let sidebarSaves: Promise<void> = Promise.resolve()
+  let sidebarPending = 0
+  let sidebarStored: string[] | null = null
+  let sidebarStoredFor: string | null = null
+  function handleSidebarChange(next: string[]): Promise<void> {
+    const target = userId()
+    if (sidebarStoredFor !== target) {
+      sidebarStored = sidebarHidden() ?? []
+      sidebarStoredFor = target
+    }
+    setSidebarHidden(next)
+    sidebarPending += 1
+    sidebarSaves = sidebarSaves.then(async () => {
+      const list = target === userId() ? (sidebarHidden() ?? []) : next
+      try {
+        await api.put(`/admin/users/${target}/hidden-apps`, { hiddenSidebarApps: list })
+        if (sidebarStoredFor === target) sidebarStored = list
+      } catch {
+        if (sidebarPending === 1 && target === userId()) setSidebarHidden(sidebarStored ?? [])
+        addToast({ message: i18n.t("kernel.sidebarSettings.saveFailed"), type: "error" })
+      } finally {
+        sidebarPending -= 1
+      }
+    })
+    return sidebarSaves
   }
 
   function grantState(): Record<string, DimensionGrantState> {
@@ -405,6 +450,32 @@ const AdminUserDetail: Component = () => {
               onSetValues={handleSetDimensionValues}
               testIdPrefix="admin-user"
             />
+          </section>
+
+          {/* ── Sidebar ─────────────────────────────────────────── */}
+          <section data-testid="admin-user-section-sidebar" class="flex flex-col gap-3">
+            <header class="flex items-baseline justify-between gap-3">
+              <h2 class="font-display text-[15px] font-medium tracking-tight text-text">
+                {i18n.t("kernel.sidebarSettings.title")}
+              </h2>
+            </header>
+            <p class="text-[11px] text-text-tertiary">
+              {i18n.t("kernel.sidebarSettings.adminIntro", {
+                name: user().name.split(" ")[0] || i18n.t("kernel.settingsUi.thisUser"),
+              })}
+            </p>
+            <Show
+              when={sidebarHidden()}
+              fallback={<p class="text-sm text-text-secondary">{i18n.t("kernel.loading")}</p>}
+            >
+              {(hidden) => (
+                <SidebarAppsEditor
+                  hidden={hidden()}
+                  onChange={(next) => void handleSidebarChange(next)}
+                  testIdPrefix="admin-user-sidebar"
+                />
+              )}
+            </Show>
           </section>
         </div>
       )}

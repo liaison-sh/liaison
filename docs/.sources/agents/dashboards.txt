@@ -216,8 +216,8 @@ Metric read from a single record has no rows button -> apps/web/src/modules/dash
 Share a dashboard: Share button on the toolbar -> apps/web/src/modules/dashboards/DashboardView.tsx:741
 General access options Restricted / view / edit -> apps/web/src/modules/dashboards/DashboardShareDialog.tsx:30
 Share labels -> packages/shared/src/i18n/locales/en/kernel.json:6441
-Restricted dashboard invisible by every path, no admin bypass (row policies) -> apps/api/src/db/migrations/0293_dashboard_sharing.sql:196
-Who manages sharing: editors with kernel:dashboards:share -> apps/api/src/db/migrations/0293_dashboard_sharing.sql:87
+Restricted dashboard invisible by every path, no admin bypass (row policies) -> apps/api/src/db/migrations/0294_dashboard_sharing.sql:196
+Who manages sharing: editors with kernel:dashboards:share -> apps/api/src/db/migrations/0294_dashboard_sharing.sql:87
 Edit / delete / share rules in words -> apps/api/src/modules/dashboards/service.ts:238
 Admin restricting keeps it only by adding themselves -> apps/api/src/modules/dashboards/sharing.ts:170
 Personal = restricted shared with nobody; visibility sets general access only -> apps/api/src/modules/dashboards/service.ts:1010
@@ -230,6 +230,18 @@ Live updates reach only the people it is shared with -> apps/api/src/infra/webso
 Scheduled send leaves out people it is not shared with -> apps/api/src/modules/dashboards/export.ts:426
 People icon when shared with anyone -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:146
 In a shared conversation, dashboard reads use the conversation's narrower access -> apps/api/src/modules/dashboards/tools.ts:126 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45
+Date charts that follow the period get every bucket -> apps/api/src/modules/dashboards/transform.ts:627
+At most 400 buckets filled -> apps/api/src/modules/dashboards/transform.ts:1044
+Quiet day is 0, average/lowest/highest an empty gap -> apps/api/src/modules/dashboards/transform.ts:724
+Compared period laid out day for day over its own window -> apps/api/src/modules/dashboards/service.ts:1639
+Bucket holding today marked in progress -> apps/api/src/modules/dashboards/transform.ts:704
+Headline: period figure over every row, or one per series -> apps/api/src/modules/dashboards/transform.ts:735
+Smooth line -> apps/api/src/modules/dashboards/transform.ts:990
+Blended chart: 2 or 3 sources in a combo -> apps/api/src/modules/dashboards/spec.ts:780
+Blended sources join on the same date bucket only -> apps/api/src/modules/dashboards/spec.ts:641
+Blended figures from the sources' totals (units per session) -> apps/api/src/modules/dashboards/spec.ts:348
+One source failing shows its reason, the others still draw -> apps/api/src/modules/dashboards/transform.ts:1184
+Records behind a blended chart read one source at a time -> apps/api/src/modules/dashboards/service.ts:1752
 An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
 Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
 A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257

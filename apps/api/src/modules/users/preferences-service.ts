@@ -50,6 +50,8 @@ export interface PreferencesRow {
   favoriteEmoji: string[] | null
   /** The relayed assistant-mail switch (0115); null = never synced. */
   agentMailAccess: AgentMailAccessInput | null
+  /** Rail entry ids hidden from the sidebar (0293); empty = nothing hidden. */
+  hiddenSidebarApps: string[]
 }
 
 interface DbPrefsRow {
@@ -68,6 +70,7 @@ interface DbPrefsRow {
   home_card_layout: HomeCardLayoutInput | null
   favorite_emoji: unknown
   agent_mail_access: unknown
+  hidden_sidebar_apps: unknown
 }
 
 // A NULL language means the user never chose one. It used to default to "en"
@@ -92,6 +95,13 @@ function normalizeTime(value: string): string {
 // reads as "never customised" rather than reaching the picker.
 function readFavoriteEmoji(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null
+  return value.filter((e): e is string => typeof e === "string")
+}
+
+// The column is CHECKed to be an array; NULL (nothing hidden) or anything else
+// reads as an empty list, and a non-string entry is dropped.
+export function readHiddenSidebarApps(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
   return value.filter((e): e is string => typeof e === "string")
 }
 
@@ -125,6 +135,7 @@ function mapRow(row: DbPrefsRow): PreferencesRow {
     homeCardLayout: row.home_card_layout ?? null,
     favoriteEmoji: readFavoriteEmoji(row.favorite_emoji),
     agentMailAccess: readAgentMailAccess(row.agent_mail_access),
+    hiddenSidebarApps: readHiddenSidebarApps(row.hidden_sidebar_apps),
   }
 }
 
@@ -134,7 +145,7 @@ const RETURNED_COLUMNS =
   sql.raw(`user_id, digest_cadence, work_hours_start, work_hours_end, work_days,
   timezone, language, theme, magic_wand_instructions, dictation_auto_clean, last_daily_sent_at,
   home_card_layout,
-  favorite_emoji, agent_mail_access,
+  favorite_emoji, agent_mail_access, hidden_sidebar_apps,
   (SELECT o.default_locale FROM ${schemaRef("kernel")}.users u
      JOIN ${schemaRef("kernel")}.organizations o ON o.id = u.org_id
     WHERE u.id = user_preferences.user_id) AS org_default_locale`)
@@ -149,7 +160,10 @@ export function isValidIanaTimezone(tz: string): boolean {
 }
 
 export interface PreferencesDeps {
-  rlsTx: RlsClient
+  /** The caller's RLS transaction, or a privileged one for an admin acting on
+   *  a member (the admin routes check the member's org first). Only raw
+   *  `execute` is used. */
+  rlsTx: Pick<RlsClient, "execute">
 }
 
 export async function getOrCreatePreferences(
@@ -321,6 +335,42 @@ export async function updateFavoriteEmoji(
         RETURNING ${RETURNED_COLUMNS}`,
   )) as unknown as DbPrefsRow[]
   return mapRow(rows[0])
+}
+
+/**
+ * The rail entries hidden from this person's sidebar (0293). Same targeted
+ * pattern as updateFavoriteEmoji: the full-replace `updatePreferences` never
+ * names the column, so a Settings save cannot clear it. The list is validated
+ * by the caller (hiddenSidebarAppsSchema: 1..100 chars each, at most 100, no
+ * duplicates) and stored as given; unknown ids are kept (another device may
+ * run an app this one lacks). Used by the person's own route (under their RLS)
+ * and by the admin route (privileged, after the org check).
+ */
+export async function updateHiddenSidebarApps(
+  userId: string,
+  orgId: string,
+  hiddenSidebarApps: string[],
+  deps: PreferencesDeps,
+): Promise<PreferencesRow> {
+  await getOrCreatePreferences(userId, orgId, deps)
+  const rows = (await deps.rlsTx.execute<Record<string, unknown>>(
+    sql`UPDATE ${K}.user_preferences
+        SET hidden_sidebar_apps = ${JSON.stringify(hiddenSidebarApps)}::jsonb, updated_at = now()
+        WHERE user_id = ${userId}
+        RETURNING ${RETURNED_COLUMNS}`,
+  )) as unknown as DbPrefsRow[]
+  return mapRow(rows[0])
+}
+
+/** The hidden list alone, without creating a row: NULL or no row = nothing hidden. */
+export async function getHiddenSidebarApps(
+  userId: string,
+  deps: PreferencesDeps,
+): Promise<string[]> {
+  const rows = (await deps.rlsTx.execute<Record<string, unknown>>(
+    sql`SELECT hidden_sidebar_apps FROM ${K}.user_preferences WHERE user_id = ${userId} LIMIT 1`,
+  )) as unknown as Array<{ hidden_sidebar_apps: unknown }>
+  return readHiddenSidebarApps(rows[0]?.hidden_sidebar_apps)
 }
 
 /**

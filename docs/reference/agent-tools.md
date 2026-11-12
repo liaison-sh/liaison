@@ -189,6 +189,8 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `share_folder_on_my_computer` | Share a folder of the person's own computer with Liaison, so kernel__run_on_my_computer can work in it. | yes | `kernel:threads:write` |
 | `shopify_app_toml` | Post this server's shopify.app.toml with the Shopify CLI steps. |  | `kernel:threads:write` |
 | `shopify_setup` | The steps to create the store's Shopify app in the Shopify Dev Dashboard (browser, no terminal), with the exact URLs, scopes and API version for this server; when a client already exists, it says to connect. |  | `kernel:threads:read` |
+| `sidebar_apps_get` | Read which apps are hidden from a person's sidebar (the desktop rail and the phone Work list), as sidebar entry ids: kernel entries such as `sessions`, `dashboards`, `messages`, `search`, and installed apps by their app name (`monitoring`, `tickets`, `projects`). |  | `kernel:agent:memory` |
+| `sidebar_apps_set` | Hide apps from, or show them again in, a person's sidebar (the desktop rail and the phone Work list). |  | `kernel:agent:memory` |
 | `skill_read` | Load one skill's body by exact name. |  | `kernel:skills:read` |
 | `skill_search` | Search the catalog of available skills and return matches without their bodies; call kernel__skill_read to load one you want to use. |  | `kernel:skills:read` |
 | `spawn_agent` | Dispatch a fresh context sub-agent for one isolated unit of work and get back a single SubRunResult envelope, not its intermediate steps. |  | `kernel:agents:spawn` |

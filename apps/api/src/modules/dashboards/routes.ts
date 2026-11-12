@@ -185,6 +185,7 @@ const rowsQuery = z
   .object({
     category: z.string().max(200).optional(),
     series: z.string().max(200).optional(),
+    layer: z.string().max(40).optional(),
     row: intParam.optional(),
     offset: intParam.optional(),
     limit: intParam.optional(),
@@ -490,6 +491,7 @@ dashboardsRoutes
           ...(filters ? { filters } : {}),
           ...(q.category !== undefined ? { category: q.category } : {}),
           ...(q.series !== undefined ? { series: q.series } : {}),
+          ...(q.layer !== undefined ? { layer: q.layer } : {}),
           ...(q.row !== undefined ? { row: q.row } : {}),
           offset: 0,
           limit: DRILL_EXPORT_LIMIT,
@@ -566,6 +568,7 @@ dashboardsRoutes
           ...(filters ? { filters } : {}),
           ...(q.category !== undefined ? { category: q.category } : {}),
           ...(q.series !== undefined ? { series: q.series } : {}),
+          ...(q.layer !== undefined ? { layer: q.layer } : {}),
           ...(q.row !== undefined ? { row: q.row } : {}),
           ...(q.offset !== undefined ? { offset: q.offset } : {}),
           ...(q.limit !== undefined ? { limit: q.limit } : {}),

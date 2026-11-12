@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Who sees a dashboard: the generic sharing model (modules/sharing, migration 0293), exactly as
+// Who sees a dashboard: the generic sharing model (modules/sharing, migration 0294), exactly as
 // Knowledge documents and contacts use it. A dashboard has an owner, `orgAccess` (none | viewer |
 // editor: what every member of the org gets) and grants to people and roles, each viewer or
 // editor. A dashboard restricted to some people or roles is invisible to everyone else, org

@@ -395,6 +395,9 @@ describe("writesToTable annotations on kernel tools", () => {
       notifications_set: "kernel.user_preferences",
       notification_rules_set: "kernel.attention_subscriptions",
       thread_mute_set: "kernel.user_thread_state",
+      // The caller's (or, with kernel:users:admin, a member's) hidden sidebar
+      // apps: a display preference, never access.
+      sidebar_apps_set: "kernel.user_preferences",
       watch_state: "kernel.routine_state",
     })
   })
@@ -609,6 +612,8 @@ describe("writesToTable annotations on kernel tools", () => {
         "setup_state",
         // The Shopify Dev Dashboard steps from deployment facts and the manifest; writes nothing.
         "shopify_setup",
+        // Reads a person's hidden sidebar apps, writes nothing.
+        "sidebar_apps_get",
         "skill_read",
         "skill_search",
         "subagent_get",

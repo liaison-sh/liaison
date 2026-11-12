@@ -22,8 +22,12 @@ import { runImport } from "~/modules/imports/runner"
 import { shutdownTransformPool } from "~/modules/imports/transforms/pool"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { firstPartyAppTarball } from "~/tests/helpers/test-app-catalog"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 const FIXTURE = join(import.meta.dir, "__fixtures__", "invoice-csv")
 const tag = () => crypto.randomUUID().slice(0, 8)
@@ -47,6 +51,7 @@ function admin(): UserContext {
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   installRoot = mkdtempSync(join(tmpdir(), "invoice-csv-install-"))
   prevAppsDir = process.env.LIAISON_APPS_DIR
   process.env.LIAISON_APPS_DIR = installRoot
@@ -98,6 +103,7 @@ afterAll(async () => {
   else process.env.LIAISON_APPS_DIR = prevAppsDir
   rmSync(installRoot, { recursive: true, force: true })
   rmSync(zipDir, { recursive: true, force: true })
+  await installs?.restore()
   await releaseTestLock()
 }, 120_000)
 

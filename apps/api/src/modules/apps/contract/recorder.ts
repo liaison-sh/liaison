@@ -15,6 +15,7 @@
 // not hold. The repository is public: read what a recorder writes before you
 // commit it.
 
+import { createHash } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RunLimits } from "~/modules/apps/run-limits"
@@ -92,7 +93,9 @@ const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
  * one stand-in per address), then IPv4 addresses. Phone numbers are replaced
  * only inside JSON string values that look like phone fields (`phone` keys), so
  * ids and amounts are never touched. Strings keep their meaning for the app: a
- * stand-in email is still an email.
+ * stand-in email is still an email. Last, the store's identity (product titles,
+ * SKUs, vendors, handles, customer and company names, street addresses) becomes
+ * stable invented values: `scrubStoreIdentity`.
  */
 export function scrubFixture(fixture: EgressFixture, replacements: Replacement[]): EgressFixture {
   return scrubValue(trimFetchHeaders(fixture), replacements) as EgressFixture
@@ -126,7 +129,163 @@ export function scrubValue(value: unknown, replacements: Replacement[]): unknown
     return stand
   })
   text = text.replace(IPV4_RE, (m) => (m.startsWith("127.") ? m : "192.0.2.1"))
-  return scrubPhones(JSON.parse(text))
+  return scrubPhones(scrubStoreIdentity(JSON.parse(text)))
+}
+
+// ── Store identity ──────────────────────────────────────────────────────────
+//
+// A recording runs against a real store, whose catalogue and customers are not
+// ours to publish. Every string held under an identity field is collected from
+// the whole fixture (params, call arguments and answers, JSON inside strings
+// included), then each one is replaced wherever it appears, whole or inside a
+// longer string, raw or URL-encoded, by a stand-in derived from its hash: the
+// same live value always gets the same stand-in, in every fixture and on every
+// re-recording, so a call that passes a title or a SKU back still matches its
+// recording and a re-recorded fixture does not churn.
+
+/** Fields naming a person or a company, wherever they appear. */
+const PERSON_FIELDS: Record<string, string> = {
+  firstName: "Given",
+  first_name: "Given",
+  lastName: "Family",
+  last_name: "Family",
+  company: "Company",
+}
+/** Fields naming a street address, wherever they appear. */
+const ADDRESS_FIELDS = new Set(["address1", "address2"])
+/** Keys whose presence marks an object as a product, a variant or an order line. */
+const PRODUCT_MARKERS = [
+  "sku",
+  "vendor",
+  "handle",
+  "productType",
+  "product_type",
+  "variants",
+  "variant",
+  "variant_id",
+  "product_id",
+  "variantTitle",
+  "variant_title",
+  "inventoryItem",
+]
+/** Keys whose presence marks an object as a customer, a contact or a place (its `name` names it). */
+const PERSON_MARKERS = [
+  "firstName",
+  "lastName",
+  "first_name",
+  "last_name",
+  "email",
+  "defaultAddress",
+  "address1",
+]
+/** One stand-in `identityStandIn` makes. */
+const STAND_IN =
+  "(?:(?:Item|Vendor|Given|Family|Customer|Company) [0-9a-f]{8}|SKU-[0-9A-F]{8}|item-[0-9a-f]{8}|[0-9a-f]{8} Example Street)"
+/** Values a recording plan writes itself, carry no identity, or are stand-ins already: they stay. */
+const KEPT_IDENTITY_RE = new RegExp(
+  `^(?:Default Title|Store Owner|Contract\\b.*|contract-.*|CF-.*|redacted.*|${STAND_IN}(?:[\\s,-]+${STAND_IN})*)$`,
+)
+
+function identityTag(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 8)
+}
+
+/** The stand-in for one live value of the given kind. */
+function identityStandIn(kind: string, value: string): string {
+  const tag = identityTag(value)
+  if (kind === "sku") return `SKU-${tag.toUpperCase()}`
+  if (kind === "handle") return `item-${tag}`
+  if (kind === "address") return `${tag} Example Street`
+  return `${kind} ${tag}`
+}
+
+/** Every identity value in `v` (JSON inside strings included), mapped to its stand-in. */
+function collectIdentity(v: unknown, out: Map<string, string>): Map<string, string> {
+  const add = (kind: string, x: unknown) => {
+    if (typeof x !== "string") return
+    const s = x.trim()
+    if (s.length < 3 || !/\p{L}/u.test(s) || s.includes("@") || KEPT_IDENTITY_RE.test(s)) return
+    if (s.startsWith("gid://") || /^https?:/.test(s)) return
+    if (!out.has(s)) out.set(s, identityStandIn(kind, s))
+  }
+  if (typeof v === "string") {
+    if ((v.startsWith("{") || v.startsWith("[")) && v.length > 1) {
+      try {
+        collectIdentity(JSON.parse(v), out)
+      } catch {
+        // not JSON: an ordinary string
+      }
+    }
+  } else if (Array.isArray(v)) {
+    for (const x of v) collectIdentity(x, out)
+  } else if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>
+    const product = PRODUCT_MARKERS.some((k) => k in o)
+    const person = PERSON_MARKERS.some((k) => k in o)
+    for (const [k, x] of Object.entries(o)) {
+      if (k === "sku") add("sku", x)
+      else if (k === "vendor") add("Vendor", x)
+      else if (k === "company" && x && typeof x === "object")
+        add("Company", (x as { name?: unknown }).name)
+      else if (Object.hasOwn(PERSON_FIELDS, k)) add(PERSON_FIELDS[k] as string, x)
+      else if (ADDRESS_FIELDS.has(k)) add("address", x)
+      else if (product && (k === "title" || k === "productTitle" || k === "product_title"))
+        add("Item", x)
+      else if (product && k === "handle") add("handle", x)
+      else if (person && !product && (k === "displayName" || k === "name")) add("Customer", x)
+      collectIdentity(x, out)
+    }
+  }
+  return out
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Replace the store's identity in `value` with stable invented stand-ins (see
+ * above). Exported for the recorder's test; `scrubValue` applies it.
+ */
+export function scrubStoreIdentity(value: unknown): unknown {
+  const found = collectIdentity(value, new Map())
+  if (found.size === 0) return value
+  // Each live value in the forms a string can hold it: raw, and URL-encoded.
+  const pairs: Array<[string, string]> = []
+  for (const [live, stand] of found) {
+    pairs.push([live, stand])
+    const enc = encodeURIComponent(live)
+    if (enc !== live) pairs.push([enc, encodeURIComponent(stand)])
+    const form = enc.replace(/%20/g, "+")
+    if (form !== enc) pairs.push([form, encodeURIComponent(stand).replace(/%20/g, "+")])
+  }
+  // Longest first, so a title inside a longer display name is not cut in two.
+  pairs.sort((a, b) => b[0].length - a[0].length)
+  const re = new RegExp(
+    `(?<![\\p{L}\\p{N}])(?:${pairs.map(([live]) => escapeRe(live)).join("|")})(?![\\p{L}\\p{N}])`,
+    "gu",
+  )
+  const to = new Map(pairs)
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      if ((v.startsWith("{") || v.startsWith("[")) && v.length > 1) {
+        try {
+          return JSON.stringify(walk(JSON.parse(v)))
+        } catch {
+          // not JSON: an ordinary string
+        }
+      }
+      return v.replace(re, (m) => to.get(m) ?? m)
+    }
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]),
+      )
+    }
+    return v
+  }
+  return walk(value)
 }
 
 /** Response headers a fetch fixture keeps: the ones apps read. The rest (request ids, CDN, CSP) go. */

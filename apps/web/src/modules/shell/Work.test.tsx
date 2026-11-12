@@ -20,6 +20,10 @@ import {
   ensureSignedInOrgNameLoaded,
 } from "~/modules/shell/branding-store"
 import { setShowPeerRequests } from "~/modules/shell/home-action-count"
+import {
+  applyRemoteSidebarVisibility,
+  resetSidebarVisibility,
+} from "~/modules/shell/sidebar-visibility"
 import { resetTabStore, tabStore } from "~/modules/shell/tab-store"
 import { Work } from "~/modules/shell/Work"
 
@@ -160,6 +164,21 @@ describe("Work screen", () => {
     renderWork()
     fireEvent.click(screen.getByTestId("work-row-tours"))
     expect(await screen.findByTestId("tours-sheet")).toBeInTheDocument()
+  })
+
+  it("leaves out an app hidden from the sidebar, and shows it again once shown", () => {
+    registerModule("tickets", "Tickets")
+    registerModule("boxtal", "Boxtal", true)
+    applyRemoteSidebarVisibility({ hiddenSidebarApps: ["tickets"] })
+    try {
+      renderWork()
+      expect(screen.queryByTestId("work-row-tickets")).toBeNull()
+      expect(screen.getByTestId("work-row-boxtal")).toBeInTheDocument()
+      applyRemoteSidebarVisibility({ hiddenSidebarApps: [] })
+      expect(screen.getByTestId("work-row-tickets")).toBeInTheDocument()
+    } finally {
+      resetSidebarVisibility()
+    }
   })
 
   it("lists a registered module and nothing that is not registered", () => {

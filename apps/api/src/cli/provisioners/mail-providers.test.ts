@@ -24,7 +24,11 @@ import { loadMailAppConfig } from "~/modules/mail/provider-settings"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
 import { saveGoogleIntegrationConfig } from "~/modules/settings/google-integration"
+import { type AppInstallSnapshot, snapshotAppInstalls } from "~/tests/helpers/app-install-state"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+// Apps this file installs are instance-wide rows: put them back after it.
+let installs: AppInstallSnapshot | null = null
 
 type GmailEnv = { GMAIL_OAUTH_CLIENT_ID?: string; GMAIL_OAUTH_CLIENT_SECRET?: string }
 const mutableEnv = env as GmailEnv
@@ -33,6 +37,7 @@ let emptyCatalogDir: string
 
 beforeAll(async () => {
   await acquireTestLock()
+  installs = await snapshotAppInstalls()
   // No deployment-level Gmail client: availability then depends only on the
   // org's own Google client, which each test controls.
   savedEnv = {
@@ -52,6 +57,7 @@ afterAll(async () => {
   rmSync(emptyCatalogDir, { recursive: true, force: true })
   delete process.env.LIAISON_APP_CATALOG_DIR
   resetCatalogCache()
+  await installs?.restore()
   await releaseTestLock()
 })
 

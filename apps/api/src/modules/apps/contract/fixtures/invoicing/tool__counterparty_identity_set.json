@@ -35,10 +35,7 @@
     },
     {
       "method": "executeTool",
-      "args": [
-        "kernel:contacts_read",
-        "{\"contactId\":\"00000000-0000-4000-8000-0000000c0a01\"}"
-      ],
+      "args": ["kernel:contacts_read", "{\"contactId\":\"00000000-0000-4000-8000-0000000c0a01\"}"],
       "reply": "{\"status\":\"completed\",\"result\":{\"contact\":{\"id\":\"00000000-0000-4000-8000-0000000c0a01\",\"name\":\"Atelier Lumen SAS\",\"email\":\"person1@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{},\"metadata\":null,\"createdAt\":\"2026-11-12T08:11:54.491Z\",\"updatedAt\":\"2026-11-12T08:11:54.491Z\"},\"recentMailBacklinks\":[],\"recentTimeline\":[]}}"
     },
     {

@@ -29,11 +29,7 @@
     },
     {
       "method": "db_update",
-      "args": [
-        "documents",
-        "780240ab-0780-40cc-81d6-3d3bc4aa87c6",
-        "{\"pdf_status\":\"failed\"}"
-      ]
+      "args": ["documents", "780240ab-0780-40cc-81d6-3d3bc4aa87c6", "{\"pdf_status\":\"failed\"}"]
     }
   ]
 }

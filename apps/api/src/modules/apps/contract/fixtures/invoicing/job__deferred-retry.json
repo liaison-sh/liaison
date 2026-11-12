@@ -5,82 +5,52 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"
-      ],
+      "args": ["deferred_events", "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"],
       "reply": "[]"
     }
   ]

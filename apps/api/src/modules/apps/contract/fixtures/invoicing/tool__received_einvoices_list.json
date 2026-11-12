@@ -15,17 +15,12 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "received_sync_state",
-        "{\"limit\":1}"
-      ],
+      "args": ["received_sync_state", "{\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "callerHasScope",
-      "args": [
-        "invoicing:received:write"
-      ],
+      "args": ["invoicing:received:write"],
       "reply": true
     }
   ]

@@ -7,10 +7,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "hs_code_library",
-        "{\"orderBy\":{\"code\":\"asc\"},\"limit\":20}"
-      ],
+      "args": ["hs_code_library", "{\"orderBy\":{\"code\":\"asc\"},\"limit\":20}"],
       "reply": "[]"
     }
   ]

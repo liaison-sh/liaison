@@ -39,7 +39,8 @@ const keep = (key: string) => (a: unknown, s: InvoicingPlanState) => {
 }
 const str = (s: InvoicingPlanState, key: string, path = ""): string => {
   let v: unknown = s.values[key]
-  for (const part of path ? path.split(".") : []) v = Array.isArray(v) ? v[Number(part)] : obj(v)[part]
+  for (const part of path ? path.split(".") : [])
+    v = Array.isArray(v) ? v[Number(part)] : obj(v)[part]
   return typeof v === "string" || typeof v === "number" ? String(v) : ""
 }
 
@@ -160,7 +161,9 @@ function orderEvent(order: Rec, shop: string): Rec {
 
 /** The data an issue handed the PDF renderer, read from that issue's recorded fixture. */
 function renderedData(fixture: string): Rec {
-  const f = JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "invoicing", fixture), "utf8")) as {
+  const f = JSON.parse(
+    readFileSync(join(import.meta.dir, "fixtures", "invoicing", fixture), "utf8"),
+  ) as {
     calls: Array<{ method: string; args: unknown[] }>
   }
   for (const c of f.calls) {
@@ -171,13 +174,14 @@ function renderedData(fixture: string): Rec {
   throw new Error(`${fixture} rendered no PDF`)
 }
 
-const doc = (key: string) => (s: InvoicingPlanState) => str(s, key, "document_id") || str(s, key, "id")
+const doc = (key: string) => (s: InvoicingPlanState) =>
+  str(s, key, "document_id") || str(s, key, "id")
 
 export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   // ── Settings ────────────────────────────────────────────────────────────────
   {
     entry: "tool:settings_issuer_profile_create",
-    input: (s) =>
+    input: () =>
       params({
         legal_name: "Resonance Atelier SARL",
         country: "FR",
@@ -219,8 +223,16 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   { entry: "tool:settings_tax_regime_list", input: () => params({}) },
   { entry: "tool:settings_hs_code_list", input: () => params({ limit: 20 }) },
-  { entry: "tool:hs_codes_library_upsert", input: () => params({ code: "851822", description: "Multiple loudspeakers, mounted in one enclosure" }) },
-  { entry: "tool:hs_codes_library_upsert", input: () => params({ code: "852352", description: "Semiconductor media" }), record: false },
+  {
+    entry: "tool:hs_codes_library_upsert",
+    input: () =>
+      params({ code: "851822", description: "Multiple loudspeakers, mounted in one enclosure" }),
+  },
+  {
+    entry: "tool:hs_codes_library_upsert",
+    input: () => params({ code: "852352", description: "Semiconductor media" }),
+    record: false,
+  },
   { entry: "tool:hs_codes_library_delete", input: () => params({ code: "852352" }) },
   { entry: "tool:viewer_access", input: () => params({}) },
   { entry: "tool:einvoicing_settings_get", input: () => params({}) },
@@ -271,14 +283,25 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "tool:drafts_update",
-    input: (s) => params({ draft_id: str(s, "draft", "draft_id"), patch: { notes: "Delivery by appointment", due_at: "2026-02-15" } }),
+    input: (s) =>
+      params({
+        draft_id: str(s, "draft", "draft_id"),
+        patch: { notes: "Delivery by appointment", due_at: "2026-02-15" },
+      }),
   },
   {
     entry: "preflight:drafts_update",
-    input: (s) => params({ draft_id: str(s, "draft", "draft_id"), patch: { po_number: "PO-7731" } }),
+    input: (s) =>
+      params({ draft_id: str(s, "draft", "draft_id"), patch: { po_number: "PO-7731" } }),
   },
-  { entry: "tool:draft_issue_preview", input: (s) => params({ draft_id: str(s, "draft", "draft_id") }) },
-  { entry: "preflight:invoice_issue", input: (s) => params({ draft_id: str(s, "draft", "draft_id") }) },
+  {
+    entry: "tool:draft_issue_preview",
+    input: (s) => params({ draft_id: str(s, "draft", "draft_id") }),
+  },
+  {
+    entry: "preflight:invoice_issue",
+    input: (s) => params({ draft_id: str(s, "draft", "draft_id") }),
+  },
   {
     entry: "tool:invoice_issue",
     input: (s) => params({ draft_id: str(s, "draft", "draft_id") }),
@@ -300,8 +323,15 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     after: keep("quoteDraft"),
     record: false,
   },
-  { entry: "preflight:quote_issue", input: (s) => params({ draft_id: str(s, "quoteDraft", "draft_id") }) },
-  { entry: "tool:quote_issue", input: (s) => params({ draft_id: str(s, "quoteDraft", "draft_id") }), after: keep("quote") },
+  {
+    entry: "preflight:quote_issue",
+    input: (s) => params({ draft_id: str(s, "quoteDraft", "draft_id") }),
+  },
+  {
+    entry: "tool:quote_issue",
+    input: (s) => params({ draft_id: str(s, "quoteDraft", "draft_id") }),
+    after: keep("quote"),
+  },
   {
     entry: "tool:drafts_create",
     input: (s) =>
@@ -318,8 +348,14 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     after: keep("proformaDraft"),
     record: false,
   },
-  { entry: "preflight:proforma_issue", input: (s) => params({ draft_id: str(s, "proformaDraft", "draft_id") }) },
-  { entry: "tool:proforma_issue", input: (s) => params({ draft_id: str(s, "proformaDraft", "draft_id") }) },
+  {
+    entry: "preflight:proforma_issue",
+    input: (s) => params({ draft_id: str(s, "proformaDraft", "draft_id") }),
+  },
+  {
+    entry: "tool:proforma_issue",
+    input: (s) => params({ draft_id: str(s, "proformaDraft", "draft_id") }),
+  },
   {
     entry: "tool:drafts_create",
     input: (s) =>
@@ -353,12 +389,21 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     after: keep("discardDraft"),
     record: false,
   },
-  { entry: "tool:drafts_discard", input: (s) => params({ draft_id: str(s, "discardDraft", "draft_id") }) },
+  {
+    entry: "tool:drafts_discard",
+    input: (s) => params({ draft_id: str(s, "discardDraft", "draft_id") }),
+  },
 
   // ── Create and issue in one call ──────────────────────────────────────────────
   {
     entry: "preflight:invoice_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+      }),
   },
   {
     entry: "tool:invoice_create_and_issue",
@@ -375,53 +420,157 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "preflight:quote_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+      }),
   },
   {
     entry: "tool:quote_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS, customer_reference: "RFQ-118" }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+        customer_reference: "RFQ-118",
+      }),
     after: keep("quote2"),
   },
   {
     entry: "preflight:proforma_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS, reason: "Customs declaration" }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+        reason: "Customs declaration",
+      }),
   },
   {
     entry: "tool:proforma_create_and_issue",
     input: (s) =>
-      params({ issuer_profile_id: s.values.issuerId, counterparty: CONSUMER_DE, buyer_is_consumer: true, currency: "EUR", items: ITEMS, reason: "Advance payment" }),
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: CONSUMER_DE,
+        buyer_is_consumer: true,
+        currency: "EUR",
+        items: ITEMS,
+        reason: "Advance payment",
+      }),
   },
   {
     entry: "preflight:po_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+      }),
   },
   {
     entry: "tool:po_create_and_issue",
-    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US, currency: "EUR", items: ITEMS, po_number: "BC-SUP-41" }),
+    input: (s) =>
+      params({
+        issuer_profile_id: s.values.issuerId,
+        counterparty: BUYER_US,
+        currency: "EUR",
+        items: ITEMS,
+        po_number: "BC-SUP-41",
+      }),
   },
 
   // ── Reading documents ─────────────────────────────────────────────────────────
-  { entry: "tool:documents_search", input: () => params({ type: "invoice", limit: 10, include_lines: true }) },
+  {
+    entry: "tool:documents_search",
+    input: () => params({ type: "invoice", limit: 10, include_lines: true }),
+  },
   { entry: "tool:documents_get", input: (s) => params({ id: doc("invoiceUS")(s) }) },
-  { entry: "tool:documents_issue_preview", input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US }) },
-  { entry: "tool:documents_update_preview", input: (s) => params({ id: doc("invoiceUS")(s), counterparty_address: "Hafenstrasse 6, 20457 Hamburg, Germany" }) },
+  {
+    entry: "tool:documents_issue_preview",
+    input: (s) => params({ issuer_profile_id: s.values.issuerId, counterparty: BUYER_US }),
+  },
+  {
+    entry: "tool:documents_update_preview",
+    input: (s) =>
+      params({
+        id: doc("invoiceUS")(s),
+        counterparty_address: "Hafenstrasse 6, 20457 Hamburg, Germany",
+      }),
+  },
   { entry: "tool:pending_approvals_list", input: () => params({}) },
   { entry: "tool:deferred_list", input: () => params({ limit: 20 }) },
-  { entry: "tool:legal_originals_verify", input: (s) => params({ document_id: doc("invoiceUS")(s) }) },
-  { entry: "export:export", input: () => params({ format: "json", dateRange: { from: "2025-01-01", to: "2026-12-31" } }) },
+  {
+    entry: "tool:legal_originals_verify",
+    input: (s) => params({ document_id: doc("invoiceUS")(s) }),
+  },
+  {
+    entry: "export:export",
+    input: () => params({ format: "json", dateRange: { from: "2025-01-01", to: "2026-12-31" } }),
+  },
 
   // ── Changing documents ────────────────────────────────────────────────────────
-  { entry: "preflight:documents_update", input: (s) => params({ id: doc("quote2")(s), notes: "Valid 30 days" }) },
-  { entry: "tool:documents_update", input: (s) => params({ id: doc("quote2")(s), notes: "Valid 30 days", po_number: "RFQ-118-B" }) },
+  {
+    entry: "preflight:documents_update",
+    input: (s) => params({ id: doc("quote2")(s), notes: "Valid 30 days" }),
+  },
+  {
+    entry: "tool:documents_update",
+    input: (s) => params({ id: doc("quote2")(s), notes: "Valid 30 days", po_number: "RFQ-118-B" }),
+  },
   { entry: "tool:documents_retry_pdf", input: (s) => params({ id: doc("quote2")(s) }) },
-  { entry: "preflight:documents_convert_to_invoice", input: (s) => params({ source_document_id: doc("quote2")(s) }) },
-  { entry: "tool:documents_convert_to_invoice", input: (s) => params({ source_document_id: doc("quote2")(s), operation_category: "goods" }) },
-  { entry: "preflight:documents_mark_paid", input: (s) => params({ document_id: doc("invoiceUS")(s), paid_date: "2026-01-20" }) },
-  { entry: "tool:documents_mark_paid", input: (s) => params({ document_id: doc("invoiceUS")(s), paid_date: "2026-01-20", payment_note: "Bank transfer" }) },
-  { entry: "preflight:documents_record_refund", input: (s) => params({ document_id: doc("invoiceUS")(s), refund_amount_minor: 15000, refund_kind: "partial" }) },
-  { entry: "tool:documents_record_refund", input: (s) => params({ document_id: doc("invoiceUS")(s), refund_amount_minor: 15000, refund_kind: "partial" }) },
-  { entry: "preflight:documents_send_to_customer", input: (s) => params({ document_id: doc("invoiceUS")(s) }) },
-  { entry: "tool:documents_send_to_customer", input: (s) => params({ document_id: doc("invoiceUS")(s), subject: "Your invoice" }) },
+  {
+    entry: "preflight:documents_convert_to_invoice",
+    input: (s) => params({ source_document_id: doc("quote2")(s) }),
+  },
+  {
+    entry: "tool:documents_convert_to_invoice",
+    input: (s) => params({ source_document_id: doc("quote2")(s), operation_category: "goods" }),
+  },
+  {
+    entry: "preflight:documents_mark_paid",
+    input: (s) => params({ document_id: doc("invoiceUS")(s), paid_date: "2026-01-20" }),
+  },
+  {
+    entry: "tool:documents_mark_paid",
+    input: (s) =>
+      params({
+        document_id: doc("invoiceUS")(s),
+        paid_date: "2026-01-20",
+        payment_note: "Bank transfer",
+      }),
+  },
+  {
+    entry: "preflight:documents_record_refund",
+    input: (s) =>
+      params({
+        document_id: doc("invoiceUS")(s),
+        refund_amount_minor: 15000,
+        refund_kind: "partial",
+      }),
+  },
+  {
+    entry: "tool:documents_record_refund",
+    input: (s) =>
+      params({
+        document_id: doc("invoiceUS")(s),
+        refund_amount_minor: 15000,
+        refund_kind: "partial",
+      }),
+  },
+  {
+    entry: "preflight:documents_send_to_customer",
+    input: (s) => params({ document_id: doc("invoiceUS")(s) }),
+  },
+  {
+    entry: "tool:documents_send_to_customer",
+    input: (s) => params({ document_id: doc("invoiceUS")(s), subject: "Your invoice" }),
+  },
   {
     entry: "preflight:credit_note_create_and_issue",
     input: (s) =>
@@ -459,20 +608,39 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
         counterparty_vat_id: BUYER_FR.vat_id,
         currency: "EUR",
         external_refs: { original_document_id: doc("invoice")(s) },
-        items: [{ description: "Studio monitor, pair (returned)", quantity: 1, unit_price_minor: -41940 }],
+        items: [
+          { description: "Studio monitor, pair (returned)", quantity: 1, unit_price_minor: -41940 },
+        ],
       }),
     after: keep("cnDraft"),
     record: false,
   },
-  { entry: "preflight:credit_note_issue", input: (s) => params({ draft_id: str(s, "cnDraft", "draft_id") }) },
-  { entry: "tool:credit_note_issue", input: (s) => params({ draft_id: str(s, "cnDraft", "draft_id") }) },
+  {
+    entry: "preflight:credit_note_issue",
+    input: (s) => params({ draft_id: str(s, "cnDraft", "draft_id") }),
+  },
+  {
+    entry: "tool:credit_note_issue",
+    input: (s) => params({ draft_id: str(s, "cnDraft", "draft_id") }),
+  },
 
   // ── Customs and contacts ──────────────────────────────────────────────────────
   {
     entry: "tool:hs_codes_assign",
-    input: () => params({ product_source: "manual", external_id: "SKU-MON-2", hs_code: "851822", country_of_origin: "FR", customs_description: "Loudspeakers" }),
+    input: () =>
+      params({
+        product_source: "manual",
+        external_id: "SKU-MON-2",
+        hs_code: "851822",
+        country_of_origin: "FR",
+        customs_description: "Loudspeakers",
+      }),
   },
-  { entry: "tool:hs_codes_unassign", input: () => params({ product_source: "manual", external_id: "SKU-MON-2", fields: ["country_of_origin"] }) },
+  {
+    entry: "tool:hs_codes_unassign",
+    input: () =>
+      params({ product_source: "manual", external_id: "SKU-MON-2", fields: ["country_of_origin"] }),
+  },
   {
     entry: "tool:contact_relationships_set",
     before: async (s) => {
@@ -487,8 +655,14 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     },
     input: (s) => params({ contact_id: s.values.contactId, relationship: "customer" }),
   },
-  { entry: "tool:counterparty_identity_get", input: (s) => params({ document_id: doc("invoice")(s) }) },
-  { entry: "tool:counterparty_identity_lookup", input: () => params({ query: "Atelier Lumen", postcode: "69003" }) },
+  {
+    entry: "tool:counterparty_identity_get",
+    input: (s) => params({ document_id: doc("invoice")(s) }),
+  },
+  {
+    entry: "tool:counterparty_identity_lookup",
+    input: () => params({ query: "Atelier Lumen", postcode: "69003" }),
+  },
   {
     entry: "tool:counterparty_identity_set",
     input: (s) =>
@@ -502,15 +676,29 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "tool:counterparty_territory_set",
-    input: (s) => params({ contact_id: s.values.contactId, treatment: "as_foreign", reason: "Customer is based in Monaco" }),
+    input: (s) =>
+      params({
+        contact_id: s.values.contactId,
+        treatment: "as_foreign",
+        reason: "Customer is based in Monaco",
+      }),
   },
   { entry: "tool:einvoicing_classify", input: (s) => params({ document_id: doc("invoice")(s) }) },
-  { entry: "tool:vat_validate", input: () => params({ country_code: "DE", vat_number: "DE123456789" }) },
+  {
+    entry: "tool:vat_validate",
+    input: () => params({ country_code: "DE", vat_number: "DE123456789" }),
+  },
 
   // ── E-invoicing ───────────────────────────────────────────────────────────────
-  { entry: "tool:einvoice_transmission_get", input: (s) => params({ document_id: doc("invoice")(s) }) },
+  {
+    entry: "tool:einvoice_transmission_get",
+    input: (s) => params({ document_id: doc("invoice")(s) }),
+  },
   { entry: "tool:einvoice_send_request", input: (s) => params({ document_id: doc("invoice")(s) }) },
-  { entry: "tool:einvoice_status_refresh", input: (s) => params({ document_id: doc("invoice")(s) }) },
+  {
+    entry: "tool:einvoice_status_refresh",
+    input: (s) => params({ document_id: doc("invoice")(s) }),
+  },
   {
     entry: "tool:einvoice_send",
     input: (s) =>
@@ -521,24 +709,51 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
         routing_address: "900000001",
       }),
   },
-  { entry: "tool:einvoice_book_batch", input: () => params({ batch_id: "00000000-0000-4000-8000-0000000b0001" }) },
+  {
+    entry: "tool:einvoice_book_batch",
+    input: () => params({ batch_id: "00000000-0000-4000-8000-0000000b0001" }),
+  },
   { entry: "tool:received_einvoices_list", input: () => params({ limit: 20 }) },
   { entry: "tool:received_einvoices_refresh", input: () => params({}) },
-  { entry: "tool:received_einvoices_get", input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001" }) },
+  {
+    entry: "tool:received_einvoices_get",
+    input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001" }),
+  },
   {
     entry: "tool:received_einvoice_action_request",
-    input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001", action: "dispute", reason: "Quantity differs from delivery note" }),
+    input: () =>
+      params({
+        received_id: "00000000-0000-4000-8000-0000000e0001",
+        action: "dispute",
+        reason: "Quantity differs from delivery note",
+      }),
   },
   {
     entry: "preflight:received_einvoice_set_status",
-    input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001", action: "dispute", reason: "Quantity differs" }),
+    input: () =>
+      params({
+        received_id: "00000000-0000-4000-8000-0000000e0001",
+        action: "dispute",
+        reason: "Quantity differs",
+      }),
   },
   {
     entry: "tool:received_einvoice_set_status",
-    input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001", action: "dispute", reason: "Quantity differs" }),
+    input: () =>
+      params({
+        received_id: "00000000-0000-4000-8000-0000000e0001",
+        action: "dispute",
+        reason: "Quantity differs",
+      }),
   },
-  { entry: "tool:einvoicing_backfill_identities", input: () => params({ dry_run: true, limit: 20 }) },
-  { entry: "tool:einvoicing_backfill_legacy_originals", input: () => params({ dry_run: true, limit: 20 }) },
+  {
+    entry: "tool:einvoicing_backfill_identities",
+    input: () => params({ dry_run: true, limit: 20 }),
+  },
+  {
+    entry: "tool:einvoicing_backfill_legacy_originals",
+    input: () => params({ dry_run: true, limit: 20 }),
+  },
 
   // ── Shopify events ────────────────────────────────────────────────────────────
   {
@@ -585,7 +800,12 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     entry: "event:shopify/order:cancelled",
     input: (s) => {
       const o = obj(s.values.order)
-      return params({ entity: "order", action: "cancelled", entityId: String(o.id), data: { orderId: String(o.id), cancel_reason: "customer" } })
+      return params({
+        entity: "order",
+        action: "cancelled",
+        entityId: String(o.id),
+        data: { orderId: String(o.id), cancel_reason: "customer" },
+      })
     },
   },
 
@@ -600,7 +820,10 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     },
     input: (s) => params({ deferred_id: s.values.deferredId, mode: "as_computed" }),
   },
-  { entry: "preflight:deferred_tax_override", input: (s) => params({ deferred_id: s.values.deferredId, mode: "as_computed" }) },
+  {
+    entry: "preflight:deferred_tax_override",
+    input: (s) => params({ deferred_id: s.values.deferredId, mode: "as_computed" }),
+  },
   {
     entry: "tool:order_reissue_apply",
     input: (s) =>
@@ -652,7 +875,6 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   { entry: "job:einvoicing-status-catchup", input: () => params({}) },
   { entry: "job:einvoicing-booking-invariant", input: () => params({}) },
 
-
   // ── PDF templates (each draws the document an issue rendered) and the import ──
   ...["invoice", "quote", "proforma", "po", "credit_note"].map(
     (kind): InvoicingPlanStep => ({
@@ -686,8 +908,22 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
               issueDate: "2025-11-03",
               dueDate: "2025-12-03",
               currency: "EUR",
-              counterparty: { name: BUYER_FR.legal_name, address: BUYER_FR.address, country: "FR", vatId: BUYER_FR.vat_id, email: BUYER_FR.email },
-              lines: [{ description: "Studio monitor, pair", quantity: 1, unitPriceMinor: 41940, taxRateBp: 2000, totalMinor: 41940 }],
+              counterparty: {
+                name: BUYER_FR.legal_name,
+                address: BUYER_FR.address,
+                country: "FR",
+                vatId: BUYER_FR.vat_id,
+                email: BUYER_FR.email,
+              },
+              lines: [
+                {
+                  description: "Studio monitor, pair",
+                  quantity: 1,
+                  unitPriceMinor: 41940,
+                  taxRateBp: 2000,
+                  totalMinor: 41940,
+                },
+              ],
               subtotalMinor: 41940,
               taxTotalMinor: 8388,
               grandTotalMinor: 50328,
@@ -701,6 +937,9 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
 
   // ── Issuer deletion last (it refuses while documents exist, which is the case recorded) ──
-  { entry: "preflight:settings_issuer_profile_delete", input: (s) => params({ id: s.values.issuerId }) },
+  {
+    entry: "preflight:settings_issuer_profile_delete",
+    input: (s) => params({ id: s.values.issuerId }),
+  },
   { entry: "tool:settings_issuer_profile_delete", input: (s) => params({ id: s.values.issuerId }) },
 ]

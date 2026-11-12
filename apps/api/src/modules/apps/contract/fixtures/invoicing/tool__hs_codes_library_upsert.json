@@ -8,18 +8,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "hs_code_library",
-        "{\"where\":{\"code\":\"851822\"},\"limit\":1}"
-      ],
+      "args": ["hs_code_library", "{\"where\":{\"code\":\"851822\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "hs_code_library",
-        "{\"limit\":5000}"
-      ],
+      "args": ["hs_code_library", "{\"limit\":5000}"],
       "reply": "[]"
     },
     {

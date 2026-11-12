@@ -5,17 +5,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_settings",
-        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
-      ],
+      "args": ["einvoicing_settings", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "contracts_providers",
-      "args": [
-        "einvoicing-pa@1"
-      ],
+      "args": ["einvoicing-pa@1"],
       "reply": "[]"
     }
   ]

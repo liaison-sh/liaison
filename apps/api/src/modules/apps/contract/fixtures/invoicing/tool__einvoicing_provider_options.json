@@ -5,9 +5,7 @@
   "calls": [
     {
       "method": "contracts_providers",
-      "args": [
-        "einvoicing-pa@1"
-      ],
+      "args": ["einvoicing-pa@1"],
       "reply": "[]"
     }
   ]

@@ -3,9 +3,7 @@
   "params": {
     "product_source": "manual",
     "external_id": "SKU-MON-2",
-    "fields": [
-      "country_of_origin"
-    ]
+    "fields": ["country_of_origin"]
   },
   "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
   "calls": [

@@ -15,24 +15,15 @@
     },
     {
       "method": "db_delete",
-      "args": [
-        "document_lines",
-        "f2e40d07-0af1-4554-b5d1-2da23e072d10"
-      ]
+      "args": ["document_lines", "f2e40d07-0af1-4554-b5d1-2da23e072d10"]
     },
     {
       "method": "db_delete",
-      "args": [
-        "document_lines",
-        "afed0751-e72b-4a1d-976b-2021ed8d3593"
-      ]
+      "args": ["document_lines", "afed0751-e72b-4a1d-976b-2021ed8d3593"]
     },
     {
       "method": "db_delete",
-      "args": [
-        "documents",
-        "81e09ef2-3ce2-40eb-9f00-f19261aaafcc"
-      ]
+      "args": ["documents", "81e09ef2-3ce2-40eb-9f00-f19261aaafcc"]
     }
   ]
 }

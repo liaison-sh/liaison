@@ -38,9 +38,7 @@
     },
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"Europe/Paris\"}"
-      ],
+      "args": ["{\"timezone\":\"Europe/Paris\"}"],
       "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":9,\"minute\":11,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
     },
     {

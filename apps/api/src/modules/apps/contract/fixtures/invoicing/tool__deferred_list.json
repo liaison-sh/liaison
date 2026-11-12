@@ -7,10 +7,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "deferred_events",
-        "{\"orderBy\":{\"retried_at\":\"desc\"},\"limit\":20}"
-      ],
+      "args": ["deferred_events", "{\"orderBy\":{\"retried_at\":\"desc\"},\"limit\":20}"],
       "reply": "[]"
     }
   ]

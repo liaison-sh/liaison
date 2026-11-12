@@ -9,10 +9,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_settings",
-        "{\"limit\":1}"
-      ],
+      "args": ["einvoicing_settings", "{\"limit\":1}"],
       "reply": "[]"
     },
     {

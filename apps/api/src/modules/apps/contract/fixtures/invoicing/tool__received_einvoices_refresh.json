@@ -5,27 +5,17 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "received_sync_state",
-        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
-      ],
+      "args": ["received_sync_state", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "received_retry",
-        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":200}"
-      ],
+      "args": ["received_retry", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":200}"],
       "reply": "[]"
     },
     {
       "method": "contracts_call",
-      "args": [
-        "einvoicing-pa@1",
-        "list_received",
-        "{\"cursor\":null}"
-      ],
+      "args": ["einvoicing-pa@1", "list_received", "{\"cursor\":null}"],
       "reply": "{\"status\":\"error\",\"error\":{\"code\":\"contract_provider_not_configured\",\"message\":\"No provider is bound for einvoicing-pa@1 and invoicing: an organisation administrator binds one (config apply, or the app's settings)\",\"retryable\":false}}"
     }
   ]

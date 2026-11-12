@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "tax_regimes",
-        "{\"orderBy\":{\"issuer_country\":\"asc\"},\"limit\":100}"
-      ],
+      "args": ["tax_regimes", "{\"orderBy\":{\"issuer_country\":\"asc\"},\"limit\":100}"],
       "reply": "[]"
     }
   ]

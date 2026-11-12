@@ -27,8 +27,8 @@ import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { registerTemplate } from "~/modules/pdf/registry"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
+import { registerTemplate } from "~/modules/pdf/registry"
 import { acquireTestLock, releaseTestLock, superuserUrlForTestDb } from "~/tests/route-test-setup"
 import { BUNDLED_APPS_DIR, bridgeSurfaceOf } from "./apps.test-helpers"
 import { contractEntries } from "./entries"
@@ -90,19 +90,34 @@ const descriptor = (app: string, m: Manifest) => ({
 function registerPdfTemplates(): void {
   for (const tpl of (manifest.pdf_templates ?? []) as Array<{ kind: string; source: string }>) {
     const build = Bun.spawnSync(
-      [process.execPath, "build", join(BUNDLED_APPS_DIR, APP, tpl.source), "--target", "bun", "--external", "node:*"],
+      [
+        process.execPath,
+        "build",
+        join(BUNDLED_APPS_DIR, APP, tpl.source),
+        "--target",
+        "bun",
+        "--external",
+        "node:*",
+      ],
       { stdout: "pipe", stderr: "pipe" },
     )
-    if (build.exitCode !== 0) throw new Error(`template ${tpl.kind} build failed: ${build.stderr.toString()}`)
+    if (build.exitCode !== 0)
+      throw new Error(`template ${tpl.kind} build failed: ${build.stderr.toString()}`)
     const js = build.stdout.toString()
     const block = /export\s*\{([^}]*)\};?\s*$/.exec(js)
     const local = block?.[1]
       ?.split(",")
       .map((x) => x.trim())
-      .map((x) => /^(\w+)\s+as\s+renderTemplate$/.exec(x)?.[1] ?? (x === "renderTemplate" ? x : null))
+      .map(
+        (x) => /^(\w+)\s+as\s+renderTemplate$/.exec(x)?.[1] ?? (x === "renderTemplate" ? x : null),
+      )
       .find((x) => x)
     if (!block || !local) throw new Error(`template ${tpl.kind} exports no renderTemplate`)
-    registerTemplate(APP, tpl.kind, `${js.slice(0, block.index)}\nglobalThis.renderTemplate = ${local};\n`)
+    registerTemplate(
+      APP,
+      tpl.kind,
+      `${js.slice(0, block.index)}\nglobalThis.renderTemplate = ${local};\n`,
+    )
   }
 }
 
@@ -218,7 +233,14 @@ describe("record invoicing contract fixtures", () => {
             }
           : {}),
         ...(job
-          ? { currentJob: { name: job.name, payload: job.payload, timeoutMs: 120_000, atomic: false } }
+          ? {
+              currentJob: {
+                name: job.name,
+                payload: job.payload,
+                timeoutMs: 120_000,
+                atomic: false,
+              },
+            }
           : {}),
       } as never,
     ) as AppBridge
@@ -251,7 +273,8 @@ describe("record invoicing contract fixtures", () => {
     }
     for (const step of INVOICING_RECORDING_PLAN) {
       const entry = entries.get(step.entry)
-      if (!entry) throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
+      if (!entry)
+        throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
       let input: Awaited<ReturnType<typeof step.input>>
       try {
         await step.before?.(state)
@@ -261,7 +284,9 @@ describe("record invoicing contract fixtures", () => {
         continue
       }
       const job =
-        entry.kind === "job" ? { name: entry.entry.slice(4), payload: input.params ?? {} } : undefined
+        entry.kind === "job"
+          ? { name: entry.entry.slice(4), payload: input.params ?? {} }
+          : undefined
       // A PDF template runs as its own bundle, in an isolate of its own.
       const own = entry.templateSource
         ? await quickJsContractExecutor.open(await scripts.templateSource(entry.templateSource), {
@@ -276,7 +301,8 @@ describe("record invoicing contract fixtures", () => {
         real: liveBridge(entry.kind, job),
         surface,
         limits: productionLimits(entry),
-        recordedFrom: "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+        recordedFrom:
+          "a contract org with the Shopify development store, record-invoicing.recorder.ts",
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
       await step.after?.(answer, state)

@@ -5,23 +5,17 @@
   "calls": [
     {
       "method": "hasScope",
-      "args": [
-        "invoicing:documents:write"
-      ],
+      "args": ["invoicing:documents:write"],
       "reply": true
     },
     {
       "method": "hasScope",
-      "args": [
-        "invoicing:settings:read"
-      ],
+      "args": ["invoicing:settings:read"],
       "reply": true
     },
     {
       "method": "hasScope",
-      "args": [
-        "invoicing:approve"
-      ],
+      "args": ["invoicing:approve"],
       "reply": true
     }
   ]

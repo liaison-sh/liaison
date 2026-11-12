@@ -295,6 +295,7 @@ describe("writesToTable annotations on kernel tools", () => {
       dashboards_create: "kernel.dashboards",
       dashboards_update: "kernel.dashboards",
       dashboards_edit: "kernel.dashboards",
+      dashboards_pdf: "kernel.files",
       dashboards_delete: "kernel.dashboards",
       // The app data store: a document of an app's declared collection.
       data_set: "kernel.app_documents",
@@ -542,8 +543,10 @@ describe("writesToTable annotations on kernel tools", () => {
         // Dashboards and the app data store: reads of saved dashboards, the eligible sources,
         // one block's preview (its bridge refuses every write), and declared collections.
         "dashboards_get",
+        "dashboards_history",
         "dashboards_list",
         "dashboards_preview_block",
+        "dashboards_snapshot",
         "dashboards_sources",
         "data_collections_list",
         "data_get",

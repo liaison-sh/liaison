@@ -12,18 +12,31 @@
 // The platform runs the provider when what it lists can have changed, as each
 // person who may see the app's items, and stores each person's whole list
 // (replacing the last one, so an item the provider no longer lists is cleared):
-//   - after the app was woken: any run of it through runApp (a tool, an event
-//     handler, a job, a webhook, a poll) other than an attention run itself
-//     (`onRunSettled`), in the process that ran it;
+//   - after a run of the app that may have written (`onRunSettled`): an event
+//     handler, a job, a webhook, a poll, a tool not declared read-only. A run
+//     that only reads (a read-only tool, a search, an export, a preview, a
+//     summarizer, a preflight, an attention run itself) wakes nothing;
 //   - after an event of the app was delivered (`onEvent`, once, in the outbox
 //     leader), which covers the app's data written by server code with no run;
 //   - on the attention minute tick (state-materializer.ts), which bounds what
 //     time alone changes (an SLA closing in, a task falling overdue): the next
 //     minute for an org that changed, within HEARTBEAT_MINUTES otherwise;
 //   - when the feed finds no stored list for the reader (a new person, a new
-//     app), in the background: that read shows nothing for the app until then.
-// Refreshes of one (org, app) are debounced and never overlap in a process: a
-// wake during a refresh runs one more refresh after it.
+//     app): that read shows nothing for the app until then.
+//
+// A wake never runs a provider where it happens (a request, a tool call): it
+// queues a refresh job on the attention queue (`app-attention-refresh`, its
+// own worker with ATTENTION_REFRESH_CONCURRENCY slots, never the shared cron
+// class). Wakes of one (org, app) share one job per REFRESH_MIN_INTERVAL_MS:
+// the job is due at the end of the interval the wake fell in, so it reads
+// every write of that interval, and an (org, app) refreshes at most once per
+// interval however busy it is. An org runs at most ORG_REFRESHES_PER_MINUTE
+// refreshes a minute, all its apps together; the rest move to the next minute.
+//
+// Two refreshes of one (org, app) may still overlap (two processes, a slow
+// refresh and the next interval's): each person's list is written with the
+// time its provider run started, and a write never replaces a list computed
+// from a later start, so the newer list always wins.
 //
 // When a person's list changed, their devices are told to reload the feed
 // (an `attention` read-state frame, the one the feed already reloads on).
@@ -36,9 +49,16 @@ import { type ActorContext, createRlsSession, type UserContext, withRlsContext }
 import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { type AppEvent, onEvent } from "~/infra/events/event-bus"
+import { enqueueAppJob, registerJobWorker } from "~/infra/jobs/jobs"
 import { appsLogger as log } from "~/lib/logger"
+import { redis } from "~/lib/redis"
+import { isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
 import { readStandingInFor } from "~/modules/approvals/route-world"
-import { appBridgeManifest, attentionItemsRegistry } from "~/modules/apps/app-registries"
+import {
+  appBridgeManifest,
+  attentionItemsRegistry,
+  toolRegistry,
+} from "~/modules/apps/app-registries"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
@@ -50,6 +70,7 @@ import {
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
+import { writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 
@@ -59,10 +80,17 @@ const K = sql.raw(schemaRef("kernel"))
 export const PROVIDER_RUN_TIMEOUT_MS = 15_000
 /** The most items stored per (app, person). */
 export const PROVIDER_ITEM_CAP = 200
-/** Wakes of one (org, app) within this window share one refresh. */
-export const REFRESH_DEBOUNCE_MS = 250
-/** People of one org refreshed at once. */
-const PEOPLE_CONCURRENCY = 4
+/** Wakes of one (org, app) within one such interval share one refresh, due at its end. */
+export const REFRESH_MIN_INTERVAL_MS = 15_000
+/** Refreshes one org runs per minute at most, all its apps together. */
+export const ORG_REFRESHES_PER_MINUTE = 12
+/** The attention queue (`app-attention-refresh`): its own worker, never the cron class. */
+export const ATTENTION_REFRESH_QUEUE_APP = "attention-refresh"
+export const ATTENTION_REFRESH_JOB = "attention-refresh"
+/** Refresh jobs one process runs at once. */
+export const ATTENTION_REFRESH_CONCURRENCY = 2
+/** People of one refresh run at once. */
+const PEOPLE_CONCURRENCY = 2
 
 const TIMEOUT_SENTINEL = "__attention_provider_timeout__"
 
@@ -269,32 +297,37 @@ async function readStoredLists(
   return new Map(rows.map((r) => [r.userId, { items: r.items ?? [], error: r.error }]))
 }
 
+/**
+ * Store one person's list, computed by a provider run that started at
+ * `startedAt`. A stored list computed from a later start is kept: an older
+ * refresh finishing last never replaces a newer list. Returns whether it wrote.
+ */
 async function writeStoredList(
   orgId: string,
   appName: string,
   userId: string,
   items: AttentionItem[] | null,
   error: Omit<AttentionProviderError, "app"> | null,
-): Promise<void> {
-  await withPrivilegedDb(orgId, "attention-store:write", async (tx) => {
+  startedAt: Date,
+): Promise<boolean> {
+  const target = [appAttentionItems.orgId, appAttentionItems.app, appAttentionItems.userId]
+  const newer = sql`${appAttentionItems.computedAt} <= excluded.computed_at`
+  return withPrivilegedDb(orgId, "attention-store:write", async (tx) => {
     if (items === null) {
       // A failed run keeps the last good list, with the failure beside it.
-      await tx
+      const rows = await tx
         .insert(appAttentionItems)
-        .values({ orgId, app: appName, userId, items: [], error, computedAt: new Date() })
-        .onConflictDoUpdate({
-          target: [appAttentionItems.orgId, appAttentionItems.app, appAttentionItems.userId],
-          set: { error, computedAt: new Date() },
-        })
-      return
+        .values({ orgId, app: appName, userId, items: [], error, computedAt: startedAt })
+        .onConflictDoUpdate({ target, set: { error, computedAt: startedAt }, setWhere: newer })
+        .returning({ userId: appAttentionItems.userId })
+      return rows.length > 0
     }
-    await tx
+    const rows = await tx
       .insert(appAttentionItems)
-      .values({ orgId, app: appName, userId, items, error, computedAt: new Date() })
-      .onConflictDoUpdate({
-        target: [appAttentionItems.orgId, appAttentionItems.app, appAttentionItems.userId],
-        set: { items, error, computedAt: new Date() },
-      })
+      .values({ orgId, app: appName, userId, items, error, computedAt: startedAt })
+      .onConflictDoUpdate({ target, set: { items, error, computedAt: startedAt }, setWhere: newer })
+      .returning({ userId: appAttentionItems.userId })
+    return rows.length > 0
   })
 }
 
@@ -320,6 +353,8 @@ export async function refreshAppAttention(
   const refreshOne = async (userId: string): Promise<void> => {
     let items: AttentionItem[] | null = []
     let error: Omit<AttentionProviderError, "app"> | null = null
+    // What this run reads is the state as of now: its list is stamped with it.
+    const startedAt = new Date()
     try {
       const loaded = await deps.loadPersonActor(orgId, userId)
       // The run is always this org's and this person's, whatever was loaded.
@@ -358,7 +393,8 @@ export async function refreshAppAttention(
     }
     const before = previous.get(userId)
     try {
-      await writeStoredList(orgId, appName, userId, items, error)
+      // A newer list is stored already (a later refresh finished first): this one is dropped.
+      if (!(await writeStoredList(orgId, appName, userId, items, error, startedAt))) return
     } catch (err) {
       log.warn({ err, app: appName, orgId, userId }, "Attention list could not be stored")
       return
@@ -382,9 +418,12 @@ export async function refreshAppAttention(
 }
 
 /**
- * Every app provider of the org, refreshed one app after the other (the minute
- * tick, a seeded workspace). The people and each one's permissions are read
- * once for the whole pass, not once per app.
+ * Every app provider of the org, refreshed now, in this process, one app after
+ * the other: for a caller that must find the lists stored when it returns (a
+ * seeded demo workspace, one just claimed), never a wake. Wakes and the minute
+ * tick queue jobs instead (scheduleAttentionRefresh,
+ * scheduleAllAppAttentionRefresh). The people and each one's permissions are
+ * read once for the whole pass, not once per app.
  */
 export async function refreshAllAppAttention(
   orgId: string,
@@ -423,87 +462,206 @@ export async function refreshAllAppAttention(
   }
 }
 
-// --- Wakes: debounced, never overlapping per (org, app) in this process ------
+// --- Wakes: a queued job per (org, app) and interval -----------------------------
 
-interface RefreshState {
-  timer: ReturnType<typeof setTimeout> | null
-  running: Promise<void> | null
-  again: boolean
+/** One queued refresh: the job id deduplicates (BullMQ), the delay makes it due. */
+export interface AttentionRefreshPayload {
+  org: string
+  app: string
+}
+export interface AttentionRefreshJob {
+  jobId: string
+  delay: number
+  payload: AttentionRefreshPayload
 }
 
-const refreshes = new Map<string, RefreshState>()
+type WakeDeps = Partial<AttentionStoreDeps> & {
+  ensureOrgApps?: (orgId: string) => Promise<void>
+  /** Queue a refresh job (default: the attention queue). */
+  enqueue?: (job: AttentionRefreshJob) => Promise<void>
+  now?: () => number
+  /** Count one refresh against the org's minute; false once the cap is spent. */
+  takeOrgBudget?: (orgId: string, now: number) => Promise<boolean>
+}
+
 /** What a woken refresh runs with: the defaults, unless a test set its doubles. */
-let wakeDeps: Partial<AttentionStoreDeps> & { ensureOrgApps?: (orgId: string) => Promise<void> } =
-  {}
-const settledWaiters = new Set<() => void>()
+let wakeDeps: WakeDeps = {}
+/** The interval each (org, app) last queued its job for, in this process: saves a Redis round trip per wake. */
+const queuedInterval = new Map<string, number>()
+const QUEUED_INTERVAL_MAX_KEYS = 10_000
+/** Enqueues not yet answered (tests wait on them). */
+const inFlight = new Set<Promise<void>>()
 
 function keyOf(orgId: string, appName: string): string {
   return `${orgId}\u0000${appName}`
 }
 
-function settleIfIdle(): void {
-  if (refreshes.size > 0) return
-  for (const resolve of settledWaiters) resolve()
-  settledWaiters.clear()
+function jobIdOf(orgId: string, appName: string, suffix: string): string {
+  return `${ATTENTION_REFRESH_JOB}:${orgId}:${appName}:${suffix}`
 }
 
-async function runRefresh(key: string, orgId: string, appName: string): Promise<void> {
-  const state = refreshes.get(key)
-  if (!state) return
-  state.timer = null
-  state.again = false
-  state.running = (async () => {
-    try {
-      if (wakeDeps.ensureOrgApps) await wakeDeps.ensureOrgApps(orgId)
-      else {
-        const { awaitOrgApps } = await import("~/modules/apps/init")
-        await awaitOrgApps(orgId)
-      }
-      await refreshAppAttention(orgId, appName, wakeDeps)
-    } catch (err) {
-      log.warn({ err, orgId, app: appName }, "Attention refresh failed")
-    }
-  })()
-  await state.running
-  state.running = null
-  if (state.again) {
-    state.timer = setTimeout(() => void runRefresh(key, orgId, appName), REFRESH_DEBOUNCE_MS)
-    return
+async function defaultEnqueue(job: AttentionRefreshJob): Promise<void> {
+  await enqueueAppJob(ATTENTION_REFRESH_QUEUE_APP, ATTENTION_REFRESH_JOB, job.payload, {
+    jobId: job.jobId,
+    delay: job.delay,
+    attempts: 1,
+  })
+}
+
+/** INCR of the org's minute counter; a Redis failure lets the refresh run. */
+async function defaultTakeOrgBudget(orgId: string, now: number): Promise<boolean> {
+  const key = `attention:refresh-budget:${orgId}:${Math.floor(now / 60_000)}`
+  try {
+    const res = await redis.multi().incr(key).expire(key, 120).exec()
+    const count = Number(res?.[0]?.[1] ?? 0)
+    return count <= ORG_REFRESHES_PER_MINUTE
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention refresh budget unavailable; refreshing")
+    return true
   }
-  refreshes.delete(key)
-  settleIfIdle()
+}
+
+function track(p: Promise<void>): void {
+  inFlight.add(p)
+  void p.finally(() => inFlight.delete(p))
+}
+
+function enqueueRefresh(job: AttentionRefreshJob, onFailure?: () => void): void {
+  const enqueue = wakeDeps.enqueue ?? defaultEnqueue
+  track(
+    enqueue(job).catch((err: unknown) => {
+      onFailure?.()
+      log.warn(
+        { err, orgId: job.payload.org, app: job.payload.app },
+        "Attention refresh not queued",
+      )
+    }),
+  )
 }
 
 /**
- * Ask for the app's stored attention to be recomputed soon (after a wake).
- * Cheap and synchronous: a no-op for an app with no provider in the org.
+ * Ask for the app's stored attention to be recomputed (after a wake): queues
+ * the (org, app)'s job for the end of the current interval, once. Synchronous
+ * and cheap; runs no app code; a no-op for an app with no provider in the org.
  */
 export function scheduleAttentionRefresh(orgId: string, appName: string): void {
   if (!providerOf(orgId, appName)) return
+  const now = (wakeDeps.now ?? Date.now)()
+  const interval = Math.floor(now / REFRESH_MIN_INTERVAL_MS) + 1
   const key = keyOf(orgId, appName)
-  const state = refreshes.get(key)
-  if (state) {
-    // Waiting: it will read the new state. Running: one more pass after it.
-    if (state.running) state.again = true
-    return
-  }
-  const fresh: RefreshState = { timer: null, running: null, again: false }
-  refreshes.set(key, fresh)
-  fresh.timer = setTimeout(() => void runRefresh(key, orgId, appName), REFRESH_DEBOUNCE_MS)
+  if (queuedInterval.get(key) === interval) return
+  if (queuedInterval.size >= QUEUED_INTERVAL_MAX_KEYS) queuedInterval.clear()
+  queuedInterval.set(key, interval)
+  enqueueRefresh(
+    {
+      jobId: jobIdOf(orgId, appName, String(interval)),
+      delay: interval * REFRESH_MIN_INTERVAL_MS - now,
+      payload: { org: orgId, app: appName },
+    },
+    () => {
+      if (queuedInterval.get(key) === interval) queuedInterval.delete(key)
+    },
+  )
 }
 
-/** Resolves once no refresh is waiting or running in this process (tests). */
-export function attentionRefreshesSettled(): Promise<void> {
-  if (refreshes.size === 0) return Promise.resolve()
-  return new Promise((resolve) => settledWaiters.add(resolve))
+/**
+ * The minute tick's refresh of every app provider of the org: one job per
+ * app, due now, at most once a minute per (org, app).
+ */
+export async function scheduleAllAppAttentionRefresh(orgId: string): Promise<void> {
+  if (wakeDeps.ensureOrgApps) await wakeDeps.ensureOrgApps(orgId)
+  else {
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(orgId)
+  }
+  const minute = Math.floor((wakeDeps.now ?? Date.now)() / 60_000)
+  for (const [[entryOrg, appName]] of attentionItemsRegistry.entriesOf(orgId)) {
+    if (entryOrg !== orgId) continue
+    enqueueRefresh({
+      jobId: jobIdOf(orgId, appName, `t${minute}`),
+      delay: 0,
+      payload: { org: orgId, app: appName },
+    })
+  }
+}
+
+/**
+ * The refresh job: within the org's minute budget, the app's provider runs
+ * for each person and their lists are stored; past it, the job moves to the
+ * next minute.
+ */
+export async function processAttentionRefreshJob(
+  payload: AttentionRefreshPayload,
+  partial: WakeDeps = {},
+): Promise<void> {
+  const deps: WakeDeps = { ...wakeDeps, ...partial }
+  const { org: orgId, app: appName } = payload
+  // A wake from now on falls after this run started: it queues a new job.
+  queuedInterval.delete(keyOf(orgId, appName))
+  const now = (deps.now ?? Date.now)()
+  if (!(await (deps.takeOrgBudget ?? defaultTakeOrgBudget)(orgId, now))) {
+    const minute = Math.floor(now / 60_000) + 1
+    await (deps.enqueue ?? defaultEnqueue)({
+      jobId: jobIdOf(orgId, appName, `m${minute}`),
+      delay: minute * 60_000 - now,
+      payload: { org: orgId, app: appName },
+    })
+    return
+  }
+  if (deps.ensureOrgApps) await deps.ensureOrgApps(orgId)
+  else {
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(orgId)
+  }
+  // An org being moved is left alone (the transfer hold keys on `orgId`, which
+  // this payload does not carry): its new home recomputes on its first read.
+  await writeUnlessMoving(orgId, () => refreshAppAttention(orgId, appName, deps))
+}
+
+/** Resolves once no enqueue (or, under a test double, no refresh) is in flight. */
+export async function attentionRefreshesSettled(): Promise<void> {
+  while (inFlight.size > 0) await Promise.allSettled([...inFlight])
 }
 
 let wired = false
 
+/** Entry kinds whose runs only read: what a provider lists cannot have changed. */
+const READ_ONLY_ENTRY_KINDS: ReadonlySet<string> = new Set([
+  "attention",
+  "search",
+  "export",
+  "preview",
+  "summarizer",
+  "preflight",
+  "webhook-verify",
+  "pdf-template",
+  "import-transform",
+])
+
+/**
+ * Could this run have changed what the app's provider lists? Not a run of a
+ * read-only entry kind, nor of a tool the app declares read-only (and that
+ * declares no write target): the read-only-run rule (isReadOnlyTool). Any
+ * other run (a write, an event handler, a job, a webhook, a poll, an
+ * undeclared tool) may have.
+ */
+export function runCouldChangeAttention(
+  info: Pick<RunSettledInfo, "orgId" | "app" | "entry">,
+): boolean {
+  const colon = info.entry.indexOf(":")
+  const kind = colon < 0 ? info.entry : info.entry.slice(0, colon)
+  if (READ_ONLY_ENTRY_KINDS.has(kind)) return false
+  if (kind === "tool") {
+    const def = toolRegistry.get([info.orgId, info.app, info.entry.slice(colon + 1)])
+    if (def && isReadOnlyTool(def)) return false
+  }
+  return true
+}
+
 /** A run of an app settled (any executor): its stored attention may have changed. */
 function wakeOnRunSettled(info: RunSettledInfo): void {
   // The org and app of the run itself, as runApp reported it.
-  if (info.entry.startsWith(ATTENTION_ENTRY_PREFIX)) return
+  if (!runCouldChangeAttention(info)) return
   scheduleAttentionRefresh(info.orgId, info.app)
 }
 
@@ -514,13 +672,26 @@ async function wakeOnAppEvent(event: AppEvent): Promise<void> {
   scheduleAttentionRefresh(event.orgId, event.app)
 }
 
+/** Register the refresh job's worker (every process; only a job host runs it). */
+export function registerAttentionRefreshWorker(): void {
+  registerJobWorker<AttentionRefreshPayload>(
+    ATTENTION_REFRESH_QUEUE_APP,
+    ATTENTION_REFRESH_JOB,
+    async (payload) => {
+      await processAttentionRefreshJob(payload)
+    },
+    { concurrency: ATTENTION_REFRESH_CONCURRENCY },
+  )
+}
+
 /**
- * Wake the refresh after every run of an app (other than an attention run)
- * and after every delivered event of an app. Idempotent.
+ * Register the refresh job, and wake it after every run of an app that may
+ * have written and after every delivered event of an app. Idempotent.
  */
 export function wireAttentionRefreshWakes(): void {
   if (wired) return
   wired = true
+  registerAttentionRefreshWorker()
   onRunSettled(wakeOnRunSettled)
   onEvent(wakeOnAppEvent, { delivery: "once", name: "app-attention-refresh" })
 }
@@ -565,16 +736,19 @@ export async function readStoredAttention(
       error: (r.error as StoredAttention["error"]) ?? null,
     })
   }
+  // Queued, never run here: the read runs no app code.
   for (const app of apps) if (!out.has(app)) scheduleAttentionRefresh(orgId, app)
   return out
 }
 
 /** Test seams: the doubles a woken refresh runs with. */
 export const AttentionStoreTestAccess = {
-  setWakeDeps(deps: typeof wakeDeps): void {
+  setWakeDeps(deps: WakeDeps): void {
     wakeDeps = deps
+    queuedInterval.clear()
   },
   reset(): void {
     wakeDeps = {}
+    queuedInterval.clear()
   },
 }

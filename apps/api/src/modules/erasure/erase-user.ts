@@ -524,6 +524,10 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "anonymize → NULL (last-editor attribution on a surviving org dashboard)",
   },
+  "dashboard_versions.saved_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (who saved a kept version of a surviving org dashboard)",
+  },
   "app_documents.created_by": {
     kind: "handled",
     reason: "anonymize → NULL (creator attribution; the document is org data)",
@@ -1364,6 +1368,9 @@ export async function eraseUser(
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboards SET updated_by = NULL WHERE updated_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboard_versions SET saved_by = NULL WHERE saved_by = ${userId}
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.app_documents SET created_by = NULL WHERE created_by = ${userId}

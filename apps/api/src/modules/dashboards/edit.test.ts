@@ -6,11 +6,13 @@
 import { describe, expect, it } from "bun:test"
 import {
   applyOperations,
+  cardLineCount,
   describeOperations,
   diffDashboards,
   type EditableDashboard,
   EditOperationError,
   MAX_CARD_CHANGES,
+  noteLinkTargets,
   tooManyChangesMessage,
 } from "~/modules/dashboards/edit"
 import type { DashboardSpec } from "~/modules/dashboards/spec"
@@ -290,6 +292,96 @@ describe("datasets and filters by operation", () => {
       'keeps only rows where market is the "Market" filter\'s value (all rows while it is empty)',
     )
     expect(lines[5]).toBe('6. Remove the filter "Market".')
+  })
+})
+
+describe("the card shows every change in full", () => {
+  const ctx = { timeZone: "UTC", now: new Date("2026-11-11T12:00:00Z") }
+
+  it("lists a long note's whole text and every link target under its line", () => {
+    const text = `${"All good here. ".repeat(30)}\n\n[Renew your access](https://phish.example/a) and <mailto:x@y.example>\n\n[ref]: https://other.example/b`
+    const lines = describeOperations(
+      dashboard(),
+      [{ op: "addBlock", block: { id: "n", type: "text", title: "Notes", text } }],
+      ctx,
+    )
+    expect(lines[0]).toContain(`a note of ${text.length} characters, its full text below; 3 links`)
+    const body = lines
+      .filter((l) => l.startsWith("   Note text"))
+      .map((l) => l.replace(/^ {3}Note text \(\d+\/\d+\): /, ""))
+      .join("")
+    expect(body).toContain("[Renew your access](https://phish.example/a)")
+    expect(lines.at(-1)).toBe(
+      "   Links in the note: https://phish.example/a , https://other.example/b , mailto:x@y.example",
+    )
+    expect(lines.every((l) => l.length <= 500)).toBe(true)
+    expect(cardLineCount([{ op: "addBlock", block: { id: "n", type: "text", text } }])).toBe(
+      lines.length,
+    )
+    // A short note stays on its line, its links listed too.
+    const short = describeOperations(
+      dashboard(),
+      [{ op: "updateBlock", blockId: "a", changes: { text: "See [docs](https://d.example)" } }],
+      ctx,
+    )
+    expect(short[0]).toContain('now shows the note "See [docs](https://d.example)"; 1 link')
+    expect(short[1]).toBe("   Links in the note: https://d.example")
+  })
+
+  it("finds inline, reference, autolink and bare targets once each", () => {
+    expect(
+      noteLinkTargets(
+        "[a](/shop/orders) <https://x.example> https://y.example/p?q=1. [b](https://x.example)",
+      ),
+    ).toEqual(["/shop/orders", "https://x.example", "https://y.example/p?q=1."])
+  })
+
+  it("names drill columns, sort, limit and format; counts a filter's readers exactly", () => {
+    const spec = dashboard()
+    ;(spec.spec as unknown as Record<string, unknown>).blocks = [
+      block("a", {
+        map: { agg: "count", where: [{ field: "x", op: "eq", value: { filter: "status" } }] },
+      }),
+      block("b", { map: { x: "status", agg: "count" } }),
+      block("c", { source: { kind: "tool", tool: "t:x", params: { s: "{{filter.status}}" } } }),
+    ]
+    const lines = describeOperations(
+      spec,
+      [
+        {
+          op: "updateBlock",
+          blockId: "b",
+          changes: {
+            map: {
+              drillColumns: [{ field: "id", label: "Order" }],
+              sort: { field: "n", dir: "asc" },
+              limit: 5,
+              format: "currency",
+              currency: "EUR",
+            },
+          },
+        },
+        {
+          op: "setFilter",
+          filter: {
+            id: "status",
+            label: "Status",
+            type: "select",
+            options: {
+              fromSource: { kind: "tool", tool: "t:statuses", params: { scope: "open" } },
+              field: "s",
+            },
+          },
+          position: 0,
+        },
+      ],
+      ctx,
+    )
+    expect(lines[0]).toContain("its rows open with the columns Order")
+    expect(lines[0]).toContain("sorted by n ascending, at most 5 rows, shown as currency (EUR)")
+    expect(lines[1]).toContain('read from t:statuses with {"scope":"open"}')
+    expect(lines[1]).toContain("read by 2 blocks")
+    expect(lines[1]).toContain("position 1 of 1 in the filter bar")
   })
 })
 

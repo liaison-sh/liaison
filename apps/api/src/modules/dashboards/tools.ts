@@ -26,14 +26,25 @@ import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
+  cardLineCount,
   describeOperations,
   diffDashboards,
   type EditOperation,
   editOperationSchema,
   MAX_CARD_CHANGES,
+  revertTargets,
   tooManyChangesMessage,
 } from "~/modules/dashboards/edit"
 import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
+import {
+  checkRecipients,
+  computeDashboard,
+  exportFilename,
+  renderDashboardPdf,
+  StorageFullError,
+  snapshotOf,
+  stagePdfForViewer,
+} from "~/modules/dashboards/export"
 import {
   FilterValueError,
   type FilterValues,
@@ -57,6 +68,8 @@ import {
   editDashboard,
   getDashboard,
   listDashboards,
+  listVersions,
+  readVersions,
   updateDashboard,
 } from "~/modules/dashboards/service"
 import { listEligibleSources } from "~/modules/dashboards/sources"
@@ -224,9 +237,8 @@ function tokenDates(source: Record<string, unknown>, timeZone: string, range: Da
 
 /** The zone a card's token dates are shown in: the org's, looked up only when a block has tokens. */
 async function cardTimezone(spec: unknown, orgId: string): Promise<string> {
-  return hasDateTokens((spec as { blocks?: unknown } | null)?.blocks)
-    ? dashboardTimezone(orgId)
-    : "UTC"
+  const s = spec as { blocks?: unknown; datasets?: unknown } | null
+  return hasDateTokens([s?.blocks, s?.datasets]) ? dashboardTimezone(orgId) : "UTC"
 }
 
 /** One block's lines for an approval card: what it draws and from where. */
@@ -253,25 +265,42 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
   return lines
 }
 
+/** A new dashboard's spec as operations from an empty one: datasets, filters, then blocks. */
+function createOperations(spec: unknown): EditOperation[] {
+  return diffDashboards(EMPTY_DASHBOARD, { spec })
+}
+const EMPTY_DASHBOARD = {
+  title: "",
+  visibility: "personal" as const,
+  spec: { v: 1, blocks: [] } as unknown as DashboardSpec,
+}
+
 // A create parks for an org dashboard, and also for a personal one when the turn's taint parks it
-// (scope-taint rule 8b): the card says which, from the visibility the call carries.
+// (scope-taint rule 8b): the card says which, from the visibility the call carries, then lists the
+// dashboard as dashboards_edit's card lists changes, one numbered line per dataset, filter and
+// block (sources, params, date tokens, every note's full text and links).
 const summarizeCreate: ApprovalSummarizer = async (raw, ctx) => {
   const p = (raw ?? {}) as { title?: string; spec?: unknown; visibility?: string }
-  const tz = await cardTimezone(p.spec, ctx.orgId)
+  const ops = createOperations(p.spec)
+  const lines = ops.length
+    ? describeOperations(EMPTY_DASHBOARD, ops, {
+        timeZone: await cardTimezone(p.spec, ctx.orgId),
+        now: new Date(),
+      })
+    : ["No blocks."]
   if (p.visibility !== "org") {
     return {
       kind: "dashboard_create",
       title: `Save the personal dashboard "${p.title ?? ""}"`,
-      lines: ["Only its author will see it.", ...blockLines(p.spec, tz)],
+      subtitle: "Only its author will see it.",
+      lines,
     }
   }
   return {
     kind: "dashboard_create",
     title: `Share the dashboard "${p.title ?? ""}" with the organisation`,
-    lines: [
-      "Everyone in the organisation will see it, each with their own access.",
-      ...blockLines(p.spec, tz),
-    ],
+    subtitle: "Everyone in the organisation will see it, each with their own access.",
+    lines,
   }
 }
 
@@ -340,6 +369,11 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
       lines: ["The changes could not be read: approving applies them as sent, or refuses them."],
     }
   }
+  const targets = revertTargets(ops.data)
+  const versions =
+    targets.length && typeof p.dashboardId === "string"
+      ? await readVersions(ctx.tx, p.dashboardId, targets)
+      : new Map()
   const lines = describeOperations(
     {
       title: current.title,
@@ -347,7 +381,7 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
       spec: current.spec as unknown as DashboardSpec,
     },
     ops.data,
-    { timeZone: await dashboardTimezone(ctx.orgId), now: new Date() },
+    { timeZone: await dashboardTimezone(ctx.orgId), now: new Date(), versions },
   )
   const n = ops.data.length
   // A personal dashboard's edit is gated by its own setVisibility org: it is being shared.
@@ -484,8 +518,8 @@ export function registerDashboardTools(orgId: string): void {
       const saved = blockSourceOf(block, spec.datasets)
       const withValues = saved
         ? saved.kind === "tool"
-          ? { ...saved, params: resolveFilterTokens(saved.params, values) }
-          : { ...saved, query: resolveFilterTokens(saved.query, values) }
+          ? { ...saved, params: resolveFilterTokens(saved.params, values, spec) }
+          : { ...saved, query: resolveFilterTokens(saved.query, values, spec) }
         : null
       const outcome = await computeBlock(
         withValues ? { ...block, source: withValues, dataset: undefined } : block,
@@ -494,6 +528,11 @@ export function registerDashboardTools(orgId: string): void {
           dashboardId: null,
           range,
           where: resolveWhere(block.map.where, values),
+          ...(spec.datasets ? { datasets: spec.datasets } : {}),
+          resolveDataset: (src) =>
+            src.kind === "tool"
+              ? { ...src, params: resolveFilterTokens(src.params, values, spec) }
+              : { ...src, query: resolveFilterTokens(src.query, values, spec) },
           ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         },
@@ -553,6 +592,155 @@ export function registerDashboardTools(orgId: string): void {
       )) as (params: unknown, ctx: any) => Promise<unknown>,
   })
 
+  toolRegistry.set([orgId, "kernel", "dashboards_history"], {
+    appName: "kernel",
+    name: "dashboards_history",
+    readOnly: true,
+    deferLoading: true,
+    description:
+      'List a dashboard\'s saved versions (the last 20), newest first: version, title, when and by whom, block count. Revert to one with kernel__dashboards_edit {op:"revert", toVersion}.',
+    searchKeywords: ["dashboard", "history", "historique", "version", "revert", "annuler"],
+    requiredScopes: [READ],
+    params: z.object({ id: z.string().uuid() }),
+    handler: (async (params: unknown, ctx: HandlerCtx) =>
+      guarded(async () => ({
+        versions: await listVersions(await viewerOf(ctx), (params as { id: string }).id, ctx.db),
+      }))) as (params: unknown, ctx: any) => Promise<unknown>,
+  })
+
+  const snapshotParams = {
+    dashboardId: z.string().uuid(),
+    timeRange: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'The period, e.g. {preset:"lastMonth"} or {preset:"custom", from, to}. Default: the dashboard\'s.',
+      ),
+    compare: z
+      .enum(["lastYear", "previousPeriod", "none"])
+      .optional()
+      .describe("What the figures are compared with. Default: the dashboard's."),
+    filters: z
+      .record(z.string(), z.array(z.string()))
+      .optional()
+      .describe('Filter values, e.g. {market: ["FR"]}. Default: each filter\'s default.'),
+  }
+
+  /** The range options of a snapshot call, checked. */
+  const snapshotOptions = (p: {
+    timeRange?: unknown
+    compare?: string
+    filters?: Record<string, string[]>
+  }) => {
+    const tr = p.timeRange === undefined ? null : timeRangeSchema.safeParse(p.timeRange)
+    if (tr && !tr.success) {
+      throw new DashboardError(
+        "INVALID_REQUEST",
+        "the time range is not valid",
+        specIssues(tr.error),
+      )
+    }
+    return {
+      ...(tr?.success ? { range: tr.data } : {}),
+      ...(p.compare ? { compare: p.compare as "lastYear" | "previousPeriod" | "none" } : {}),
+      ...(p.filters ? { filters: p.filters } : {}),
+    }
+  }
+
+  toolRegistry.set([orgId, "kernel", "dashboards_snapshot"], {
+    appName: "kernel",
+    name: "dashboards_snapshot",
+    readOnly: true,
+    // Its figures come from the blocks' sources (app data, connector reads): marked as a read
+    // of outside data, as a preview of a store source is.
+    taintSource: true,
+    deferLoading: true,
+    description:
+      "Read a whole dashboard at once for a period and filters, computed with your access: each block's key figures (a metric's value, its compared value and change, its target; a chart's totals per series with their change and its top labels; a table's first rows), the period and the filters. Pass recipients (user ids) before sharing it: it says who may receive it (they can open the dashboard and read every source themselves). For a PDF of it, kernel__dashboards_pdf. To send it on a schedule, a routine calls this tool (kernel__skill_read build-dashboard).",
+    searchKeywords: ["dashboard", "snapshot", "rapport", "report", "weekly", "hebdo", "résumé"],
+    requiredScopes: [READ],
+    params: z.object({
+      ...snapshotParams,
+      recipients: z
+        .array(z.string().uuid())
+        .max(50)
+        .optional()
+        .describe("The people it will be sent to: each one is checked."),
+    }),
+    handler: (async (params: unknown, ctx: HandlerCtx) => {
+      const p = params as {
+        dashboardId: string
+        timeRange?: unknown
+        compare?: string
+        filters?: Record<string, string[]>
+        recipients?: string[]
+      }
+      return guarded(async () => {
+        const viewer = await viewerOf(ctx)
+        const opts = snapshotOptions(p)
+        const computed = await computeDashboard(viewer, p.dashboardId, {
+          ...opts,
+          ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
+        })
+        const snapshot = snapshotOf(computed, viewer, p.filters)
+        if (!p.recipients?.length) return snapshot
+        const recipients = await checkRecipients(ctx.orgId, p.dashboardId, p.recipients)
+        return {
+          ...snapshot,
+          recipients,
+          recipientsNote:
+            "Send it only to the people with mayReceive true, and say who was left out and why. The figures are computed with your access: someone whose access to rows differs may see other numbers on the dashboard. To give each person their own figures, each gets a routine they own.",
+        }
+      })
+    }) as (params: unknown, ctx: any) => Promise<unknown>,
+  })
+
+  toolRegistry.set([orgId, "kernel", "dashboards_pdf"], {
+    appName: "kernel",
+    name: "dashboards_pdf",
+    deferLoading: true,
+    description:
+      "Print a dashboard as a PDF for a period and filters, computed with your access (title, period and filters in the header, then each block), staged as a file only you can read: attach its fileId to a reply or a mail. Returns { fileId, filename, byteSize }.",
+    searchKeywords: ["dashboard", "pdf", "export", "imprimer", "rapport"],
+    requiredScopes: [READ],
+    params: z.object(snapshotParams),
+    handler: (async (params: unknown, ctx: HandlerCtx) => {
+      const p = params as {
+        dashboardId: string
+        timeRange?: unknown
+        compare?: string
+        filters?: Record<string, string[]>
+      }
+      return guarded(async () => {
+        const viewer = await viewerOf(ctx)
+        const computed = await computeDashboard(viewer, p.dashboardId, {
+          ...snapshotOptions(p),
+          ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
+        })
+        const bytes = await renderDashboardPdf(computed, p.filters)
+        try {
+          return await stagePdfForViewer(viewer, bytes, exportFilename(computed.view.title, "pdf"))
+        } catch (err) {
+          if (err instanceof StorageFullError) {
+            return {
+              error: {
+                code: "storage_quota_exceeded",
+                message: err.message,
+                retryable: false,
+                status: 413,
+              },
+            }
+          }
+          throw err
+        }
+      })
+    }) as (params: unknown, ctx: any) => Promise<unknown>,
+    // The PDF is a new kernel file staged for the caller alone (their upload session).
+    writesToTable: "kernel.files",
+    sinkReadersSelf: true,
+    taintSource: true,
+  })
+
   toolRegistry.set([orgId, "kernel", "dashboards_create"], {
     appName: "kernel",
     name: "dashboards_create",
@@ -578,6 +766,11 @@ export function registerDashboardTools(orgId: string): void {
     approvalImpact: "internal",
     gatedWhen: async (params: unknown) =>
       (params as { visibility?: string } | null)?.visibility === "org",
+    // One approval card lists the whole new dashboard: more than it lists is refused.
+    refuseBeforeGate: async (params: unknown) => {
+      const count = cardLineCount(createOperations((params as { spec?: unknown } | null)?.spec))
+      return count > MAX_CARD_CHANGES ? tooManyChanges(count) : null
+    },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_create", summarizeCreate)
 
@@ -642,14 +835,16 @@ export function registerDashboardTools(orgId: string): void {
       const carded =
         row?.visibility === "org" || (p.visibility === "org" && row?.ownerUserId === userId)
       if (!row || !carded) return null
-      const count = diffDashboards(
-        {
-          title: row.title,
-          visibility: row.visibility,
-          spec: row.spec as unknown as DashboardSpec,
-        },
-        p,
-      ).length
+      const count = cardLineCount(
+        diffDashboards(
+          {
+            title: row.title,
+            visibility: row.visibility,
+            spec: row.spec as unknown as DashboardSpec,
+          },
+          p,
+        ),
+      )
       return count > MAX_CARD_CHANGES ? tooManyChanges(count) : null
     },
   })
@@ -660,7 +855,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_edit",
     deferLoading: true,
     description:
-      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial), removeBlock, moveBlock, setTitle, setTimeRange (the default range and comparison), setVisibility, setDataset / removeDataset (a source shared by several blocks), setFilter / removeFilter (a dashboard filter). Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
+      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial; a rename is changes {title}), removeBlock, moveBlock, resizeBlock (width 1-3, height 1-2), duplicateBlock, setTitle, setDescription, setTimeRange (the default range and comparison), setVisibility, setDataset / removeDataset (a source shared by several blocks), setFilter / removeFilter (a dashboard filter), revert (back to a saved version, kernel__dashboards_history). Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
     searchKeywords: ["dashboard", "modifier", "edit", "block", "bloc", "période"],
     requiredScopes: [WRITE],
     params: z.object({
@@ -674,7 +869,7 @@ export function registerDashboardTools(orgId: string): void {
         .array(editOperationSchema)
         .min(1)
         .describe(
-          `1 to ${MAX_CARD_CHANGES} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}, {op:"setDataset", id, source}, {op:"removeDataset", id}, {op:"setFilter", filter, position?}, {op:"removeFilter", id}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
+          `1 to ${MAX_CARD_CHANGES} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}, {op:"setDataset", id, source}, {op:"removeDataset", id}, {op:"setFilter", filter, position?}, {op:"removeFilter", id}, {op:"resizeBlock", blockId, width?, height?}, {op:"duplicateBlock", blockId, newId?, title?, position?}, {op:"setDescription", description (null removes it)}, {op:"revert", toVersion}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
         ),
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
@@ -712,7 +907,8 @@ export function registerDashboardTools(orgId: string): void {
     // read, a stale ifVersion), and one card lists every operation.
     refuseBeforeGate: async (params: unknown, ctx) => {
       const p = params as { dashboardId: string; ifVersion: number; operations: EditOperation[] }
-      if (p.operations.length > MAX_CARD_CHANGES) return tooManyChanges(p.operations.length)
+      const lines = cardLineCount(p.operations)
+      if (lines > MAX_CARD_CHANGES) return tooManyChanges(lines)
       if (ctx.userId === "system") return null
       const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
       return guarded(async () => {

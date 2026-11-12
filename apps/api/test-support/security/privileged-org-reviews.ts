@@ -279,12 +279,10 @@ export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
 export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
     "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today); what it hands on is the org id it was given, for that one org's cache and broadcast",
-  "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaries":
-    "the leader's one-off summary backfill (boot-phase10.ts registerApprovalSummaryBackfill, a dynamic import): each org id is read from kernel.approval_requests rows that lack a summary, and only that org's rows are read and written",
-  "apps/api/src/modules/apps/attention-store.ts#wakeOnRunSettled":
-    "run-settled subscriber: the org and app of a run runApp itself made and reported (workers/run-settled.ts); it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
-  "apps/api/src/modules/apps/attention-store.ts#wakeOnAppEvent":
-    "event bus handler (once): the delivered event's own org and app; it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
+  "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
+    "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
+  "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":
+    "the attention refresh job (app-attention-refresh): payload.org is the org a wake queued it for (the org and app of a run runApp reported, a delivered event's own org and app, the reader's own org in readStoredAttention, or the minute tick's org); it refreshes only that app for that org, as each active person of that same org, in writeUnlessMoving",
   "apps/api/src/modules/app-builder/preview.ts#previewBridge":
     "an app builder preview: the org is the previewing person's own (the agent tool's ctx.orgId or the route's session org, passed through previewDraft's actor); the bridge, its RLS session and every nested call are built for that org and that person only",
   "apps/api/src/modules/apps/connections/revoke.ts#isAccountUsedElsewhere":

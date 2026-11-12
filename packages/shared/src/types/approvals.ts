@@ -35,10 +35,12 @@ export const APPROVAL_SUMMARY_LINES_MAX = 8
 
 /**
  * The card kinds that list one numbered line per change, however many a request pools
- * (a dashboard edit: one request, one card, owner decision 2026-11-11), bounded against
+ * (a dashboard edit: one request, one card, owner decision 2026-11-11; a new dashboard,
+ * listed as the operations that build it), bounded against
  * abuse by APPROVAL_SUMMARY_LONG_LINES_MAX. The web card scrolls a long list.
  */
 export const APPROVAL_SUMMARY_LONG_KINDS: ReadonlySet<string> = new Set([
+  "dashboard_create",
   "dashboard_edit",
   "dashboard_update",
 ])

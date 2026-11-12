@@ -99,9 +99,11 @@ export { controlPlaneOutbox } from "./control-plane-outbox"
 export { creditBalances, creditTransactions, modelPricing } from "./credits"
 export {
   type DashboardRow,
+  type DashboardVersionRow,
   type DashboardViewerStateRow,
   type DashboardVisibility,
   dashboards,
+  dashboardVersions,
   dashboardViewerStates,
 } from "./dashboards"
 export { demoLeads } from "./demo-leads"

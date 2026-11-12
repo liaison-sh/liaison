@@ -62,15 +62,27 @@ Everyone can list and open the dashboards they see: every active member holds `k
 
 Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it the next time the server starts ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
-Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card of a new dashboard lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. The card of a change lists every change, one line each (next section). A personal dashboard the agent makes for you saves at once.
+Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card of a new dashboard lists it the way the card of a change does (next section): each shared dataset, filter and block, one numbered line each, with the tool or collection it reads, its settings and the rolling dates it uses with the date each one stands for today. The card of a change lists every change, one line each. A personal dashboard the agent makes for you saves at once.
 
 ## Ask your agent to change a dashboard
 
 Ask for the changes in plain words, for example: "Add Google spend by campaign after the orders, remove the stock table, and open the dashboard on last month." The agent sends everything you asked for in one go, applied in order: add, change, move or remove a block, rename the dashboard, set the period it opens on, add, change or remove a shared dataset or a filter, or share it. Either every change is saved, or none is.
 
-On an org dashboard the whole request waits for **one** approval by a person who holds `kernel:dashboards:admin`, however many changes it holds (up to 50; the list scrolls on a long card). Its card numbers the changes, one line each: the block added, changed, moved or removed with its title and position; the tool or collection it reads with its settings (written out when short, else each setting by name; or the shared dataset it reads), each date in them and what it stands for today; for an added block, what it shows (for example "sum of total by status, target 5000"), whether it follows the dashboard's period or keeps its own dates, and its refresh interval; the rows it keeps; for a changed block, what changed; each shared dataset and filter added, changed or removed, with a filter's choices and default; and the period the dashboard opens on. Sharing a personal dashboard with the organization reads "Share the dashboard". When the agent rebuilds a whole dashboard at once, its card lists the differences from the saved dashboard the same way.
+On an org dashboard the whole request waits for **one** approval by a person who holds `kernel:dashboards:admin`, however many changes it holds (up to 50; the list scrolls on a long card). Its card numbers the changes, one line each: the block added, changed, moved or removed with its title and position; the tool or collection it reads with its settings (written out when short, else each setting by name; or the shared dataset it reads), each date in them and what it stands for today; for an added block, what it shows (for example "sum of total by status, target 5000"), whether it follows the dashboard's period or keeps its own dates, and its refresh interval; the rows it keeps; for a changed block, what changed (including the columns its rows open with, its sorting, row limit and number format); each shared dataset and filter added, changed or removed, with a filter's choices (and the tool and settings it reads them from), its default, its place in the filter bar and how many blocks read it; and the period the dashboard opens on. A text note shows in full: a short one on its line, a longer one on the lines below it, and every link it holds, listed under it, so nothing in a note is approved unseen. Sharing a personal dashboard with the organization reads "Share the dashboard". When the agent rebuilds a whole dashboard at once, its card lists the differences from the saved dashboard the same way.
 
-The request is checked before anyone is asked: a block that is not there or already is, a block that cannot draw its data, or a source you cannot read is refused at once, and the agent corrects it, so an administrator never approves a change that then fails. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. Past 50 changes, the agent sends them in two requests, the second once the first is approved. A change to your personal dashboard saves at once.
+The request is checked before anyone is asked: a block that is not there or already is, a block that cannot draw its data, or a source you cannot read is refused at once, and the agent corrects it, so an administrator never approves a change that then fails. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. Past 50 lines (a long note takes a line per 440 characters, and its links one more), the agent sends the changes in two requests, the second once the first is approved. A change to your personal dashboard saves at once.
+
+## Change a dashboard yourself
+
+Your own changes save at once, never held for approval: your scopes decide (the table above). You can move a block, make it wider (1 to 3 columns) or taller (1 or 2 rows), rename it, duplicate it or remove it, rename the dashboard and describe what it is for. The changes go through the same checks as the agent's: either all of them are saved, or none. If someone saved the dashboard in the meantime, the change is refused and the dashboard shows its new version.
+
+Any dashboard you can see can also be **duplicated**: the copy is your own personal dashboard, with the same blocks, named "<title> (copy)". Its blocks must read sources you may read yourself.
+
+## Go back to an earlier version
+
+Every save keeps the version it made, with who saved it and when: the last 20 versions of each dashboard. Anyone who sees the dashboard can list them and look at one. Going back to a version saves it again as a new version, so nothing is lost: you can always go forward again. A dashboard saved before version history existed keeps its versions from its next save.
+
+Ask your agent, for example "Put the sales dashboard back as it was on Monday": it lists the versions (`dashboards_history`) and reverts to the one you mean. On an org dashboard that revert waits for an approval like any other change, and its card says what the revert undoes: the blocks it removes, adds back or changes.
 
 ## Time range and comparison
 
@@ -82,6 +94,8 @@ A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter 
 - Dashboards built before time ranges existed keep their blocks' own dates.
 
 A metric can also show a goal (its target) and its trend over the period as a small line.
+
+Days, weeks, months, quarters (`2026-Q4`) and years are always counted in the organization's time zone: an order placed at 00:30 in Paris on 1 November counts on 1 November, in the figures, the trend and the charts alike.
 
 ## Choose the period
 
@@ -104,7 +118,7 @@ A block that keeps its own dates says them in a small label next to its title, s
 - A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
 - "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
-## Chart types, notes and filters
+## Chart types and notes
 
 Besides metrics, tables, bars, lines and pies, your agent can build:
 
@@ -114,7 +128,23 @@ Besides metrics, tables, bars, lines and pies, your agent can build:
 - a **funnel**: ordered stages, such as cart, paid, shipped, from one field per stage or from the values of one field;
 - a **text** note: a few lines of formatted text with no data behind it, for definitions ("B2B means orders tagged b2b"), targets and caveats.
 
-A dashboard can also have **filters** (at most 8), such as a market, a channel or a campaign: pick one value, several, or type a text. Each block that reads a filter shows only the matching data: either the source is asked for that value, or the block keeps only the rows that match. A filter left empty means everything. The values you pick are remembered for you alone, on that dashboard, like the time range. A filter's choices are a fixed list, or the values found in the dashboard's own data.
+How each one reads on the dashboard:
+
+- A **funnel** shows its stages top to bottom, each bar as wide as its share of the first stage, and between two stages the share that went on, for example "25% of the step before". It uses calm colours, never red or green.
+- A **combo** chart draws its bars and its lines together; when the lines have their own axis, it is on the right. When its bars are stacked, its lines always have their own axis on the right, so a line is never drawn on top of the bars' total.
+- A **text** note shows its formatting (bold, lists, links). Any HTML written in it shows as plain text. A link to a web page opens in a new tab; a link to a page of Liaison (such as `/projects`) opens it in place.
+
+## Filter a dashboard
+
+A dashboard can also have **filters** (at most 8), such as a market, a channel or a campaign. They sit in a row under the bar at the top, one button per filter, which reads its name and its value: "Market: All", "Market: FR", or "Channel: b2b, dtc". On a phone the row wraps.
+
+- Click a filter to see its values. **All** shows everything. A filter that takes one value closes on your pick; one that takes several keeps its menu open, each click ticks or unticks a value, and the blocks read the values you ticked once you close the menu.
+- A text filter is a small field: type a value and press Enter, or leave the field. Empty it to show everything again.
+- A filter's values are a fixed list, or the values found in the dashboard's own data for the period shown, read when you open the menu. A long list shows its first 200 values and says so.
+- **Reset filters** goes back to the dashboard's default values and forgets yours.
+- A value cannot hold `{{` or `}}`. A link with a value the filter does not offer (removed since), or longer than 200 characters, opens with that value left out.
+
+Each block that reads a filter shows only the matching data: either the source is asked for that value, or the block keeps only the rows that match. Your values are remembered for you alone, on that dashboard, like the period, and they go into the tab's address (`?f.market=FR&f.channel=b2b&f.channel=dtc`; `f.market=` with nothing after it means all), so a link you copy opens with the same filters. Values too long to remember (about 16 KB in all) apply in the tab and its link only. A dashboard opens, filter by filter, on the value in its link, else on the one you last chose there, else on its default. A block asked for new values a moment ago may keep the figures it shows and say "Just refreshed. Try again in a few seconds."
 
 A block can keep only some rows of its source ("only the ad sets that spent", "without cancelled orders") before anything is counted.
 
@@ -122,7 +152,32 @@ When several blocks show the same data (a count and the list of the same orders,
 
 ## See the records behind a figure
 
-A block's figures come from rows of its source, and you can see those rows: the orders behind a bar, the ad sets in a slice, the rows a metric adds up. They are read from the figures already loaded, never by running the source again while those are fresh, with the same access as the block. When the block says where a row leads (an order, a ticket, a contact), each row opens that record in Liaison.
+A block's figures come from rows of its source, and you can see those rows: the orders behind a bar, the ad sets in a slice, the rows a metric adds up.
+
+- Click a bar, a point, a slice, a funnel stage, a table row's first cell or a metric's figure. With the keyboard, each chart's categories can also be reached with Tab.
+- The button with rows lines next to a block's title (**Show the rows behind this block**) lists every row the block counts.
+
+The rows open in a panel on the right of the dashboard (over it on a phone), with the block's title and the figure you picked ("FR", or **All rows**). At its top: "1 to 50 of 230", **Previous page** and **Next page**, and **Close** (or press Escape, wherever you are on the dashboard); focus then goes back to what you clicked. The rows follow the period and the filters the dashboard shows: change either while the panel is open and it reads the rows again from the first page. A bar or point of the compared period opens that period's rows, with its dates under the title. When the block says where a row leads (an order, a ticket, a contact), each row has **Open**, which opens that record in Liaison. When the source holds more rows than are searched, the panel says "The source has more rows: only its first 2,000 are searched."
+
+The rows are read from the figures already loaded, never by running the source again while those are fresh, with the same access as the block.
+
+## Calculated figures
+
+A block can compute its figures from others, for example a return on ad spend (revenue divided by ad spend, the spend read from another shared dataset), a difference between two counts, a share of a total, or amounts kept in cents shown in units. Your agent writes the calculation with numbers, `+ - * /`, parentheses, `min`, `max`, `abs` and `round`. A division by zero, or a figure that is missing, shows no value rather than a wrong number. A chart can also show each value as a percentage of its total.
+
+## Export a dashboard
+
+- A block's figures as a CSV file: one row per label and a column per series, the compared values beside them (`GET /api/dashboards/:id/blocks/:blockId/data.csv`).
+- The rows behind a block as a CSV file: every row it reads (up to 2,000), with the same columns as when you look at them (`GET /api/dashboards/:id/blocks/:blockId/rows.csv`).
+- The whole dashboard as a PDF, for the period and filters you show (`GET /api/dashboards/:id/export.pdf`): the title and description, the period and what it is compared with, each filter's value, then every block (a metric with its compared value, change and target, a chart's values as a table, a table's first 100 rows, a note's text, and for a block that cannot show, why).
+
+Everything is read with your own access, through the same figures as the dashboard. A text in a CSV file that a spreadsheet would run as a formula starts with `'`.
+
+## Send a dashboard on a schedule
+
+Ask your agent, for example "Every Monday at 8, send me the sales dashboard for last week". It sets up a routine ([Routines](routines.md)) that, each time, reads the dashboard for that period (`dashboards_snapshot`: each figure with its change), posts the key figures and, if you want it, the PDF (`dashboards_pdf`). The routine waits for your approval like any new routine.
+
+Nobody receives more than they could see themselves. The figures are read with the access of the routine's owner. Sent to several people (a shared conversation, an email), the agent first checks each person: an active member who can open the dashboard and read every source behind it. The others are left out, and the agent says who and why. Someone whose access to rows differs may still see other figures on the dashboard: to give each person their own figures, each gets a routine of their own.
 
 ## What a block can read
 
@@ -156,7 +211,7 @@ Each may carry one offset (not the two date and time forms): `+` or `-`, a numbe
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval; a shared dataset follows the shortest interval of its blocks). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, a block that follows the time range keeps its figures per range, and a filter value its source reads is a new read. A filter that only keeps some rows never reads the source again. Blocks of one shared dataset that load together wait for the same read, and refreshing them one after the other within 30 seconds reads it once. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. The compared period lies in the past, so its figures are kept for 6 hours and **Refresh** reads only the current period again. Dates of your choice are budgeted too: a block reads at most 12 new pairs of dates (counting the compared period), or new filter values its source is asked for, per person per minute; past that it keeps its figures and says "Just refreshed. Try again in a few seconds." The listed periods, the dashboard's default and the filters' defaults never count. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval; a shared dataset follows the shortest interval of its blocks). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, a block that follows the time range keeps its figures per range, and a filter value its source reads is a new read. A filter that only keeps some rows never reads the source again. Blocks of one shared dataset that load together wait for the same read, and refreshing them one after the other within 30 seconds reads it once. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. The compared period lies in the past, so its figures are kept for 6 hours and **Refresh** reads only the current period again. Reads the cache cannot answer are budgeted: new dates of your choice (counting the compared period), new filter values a source is asked for, and every read of a source whose result is too large to keep (or while the cache is down). A block reads at most 12 of them per person per minute, and one person at most 60 across all blocks and dashboards; past that a block keeps its figures and says "Just refreshed. Try again in a few seconds." The listed periods, the dashboard's default and the filters' defaults never count while their result is kept. A filter that takes several values gives the same read whatever order they were ticked in. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
 ## The dashboards API
 
@@ -166,14 +221,21 @@ Signed-in requests, with the person's own access:
 | --- | --- |
 | `GET /api/dashboards` | Your dashboards and the org's. |
 | `POST /api/dashboards` | Create one: `{ title, visibility, spec }`. |
-| `GET /api/dashboards/:id` | One dashboard and its spec, the range it opens on for you (`range`, with `saved` when it is your own choice), its default (`defaultRange`), which blocks follow the range (`blockTimeRange`), and the filter values it opens on for you (`filters.values`, `filters.saved`) with their defaults (`defaultFilters`). |
+| `GET /api/dashboards/:id` | One dashboard and its spec, today's date and the time zone its dates are counted in (`today`, `timeZone`), the range it opens on for you (`range`, with `saved` when it is your own choice), its default (`defaultRange`), which blocks follow the range (`blockTimeRange`), and the filter values it opens on for you (`filters.values`, `filters.saved`) with their defaults (`defaultFilters`). |
 | `PATCH /api/dashboards/:id` | Change `title`, `visibility` or `spec`; `ifVersion` refuses to overwrite a newer save (409). |
+| `POST /api/dashboards/:id/edit` | Change it by a list of operations, all or none: `{ ifVersion, operations }` (1 to 50: `moveBlock`, `resizeBlock`, `updateBlock`, `duplicateBlock`, `removeBlock`, `addBlock`, `setTitle`, `setDescription`, `setTimeRange`, `revert`...). Never held for approval. Answers the dashboard as `GET` does. |
+| `POST /api/dashboards/:id/duplicate` | A copy as your own personal dashboard: `{ title? }`. |
+| `GET /api/dashboards/:id/versions` | Its kept versions, newest first (`version`, `title`, `savedAt`, `savedByName`, `blockCount`, `current`). |
+| `GET /api/dashboards/:id/versions/:version` | One kept version with its spec. |
+| `GET /api/dashboards/:id/blocks/:blockId/data.csv` | The block's figures as CSV (range, compare and filters as for the data). |
+| `GET /api/dashboards/:id/blocks/:blockId/rows.csv` | The rows behind it as CSV (as for the rows, every row). |
+| `GET /api/dashboards/:id/export.pdf` | The dashboard as a PDF (range, compare and filters as for the data). |
 | `DELETE /api/dashboards/:id` | Delete it. |
 | `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. `?range=<preset>` (`last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`), or `?from=YYYY-MM-DD&to=YYYY-MM-DD`, and `?compare=lastYear\|previousPeriod\|none` set the range; without them, the dashboard's default. `?f.<filterId>=<value>` (repeated for several values) sets a filter; an absent filter takes its default, an empty one means all. |
 | `GET /api/dashboards/:id/blocks/:blockId/rows` | The rows behind a figure, read-only: `?category=<label>` (and `?series=<name>`) for a chart, `?row=<index>` for a table row, nothing for a metric; `?offset=` and `?limit=` (at most 200) page them. Range and filters as for the data. Answers `columns`, `rows`, `links` (where each row leads), `total` and `nextOffset`. |
 | `GET /api/dashboards/:id/filters/:filterId/options` | A filter's choices: its list, or the values found in its data (at most 200, `?q=` narrows them). |
 | `GET /api/dashboards/:id/viewer-state` | The range and filter values you last chose on this dashboard, or `null`. |
-| `PUT /api/dashboards/:id/viewer-state` | Remember your choice: any of `{ timeRange: { preset, from?, to? }, compare, filters: { <filterId>: [values] } }`. |
+| `PUT /api/dashboards/:id/viewer-state` | Remember your choice: any of `{ timeRange: { preset, from?, to? }, compare, filters: { <filterId>: [values] } }`. Filter values over 16 KB in all answer 400. |
 | `DELETE /api/dashboards/:id/viewer-state` | Forget it: the dashboard opens on its defaults again. |
 
 A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, a note's `markdown`, and `meta`; with a comparison, `previous`; a metric's `target` and `sparkline`; how a chart is drawn in `display`; a table's `links`), with `computedAt`, `window` (the days it read, or its own dates) and `compareWindow`, or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named; an unknown filter or a value outside a filter's list answers 400.

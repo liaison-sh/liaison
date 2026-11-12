@@ -5,7 +5,7 @@
 // Under the data: when it was read ("Updated 4 min ago"), and rows the server
 // left out. A block that keeps its own window while the dashboard has a range
 // shows that window as a chip beside its title.
-import { RefreshCw } from "lucide-solid"
+import { RefreshCw, Rows3 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -27,6 +27,7 @@ import type {
   BlockResult,
   BlockWindow,
   DashboardBlockSpec,
+  DrillTarget,
 } from "../dashboards-client"
 import { formatDay, formatWindow } from "../time-range"
 import { BlockRenderer } from "./BlockRenderer"
@@ -39,6 +40,10 @@ export interface BlockCardProps {
   refreshTick?: number
   /** The dashboard range the block reads (a key): a change re-reads it. */
   rangeKey?: string
+  /** The filter values the block reads (a key): a change re-reads it. */
+  filtersKey?: string
+  /** Opens the rows behind a figure of this block (the dashboard's side panel). */
+  onDrill?: (target: DrillTarget) => void
   /** The dashboard shows a range picker: a block keeping its own window then says which. */
   showOwnWindow?: boolean
   /** The page's clock (ms), ticking slowly: "Updated N min ago" follows it. */
@@ -143,6 +148,14 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
       { defer: true },
     ),
   )
+  // Other filter values: the block reads them (a refusal keeps the figures shown).
+  createEffect(
+    on(
+      () => props.filtersKey,
+      () => void read(false),
+      { defer: true },
+    ),
+  )
   // A block that asks to stay fresh (`refreshSec`) re-reads on that cadence while the page is
   // on screen; the server's cache lives no longer than that, so a plain read is a new one.
   createEffect(() => {
@@ -209,6 +222,18 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
             </span>
           )}
         </Show>
+        <Show when={props.onDrill && props.block.type !== "text"}>
+          <button
+            type="button"
+            data-testid={`dashboard-block-rows-${props.block.id}`}
+            aria-label={i18n.t("kernel.dashboards.drillShowAll")}
+            title={i18n.t("kernel.dashboards.drillShowAll")}
+            onClick={() => props.onDrill?.({})}
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          >
+            <Rows3 size={13} />
+          </button>
+        </Show>
         <button
           type="button"
           data-testid={`dashboard-block-refresh-${props.block.id}`}
@@ -249,6 +274,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
                 locale={props.locale}
                 compareMode={compareMode()}
                 emptyText={emptyText()}
+                onDrill={props.block.type === "text" ? undefined : props.onDrill}
               />
               <Show when={d().truncated}>
                 <p

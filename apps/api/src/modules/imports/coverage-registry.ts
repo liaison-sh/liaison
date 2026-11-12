@@ -334,6 +334,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "config",
     reason: "dashboards made in the workspace or by an agent",
   },
+  "kernel.dashboard_versions": {
+    exempt: "config",
+    reason: "the saved versions of a dashboard, kept by the workspace for revert",
+  },
   "kernel.dashboard_viewer_states": {
     exempt: "config",
     reason: "the time range each person last chose on a dashboard, set in the workspace",

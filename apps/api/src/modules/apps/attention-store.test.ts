@@ -5,12 +5,19 @@
 // stores them, and a list the provider no longer returns is cleared.
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import type { AttentionItem } from "@liaison/shared"
-import type { UserContext } from "~/db/rls"
-import { attentionItemsRegistry } from "~/modules/apps/app-registries"
+import { sql } from "drizzle-orm"
+import { extractRows } from "~/db"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { attentionItemsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import {
+  type AttentionRefreshJob,
   AttentionStoreTestAccess,
   attentionRefreshesSettled,
+  ORG_REFRESHES_PER_MINUTE,
+  processAttentionRefreshJob,
+  REFRESH_MIN_INTERVAL_MS,
+  readStoredAttention,
   refreshAllAppAttention,
   refreshAppAttention,
   wireAttentionRefreshWakes,
@@ -81,7 +88,12 @@ describe("stored app attention", () => {
       bundlePath: "/nonexistent/attention-store-test-bundle.js",
       trusted: false,
     } as never)
-    AttentionStoreTestAccess.setWakeDeps({ ...deps, ensureOrgApps: async () => {} })
+    // A woken refresh is a job on the attention queue; here it runs at once.
+    AttentionStoreTestAccess.setWakeDeps({
+      ...deps,
+      ensureOrgApps: async () => {},
+      enqueue: (job) => processAttentionRefreshJob(job.payload),
+    })
     wireAttentionRefreshWakes()
   })
   afterEach(() => {
@@ -222,5 +234,202 @@ describe("stored app attention", () => {
     const res = await feed()
     expect(res.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual(["ok"])
     expect(res.errors.find((e) => e.app === APP)?.message).toContain("malformed")
+  })
+
+  it("read-only runs wake no refresh; a 50-person org's 100 writes in a minute wake the debounced few", async () => {
+    // A 50-person org, measured: what the refresh costs per wake is people x provider runs.
+    const people = Array.from(
+      { length: 50 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    )
+    let clock = Date.UTC(2026, 0, 1, 12, 0, 0)
+    const queued = new Map<string, AttentionRefreshJob>()
+    const enqueued: string[] = []
+    let personRuns = 0
+    toolRegistry.set([orgId, APP, "list_things"], {
+      appName: APP,
+      name: "list_things",
+      description: "reads",
+      requiredScopes: ["attnstore:read"],
+      readOnly: true,
+    } as never)
+    AttentionStoreTestAccess.setWakeDeps({
+      ...deps,
+      ensureOrgApps: async () => {},
+      now: () => clock,
+      // BullMQ deduplication: an id still waiting adds nothing.
+      enqueue: async (job) => {
+        enqueued.push(job.jobId)
+        if (!queued.has(job.jobId)) queued.set(job.jobId, job)
+      },
+    })
+    const settle = (entry: string) =>
+      emitRunSettled({
+        app: APP,
+        orgId,
+        entry,
+        executor: "quickjs",
+        nested: false,
+        ms: 1,
+        ok: true,
+        at: clock,
+      })
+    try {
+      // 100 read-only tool runs, plus the read-only entry kinds: nothing to recompute.
+      for (let i = 0; i < 100; i++) {
+        clock += 600
+        settle("tool:list_things")
+      }
+      for (const kind of ["search", "export", "preview", "summarizer", "preflight", "attention"]) {
+        settle(`${kind}:x`)
+      }
+      await attentionRefreshesSettled()
+      expect(enqueued).toEqual([])
+      expect(providerRuns).toBe(0)
+
+      // 100 writing runs within one minute: one refresh per minimum interval at most.
+      const start = clock
+      for (let i = 0; i < 100; i++) {
+        clock = start + i * 600
+        settle(i % 2 === 0 ? "tool:do_something" : "job:sync")
+      }
+      await attentionRefreshesSettled()
+      // Nothing ran in the waking path: the refresh is a queued job.
+      expect(providerRuns).toBe(0)
+      const debounced = Math.ceil(60_000 / REFRESH_MIN_INTERVAL_MS) + 1
+      expect(queued.size).toBeGreaterThanOrEqual(1)
+      expect(queued.size).toBeLessThanOrEqual(debounced)
+      // Each queued refresh fires at the end of its interval, after the writes it covers.
+      for (const job of queued.values()) {
+        expect(job.delay).toBeGreaterThan(0)
+        expect(job.delay).toBeLessThanOrEqual(REFRESH_MIN_INTERVAL_MS)
+      }
+      for (const job of queued.values()) {
+        await processAttentionRefreshJob(job.payload, {
+          ...deps,
+          ensureOrgApps: async () => {},
+          now: () => clock,
+          takeOrgBudget: async () => true,
+          listActiveUsers: async () => people,
+          invoke: async (_reg: unknown, appName: string) => {
+            if (appName === APP) personRuns++
+            return []
+          },
+        })
+      }
+      expect(personRuns).toBeLessThanOrEqual(debounced * people.length)
+      expect(personRuns).toBeLessThan(100 * people.length)
+    } finally {
+      toolRegistry.delete([orgId, APP, "list_things"])
+      AttentionStoreTestAccess.setWakeDeps({
+        ...deps,
+        ensureOrgApps: async () => {},
+        enqueue: (job) => processAttentionRefreshJob(job.payload),
+      })
+    }
+  })
+
+  it("an org runs at most its per-minute cap of refreshes; the rest move to the next minute", async () => {
+    const now = Date.UTC(2026, 0, 1, 12, 30, 10)
+    const deferred: AttentionRefreshJob[] = []
+    const jobDeps = {
+      ...deps,
+      ensureOrgApps: async () => {},
+      now: () => now,
+      enqueue: async (job: AttentionRefreshJob) => {
+        deferred.push(job)
+      },
+    }
+    for (let i = 0; i < ORG_REFRESHES_PER_MINUTE + 3; i++) {
+      await processAttentionRefreshJob({ org: orgId, app: APP }, jobDeps)
+    }
+    expect(providerRuns).toBe(ORG_REFRESHES_PER_MINUTE)
+    expect(deferred.length).toBe(3)
+    for (const job of deferred) {
+      expect(job.payload).toEqual({ org: orgId, app: APP })
+      expect(job.delay).toBe(Math.ceil(now / 60_000) * 60_000 - now)
+    }
+  })
+
+  it("a person reads only their own stored list (API read, feed and RLS)", async () => {
+    const other = await minimal.person(orgId)
+    // A read that finds no list queues a refresh: queued here, never run.
+    AttentionStoreTestAccess.setWakeDeps({
+      ...deps,
+      ensureOrgApps: async () => {},
+      enqueue: async () => {},
+    })
+    const actorOf = (u: string): UserContext => ({
+      actorType: "user",
+      userId: u,
+      orgId,
+      scopes: ["*"],
+      dimensionGrants: {},
+    })
+    await refreshAppAttention(orgId, APP, {
+      ...deps,
+      listActiveUsers: async () => [userId, other.id],
+      // Each person's provider run lists something only that person may see.
+      invoke: async (_reg: unknown, appName: string, actor) => {
+        if (appName !== APP) return []
+        return [item(`for-${actor.actorType === "user" ? actor.userId : "none"}`)]
+      },
+    })
+    for (const [me, them] of [
+      [userId, other.id],
+      [other.id, userId],
+    ] as const) {
+      const read = await withRlsContext(actorOf(me), (tx) =>
+        readStoredAttention(tx, orgId, me, [APP]),
+      )
+      expect(read.get(APP)?.items.map((i) => i.id)).toEqual([`for-${me}`])
+      // Asking for the other person's list under my RLS context returns nothing.
+      const asked = await withRlsContext(actorOf(me), (tx) =>
+        readStoredAttention(tx, orgId, them, [APP]),
+      )
+      expect(asked.get(APP)).toBeUndefined()
+      const raw = await withRlsContext(actorOf(me), async (tx) =>
+        extractRows<{ user_id: string }>(
+          await tx.execute(
+            sql`SELECT user_id::text AS user_id FROM kernel.app_attention_items WHERE org_id = ${orgId}::uuid AND app = ${APP}`,
+          ),
+        ),
+      )
+      expect(raw.map((r) => r.user_id)).toEqual([me])
+      const fed = await aggregateAttentionItems({ orgId, actor: actorOf(me) })
+      expect(fed.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual([`for-${me}`])
+    }
+    AttentionStoreTestAccess.setWakeDeps({
+      ...deps,
+      ensureOrgApps: async () => {},
+      enqueue: (job) => processAttentionRefreshJob(job.payload),
+    })
+  })
+
+  it("a refresh that started earlier never overwrites a newer stored list", async () => {
+    let releaseSlow: () => void = () => {}
+    const slowGate = new Promise<void>((r) => {
+      releaseSlow = r
+    })
+    const slow = refreshAppAttention(orgId, APP, {
+      ...deps,
+      invoke: async (_reg: unknown, appName: string) => {
+        if (appName !== APP) return []
+        await slowGate
+        return [item("stale")]
+      },
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    notified.length = 0
+    await refreshAppAttention(orgId, APP, {
+      ...deps,
+      invoke: async (_reg: unknown, appName: string) => (appName === APP ? [item("fresh")] : []),
+    })
+    releaseSlow()
+    await slow
+    const res = await feed()
+    expect(res.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual(["fresh"])
+    // The refused late write tells nobody to reload.
+    expect(notified).toEqual([userId])
   })
 })

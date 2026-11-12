@@ -19,6 +19,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  filterTokensIn,
   hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
@@ -29,6 +30,7 @@ import {
   dashboardDefaultRange,
   dashboardSpecSchema,
   MAX_DASHBOARD_BLOCKS,
+  MAX_DESCRIPTION_LENGTH,
   MAX_FILTERS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
@@ -120,6 +122,66 @@ export const editOperationSchema = z.discriminatedUnion("op", [
     })
     .strict(),
   z.object({ op: z.literal("removeFilter"), id: z.string().min(1).max(40) }).strict(),
+  z
+    .object({
+      op: z.literal("resizeBlock"),
+      blockId,
+      width: z
+        .union([z.literal(1), z.literal(2), z.literal(3)])
+        .optional()
+        .describe("Columns of the grid (1-3)."),
+      height: z
+        .union([z.literal(1), z.literal(2)])
+        .optional()
+        .describe("Rows of the grid (1-2)."),
+    })
+    .strict()
+    .refine((o) => o.width !== undefined || o.height !== undefined, "give a width or a height"),
+  z
+    .object({
+      op: z.literal("duplicateBlock"),
+      blockId,
+      newId: z
+        .string()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)
+        .optional()
+        .describe('The copy\'s id. Default: "<id>-copy" (or -copy-2, ...).'),
+      title: z
+        .string()
+        .trim()
+        .min(1)
+        .max(120)
+        .optional()
+        .describe('The copy\'s title. Default: "<title> (copy)".'),
+      position: positionSchema
+        .optional()
+        .describe("Where the copy goes. Default: right after the original."),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("setDescription"),
+      description: z
+        .string()
+        .trim()
+        .min(1)
+        .max(MAX_DESCRIPTION_LENGTH)
+        .nullable()
+        .describe("Plain text under the title; null removes it."),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("revert"),
+      toVersion: z
+        .number()
+        .int()
+        .min(1)
+        .describe(
+          "A saved version (kernel__dashboards_history): its title and blocks come back as a new version.",
+        ),
+    })
+    .strict(),
 ])
 export type EditOperation = z.infer<typeof editOperationSchema>
 
@@ -136,6 +198,39 @@ export interface EditableDashboard {
   title: string
   visibility: "personal" | "org"
   spec: DashboardSpec
+}
+
+/** A saved version a `revert` brings back (service.ts reads them before applying). */
+export interface SavedVersion {
+  version: number
+  title: string
+  spec: Record<string, unknown>
+  savedAt: string
+  savedByName: string | null
+}
+
+/** The versions an operation list reverts to, by number. */
+export type VersionLookup = ReadonlyMap<number, SavedVersion>
+
+/** The version numbers `operations` revert to (to read before applying or describing them). */
+export function revertTargets(operations: readonly EditOperation[]): number[] {
+  return [...new Set(operations.flatMap((op) => (op.op === "revert" ? [op.toVersion] : [])))]
+}
+
+/** A free block id from `base`: `<base>-copy`, then `<base>-copy-2`, ... (40 characters at most). */
+function copyId(blocks: Record<string, unknown>[], base: string): string {
+  for (let n = 1; n < 100; n++) {
+    const suffix = n === 1 ? "-copy" : `-copy-${n}`
+    const id = `${base.slice(0, 40 - suffix.length)}${suffix}`
+    if (indexOf(blocks, id) < 0) return id
+  }
+  return `${base.slice(0, 30)}-${Date.now().toString(36)}`.slice(0, 40)
+}
+
+/** A copy's title: "<title> (copy)", cut to the 120 characters a title holds. */
+function copyTitle(title: unknown): string {
+  const suffix = " (copy)"
+  return `${String(title ?? "").slice(0, 120 - suffix.length)}${suffix}`
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -202,11 +297,12 @@ function resolvePosition(
 export function applyOperations(
   current: EditableDashboard,
   operations: EditOperation[],
+  versions: VersionLookup = new Map(),
 ): { title: string; visibility: "personal" | "org"; spec: Record<string, unknown> } {
   let title = current.title
   let visibility = current.visibility
-  const spec: Record<string, unknown> = { ...(current.spec as unknown as Record<string, unknown>) }
-  const blocks = ((current.spec.blocks ?? []) as unknown as Record<string, unknown>[]).map((b) => ({
+  let spec: Record<string, unknown> = { ...(current.spec as unknown as Record<string, unknown>) }
+  let blocks = ((current.spec.blocks ?? []) as unknown as Record<string, unknown>[]).map((b) => ({
     ...b,
   }))
   operations.forEach((op, i) => {
@@ -290,6 +386,52 @@ export function applyOperations(
         else delete spec.filters
         return
       }
+      case "resizeBlock": {
+        const at = indexOf(blocks, op.blockId)
+        if (at < 0) throw new EditOperationError(i, `no block '${op.blockId}'`)
+        const b = { ...blocks[at]! }
+        if (op.width !== undefined) b.width = op.width
+        if (op.height !== undefined) {
+          if (op.height === 1) delete b.height
+          else b.height = op.height
+        }
+        blocks[at] = b
+        return
+      }
+      case "duplicateBlock": {
+        const at = indexOf(blocks, op.blockId)
+        if (at < 0) throw new EditOperationError(i, `no block '${op.blockId}'`)
+        const original = blocks[at]!
+        const id = op.newId ?? copyId(blocks, op.blockId)
+        if (indexOf(blocks, id) >= 0) {
+          throw new EditOperationError(i, `a block '${id}' is already on the dashboard`)
+        }
+        const copy = structuredClone(original)
+        copy.id = id
+        copy.title = op.title ?? copyTitle(original.title)
+        const to = op.position === undefined ? at + 1 : resolvePosition(blocks, op.position, i)
+        blocks.splice(to, 0, copy)
+        return
+      }
+      case "setDescription":
+        if (op.description === null) delete spec.description
+        else spec.description = op.description
+        return
+      case "revert": {
+        const saved = versions.get(op.toVersion)
+        if (!saved) {
+          throw new EditOperationError(
+            i,
+            `no saved version ${op.toVersion} (kernel__dashboards_history lists the ones kept)`,
+          )
+        }
+        title = saved.title
+        spec = { ...saved.spec }
+        blocks = (Array.isArray(saved.spec.blocks) ? saved.spec.blocks : []).map((b) => ({
+          ...(b as Record<string, unknown>),
+        }))
+        return
+      }
     }
   })
   spec.blocks = blocks
@@ -320,6 +462,8 @@ const COMPARE_WORDS: Record<CompareMode, string> = {
 export interface DescribeContext {
   timeZone: string
   now: Date
+  /** The saved versions a revert names (absent: the line says it could not be read). */
+  versions?: VersionLookup
 }
 
 function rangeWords(tr: TimeRange, ctx: DescribeContext): string {
@@ -337,6 +481,76 @@ function rangeWords(tr: TimeRange, ctx: DescribeContext): string {
 function compact(value: unknown, max = 160): string {
   const s = typeof value === "string" ? value : JSON.stringify(value)
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
+
+/** A note shown inline on its operation's line when it is this short. */
+const NOTE_INLINE_MAX = 200
+/** The length of each line a longer note's text, or its links, run over. */
+const NOTE_CHUNK = 440
+
+/** Every link target a note's markdown holds: inline and reference links, autolinks, bare URLs. */
+export function noteLinkTargets(text: string): string[] {
+  const out = new Set<string>()
+  for (const m of text.matchAll(/\]\(\s*<?([^\s)>]+)/g)) out.add(m[1]!)
+  for (const m of text.matchAll(/^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm)) out.add(m[1]!)
+  for (const m of text.matchAll(/<((?:https?:|mailto:)[^\s>]+)>/gi)) out.add(m[1]!)
+  for (const m of text.matchAll(/(?:https?:\/\/|mailto:)[^\s<>()[\]"']+/gi)) {
+    if (![...out].some((t) => t.startsWith(m[0]))) out.add(m[0])
+  }
+  return [...out]
+}
+
+const oneLine = (text: string) => text.replace(/\s*\n\s*/g, " ↵ ")
+
+function chunks(text: string, size = NOTE_CHUNK): string[] {
+  const out: string[] = []
+  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size))
+  return out
+}
+
+/** A note on its operation's line: in full when short, else its length (the text follows). */
+function noteHead(text: string): string {
+  const links = noteLinkTargets(text).length
+  const linkWords = links ? `; ${links} link${links === 1 ? "" : "s"}, listed below` : ""
+  return text.length <= NOTE_INLINE_MAX
+    ? `the note "${oneLine(text)}"${linkWords}`
+    : `a note of ${text.length} characters, its full text below${linkWords}`
+}
+
+/**
+ * The lines a note adds under its operation: its full text when it is not on the line itself,
+ * then every link target it holds, so an admin sees all of it, links included.
+ */
+export function noteExtraLines(text: string): string[] {
+  const out: string[] = []
+  if (text.length > NOTE_INLINE_MAX) {
+    const parts = chunks(oneLine(text))
+    parts.forEach((part, i) => {
+      out.push(`   Note text (${i + 1}/${parts.length}): ${part}`)
+    })
+  }
+  const links = noteLinkTargets(text)
+  if (links.length) {
+    for (const part of chunks(links.join(" , "))) out.push(`   Links in the note: ${part}`)
+  }
+  return out
+}
+
+/** The note text an operation sets, if any. */
+function noteOf(op: EditOperation): string | null {
+  if (op.op === "addBlock" && op.block.type === "text" && typeof op.block.text === "string") {
+    return op.block.text
+  }
+  if (op.op === "updateBlock" && typeof op.changes.text === "string") return op.changes.text
+  return null
+}
+
+/** How many lines the approval card of `ops` lists: one per operation, plus each note's own. */
+export function cardLineCount(ops: EditOperation[]): number {
+  return ops.reduce((n, op) => {
+    const note = noteOf(op)
+    return n + 1 + (note === null ? 0 : noteExtraLines(note).length)
+  }, 0)
 }
 
 /** Params as written when short; else each one by name, its value cut (the tokens follow). */
@@ -365,7 +579,11 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
   const measureList = (list: unknown) =>
     (Array.isArray(list) ? list : [])
       .filter(isObject)
-      .map((m) => `${String(m.label)} (${aggWords(m.field, m.agg)})`)
+      .map((m) =>
+        typeof m.expr === "string"
+          ? `${String(m.label)} (computed: ${compact(m.expr, 80)})`
+          : `${String(m.label)}${m.name ? ` [${String(m.name)}]` : ""} (${aggWords(m.field, m.agg)}${typeof m.dataset === "string" ? ` from the shared dataset '${m.dataset}'` : ""})`,
+      )
       .join(", ")
   if (Array.isArray(map.columns)) {
     parts.push(
@@ -373,7 +591,17 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
     )
   } else if (Array.isArray(map.stages)) parts.push(`the stages ${measureList(map.stages)}`)
   else if (Array.isArray(map.measures)) parts.push(measureList(map.measures))
-  else parts.push(aggWords(field, map.agg))
+  else if (typeof map.expr === "string" && isObject(map.values)) {
+    const named = Object.entries(map.values)
+      .map(([n, v]) => {
+        const c = isObject(v) ? v : {}
+        const where =
+          Array.isArray(c.where) && c.where.length ? ` where ${whereWords(c.where, spec)}` : ""
+        return `${n} = ${aggWords(c.field, c.agg)}${typeof c.dataset === "string" ? ` from the shared dataset '${c.dataset}'` : ""}${where}`
+      })
+      .join(", ")
+    parts.push(`the computed value ${compact(map.expr, 120)} (${named})`)
+  } else parts.push(aggWords(field, map.agg))
   if (isObject(map.groupBy)) {
     const bucket = map.groupBy.bucket ? ` per ${String(map.groupBy.bucket)}` : ""
     parts[0] += ` by ${String(map.groupBy.field)}${bucket}`
@@ -384,6 +612,8 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
   if (map.horizontal) parts.push("horizontal bars")
   if (Array.isArray(map.lineSeries)) parts.push(`drawn as lines: ${map.lineSeries.join(", ")}`)
   if (map.secondaryAxis) parts.push("lines on their own axis")
+  if (map.scale !== undefined) parts.push(`every value multiplied by ${String(map.scale)}`)
+  if (map.percentOfTotal) parts.push("each value as a percentage of its total")
   if (map.target !== undefined) parts.push(`target ${String(map.target)}`)
   if (isObject(map.sparkline)) {
     parts.push(
@@ -391,6 +621,20 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
     )
   }
   if (map.link !== undefined) parts.push(`each row links to ${compact(map.link, 80)}`)
+  if (isObject(map.sort)) {
+    parts.push(
+      `sorted by ${String(map.sort.field)} ${map.sort.dir === "asc" ? "ascending" : "descending"}`,
+    )
+  }
+  if (map.limit !== undefined) parts.push(`at most ${String(map.limit)} rows`)
+  if (map.format !== undefined) {
+    parts.push(`shown as ${String(map.format)}${map.currency ? ` (${String(map.currency)})` : ""}`)
+  }
+  if (Array.isArray(map.drillColumns)) {
+    parts.push(
+      `its rows open with the columns ${map.drillColumns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
+    )
+  }
   let out = parts.join(", ")
   if (Array.isArray(map.where) && map.where.length) {
     out += `; keeps only rows where ${whereWords(map.where, spec)}`
@@ -462,7 +706,7 @@ function blockSourceWords(
   window: DayWindow,
   ctx: DescribeContext,
 ): string {
-  if (b.type === "text") return `showing the note "${compact(String(b.text ?? ""), 100)}"`
+  if (b.type === "text") return `showing ${noteHead(String(b.text ?? ""))}`
   if (typeof b.dataset === "string") {
     const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
     return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
@@ -510,15 +754,31 @@ function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>):
   if (Array.isArray(o)) options = `, options ${compact(o.join(", "), 100)}`
   else if (isObject(o) && typeof o.fromDataset === "string")
     options = `, options: the values of ${String(o.field)} in the dataset '${o.fromDataset}'`
-  else if (isObject(o) && isObject(o.fromSource))
-    options = `, options: the values of ${String(o.field)} read from ${String(o.fromSource.tool ?? o.fromSource.collection ?? "a source")}`
+  else if (isObject(o) && isObject(o.fromSource)) {
+    const src = o.fromSource
+    const how =
+      src.kind === "store"
+        ? `the ${String(src.app)} collection "${String(src.collection)}"${isObject(src.query) && Object.keys(src.query).length ? ` query ${compact(src.query, 200)}` : ""}`
+        : `${String(src.tool ?? "a source")}${isObject(src.params) && Object.keys(src.params).length ? ` with ${compact(src.params, 200)}` : " with no params"}`
+    options = `, options: the values of ${String(o.field)} read from ${how}`
+  }
   const def =
     f.default === undefined || (Array.isArray(f.default) && f.default.length === 0)
       ? ", default all"
       : `, default ${compact(f.default, 60)}`
-  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) =>
-    JSON.stringify([b.source, b.map]).includes(String(f.id)),
-  ).length
+  const datasets = isObject(spec.datasets) ? spec.datasets : {}
+  const reads = (source: unknown) =>
+    isObject(source) &&
+    filterTokensIn(source.kind === "store" ? source.query : source.params).includes(String(f.id))
+  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) => {
+    const map = isObject(b.map) ? b.map : {}
+    const where = Array.isArray(map.where) ? map.where : []
+    return (
+      reads(b.source) ||
+      (typeof b.dataset === "string" && reads(datasets[b.dataset])) ||
+      where.some((w) => isObject(w) && isObject(w.value) && w.value.filter === f.id)
+    )
+  }).length
   return `"${String(f.label ?? f.id)}" (id ${String(f.id)}, ${kind}${options}${def}${blocks ? `; read by ${blocks} block${blocks === 1 ? "" : "s"}` : ""})`
 }
 
@@ -557,7 +817,7 @@ function changeWords(
           ? "no longer reads a shared dataset"
           : `now reads the shared dataset '${String(v)}'`,
       )
-    } else if (k === "text") parts.push(`note now "${compact(v, 100)}"`)
+    } else if (k === "text") parts.push(`now shows ${noteHead(String(v ?? ""))}`)
     else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v), spec)}`)
     else if (k === "timeRange") {
       parts.push(
@@ -570,6 +830,61 @@ function changeWords(
     } else parts.push(`${k} ${compact(before[k] ?? "(none)", 40)} → ${compact(v, 60)}`)
   }
   return parts.join("; ") || "no field"
+}
+
+/** What a revert changes, in short: the diff to the saved version, grouped by kind. */
+function revertWords(state: EditableDashboard, changes: EditOperation[]): string {
+  if (changes.length === 0) return "no difference with the dashboard as it is"
+  const blocks = (state.spec.blocks ?? []) as unknown as Record<string, unknown>[]
+  const name = (id: string) => blockName(blocks[indexOf(blocks, id)], id)
+  const removed: string[] = []
+  const added: string[] = []
+  const changed: string[] = []
+  const other: string[] = []
+  let moved = 0
+  for (const c of changes) {
+    switch (c.op) {
+      case "removeBlock":
+        removed.push(name(c.blockId))
+        break
+      case "addBlock":
+        added.push(`"${String(c.block.title ?? c.block.id)}"`)
+        break
+      case "updateBlock":
+        changed.push(name(c.blockId))
+        break
+      case "moveBlock":
+        moved++
+        break
+      case "setTitle":
+        other.push(`the title becomes "${c.title}"`)
+        break
+      case "setTimeRange":
+        other.push("the default range changes")
+        break
+      case "setDataset":
+      case "removeDataset":
+        other.push(`the shared dataset '${c.id}' changes`)
+        break
+      case "setFilter":
+        other.push(`the filter '${String(c.filter.id)}' changes`)
+        break
+      case "removeFilter":
+        other.push(`the filter '${c.id}' goes`)
+        break
+      default:
+        other.push("the dashboard's settings change")
+    }
+  }
+  const parts: string[] = [
+    `the dashboard goes back to that version (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+  ]
+  if (removed.length) parts.push(`removes ${removed.join(", ")}`)
+  if (added.length) parts.push(`adds back ${added.join(", ")}`)
+  if (changed.length) parts.push(`changes ${changed.join(", ")}`)
+  if (moved) parts.push(`moves ${moved} block${moved === 1 ? "" : "s"}`)
+  parts.push(...new Set(other))
+  return parts.join("; ")
 }
 
 /**
@@ -596,7 +911,7 @@ export function describeOperations(
     let line: string
     let next: EditableDashboard = state
     try {
-      const applied = applyOperations(state, [op])
+      const applied = applyOperations(state, [op], ctx.versions)
       next = {
         title: applied.title,
         visibility: applied.visibility,
@@ -694,7 +1009,10 @@ export function describeOperations(
         const had =
           Array.isArray(specOf(state).filters) &&
           (specOf(state).filters as Record<string, unknown>[]).some((f) => f.id === op.filter.id)
-        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}; each person picks their own value`
+        const list = (specOf(next).filters ?? []) as Record<string, unknown>[]
+        const at = list.findIndex((f) => f.id === op.filter.id)
+        const where = at >= 0 ? `, position ${at + 1} of ${list.length} in the filter bar` : ""
+        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}${where}; each person picks their own value`
         break
       }
       case "removeFilter": {
@@ -704,15 +1022,64 @@ export function describeOperations(
         line = `Remove the filter ${f ? `"${String(f.label ?? op.id)}"` : `'${op.id}' (not on the dashboard: this edit will be refused)`}`
         break
       }
+      case "resizeBlock": {
+        const before = blocks[indexOf(blocks, op.blockId)]
+        if (!before) {
+          line = `Resize the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
+          break
+        }
+        const parts: string[] = []
+        if (op.width !== undefined) parts.push(`width ${String(before.width ?? 1)} → ${op.width}`)
+        if (op.height !== undefined) {
+          parts.push(`height ${String(before.height ?? 1)} → ${op.height}`)
+        }
+        line = `Resize the block ${blockName(before, op.blockId)}: ${parts.join(", ")}`
+        break
+      }
+      case "duplicateBlock": {
+        const before = blocks[indexOf(blocks, op.blockId)]
+        const copy = nextBlocks.find((b) => !blocks.some((x) => x.id === b.id))
+        const at = copy ? indexOf(nextBlocks, String(copy.id)) : -1
+        line =
+          before && copy
+            ? `Duplicate the ${String(before.type)} block ${blockName(before, op.blockId)} as "${String(copy.title)}" (id ${String(copy.id)}) at ${positionWords(nextBlocks, at)}, ${blockSourceWords(copy, specOf(next), window, ctx)}`
+            : `Duplicate the block '${op.blockId}' (not on the dashboard, or the new id is taken: this edit will be refused)`
+        break
+      }
+      case "setDescription": {
+        const was = specOf(state).description
+        line =
+          op.description === null
+            ? was
+              ? `Remove the description "${compact(was, 100)}"`
+              : "Remove the description (there is none)"
+            : was
+              ? `Description "${compact(was, 100)}" → "${compact(op.description, 200)}"`
+              : `Add the description "${compact(op.description, 200)}"`
+        break
+      }
+      case "revert": {
+        const saved = ctx.versions?.get(op.toVersion)
+        if (!saved) {
+          line = `Revert to version ${op.toVersion} (not kept any more: this edit will be refused)`
+          break
+        }
+        const changes = diffDashboards(state, { title: saved.title, spec: saved.spec })
+        line = `Revert to version ${op.toVersion} (saved ${saved.savedAt.slice(0, 10)}${saved.savedByName ? ` by ${saved.savedByName}` : ""}): ${revertWords(state, changes)}`
+        break
+      }
     }
     lines.push(`${i + 1}. ${line}.`)
+    const note = noteOf(op)
+    if (note !== null) lines.push(...noteExtraLines(note))
     state = next
   })
   return lines
 }
 
 // ── a whole new spec, as operations ────────────────────────────────────────
-// (title, visibility, range, datasets, filters, then blocks; removed datasets and filters last)
+// (title, visibility, range, description, datasets, filters, then blocks; removed datasets and
+// filters last)
 
 /** JSON with object keys sorted: two values are the same when this is. */
 function stable(value: unknown): string {
@@ -816,6 +1183,12 @@ export function diffDashboards(
       op: "setTimeRange",
       ...(rangeChanged ? { timeRange: (now.timeRange ?? null) as TimeRange | null } : {}),
       ...(compareChanged ? { compare: (now.compare ?? null) as CompareMode | null } : {}),
+    })
+  }
+  if (!same(was.description, now.description)) {
+    ops.push({
+      op: "setDescription",
+      description: typeof now.description === "string" ? now.description : null,
     })
   }
   // Shared datasets and filters first (a block may read a new one), their removals last.

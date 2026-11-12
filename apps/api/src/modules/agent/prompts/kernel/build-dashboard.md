@@ -33,6 +33,9 @@ Always in this order:
 - `{ "op": "setTitle", "title": "..." }`, `{ "op": "setTimeRange", "timeRange": { "preset": "lastMonth" }, "compare": "previousPeriod" }`, `{ "op": "setVisibility", "visibility": "org" }`
 - `{ "op": "setDataset", "id": "orders", "source": {...} }` (adds or replaces a shared source), `{ "op": "removeDataset", "id": "orders" }` (after the blocks that read it changed)
 - `{ "op": "setFilter", "filter": { "id": "market", "label": "Market", "type": "select", "options": [...] }, "position": 0 }`, `{ "op": "removeFilter", "id": "market" }`
+- `{ "op": "resizeBlock", "blockId": "...", "width": 2, "height": 2 }` (width 1-3 columns, height 1-2 rows), `{ "op": "duplicateBlock", "blockId": "...", "title": "...", "newId": "..." }` (default: right after it, id `<id>-copy`, title "<title> (copy)"); a rename is `updateBlock` with `changes: { "title": "..." }`
+- `{ "op": "setDescription", "description": "What this dashboard is for" }` (null removes it)
+- `{ "op": "revert", "toVersion": 7 }`: back to a saved version (title and spec), as a new version. `kernel__dashboards_history({ id })` lists the last 20 with who saved each and when; pick the one the person means, and say what the revert undoes.
 
 The operations apply together or not at all, and are checked before anything waits for a person: an unknown block, a duplicate id, a map that does not fit or a source the person cannot read is refused at once, naming it. Fix the call and send it again. On an org dashboard the whole call waits for ONE approval, whose card lists each change: never split one request into several calls (each would be its own approval), never send changes the person did not ask for. Preview a new or changed block first. A `version_conflict` means someone saved meanwhile: read it again and redo the call. `too_many_changes` (over 50): send the first part, and the rest only once that approval is decided and applied, after reading the dashboard again for its new version.
 
@@ -40,7 +43,7 @@ Changes always go through `kernel__dashboards_edit`. `kernel__dashboards_update(
 
 ### The map
 
-- `groupBy: { field, bucket? }`: the category. `bucket` `day`, `week` or `month` turns a date field into a date bucket (UTC).
+- `groupBy: { field, bucket? }`: the category. `bucket` `day`, `week`, `month`, `quarter` or `year` turns a date field into a date bucket, in the organization's time zone (labels `2026-11-07`, the week's Monday, `2026-11`, `2026-Q4`, `2026`).
 - `agg`: `sum` (default), `count`, `avg`, `min`, `max`. `count` needs no field.
 - `metric`: `value` is the field aggregated over every row. When the source answers one object instead of rows, `value` is the path to its number (`totals.sales`).
 - `table`: `columns: [{ field, label, format? }]`, plus `sort` and `limit`. A table shows rows: no `groupBy` or `agg`.
@@ -58,6 +61,13 @@ Changes always go through `kernel__dashboards_edit`. `kernel__dashboards_update(
 - `source.rowsPath` names where the rows are when the result is not a list and has more than one list field.
 - At most 2,000 source rows are read per block. A source that answers a `nextCursor` is read page by page up to that.
 - `width` is 1, 2 or 3 columns; `refreshSec` (60 to 86400) is how long the data is kept before it is read again, at most 15 minutes whatever the value.
+
+### Calculated values
+
+- A metric computed from several figures: `map.values` names each one (`{ field?, agg?, dataset?, where? }`: an aggregation of the block's rows, or of another shared dataset's with `dataset`; `where` with fixed values only) and `map.expr` combines them: `{ "values": { "revenue": { "field": "total" }, "spend": { "field": "cost", "dataset": "ads" } }, "expr": "revenue / spend" }` (ROAS).
+- A chart's measure computed per category: give measures a `name`, then a measure `{ "label": "ROAS", "expr": "revenue / spend" }`. A measure read from another dataset by the same category: `{ "label": "Spend", "name": "spend", "dataset": "ads", "field": "cost", "categoryField": "date" }` (`categoryField`: the category's field in that dataset, default the same; same date bucket).
+- `expr` grammar: numbers, names, `+ - * /`, parentheses, `min(...)`, `max(...)`, `abs(x)`, `round(x, decimals)`. A division by zero or a missing value shows no value.
+- `map.scale`: multiplies every value (`0.01` turns cents into units). `map.percentOfTotal: true` (bar, line, area, pie, funnel): each value as a percentage of its series' total; set `format: "percent"`.
 
 ### Shared datasets
 
@@ -90,7 +100,20 @@ A dashboard has a time range the viewer picks (last 7, 30 or 90 days, month, qua
 - The dashboard's default: root `"timeRange": { "preset": "mtd" }` (presets `last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`, or `custom` with `from` and `to`) and `"compare": "lastYear" | "previousPeriod" | "none"`. Without them: the last 30 days, compared with last year.
 - Preview a range block with `kernel__dashboards_preview_block({ block, timeRange })` (default the last 30 days).
 
-A metric can carry `map.target` (a number, the goal: "objective 40" belongs here, not in the title) and `map.sparkline: { field, bucket }` (its trend by `day`, `week` or `month` of a date field of the same rows).
+A metric can carry `map.target` (a number, the goal: "objective 40" belongs here, not in the title) and `map.sparkline: { field, bucket }` (its trend by `day`, `week`, `month`, `quarter` or `year` of a date field of the same rows).
+
+### Export and send a dashboard
+
+- A person exports from the dashboard itself (a block's CSV, the dashboard's PDF). For them, `kernel__dashboards_pdf({ dashboardId, timeRange?, compare?, filters? })` prints it as you see it and returns a `fileId` to attach to a reply or a mail.
+- `kernel__dashboards_snapshot({ dashboardId, timeRange?, compare?, filters? })` reads every block at once: a metric's value, compared value and change; a chart's totals per series with their change and its top labels; a table's first rows. Use it to answer "how did last week go" from a dashboard, quoting the figures it returns.
+
+### Send a dashboard on a schedule
+
+"Send me / the team this dashboard every Monday at 8" is a routine, never a new mechanism: `kernel__create_routine` with `kind: "recurring"`, a `cron` (`0 8 * * 1`), and a prompt such as: "Call kernel__dashboards_snapshot for dashboard <id> with timeRange {preset: "last7d"} and recipients [<ids>]; post the key figures, each with its change, to this thread; call kernel__dashboards_pdf with the same period and attach the file." Its scopes: `kernel:dashboards:read`, plus what the delivery needs (`kernel:threads:write` to post in a shared thread, the mail tool's scope to email). Follow author-routine for the scopes and the approval.
+
+Who receives it only ever gets what they could see themselves:
+- The routine computes the figures with its OWNER's access. For one person, the simplest is a routine that person owns: its result posts to their own routine thread.
+- For a shared thread or an email to several people, the prompt passes them as `recipients` and sends only to those with `mayReceive: true`, saying who was left out and why (no access to the dashboard or to one of its sources). Never send it to someone listed `mayReceive: false`.
 
 ### Rolling dates
 

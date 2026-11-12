@@ -121,7 +121,7 @@ Section `connection`, scope `org`.
 
 ### Report access
 
-Section `report-access`, scope `org`, edited with `kernel:apps:admin`.
+Section `report-access`, scope `org`, edited with `database:access:admin`.
 
 | Key | Label | Type |
 | --- | --- | --- |

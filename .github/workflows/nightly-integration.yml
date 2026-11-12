@@ -199,6 +199,9 @@ jobs:
       - name: bundled-monitoring
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-monitoring
+      - name: bundled-database
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-database
       - name: bundled-pennylane
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-pennylane

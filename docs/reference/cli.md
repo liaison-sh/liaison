@@ -34,7 +34,7 @@ liaison config apply --config <path> [--format json|env] [--dry-run] [--only <pa
 | `--config <path>` | yes | The YAML or JSON config file. |
 | `--format json\|env` | no | Report format on STDOUT (default `json`). |
 | `--dry-run` | no | Validate and plan without persisting changes; the report's `drift` lists each tracked path as create, update, unchanged or conflict. |
-| `--only <path>` | no | Apply and check just this path or section (e.g. `apps.database.domainAccess`); repeatable. The rest of the file is ignored. |
+| `--only <path>` | no | Apply and check just this path or section (e.g. `apps.mail.enable`); repeatable. The rest of the file is ignored. |
 | `--prefer file\|server[=<path>]` | no | Settle conflicts: `file` overwrites the server's value, `server` keeps it and records it as applied. `=<path>` limits it to that path; repeatable. |
 | `--applied-by <label>` | no | Who applies, stored on the last-applied record (default `cli:<user>@<host>`). |
 | `--no-validate-byok` | no | Skip validating the BYOK AI provider keys. |

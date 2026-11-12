@@ -20,6 +20,7 @@ import {
   guardAtomicToolEgress,
   isAtomicLocalMethod,
 } from "~/modules/apps/atomic-egress"
+import { buildJobBridge } from "~/modules/apps/runtime"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
 const ALLOWLIST_PATH = join(import.meta.dir, "atomic-egress.allowlist.json")
@@ -229,6 +230,37 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
         local: false,
       })
     }
+  })
+
+  it("a job run is atomic when it holds the run's transaction, not when it was handed none", async () => {
+    const job = { name: "assign-refs", timeoutMs: 60_000 }
+    const manifest = { name: "monitoring" }
+    const holding = buildJobBridge(
+      "monitoring",
+      "system:monitoring",
+      org,
+      { _tx: poison },
+      manifest,
+      undefined,
+      job,
+    )
+    const handedNone = buildJobBridge(
+      "monitoring",
+      "system:monitoring",
+      org,
+      {},
+      manifest,
+      undefined,
+      job,
+    )
+    const codeOf = async (bridge: Record<string, any>) =>
+      (
+        (await bridge.fetch("https://example.test", "{}").catch((e: unknown) => e)) as {
+          code?: string
+        }
+      )?.code
+    expect(await codeOf(holding)).toBe("atomic_run_egress_refused")
+    expect(await codeOf(handedNone)).not.toBe("atomic_run_egress_refused")
   })
 
   it("the named egress methods all exist on the bridge and none is classed local", () => {

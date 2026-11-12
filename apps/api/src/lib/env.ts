@@ -350,7 +350,7 @@ export const envSchema = z
     // slaCheck/imap-incremental-sync/followupCheck/etc, cleared only by a full
     // `compose restart app`). Killing the statement server-side lets the transaction
     // actually roll back and the connection return to the pool -- the real "reclaim".
-    // 10s matches the existing apps/database read-transport's DEFAULT_STATEMENT_TIMEOUT_MS
+    // 10s matches the SQL connections' read transport DEFAULT_STATEMENT_TIMEOUT_MS
     // precedent; comfortably above the 5s production sandbox ceiling (so a normal
     // timeout still surfaces as "App execution timed out" first) but far below the
     // acquire-timeout, so a genuinely stuck query is killed well before it can exhaust

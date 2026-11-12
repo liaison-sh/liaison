@@ -31,7 +31,8 @@
 // without the login, or failing in any other way, the layer throws and the
 // caller records the seed as failed, exactly like the other layers.
 
-import { enableApp } from "~/modules/apps/enabled-apps"
+import { runAppProvisioning } from "~/modules/apps/app-provisioning"
+import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
   DEMO_WAREHOUSE_DSN_ENV,
   DEMO_WAREHOUSE_SCHEMA,
@@ -39,7 +40,8 @@ import {
   installDemoWarehouseConnection,
   provisionDemoWarehouse,
 } from "~/modules/demo/warehouse"
-import type { SeedDemoOrgResult } from "./seed-org"
+import { installApps } from "~/seed/factories/org/apps"
+import { demoDomainAccessProvision, type SeedDemoOrgResult } from "./seed-org"
 
 export interface SeedDemoWarehouseResult {
   /** Row counts per warehouse table, as generated. */
@@ -93,10 +95,21 @@ export async function seedDemoWarehouse(
     built = { schema: DEMO_WAREHOUSE_SCHEMA, role: "(deploy-built)", counts: {}, rebuilt: false }
   }
 
-  // The `database` app is in-tree rather than a catalog bundle, so enabling it
-  // is the whole install. It is not in `DEMO_APPS` (that list is the tabbed
-  // surface); the oracle is headless and reaches the org through its tools.
-  await enableApp(org.orgId, "database")
+  // The `database` app, from the catalog. It is not in `DEMO_APPS` (that list
+  // is the tabbed surface); the oracle is headless and reaches the org through
+  // its tools. Its confidential domains run for the roles the world names,
+  // through the app's own provisioning (desired state: a re-seed puts back what
+  // a visitor changed).
+  const [app] = await installApps(org.orgId, org.adminUserId, ["database"], log)
+  if (!app?.enabled) throw new Error(`the database app did not install: ${app?.error ?? "unknown"}`)
+  await ensureAppsForOrg(org.orgId)
+  const access = await runAppProvisioning({
+    orgId: org.orgId,
+    appName: "database",
+    config: demoDomainAccessProvision(),
+    dryRun: false,
+  })
+  if (access.changed.length > 0) log(`warehouse: ${access.changed.join("; ")}`)
 
   const { connectionId } = await installDemoWarehouseConnection({
     orgId: org.orgId,

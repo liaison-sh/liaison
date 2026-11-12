@@ -42,7 +42,6 @@ export const KERNEL_MOUNTED_APP_PREFIXES: Readonly<Record<string, string>> = {
   "/api/projects": "projects",
   "/api/contacts": "contacts",
   "/api/api-connector": "api-connector",
-  "/api/database": "database",
   "/api/knowledge": "knowledge",
 }
 

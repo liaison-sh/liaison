@@ -7,9 +7,7 @@
   "calls": [
     {
       "method": "hasScope",
-      "args": [
-        "invoicing:issuer:admin"
-      ],
+      "args": ["invoicing:issuer:admin"],
       "reply": true
     },
     {
@@ -22,18 +20,12 @@
     },
     {
       "method": "db_findOne",
-      "args": [
-        "issuer_profiles",
-        "faa725e0-b8ce-44d3-8d3e-431b0f07c029"
-      ],
+      "args": ["issuer_profiles", "faa725e0-b8ce-44d3-8d3e-431b0f07c029"],
       "reply": "{\"id\":\"faa725e0-b8ce-44d3-8d3e-431b0f07c029\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:11.929702+00\",\"updated_at\":\"2026-11-12 14:05:11.929702+00\",\"legal_name\":\"Spare Studio SARL\",\"country\":\"FR\",\"vat_id\":\"FR40900000001\",\"tax_registration_id\":null,\"address\":\"8 rue de Test, 69003 Lyon, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":null,\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"en\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"SPR-{YYYY}-\",\"prefix_quote\":\"QUO-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"PO-{YYYY}-\",\"prefix_credit_note\":\"CN-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":null,\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":null,\"address_line1\":null,\"address_line2\":null,\"postcode\":null,\"city\":null,\"country_code\":null,\"vat_on_debits_default\":null}"
     },
     {
       "method": "db_delete",
-      "args": [
-        "issuer_profiles",
-        "faa725e0-b8ce-44d3-8d3e-431b0f07c029"
-      ]
+      "args": ["issuer_profiles", "faa725e0-b8ce-44d3-8d3e-431b0f07c029"]
     },
     {
       "method": "emit",

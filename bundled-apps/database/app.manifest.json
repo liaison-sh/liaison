@@ -1,19 +1,28 @@
 {
   "name": "database",
-  "version": "1.1.4",
+  "version": "2.0.0",
   "kind": "connector",
+  "iconName": "database",
   "description": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",
   "listing": {
     "publisher": "Liaison",
     "category": "Developer",
     "icon": "server",
     "summary": "Read-only access to your deployment's own database for troubleshooting and support.",
-    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/database"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/database"
   },
-  "trusted": false,
+  "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "scopes": [
+    "database:reads:read",
+    "database:query:read",
+    "database:access:admin"
+  ],
   "dependencies": {
-    "required": ["kernel"]
+    "required": [
+      "kernel"
+    ]
   },
   "connections": {
     "database": {
@@ -61,6 +70,15 @@
           }
         ],
         "docsUrl": "docs/database-connector.md"
+      },
+      "sql": {
+        "catalog": "instance",
+        "rawQuery": {
+          "scope": "database:query:read"
+        },
+        "schema": {
+          "scope": "database:reads:read"
+        }
       }
     },
     "warehouse": {
@@ -113,6 +131,14 @@
           }
         ],
         "docsUrl": "docs/database-connector.md"
+      },
+      "sql": {
+        "rawQuery": {
+          "scope": "database:query:read"
+        },
+        "modes": [
+          "direct"
+        ]
       }
     }
   },
@@ -120,8 +146,9 @@
     "db_list_reads": {
       "readOnly": true,
       "description": "List the named, curated reads this database connector's catalog offers — call this first to discover what's available.",
-      "requiredScopes": ["database:reads:read"],
-      "trustBoundary": "user",
+      "requiredScopes": [
+        "database:reads:read"
+      ],
       "handler": "dbListReads",
       "params": {
         "type": "object",
@@ -131,9 +158,15 @@
     "db_read": {
       "readOnly": true,
       "description": "Run a named, parameterized curated read from the catalog (see db_list_reads). Column output is restricted to the read's declared allow-list.",
-      "searchKeywords": ["base", "données", "data", "lire"],
-      "requiredScopes": ["database:reads:read"],
-      "trustBoundary": "user",
+      "searchKeywords": [
+        "base",
+        "données",
+        "data",
+        "lire"
+      ],
+      "requiredScopes": [
+        "database:reads:read"
+      ],
       "handler": "dbRead",
       "taintSource": true,
       "timeoutMs": 60000,
@@ -149,15 +182,22 @@
             "description": "Named parameters the read declares"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
       }
     },
     "db_describe": {
       "readOnly": true,
       "description": "List the tables the connected role can SELECT (name and column count), or describe one table's columns and types (secret columns filtered out). connection \"warehouse\" requires database:query:read.",
-      "searchKeywords": ["schéma", "table", "tables"],
-      "requiredScopes": ["database:reads:read"],
-      "trustBoundary": "user",
+      "searchKeywords": [
+        "schéma",
+        "table",
+        "tables"
+      ],
+      "requiredScopes": [
+        "database:reads:read"
+      ],
       "handler": "dbDescribe",
       "timeoutMs": 60000,
       "params": {
@@ -177,7 +217,10 @@
           },
           "connection": {
             "type": "string",
-            "enum": ["default", "warehouse"],
+            "enum": [
+              "default",
+              "warehouse"
+            ],
             "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
           }
         }
@@ -186,8 +229,9 @@
     "db_probe": {
       "readOnly": true,
       "description": "Run the connect-time safety probe on demand: reports unexpected write grants, dangerous EXECUTE grants, and catalog drift (gate mode). connection \"warehouse\" requires database:query:read.",
-      "requiredScopes": ["database:reads:read"],
-      "trustBoundary": "user",
+      "requiredScopes": [
+        "database:reads:read"
+      ],
       "handler": "dbProbe",
       "timeoutMs": 60000,
       "params": {
@@ -195,7 +239,10 @@
         "properties": {
           "connection": {
             "type": "string",
-            "enum": ["default", "warehouse"],
+            "enum": [
+              "default",
+              "warehouse"
+            ],
             "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
           }
         }
@@ -204,9 +251,16 @@
     "db_query": {
       "readOnly": true,
       "description": "Run a raw, single-statement, SELECT-only SQL query against the connected database. Enabled by default; a deployment can disable it with LIAISON_DATABASE_ALLOW_RAW_QUERY=false. Same read-only role/grant restrictions as curated reads: nothing outside the allow-list is visible.",
-      "searchKeywords": ["sql", "requête", "base", "données", "data"],
-      "requiredScopes": ["database:query:read"],
-      "trustBoundary": "user",
+      "searchKeywords": [
+        "sql",
+        "requête",
+        "base",
+        "données",
+        "data"
+      ],
+      "requiredScopes": [
+        "database:query:read"
+      ],
       "handler": "dbQuery",
       "taintSource": true,
       "timeoutMs": 60000,
@@ -220,23 +274,94 @@
           },
           "connection": {
             "type": "string",
-            "enum": ["default", "warehouse"],
+            "enum": [
+              "default",
+              "warehouse"
+            ],
             "description": "Which connection to use: \"default\" (the org's database connection, the default) or \"warehouse\" (the second, direct connection, when configured)"
           }
         },
-        "required": ["sql"]
+        "required": [
+          "sql"
+        ]
+      }
+    },
+    "report_access_get": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "The Report access settings: each domain of the connected catalog with its reads, the catalog default, the organization rule, and the roles and people a rule can name.",
+      "requiredScopes": [
+        "database:access:admin"
+      ],
+      "handler": "reportAccessGet",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "report_access_set": {
+      "agentVisible": false,
+      "description": "Replace the organization's Report access rules (one map of domain to tier, roles and people).",
+      "requiredScopes": [
+        "database:access:admin"
+      ],
+      "handler": "reportAccessSet",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "domainAccess": {
+            "type": "object",
+            "description": "Domain to rule: { tier: internal|confidential|restricted, roles?: role ids, users?: user ids }"
+          }
+        },
+        "required": [
+          "domainAccess"
+        ]
+      }
+    },
+    "report_access_find_people": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Find people of the organization by email, for naming them in a Report access rule.",
+      "requiredScopes": [
+        "database:access:admin"
+      ],
+      "handler": "reportAccessFindPeople",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Emails to look up"
+          }
+        },
+        "required": [
+          "emails"
+        ]
       }
     }
   },
   "roles": {
     "member": {
       "description": "Database connector reader: curated reads only",
-      "scopes": ["database:reads:read"]
+      "scopes": [
+        "database:reads:read"
+      ]
     },
     "admin": {
-      "description": "Database connector administrator: curated reads plus raw query (when the deployment opts in)",
+      "description": "Database connector administrator: curated reads, raw query (when the deployment allows it) and Report access",
       "extends": "member",
-      "scopes": ["database:query:read"]
+      "scopes": [
+        "database:query:read",
+        "database:access:admin"
+      ]
     }
   },
   "events": {
@@ -256,7 +381,10 @@
         "blocks": [
           {
             "block": "connections",
-            "names": ["database", "warehouse"],
+            "names": [
+              "database",
+              "warehouse"
+            ],
             "status": {
               "tool": "db_probe"
             }
@@ -270,7 +398,7 @@
         "description": "Who may run the curated reads of each domain of the connected catalog.",
         "descriptionKey": "database.reportAccess.description",
         "scope": "org",
-        "adminScope": "kernel:apps:admin",
+        "adminScope": "database:access:admin",
         "blocks": [
           {
             "block": "custom",
@@ -280,6 +408,63 @@
         ]
       }
     ]
+  },
+  "knowledgeSources": {
+    "catalog": {
+      "title": "Database knowledge articles",
+      "handler": "syncCatalogArticles",
+      "readScope": "database:reads:read",
+      "configSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "timeoutMs": 120000
+    }
+  },
+  "provisioning": {
+    "handler": "provisionDatabase",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "domainAccess": {
+          "type": "object",
+          "description": "Domain to rule. Roles by name, people by email.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tier"
+            ],
+            "properties": {
+              "tier": {
+                "type": "string",
+                "enum": [
+                  "internal",
+                  "confidential",
+                  "restricted"
+                ]
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "users": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 3
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   },
   "agentInstructions": "Read-only access to a connected SQL database for troubleshooting and answering questions. The SCHEMA is DEPLOYMENT-SPECIFIC — do NOT assume any table or column names exist (there is no generic \"licenses\", \"organizations\", or \"orders\" table unless discovery shows one). Discover first, then query:\n1. db_describe() with NO argument lists every table you can actually read (schema.table and its column count; narrow with schema or search). db_describe(table: \"schema.table\") returns that table's columns and types. Secret/credential columns are excluded by the database role, so anything it lists is safe to select. ALWAYS start here to learn the real shape before answering.\n2. db_query(sql) runs any read-only SELECT — this is the primary tool for real questions (lookups, filters, joins, aggregates, \"latest N\"). Base your SQL on what db_describe returned. Only a single-statement SELECT/WITH is allowed; writes, DDL, multiple statements, and dangerous functions are rejected. A query that runs past the time limit is cancelled on the database and returns statement_timeout: do not rerun it unchanged, narrow it (filter by hub and date range, aggregate) first. Example shape: SELECT <cols> FROM <schema.table> WHERE <...> ORDER BY <...> LIMIT <n>.\n3. db_list_reads() / db_read(name, params) expose CURATED named reads IF this deployment shipped an adapter with them. They may be absent or may not match this database — if db_list_reads is empty or a db_read errors, ignore it and use db_describe + db_query.\n\nEverything is strictly read-only and safe by construction: writes are impossible, and secret/credential columns (tokens, password hashes, signed licenses, API secrets) are not granted — selecting one returns a permission error rather than data, which simply means that column is off-limits; pick the readable columns db_describe showed you. If the database is not connected, surface the not_connected error — never fabricate data. Ground every answer in db_describe + a real db_query; do not guess at schema.\n\nSome deployments configure a second connection, \"warehouse\" (an analytics warehouse or a replica). db_describe, db_query and db_probe take an optional connection param: omit it for the default database, pass connection: \"warehouse\" to target the warehouse. Describe the warehouse with db_describe(connection: \"warehouse\") before querying it; curated reads (db_list_reads / db_read) exist only on the default connection."
 }

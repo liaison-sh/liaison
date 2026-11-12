@@ -87,8 +87,17 @@ const READ_ONLY: Record<string, string[]> = {
   // connecting account is a member of (drives.list); only the token cache is touched.
   "google-drive": ["search", "read", "shared_drives"],
   // Every call writes one audit row (read name, outcome, row count, SQL hash); the target is
-  // reached through a read-only role, so nothing else is written anywhere.
-  database: ["db_list_reads", "db_read", "db_describe", "db_probe", "db_query"],
+  // reached through a read-only role, so nothing else is written anywhere. The two Report
+  // access reads only read the app's own store, the catalog and the org's directory.
+  database: [
+    "db_list_reads",
+    "db_read",
+    "db_describe",
+    "db_probe",
+    "db_query",
+    "report_access_get",
+    "report_access_find_people",
+  ],
   // The API connector's reads: an adapter row read, then the upstream GET (or
   // readOnlyPost search) through the host transport. Around them only platform
   // bookkeeping: the audit row (connection, operation name, status, ms) and the

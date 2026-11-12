@@ -16,8 +16,6 @@
  * BullMQ at boot.
  */
 import { sql as drizzleSql } from "drizzle-orm"
-import { createDatabaseKnowledgeAdapter } from "~/apps/database/knowledge-adapter"
-import { createDatabaseKnowledgeReadRunner } from "~/apps/database/knowledge-read-runner"
 import { createGitlabAdapter } from "~/apps/gitlab/adapter"
 import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { createGoogleDriveAdapter } from "~/apps/google-drive/adapter"
@@ -41,7 +39,6 @@ import {
   registerScheduledJob,
 } from "~/infra/jobs/jobs"
 import { jobsLogger as log } from "~/lib/logger"
-import { resolveDatabaseCatalog } from "~/modules/apps/connections/sql/catalog"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { movingOrgIds } from "~/modules/org/transfer-state/state"
@@ -87,8 +84,9 @@ async function assertOwnerMaySyncFrom(
 }
 
 /**
- * Resolve the adapter for a given app name + actor. Supports google-drive,
- * gitlab, and database; additional providers can be added here without
+ * Resolve the adapter for a given app name + actor. Supports google-drive
+ * and gitlab; an app that declares a knowledge source kind syncs through
+ * app-sources.ts instead, and additional providers can be added here without
  * touching the worker.
  */
 function resolveAdapter(
@@ -164,28 +162,6 @@ function resolveAdapter(
     }
     const client = makeGitlabFetchers(getToken)
     return createGitlabAdapter({ client, resolveDefaultGroupId })
-  }
-  if (appName === "database") {
-    const userId = source.ownerUserId ?? source.createdBy
-    // Catalog resolution (`resolveDatabaseCatalog`) is synchronous and
-    // tx-independent, so `hasRead` is answered directly off it without
-    // needing any DB handle at all.
-    const hasRead = (name: string): boolean => {
-      try {
-        return Boolean(resolveDatabaseCatalog().reads[name])
-      } catch {
-        return false
-      }
-    }
-    // No transaction around the read: the runner looks the credentials up in
-    // a short privileged transaction of its own, and the query on the
-    // connected database holds no privileged slot.
-    const runRead = (
-      name: string,
-      params: Record<string, unknown>,
-    ): Promise<{ rows: Record<string, unknown>[] }> =>
-      createDatabaseKnowledgeReadRunner({ orgId: source.orgId, userId }).runRead(name, params)
-    return createDatabaseKnowledgeAdapter({ runRead, hasRead })
   }
   throw new Error(`No adapter registered for app: ${appName}`)
 }

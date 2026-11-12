@@ -7,9 +7,7 @@
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "boxtal"
-      ],
+      "args": ["boxtal"],
       "reply": "{\"values\":{\"environment\":\"sandbox\"},\"missing\":[]}"
     },
     {

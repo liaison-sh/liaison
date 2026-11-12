@@ -85,6 +85,14 @@ const MANIFEST: Record<string, { type?: string; sql?: Record<string, unknown> }>
     type: "credentials",
     sql: { modes: ["gate"], rawQuery: { scope: "dbapp:query:read" } },
   },
+  describable: {
+    type: "credentials",
+    sql: {
+      catalog: "instance",
+      rawQuery: { scope: "dbapp:query:read" },
+      schema: { scope: "dbapp:reads:read" },
+    },
+  },
   api: { type: "credentials" },
 }
 
@@ -285,6 +293,8 @@ describe("ctx.sql.query: named reads of the instance catalog (liaison-self)", ()
       expect(answer.adapter).toBe("liaison-self")
       expect((answer.reads.org_tier_and_slug as { allowed: boolean }).allowed).toBe(true)
       expect((answer.reads.recent_tickets_by_status as { allowed: boolean }).allowed).toBe(false)
+      // liaison-self declares no domain tiers: every domain is internal.
+      expect(answer.domains).toEqual({})
     }
     expect(resolvedFor).toHaveLength(0)
   })
@@ -298,6 +308,13 @@ describe("ctx.sql.schema", () => {
       expect(answer.tables[0]?.columns.map((c) => c.column)).toEqual(["id"])
     }
     const refused = await sqlSchema(ctx({ callerScopes: [] }), "warehouse", {})
+    expect(isError(refused) && refused.error.code).toBe("forbidden")
+  })
+
+  it("takes the manifest's own schema scope when it names one", async () => {
+    const reader = await sqlSchema(ctx({ callerScopes: ["dbapp:reads:read"] }), "describable", {})
+    expect(isError(reader)).toBe(false)
+    const refused = await sqlSchema(ctx({ callerScopes: ["dbapp:query:read"] }), "describable", {})
     expect(isError(refused) && refused.error.code).toBe("forbidden")
   })
 })

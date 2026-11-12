@@ -708,26 +708,25 @@ it under `config`) or saved by the app's own tools are a usage error (exit `2`)
 before anything is written. Through the agent's `config_apps` tool, the person
 who approves needs the field's section admin scope as well.
 
-The `database` app entry also takes `domainAccess`: who may run each catalog
-domain's curated reads (see
-[Restrict reports by domain](database-connector.md#restrict-reports-by-domain)).
-Roles are named, people are given by email:
+The `database` app sets up who may run each catalog domain's curated reads
+(see [Restrict reports by domain](database-connector.md#restrict-reports-by-domain))
+through its `provision` block. Roles are named, people are given by email:
 
 ```yaml
 apps:
   - name: database
     enable: true
-    domainAccess:
-      revenue: { tier: confidential, roles: [finance] }
-      customers: { tier: restricted, users: [ceo@acme.example] }
-      returns: { tier: internal }
+    provision:
+      domainAccess:
+        revenue: { tier: confidential, roles: [finance] }
+        customers: { tier: restricted, users: [ceo@acme.example] }
+        returns: { tier: internal }
 ```
 
-The section replaces the stored map and is reported `changed` or `unchanged`
-(`apps.database.domainAccess`). An unknown role or person is a usage error
-(exit `2`) before anything is written. An entry without `domainAccess` leaves
-the stored map as it is. It is set through `config apply` only, not the
-agent's `config_apps` tool.
+`domainAccess` replaces the stored map; without it the map stays as it is. An
+unknown role or person fails the apply before anything is written. A file that
+still puts `domainAccess` directly on the app entry is refused with where it
+moved.
 
 An app that declares `provisioning` in its manifest takes a `provision` block:
 its own setup, in the shape the app's schema defines
@@ -977,7 +976,7 @@ Tracked paths: `org.name`, `org.timezone`, `org.defaultLocale`,
 `org.requireAdminSecondFactor`, `limits.<cap>`, `email.from`, `email.replyTo`,
 `setup.features`, `roles.<name>`, `apps.<name>.enable`,
 `apps.<name>.config.<key>`, `apps.<name>.settings.<path>`,
-`apps.database.domainAccess`, `agents.<handle>.<field>` (handle without `@`)
+`agents.<handle>.<field>` (handle without `@`)
 and `invoicing.issuerProfiles.<legalName>.<field>`. Credentials, keys, tokens
 and passwords are never tracked or hashed; users, mail, tickets, knowledge,
 BYOK, API keys and API connectors apply exactly as before.
@@ -990,7 +989,7 @@ also exits 3, so a pipeline can stop on it.
 ### Apply part of a file
 
 `--only <path>` (repeatable) applies and checks just that path or section, for
-example `--only apps.database.domainAccess` or `--only roles`. The rest of the
+example `--only apps.mail.enable` or `--only roles`. The rest of the
 file is ignored for writes and for conflict checks. The `org` block still names
 the org but is not written unless `--only org` (or `--only org.timezone`, ...)
 selects it.

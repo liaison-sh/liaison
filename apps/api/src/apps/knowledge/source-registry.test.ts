@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Registry-level unit test: the database Knowledge source is folder-capable
-// and is discovered by `listFolderCapableSources`. Uses the documented
-// unit-test path (createKnowledgeSourceRegistry + explicit adapter) rather than
-// `registerDefaultKnowledgeSources`, which needs a live RLS tx.
+// The default registry: each source app's own read scope gates its adapter.
 
 import { describe, expect, it } from "bun:test"
-import { createDatabaseKnowledgeAdapter } from "~/apps/database/knowledge-adapter"
-import { createKnowledgeSourceRegistry } from "~/apps/knowledge/federated-search"
-import {
-  listFolderCapableSources,
-  registerDefaultKnowledgeSources,
-} from "~/apps/knowledge/source-registry"
+import { registerDefaultKnowledgeSources } from "~/apps/knowledge/source-registry"
 import type { RlsClient } from "~/db"
 
 const actor = {
@@ -20,29 +12,6 @@ const actor = {
   scopes: ["knowledge:sources:read"],
   dimensionGrants: {},
 }
-
-describe("Knowledge source registry — database source", () => {
-  it("the database adapter is folder-capable (declares listFolder)", () => {
-    const adapter = createDatabaseKnowledgeAdapter({
-      runRead: async () => ({ rows: [] }),
-      hasRead: () => true,
-    })
-    expect(typeof adapter.listFolder).toBe("function")
-    expect(adapter.source).toBe("database")
-  })
-
-  it("appears in listFolderCapableSources when registered", () => {
-    const registry = createKnowledgeSourceRegistry()
-    registry.register(
-      createDatabaseKnowledgeAdapter({
-        runRead: async () => ({ rows: [] }),
-        hasRead: () => true,
-      }),
-    )
-    const capable = listFolderCapableSources(registry, actor).map((a) => a.source)
-    expect(capable).toContain("database")
-  })
-})
 
 describe("registerDefaultKnowledgeSources: the source app's own read scope gates the adapter", () => {
   // Building the registry runs no query; the credential is only resolved when an

@@ -129,7 +129,8 @@ describe("trackingChangedHandler", () => {
 
 // No run holds a transaction across its bridge calls: a delivery's claim is an expiring lease.
 // A run killed between claiming and marking leaves a `processing` row; a redelivery after
-// CLAIM_TTL_MS takes it over (compare-and-set on its claim attempt), a fresh one stays in flight.
+// CLAIM_TTL_MS takes it over (compare-and-set on its claim attempt). An unexpired claim is NOT a
+// completed delivery: the redelivery answers 503 so it is retried, and only `processed` answers 200.
 describe("delivery claim lease", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
   function seedClaim(db: ReturnType<typeof makeCtx>["db"], claimedAt: string, attempt: number | null = 1) {
@@ -162,12 +163,59 @@ describe("delivery claim lease", () => {
     expect(status(db)).toBe("IN_TRANSIT")
   })
 
-  it("a fresh claim is a delivery in flight: the redelivery is acknowledged and not applied twice", async () => {
+  it("a fresh claim is not acknowledged: the redelivery answers 503 (retried) and applies nothing yet", async () => {
     const { ctx, db } = makeCtx()
     await seedClaim(db, ago(1_000))
     const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
-    expect(r.status).toBe(200)
+    expect(r.status).toBe(503)
     expect(status(db)).toBeNull()
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processing")
+  })
+
+  it("a run killed after its claim: replays answer 503 until the claim lapses, then it is applied exactly once", async () => {
+    const { ctx, db } = makeCtx()
+    // The first run claims the delivery, then dies inside its apply (a hung write never settles,
+    // and nothing marks the row: a killed run runs no catch).
+    const update = ctx.db.update.bind(ctx.db)
+    let shipmentWrites = 0
+    let killFirst = true
+    ctx.db.update = async (entity: string, id: string, data: Record<string, unknown>) => {
+      if (entity === "shipment") {
+        if (killFirst) {
+          killFirst = false
+          return new Promise(() => {})
+        }
+        shipmentWrites++
+      }
+      return update(entity, id, data)
+    }
+    void trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processing")
+
+    // The kernel's replay at +5 s: the claim is still held, so the delivery is not acknowledged.
+    const early = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+    expect(early.status).toBe(503)
+    expect(shipmentWrites).toBe(0)
+
+    // A later replay, once the killed run's claim has lapsed, takes it over and applies it.
+    const realNow = Date.now
+    Date.now = () => realNow() + CLAIM_TTL_MS + 1_000
+    try {
+      const late = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+      expect(late.status).toBe(200)
+      expect(status(db)).toBe("IN_TRANSIT")
+      expect(shipmentWrites).toBe(1)
+      // Any further redelivery is a completed duplicate: acknowledged, applied no second time.
+      const again = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
+      expect(again.status).toBe(200)
+      expect(shipmentWrites).toBe(1)
+    } finally {
+      Date.now = realNow
+    }
+    const row = db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")!
+    expect(row.status).toBe("processed")
+    expect(row.claim_attempt).toBe(2)
   })
 
   it("two redeliveries racing for an expired claim: only the one whose compare-and-set lands applies it", async () => {
@@ -186,7 +234,8 @@ describe("delivery claim lease", () => {
       return rows
     }
     const r = await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
-    expect(r.status).toBe(200)
+    // The loser does not acknowledge a delivery the winner has not completed yet.
+    expect(r.status).toBe(503)
     expect(status(db)).toBeNull()
   })
 })

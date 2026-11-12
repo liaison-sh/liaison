@@ -41,10 +41,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_settings",
-        "{\"limit\":1}"
-      ],
+      "args": ["einvoicing_settings", "{\"limit\":1}"],
       "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
     },
     {
@@ -57,10 +54,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "einvoicing_settings",
-        "{\"limit\":1}"
-      ],
+      "args": ["einvoicing_settings", "{\"limit\":1}"],
       "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
     },
     {

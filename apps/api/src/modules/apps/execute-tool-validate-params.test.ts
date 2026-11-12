@@ -10,7 +10,7 @@ import path from "node:path"
 import { MAX_RAW_SQL_CHARS } from "@liaison/db-core"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
-import databaseManifest from "~/apps/database/app.manifest.json"
+import databaseManifest from "../../../../../bundled-apps/database/app.manifest.json"
 import { validateParamsForTool } from "./execute-tool"
 
 // A manifest tool: `isManifestHandler` keys on a `{ bundlePath, exportName }`

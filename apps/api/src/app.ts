@@ -103,7 +103,6 @@ import { cloudRoutes } from "~/modules/cloud/routes"
 import { contacts } from "~/modules/contacts/routes"
 import { trustedSendersRoutes } from "~/modules/contacts/trusted-senders-routes"
 import { dashboardsRoutes } from "~/modules/dashboards/routes"
-import { databaseRoutes } from "~/modules/database/routes"
 import { documentRoutes, documentTemplateRoutes } from "~/modules/documents/routes"
 import { documentTemplateRuleRoutes } from "~/modules/documents/rules-routes"
 import { orgExportDownloadRelay, orgExportRoutes } from "~/modules/export/org-archive/routes"
@@ -789,11 +788,6 @@ app.route("/api/user/preferences", preferencesRoutes)
 app.use("/api/api-connector/*", authMw, orgLimiter)
 app.use("/api/api-connector/*", kernelPrefixStateGate("api-connector"))
 app.route("/api/api-connector", apiConnectorRoutes)
-
-// Database connector settings (kernel module; kernel:apps:admin per route).
-app.use("/api/database/*", authMw, orgLimiter)
-app.use("/api/database/*", kernelPrefixStateGate("database"))
-app.route("/api/database", databaseRoutes)
 
 app.use("/api/assist", authMw, orgLimiter)
 app.use("/api/assist/*", authMw, orgLimiter)

@@ -24,6 +24,12 @@ export interface ChartDataset {
   previous?: boolean
   /** In a combo: this series is drawn as a line (the rest are bars). */
   asLine?: boolean
+  /** Read against the right-hand axis (a blended chart's right-axis layer). */
+  axis?: "right"
+  /** The series' own name in the tooltip, when the legend names it otherwise (by its dates). */
+  name?: string
+  /** A comparison series: the comparison's own label at each place, named in the tooltip. */
+  dayLabels?: Array<string | number | null>
 }
 
 export interface ChartProps {
@@ -51,6 +57,10 @@ export interface ChartProps {
   timeZone?: string
   /** A block two grid rows high: the drawing takes the room. */
   tall?: boolean
+  /** Lines bend smoothly through their points (default: straight segments). */
+  curve?: "smooth"
+  /** The place of the bucket still filling (today's): drawn dotted. */
+  inProgressIndex?: number
 }
 
 type ChartModule = typeof import("chart.js")
@@ -139,7 +149,14 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
   const stacked = props.stacked === true && (props.type === "bar" || area || combo)
   // A combo's lines never stack on its bars: they go on their own unstacked axis on the right,
   // asked for (secondaryAxis) or because the bars stack.
-  const rightAxis = combo && (props.secondaryAxis === true || stacked)
+  // A dataset may name the right axis itself (a blended chart's layer); otherwise a combo's lines
+  // go there.
+  const named = props.datasets.some((d) => d.axis === "right")
+  const rightAxis = named || (combo && (props.secondaryAxis === true || stacked))
+  const onRight = (d: ChartDataset, line: boolean) => (named ? d.axis === "right" : line)
+  const smooth = props.curve === "smooth"
+  const ip = props.inProgressIndex
+  const partial = typeof ip === "number" && ip >= 0
   let next = 0
   return {
     // An area is a filled line; a combo is bars with some datasets drawn as lines.
@@ -150,21 +167,42 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
         const color = d.previous ? muted : colors[next++]
         const line = props.type === "line" || area || (combo && d.asLine === true)
         const bar = !line
+        // Today's bucket is still filling: its line segment dotted, its point hollow, its bar faint.
+        const filling = partial && !d.previous
         return {
           ...(combo && line ? { type: "line" } : {}),
           label: d.label,
           data: d.values,
           // An area's fill is the series' colour, faint (calm: hues, never alarms).
-          backgroundColor: area && !d.previous ? `${color}40` : color,
+          backgroundColor:
+            area && !d.previous
+              ? `${color}40`
+              : filling && bar
+                ? (c: { dataIndex: number }) => (c.dataIndex === ip ? `${color}59` : color)
+                : color,
           borderColor: d.previous && line ? text : color,
+          ...(filling && bar
+            ? { borderWidth: (c: { dataIndex: number }) => (c.dataIndex === ip ? 1 : 0) }
+            : {}),
+          ...(filling && line
+            ? {
+                segment: {
+                  borderDash: (c: { p1DataIndex: number }) =>
+                    c.p1DataIndex === ip ? [2, 3] : undefined,
+                },
+                pointBackgroundColor: (c: { dataIndex: number }) =>
+                  c.dataIndex === ip ? "transparent" : color,
+              }
+            : {}),
           borderRadius: bar ? 3 : undefined,
           maxBarThickness: bar ? 40 : undefined,
-          tension: line ? 0.25 : undefined,
+          tension: line ? (smooth ? 0.4 : 0) : undefined,
+          ...(line && smooth ? { cubicInterpolationMode: "monotone" } : {}),
           pointRadius: line ? (d.previous ? 0 : 2) : undefined,
           borderWidth: line && d.previous ? 1.5 : undefined,
           borderDash: line && d.previous ? [4, 4] : undefined,
           fill: area && !d.previous ? (stacked ? (next === 1 ? "origin" : "-1") : "origin") : false,
-          ...(rightAxis && line ? { yAxisID: "y1" } : {}),
+          ...(rightAxis && onRight(d, line) ? { yAxisID: "y1" } : {}),
           ...(stacked && !d.previous && !(combo && line) ? { stack: "current" } : {}),
           // Drawn behind the current series; a combo's lines over its bars.
           order: d.previous ? 1 : combo && line ? -1 : 0,
@@ -179,9 +217,24 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
       plugins: {
         legend: { display: props.datasets.length > 1, labels: { color: text, boxWidth: 10 } },
         tooltip: {
+          // Every series at the hovered place: the current value beside the comparison's.
+          mode: "index",
+          intersect: false,
           callbacks: {
-            label: (c: { dataset: { label?: string }; raw: unknown }) =>
-              `${c.dataset.label ? `${c.dataset.label}: ` : ""}${fmt(c.raw)}`,
+            label: (c: {
+              dataset?: { label?: string }
+              datasetIndex?: number
+              dataIndex?: number
+              raw: unknown
+            }) => {
+              const d = c.datasetIndex === undefined ? undefined : props.datasets[c.datasetIndex]
+              const day = c.dataIndex === undefined ? undefined : d?.dayLabels?.[c.dataIndex]
+              const name =
+                day !== undefined && day !== null
+                  ? formatAxisLabel(day, locale, props.timeZone)
+                  : (d?.name ?? c.dataset?.label ?? "")
+              return `${name ? `${name}: ` : ""}${fmt(c.raw)}`
+            },
           },
         },
       },
@@ -254,6 +307,8 @@ export const Chart: Component<ChartProps> = (props) => {
           props.horizontal,
           props.secondaryAxis,
           props.timeZone,
+          props.curve,
+          props.inProgressIndex,
           locale(),
         ] as const,
       async () => {

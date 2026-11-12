@@ -80,6 +80,8 @@ export interface DashboardBlockSpec {
   /** Absent on a text block, and on a block reading a shared dataset. */
   source?: Record<string, unknown>
   dataset?: string
+  /** A blended chart's layers (a combo reading 2-3 sources joined on their date bucket). */
+  layers?: DashboardLayerSpec[]
   /** A text block's markdown. */
   text?: string
   map?: DashboardBlockMap
@@ -89,6 +91,17 @@ export interface DashboardBlockSpec {
 }
 
 export type BlockRangeMode = "dashboard" | "fixed"
+
+/** One layer of a blended chart, as the spec declares it. */
+export interface DashboardLayerSpec {
+  id: string
+  label?: string
+  as: "bar" | "line"
+  axis?: "left" | "right"
+  source?: Record<string, unknown>
+  dataset?: string
+  map: DashboardBlockMap
+}
 
 export type FilterType = "select" | "multi" | "text"
 
@@ -221,6 +234,39 @@ export interface ChartDisplay {
   lineSeries?: string[]
   /** A combo's lines read against a right-hand axis. */
   secondaryAxis?: boolean
+  /** A smooth curve between points (absent: straight segments). */
+  curve?: "smooth"
+  /** A layered chart: the series drawn against the right-hand axis. */
+  rightAxis?: string[]
+}
+
+/** One headline figure over the block's window: a total, a series' total, or a computed figure. */
+export interface HeadlineFigure {
+  /** "total", a series name, a layer id (a layer's total), or a computed figure's label. */
+  key: string
+  label: string
+  value: number | null
+  /** The same figure over the comparison window, when one ran. */
+  previous?: number | null
+  /** A layered chart: the layer the figure comes from. */
+  layer?: string
+  /** Computed from the layers' totals. */
+  calc?: true
+}
+
+/** A layered (blended) chart's layer as drawn: its series, or why it failed. */
+export interface ChartLayer {
+  id: string
+  label: string
+  as: "bar" | "line"
+  axis: "left" | "right"
+  /** Its series names, as in the chart's `series`. */
+  series: string[]
+  format?: ValueFormat
+  currency?: string
+  /** This layer failed: it draws nothing, the others still show. */
+  error?: { error: BlockErrorKind; message?: string }
+  previousError?: { error: BlockErrorKind; message?: string }
 }
 
 export interface SeriesData {
@@ -232,6 +278,12 @@ export interface SeriesData {
   truncated?: boolean
   previous?: PreviousSeries
   display?: ChartDisplay
+  /** The period's figures, shown above the chart. */
+  headline?: HeadlineFigure[]
+  /** The label of the bucket that holds today: still filling, drawn dotted. */
+  inProgressLabel?: string
+  /** A blended chart's layers, in the block's order. */
+  layers?: ChartLayer[]
 }
 
 /** Stages in order and each one's value: the conversion between steps is worked out here. */
@@ -416,7 +468,64 @@ function displayFrom(v: unknown): ChartDisplay | undefined {
     d.lineSeries = v.lineSeries.filter((n): n is string => typeof n === "string")
   }
   if (v.secondaryAxis === true) d.secondaryAxis = true
+  if (v.curve === "smooth") d.curve = "smooth"
+  if (Array.isArray(v.rightAxis)) {
+    d.rightAxis = v.rightAxis.filter((n): n is string => typeof n === "string")
+  }
   return Object.keys(d).length ? d : undefined
+}
+
+const numOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null
+
+function headlineFrom(v: unknown): HeadlineFigure[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: HeadlineFigure[] = []
+  for (const f of v) {
+    if (!isRecord(f) || typeof f.key !== "string") continue
+    out.push({
+      key: f.key,
+      label: typeof f.label === "string" ? f.label : f.key,
+      value: numOrNull(f.value),
+      ...(f.previous !== undefined ? { previous: numOrNull(f.previous) } : {}),
+      ...(typeof f.layer === "string" ? { layer: f.layer } : {}),
+      ...(f.calc === true ? { calc: true as const } : {}),
+    })
+  }
+  return out.length ? out : undefined
+}
+
+function layerErrorFrom(v: unknown): { error: BlockErrorKind; message?: string } | undefined {
+  if (!isRecord(v) || typeof v.error !== "string") return undefined
+  return {
+    error: SERVER_ERRORS.has(v.error) ? (v.error as BlockErrorKind) : "source_error",
+    ...(typeof v.message === "string" ? { message: v.message } : {}),
+  }
+}
+
+function layersFrom(v: unknown): ChartLayer[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: ChartLayer[] = []
+  for (const l of v) {
+    if (!isRecord(l) || typeof l.id !== "string") continue
+    const meta = isRecord(l.meta) ? l.meta : {}
+    const error = layerErrorFrom(l.error)
+    const previousError = layerErrorFrom(l.previousError)
+    out.push({
+      id: l.id,
+      label: typeof l.label === "string" ? l.label : l.id,
+      as: l.as === "line" ? "line" : "bar",
+      axis: l.axis === "right" ? "right" : "left",
+      series: Array.isArray(l.series)
+        ? l.series.filter((n): n is string => typeof n === "string")
+        : [],
+      ...(typeof meta.format === "string" ? { format: meta.format as ValueFormat } : {}),
+      ...(typeof meta.currency === "string" ? { currency: meta.currency } : {}),
+      ...(error ? { error } : {}),
+      ...(previousError ? { previousError } : {}),
+    })
+  }
+  return out.length ? out : undefined
 }
 
 /**
@@ -527,6 +636,8 @@ export function parseBlockResponse(body: unknown): BlockResult {
       if (Array.isArray(x) && Array.isArray(body.series)) {
         const previous = previousSeriesFrom(body.previous)
         const display = displayFrom(body.display)
+        const headline = headlineFrom(body.headline)
+        const layers = layersFrom(body.layers)
         return {
           ok: true,
           data: {
@@ -536,6 +647,11 @@ export function parseBlockResponse(body: unknown): BlockResult {
             ...shown,
             ...(previous ? { previous } : {}),
             ...(display ? { display } : {}),
+            ...(headline ? { headline } : {}),
+            ...(typeof body.inProgressLabel === "string"
+              ? { inProgressLabel: body.inProgressLabel }
+              : {}),
+            ...(layers ? { layers } : {}),
           },
           ...withInfo,
         }
@@ -751,10 +867,14 @@ export interface DrillTarget {
   row?: number
   /** A comparison series was picked: the rows come from the comparison window. */
   previous?: boolean
+  /** A blended chart: the layer whose rows to read. */
+  layer?: string
 }
 
 export interface BlockRowsPage {
   columns: DashboardColumn[]
+  /** The fields the source's rows carry (names only): what a filter can read. */
+  fields: string[]
   rows: Array<Record<string, unknown>>
   links: Array<RecordLink | null> | null
   total: number
@@ -785,6 +905,7 @@ export function blockRowsQuery(opts: {
   if (t?.category !== undefined) q.set("category", t.category)
   if (t?.series !== undefined) q.set("series", t.series)
   if (t?.row !== undefined) q.set("row", String(t.row))
+  if (t?.layer !== undefined) q.set("layer", t.layer)
   q.set("offset", String(opts.offset ?? 0))
   q.set("limit", String(opts.limit ?? DRILL_PAGE_SIZE))
   appendRange(q, opts.range, false)
@@ -811,6 +932,9 @@ export function parseRowsResponse(body: unknown): BlockRowsResult {
     ok: true,
     page: {
       columns: body.columns as DashboardColumn[],
+      fields: Array.isArray(body.fields)
+        ? body.fields.filter((f): f is string => typeof f === "string")
+        : [],
       rows,
       links: Array.isArray(body.links) ? body.links.map(recordLinkFrom) : null,
       total: num(body.total, rows.length),
@@ -894,7 +1018,18 @@ export type BlockPosition = number | { before: string } | { after: string }
 export type EditOperation =
   | { op: "moveBlock"; blockId: string; position: BlockPosition }
   | { op: "resizeBlock"; blockId: string; width?: BlockWidth; height?: BlockHeight }
-  | { op: "updateBlock"; blockId: string; changes: { title: string } }
+  | {
+      op: "updateBlock"
+      blockId: string
+      /** map merges key by key (null removes a key); layers is replaced whole. */
+      changes: {
+        title?: string
+        map?: Record<string, unknown>
+        layers?: DashboardLayerSpec[]
+      }
+    }
+  | { op: "setFilter"; filter: DashboardFilterDef; position?: number }
+  | { op: "removeFilter"; id: string }
   | { op: "duplicateBlock"; blockId: string; title?: string; position?: BlockPosition }
   | { op: "removeBlock"; blockId: string }
   | { op: "setTitle"; title: string }

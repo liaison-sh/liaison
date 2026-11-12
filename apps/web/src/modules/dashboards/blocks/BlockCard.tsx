@@ -229,6 +229,10 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
   const t: T = (key, params) => i18n.t(key, params)
   const ownWindow = () => (props.showOwnWindow ? ownWindowText(info()?.window, t, locale()) : null)
   const compareMode = () => info()?.compareWindow?.mode
+  const dashboardWindow = () => {
+    const w = info()?.window
+    return w?.mode === "dashboard" ? { from: w.from, to: w.to } : undefined
+  }
   const emptyText = () => {
     const w = info()?.window
     if (w?.mode !== "dashboard") return undefined
@@ -375,7 +379,9 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
             data-testid={`dashboard-block-rows-${props.block.id}`}
             aria-label={i18n.t("kernel.dashboards.drillShowAll")}
             title={i18n.t("kernel.dashboards.drillShowAll")}
-            onClick={() => props.onDrill?.({})}
+            onClick={() =>
+              props.onDrill?.(props.block.layers?.[0] ? { layer: props.block.layers[0].id } : {})
+            }
             class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
           >
             <Rows3 size={13} />
@@ -427,6 +433,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
                   </PopupMenu.Item>
                   <PopupMenu.Item
                     data-testid={`dashboard-block-csv-rows-${props.block.id}`}
+                    disabled={!!props.block.layers}
                     onSelect={() => props.onExport?.("rows")}
                   >
                     {i18n.t("kernel.dashboards.exportBlockRows")}
@@ -555,7 +562,24 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
                 onDrill={drillable() ? props.onDrill : undefined}
                 timeZone={props.timeZone}
                 tall={props.block.height === 2}
+                window={dashboardWindow()}
+                compareWindow={info()?.compareWindow ?? undefined}
               />
+              <For each={layerErrors(d())}>
+                {(l) => (
+                  <p
+                    data-testid={`dashboard-block-layer-error-${l.id}`}
+                    data-error={l.error}
+                    title={l.message}
+                    class="mt-1 text-[11.5px] text-text-tertiary"
+                  >
+                    {i18n.t("kernel.dashboards.layerFailed", {
+                      layer: l.label,
+                      reason: i18n.t(blockErrorKey(l.error)),
+                    })}
+                  </p>
+                )}
+              </For>
               <Show when={d().truncated}>
                 <p
                   data-testid="dashboard-block-truncated"
@@ -635,5 +659,15 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
         </Dialog.Content>
       </Dialog>
     </section>
+  )
+}
+
+/** A blended chart's layers that failed: each says so under the chart, the others still draw. */
+export function layerErrors(
+  d: BlockData,
+): { id: string; label: string; error: BlockErrorKind; message?: string }[] {
+  if (!("layers" in d) || !d.layers) return []
+  return d.layers.flatMap((l) =>
+    l.error ? [{ id: l.id, label: l.label, error: l.error.error, message: l.error.message }] : [],
   )
 }

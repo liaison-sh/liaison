@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { type Component, Match, Switch } from "solid-js"
+import { type Component, Match, Show, Switch } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type {
   BlockData,
@@ -9,7 +9,9 @@ import type {
   PieData,
   SeriesData,
 } from "../dashboards-client"
+import { formatWindow } from "../time-range"
 import { Chart, type ChartDataset } from "./Chart"
+import { ChartHeadline } from "./ChartHeadline"
 import { FunnelBlock } from "./FunnelBlock"
 import { MetricBlock } from "./MetricBlock"
 import { TableBlock } from "./TableBlock"
@@ -31,6 +33,10 @@ export interface BlockRendererProps {
   timeZone?: string
   /** The block spans two grid rows: charts take the room. */
   tall?: boolean
+  /** The days the data covers (a block following the dashboard's range): names the legend. */
+  window?: { from: string; to: string }
+  /** The comparison's real days: names the comparison in the legend and the headline. */
+  compareWindow?: { from: string; to: string }
 }
 
 /**
@@ -47,25 +53,67 @@ function seriesEmpty(d: SeriesData): boolean {
   return d.x.length === 0 || d.series.length === 0
 }
 
+/** How the legend names what it shows, when the block knows its days. */
+export interface DatasetNames {
+  /** The current window as it reads ("Nov 1 – 12, 2026"): names a lone series in the legend. */
+  current?: string
+  /** "{name} (right axis)": a series read against the right-hand axis. */
+  rightAxis?: (name: string) => string
+}
+
 /**
  * A bar or line block's datasets: its series, then, when the server sent a comparison, each
- * series' previous values (drawn lighter) named "<series> · <comparison>".
+ * series' previous values (drawn lighter) named "<series> · <comparison>". With `names.current`,
+ * a lone series is named by its days and its comparison by the comparison's, and the tooltip
+ * names each comparison value by its own day. A blended chart's right-axis series say so.
  */
-export function seriesDatasets(d: SeriesData, previousName: string): ChartDataset[] {
+export function seriesDatasets(
+  d: SeriesData,
+  previousName: string,
+  names: DatasetNames = {},
+): ChartDataset[] {
   const lines = new Set(d.kind === "combo" ? (d.display?.lineSeries ?? []) : [])
+  const right = new Set(d.display?.rightAxis ?? [])
+  const lone = d.series.length === 1 && !!names.current
+  const shown = (name: string) =>
+    right.has(name) && names.rightAxis ? names.rightAxis(name) : name
   const current: ChartDataset[] = d.series.map((x) => ({
-    label: x.name,
+    label: lone ? (names.current as string) : shown(x.name),
     values: x.values,
     ...(lines.has(x.name) ? { asLine: true } : {}),
+    ...(right.has(x.name) ? { axis: "right" as const } : {}),
+    ...(lone ? { name: x.name } : {}),
   }))
   const previous: ChartDataset[] = (d.previous?.series ?? [])
     .filter((p) => p.values.some((v) => v !== null))
     .map((p) => ({
-      label: d.series.length > 1 && p.name ? `${p.name} · ${previousName}` : previousName,
+      label: d.series.length > 1 && p.name ? `${shown(p.name)} · ${previousName}` : previousName,
       values: p.values,
       previous: true,
+      ...(lines.has(p.name) ? { asLine: true } : {}),
+      ...(right.has(p.name) ? { axis: "right" as const } : {}),
+      ...(names.current && d.previous ? { dayLabels: d.previous.labels } : {}),
     }))
   return [...current, ...previous]
+}
+
+/**
+ * A blended chart's layer behind a series, and the series name its rows know: an unsplit layer's
+ * one series is named by its label (no series to ask for), a split layer's may carry
+ * " (<label>)" when another layer took the name first.
+ */
+export function layerOfSeries(
+  d: SeriesData,
+  name: string,
+): { layer: string; series?: string } | null {
+  const layer = d.layers?.find((l) => l.series.includes(name))
+  if (!layer) return null
+  if (layer.series.length === 1 && name === layer.label) return { layer: layer.id }
+  const suffix = ` (${layer.label})`
+  return {
+    layer: layer.id,
+    series: name.endsWith(suffix) ? name.slice(0, -suffix.length) : name,
+  }
 }
 
 /**
@@ -82,6 +130,7 @@ export function seriesPick(d: SeriesData, index: number, datasetIndex: number): 
     const label = d.previous?.labels[index]
     if (!p || label === null || label === undefined || p.values[index] == null) return null
     const target: DrillTarget = { category: String(label), previous: true }
+    if (d.layers) return withLayer(d, target, p.name)
     if (d.series.length > 1 && p.name) target.series = p.name
     return target
   }
@@ -90,7 +139,18 @@ export function seriesPick(d: SeriesData, index: number, datasetIndex: number): 
     category: label === null || label === undefined ? "" : String(label),
   }
   const series = d.series[datasetIndex]
+  if (d.layers) return series ? withLayer(d, target, series.name) : null
   if (d.series.length > 1 && series) target.series = series.name
+  return target
+}
+
+/** A blended chart's pick reads its own layer's rows (null: a series no layer drew). */
+function withLayer(d: SeriesData, target: DrillTarget, name: string): DrillTarget | null {
+  const at = layerOfSeries(d, name)
+  if (!at) return null
+  target.layer = at.layer
+  const layer = d.layers?.find((l) => l.id === at.layer)
+  if (at.series !== undefined && (layer?.series.length ?? 0) > 1) target.series = at.series
   return target
 }
 
@@ -179,13 +239,26 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
                 : {}),
             }
           }
-          return seriesEmpty(s()) ? (
-            empty
-          ) : (
+          const locale = () => props.locale ?? i18n.locale()
+          const range = (w: { from: string; to: string } | undefined) =>
+            w ? formatWindow(w, locale()) : undefined
+          const compareName = () => range(props.compareWindow) ?? previousName()
+          const inProgress = () => {
+            const l = s().inProgressLabel
+            if (l === undefined) return undefined
+            const at = s().x.findIndex((x) => String(x) === l)
+            return at >= 0 ? at : undefined
+          }
+          const chart = () => (
             <Chart
               type={s().kind}
               labels={s().x}
-              datasets={seriesDatasets(s(), previousName())}
+              curve={s().display?.curve}
+              inProgressIndex={inProgress()}
+              datasets={seriesDatasets(s(), compareName(), {
+                current: range(props.window),
+                rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
+              })}
               format={share() ? "percent" : (s().format ?? format())}
               timeZone={props.timeZone}
               tall={props.tall}
@@ -205,6 +278,35 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               }
               pickLabel={(label) => i18n.t("kernel.dashboards.drillShowFor", { label })}
             />
+          )
+          return (
+            <>
+              <Show when={s().headline}>
+                {(figures) => (
+                  <ChartHeadline
+                    figures={figures()}
+                    layers={s().layers}
+                    format={share() ? undefined : (s().format ?? format())}
+                    currency={s().currency ?? currency()}
+                    locale={locale()}
+                    compareName={compareName()}
+                  />
+                )}
+              </Show>
+              {seriesEmpty(s()) ? empty : chart()}
+              <Show when={!seriesEmpty(s()) && inProgress() !== undefined}>
+                <p
+                  data-testid="chart-in-progress"
+                  class="mt-1 flex items-center gap-1.5 text-[11.5px] text-text-tertiary"
+                >
+                  <span
+                    aria-hidden="true"
+                    class="inline-block w-4 border-t-2 border-dotted border-text-tertiary"
+                  />
+                  {i18n.t("kernel.dashboards.chartInProgress")}
+                </p>
+              </Show>
+            </>
           )
         }}
       </Match>

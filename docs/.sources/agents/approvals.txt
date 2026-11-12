@@ -265,3 +265,4 @@ An app can draw a panel inside its own tool's approval cards -> apps/web/src/mod
 an app's scheduled job is named as such and never routed as the member's own request -> apps/api/src/modules/approvals/requester.ts:59 ; packages/shared/src/approvals/authority.ts:303 ; apps/api/src/modules/approvals/route-world.ts:412
 Summary built once at request and on edit, stored; card reads stored summary -> apps/api/src/modules/approvals/served-summary.ts:1-15 ; apps/api/src/modules/approvals/edit.ts:641
 Card lists 8 lines; a pooled dashboard card up to 50, scrolling -> packages/shared/src/types/approvals.ts:48 ; apps/web/src/modules/approvals/ApprovalCard.tsx:2014
+An approver edits a request waiting in a conversation they never joined; the note is skipped, a non-approver outside it is refused -> apps/api/src/modules/approvals/edit.ts:619-648 ; apps/api/src/modules/approvals/decider.ts:35-62

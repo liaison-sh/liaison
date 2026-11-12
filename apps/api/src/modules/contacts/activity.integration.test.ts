@@ -23,8 +23,10 @@ import {
 import * as executeToolModule from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
+  ACTIVITY_DEADLINE_MS,
   ACTIVITY_DEAL_CAP,
   type ActivityResult,
+  AGENT_READ_DEADLINE_MS,
   compareActivity,
   readActivity,
 } from "~/modules/contacts/activity"
@@ -415,22 +417,43 @@ describe("a company's timeline", () => {
     }
   }, 60_000)
 
-  it("a source that hangs does not delay the answer past one second and the others' rows return", async () => {
+  it("a source that hangs does not delay the panel's answer past one second and the others' rows return", async () => {
     const spy = spyOn(executeToolModule, "executeToolCore")
     spy.mockImplementation(async (opts) =>
       opts.toolName === "tickets:activity_read" ? new Promise(() => {}) : realExecute(opts),
     )
     try {
       // Warm, so the clock measures the deadline and not a first sandbox start.
-      await readActivity({ orgId: ORG, actor: admin, target: { companyId: main } })
+      const panel = { orgId: ORG, actor: admin, target: { companyId: main } }
+      await readActivity({ ...panel, deadlineMs: ACTIVITY_DEADLINE_MS })
       const started = performance.now()
-      const page = await readActivity({ orgId: ORG, actor: admin, target: { companyId: main } })
+      const page = await readActivity({ ...panel, deadlineMs: ACTIVITY_DEADLINE_MS })
       expect(performance.now() - started).toBeLessThan(1000)
       expect(page?.unavailable).toEqual([
         { source: "tickets", label: "Tickets", reason: "timeout" },
       ])
       expect(page?.items.some((r) => r.source === "mail")).toBe(true)
       expect(page?.items.some((r) => r.source === "tickets")).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
+  }, 60_000)
+
+  it("an agent's read waits for a source slower than the panel's budget but within a cold first read", async () => {
+    const spy = spyOn(executeToolModule, "executeToolCore")
+    // Slower than the panel's 800 ms, as a source's first, cold run is on a loaded host.
+    const slow = ACTIVITY_DEADLINE_MS + 400
+    spy.mockImplementation(async (opts) =>
+      opts.toolName === "tickets:activity_read"
+        ? new Promise((resolve) => setTimeout(() => resolve(realExecute(opts)), slow))
+        : realExecute(opts),
+    )
+    try {
+      expect(AGENT_READ_DEADLINE_MS).toBeGreaterThan(slow)
+      // No deadline of its own: the agent tools' read.
+      const page = await readActivity({ orgId: ORG, actor: admin, target: { companyId: main } })
+      expect(page?.unavailable).toEqual([])
+      expect(page?.items.some((r) => r.source === "tickets")).toBe(true)
     } finally {
       spy.mockRestore()
     }

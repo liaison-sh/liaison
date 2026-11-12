@@ -17,6 +17,12 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { invokeAgentForThread } from "~/modules/agent/runtime/agent-service"
+import { updatePayload } from "~/modules/approvals/edit"
+import {
+  attentionRefreshesSettled,
+  wireAttentionRefreshWakes,
+} from "~/modules/apps/attention-store"
+import { ActivityTestAccess, type LinkedRecordsAsked } from "~/modules/contacts/activity"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -197,6 +203,9 @@ const savedBudgets: Partial<Record<(typeof BUDGET_KEYS)[number], number>> = {}
 const savedAlert = env.LIAISON_DEMO_ALERT_EMAIL
 const savedCapture = env.LIAISON_DEMO_MAIL_CAPTURE
 
+/** Every linked-records read of the run, in order (the shipped deadline, never a test one). */
+const linkedReads: LinkedRecordsAsked[] = []
+
 /** What the stub saw: the tools each step offered, the calls it made and their results. */
 const offeredPerStep: string[][] = []
 const called: Array<{ id: string; name: string; via: "direct" | "entry" }> = []
@@ -307,6 +316,10 @@ async function rows(orgId: string, query: ReturnType<typeof sql>): Promise<Row[]
 
 beforeAll(async () => {
   DemoModeTestAccess.set(true)
+  // As a server's boot wires it: an app's run wakes its stored attention refresh,
+  // which runs beside the turn's own reads.
+  wireAttentionRefreshWakes()
+  ActivityTestAccess.observeLinkedRecords((asked) => linkedReads.push(asked))
   if (!process.env.LIAISON_APPS_DIR) {
     appsRoot = mkdtempSync(path.join(tmpdir(), "saas-first-turn-"))
     process.env.LIAISON_APPS_DIR = path.join(appsRoot, "apps")
@@ -345,6 +358,8 @@ beforeAll(async () => {
 }, 2_400_000)
 
 afterAll(async () => {
+  await attentionRefreshesSettled()
+  ActivityTestAccess.observeLinkedRecords(null)
   await clearRedisPatterns(["demo:*"])
   stub?.stop(true)
   for (const [k, v] of Object.entries(saved)) {
@@ -530,6 +545,26 @@ describe("a visitor's first turn, with a scripted model", () => {
       turn.filter((c) => results.has(c.id) && !notRun(results.get(c.id) ?? "")).map((c) => c.name),
     )
     expect([...NEXT_READS].filter((r) => !ran.has(r))).toEqual([])
+    // The first, cold read of the prospect's contact hears from every app that
+    // holds records for her: none is named as one that did not answer in time.
+    const contactRead = turn.find(
+      (c) => c.name === "kernel__contacts_read" && !notRun(results.get(c.id) ?? ""),
+    )
+    const contactResult = results.get(contactRead?.id ?? "") ?? ""
+    expect(contactResult).toContain("linkedRecords")
+    expect(contactResult).not.toContain("not read (")
+    expect(contactResult).not.toContain("were not read")
+    // That first read asked each of the five apps holding records for a contact,
+    // and every one answered within the shipped deadline.
+    const firstContactRead = linkedReads.find((r) => "contactId" in r.target)
+    expect(firstContactRead?.sources.map((x) => x.app).sort()).toEqual([
+      "calendar",
+      "invoicing",
+      "projects",
+      "stripe",
+      "tickets",
+    ])
+    expect(firstContactRead?.sources.filter((x) => !x.answered)).toEqual([])
     // The change was refused by the tool-calling entry (an approval named by its
     // handle, not its id). The refusal stays on the trace, in its own row with
     // its reason: it is not a read, so it never reads as an app that did not answer.
@@ -539,4 +574,28 @@ describe("a visitor's first turn, with a scripted model", () => {
     expect(JSON.stringify(change?.result)).toContain("Invalid arguments")
     expect(change?.readOnly).toBe(false)
   }, 600_000)
+  it("the owner, who decides the sales agent's staged follow-up, can change it, though not a member of the channel it waits in", async () => {
+    const orgId = world.orgId
+    const [approval] = await rows(
+      orgId,
+      sql`SELECT ar.id::text AS id,
+                 EXISTS (SELECT 1 FROM kernel.thread_participants tp
+                         WHERE tp.thread_id = ar.thread_id AND tp.user_id = ${convo.ownerId}::uuid) AS owner_in_thread
+          FROM kernel.approval_requests ar
+          WHERE ar.org_id = ${orgId} AND ar.handle = 'demo-lumen-followup'`,
+    )
+    expect(approval?.id).toBeTruthy()
+    // The world as the walk saw it: the draft waits in a channel the owner never joined.
+    expect(approval?.owner_in_thread).toBe(false)
+    const actor = await actorFor(seedContext({ orgId, now: BOARD_DATE }), convo.ownerId)
+    const textBody = "Hello Noor, before I close the proposal: what made you decide?"
+    const edited = await updatePayload({
+      orgId,
+      requestId: String(approval?.id),
+      fields: { textBody },
+      actor,
+    })
+    expect(edited.currentPayload.textBody).toBe(textBody)
+    expect(edited.lastEdit?.editorUserId).toBe(convo.ownerId)
+  }, 120_000)
 })

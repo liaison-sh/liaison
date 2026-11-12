@@ -17,6 +17,7 @@ import { isUnsafePathSegment } from "~/lib/safe-path"
 import { taintDisclosureLine, taintSurfaceLabelForTool } from "~/modules/agent/scopes/scope-taint"
 import { readersTaintGap } from "~/modules/agent/scopes/taint-approval-audience"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
+import { mayDecideApproval } from "~/modules/approvals/decider"
 import { validateEditedParams } from "~/modules/approvals/edit-validation"
 import {
   isSharedSurfaceApproval,
@@ -615,21 +616,36 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         metadata: editMetadata,
       })
     }
-    if (!message)
-      // sendMessage returns null only when the editing actor is not a participant of the approval's
-      // surface thread (the thread RLS rejects the post). Surface the REAL cause instead of a bare
-      // "forbidden" — an editor who passed field-level authorization (notify-set + `<app>:approve`)
-      // can still hit this if they were never added as a thread participant, which is otherwise
-      // invisible and very hard to diagnose (see the conventions error-observability rule).
-      throw new UpdatePayloadError(
-        403,
-        "forbidden",
-        "cannot record the edit: you are not a participant of this approval's thread",
-        { threadId: locked.thread_id },
+    if (!message) {
+      // sendMessage returns null only when neither the editor nor the requester is a participant
+      // of the approval's surface thread (a draft staged into a team channel the person never
+      // joined). Membership of that thread is not what gates an edit: who may DECIDE the approval
+      // is (the routing closure). A decider's edit goes through without the thread note, the way
+      // a decision's notes are best-effort (`postDualSystemMessages`); the event below still
+      // carries the editor and the diff. Anyone else is refused with the real cause, never a bare
+      // "forbidden" (the conventions error-observability rule).
+      const decider = await mayDecideApproval({
+        orgId: args.orgId,
+        userId: editorId,
+        row: locked,
+        sharedSurface,
+        tx,
+      })
+      if (!decider)
+        throw new UpdatePayloadError(
+          403,
+          "forbidden",
+          "cannot record the edit: you are not a participant of this approval's thread",
+          { threadId: locked.thread_id },
+        )
+      log.warn(
+        { requestId: locked.id, threadId: locked.thread_id, editorId },
+        "approval edit by a decider outside the approval's thread: no thread note posted",
       )
+    }
     const lastEdit = {
       editorUserId: editorId,
-      at: new Date(message.createdAt).toISOString(),
+      at: (message ? new Date(message.createdAt) : new Date()).toISOString(),
       diff,
     }
 

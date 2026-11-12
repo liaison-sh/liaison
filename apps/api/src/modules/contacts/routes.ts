@@ -14,7 +14,11 @@ import { paginated, success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { idParam } from "~/lib/validators"
 import { assertUnrestrictedSession } from "~/modules/auth/session-ceiling"
-import { activityQuerySchema, readActivity } from "~/modules/contacts/activity"
+import {
+  ACTIVITY_DEADLINE_MS,
+  activityQuerySchema,
+  readActivity,
+} from "~/modules/contacts/activity"
 import {
   ADDRESS_ROLES,
   addAddress,
@@ -363,6 +367,7 @@ contacts.get(
       before: query.before,
       limit: query.limit,
       source: query.source,
+      deadlineMs: ACTIVITY_DEADLINE_MS,
     })
     if (!result) throw new HTTPException(404, { message: "Contact not found" })
     return success(c, result)

@@ -346,6 +346,22 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(await countTitled("atomic-workers")).toBe(await countTitled("atomic-quickjs"))
   })
 
+  it("a ctx.db.batch guard that fails: the same typed error, nothing written, on both", async () => {
+    const r = await both("tool:batchGuard", (mode) =>
+      callTool("batchGuard", { title: `guard-${mode}` }),
+    )
+    expect(r.quickjs.status).toBe(200)
+    expect(r.quickjs.body.data).toEqual({
+      message:
+        "ctx.db.batch: precondition_failed at ops[1] (update items): expected at least 1 row, matched 0",
+      code: "precondition_failed",
+      status: 409,
+    })
+    expect(r.workers).toEqual(r.quickjs)
+    expect(await countTitled("guard-quickjs")).toBe(0)
+    expect(await countTitled("guard-workers")).toBe(0)
+  })
+
   it("a nested cross-app call into a second Workers app", async () => {
     const r = await both("tool:hop", () => callTool("hop", { v: "x1" }))
     expect(r.quickjs.status).toBe(200)

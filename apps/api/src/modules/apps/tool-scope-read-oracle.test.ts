@@ -1438,7 +1438,7 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "bundled-apps/invoicing/src/handlers/tax-override.ts",
-    "documents: documents.map((d) => ({ document_id: d.document_id, number: d.number, scope: d.scope })),",
+    "scope: d.scope,",
     REASONS.DOC,
   ],
   [

@@ -52,7 +52,7 @@ const ALLOWED: Array<{ file: string; registry: string; why: string }> = [
   {
     file: "modules/apps/app-registries.ts",
     registry: "eventSubscriptionDisposers",
-    why: "resetAppRegistries forgets every org's registrations, so it disposes every org's subscriptions",
+    why: "a registry reset forgets every org's registrations, so it disposes every org's subscriptions",
   },
 ]
 

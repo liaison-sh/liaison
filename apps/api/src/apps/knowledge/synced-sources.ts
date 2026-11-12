@@ -163,6 +163,7 @@ function requireSourcesManage(actor: KnowledgeActor): void {
  * mount a personal synced source — `withPrivilegedDb` bypasses the RLS policy
  * entirely.
  */
+/** The knowledge-reader permission adding a source needs; listing the addable kinds needs it too. */
 export function requireKnowledgeReader(actor: KnowledgeActor): void {
   if (
     !hasScope("knowledge:documents:read", actor.scopes) &&

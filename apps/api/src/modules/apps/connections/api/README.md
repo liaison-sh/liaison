@@ -1,10 +1,15 @@
-# api-connector
+# Platform-held API connections (`ctx.api`)
 
-A generic connector for an ERP, a CRM or any HTTP API. Each connection is an
+The HTTP APIs the platform holds the connection to, for the app that declares
+a credentials connection with an `api` block (today the catalog app
+`bundled-apps/api-connector`). Each account of that connection is an
 **adapter document** (the API's base URL, its auth type and a fixed list of
-named operations) plus the credentials that auth type needs. An org holds
-several connections side by side (for example `crm` and `erp`), each under its
-own slug.
+named operations) plus the credentials that auth type needs, under its own
+slug. App code reaches it through the `api_*` bridge methods (`bridge.ts`),
+which check the caller's scopes against the block's read, write and admin
+scopes; kernel features (the agent's customer context and connected systems,
+API import sources, secret requests, setup state, config export) read it
+directly.
 
 The adapter format is defined in `packages/api-connector-core` (zod schema,
 published as `adapter.schema.json`); `docs/api-connector.md` is the reference.
@@ -21,32 +26,31 @@ published as `adapter.schema.json`); `docs/api-connector.md` is the reference.
 | `customer.ts` | The customer resolver (email, phone, company domain; no free-mail or own domain) behind the card and the agent's context |
 | `consumer-domains.ts` | The consumer mail domains the resolver never falls back to |
 | `cache.ts` | Redis caches (oauth2 token, customer lookups) keyed by the adapter hash and the credential version (an HMAC of the account row) |
-| `../../modules/api-connector/routes.ts` | `/api/api-connector` admin and read routes (kernel module) |
+| `bridge.ts` | The `api_*` bridge methods (`ctx.api.*`): agent tools, the settings screen's and the card's reads and writes, provisioning and verify |
+| `authoring-tools.ts` | The adapter save and restore, registered for the app that declares the connection, decided by its admin scope |
+| `registrations.ts` | The generic credentials route's check for an account, and the demo responder |
 
 ## Scopes
 
 App-wide, not per connection: `api-connector:read` and `api-connector:write`
 (members), `api-connector:admin` and `api-connector:accounts:admin` (admins).
 
-## Routes
+## Settings and the customer card
 
-- `GET /api/api-connector/adapters`: connections with their auth shape,
-  operations (name, kind, role, description, params, fields) and status
-  (`ok` | `needs_credentials` | `error`). Read scope.
-- `PUT /api/api-connector/adapters/:identifier`: JSON or YAML body; `422
-  {error: {code: "invalid_adapter", issues: [{path, message}]}}` when invalid.
-  Admin scope.
-- `DELETE /api/api-connector/adapters/:identifier`: removes the adapter and its
-  credentials. Admin scope.
-- `POST /api/api-connector/adapters/:identifier/test` `{operation, params}`:
-  runs one page of a READ operation: `{ok: true, status, items, truncated, ms}`,
-  or `{ok: false, status, code, message, ms}` when the API failed; a write
-  operation is refused (`422 write_not_testable`) without any request.
+No kernel routes: the app's settings screen and its customer card call the
+app's own UI-only tools (`settings_connections`, `settings_adapter_save`,
+`settings_adapter_restore`, `settings_adapter_delete`, `settings_adapter_test`,
+`customer_lookup`), which call `api_connections`, `api_adapterPut`,
+`api_adapterRestore`, `api_adapterDelete`, `api_adapterTest` (`raw: true`) and
+`api_customer` here.
+
 - Credentials: `POST /api/connections/api-connector/api/credentials` with
-  `{mode: "org", credentials: {identifier, ...fields}}`; the fields must be
-  exactly those of the adapter's auth type (`apiKey`; `token`;
-  `username`+`password`; `clientId`+`clientSecret`). The oauth2 token URL is
-  part of the adapter, never a credential.
+  `{mode: "org", credentials: {identifier, ...fields}}` (the host's credential
+  dialog for one account); the fields must be exactly those of the adapter's
+  auth type (`apiKey`; `token`; `username`+`password`; `clientId`+`clientSecret`).
+  The oauth2 token URL is part of the adapter, never a credential.
+- Calls to one connection share the platform's per-connection limiter
+  (connection-limiter.ts): the connection's declared `limits`, 4 in flight.
 
 ## Safety
 
@@ -76,10 +80,10 @@ when its turn holds the read scope; that injection taints the turn like a
 
 ## Provisioning and CLI
 
-- `liaison config apply`: the `apiConnectors` section (adapter path or inline,
-  credentials with `${VAR}` references), idempotent; `config verify` probes
-  each connection with a parameterless read, preferring one that is not the
-  `customer.lookup`.
+- `liaison config apply`: the app's `provision.connectors` (adapters, inline or
+  `{ $file }`) and its entry's `connections` (credentials with `${VAR}`
+  references), idempotent; `config verify` runs the app's check (`api_verify`):
+  each connection with a parameterless read that is not the `customer.lookup`.
 - `liaison api-connector validate <file>` and
   `liaison api-connector test <identifier> <operation> [--param k=v]` (read
   operations only).

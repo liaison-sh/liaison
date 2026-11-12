@@ -7,7 +7,7 @@ tools: kernel__config_*, kernel__request_secret
 
 Configure the org with the `kernel__config_<section>` tools; connect a system no app covers (a CRM, ERP, HubSpot, any HTTP API) with `api-connector__connector_adapter_save`. Find them with `kernel__tool_search`.
 
-The sections are roles, email, users, mail, tickets, apps, apiConnectors, knowledge, agents and invoicing: the same data as a `liaison config apply` file.
+The sections are roles, email, users, mail, tickets, apps, knowledge, agents and invoicing: the same data as a `liaison config apply` file.
 
 - Read before you change: call `kernel__config_export` first and edit what it returns. `kernel__config_plan` shows what a change would do without changing anything.
 - Propose one section at a time. Each call becomes an approval card listing the plan; a person approves it. Never say a change is done until its result says so. If it answers "the plan changed since approval", show the new plan and propose again.

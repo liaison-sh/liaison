@@ -60,7 +60,7 @@ import {
   appSkillsRoutes,
   skillsRoutes,
 } from "~/modules/agent/skills/skills-routes"
-import { apiConnectorRoutes } from "~/modules/api-connector/routes"
+import "~/modules/apps/connections/api/registrations"
 import { appLogsRoutes } from "~/modules/app-builder/logs-routes"
 import { builderRoutes } from "~/modules/app-builder/routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
@@ -785,9 +785,6 @@ app.use("/api/user/preferences/*", authMw, orgLimiter)
 app.route("/api/user/preferences", preferencesRoutes)
 
 // API connector admin/read routes (kernel module; scopes checked per route).
-app.use("/api/api-connector/*", authMw, orgLimiter)
-app.use("/api/api-connector/*", kernelPrefixStateGate("api-connector"))
-app.route("/api/api-connector", apiConnectorRoutes)
 
 app.use("/api/assist", authMw, orgLimiter)
 app.use("/api/assist/*", authMw, orgLimiter)

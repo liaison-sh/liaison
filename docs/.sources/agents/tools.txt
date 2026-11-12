@@ -209,7 +209,7 @@ refused above 5% refused records -> apps/api/src/modules/agent/tools/import-tool
 a preview is good for a day -> apps/api/src/modules/agent/tools/import-tools.ts:80
 only the person who made a preview can start it -> apps/api/src/modules/agent/tools/import-tools.ts:278
 transform bridge: only four host methods, no network, files or database -> apps/api/src/modules/imports/transforms/bridge.ts:30
-API reads bound to the connection's base URL, credentials host-side -> apps/api/src/apps/api-connector/transport.ts:857
+API reads bound to the connection's base URL, credentials host-side -> apps/api/src/modules/apps/connections/api/transport.ts:857
 attachments up to 2 GB and ten minutes each -> apps/api/src/modules/imports/transform-run.ts:158
 within the storage quota, missing files listed -> apps/api/src/modules/imports/transform-run.ts:850
 approval card: per kind counts and one sample as outside text -> apps/api/src/modules/agent/tools/import-tools.ts:880

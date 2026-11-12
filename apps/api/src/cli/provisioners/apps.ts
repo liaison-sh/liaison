@@ -155,6 +155,9 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
         }
         actions.push(`provision app '${app.name}': ${Object.keys(app.provision).join(", ")}`)
       }
+      for (const account of app.connections ?? []) {
+        actions.push(`connect '${app.name}/${account.name}' account '${account.identifier}'`)
+      }
     }
     return { actions }
   },
@@ -408,6 +411,13 @@ async function applyApps(
         changed.push(...r.changed)
         unchanged.push(...r.unchanged)
       }
+      // More accounts of a multiInstance connection, after the app's own setup.
+      for (const account of app.connections ?? []) {
+        const r = await provisionConnection(ctx, app.name, account)
+        if (r.changed) changed.push(...r.changed)
+        if (r.unchanged) unchanged.push(...r.unchanged)
+        if (r.pending) pending.push(r.pending)
+      }
       apps.push({
         name: app.name,
         enabled: (await settledAppState(ctx.orgId, app.name)) === "on",
@@ -434,6 +444,12 @@ async function applyApps(
       const r = await applyAppProvision(ctx, app.name, app.provision)
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
+    }
+    for (const account of app.connections ?? []) {
+      const r = await provisionConnection(ctx, app.name, account)
+      if (r.changed) changed.push(...r.changed)
+      if (r.unchanged) unchanged.push(...r.unchanged)
+      if (r.pending) pending.push(r.pending)
     }
     // A connection that is unchanged can still be dead (a host that moved, a
     // revoked token): probe the stored row when the app has a probe, and turn

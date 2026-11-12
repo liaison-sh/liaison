@@ -125,10 +125,10 @@ export const ATOMIC_REFUSED_EGRESS_METHODS: readonly string[] = [
   "sql_reads",
   "sql_schema",
   "sql_probe",
-  "connector_list_operations",
-  "connector_read",
-  "connector_write",
-  "connector_adapter_test",
+  "api_read",
+  "api_write",
+  "api_adapterTest",
+  "api_customer",
 ]
 
 export interface AtomicEgressAllowance {

@@ -31,12 +31,12 @@
 
 import { createHash } from "node:crypto"
 import { and, desc, sql as drizzleSql, eq, isNotNull } from "drizzle-orm"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/apps/api-connector/store"
 import { ticketsRel } from "~/apps/tickets/schema-refs"
 import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, oauthProviders, organizations } from "~/db/schema/kernel"
+import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/modules/apps/connections/api/store"
 import { oauthClientKey } from "~/modules/apps/connections/oauth-client"
 import { oauthClientIdHint } from "~/modules/apps/connections/oauth-client-provisioning"
 import type { SecretTarget } from "~/modules/secret-requests/targets"

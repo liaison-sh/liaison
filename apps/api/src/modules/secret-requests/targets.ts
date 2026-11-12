@@ -22,9 +22,9 @@
 // are these fields and nothing else.
 
 import { z } from "zod"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/apps/api-connector/store"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
+import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/modules/apps/connections/api/store"
 import { MULTI_INSTANCE_IDENTIFIER_RE } from "~/modules/apps/connections/service"
 import { hasScope } from "~/modules/permissions/permissions"
 import { BYOK_PROVIDER_NAMES, BYOK_PROVIDERS, type ByokProvider } from "~/modules/settings/byok"

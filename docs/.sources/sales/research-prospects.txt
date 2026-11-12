@@ -7,8 +7,8 @@ Demo prompt (example prompt quoted) -> apps/api/src/seed/tiers/demo/seed-agent-n
 Brief posted to the owner's DM in the demo (report thread) -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1969-1972
 web_fetch tool and kernel:agent:web -> apps/api/src/modules/agent/tools/kernel-tools.ts:679-682
 kernel:agent:web is the one web scope -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5186
-connector_read read-only -> apps/api/src/apps/api-connector/app.manifest.json:97-103
-connector_write gated, looks up before creating -> apps/api/src/apps/api-connector/app.manifest.json:129-135
+connector_read read-only -> apps/api/src/modules/apps/connections/api/app.manifest.json:97-103
+connector_write gated, looks up before creating -> apps/api/src/modules/apps/connections/api/app.manifest.json:129-135
 Brief posted in the contact discussion with threads_reply contactId -> apps/api/src/modules/agent/tools/kernel-tools.ts:989-1008
 Discussion post needs kernel:threads:write -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:1996-1998
 mail__reply gated draft, mail:conversations:write -> apps/api/src/apps/mail/app.manifest.json:806-808

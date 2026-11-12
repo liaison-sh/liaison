@@ -449,7 +449,7 @@ async function connectionState(
   orgId: string,
   identifier: string,
 ): Promise<{ state: "missing" | "needs_credentials" | "ready"; baseUrl?: string }> {
-  const { getAdapterRow, credentialStatuses } = await import("~/apps/api-connector/store")
+  const { getAdapterRow, credentialStatuses } = await import("~/modules/apps/connections/api/store")
   const row = await getAdapterRow(orgId, identifier)
   if (!row) return { state: "missing" }
   const ready = (await credentialStatuses(orgId)).get(identifier) === "ok"

@@ -639,7 +639,7 @@ describe("Boxtal app.manifest.json", () => {
     //   as the merchant's SKU with its product attributes; countries print as their English name.
     // 0.24.6: no catalog tool holds a transaction across its run: a profile write, link, unlink or
     // merge commits with its old-table mirror in one batch, a pack with its components.
-    expect(m.version).toBe("0.24.8")
+    expect(m.version).toBe("0.24.9")
     expect(m.packageFormat).toBe(1)
   })
 

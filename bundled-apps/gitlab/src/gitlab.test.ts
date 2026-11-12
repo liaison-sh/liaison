@@ -25,7 +25,7 @@ const AUTH = { connection: "gitlab", scheme: "bearer", fields: ["token"] }
 
 describe("manifest", () => {
   it("is version 1.1.0, newer than the last in-tree release (1.0.2)", () => {
-    expect(MANIFEST.version).toBe("1.1.1")
+    expect(MANIFEST.version).toBe("1.1.2")
   })
 
   it("exports every handler it names", () => {

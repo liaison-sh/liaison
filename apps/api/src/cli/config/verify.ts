@@ -23,14 +23,9 @@
  * PASS/FAIL/SKIPPED without a live database or network call.
  */
 
-import { type Operation, ROLE_REGISTRY } from "@liaison/api-connector-core"
 import { eq } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
-import {
-  appVerifyProbe,
-  type VerifyProbe,
-  type VerifyProbeResult,
-} from "~/cli/provisioners/verify-probes"
+import { appVerifyProbe, type VerifyProbe } from "~/cli/provisioners/verify-probes"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
 import { canonicalJson, readAppConfig } from "~/modules/apps/app-config"
@@ -94,9 +89,6 @@ export interface RunConfigVerifyOptions {
   probe?: VerifyProbe
   /** Read an app's stored `kernel.apps.config`. Injectable for tests. */
   readAppConfig?: (orgId: string, appName: string) => Promise<Record<string, unknown>>
-  /** Probe one `apiConnectors` connection. Injectable for tests; defaults to
-   *  `verifyProbeOperation`'s pick, through the connector service. */
-  apiConnectorProbe?: (orgId: string, identifier: string) => Promise<VerifyProbeResult | null>
   /** Check one `apps[].provision` block. Injectable for tests; defaults to the
    *  app's own handlers (dry run, then `verify`). */
   provisionCheck?: (
@@ -128,49 +120,6 @@ async function defaultProvisionCheck(
     status: "PASS",
     ...(verified?.identity ? { identity: verified.identity } : {}),
   }
-}
-
-/**
- * The operation `config verify` probes a connection with: a READ operation
- * that takes no required params and is not a role answering "at least one
- * of" params (`customer.lookup`, `stock.check`): the connector refuses such a
- * role called without one, since with no filter it would page through every
- * record. Undefined when there is none (the connection is reported skipped):
- * give the adapter a cheap param-less list.
- */
-export function verifyProbeOperation(operations: readonly Operation[]): Operation | undefined {
-  return operations.find(
-    (o) =>
-      o.kind === "read" &&
-      (o.params.required ?? []).length === 0 &&
-      !(o.role && ROLE_REGISTRY[o.role].oneOfParams.length > 0),
-  )
-}
-
-/**
- * The `apiConnectors` probe: `verifyProbeOperation`'s pick, one page, through
- * the same service the tools use. Null when the adapter has no such
- * operation (reported SKIPPED).
- */
-async function defaultApiConnectorProbe(
-  orgId: string,
-  identifier: string,
-): Promise<VerifyProbeResult | null> {
-  const { getAdapterRow } = await import("~/apps/api-connector/store")
-  const { runConnectorOperation } = await import("~/apps/api-connector/service")
-  const row = await getAdapterRow(orgId, identifier)
-  if (!row) throw new Error(`no adapter stored for '${identifier}': run 'config apply' first`)
-  const op = verifyProbeOperation(row.adapter.operations)
-  if (!op) return null
-  const r = await runConnectorOperation({
-    actor: { orgId, userId: "system:cli-config-verify", actorType: "system" },
-    identifier,
-    operation: op.name,
-    params: {},
-    mode: "test",
-    maxPages: 1,
-  })
-  return { identity: `${op.name}: HTTP ${r.status}, ${r.items.length} item(s)` }
 }
 
 export interface RunConfigVerifyResult {
@@ -258,28 +207,16 @@ export async function runConfigVerify(
       a.connection !== undefined && (opts.appFilter === undefined || a.name === opts.appFilter),
   )
 
-  const apiConnectors =
-    opts.appFilter === undefined || opts.appFilter === "api-connector"
-      ? (opts.config.apiConnectors ?? [])
-      : []
-  const apiConnectorProbe = opts.apiConnectorProbe ?? defaultApiConnectorProbe
-
   if (
     opts.appFilter !== undefined &&
     connectorApps.length === 0 &&
     configApps.length === 0 &&
-    provisionApps.length === 0 &&
-    apiConnectors.length === 0
+    provisionApps.length === 0
   ) {
     log(`config verify: app '${opts.appFilter}' has no connection or config declared in config`)
     return { exitCode: 2, report: { ok: false, results: [] } }
   }
-  if (
-    connectorApps.length === 0 &&
-    configApps.length === 0 &&
-    provisionApps.length === 0 &&
-    apiConnectors.length === 0
-  ) {
+  if (connectorApps.length === 0 && configApps.length === 0 && provisionApps.length === 0) {
     log("config verify: no connector apps with a connection declared in config")
     return { exitCode: 0, report: { ok: true, results: [] } }
   }
@@ -325,45 +262,6 @@ export async function runConfigVerify(
         status: "FAIL",
         error: message,
         ...(httpStatus !== undefined ? { httpStatus } : {}),
-      })
-    }
-  }
-
-  for (const { identifier } of apiConnectors) {
-    try {
-      const probed = await apiConnectorProbe(orgId, identifier)
-      if (!probed) {
-        log(`api connection '${identifier}': SKIPPED (no read operation without required params)`)
-        results.push({
-          app: "api-connector",
-          connection: identifier,
-          status: "SKIPPED",
-          error: "no read operation without required params",
-        })
-        continue
-      }
-      log(`api connection '${identifier}': PASS (${probed.identity})`)
-      results.push({
-        app: "api-connector",
-        connection: identifier,
-        status: "PASS",
-        identity: probed.identity,
-      })
-    } catch (err) {
-      const message = errorMessage(err)
-      const upstream =
-        err instanceof Error && "upstreamStatus" in err && typeof err.upstreamStatus === "number"
-          ? err.upstreamStatus
-          : undefined
-      log(
-        `api connection '${identifier}': FAIL${upstream !== undefined ? ` (HTTP ${upstream})` : ""} — ${message}`,
-      )
-      results.push({
-        app: "api-connector",
-        connection: identifier,
-        status: "FAIL",
-        error: message,
-        ...(upstream !== undefined ? { httpStatus: upstream } : {}),
       })
     }
   }

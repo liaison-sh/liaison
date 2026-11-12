@@ -38,6 +38,10 @@ export interface ConnectAppDialogProps {
   onRedirect?: () => void
   /** Template variables to start from (reconnecting a known store). */
   initialTemplateVars?: Record<string, string>
+  /** A multiInstance credentials connection: the org account (slug) the credentials are for. */
+  identifier?: string
+  /** Ask only for these declared credential fields, each required (an account's auth type). */
+  onlyFields?: string[]
 }
 
 type ConnectMode = "personal" | "org"
@@ -51,6 +55,14 @@ function inputType(fieldType: string): string {
 
 export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
   const i18n = useI18n()
+  // The declared credential fields this dialog asks for: all, or the subset an
+  // account needs (each then required).
+  const shownFields = () => {
+    const all = props.connConfig.credentialFields ?? []
+    const only = props.onlyFields
+    if (!only) return all
+    return all.filter((f) => only.includes(f.name)).map((f) => ({ ...f, required: true }))
+  }
   // Org-owned connections require `<app>:accounts:admin` (enforced server-side).
   // Only admins see the Personal/Organization toggle; they default to an
   // org-owned connection (the common case for configuring an integration from
@@ -69,7 +81,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
   const [modeOverride, setMode] = createSignal<ConnectMode | null>(null)
   const mode = (): ConnectMode => modeOverride() ?? (isAdmin() ? "org" : "personal")
   const [fields, setFields] = createSignal<Record<string, string>>(
-    Object.fromEntries((props.connConfig.credentialFields ?? []).map((f) => [f.name, ""])),
+    Object.fromEntries(shownFields().map((f) => [f.name, ""])),
   )
   const [displayName, setDisplayName] = createSignal("")
   const [error, setError] = createSignal<string | null>(null)
@@ -125,8 +137,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
       })
   })
 
-  const requiredFields = () =>
-    (props.connConfig.credentialFields ?? []).filter((f) => f.required !== false)
+  const requiredFields = () => shownFields().filter((f) => f.required !== false)
 
   async function submitCredentials(): Promise<void> {
     setError(null)
@@ -142,9 +153,10 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
     setSubmitting(true)
     try {
       await props.api.post(`/connections/${props.appName}/${props.connectionName}/credentials`, {
-        mode: mode(),
+        mode: props.identifier !== undefined ? "org" : mode(),
         displayName: displayName().trim() || undefined,
-        credentials: fields(),
+        credentials:
+          props.identifier !== undefined ? { identifier: props.identifier, ...fields() } : fields(),
       })
       props.onSuccess?.()
       props.onClose()
@@ -391,7 +403,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
         }
       >
         <div class="flex flex-col gap-3">
-          <For each={props.connConfig.credentialFields ?? []}>
+          <For each={shownFields()}>
             {(field) => (
               <Input
                 data-testid={`connect-field-${field.name}`}

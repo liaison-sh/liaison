@@ -1,0 +1,14 @@
+{
+  "entry": "tool:settings_adapter_delete",
+  "params": {
+    "identifier": "crm-eu"
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": [
+    {
+      "method": "api_adapterDelete",
+      "args": ["{\"identifier\":\"crm-eu\"}"],
+      "reply": "{\"identifier\":\"crm-eu\",\"removed\":true}"
+    }
+  ]
+}

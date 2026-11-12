@@ -41,7 +41,7 @@ describe("social manifest (B1)", () => {
     // 0.6.65: one deduplicated discovery run after a connect; job timeouts declared.
     // 0.6.66: watch_object commits the watch and its backfilled finding links in one batch, with no
     // transaction held across the run.
-    expect(manifest.version).toBe("0.6.68")
+    expect(manifest.version).toBe("0.6.69")
     expect(manifest.packageFormat).toBe(1)
   })
 

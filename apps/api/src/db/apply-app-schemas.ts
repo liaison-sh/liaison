@@ -20,6 +20,29 @@ import { sql } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { getDefaultApps } from "~/modules/apps/init"
 import { registerApps } from "~/modules/apps/runtime"
+import apiConnectionsManifest from "../../../../bundled-apps/api-connector/app.manifest.json"
+
+/**
+ * The api-connector catalog app as a descriptor registered from its source
+ * (the sandbox builds its handlers from `bundled-apps/api-connector/handlers.ts`), for the test
+ * template and for tests that register the app for their org.
+ */
+export function apiConnectorSourceDescriptor(): Awaited<ReturnType<typeof getDefaultApps>>[number] {
+  return {
+    ...apiConnectionsManifest,
+    _format: "manifest" as const,
+    // Sandboxed, as every installed app is.
+    trusted: false,
+    // As the image's own catalog tarball is: the platform vouches for its code.
+    _firstParty: true,
+    // An installed bundle's path shape (`<name>/<version>/bundle.js`): the
+    // sandbox builds it from the app's source (bundle-loader.ts, outside production).
+    _bundlePath: new URL(
+      `../../../../bundled-apps/.source/api-connector/${apiConnectionsManifest.version}/bundle.js`,
+      import.meta.url,
+    ).pathname,
+  } as unknown as Awaited<ReturnType<typeof getDefaultApps>>[number]
+}
 
 /** The throwaway org the registration runs for; deleted before exit. */
 export const APPLY_APP_SCHEMAS_ORG_ID = "00000000-0000-4000-8000-0000a990c4e0"
@@ -32,7 +55,10 @@ export async function applyAppSchemas(): Promise<{ apps: string[] }> {
     VALUES (${orgId}, 'app schema build', 'app-schema-build')
     ON CONFLICT DO NOTHING`
   try {
-    const apps = await getDefaultApps()
+    // The catalog app whose tables the platform's API connections read
+    // (modules/apps/connections/api/store.ts): its schema is part of what a
+    // test reading those tables needs, registered from its manifest the same way.
+    const apps = [...(await getDefaultApps()), apiConnectorSourceDescriptor()]
     const { failedApps } = await registerApps(apps, orgId, { skipOrgRows: true })
     if (failedApps.length > 0) {
       throw new Error(`app schemas not applied: ${failedApps.join(", ")} failed to register`)

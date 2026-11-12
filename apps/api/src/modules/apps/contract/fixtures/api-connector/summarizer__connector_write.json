@@ -1,0 +1,19 @@
+{
+  "entry": "summarizer:connector_write",
+  "params": {
+    "connection": "crm",
+    "operation": "create_note",
+    "params": {
+      "customerId": "cmp_001",
+      "text": "Called back about the Q3 order."
+    },
+    "target": {
+      "method": "POST",
+      "host": "127.0.0.1:4010",
+      "path": "/v1/companies/cmp_001/notes",
+      "adapterHash": "94da62b47654a4e6"
+    }
+  },
+  "recordedFrom": "a contract org connected to the fixture CRM over a loopback port, scripts/contract/record-api-connector.ts",
+  "calls": []
+}

@@ -21,7 +21,7 @@
 // prerequisites still run, unwritten).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
@@ -313,6 +313,7 @@ describe("record Shopify contract fixtures", () => {
       },
     }
     const report: string[] = []
+    let rejectedDir: string | undefined
     for (const step of SHOPIFY_RECORDING_PLAN) {
       const entry = entries.get(step.entry)
       if (!entry)
@@ -371,7 +372,8 @@ describe("record Shopify contract fixtures", () => {
       if (problem) {
         if (process.env.CONTRACT_RECORD_DEBUG) {
           // The rejected fixture, for a look at what the replay asked for (outside the repo).
-          writeFixture(join(tmpdir(), "contract-rejected"), APP, scrubbed)
+          rejectedDir ??= mkdtempSync(join(tmpdir(), "contract-rejected-"))
+          console.log(`rejected fixture: ${writeFixture(rejectedDir, APP, scrubbed)}`)
         }
         report.push(`FAIL ${step.entry}: ${problem} | ${summary}`)
         continue

@@ -82,8 +82,6 @@ export interface Replacement {
 }
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
-/** Phone-number-looking runs: +33 6 12 34 56 78, (555) 010-2000, +15550102000. */
-const PHONE_RE = /\+?\(?\d{1,4}\)?[ .-]?\d{2,4}[ .-]?\d{2,4}[ .-]?\d{2,4}(?:[ .-]?\d{2,4})?/g
 /** IPv4 addresses (a buyer's browser IP on an order). */
 const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
 
@@ -106,6 +104,15 @@ export function scrubValue(value: unknown, replacements: Replacement[]): unknown
   for (const r of replacements) {
     if (!r.from) continue
     text = text.split(r.from).join(r.to)
+  }
+  // A credential-named value (a lease token, a checkout token) goes everywhere
+  // it appears, the same stand-in each time: a later call that passes it back
+  // must still match its recording.
+  let n = 0
+  for (const secret of [...secretValues(JSON.parse(text))].sort((a, b) => b.length - a.length)) {
+    if (secret.startsWith("redacted")) continue
+    n++
+    text = text.split(secret).join(n === 1 ? "redacted" : `redacted-${n}`)
   }
   const emails = new Map<string, string>()
   text = text.replace(EMAIL_RE, (m) => {
@@ -158,10 +165,30 @@ const SECRET_KEY_RE = /(^|_)(token|secret|password|api_key|access_key)$/i
 /** A credential in a URL's query (`?key=…`, `&token=…`). */
 const SECRET_QUERY_RE = /([?&](?:key|token|access_token|signature)=)[^&"\\\s]+/gi
 
+/** Every non-empty string held under a credential-named key, JSON inside strings included. */
+function secretValues(v: unknown, key = "", out = new Set<string>()): Set<string> {
+  if (typeof v === "string") {
+    if (SECRET_KEY_RE.test(key) && v.length > 0) out.add(v)
+    else if ((v.startsWith("{") || v.startsWith("[")) && v.length > 1) {
+      try {
+        secretValues(JSON.parse(v), key, out)
+      } catch {
+        // not JSON: an ordinary string
+      }
+    }
+  } else if (Array.isArray(v)) {
+    for (const x of v) secretValues(x, key, out)
+  } else if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) secretValues(x, k, out)
+  }
+  return out
+}
+
 function scrubPhones(v: unknown, key = ""): unknown {
   if (typeof v === "string") {
-    if (SECRET_KEY_RE.test(key) && v.length > 0) return "redacted"
-    if (/phone/i.test(key)) return v.replace(PHONE_RE, "+15550100000")
+    if (SECRET_KEY_RE.test(key) && v.length > 0 && !v.startsWith("redacted")) return "redacted"
+    // A phone field's whole value goes (a partial match would keep a country code).
+    if (/phone/i.test(key)) return (v.match(/\d/g)?.length ?? 0) >= 6 ? "+15550100000" : v
     const unqueried = v.replace(SECRET_QUERY_RE, "$1redacted")
     if (unqueried !== v) return unqueried
     // A JSON document inside a string (a fetch body): scrub inside it too.

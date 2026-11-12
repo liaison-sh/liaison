@@ -111,9 +111,21 @@ function issueItems(items: Array<Record<string, unknown>>): Array<Record<string,
   }))
 }
 
+/** The dedup key of one automatic credit note: one per (refund or cancelled order, invoice). */
+export function autoCreditNoteRef(
+  note: Pick<AutoCreditNote, "source" | "refund_id" | "order_id" | "original_document_id">,
+): string {
+  return note.source === "refund"
+    ? `shopify-refund:${note.refund_id ?? ""}:${note.original_document_id}`
+    : `shopify-cancel:${note.order_id ?? ""}:${note.original_document_id}`
+}
+
 function issue(
   ctx: MutationsCtx,
-  note: Pick<AutoCreditNote, "source" | "issuer_profile_id" | "counterparty" | "currency" | "original_document_id" | "reason">,
+  note: Pick<
+    AutoCreditNote,
+    "source" | "issuer_profile_id" | "counterparty" | "currency" | "original_document_id" | "reason" | "refund_id" | "order_id"
+  >,
   items: Array<Record<string, unknown>>,
 ) {
   return creditNoteCreateAndIssue(
@@ -126,7 +138,7 @@ function issue(
       original_document_id: note.original_document_id,
       reason: note.reason,
     },
-    { source: "shopify" },
+    { source: "shopify", external_ref: autoCreditNoteRef(note) },
   )
 }
 
@@ -150,6 +162,25 @@ export async function issueOrParkAutoCreditNote(
   ctx: MutationsCtx & AutoCtx,
   note: AutoCreditNote,
 ): Promise<"issued" | "parked"> {
+  // Already issued by an earlier run of the same event (a run that died after the note's commit):
+  // nothing is held across a run, so the re-run finds it here instead of issuing it twice.
+  const prior = await ctx.db.findMany("documents", {
+    where: { external_ref: autoCreditNoteRef(note) },
+    limit: 1,
+  })
+  if (prior.length > 0) return "issued"
+  // A note issued before notes carried that key: same original, same generated reason.
+  const siblings = (await ctx.db.findMany("documents", {
+    where: { original_document_id: note.original_document_id, type: "credit_note" },
+    limit: 200,
+  })) as Array<Record<string, unknown>>
+  if (
+    siblings.some(
+      (n) => ((n.external_refs as Record<string, unknown> | undefined) ?? {}).reason === note.reason,
+    )
+  ) {
+    return "issued"
+  }
   const res = await issue(ctx, note, note.items)
   if (res.status === "completed") return "issued"
   const code = res.status === "error" ? (res.error.code ?? "error") : res.status

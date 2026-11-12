@@ -128,7 +128,9 @@ The breaker is per process: 5 loader faults within 60 seconds open it, and for 6
 
 **Where a fallback runs.** By default every fallback above runs on the local sandbox. Set `LIAISON_SANDBOX_URL` to the base URL of the server's own sandbox service (workerd, built from the same loader code, `packages/app-loader`; see [The app sandbox service](self-hosting/sandbox.md)) and those runs go there instead: the same Worker module, a bridge that hands back no secret, the same loader id and key. Their timing line then says `executor: "workerd"` beside the `fallback` reason. A run on that service never falls back further, and its faults neither open the loader's breaker nor take an app off Workers.
 
-**A self-hosted server.** Without a loader, `LIAISON_SANDBOX_URL` alone runs every sandboxed app with a Worker module on that service (`executor: "workerd"`). Code with no installed version (an app-builder preview, an import transform, a PDF template) and a version installed without a Worker module stay on the local sandbox. `LIAISON_APP_RUNTIME=quickjs` puts every app back on the local sandbox, whatever else is set: the way back while a server moves over, for this release only.
+**A self-hosted server.** Without a loader, `LIAISON_SANDBOX_URL` alone runs every sandboxed app with a Worker module on that service (`executor: "workerd"`). A version installed without a Worker module stays on the local sandbox.
+
+**Code with no installed version.** An app-builder preview, an import transform and a PDF template run where an installed app would (the loader, else the sandbox service), with the limits of their kind. The platform gives each its own Worker module, built with the same builder as a package's `worker.js`: a draft's preview uses the `worker.js` its build made, a transform's module is built when it is saved (a transform that does not build is refused at the save), a template's when its app version is installed, and any of them on its first remote run otherwise. A module is built once per organization and source, kept in the database, and pruned after 30 days without a run. Such a module is an ES module, so the code runs in strict mode, and an isolate may serve several calls of one transform: keep what a call needs in `state`, never in a global. `LIAISON_APP_RUNTIME=quickjs` puts every app back on the local sandbox, whatever else is set: the way back while a server moves over, for this release only.
 
 **One door.** Every place that runs app code (tools, preflights, webhooks, jobs, events, polls, search, attention, exports, import kinds and transforms, PDF templates, approval summaries, previews) goes through one function that picks the executor, so these settings apply to all of them at once.
 
@@ -860,7 +862,9 @@ Background work (jobs, webhooks, event handlers) may hold at most `maxSize` minu
 ### Import transform pool
 
 Import transforms (agent- or admin-written scripts that turn an export into
-import records) run on their own `SandboxWorkerPool`, never the app pool: 2
+import records) run on the app loader or the sandbox service when one is set
+(their own Worker module, see "Code with no installed version" above), else on
+their own `SandboxWorkerPool`, never the app pool: 2
 workers by default (`LIAISON_TRANSFORM_POOL_SIZE`, at most 8), a 32 MiB heap,
 background priority only, and a per-call budget of 30 s
 (`LIAISON_TRANSFORM_CALL_BUDGET_MS`, capped at 120 s). A transform's `ctx` has

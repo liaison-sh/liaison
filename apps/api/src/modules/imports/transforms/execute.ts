@@ -3,16 +3,21 @@
  * Run a transform in the sandbox: one call, the upload loop (one call per
  * batch) and the API pull loop (one call per page).
  *
- * Each call is a fresh QuickJS context: the source is evaluated again and the
- * entry function called with the batch or page, so anything the transform
- * wants to keep travels in `state` (returned by one call, passed to the next).
+ * Each call is a fresh run through the one door (run-app.ts): on QuickJS the
+ * source is evaluated again; on the app loader or the sandbox service it runs
+ * as a Worker module built from the source once (transformModule), whose
+ * isolate may be reused. Either way nothing a call leaves behind is promised to
+ * the next: anything the transform wants to keep travels in `state` (returned
+ * by one call, passed to the next).
  * The host drives everything that waits: parsing, cursor bookkeeping, the
  * backoff after a 429 and the deferred downloads all happen between calls,
  * outside the sandbox deadline.
  */
+import type { PrivilegedDb } from "~/db"
 import { resolveTransformCallBudgetMs } from "~/modules/apps/run-limits"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import type { SandboxWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { ensureScriptModule } from "~/modules/apps/workers/adhoc-module"
 import type { TransformBatch } from "./batch"
 import {
   buildTransformBridge,
@@ -97,6 +102,25 @@ function noFinish(value: unknown): boolean {
  */
 export const TRANSFORM_RUN_APP = "import-transform"
 
+/** The entry points a transform's Worker module exports (each looked up when called). */
+const TRANSFORM_EXPORTS = ["transform", "pull", FINISH_EXPORT] as const
+
+/**
+ * The Worker module of a transform's source (built once per org and source,
+ * workers/adhoc-module.ts): the script as QuickJS runs it, with the `finish`
+ * dispatcher, exporting every entry point. Built when a transform is saved
+ * (store.ts) and looked up when a call goes to a remote executor.
+ */
+export function transformModule(orgId: string, source: string, tx?: PrivilegedDb): Promise<string> {
+  return ensureScriptModule({
+    origin: "import-transform",
+    orgId,
+    ...(tx ? { tx } : {}),
+    script: `${wrapTransformSource(source)}\n${FINISH_DISPATCH}`,
+    exports: TRANSFORM_EXPORTS,
+  })
+}
+
 /** One sandboxed call of the transform's entry function, through the one door (run-app.ts). */
 export async function runTransformCall(input: TransformCallInput): Promise<TransformCallResult> {
   const optional = input.entry === "finish"
@@ -110,8 +134,13 @@ export async function runTransformCall(input: TransformCallInput): Promise<Trans
     trusted: false,
     appName: TRANSFORM_RUN_APP,
     orgId: input.host.orgId,
-    // No installed version: the source runs as given, on the transform pool.
+    // No installed version: the source's own Worker module, else the source
+    // as given on the transform pool.
     installed: null,
+    workerModule: async () => ({
+      sha256: await transformModule(input.host.orgId, input.source),
+      version: "transform",
+    }),
     bundleSource: optional
       ? `${wrapTransformSource(input.source)}\n${FINISH_DISPATCH}`
       : wrapTransformSource(input.source),

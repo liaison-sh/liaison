@@ -221,6 +221,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "derived",
     reason: "bytes the app builder built from a draft version, rebuilt from its files",
   },
+  "kernel.app_code_modules": {
+    exempt: "derived",
+    reason: "Worker modules the platform builds from drafts, transforms and templates, rebuilt from them",
+  },
   "kernel.app_document_usage": {
     exempt: "derived",
     reason: "per-collection counters the data-store service keeps in step with app_documents",

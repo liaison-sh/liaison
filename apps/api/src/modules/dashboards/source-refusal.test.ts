@@ -28,6 +28,10 @@ describe("dashboardSourceRefusal", () => {
     expect(dashboardSourceRefusal(read({ trustBoundary: "user" }))).toBeNull()
   })
 
+  it("a read hidden from the agent's catalog (a settings page's own read) is a source", () => {
+    expect(dashboardSourceRefusal(read({ agentVisible: false }))).toBeNull()
+  })
+
   it("internal and agent-only tools are not", () => {
     expect(dashboardSourceRefusal(read({ trustBoundary: "internal" }))).toBe(
       "it crosses a trust boundary",

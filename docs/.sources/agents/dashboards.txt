@@ -34,9 +34,13 @@ Agent names the missing access instead of denying the feature -> apps/api/src/mo
 Personal dashboards are their owner's alone (RLS) -> apps/api/src/db/migrations/0275_app_data_store.sql:168
 Agent writes touching an org dashboard are gated with kernel:dashboards:admin -> apps/api/src/modules/dashboards/tools.ts:310
 Approval card lists title and each block's source -> apps/api/src/modules/dashboards/tools.ts:117
-Kernel sources allowlist -> apps/api/src/modules/dashboards/sources.ts:33
-An org's own custom app is a source under the same rules, another org's is unknown -> apps/api/src/modules/dashboards/sources.ts:89 ; apps/api/src/modules/dashboards/sources.ts:205
-Store sources: declared, agent-readable, read scope -> apps/api/src/modules/dashboards/sources.ts:198
+Kernel sources allowlist (the org's records and settings) -> apps/api/src/modules/dashboards/sources.ts:41
+Every read is a source unless excluded with its reason -> apps/api/src/modules/dashboards/every-read-is-a-source.guard.test.ts:1
+A read hidden from agents (a settings page's read) is still a source -> apps/api/src/modules/apps/execute-tool.ts:3581
+A read that hands out a secret is never a source -> apps/api/src/modules/dashboards/sources.ts:105
+Provider-contract ops and internal reads are refused -> apps/api/src/modules/apps/execute-tool.ts:3580
+An org's own custom app is a source under the same rules, another org's is unknown -> apps/api/src/modules/dashboards/sources.ts:166 ; apps/api/src/modules/dashboards/sources.ts:275
+Store sources: declared, agent-readable, read scope -> apps/api/src/modules/dashboards/sources.ts:275
 Source checked at save as the author -> apps/api/src/modules/dashboards/service.ts:135
 Source checked again at every view as the viewer -> apps/api/src/modules/dashboards/service.ts:330
 A gated tool on a dashboard is refused, never parked -> apps/api/src/modules/apps/execute-tool.ts:5037

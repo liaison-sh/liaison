@@ -169,6 +169,10 @@ An import never changes a row that is already there. The run can be undone under
 | `boxtal:approve` | Decide shipping approvals, such as label purchases |
 | `boxtal:internal` | Used by the app itself |
 
+## Link shipments in a table
+
+A dashboard table's link cell can point at a Boxtal shipment: the picker searches your shipments with your access ([Keep data in tables](../agents/dashboard-tables.md)).
+
 ## What agents can do
 
 Tools marked "Always" file an approval and nothing happens until a person approves it.

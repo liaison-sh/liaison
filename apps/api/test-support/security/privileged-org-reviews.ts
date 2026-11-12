@@ -5,6 +5,14 @@
 // the org id at that point is one the code may act for; the test fails on a
 // new site the caller trace cannot follow to one of them, and on an entry no
 // site needs any more.
+//
+// New entries go in a file of their own, `privileged-org-reviews/<feature>.json`
+// beside this one: `{ "<section>": { "<key>": "<why>" } }`, sections
+// trustedSources, reviewedDispatch, reviewedOutsideRoutes, reviewedOrigins and
+// reviewedRegistries (test-support/registry-dir.ts). Two PRs then never add
+// lines at the same end of one of these records.
+import { join } from "node:path"
+import { mergeRegistryDir } from "../registry-dir"
 import type { OrgTraceReviews } from "./enumerate"
 
 /**
@@ -109,8 +117,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
   "apps/api/src/apps/knowledge/app-sources.ts#failAppSourceSync":
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
-  "apps/api/src/modules/approvals/cancel.ts#cancelApprovalsForDeletedTasks":
-    "called only by deleteTask (apps/projects/service/tasks.ts) after it archived the tasks in the caller's RLS transaction for that same org (the route's auth org, or the projects bridge's own org); the update touches only that org's pending rows naming the archived task ids",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxInbox":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxAccount":
@@ -711,6 +717,14 @@ export const REVIEWED_REGISTRIES: Record<string, string> = {
   "apps/api/src/modules/apps/approval-summarizers.ts#registerApprovalSummarizer":
     "kept per [orgId, app, tool] (approval-summarizers.ts:42-48); the approval pipeline calls it for an approval of that org",
 }
+
+mergeRegistryDir(join(import.meta.dir, "privileged-org-reviews"), {
+  trustedSources: TRUSTED_SOURCES,
+  reviewedDispatch: REVIEWED_DISPATCH,
+  reviewedOutsideRoutes: REVIEWED_OUTSIDE_ROUTES,
+  reviewedOrigins: REVIEWED_ORIGINS,
+  reviewedRegistries: REVIEWED_REGISTRIES,
+})
 
 export const REVIEWS: OrgTraceReviews = {
   trustedSources: TRUSTED_SOURCES,

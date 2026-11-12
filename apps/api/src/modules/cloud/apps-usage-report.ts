@@ -19,7 +19,7 @@ import { createHash } from "node:crypto"
 import { CAPS_CONTRACT_VERSION } from "@liaison/control-plane-contract"
 import { asc, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
-import { appUsageDaily, orgBillingState } from "~/db/schema/kernel"
+import { type AppUsageExecutor, appUsageDaily, orgBillingState } from "~/db/schema/kernel"
 import { isManagedEdition } from "~/lib/edition"
 import { rootLogger } from "~/lib/logger"
 import { pullLoaderUsage } from "~/modules/apps/usage/loader-usage"
@@ -33,7 +33,7 @@ const MAX_ROWS = 1000
 
 export interface AppsUsageRow {
   app: string
-  executor: "workers" | "quickjs" | "inprocess"
+  executor: AppUsageExecutor
   runs: number
   bridgeCalls: number
   wallMs: number

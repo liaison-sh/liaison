@@ -203,3 +203,4 @@ Hidden apps stay available from search, palette, links -> packages/shared/src/i1
 Agent can hide or show apps -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
 Admin sets a starting list from the Users page -> apps/web/src/modules/settings/AdminUserDetail.tsx:437
 Drive shared drives section in settings -> bundled-apps/google-drive/app.manifest.json:1
+Install screen lists pages that put an account's access in the browser -> apps/web/src/modules/settings/InstallAppDialog.tsx:105

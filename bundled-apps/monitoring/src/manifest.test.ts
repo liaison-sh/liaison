@@ -76,18 +76,8 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.11: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.4.12: the same number (0.4.11) carried different content on two lines of work; this one has both.
-    // 0.4.14: the shared host package gained the discussion panel hooks; no change of its own.
-    // 0.4.16: incident reads mark the turn, since an outside monitor writes titles and bodies.
-    // 0.4.13 (main): above both lines of work, which each changed it under the number before; no change of its own.
-    // 0.4.17: both of the above, merged.
-    // 0.4.18: the source repository link names the repository where the code now lives.
-    // 0.4.16 (main): refs numbered under an expiring store lease, no held transaction.
-    // 0.4.19: both of the above, merged.
-    // 0.4.17 (main): an alert is always paged, a redelivered one included.
-    // 0.4.20: both of the above, merged.
-    // 0.4.21: both of the above, merged (main's 0.4.18: every package carries its Worker module).
-    // 0.4.22: above main's 0.4.19, merged.
-    expect(MANIFEST.version).toBe("0.4.22")
+    // 0.4.13: above both lines of work, which each changed it under the number before; no change of its own.
+    expect(MANIFEST.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

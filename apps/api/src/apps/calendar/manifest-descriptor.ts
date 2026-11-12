@@ -2,10 +2,10 @@
 import { resolveGoogleOAuthClientConfig } from "~/modules/settings/google-integration"
 import calendarManifestJson from "./app.manifest.json"
 
-// Calendar is a `trusted: true` app (mirrors tickets — it owns real UI + schema + entities).
-// Its handlers.ts stays a thin sandboxed QuickJS delegator; host-side sync logic lives in
-// plain host `.ts` modules exposed as app-id-gated `calendar_*` methods hand-added to the
-// shared apps/api/src/modules/apps/sandbox/rpc-bridge.ts, exactly as `tickets_*` is.
+// Calendar is a core app: its handlers.ts is a server module (modules/apps/core/registry.ts)
+// that delegates to the host-side sync logic in plain `.ts` modules (sync.ts, tools.ts),
+// reached through the app-id-gated `calendar_*` methods of
+// apps/api/src/modules/apps/sandbox/rpc-bridge.ts, as `tickets_*` is.
 export const calendarAppManifest = {
   ...calendarManifestJson,
   _format: "manifest" as const,

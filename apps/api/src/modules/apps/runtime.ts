@@ -3618,7 +3618,7 @@ async function registerSingleApp(
               )
             } else if (desc.trusted === false) {
               // Untrusted bundle code must not run host-side, but it CAN run
-              // in the same QuickJS sandbox its handlers run in. The
+              // in the same sandbox its handlers run in. The
               // summarizer executes with an EMPTY bridge (no db/http/kernel
               // access): a pure params -> ApprovalSummary transformation whose
               // output generateApprovalSummary validates and bounds host-side
@@ -3636,9 +3636,7 @@ async function registerSingleApp(
                 | { tool: string; params: Record<string, string> }
                 | undefined
               const summarize: ApprovalSummarizer = async (params, sctx) => {
-                const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-                const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-                const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+                const { runApp } = await import("~/modules/apps/sandbox/run-app")
                 const meta = await buildSummarizerMeta(
                   orgId,
                   summarizerAppName,
@@ -3646,15 +3644,22 @@ async function registerSingleApp(
                   params,
                   sctx.actor,
                 )
-                const source = await loadBundle(summarizerBundlePath)
-                return (await executeInSandbox({
-                  pool: getSandboxPool(),
-                  bundleSource: source,
+                // Through the one door: on the app's Worker module when a
+                // remote executor is configured, else QuickJS in process (as
+                // before), always on an empty bridge.
+                return (await runApp({
+                  trusted: false,
+                  appName: summarizerAppName,
+                  orgId,
+                  bundlePath: summarizerBundlePath,
                   exportName: summarizerName,
+                  entry: `summarizer:${summarizerName}`,
                   params,
                   extraArgs: [meta],
                   bridge: {},
                   timeoutMs: runLimits("summarizer").wallMs,
+                  holdsTx: false,
+                  quickjs: { inProcess: true },
                 })) as Awaited<ReturnType<ApprovalSummarizer>>
               }
               registerApprovalSummarizer(orgId, desc.name, toolName, summarize)

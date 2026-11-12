@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test"
 import * as fs from "node:fs"
 import * as path from "node:path"
+import { mergeRegistryDir } from "../../test-support/registry-dir"
 
 const srcDir = path.resolve(__dirname, "..")
 
@@ -1314,6 +1315,13 @@ describe("db import enforcement", () => {
     // name, read only to address its realtime frames (the acting editor may not
     // see every role membership); org-scoped, read-only, no row content.
     "modules/dashboards/service.ts",
+    // Dashboard tables: a table's audience (its grants and role members, to address the row
+    // events), the acting agent's handle or routine's name for the change row, and the prune of
+    // a row's changes past the cap (no RLS writer may delete history); org-scoped, no row content.
+    "modules/dashboards/tables/service.ts",
+    // The table tools' gate and routing read a table's sharing and switch (or the dashboard a
+    // new table copies) before the handler's RLS session exists; org-scoped, no row content.
+    "modules/dashboards/tables/tools.ts",
     // Mention picker secondary labels: one fact per exact id the picker already
     // resolved; the rows themselves are not one actor's own.
     "modules/search/mention-secondary.ts",
@@ -1661,6 +1669,17 @@ describe("db import enforcement", () => {
     // resource notifications) outside any per-request RLS context.
     "modules/mcp-client/index.ts",
   ])
+
+  // New entries go in a file of their own, `db-import-allowlist/<feature>.json`
+  // beside this test: `{ "privileged": { "<path under src/>": "<why>" } }` (sections
+  // connection, privileged, sql, publishEvent), so two PRs never add lines at the
+  // same end of one of the lists above (test-support/registry-dir.ts).
+  mergeRegistryDir(path.join(__dirname, "db-import-allowlist"), {
+    connection: connectionAllowlist,
+    privileged: privilegedAllowlist,
+    sql: sqlAllowlist,
+    publishEvent: publishEventAllowlist,
+  })
 
   const allFiles = findTsFiles(srcDir)
 

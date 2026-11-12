@@ -15,7 +15,7 @@ Open `docs/app-development.md` once. It is the authoritative guide; this skill
 is a conversational pairing layer on top of it. If you and the doc disagree, the
 **doc wins** — patch the doc, don't drift the skill.
 
-Open `apps/api/src/apps/example/` — the working reference app. Every handler
+Open `apps/api/test-support/apps/example/` — the working reference app. Every handler
 pattern you suggest, point the developer at the relevant file in `example/`.
 
 ## Phase 1 — Understand what they want to build
@@ -43,7 +43,7 @@ module (`apps/web/src/modules/<name>/`). Confirm the scaffolded test passes:
 
 Walk them through replacing the placeholder `items_list` handler with their
 first real tool. Patterns (each maps to a handler in
-`apps/api/src/apps/example/handlers.ts`):
+`apps/api/test-support/apps/example/handlers.ts`):
 
 - **Read-only tool** — `async (params, ctx) => ({ data: await ctx.db.findMany(...) })`
 - **Mutation tool** — `ctx.db.insert(...)` then `await ctx.emit({ entity, action: "created", entityId })`
@@ -56,7 +56,7 @@ Every tool declares `requiredScopes` in the manifest, a non-empty list of `<app>
 
 ## Phase 4 — Test it
 
-Use `apps/api/src/apps/example/handlers.test.ts` as the template — one test per
+Use `apps/api/test-support/apps/example/handlers.test.ts` as the template — one test per
 handler, driven by `mockAppContext` from `~/modules/apps/test-helpers`. Run it as
 `.claude/skills/run-tests/SKILL.md` describes. Test
 observable behavior — returned data, emitted events, db writes — never internals.
@@ -103,9 +103,9 @@ you are building is held to it too.
 
 An app that ships in this repo (`bundled-apps/<name>/` or `apps/api/src/apps/<name>/`) is not done until its user page exists:
 
-1. Write `docs/apps/<name>.md` (frontmatter `title`, `description`), with task sections, then Settings, Permissions and What agents can do. Cite every claim in `docs/.sources/apps/<name>.txt` (`path:line`).
+1. Write `docs/apps/<name>.md` (frontmatter `title`, `description`), with task sections, then Settings, Permissions and What agents can do. Cite every claim in `docs/.sources/apps/<name>.txt` (`path (symbol)`, or `path:line`); a later feature adds its claims in a file of its own, `docs/.sources/apps/<name>/<feature>.txt`.
 2. Add the page to `docs/nav.ts` under Apps, and map the app's directories to it in `.claude/docs-map.ts`.
-3. Run `bun run docs:gen` (its settings, scopes and tools land in the generated references) and `bun run check:docs --base origin/main`.
+3. Run `bun run check:docs --base origin/main`. Its settings, scopes and tools land in the generated references by themselves (the check and the docs build render them); do not commit a regenerated `docs/reference/` page in the app's PR.
 
 An app built outside this repo documents itself in its own README.
 

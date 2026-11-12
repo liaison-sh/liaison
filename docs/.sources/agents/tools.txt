@@ -358,9 +358,9 @@ Meaning ranks only the reachable catalog -> apps/api/src/modules/agent/tools/too
 One embedding process per server; not running or slow means words alone -> apps/api/src/modules/agent/tools/tool-meaning.ts:246 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167 ; apps/api/src/modules/agent/tools/embedder-socket.ts:258
 report_bug attachments param (up to 5 readable file ids) -> apps/api/src/modules/bug-reports/tool.ts:88-96
 Document tools: rules by attribute, writes wait for approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:2580
-open_app opens the kernel Dashboards page -> apps/api/src/modules/agent/tools/open-targets.ts:110
 card shows the storing route's own refusal; app by name; agent told the field labels -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:384 ; apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:370 ; apps/api/src/modules/agent/tools/secret-request-tools.ts:270
 contacts_read names one line per other app holding records for the contact, read as the caller through its timeline source -> apps/api/src/modules/agent/tools/contact-tools.ts:332 ; apps/api/src/modules/contacts/activity.ts:616
+open_app opens the kernel Dashboards page -> apps/api/src/modules/agent/tools/open-targets.ts:114
 dashboards_history tool: read scope, no approval -> apps/api/src/modules/dashboards/tools.ts:595
 dashboards_snapshot tool: read scope, recipients -> apps/api/src/modules/dashboards/tools.ts:650
 dashboards_pdf tool: staged file only the caller reads -> apps/api/src/modules/dashboards/tools.ts:698 ; apps/api/src/modules/dashboards/export.ts:587

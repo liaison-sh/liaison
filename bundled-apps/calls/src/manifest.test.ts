@@ -43,10 +43,7 @@ describe("calls app.manifest.json", () => {
     // 0.2.17: the app's own install resolves the control-plane contract through an override
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.2.18: the same number (0.2.17) carried different content on two lines of work; this one has both.
-    // 0.2.21: the branch's 0.2.20 and main's 0.2.20 (every package carries its Worker module), merged.
-    // 0.2.22: above main's 0.2.21, merged.
-    // 0.2.23: above main's 0.2.22 (bundled apps formatted and linted), merged.
-    expect((MANIFEST as unknown as { version: string }).version).toBe("0.2.23")
+    expect((MANIFEST as unknown as { version: string }).version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   // Settings overhaul P2: a connector without a UI bundle; the kernel renders

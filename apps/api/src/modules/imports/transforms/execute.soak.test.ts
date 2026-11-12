@@ -82,7 +82,7 @@ describe.skipIf(!SOAK)("SOAK: a 2 GiB zip through the upload transform (A20)", (
           }`,
       files: [{ name: "tickets.csv", kind: "csv" }],
       batches: batchRecords("tickets.csv", records),
-      host: { kinds: ["tickets.ticket"] },
+      host: { orgId: "00000000-0000-0000-0000-0000000000a1", kinds: ["tickets.ticket"] },
       sink: {
         onEmitted: async (b) => {
           for (const e of b) emitted += e.records.length

@@ -220,3 +220,4 @@ analytics_query timeGrain day, week or month -> bundled-apps/shopify/app.manifes
 one row per bucket, oldest first, date = bucket start YYYY-MM-DD -> bundled-apps/shopify/src/analytics.ts:151
 grouped by SKU a series row names the product -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:157
 sessions and conversion_rate from the sessions dataset, groupBy none only -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:141
+Shopify order, customer, product, return declare pick -> bundled-apps/shopify/app.manifest.json:423

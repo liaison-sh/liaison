@@ -125,6 +125,7 @@ import { stepBudgetPromptLine } from "~/modules/agent/runtime/turn-input-budget"
 import { effectiveScopeDm, turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { markTurnIfReplaysOutsideText } from "~/modules/agent/scopes/replayed-outside-text"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
+import { withoutRoomWithheldResourceReads } from "~/modules/agent/scopes/room-resource-history"
 import type { TurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { resolveEffectiveSkillIndex } from "~/modules/agent/skills/effective-skills"
 import type { SkillSurfaceState } from "~/modules/agent/skills/mid-turn-skills"
@@ -643,6 +644,13 @@ interface AssembleContextParams {
    * back to the actor's own grants, i.e. today's RLS-only behaviour.
    */
   effectiveScope?: string[]
+  /**
+   * The people this turn's room floor counts (scope-taint.ts, rule 15e). An earlier turn's message
+   * whose tool calls read a shared resource one of them may not read is left out of the history,
+   * as a row stamped with a scope the floor took away is: its replayed result holds the cells.
+   * Absent: no floor (a routine tick, the Share anyway rerun).
+   */
+  roomPeople?: string[]
   /**
    * The turn's HELD tools: its whole executable catalog (`app__tool`, deferred
    * tools included). The kernel-authored prompt names no kernel tool outside
@@ -1277,6 +1285,7 @@ export async function assembleContext(
     historyFromMessageId,
     historyUntilMessageId,
     effectiveScope,
+    roomPeople,
     heldTools,
     turnScopeAccumulator,
     agentId,
@@ -2393,7 +2402,15 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // taint the turn, never a dropped one (recording a dropped row would leak its
   // scope names into the reply's own tag; not recording a kept one would let
   // the answer launder scoped data into an untagged sink).
-  const slicedMessages = filterByVisibility(compactionSliced, contextViewer)
+  // The same floor reaches a shared resource (rule 15e): an earlier read of a table someone of
+  // this room may not read leaves the history, with the answer that carried its cells.
+  const slicedMessages = roomPeople
+    ? await withoutRoomWithheldResourceReads(
+        orgId,
+        filterByVisibility(compactionSliced, contextViewer),
+        roomPeople,
+      )
+    : filterByVisibility(compactionSliced, contextViewer)
   // A routine tick's own trigger message (the anchor) is the routine's prompt: its stamp is the
   // tick's whole effective scope, which says what the tick MAY read, not what it read. It taints
   // writes as before and is not counted as org data the turn read (readInternalData). Every other

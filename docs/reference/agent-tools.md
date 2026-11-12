@@ -209,6 +209,11 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `subagent_get` | Read the full definition for one sub-agent role — system prompt, scope ceiling, allow/deny lists, skills, MCP servers, defaults. |  | `kernel:agents:admin` |
 | `subagent_list` | List sub-agent role definitions registered in this org. |  | `kernel:agents:spawn` |
 | `suggest_next_steps` | Offer up to 4 one-click next steps under your reply: a chip sends its label as the person's message, or opens a tab (app, view, id). |  | `kernel:threads:read` |
+| `tables_edit` | Create a dashboard table, change it, or delete it; always waits for a person's approval. | yes | `kernel:dashboards:write` |
+| `tables_get` | Read one dashboard table: its columns (key, label, type, choices, required), version, row count, your access and who it is shared with. |  | `kernel:dashboards:read` |
+| `tables_list` | List the dashboard tables you can see (org data people and agents keep, such as inbound batches or repairs): id, name, columns, your access and row count. |  | `kernel:dashboards:read` |
+| `tables_query` | Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. |  | `kernel:dashboards:read` |
+| `tables_rows_write` |  |  | `kernel:dashboards:write` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
 | `threads_create` | Message teammates: participantIds [kernel__users_search ids], no title, text as initialMessage. |  | `kernel:threads:write` |
 | `threads_list` | List recent threads the user participates in, with ids, handles, titles, participants, last message metadata, unreadCount and paging. |  | `kernel:threads:read` |

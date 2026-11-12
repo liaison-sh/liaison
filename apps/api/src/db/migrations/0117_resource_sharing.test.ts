@@ -99,6 +99,7 @@ describe("0117 resource sharing", () => {
           "kernel.company",
           "kernel.contact",
           "kernel.dashboard",
+          "kernel.dashboard_table",
           "knowledge.document",
         ])
         checked = true

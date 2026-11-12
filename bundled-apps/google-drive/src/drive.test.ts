@@ -97,9 +97,15 @@ function drive(path: string, q: URLSearchParams) {
 describe("manifest", () => {
   it("is the catalog app, version 2.0.1, with its pages, sources and provisioning", () => {
     expect(manifest.name).toBe("google-drive")
-    // 2.0.1: the outside-text marks of the in-tree app (file names and contents, the shared drive list), carried over.
-    expect(manifest.version).toBe("2.0.1")
-    expect(manifest.pages.picker.connectionToken).toEqual({ connection: "drive" })
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
+    // The platform's Picker widget: no page script, a drive.file token only.
+    expect("source" in manifest.pages.picker).toBe(false)
+    expect(manifest.pages.picker.widget).toEqual({
+      kind: "google-picker",
+      connection: "drive",
+      route: "savePicks",
+      tokenScopes: ["https://www.googleapis.com/auth/drive.file"],
+    })
     expect(Object.keys(manifest.knowledgeSources).sort()).toEqual(["folder", "picked"])
     expect(manifest.connections.drive.oauthClient).toEqual({ key: "google-drive:drive" })
     expect(manifest.provisioning.handler).toBe("provisionDrive")

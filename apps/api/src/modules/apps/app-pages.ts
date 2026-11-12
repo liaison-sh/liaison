@@ -63,6 +63,13 @@ import {
   peekOrgAppState,
   primeOrgApps,
 } from "~/modules/apps/org-apps"
+import {
+  grantBeyondWidget,
+  type PageWidgetConfig,
+  widgetKind,
+  widgetParams,
+  widgetScript,
+} from "~/modules/apps/page-widgets"
 import { runLimits } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -168,10 +175,19 @@ async function assertAppUsable(orgId: string, app: string, userId: string): Prom
   }
 }
 
-/** Where the app's pages are served: its frame host, else the org's own origin. */
-async function pageBase(orgId: string, app: string): Promise<{ base: string; framed: boolean }> {
+/**
+ * Where the app's pages are served: its frame host, else the org's own origin.
+ * A widget page (page-widgets.ts) always on the org's origin: an app frame host
+ * is an origin the app's own code runs on too.
+ */
+async function pageBase(
+  orgId: string,
+  app: string,
+  page: string,
+): Promise<{ base: string; framed: boolean }> {
   const slug = await orgSlugById(orgId)
-  const host = slug ? appFrameHostFor(app, slug) : null
+  const widget = !!surfaceOf(orgId, app)?.pages[page]?.widget
+  const host = slug && !widget ? appFrameHostFor(app, slug) : null
   if (host) return { base: `${appFrameOriginOf(host)}/page`, framed: true }
   return {
     base: `${(await orgPublicBaseUrl(orgId)).replace(/\/+$/, "")}/api/app-pages`,
@@ -235,7 +251,7 @@ async function mintTicket(
 ): Promise<{ url: string; expiresInSeconds: number }> {
   const ticket = newId()
   await redis.set(ticketKey(ticket), JSON.stringify(binding), "EX", TICKET_TTL_SECONDS)
-  const { base } = await pageBase(binding.orgId, binding.app)
+  const { base } = await pageBase(binding.orgId, binding.app, binding.page)
   return { url: `${base}/${ticket}`, expiresInSeconds: TICKET_TTL_SECONDS }
 }
 
@@ -349,13 +365,17 @@ export async function appPagePolicy(
   selfOrigin: string,
   framed: boolean,
 ): Promise<string> {
+  // A widget page's hosts are the platform's own list for that widget.
+  const hosts = decl.widget ? widgetKind(decl.widget.kind).hosts : decl.hosts
   const https = async (list: readonly string[] | undefined) =>
-    (await grantedHosts(app, list)).map((h) => `https://${h}`).join(" ")
-  const script = await https(decl.hosts?.script)
-  const frame = await https(decl.hosts?.frame)
-  const connect = await https(decl.hosts?.connect)
-  const image = await https(decl.hosts?.image)
-  const style = await https(decl.hosts?.style)
+    (decl.widget ? [...(list ?? [])] : await grantedHosts(app, list))
+      .map((h) => `https://${h}`)
+      .join(" ")
+  const script = await https(hosts?.script)
+  const frame = await https(hosts?.frame)
+  const connect = await https(hosts?.connect)
+  const image = await https(hosts?.image)
+  const style = await https(hosts?.style)
   const directives = [
     "default-src 'none'",
     `script-src 'nonce-${nonce}'${script ? ` ${script}` : ""}`,
@@ -371,37 +391,48 @@ export async function appPagePolicy(
   // Not on the app's own origin: an opaque origin, so the app's code reaches
   // nothing of the org's (storage, cookies). Popups stay possible (a provider's
   // sign-in), escaping the sandbox so they behave as normal pages.
-  if (!framed) directives.push("sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox")
+  // A widget page runs only the platform's script and the provider's, which
+  // needs a real origin to answer (Google's Picker posts to it): no sandbox.
+  if (!framed && !decl.widget)
+    directives.push("sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox")
   return directives.join("; ")
 }
 
 /**
- * The token a page with `connectionToken` receives: the account its link names
+ * What a widget page runs with (page-widgets.ts): the account its link names
  * (`params.account`), the person's own, or the organization's when they hold
- * the connection's admin scope. Never another member's.
+ * the connection's admin scope, never another member's; and only when the
+ * account's recorded grant is inside the widget's `tokenScopes` (a broader or
+ * unknown grant never reaches a browser). Each issuance is audited.
  */
-async function pageConnectionToken(
+async function pageWidgetConfig(
   binding: AppPageBinding,
   decl: AppPageDecl,
   actor: ActorContext,
-): Promise<{ token: string; identifier: string; account: string } | null> {
-  const connection = decl.connectionToken?.connection
-  if (!connection) return null
+): Promise<PageWidgetConfig | null> {
+  const widget = decl.widget
+  if (!widget) return null
   const accountId = binding.params.account
   if (typeof accountId !== "string" || !UUID_RE.test(accountId)) {
     throw new AppPageError(400, "page_account_missing", "This page needs the account it opens for")
   }
-  const [{ resolveConnectionAccount }, { connectionAdminScope }] = await Promise.all([
-    import("~/modules/apps/connections/service"),
-    import("~/modules/apps/connections/admin-scope"),
-  ])
-  const account = await withPrivilegedDb(binding.orgId, "app-page-connection-token", (tx) =>
+  const params = widgetParams(widget, binding.params)
+  if (!params) {
+    throw new AppPageError(400, "page_widget_params", "This page's link is missing its settings")
+  }
+  const [{ resolveConnectionAccount }, { connectionAdminScope }, { recordedGrant }] =
+    await Promise.all([
+      import("~/modules/apps/connections/service"),
+      import("~/modules/apps/connections/admin-scope"),
+      import("~/modules/apps/connections/protected-scopes"),
+    ])
+  const account = await withPrivilegedDb(binding.orgId, "app-page-widget-account", (tx) =>
     resolveConnectionAccount(
       tx,
       binding.orgId,
       binding.userId,
       binding.app,
-      connection,
+      widget.connection,
       undefined,
       { actorType: "system", accountId },
     ).catch(() => null),
@@ -410,11 +441,35 @@ async function pageConnectionToken(
     account &&
     (account.ownerType === "user"
       ? account.ownerId === binding.userId
-      : hasScope(connectionAdminScope(binding.orgId, binding.app, connection), actor.scopes ?? []))
+      : hasScope(
+          connectionAdminScope(binding.orgId, binding.app, widget.connection),
+          actor.scopes ?? [],
+        ))
   if (!account || !mayUse) {
     throw new AppPageError(403, "page_account_forbidden", "This page's account is not yours")
   }
-  return { token: account.token, identifier: account.identifier, account: account.id }
+  const beyond = grantBeyondWidget(widget, recordedGrant(account.metadata))
+  if (beyond === "unknown" || beyond.length > 0) {
+    throw new AppPageError(
+      403,
+      "page_token_too_broad",
+      "This account's access is broader than this page may use: nothing to pick here",
+    )
+  }
+  const { writeAuditLog } = await import("~/modules/audit/service")
+  await withPrivilegedDb(binding.orgId, "app-page-widget-audit", (tx) =>
+    writeAuditLog(tx, {
+      orgId: binding.orgId,
+      actorId: binding.userId,
+      actorType: "user",
+      app: binding.app,
+      entityType: "app_page",
+      entityId: binding.page,
+      action: `${binding.app}.page_widget.token_issued`,
+      metadata: { page: binding.page, widget: widget.kind, account: account.id },
+    }),
+  )
+  return { token: account.token, identifier: account.identifier, route: widget.route, params }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -424,7 +479,6 @@ function bootstrapScript(
   session: string,
   key: string,
   params: Record<string, unknown>,
-  connectionToken: { token: string; identifier: string; account: string } | null = null,
 ): string {
   // JSON in a script: `<` escaped so a param can never close the tag.
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c")
@@ -437,7 +491,6 @@ function bootstrapScript(
     "var f=window.fetch.bind(window),s=JSON.stringify,e=encodeURIComponent;" +
     `var u=${json(`${base}/s/${session}/routes/`)},k=${json(key)},h=${json(PAGE_KEY_HEADER)};` +
     `window.liaisonPage=Object.freeze({params:Object.freeze(${json(params)}),` +
-    (connectionToken ? `connectionToken:Object.freeze(${json(connectionToken)}),` : "") +
     "call:function(route,body){var o={'content-type':'text/plain'};o[h]=k;" +
     "return f(u+e(route),{method:'POST',headers:o,body:s(body===undefined?null:body)})" +
     ".then(function(r){return r.json().then(function(j){if(!r.ok)" +
@@ -472,12 +525,16 @@ export async function renderAppPage(
   if (!hasScope(decl.scope, actor.scopes ?? [])) {
     throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)
   }
-  const connectionToken = await pageConnectionToken(binding, decl, actor)
+  const framed = host.kind === "frame"
+  // A widget page is served on the org's origin only (pageBase).
+  if (decl.widget && framed) {
+    throw new AppPageError(404, "page_link_invalid", "This link is not valid here")
+  }
+  const widget = await pageWidgetConfig(binding, decl, actor)
   const session = newId()
   const key = newId()
   const record: AppPageBinding = { ...binding, keyHash: keyHashOf(key) }
   await redis.set(sessionKey(session), JSON.stringify(record), "EX", SESSION_TTL_SECONDS)
-  const framed = host.kind === "frame"
   // The org's own public origin, never the request's (a proxy may have rewritten it).
   const origin = framed ? requestOrigin : new URL(await orgPublicBaseUrl(binding.orgId)).origin
   const base = framed ? `${origin}/page` : `${origin}/api/app-pages`
@@ -487,8 +544,12 @@ export async function renderAppPage(
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta name="referrer" content="no-referrer"><title>${title}</title>` +
-    `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params, connectionToken)}</script>` +
-    `<script nonce="${nonce}" src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>` +
+    `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params)}</script>` +
+    // A widget page: the platform's script, its config in its closure only.
+    // An app's page script is deferred: it runs once its root element exists.
+    (widget && decl.widget
+      ? `<script nonce="${nonce}">${widgetScript(decl.widget, widget)}</script>`
+      : `<script nonce="${nonce}" defer src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>`) +
     `</head><body><div id="root"></div></body></html>`
   return { html, policy: await appPagePolicy(binding.app, decl, nonce, origin, framed) }
 }
@@ -506,6 +567,7 @@ const builtPages = new Map<string, { mtimeMs: number; code: string }>()
 
 /** `pages/<name>.js` from the package, or (in-tree source, tests) built from its `.ts`. */
 async function pageScript(surface: AppSurface, page: string, decl: AppPageDecl): Promise<string> {
+  if (!decl.source) throw new AppPageError(404, "page_not_found", "No page script")
   const root = resolve(surface.packageDir)
   const built = resolve(root, "pages", `${page}.js`)
   const source = resolve(root, decl.source)

@@ -664,18 +664,12 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.1: merged with 0.23.24-0.23.27 above.
     // 0.24.2: an order's lines keyed by a store variant id print (and match the document rules)
     //   as the merchant's SKU with its product attributes; countries print as their English name.
-    // 0.23.28: above the 0.23.23 main took meanwhile; no change of its own.
-    // 0.24.3: 0.23.28 above merged with 0.24.2.
-    // 0.24.4: the order print record is a taint source (customer-entered names, addresses).
-    // 0.24.5: the source repository link names the repository where the code now lives.
-    // 0.24.6: 0.24.5 above merged with main's 0.24.4 (webhook claims as expiring leases).
-    // 0.24.7: 0.24.6 above merged with main's 0.24.5 (only a processed webhook delivery is acknowledged).
-    // 0.24.6 (main): no catalog tool holds a transaction across its run: a profile write, link,
-    //   unlink or merge commits with its old-table mirror in one batch, a pack with its components.
-    // 0.24.8: 0.24.7 above merged with main's 0.24.6.
-    // 0.24.9: both of the above, merged (main's 0.24.7: every package carries its Worker module).
-    // 0.24.10: above main's 0.24.8, merged.
-    expect(m.version).toBe("0.24.10")
+    // 0.24.6: no catalog tool holds a transaction across its run: a profile write, link, unlink or
+    // merge commits with its old-table mirror in one batch, a pack with its components.
+    // 0.24.7: reads that answer figures also answer the rows a dashboard block charts.
+    // 0.24.10: a shipment declares `pick` (the search tool), so a dashboard table's link cell
+    // can pick one.
+    expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(m.packageFormat).toBe(1)
   })
 

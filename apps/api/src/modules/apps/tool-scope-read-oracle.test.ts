@@ -17,6 +17,7 @@ import { describe, expect, it } from "bun:test"
 import { type Dirent, readdirSync, readFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import ts from "typescript"
+import { readRegistryTuples } from "../../../test-support/registry-dir"
 
 const ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 
@@ -158,8 +159,13 @@ const REASONS = {
 } as const
 
 // One entry per read, keyed by file and exact trimmed line. A line that reads
-// scope twice, or repeats in a file, is listed once per read.
-const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, reason: string]> = [
+// scope twice, or repeats in a file, is listed once per read. New entries go in
+// a file of their own, `tool-scope-read-oracle.allowlist/<feature>.json` beside
+// this test (a JSON array of [file, line, reason]), so two PRs never add lines
+// at the same end of this list (test-support/registry-dir.ts).
+const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
+  readonly [file: string, line: string, reason: string]
+> = [
   [
     "apps/api/src/modules/apps/app-surface.ts",
     `if (!page.scope.startsWith(\`\${name}:\`)) {`,
@@ -1665,6 +1671,15 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "for (const { key, scope } of QA_APPROVER_SPLIT.userScopes) {",
     "the standard seed's approver split: a direct user scope grant written to kernel.user_scope_grants, not a tool",
   ],
+]
+
+const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, reason: string]> = [
+  ...SCOPE_READ_ALLOWLIST_LITERAL,
+  ...(readRegistryTuples(join(import.meta.dir, "tool-scope-read-oracle.allowlist"), 3) as [
+    string,
+    string,
+    string,
+  ][]),
 ]
 
 describe("oracle: no source reads scope off a tool definition", () => {

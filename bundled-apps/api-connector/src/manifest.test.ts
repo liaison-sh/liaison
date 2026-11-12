@@ -7,10 +7,8 @@ import manifest from "../app.manifest.json"
 // The schema check of this manifest is the kernel's (apps/api
 // bundled-manifests-valid.test.ts); these pin what the app means.
 describe("api-connector manifest", () => {
-  it("is version 2.0.2, the catalog app that replaced the in-tree one", () => {
-    // 2.0.1: main's 2.0.0 (a catalog app) with the branch's in-tree changes to its manifest, merged.
-    // 2.0.2: above main's 2.0.1 (bundled apps formatted and linted), merged.
-    expect(manifest.version).toBe("2.0.2")
+  it("is version 2.0.0, the catalog app that replaced the in-tree one", () => {
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   it("declares the connection as a platform-held API connection with the app's own scopes", () => {

@@ -6,6 +6,7 @@ import {
   agents,
   appDrafts,
   dashboards,
+  dashboardTables,
   nodeSessions,
   routines,
   skills,
@@ -387,6 +388,18 @@ async function loadKnownEntityLabelAndSnippet(
       return {
         label: row.title,
         snippet: `[Entity: kernel:dashboard, id: ${entityId}] { title: "${row.title}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "dashboard-table") {
+      const [row] = await tx
+        .select({ name: dashboardTables.name })
+        .from(dashboardTables)
+        .where(and(eq(dashboardTables.id, entityId), eq(dashboardTables.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:dashboard-table, id: ${entityId}] { name: "${row.name}" }`,
       }
     }
     if (app === "kernel" && entityType === "app-builder") {

@@ -68,6 +68,7 @@ import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
 import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
+import { startBridgeListener } from "~/modules/apps/workers/bridge-listener"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { healthzRoutes } from "~/modules/healthz"
@@ -191,6 +192,12 @@ await startInstanceHeartbeat({ role, pid: process.pid, internalUrl: internalList
 // while two releases overlap (modules/apps/versions-in-use.ts).
 startVersionsInUseHeartbeat()
 registerProcessShutdownPhases({ internalListener })
+// The bridge-only listener for the sandbox network (every role: any process
+// may dispatch a sandbox run), when the instance's sandbox service is set up
+// (modules/apps/workers/bridge-listener.ts).
+if (env.LIAISON_APP_BRIDGE_PORT !== undefined) {
+  startBridgeListener(app, { port: env.LIAISON_APP_BRIDGE_PORT })
+}
 // The orchestrator's stop grace period must exceed hardDeadlineMs (+ 5 s), or
 // it kills the process mid-drain (docs/self-hosting/docker.md).
 rootLogger.info(shutdownBudgets(), "Shutdown budgets (ms from SIGTERM)")

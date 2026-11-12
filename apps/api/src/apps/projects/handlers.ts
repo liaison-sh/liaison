@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Projects sandbox handlers — each handler dispatches to a Node-side bridge
-// method exposed via projects_*. Real services land in T17–T22.
-// biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
+// Projects handlers: a core app's server module (modules/apps/core/registry.ts).
+// Every handler the manifest names is a named export `(params, ctx, ...extra)`,
+// imported and called in the API process with a typed host ctx
+// (modules/apps/core/ctx.ts): the run's bridge methods, called directly. Each
+// handler dispatches to a `projects_*` host method (modules/apps/sandbox/bridge/projects.ts).
 
-// Type-only import forces TypeScript to treat this file as a module (so its
-// top-level function names don't collide with another app's handlers in the
-// shared global type scope). Bun's transpiler strips the import at bundle
-// time, so the QuickJS runtime still sees pure script-mode source where the
-// function declarations auto-promote to global as expected.
-import type {} from "node:buffer"
+import { csvCell } from "@liaison/shared"
+import type { CoreCtx } from "~/modules/apps/core/ctx"
 
-interface ProjectsSandboxCtx {
+export interface ProjectsMethods {
   projects_activityRead(paramsJson: string): Promise<string>
   projects_search: (paramsJson: string) => Promise<string>
   projects_get: (paramsJson: string) => Promise<string>
@@ -54,8 +52,9 @@ interface ProjectsSandboxCtx {
   projects_labelsArchive: (paramsJson: string) => Promise<string>
   projects_labelsReorder: (paramsJson: string) => Promise<string>
   config_get: (key: string) => Promise<unknown>
-  actor?: unknown
 }
+
+type ProjectsCtx = CoreCtx<ProjectsMethods>
 
 // Webhook verify runs BEFORE a full RPC bridge exists (webhooks/routes.ts
 // builds a lighter-weight bridge just for verification), so its bridge shape
@@ -77,16 +76,16 @@ const PROJECTS_EXPORT_COLUMNS: Array<[string, string]> = [
   ["createdAt", "created_at"],
 ]
 
-async function search(
+export async function search(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_search(JSON.stringify(params ?? {})))
 }
 
-async function get(
+export async function get(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_get(JSON.stringify(params ?? {})))
 }
@@ -95,9 +94,9 @@ async function get(
  * Who a pending approval about a task is for: the task's assignee. A deal's task also names the
  * deal's company, whose account manager comes next when the owner cannot decide.
  */
-async function approvalRouteRead(
+export async function approvalRouteRead(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   if (params?.entityType !== "task" || typeof params.entityId !== "string")
     return { personId: null, companyId: null }
@@ -117,100 +116,100 @@ async function approvalRouteRead(
 }
 
 // task label taxonomy: pass-throughs to the projects_labels* bridge methods.
-async function labelsList(
+export async function labelsList(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsList(JSON.stringify(params ?? {})))
 }
 
-async function labelsTree(
+export async function labelsTree(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsTree(JSON.stringify(params ?? {})))
 }
 
-async function labelsCreate(
+export async function labelsCreate(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsCreate(JSON.stringify(params ?? {})))
 }
 
-async function labelsUpdate(
+export async function labelsUpdate(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsUpdate(JSON.stringify(params ?? {})))
 }
 
-async function labelsArchive(
+export async function labelsArchive(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsArchive(JSON.stringify(params ?? {})))
 }
 
-async function labelsReorder(
+export async function labelsReorder(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_labelsReorder(JSON.stringify(params ?? {})))
 }
 
-async function createProject(
+export async function createProject(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_createProject(JSON.stringify(params ?? {})))
 }
 
-async function createTask(
+export async function createTask(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_createTask(JSON.stringify(params ?? {})))
 }
 
-async function updateTask(
+export async function updateTask(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_updateTask(JSON.stringify(params ?? {})))
 }
 
-async function moveTask(
+export async function moveTask(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_moveTask(JSON.stringify(params ?? {})))
 }
 
-async function addStatus(
+export async function addStatus(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_addStatus(JSON.stringify(params ?? {})))
 }
 
-async function updateProject(
+export async function updateProject(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_updateProject(JSON.stringify(params ?? {})))
 }
 
-async function updateStatus(
+export async function updateStatus(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_updateStatus(JSON.stringify(params ?? {})))
 }
 
-async function deleteStatus(
+export async function deleteStatus(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_deleteStatus(JSON.stringify(params ?? {})))
 }
@@ -235,11 +234,10 @@ async function deleteStatus(
 // exactly where it was: a preflight is an early refusal, never a replacement
 // (the row it reads can still change between staging and approval).
 //
-// The checks are mirrored here rather than shared with the host resolvers
-// (service/resolve.ts, service/statuses.ts, service/tasks.ts) because this
-// bundle is evaluated in the sandbox and can only reach the host through the
-// read methods of the projects bridge. The mirrors are deliberately narrow
-// and one copy each, reused by every tool below.
+// The checks read through the projects bridge's read methods, as the handlers
+// do, rather than calling the host resolvers (service/resolve.ts,
+// service/statuses.ts, service/tasks.ts). They are deliberately narrow and one
+// copy each, reused by every tool below.
 
 interface ProjectsPreflightRefusal {
   error: { code: string; message: string; retryable: boolean }
@@ -281,7 +279,7 @@ type PreflightProjectResolution =
 
 /** Read a project's detail (id, statuses). null when the read could not answer. */
 async function preflightLoadProjectDetail(
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
   projectId: string,
 ): Promise<PreflightProjectDetail | null | "missing"> {
   let raw: string
@@ -311,7 +309,7 @@ async function preflightLoadProjectDetail(
  */
 async function preflightResolveProject(
   params: Record<string, unknown>,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<PreflightProjectResolution> {
   const rawId = projectsPreflightString(params.projectId)
   const rawName = projectsPreflightString(params.projectName)
@@ -460,7 +458,7 @@ type PreflightTaskResolution =
  */
 async function preflightResolveTask(
   ref: string,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<PreflightTaskResolution> {
   if (!ref) return { kind: "unknown" }
   let raw: string
@@ -487,9 +485,9 @@ async function preflightResolveTask(
 
 /** `status_delete`: refuse before the gate when the column still holds tasks
  *  (they must be moved out first) or when it is the board's last column. */
-async function deleteStatusPreflight(
+export async function deleteStatusPreflight(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<ProjectsPreflightResult> {
   const p = params ?? {}
   const project = await preflightResolveProject(p, ctx)
@@ -529,9 +527,9 @@ async function deleteStatusPreflight(
 /** `checklist_remove_item`: no point asking a human to approve removing an
  *  item that is not there. Reads the item's checklist through the task it
  *  names when given; fails open otherwise. */
-async function checklistRemoveItemPreflight(
+export async function checklistRemoveItemPreflight(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<ProjectsPreflightResult> {
   const p = params ?? {}
   const itemId = projectsPreflightString(p.itemId)
@@ -559,9 +557,9 @@ async function checklistRemoveItemPreflight(
 }
 
 /** `delete`: same, no point asking a human to approve deleting nothing. */
-async function deleteTaskPreflight(
+export async function deleteTaskPreflight(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<ProjectsPreflightResult> {
   const p = params ?? {}
   const task = await preflightResolveTask(projectsPreflightString(p.taskId), ctx)
@@ -571,9 +569,9 @@ async function deleteTaskPreflight(
 
 /** `merge`: both sides must exist, and a task cannot be merged into itself
  *  (the same task reached by id and by display key is still itself). */
-async function mergeTasksPreflight(
+export async function mergeTasksPreflight(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<ProjectsPreflightResult> {
   const p = params ?? {}
   const sourceRef = projectsPreflightString(p.sourceId)
@@ -595,116 +593,114 @@ async function mergeTasksPreflight(
 // The bridge derives the actor kind from the dispatch origin and answers a
 // service refusal as a typed `{ error: { code, message, status } }` envelope.
 
-async function checklistGet(
+export async function checklistGet(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_checklistGet(JSON.stringify(params ?? {})))
 }
 
-async function checklistAddItems(
+export async function checklistAddItems(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_checklistAddItems(JSON.stringify(params ?? {})))
 }
 
-async function checklistUpdateItem(
+export async function checklistUpdateItem(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_checklistUpdateItem(JSON.stringify(params ?? {})))
 }
 
-async function checklistSetValidation(
+export async function checklistSetValidation(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_checklistSetValidation(JSON.stringify(params ?? {})))
 }
 
-async function checklistRemoveItem(
+export async function checklistRemoveItem(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_checklistRemoveItem(JSON.stringify(params ?? {})))
 }
 
-async function computeAttentionItems(
+export async function computeAttentionItems(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   // Home passes on the people the caller stands in for; the bridge checks them again.
   const forUserIds = Array.isArray(params?.forUserIds) ? params.forUserIds : []
-  return JSON.parse(
-    await ctx.projects_attentionItems(JSON.stringify({ actor: ctx.actor ?? null, forUserIds })),
-  )
+  return JSON.parse(await ctx.projects_attentionItems(JSON.stringify({ forUserIds })))
 }
 
 // tasks_byAssignee — cross-project task list for one assignee (J1).
-async function tasksByAssignee(
+export async function tasksByAssignee(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_tasksByAssignee(JSON.stringify(params ?? {})))
 }
 
 // tasks_byProject — enumerate the tasks in ONE project (BL-151).
-async function tasksByProject(
+export async function tasksByProject(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_tasksByProject(JSON.stringify(params ?? {})))
 }
 
 // portfolio_rollup — bounded cross-project board rollup (BL-263): per active
 // project, {done, remaining, overdue, %done, biggest-at-risk} in ONE call.
-async function portfolioRollup(
+export async function portfolioRollup(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_portfolioRollup(JSON.stringify(params ?? {})))
 }
 
 // Deals: a pipeline's top-level tasks with their company, contact and amount.
-async function dealsPipelineCreate(
+export async function dealsPipelineCreate(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealsPipelineCreate(JSON.stringify(params ?? {})))
 }
 
-async function dealsUpdate(
+export async function dealsUpdate(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealsUpdate(JSON.stringify(params ?? {})))
 }
 
-async function dealsSearch(
+export async function dealsSearch(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealsSearch(JSON.stringify(params ?? {})))
 }
 
-async function dealsRollup(
+export async function dealsRollup(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealsRollup(JSON.stringify(params ?? {})))
 }
 
-async function dealsFollowupCandidates(
+export async function dealsFollowupCandidates(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealsFollowupCandidates(JSON.stringify(params ?? {})))
 }
 
-async function dealSendState(
+export async function dealSendState(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_dealSendState(JSON.stringify(params ?? {})))
 }
@@ -724,9 +720,9 @@ function formatMinor(minor: number): string {
   return minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2)
 }
 
-async function companyContext(
+export async function companyContext(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   const subject = (params?.subject ?? {}) as {
     app?: string
@@ -793,9 +789,9 @@ interface CompanyWorkProject {
   tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
 }
 
-async function companyWork(
+export async function companyWork(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   const companyId = String(params?.companyId ?? "")
   if (!projectsPreflightIsUuid(companyId)) {
@@ -817,66 +813,55 @@ async function companyWork(
 // participant-gated, so the threadId in a task listing answered "not a
 // participant". Both bridge methods resolve the task with viewerId, which
 // enrols the caller exactly as opening the task in the web detail pane does.
-async function addComment(
+export async function addComment(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_addComment(JSON.stringify(params ?? {})))
 }
 
-async function listComments(
+export async function listComments(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_listComments(JSON.stringify(params ?? {})))
 }
 
 // delete — gated soft-delete of a task + subtree (J1).
-async function deleteTask(
+export async function deleteTask(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_deleteTask(JSON.stringify(params ?? {})))
 }
 
 // merge — gated merge of one task into another (J2).
-async function mergeTasks(
+export async function mergeTasks(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_mergeTasks(JSON.stringify(params ?? {})))
 }
 
 // instantiate_template — materialize a project from a template (J2).
-async function instantiateTemplate(
+export async function instantiateTemplate(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_instantiateTemplate(JSON.stringify(params ?? {})))
 }
 
 // add_dependency — add a (cycle-checked) task dependency (J2).
-async function addDependency(
+export async function addDependency(
   params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_addDependency(JSON.stringify(params ?? {})))
 }
 
 // Per-app data export (Phase 13, E1/E3). Reads tasks under the caller's RLS
 // via ctx.db_findMany, so the export never escalates.
-function projectsCsvCell(value: unknown): string {
-  let s = value === null || value === undefined ? "" : String(value)
-  // Spreadsheet formula injection: a leading = + - @ tab or CR makes the cell a formula, so prefix a
-  // single quote (plain numbers like "-5000" stay numeric). Verbatim copy of @liaison/shared csvCell.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`
-  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
-async function exportProjects(params: unknown, ctx: ProjectsSandboxCtx): Promise<unknown> {
+export async function exportProjects(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const format = p.format ?? "json"
   const dateRange = p.dateRange as { from?: string; to?: string } | undefined
@@ -911,7 +896,7 @@ async function exportProjects(params: unknown, ctx: ProjectsSandboxCtx): Promise
   if (format === "csv") {
     const header = PROJECTS_EXPORT_COLUMNS.map(([k]) => k).join(",")
     const body = projected
-      .map((r) => PROJECTS_EXPORT_COLUMNS.map(([k]) => projectsCsvCell(r[k])).join(","))
+      .map((r) => PROJECTS_EXPORT_COLUMNS.map(([k]) => csvCell(r[k])).join(","))
       .join("\n")
     return body ? `${header}\n${body}\n` : `${header}\n`
   }
@@ -947,7 +932,7 @@ interface CiStatusEnvelope {
   ts: string | number
 }
 
-function parseCiStatusEnvelope(payload: unknown): CiStatusEnvelope | { error: string } {
+export function parseCiStatusEnvelope(payload: unknown): CiStatusEnvelope | { error: string } {
   if (!payload || typeof payload !== "object") return { error: "payload must be an object" }
   const p = payload as Record<string, unknown>
   if (typeof p.project !== "string" || p.project.length === 0) {
@@ -975,21 +960,12 @@ function parseCiStatusEnvelope(payload: unknown): CiStatusEnvelope | { error: st
   }
 }
 
-/** Terminal statuses stop being "in flight" — used to pick the target project_status label. */
-function statusLabel(status: CiStatus): string {
-  if (status === "success") return "done"
-  if (status === "failed") return "cancelled" // no "failed" default status; cancelled is the closest terminal-non-done label
-  if (status === "canceled") return "cancelled"
-  if (status === "running") return "in_progress"
-  return "todo"
-}
-
-function ciTaskTitle(env: CiStatusEnvelope): string {
+export function ciTaskTitle(env: CiStatusEnvelope): string {
   const base = env.title ?? `${env.project} release`
   return `[CI] ${base} — ${env.status}`
 }
 
-function ciTaskDescription(env: CiStatusEnvelope): string {
+export function ciTaskDescription(env: CiStatusEnvelope): string {
   const lines = [
     `CI release status for **${env.project}**`,
     `Status: ${env.status}`,
@@ -1009,9 +985,9 @@ function ciTaskDescription(env: CiStatusEnvelope): string {
  * pending→running→success/failed sequence for the same build converges on a
  * single row instead of flooding the board.
  */
-async function ciStatusWebhookHandler(
+export async function ciStatusWebhookHandler(
   payload: unknown,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<{ status: number; body?: string }> {
   const parsed = parseCiStatusEnvelope(payload)
   if ("error" in parsed) {
@@ -1114,7 +1090,7 @@ function extractSignedTsMs(body: string): number | null {
  * monitoring's `monitoringWebhookVerifier` (kernel-minted secret, signed raw
  * body, replay window bound to the signed `ts`).
  */
-async function ciStatusWebhookVerifier(
+export async function ciStatusWebhookVerifier(
   params: {
     headers: Record<string, string>
     body: string
@@ -1154,9 +1130,9 @@ async function ciStatusWebhookVerifier(
 
 /** Operator setup read (admin-scoped, not agent-visible): reports whether the
  * ci-source connection minted its webhook secret, and returns it. */
-async function webhookInfoHandler(
+export async function webhookInfoHandler(
   _params: Record<string, unknown> | undefined,
-  ctx: ProjectsSandboxCtx,
+  ctx: ProjectsCtx,
 ): Promise<unknown> {
   const secret = (await ctx.config_get(CI_WEBHOOK_SECRET_KEY)) as string | null
   return {
@@ -1167,53 +1143,7 @@ async function webhookInfoHandler(
   }
 }
 
-// Handlers are resolved by name at sandbox runtime (no module exports needed).
-// QuickJS evaluates the bundle in script mode, so top-level `export {…}` is
-// rejected by the parser and breaks the whole bundle. Named function
-// declarations at top level auto-promote to the global scope, so the manifest
-// resolver can find them without explicit `globalThis.X = …` binding.
-void [
-  search,
-  get,
-  approvalRouteRead,
-  createProject,
-  createTask,
-  updateTask,
-  moveTask,
-  tasksByAssignee,
-  tasksByProject,
-  portfolioRollup,
-  dealsPipelineCreate,
-  dealsUpdate,
-  dealsSearch,
-  dealsRollup,
-  dealsFollowupCandidates,
-  dealSendState,
-  companyContext,
-  companyWork,
-  deleteTask,
-  addComment,
-  listComments,
-  mergeTasks,
-  instantiateTemplate,
-  addDependency,
-  ciStatusWebhookHandler,
-  ciStatusWebhookVerifier,
-  webhookInfoHandler,
-  computeAttentionItems,
-  exportProjects,
-  deleteStatusPreflight,
-  deleteTaskPreflight,
-  mergeTasksPreflight,
-  checklistGet,
-  checklistAddItems,
-  checklistUpdateItem,
-  checklistSetValidation,
-  checklistRemoveItem,
-  checklistRemoveItemPreflight,
-]
-
 /** Timeline rows for the kernel's activity read (activitySources), host-side. */
-async function activityRead(params: unknown, ctx: ProjectsSandboxCtx): Promise<unknown> {
+export async function activityRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_activityRead(JSON.stringify(params ?? {})))
 }

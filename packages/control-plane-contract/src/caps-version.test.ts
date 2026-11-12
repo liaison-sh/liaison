@@ -106,4 +106,15 @@ describe("apps.usage", () => {
     }
     expect(cellBillingMessageSchemas["apps.usage"].safeParse(negative).success).toBe(false)
   })
+
+  test("names every executor a run can settle on, the instance's sandbox service included", () => {
+    const m = moneyVectors.cellBilling.valid["apps.usage"]
+    const row = m.data.rows[0]
+    for (const executor of ["workers", "workerd", "quickjs", "inprocess"]) {
+      const msg = { ...m, data: { ...m.data, rows: [{ ...row, executor }] } }
+      expect(cellBillingMessageSchemas["apps.usage"].safeParse(msg).success).toBe(true)
+    }
+    const unknown = { ...m, data: { ...m.data, rows: [{ ...row, executor: "wasm" }] } }
+    expect(cellBillingMessageSchemas["apps.usage"].safeParse(unknown).success).toBe(false)
+  })
 })

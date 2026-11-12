@@ -73,6 +73,11 @@ export const SHAREABLE_RESOURCES: Record<string, ShareableResource> = {
   // A company's sharing follows its creator, never its account manager (0303).
   "kernel.company": { schema: "kernel", table: "companies", aclUserColumns: ["created_by"] },
   "kernel.dashboard": { schema: "kernel", table: "dashboards", aclUserColumns: ["owner_user_id"] },
+  "kernel.dashboard_table": {
+    schema: "kernel",
+    table: "dashboard_tables",
+    aclUserColumns: ["owner_user_id"],
+  },
 }
 
 function resourceFor(type: string): ShareableResource {

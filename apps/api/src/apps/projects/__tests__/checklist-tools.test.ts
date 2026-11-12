@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import * as projectsHandlers from "~/apps/projects/handlers"
 import { createTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
@@ -23,13 +24,8 @@ const { executeTool } = (await import(
   `${import.meta.dir}/../../../modules/apps/execute-tool.ts?hermetic=projects-checklist-tools`
 )) as typeof import("~/modules/apps/execute-tool")
 
-// handlers.ts is script-mode by design: transpile + eval to call a handler the
-// way the sandbox does, with an rpc bridge as its ctx.
-const handlersSource = await Bun.file(new URL("../handlers.ts", import.meta.url)).text()
-const transpiled = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(
-  handlersSource,
-)
-const handlers = new Function(`${transpiled}\nreturn { updateTask };`)() as {
+// The core module's handler, called with an rpc bridge as its ctx, as runApp does.
+const handlers = projectsHandlers as unknown as {
   updateTask: (params: Record<string, unknown>, ctx: unknown) => Promise<unknown>
 }
 

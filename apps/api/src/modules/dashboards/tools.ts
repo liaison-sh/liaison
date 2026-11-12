@@ -99,9 +99,12 @@ import {
   type DashboardSpec,
   dashboardDefaultRange,
   dashboardSpecSchema,
+  sourceValue,
   specIssues,
   timeRangeSchema,
+  withSourceValue,
 } from "~/modules/dashboards/spec"
+import { registerTableTools } from "~/modules/dashboards/tables/tools"
 
 const READ = "kernel:dashboards:read"
 const WRITE = "kernel:dashboards:write"
@@ -128,7 +131,7 @@ interface HandlerCtx {
  * computes every block with the scopes the room allows, as every other read of the turn does.
  * Outside a turn (a direct API call, an approved re-entry) they are the person's own.
  */
-async function viewerOf(
+export async function viewerOf(
   ctx: Pick<HandlerCtx, "userId" | "orgId" | "scopes" | "dimensionGrants">,
 ): Promise<UserContext> {
   const held = await withPrivilegedDb(ctx.orgId, "dashboard-viewer-roles", (tx) =>
@@ -372,7 +375,8 @@ function defaultWindow(spec: unknown, timeZone: string): DayWindow {
 
 /** A block's date tokens with what each is today: `{{today-30d}} = 2026-10-11`. */
 function tokenDates(source: Record<string, unknown>, timeZone: string, range: DayWindow): string {
-  const value = source.kind === "store" ? source.query : source.params
+  const value =
+    source.kind === "store" ? source.query : source.kind === "table" ? source.where : source.params
   const now = new Date()
   return dateTokensIn(value)
     .slice(0, 4)
@@ -411,7 +415,9 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
       const from =
         source.kind === "store"
           ? `store ${String(source.app)}/${String(source.collection)}`
-          : String(source.tool ?? "(no source)")
+          : source.kind === "table"
+            ? `dashboard table ${String(source.table)}`
+            : String(source.tool ?? "(no source)")
       const dates = tokenDates(source, timeZone, range)
       const via = typeof x.dataset === "string" ? ` (shared dataset '${x.dataset}')` : ""
       return `${from}${via}${dates ? `, dates ${dates} (today, rolling)` : ""}`
@@ -827,9 +833,7 @@ export function registerDashboardTools(orgId: string): void {
       })
       const saved = blockSourceOf(block, spec.datasets)
       const withValues = saved
-        ? saved.kind === "tool"
-          ? { ...saved, params: resolveFilterTokens(saved.params, values, spec) }
-          : { ...saved, query: resolveFilterTokens(saved.query, values, spec) }
+        ? withSourceValue(saved, resolveFilterTokens(sourceValue(saved), values, spec))
         : null
       const outcome = await computeBlock(
         withValues ? { ...block, source: withValues, dataset: undefined } : block,
@@ -840,9 +844,7 @@ export function registerDashboardTools(orgId: string): void {
           where: resolveWhere(block.map.where, values),
           ...(spec.datasets ? { datasets: spec.datasets } : {}),
           resolveDataset: (src) =>
-            src.kind === "tool"
-              ? { ...src, params: resolveFilterTokens(src.params, values, spec) }
-              : { ...src, query: resolveFilterTokens(src.query, values, spec) },
+            withSourceValue(src, resolveFilterTokens(sourceValue(src), values, spec)),
           resolveWhere: (w) => resolveWhere(w, values),
           ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
@@ -858,7 +860,9 @@ export function registerDashboardTools(orgId: string): void {
         ? ""
         : saved.kind === "tool"
           ? saved.tool.replace(/[:_-]+/g, " ")
-          : saved.collection
+          : saved.kind === "store"
+            ? saved.collection
+            : "table"
       const alternatives =
         saved &&
         (outcome.error === "not_allowed" ||
@@ -1387,4 +1391,5 @@ export function registerDashboardTools(orgId: string): void {
         params.orgAccess === "viewer" || params.orgAccess === "editor",
       ),
   })
+  registerTableTools(orgId)
 }

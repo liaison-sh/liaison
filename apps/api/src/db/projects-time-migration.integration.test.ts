@@ -20,8 +20,8 @@ import { runMigrations } from "~/db/migrate"
 import { insertSql } from "~/seed/factories/org/test-rows"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
-const FIRST_NEW_TAG = "0312_projects_time_plan"
-const LAST_NEW_TAG = "0313_projects_reconcile"
+const FIRST_NEW_TAG = "0313_projects_time_plan"
+const LAST_NEW_TAG = "0314_projects_reconcile"
 
 const NEW_TABLES = [
   "billing_claims",

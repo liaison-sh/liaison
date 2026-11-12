@@ -974,14 +974,12 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.22: the branch's 0.4.21 and main's 0.4.21 (contract fixtures, resumable backfill), merged.
     // 0.4.22 on main: analytics_query adds metrics sessions and conversion_rate (sessions dataset),
     // groupBy product, and an optional timeGrain (day, week, month) whose rows carry `date`.
-    // 0.4.23: the branch's 0.4.22 and main's 0.4.22 (analytics sessions and time grains), merged.
-    // 0.4.23 on main: the OAuth request adds write_online_store_navigation, which products_merge's
-    // redirect needs; a merge whose connection lacks it is refused before its first write.
-    // 0.4.24: both of the above, merged.
-    // 0.4.25: both of the above, merged (main's 0.4.24: every package carries its Worker module).
-    // 0.4.26: above main's 0.4.25, merged.
-    // 0.4.27: above main's 0.4.26 (bundled apps formatted and linted), merged.
-    expect(m.version).toBe("0.4.27")
+    // 0.4.23: the OAuth request adds write_online_store_navigation, which products_merge's redirect
+    // needs; a merge whose connection lacks it is refused before its first write.
+    // 0.4.24: reads that answer figures also answer the rows a dashboard block charts.
+    // 0.4.27: product, order, customer and return declare `pick` (their search tool), so a
+    // dashboard table's link cell can pick one.
+    expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

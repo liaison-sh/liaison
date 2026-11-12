@@ -3,7 +3,15 @@
  * Generate parity-complete `fr` namespace dictionaries from the canonical
  * `en` ones (Phase 13, Task 10b / I6). Preserves the exact key structure
  * (the i18n en/fr parity test requires identical key sets), translating
- * every leaf via the curated table in scripts/i18n-fr-table.ts.
+ * every leaf via the curated table in scripts/i18n-fr-table.ts, plus the
+ * per-feature tables in scripts/i18n-fr/*.json (below).
+ *
+ * New French goes in a file of its own, `scripts/i18n-fr/<feature>.json`:
+ *   { "text": { "<English>": "<French>" }, "key": { "<ns>.<key.path>": "<French>" } }
+ * ("text" translates every leaf with that English value, "key" one leaf, like
+ * FR and FR_BY_KEY). Two pull requests then add different files instead of
+ * lines next to each other in one 8,000-line table. The same English (or key)
+ * given two different French values across the tables is an error.
  *
  * Values that are pure `{{param}}` interpolations or code-ish tokens
  * (hex colours, ISO dates, single non-alphabetic atoms) are preserved
@@ -14,8 +22,58 @@
  *   --check : exit non-zero if any en value lacks a French translation
  *             (CI gate; does not write files).
  */
-import { readFileSync, writeFileSync } from "node:fs"
-import { FR, FR_BY_KEY } from "./i18n-fr-table"
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { FR_BY_KEY as FR_BY_KEY_TABLE, FR as FR_TABLE } from "./i18n-fr-table"
+
+const FEATURE_TABLES = join(import.meta.dir, "i18n-fr")
+
+/** The legacy table merged with every `scripts/i18n-fr/*.json`; a clash is an error. */
+function loadFrTables(dir: string = FEATURE_TABLES): {
+  FR: Record<string, string>
+  FR_BY_KEY: Record<string, string>
+  clashes: string[]
+} {
+  const FR: Record<string, string> = { ...FR_TABLE }
+  const FR_BY_KEY: Record<string, string> = { ...FR_BY_KEY_TABLE }
+  const clashes: string[] = []
+  const merge = (into: Record<string, string>, from: unknown, where: string) => {
+    if (from === undefined) return
+    if (!from || typeof from !== "object" || Array.isArray(from)) {
+      clashes.push(`${where}: must be an object of strings`)
+      return
+    }
+    for (const [en, fr] of Object.entries(from as Record<string, unknown>)) {
+      if (typeof fr !== "string") clashes.push(`${where}: ${JSON.stringify(en)} is not a string`)
+      else if (into[en] !== undefined && into[en] !== fr)
+        clashes.push(
+          `${where}: ${JSON.stringify(en)} already translated as ${JSON.stringify(into[en])}`,
+        )
+      else into[en] = fr
+    }
+  }
+  const files = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".json"))
+        .sort()
+    : []
+  for (const file of files) {
+    const parsed = JSON.parse(readFileSync(join(dir, file), "utf8")) as Record<string, unknown>
+    for (const k of Object.keys(parsed)) {
+      if (k !== "text" && k !== "key") clashes.push(`scripts/i18n-fr/${file}: unknown key "${k}"`)
+    }
+    merge(FR, parsed.text, `scripts/i18n-fr/${file} text`)
+    merge(FR_BY_KEY, parsed.key, `scripts/i18n-fr/${file} key`)
+  }
+  return { FR, FR_BY_KEY, clashes }
+}
+
+const { FR, FR_BY_KEY, clashes } = loadFrTables()
+if (clashes.length > 0) {
+  console.error("French tables that disagree:")
+  for (const c of clashes) console.error(`  ${c}`)
+  process.exit(1)
+}
 
 const LOCALES = `${import.meta.dir}/../packages/shared/src/i18n/locales`
 const NS = ["kernel", "tickets", "mail", "projects", "contacts", "knowledge"]

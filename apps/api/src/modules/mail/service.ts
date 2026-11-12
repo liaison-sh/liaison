@@ -875,15 +875,11 @@ async function executeMailSandbox(
   exportName: string,
   params: unknown,
 ) {
-  const [{ loadBundle }, { executeInSandbox }, { getSandboxPool }, { createRlsSession }] =
-    await Promise.all([
-      import("~/modules/apps/sandbox/bundle-loader"),
-      import("~/modules/apps/sandbox/executor"),
-      import("~/modules/apps/sandbox/pool"),
-      import("~/db/rls"),
-    ])
+  const [{ runApp }, { createRlsSession }] = await Promise.all([
+    import("~/modules/apps/sandbox/run-app"),
+    import("~/db/rls"),
+  ])
   const bundlePath = new URL("../../apps/mail/handlers.ts", import.meta.url).pathname
-  const bundleSource = await loadBundle(bundlePath)
   // The external provider send (Gmail/SMTP) must NOT run inside the caller's
   // request transaction — and must not pin ANY pool connection for the
   // roundtrip-long SMTP/Gmail call. The session bridge opens a short RLS
@@ -902,12 +898,18 @@ async function executeMailSandbox(
   const session = createRlsSession({ actorType: "system", orgId, purpose: "job" })
   const bridge = createSessionRpcBridge("mail", "system", orgId, session, mailManifest as any)
   try {
-    return await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    // Core code through the one door: in process, on the session bridge.
+    return await runApp({
+      trusted: true,
+      appName: "mail",
+      orgId,
+      installed: null,
+      bundlePath,
       exportName,
+      entry: `tool:${exportName}`,
       params,
       bridge,
+      holdsTx: false,
     })
   } catch (err) {
     // Only the message crosses the sandbox: a mailbox without stored

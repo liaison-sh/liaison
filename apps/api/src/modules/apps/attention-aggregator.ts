@@ -8,6 +8,7 @@ import { readStandingInFor } from "~/modules/approvals/route-world"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import {
   compareAttentionItems,
+  dedupeByEntity,
   normalizeProviderItems,
   readStoredAttention,
 } from "~/modules/apps/attention-store"
@@ -29,31 +30,6 @@ interface RegistryEntry {
   trusted: boolean
   /** Declared `passesOn`: also returns the items of the people the viewer stands in for. */
   passesOn?: boolean
-}
-
-/**
- * Collapse items that target the same entity into one row. Providers emit one
- * item per matching rule, so a single ticket can surface as awaiting_agent AND
- * unassigned AND sla_risk — three feed rows for one thing to do. The input is
- * already sorted, so the first occurrence is the highest-urgency one; the
- * merged-away kinds land in `alsoKinds` for the UI to badge.
- */
-function dedupeByEntity(sorted: AttentionItem[]): AttentionItem[] {
-  const byEntity = new Map<string, AttentionItem>()
-  const out: AttentionItem[] = []
-  for (const item of sorted) {
-    const key = `${item.app}\u0000${item.entity}\u0000${item.entityId}`
-    const existing = byEntity.get(key)
-    if (!existing) {
-      byEntity.set(key, item)
-      out.push(item)
-      continue
-    }
-    if (item.kind !== existing.kind && !existing.alsoKinds?.includes(item.kind)) {
-      existing.alsoKinds = [...(existing.alsoKinds ?? []), item.kind]
-    }
-  }
-  return out
 }
 
 /**

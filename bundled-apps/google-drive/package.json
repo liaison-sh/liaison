@@ -1,6 +1,6 @@
 {
   "name": "@liaison/google-drive-app",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Liaison Google Drive connector: search, read, import and upload Drive files, Drive folders in Knowledge",
   "license": "FSL-1.1-ALv2",
   "private": true,

@@ -2,20 +2,27 @@
 /**
  * Docs guard (`bun run check:docs [--base <ref>]`). Four rules:
  *
- *   1. Freshness: the generated reference pages (docs/reference/*) match
- *      `bun run docs:gen`.
+ *   1. Freshness: the generated reference pages (docs/reference/*) are
+ *      rendered from the source. The generator must run; a committed copy that
+ *      differs is only reported, never a failure: a pull request does not
+ *      regenerate them (two PRs regenerating the same page conflict), the
+ *      other rules read the fresh render, and `bun run docs:gen` in a refresh
+ *      PR of its own brings the committed copies up to date.
  *   2. Nav integrity: every page in docs/nav.ts has a file, every docs page
  *      is in the nav, every page id in .claude/docs-map.ts is in the nav, the
  *      docs build succeeds (broken links fail), and every authored page has
- *      its sources sidecar `docs/.sources/<id>.txt`.
+ *      its sources sidecar: `docs/.sources/<id>.txt`, or a directory
+ *      `docs/.sources/<id>/` holding at least one `.txt` (one file per section
+ *      or feature, so two PRs on one page add different files).
  *   3. Coverage: every shipped app has its page; every CLI command, manifest
  *      settings key and manifest scope appears verbatim in at least one
  *      hand-written page (docs/reference/* does not count); every env var is
  *      in the generated reference/env page. Each group must collect at least
  *      one item, or its extractor is broken.
  *   4. Diff rule: a changed file mapped in .claude/docs-map.ts needs one of
- *      its pages changed in the same range (a generated page counts only when
- *      its file changed, i.e. it was regenerated), unless a `Docs-skip: <reason>`
+ *      its pages changed in the same range (a generated page counts when its
+ *      file changed, or when its fresh render differs from the base's copy:
+ *      the PR changed what it documents, and the page follows by itself), unless a `Docs-skip: <reason>`
  *      line is in the PR body (`PR_BODY`) or a commit message of the range.
  *      The base is `--base`, else `origin/$GITHUB_BASE_REF`; without either
  *      (a push to main) the rule is skipped.
@@ -35,6 +42,7 @@ import {
   collectEnvVars,
   collectManifestSettings,
   generateAll,
+  generatedPageOverrides,
   loadManifests,
   ROOT,
   writeOrCheck,
@@ -98,18 +106,32 @@ export function checkFreshness(
   root: string = ROOT,
   generate: (root: string) => Map<string, string> = generateAll,
 ): RuleResult {
+  // Throws when a generator is broken: that still fails the check.
   const files = generate(root)
   const stale = writeOrCheck(root, files, true)
   return {
     rule: "freshness",
-    ok: stale.length === 0,
-    summary: `${files.size} generated pages, ${stale.length} stale`,
-    problems:
+    ok: true,
+    summary: `${files.size} generated pages, ${stale.length} committed copies behind the source`,
+    problems: [],
+    notes:
       stale.length > 0
-        ? [`stale generated pages (run bun run docs:gen):`, ...stale.map((s) => `  ${s}`)]
+        ? [
+            `committed copies behind the source (not a failure; leave them to a refresh PR that runs bun run docs:gen): ${stale.join(", ")}`,
+          ]
         : [],
-    notes: [],
   }
+}
+
+/** A page's sources sidecar: `docs/.sources/<id>.txt`, or `docs/.sources/<id>/` with a `.txt`. */
+export function hasSidecar(docsDir: string, id: string): boolean {
+  if (existsSync(join(docsDir, ".sources", `${id}.txt`))) return true
+  const dir = join(docsDir, ".sources", id)
+  return (
+    existsSync(dir) &&
+    statSync(dir).isDirectory() &&
+    readdirSync(dir).some((f) => f.endsWith(".txt"))
+  )
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -137,6 +159,8 @@ export async function checkNav(opts: {
   nav?: Nav
   cfg?: DocsMapConfig
   notPages?: string[]
+  /** Page contents by file under docs/ read in place of the disk (the fresh generated pages). */
+  pageOverrides?: ReadonlyMap<string, string>
 }): Promise<RuleResult> {
   const root = opts.root ?? ROOT
   const nav = opts.nav ?? { landing: LANDING, sections: NAV }
@@ -163,16 +187,16 @@ export async function checkNav(opts: {
     problems.push(`.claude/docs-map.ts names a page not in docs/nav.ts: ${id}`)
 
   const authored = pages.filter((p) => !isGeneratedPage(p.id) && !isLegacyPage(p.id))
-  const noSidecar = authored.filter(
-    (p) => !noFile.includes(p) && !existsSync(join(docsDir, ".sources", `${p.id}.txt`)),
-  )
+  const noSidecar = authored.filter((p) => !noFile.includes(p) && !hasSidecar(docsDir, p.id))
   for (const p of noSidecar)
-    problems.push(`page without its sources sidecar: docs/.sources/${p.id}.txt`)
+    problems.push(
+      `page without its sources sidecar: docs/.sources/${p.id}.txt or docs/.sources/${p.id}/*.txt`,
+    )
 
   let buildProblems = 0
   const out = mkdtempSync(join(tmpdir(), "check-docs-build-"))
   try {
-    await buildDocs({ docsDir, out, nav })
+    await buildDocs({ docsDir, out, nav, pageOverrides: opts.pageOverrides })
   } catch (err) {
     const lines =
       err instanceof DocsBuildError
@@ -217,14 +241,14 @@ export function loadPageTexts(docsDir: string, nav: Nav): Map<string, string> {
   return texts
 }
 
-/** Shipped apps (`apps/api/src/apps/*` except example, and `bundled-apps/*`) mapped to their page. */
+/** Shipped apps (`apps/api/src/apps/*` and `bundled-apps/*`) mapped to their page. */
 export function shippedApps(root: string, cfg: DocsMapConfig): CoverageInputs["apps"] {
   const out: CoverageInputs["apps"] = []
   for (const base of ["apps/api/src/apps", "bundled-apps"]) {
     const dir = join(root, base)
     if (!existsSync(dir)) continue
     for (const app of readdirSync(dir).sort()) {
-      if (app === "example" || app.startsWith(".")) continue
+      if (app.startsWith(".")) continue
       if (!statSync(join(dir, app)).isDirectory()) continue
       const rel = `${base}/${app}`
       const entry = cfg.map.find((e) => globMatch(e.glob, `${rel}/index.ts`))
@@ -385,9 +409,33 @@ export function checkDiff(opts: {
   base: string | undefined
   prBody: string
   cfg?: DocsMapConfig
+  /**
+   * The generated pages rendered from this tree (`docs/reference/<x>.md` → content). A generated
+   * page whose render differs from the base's committed copy counts as changed: the PR changed
+   * what it documents, and the page follows by itself (no PR regenerates it).
+   */
+  generated?: ReadonlyMap<string, string>
 }): RuleResult {
   const root = opts.root ?? ROOT
   const cfg = opts.cfg ?? REAL_CONFIG
+  const moved = new Map<string, boolean>()
+  const renderMoved = (id: string): boolean => {
+    if (!isGeneratedPage(id) || !opts.generated) return false
+    const file = `docs/${id}.md`
+    const fresh = opts.generated.get(file)
+    if (fresh === undefined) return false
+    let hit = moved.get(id)
+    if (hit === undefined) {
+      const r = spawnSync("git", ["show", `${opts.base}:${file}`], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      })
+      hit = r.status !== 0 || r.stdout !== fresh
+      moved.set(id, hit)
+    }
+    return hit
+  }
   if (!opts.base) {
     return {
       rule: "diff",
@@ -420,8 +468,7 @@ export function checkDiff(opts: {
       continue
     }
     mapped++
-    // A generated page counts like any other: only when its file is in the diff.
-    if (!c.pages.some((id) => changedSet.has(`docs/${id}.md`))) {
+    if (!c.pages.some((id) => changedSet.has(`docs/${id}.md`) || renderMoved(id))) {
       unsatisfied.push({ file, pages: c.pages })
     }
   }
@@ -471,15 +518,16 @@ export function resolveBase(
 
 export async function main(argv: string[], env = process.env): Promise<number> {
   const results: RuleResult[] = []
-  results.push(checkFreshness())
-  results.push(await checkNav({}))
-  results.push(
-    checkCoverage(
-      collectCoverageInputs(),
-      loadPageTexts(join(ROOT, "docs"), { landing: LANDING, sections: NAV }),
-    ),
-  )
-  results.push(checkDiff({ base: resolveBase(argv, env), prBody: env.PR_BODY ?? "" }))
+  const generated = generateAll(ROOT)
+  results.push(checkFreshness(ROOT, () => generated))
+  // The rules below read the generated pages as the source renders them now, not the
+  // committed copies, so a PR never has to regenerate them.
+  const fresh = generatedPageOverrides(generated)
+  results.push(await checkNav({ pageOverrides: fresh }))
+  const texts = loadPageTexts(join(ROOT, "docs"), { landing: LANDING, sections: NAV })
+  for (const [file, content] of fresh) texts.set(file.replace(/\.md$/, ""), content)
+  results.push(checkCoverage(collectCoverageInputs(), texts))
+  results.push(checkDiff({ base: resolveBase(argv, env), prBody: env.PR_BODY ?? "", generated }))
 
   for (const r of results) {
     if (r.problems.length > 0) {

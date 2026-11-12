@@ -8,10 +8,12 @@ vi.mock("~/modules/auth/auth-store", () => ({
 }))
 
 import type { ApiClient } from "~/lib/api-client"
+import { ApiError } from "~/lib/api-error"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { resetTabStore, tabStore } from "~/modules/shell/tab-store"
 import { DashboardsSidebar } from "./DashboardsSidebar"
 import { resetDashboardsStore } from "./dashboards-store"
+import { resetTablesStore } from "./tables-store"
 
 const ROWS = [
   {
@@ -26,12 +28,20 @@ const ROWS = [
   { id: "p1", title: "My pipeline", visibility: "personal", ownerUserId: "me" },
 ]
 
-function mount(rows: unknown[] = ROWS) {
+function mount(
+  rows: unknown[] = ROWS,
+  tables: unknown[] | null = null,
+  post: (path: string, body: unknown) => unknown = () => {
+    throw new Error("unexpected POST")
+  },
+) {
   const api = {
     get: vi.fn(async (path: string) => {
       if (path === "/dashboards") return rows
+      if (path === "/dashboards/tables" && tables) return { tables }
       throw new Error(`unexpected ${path}`)
     }),
+    post: vi.fn(async (path: string, body: unknown) => post(path, body)),
   } as unknown as ApiClient
   render(() => (
     <ApiContext.Provider value={api}>
@@ -55,6 +65,7 @@ const rowIds = (section: "yours" | "team") => {
 
 beforeEach(() => {
   resetDashboardsStore()
+  resetTablesStore()
   resetTabStore()
 })
 afterEach(cleanup)
@@ -105,5 +116,72 @@ describe("DashboardsSidebar", () => {
     expect(screen.getByTestId("dashboards-sidebar-no-match").textContent).toContain(
       "nothing like it",
     )
+  })
+
+  it("lists the tables the viewer can see, opens one full width, and filters them too", async () => {
+    mount(ROWS, [
+      { id: "t2", name: "Repairs", columns: [], myRole: "viewer" },
+      { id: "t1", name: "Inbound batches", columns: [], myRole: "editor" },
+    ])
+    await screen.findByTestId("dashboards-sidebar-table-t1")
+    expect(screen.getByTestId("dashboards-sidebar-tables").textContent).toContain("2")
+    expect(
+      screen.getAllByTestId(/^dashboards-sidebar-table-/).map((r) => r.dataset.testid),
+    ).toEqual(["dashboards-sidebar-table-t1", "dashboards-sidebar-table-t2"])
+    fireEvent.click(screen.getByTestId("dashboards-sidebar-table-t2"))
+    const active = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
+    expect(active?.type).toBe("kernel:dashboard-table")
+    expect(active?.entityId).toBe("t2")
+    expect(screen.getByTestId("dashboards-sidebar-table-t2").getAttribute("aria-current")).toBe(
+      "page",
+    )
+    fireEvent.input(screen.getByTestId("dashboards-sidebar-filter"), { target: { value: "repa" } })
+    expect(screen.queryByTestId("dashboards-sidebar-table-t1")).toBeNull()
+    expect(screen.queryByTestId("dashboards-sidebar-no-match")).toBeNull()
+  })
+
+  it("shows an empty Tables section with its New table button when the viewer sees none", async () => {
+    mount()
+    await screen.findByTestId("dashboards-sidebar-row-o1")
+    expect(screen.getByTestId("dashboards-sidebar-tables").textContent).toContain("0")
+    expect(screen.getByTestId("dashboards-sidebar-new-table")).toBeTruthy()
+  })
+
+  it("creates a table from its typed name and opens it", async () => {
+    const created = {
+      id: "t9",
+      name: "Repairs",
+      columns: [],
+      agentWritesNeedApproval: false,
+      orgAccess: "none",
+      myRole: "owner",
+      rowCount: 0,
+      version: 1,
+      updatedAt: "2026-11-12T08:00:00Z",
+      droppedKeys: [],
+    }
+    const post = vi.fn((_path: string, _body: unknown) => created)
+    mount(ROWS, null, post)
+    fireEvent.click(await screen.findByTestId("dashboards-sidebar-new-table"))
+    const input = screen.getByTestId("dashboards-sidebar-new-table-name")
+    fireEvent.input(input, { target: { value: " Repairs " } })
+    fireEvent.submit(input.closest("form") as HTMLFormElement)
+    await screen.findByTestId("dashboards-sidebar-table-t9")
+    expect(post).toHaveBeenCalledWith("/dashboards/tables", { columns: [], name: "Repairs" })
+    expect(tabStore.tabs.some((t) => t.entityId === "t9")).toBe(true)
+    expect(screen.queryByTestId("dashboards-sidebar-new-table-name")).toBeNull()
+  })
+
+  it("says so when the name is taken (409 conflict), keeping the input", async () => {
+    mount(ROWS, null, () => {
+      throw new ApiError("exists", 409, "conflict")
+    })
+    fireEvent.click(await screen.findByTestId("dashboards-sidebar-new-table"))
+    const input = screen.getByTestId("dashboards-sidebar-new-table-name")
+    fireEvent.input(input, { target: { value: "Repairs" } })
+    fireEvent.submit(input.closest("form") as HTMLFormElement)
+    const err = await screen.findByTestId("dashboards-sidebar-new-table-error")
+    expect(err.textContent).toContain("Repairs")
+    expect(screen.getByTestId("dashboards-sidebar-new-table-name")).toBeTruthy()
   })
 })

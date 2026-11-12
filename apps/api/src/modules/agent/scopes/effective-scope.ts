@@ -180,13 +180,17 @@ export async function computeEffectiveScopeForTurn(
   threadId: string,
   requesterUserId: string,
   agentCeiling: string[],
-): Promise<{ effectiveScope: string[]; withheld: string[] }> {
+): Promise<{ effectiveScope: string[]; withheld: string[]; roomPeople: string[] | null }> {
   const floor = await resolveRoomFloor(db, orgId, threadId, requesterUserId)
   let effectiveScope: string[]
   switch (floor.kind) {
     case "routine_tick":
       // No room and no requester: nothing is withheld from anyone.
-      return { effectiveScope: effectiveScopeRoutineTick(agentCeiling), withheld: [] }
+      return {
+        effectiveScope: effectiveScopeRoutineTick(agentCeiling),
+        withheld: [],
+        roomPeople: null,
+      }
     case "dm":
       // A DM floor without the requester's grants fails closed to nothing.
       effectiveScope = effectiveScopeDm(agentCeiling, floor.memberGrants[0] ?? [])
@@ -202,5 +206,7 @@ export async function computeEffectiveScopeForTurn(
   return {
     effectiveScope,
     withheld: withheldByRoom(agentCeiling, floor.requesterGrants, effectiveScope),
+    // The same people floor a shared resource's read (scope-taint.ts, rule 15e).
+    roomPeople: floor.memberIds,
   }
 }

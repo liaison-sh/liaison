@@ -300,6 +300,43 @@ describe("TaskDetail", () => {
     expect(queryByText("Add date")).toBeNull()
   })
 
+  it("a seeded status reads as words and the due date as a formatted day, not the stored tokens", async () => {
+    projectStore._setForTest({
+      projectId: "p1",
+      current: {
+        ...project(),
+        statuses: [
+          {
+            id: "s1",
+            projectId: "p1",
+            label: "in_progress",
+            color: null,
+            order: 0,
+            terminal: false,
+          },
+        ],
+      },
+      tasks: [],
+    })
+    const api = {
+      post: vi.fn().mockResolvedValue({ ...task(), dueDate: "2026-11-11" }),
+      get: vi.fn().mockResolvedValue({ id: "thread-1", hiddenFromList: true }),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      getEnvelope: vi.fn(),
+    } as any
+    const { getByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <TaskDetail entityId="t1" />
+      </ApiContext.Provider>
+    ))
+    await waitFor(() => expect(getByTestId("task-detail.due-date")).toBeTruthy())
+    expect(getByTestId("task-detail.status").textContent).toContain("In progress")
+    expect(getByTestId("task-detail.status").textContent).not.toContain("in_progress")
+    expect(getByTestId("task-detail.due-date").textContent).toContain("Nov 11, 2026")
+    expect(getByTestId("task-detail.due-date").textContent).not.toContain("2026-11-11")
+  })
+
   it("deletes a task after confirmation and closes its tab", async () => {
     // There was NO delete affordance in the projects UI at all: deleting a task
     // was reachable only through the agent's gated tool.

@@ -56,8 +56,6 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "app_boxtal.webhook_delivery": { exempt: "sync", reason: "shipping sync and preparation state" },
   "app_calendar.sync_log": { exempt: "system", reason: "calendar sync log" },
-  "app_example.items": { exempt: "system", reason: "development scaffold app" },
-  "app_example.summaries": { exempt: "system", reason: "development scaffold app" },
   "app_google_drive.imports": {
     exempt: "sync",
     reason:
@@ -390,6 +388,14 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "kernel.dashboard_versions": {
     exempt: "config",
     reason: "the saved versions of a dashboard, kept by the workspace for revert",
+  },
+  "kernel.dashboard_tables": {
+    exempt: "config",
+    reason: "dashboard tables made in the workspace or by an agent (their rows are app documents)",
+  },
+  "kernel.dashboard_table_changes": {
+    exempt: "system",
+    reason: "the history of a dashboard table's rows, written with each row change",
   },
   "kernel.dashboard_viewer_states": {
     exempt: "config",

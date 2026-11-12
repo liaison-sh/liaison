@@ -39,7 +39,9 @@ function manifestHandlerNames(manifest: Record<string, any>): string[] {
     if (w.verify) names.add(w.verify)
   }
   if (manifest.export?.handler) names.add(manifest.export.handler)
-  if (typeof manifest.views?.attentionItems === "string") names.add(manifest.views.attentionItems)
+  const attention = manifest.views?.attentionItems
+  if (typeof attention === "string") names.add(attention)
+  else if (typeof attention?.handler === "string") names.add(attention.handler)
   return [...names].sort()
 }
 

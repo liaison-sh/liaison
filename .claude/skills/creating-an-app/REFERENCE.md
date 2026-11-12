@@ -1,7 +1,7 @@
 # Creating a Liaison App — Pattern Reference
 
 Companion to `SKILL.md`. Each pattern is cross-referenced to the reference app
-at `apps/api/src/apps/example/`. When in doubt, the reference app is the truth;
+at `apps/api/test-support/apps/example/`. When in doubt, the reference app is the truth;
 `docs/app-development.md` is the prose.
 
 ## Manifest anatomy
@@ -24,7 +24,7 @@ at `apps/api/src/apps/example/`. When in doubt, the reference app is the truth;
 
 A `.liaisonapp` manifest is validated against the stricter `packageManifestSchema`
 (`packages/app-sdk/src/package-format.ts`); in-tree apps are validated against
-the runtime manifest schema. Keep both happy — `apps/api/src/apps/example/` does.
+the runtime manifest schema. Keep both happy — `apps/api/test-support/apps/example/` does.
 
 ## Entity declaration
 
@@ -54,7 +54,7 @@ export async function items_create(params: { text: string }, ctx: AppContext) {
 }
 ```
 
-See `apps/api/src/apps/example/handlers.ts` for `items_list`, `items_create`,
+See `apps/api/test-support/apps/example/handlers.ts` for `items_list`, `items_create`,
 `external_fetch`, `resolve_contact`, and `nightly_summary` — one per surface.
 
 ## Events
@@ -130,7 +130,7 @@ export async function backfill(p, ctx) {
 `mockAppContext` (`~/modules/apps/test-helpers`) is a deterministic `AppContext`
 substitute. It tracks `emit` calls, enqueued jobs and timers (`_jobs`), and `db`
 writes so tests can assert side-effects; its `steps.run` runs the chunks back to
-back until done. See `apps/api/src/apps/example/handlers.test.ts`.
+back until done. See `apps/api/test-support/apps/example/handlers.test.ts`.
 
 ## Packaging
 

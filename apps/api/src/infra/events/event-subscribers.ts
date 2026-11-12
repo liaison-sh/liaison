@@ -168,6 +168,12 @@ function stripMessageContentForAudit(event: AppEvent): unknown {
   if (event.app === "mail") {
     return stripMailContentForAudit(event)
   }
+  // A dashboard table's row events carry ids and changed keys only; keep exactly those, so no
+  // cell value can ever reach the org-wide audit log (a restricted table's rows stay its own).
+  if (event.app === "kernel" && event.entity === "dashboard_table_row") {
+    const d = (event.data ?? {}) as Record<string, unknown>
+    return { tableId: d.tableId, rowId: d.rowId, changeId: d.changeId, changed: d.changed }
+  }
   if (event.entity !== "message" || (event.action !== "create" && event.action !== "update")) {
     return event.data
   }

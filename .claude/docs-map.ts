@@ -12,8 +12,10 @@
  * DOCS_FAILSAFE_ROOTS that matches neither list fails the check: map it (or
  * exempt it with a reason) when you add a new directory.
  *
- * Generated reference pages (docs/reference/*) are kept fresh by the same
- * check: run `bun run docs:gen` after changing their sources.
+ * Generated reference pages (docs/reference/*): an entry that names one is
+ * satisfied when the page's fresh render differs from the base's copy (the
+ * check renders it; a PR does not regenerate the committed copy, a refresh PR
+ * running `bun run docs:gen` does).
  */
 export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // Generated references: their sources regenerate the page (docs:gen).
@@ -153,6 +155,11 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/agent/prompts/kernel/build-app.md", pages: ["agents/build-an-app"] },
   { glob: "apps/api/src/modules/data-store/**", pages: ["agents/tools", "app-sandbox"] },
   { glob: "apps/api/src/modules/dashboards/**", pages: ["agents/tools", "agents/dashboards"] },
+  // Dashboard tables: the rows, their sharing, history, tools, routines trigger and link picking.
+  {
+    glob: "apps/api/src/modules/dashboards/tables/**",
+    pages: ["agents/tools", "agents/dashboards", "agents/dashboard-tables"],
+  },
   { glob: "apps/web/src/modules/dashboards/**", pages: ["agents/dashboards"] },
   // Document templates (org admin settings); the settings page that edits them documents them.
   { glob: "apps/api/src/modules/documents/**", pages: ["admin/settings"] },
@@ -198,7 +205,10 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "qa/load/a9-deploy-under-load.js", pages: ["self-hosting/docker"] },
   { glob: "apps/api/src/modules/health/**", pages: ["self-hosting/docker"] },
   { glob: "deploy/**", pages: ["self-hosting/docker", "runbooks/production-bootstrap", "admin/backups"] },
-  { glob: "deploy/docker-compose.yml", pages: ["self-hosting/pools"] },
+  { glob: "deploy/docker-compose.yml", pages: ["self-hosting/pools", "self-hosting/sandbox"] },
+  { glob: "deploy/sandbox-firewall.sh", pages: ["self-hosting/sandbox"] },
+  { glob: "packages/sandbox-supervisor/**", pages: ["self-hosting/sandbox"] },
+  { glob: "apps/api/src/modules/apps/workers/bridge-listener.ts", pages: ["self-hosting/sandbox"] },
   { glob: "docker-compose.yml", pages: ["self-hosting/docker"] },
   { glob: "Dockerfile*", pages: ["self-hosting/docker"] },
   { glob: "apps/api/Dockerfile", pages: ["self-hosting/docker"] },

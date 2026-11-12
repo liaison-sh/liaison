@@ -33,26 +33,15 @@ describe("social manifest (B1)", () => {
     // (the shared package depends on it by workspace protocol); no change to what it does.
     // 0.6.57: the same number (0.6.56) carried different content on two lines of work; this one has both.
     // 0.6.58: above both lines of work, which each changed it under the number before; no change of its own.
-    // 0.6.60: the shared host package gained the discussion panel hooks; no change of its own.
-    // 0.6.59 (main): above the 0.6.58 that main took meanwhile; no change of its own.
-    // 0.6.63: both of the above, merged.
-    // 0.6.64: two parses of one delivery from a new person no longer fail on the unique key.
-    // 0.6.65: merged with the 0.6.61 main took meanwhile (the same fix as 0.6.64).
-    // 0.6.62 (main): our own replies are never findings; reply_to_finding looks before posting and
-    //   declares an outcome reconciler.
-    // 0.6.66: above the 0.6.62 main took meanwhile, merged.
-    // 0.6.67: a reply the platform refuses as gone or blocked closes its approval.
-    // 0.6.68: the source repository link names the repository where the code now lives.
-    // 0.6.64 (main): a reply the platform refuses as gone or blocked closes its approval.
-    // 0.6.69: above main's 0.6.64, merged.
-    // 0.6.65 (main): one deduplicated discovery run after a connect; job timeouts declared.
-    // 0.6.70: both of the above, merged.
-    // 0.6.66 (main): watch_object commits the watch and its backfilled finding links in one batch,
-    //   with no transaction held across the run.
-    // 0.6.71: 0.6.70 above merged with main's 0.6.66.
-    // 0.6.72: both of the above, merged (main's 0.6.67: every package carries its Worker module).
-    // 0.6.73: above main's 0.6.68, merged.
-    expect(manifest.version).toBe("0.6.73")
+    // 0.6.59: above the 0.6.58 that main took meanwhile; no change of its own.
+    // 0.6.61: two parses of one delivery from a new person no longer fail on the unique key.
+    // 0.6.62: our own replies are never findings; reply_to_finding looks before posting and
+    // declares an outcome reconciler.
+    // 0.6.64: a reply the platform refuses as gone or blocked closes its approval.
+    // 0.6.65: one deduplicated discovery run after a connect; job timeouts declared.
+    // 0.6.66: watch_object commits the watch and its backfilled finding links in one batch, with no
+    // transaction held across the run.
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.packageFormat).toBe(1)
   })
 

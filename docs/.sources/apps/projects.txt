@@ -201,7 +201,6 @@ Task title and project in a notification -> packages/shared/src/threads/thread-a
 Task not found -> packages/shared/src/i18n/locales/en/projects.json:294
 Record name shown only to people who can see the record -> apps/api/src/modules/threads/thread-anchor.ts:143
 New message in a thread -> packages/shared/src/i18n/locales/en/kernel.json:6275
-Approval thread named after the approval -> apps/api/src/modules/threads/reference-display.ts:198
 Pipeline header line counts open deals and their sums -> apps/web/src/modules/projects/ProjectWorkspace.tsx:161
 Open totals exclude the Won and Lost columns -> apps/web/src/modules/projects/deal-api.ts:126
 New deal label on a pipeline -> packages/shared/src/i18n/locales/en/projects.json:305
@@ -216,4 +215,5 @@ Deal panel error line -> apps/web/src/modules/projects/DealPanel.tsx:158
 Client field in Edit project -> apps/web/src/modules/projects/ProjectEditForm.tsx:46
 deal-followups drafts from the deal owner's mailbox, skips no_sender -> apps/api/src/apps/projects/service/deals.ts:1311-1349
 Deal tools in the agent table -> apps/api/src/apps/projects/app.manifest.json:1190 ; apps/api/src/apps/projects/app.manifest.json:1231 ; apps/api/src/apps/projects/app.manifest.json:1324 ; apps/api/src/apps/projects/app.manifest.json:1397 ; apps/api/src/apps/projects/app.manifest.json:1461
+Approval thread named after the approval -> apps/api/src/modules/threads/reference-display.ts:199
 search leaves deleted tasks out unless asked, marks included ones -> apps/api/src/apps/projects/service/create-project.ts:337

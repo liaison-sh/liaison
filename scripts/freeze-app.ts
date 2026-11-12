@@ -452,8 +452,11 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
     // the browser into `pages/<name>.js`, the script the platform serves on the
     // page (apps/api/src/modules/apps/app-pages.ts). It runs in the person's
     // browser under the page's own policy, never in the sandbox.
-    const pageDecls = (raw as { pages?: Record<string, { source?: string }> }).pages ?? {}
+    const pageDecls =
+      (raw as { pages?: Record<string, { source?: string; widget?: unknown }> }).pages ?? {}
     for (const [pageName, page] of Object.entries(pageDecls)) {
+      // A widget page is the platform's (page-widgets.ts): no script to bundle.
+      if (page.widget) continue
       if (page.source !== `pages/${pageName}.ts`) {
         throw new Error(`pages.${pageName}.source must be "pages/${pageName}.ts"`)
       }

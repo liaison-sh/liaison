@@ -281,6 +281,11 @@ export const toolRegistry = createTypedRegistry<
      *  On a tainted turn the write is judged by them (scope-taint.ts, rule 6e): it runs when
      *  they all hold every scope the turn read. Host-only: a manifest cannot declare it. */
     sinkReadersConversation?: boolean
+    /** The readers of what this tool writes are those of one shared resource (a dashboard
+     *  table's rows follow the table's sharing): `type` is its sharing resource type, `idParam`
+     *  the call parameter naming it. On a tainted turn the write runs when every one of those
+     *  readers holds every scope the turn read (scope-taint.ts, rule 6j). Host-only. */
+    sinkReadersResource?: { type: string; idParam: string }
     /** An AGENT POST into a kernel thread (threads_reply, threads_create's first message):
      *  who will read it. On a tainted turn a post some of those people could not read parks
      *  for the requester's approval, which discloses it to them, instead of landing hidden
@@ -332,7 +337,7 @@ export const toolRegistry = createTypedRegistry<
     /** The ONLY parameters through which this write carries anything of the turn: free
      *  text an audience will read (approval_withdraw's `reason`). Called with every one
      *  absent or blank, the write carries none of the turn and scope taint does not judge
-     *  it (scope-taint.ts, rule 6f). Set in kernel code only. */
+     *  it (scope-taint.ts, rule 6j). Set in kernel code only. */
     contentParams?: readonly string[]
     gated?: boolean
     /** Gated for THIS call only, decided from its params before it runs (kernel code only):
@@ -1022,6 +1027,21 @@ export interface PrintDeclaration {
   fields: PrintFieldDeclaration[]
 }
 
+/**
+ * `entities.<e>.pick` (manifest-schema.ts, contract.ts pickDeclarationErrors): how a person
+ * picks one record of the entity (a dashboard table's link cell) when the search index does not
+ * hold it: this app's own readOnly, ungated tool, run as the person with `{ [queryParam]: q }`;
+ * each item of its result (at `itemsPath`, else the result or its only list) gives the record's
+ * id (`idField`) and label (`labelField`).
+ */
+export interface PickDeclaration {
+  tool: string
+  queryParam: string
+  idField: string
+  labelField: string
+  itemsPath?: string
+}
+
 export const entityRegistry = createTypedRegistry<
   [orgId: string, appName: string, entityName: string],
   {
@@ -1036,6 +1056,8 @@ export const entityRegistry = createTypedRegistry<
     archivedField?: string
     /** Printable through the org's document templates (modules/documents/print.ts). */
     print?: PrintDeclaration
+    /** Picked by its app's own read tool (a dashboard table's link cell). */
+    pick?: PickDeclaration
     permissionFields?: {
       readScope: string
       participantIdsField?: string

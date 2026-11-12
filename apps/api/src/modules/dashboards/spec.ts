@@ -131,7 +131,23 @@ export const storeSourceSchema = z
   })
   .strict()
 
-export const blockSourceSchema = z.discriminatedUnion("kind", [toolSourceSchema, storeSourceSchema])
+/**
+ * A dashboard table's rows (modules/dashboards/tables), read under the viewer's RLS: fields are the
+ * column keys plus `id`, `updated_at`; `where` is a data store filter on the column keys.
+ */
+export const tableSourceSchema = z
+  .object({
+    kind: z.literal("table"),
+    table: z.string().uuid(),
+    where: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict()
+
+export const blockSourceSchema = z.discriminatedUnion("kind", [
+  toolSourceSchema,
+  storeSourceSchema,
+  tableSourceSchema,
+])
 
 const columnSchema = z
   .object({
@@ -280,6 +296,10 @@ export const blockMapSchema = z
     value: fieldPath.optional(),
     label: fieldPath.optional(),
     columns: z.array(columnSchema).min(1).max(MAX_TABLE_COLUMNS).optional(),
+    /** A table block on a table source: people edit its rows in place (map.columns optional). */
+    editable: z.boolean().optional(),
+    /** An editable table: rows not changed for this many days show a "to confirm" marker. */
+    staleAfterDays: z.number().int().min(1).max(3650).optional(),
     format: z.enum(VALUE_FORMATS).optional(),
     currency: z
       .string()
@@ -356,6 +376,7 @@ export const blockMapSchema = z
 export type BlockSource = z.infer<typeof blockSourceSchema>
 export type ToolSource = z.infer<typeof toolSourceSchema>
 export type StoreSource = z.infer<typeof storeSourceSchema>
+export type TableSource = z.infer<typeof tableSourceSchema>
 export type BlockMap = z.infer<typeof blockMapSchema>
 
 /**
@@ -418,7 +439,7 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
       }
       break
     case "table":
-      if (!map.columns) out.push("a table needs map.columns: [{field, label}]")
+      if (!map.columns && !map.editable) out.push("a table needs map.columns: [{field, label}]")
       if (map.groupBy || map.agg) out.push("a table shows rows: it takes no groupBy or agg")
       break
     case "bar":
@@ -625,7 +646,7 @@ function layeredProblems(block: {
       })
     } else buckets.add(layer.map.groupBy.bucket)
     if (layer.source) {
-      const field = layer.source.kind === "tool" ? "params" : "query"
+      const field = sourceField(layer.source)
       const value = sourceValue(layer.source)
       for (const message of dateTokenProblems(value, "")) {
         out.push({ path: at("source", field), message })
@@ -715,7 +736,7 @@ export const filterDefSchema = z
     }
     if (f.options && !Array.isArray(f.options) && "fromSource" in f.options) {
       const src = f.options.fromSource
-      const value = src.kind === "tool" ? src.params : src.query
+      const value = sourceValue(src)
       for (const message of dateTokenProblems(value, "options.fromSource")) {
         ctx.addIssue({ code: "custom", path: ["options"], message })
       }
@@ -730,9 +751,28 @@ export const filterDefSchema = z
   })
 export type FilterDef = z.infer<typeof filterDefSchema>
 
-/** The params (tool) or query (store) of a source: where its tokens live. */
+/** The params (tool), query (store) or where (table) of a source: where its tokens live. */
 export function sourceValue(source: BlockSource): Record<string, unknown> {
-  return source.kind === "tool" ? source.params : source.query
+  return source.kind === "tool"
+    ? source.params
+    : source.kind === "store"
+      ? source.query
+      : source.where
+}
+
+/** The name of the field `sourceValue` reads (for problem paths). */
+export function sourceField(source: BlockSource): "params" | "query" | "where" {
+  return source.kind === "tool" ? "params" : source.kind === "store" ? "query" : "where"
+}
+
+/** The source with its params / query / where replaced. */
+export function withSourceValue<S extends BlockSource>(
+  source: S,
+  value: Record<string, unknown>,
+): S {
+  if (source.kind === "tool") return { ...source, params: value }
+  if (source.kind === "store") return { ...source, query: value }
+  return { ...source, where: value }
 }
 
 export const LAYER_ID = EXPR_NAME
@@ -790,6 +830,17 @@ export const dashboardBlockSchema = z
     for (const message of mapProblems(block.type, block.map)) {
       ctx.addIssue({ code: "custom", path: ["map"], message })
     }
+    if (
+      (block.map.editable || block.map.staleAfterDays !== undefined) &&
+      (block.type !== "table" || block.source?.kind !== "table")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["map", "editable"],
+        message:
+          'map.editable and map.staleAfterDays go on a table block whose own source is {kind: "table"}',
+      })
+    }
     if (block.type === "text") {
       if (!block.text)
         ctx.addIssue({
@@ -818,7 +869,7 @@ export const dashboardBlockSchema = z
     if (!block.source) return // a dataset block: checked against the spec's datasets
     // Date tokens ({{today-30d}}) resolve at every run (relative-dates.ts); an unknown one is
     // refused here, at save and preview, never sent to a tool as written.
-    const field = block.source.kind === "tool" ? "params" : "query"
+    const field = sourceField(block.source)
     const value = sourceValue(block.source)
     for (const message of dateTokenProblems(value, "")) {
       ctx.addIssue({ code: "custom", path: ["source", field], message })
@@ -915,7 +966,7 @@ export const dashboardSpecSchema = z
       }
     }
     for (const [id, source] of Object.entries(datasets)) {
-      const field = source.kind === "tool" ? "params" : "query"
+      const field = sourceField(source)
       for (const message of dateTokenProblems(sourceValue(source), "")) {
         ctx.addIssue({ code: "custom", path: ["datasets", id, field], message })
       }
@@ -955,7 +1006,7 @@ export const dashboardSpecSchema = z
           })
           continue
         }
-        const field = source.kind === "tool" ? "params" : "query"
+        const field = sourceField(source)
         for (const message of rangeModeProblems(
           block.timeRange,
           sourceValue(source),
@@ -999,7 +1050,7 @@ export const dashboardSpecSchema = z
         })
         return
       }
-      const field = source.kind === "tool" ? "params" : "query"
+      const field = sourceField(source)
       for (const message of rangeModeProblems(
         block.timeRange,
         sourceValue(source),

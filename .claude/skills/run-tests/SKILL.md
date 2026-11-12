@@ -62,8 +62,10 @@ L="bun run scripts/with-test-lock.ts --"
 (cd apps/web && bun run ../../scripts/with-test-lock.ts -- bunx vitest run src/modules/foo/Foo.test.tsx)
 # repo-root scripts
 $L bun test scripts/lint-copy-dashes.test.ts
-# no database needed (a tsc, a pure test): the slot alone
-bun run scripts/with-test-lock.ts --slot-only -- bunx tsc --noEmit -p apps/api
+# no database needed (a pure test): the slot alone
+bun run scripts/with-test-lock.ts --slot-only -- bun test scripts/lib/foo.test.ts
+# types: tsgo on the packages your change touches (light lane), never a full tsc locally
+bun run typecheck:changed
 ```
 
 - **api e2e scenarios share a server per slot.** `test-run.ts e2e-parallel`
@@ -167,10 +169,20 @@ it. Two things prevent that now, and both are automatic.
   every 2 s, logging every 60 s with who holds each slot, up to
   `TEST_LOCK_WAIT_SEC`, default 3600).
 - **Load gate at start only.** A new job also waits while the 1-minute load
-  average is at or above `LIAISON_SLOT_MAX_LOAD` (default the core count on macOS, and a load over it still lets a job start while the CPUs are at least `LIAISON_SLOT_MIN_IDLE` percent idle, default 25; unset
+  average is at or above `LIAISON_SLOT_MAX_LOAD` (default 1.5 times the core count on macOS, and a load over it still lets a job start while the CPUs are at least `LIAISON_SLOT_MIN_IDLE` percent idle, default 25; unset
   means no gate elsewhere, where CI and container hosts report a load the run
   neither causes nor can wait out; `0` or `off` disables it). A job that holds
   its slot is never paused or revoked.
+- **Anti-starvation.** Most of a shared Mac's load is other work (another
+  project's compiler, a VM, indexing). A waiter whose turn has come and that has
+  waited `LIAISON_SLOT_STARVE_SEC` (default 600, `off` for never) takes a FREE
+  slot over the load gate, and says so. Memory still holds it: the memory gate
+  is never overridden.
+- **A light lane** of `LIAISON_LIGHT_SLOTS` (default 2) with its own FIFO
+  queue, the memory gate and no load gate: `with-test-lock.ts --slot-only` puts
+  a `tsgo` or Biome command there by itself, `--light` puts any other job of
+  about a minute with no database there. A full `tsc`, a build or a test file
+  stays in the heavy lane.
 - **Memory gate at start only.** A new job also waits while macOS reports warn
   or critical memory pressure (`kern.memorystatus_vm_pressure_level`, the live
   signal), while available memory
@@ -282,8 +294,9 @@ the headroom the budget just handed to the suite.
 ## Test data: the seed engine
 
 Data comes from `apps/api/src/seed/` (`docs/testing.md`, Test data), never a
-raw `INSERT INTO` in a test (`bun run check:raw-insert` ratchets the count;
-`--write` lowers the baseline after a removal).
+raw `INSERT INTO` in a test (`bun run check:raw-insert` ratchets the list of
+files that still have one, `scripts/raw-insert-baseline.json`; after a removal,
+`--write` drops their lines).
 
 - Unit and integration: `createTestOrg`, then `import * as minimal from
   "~/seed/tiers/minimal"` (`person`, `session`, `thread`, `contact`,

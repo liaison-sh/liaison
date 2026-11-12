@@ -43,6 +43,9 @@ export const APPROVAL_SUMMARY_LONG_KINDS: ReadonlySet<string> = new Set([
   "dashboard_create",
   "dashboard_edit",
   "dashboard_update",
+  // One line per row operation (up to 50) or column change of a dashboard table.
+  "dashboard_table_rows",
+  "dashboard_table_edit",
 ])
 export const APPROVAL_SUMMARY_LONG_LINES_MAX = 50
 

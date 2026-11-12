@@ -243,6 +243,33 @@ export const MEMBER_SECTIONS: MemberSection[] = [
       ),
   },
   {
+    key: "dashboardTables",
+    note: "Dashboard tables the member owns, made or last changed, and how many row changes they made: the table's name and when. The rows are not included, as they are the organization's data.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT t.id::text AS id, t.name,
+               COALESCE(t.owner_user_id = ${ctx.subjectUserId}, false) AS owned,
+               COALESCE(t.created_by = ${ctx.subjectUserId}, false) AS made,
+               COALESCE(t.updated_by = ${ctx.subjectUserId}, false) AS last_changed,
+               (SELECT count(*)::int FROM ${K()}.dashboard_table_changes c
+                 WHERE c.org_id = t.org_id AND c.table_id = t.id
+                   AND c.actor_id = ${ctx.subjectUserId}) AS row_changes,
+               t.created_at, t.updated_at
+        FROM ${K()}.dashboard_tables t
+        WHERE t.org_id = ${ctx.orgId}
+          AND (t.owner_user_id = ${ctx.subjectUserId} OR t.created_by = ${ctx.subjectUserId}
+               OR t.updated_by = ${ctx.subjectUserId}
+               OR EXISTS (SELECT 1 FROM ${K()}.dashboard_table_changes c
+                           WHERE c.org_id = t.org_id AND c.table_id = t.id
+                             AND c.actor_id = ${ctx.subjectUserId}))
+        ORDER BY t.created_at
+        LIMIT ${limit}`,
+      ),
+  },
+  {
     key: "storeDocuments",
     note: "Documents the member wrote or last changed in an app's data store or the agent's: which app, collection and key, their size and when. Their contents are not included, as they are usually about the organization or other people.",
     via: "subject",

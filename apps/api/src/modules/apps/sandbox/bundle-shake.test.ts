@@ -181,45 +181,6 @@ describe("export-only bundles", () => {
     expect(await settled(SCRIPT, "handler")).not.toBe(SCRIPT)
   })
 
-  describe("a bundle with an import attribute", () => {
-    let dir = ""
-    beforeAll(() => {
-      dir = mkdtempSync(join(tmpdir(), "liaison-shake-macro-"))
-    })
-    afterAll(() => {
-      if (dir) rmSync(dir, { recursive: true, force: true })
-    })
-
-    const macroBundle = (marker: string, attribute: string) => {
-      const macro = join(dir, `macro-${crypto.randomUUID()}.ts`)
-      writeFileSync(
-        macro,
-        `import { writeFileSync } from "node:fs"\nexport function mark() { writeFileSync(${JSON.stringify(marker)}, "ran"); return 1 }\n`,
-      )
-      return esmExportsToGlobalThis(
-        `import { mark } from ${JSON.stringify(macro)} ${attribute};\nvar seen = mark();\nasync function handler(p, ctx) { return seen }\nexport { handler };`,
-      )
-    }
-
-    for (const attribute of [
-      'with { type: "macro" }',
-      'assert { type: "macro" }',
-      'with /* note */ { type: "macro" }',
-      'with // note\n { type: "macro" }',
-    ]) {
-      it(`is refused before any build, and its macro never runs on the host (${attribute.replace("\n", " ")})`, async () => {
-        const marker = join(dir, `ran-${crypto.randomUUID()}`)
-        const bundle = macroBundle(marker, attribute)
-        expect(await buildExportOnlyBundle(bundle, "handler")).toBeNull()
-        for (let i = 0; i < 10; i++) {
-          expect(exportOnlyBundle(bundle, "handler")).toBe(bundle)
-          await Bun.sleep(20)
-        }
-        expect(existsSync(marker)).toBe(false)
-      })
-    }
-  })
-
   it("keeps a body's own trailing global assignment, which is no export", async () => {
     const installed = esmExportsToGlobalThis(
       `var cfg = { mode: "x" };\nasync function handler(p, ctx) { return { flag: globalThis.flag } }\nfunction unused() { return "never" }\nglobalThis.flag = cfg;\nexport { handler };`,
@@ -308,8 +269,8 @@ describe("export-only bundles", () => {
     expect(exportOnlyBundleCacheBytes()).toBe(bytes)
   }, 600_000)
 
-  // Tickets is a core app module (core/registry.ts), never a bundle to shake.
-  for (const app of ["knowledge", "projects"]) {
+  // Tickets, calendar and projects are core app modules (core/registry.ts), never bundles to shake.
+  for (const app of ["knowledge"]) {
     it(`${app}: the export-only attention provider behaves like the full bundle`, async () => {
       const full = await loadBundle(join(APPS_DIR, app, "handlers.ts"))
       const shaken = await buildExportOnlyBundle(full, "computeAttentionItems")

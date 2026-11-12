@@ -1260,12 +1260,28 @@ export const envSchema = z
     LIAISON_APP_LOADER_CELL_ID: z.preprocess(unsetIfEmpty, z.string().optional()),
     // The shared key that signs this instance's requests to the loader.
     LIAISON_APP_LOADER_KEY: z.preprocess(unsetIfEmpty, z.string().optional()),
-    // Where a run meant for the loader goes when the loader cannot take it
-    // (its breaker open, an app-level fallback, a loader fault before any
-    // bridge call): the base URL of this instance's own sandbox service, which
-    // speaks the loader's protocol (`<url>/run`, signed with the same cell id
-    // and key). Unset: those runs fall back to the local QuickJS sandbox.
-    LIAISON_APP_FALLBACK_LOADER_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
+    // This instance's own sandbox service (workerd under gVisor, the `sandbox`
+    // compose service): its base URL (`<url>/run`). Set, every sandboxed app
+    // runs there when no loader is configured, and a run the loader cannot
+    // take (its breaker open, an app-level fallback, a loader fault before any
+    // bridge call) goes there instead of the local QuickJS sandbox. Unset:
+    // sandboxed apps run on QuickJS (modules/apps/workers/config.ts).
+    LIAISON_SANDBOX_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
+    // The origin the sandbox service's runs call back on: the app's bridge-only
+    // listener as the sandbox network reaches it (`http://<app>:<port>`, see
+    // LIAISON_APP_BRIDGE_PORT). Unset, the loader's bridge address.
+    LIAISON_SANDBOX_BRIDGE_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
+    // A second listener serving `/api/app-bridge/<runId>` and nothing else,
+    // for the sandbox network: the sandbox service reaches this port only.
+    // Unset: no such listener.
+    LIAISON_APP_BRIDGE_PORT: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().min(1).max(65_535).optional(),
+    ),
+    // `quickjs` runs every app on the local QuickJS sandbox again, whatever the
+    // loader and sandbox settings say: the way back for an instance moving to
+    // the sandbox service, for this release only. Unset: the settings above.
+    LIAISON_APP_RUNTIME: z.preprocess(unsetIfEmpty, z.enum(["quickjs"]).optional()),
     // The public base URL the loader's isolates call back on
     // (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL.
     LIAISON_APP_BRIDGE_BASE_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),

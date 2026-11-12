@@ -91,6 +91,8 @@ export interface EmittedBatch {
 
 /** What the host supplies for one call; the bridge closes over it. */
 export interface TransformBridgeHost {
+  /** The org the import runs for (the run's org at the one door, run-app.ts). */
+  orgId: string
   sourceType: "upload" | "api"
   /** Kinds this transform may emit. */
   kinds: readonly string[]
@@ -161,7 +163,7 @@ function pathArg(raw: unknown, method: string): string {
  * the whole surface handed to the sandbox; `ledger` collects what the call
  * emitted and requested.
  */
-export function buildTransformBridge(host: TransformBridgeHost): TransformBridge {
+export function buildTransformBridge(host: Omit<TransformBridgeHost, "orgId">): TransformBridge {
   const ledger: TransformCallLedger = {
     emitted: [],
     emittedRecords: 0,

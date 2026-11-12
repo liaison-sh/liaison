@@ -152,6 +152,15 @@ const fileArg = fileFilters
 // third of its memory free. TEST_MEM_RESERVE_MB
 // overrides either default.
 const SLOTS = slotCount()
+/** Suites whose whole run belongs on CI, not on a shared developer machine. */
+const WHOLE_SUITE_NOTICE = new Set([
+  "unit",
+  "integration",
+  "e2e",
+  "e2e-parallel",
+  "playwright",
+  "full",
+])
 const MEM_BUDGET = computeMemBudget(
   undefined,
   undefined,
@@ -209,7 +218,19 @@ if (!DRY_RUN) {
     portBase = String(leasePortBlock(NS, { cmd: `test-run.ts ${suite}` }).base)
   }
   if (process.env.LIAISON_TEST_LOCK_HELD !== "1") {
-    slotLock = await acquireTestLock({ cmd: `test-run.ts ${suite}`, ns: NS })
+    // A whole suite on a developer machine holds a heavy slot for most of an hour
+    // and the RAM with it, while CI's hosted runners run the same suite in minutes
+    // per shard. Said, not refused: a release check or an owner's request is a
+    // legitimate reason.
+    if (!process.env.CI && fileFilters.length === 0 && WHOLE_SUITE_NOTICE.has(suite ?? "")) {
+      console.log(
+        `note: \`test-run.ts ${suite}\` runs the whole suite. Locally, run only the files your change touches (--file <path>, or \`bun run test:gate\`); CI runs the suites.`,
+      )
+    }
+    slotLock = await acquireTestLock({
+      cmd: `test-run.ts ${suite}${fileFilters.length > 0 ? ` (${fileFilters.length} file(s))` : ""}`,
+      ns: NS,
+    })
     memGuard = startMemGuard({
       budgetMb: MEM_BUDGET.budgetMb,
       reserveMb: MEM_BUDGET.reserveMb,
@@ -731,6 +752,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // routine tick (agents_ask, Morning brief): each replaces
             // `~/infra/jobs/jobs` with mock.module, so they share this process.
             "src/tests/integration/event-routine-owner-gate.test.ts",
+            // A routine on a dashboard table's row events and its {tableId, column, to} filter.
+            "src/tests/integration/event-routine-table-filter.test.ts",
             "src/tests/integration/routine-event-filter-persistence.test.ts",
             "src/tests/integration/routine-tick-agents-ask.test.ts",
             "src/tests/integration/morning-brief-template.test.ts",

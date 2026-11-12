@@ -250,6 +250,7 @@
   "entities": {
     "shipment": {
       "labelField": "recipient_summary",
+      "pick": { "tool": "search", "queryParam": "query", "idField": "id", "labelField": "title", "itemsPath": "results" },
       "tableName": "shipment",
       "readScope": "boxtal:shipments:read",
       "external": true,

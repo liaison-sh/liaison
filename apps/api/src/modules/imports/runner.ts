@@ -35,10 +35,8 @@ import { copyObject } from "~/infra/storage/object-storage"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool } from "~/modules/apps/sandbox/pool"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { type AppBridge, runApp } from "~/modules/apps/sandbox/run-app"
 import {
   buildStorageKey,
   loadOrgSettings,
@@ -1055,7 +1053,7 @@ const FILE_CREATING_BRIDGE_METHODS = new Set([
  * file methods recorded: a bundle can ledger only a file its own calls made
  * during this batch.
  */
-type BridgeMethods = Parameters<typeof executeInSandbox>[0]["bridge"]
+type BridgeMethods = AppBridge
 
 function recordBridgeFiles(methods: BridgeMethods): {
   methods: BridgeMethods
@@ -1246,29 +1244,29 @@ function bundleParams(
   }
 }
 
-/** Call one export of the kind's bundle in the sandbox. */
+/** Call one export of the kind's bundle in the sandbox, through the one door. */
 async function runBundleExport(
   k: ImportKindInfo,
   exportName: string,
   params: ReturnType<typeof bundleParams>,
-  bridge: Parameters<typeof executeInSandbox>[0]["bridge"],
+  bridge: AppBridge,
+  orgId: string,
 ): Promise<unknown> {
   const bundle = k.bundle
   if (!bundle) throw new Error(`${k.kind} has no bundle`)
-  const bundleSource = await loadBundle(bundle.bundlePath)
-  if (bundle.trusted !== true) {
-    const { getWorkerPool, initWorkerPool } = await import("~/modules/apps/sandbox/worker-pool")
-    await initWorkerPool()
-    return getWorkerPool().execute({
-      bundleSource,
-      exportName,
-      params,
-      bridge,
-      priority: "background",
-      appId: k.app,
-    })
-  }
-  return executeInSandbox({ pool: getSandboxPool(), bundleSource, exportName, params, bridge })
+  return runApp({
+    trusted: bundle.trusted === true,
+    appName: k.app,
+    orgId,
+    bundlePath: bundle.bundlePath,
+    exportName,
+    entry: `import:${k.kind}`,
+    params,
+    bridge,
+    priority: "background",
+    appId: k.app,
+    holdsTx: false,
+  })
 }
 
 /**
@@ -1407,7 +1405,13 @@ async function checkBundledBatch(
   }
   let raw: unknown
   try {
-    raw = await runBundleExport(k, check, bundleParams(k, batch, runId, opts, claimed), bridge)
+    raw = await runBundleExport(
+      k,
+      check,
+      bundleParams(k, batch, runId, opts, claimed),
+      bridge,
+      opts.orgId,
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return batch.map((p) => ({ dedupKey: p.dedupKey, status: "failed", rows: [], error: message }))
@@ -1479,6 +1483,7 @@ async function writeBundledBatch(
       k.decl.handler,
       bundleParams(k, batch, runId, opts, claimed),
       bridge.methods,
+      orgId,
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

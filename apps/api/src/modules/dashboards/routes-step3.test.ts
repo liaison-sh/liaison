@@ -63,20 +63,31 @@ describe("POST /api/dashboards/:id/edit, versions, duplicate", () => {
     expect(edited.body.data.spec.blocks.map((b: { id: string }) => b.id)).toEqual(["b", "a"])
     expect(edited.body.data.today).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 
+    // Written against version 1, on nothing version 2 changed: saved on top of it.
     const stale = await req(owner, "POST", `/api/dashboards/${id}/edit`, {
       ifVersion: 1,
       operations: [{ op: "setTitle", title: "Late" }],
     })
-    expect(stale.status).toBe(409)
+    expect(stale.status).toBe(200)
+    expect(stale.body.data).toMatchObject({ version: 3, title: "Late" })
+    expect(stale.body.data.spec.blocks.map((b: { id: string }) => b.id)).toEqual(["b", "a"])
+    // On a block version 2 changed: refused.
+    const conflict = await req(owner, "POST", `/api/dashboards/${id}/edit`, {
+      ifVersion: 1,
+      operations: [{ op: "resizeBlock", blockId: "a", width: 2 }],
+    })
+    expect(conflict.status).toBe(409)
     const bad = await req(owner, "POST", `/api/dashboards/${id}/edit`, {
-      ifVersion: 2,
+      ifVersion: 3,
       operations: [{ op: "removeBlock", blockId: "nope" }],
     })
     expect(bad.status).toBe(422)
 
     const versions = await req(other, "GET", `/api/dashboards/${id}/versions`)
     expect(versions.status).toBe(200)
-    expect(versions.body.data.versions.map((v: { version: number }) => v.version)).toEqual([2, 1])
+    expect(versions.body.data.versions.map((v: { version: number }) => v.version)).toEqual([
+      3, 2, 1,
+    ])
     const one = await req(other, "GET", `/api/dashboards/${id}/versions/1`)
     expect(one.body.data.spec.blocks[0].id).toBe("a")
     expect((await req(other, "GET", `/api/dashboards/${id}/versions/7`)).status).toBe(404)

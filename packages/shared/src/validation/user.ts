@@ -86,6 +86,23 @@ export const favoriteEmojiSchema = z.object({
 export type FavoriteEmojiInput = z.infer<typeof favoriteEmojiSchema>
 
 /**
+ * The rail entries a person hid from their sidebar (PUT
+ * /user/preferences/hidden-apps, and an admin's PUT
+ * /admin/users/:id/hidden-apps). Each id is an activity-bar entry id
+ * (`sessions`, `dashboards`, an app's name). Unknown ids are kept: another
+ * device may run an app this one lacks. Hiding never changes access.
+ */
+export const HIDDEN_SIDEBAR_APPS_MAX = 100
+export const hiddenSidebarAppIdSchema = z.string().min(1).max(100)
+export const hiddenSidebarAppsSchema = z.object({
+  hiddenSidebarApps: z
+    .array(hiddenSidebarAppIdSchema)
+    .max(HIDDEN_SIDEBAR_APPS_MAX)
+    .refine((list) => new Set(list).size === list.length, { message: "Duplicate app id" }),
+})
+export type HiddenSidebarAppsInput = z.infer<typeof hiddenSidebarAppsSchema>
+
+/**
  * The "assistant may read my mail" switch as relayed between the account
  * holder's devices (PUT /user/preferences/agent-mail-access). `at` is the
  * change's epoch ms on the device that made it; `mac` is the device's HMAC of

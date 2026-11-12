@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The data steps run once when an app that shipped in the server's source tree
-// became a catalog app of the same name (migration 0293, modules/apps/moved-apps.ts).
+// became a catalog app of the same name (migration 0294, modules/apps/moved-apps.ts).
 // Instance-wide (no org column). Privileged pool only (RLS forced, no policy).
 
 import { jsonb, primaryKey, text, timestamp } from "drizzle-orm/pg-core"

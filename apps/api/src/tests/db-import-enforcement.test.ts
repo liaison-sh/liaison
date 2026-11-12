@@ -32,6 +32,9 @@ describe("db import enforcement", () => {
     // Throughput bench harness, run by hand and never by a production build or
     // a test suite: it drives the raw pool to measure mail sync writes.
     "tests/bench/mail-sync-throughput.ts",
+    // The app contract fixture recorders' shared helper, run by hand against a provider's sandbox and never by a
+    // production build or a suite: they install the app for the contract org with raw SQL.
+    "modules/apps/contract/recording-run.test-helpers.ts",
   ])
 
   // Allowlist: only these files may import from ~/db/privileged
@@ -1496,6 +1499,10 @@ describe("db import enforcement", () => {
     // (resolveEffectivePermissions, privileged like token issuance), read only
     // after the caller's RLS read of that user's identity succeeded.
     "modules/users/service.ts",
+    // The sidebar agent tools: another member's hidden-apps list (their own
+    // user_preferences row, RLS self-only) only after the caller's
+    // kernel:users:admin scope and the member's org are checked.
+    "modules/users/sidebar-agent-tools.ts",
   ])
 
   // Allowlist: only these files may import { sql } from ~/db

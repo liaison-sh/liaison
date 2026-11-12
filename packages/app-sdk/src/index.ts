@@ -118,6 +118,7 @@ export type {
   KernelCaller,
   KernelClient,
   KnowledgeSyncDocument,
+  KnowledgeSyncFolder,
   KnowledgeSyncInput,
   KnowledgeSyncResult,
   LimiterClient,

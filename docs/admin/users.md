@@ -27,6 +27,13 @@ The permission count on the user page is the person's full access as their sign-
 
 The roles themselves are defined in **Settings › Roles & access**. See [Set up roles](roles.md).
 
+## Set which apps a user's sidebar shows
+
+1. In the users list, click the person.
+2. Under **Sidebar**, switch off the apps they do not need. Each switch saves at once.
+
+This only tidies their sidebar: they keep every access, the hidden apps still open from search and links, and they can show any app again in **Settings › Sidebar**. Their open apps follow the change at once. The agent tools `sidebar_apps_get` and `sidebar_apps_set` do the same for an admin who holds `kernel:users:admin`.
+
 ## Deactivate a user
 
 1. In the users list, click **Deactivate** in the person's row.

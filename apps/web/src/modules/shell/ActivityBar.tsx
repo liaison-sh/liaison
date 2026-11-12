@@ -12,6 +12,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { Portal } from "solid-js/web"
 import {
   type ActivityBarEntry,
   getActivityBarEntries,
@@ -44,8 +45,10 @@ import {
 } from "~/modules/shell/activity-bar-order-store"
 import { appIconColor } from "~/modules/shell/app-color"
 import { attentionStore } from "~/modules/shell/attention-store"
+import { hideFromSidebar, isHiddenFromSidebar } from "~/modules/shell/sidebar-visibility"
 import { openTab, tabStore } from "~/modules/shell/tab-store"
 import { toggleTabletSidebar } from "~/modules/shell/tablet-sidebar-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { useWs } from "~/modules/shell/WsContext"
 import { ToursHelpButton } from "~/modules/tours/ToursMenu"
 import { PopupMenu } from "~/ui/PopupMenu"
@@ -69,9 +72,13 @@ const moreAppsLabel = (t: ReturnType<typeof useI18n>["t"], count: number): strin
 export const ActivityBar: Component<ActivityBarProps> = (props) => {
   const i18n = useI18n()
   const ws = useWs()
-  const topEntries = createMemo(() =>
+  // The apps the person hid from their sidebar are left out here (and on the
+  // phone Work list): "+N", drag-reorder and the fit all work on what shows.
+  // They still open from search, the command palette and links.
+  const orderedTopEntries = createMemo(() =>
     applyActivityBarOrder(getActivityBarEntries().filter((e) => e.position !== "bottom")),
   )
+  const topEntries = createMemo(() => orderedTopEntries().filter((e) => !isHiddenFromSidebar(e.id)))
 
   const [draggedId, setDraggedId] = createSignal<string | null>(null)
   const [dropTargetId, setDropTargetId] = createSignal<string | null>(null)
@@ -86,8 +93,10 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
   const handleDrop = (targetId: string) => {
     const dragged = draggedId()
     if (dragged) {
+      // The saved order keeps the hidden apps in place, so one shown again
+      // comes back where it was.
       moveActivityBarEntry(
-        topEntries().map((e) => e.id),
+        orderedTopEntries().map((e) => e.id),
         dragged,
         targetId,
       )
@@ -124,6 +133,25 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
       return
     }
     openTab({ ...entry.tabAction, preview: false })
+  }
+
+  // Right-click (or the ContextMenu key / Shift+F10) on an app opens a small
+  // menu beside it. The menu is the shared PopupMenu, anchored on an invisible
+  // box laid over the app's button: a left click still opens the app.
+  const [entryMenu, setEntryMenu] = createSignal<{
+    id: string
+    label: string
+    box: { top: number; left: number; width: number; height: number }
+  } | null>(null)
+  let entryMenuOpener: HTMLElement | null = null
+  const openEntryMenu = (entry: ActivityBarEntry, el: HTMLElement): void => {
+    const r = el.getBoundingClientRect()
+    entryMenuOpener = el
+    setEntryMenu({
+      id: entry.id,
+      label: registryLabel(i18n.t, entry),
+      box: { top: r.top, left: r.left, width: r.width, height: r.height },
+    })
   }
 
   const railBottomEntries = bottomEntries
@@ -402,6 +430,17 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
                   data-rail-entry={entry.id}
                   aria-current={isActive(entry) ? "page" : undefined}
                   onClick={() => activateEntry(entry)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    openEntryMenu(entry, e.currentTarget)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      openEntryMenu(entry, e.currentTarget)
+                    }
+                  }}
                   draggable={true}
                   onDragStart={(e) => {
                     setDraggedId(entry.id)
@@ -701,6 +740,67 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
           <LogOut size={18} />
         </button>
       </Tooltip>
+      {/* An app's menu (right-click). Its anchor is a fixed box laid over the
+          app's button, portalled out of the rail so the rail's own controls
+          stay what they are; it takes no pointer or tab stop, and the menu is portalled. */}
+      <PopupMenu
+        open={entryMenu() !== null}
+        onOpenChange={(open) => {
+          if (!open) setEntryMenu(null)
+        }}
+        placement="right-start"
+      >
+        <Portal>
+          <div
+            class="pointer-events-none fixed"
+            style={
+              entryMenu()
+                ? {
+                    top: `${entryMenu()?.box.top}px`,
+                    left: `${entryMenu()?.box.left}px`,
+                    width: `${entryMenu()?.box.width}px`,
+                    height: `${entryMenu()?.box.height}px`,
+                  }
+                : { top: "0", left: "0", width: "0", height: "0" }
+            }
+          >
+            <PopupMenu.Trigger
+              tabIndex={-1}
+              aria-label={i18n.t("kernel.nav.railEntryMenu", { app: entryMenu()?.label ?? "" })}
+              data-testid="activity-entry-menu-anchor"
+              class="block h-full w-full"
+            >
+              {null}
+            </PopupMenu.Trigger>
+          </div>
+        </Portal>
+        <PopupMenu.Content
+          aria-label={i18n.t("kernel.nav.railEntryMenu", { app: entryMenu()?.label ?? "" })}
+          data-testid="activity-entry-menu"
+          onCloseAutoFocus={(e) => {
+            // Back to the app it was opened on, or (it was just hidden) the rail.
+            e.preventDefault()
+            const opener = entryMenuOpener
+            entryMenuOpener = null
+            if (opener?.isConnected) opener.focus()
+            else appsTrackRef?.querySelector<HTMLElement>("[data-rail-entry]")?.focus()
+          }}
+        >
+          <PopupMenu.Item
+            data-testid="activity-entry-hide"
+            onSelect={() => {
+              const id = entryMenu()?.id
+              if (!id) return
+              void hideFromSidebar(id).then((saved) => {
+                if (!saved)
+                  addToast({ message: i18n.t("kernel.sidebarSettings.saveFailed"), type: "error" })
+              })
+            }}
+          >
+            {i18n.t("kernel.nav.hideFromSidebar")}
+          </PopupMenu.Item>
+        </PopupMenu.Content>
+      </PopupMenu>
     </nav>
   )
 }

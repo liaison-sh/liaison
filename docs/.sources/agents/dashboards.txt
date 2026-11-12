@@ -214,3 +214,7 @@ Month, quarter (Q4 2026, T4 2026) and year labels -> apps/web/src/modules/dashbo
 Percentage of total read as a percent -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:40
 Metric read from a single record has no rows button -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:253
 In a shared conversation, dashboard reads use the conversation's narrower access -> apps/api/src/modules/dashboards/tools.ts:126 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45
+An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
+Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
+A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257
+A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853

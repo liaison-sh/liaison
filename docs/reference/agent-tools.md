@@ -188,6 +188,8 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `share_folder_on_my_computer` | Share a folder of the person's own computer with Liaison, so kernel__run_on_my_computer can work in it. | yes | `kernel:threads:write` |
 | `shopify_app_toml` | Post this server's shopify.app.toml with the Shopify CLI steps. |  | `kernel:threads:write` |
 | `shopify_setup` | The steps to create the store's Shopify app in the Shopify Dev Dashboard (browser, no terminal), with the exact URLs, scopes and API version for this server; when a client already exists, it says to connect. |  | `kernel:threads:read` |
+| `sidebar_apps_get` | Read which apps are hidden from a person's sidebar (the desktop rail and the phone Work list), as sidebar entry ids: kernel entries such as `sessions`, `dashboards`, `messages`, `search`, and installed apps by their app name (`monitoring`, `tickets`, `projects`). |  | `kernel:agent:memory` |
+| `sidebar_apps_set` | Hide apps from, or show them again in, a person's sidebar (the desktop rail and the phone Work list). |  | `kernel:agent:memory` |
 | `skill_read` | Load one skill's body by exact name. |  | `kernel:skills:read` |
 | `skill_search` | Search the catalog of available skills and return matches without their bodies; call kernel__skill_read to load one you want to use. |  | `kernel:skills:read` |
 | `spawn_agent` | Dispatch a fresh context sub-agent for one isolated unit of work and get back a single SubRunResult envelope, not its intermediate steps. |  | `kernel:agents:spawn` |
@@ -670,7 +672,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `abandoned_checkouts_list` | List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. |  | `shopify:orders:read` |
-| `analytics_query` | Aggregate sales analytics over a period, optionally grouped by SKU or market. |  | `shopify:analytics:read` |
+| `analytics_query` | Aggregate store analytics over a period, optionally grouped by SKU, product or market, and optionally split into a time series with timeGrain (day, week or month: rows come back oldest first, each with `date` = the bucket start as YYYY-MM-DD; grouped by sku a series row also carries product_title). |  | `shopify:analytics:read` |
 | `apply_seed_suggestion` | Apply an admin-reviewed scope-seed suggestion (writes Liaison scopes for the named user). | yes | `shopify:admin:scope-seed` |
 | `companies_get` | Get one Shopify B2B company by id, with the same shape as a companies_search result: locations (addresses, tax settings, catalogs) and contacts with their roles per location. |  | `shopify:customers:read` |
 | `companies_search` | Search Shopify B2B companies by name. |  | `shopify:customers:read` |

@@ -1,11 +1,6 @@
 [
   {
     "app": "ads",
-    "entry": "lint:src/lib/meta-client.ts",
-    "reason": "wait"
-  },
-  {
-    "app": "ads",
     "entry": "tool:account_info",
     "reason": "no-fixture"
   },
@@ -642,46 +637,6 @@
   {
     "app": "google-drive",
     "entry": "tool:upload",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "job:assign-refs",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_ack",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_comment",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_get",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_list",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_resolve",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:incidents_summary",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "monitoring",
-    "entry": "tool:webhook_info",
     "reason": "no-fixture"
   },
   {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeEach, describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import {
   insights_query,
   campaigns_list,
@@ -15,8 +15,8 @@ import {
   ad_preview,
   counts,
   pending_approvals_list,
-  __resetCountsCache,
 } from "./reads"
+import { createMemoryStore, createRecordingTimers } from "./test-store"
 
 // ─── makeCtx helper ───────────────────────────────────────────────────────────
 
@@ -55,7 +55,9 @@ function makeCtx(fetchResponses: MockResponse[]) {
       }),
     },
   }
-  return { ctx: { fetch, connections }, calls }
+  const store = createMemoryStore()
+  const timers = createRecordingTimers()
+  return { ctx: { fetch, connections, store, timers }, calls, store, timers }
 }
 
 // ─── insights_query ───────────────────────────────────────────────────────────
@@ -186,43 +188,45 @@ describe("insights_query", () => {
     expect(calls[0]?.method).toBe("POST")
   })
 
-  it("async race: extraction answers 1815005 (report not finished) once, then succeeds — retries, no throw", async () => {
+  it("async race: extraction answers 1815005 → pending with the run id; the next call resumes THAT run, no new report", async () => {
     // Meta code 1815005 = "the report job has not finished, check the async
-    // status before extracting". It is transient: the status edge flips to
-    // Job Completed a beat before the results edge materialises. The extraction
-    // must retry, not surface a hard error.
+    // status before extracting": transient, so the call answers pending and
+    // keeps the run; the next call asks the same run again.
     const notReady = JSON.stringify({
       error: { code: 1815005, message: "El trabajo de informe no ha finalizado, comprueba el estado antes de extraerlo" },
     })
-    const { ctx } = makeCtx([
+    const { ctx, calls, store, timers } = makeCtx([
       { status: 200, body: JSON.stringify({ report_run_id: "RUN_R" }) }, // POST async
-      { status: 200, body: JSON.stringify({ id: "RUN_R", async_status: "Job Completed" }) }, // poll 1
+      { status: 200, body: JSON.stringify({ id: "RUN_R", async_status: "Job Completed" }) }, // status
       { status: 400, body: notReady }, // extraction races ahead → not-ready
-      { status: 200, body: JSON.stringify({ id: "RUN_R", async_status: "Job Completed" }) }, // poll 2
+      { status: 200, body: JSON.stringify({ id: "RUN_R", async_status: "Job Completed" }) }, // next call: status
       { status: 200, body: JSON.stringify({ data: [{ spend: "9.99" }], paging: { cursors: {} } }) }, // extraction wins
     ])
-    const result = await insights_query({ level: "account", time_increment: 1 }, ctx) as { data: unknown[]; _pending?: boolean }
-    expect(result._pending).toBeUndefined()
-    expect(result.data.length).toBe(1)
-    expect((result.data[0] as { spend: number }).spend).toBe(9.99)
+    const first = await insights_query({ level: "account", time_increment: 1 }, ctx) as Record<string, unknown>
+    expect(first).toMatchObject({ data: [], _pending: true, _pending_reason: "not_ready", report_run_id: "RUN_R" })
+    expect(store.docs.size).toBe(1)
+    expect(timers.wakes).toHaveLength(1)
+    expect(timers.wakes[0]?.job).toBe("insights-report")
+
+    const second = await insights_query({ level: "account", time_increment: 1 }, ctx) as { data: unknown[]; _pending?: boolean }
+    expect(second._pending).toBeUndefined()
+    expect((second.data[0] as { spend: number }).spend).toBe(9.99)
+    // One POST in total: the second call resumed RUN_R.
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1)
+    expect(calls[3]?.url).toContain("/RUN_R")
+    // Extracted: the record is gone, the next pull starts a fresh report.
+    expect(store.docs.size).toBe(0)
   })
 
-  it("async race: extraction never ready within the poll budget → structured _pending result, never a thrown 500", async () => {
-    const notReady = JSON.stringify({
-      error: { code: 1815005, message: "report job not finished, check status before extracting" },
-    })
-    // The poll loop budget is 20 attempts. Alternate Job Completed → not-ready
-    // for the whole budget so extraction never wins the race.
+  it("a running report answers pending at once: one status call, no polling inside the run", async () => {
+    const running = JSON.stringify({ id: "RUN_P", async_status: "Job Running", async_percent_completion: 10 })
     const responses: MockResponse[] = [{ status: 200, body: JSON.stringify({ report_run_id: "RUN_P" }) }]
-    for (let i = 0; i < 40; i++) {
-      responses.push({ status: 200, body: JSON.stringify({ id: "RUN_P", async_status: "Job Completed" }) })
-      responses.push({ status: 400, body: notReady })
-    }
-    const { ctx } = makeCtx(responses)
+    for (let i = 0; i < 10; i++) responses.push({ status: 200, body: running })
+    const { ctx, calls } = makeCtx(responses)
     const result = await insights_query({ level: "account", time_increment: 1 }, ctx) as { data: unknown[]; _pending?: boolean }
-    // Degrades to a renderable pending marker, NOT an exception.
     expect(result._pending).toBe(true)
     expect(result.data).toEqual([])
+    expect(calls).toHaveLength(2)
   })
 
   it("campaign_id param adds filtering=[{field:'campaign.id',operator:'EQUAL',value}] to the request", async () => {
@@ -616,8 +620,6 @@ describe("ad_preview", () => {
 // ─── counts ───────────────────────────────────────────────────────────────────
 
 describe("counts", () => {
-  beforeEach(() => __resetCountsCache())
-
   it("tally: unwraps {data:[...]} wrapper and uses effective_status (not status)", async () => {
     // Fixture has rows where status:ACTIVE but effective_status:CAMPAIGN_PAUSED —
     // a naive status-based tally would give wrong active count.
@@ -641,31 +643,12 @@ describe("counts", () => {
     expect(result.paused).toBe(2)
   })
 
-  it("cache: two calls within TTL issue only one underlying fetch", async () => {
-    // Use a different ctx so adAccountId cache key is fresh
-    const calls: Array<{ url: string }> = []
-    let idx = 0
-    const fixtureBodies = [
-      JSON.stringify({ data: [{ id: "c1", status: "ACTIVE", effective_status: "ACTIVE" }], paging: { cursors: {} } }),
-    ]
-    const fetch = async (url: string, _opts?: Record<string, unknown>) => {
-      calls.push({ url })
-      const body = fixtureBodies[idx++]
-      if (!body) throw new Error(`Unexpected extra fetch to ${url}`)
-      return { status: 200, headers: {}, body }
-    }
-    const connections = { meta: { getCredentials: async () => ({ accessToken: "t2", adAccountId: "act_999999" }) } }
-    const ctx = { fetch, connections }
-
-    // First call — should hit the API
-    const r1 = await counts({} as never, ctx)
-    // Second call within TTL — should use cache, no new fetch
-    const r2 = await counts({} as never, ctx)
-
-    expect(r1.total).toBe(1)
-    expect(r2.total).toBe(1)
-    // Only ONE fetch was made (the second call hit cache)
-    expect(calls.filter(c => c.url.includes("/campaigns")).length).toBe(1)
+  it("keeps nothing between calls: each call reads the campaigns again", async () => {
+    const page = { status: 200, body: JSON.stringify({ data: [{ id: "c1", effective_status: "ACTIVE" }], paging: { cursors: {} } }) }
+    const { ctx, calls } = makeCtx([page, page])
+    expect((await counts({} as never, ctx)).total).toBe(1)
+    expect((await counts({} as never, ctx)).total).toBe(1)
+    expect(calls.filter((c) => c.url.includes("/campaigns"))).toHaveLength(2)
   })
 })
 

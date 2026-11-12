@@ -112,6 +112,7 @@ import { appSettingsPath, SETTINGS_CONNECTORS_PATH } from "~/modules/settings/se
 import { canSeePageSection } from "~/modules/settings/visible-settings-sections"
 import { attentionStore, getAttentionApi } from "~/modules/shell/attention-store"
 import { surfaceIncoming } from "~/modules/shell/dock-store"
+import { applyRemoteSidebarVisibility } from "~/modules/shell/sidebar-visibility"
 import {
   closeTab,
   makeTabId,
@@ -611,6 +612,17 @@ export function bootstrapKernelApps(): void {
         order: 15,
       },
       {
+        // Settings -> Sidebar: which apps the person's own rail (and phone
+        // Work list) shows. A display preference, never access.
+        id: "sidebar",
+        label: "Sidebar",
+        labelKey: "kernel.nav.section.sidebar",
+        href: "/settings/sidebar",
+        component: lazy(() => import("~/modules/settings/SidebarSettings")),
+        group: "user",
+        order: 15.5,
+      },
+      {
         // Settings > Computers: every computer of the viewer's, this
         // computer's setup in the desktop app, and each computer's page
         // (/settings/computers/:id[/agents|/settings]) with its Folders,
@@ -910,6 +922,7 @@ export function bootstrapKernelApps(): void {
           applyAgentMailAccess: (record) => {
             void applyRemoteAgentMailAccess(record, agentMailAccessSyncDeps())
           },
+          applySidebarVisibility: applyRemoteSidebarVisibility,
         })
       },
       message: [

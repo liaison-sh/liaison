@@ -3,7 +3,8 @@ import { describe, expect, it } from "bun:test"
 import {
   metaFetch,
   metaFetchPaged,
-  runInsightsAsync,
+  createInsightsReport,
+  checkInsightsReport,
   toMinorUnits,
   fromAccountCurrency,
   GRAPH,
@@ -250,93 +251,64 @@ describe("fromAccountCurrency", () => {
 
 // ─── Async insights ───────────────────────────────────────────────────────────
 
-describe("runInsightsAsync", () => {
-  it("POSTs to get report_run_id → polls until Job Completed → GETs results (never calls ctx.bulk)", async () => {
-    const postResp = { status: 200, body: JSON.stringify({ report_run_id: "RUN_42" }) }
-    const pollResp = {
-      status: 200,
-      body: JSON.stringify({ id: "RUN_42", async_status: "Job Completed", async_percent_completion: 100 }),
-    }
-    const resultsResp = {
-      status: 200,
-      body: JSON.stringify({ data: [{ spend: "100.00" }], paging: { cursors: {} } }),
-    }
+describe("createInsightsReport / checkInsightsReport", () => {
+  const RUN = { reportRunId: "RUN_42", accessToken: ACCESS_TOKEN }
 
-    const { fetch, calls } = makeCtx([postResp, pollResp, resultsResp])
-    const asyncResult = await runInsightsAsync(fetch, {
+  it("createInsightsReport POSTs async=true and answers the report run id", async () => {
+    const { fetch, calls } = makeCtx([{ status: 200, body: JSON.stringify({ report_run_id: "RUN_42" }) }])
+    const id = await createInsightsReport(fetch, {
       path: "/act_123/insights",
       params: { level: "account", date_preset: "last_7d" },
       accessToken: ACCESS_TOKEN,
     })
-    // Happy path resolves to the rows array, not a pending marker.
-    expect(Array.isArray(asyncResult)).toBe(true)
-    const result = asyncResult as unknown[]
-
-    // First call: POST to trigger async job
+    expect(id).toBe("RUN_42")
     expect(calls[0]?.method).toBe("POST")
     expect(calls[0]?.url).toContain("/act_123/insights")
-
-    // Second call: poll for status
-    expect(calls[1]?.url).toContain("/RUN_42")
-
-    // Third call: GET results
-    expect(calls[2]?.url).toContain("/RUN_42/insights")
-
-    // Returns the data array
-    expect(result).toHaveLength(1)
-    expect((result[0] as { spend: string }).spend).toBe("100.00")
-
-    // No ctx.bulk was called (we use only regular fetch)
-    // The mock only has fetch, never a bulk method
-    expect(calls.length).toBe(3)
+    expect(calls[0]?.body).toContain("async=true")
   })
 
-  it("stops polling a running job once Meta reports its usage budget nearly spent", async () => {
-    const busy = { "x-business-use-case-usage": JSON.stringify({ "123": [{ call_count: 95, total_time: 20 }] }) }
-    const running = JSON.stringify({ id: "RUN_B", async_status: "Job Running", async_percent_completion: 40 })
+  it("createInsightsReport throws when Meta answers no report_run_id", async () => {
+    const { fetch } = makeCtx([{ status: 200, body: "{}" }])
+    const err = await createInsightsReport(fetch, { path: "/a/insights", params: {}, accessToken: ACCESS_TOKEN }).catch((e) => e)
+    expect(err).toBeInstanceOf(MetaApiError)
+  })
+
+  it("a completed report is extracted in the same call (status, then results; never ctx.bulk)", async () => {
     const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_B" }) },
-      { status: 200, headers: busy, body: running },
-      ...Array.from({ length: 25 }, () => ({ status: 200, body: running })),
+      { status: 200, body: JSON.stringify({ id: "RUN_42", async_status: "Job Completed", async_percent_completion: 100 }) },
+      { status: 200, body: JSON.stringify({ data: [{ spend: "100.00" }], paging: { cursors: {} } }) },
     ])
-    const out = await runInsightsAsync(fetch, {
-      path: "/act_123/insights",
-      params: { level: "account" },
-      accessToken: ACCESS_TOKEN,
-    })
-    expect(out).toEqual({ _pending: true, report_run_id: "RUN_B", reason: "rate_limited" })
+    const out = await checkInsightsReport(fetch, RUN)
+    expect(out).toEqual([{ spend: "100.00" }])
+    expect(calls[0]?.url.endsWith("/RUN_42")).toBe(true)
+    expect(calls[1]?.url).toContain("/RUN_42/insights")
     expect(calls.length).toBe(2)
   })
 
-  it("fails fast on 'Job Failed' — throws after the first poll, does NOT poll 20× into a timeout", async () => {
-    const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_FAIL" }) }, // POST
-      { status: 200, body: JSON.stringify({ id: "RUN_FAIL", async_status: "Job Failed" }) }, // poll → terminal failure
-    ])
-    const err = await runInsightsAsync(fetch, {
-      path: "/act_123/insights",
-      params: { level: "account", date_preset: "last_7d" },
-      accessToken: ACCESS_TOKEN,
-    }).catch((e: Error) => e)
-    expect(err).toBeInstanceOf(Error)
-    expect((err as Error).message).toContain("Job Failed")
-    expect((err as Error).message).toContain("RUN_FAIL")
-    // Only 2 calls: POST + ONE poll. No 20-poll timeout, no GET results.
-    expect(calls.length).toBe(2)
+  it("a running report is asked ONCE and answers still_running: no loop inside the run", async () => {
+    const running = JSON.stringify({ id: "RUN_42", async_status: "Job Running", async_percent_completion: 40 })
+    const { fetch, calls } = makeCtx([{ status: 200, body: running }, { status: 200, body: running }])
+    const out = await checkInsightsReport(fetch, RUN)
+    expect(out).toEqual({ _pending: true, report_run_id: "RUN_42", reason: "still_running" })
+    expect(calls.length).toBe(1)
   })
 
-  it("fails fast on 'Job Skipped' too", async () => {
+  it("does not extract while async_percent_completion is below 100, even when the status says completed", async () => {
     const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_SKIP" }) },
-      { status: 200, body: JSON.stringify({ id: "RUN_SKIP", async_status: "Job Skipped" }) },
+      { status: 200, body: JSON.stringify({ id: "RUN_42", async_status: "Job Completed", async_percent_completion: 90 }) },
     ])
-    const err = await runInsightsAsync(fetch, {
-      path: "/act_123/insights",
-      params: {},
-      accessToken: ACCESS_TOKEN,
-    }).catch((e: Error) => e)
-    expect((err as Error).message).toContain("Job Skipped")
-    expect(calls.length).toBe(2)
+    const out = await checkInsightsReport(fetch, RUN)
+    expect(out).toEqual({ _pending: true, report_run_id: "RUN_42", reason: "still_running" })
+    expect(calls.length).toBe(1)
+  })
+
+  it("fails fast on 'Job Failed' and 'Job Skipped'", async () => {
+    for (const state of ["Job Failed", "Job Skipped"]) {
+      const { fetch } = makeCtx([{ status: 200, body: JSON.stringify({ id: "RUN_42", async_status: state }) }])
+      const err = await checkInsightsReport(fetch, RUN).catch((e: Error) => e)
+      expect((err as Error).message).toContain(state)
+      expect((err as Error).message).toContain("RUN_42")
+    }
   })
 })
 
@@ -395,44 +367,21 @@ describe("metaFetch: production error envelopes classify as expected upstream an
   })
 })
 
-describe("runInsightsAsync: waits for the report to be extractable", () => {
-  const OPTS = { path: "/act_1/insights", params: { level: "account" }, accessToken: ACCESS_TOKEN }
+describe("checkInsightsReport: transient Meta answers are pending, not errors", () => {
+  const RUN = { reportRunId: "RUN_S", accessToken: ACCESS_TOKEN }
 
-  it("report-not-ready delivered as #100 with subcode 1815005 keeps polling instead of throwing", async () => {
+  it("report-not-ready delivered as #100 with subcode 1815005 answers not_ready instead of throwing", async () => {
     const notReady = graphError(100, { error_subcode: 1815005, error_user_msg: REPORT_NOT_READY_FR })
-    const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_S" }) },
+    const { fetch } = makeCtx([
       { status: 200, body: JSON.stringify({ id: "RUN_S", async_status: "Job Completed" }) },
       { status: 400, body: notReady },
-      { status: 200, body: JSON.stringify({ id: "RUN_S", async_status: "Job Completed" }) },
-      { status: 200, body: JSON.stringify({ data: [{ spend: "1.00" }], paging: { cursors: {} } }) },
     ])
-    const out = await runInsightsAsync(fetch, OPTS)
-    expect(Array.isArray(out)).toBe(true)
-    expect((out as unknown[]).length).toBe(1)
-    expect(calls.length).toBe(5)
+    expect(await checkInsightsReport(fetch, RUN)).toEqual({ _pending: true, report_run_id: "RUN_S", reason: "not_ready" })
   })
 
-  it("does not extract while async_percent_completion is below 100, even when the status says completed", async () => {
-    const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_P" }) },
-      { status: 200, body: JSON.stringify({ id: "RUN_P", async_status: "Job Completed", async_percent_completion: 90 }) },
-      { status: 200, body: JSON.stringify({ id: "RUN_P", async_status: "Job Completed", async_percent_completion: 100 }) },
-      { status: 200, body: JSON.stringify({ data: [{ spend: "2.00" }], paging: { cursors: {} } }) },
-    ])
-    const out = await runInsightsAsync(fetch, OPTS)
-    expect(Array.isArray(out)).toBe(true)
-    expect(calls[2]?.url.endsWith("/RUN_P")).toBe(true)
-    expect(calls[3]?.url).toContain("/RUN_P/insights")
-  })
-
-  it("a throttle while polling stops calling Meta and returns a rate_limited pending marker", async () => {
-    const { fetch, calls } = makeCtx([
-      { status: 200, body: JSON.stringify({ report_run_id: "RUN_T" }) },
-      { status: 400, body: graphError(80000, { error_user_msg: INSIGHTS_THROTTLE_FR }) },
-    ])
-    const out = await runInsightsAsync(fetch, OPTS)
-    expect(out).toEqual({ _pending: true, report_run_id: "RUN_T", reason: "rate_limited" })
-    expect(calls.length).toBe(2)
+  it("a throttle on the status answers a rate_limited pending marker", async () => {
+    const { fetch, calls } = makeCtx([{ status: 400, body: graphError(80000, { error_user_msg: INSIGHTS_THROTTLE_FR }) }])
+    expect(await checkInsightsReport(fetch, RUN)).toEqual({ _pending: true, report_run_id: "RUN_S", reason: "rate_limited" })
+    expect(calls.length).toBe(1)
   })
 })

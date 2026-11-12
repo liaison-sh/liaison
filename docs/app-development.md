@@ -232,6 +232,7 @@ export async function items_create(
 | `ctx.connections` | Per-connection OAuth/credential tokens |
 | `ctx.sql` | Query a database the platform holds the connection to: named reads or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
 | `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
+| `ctx.kernel` | Directory reads of the caller's organization: a user or contact by id, who the run acts for and which scopes they hold (`caller`), the roles, people by email, for access rules of your own ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
@@ -1049,6 +1050,54 @@ export async function syncNotes(input: KnowledgeSyncInput<string>, ctx): Promise
 Documents land in the source's collection, owned like any synced document: an
 organization source's documents follow its sensitivity, a personal source's
 stay with its owner.
+
+### File documents in folders
+
+A source can keep its own folder tree: each folder is a collection under the
+source's collection. Declare folders in the page, and file a document with
+`folderId` (a declared folder) or `folderPath` (a path of names):
+
+```ts
+return {
+  folders: {
+    upsert: [
+      { externalId: "f-12", name: "Guides" },
+      { externalId: "f-34", name: "Setup", parentExternalId: "f-12" },
+    ],
+    delete: ["f-56"],
+  },
+  documents: {
+    upsert: [
+      { externalId: "n-1", title: "Install", body: "...", folderId: "f-34" },
+      { externalId: "n-2", title: "API", body: "...", folderPath: "reference/api" },
+    ],
+  },
+  nextCursor: null,
+  done: true,
+}
+```
+
+- A folder is found again by its `externalId`: a new `name` renames it, a new
+  `parentExternalId` moves it with everything inside. Without a parent, it sits
+  directly in the source's collection. A parent must be a folder of the same
+  source, declared in this page or an earlier one, and a folder never moves
+  into its own subfolder.
+- `folderPath: "reference/api"` makes the folders `reference` and
+  `reference/api` (their external ids are the path up to them). A page may
+  declare one of those ids itself to give it another name.
+- A document with a new `folderId` or `folderPath` moves; without either, it
+  sits in the source's collection.
+- `folders.delete` archives a folder, its subfolders and the source's
+  documents still filed in them.
+- A folder that loses its last document or subfolder is archived, unless the
+  same page declares it. Filing something in it again brings it back. With
+  `prune: true`, the last page also archives the empty folders the pass
+  neither declared nor filed anything in. A folder that holds something a
+  person filed there is kept.
+- Folders are written with the page, in the same transaction: a page that is
+  refused, or that another run got to first, changes no folder.
+- Per page: at most 500 folders (those paths add included), 1000 folder
+  deletes, and paths 32 folders deep.
 
 ## See also
 

@@ -184,7 +184,7 @@ Read tools never wait. Every tool marked "Always" files an approval and changes 
 | `products_search`, `products_get`, `products_publication_targets`, `variants_search`, `variants_get`, `variants_brief`, `variants_market_price` | Read products, their sales channels, variants and market prices | No |
 | `inventory_levels_list`, `inventory_value`, `locations_list` | Stock per location and stock value | No |
 | `markets_list`, `markets_get` | Read markets | No |
-| `analytics_query` | Sales totals over a period, by SKU or market | No |
+| `analytics_query` | Sales totals and store sessions over a period, by SKU, product or market, optionally per day, week or month | No |
 | `discounts_search`, `metafields_list` | Read discount codes and metafields | No |
 | `order_note_set` | Set an order's internal staff note | No |
 | `webhooks_repair` | Re-register the store webhooks | No |
@@ -207,6 +207,8 @@ When Shopify is still adding the codes of an approved `discounts_bulk_create`, t
 Calls to one store share a limit across every run of the app (four at a time), and a store that reports its query budget running low pauses the next calls until it has recovered.
 
 `analytics_query` may return `partial: true` when the store's plan does not offer ShopifyQL. Treat that result as an estimate.
+
+With `timeGrain` set to `day`, `week` or `month`, `analytics_query` returns one row per bucket, oldest first, each with a `date` field: the day, or the first day of the week or month, as YYYY-MM-DD. Grouped by SKU, each row also names the product. For example, `{metric: "sessions", groupBy: "none", timeGrain: "day", period: {since: "2026-05-01", until: "2026-05-31"}}` gives store sessions per day, and `{metric: "units", groupBy: "sku", timeGrain: "day", ...}` gives units sold per SKU per day. The `sessions` and `conversion_rate` metrics come from Shopify's sessions data, which has no product or market breakdown, so they take `groupBy: "none"` only.
 
 `products_publish` with only a product publishes it on every sales channel it is not on yet, and `products_unpublish` takes it off the channels it is on. The approval card names each channel. Both need the store's sales channel permission: a connection approved before the app asked for it shows **Permissions update required**, and the tools refuse to stage a request until you click **Reconnect**.
 

@@ -95,7 +95,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/database/**", pages: ["database-connector", "sales/sales-data"] },
   { glob: "packages/db-core/**", pages: ["database-connector"] },
   { glob: "apps/db-gate/**", pages: ["database-connector"] },
-  { glob: "apps/api/test-support/apps/example/**", pages: ["app-development"] },
+  { glob: "apps/api/src/apps/example/**", pages: ["app-development"] },
 
   // Bundled apps
   { glob: "bundled-apps/invoicing/**", pages: ["apps/invoicing", "sales/quotes"] },

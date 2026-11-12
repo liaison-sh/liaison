@@ -484,7 +484,16 @@ export function createBridgeContext(
    * without this a tainted turn's sandboxed write evaluated NO taint at all and
    * could launder scoped data into a non-enforcing table.
    */
-  const bridgeTurnTaintScopes = capturedFrameWriteScopes(bridgeWriteParentFrame, callerScopes)
+  const bridgeTurnTaintScopes = capturedFrameWriteScopes(bridgeWriteParentFrame, callerScopes, {
+    keepPersonClientTaint: true,
+  })
+  /**
+   * The calling turn is a person's own external client (scope-taint.ts, rule 14f): forwarded with
+   * the taint above, so the dispatch judges only a kernel-thread post against it, and what this
+   * bridge stamps itself (knowledge, comments, a handler's own approval) carries `[]`, as before
+   * such a client had a frame.
+   */
+  const bridgePersonClient = bridgeWriteParentFrame?.personClient === true
   /**
    * And the STORE the taint's origin rows live in, taken from the same live frame, so
    * the same-resource allowance (A46) survives the hop too: a routine that read ticket A
@@ -516,13 +525,14 @@ export function createBridgeContext(
           ...(bridgeOptions?.appLogs?.runId ? { runId: bridgeOptions.appLogs.runId } : {}),
           actorUserId: actorType === "user" ? userId : null,
           scopeTags:
-            bridgeSpawnParentFrame === null
+            bridgeSpawnParentFrame === null || bridgeSpawnParentFrame.personClient === true
               ? projectTaintScopes(manifest.scopes ?? [])
               : (capturedFrameWriteScopes(bridgeSpawnParentFrame, callerScopes) ??
                 UNKNOWN_TAINT_TAGS),
         })
       : undefined
   const knowledgeWriteRequiredScopes = (toolName: string): string[] => {
+    if (bridgePersonClient) return []
     if (bridgeTurnTaintScopes === null) throw scopeUnknownError(toolName)
     return bridgeTurnTaintScopes
   }
@@ -1417,6 +1427,7 @@ export function createBridgeContext(
     auditActorType,
     bridgeWriteParentFrame,
     bridgeTurnTaintScopes,
+    bridgePersonClient,
     bridgeTaintOriginStore,
     knowledgeWriteRequiredScopes,
     schemaName,

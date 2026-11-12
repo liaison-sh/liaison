@@ -12,6 +12,7 @@
 // /run body drives no second effect, and every fallback to QuickJS is tagged.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { createHash, createHmac } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -432,6 +433,33 @@ describe("Workers executor parity with the QuickJS pool", () => {
     const r = await both("tool:bulk", () => callTool("bulk", { url: `${files?.url}bulk.jsonl` }))
     expect(r.quickjs.body.data?.rows).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }])
     expect(r.workers).toEqual(r.quickjs)
+  })
+
+  it("WebCrypto: the same digests, HMACs and random values on QuickJS (both) and Workers", async () => {
+    const text = "Héllo, wörld 𝄞 parity@example.com"
+    const key = "parity-hmac-kéy"
+    const hexOf = (alg: string) => createHash(alg).update(text, "utf8").digest("hex")
+    const hmacOf = (alg: string) => createHmac(alg, key).update(text, "utf8").digest("hex")
+    const expected = {
+      digests: {
+        "SHA-1": hexOf("sha1"),
+        "SHA-256": hexOf("sha256"),
+        "SHA-384": hexOf("sha384"),
+        "SHA-512": hexOf("sha512"),
+      },
+      hmacs: {
+        "SHA-1": { sig: hmacOf("sha1"), ok: true, bad: false },
+        "SHA-256": { sig: hmacOf("sha256"), ok: true, bad: false },
+        "SHA-512": { sig: hmacOf("sha512"), ok: true, bad: false },
+      },
+      randomBytes: 16,
+      uuid: true,
+    }
+    const r = await both("tool:webcrypto", () => callTool("webcrypto", { text, key }))
+    expect(r.quickjs.status).toBe(200)
+    expect(r.quickjs.body.data).toEqual(expected)
+    expect(r.workers).toEqual(r.quickjs)
+    expect(await runStore("inprocess", "wparity", "webcrypto", { text, key })).toEqual(expected)
   })
 
   it("the approval literal", async () => {

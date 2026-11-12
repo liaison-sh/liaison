@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./package.json": "./package.json",
     "./webhook-verify": "./src/webhook-verify.ts",
+    "./bytes": "./src/bytes.ts",
     "./connection-credentials": "./src/connection-credentials.ts",
     "./contracts": "./src/contracts/index.ts",
     "./effects": "./src/effects.ts"

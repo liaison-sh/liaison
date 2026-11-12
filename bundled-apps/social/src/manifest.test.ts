@@ -37,7 +37,8 @@ describe("social manifest (B1)", () => {
     // 0.6.61: two parses of one delivery from a new person no longer fail on the unique key.
     // 0.6.62: our own replies are never findings; reply_to_finding looks before posting and
     // declares an outcome reconciler.
-    expect(manifest.version).toBe("0.6.63")
+    // 0.6.64: a reply the platform refuses as gone or blocked closes its approval.
+    expect(manifest.version).toBe("0.6.64")
     expect(manifest.packageFormat).toBe(1)
   })
 

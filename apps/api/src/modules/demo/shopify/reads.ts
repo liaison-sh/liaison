@@ -324,12 +324,16 @@ const draftOrdersList: Handler = (ctx) => {
   }
 }
 
-const draftOrderGet: Handler = (ctx) => {
+function findDraft(ctx: ReadContext) {
   const raw = ctx.variables.id
   const numeric = typeof raw === "string" ? raw.match(/(\d+)\s*$/)?.[1] : undefined
-  const found = [...ctx.book.draftOrders, ...createdDraftsFor(ctx.orgId)].find(
+  return [...ctx.book.draftOrders, ...createdDraftsFor(ctx.orgId)].find(
     (draft) => draft.id === raw || String(draft.numericId) === numeric,
   )
+}
+
+const draftOrderGet: Handler = (ctx) => {
+  const found = findDraft(ctx)
   return {
     draftOrder: found
       ? draftOrderNode(withDraftPatch(ctx.orgId, found), ctx.book, ctx.orgId)
@@ -553,6 +557,27 @@ const READ_HANDLERS: Record<string, Handler> = {
   }),
   DraftOrdersList: draftOrdersList,
   DraftOrderGet: draftOrderGet,
+  /**
+   * The B2B guard on a draft order asks whether its buyer is a company contact. The demo store
+   * models consumers and companies' people as plain customers, with no B2B company, so the real
+   * answer for every one of them is "no company": an empty list of contact profiles.
+   */
+  B2bCustomerCompanies: (ctx) => {
+    const { customer } = customerById(ctx)
+    return { customer: customer ? { id: customer.id, companyContactProfiles: [] } : null }
+  },
+  B2bDraftBuyer: (ctx) => {
+    const found = findDraft(ctx)
+    if (!found) return { draftOrder: null }
+    const customer = ctx.book.customersById.get(found.customerId)
+    return {
+      draftOrder: {
+        id: found.id,
+        purchasingEntity: customer ? { __typename: "Customer", id: customer.id } : null,
+        customer: customer ? { id: customer.id } : null,
+      },
+    }
+  },
   PendingReturns: pendingReturns,
   ReturnsByOrders: returnsByOrders,
   ReturnsByOrderId: returnsByOrderId,

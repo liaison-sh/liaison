@@ -130,6 +130,8 @@ describe("the demo Shopify provider's boundary", () => {
       "VariantGet",
       "DraftOrdersList",
       "DraftOrderGet",
+      "B2bCustomerCompanies",
+      "B2bDraftBuyer",
       "ReturnsByOrders",
       "ReturnsByOrderId",
       "OrderFulfillmentOrdersGet",

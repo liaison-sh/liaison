@@ -45,6 +45,14 @@ export interface SyncedSourceRow {
   createdAt: string
   updatedAt: string
   archivedAt: string | null
+  /**
+   * The app-declared knowledge source kind this source syncs through
+   * (manifest `knowledgeSources`, app-sources.ts), or null for a folder source
+   * of an in-tree adapter (source-registry.ts).
+   */
+  sourceKind: string | null
+  /** The source's config, valid against its kind's configSchema (app sources only). */
+  sourceConfig: Record<string, unknown> | null
 }
 
 export interface SyncedSourceDbRow {
@@ -65,11 +73,20 @@ export interface SyncedSourceDbRow {
   created_at: Date | string
   updated_at: Date | string
   archived_at: Date | string | null
+  source_kind?: string | null
+  source_config?: Record<string, unknown> | null
 }
 
 export interface CreateSyncedSourceInput {
   appName: string
   folderRef: string
+  /**
+   * An app-declared knowledge source kind: the source syncs through the app's
+   * handler (app-sources.ts) instead of a folder adapter, with `sourceConfig`
+   * as its config. The folder-read precheck is replaced by the kind's checks.
+   */
+  sourceKind?: string
+  sourceConfig?: Record<string, unknown>
   displayName: string
   syncIntervalSeconds: number
   scope: SyncedSourceScope
@@ -119,6 +136,8 @@ export function rowFromDb(r: SyncedSourceDbRow): SyncedSourceRow {
     createdAt: toIsoNonNull(r.created_at),
     updatedAt: toIsoNonNull(r.updated_at),
     archivedAt: toIso(r.archived_at),
+    sourceKind: r.source_kind ?? null,
+    sourceConfig: r.source_config ?? null,
   }
 }
 
@@ -341,7 +360,21 @@ export async function createSyncedSource(
   // folder the caller cannot read. Mirrors the source-links create path.
   // M-minor: wrap the network call in a 5-second timeout so a hung Drive
   // call doesn't block the HTTP request indefinitely.
-  if (!opts.skipPrecheck) {
+  let checkedInput = input
+  if (input.sourceKind) {
+    // An app source: the app must declare the kind, the actor must hold its
+    // read scope, and the config must match its schema (app-sources.ts).
+    const { checkAppSourceKind } = await import("~/apps/knowledge/app-sources")
+    checkedInput = {
+      ...input,
+      sourceConfig: checkAppSourceKind(
+        actor,
+        input.appName,
+        input.sourceKind,
+        input.sourceConfig ?? {},
+      ),
+    }
+  } else if (!opts.skipPrecheck) {
     const adapter = opts.adapter
     if (!adapter) {
       throw new KnowledgeError("VALIDATION", `no adapter registered for app ${input.appName}`)
@@ -372,7 +405,7 @@ export async function createSyncedSource(
   // `knowledge:collections:manage` (collections RLS would otherwise reject
   // the INSERT for ordinary readers).
   return withPrivilegedDb(actor.orgId, "knowledge-create-synced-source", async (tx) => {
-    return doCreateSyncedSource(tx, input, actor, ownerUserId)
+    return doCreateSyncedSource(tx, checkedInput, actor, ownerUserId)
   })
 }
 
@@ -402,7 +435,8 @@ async function doCreateSyncedSource(
     await tx.execute(drizzleSql`
       INSERT INTO ${knowledgeRel("synced_sources")} (
         id, org_id, app_name, folder_ref, display_name, root_collection_id,
-        owner_user_id, default_sensitivity, sync_interval_seconds, created_by, source_account
+        owner_user_id, default_sensitivity, sync_interval_seconds, created_by, source_account,
+        source_kind, source_config
       )
       VALUES (
         ${id}::uuid,
@@ -415,7 +449,9 @@ async function doCreateSyncedSource(
         ${input.defaultSensitivity ?? null},
         ${input.syncIntervalSeconds},
         ${actor.userId}::uuid,
-        ${sourceAccountSql(input.appName, actor.orgId, actor.userId)}
+        ${sourceAccountSql(input.appName, actor.orgId, actor.userId)},
+        ${input.sourceKind ?? null},
+        ${input.sourceKind ? JSON.stringify(input.sourceConfig ?? {}) : null}::jsonb
       )
       RETURNING *
     `),

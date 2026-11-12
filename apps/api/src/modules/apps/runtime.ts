@@ -62,6 +62,7 @@ import {
   exportRegistry,
   getDeclaredEmits,
   importRegistry,
+  knowledgeSourceKindRegistry,
   manifestAttentionAxesRegistry,
   manifestAttentionRegistry,
   manifestFileParentRegistry,
@@ -4279,6 +4280,30 @@ async function registerSingleApp(
         registerExternalSearchHandler(orgId, appNameLocal, handler, { timeoutMs })
       }
 
+      // Knowledge source kinds (manifest `knowledgeSources`): the Knowledge sync
+      // job wakes the kind's handler one page at a time and writes what it
+      // returns (apps/knowledge/app-sources.ts). The dispatch runs the export
+      // like the search handler: a vouched app in-process, any other in the
+      // worker pool or on Workers.
+      if ((desc as any).knowledgeSources && isManifestFormat && bundlePath) {
+        const { knowledgeSourceKindsOf, makeKnowledgeSyncDispatch } = await import(
+          "~/modules/apps/knowledge-sync-dispatch"
+        )
+        const kinds = knowledgeSourceKindsOf((desc as any).knowledgeSources)
+        if (Object.keys(kinds).length > 0) {
+          knowledgeSourceKindRegistry.set([orgId, desc.name], {
+            kinds,
+            dispatch: makeKnowledgeSyncDispatch({
+              appName: desc.name,
+              kinds,
+              bundlePath,
+              bridgeManifest: manifestForBridge!,
+              vouched: hasPrivilegedBridge(desc),
+            }),
+          })
+        }
+      }
+
       // Register slots
       if (desc.slots) {
         for (const [slotName, slotDef] of Object.entries(desc.slots as Record<string, any>)) {
@@ -4542,6 +4567,7 @@ const APP_KEYED_REGISTRIES = [
   slotRegistry,
   exportRegistry,
   importRegistry,
+  knowledgeSourceKindRegistry,
 ]
 
 /**

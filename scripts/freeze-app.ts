@@ -420,6 +420,44 @@ export async function freezeApp(opts: FreezeOptions): Promise<FreezeResult> {
       }
     }
 
+    // App pages (manifest `pages`): each page's `pages/<name>.ts` bundled for
+    // the browser into `pages/<name>.js`, the script the platform serves on the
+    // page (apps/api/src/modules/apps/app-pages.ts). It runs in the person's
+    // browser under the page's own policy, never in the sandbox.
+    const pageDecls = (raw as { pages?: Record<string, { source?: string }> }).pages ?? {}
+    for (const [pageName, page] of Object.entries(pageDecls)) {
+      if (page.source !== `pages/${pageName}.ts`) {
+        throw new Error(`pages.${pageName}.source must be "pages/${pageName}.ts"`)
+      }
+      const sourcePath = join(appDir, page.source)
+      if (!existsSync(sourcePath))
+        throw new Error(`pages.${pageName}.source not found at ${sourcePath}`)
+      const pageBuild = await Bun.build({
+        entrypoints: [sourcePath],
+        target: "browser",
+        minify: true,
+        metafile: true,
+        plugins: bunPlugins,
+      })
+      if (!pageBuild.success) {
+        throw new Error(
+          `page '${pageName}' bundle failed: ${bunBuildFailureDetail(pageBuild.logs)}`,
+        )
+      }
+      for (const p of bundleSources(
+        pageBuild.metafile?.outputs,
+        process.cwd(),
+        repoRoot,
+        workspacePackages,
+      )) {
+        sources.add(p)
+      }
+      mkdirSync(join(stage, "pages"), { recursive: true })
+      const outName = `pages/${pageName}.js`
+      writeFileSync(join(stage, outName), await pageBuild.outputs[0].text())
+      templateFiles.push(outName)
+    }
+
     // Optional docs / license pulled verbatim from the source tree.
     for (const optional of ["README.md", "CHANGELOG.md", "LICENSE"]) {
       const src = join(appDir, optional)

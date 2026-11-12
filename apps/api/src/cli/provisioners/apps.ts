@@ -33,6 +33,11 @@ import type { ProvisioningConfig } from "~/cli/config/schema"
 import { requireActor } from "~/cli/provisioners/admin"
 import { applyAppConfig, assertAppConfigAllowed } from "~/cli/provisioners/app-config"
 import {
+  applyAppProvision,
+  assertProvisionValid,
+  planAppProvision,
+} from "~/cli/provisioners/app-provision"
+import {
   applyAppSettings,
   appSettingsKnown,
   checkAppSettings,
@@ -63,6 +68,7 @@ import {
   resolvePlanOrgId,
 } from "~/cli/provisioners/types"
 import { canonicalJson, declaredAppConfigKeys, readAppConfig } from "~/modules/apps/app-config"
+import { appHasProvisioning } from "~/modules/apps/app-provisioning"
 import {
   catalogInstallAction,
   installCatalogApp,
@@ -150,6 +156,13 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
       }
       if (app.domainAccess) {
         actions.push(...(await planDatabaseDomainAccess(ctx, config, app.domainAccess)))
+      }
+      if (app.provision) {
+        // Checked here when the app is registered; one this run installs, in apply.
+        if (ctx.orgId && appHasProvisioning(ctx.orgId, app.name)) {
+          assertProvisionValid(ctx.orgId, app.name, app.provision)
+        }
+        actions.push(`provision app '${app.name}': ${Object.keys(app.provision).join(", ")}`)
       }
     }
     return { actions }
@@ -253,6 +266,7 @@ async function planAppsAgainstStore(
     if (app.domainAccess) {
       lines.push(...(await planDatabaseDomainAccess(ctx, config, app.domainAccess)))
     }
+    if (app.provision) lines.push(...(await planAppProvision(ctx, app.name, app.provision)))
     changes += lines.length
     if (app.connection) {
       actions.push(
@@ -409,6 +423,11 @@ async function applyApps(
     }
 
     if (!app.connection) {
+      if (app.provision) {
+        const r = await applyAppProvision(ctx, app.name, app.provision)
+        changed.push(...r.changed)
+        unchanged.push(...r.unchanged)
+      }
       apps.push({
         name: app.name,
         enabled: (await settledAppState(ctx.orgId, app.name)) === "on",
@@ -429,6 +448,12 @@ async function applyApps(
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
       pending.push(...r.pending)
+    }
+    // The app's own setup runs once its connection is in place (it may use it).
+    if (app.provision) {
+      const r = await applyAppProvision(ctx, app.name, app.provision)
+      changed.push(...r.changed)
+      unchanged.push(...r.unchanged)
     }
     // A connection that is unchanged can still be dead (a host that moved, a
     // revoked token): probe the stored row when the app has a probe, and turn

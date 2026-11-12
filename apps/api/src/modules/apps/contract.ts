@@ -2,6 +2,7 @@
 
 import { z } from "zod"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
+import { appSurfaceErrors } from "~/modules/apps/app-surface"
 import { connectionLimitsErrors } from "~/modules/apps/connection-limits"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { validateProviderContracts } from "~/modules/apps/provider-contracts/validate"
@@ -1031,6 +1032,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
     for (const e of connectionLimitsErrors(conn?.limits)) errors.push(`connections.${name}.${e}`)
   }
   errors.push(...dimensionReferenceErrors(manifest))
+  errors.push(...appSurfaceErrors(manifest))
   errors.push(...oauthManifestKnobErrors(manifest))
   errors.push(...listingDeclarationErrors(manifest))
   errors.push(...appIconErrors(manifest))

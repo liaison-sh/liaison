@@ -65,11 +65,29 @@ export interface VerifyConfigResult {
   status: "PASS" | "DRIFT"
 }
 
+/**
+ * One `apps[].provision` block: DRIFT when the app's provisioning handler, run
+ * dry, would change something; FAIL when its `verify` handler says the setup does
+ * not work (or a run failed).
+ */
+export interface VerifyProvisionResult {
+  app: string
+  status: "PASS" | "DRIFT" | "FAIL"
+  /** What a `config apply` would change (DRIFT). */
+  changes?: string[]
+  /** What the app's verify handler found wrong, or the error (FAIL). */
+  problems?: string[]
+  /** Non-secret identity the verify handler reported (PASS). */
+  identity?: string
+}
+
 export interface VerifyReport {
   ok: boolean
   results: VerifyAppResult[]
   /** Present when the config declares any `apps[].config`. */
   config?: VerifyConfigResult[]
+  /** Present when the config declares any `apps[].provision`. */
+  provision?: VerifyProvisionResult[]
 }
 
 export interface RunConfigVerifyOptions {
@@ -97,6 +115,37 @@ export interface RunConfigVerifyOptions {
   /** Probe one `apiConnectors` connection. Injectable for tests; defaults to
    *  `verifyProbeOperation`'s pick, through the connector service. */
   apiConnectorProbe?: (orgId: string, identifier: string) => Promise<VerifyProbeResult | null>
+  /** Check one `apps[].provision` block. Injectable for tests; defaults to the
+   *  app's own handlers (dry run, then `verify`). */
+  provisionCheck?: (
+    orgId: string,
+    appName: string,
+    provision: Record<string, unknown>,
+  ) => Promise<VerifyProvisionResult>
+}
+
+/** The app's provisioning handler, dry, then its verify handler when declared. */
+async function defaultProvisionCheck(
+  orgId: string,
+  appName: string,
+  provision: Record<string, unknown>,
+): Promise<VerifyProvisionResult> {
+  const { ensureAppsForOrg } = await import("~/modules/apps/init")
+  const { runAppProvisioning, runAppProvisioningVerify } = await import(
+    "~/modules/apps/app-provisioning"
+  )
+  await ensureAppsForOrg(orgId)
+  const { changed } = await runAppProvisioning({ orgId, appName, config: provision, dryRun: true })
+  if (changed.length > 0) return { app: appName, status: "DRIFT", changes: changed }
+  const verified = await runAppProvisioningVerify({ orgId, appName, config: provision })
+  if (verified && !verified.ok) {
+    return { app: appName, status: "FAIL", problems: verified.problems }
+  }
+  return {
+    app: appName,
+    status: "PASS",
+    ...(verified?.identity ? { identity: verified.identity } : {}),
+  }
 }
 
 /**
@@ -235,6 +284,13 @@ export async function runConfigVerify(
   const configApps = (opts.config.apps ?? []).filter(
     (a) => a.config !== undefined && (opts.appFilter === undefined || a.name === opts.appFilter),
   )
+  const provisionApps = (opts.config.apps ?? []).filter(
+    (a) =>
+      a.provision !== undefined &&
+      a.enable &&
+      (opts.appFilter === undefined || a.name === opts.appFilter),
+  )
+  const provisionCheck = opts.provisionCheck ?? defaultProvisionCheck
 
   const connectorApps = (opts.config.apps ?? []).filter(
     (a) =>
@@ -251,12 +307,18 @@ export async function runConfigVerify(
     opts.appFilter !== undefined &&
     connectorApps.length === 0 &&
     configApps.length === 0 &&
+    provisionApps.length === 0 &&
     apiConnectors.length === 0
   ) {
     log(`config verify: app '${opts.appFilter}' has no connection or config declared in config`)
     return { exitCode: 2, report: { ok: false, results: [] } }
   }
-  if (connectorApps.length === 0 && configApps.length === 0 && apiConnectors.length === 0) {
+  if (
+    connectorApps.length === 0 &&
+    configApps.length === 0 &&
+    provisionApps.length === 0 &&
+    apiConnectors.length === 0
+  ) {
     log("config verify: no connector apps with a connection declared in config")
     return { exitCode: 0, report: { ok: true, results: [] } }
   }
@@ -347,7 +409,36 @@ export async function runConfigVerify(
 
   const config =
     configApps.length > 0 ? await verifyAppConfig(orgId, configApps, readConfig, log) : undefined
+  const provision: VerifyProvisionResult[] = []
+  for (const app of provisionApps) {
+    let r: VerifyProvisionResult
+    try {
+      r = await provisionCheck(orgId, app.name, app.provision as Record<string, unknown>)
+    } catch (err) {
+      r = { app: app.name, status: "FAIL", problems: [errorMessage(err)] }
+    }
+    const detail =
+      r.status === "DRIFT"
+        ? ` (would change: ${(r.changes ?? []).join(", ")})`
+        : r.status === "FAIL"
+          ? ` — ${(r.problems ?? []).join("; ")}`
+          : r.identity
+            ? ` (identity: ${r.identity})`
+            : ""
+    log(`app '${app.name}': provision ${r.status}${detail}`)
+    provision.push(r)
+  }
   const ok =
-    results.every((r) => r.status !== "FAIL") && (config ?? []).every((r) => r.status !== "DRIFT")
-  return { exitCode: ok ? 0 : 1, report: { ok, results, ...(config ? { config } : {}) } }
+    results.every((r) => r.status !== "FAIL") &&
+    (config ?? []).every((r) => r.status !== "DRIFT") &&
+    provision.every((r) => r.status === "PASS")
+  return {
+    exitCode: ok ? 0 : 1,
+    report: {
+      ok,
+      results,
+      ...(config ? { config } : {}),
+      ...(provisionApps.length > 0 ? { provision } : {}),
+    },
+  }
 }

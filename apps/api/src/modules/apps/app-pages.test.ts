@@ -223,10 +223,15 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     expect((await openHandle(userToken, minted.result.handle)).status).toBe(404)
   }, 60_000)
 
-  test("a page with connectionToken gets the person's own account token, never another's", async () => {
+  test("a widget page runs the platform's script with a narrow token; app code never holds one", async () => {
     const { CryptoContext, encryptSecret } = await import("~/lib/crypto")
     const { seedConnectedAccountRow } = await import("~/seed/factories/org/platform-rows")
-    const account = (owner: string | null, identifier: string, token: string) =>
+    const account = (
+      owner: string | null,
+      identifier: string,
+      token: string,
+      grant: string[] | null = ["read", "openid", "email"],
+    ) =>
       seedConnectedAccountRow({
         orgId,
         appName: PAGE_FX_APP,
@@ -242,12 +247,15 @@ describe("app pages: a sandboxed app's page, served and called through the platf
         ),
         status: "active",
         createdBy: userId,
+        ...(grant ? { metadata: { grantedOAuthScopes: grant } } : {}),
       })
     const reader = (
       await sql<{ id: string }[]>`
       SELECT id FROM kernel.users WHERE org_id = ${orgId} AND id <> ${userId} LIMIT 1`
     )[0]!.id
     const mine = await account(userId, "me@pages.test", "tok-mine")
+    const broad = await account(userId, "broad@pages.test", "tok-broad", ["read", "write"])
+    const unknown = await account(userId, "unknown@pages.test", "tok-unknown", null)
     const theirs = await account(reader, "them@pages.test", "tok-theirs")
     const orgOwned = await account(null, "team@pages.test", "tok-org")
     const pickerHandle = async (acc: string) => {
@@ -262,18 +270,44 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     const render = async (acc: string) => {
       const link = await openHandle(userToken, await pickerHandle(acc))
       const res = await app.request(pathOf(link.body.data.url))
-      return { status: res.status, html: await res.text() }
+      return {
+        url: link.body.data.url as string,
+        status: res.status,
+        html: await res.text(),
+        policy: res.headers.get("content-security-policy") ?? "",
+      }
     }
     const ok = await render(mine)
     expect(ok.status).toBe(200)
-    expect(ok.html).toContain('connectionToken:Object.freeze({"token":"tok-mine"')
-    expect(ok.html).toContain('"identifier":"me@pages.test"')
+    // On the org's origin, the platform's widget script inline; no app script,
+    // and nothing on `liaisonPage` (the object app code would read).
+    expect(ok.url).toContain("/api/app-pages/")
+    expect(ok.html).toContain('"token":"tok-mine"')
+    expect(ok.html).toContain("(function(cfg,page){")
+    expect(ok.html).not.toContain("page.js")
+    expect(ok.html).not.toContain("connectionToken")
+    expect(ok.policy).toContain("https://apis.google.com")
+    expect(ok.policy).not.toContain("sandbox")
+    const issued = await sql<{ metadata: Record<string, unknown> }[]>`
+      SELECT metadata FROM kernel.audit_log
+      WHERE org_id = ${orgId} AND action = ${`${PAGE_FX_APP}.page_widget.token_issued`}`
+    expect(issued.map((r) => r.metadata.account)).toContain(mine)
+    // A grant broader than tokenScopes, or none recorded: refused, no token.
+    for (const acc of [broad, unknown]) {
+      const refused = await render(acc)
+      expect(refused.status).toBe(403)
+      expect(refused.html).toContain("page_token_too_broad")
+      expect(refused.html).not.toContain("tok-")
+    }
     // Another member's account, and the org's without the connection's admin scope: refused.
     for (const acc of [theirs, orgOwned]) {
       const refused = await render(acc)
       expect(refused.status).toBe(403)
       expect(refused.html).not.toContain("tok-")
     }
+    // A page with a script of its own never carries a token.
+    const hello = await openPage((await mintLink(userToken)).body.data.url)
+    expect(hello.html).not.toContain("tok-")
   }, 60_000)
 
   test("a link asked over HTTP takes no params: the opener cannot choose them", async () => {

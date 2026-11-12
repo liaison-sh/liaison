@@ -10,6 +10,7 @@
 // the handlers live in and the package directory the page scripts are read from.
 
 import { dirname } from "node:path"
+import { type PageWidgetDecl, widgetErrors } from "~/modules/apps/page-widgets"
 import { createTypedRegistry } from "~/modules/apps/registries"
 
 export interface AppPageHosts {
@@ -21,8 +22,11 @@ export interface AppPageHosts {
 }
 
 export interface AppPageDecl {
-  /** `pages/<name>.ts` in the app's source; the package carries `pages/<name>.js`. */
-  source: string
+  /**
+   * `pages/<name>.ts` in the app's source; the package carries `pages/<name>.js`.
+   * Absent on a widget page (the platform serves its script).
+   */
+  source?: string
   title?: string
   /** The scope a person must hold to open the page (and to call its routes). */
   scope: string
@@ -30,13 +34,12 @@ export interface AppPageDecl {
   routes?: string[]
   hosts?: AppPageHosts
   /**
-   * The page receives the access token of one oauth2 account of this
-   * connection (`liaisonPage.connectionToken`), for a provider widget that
-   * runs in the person's browser with their own grant (a file picker). The
-   * account is the link's `params.account`: the person's own, or the
-   * organization's when they hold the connection's admin scope.
+   * A provider widget the PLATFORM renders on this page (page-widgets.ts): the
+   * page ships no script of its own, the widget runs with the account the link
+   * names, and its route receives only what the person chose. No app code ever
+   * holds the account's token.
    */
-  connectionToken?: { connection: string }
+  widget?: PageWidgetDecl
 }
 
 export interface AppRouteDecl {
@@ -110,21 +113,37 @@ export function appSurfaceErrors(manifest: {
   pages?: Record<string, AppPageDecl>
   pageRoutes?: Record<string, AppRouteDecl>
   provisioning?: AppProvisioningDecl
-  connections?: Record<string, { type?: string; oauthClient?: { key?: string } }>
+  connections?: Record<
+    string,
+    {
+      type?: string
+      oauthClient?: { key?: string }
+      scopes?: string[]
+      restrictedScopes?: string[]
+    }
+  >
 }): string[] {
   const errors: string[] = []
   const name = typeof manifest.name === "string" ? manifest.name : ""
   const routes = manifest.pageRoutes ?? {}
   for (const [pageName, page] of Object.entries(manifest.pages ?? {})) {
-    if (page.source !== `pages/${pageName}.ts`) {
+    if (page.widget) {
+      if (page.source !== undefined) {
+        errors.push(`pages.${pageName}.source: a widget page ships no script`)
+      }
+      errors.push(
+        ...widgetErrors(
+          pageName,
+          page.widget,
+          page,
+          manifest.connections?.[page.widget.connection],
+        ),
+      )
+    } else if (page.source !== `pages/${pageName}.ts`) {
       errors.push(`pages.${pageName}.source: must be "pages/${pageName}.ts"`)
     }
     if (!page.scope.startsWith(`${name}:`)) {
       errors.push(`pages.${pageName}.scope: must be one of the app's own scopes (${name}:...)`)
-    }
-    const tokenConn = page.connectionToken?.connection
-    if (tokenConn !== undefined && manifest.connections?.[tokenConn]?.type !== "oauth2") {
-      errors.push(`pages.${pageName}.connectionToken: "${tokenConn}" is not an oauth2 connection`)
     }
     for (const route of page.routes ?? []) {
       if (!routes[route])

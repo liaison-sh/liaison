@@ -1841,10 +1841,22 @@ export const appManifestJsonSchema = {
             maxItems: 20,
             items: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" },
           },
-          connectionToken: {
+          // A provider widget the platform renders (page-widgets.ts); the page
+          // then has no `source`, and no app script ever holds the token.
+          widget: {
             type: "object",
-            properties: { connection: { type: "string", minLength: 1, maxLength: 64 } },
-            required: ["connection"],
+            properties: {
+              kind: { type: "string", enum: ["google-picker"] },
+              connection: { type: "string", minLength: 1, maxLength: 64 },
+              route: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" },
+              tokenScopes: {
+                type: "array",
+                minItems: 1,
+                maxItems: 10,
+                items: { type: "string", minLength: 1, maxLength: 200 },
+              },
+            },
+            required: ["kind", "connection", "route", "tokenScopes"],
             additionalProperties: false,
           },
           hosts: {
@@ -1879,7 +1891,7 @@ export const appManifestJsonSchema = {
             additionalProperties: false,
           },
         },
-        required: ["source", "scope"],
+        required: ["scope"],
         additionalProperties: false,
       },
     },

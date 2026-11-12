@@ -296,6 +296,7 @@ describe("writesToTable annotations on kernel tools", () => {
       dashboards_update: "kernel.dashboards",
       dashboards_edit: "kernel.dashboards",
       dashboards_pdf: "kernel.files",
+      dashboards_share: "kernel.dashboards",
       dashboards_delete: "kernel.dashboards",
       // The app data store: a document of an app's declared collection.
       data_set: "kernel.app_documents",

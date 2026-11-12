@@ -270,7 +270,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 
 | Name | Read in |
 | --- | --- |
-| `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:153` |
+| `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:158` |
 | `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:787` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:74` |

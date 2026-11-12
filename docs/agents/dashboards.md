@@ -74,13 +74,23 @@ The request is checked before anyone is asked: a block that is not there or alre
 
 ## Change a dashboard yourself
 
-Your own changes save at once, never held for approval: your scopes decide (the table above). You can move a block, make it wider (1 to 3 columns) or taller (1 or 2 rows), rename it, duplicate it or remove it, rename the dashboard and describe what it is for. The changes go through the same checks as the agent's: either all of them are saved, or none. If someone saved the dashboard in the meantime, the change is refused and the dashboard shows its new version.
+Your own changes save at once, never held for approval: your scopes decide (the table above). When you may change a dashboard, its bar at the top has **Edit**. Click it to enter edit mode, and **Done** to leave it. In edit mode:
 
-Any dashboard you can see can also be **duplicated**: the copy is your own personal dashboard, with the same blocks, named "<title> (copy)". Its blocks must read sources you may read yourself.
+- The dashboard's title and its description (under the title, **Add a description (optional)**) become fields. A change is saved when you press Enter or leave the field.
+- Each block's title becomes a field: rename it the same way.
+- Move a block by dragging it onto another one: it takes that block's place. From the keyboard, the arrows beside its title do the same: **Move earlier** and **Move later** move it one place, **Move up a row** and **Move down a row** one row of the grid as it is drawn (one place on a phone).
+- A block's menu (the three dots) sets its **Width** (1, 2 or 3 columns) and its **Height** (**Normal**, or **Tall (2 rows)**), and has **Duplicate** (a copy right after it, named "<title> (copy)") and **Delete**, which asks first.
+- **Undo** takes back your last change, then the one before, as many as you made since the dashboard opened.
+
+Each change goes through the same checks as the agent's: either it is saved, or nothing is. If someone saved the dashboard in the meantime, your change is not saved: the dashboard reloads and says "Someone else changed this dashboard. It is reloaded: make your change again." On a phone the dashboard keeps one column, and edit mode works the same way.
+
+Any dashboard you can see can also be **duplicated**: **More actions** (the three dots at the top), then **Duplicate as my own**. The copy is your own personal dashboard, with the same blocks, named "<title> (copy)", and it opens at once. Its blocks must read sources you may read yourself.
 
 ## Go back to an earlier version
 
 Every save keeps the version it made, with who saved it and when: the last 20 versions of each dashboard. Anyone who sees the dashboard can list them and look at one. Going back to a version saves it again as a new version, so nothing is lost: you can always go forward again. A dashboard saved before version history existed keeps its versions from its next save.
+
+On the dashboard, **More actions**, then **Version history**, opens the versions in a panel on the right (over the dashboard on a phone), newest first. Each one says who saved it and when, and what it changed against the one before: "1 block added", "Renamed "Sales"", "Blocks or layout changed". **Show blocks** lists that version's blocks. **Restore**, shown to someone who may change the dashboard, brings that version back as a new one. Close the panel with its close button or Escape.
 
 Ask your agent, for example "Put the sales dashboard back as it was on Monday": it lists the versions (`dashboards_history`) and reverts to the one you mean. On an org dashboard that revert waits for an approval like any other change, and its card says what the revert undoes: the blocks it removes, adds back or changes.
 
@@ -95,7 +105,7 @@ A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter 
 
 A metric can also show a goal (its target) and its trend over the period as a small line.
 
-Days, weeks, months, quarters (`2026-Q4`) and years are always counted in the organization's time zone: an order placed at 00:30 in Paris on 1 November counts on 1 November, in the figures, the trend and the charts alike.
+Days, weeks, months, quarters (`2026-Q4`) and years are always counted in the organization's time zone: an order placed at 00:30 in Paris on 1 November counts on 1 November, in the figures, the trend and the charts alike. The periods in the bar at the top (this month, last quarter...) start from today in the organization's time zone too, wherever you are. A chart reads a month as "Nov 2026", a quarter as "Q4 2026" ("T4 2026" in French) and a year as "2026".
 
 ## Choose the period
 
@@ -141,6 +151,7 @@ A dashboard can also have **filters** (at most 8), such as a market, a channel o
 - Click a filter to see its values. **All** shows everything. A filter that takes one value closes on your pick; one that takes several keeps its menu open, each click ticks or unticks a value, and the blocks read the values you ticked once you close the menu.
 - A text filter is a small field: type a value and press Enter, or leave the field. Empty it to show everything again.
 - A filter's values are a fixed list, or the values found in the dashboard's own data for the period shown, read when you open the menu. A long list shows its first 200 values and says so.
+- A menu of values found in the data has a **Search** box at its top (so has a fixed list of more than 10 values): type part of a value and the menu lists the matching ones, searched among all of them, not only the first 200.
 - **Reset filters** goes back to the dashboard's default values and forgets yours.
 - A value cannot hold `{{` or `}}`. A link with a value the filter does not offer (removed since), or longer than 200 characters, opens with that value left out.
 
@@ -155,7 +166,7 @@ When several blocks show the same data (a count and the list of the same orders,
 A block's figures come from rows of its source, and you can see those rows: the orders behind a bar, the ad sets in a slice, the rows a metric adds up.
 
 - Click a bar, a point, a slice, a funnel stage, a table row's first cell or a metric's figure. With the keyboard, each chart's categories can also be reached with Tab.
-- The button with rows lines next to a block's title (**Show the rows behind this block**) lists every row the block counts.
+- The button with rows lines next to a block's title (**Show the rows behind this block**) lists every row the block counts. A metric read from a single record (not a list) has no rows behind it, so it has no such button.
 
 The rows open in a panel on the right of the dashboard (over it on a phone), with the block's title and the figure you picked ("FR", or **All rows**). At its top: "1 to 50 of 230", **Previous page** and **Next page**, and **Close** (or press Escape, wherever you are on the dashboard); focus then goes back to what you clicked. The rows follow the period and the filters the dashboard shows: change either while the panel is open and it reads the rows again from the first page. A bar or point of the compared period opens that period's rows, with its dates under the title. When the block says where a row leads (an order, a ticket, a contact), each row has **Open**, which opens that record in Liaison. When the source holds more rows than are searched, the panel says "The source has more rows: only its first 2,000 are searched."
 
@@ -163,9 +174,11 @@ The rows are read from the figures already loaded, never by running the source a
 
 ## Calculated figures
 
-A block can compute its figures from others, for example a return on ad spend (revenue divided by ad spend, the spend read from another shared dataset), a difference between two counts, a share of a total, or amounts kept in cents shown in units. Your agent writes the calculation with numbers, `+ - * /`, parentheses, `min`, `max`, `abs` and `round`. A division by zero, or a figure that is missing, shows no value rather than a wrong number. A chart can also show each value as a percentage of its total.
+A block can compute its figures from others, for example a return on ad spend (revenue divided by ad spend, the spend read from another shared dataset), a difference between two counts, a share of a total, or amounts kept in cents shown in units. Your agent writes the calculation with numbers, `+ - * /`, parentheses, `min`, `max`, `abs` and `round`. A division by zero, or a figure that is missing, shows no value rather than a wrong number. A chart can also show each value as a percentage of its total, read as "25%".
 
 ## Export a dashboard
+
+On the dashboard, **Export** then **Download PDF** downloads the whole dashboard for the period and filters you show. A block's menu (the three dots beside its title) has **Data (CSV)** and **Rows behind it (CSV)**. A block that keeps its own dates exports those dates.
 
 - A block's figures as a CSV file: one row per label and a column per series, the compared values beside them (`GET /api/dashboards/:id/blocks/:blockId/data.csv`).
 - The rows behind a block as a CSV file: every row it reads (up to 2,000), with the same columns as when you look at them (`GET /api/dashboards/:id/blocks/:blockId/rows.csv`).
@@ -175,7 +188,7 @@ Everything is read with your own access, through the same figures as the dashboa
 
 ## Send a dashboard on a schedule
 
-Ask your agent, for example "Every Monday at 8, send me the sales dashboard for last week". It sets up a routine ([Routines](routines.md)) that, each time, reads the dashboard for that period (`dashboards_snapshot`: each figure with its change), posts the key figures and, if you want it, the PDF (`dashboards_pdf`). The routine waits for your approval like any new routine.
+On the dashboard, **More actions** then **Send regularly…** reminds you how, with an example request naming the dashboard. Ask your agent, for example "Every Monday at 8, send me the sales dashboard for last week". It sets up a routine ([Routines](routines.md)) that, each time, reads the dashboard for that period (`dashboards_snapshot`: each figure with its change), posts the key figures and, if you want it, the PDF (`dashboards_pdf`). The routine waits for your approval like any new routine.
 
 Nobody receives more than they could see themselves. The figures are read with the access of the routine's owner. Sent to several people (a shared conversation, an email), the agent first checks each person: an active member who can open the dashboard and read every source behind it. The others are left out, and the agent says who and why. Someone whose access to rows differs may still see other figures on the dashboard: to give each person their own figures, each gets a routine of their own.
 

@@ -5,6 +5,14 @@
 // the org id at that point is one the code may act for; the test fails on a
 // new site the caller trace cannot follow to one of them, and on an entry no
 // site needs any more.
+//
+// New entries go in a file of their own, `privileged-org-reviews/<feature>.json`
+// beside this one: `{ "<section>": { "<key>": "<why>" } }`, sections
+// trustedSources, reviewedDispatch, reviewedOutsideRoutes, reviewedOrigins and
+// reviewedRegistries (test-support/registry-dir.ts). Two PRs then never add
+// lines at the same end of one of these records.
+import { join } from "node:path"
+import { mergeRegistryDir } from "../registry-dir"
 import type { OrgTraceReviews } from "./enumerate"
 
 /**
@@ -675,6 +683,14 @@ export const REVIEWED_REGISTRIES: Record<string, string> = {
   "apps/api/src/modules/apps/approval-summarizers.ts#registerApprovalSummarizer":
     "kept per [orgId, app, tool] (approval-summarizers.ts:42-48); the approval pipeline calls it for an approval of that org",
 }
+
+mergeRegistryDir(join(import.meta.dir, "privileged-org-reviews"), {
+  trustedSources: TRUSTED_SOURCES,
+  reviewedDispatch: REVIEWED_DISPATCH,
+  reviewedOutsideRoutes: REVIEWED_OUTSIDE_ROUTES,
+  reviewedOrigins: REVIEWED_ORIGINS,
+  reviewedRegistries: REVIEWED_REGISTRIES,
+})
 
 export const REVIEWS: OrgTraceReviews = {
   trustedSources: TRUSTED_SOURCES,

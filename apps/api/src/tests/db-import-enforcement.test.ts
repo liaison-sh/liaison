@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test"
 import * as fs from "node:fs"
 import * as path from "node:path"
+import { mergeRegistryDir } from "../../test-support/registry-dir"
 
 const srcDir = path.resolve(__dirname, "..")
 
@@ -1561,6 +1562,17 @@ describe("db import enforcement", () => {
     // resource notifications) outside any per-request RLS context.
     "modules/mcp-client/index.ts",
   ])
+
+  // New entries go in a file of their own, `db-import-allowlist/<feature>.json`
+  // beside this test: `{ "privileged": { "<path under src/>": "<why>" } }` (sections
+  // connection, privileged, sql, publishEvent), so two PRs never add lines at the
+  // same end of one of the lists above (test-support/registry-dir.ts).
+  mergeRegistryDir(path.join(__dirname, "db-import-allowlist"), {
+    connection: connectionAllowlist,
+    privileged: privilegedAllowlist,
+    sql: sqlAllowlist,
+    publishEvent: publishEventAllowlist,
+  })
 
   const allFiles = findTsFiles(srcDir)
 

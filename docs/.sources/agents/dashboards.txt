@@ -266,3 +266,5 @@ An edit written against an older version applies on top unless a version saved s
 Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
 A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257
 A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853
+Blended chart card: one line, then one numbered line per layer -> apps/api/src/modules/dashboards/edit.ts:698 ; apps/api/src/modules/dashboards/edit.ts:1052
+Card points to the line that adds or changes a dataset, else names its tool -> apps/api/src/modules/dashboards/edit.ts:791

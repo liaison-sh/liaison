@@ -8,8 +8,11 @@
 // validated as a whole spec by the service, so a list either applies entirely or not at all.
 //
 // describeOperations writes one plain-language line per operation for the approval card
-// (tools.ts): what changes, from where a block reads (tool or collection, its params with
-// each date token and what it is today), its position, the range.
+// (tools.ts): what changes, its position, what a block shows, then from where it reads (tool
+// or collection, its params with each date token and what it is today), so a line cut at the
+// length cap loses its params, never its meaning. A layered block lists each layer on its own
+// numbered line under it ("2.1.", "2.2."), and a block reading a shared dataset the same
+// request sets refers to that line instead of repeating its source.
 
 import { APPROVAL_SUMMARY_LONG_LINES_MAX } from "@liaison/shared"
 import { z } from "zod"
@@ -547,11 +550,22 @@ function noteOf(op: EditOperation): string | null {
   return null
 }
 
-/** How many lines the approval card of `ops` lists: one per operation, plus each note's own. */
+/** The layers an operation lists under its line, one each (a layered block added or changed). */
+function layersOf(op: EditOperation): number {
+  const layers =
+    op.op === "addBlock" ? op.block.layers : op.op === "updateBlock" ? op.changes.layers : null
+  return Array.isArray(layers) ? layers.filter(isObject).length : 0
+}
+
+/**
+ * How many lines the approval card of `ops` lists: one per operation, plus each note's own and
+ * one per layer of a layered block it adds or changes. A copy's layers (duplicateBlock) and a
+ * revert's changes depend on the dashboard: checkEdit counts those from describeOperations.
+ */
 export function cardLineCount(ops: EditOperation[]): number {
   return ops.reduce((n, op) => {
     const note = noteOf(op)
-    return n + 1 + (note === null ? 0 : noteExtraLines(note).length)
+    return n + 1 + layersOf(op) + (note === null ? 0 : noteExtraLines(note).length)
   }, 0)
 }
 
@@ -668,19 +682,31 @@ function displayWords(map: Record<string, unknown>): string[] {
   return out
 }
 
-/** A layered block's layers in words: how each is drawn, what it shows, where it reads. */
-function layersWords(
+const layerList = (layers: unknown) => (Array.isArray(layers) ? layers : []).filter(isObject)
+const layerName = (l: Record<string, unknown>) => `"${String(l.label ?? l.id)}"`
+
+/** A layered block on its own line: how many layers, by name (each is listed on its own line). */
+function layersWords(layers: unknown): string {
+  const list = layerList(layers)
+  return `blending ${list.length} layer${list.length === 1 ? "" : "s"} joined on their date bucket (${list.map(layerName).join(", ")}), each on its own line below`
+}
+
+/**
+ * One line per layer under its block's line, numbered under it as a revert's changes are
+ * ("2.1.", "2.2."): how it is drawn, what it shows, then where it reads.
+ */
+function layerLines(
   layers: unknown,
+  number: string,
   spec: Record<string, unknown>,
   window: DayWindow,
   ctx: DescribeContext,
-): string {
-  const list = (Array.isArray(layers) ? layers : []).filter(isObject)
-  const each = list.map((l) => {
+  datasetRef: DatasetRef,
+): string[] {
+  return layerList(layers).map((l, k) => {
     const drawn = `${l.as === "line" ? "a line" : "bars"}${l.axis === "right" ? " on the right axis" : ""}`
-    return `"${String(l.label ?? l.id)}" (${drawn}, ${mapWords(l.map, spec)}) ${blockSourceWords(l, spec, window, ctx)}`
+    return `   ${number}${k + 1}. Layer ${layerName(l)}: ${drawn}, ${mapWords(l.map, spec)}; ${blockSourceWords(l, spec, window, ctx, datasetRef)}.`
   })
-  return `blending ${list.length} layer${list.length === 1 ? "" : "s"} joined on their date bucket: ${each.join("; ")}`
 }
 
 /** Whether a block follows the dashboard range (spec.ts blockRangeMode, on an unchecked block). */
@@ -747,19 +773,39 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   return `${String(s.tool ?? "(no source)")}${params}${tokenMeanings(s.params, window, ctx)}`
 }
 
+/**
+ * Where a shared dataset a line names is set in the same request: "(added in 1.)", "(changed
+ * in 3., below)"; undefined when the request does not set it.
+ */
+type DatasetRef = (id: string) => string | undefined
+const noDatasetRef: DatasetRef = () => undefined
+
+/** A shared source, short: its tool or collection only (its full line is not on this card). */
+function sourceName(source: Record<string, unknown>): string {
+  return source.kind === "store"
+    ? `the ${String(source.app)} collection "${String(source.collection)}"`
+    : String(source.tool ?? "no source")
+}
+
+/** A shared dataset a block reads: the line of this request that sets it, else its tool. */
+function datasetWords(id: string, spec: Record<string, unknown>, datasetRef: DatasetRef): string {
+  const ref = datasetRef(id)
+  if (ref) return `the shared dataset '${id}' ${ref}`
+  const ds = isObject(spec.datasets) ? spec.datasets[id] : undefined
+  return `the shared dataset '${id}' (${isObject(ds) ? sourceName(ds) : "not declared: this edit will be refused"})`
+}
+
 /** Where a block reads, in words: its own source, a shared dataset, or nothing (a note). */
 function blockSourceWords(
   b: Record<string, unknown>,
   spec: Record<string, unknown>,
   window: DayWindow,
   ctx: DescribeContext,
+  datasetRef: DatasetRef = noDatasetRef,
 ): string {
   if (b.type === "text") return `showing ${noteHead(String(b.text ?? ""))}`
-  if (Array.isArray(b.layers)) return layersWords(b.layers, spec, window, ctx)
-  if (typeof b.dataset === "string") {
-    const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
-    return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
-  }
+  if (Array.isArray(b.layers)) return layersWords(b.layers)
+  if (typeof b.dataset === "string") return `reading ${datasetWords(b.dataset, spec, datasetRef)}`
   return `reading ${sourceWords(b.source, window, ctx)}`
 }
 
@@ -863,6 +909,7 @@ function changeWords(
   spec: Record<string, unknown>,
   window: DayWindow,
   ctx: DescribeContext,
+  datasetRef: DatasetRef = noDatasetRef,
 ): string {
   const parts: string[] = []
   // Short, human parts first (title, dates, dataset), the long source and map words last:
@@ -883,7 +930,7 @@ function changeWords(
       parts.push(
         v === null
           ? "no longer reads a shared dataset"
-          : `now reads the shared dataset '${String(v)}'`,
+          : `now reads ${datasetWords(String(v), spec, datasetRef)}`,
       )
     } else if (k === "text") parts.push(`now shows ${noteHead(String(v ?? ""))}`)
     else if (k === "map") {
@@ -891,7 +938,7 @@ function changeWords(
         `now shows ${mapWords(mergeKeys(before.map, v), spec, Array.isArray(before.layers) || Array.isArray(changes.layers))}`,
       )
     } else if (k === "layers") {
-      parts.push(v === null ? "no layers any more" : `now ${layersWords(v, spec, window, ctx)}`)
+      parts.push(v === null ? "no layers any more" : `now ${layersWords(v)}`)
     } else if (k === "timeRange") {
       parts.push(
         v === "fixed"
@@ -915,6 +962,42 @@ export function describeOperations(
   operations: EditOperation[],
   ctx: DescribeContext,
 ): string[] {
+  return describeNumbered(current, operations, ctx, "")
+}
+
+/**
+ * The setDataset operations of a request, in order, each with whether it adds the dataset or
+ * changes one the dashboard already had at that point.
+ */
+function datasetSets(
+  current: EditableDashboard,
+  operations: EditOperation[],
+  versions: VersionLookup | undefined,
+): { index: number; id: string; verb: "added" | "changed" }[] {
+  const idsOf = (spec: Record<string, unknown>) =>
+    new Set(isObject(spec.datasets) ? Object.keys(spec.datasets) : [])
+  let ids = idsOf(specOf(current))
+  const out: { index: number; id: string; verb: "added" | "changed" }[] = []
+  operations.forEach((op, index) => {
+    if (op.op === "setDataset") {
+      out.push({ index, id: op.id, verb: ids.has(op.id) ? "changed" : "added" })
+      ids.add(op.id)
+    } else if (op.op === "removeDataset") ids.delete(op.id)
+    else if (op.op === "revert") {
+      const saved = versions?.get(op.toVersion)
+      if (saved) ids = idsOf(saved.spec)
+    }
+  })
+  return out
+}
+
+/** describeOperations, each line numbered under `prefix` ("" at the top, "2." in a revert's). */
+function describeNumbered(
+  current: EditableDashboard,
+  operations: EditOperation[],
+  ctx: DescribeContext,
+  prefix: string,
+): string[] {
   let state: EditableDashboard = current
   const lines: string[] = []
   // Range tokens are explained with the default range the dashboard has once the whole
@@ -932,11 +1015,21 @@ export function describeOperations(
   } catch {
     window = resolveTimeRange({ preset: "last30d" }, ctx)
   }
+  const sets = datasetSets(current, operations, ctx.versions)
   operations.forEach((op, i) => {
+    const number = `${prefix}${i + 1}.`
+    // A dataset this request sets is named by its line: the latest one before this line,
+    // else the first one after it.
+    const datasetRef: DatasetRef = (id) => {
+      const mine = sets.filter((d) => d.id === id && d.index !== i)
+      const set = mine.filter((d) => d.index < i).at(-1) ?? mine[0]
+      if (!set) return undefined
+      return `(${set.verb} in ${prefix}${set.index + 1}.${set.index > i ? ", below" : ""})`
+    }
     const blocks = (state.spec.blocks ?? []) as unknown as Record<string, unknown>[]
     const defaults = dashboardDefaultRange(state.spec)
     let line: string
-    /** Lines under this one (a revert's changes). */
+    /** Lines under this one (a revert's changes, a layered block's layers). */
     let sub: string[] = []
     let next: EditableDashboard = state
     try {
@@ -956,31 +1049,42 @@ export function describeOperations(
         const at = indexOf(nextBlocks, String(b.id))
         const refresh =
           b.refreshSec !== undefined ? `, refreshed every ${String(b.refreshSec)} s` : ""
-        const shows =
+        const head = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}`
+        const reads = blockSourceWords(b, specOf(next), window, ctx, datasetRef)
+        const shows = `it shows ${mapWords(b.map, specOf(next), Array.isArray(b.layers))}, ${rangeModeWords(b, specOf(next))}${refresh}`
+        // What the block is and shows first, where it reads (params, tokens) last; a layered
+        // block names its layers here and lists each on its own line below.
+        line =
           b.type === "text"
-            ? ""
-            : `; it shows ${mapWords(b.map, specOf(next), Array.isArray(b.layers))}, ${rangeModeWords(b, specOf(next))}`
-        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${shows}${refresh}`
+            ? `${head}, ${reads}${refresh}`
+            : Array.isArray(b.layers)
+              ? `${head}, ${reads}; ${shows}`
+              : `${head}; ${shows}; ${reads}`
+        if (Array.isArray(b.layers)) {
+          sub = layerLines(b.layers, number, specOf(next), window, ctx, datasetRef)
+        }
         break
       }
       case "updateBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, specOf(state), window, ctx)}`
+          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, specOf(state), window, ctx, datasetRef)}`
           : `Change the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
+        if (before && Array.isArray(op.changes.layers)) {
+          sub = layerLines(op.changes.layers, number, specOf(next), window, ctx, datasetRef)
+        }
         break
       }
       case "removeBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (${blockSourceWords(
-              before,
-              specOf(state),
-              window,
-              ctx,
-            )
-              .replace(/^reading/, "it read")
-              .replace(/^showing/, "it showed")})`
+          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (${
+              Array.isArray(before.layers)
+                ? `it blended ${layerList(before.layers).map(layerName).join(", ")}`
+                : blockSourceWords(before, specOf(state), window, ctx, datasetRef)
+                    .replace(/^reading/, "it read")
+                    .replace(/^showing/, "it showed")
+            })`
           : `Remove the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
         break
       }
@@ -1024,7 +1128,7 @@ export function describeOperations(
         const users = nextBlocks
           .filter((b) => readsDataset(b, op.id))
           .map((b) => blockName(b, String(b.id)))
-        line = `${had ? "Change" : "Add"} the shared dataset '${op.id}': it reads ${sourceWords(op.source, window, ctx)}, once per view for every block that uses it${users.length ? ` (${users.join(", ")})` : " (no block uses it yet)"}`
+        line = `${had ? "Change" : "Add"} the shared dataset '${op.id}', read once per view for every block that uses it${users.length ? ` (${users.join(", ")})` : " (no block uses it yet)"}: it reads ${sourceWords(op.source, window, ctx)}`
         break
       }
       case "removeDataset":
@@ -1071,8 +1175,11 @@ export function describeOperations(
         const at = copy ? indexOf(nextBlocks, String(copy.id)) : -1
         line =
           before && copy
-            ? `Duplicate the ${String(before.type)} block ${blockName(before, op.blockId)} as "${String(copy.title)}" (id ${String(copy.id)}) at ${positionWords(nextBlocks, at)}, ${blockSourceWords(copy, specOf(next), window, ctx)}`
+            ? `Duplicate the ${String(before.type)} block ${blockName(before, op.blockId)} as "${String(copy.title)}" (id ${String(copy.id)}) at ${positionWords(nextBlocks, at)}, ${blockSourceWords(copy, specOf(next), window, ctx, datasetRef)}`
             : `Duplicate the block '${op.blockId}' (not on the dashboard, or the new id is taken: this edit will be refused)`
+        if (before && copy && Array.isArray(copy.layers)) {
+          sub = layerLines(copy.layers, number, specOf(next), window, ctx, datasetRef)
+        }
         break
       }
       case "setDescription": {
@@ -1101,13 +1208,13 @@ export function describeOperations(
           changes.length === 0
             ? `Revert to version ${op.toVersion} (${saidAt}): no difference with the dashboard as it is`
             : `Revert to version ${op.toVersion} (${saidAt}): ${changes.length} change${changes.length === 1 ? "" : "s"}, listed below`
-        sub = describeOperations(state, changes, { ...ctx, versions: new Map() }).map((l) =>
-          /^\d+\. /.test(l) ? `   ${i + 1}.${l}` : `   ${l}`,
+        sub = describeNumbered(state, changes, { ...ctx, versions: new Map() }, number).map(
+          (l) => `   ${l}`,
         )
         break
       }
     }
-    lines.push(`${i + 1}. ${line}.`)
+    lines.push(`${number} ${line}.`)
     lines.push(...sub)
     const note = noteOf(op)
     if (note !== null) lines.push(...noteExtraLines(note))

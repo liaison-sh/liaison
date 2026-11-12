@@ -12,7 +12,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./test-support/contract/record-social.recorder.ts)
+//     bun test ./scripts/contract/record-social.recorder.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"

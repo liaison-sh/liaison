@@ -14,7 +14,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./test-support/contract/record-ads.recorder.ts)
+//     bun test ./scripts/contract/record-ads.recorder.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
 import { sql } from "~/db/connection"

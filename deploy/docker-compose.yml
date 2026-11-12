@@ -62,7 +62,7 @@ services:
       # above. Read-only so a compromised server cannot rewrite its own bootstrap.
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
       # The readonly-role grants SQL has exactly one checked-in source of
-      # truth (`apps/api/src/apps/database/generated/readonly-grants.sql`,
+      # truth (`apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql`,
       # rendered by `packages/db-core/src/grants-renderer.ts` from the
       # catalog — regenerate via `bun run scripts/db-readonly-role.ts
       # --regenerate`). One generated SQL file, two consumers, no second
@@ -77,7 +77,7 @@ services:
       # `make mountpoint ...: read-only file system`. Postgres's init-hook
       # globber only matches top-level files in /docker-entrypoint-initdb.d
       # either way, so nothing is lost by keeping the grants file outside it.
-      - ../apps/api/src/apps/database/generated:/tmp/liaison-grants:ro
+      - ../apps/api/src/modules/apps/connections/sql/generated:/tmp/liaison-grants:ro
     networks: [internal]
     # Hardening: block privilege escalation and drop all Linux capabilities,
     # re-adding only the few the postgres entrypoint needs to chown/init the

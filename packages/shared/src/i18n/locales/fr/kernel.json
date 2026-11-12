@@ -1909,7 +1909,8 @@
       "rolesAccess": "Rôles et accès",
       "appStore": "Boutique d'applications",
       "connectors": "Connecteurs",
-      "documents": "Documents"
+      "documents": "Documents",
+      "sidebar": "Barre latérale"
     },
     "invoicing": "Facturation",
     "monitoring": "Supervision",
@@ -1923,7 +1924,9 @@
     "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}",
     "dashboard": "Tableau de bord",
     "appBuilder": "Créateur d'apps",
-    "dashboards": "Tableaux de bord"
+    "dashboards": "Tableaux de bord",
+    "hideFromSidebar": "Masquer de la barre latérale",
+    "railEntryMenu": "Options de {{app}}"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -3974,17 +3977,6 @@
     "sendFailed": "Le code n'a pas pu être envoyé. Réessayez.",
     "failed": "Votre compte n'a pas pu être supprimé, rien n'a été modifié. Réessayez plus tard.",
     "signedOutNotice": "Votre compte a été supprimé."
-  },
-  "mailboxMcpAccess": {
-    "title": "Autoriser une application connectée à lire vos mails ?",
-    "readBody": "{{client}} demande à lire des messages d'une discussion chiffrée ({{count}} au total).",
-    "searchBody": "{{client}} demande à chercher « {{query}} » dans votre boîte chiffrée.",
-    "note": "Liaison les déchiffre dans cette fenêtre et les transmet à cette application pour cette seule demande. Rien n'est conservé.",
-    "deny": "Refuser",
-    "allowWindow": "Autoriser 15 minutes",
-    "allowOnce": "Autoriser une fois",
-    "identity": "Connexion créée le {{date}} (référence {{ref}}). Le nom ci-dessus est celui que l'application s'est donné quand vous l'avez connectée ; si vous ne reconnaissez pas cette connexion, refusez et supprimez-la dans vos réglages.",
-    "unknownDate": "une date inconnue"
   },
   "mailboxAlarmClear": {
     "open": "Effacer cet avertissement",
@@ -6662,5 +6654,13 @@
     "refresh": "Actualiser",
     "failed": "Les journaux n'ont pas pu être lus. Réessayez dans un instant.",
     "empty": "Rien n'a été journalisé ces 7 derniers jours."
+  },
+  "sidebarSettings": {
+    "title": "Barre latérale",
+    "intro": "Choisissez les applications affichées dans votre barre latérale.",
+    "note": "Les applications masquées restent accessibles depuis la recherche, la palette de commandes et les liens.",
+    "showInSidebar": "Afficher {{app}} dans la barre latérale",
+    "saveFailed": "La barre latérale n'a pas été enregistrée. Réessayez.",
+    "adminIntro": "Les applications que {{name}} voit dans sa barre latérale. Cette personne peut à tout moment afficher ou masquer chacune d'elles dans ses propres réglages."
   }
 }

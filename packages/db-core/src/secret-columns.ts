@@ -4,7 +4,7 @@
 //
 // The primary wall is the readonly DB role's allow-list grant (see
 // `deploy/postgres-init/20-readonly-role.sh` / `scripts/db-readonly-role.ts` /
-// `apps/api/src/apps/database/generated/readonly-grants.sql`): the role is
+// `apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql`): the role is
 // never granted SELECT on these columns/tables at all, so even a catalog bug
 // or a bypassed validator hits `42501` at the DB layer.
 //

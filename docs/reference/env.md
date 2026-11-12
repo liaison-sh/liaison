@@ -276,7 +276,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `DRIVE_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:33` |
 | `DRIVE_UPLOAD_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:37` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5041` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:47`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5081` |
 | `GITLAB_API_BASE_URL` | `apps/api/src/apps/gitlab/gitlab-rest.ts:23` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
@@ -285,7 +285,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:75`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
 | `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:211` |
-| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
+| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:83`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/modules/apps/connections/sql/catalog.ts:185` |
@@ -303,7 +303,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
 | `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:174`, `apps/api/src/middleware/maintenance.ts:23` |
 | `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:181`, `apps/api/src/middleware/maintenance.ts:27` |
-| `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:57` |
+| `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:54` |
 | `MCP_MAX_RESPONSE_BYTES` | `apps/api/src/modules/mcp-client/call.ts:485` |
 | `MCP_MAX_TOOLS_PER_CONNECTION` | `apps/api/src/modules/mcp-client/projector.ts:51` |
 | `MCP_RATE_CAP_PER_MINUTE_DEFAULT` | `apps/api/src/modules/mcp-client/call.ts:369` |

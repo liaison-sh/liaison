@@ -17,7 +17,7 @@
 //      settings, a knowledge source synced by in-tree kernel code). Each step
 //      is generic, idempotent, never deletes its source (an older image that
 //      still carries the in-tree app keeps working after a rollback) and is
-//      recorded once done in `kernel.app_adoptions` (migration 0293).
+//      recorded once done in `kernel.app_adoptions` (migration 0294).
 //
 // Release ordering: an image that no longer carries an in-tree app must carry
 // its catalog app. When it does not, the reconcile reports the app as failed,

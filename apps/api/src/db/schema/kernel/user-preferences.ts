@@ -89,6 +89,11 @@ export const userPreferences = kernel.table("user_preferences", {
   // only when `mac` verifies under the mailbox key. NULL = never synced.
   // Written ONLY via `updateAgentMailAccess` (same trap as above).
   agentMailAccess: jsonb("agent_mail_access").$type<AgentMailAccessRecord | null>(),
+  // The rail entries this person hid from their sidebar (0293): activity-bar
+  // entry ids, unknown ids kept. NULL = nothing hidden. A display preference,
+  // never access. Written ONLY via `updateHiddenSidebarApps` (same trap as
+  // above). A CHECK (`user_preferences_hidden_sidebar_apps_array`) keeps it an array.
+  hiddenSidebarApps: jsonb("hidden_sidebar_apps").$type<string[] | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

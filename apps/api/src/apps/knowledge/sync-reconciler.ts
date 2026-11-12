@@ -151,7 +151,7 @@ export async function upsertSourceIdentity(
   return rows[0]!.id
 }
 
-interface UpsertCollectionInput {
+export interface UpsertCollectionInput {
   sourceId: string
   orgId: string
   externalId: string
@@ -166,11 +166,11 @@ interface UpsertCollectionInput {
  * folder was renamed. This avoids the "rename-then-resync" bug where matching
  * on `name` would create a duplicate and orphan the original.
  */
-function syncedCollectionMarker(sourceId: string, externalId: string): string {
+export function syncedCollectionMarker(sourceId: string, externalId: string): string {
   return `synced:${sourceId}:${externalId}`
 }
 
-async function upsertSyncedCollection(
+export async function upsertSyncedCollection(
   tx: PrivilegedDb,
   collectionsByExternalId: Map<string, string>,
   input: UpsertCollectionInput,

@@ -1,0 +1,50 @@
+{
+  "entry": "webhook-verify:alert",
+  "params": {
+    "headers": {
+      "content-type": "application/json",
+      "x-monitoring-signature": "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY=",
+      "x-monitoring-delivery-id": "contract-delivery-1"
+    },
+    "body": "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedupKey\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"ts\":\"2026-01-01T00:00:00.000Z\"}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
+  "calls": [
+    {
+      "method": "config_get",
+      "args": ["monitoringWebhookSecret"],
+      "reply": "contract-webhook-secret-not-real"
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "contract-webhook-secret-not-real",
+        "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedupKey\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"ts\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY="
+    },
+    {
+      "method": "crypto_timingSafeEqual",
+      "args": [
+        "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY=",
+        "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY="
+      ],
+      "reply": true
+    },
+    {
+      "method": "config_get",
+      "args": ["monitoringAlertTtlSeconds"],
+      "reply": null
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "monitoring-delivery",
+        "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedupKey\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"ts\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "y4fE1Q85HyPwNjCmznrwHS/mtXGMIotGFvqHWgq7K10="
+    }
+  ]
+}

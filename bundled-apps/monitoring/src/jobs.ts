@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Scheduled job handlers. `assign-refs` (manifest: `atomic: true`, so one run is one
-// transaction, see `assignMissingRefs`) is the backfill and safety net for incident refs.
+// Scheduled job handlers. `assign-refs` is the backfill and safety net for incident refs; it
+// takes turns with creating webhooks through the numbering lease (`assignMissingRefs`).
 import type { AppContext } from "@liaison/app-sdk"
 import { assignMissingRefs } from "./lib/refs"
 
 /**
- * Rows numbered per run. A run holds the org's ref lock until it commits, and a creating
- * webhook (5 s sandbox budget in production) waits behind it: 50 rows keep a run well under a
+ * Rows numbered per run. A run holds the numbering lease while it numbers, and a creating
+ * webhook that finds it held leaves its row to the next run: 50 rows keep a run well under a
  * second. A backlog drains over successive runs (every 5 minutes).
  */
 export const JOB_REF_BATCH = 50

@@ -1912,7 +1912,8 @@
       "rolesAccess": "Roles & access",
       "appStore": "App store",
       "connectors": "Connectors",
-      "documents": "Documents"
+      "documents": "Documents",
+      "sidebar": "Sidebar"
     },
     "invoicing": "Invoicing",
     "monitoring": "Monitoring",
@@ -1926,7 +1927,9 @@
     "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
     "dashboard": "Dashboard",
     "appBuilder": "App builder",
-    "dashboards": "Dashboards"
+    "dashboards": "Dashboards",
+    "hideFromSidebar": "Hide from sidebar",
+    "railEntryMenu": "{{app}} options"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -3977,17 +3980,6 @@
     "sendFailed": "The code could not be sent. Try again.",
     "failed": "Your account could not be deleted, and nothing was changed. Try again later.",
     "signedOutNotice": "Your account was deleted."
-  },
-  "mailboxMcpAccess": {
-    "title": "Allow a connected app to read your mail?",
-    "readBody": "{{client}} asks to read messages from an encrypted conversation ({{count}} in all).",
-    "searchBody": "{{client}} asks to search your encrypted mailbox for \"{{query}}\".",
-    "note": "Liaison decrypts them in this window and passes them to that app for this one request. Nothing is stored.",
-    "deny": "Deny",
-    "allowWindow": "Allow for 15 minutes",
-    "allowOnce": "Allow once",
-    "identity": "Connection created on {{date}} (reference {{ref}}). The name above is the one the app gave itself when you connected it; if you do not recognise this connection, deny and remove it in your settings.",
-    "unknownDate": "an unknown date"
   },
   "mailboxAlarmClear": {
     "open": "Clear this warning",
@@ -6665,5 +6657,13 @@
     "refresh": "Refresh",
     "failed": "The logs could not be read. Try again in a moment.",
     "empty": "Nothing logged in the last 7 days."
+  },
+  "sidebarSettings": {
+    "title": "Sidebar",
+    "intro": "Choose which apps your sidebar shows.",
+    "note": "Hidden apps stay available from search, the command palette and links.",
+    "showInSidebar": "Show {{app}} in the sidebar",
+    "saveFailed": "Couldn't save the sidebar. Try again.",
+    "adminIntro": "The apps {{name}} sees in their sidebar. They can show or hide any of them again in their own Settings."
   }
 }

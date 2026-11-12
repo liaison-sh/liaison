@@ -35,7 +35,7 @@ out from under you.
 1. Pick the exact version you want to deploy and put a checkout of that tag in
    `/opt/liaison`. The compose file is not standalone: it mounts the
    Postgres init hooks (`deploy/postgres-init/`) and the read-only role's
-   grants (`apps/api/src/apps/database/generated/`) from the checkout, and
+   grants (`apps/api/src/modules/apps/connections/sql/generated/`) from the checkout, and
    `deploy/backup.sh`, `restore.sh` and `move.sh` run from it. With only
    `docker-compose.yml` and `.env` in a directory, Docker creates those mount
    sources as empty directories and the database comes up without the app's

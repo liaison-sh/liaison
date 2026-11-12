@@ -58,9 +58,6 @@ function fakeWindow(opts: {
         )
       }
     },
-    async clientIdentity() {
-      return { label: "Claude Code", connectedAt: "2026-09-30T12:00:00.000Z" }
-    },
   }
   return { deps, asks }
 }
@@ -108,8 +105,6 @@ describe("MCP mailbox read through the user's own window", () => {
     expect(asks[0]?.data).toMatchObject({
       origin: "mcp",
       connectionId: "conn-1",
-      client: "Claude Code",
-      clientConnectedAt: "2026-09-30T12:00:00.000Z",
       requestKind: "mail.read",
       messageIds: ["m1", "m2"],
       conversationId: "conv-1",

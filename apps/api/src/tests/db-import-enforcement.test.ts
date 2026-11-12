@@ -32,6 +32,9 @@ describe("db import enforcement", () => {
     // Throughput bench harness, run by hand and never by a production build or
     // a test suite: it drives the raw pool to measure mail sync writes.
     "tests/bench/mail-sync-throughput.ts",
+    // The app contract fixture recorders' shared helper, run by hand against a provider's sandbox and never by a
+    // production build or a suite: they install the app for the contract org with raw SQL.
+    "modules/apps/contract/recording-run.test-helpers.ts",
   ])
 
   // Allowlist: only these files may import from ~/db/privileged
@@ -140,6 +143,10 @@ describe("db import enforcement", () => {
     // org-owned accounts are invisible to RLS; every read and write pins org,
     // app and connection in its predicate, and the caller's own personal rows.
     "modules/apps/sandbox/bridge/accounts.ts",
+    // ctx.kernel.caller: the caller's own roles and grants in the run's org
+    // (loadEffectivePermissions, the same read the domain checks used); answers
+    // only whether each asked scope is held, never the person's other grants.
+    "modules/apps/sandbox/bridge/directory.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
@@ -1495,9 +1502,6 @@ describe("db import enforcement", () => {
     // a reset deletes the owner's mailbox across tables under one lock.
     "modules/mailbox-keys/attention.ts",
     "modules/mailbox-keys/reset.ts",
-    // The MCP connection's label for the plaintext consent prompt
-    // (kernel.mcp_connections is privileged-access), bound to org and id.
-    "modules/mcp/mcp-mailbox-plaintext.ts",
     // Admin merge of an import placeholder: both ids are proven to be this
     // org's first, then every table that references a user is rewritten,
     // many of which carry no org_id to bind.
@@ -1506,6 +1510,10 @@ describe("db import enforcement", () => {
     // (resolveEffectivePermissions, privileged like token issuance), read only
     // after the caller's RLS read of that user's identity succeeded.
     "modules/users/service.ts",
+    // The sidebar agent tools: another member's hidden-apps list (their own
+    // user_preferences row, RLS self-only) only after the caller's
+    // kernel:users:admin scope and the member's org are checked.
+    "modules/users/sidebar-agent-tools.ts",
   ])
 
   // Allowlist: only these files may import { sql } from ~/db

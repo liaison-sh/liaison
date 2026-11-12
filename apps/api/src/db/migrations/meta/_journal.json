@@ -2064,7 +2064,14 @@
       "idx": 294,
       "version": "7",
       "when": 1900003386000,
-      "tag": "0293_app_adoptions",
+      "tag": "0293_user_hidden_sidebar_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1900003387000,
+      "tag": "0294_app_adoptions",
       "breakpoints": true
     }
   ]

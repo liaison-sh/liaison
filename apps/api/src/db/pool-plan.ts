@@ -71,7 +71,7 @@ export const API_JOBS_RESERVE = 1
  * before the catalog can be read; infra/jobs/pinned-jobs-gate.test.ts
  * recomputes it from the manifests and fails when the catalog changes it.
  */
-export const PINNED_JOBS_WANTED = 10
+export const PINNED_JOBS_WANTED = 5
 /** Kernel slots on top of which the privileged pool keeps room for nested reads (queue-classes.ts). */
 const PRIVILEGED_HEADROOM = 4
 /** Pool size of a `cli` or `oneshot` process. */

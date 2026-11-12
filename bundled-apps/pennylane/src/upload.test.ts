@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test"
 import { createMockDb } from "@liaison/test-helpers/mock-db"
 import type { PennylaneToolCtx } from "./ctx"
 import { PennylaneFake } from "./einvoicing/fake/server"
-import { minorAmountsRefusal, minorToDecimal, supplierInvoiceUpload } from "./upload"
+import { minorAmountsRefusal, minorToDecimal, supplierInvoiceUpload, vatRateCode } from "./upload"
 
 function setup() {
   const fake = new PennylaneFake()
@@ -58,7 +58,9 @@ describe("supplier_invoice_upload", () => {
       currency_amount_before_tax: "343.83",
       external_reference: "liaison-file-bill-1",
     })
-    expect(imp.invoice_lines).toEqual([{ currency_amount: "412.60", currency_tax: "68.77", label: "Invoice TR-2026-0042" }])
+    expect(imp.invoice_lines).toEqual([
+      { currency_amount: "412.60", currency_tax: "68.77", label: "Invoice TR-2026-0042", vat_rate: "FR_200" },
+    ])
     const rows = (await db.findMany("supplier_invoice_upload", {})) as R[]
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ status: "imported", provider_ref: r.provider_ref, source_file_id: "file-bill-1" })
@@ -129,6 +131,17 @@ describe("supplier_invoice_upload", () => {
     expect(fake.calls).toHaveLength(0)
     expect(minorAmountsRefusal({ amount_minor: "41260", tax_minor: "68.5" })).toContain("tax_minor")
     expect(minorAmountsRefusal({ amount_minor: "41260" })).toBeNull()
+  })
+
+  it("names the line's VAT rate code from the stated figures (Pennylane requires one per line)", () => {
+    expect(vatRateCode(10000n, 2000n)).toBe("FR_200")
+    expect(vatRateCode(34383n, 6877n)).toBe("FR_200")
+    expect(vatRateCode(10000n, 1000n)).toBe("FR_100")
+    expect(vatRateCode(10000n, 550n)).toBe("FR_55")
+    expect(vatRateCode(10000n, 210n)).toBe("FR_21")
+    expect(vatRateCode(10000n, 0n)).toBe("exempt")
+    // Lines at several rates folded into one total: no single French rate fits.
+    expect(vatRateCode(10000n, 1500n)).toBe("mixed")
   })
 
   it("converts minor units by the currency's decimals", () => {

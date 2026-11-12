@@ -1,0 +1,32 @@
+{
+  "entry": "tool:pnl_summary",
+  "params": {
+    "period": "2026-Q3"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["account_class_map", "{\"limit\":1000}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["pennylane"],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2026-07-01&period_end=2026-09-30&limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    }
+  ]
+}

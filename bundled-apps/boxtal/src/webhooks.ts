@@ -3,7 +3,8 @@
 // Boxtal v3 webhook handlers: tracking-changed + document-created.
 //
 // Each handler dedups by delivery id against the `webhook_delivery` ledger
-// (defense-in-depth on top of the kernel `replayKey`), then applies the change
+// (defense-in-depth on top of the kernel `replayKey`; the claim is an expiring lease, so a
+// run killed before it marked its row does not block the redeliveries), then applies the change
 // via the link store. Out-of-order (older) tracking events are ignored by the
 // link store's timestamp guard. An unknown order id logs + returns 200 (never
 // errors the sender). A handler that throws mid-process flips the ledger row to
@@ -67,33 +68,67 @@ function stableHash(s: string): string {
   return (h >>> 0).toString(16)
 }
 
-type DedupRow = { id: string; status: string }
+type DedupRow = {
+  id: string
+  status: string
+  claim_token?: string | null
+  claimed_at?: string | null
+  received_at?: string | null
+}
 
-/** Claim a delivery; returns false when it has already been processed. */
+/**
+ * How long a `processing` claim holds: past any webhook run's wall clock (29 s at most), so a
+ * claim older than this belongs to a run that was killed before it marked the row.
+ */
+export const CLAIM_TTL_MS = 2 * 60_000
+
+function newClaimToken(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function claimExpired(row: DedupRow, now: number): boolean {
+  const at = Date.parse(String(row.claimed_at ?? row.received_at ?? ""))
+  return !Number.isFinite(at) || now - at > CLAIM_TTL_MS
+}
+
+/**
+ * Claim a delivery; returns false when it has already been processed or another run holds it.
+ *
+ * No run holds a transaction across its bridge calls, so the claim is an expiring lease on the
+ * ledger row: a new delivery inserts its row (the unique `delivery_id` decides a race), and a
+ * `failed` row or a `processing` row whose claim expired (a killed run) is taken over with a
+ * compare-and-set on its claim token, so two redeliveries never both proceed.
+ */
 async function claimDelivery(
   ctx: WebhookCtx,
   deliveryId: string,
   eventType: string,
 ): Promise<{ proceed: boolean; rowId?: string }> {
+  const now = Date.now()
   const existing = (await ctx.db.findMany("webhook_delivery", {
     where: { delivery_id: deliveryId },
     limit: 1,
   })) as DedupRow[]
   if (existing.length > 0) {
     const row = existing[0]!
-    if (row.status === "failed") {
-      await ctx.db.update("webhook_delivery", row.id, { status: "processing" })
-      return { proceed: true, rowId: row.id }
-    }
-    return { proceed: false }
+    const takeOver = row.status === "failed" || (row.status === "processing" && claimExpired(row, now))
+    if (!takeOver) return { proceed: false }
+    const res = (await ctx.db.updateMany("webhook_delivery", {
+      where: { delivery_id: deliveryId, status: row.status, claim_token: row.claim_token ?? null },
+      data: { status: "processing", claim_token: newClaimToken(), claimed_at: new Date(now).toISOString() },
+    })) as { count?: number }
+    return res.count === 1 ? { proceed: true, rowId: row.id } : { proceed: false }
   }
   try {
+    const at = new Date(now).toISOString()
     const ins = await ctx.db.insert("webhook_delivery", {
       delivery_id: deliveryId,
       event_type: eventType,
       status: "processing",
       failure_count: 0,
-      received_at: new Date().toISOString(),
+      received_at: at,
+      claim_token: newClaimToken(),
+      claimed_at: at,
     })
     return { proceed: true, rowId: ins.id }
   } catch {

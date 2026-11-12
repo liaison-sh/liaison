@@ -266,11 +266,6 @@
   },
   {
     "app": "boxtal",
-    "entry": "lint:src/shipment.ts",
-    "reason": "wait"
-  },
-  {
-    "app": "boxtal",
     "entry": "preflight:cancel_shipment",
     "reason": "no-fixture"
   },

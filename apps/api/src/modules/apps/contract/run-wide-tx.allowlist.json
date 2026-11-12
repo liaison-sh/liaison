@@ -35,16 +35,6 @@
     "reason": "resyncs a quote's lines, then marks it invoiced: the writes must commit together"
   },
   {
-    "app": "boxtal",
-    "entry": "webhook:trackingChangedHandler",
-    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
-  },
-  {
-    "app": "boxtal",
-    "entry": "webhook:documentCreatedHandler",
-    "reason": "claims its delivery in webhook_delivery as `processing` first: a run killed before it marks the row would leave the claim, and every redelivery would be skipped as in flight"
-  },
-  {
     "app": "shopify",
     "entry": "webhook:ordersCreateHandler",
     "reason": "claims its delivery in webhook_deliveries as `processing`, marks it processed, then emits: a run killed in between would leave the claim (every redelivery skipped as in flight) or drop the event"

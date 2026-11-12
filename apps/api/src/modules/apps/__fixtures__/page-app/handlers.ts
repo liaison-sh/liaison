@@ -53,4 +53,4 @@ async function verifySetup(p: { config: { greeting: string } }, ctx: Ctx) {
     : { ok: false, problems: ["the stored greeting differs"] }
 }
 
-Object.assign(globalThis, { pageLink, greetRoute, provision, verifySetup })
+Object.assign(globalThis, { pageLink, pickerLink, greetRoute, provision, verifySetup })

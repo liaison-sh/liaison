@@ -15,7 +15,6 @@ import { type KnowledgeActor, KnowledgeError } from "~/apps/knowledge/service"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { schemaRef } from "~/db/schema-ref"
 import { boundedBy } from "~/lib/bounded"
 import { hasScope } from "~/modules/permissions/permissions"
 

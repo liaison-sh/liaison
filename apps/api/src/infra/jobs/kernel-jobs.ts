@@ -1081,7 +1081,6 @@ export async function registerKernelJobs(): Promise<void> {
     await runSecretRequestTurn(payload)
   })
 
-
   // A new workspace's first admin sign-in: the setup card in their agent
   // conversation, then the agent's first turn (provisioning/setup-kickoff.ts).
   registerJobWorker<SetupKickoffPayload>("kernel", "setup-kickoff", async (payload) => {

@@ -12,10 +12,10 @@ import { fireEvent, render, screen, waitFor, within } from "@solidjs/testing-lib
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import callsManifest from "../../../../../../bundled-apps/calls/app.manifest.json"
 import databaseManifest from "../../../../../../bundled-apps/database/app.manifest.json"
+import driveManifest from "../../../../../../bundled-apps/google-drive/app.manifest.json"
 import pennylaneManifest from "../../../../../../bundled-apps/pennylane/app.manifest.json"
 import apiConnectorManifest from "../../../../../api/src/apps/api-connector/app.manifest.json"
 import gitlabManifest from "../../../../../api/src/apps/gitlab/app.manifest.json"
-import driveManifest from "../../../../../../bundled-apps/google-drive/app.manifest.json"
 import { apiError, createFakeApi, type FakeApi } from "../app-page/__fixtures__/fake-api"
 import type { AppSettingsManifest } from "../app-page/types"
 

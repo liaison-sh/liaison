@@ -51,7 +51,9 @@ describe("cards drawn under a tool call", () => {
 
   it("a tool answer without a page handle: no Open button", async () => {
     render(() => (
-      <ToolCallRow toolCall={call("google-drive__drive_picker", { accounts: [], message: "full" })} />
+      <ToolCallRow
+        toolCall={call("google-drive__drive_picker", { accounts: [], message: "full" })}
+      />
     ))
     await Promise.resolve()
     expect(screen.queryByTestId("page-handle-card")).toBeNull()

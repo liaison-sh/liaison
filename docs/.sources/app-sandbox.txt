@@ -156,3 +156,7 @@ Retry-After on 429/503 pauses the account, at most 60 s -> apps/api/src/modules/
 ctx.limiter.pause only for a connection with limits -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:600
 Limiter fails open when Redis fails -> apps/api/src/modules/apps/connection-limiter.ts:221
 Poll and reconcile runs hold no transaction; answer recorded in one guarded write -> apps/api/src/modules/apps/runtime.ts:3314 ; apps/api/src/modules/apps/runtime.ts:3378 ; apps/api/src/modules/approvals/poll-output.ts:129 ; apps/api/src/modules/approvals/approving-reaper.ts:334 ; apps/api/src/modules/approvals/reconcile-outcome.ts:60
+Event handlers and webhook deliveries of sandboxed apps hold no transaction; each ctx call commits on its own -> apps/api/src/modules/apps/runtime.ts:3889 ; apps/api/src/modules/webhooks/handler-run.ts:113 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:573
+A failed event handler runs once more; a failed delivery goes back to the inbox -> apps/api/src/infra/events/event-bus.ts:592 ; apps/api/src/modules/webhooks/routes.ts:647 ; apps/api/src/infra/jobs/webhook-inbox-jobs.ts:165
+Listed handlers keep one transaction; the list only shrinks; core apps keep it -> apps/api/src/modules/apps/run-wide-tx.ts:47 ; apps/api/src/modules/apps/contract/run-wide-tx.guard.test.ts:1
+insertNow behaves like insert in a session run, refused without commitNowTx -> apps/api/src/modules/apps/sandbox/bridge/db.ts:59 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:573

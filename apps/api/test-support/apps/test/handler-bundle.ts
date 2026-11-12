@@ -186,3 +186,34 @@ async function exportItems(_params: unknown, ctx: TestAppCtx) {
   const items = await ctx.db_findMany("items", "{}")
   return JSON.parse(items)
 }
+
+/** A sandboxed run (event or webhook) that asks its provider, then writes (run-wide-tx.ts). */
+async function providerThenWrite(
+  params: { entityId?: string; data?: { marker?: string } },
+  ctx: TestAppCtx,
+) {
+  const marker = params?.data?.marker ?? params?.entityId ?? "probe"
+  await ctx.fetch(`https://run.provider.test/ask/${marker}`, "{}")
+  await ctx.db_insert(
+    "event_log",
+    JSON.stringify({ eventType: "probe", entityId: marker, data: "{}" }),
+  )
+  return { status: 200 }
+}
+
+/** Two writes, then a failure: whether the first write stays depends on the run's transaction. */
+async function writeThenThrow(
+  params: { entityId?: string; data?: { marker?: string } },
+  ctx: TestAppCtx,
+) {
+  const marker = params?.data?.marker ?? params?.entityId ?? "probe"
+  await ctx.db_insert(
+    "event_log",
+    JSON.stringify({ eventType: "first", entityId: marker, data: "{}" }),
+  )
+  await ctx.db_insert(
+    "event_log",
+    JSON.stringify({ eventType: "second", entityId: marker, data: "{}" }),
+  )
+  throw new Error(`failed after writing ${marker}`)
+}

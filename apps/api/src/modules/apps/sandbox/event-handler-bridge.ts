@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { RlsClient } from "~/db"
+import type { RlsSession } from "~/db/rls"
 import type { ActorType } from "~/modules/apps/sandbox/bridge/context"
 import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
-import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
 /**
  * The bridge a manifest EVENT handler runs with. The handler holds its own
@@ -28,6 +29,33 @@ export function createEventHandlerBridge(args: {
     args.actorId,
     args.orgId,
     args.txDb,
+    args.manifest,
+    [`${args.appName}:*`],
+    args.actorType,
+    undefined,
+    { jobsAttributedToSystem: true },
+  )
+}
+
+/**
+ * The same bridge for a handler that holds no transaction across its run
+ * (modules/apps/run-wide-tx.ts): each bridge call runs in its own short
+ * transaction from `session`, with the same identity, scopes and job
+ * attribution as above.
+ */
+export function createEventHandlerSessionBridge(args: {
+  appName: string
+  actorId: string
+  orgId: string
+  session: Pick<RlsSession, "run">
+  manifest: AppManifestForBridge
+  actorType: ActorType
+}): Record<string, any> {
+  return createSessionRpcBridge(
+    args.appName,
+    args.actorId,
+    args.orgId,
+    args.session,
     args.manifest,
     [`${args.appName}:*`],
     args.actorType,

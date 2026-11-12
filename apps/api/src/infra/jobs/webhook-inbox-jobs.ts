@@ -35,6 +35,7 @@ import {
   classifyHandlerResult,
   resolveWebhookUserActorId,
   runWebhookHandler,
+  webhookRunHoldsTx,
 } from "~/modules/webhooks/handler-run"
 import {
   type ClaimedDelivery,
@@ -135,24 +136,24 @@ async function runClaimed(row: ClaimedDelivery, signal?: AbortSignal): Promise<v
   const timeoutMs = resolveToolTimeoutMs(reg.timeoutMs)
   let outcome: Awaited<ReturnType<typeof runOnce>>
   try {
+    const run = () =>
+      runWebhookHandler({
+        registration: reg,
+        appName,
+        orgId,
+        scopes: row.scopes,
+        userActorId,
+        payload: row.payload,
+        headers: row.headers,
+        ...(timeoutMs ? { timeoutMs } : {}),
+      })
     outcome = await runOnce(row, () =>
-      // The handler's transaction holds a jobs connection for its whole run: it
-      // waits for admission first (infra/jobs/pinned-jobs-gate.ts).
-      withPinnedJobSlot(
-        `webhook:${appName}`,
-        () =>
-          runWebhookHandler({
-            registration: reg,
-            appName,
-            orgId,
-            scopes: row.scopes,
-            userActorId,
-            payload: row.payload,
-            headers: row.headers,
-            ...(timeoutMs ? { timeoutMs } : {}),
-          }),
-        signal,
-      ),
+      // A handler whose transaction holds a jobs connection for its whole run
+      // waits for admission first (infra/jobs/pinned-jobs-gate.ts); a sandboxed
+      // one opens a short transaction per bridge call and holds none.
+      webhookRunHoldsTx(reg, appName)
+        ? withPinnedJobSlot(`webhook:${appName}`, run, signal)
+        : run(),
     )
   } catch (err) {
     if (!(err instanceof EffectInFlight)) {

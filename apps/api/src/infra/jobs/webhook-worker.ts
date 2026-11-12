@@ -13,8 +13,9 @@ import { createAppContext } from "~/modules/apps/context"
 import { isAppOffForPathOrg } from "~/modules/apps/org-apps"
 import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { holdAppJobIfCapped } from "~/modules/apps/usage/app-day-cap"
+import { webhookRunHoldsTx } from "~/modules/webhooks/handler-run"
 import { executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
 
 const log = rootLogger.child({ module: "webhook-worker" })
@@ -106,8 +107,9 @@ export async function processWebhookRetry(
     await run()
     return
   }
-  // Claimed before the handler runs (S11). The handler's writes commit in one
-  // transaction, so its outcome is never in doubt:
+  // Claimed before the handler runs (S11). A handler that holds one
+  // transaction for its run (webhookRunHoldsTx: a core app's, a listed
+  // exception's) commits its writes together, so its outcome is never in doubt:
   // - a run that threw released the claim, and the job's retry runs it again;
   // - a run that committed and then lost its process (the job re-run by the
   //   stalled check) finds the key done and stops;
@@ -117,6 +119,9 @@ export async function processWebhookRetry(
   //   The one window this cannot close (committed, killed before the key was
   //   stored) re-applies the delivery, which the handler dedups on the
   //   provider's webhook id, as it did before the ledger.
+  // A sandboxed handler commits each bridge call on its own, so a run that
+  // failed or was killed part way is run again over what it already wrote:
+  // like any redelivery, it dedups on the provider's webhook id.
   // Another worker holding it throws EffectInFlight, which the job's backoff retries.
   await effectOnce(
     orgId,
@@ -138,6 +143,10 @@ async function runRetryHandler(
   reg: WebhookRegistration,
   signal?: AbortSignal,
 ): Promise<void> {
+  if (!webhookRunHoldsTx(reg, appName)) {
+    await runWithoutTransaction(data, orgId, appName, reg)
+    return
+  }
   // The retry's transaction holds a jobs connection for the handler's whole
   // run: it waits for admission first (infra/jobs/pinned-jobs-gate.ts).
   await withPinnedJobSlot(
@@ -145,6 +154,42 @@ async function runRetryHandler(
     () => runInTransaction(data, orgId, appName, reg),
     signal,
   )
+}
+
+/** A sandboxed handler: a short transaction per bridge call, none held across the run. */
+async function runWithoutTransaction(
+  data: WebhookRetryJob,
+  orgId: string,
+  appName: string,
+  reg: WebhookRegistration,
+): Promise<void> {
+  const handlerRef = reg.handler as ManifestHandlerRef
+  const manifest = (reg as any)._manifest
+  if (!manifest) throw new Error("manifest webhook handler missing _manifest metadata")
+  const actor = {
+    actorType: "system" as const,
+    orgId,
+    purpose: "webhook" as const,
+    scopes: [appName],
+  }
+  const bridge = createSessionRpcBridge(
+    appName,
+    "system",
+    orgId,
+    { run: (fn) => withRlsContext(actor, fn, { pool: "jobs" }) },
+    manifest,
+  )
+  await manifestExecutor({
+    appName,
+    orgId,
+    holdsTx: false,
+    handlerRef,
+    bundleSource: await loadBundle(handlerRef.bundlePath),
+    params: data.payload,
+    bridge,
+    extraArgs: [data.headers ?? {}],
+    ...budgetFor(reg.timeoutMs),
+  })
 }
 
 async function runInTransaction(

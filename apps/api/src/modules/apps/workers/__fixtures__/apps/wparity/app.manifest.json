@@ -63,7 +63,8 @@
     }
   },
   "events": {
-    "emits": ["items:stamped"]
+    "emits": ["items:stamped", "probe:fired"],
+    "subscribes": { "probe:fired": "onProbe" }
   },
   "cross_app_calls": [
     {
@@ -166,6 +167,10 @@
   "webhooks": {
     "ping": {
       "handler": "onPing",
+      "verify": "verifyPing"
+    },
+    "pingfail": {
+      "handler": "onPingFail",
       "verify": "verifyPing"
     }
   },

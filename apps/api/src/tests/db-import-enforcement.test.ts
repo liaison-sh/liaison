@@ -1394,6 +1394,11 @@ describe("db import enforcement", () => {
     // Readers' gaps and room floors: every org member's (or participant's)
     // effective grants, which no single caller's context can read.
     "modules/agent/scopes/taint-approval-audience.ts",
+    // Whether an agent post reaches its readers (rule 14): the thread's shape, the
+    // untitled conversation an untitled create lands in, and the requester's approved
+    // post disclosures in that thread (approval rows the caller's context may not read),
+    // each bound to the post's org. Reads only.
+    "modules/agent/scopes/post-disclosure.ts",
     // The holder's live grants, the agent's checkpoints (agent-asset table,
     // privileged by design) and the recall audit rows kept for the thread.
     "modules/agent/local-sessions/local-context-scopes.ts",

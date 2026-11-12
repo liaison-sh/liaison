@@ -4,6 +4,8 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { recordAgentKnowledgePointers } from "~/modules/agent/knowledge/knowledge-pointers"
+import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
+import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
 
@@ -296,6 +298,10 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
     knowledge_syncedSources: async (op: string, paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {
         throw new Error("knowledge_syncedSources is only available to the knowledge app")
+      }
+      // Only `list` reads: archive and run now write, and a read-only run refuses them.
+      if (ctx.bridgeReadOnlyRun && op !== "list") {
+        throw readOnlyRunBlockedError(UNDECLARED_WRITE_TARGET, `ctx.knowledge_syncedSources(${op})`)
       }
       const { KnowledgeError, knowledgeActorFromContext } = await import("~/apps/knowledge/service")
       const sources = await import("~/apps/knowledge/synced-sources")

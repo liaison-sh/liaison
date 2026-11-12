@@ -7,6 +7,8 @@ import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { quoteIdent } from "~/lib/sql-utils"
 import { pgErrorFacts, retryOnTransientDbError } from "~/lib/transient-db-error"
+import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
+import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   ERROR_NOT_FOUND,
@@ -14,6 +16,27 @@ import {
   toIso,
   withPgCause,
 } from "~/modules/apps/sandbox/bridge/shared"
+
+/**
+ * The `tickets_admin` ops that only read (apps/tickets/admin.ts): the ones a read-only run (a
+ * dashboard block, a read-only routine step) may still call. Every other op writes, and is
+ * refused on such a run before it reaches the app.
+ */
+export const TICKETS_ADMIN_READ_OPS: ReadonlySet<string> = new Set([
+  "resolveTicketRef",
+  "categoriesList",
+  "categoriesTree",
+  "templatesList",
+  "csatSummary",
+  "csatList",
+  "backlogHealth",
+  "slaReport",
+  "teamsList",
+  "inboxesList",
+  "idSegmentGet",
+  "approveFromHomeGet",
+  "apiKeysList",
+])
 
 /** The tickets app surface: state machine, search, sync, summaries and Gmail push. */
 export function createTicketsMethods(ctx: BridgeContext): Record<string, any> {
@@ -689,6 +712,9 @@ export function createTicketsMethods(ctx: BridgeContext): Record<string, any> {
     tickets_admin: async (op: string, paramsJson: string): Promise<string> => {
       if (appName !== "tickets") {
         throw new Error("tickets_admin is only available to the tickets app")
+      }
+      if (ctx.bridgeReadOnlyRun && !TICKETS_ADMIN_READ_OPS.has(op)) {
+        throw readOnlyRunBlockedError(UNDECLARED_WRITE_TARGET, `ctx.tickets_admin(${op})`)
       }
       const { runAdminOp } = await import("~/apps/tickets/admin")
       return JSON.stringify(

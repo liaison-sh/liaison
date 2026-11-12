@@ -7,9 +7,14 @@
 // A source is a read the viewer may make: a known tool, enabled for the org,
 // whose declaration says it reads (`readOnly`, no write target) and asks for
 // nothing a view cannot give: not gated (statically or for some params), no
-// outward effect, not a contract-only op, not hidden from the agent, no human
-// turn, no trust boundary, not a web read. Kernel tools are not judged by their
-// marker alone: only the ones listed here qualify. An org's own custom app is
+// outward effect, not a contract-only op, no human turn, no trust boundary, not a
+// web read. A read hidden from the agent's catalog (a settings page's own read) is
+// still a source: what the agent is offered and what a view may show are separate
+// questions. Kernel tools are not judged by their marker alone: only the ones
+// listed here qualify, and a read that hands out a secret never does.
+//
+// Every read is a source unless it is on the reviewed exclusion list of
+// every-read-is-a-source.guard.test.ts, which fails CI for a read that is neither. An org's own custom app is
 // a source under the same rules (its secrets are placed per request);
 // another org's never is.
 //
@@ -28,19 +33,84 @@ import { type DeclaredCollection, getDeclaredCollection } from "~/modules/data-s
 import { AGENT_STORE_APP } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
 
-/** The kernel reads a dashboard may show: lists of the org's own records. */
+/**
+ * The kernel reads a dashboard may show: the org's own records and settings, read as the
+ * viewer under the tool's scopes. The kernel reads left out are on the guard's exclusion
+ * list with their reason (agent machinery, a person's own memory or computer, outside text).
+ */
 export const KERNEL_DASHBOARD_SOURCES: ReadonlySet<string> = new Set([
   "users_list",
+  "users_search",
+  "describe_user_access",
   "contacts_search",
+  "contacts_read",
+  "contacts_addresses_list",
+  "contacts_find_duplicates",
+  "contacts_groups_list",
+  "contacts_group_members",
   "threads_list",
+  "threads_search",
   "list_routines",
+  "list_routine_events",
+  "routine_tool_scopes",
   "approvals_list",
+  "approval_policy_get",
+  "policy_get",
   "audit_search",
   "companies_search",
   "companies_read",
   "company_timeline",
   "companies_find_duplicates",
   "companies_propose_from_contacts",
+  "roles_list",
+  "get_role",
+  "list_scopes",
+  "list_dimensions",
+  "list_locked_capabilities",
+  "list_skills",
+  "skill_search",
+  "skill_read",
+  "subagent_list",
+  "subagent_get",
+  "ai_models_get",
+  "files_list",
+  "files_read",
+  "document_templates_list",
+  "document_template_get",
+  "document_rules_list",
+  "document_rules_match",
+  "document_record_types_list",
+  "product_attributes_list",
+  "data_collections_list",
+  "dashboards_list",
+  "dashboards_get",
+  "dashboards_history",
+  "import_kinds",
+  "import_reference",
+  "import_sample",
+  "import_status",
+  "merge_imported_user_preview",
+  "apps_build_list",
+  "apps_build_get",
+  "apps_build_versions",
+  "apps_build_logs",
+  "apps_build_preview",
+  "config_export",
+  "config_plan",
+  "notifications_get",
+  "sidebar_apps_get",
+  "setup_state",
+])
+
+/**
+ * App reads that hand out a secret (a webhook signing secret, for the operator setting up the
+ * sender): never a source, whatever their declaration says, so the secret never reaches a
+ * page or the dashboard cache.
+ */
+export const SECRET_READS: ReadonlySet<string> = new Set([
+  "calls:webhook_info",
+  "monitoring:webhook_info",
+  "projects:webhook_info",
 ])
 
 export type SourceRefusalCode = "unknown_tool" | "not_allowed" | "no_access"
@@ -89,6 +159,13 @@ export async function checkToolSource(
       ok: false,
       code: "not_allowed",
       message: `${toolName} is not a dashboard source; kernel sources are ${[...KERNEL_DASHBOARD_SOURCES].map((n) => `kernel:${n}`).join(", ")}`,
+    }
+  }
+  if (SECRET_READS.has(toolName)) {
+    return {
+      ok: false,
+      code: "not_allowed",
+      message: `${toolName} cannot feed a dashboard: it returns a secret`,
     }
   }
   if (app !== "kernel" && !(await appVisibleToOrg(app, orgId))) {
@@ -174,6 +251,7 @@ export async function listEligibleSources(
     }
     if (app === "kernel" ? !KERNEL_DASHBOARD_SOURCES.has(name) : declarationRefusal(tool) !== null)
       continue
+    if (SECRET_READS.has(full)) continue
     names.push(full)
   }
   for (const full of names.sort()) {

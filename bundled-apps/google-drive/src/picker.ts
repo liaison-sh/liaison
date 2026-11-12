@@ -4,8 +4,9 @@
 // account on a client Google has not verified for restricted scopes) sees the
 // files the person chose in Google's picker, and the files Liaison created.
 //
-// The picker runs on the app's own page (`pages.picker`, pages/picker.ts) in the
-// person's browser with their own grant (`connectionToken`); the page calls the
+// The picker is the platform's Google Picker widget on the app's page
+// (`pages.picker.widget`): the platform runs it in the person's browser with a
+// drive.file-only grant, and this app never sees the token; the widget calls the
 // `savePicks` route, which records the picks on the account and syncs them into
 // Knowledge (the account's `picked` source). `drive_picker` (a tool) answers the
 // page handle the conversation shows as an Open button; the settings screen lists

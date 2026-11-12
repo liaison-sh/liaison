@@ -52,10 +52,15 @@ export const pageFixtureManifest = {
       hosts: { script: ["apis.example.com"], frame: ["docs.example.com"] },
     },
     picker: {
-      source: "pages/picker.ts",
       title: "Picker page",
       scope: "pagefx:items:read",
-      connectionToken: { connection: "primary" },
+      routes: ["greet"],
+      widget: {
+        kind: "google-picker",
+        connection: "primary",
+        route: "greet",
+        tokenScopes: ["read"],
+      },
     },
   },
   pageRoutes: {

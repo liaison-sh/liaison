@@ -41,8 +41,8 @@ import {
   signCellRequestV2,
   validateRunBody,
 } from "@liaison/app-loader"
-import type { SupervisorConfig } from "./config"
 import { SANDBOX_CELL_ID } from "./cell"
+import type { SupervisorConfig } from "./config"
 import { hostWorkerSource } from "./host-build"
 import { PoolError, WorkerdPool, type WorkerdProcess } from "./pool"
 import { sampleProcess } from "./proc-meter"
@@ -106,7 +106,8 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
   }
 
   async function putModule(req: Request, sha: string): Promise<Response> {
-    if (!SHA.test(sha)) return fail(400, "loader_internal", "invalid sha256", { code: "bad_request" })
+    if (!SHA.test(sha))
+      return fail(400, "loader_internal", "invalid sha256", { code: "bad_request" })
     const len = Number(req.headers.get("content-length") ?? "0")
     if (len > MAX_FETCHED_BUNDLE_BYTES) {
       return fail(413, "loader_internal", "module too large", { code: "bad_request" })
@@ -164,7 +165,10 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
     } catch (e) {
       if (!(e instanceof PoolError)) throw e
       if (e.code === "queue_timeout") {
-        return Response.json({ ok: false, error: { message: "App execution timed out", kind: "timeout" } })
+        return Response.json({
+          ok: false,
+          error: { message: "App execution timed out", kind: "timeout" },
+        })
       }
       if (e.code === "stopped") return fail(503, "loader_internal", e.message, { code: "stopping" })
       return fail(429, "limit", e.message, { code: e.code })
@@ -231,7 +235,12 @@ export async function createSupervisor(cfg: SupervisorConfig): Promise<Superviso
       let res: Response
       let text: string
       try {
-        res = await fetch("http://sandbox/run", { unix: p.socket, method: "POST", headers, body: raw })
+        res = await fetch("http://sandbox/run", {
+          unix: p.socket,
+          method: "POST",
+          headers,
+          body: raw,
+        })
         text = await res.text()
       } catch {
         // The process went away under the run: a limit's kill, or it died.

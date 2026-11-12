@@ -54,6 +54,9 @@ import { parseWorkerLogs, type WorkerLogLine } from "./worker-logs"
 
 const log = rootLogger.child({ module: "apps-workers-executor" })
 
+/** How deep a run is in a chain of runs, for the sandbox service's nesting cap. */
+export const RUN_DEPTH_HEADER = "x-liaison-run-depth"
+
 /** The cell's own fetch to the loader outlives the run's deadline by this much. */
 export const LOADER_FETCH_GRACE_MS = 5_000
 
@@ -83,6 +86,14 @@ export interface WorkersRunOptions {
   nestedParentKey?: string
   /** This run is the loader breaker's half-open probe (planWorkersRun). */
   probe?: boolean
+  /** How deep in a chain of runs this one is (0 top-level); the sandbox service caps it. */
+  runDepth?: number
+  /**
+   * The module bytes, for a target that is the instance's sandbox service: it
+   * holds no key to fetch a module with, so a `bundle_missing` answer is met by
+   * pushing them (`PUT <loaderUrl>/modules/<sha256>`) and asking once more.
+   */
+  pushModule?: () => Promise<Uint8Array | null>
   /** Seams for tests. */
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>
   admission?: WorkersAdmission
@@ -333,6 +344,7 @@ async function attemptOnWorkers(
       appName: opts.appName,
       version: opts.version,
       timeoutMs,
+      maxBridgeCalls: runLimits(opts.entryKind ?? "tool").subrequests,
       ...(opts.signal ? { signal: opts.signal } : {}),
     })
     info.runId = run.runId
@@ -373,11 +385,31 @@ async function attemptOnWorkers(
     const fetchTimeout = AbortSignal.timeout(timeoutMs + LOADER_FETCH_GRACE_MS)
     const signal = opts.signal ? AbortSignal.any([opts.signal, fetchTimeout]) : fetchTimeout
 
+    if (opts.runDepth && opts.runDepth > 0) {
+      ;(headers as Record<string, string>)[RUN_DEPTH_HEADER] = String(opts.runDepth)
+    }
+
     let res: Response
     let text: string
     try {
       res = await fetchImpl(runUrl, { method: "POST", headers, body, signal })
       text = await res.text()
+      if (opts.pushModule && res.status === 404 && /"bundle_missing"/.test(text)) {
+        const bytes = await opts.pushModule()
+        if (bytes) {
+          const put = await fetchImpl(`${opts.config.loaderUrl}/modules/${opts.bundleSha256}`, {
+            method: "PUT",
+            headers: { "content-type": "application/javascript" },
+            body: bytes,
+            signal,
+          })
+          await put.arrayBuffer()
+          if (put.status === 204) {
+            res = await fetchImpl(runUrl, { method: "POST", headers, body, signal })
+            text = await res.text()
+          }
+        }
+      }
     } catch (err) {
       if (opts.signal?.aborted) {
         return done({ ok: false, error: sandboxCancelledError(), fault: CANCELLED_FAULT })

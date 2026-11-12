@@ -24,6 +24,8 @@ export interface ContractSource {
   script?: string
   /** An ES module file whose named exports are the entry points (worker-core). */
   modulePath?: string
+  /** The app's Worker module text, as a package's worker.js (workerd). */
+  workerModule?: string
 }
 
 export interface ContractRunRequest {

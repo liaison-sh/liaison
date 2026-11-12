@@ -6,6 +6,8 @@
 //
 //   SANDBOX_BRIDGE_ORIGIN    the app's bridge listener (`http://host:port`), the
 //                            only address a workerd process may reach. Required.
+//   SANDBOX_BRIDGE_ADDRESS   host:port bridge calls are sent to, when it is not the
+//                            origin's own (a proxy in front of the listener)
 //   SANDBOX_HOST / _PORT     where the service listens (127.0.0.1:8790). In a
 //                            container it listens on the sandbox network only.
 //   SANDBOX_POOL_SIZE        workerd processes for top-level and nested runs (6)
@@ -35,6 +37,8 @@ export interface SupervisorConfig {
   host: string
   port: number
   bridgeOrigin: string
+  /** host:port the bridge calls go to (default: the origin's). */
+  bridgeAddress?: string
   poolSize: number
   reserved: number
   overflow: number
@@ -106,6 +110,12 @@ export function readSupervisorConfig(env: NodeJS.ProcessEnv = process.env): Supe
     killGraceMs: int(env, "SANDBOX_KILL_GRACE_MS", DEFAULTS.killGraceMs),
   }
   if (env.WORKERD_BIN) cfg.workerdBin = env.WORKERD_BIN
+  if (env.SANDBOX_BRIDGE_ADDRESS) {
+    if (!/^[A-Za-z0-9.-]+:\d{1,5}$/.test(env.SANDBOX_BRIDGE_ADDRESS)) {
+      throw new Error("SANDBOX_BRIDGE_ADDRESS must be host:port")
+    }
+    cfg.bridgeAddress = env.SANDBOX_BRIDGE_ADDRESS
+  }
   if (cfg.reserved >= cfg.poolSize) {
     throw new Error("SANDBOX_POOL_RESERVED must leave at least one process for top-level runs")
   }

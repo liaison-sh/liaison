@@ -24,10 +24,10 @@ const handlers = {
       const r = await fetch(params.url)
       return { reached: true, status: r.status }
     } catch (e) {
-      return { reached: false, error: String(e && e.message ? e.message : e) }
+      return { reached: false, error: String(e?.message ? e.message : e) }
     }
   },
-  look: async (params, bridge, req, env) => ({
+  look: async (_params, _bridge, req, env) => ({
     env: Object.keys(env ?? {}),
     req: Object.keys(req).sort(),
     sharedArrayBuffer: typeof SharedArrayBuffer,
@@ -42,7 +42,7 @@ export default class extends WorkerEntrypoint {
       const result = await h(req.params, bridge, req, this.env)
       return { ok: true, result: result === undefined ? null : result }
     } catch (e) {
-      return { ok: false, error: { message: String(e && e.message ? e.message : e) } }
+      return { ok: false, error: { message: String(e?.message ? e.message : e) } }
     }
   }
 }

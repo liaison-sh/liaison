@@ -50,6 +50,7 @@ COPY packages/control-plane-contract/package.json packages/control-plane-contrac
 COPY packages/db-core/package.json packages/db-core/
 COPY packages/host-sdk/package.json packages/host-sdk/
 COPY packages/mailbox-crypto/package.json packages/mailbox-crypto/
+COPY packages/sandbox-supervisor/package.json packages/sandbox-supervisor/
 COPY packages/shared/package.json packages/shared/
 COPY packages/test-helpers/package.json packages/test-helpers/
 # The fallback runs ONLY when the normal install fails, which in practice means a package

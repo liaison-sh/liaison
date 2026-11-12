@@ -39,6 +39,12 @@ export interface RegisterRunOptions {
   signal?: AbortSignal
   /** Overrides the registry's grace past `timeoutMs` for this run (test probes). */
   graceMs?: number
+  /**
+   * Bridge calls the run may make (its subrequests: every outbound call of a
+   * run is a bridge call). Past it a call is refused with 429. Workers caps
+   * subrequests itself as well; workerd does not, so this is the cap there.
+   */
+  maxBridgeCalls?: number
 }
 
 export interface RunStats {
@@ -67,6 +73,8 @@ export interface RunEntry {
   readonly tokenHash: Buffer
   nonce: string | undefined
   stats: RunStats
+  /** The run's subrequest cap (RegisterRunOptions.maxBridgeCalls). */
+  readonly maxBridgeCalls: number
 }
 
 interface Tombstone {
@@ -147,6 +155,7 @@ export class RunRegistry {
       tokenHash,
       nonce: undefined,
       stats: { bridgeCalls: 0, bridgeMsTotal: 0 },
+      maxBridgeCalls: opts.maxBridgeCalls ?? Number.POSITIVE_INFINITY,
     }
     this.runs.set(runId, entry)
     this.byToken.set(tokenHash.toString("hex"), runId)

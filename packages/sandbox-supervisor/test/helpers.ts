@@ -49,7 +49,11 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
       if (body.method === "nest") {
         const want = (body.args[0] as { to: number }).to
         if (run.depth >= want) return Response.json({ data: { depth: run.depth } })
-        const r = await sandbox.run("nest", { to: want }, { orgId: run.orgId, depth: run.depth + 1 })
+        const r = await sandbox.run(
+          "nest",
+          { to: want },
+          { orgId: run.orgId, depth: run.depth + 1 },
+        )
         return Response.json({ data: r.body })
       }
       return Response.json({ error: "Unknown method", errorStatus: 404 }, { status: 404 })
@@ -57,7 +61,12 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
   })
   const bridgeOrigin = `http://127.0.0.1:${bridge.port}`
   const sup = await createSupervisor({ ...DEFAULTS, bridgeOrigin, spares: 0, ...over })
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: (r) => sup.fetch(r) })
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    idleTimeout: 0,
+    fetch: (r) => sup.fetch(r),
+  })
   const url = `http://127.0.0.1:${server.port}`
   const put = await fetch(`${url}/modules/${PROBE_SHA}`, { method: "PUT", body: PROBE_APP })
   if (put.status !== 204) throw new Error(`module push failed: ${put.status}`)

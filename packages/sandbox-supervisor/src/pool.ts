@@ -55,7 +55,10 @@ export interface WorkerdProcess {
   stderrTail: string
 }
 
-export type Acquired = { proc: WorkerdProcess; how: "warm" | "blank" | "spawn" | "evict" | "overflow" }
+export type Acquired = {
+  proc: WorkerdProcess
+  how: "warm" | "blank" | "spawn" | "evict" | "overflow"
+}
 
 export class PoolError extends Error {
   constructor(
@@ -88,7 +91,7 @@ export class WorkerdPool {
 
   constructor(
     private readonly cfg: SupervisorConfig,
-    private readonly hostSource: string,
+    readonly hostSource: string,
   ) {
     this.bin = cfg.workerdBin ?? resolveWorkerdBinary()
     // Short paths: a unix socket path is capped near 100 bytes.
@@ -153,12 +156,7 @@ export class WorkerdPool {
     }
   }
 
-  private take(
-    p: WorkerdProcess,
-    key: string,
-    depth: number,
-    how: Acquired["how"],
-  ): Acquired {
+  private take(p: WorkerdProcess, key: string, depth: number, how: Acquired["how"]): Acquired {
     p.busy = true
     p.depth = depth
     p.key ??= key
@@ -214,7 +212,10 @@ export class WorkerdPool {
 
   /** A process that exited by itself under a run: count it under the run's reason. */
   exitedUnderRun(p: WorkerdProcess, reason: string): void {
-    if (!p.dead) return this.kill(p, reason)
+    if (!p.dead) {
+      this.kill(p, reason)
+      return
+    }
     if (p.killReason !== "exited") return
     p.killReason = reason
     this.counters.killed.exited = (this.counters.killed.exited ?? 1) - 1
@@ -259,12 +260,12 @@ export class WorkerdPool {
 
   private capnp(n: number, socket: string): string {
     const bridge = new URL(this.cfg.bridgeOrigin)
-    const port = bridge.port || "80"
+    const address = this.cfg.bridgeAddress ?? `${bridge.hostname}:${bridge.port || "80"}`
     return `using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [
     (name = "main", worker = .host),
-    (name = "bridge", external = (address = "${bridge.hostname}:${port}", http = ())),
+    (name = "bridge", external = (address = "${address}", http = ())),
   ],
   sockets = [ (name = "http", address = "unix:${socket}", http = (), service = "main") ],
   v8Flags = ["--max-old-space-size=${this.cfg.heapMb}"],

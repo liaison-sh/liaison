@@ -32,7 +32,6 @@ import {
 } from "@liaison/app-loader"
 import { SANDBOX_CELL_ID } from "./cell"
 
-
 interface HostEnv {
   LOADER: LoaderLike
   PROCESS_KEY: string

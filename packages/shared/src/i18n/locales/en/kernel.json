@@ -1912,7 +1912,8 @@
       "rolesAccess": "Roles & access",
       "appStore": "App store",
       "connectors": "Connectors",
-      "documents": "Documents"
+      "documents": "Documents",
+      "sidebar": "Sidebar"
     },
     "invoicing": "Invoicing",
     "monitoring": "Monitoring",
@@ -1926,7 +1927,9 @@
     "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
     "dashboard": "Dashboard",
     "appBuilder": "App builder",
-    "dashboards": "Dashboards"
+    "dashboards": "Dashboards",
+    "hideFromSidebar": "Hide from sidebar",
+    "railEntryMenu": "{{app}} options"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -6665,5 +6668,13 @@
     "refresh": "Refresh",
     "failed": "The logs could not be read. Try again in a moment.",
     "empty": "Nothing logged in the last 7 days."
+  },
+  "sidebarSettings": {
+    "title": "Sidebar",
+    "intro": "Choose which apps your sidebar shows.",
+    "note": "Hidden apps stay available from search, the command palette and links.",
+    "showInSidebar": "Show {{app}} in the sidebar",
+    "saveFailed": "Couldn't save the sidebar. Try again.",
+    "adminIntro": "The apps {{name}} sees in their sidebar. They can show or hide any of them again in their own Settings."
   }
 }

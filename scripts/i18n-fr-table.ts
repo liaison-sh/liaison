@@ -7908,4 +7908,16 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.appStore.outboundGranted": "Autorisés",
   "kernel.appStore.outboundRevoke": "Retirer",
   "kernel.appStore.outboundChangeFailed": "La modification n'a pas été enregistrée : {{message}}",
+  "kernel.nav.section.sidebar": "Barre latérale",
+  "kernel.nav.hideFromSidebar": "Masquer de la barre latérale",
+  "kernel.nav.railEntryMenu": "Options de {{app}}",
+  "kernel.sidebarSettings.title": "Barre latérale",
+  "kernel.sidebarSettings.intro":
+    "Choisissez les applications affichées dans votre barre latérale.",
+  "kernel.sidebarSettings.note":
+    "Les applications masquées restent accessibles depuis la recherche, la palette de commandes et les liens.",
+  "kernel.sidebarSettings.showInSidebar": "Afficher {{app}} dans la barre latérale",
+  "kernel.sidebarSettings.saveFailed": "La barre latérale n'a pas été enregistrée. Réessayez.",
+  "kernel.sidebarSettings.adminIntro":
+    "Les applications que {{name}} voit dans sa barre latérale. Cette personne peut à tout moment afficher ou masquer chacune d'elles dans ses propres réglages.",
 }

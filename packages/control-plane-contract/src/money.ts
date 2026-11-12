@@ -493,8 +493,8 @@ export const cellBillingDataSchemas = {
   /**
    * One org's app usage of a UTC day on this cell, per (app, executor): runs,
    * bridge calls, wall and CPU milliseconds (`cpuMs` null when the executor
-   * cannot measure it: QuickJS, or a Workers day not pulled from the loader
-   * yet). Separate from `usage.report`, so a Control that refuses it (one that
+   * cannot measure it: QuickJS, the instance's own sandbox service
+   * (`workerd`), or a Workers day not pulled from the loader yet). Separate from `usage.report`, so a Control that refuses it (one that
    * predates it) never loses the billing report. `capsVersion` is the caps
    * version the cell accepts (`CAPS_CONTRACT_VERSION`, c2c.ts): Control sends
    * the app cap kinds only to a cell that reported 2 or more. Sent daily for
@@ -510,7 +510,7 @@ export const cellBillingDataSchemas = {
           z
             .object({
               app: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/),
-              executor: z.enum(["workers", "quickjs", "inprocess"]),
+              executor: z.enum(["workers", "workerd", "quickjs", "inprocess"]),
               runs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
               bridgeCalls: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
               wallMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),

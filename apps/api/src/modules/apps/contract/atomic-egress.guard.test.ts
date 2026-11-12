@@ -28,6 +28,7 @@ const BASELINE_PATH = join(import.meta.dir, "atomic-egress.baseline.json")
 const BASELINE_SHA256 = "4c5714abad56abddba3c2df9d858b9a2d9888461289121a7b4274b12b7b263b4"
 const BUNDLED = join(import.meta.dir, "../../../../../../bundled-apps")
 const IN_TREE = join(import.meta.dir, "../../../apps")
+const TEST_SUPPORT_APPS = join(import.meta.dir, "../../../../test-support/apps")
 const TOOLS_ALLOWLIST_PATH = join(import.meta.dir, "atomic-tools.allowlist.json")
 const TOOLS_BASELINE_PATH = join(import.meta.dir, "atomic-tools.baseline.json")
 const TOOLS_BASELINE_SHA256 = "0f58474e39c447d12f698cd352076d37327a3e96701a2c0d87643be550aa3b30"
@@ -96,6 +97,10 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
     const listed = toolRows(TOOLS_ALLOWLIST_PATH)
     expect(listed.filter((k) => !baseline.has(k))).toEqual([])
     expect(atomicToolsIn(IN_TREE)).toEqual([...listed].sort())
+  })
+
+  it("no test fixture app declares an atomic tool", () => {
+    expect(atomicToolsIn(TEST_SUPPORT_APPS)).toEqual([])
   })
 
   it("an atomic tool's egress methods refuse, its local ones are left alone", async () => {

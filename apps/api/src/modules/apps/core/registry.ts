@@ -24,6 +24,10 @@ export interface CoreAppModule {
 const appsDir = (rel: string): string => new URL(`../../../apps/${rel}`, import.meta.url).pathname
 
 export const CORE_APP_MODULES: Readonly<Record<string, CoreAppModule>> = {
+  calendar: {
+    modulePath: appsDir("calendar/handlers.ts"),
+    load: () => import("~/apps/calendar/handlers"),
+  },
   tickets: {
     modulePath: appsDir("tickets/handlers.ts"),
     load: () => import("~/apps/tickets/handlers"),

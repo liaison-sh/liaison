@@ -7,7 +7,7 @@
 //                                       command), who waits in what order, the
 //                                       load, available memory, swap and the gates
 //   bun run slots -- --json             the same, as JSON
-//   bun scripts/slots.ts lease --pid <pid> --cmd <text> [--wait-sec <s>]
+//   bun scripts/slots.ts lease --pid <pid> --cmd <text> [--wait-sec <s>] [--lane light]
 //                                       holds a slot FOR ANOTHER PROCESS until it
 //                                       exits or `release` runs (a CI runner's
 //                                       job-started hook leases one for the job;
@@ -23,6 +23,7 @@ import os from "node:os"
 import {
   acquireSlot,
   formatStatus,
+  lightSlotCount,
   liveHolders,
   liveWaiters,
   maxLoad,
@@ -33,6 +34,7 @@ import {
   releaseHeldBy,
   slotCount,
   slotDir,
+  starveMs,
 } from "./lib/machine-slots"
 
 const args = process.argv.slice(2).filter((a) => a !== "--")
@@ -60,13 +62,22 @@ if (verb === "status") {
         {
           dir: slotDir(),
           slots: slotCount(),
+          lightSlots: lightSlotCount(),
           load: os.loadavg()[0],
           maxLoad: maxLoad(),
+          starveSec: starveMs() / 1000,
           memory: readMemory(),
           minFreeMb: minFreeMb(),
           maxSwapMb: maxSwapMb(),
           holders: liveHolders(process.env, realProbe).map((h) => ({ slot: h.slot, ...h.record })),
           waiters: liveWaiters(process.env, realProbe).map((w) => w.record),
+          lightHolders: liveHolders(process.env, realProbe, "light").map((h) => ({
+            slot: h.slot,
+            ...h.record,
+          })),
+          lightWaiters: liveWaiters(process.env, realProbe, undefined, "light").map(
+            (w) => w.record,
+          ),
           at: new Date(now).toISOString(),
         },
         null,
@@ -85,6 +96,7 @@ if (verb === "status") {
       cmd: flag("cmd") ?? `lease for pid ${pid}`,
       env,
       pid,
+      lane: flag("lane") === "light" ? "light" : "heavy",
       installExitHandlers: false,
     })
     console.log(
@@ -102,7 +114,7 @@ if (verb === "status") {
   console.log(`slots release: ${n} file(s) released for pid ${pid}`)
 } else {
   console.error(
-    "usage: bun run slots [--json] | lease --pid <pid> --cmd <text> [--wait-sec <s>] | release --pid <pid>",
+    "usage: bun run slots [--json] | lease --pid <pid> --cmd <text> [--wait-sec <s>] [--lane light] | release --pid <pid>",
   )
   process.exit(2)
 }

@@ -29,6 +29,9 @@ export type RoomFloor =
       memberGrants: string[][]
       /** The requester's own grants, also present in `memberGrants`. */
       requesterGrants: string[]
+      /** The people the floor counts (the requester included), in `memberGrants` order: who the
+       *  turn's reply reaches, which a shared resource's readers are checked against (rule 15e). */
+      memberIds: string[]
     }
   | { kind: "routine_tick" }
 
@@ -70,7 +73,12 @@ export async function resolveRoomFloor(
 
     case "agent_chat": {
       const requesterGrants = await grantsOf(db, requesterUserId, orgId)
-      return { kind: "dm", memberGrants: [requesterGrants], requesterGrants }
+      return {
+        kind: "dm",
+        memberGrants: [requesterGrants],
+        requesterGrants,
+        memberIds: [requesterUserId],
+      }
     }
 
     case "thread":
@@ -101,7 +109,7 @@ export async function resolveRoomFloor(
         if (userId === requesterUserId) requesterGrants = grants
         memberGrants.push(grants)
       }
-      return { kind: "channel", memberGrants, requesterGrants }
+      return { kind: "channel", memberGrants, requesterGrants, memberIds }
     }
 
     default:

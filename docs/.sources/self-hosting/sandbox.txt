@@ -1,0 +1,14 @@
+One (org, app@version) per process, recycle after 100 runs or 120 s idle -> packages/sandbox-supervisor/src/config.ts DEFAULTS ; packages/sandbox-supervisor/src/pool.ts
+Wall kill at deadline + 1 s, CPU from the process, RSS cap + heap flag -> packages/sandbox-supervisor/src/supervisor.ts run ; packages/sandbox-supervisor/src/config.ts killGraceMs
+Nested runs: reserved processes, depth cap 4 -> packages/sandbox-supervisor/src/config.ts MAX_NESTING_DEPTH
+Per-run token, no key in the service -> packages/sandbox-supervisor/src/config.ts header ; apps/api/src/modules/apps/workers/bridge-route.ts
+runtime: runsc, opt-out LIAISON_SANDBOX_RUNTIME + LIAISON_SANDBOX_ALLOW_NO_GVISOR -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/runtime-check.ts
+COMPOSE_PROFILES=sandbox, LIAISON_SANDBOX_URL -> deploy/docker-compose.yml ; deploy/.env.example ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
+Bridge-only listener on 3100, app-bridge alias -> apps/api/src/modules/apps/workers/bridge-listener.ts ; apps/api/src/index.ts ; deploy/docker-compose.yml app networks
+Worker module needed; executor workerd in timing and usage -> apps/api/src/modules/apps/sandbox/run-app.ts resolveWorkersTarget ; apps/api/src/modules/apps/usage/app-usage.ts
+LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/config.ts quickjsForced
+Same image, entrypoint `sandbox` -> apps/api/scripts/entrypoint.sh ; deploy/docker-compose.yml sandbox
+Firewall step install/apply/remove/check -> deploy/sandbox-firewall.sh
+Sizing 6+2 @256 MiB = 2 GiB, 10+2 3 GiB 3 CPUs; ~127 MiB measured for 6 processes -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/config.ts
+Accepted risks (shared host, no Spectre guard, Date.now live, performance.now 1 ms, SharedArrayBuffer) -> packages/sandbox-supervisor/test/probes.test.ts
+Dev/CI run the supervisor directly -> packages/sandbox-supervisor/src/main.ts ; apps/api/src/modules/apps/workers/__fixtures__/workerd-loader.ts

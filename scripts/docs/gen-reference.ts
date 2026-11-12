@@ -838,14 +838,13 @@ export interface ShippedManifest {
   manifest: Record<string, unknown>
 }
 
-/** Every shipped app's manifest, sorted by app name (`example` excluded). */
+/** Every shipped app's manifest, sorted by app name. */
 export function loadManifests(root: string = ROOT): ShippedManifest[] {
   const out: ShippedManifest[] = []
   for (const base of ["apps/api/src/apps", "bundled-apps"]) {
     const dir = join(root, base)
     if (!existsSync(dir)) continue
     for (const app of readdirSync(dir).sort()) {
-      if (app === "example") continue
       const path = join(base, app, "app.manifest.json")
       if (!existsSync(join(root, path))) continue
       const manifest = JSON.parse(readFileSync(join(root, path), "utf8")) as Record<string, unknown>

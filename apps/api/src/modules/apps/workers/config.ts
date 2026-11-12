@@ -16,10 +16,14 @@
 // it, and a bridge call landing on another process is forwarded there
 // (bridge-forward.ts). So a `worker` process (jobs, crons, webhooks) runs apps
 // on Workers too, while its isolates call back on the public API's address
-// (LIAISON_APP_BRIDGE_BASE_URL, else BASE_URL). Unset: everything runs on
-// QuickJS, and the bridge routes answer 404. Read on every call, so a test (or
-// an operator reload) sees the configuration as it is now.
+// (LIAISON_APP_BRIDGE_BASE_URL, else BASE_URL). The instance's own sandbox
+// service (workerd, readSandboxConfig) takes the loader's fallbacks, and every
+// sandboxed run when no loader is configured (a self-hosted instance). Neither
+// set: everything runs on QuickJS, and the bridge routes answer 404. Read on
+// every call, so a test (or an operator reload) sees the configuration as it
+// is now.
 
+import { randomBytes } from "node:crypto"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 
@@ -77,20 +81,73 @@ export function workersConfigured(): boolean {
 }
 
 /**
+ * The per-instance runtime switch of this release: `LIAISON_APP_RUNTIME=quickjs`
+ * runs every app on the local QuickJS sandbox again, whatever else is
+ * configured (the way back while an instance moves to the sandbox service; it
+ * goes away with QuickJS).
+ */
+export function quickjsForced(): boolean {
+  return env.LIAISON_APP_RUNTIME === "quickjs"
+}
+
+/** The cell id runs carry to the sandbox service when no loader names one. */
+const SANDBOX_CELL_ID = "sandbox"
+
+/**
+ * The key a self-hosted instance signs its sandbox service requests with: the
+ * service holds no key and checks none (it is reachable from the app only, and
+ * a run can do nothing without its own run token), so a key per process is
+ * enough and is never stored anywhere.
+ */
+const sandboxProcessKey = randomBytes(32).toString("hex")
+
+/**
+ * This instance's own sandbox service (workerd, packages/sandbox-supervisor),
+ * set by one value, LIAISON_SANDBOX_URL: its base URL (runs are posted to
+ * `<url>/run`, module bytes pushed to `<url>/modules/<sha256>`). With the
+ * loader configured it is where the loader's fallbacks go and it shares the
+ * loader's cell id and key; without one it runs every sandboxed app. Its runs
+ * call back on LIAISON_SANDBOX_BRIDGE_URL, the app's bridge-only listener
+ * (`LIAISON_APP_BRIDGE_PORT`), else on the loader's bridge address. Null when
+ * unset.
+ */
+export function readSandboxConfig(
+  primary: WorkersConfig | null = readWorkersConfig(),
+): WorkersConfig | null {
+  const url = env.LIAISON_SANDBOX_URL
+  if (blank(url)) return null
+  const bridgeBaseUrl =
+    env.LIAISON_SANDBOX_BRIDGE_URL ??
+    primary?.bridgeBaseUrl ??
+    env.LIAISON_APP_BRIDGE_BASE_URL ??
+    env.BASE_URL
+  return {
+    loaderUrl: (url ?? "").replace(/\/+$/, ""),
+    cellId: primary?.cellId ?? SANDBOX_CELL_ID,
+    loaderKey: primary?.loaderKey ?? sandboxProcessKey,
+    bridgeBaseUrl: bridgeBaseUrl.replace(/\/+$/, ""),
+  }
+}
+
+/**
  * Where a run meant for the loader goes when the loader cannot take it (its
  * breaker open, an app-level fallback, a loader fault before any bridge call;
- * fallback.ts). One value decides it: LIAISON_APP_FALLBACK_LOADER_URL, the
- * base URL of this instance's own sandbox service (workerd), which speaks the
- * loader's protocol (the same `@liaison/app-loader` handler), knows this cell
- * by the same id and key, and is called back on the same bridge. Unset: the
- * local QuickJS sandbox.
+ * fallback.ts): the instance's sandbox service when it is configured
+ * (readSandboxConfig), else the local QuickJS sandbox.
  */
 export type FallbackTarget = { kind: "quickjs" } | { kind: "workerd"; config: WorkersConfig }
 
 export function readFallbackTarget(primary: WorkersConfig): FallbackTarget {
-  const url = env.LIAISON_APP_FALLBACK_LOADER_URL
-  if (blank(url)) return { kind: "quickjs" }
-  return { kind: "workerd", config: { ...primary, loaderUrl: (url ?? "").replace(/\/+$/, "") } }
+  const config = readSandboxConfig(primary)
+  return config ? { kind: "workerd", config } : { kind: "quickjs" }
+}
+
+/**
+ * Whether the bridge routes answer: a remote executor (the loader or the
+ * sandbox service) may run this process's runs.
+ */
+export function appBridgeEnabled(): boolean {
+  return workersConfigured() || readSandboxConfig(null) !== null
 }
 
 /** `<bridgeBaseUrl>/api/app-bridge/<runId>`: where a run's isolate calls back. */

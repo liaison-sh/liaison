@@ -14,6 +14,8 @@ globalThis.renderTemplate = (data) => ([
 ]);
 `
 
+const owner = { orgId: "00000000-0000-0000-0000-0000000000b1", appName: "invoicing" }
+
 // M2 — getSandboxPool() THROWS if initSandboxPool() never ran. In bare bun:test
 // units, construct an explicit pool and pass it (mirrors executor.test.ts:9-10).
 describe("runTemplateToPdf", () => {
@@ -26,13 +28,20 @@ describe("runTemplateToPdf", () => {
   }, 60_000)
 
   it("executes a template bundle in the sandbox and replays its commands to a PDF", async () => {
-    const bytes = await runTemplateToPdf({ bundleSource: bundle, data: { name: "Acme" }, pool })
+    const bytes = await runTemplateToPdf({
+      ...owner,
+      bundleSource: bundle,
+      data: { name: "Acme" },
+      pool,
+    })
     const doc = await PDFDocument.load(bytes)
     expect(doc.getPageCount()).toBe(1)
   })
 
   it("propagates a render error when the template returns a non-array", async () => {
     const bad = `globalThis.renderTemplate = () => ({ not: "an array" });`
-    await expect(runTemplateToPdf({ bundleSource: bad, data: {}, pool })).rejects.toBeDefined()
+    await expect(
+      runTemplateToPdf({ ...owner, bundleSource: bad, data: {}, pool }),
+    ).rejects.toBeDefined()
   })
 })

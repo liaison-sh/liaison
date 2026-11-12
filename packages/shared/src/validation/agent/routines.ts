@@ -144,14 +144,23 @@ export const routineEventFilterSchema = z
   .object({
     fromContactIds: z.array(z.string().uuid()).max(200).optional(),
     fromGroupIds: z.array(z.string().uuid()).max(50).optional(),
+    tableId: z.string().uuid().optional(),
+    column: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,39}$/)
+      .optional(),
+    to: z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()]).optional(),
   })
   .strict()
   .nullable()
   .optional()
   .describe(
-    "Only for event 'mail:message:create': fire only on inbound mail whose sender is one of " +
+    "For event 'mail:message:create': fire only on inbound mail whose sender is one of " +
       "fromContactIds (contact ids) or a member of one of fromGroupIds (contact group ids). Non-matching " +
-      "mail never starts the routine. Omit or null to react to every new mail the owner can read.",
+      "mail never starts the routine. For 'kernel:dashboard_table_row:created|updated|deleted': " +
+      "{tableId} fires only for rows of that table, {column} only when that column changed, " +
+      "{to} only when the column changed TO that value (a choice, a number, true...). " +
+      "Omit or null to react to every event the owner can read.",
   )
 export type RoutineEventFilter = NonNullable<z.infer<typeof routineEventFilterSchema>>
 
@@ -360,6 +369,9 @@ export const routineResponseSchema = z.object({
     .object({
       fromContactIds: z.array(z.string()).optional(),
       fromGroupIds: z.array(z.string()).optional(),
+      tableId: z.string().optional(),
+      column: z.string().optional(),
+      to: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
     })
     .nullable()
     .optional(),

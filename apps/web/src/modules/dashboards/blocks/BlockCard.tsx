@@ -25,6 +25,7 @@ import {
   createEffect,
   createSignal,
   For,
+  type JSX,
   Match,
   on,
   onCleanup,
@@ -83,6 +84,11 @@ export interface BlockCardProps {
   onExport?: (kind: "data" | "rows") => void
   /** The dashboard is in edit mode: these change the block. */
   edit?: BlockEditActions
+  /**
+   * A block that reads its own data (an editable table): the card draws this instead of reading
+   * `load`, and passes its refresh count (the block's refresh button, then Refresh all).
+   */
+  content?: (refreshCount: () => number) => JSX.Element
 }
 
 /** What edit mode can do to a block; each is one operation sent to the server. */
@@ -169,9 +175,15 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
   const [error, setError] = createSignal<Extract<BlockResult, { ok: false }> | null>(null)
   const [busy, setBusy] = createSignal(true)
   const [info, setInfo] = createSignal<BlockReadInfo | undefined>(undefined)
+  const [refreshes, setRefreshes] = createSignal(0)
   let seq = 0
 
   async function read(refresh: boolean): Promise<void> {
+    if (props.content) {
+      if (refresh) setRefreshes((n) => n + 1)
+      setBusy(false)
+      return
+    }
     const mine = ++seq
     setBusy(true)
     const result = await props.load(refresh)
@@ -252,6 +264,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
   // A metric read from one object (not a list) has no rows behind it: nothing to drill into.
   const drillable = () =>
     !!props.onDrill &&
+    !props.content &&
     props.block.type !== "text" &&
     !props.edit &&
     !(data()?.kind === "metric" && info()?.sourceRows === 0)
@@ -274,7 +287,15 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
   // A refusal to refresh again so soon keeps the figures already on screen.
   const keepsData = () => error()?.error === "rate_limited" && data() !== null
   const status = (): BlockStatus =>
-    error() && !keepsData() ? "error" : data() ? "ready" : busy() ? "loading" : "error"
+    props.content
+      ? "ready"
+      : error() && !keepsData()
+        ? "error"
+        : data()
+          ? "ready"
+          : busy()
+            ? "loading"
+            : "error"
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drag and drop is the pointer path; the arrow buttons are its keyboard equivalent
@@ -532,6 +553,7 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
         </button>
       </header>
       <Switch>
+        <Match when={props.content}>{(draw) => draw()(refreshes)}</Match>
         <Match when={status() === "loading"}>
           <div data-testid="dashboard-block-skeleton" class="space-y-2 py-2">
             <Skeleton class="h-6 w-1/2" />

@@ -14,7 +14,7 @@
 // lookups) and VIES are public services. Every entry the plan names (recording-plan-invoicing.ts)
 // runs on the live bridge in order: later steps use what earlier ones created (an issuer, a draft,
 // an invoice, ...). Each fixture is scrubbed (store domain, emails, IPs, phones) and replayed twice
-// before it is written. RECORD_ONLY=<entry,entry> writes only those entries (the others still run).
+// before it is written. CONTRACT_RECORD_ONLY=<entry,entry> writes only those entries (the others still run).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -247,7 +247,9 @@ describe("record invoicing contract fixtures", () => {
   }
 
   it("records every planned entry", async () => {
-    const only = process.env.RECORD_ONLY ? new Set(process.env.RECORD_ONLY.split(",")) : null
+    const only = process.env.CONTRACT_RECORD_ONLY
+      ? new Set(process.env.CONTRACT_RECORD_ONLY.split(","))
+      : null
     const replacements: Replacement[] = [
       { from: TOKEN, to: "shpat_redacted" },
       { from: SHOP, to: STAND_IN_SHOP },
@@ -306,7 +308,10 @@ describe("record invoicing contract fixtures", () => {
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
       await step.after?.(answer, state)
-      const summary = JSON.stringify(answer)?.slice(0, process.env.RECORD_DEBUG ? 3000 : 200)
+      const summary = JSON.stringify(answer)?.slice(
+        0,
+        process.env.CONTRACT_RECORD_DEBUG ? 3000 : 200,
+      )
       if (step.record === false) continue
       if (only && !only.has(step.entry)) continue
       const rejected =

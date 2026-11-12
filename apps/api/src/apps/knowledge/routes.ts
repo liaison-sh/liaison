@@ -68,6 +68,7 @@ import {
   createSyncedSource,
   listSyncedSources,
   loadSyncedSource,
+  requireKnowledgeReader,
   updateSyncedSource,
 } from "~/apps/knowledge/synced-sources"
 import { listKnowledgeTags, upsertKnowledgeTag } from "~/apps/knowledge/tags"
@@ -928,6 +929,7 @@ knowledgeRoutes.get("/synced-sources", async (c) => {
 knowledgeRoutes.get("/synced-sources/kinds", async (c) => {
   try {
     const actor = getActor(c)
+    requireKnowledgeReader(actor)
     const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
     return success(c, listAppSourceKinds(actor))
   } catch (err) {

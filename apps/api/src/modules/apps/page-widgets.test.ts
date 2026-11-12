@@ -96,12 +96,23 @@ function fakePage() {
   }
   const scripts: any[] = []
   const root = el("div")
+  // As in the browser: the head's script runs while the body is still loading.
+  let ready: (() => void) | null = null
   const document = {
-    getElementById: (id: string) => (id === "root" ? root : null),
+    readyState: "loading",
+    addEventListener: (type: string, fn: () => void) => {
+      if (type === "DOMContentLoaded") ready = fn
+    },
+    getElementById: (id: string) =>
+      id === "root" && document.readyState !== "loading" ? root : null,
     createElement: el,
     head: el("head"),
   }
-  return { document, nodes, scripts }
+  const load = () => {
+    document.readyState = "interactive"
+    ready?.()
+  }
+  return { document, nodes, scripts, load }
 }
 
 /** Google's Picker, faked: building it records the options; setVisible answers `answer`. */
@@ -195,6 +206,9 @@ async function runWidget(answer: { action: string; docs?: unknown[] }, callFails
     params: { apiKey: "dev-key", appId: "1234" },
   })
   new Function("window", "document", "setTimeout", script)(window, page.document, () => undefined)
+  // Nothing runs before the body exists, then the widget builds its page.
+  expect(page.scripts).toHaveLength(0)
+  page.load()
   // The platform script loads Google's script; its onload runs the picker.
   const loader = page.scripts[0]
   expect(loader.src).toBe("https://apis.google.com/js/api.js")

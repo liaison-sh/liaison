@@ -950,6 +950,7 @@ it as a page, with the routes it calls:
   A handle and a link each work once, for 5 minutes; a person gets at most 20 per app
   every 10 minutes.
 - `pages/picker.ts` is built for the browser into `pages/picker.js` in the package.
+  It runs once the document is parsed, so its `#root` element exists.
   The page reads `window.liaisonPage.params` and calls a route with
   `await window.liaisonPage.call("savePicks", body)`.
 - A route runs your handler as that person, with their scopes, under the route's

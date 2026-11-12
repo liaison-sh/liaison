@@ -223,7 +223,8 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "kernel.app_code_modules": {
     exempt: "derived",
-    reason: "Worker modules the platform builds from drafts, transforms and templates, rebuilt from them",
+    reason:
+      "Worker modules the platform builds from drafts, transforms and templates, rebuilt from them",
   },
   "kernel.app_document_usage": {
     exempt: "derived",

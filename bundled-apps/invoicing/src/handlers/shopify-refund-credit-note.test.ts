@@ -39,6 +39,13 @@ function okPaymentStatus(r: Awaited<ReturnType<typeof onShopifyRefundCreated>>):
   return r.payment_status
 }
 
+/** The issuing batch of a credit note (issue.ts writes the numbered document in one `db.batch`). */
+function issuesCreditNote(spec: { ops: Array<Record<string, unknown>> }): boolean {
+  return spec.ops.some(
+    (o) => o.insert === "documents" && (o.data as Record<string, unknown>).type === "credit_note",
+  )
+}
+
 describe("onShopifyRefundCreated auto credit-note issuance", () => {
   test("FULL refund of a split order issues a reversing credit note for BOTH invoices", async () => {
     const db = createMockDb({
@@ -107,12 +114,12 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     // the underlying `db` is untouched otherwise, so a second, successful insert lands for real.
     const throwingDb = {
       ...db,
-      async insert(entity: string, data: Record<string, unknown>) {
-        if (entity === "documents" && data.type === "credit_note") {
+      async batch(spec: Parameters<typeof db.batch>[0]) {
+        if (issuesCreditNote(spec)) {
           creditNoteInsertCount += 1
           if (creditNoteInsertCount === 1) throw new Error("simulated credit note insert failure")
         }
-        return db.insert(entity, data)
+        return db.batch(spec)
       },
     } as unknown as RefundCtx["db"]
     const ctx: RefundCtx = {
@@ -166,11 +173,9 @@ describe("onShopifyRefundCreated auto credit-note issuance", () => {
     // document -- so the insert is the real failure point that reaches issueOneRefundCreditNote).
     const throwingDb = {
       ...db,
-      async insert(entity: string, data: Record<string, unknown>) {
-        if (entity === "documents" && data.type === "credit_note") {
-          throw new Error("simulated credit note insert failure")
-        }
-        return db.insert(entity, data)
+      async batch(spec: Parameters<typeof db.batch>[0]) {
+        if (issuesCreditNote(spec)) throw new Error("simulated credit note insert failure")
+        return db.batch(spec)
       },
     } as unknown as RefundCtx["db"]
     const ctx: RefundCtx = {

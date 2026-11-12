@@ -229,7 +229,7 @@ Records behind a blended chart read one source at a time -> apps/api/src/modules
 Filters list in edit mode, rename in place, remove -> apps/web/src/modules/dashboards/FilterEditor.tsx:125 ; apps/web/src/modules/dashboards/FilterEditor.tsx:152 ; packages/shared/src/i18n/locales/en/kernel.json:6519
 Blocks: N a filter narrows -> apps/web/src/modules/dashboards/FilterEditor.tsx:147 ; packages/shared/src/i18n/locales/en/kernel.json:6521
 Add filter opens an inline form, fields read when it opens -> apps/web/src/modules/dashboards/FilterEditor.tsx:68 ; packages/shared/src/i18n/locales/en/kernel.json:6523
-Fields come from the blocks' own data rows -> apps/api/src/modules/dashboards/service.ts:1720 ; apps/api/src/modules/dashboards/service.ts:1184
+Fields come from the blocks' own data rows -> apps/api/src/modules/dashboards/service.ts:1811 ; apps/api/src/modules/dashboards/service.ts:1275
 Name starts as the field, every block holding it ticked -> apps/web/src/modules/dashboards/FilterEditor.tsx:87 ; apps/web/src/modules/dashboards/FilterEditor.tsx:88
 Kinds: choose one, several, type text -> packages/shared/src/i18n/locales/en/kernel.json:6531 ; packages/shared/src/i18n/locales/en/kernel.json:6532 ; packages/shared/src/i18n/locales/en/kernel.json:6533
 Text filter keeps rows containing what is typed -> apps/web/src/modules/dashboards/filter-editor.ts:161
@@ -245,4 +245,8 @@ Right axis named in the legend -> apps/web/src/modules/dashboards/blocks/BlockRe
 Smooth line drawn -> apps/web/src/modules/dashboards/blocks/Chart.tsx:200
 A failed source of a blended chart named under it -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:571
 Click on a blended chart opens that source's records -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:151
-Rows answer lists the names of the rows' fields; layer param -> apps/api/src/modules/dashboards/service.ts:1870 ; apps/api/src/modules/dashboards/routes.ts:172
+Rows answer lists the names of the rows' fields; layer param -> apps/api/src/modules/dashboards/service.ts:1961 ; apps/api/src/modules/dashboards/routes.ts:172
+An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
+Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
+A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257
+A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853

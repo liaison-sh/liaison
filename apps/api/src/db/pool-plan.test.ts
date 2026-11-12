@@ -35,7 +35,7 @@ const sizes = (p: ReturnType<typeof planPools>) => [
 
 describe("planPools", () => {
   it("compose default (200, 2 api + 1 worker, split): api 26, worker 34, overlap 172 fits", () => {
-    expect(PINNED_JOBS_WANTED).toBe(15)
+    expect(PINNED_JOBS_WANTED).toBe(10)
     const api = planPools(input({ role: "api" }))
     const worker = planPools(input({ role: "worker" }))
     // The api's jobs pool: its event handlers (2) plus one for short transactions.
@@ -60,11 +60,11 @@ describe("planPools", () => {
     const worker = planPools(input({ role: "worker", cellMax: 400 }))
     expect(sizes(api)).toEqual([5, 25, 20, 3, 2])
     expect(api.perProcess).toBe(55)
-    expect(sizes(worker)).toEqual([5, 7, 15, 17, 15])
-    expect(worker.perProcess).toBe(59)
-    expect(worker.pinnedJobSlots).toBe(15)
+    expect(sizes(worker)).toEqual([5, 7, 15, 12, 10])
+    expect(worker.perProcess).toBe(49)
+    expect(worker.pinnedJobSlots).toBe(10)
     expect(api.pinnedJobSlots).toBe(API_EVENT_HANDLER_SLOTS)
-    expect(api.unallocated).toBe(17)
+    expect(api.unallocated).toBe(27)
   })
 
   it("unsplit logins count three physical pools", () => {

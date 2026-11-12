@@ -5,6 +5,7 @@ import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
 import { api, connectWs, createUserWithScopes } from "@liaison/test-helpers"
 import { decide } from "./helpers/approvals"
 import { runCronJobToCompletion, triggerCronJob } from "./helpers/run-cron"
+import { seedFactory } from "./helpers/seed-factory"
 import {
   backdateSlaDeadline,
   ks,
@@ -364,11 +365,10 @@ describe("Tickets Scenario", () => {
 
   // The apps' attention lists are stored, recomputed after the app was woken
   // and on the attention minute tick. Tickets seeded straight into the table
-  // wake nothing: run the org's tick job, as the next minute would.
+  // wake nothing, and the tick only queues a refresh (deduplicated per minute,
+  // under the org's minute budget): recompute the tickets list in place.
   const refreshStoredAttention = () =>
-    runCronJobToCompletion(env, "kernel-cron", "attention-state-email-materialize-org", {
-      orgId: world.org.id,
-    })
+    seedFactory(env, world.org.id, "attention.refresh", { apps: ["tickets"] })
 
   it("S5: attention items returns shared contract for mixed-state tickets", async () => {
     // T1 — sla_risk: backdate deadline to within 25% of total
@@ -924,15 +924,16 @@ describe("Tickets Scenario", () => {
     )
     expect(labels.some((l: any) => l.action_label === "followup_due")).toBe(true)
 
-    // The job run woke the app: its stored list is recomputed right after.
+    // The job run woke the app: its stored list is recomputed by the refresh
+    // queued for the end of the wake's interval (REFRESH_MIN_INTERVAL_MS, 15 s).
     const stillDue = async () =>
       (
         (await api(url, "/api/attention-items", { token: writeUser.token })).body.data?.items ?? []
       ).filter((i: any) => i.entityId === seed.id && i.kind === "followup_due").length > 0
-    const clearBy = Date.now() + 5000
+    const clearBy = Date.now() + 25_000
     while ((await stillDue()) && Date.now() < clearBy) await Bun.sleep(100)
     expect(await stillDue()).toBe(false)
-  }, 20_000)
+  }, 45_000)
 
   // ─── S19: Categories CRUD with depth limit ───
 

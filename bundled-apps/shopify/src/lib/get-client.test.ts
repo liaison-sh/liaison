@@ -160,39 +160,53 @@ describe("read path: a missing install_metadata row is derived in memory, never 
   })
 })
 
-describe("throttle watermark: one org's back-pressure never reaches another", () => {
+describe("throttle: a low cost bucket pauses the shop in the shared limiter", () => {
   const LOW_BUCKET = JSON.stringify({
     data: { ok: true },
     extensions: { cost: { throttleStatus: { currentlyAvailable: 1, restoreRate: 50 } } },
   })
   const OK_BUCKET = JSON.stringify({ data: { ok: true } })
+  const SHARED = "shared-shop.myshopify.com"
 
-  function ctxFor(orgId: string | undefined, body: string): AppContext {
-    const { ctx } = makeCtx({ seedMetadata: { shop_domain: "shared-shop.myshopify.com", connection_status: "connected" }, accounts: [{ id: ACCOUNT_ID, identifier: "shared-shop.myshopify.com" }] })
-    return Object.assign(ctx, { orgId, fetch: async () => ({ status: 200, headers: {}, body }) })
+  function ctxFor(body: string, pauses: Array<[string, number, string | undefined]> | null): AppContext {
+    const { ctx } = makeCtx({
+      seedMetadata: { shop_domain: SHARED, connection_status: "connected" },
+      accounts: [{ id: ACCOUNT_ID, identifier: SHARED }],
+    })
+    return Object.assign(ctx, {
+      fetch: async () => ({ status: 200, headers: {}, body }),
+      ...(pauses
+        ? {
+            limiter: {
+              pause: async (connection: string, ms: number, identifier?: string) => {
+                pauses.push([connection, ms, identifier])
+                return ms
+              },
+            },
+          }
+        : {}),
+    })
   }
 
-  it("org A's low bucket throttles org A only, for the same shop domain", async () => {
-    const orgA = "00000000-0000-0000-0000-0000000000aa"
-    const orgB = "00000000-0000-0000-0000-0000000000bb"
-    // Org A drains its bucket: the watermark is now set for (A, shop).
-    await (await getShopifyClient(ctxFor(orgA, LOW_BUCKET))).query("query { ok }")
-    // A fail-fast client (timeoutMs set) refuses at once when its watermark says wait.
-    await expect(
-      (await getShopifyClient(ctxFor(orgA, OK_BUCKET), { timeoutMs: 1_000 })).query("query { ok }"),
-    ).rejects.toMatchObject({ code: "RATE_LIMIT" })
-    // Org B, same shop domain, starts with no watermark.
-    const r = await (await getShopifyClient(ctxFor(orgB, OK_BUCKET), { timeoutMs: 1_000 })).query<{ ok: boolean }>(
+  it("a low bucket pauses the shop account's connection for the refill time", async () => {
+    const pauses: Array<[string, number, string | undefined]> = []
+    await (await getShopifyClient(ctxFor(LOW_BUCKET, pauses))).query("query { ok }")
+    // (100 - 1) points at 50 points/s.
+    expect(pauses).toEqual([["shop", 1980, SHARED]])
+  })
+
+  it("a full bucket pauses nothing, and no state carries to the next client", async () => {
+    const pauses: Array<[string, number, string | undefined]> = []
+    await (await getShopifyClient(ctxFor(LOW_BUCKET, pauses))).query("query { ok }")
+    const r = await (await getShopifyClient(ctxFor(OK_BUCKET, pauses), { timeoutMs: 1_000 })).query<{ ok: boolean }>(
       "query { ok }",
     )
     expect(r.ok).toBe(true)
+    expect(pauses).toHaveLength(1)
   })
 
-  it("a run without an org id neither writes nor reads a watermark", async () => {
-    await (await getShopifyClient(ctxFor(undefined, LOW_BUCKET))).query("query { ok }")
-    const r = await (await getShopifyClient(ctxFor(undefined, OK_BUCKET), { timeoutMs: 1_000 })).query<{ ok: boolean }>(
-      "query { ok }",
-    )
+  it("a run whose ctx has no limiter still answers", async () => {
+    const r = await (await getShopifyClient(ctxFor(LOW_BUCKET, null))).query<{ ok: boolean }>("query { ok }")
     expect(r.ok).toBe(true)
   })
 })

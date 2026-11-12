@@ -16,6 +16,8 @@ export const ENV_EXEMPT: Record<string, string> = {
   BUN_ENV: "Read only to detect a test run (lib/env.ts isTestEnv).",
   BUN_TEST: "Set by the Bun test runner.",
   CI: "Set by CI runners; changes test and build behaviour only.",
+  CONTRACT_RECORD_DEBUG: "Developer switch of the contract fixture recorder (apps/api/src/modules/apps/contract).",
+  CONTRACT_RECORD_ONLY: "Developer switch of the contract fixture recorder (apps/api/src/modules/apps/contract).",
   DEV: "Vite build-time flag (import.meta.env.DEV) in the web app.",
   HOME: "Operating-system variable, passed through to sandbox workers.",
   LIAISON_CLI: "Set by the CLI entry itself (cli/cli-env.ts) to pick the synchronous logger.",

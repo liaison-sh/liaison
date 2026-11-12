@@ -257,6 +257,15 @@ function aggregate(agg: Aggregation, rows: Row[], field: string | undefined): nu
   }
 }
 
+/**
+ * A value field that no row carries (a misspelt or renamed field) would sum to a silent 0:
+ * every row is counted as left out instead, so the block's note says a field is missing.
+ */
+function noteAbsentField(rows: Row[], field: string | undefined, meta: BlockMeta): void {
+  if (!field || rows.length === 0) return
+  if (rows.every((r) => readPath(r, field) === undefined)) meta.skippedRows += rows.length
+}
+
 function toScalar(v: unknown): Scalar {
   if (v === undefined) return null
   if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
@@ -470,6 +479,7 @@ export function transformBlock(
       }
     }
     const agg = map.agg ?? (map.value ? "sum" : "count")
+    if (agg !== "count") noteAbsentField(rows, map.value, meta)
     if (map.scale !== undefined) {
       const sparkline = map.sparkline
         ? sparklineOf(rows, map.sparkline, agg, map.value, meta, opts.window, opts.timeZone)
@@ -561,6 +571,7 @@ export function transformBlock(
   const agg = map.agg ?? (aggField ? "sum" : "count")
   const groups = groupRows(rows, keyField, bucket, meta, opts.timeZone)
   const measures = map.measures
+  if (!measures?.length && agg !== "count") noteAbsentField(rows, aggField, meta)
   const firstMeasure = measures?.[0]
   const totalOf = (g: Group) =>
     firstMeasure

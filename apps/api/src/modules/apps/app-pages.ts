@@ -9,19 +9,27 @@
 // its scripts, frames and calls reach, the routes it may call) and the platform
 // serves it. No app ships host code for it.
 //
-// 1. A link is minted for ONE person (`POST /api/apps/:app/pages/:page/link`, or
-//    `ctx.pages.link(page, params)` from a handler acting for a person): a random
-//    ticket in Redis bound to the org, the person, the app, the page and the
-//    opener's `params`, valid 15 minutes, used once.
+// 1. A link is minted for ONE person, only in that person's signed-in browser:
+//    `POST /api/apps/:app/pages/:page/link` (no params), or, from a handler acting
+//    for the person, `ctx.pages.link(page, params)`, which answers an opaque
+//    HANDLE, never a URL: the app's code cannot open its own page as the person
+//    from its server. The person's app exchanges the handle for the link
+//    (`POST /api/apps/:app/pages/open`, signed in as that very person). A link is
+//    a random ticket in Redis bound to the org, the person, the app, the page and
+//    the app's `params`, valid 5 minutes, used once. Minting is rate-limited per
+//    person and app.
 // 2. Opening it renders the page: the ticket is taken (getdel), the person is
 //    checked again (active, still holds the page's scope, the app still on for
-//    them), and a page session is minted (30 minutes). The document is fixed: a
-//    nonce'd bootstrap that defines `window.liaisonPage` ({ params, call }) and
-//    the app's `pages/<name>.js`. Its policy allows only the page's declared hosts.
-// 3. `liaisonPage.call(route, body)` posts to the session's route URL; the platform
-//    runs the route's handler as that person (a sandboxed run for a sandboxed app,
-//    their own scopes and RLS), with `{ body, params, page }`, and answers
-//    `{ data }` or `{ error }`.
+//    them), and a page session is minted (20 minutes) with a session key. The
+//    document is fixed: a nonce'd bootstrap that defines `window.liaisonPage`
+//    ({ params, call }), keeps the key in its closure (never in the DOM: it
+//    removes its own script element, and it holds its own `fetch`), then the
+//    app's `pages/<name>.js`. Its policy allows only the page's declared hosts.
+// 3. `liaisonPage.call(route, body)` posts to the session's route URL with the
+//    key; the platform checks it, runs the route's handler as that person (a
+//    sandboxed run for a sandboxed app, their own scopes and RLS), with
+//    `{ body, params, page }`, and answers `{ data }` or `{ error }`. Route calls
+//    are rate-limited per session and audited with the person.
 //
 // Where it is served: with app frame origins (LIAISON_APP_FRAME_ORIGIN_TEMPLATE)
 // on the app's own frame host, `https://<app>--<org>.<domain>/page/...`, a real
@@ -30,7 +38,7 @@
 // origin, so it reaches neither the org's storage nor its cookies, and its calls
 // are cross-origin requests carrying only the session id.
 
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { resolve, sep } from "node:path"
 import { eq } from "drizzle-orm"
@@ -41,6 +49,7 @@ import { users } from "~/db/schema/kernel"
 import { appFrameHostFor, appFrameOriginOf } from "~/lib/app-frame-host"
 import { escapeHtml } from "~/lib/html-page"
 import { appsLogger as log } from "~/lib/logger"
+import { bindingAllowsOrg, type HostBinding, requestHostBinding } from "~/lib/org-host"
 import { orgPublicBaseUrl, orgSlugById } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { appBridgeManifest } from "~/modules/apps/app-registries"
@@ -58,10 +67,24 @@ import { runLimits } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 
-const TICKET_TTL_SECONDS = 15 * 60
-const SESSION_TTL_SECONDS = 30 * 60
+const TICKET_TTL_SECONDS = 5 * 60
+const HANDLE_TTL_SECONDS = 5 * 60
+const SESSION_TTL_SECONDS = 20 * 60
+/** Links one person may mint for one app per window (handles and direct links). */
+export const PAGE_LINKS_PER_WINDOW = 20
+const LINK_WINDOW_SECONDS = 10 * 60
+/** Route calls one page session may make per minute. */
+export const PAGE_CALLS_PER_MINUTE = 60
 const ticketKey = (id: string) => `app-page:ticket:${id}`
+const handleKey = (id: string) => `app-page:handle:${id}`
 const sessionKey = (id: string) => `app-page:session:${id}`
+const mintCountKey = (orgId: string, userId: string, app: string) =>
+  `app-page:mints:${orgId}:${userId}:${app}`
+const callCountKey = (session: string) => `app-page:calls:${session}`
+/** The header a page's route call carries its session key in. */
+export const PAGE_KEY_HEADER = "x-liaison-page-key"
+/** What `ctx.pages.link` answers: opaque, opened only by the person's own app. */
+const HANDLE_PREFIX = "lpg_"
 const ID_RE = /^[A-Za-z0-9_-]{32,64}$/
 /** A route call's body and answer cap. */
 export const PAGE_CALL_MAX_BYTES = 1024 * 1024
@@ -75,11 +98,13 @@ export interface AppPageBinding {
   app: string
   page: string
   params: Record<string, unknown>
+  /** A page session only: the sha256 of its key (base64url). */
+  keyHash?: string
 }
 
 export class AppPageError extends Error {
   constructor(
-    readonly status: 400 | 403 | 404 | 410 | 413,
+    readonly status: 400 | 403 | 404 | 410 | 413 | 429,
     readonly code: string,
     message: string,
   ) {
@@ -166,17 +191,28 @@ function checkedParams(params: unknown): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>
 }
 
-/**
- * A one-time link to `app`'s page `page` for one person. The person must hold the
- * page's scope and the app must be on for them now.
- */
-export async function createAppPageLink(input: {
+/** Count one more link minted by the person for the app; refused over the cap. */
+async function countMint(orgId: string, userId: string, app: string): Promise<void> {
+  const key = mintCountKey(orgId, userId, app)
+  const n = await redis.incr(key)
+  if (n === 1) await redis.expire(key, LINK_WINDOW_SECONDS)
+  if (n > PAGE_LINKS_PER_WINDOW) {
+    throw new AppPageError(
+      429,
+      "page_links_rate_limited",
+      "Too many page links: wait a few minutes",
+    )
+  }
+}
+
+/** The person may open the page now: the app on for them, the page's scope held. */
+async function checkedBinding(input: {
   orgId: string
   userId: string
   app: string
   page: string
   params?: unknown
-}): Promise<{ url: string; expiresInSeconds: number }> {
+}): Promise<AppPageBinding> {
   await awaitOrgApps(input.orgId)
   const decl = pageOf(input.orgId, input.app, input.page)
   const params = checkedParams(input.params)
@@ -185,17 +221,96 @@ export async function createAppPageLink(input: {
   if (!hasScope(decl.scope, actor.scopes ?? [])) {
     throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)
   }
-  const ticket = newId()
-  const binding: AppPageBinding = {
+  return {
     orgId: input.orgId,
     userId: input.userId,
     app: input.app,
     page: input.page,
     params,
   }
+}
+
+async function mintTicket(
+  binding: AppPageBinding,
+): Promise<{ url: string; expiresInSeconds: number }> {
+  const ticket = newId()
   await redis.set(ticketKey(ticket), JSON.stringify(binding), "EX", TICKET_TTL_SECONDS)
-  const { base } = await pageBase(input.orgId, input.app)
+  const { base } = await pageBase(binding.orgId, binding.app)
   return { url: `${base}/${ticket}`, expiresInSeconds: TICKET_TTL_SECONDS }
+}
+
+/**
+ * A one-time link to `app`'s page `page` for one person, asked by that person's
+ * signed-in browser. It carries no params: what a route may trust comes from the
+ * app's own code (`createAppPageHandle`), never from the opener's request.
+ */
+export async function createAppPageLink(input: {
+  orgId: string
+  userId: string
+  app: string
+  page: string
+}): Promise<{ url: string; expiresInSeconds: number }> {
+  const binding = await checkedBinding(input)
+  await countMint(input.orgId, input.userId, input.app)
+  return mintTicket(binding)
+}
+
+/**
+ * `ctx.pages.link`: a handle to `app`'s page for the person the run acts for,
+ * with the app's `params`. The handle is not a link: only that person, signed in,
+ * turns it into one (`openAppPageHandle`), so the app's code (and its server)
+ * never holds a URL it could open as the person.
+ */
+export async function createAppPageHandle(input: {
+  orgId: string
+  userId: string
+  app: string
+  page: string
+  params?: unknown
+}): Promise<{ handle: string; app: string; page: string; expiresInSeconds: number }> {
+  const binding = await checkedBinding(input)
+  await countMint(input.orgId, input.userId, input.app)
+  const handle = `${HANDLE_PREFIX}${newId()}`
+  await redis.set(handleKey(handle), JSON.stringify(binding), "EX", HANDLE_TTL_SECONDS)
+  return { handle, app: input.app, page: input.page, expiresInSeconds: HANDLE_TTL_SECONDS }
+}
+
+/**
+ * The person's signed-in app opens a handle: taken once, for that very person
+ * and app only, re-checked as they are now, then a one-time link.
+ */
+export async function openAppPageHandle(input: {
+  orgId: string
+  userId: string
+  app: string
+  handle: unknown
+}): Promise<{ url: string; expiresInSeconds: number }> {
+  const handle = typeof input.handle === "string" ? input.handle : ""
+  if (!handle.startsWith(HANDLE_PREFIX) || !ID_RE.test(handle.slice(HANDLE_PREFIX.length))) {
+    throw new AppPageError(404, "page_handle_invalid", "This page link is not valid")
+  }
+  // Peek first: someone else's attempt must not burn the person's handle.
+  const binding = parseBinding(await redis.get(handleKey(handle)))
+  if (
+    !binding ||
+    binding.orgId !== input.orgId ||
+    binding.userId !== input.userId ||
+    binding.app !== input.app
+  ) {
+    throw new AppPageError(404, "page_handle_invalid", "This page link has expired or is not yours")
+  }
+  if (!(await redis.getdel(handleKey(handle)))) {
+    throw new AppPageError(404, "page_handle_invalid", "This page link was already used")
+  }
+  // The org, person and app are the signed-in caller's own (equal to the handle's).
+  const fresh = await checkedBinding({
+    orgId: input.orgId,
+    userId: input.userId,
+    app: input.app,
+    page: binding.page,
+    params: binding.params,
+  })
+  return mintTicket(fresh)
 }
 
 function parseBinding(raw: string | null): AppPageBinding | null {
@@ -208,10 +323,13 @@ function parseBinding(raw: string | null): AppPageBinding | null {
 }
 
 /** Where the request came in: the org's origin, or an app's frame host. */
-export type PageHost = { kind: "org" } | { kind: "frame"; app: string; orgId: string }
+export type PageHost =
+  | { kind: "org"; binding: HostBinding }
+  | { kind: "frame"; app: string; orgId: string }
 
-function hostMatches(binding: AppPageBinding, host: PageHost): boolean {
-  if (host.kind === "org") return true
+/** The request's host may serve this ticket or session: its own org's origin, or the app's frame host. */
+async function hostMatches(binding: AppPageBinding, host: PageHost): Promise<boolean> {
+  if (host.kind === "org") return bindingAllowsOrg(host.binding, binding.orgId)
   return host.app === binding.app && host.orgId === binding.orgId
 }
 
@@ -257,19 +375,32 @@ export async function appPagePolicy(
   return directives.join("; ")
 }
 
-function bootstrapScript(base: string, session: string, params: Record<string, unknown>): string {
+function bootstrapScript(
+  base: string,
+  session: string,
+  key: string,
+  params: Record<string, unknown>,
+): string {
   // JSON in a script: `<` escaped so a param can never close the tag.
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c")
+  // The session key stays in this closure: the element is removed before the
+  // app's script runs, and `fetch`, `JSON.stringify` and `encodeURIComponent`
+  // are held here, so the app's code can neither read the key nor intercept the
+  // call that carries it.
   return (
-    `(function(){var u=${json(`${base}/s/${session}/routes/`)};` +
+    "(function(){var d=document.currentScript;if(d&&d.parentNode)d.parentNode.removeChild(d);" +
+    "var f=window.fetch.bind(window),s=JSON.stringify,e=encodeURIComponent;" +
+    `var u=${json(`${base}/s/${session}/routes/`)},k=${json(key)},h=${json(PAGE_KEY_HEADER)};` +
     `window.liaisonPage=Object.freeze({params:Object.freeze(${json(params)}),` +
-    "call:function(route,body){return fetch(u+encodeURIComponent(route),{method:'POST'," +
-    "headers:{'content-type':'text/plain'},body:JSON.stringify(body===undefined?null:body)})" +
+    "call:function(route,body){var o={'content-type':'text/plain'};o[h]=k;" +
+    "return f(u+e(route),{method:'POST',headers:o,body:s(body===undefined?null:body)})" +
     ".then(function(r){return r.json().then(function(j){if(!r.ok)" +
-    "{var e=new Error(j&&j.error&&j.error.message||('HTTP '+r.status));e.code=j&&j.error&&j.error.code;throw e}" +
+    "{var x=new Error(j&&j.error&&j.error.message||('HTTP '+r.status));x.code=j&&j.error&&j.error.code;throw x}" +
     "return j.data})})}})})()"
   )
 }
+
+const keyHashOf = (key: string) => createHash("sha256").update(key).digest("base64url")
 
 /** The page document for a ticket: taken once, a page session minted. */
 export async function renderAppPage(
@@ -279,8 +410,13 @@ export async function renderAppPage(
 ): Promise<{ html: string; policy: string }> {
   if (!ID_RE.test(ticket))
     throw new AppPageError(404, "page_link_invalid", "This link is not valid")
+  // Peek, then take: a ticket asked on the wrong host is not burnt.
+  const peeked = parseBinding(await redis.get(ticketKey(ticket)))
+  if (!peeked || !(await hostMatches(peeked, host))) {
+    throw new AppPageError(404, "page_link_invalid", "This link has expired or was already used")
+  }
   const binding = parseBinding(await redis.getdel(ticketKey(ticket)))
-  if (!binding || !hostMatches(binding, host)) {
+  if (!binding) {
     throw new AppPageError(404, "page_link_invalid", "This link has expired or was already used")
   }
   await awaitOrgApps(binding.orgId)
@@ -291,7 +427,9 @@ export async function renderAppPage(
     throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)
   }
   const session = newId()
-  await redis.set(sessionKey(session), JSON.stringify(binding), "EX", SESSION_TTL_SECONDS)
+  const key = newId()
+  const record: AppPageBinding = { ...binding, keyHash: keyHashOf(key) }
+  await redis.set(sessionKey(session), JSON.stringify(record), "EX", SESSION_TTL_SECONDS)
   const framed = host.kind === "frame"
   // The org's own public origin, never the request's (a proxy may have rewritten it).
   const origin = framed ? requestOrigin : new URL(await orgPublicBaseUrl(binding.orgId)).origin
@@ -302,7 +440,7 @@ export async function renderAppPage(
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta name="referrer" content="no-referrer"><title>${title}</title>` +
-    `<script nonce="${nonce}">${bootstrapScript(base, session, binding.params)}</script>` +
+    `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params)}</script>` +
     `<script nonce="${nonce}" src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>` +
     `</head><body><div id="root"></div></body></html>`
   return { html, policy: await appPagePolicy(binding.app, decl, nonce, origin, framed) }
@@ -311,7 +449,7 @@ export async function renderAppPage(
 async function sessionBinding(session: string, host: PageHost): Promise<AppPageBinding> {
   if (!ID_RE.test(session)) throw new AppPageError(404, "page_session_invalid", "Page expired")
   const binding = parseBinding(await redis.get(sessionKey(session)))
-  if (!binding || !hostMatches(binding, host)) {
+  if (!binding || !(await hostMatches(binding, host))) {
     throw new AppPageError(404, "page_session_invalid", "This page has expired: open it again")
   }
   return binding
@@ -359,7 +497,11 @@ export async function appPageScript(session: string, host: PageHost): Promise<st
 export interface AppRouteParams {
   /** What the page sent (untrusted: the browser's). */
   body: unknown
-  /** What the opener bound into the link (trusted: minted by the platform). */
+  /**
+   * What the app's own code bound into the page (`ctx.pages.link`), never what
+   * the browser sent. The route still acts as the person: it re-checks every id
+   * in it (and in `body`) against what that person may read or change.
+   */
   params: Record<string, unknown>
   page: string
 }
@@ -415,14 +557,48 @@ export const AppPagesTestAccess = {
   },
 }
 
+/** One audit row per route call, with the person the page acts for. */
+async function auditRouteCall(binding: AppPageBinding, route: string): Promise<void> {
+  const { writeAuditLog } = await import("~/modules/audit/service")
+  await withPrivilegedDb(binding.orgId, "app-page-route-audit", (tx) =>
+    writeAuditLog(tx, {
+      orgId: binding.orgId,
+      actorId: binding.userId,
+      actorType: "user",
+      app: binding.app,
+      entityType: "app_page",
+      entityId: binding.page,
+      action: `${binding.app}.page_route.called`,
+      metadata: { page: binding.page, route },
+    }),
+  )
+}
+
 /** Run one of the page's routes as the page's person. */
 export async function callAppPageRoute(
   session: string,
   host: PageHost,
   route: string,
   body: unknown,
+  key: string | null | undefined,
 ): Promise<unknown> {
   const binding = await sessionBinding(session, host)
+  // The session's key, from the page's bootstrap: a session id alone (read from
+  // the document, or sent out by the app's script) calls nothing.
+  const given = Buffer.from(keyHashOf(typeof key === "string" ? key : ""))
+  const want = Buffer.from(binding.keyHash ?? "")
+  if (given.length !== want.length || !timingSafeEqual(given, want)) {
+    throw new AppPageError(403, "page_key_invalid", "This page call is not from its page")
+  }
+  const calls = await redis.incr(callCountKey(session))
+  if (calls === 1) await redis.expire(callCountKey(session), 60)
+  if (calls > PAGE_CALLS_PER_MINUTE) {
+    throw new AppPageError(
+      429,
+      "page_calls_rate_limited",
+      "Too many calls from this page: wait a minute",
+    )
+  }
   await awaitOrgApps(binding.orgId)
   const surface = surfaceOf(binding.orgId, binding.app)
   const decl = surface?.pages[binding.page]
@@ -438,6 +614,7 @@ export async function callAppPageRoute(
       throw new AppPageError(403, "forbidden", `This needs ${scope}`)
     }
   }
+  await auditRouteCall(binding, route)
   const result = await routeExecutor({
     surface,
     exportName: routeDecl.handler,
@@ -458,7 +635,7 @@ const NO_STORE = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosni
 const CALL_CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST",
-  "Access-Control-Allow-Headers": "content-type",
+  "Access-Control-Allow-Headers": `content-type, ${PAGE_KEY_HEADER}`,
   "Access-Control-Max-Age": "600",
 }
 
@@ -509,6 +686,7 @@ export async function serveAppPageRequest(
         host,
         decodeURIComponent(call[2] as string),
         await readCallBody(c),
+        c.req.header(PAGE_KEY_HEADER),
       )
       return new Response(JSON.stringify({ data }), {
         status: 200,
@@ -549,31 +727,74 @@ export async function serveAppPageRequest(
 /** `/api/app-pages/*` on the org's origin: public, the ticket or session is the credential. */
 export const appPageRoutes = new Hono().all("/*", (c) => {
   const rest = c.req.path.replace(/^\/api\/app-pages\/?/, "")
-  return serveAppPageRequest(c, rest, { kind: "org" }, new URL(c.req.url).origin)
+  return serveAppPageRequest(
+    c,
+    rest,
+    { kind: "org", binding: requestHostBinding(c) },
+    new URL(c.req.url).origin,
+  )
 })
 
-/** `POST /api/apps/:app/pages/:page/link` (signed in): a one-time link for the caller. */
+async function jsonBody(c: Context): Promise<Record<string, unknown>> {
+  const text = await c.req.text()
+  if (!text) return {}
+  const body = JSON.parse(text) as unknown
+  return body && typeof body === "object" && !Array.isArray(body)
+    ? (body as Record<string, unknown>)
+    : {}
+}
+
+/**
+ * `POST /api/apps/:app/pages/open` (signed in): the person's app turns a handle
+ * from `ctx.pages.link` into a one-time link. `POST /api/apps/:app/pages/:page/link`
+ * (signed in): a one-time link for the caller, without params.
+ */
 export const appPageLinkRoutes = new Hono<{
   Variables: { orgId: string; userId: string }
-}>().post("/:app/pages/:page/link", async (c) => {
-  try {
-    const text = await c.req.text()
-    const body = text ? (JSON.parse(text) as { params?: unknown }) : {}
-    const link = await createAppPageLink({
-      orgId: c.get("orgId"),
-      userId: c.get("userId"),
-      app: c.req.param("app"),
-      page: c.req.param("page"),
-      params: body.params,
-    })
-    return c.json({ data: link })
-  } catch (err) {
-    if (err instanceof SyntaxError) {
-      return c.json({ error: { message: "The body is not JSON", code: "invalid_body" } }, 400)
+}>()
+  .post("/:app/pages/open", async (c) => {
+    try {
+      const body = await jsonBody(c)
+      const link = await openAppPageHandle({
+        orgId: c.get("orgId"),
+        userId: c.get("userId"),
+        app: c.req.param("app"),
+        handle: body.handle,
+      })
+      return c.json({ data: link })
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        return c.json({ error: { message: "The body is not JSON", code: "invalid_body" } }, 400)
+      }
+      return errorResponse(err)
     }
-    return errorResponse(err)
-  }
-})
+  })
+  .post("/:app/pages/:page/link", async (c) => {
+    try {
+      const body = await jsonBody(c)
+      if (body.params !== undefined && body.params !== null) {
+        // What a route trusts comes from the app's own code, never the opener's
+        // request: params ride on a handle from `ctx.pages.link` only.
+        throw new AppPageError(
+          400,
+          "params_not_accepted",
+          "A page link asked here takes no params: the app binds them with ctx.pages.link",
+        )
+      }
+      const link = await createAppPageLink({
+        orgId: c.get("orgId"),
+        userId: c.get("userId"),
+        app: c.req.param("app"),
+        page: c.req.param("page"),
+      })
+      return c.json({ data: link })
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        return c.json({ error: { message: "The body is not JSON", code: "invalid_body" } }, 400)
+      }
+      return errorResponse(err)
+    }
+  })
 
 /** For page requests that reach an app's frame host (`/page/...`). */
 export function frameHostPageRest(path: string): string | null {

@@ -1,0 +1,12 @@
+{
+  "entry": "job:reconcile-customers",
+  "params": {},
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "listContactsByExternalId",
+      "args": [50],
+      "reply": "{\"contacts\":[],\"nextCursor\":null}"
+    }
+  ]
+}

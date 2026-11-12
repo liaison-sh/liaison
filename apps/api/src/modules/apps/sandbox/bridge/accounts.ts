@@ -14,7 +14,8 @@
  *    one of those accounts (a `null` value removes the key). A personal account
  *    is its owner's to change; an organization's needs the connection's admin
  *    scope (`connections.<name>.adminScope`, default `<app>:accounts:admin`),
- *    or the app's own system run. Audited with the keys changed.
+ *    or the app's own system run. Audited with the keys changed. The keys the
+ *    kernel owns (connections/kernel-account-metadata.ts) are refused.
  *
  * The org-owned rows are invisible to RLS (only the kernel's own are), so both
  * read through a privileged transaction whose predicate pins org, app and
@@ -26,6 +27,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts } from "~/db/schema/kernel"
 import { isUuid } from "~/lib/uuid"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
+import { isKernelAccountMetadataKey } from "~/modules/apps/connections/kernel-account-metadata"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -192,6 +194,17 @@ export function createAccountsMethods(
           400,
           "invalid_request",
           `ctx.accounts.setMetadata: keys are identifiers (${bad.join(", ") || "none given"})`,
+        )
+      }
+      // The kernel's own keys (the recorded OAuth grant, the admin-chosen drives
+      // and items, the token expiry) are decisions, not app data: refused for
+      // every caller, a system run of the app included.
+      const reserved = keys.filter(isKernelAccountMetadataKey)
+      if (reserved.length > 0) {
+        throw typedError(
+          403,
+          "reserved_metadata_key",
+          `ctx.accounts.setMetadata: ${reserved.join(", ")} ${reserved.length === 1 ? "is" : "are"} kept by the platform`,
         )
       }
       return withPrivilegedDb(orgId, `app-accounts-set-metadata:${appName}`, async (tx) => {

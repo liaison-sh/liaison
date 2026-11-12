@@ -12,7 +12,7 @@ import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { withTimer } from "./lib/timers.testutil"
+import * as handlers from "./handlers"
 import {
   channelName,
   createEnforcingEmit,
@@ -4344,33 +4344,65 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     expect(out.codes.length).toBe(23)
   })
 
-  // Two not-yet-done status polls before the done one: the poll waits between iterations.
-  const respondsAfterTwoPendingPolls = (persistedCodes: string[]) => {
-    const r = responses(persistedCodes)
+  // The status look answers "not done yet": the tool does not wait or poll again in its run.
+  const respondsNotDone = () => {
+    const r = responses(["P-1", "P-2", "P-3"])
     const pending = { data: { discountRedeemCodeBulkCreation: { id: "gid://shopify/DiscountRedeemCodeBulkCreation/1", done: false, codesCount: null, importedCount: null, failedCount: null } } }
-    return [r[0]!, r[1]!, pending, pending, r[2]!, r[3]!]
+    return [r[0]!, r[1]!, pending]
   }
 
-  it("waits 250 ms then 500 ms between status polls where the runtime has a timer", async () => {
-    const persisted = ["P-1", "P-2", "P-3"]
-    const { ctx, calls } = makeCtx({ fetchResponses: respondsAfterTwoPendingPolls(persisted) })
-    const delays = await withTimer("recording", async (d) => {
-      const out = (await discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as { createdCount: number }
-      expect(out.createdCount).toBe(3)
-      return d
+  it("a job not done at its one look ends the run: under an approval it records awaiting_output for the pollHandler", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: respondsNotDone() })
+    const recorded: Array<[string, string]> = []
+    const succeeded: string[] = []
+    Object.assign(ctx, {
+      approval: { approvalRequestId: "ar-1", approvalDeciderId: "u-1", toolName: "shopify:discounts_bulk_create" },
+      approval_recordStarted: async () => undefined,
+      approval_recordSucceeded: async (t: string) => {
+        succeeded.push(t)
+      },
+      approval_recordAwaitingOutput: async (t: string, ref: string) => {
+        recorded.push([t, ref])
+      },
     })
-    expect(calls.length).toBe(6)
-    expect(delays).toEqual([250, 500])
+    const out = (await handlers.discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as {
+      status: string
+      codes: string[]
+    }
+    expect(calls.length).toBe(3)
+    expect(out.status).toBe("creating")
+    expect(out.codes).toEqual([])
+    expect(recorded).toHaveLength(1)
+    expect(JSON.parse(recorded[0]![1])).toMatchObject({
+      discount_id: DISCOUNT_ID,
+      bulk_creation_id: "gid://shopify/DiscountRedeemCodeBulkCreation/1",
+      requested_count: 3,
+    })
+    // The wrapper leaves the execution at awaiting_output: the pollHandler finishes it.
+    expect(succeeded).toEqual([])
   })
 
-  it("polls without waiting, and still completes, where the runtime has no timer", async () => {
-    const persisted = ["P-1", "P-2", "P-3"]
-    const { ctx, calls } = makeCtx({ fetchResponses: respondsAfterTwoPendingPolls(persisted) })
-    const out = (await withTimer("absent", () =>
-      discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx),
-    )) as { createdCount: number }
-    expect(out.createdCount).toBe(3)
-    expect(calls.length).toBe(6)
+  it("the pollHandler answers not ready while the job runs, then the persisted codes", async () => {
+    const ref = { discount_id: DISCOUNT_ID, bulk_creation_id: "job/1", requested_count: 3, title: "P" }
+    const pending = { data: { discountRedeemCodeBulkCreation: { id: "job/1", done: false, codesCount: null, importedCount: null, failedCount: null } } }
+    const r = responses(["P-1", "P-2", "P-3"])
+    const first = makeCtx({ fetchResponses: [pending] })
+    expect(await handlers.discounts_bulk_create_poll({ external_ref: ref }, first.ctx)).toEqual({ ready: false })
+    const second = makeCtx({ fetchResponses: [r[2]!, r[3]!] })
+    const done = await handlers.discounts_bulk_create_poll({ external_ref: ref }, second.ctx)
+    expect(done.ready).toBe(true)
+    expect(done.result).toMatchObject({ discountId: DISCOUNT_ID, requestedCount: 3, createdCount: 3, codes: ["P-1", "P-2", "P-3"] })
+    expect(second.events.map((e) => `${e.entity}:${e.action}`)).toContain("discount:bulk_created")
+  })
+
+  it("outside an approval a not-done job answers `creating` and points at discounts_search", async () => {
+    const { ctx } = makeCtx({ fetchResponses: respondsNotDone() })
+    const out = (await discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as {
+      status: string
+      message: string
+    }
+    expect(out.status).toBe("creating")
+    expect(out.message).toMatch(/discounts_search/)
   })
 
   it("THROWS LOUD when the async bulk job reports failures (never silently returns a partial batch)", async () => {
@@ -4391,22 +4423,6 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     const createBody = JSON.parse(calls[0]!.body) as { variables: { basicCodeDiscount: Record<string, unknown> } }
     expect(createBody.variables.basicCodeDiscount.startsAt).toBe("2026-09-01T00:00:00Z")
     expect(createBody.variables.basicCodeDiscount.endsAt).toBe("2026-09-08T00:00:00Z")
-  })
-
-  it("re-polls the async job until done (no setTimeout — pacing comes from the round-trip)", async () => {
-    // The sandbox has NO setTimeout; the poll must simply re-query. First poll: not done; second: done.
-    const persisted = ["P-0", "P-1", "P-2"]
-    const { ctx, calls } = makeCtx({ fetchResponses: [
-      { data: { discountCodeBasicCreate: { codeDiscountNode: { id: DISCOUNT_ID }, userErrors: [] } } },
-      { data: { discountRedeemCodeBulkAdd: { bulkCreation: { id: "job/1" }, userErrors: [] } } },
-      { data: { discountRedeemCodeBulkCreation: { id: "job/1", done: false, codesCount: null, importedCount: null, failedCount: null } } },
-      { data: { discountRedeemCodeBulkCreation: { id: "job/1", done: true, codesCount: 3, importedCount: 3, failedCount: 0 } } },
-      { data: { codeDiscountNode: { id: DISCOUNT_ID, codeDiscount: { __typename: "DiscountCodeBasic", title: "P", codes: { nodes: persisted.map((code) => ({ code })) } } } } },
-    ] })
-    const out = (await discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as { createdCount: number }
-    expect(out.createdCount).toBe(3)
-    // create + bulk-add + 2 polls + read-back = 5 calls.
-    expect(calls.length).toBe(5)
   })
 
   it("count=1 makes a single code with NO bulk-add call (degenerate batch)", async () => {
@@ -5192,4 +5208,22 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
       expect(sentNotify(no.calls).variables.notifyCustomer).toBe(false)
     })
   })
+})
+
+describe("marketing consent updates send the customer inside the mutation input", () => {
+  for (const [tool, field] of [
+    ["customers_email_marketing_consent_update", "emailMarketingConsent"],
+    ["customers_sms_marketing_consent_update", "smsMarketingConsent"],
+  ] as const) {
+    it(`${tool}: { customerId, input } (the manifest's shape) reaches Shopify as one input with customerId`, async () => {
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [
+          { data: { [field === "emailMarketingConsent" ? "customerEmailMarketingConsentUpdate" : "customerSmsMarketingConsentUpdate"]: { customer: { id: "gid://shopify/Customer/7" }, userErrors: [] } } },
+        ],
+      })
+      await handlers[tool]({ customerId: "gid://shopify/Customer/7", input: { [field]: { marketingState: "NOT_SUBSCRIBED" } } }, ctx)
+      const body = JSON.parse(calls[0]!.body) as { variables: { input: Record<string, unknown> } }
+      expect(body.variables.input).toEqual({ customerId: "gid://shopify/Customer/7", [field]: { marketingState: "NOT_SUBSCRIBED" } })
+    })
+  }
 })

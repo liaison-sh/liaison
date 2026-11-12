@@ -6,8 +6,11 @@
  * Discriminators: a link is minted only for a person holding the page's scope; a
  * ticket renders once; the page carries only its declared hosts and an opaque
  * origin (sandbox) off the frame host; a route call runs the app's handler as
- * the page's person with the opener's params; a route the page does not list,
- * another app's frame host, or a person who lost the route's scope is refused.
+ * the page's person with the app's params; a route the page does not list,
+ * another app's frame host, another org's host, or a person who lost the route's
+ * scope is refused. The app's code gets a handle, never a URL: only the person,
+ * signed in, opens it. A route call needs the session's key, which only the
+ * page's bootstrap holds. Minting and calls are rate-limited; calls are audited.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
@@ -17,7 +20,12 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { PAGE_FX_APP, pageFixtureApp } from "~/modules/apps/__fixtures__/page-app/descriptor"
-import { renderAppPage } from "~/modules/apps/app-pages"
+import {
+  PAGE_CALLS_PER_MINUTE,
+  PAGE_KEY_HEADER,
+  PAGE_LINKS_PER_WINDOW,
+  renderAppPage,
+} from "~/modules/apps/app-pages"
 import { registerApps } from "~/modules/apps/runtime"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -59,11 +67,31 @@ async function mintToken(userId: string): Promise<string> {
   )
 }
 
-async function mintLink(token: string, params: unknown = { account: "acc-1" }) {
+async function mintLink(token: string, params?: unknown) {
   const res = await app.request(`/api/apps/${PAGE_FX_APP}/pages/hello/link`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ params }),
+    body: JSON.stringify(params === undefined ? {} : { params }),
+  })
+  return { status: res.status, body: (await res.json()) as any }
+}
+
+/** The fixture's tool: `ctx.pages.link("hello", { tag })` from a run for the person. */
+async function toolHandle(token: string, tag: string) {
+  const res = await app.request(`/api/apps/${PAGE_FX_APP}/tools/page.link`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ params: { tag } }),
+  })
+  const body = (await res.json()) as any
+  return { status: res.status, result: (body.data?.result ?? body.data) as any }
+}
+
+async function openHandle(token: string, handle: unknown) {
+  const res = await app.request(`/api/apps/${PAGE_FX_APP}/pages/open`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ handle }),
   })
   return { status: res.status, body: (await res.json()) as any }
 }
@@ -79,13 +107,19 @@ async function openPage(url: string) {
   const res = await app.request(pathOf(url))
   const html = await res.text()
   const script = /src="([^"]+\/page\.js)"/.exec(html)?.[1] ?? ""
-  return { res, html, sessionBase: script.replace(/\/page\.js$/, "") }
+  const key = /,k="([A-Za-z0-9_-]+)"/.exec(html)?.[1] ?? ""
+  return { res, html, sessionBase: script.replace(/\/page\.js$/, ""), key }
 }
 
-async function callRoute(sessionBase: string, route: string, body: unknown) {
-  const res = await app.request(`${pathOf(sessionBase)}/routes/${route}`, {
+async function callRoute(
+  page: { sessionBase: string; key: string },
+  route: string,
+  body: unknown,
+  key: string | null = page.key,
+) {
+  const res = await app.request(`${pathOf(page.sessionBase)}/routes/${route}`, {
     method: "POST",
-    headers: { "content-type": "text/plain" },
+    headers: { "content-type": "text/plain", ...(key === null ? {} : { [PAGE_KEY_HEADER]: key }) },
     body: JSON.stringify(body),
   })
   return { status: res.status, headers: res.headers, body: (await res.json()) as any }
@@ -116,15 +150,26 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     await releaseTestLock()
   })
 
-  test("round trip: link, render, the person's click calls the route, the handler answers", async () => {
-    const link = await mintLink(userToken)
+  test("round trip: handle, open, render, the person's click calls the route, the handler answers", async () => {
+    const minted = await toolHandle(userToken, "acc-1")
+    expect(minted.status).toBe(200)
+    expect(minted.result.handle).toMatch(/^lpg_[A-Za-z0-9_-]{43}$/)
+    expect(minted.result).not.toHaveProperty("url")
+    const link = await openHandle(userToken, minted.result.handle)
     expect(link.status).toBe(200)
     expect(link.body.data.url).toMatch(/\/api\/app-pages\/[A-Za-z0-9_-]{43}$/)
+    expect(link.body.data.expiresInSeconds).toBe(300)
 
     const page = await openPage(link.body.data.url)
     expect(page.res.status).toBe(200)
     expect(page.html).toContain("<title>Hello page</title>")
-    expect(page.html).toContain('"account":"acc-1"')
+    expect(page.html).toContain('"tag":"acc-1"')
+    // The key lives in the bootstrap's closure, which removes its own element and
+    // holds its own fetch; never in liaisonPage.
+    expect(page.key).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(page.html).toContain("removeChild(d)")
+    expect(page.html).toContain("var f=window.fetch.bind(window)")
+    expect(/liaisonPage=Object\.freeze\(\{params:[^}]*\}\),call:/.test(page.html)).toBe(true)
     const csp = page.res.headers.get("content-security-policy") ?? ""
     expect(csp).toContain("script-src 'nonce-")
     expect(csp).toContain("https://apis.example.com")
@@ -138,12 +183,12 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     expect(await js.text()).toContain("greet")
 
     // The click: the route runs the app's handler as this person, in the sandbox.
-    const call = await callRoute(page.sessionBase, "greet", { name: "Ada" })
+    const call = await callRoute(page, "greet", { name: "Ada" })
     expect(call.status).toBe(200)
     expect(call.headers.get("access-control-allow-origin")).toBe("*")
     expect(call.body.data).toEqual({
       greeting: "Hello Ada",
-      params: { account: "acc-1" },
+      params: { tag: "acc-1" },
       page: "hello",
       by: userId,
     })
@@ -151,7 +196,72 @@ describe("app pages: a sandboxed app's page, served and called through the platf
       SELECT data FROM kernel.app_documents
       WHERE org_id = ${orgId} AND app = ${PAGE_FX_APP} AND collection = 'greetings' AND doc_id = 'last'`
     expect(stored?.data).toEqual({ name: "Ada", by: userId })
+    const audited = await sql<{ actor_id: string }[]>`
+      SELECT actor_id FROM kernel.audit_log
+      WHERE org_id = ${orgId} AND action = ${`${PAGE_FX_APP}.page_route.called`}`
+    expect(audited.map((r) => r.actor_id)).toContain(userId)
   }, 60_000)
+
+  test("a session id alone calls nothing: the route needs the page's key", async () => {
+    const page = await openPage((await mintLink(userToken)).body.data.url)
+    for (const key of [null, "", "x".repeat(43), page.key.slice(0, -1)]) {
+      const call = await callRoute(page, "greet", { name: "x" }, key)
+      expect({ key, status: call.status, code: call.body.error?.code }).toEqual({
+        key,
+        status: 403,
+        code: "page_key_invalid",
+      })
+    }
+  }, 30_000)
+
+  test("a handle opens only for its person, once; the app's code never holds a URL", async () => {
+    const minted = await toolHandle(userToken, "mine")
+    // Another member, or a bare call: not found, and the handle is not burnt.
+    expect((await openHandle(readerToken, minted.result.handle)).status).toBe(404)
+    expect((await openHandle(userToken, "lpg_nope")).status).toBe(404)
+    expect((await openHandle(userToken, minted.result.handle)).status).toBe(200)
+    expect((await openHandle(userToken, minted.result.handle)).status).toBe(404)
+  }, 60_000)
+
+  test("a link asked over HTTP takes no params: the opener cannot choose them", async () => {
+    const r = await mintLink(userToken, { account: "someone-elses" })
+    expect(r.status).toBe(400)
+    expect(r.body.error.code).toBe("params_not_accepted")
+  }, 30_000)
+
+  test("minting is rate-limited per person and app", async () => {
+    const person = await minimal.person(orgId, { role: "member" })
+    await minimal.grantScope(person.id, "pagefx:items:read")
+    const token = await mintToken(person.id)
+    for (let i = 0; i < PAGE_LINKS_PER_WINDOW; i++) expect((await mintLink(token)).status).toBe(200)
+    const over = await mintLink(token)
+    expect(over.status).toBe(429)
+    expect(over.body.error.code).toBe("page_links_rate_limited")
+  }, 60_000)
+
+  test("route calls are rate-limited per page session", async () => {
+    const page = await openPage((await mintLink(userToken)).body.data.url)
+    // An unlisted route answers 404 after the key and the count: no sandbox run.
+    for (let i = 0; i < PAGE_CALLS_PER_MINUTE; i++) {
+      expect((await callRoute(page, "provision", {})).status).toBe(404)
+    }
+    const over = await callRoute(page, "provision", {})
+    expect(over.status).toBe(429)
+    expect(over.body.error.code).toBe("page_calls_rate_limited")
+  }, 60_000)
+
+  test("a ticket is refused on another org's host, and stays usable on its own", async () => {
+    const link = await mintLink(userToken)
+    const ticket = link.body.data.url.split("/").pop() as string
+    await expect(
+      renderAppPage(
+        ticket,
+        { kind: "org", binding: { kind: "org", slug: "no-such-org-xyz", origin: "https://x" } },
+        "https://x",
+      ),
+    ).rejects.toMatchObject({ status: 404 })
+    expect((await openPage(link.body.data.url)).res.status).toBe(200)
+  }, 30_000)
 
   test("a ticket renders once", async () => {
     const link = await mintLink(userToken)
@@ -170,14 +280,14 @@ describe("app pages: a sandboxed app's page, served and called through the platf
     const link = await mintLink(readerToken)
     expect(link.status).toBe(200)
     const page = await openPage(link.body.data.url)
-    const call = await callRoute(page.sessionBase, "greet", { name: "x" })
+    const call = await callRoute(page, "greet", { name: "x" })
     expect(call.status).toBe(403)
   }, 30_000)
 
   test("a route the page does not list, and an unknown page, are refused", async () => {
     const link = await mintLink(userToken)
     const page = await openPage(link.body.data.url)
-    const call = await callRoute(page.sessionBase, "provision", {})
+    const call = await callRoute(page, "provision", {})
     expect(call.status).toBe(404)
     expect(call.body.error.code).toBe("route_not_found")
     const res = await app.request(`/api/apps/${PAGE_FX_APP}/pages/nope/link`, {
@@ -194,18 +304,4 @@ describe("app pages: a sandboxed app's page, served and called through the platf
       renderAppPage(ticket, { kind: "frame", app: "otherapp", orgId }, "https://x.example"),
     ).rejects.toMatchObject({ status: 404 })
   }, 30_000)
-
-  test("ctx.pages.link from a tool run for the person mints a working link", async () => {
-    const res = await app.request(`/api/apps/${PAGE_FX_APP}/tools/page.link`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${userToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ params: { tag: "from-tool" } }),
-    })
-    const body = (await res.json()) as any
-    expect(res.status).toBe(200)
-    const url = (body.data?.result ?? body.data)?.url as string
-    expect(url).toMatch(/\/api\/app-pages\//)
-    const page = await openPage(url)
-    expect(page.html).toContain('"tag":"from-tool"')
-  }, 60_000)
 })

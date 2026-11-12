@@ -136,6 +136,9 @@ Per-fetch read 10 s (env up to 120 s), write up to 30 s -> apps/api/src/modules/
 Contract: each entry twice in one reused isolate, recorded answers, production limits -> apps/api/src/modules/apps/contract/harness.ts:71 ; apps/api/src/modules/apps/contract/harness.ts:88
 Waits over 2 s and the source scan -> apps/api/src/modules/apps/contract/wait-lint.ts:20 ; apps/api/src/modules/apps/contract/wait-lint.ts:111
 Expected failures only shrink -> apps/api/src/modules/apps/contract/expected-failures.guard.test.ts:1
+Fixtures recorded on a live bridge, scrubbed with one stand-in per value, replayed twice before written -> apps/api/src/modules/apps/contract/recorder.ts:48 ; apps/api/src/modules/apps/contract/recorder.ts:97 ; apps/api/src/modules/apps/contract/recorder.ts:218
+Verifiers replay on the production verify bridge -> apps/api/src/modules/apps/contract/harness.ts:85
+Shopify recorder: plan of entries against a development store, run by path -> apps/api/test-support/contract/record-shopify.recorder.ts:1 ; apps/api/test-support/contract/record-shopify.recorder.ts:177
 A knowledge source sync page: 60 s unless its kind declares timeoutMs (at most 120 s) -> apps/api/src/modules/apps/run-limits.ts ("knowledge-sync" row) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeSources.timeoutMs)
 Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:360 ; apps/api/src/modules/apps/connection-limits.ts:1
 SQL connections: manifest `sql` block (catalog, rawQuery.scope, modes) -> apps/api/src/modules/apps/manifest-schema.ts:357 ; apps/api/src/modules/apps/connections/sql/service.ts:51
@@ -147,7 +150,7 @@ Org-owned account only -> apps/api/src/modules/apps/sandbox/bridge/sql.ts:79
 Answers carry no credential; audit line with a SQL hash -> apps/api/src/modules/apps/connections/sql/service.ts:325 ; apps/api/src/modules/apps/connections/sql/service.ts:396
 liaison-self: orgId pinned, table scopes, raw SQL operator only -> apps/api/src/modules/apps/connections/sql/catalog.ts:36 ; apps/api/src/modules/apps/connections/sql/catalog.ts:106 ; apps/api/src/modules/apps/connections/sql/service.ts:422
 Schema drops secret columns -> apps/api/src/modules/apps/connections/sql/catalog.ts:131
-ctx.accounts.list / setMetadata: own app, org's and caller's own, admin scope, 32 KiB, audited -> apps/api/src/modules/apps/sandbox/bridge/accounts.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:152 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:176 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:34
+ctx.accounts.list / setMetadata: own app, org's and caller's own, admin scope, 32 KiB, audited, kernel keys refused -> apps/api/src/modules/apps/sandbox/bridge/accounts.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:152 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:176 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:34 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:202 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.kernel.findByIds: up to 200 ids, directory fields, caller's org -> apps/api/src/modules/apps/sandbox/bridge/context.ts:1109
 Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:386 ; apps/api/src/modules/apps/connection-limits.ts:1
 ctx.fetch with auth.connection takes a permit, key per org/app/connection/identifier -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:419 ; apps/api/src/modules/apps/connection-limiter.ts:1

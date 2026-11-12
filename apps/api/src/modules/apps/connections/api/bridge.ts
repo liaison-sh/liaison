@@ -34,6 +34,7 @@ import {
 import type { ConnectionStatus, ConnectionSummary } from "@liaison/api-connector-core/contract"
 import { wrapExternalContent } from "~/lib/external-content"
 import { isRecord } from "~/lib/guards"
+import { UUID_RE } from "~/lib/uuid"
 import { participantEmail } from "~/modules/agent/context/customer-context"
 import { MULTI_INSTANCE_IDENTIFIER_RE } from "~/modules/apps/connections/service"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -375,11 +376,12 @@ export function createApiConnectionMethods(
     plan: AdapterSavePlan,
   ): Promise<{ credentialsCleared: boolean } | { refused: string }> {
     try {
+      // The person who saved it; none for a run as the app itself (provisioning).
       const { credentialsCleared } = await upsertAdapterRow(
         orgId,
         identifier,
         plan.adapter,
-        ctx.userId,
+        UUID_RE.test(ctx.userId) ? ctx.userId : null,
         { expectPriorHash: plan.priorHash, expectCredentialsPresent: plan.credentialsPresent },
       )
       await invalidateConnectionCaches(orgId, identifier)

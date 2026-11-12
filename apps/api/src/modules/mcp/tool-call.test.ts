@@ -21,7 +21,11 @@ import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools
 import { resolveApprovalRef } from "~/modules/approvals/resolve-ref"
 import { appCrossAppCallsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
-import { mcpTurnTaintKey, revokeConnection } from "~/modules/mcp/connection-service"
+import {
+  connectionTaintWindowId,
+  mcpTurnTaintKey,
+  revokeConnection,
+} from "~/modules/mcp/connection-service"
 import {
   cleanupSeededOrg,
   gatedTicketTool,
@@ -521,7 +525,9 @@ describe("mcp tools/call", () => {
       name: "test__listItems",
       arguments: {},
     })
-    const direct = await handleToolCall(ctx, "test__listItems", {})
+    // On a second connection: the test app's listItems is not marked read-only, so a second
+    // call on the first connection is judged as a write on a tainted window (rule 14).
+    const direct = await handleToolCall(await makeCtx(seed), "test__listItems", {})
     expect(viaDispatcher.isError).toBeFalsy()
     expect(viaDispatcher.content).toEqual(direct.content)
   }, 30_000)
@@ -1400,15 +1406,34 @@ describe("mcp tools/call scope taint on an agent bound turn", () => {
     expect(parked.gated).toBe(true)
   }, 30_000)
 
-  it("a legacy connection keeps today's untainted gateway behaviour", async () => {
+  // Rule 14 (2026-11-12): a connection bound to no agent is judged like an agent-bound one. It
+  // used to open no frame at all, so its writes were never judged and its posts were stamped
+  // with the caller's whole grant.
+  it("a connection bound to no agent is judged like an agent bound one, in its own window", async () => {
     const seed = await seedOrgWithTicketsApp()
     orgs.push(seed.orgId)
     const ctx = await makeCtx(seed)
 
     const read = await handleToolCall(ctx, "test__listItems", {})
     expect(read.isError).toBeFalsy()
-    const write = await handleToolCall(ctx, "test__createItem", mutatingTicketTool.validParams)
+    // A later request on the SAME connection (the transport is stateless) carries the read.
+    const again: ToolCallCtx = {
+      orgId: ctx.orgId,
+      actor: ctx.actor,
+      connectionId: ctx.connectionId,
+      ownerUserId: ctx.ownerUserId,
+      connectionThreadId: null,
+      discovered: new Set(),
+    }
+    expectParked(await handleToolCall(again, "test__createItem", mutatingTicketTool.validParams))
+    expect(
+      await redis.get(mcpTurnTaintKey(seed.orgId, connectionTaintWindowId(ctx))),
+    ).not.toBeNull()
+    // Another connection of the same person has its own window: nothing it did not read.
+    const other = await makeCtx(seed)
+    const write = await handleToolCall(other, "test__createItem", mutatingTicketTool.validParams)
     expect(write.isError).toBeFalsy()
+    expect((write.structuredContent as { gated?: boolean }).gated).not.toBe(true)
   }, 30_000)
 })
 

@@ -723,11 +723,13 @@ describe("runAgentChat run frame carries the effective scope", () => {
   // 2026-11-03 (scope-taint.ts, rule 11): a post some participant could not read does not land
   // hidden. It parks for the requester, who holds what the turn read; approving it discloses
   // the message to the thread's people.
+  // A group: a direct message never parks (rule 14c, 2026-11-12).
   test("a threads_reply post some participant cannot read parks for the requester, and approving it shows it to them", async () => {
     const requester = await userWith([ALPHA, "kernel:threads:write"])
     const bob = await userWith([BETA])
+    const dan = await userWith([BETA])
     const threadId = await seedThread("thread", requester, [requester])
-    const sharedThreadId = await seedThread("thread", requester, [requester, bob])
+    const sharedThreadId = await seedThread("thread", requester, [requester, bob, dan])
     const outputs: unknown[] = []
     AgentServiceTestAccess.setStreamText(
       toolCallingStreamText([
@@ -771,12 +773,12 @@ describe("runAgentChat run frame carries the effective scope", () => {
       }[]
     >`SELECT summary, metadata FROM kernel.approval_requests WHERE id = ${parked.approvalRequestId!}`
     expect(JSON.stringify(row?.summary)).toContain(
-      "1 person in this conversation cannot see esc data this conversation read: approving shares this message with them.",
+      "2 people in this conversation cannot see esc data this conversation read: approving shares this message, and later ones like it here, with them.",
     )
     expect(row?.metadata.taintAudienceMustHold).toEqual([ALPHA])
     // Rule 11b: the people the post would reach, as they were when it parked.
     expect([...(row?.metadata.taintDisclosureAudience ?? [])].sort()).toEqual(
-      [requester, bob].sort(),
+      [requester, bob, dan].sort(),
     )
 
     // Someone joins between the park and the decision: the card counted one person, not them.
@@ -886,18 +888,20 @@ describe("runAgentChat run frame carries the effective scope", () => {
   // threads_create declares its real sink (2026-09-25): the initial message is a
   // kernel.messages row, stamped with what the turn read exactly like threads_reply.
   // 2026-11-03 (rule 11): it used to land hidden from a member lacking the scope; it now
-  // parks for the requester instead, so nothing reaches the thread before a decision.
+  // parks for the requester instead, so nothing reaches the thread before a decision. A direct
+  // message never parks (rule 14c, 2026-11-12): the next test.
   test("a threads_create after a scoped read, to a member lacking the scope, parks instead of posting hidden", async () => {
     const requester = await userWith([ALPHA, "kernel:threads:write"])
     const bob = await userWith([BETA])
+    const dan = await userWith([BETA])
     const threadId = await seedThread("thread", requester, [requester])
-    const existingThreadId = await seedThread("thread", requester, [requester, bob])
+    const existingThreadId = await seedThread("thread", requester, [requester, bob, dan])
 
     await frameOfToolTurn(threadId, await actorFor(requester), [
       "esc__alphaTool",
       {
         toolName: "kernel__threads_create",
-        input: { participantIds: [bob], initialMessage: "forwarded from a scoped turn" },
+        input: { participantIds: [bob, dan], initialMessage: "forwarded from a scoped turn" },
       },
     ])
 
@@ -916,6 +920,36 @@ describe("runAgentChat run frame carries the effective scope", () => {
       ).filter((m) => m.authorType === "agent"),
     )
     expect(visibleToBob).toHaveLength(0)
+  })
+
+  test("a threads_create DM after a scoped read posts inline and its addressee reads it", async () => {
+    const requester = await userWith([ALPHA, "kernel:threads:write"])
+    const bob = await userWith([BETA])
+    const threadId = await seedThread("thread", requester, [requester])
+    const dmId = await seedThread("thread", requester, [requester, bob])
+
+    await frameOfToolTurn(threadId, await actorFor(requester), [
+      "esc__alphaTool",
+      {
+        toolName: "kernel__threads_create",
+        input: { participantIds: [bob], initialMessage: "told bob directly" },
+      },
+    ])
+
+    expect(await agentReplyScopes(dmId)).toEqual([[ALPHA]])
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+      WHERE org_id = ${orgId} AND tool_name = 'kernel:threads_create' AND requested_by = ${requester}`
+    expect(n).toBe(0)
+    const visibleToBob = await withRlsContext(await actorFor(bob), async (tx) =>
+      (
+        await tx
+          .select({ authorType: messages.authorType, content: messages.content })
+          .from(messages)
+          .where(eq(messages.threadId, dmId))
+      ).filter((m) => m.authorType === "agent"),
+    )
+    expect(visibleToBob.map((m) => m.content)).toEqual(["told bob directly"])
   })
 
   // The withheld card must not offer "Share anyway" on a turn a rerun would

@@ -43,7 +43,7 @@ import {
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { nodeSessionEvents, nodeSessions } from "~/db/schema/kernel"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
+import { currentRunContext, isPersonClientFrame } from "~/modules/agent/runtime/run-context"
 import { agentPostRequiredScopes } from "~/modules/agent/tools/chat-tools"
 import { addSessionJobSourceScopes, submitCommand } from "./commands"
 import { loadNodeCandidates, resolveAgentModel } from "./resolve"
@@ -120,7 +120,9 @@ export function refuseSessionTool(
   const read = op === "read"
   let message: string | null = null
   if (ctx.originRoutineId || frame?.routineId) message = SESSION_TOOL_REFUSAL.routine
-  else if (!frame) message = read ? null : SESSION_TOOL_REFUSAL.outsideTurn
+  // A person's own external client (no agent bound) reads as no frame did (rule 14).
+  else if (!frame || isPersonClientFrame(frame))
+    message = read ? null : SESSION_TOOL_REFUSAL.outsideTurn
   // An agent-bound MCP connection (a device-grant client, a script, the
   // desktop's agent connection): nothing proves the person is behind it, and
   // a session's transcript and decisions are theirs alone. Refused both,

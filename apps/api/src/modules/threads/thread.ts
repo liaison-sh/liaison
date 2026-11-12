@@ -48,6 +48,8 @@ interface InitialMessageInput {
   /** People who read it whatever they hold: an agent post whose disclosure the requester
    *  approved (scope-taint.ts, rule 11). Null or absent: none. */
   disclosureList?: string[] | null
+  /** Extra row metadata (the approval an approved disclosure came from, rule 14). */
+  metadata?: Record<string, unknown>
   /** The speaking agent (A8), when the caller knows it. See
    *  `resolveActingAgentIdForWrite`: an agent-authored row always names one. */
   agentId?: string | null
@@ -412,8 +414,8 @@ export async function insertThreadWithParticipants(
         mentions: mentionsList.length > 0 ? mentionsList : null,
         metadata:
           initialAuthorType === "agent" && initialMessage.agentAuthorLabel
-            ? { agentAuthorLabel: initialMessage.agentAuthorLabel }
-            : null,
+            ? { ...initialMessage.metadata, agentAuthorLabel: initialMessage.agentAuthorLabel }
+            : (initialMessage.metadata ?? null),
         // Never a grant wildcard (scope-taint.ts, rule 10b), as sendMessage stamps.
         requiredScopes: expandWildcardStamp(initialMessage.requiredScopes, orgId),
         disclosureList: initialMessage.disclosureList ?? null,
@@ -752,6 +754,7 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
           agentId: initialMessage.agentId,
           requiredScopes: initialMessage.requiredScopes,
           disclosureList: initialMessage.disclosureList ?? null,
+          ...(initialMessage.metadata ? { metadata: initialMessage.metadata } : {}),
         })
       }
 

@@ -175,6 +175,7 @@ import {
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
+import { decidePostDisclosure } from "~/modules/agent/scopes/post-disclosure"
 import { checkToolScopes, resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
 import {
   carriesNoTurnContent,
@@ -183,6 +184,7 @@ import {
   markPlatformTaintRefusal,
   markRefusedBeforeRun,
   mcpReadOfOwnServer,
+  postDisclosureRelay,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
   SCOPE_TAINT_NO_DECIDER_MESSAGE,
@@ -208,7 +210,6 @@ import {
 import {
   conversationReadersTaintGap,
   holdsEveryScope,
-  peopleTaintGap,
   readersTaintGap,
   selfReaderTaintGap,
   sinkReaderScopes,
@@ -3521,6 +3522,10 @@ export function statusForToolError(code: string): number {
     // the turn's own answer posts there when it ends, so the call is refused.
     case "answering_thread":
       return 400
+    // A post its handler would have written hidden from someone it addresses (chat-tools.ts,
+    // scope-taint.ts rule 14): refused, never written; a policy refusal, not a server fault.
+    case "post_would_be_hidden":
+      return 403
     default:
       // A bundled app's own deliberate codes (tool-error-status.ts).
       return APP_TOOL_ERROR_STATUS[code] ?? 500
@@ -4120,23 +4125,19 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         : null
     if (postAudience !== null) {
       const requesterUserId = opts.actor.actorType === "user" ? opts.actor.userId : ""
-      const postGap =
-        "threadId" in postAudience
-          ? await conversationReadersTaintGap({
-              orgId: opts.orgId,
-              threadId: postAudience.threadId,
-              requesterUserId,
-              taintScopes: knownTaint,
-              includeRequester: false,
-            })
-          : await peopleTaintGap({
-              orgId: opts.orgId,
-              userIds: postAudience.participantIds.filter((u) => u !== "" && u !== requesterUserId),
-              taintScopes: knownTaint,
-            })
+      // Rule 14 (2026-11-12): a direct message, and a post the requester's standing disclosure
+      // for this thread already covers, go through inline; the handler writes them with their
+      // disclosure list (post-disclosure.ts decides both sides the same way).
+      const decision = await decidePostDisclosure({
+        orgId: opts.orgId,
+        requesterUserId,
+        stamp: knownTaint,
+        target: postAudience,
+      })
+      const postGap = decision.kind === "gap" ? decision : null
       // An uncounted gap (an id that is no account of the org, an unknown taint, a failed lookup)
       // has nobody to disclose to: it is left to the handler's own checks, which refuse it.
-      if (postGap !== null && postGap.lacking !== null) {
+      if (postGap !== null && postGap.lacking !== null && postGap.lacking > 0) {
         const roomGap = await taintApprovalAudienceGapDetail({
           orgId: opts.orgId,
           threadId: opts.threadId,
@@ -5482,6 +5483,16 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           scopes: actorScopes,
         }),
       )
+      // Rule 11/14: a post parked because some people in the conversation cannot see what was
+      // read says so to the model in plain words, beside the gated-result conventions.
+      if (taintPostHiddenFrom !== undefined) {
+        envelope.blocked.agentNotes = {
+          ...envelope.blocked.agentNotes,
+          postDisclosure: {
+            relay: postDisclosureRelay(taintForcedApprovalScopes ?? [], taintPostHiddenFrom),
+          },
+        }
+      }
     }
     if (idemKey)
       await finalizeIdempotency(opts.orgId, opts.toolName, idemKey, validatedParams, envelope)

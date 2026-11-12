@@ -4,6 +4,9 @@
 // turn read. When the turn's taint is not on the frame, they fail closed like
 // the sandbox bridge's messages.post: the frame's effective scope, then the
 // caller's scopes, and a refusal (scope_unknown) when none is known. Never `[]`.
+// The room here is a direct message (the author and one other person): since rule 14
+// (2026-11-12) such a post is written with both of them on its disclosure list, so the person it
+// addresses reads it whatever the stamp; the stamp itself is unchanged.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
@@ -92,12 +95,12 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     await releaseTestLock()
   })
 
-  it("threads_reply with no frame is tagged with the caller's scopes: hidden from a lacker, seen by a holder", async () => {
+  it("threads_reply with no frame is tagged with the caller's scopes, and its DM addressee reads it", async () => {
     const result = await reply("Deal 42 closes Friday (no frame)", CALLER_SCOPES)
     expect((result as { message?: unknown }).message).toBeDefined()
     const row = await rowFor("Deal 42 closes Friday (no frame)")
     expect(row?.required_scopes).toEqual([...CALLER_SCOPES].sort())
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
     expect(await visibleIds(AUTHOR, CALLER_SCOPES)).toContain(row?.id)
   })
 
@@ -109,7 +112,7 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     )
     const row = await rowFor("Deal 42 closes Friday (effective)")
     expect(row?.required_scopes).toEqual([SECRET])
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
   })
 
   it("threads_reply refuses with scope_unknown when neither the frame nor the caller says", async () => {
@@ -133,6 +136,6 @@ describe("chat tools fail closed when the run frame's taint is lost", () => {
     expect((result as { thread?: unknown }).thread).toBeDefined()
     const row = await rowFor("Deal 42 closes Friday (create)")
     expect(row?.required_scopes).toEqual([...CALLER_SCOPES].sort())
-    expect(await visibleIds(LACKER, ["kernel:threads:read"])).not.toContain(row?.id)
+    expect(await visibleIds(LACKER, ["kernel:threads:read"])).toContain(row?.id)
   })
 })

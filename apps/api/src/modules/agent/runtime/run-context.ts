@@ -138,6 +138,12 @@ export interface RunContext {
    * session tools read, stop and change settings as in the cloud, while send,
    * answer and an autonomy change park (D37). Set by mcp/tool-call.ts on the
    * frame it builds.
+   *
+   * A connection bound to NO agent (a person's own external client) gets a
+   * gateway frame too, with no `agentId` and no `agentCeiling`, so its reads
+   * taint its writes like any other turn (scope-taint.ts, rule 14). That frame
+   * is the person's own request, as the absence of a frame used to say:
+   * `isPersonClientFrame` names it, and the person checks treat it so.
    */
   mcpGateway?: boolean
   /**
@@ -420,7 +426,17 @@ export function inheritedRunFields(
  */
 export function runHasPerson(frame: RunContext): boolean {
   if (frame.routineId || frame.background || frame.coordinated) return false
-  return frame.humanTurn === true || frame.gatewayTurn !== undefined
+  return frame.humanTurn === true || frame.gatewayTurn !== undefined || isPersonClientFrame(frame)
+}
+
+/**
+ * The gateway frame of a connection bound to no agent: a person calling from
+ * their own external client (scope-taint.ts, rule 14). It exists so the
+ * connection's reads taint its writes; for every "is this the person's own
+ * request" check it reads exactly as no frame at all did before it existed.
+ */
+export function isPersonClientFrame(frame: RunContext | undefined): boolean {
+  return frame?.mcpGateway === true && frame.agentId === undefined
 }
 
 export function currentRunContext(): RunContext | undefined {

@@ -887,6 +887,32 @@ export interface KnowledgeSyncDocument {
   rev?: string
   /** A path to show; the title when absent. */
   path?: string
+  /**
+   * The folder to file the document in: the `externalId` of a folder this page
+   * or an earlier one declared. Give this or `folderPath`, not both; with
+   * neither, the document sits in the source's own collection. Changing it
+   * moves the document.
+   */
+  folderId?: string
+  /**
+   * The folder to file the document in, as a path of folder names ("guides/setup").
+   * Each segment becomes a folder whose `externalId` is the path up to it
+   * ("guides", then "guides/setup"), unless the page declares that id itself.
+   */
+  folderPath?: string
+}
+
+/**
+ * A folder of a knowledge source: a collection under the source's own one.
+ * It is found again across syncs by `externalId`, so a new `name` renames it
+ * and a new `parentExternalId` moves it, with everything inside.
+ */
+export interface KnowledgeSyncFolder {
+  /** The provider's stable id for the folder (in the same id space as `folderPath` folders). */
+  externalId: string
+  name: string
+  /** The parent folder's `externalId`; absent or null: directly in the source's collection. */
+  parentExternalId?: string | null
 }
 
 /**
@@ -898,6 +924,15 @@ export interface KnowledgeSyncDocument {
  */
 export interface KnowledgeSyncResult<Cursor = unknown> {
   documents?: { upsert?: KnowledgeSyncDocument[]; delete?: string[] }
+  /**
+   * Folders to create, rename or move (`upsert`, at most 500 per page with the
+   * ones document paths add), and folders removed upstream (`delete`, by
+   * `externalId`, at most 1000): a deleted folder is archived with its
+   * subfolders and the documents still filed in it. A folder that loses its
+   * last document or subfolder is archived unless this page declares it; it
+   * comes back when something is filed in it again.
+   */
+  folders?: { upsert?: KnowledgeSyncFolder[]; delete?: string[] }
   nextCursor?: Cursor | null
   done: boolean
   prune?: boolean

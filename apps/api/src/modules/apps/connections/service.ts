@@ -53,6 +53,7 @@ import {
   protectedScopesOf,
   recordedGrant,
 } from "~/modules/apps/connections/protected-scopes"
+import type { KernelAccountMetadataKey } from "~/modules/apps/connections/kernel-account-metadata"
 import { buildConnectedAccountCreateEvent } from "~/modules/apps/connections/reconcile-event"
 import {
   restrictedScopesAllowed,
@@ -3398,7 +3399,9 @@ async function persistOAuthGrant(
       )
       .map((r) => r.metadata?.sharedDrives)
       .find((drives) => Array.isArray(drives) && drives.length > 0)
-    const accountMetadata = {
+    // Kernel-owned keys only (connections/kernel-account-metadata.ts): app code
+    // may not write them through ctx.accounts.setMetadata.
+    const accountMetadata: Partial<Record<KernelAccountMetadataKey, unknown>> = {
       ...(grantedOAuthScopes.length > 0 ? { grantedOAuthScopes } : {}),
       ...(pickedItems ? { pickedItems } : {}),
       ...(sharedDrives ? { sharedDrives } : {}),

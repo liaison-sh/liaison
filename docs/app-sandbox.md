@@ -573,7 +573,7 @@ return out.rows                            // { rows, truncated, durationMs }
 
 ### Read your own accounts (`ctx.accounts`)
 
-`ctx.accounts.list(connection, { identifier?, includeInactive? })` returns the app's accounts of one declared connection: the organization's and the caller's own, never another member's, another app's or another organization's, and never a token. Each has its `metadata` and `canManage`. `ctx.accounts.setMetadata(accountId, patch)` merges keys into an account's metadata (`null` removes a key, at most 32 KiB). A personal account is its owner's to change. The organization's account needs the connection's admin scope (`adminScope`, default `<app>:accounts:admin`), or a run of the app itself (a job). Every change is audited.
+`ctx.accounts.list(connection, { identifier?, includeInactive? })` returns the app's accounts of one declared connection: the organization's and the caller's own, never another member's, another app's or another organization's, and never a token. Each has its `metadata` and `canManage`. `ctx.accounts.setMetadata(accountId, patch)` merges keys into an account's metadata (`null` removes a key, at most 32 KiB). A personal account is its owner's to change. The organization's account needs the connection's admin scope (`adminScope`, default `<app>:accounts:admin`), or a run of the app itself (a job). Every change is audited. The keys the platform keeps on an account (`grantedOAuthScopes`, `pickedItems`, `sharedDrives`, `tokenExpiry`) are refused for every caller.
 
 `ctx.kernel.findByIds("users", ids)` returns the directory fields of up to 200 users of the caller's organization in one call, as `ctx.kernel.findOne` does for one.
 

@@ -132,23 +132,27 @@ describe("link-shipments job", () => {
     expect(row.payment_status).toBe("partial")
   })
 
-  // red (prod, 2026-10-23): the lock was `updateMany` with `where.id`, which the sandbox bridge
-  // refuses, so the job threw on every run and no invoice was ever linked. The mock refuses it
-  // too now (test-helpers mock-db); this pins that the lock is a by-id `update` of the number,
-  // taken before the re-read and the patch.
-  test("locks the row with a by-id update the bridge accepts, before re-reading it", async () => {
+  // The job holds no transaction: the link is ONE batch update that merges and appends in the
+  // database, so a refund written after the job's re-read is kept (the mock applies `append` /
+  // `merge` to the row as it is at the write).
+  test("writes the link as one merge/append batch, keeping a write made after its read", async () => {
     const db = createMockDb({ seed: { documents: [doc(INVOICE)] } })
-    const calls: string[] = []
+    const specs: Array<Parameters<typeof db.batch>[0]> = []
     const traced = {
       ...db,
       findMany: db.findMany.bind(db),
       findOne: async (entity: string, id: string) => {
-        calls.push(`findOne ${entity}`)
-        return db.findOne(entity, id)
+        const row = await db.findOne(entity, id)
+        // A refund lands right after the job's read.
+        const r = (await db.findOne("documents", INVOICE)) as Record<string, unknown>
+        await db.update("documents", INVOICE, {
+          lifecycle_log: [...(r.lifecycle_log as unknown[]), { event: "refunded" }],
+        })
+        return row
       },
-      update: async (entity: string, id: string, data: Record<string, unknown>) => {
-        calls.push(`update ${entity} ${Object.keys(data).sort().join(",")}`)
-        return db.update(entity, id, data)
+      batch: async (spec: Parameters<typeof db.batch>[0]) => {
+        specs.push(spec)
+        return db.batch(spec)
       },
     }
     const { executeTool } = boxtal({
@@ -156,12 +160,10 @@ describe("link-shipments job", () => {
     })
     const res = await linkShipments({ db: traced, executeTool }, { now: NOW })
     expect(res.linked).toBe(1)
-    const tail = calls.slice(calls.lastIndexOf("update documents number") - 1)
-    expect(tail).toEqual([
-      "findOne documents",
-      "update documents number",
-      "findOne documents",
-      "update documents external_refs,lifecycle_log",
-    ])
+    expect(specs).toHaveLength(1)
+    expect(Object.keys(specs[0]?.ops[0] ?? {}).sort()).toEqual(["append", "id", "merge", "update"])
+    const row = (await db.findOne("documents", INVOICE)) as Record<string, unknown>
+    const events = (row.lifecycle_log as Array<Record<string, unknown>>).map((e) => e.event)
+    expect(events.slice(-2)).toEqual(["refunded", "shipment_linked"])
   })
 })

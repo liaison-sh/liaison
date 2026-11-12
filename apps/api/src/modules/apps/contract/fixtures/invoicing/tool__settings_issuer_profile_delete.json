@@ -1,0 +1,22 @@
+{
+  "entry": "tool:settings_issuer_profile_delete",
+  "params": {
+    "id": "99444731-e2a2-460c-ab40-a9348f2a7121"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": ["invoicing:issuer:admin"],
+      "reply": true
+    },
+    {
+      "method": "db_count",
+      "args": [
+        "documents",
+        "{\"where\":{\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\"}}"
+      ],
+      "reply": "11"
+    }
+  ]
+}

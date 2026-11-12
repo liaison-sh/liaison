@@ -1,18 +1,1 @@
-[
-  {
-    "app": "invoicing",
-    "job": "backfill-order-numbers",
-    "egress": "executeTool shopify:orders_get"
-  },
-  {
-    "app": "invoicing",
-    "job": "deferred-retry",
-    "egress": "executeTool mail:composeForApp, provider retries"
-  },
-  { "app": "invoicing", "job": "link-shipments", "egress": "executeTool boxtal:search" },
-  {
-    "app": "invoicing",
-    "job": "reconcile-shopify-payments",
-    "egress": "executeTool shopify:orders_get"
-  }
-]
+[]

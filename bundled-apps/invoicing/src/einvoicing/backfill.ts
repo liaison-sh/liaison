@@ -18,7 +18,6 @@ import { isValidSiren, isValidSiret, sirenFromFrVat } from "./identity"
 import { type IdentityToolsCtx, contactNames, registryColumns } from "./identity-tools"
 import {
   type RegistryCandidate,
-  type RegistrySearchOptions,
   type RegistryUnconfirmedReason,
   candidateMatchesName,
   registrySearch,
@@ -66,9 +65,8 @@ export async function confirmSiren(
   ctx: BackfillCtx,
   siren: string,
   names: string[],
-  opts: RegistrySearchOptions = {},
 ): Promise<ConfirmOutcome> {
-  const res = await registrySearch(ctx, { siren }, opts)
+  const res = await registrySearch(ctx, { siren })
   if (res.status !== "ok") return { status: "unconfirmed", reason: res.reason }
   if (res.candidates.length !== 1) return { status: "unconfirmed", reason: "ambiguous" }
   const candidate = res.candidates[0] as RegistryCandidate
@@ -300,7 +298,6 @@ async function planContact(ctx: BackfillCtx, contactId: string, counts: Counts, 
 export async function backfillIdentities(
   ctx: BackfillCtx,
   input: { dry_run?: boolean | null; cursor?: string | null; limit?: number | null } = {},
-  opts: RegistrySearchOptions = {},
 ): Promise<Row> {
   const dryRun = input?.dry_run !== false
   const requested = Number(input?.limit ?? BACKFILL_DEFAULT_LIMIT)
@@ -341,7 +338,7 @@ export async function backfillIdentities(
   let stopped = false
   const lookup = async (siren: string, names: () => Promise<string[]>) => {
     counts.lookups += 1
-    return confirmSiren(ctx, siren, await names(), opts)
+    return confirmSiren(ctx, siren, await names())
   }
   for (const c of contacts) {
     // The previous call finished this contact; its remaining documents open this page.
@@ -397,7 +394,7 @@ function checkedRecently(row: Row, now: Date): boolean {
 /** Confirm derived, unconfirmed SIRENs against the registry (≤ `CONFIRM_JOB_BATCH` per run). */
 export async function identityConfirmJob(
   ctx: BackfillCtx,
-  opts: RegistrySearchOptions & { now?: Date } = {},
+  opts: { now?: Date } = {},
 ): Promise<{ checked: number; confirmed: number }> {
   const now = opts.now ?? new Date()
   const rows = (await ctx.db.findMany("counterparty_identities", { where: { source: "derived" }, limit: 500 })) as Row[]
@@ -411,7 +408,7 @@ export async function identityConfirmJob(
   for (const r of due) {
     const contactId = String(r.contact_id)
     const siren = str(r.siren) as string
-    const outcome = await confirmSiren(ctx, siren, await contactNames(ctx, contactId), opts)
+    const outcome = await confirmSiren(ctx, siren, await contactNames(ctx, contactId))
     if (outcome.status === "confirmed") {
       confirmed += 1
       await ctx.db.update("counterparty_identities", String(r.id), {

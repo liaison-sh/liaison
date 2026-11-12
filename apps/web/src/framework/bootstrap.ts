@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Search,
   Settings,
+  Table2,
   Terminal,
 } from "lucide-solid"
 import { createRoot, lazy } from "solid-js"
@@ -65,6 +66,7 @@ import {
   handleDashboardEvent,
   reloadDashboard,
 } from "~/modules/dashboards/dashboards-store"
+import { tableTitle } from "~/modules/dashboards/tables-store"
 import { handleFileEvent } from "~/modules/files/file-events"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { importRunStore } from "~/modules/imports/import-run-store"
@@ -555,6 +557,18 @@ export function bootstrapKernelApps(): void {
         referenceable: false,
         // The time range rides in the URL (`?range=&compare=`), so a link carries it.
         preserveSubRoutes: true,
+      },
+      // One table (`/dashboard-table/:id`), full width beside the Dashboards sidebar: its grid,
+      // settings and history. Named by the table's name.
+      "dashboard-table": {
+        component: lazy(() => import("~/modules/dashboards/TablePage")),
+        sidebar: DashboardsSidebar,
+        icon: Table2,
+        urlPattern: "/dashboard-table/:entityId",
+        defaultLabel: "Table",
+        defaultLabelKey: "kernel.nav.dashboardTable",
+        resolveLabel: (entityId) => tableTitle(entityId),
+        referenceable: false,
       },
       // P4: one app draft in the builder (`/apps/builder/:id`), named by its title.
       "app-builder": {
@@ -1351,6 +1365,11 @@ export function bootstrapKernelApps(): void {
     reloadDashboard(id)
     return { tabType: "kernel:dashboard", entityId: id, label: dashboardTitle(id) }
   })
+  registerEntityOpener("kernel", "dashboard_table", (_api, id) => ({
+    tabType: "kernel:dashboard-table",
+    entityId: id,
+    label: tableTitle(id),
+  }))
   registerEntityOpener("kernel", "app-builder", (_api, id) => ({
     tabType: BUILDER_TAB_TYPE,
     entityId: id,

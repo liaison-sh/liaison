@@ -12,6 +12,7 @@ import { ApiContext } from "~/modules/shell/ApiContext"
 import { resetTabStore, tabStore } from "~/modules/shell/tab-store"
 import { DashboardsSidebar } from "./DashboardsSidebar"
 import { resetDashboardsStore } from "./dashboards-store"
+import { resetTablesStore } from "./tables-store"
 
 const ROWS = [
   {
@@ -26,10 +27,11 @@ const ROWS = [
   { id: "p1", title: "My pipeline", visibility: "personal", ownerUserId: "me" },
 ]
 
-function mount(rows: unknown[] = ROWS) {
+function mount(rows: unknown[] = ROWS, tables: unknown[] | null = null) {
   const api = {
     get: vi.fn(async (path: string) => {
       if (path === "/dashboards") return rows
+      if (path === "/dashboards/tables" && tables) return { tables }
       throw new Error(`unexpected ${path}`)
     }),
   } as unknown as ApiClient
@@ -55,6 +57,7 @@ const rowIds = (section: "yours" | "team") => {
 
 beforeEach(() => {
   resetDashboardsStore()
+  resetTablesStore()
   resetTabStore()
 })
 afterEach(cleanup)
@@ -105,5 +108,33 @@ describe("DashboardsSidebar", () => {
     expect(screen.getByTestId("dashboards-sidebar-no-match").textContent).toContain(
       "nothing like it",
     )
+  })
+
+  it("lists the tables the viewer can see, opens one full width, and filters them too", async () => {
+    mount(ROWS, [
+      { id: "t2", name: "Repairs", columns: [], myRole: "viewer" },
+      { id: "t1", name: "Inbound batches", columns: [], myRole: "editor" },
+    ])
+    await screen.findByTestId("dashboards-sidebar-table-t1")
+    expect(screen.getByTestId("dashboards-sidebar-tables").textContent).toContain("2")
+    expect(
+      screen.getAllByTestId(/^dashboards-sidebar-table-/).map((r) => r.dataset.testid),
+    ).toEqual(["dashboards-sidebar-table-t1", "dashboards-sidebar-table-t2"])
+    fireEvent.click(screen.getByTestId("dashboards-sidebar-table-t2"))
+    const active = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
+    expect(active?.type).toBe("kernel:dashboard-table")
+    expect(active?.entityId).toBe("t2")
+    expect(screen.getByTestId("dashboards-sidebar-table-t2").getAttribute("aria-current")).toBe(
+      "page",
+    )
+    fireEvent.input(screen.getByTestId("dashboards-sidebar-filter"), { target: { value: "repa" } })
+    expect(screen.queryByTestId("dashboards-sidebar-table-t1")).toBeNull()
+    expect(screen.queryByTestId("dashboards-sidebar-no-match")).toBeNull()
+  })
+
+  it("shows no Tables section when the viewer sees none", async () => {
+    mount()
+    await screen.findByTestId("dashboards-sidebar-row-o1")
+    expect(screen.queryByTestId("dashboards-sidebar-tables")).toBeNull()
   })
 })

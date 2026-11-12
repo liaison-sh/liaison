@@ -63,6 +63,7 @@ import { PopupMenu } from "~/ui/PopupMenu"
 import { Skeleton } from "~/ui/Skeleton"
 import { BlockDrillPanel, openRecordLink } from "./BlockDrillPanel"
 import { BlockCard } from "./blocks/BlockCard"
+import { EditableTableBlock } from "./blocks/EditableTableBlock"
 import { DashboardShareDialog } from "./DashboardShareDialog"
 import {
   type BlockReadInfo,
@@ -75,6 +76,7 @@ import {
   downloadExport,
   duplicateDashboard,
   type EditOperation,
+  editableTableOf,
   editDashboard,
   type FilterValues,
   getBlockData,
@@ -1034,6 +1036,20 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                               const w = windowsFromInfo(info)
                               if (w) setReported(w)
                             }}
+                            content={(() => {
+                              const editable = editableTableOf(block())
+                              if (!editable) return undefined
+                              return (refreshes: () => number) => (
+                                <EditableTableBlock
+                                  tableId={editable.tableId}
+                                  columns={editable.columns}
+                                  staleAfterDays={editable.staleAfterDays}
+                                  reloadKey={refreshes()}
+                                  now={now()}
+                                  testid={`table-block-${id}`}
+                                />
+                              )
+                            })()}
                             load={(refresh) =>
                               getBlockData(api, d().id, id, {
                                 refresh,

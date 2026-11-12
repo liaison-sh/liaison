@@ -1,35 +1,41 @@
-Read-only group connector, syncs manuals into knowledge -> apps/api/src/apps/gitlab/app.manifest.json:5
-No write operations -> apps/api/src/apps/gitlab/README.md:5
-Credentials connection, no OAuth -> apps/api/src/apps/gitlab/README.md:30
-Token steps: Edit profile, Access tokens -> apps/api/src/apps/gitlab/app.manifest.json:34
-Scopes read_api and read_repository, never api -> apps/api/src/apps/gitlab/app.manifest.json:34
-Longest expiry, expired token stops sync silently -> apps/api/src/apps/gitlab/app.manifest.json:34
-Rotation replaces stored credential -> apps/api/src/apps/gitlab/app.manifest.json:34
+Read-only group connector, syncs manuals into knowledge -> bundled-apps/gitlab/app.manifest.json:6
+No write operations -> bundled-apps/gitlab/README.md:7
+Credentials connection, no OAuth -> bundled-apps/gitlab/README.md:31
+Token steps: Edit profile, Access tokens -> bundled-apps/gitlab/app.manifest.json:53
+Scopes read_api and read_repository, never api -> bundled-apps/gitlab/app.manifest.json:53
+Longest expiry, expired token stops sync silently -> bundled-apps/gitlab/app.manifest.json:53
+Rotation replaces stored credential -> bundled-apps/gitlab/app.manifest.json:53
 Settings app label GitLab -> packages/shared/src/i18n/locales/en/kernel.json:539
-Connection section, adminScope gitlab:accounts:admin -> apps/api/src/apps/gitlab/app.manifest.json:320
+Connection section, adminScope gitlab:accounts:admin -> bundled-apps/gitlab/app.manifest.json:572
 Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:252
-Token field label -> apps/api/src/apps/gitlab/app.manifest.json:24
-Group path or ID field label -> apps/api/src/apps/gitlab/app.manifest.json:29
-Allowed domains gitlab.com and subdomains -> apps/api/src/apps/gitlab/app.manifest.json:19
-Start with gitlab_list_projects -> apps/api/src/apps/gitlab/app.manifest.json:40
-Release vs milestone bug question pattern -> apps/api/src/apps/gitlab/app.manifest.json:333
-File content secret-redacted -> apps/api/src/apps/gitlab/app.manifest.json:234
-GitLab is a Knowledge source adapter -> apps/api/src/apps/gitlab/adapter.ts:115
+Token field label -> bundled-apps/gitlab/app.manifest.json:36
+Group path or ID field label -> bundled-apps/gitlab/app.manifest.json:41
+Allowed domains gitlab.com and subdomains -> bundled-apps/gitlab/app.manifest.json:30
+Start with gitlab_list_projects -> bundled-apps/gitlab/app.manifest.json:98
+Release vs milestone bug question pattern -> bundled-apps/gitlab/app.manifest.json:621
+File content secret-redacted -> bundled-apps/gitlab/src/tools.ts:415
+GitLab is a Knowledge source (kind folder) -> bundled-apps/gitlab/app.manifest.json:587
+Reference <project>:<branch>:<path>, empty path whole branch -> bundled-apps/gitlab/src/knowledge.ts:1-6
+Text types become documents, folders become collections -> bundled-apps/gitlab/src/knowledge.ts:174
+Unchanged branch reads nothing, removed files archived -> bundled-apps/gitlab/src/knowledge.ts:13-18
+Hourly sync of an app source -> apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts:85
+add_folder_source ref becomes the source config -> apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts:16-19
 add_folder_source supports gitlab -> apps/api/src/apps/knowledge/app.manifest.json:775
 Synced sources list shows GitLab -> apps/api/src/apps/knowledge/app.manifest.json:1511
-Role member -> apps/api/src/apps/gitlab/app.manifest.json:300
-Role admin -> apps/api/src/apps/gitlab/app.manifest.json:305
+config verify and apply run the app's verify -> apps/api/src/cli/provisioners/verify-probes.ts:1-12 ; bundled-apps/gitlab/src/provisioning.ts:19
+Role member -> bundled-apps/gitlab/app.manifest.json:548
+Role admin -> bundled-apps/gitlab/app.manifest.json:555
 gitlab:approve -> docs/reference/scopes.md:150
-gitlab_list_projects -> apps/api/src/apps/gitlab/app.manifest.json:40
-gitlab_list_commits -> apps/api/src/apps/gitlab/app.manifest.json:52
-gitlab_get_commit -> apps/api/src/apps/gitlab/app.manifest.json:80
-gitlab_list_merge_requests -> apps/api/src/apps/gitlab/app.manifest.json:97
-gitlab_get_merge_request -> apps/api/src/apps/gitlab/app.manifest.json:124
-gitlab_list_issues -> apps/api/src/apps/gitlab/app.manifest.json:141
-gitlab_list_milestones -> apps/api/src/apps/gitlab/app.manifest.json:168
-gitlab_list_labels -> apps/api/src/apps/gitlab/app.manifest.json:188
-gitlab_list_releases -> apps/api/src/apps/gitlab/app.manifest.json:202
-gitlab_list_tags -> apps/api/src/apps/gitlab/app.manifest.json:217
-gitlab_read_file -> apps/api/src/apps/gitlab/app.manifest.json:232
-gitlab_list_tree -> apps/api/src/apps/gitlab/app.manifest.json:254
-gitlab_search -> apps/api/src/apps/gitlab/app.manifest.json:274
+gitlab_list_projects -> bundled-apps/gitlab/app.manifest.json:98
+gitlab_list_commits -> bundled-apps/gitlab/app.manifest.json:112
+gitlab_get_commit -> bundled-apps/gitlab/app.manifest.json:153
+gitlab_list_merge_requests -> bundled-apps/gitlab/app.manifest.json:184
+gitlab_get_merge_request -> bundled-apps/gitlab/app.manifest.json:237
+gitlab_list_issues -> bundled-apps/gitlab/app.manifest.json:273
+gitlab_list_milestones -> bundled-apps/gitlab/app.manifest.json:324
+gitlab_list_labels -> bundled-apps/gitlab/app.manifest.json:354
+gitlab_list_releases -> bundled-apps/gitlab/app.manifest.json:375
+gitlab_list_tags -> bundled-apps/gitlab/app.manifest.json:401
+gitlab_read_file -> bundled-apps/gitlab/app.manifest.json:423
+gitlab_list_tree -> bundled-apps/gitlab/app.manifest.json:467
+gitlab_search -> bundled-apps/gitlab/app.manifest.json:500

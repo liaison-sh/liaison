@@ -205,6 +205,9 @@ jobs:
       - name: bundled-google-drive
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-google-drive
+      - name: bundled-gitlab
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-gitlab
       - name: bundled-pennylane
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-pennylane

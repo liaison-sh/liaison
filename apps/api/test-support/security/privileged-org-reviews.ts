@@ -641,8 +641,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "app registration: the orgId parameter of registerApps (each org initialised by initAppsForOrg); the descriptor carries no org",
   "apps/api/src/modules/mailbox-crypto/mail-writer.ts#applyMailSealToRow":
     "destructured under a new name from a dynamic import (sandbox/bridge/conversion.ts:303); the bridge calls it with the run's bridge context org",
-  "apps/api/src/apps/gitlab/bridge.ts#resolveGitlabCreds":
-    "sandbox bridge extension: the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/tickets/search-enrichment.ts#registerTicketsSearchEnrichment":
     "index source registered by the tickets app: called by the indexer with each item's own org",
   "apps/api/src/lib/server.ts#message":

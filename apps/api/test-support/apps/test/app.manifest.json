@@ -206,6 +206,14 @@
       "tokenUrl": "https://gitlab.com/oauth/token",
       "scopes": ["read_api"],
       "allowedDomains": ["gitlab.com"]
+    },
+    "service": {
+      "type": "credentials",
+      "allowedDomains": ["service.example.com"],
+      "credentialFields": [
+        { "name": "token", "type": "password", "label": "Access token" },
+        { "name": "group", "type": "text", "label": "Group" }
+      ]
     }
   }
 }

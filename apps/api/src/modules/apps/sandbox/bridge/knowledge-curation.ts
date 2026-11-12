@@ -4,6 +4,8 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { recordAgentKnowledgePointers } from "~/modules/agent/knowledge/knowledge-pointers"
+import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
+import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
 
@@ -23,11 +25,16 @@ async function addAppSource(input: {
   source: string
   kinds: Array<{ kind: string; title: string }>
   scope: "personal" | "organization"
-  params: { kind?: string; displayName?: string; defaultSensitivity?: string; oneShot?: boolean }
-  ref?: string
+  params: {
+    kind?: string
+    ref?: string
+    displayName?: string
+    defaultSensitivity?: string
+    oneShot?: boolean
+  }
 }): Promise<Record<string, unknown>> {
-  const { txDb, orgId, actor, source, kinds, scope, params: p, ref } = input
-  const folderRef = ref ?? null
+  const { txDb, orgId, actor, source, kinds, scope, params: p } = input
+  const folderRef = p.ref ?? null
   if (p.oneShot && !folderRef) {
     throw new Error(
       `invalid_params: ${source} syncs through its own source on a schedule; oneShot is for folder sources`,
@@ -46,10 +53,12 @@ async function addAppSource(input: {
   }
   const { knowledgeRel } = await import("~/apps/knowledge/schema-refs")
   const owner = scope === "organization" ? null : actor.userId
+  const config: Record<string, unknown> = folderRef ? { ref: folderRef } : {}
   const [existing] = extractRows<{ id: string; last_sync_status: string | null }>(
     await (txDb as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
       SELECT id, last_sync_status FROM ${knowledgeRel("synced_sources")}
       WHERE org_id = ${orgId}::uuid AND app_name = ${source} AND source_kind = ${chosen.kind}
+        AND COALESCE(source_config, '{}'::jsonb) = ${JSON.stringify(config)}::jsonb
         AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
         AND (${folderRef}::text IS NULL OR folder_ref = ${folderRef})
       ORDER BY archived_at IS NULL DESC, created_at DESC
@@ -75,7 +84,7 @@ async function addAppSource(input: {
     {
       appName: source,
       sourceKind: chosen.kind,
-      sourceConfig: folderRef ? { ref: folderRef } : {},
+      sourceConfig: config,
       folderRef: folderRef ?? `app-source:${chosen.kind}`,
       displayName: p.displayName ?? (folderRef ? `${chosen.title} ${folderRef}` : chosen.title),
       scope,
@@ -290,7 +299,7 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       })
     },
     // knowledge_addFolderSource — GENERIC folder-source harvest, unified across
-    // every folder-capable connector (google-drive | gitlab). `source` selects
+    // every folder-capable connector (google-drive). `source` selects
     // the connector (default "google-drive" for back-compat with callers that
     // never passed it); `ref` is that connector's folder reference — for
     // google-drive the legacy `folderId` param is still accepted as an alias for
@@ -299,8 +308,8 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
     // uses (`registerDefaultKnowledgeSources`), so any registered, enabled,
     // folder-capable source works here with zero per-source code. A `source`
     // that is an installed app declaring a knowledge source kind (manifest
-    // `knowledgeSources`, app-sources.ts) becomes an app source of that kind
-    // instead: no `ref`, the app's own handler decides what syncs.
+    // `knowledgeSources`, app-sources.ts, e.g. gitlab) becomes an app source of
+    // that kind instead: its `ref`, when given, is the source's config `{ ref }`.
     // The settings page's synced sources list (tools synced_sources.list /
     // archive / run_now): the same reads, checks and job as GET / DELETE
     // /api/knowledge/synced-sources and POST .../:id/run-now. Refusals come
@@ -309,6 +318,10 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
     knowledge_syncedSources: async (op: string, paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {
         throw new Error("knowledge_syncedSources is only available to the knowledge app")
+      }
+      // Only `list` reads: archive and run now write, and a read-only run refuses them.
+      if (ctx.bridgeReadOnlyRun && op !== "list") {
+        throw readOnlyRunBlockedError(UNDECLARED_WRITE_TARGET, `ctx.knowledge_syncedSources(${op})`)
       }
       const { KnowledgeError, knowledgeActorFromContext } = await import("~/apps/knowledge/service")
       const sources = await import("~/apps/knowledge/synced-sources")
@@ -425,8 +438,7 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
             source,
             kinds,
             scope,
-            params: p,
-            ...(ref ? { ref } : {}),
+            params: { ...p, ...(ref ? { ref } : {}) },
           }),
         )
       }

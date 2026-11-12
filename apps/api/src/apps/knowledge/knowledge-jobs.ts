@@ -16,19 +16,16 @@
  * BullMQ at boot.
  */
 import { sql as drizzleSql } from "drizzle-orm"
-import { createGitlabAdapter } from "~/apps/gitlab/adapter"
-import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { runAppSourceSyncJob } from "~/apps/knowledge/app-sources"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
-import { KNOWLEDGE_SOURCE_READ_SCOPE } from "~/apps/knowledge/source-registry"
 import { reconcileSyncedSource } from "~/apps/knowledge/sync-reconciler"
 import {
   type SyncedSourceDbRow,
   rowFromDb as syncedSourceRowFromDb,
 } from "~/apps/knowledge/synced-sources"
 import { extractRows } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withSystemDb } from "~/db/privileged"
 import {
   createAppQueue,
   enqueueAppJob,
@@ -57,77 +54,19 @@ type DueSourceRow = SyncedSourceDbRow
 const rowToSyncedSource = syncedSourceRowFromDb
 
 /**
- * A synced source keeps using the connected account's credential on every
- * tick, long after it was created. The credential may be an org-owned one that
- * every member could otherwise reach only through the source app's own scope,
- * so the owner's CURRENT scopes are re-checked before each fetch: a user who
- * has lost (or never held) the source app's read scope no longer syncs through
- * it.
- */
-async function assertOwnerMaySyncFrom(
-  app: keyof typeof KNOWLEDGE_SOURCE_READ_SCOPE,
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const { loadEffectivePermissions, hasScope } = await import("~/modules/permissions/permissions")
-  const effective = await withSystemDb("knowledge-sync-owner-scopes", (db) =>
-    loadEffectivePermissions(db, userId, orgId),
-  )
-  if (!hasScope(KNOWLEDGE_SOURCE_READ_SCOPE[app], effective.scopes)) {
-    throw new Error(
-      `FORBIDDEN: the source owner no longer holds ${KNOWLEDGE_SOURCE_READ_SCOPE[app]}`,
-    )
-  }
-}
-
-/**
- * Resolve the adapter for a given app name + actor. Supports gitlab; an app
- * that declares a knowledge source kind syncs through
- * app-sources.ts instead, and additional providers can be added here without
- * touching the worker.
+ * Resolve the adapter for a given app name + actor. No connector syncs
+ * through a kernel adapter any more: an app that declares a knowledge source
+ * kind syncs through app-sources.ts. Tests inject their own adapter.
  */
 function resolveAdapter(
   appName: string,
-  source: {
+  _source: {
     orgId: string
     ownerUserId: string | null
     createdBy: string
     sourceAccount?: string | null
   },
 ): KnowledgeSourceAdapter {
-  if (appName === "gitlab") {
-    const userId = source.ownerUserId ?? source.createdBy
-    const loadCreds = async (): Promise<Record<string, string>> => {
-      await assertOwnerMaySyncFrom("gitlab", source.orgId, userId)
-      // The org's own privileged transaction: the credential read runs on it,
-      // with no second privileged connection.
-      return withPrivilegedDb(source.orgId, "knowledge-sync-gitlab-token", async (db) => {
-        const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
-        return getCredentialsForConnection(
-          db,
-          source.orgId,
-          userId,
-          "gitlab",
-          "gitlab",
-          undefined,
-          {
-            actorType: "system",
-          },
-        )
-      })
-    }
-    const getToken = async (): Promise<string> => String((await loadCreds()).token)
-    const resolveDefaultGroupId = async (): Promise<string | undefined> => {
-      try {
-        const group = (await loadCreds()).group
-        return group ? String(group) : undefined
-      } catch {
-        return undefined
-      }
-    }
-    const client = makeGitlabFetchers(getToken)
-    return createGitlabAdapter({ client, resolveDefaultGroupId })
-  }
   throw new Error(`No adapter registered for app: ${appName}`)
 }
 

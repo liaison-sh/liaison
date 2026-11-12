@@ -175,7 +175,7 @@ describe("request_secret kernel tool", () => {
   it("names an undeclared connection", async () => {
     const res = await tool()({
       kind: "connection_credentials",
-      target: { app: "gitlab", connection: "nope" },
+      target: { app: "test", connection: "nope" },
     })
     expect(String(res.error)).toContain('declares no connection "nope"')
     // The refusal names the real targets, as a 400 the agent may retry.
@@ -185,12 +185,12 @@ describe("request_secret kernel tool", () => {
   })
 
   it("names only the connections of apps the actor can use", async () => {
-    const res = await tool(threadId, ["kernel:threads:read", "gitlab:projects:read"])({
+    const res = await tool(threadId, ["kernel:threads:read", "test:items:read"])({
       kind: "connection_credentials",
       target: { app: "nope", connection: "nope" },
     })
     expect(String(res.error)).toContain('declares no connection "nope"')
-    expect(String(res.error)).toContain('app "gitlab", connection "gitlab"')
+    expect(String(res.error)).toContain('app "test", connection "service"')
     expect(String(res.error)).not.toContain('app "mail"')
     const none = await tool(threadId, ["kernel:threads:read"])({
       kind: "connection_credentials",
@@ -248,12 +248,12 @@ describe("request_secret kernel tool", () => {
     expect(String(oauth.error)).not.toContain("Settings")
     const creds = await tool()({
       kind: "oauth_client",
-      target: { app: "gitlab", connection: "gitlab" },
+      target: { app: "test", connection: "service" },
     })
     expect(String(creds.error)).toContain("connection_credentials")
     const connectCreds = await tool()({
       kind: "oauth_connect",
-      target: { app: "gitlab", connection: "gitlab", mode: "org" },
+      target: { app: "test", connection: "service", mode: "org" },
     })
     expect(String(connectCreds.error)).toContain("connection_credentials")
   })
@@ -386,7 +386,7 @@ describe("request_secret kernel tool", () => {
     // A connection whose fields name no account cannot be asked for one account.
     const gitlab = await tool()({
       kind: "connection_credentials",
-      target: { app: "gitlab", connection: "gitlab", identifier: "acme" },
+      target: { app: "test", connection: "service", identifier: "acme" },
     })
     expect(String(gitlab.error)).toContain("pass no identifier")
   })

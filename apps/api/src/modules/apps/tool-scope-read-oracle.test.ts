@@ -117,10 +117,10 @@ function scopeReads(fileName: string, src: string): Array<{ kind: ReadKind; line
 
 /** Why a `scope` read is not a tool definition. */
 const REASONS = {
-  GITLAB: "the GitLab search API's own scope parameter",
   API_CONNECTOR:
     "an API adapter's OAuth2 client-credentials scope (RFC 6749), sent to its token URL",
   KNOW: "a knowledge source or document's personal or organization visibility",
+  GITLAB: "the GitLab search API's own scope parameter",
   GRANT: "a scope grant row or a grant table's scope column",
   POLICY: "a scope disclosure policy row or its table's column",
   FRAME: "a websocket status frame's scope",
@@ -934,6 +934,12 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "let grantedOAuthScopes = parseGrantedScopes(tokens.scope ?? tokens.permissions)",
     REASONS.OAUTH,
   ],
+  ["bundled-apps/gitlab/src/tools.ts", "scope: params.scope,", REASONS.GITLAB],
+  [
+    "bundled-apps/gitlab/src/tools.ts",
+    "results: items.map((r) => searchHitShape(params.scope, r)),",
+    REASONS.GITLAB,
+  ],
   [
     "apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts",
     'const reqScope = (p.scope ?? "personal") === "organization"',
@@ -944,12 +950,6 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     'const scope = p.scope ?? "personal"',
     REASONS.KNOW,
   ],
-  [
-    "apps/api/src/apps/gitlab/gitlab-rest.ts",
-    "async search({ projectId, groupId, scope, query, ref }) {",
-    REASONS.GITLAB,
-  ],
-  ["apps/api/src/apps/gitlab/tools.ts", "scope: params.scope,", REASONS.GITLAB],
   [
     "apps/api/src/apps/api-connector/transport.ts",
     "const tokenScope = auth.scope",

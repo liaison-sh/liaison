@@ -93,6 +93,22 @@ export const MOVED_APPS: readonly MovedApp[] = [
     ],
   },
   {
+    // The GitLab knowledge sources move from the kernel's folder adapter to the
+    // app's `folder` source kind (bundled-apps/gitlab/src/knowledge.ts), which
+    // reads the same `<project>:<branch>:<path>` reference from its config and
+    // keeps the same document and folder identities. Credentials, the
+    // connection and every other row are keyed by the app's name: unchanged.
+    name: "gitlab",
+    steps: [
+      {
+        id: "knowledge-sources-to-folder",
+        kind: "synced-sources-to-kind",
+        sourceKind: "folder",
+        configFromColumns: { ref: "folder_ref" },
+      },
+    ],
+  },
+  {
     // The Drive folders and the picked files that in-tree kernel code synced go
     // to the app's `folder` and `picked` source kinds (bundled-apps/google-drive/
     // src/knowledge.ts), with the folder and the account they synced through in

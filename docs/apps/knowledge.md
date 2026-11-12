@@ -61,7 +61,7 @@ Synced documents show **Synced from** with the last refresh time and a **Refresh
 
 In the [live demo](../getting-started/demo.md), the GitLab and Google Drive sources are seeded with their documents and do not sync: the demo has no connected accounts.
 
-An agent can also bring in a GitLab repository path or the connected database's knowledge base with `knowledge__add_folder_source`. For GitLab, see [GitLab](gitlab.md). The database knowledge base is the Database app's own synced source (see below): it takes no folder reference and syncs on its schedule, never as a one-time import.
+An agent can also bring in a GitLab repository folder or the connected database's knowledge base with `knowledge__add_folder_source`. A GitLab folder is the GitLab app's own synced source: it takes the folder reference (`<project>:<branch>:<path>`) and syncs on its schedule, never as a one-time import; see [GitLab](gitlab.md). The database knowledge base is the Database app's own synced source (see below): it takes no folder reference and syncs on its schedule, never as a one-time import.
 
 ## Sync from an installed app
 

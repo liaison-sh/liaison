@@ -259,24 +259,3 @@ export async function seedDriveConnection(
   )
   return { id, identifier }
 }
-
-/** The org's GitLab connection (`{token, group}` credentials), created by `createdByUserId`. */
-export async function seedGitlabConnection(
-  env: WorkerEnv,
-  orgId: string,
-  createdByUserId: string,
-  opts: { token?: string; group?: string } = {},
-): Promise<{ id: string; group: string }> {
-  const token = opts.token ?? "glpat-e2e-fake-gitlab-token-000"
-  const group = opts.group ?? "acme"
-  const { id } = await seedFactory<{ id: string }>(env, orgId, "connections.mock", {
-    appName: "gitlab",
-    connectionName: "gitlab",
-    ownerType: "org",
-    userId: createdByUserId,
-    identifier: group,
-    displayName: "E2E GitLab",
-    kind: { type: "credentials", credentials: { token, group } },
-  })
-  return { id, group }
-}

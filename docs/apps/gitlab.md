@@ -31,7 +31,11 @@ The agent starts with `gitlab_list_projects` to find the project, then reads wha
 
 ## Bring repository docs into Knowledge
 
-GitLab is a Knowledge source. Ask your agent to import a repository path, for example "Sync the docs folder of the manual repository into Knowledge". It uses `knowledge__add_folder_source` with the GitLab source, which creates one Knowledge document per file and can keep syncing on a schedule. The source then appears in **Settings › Apps › Knowledge › Synced sources**. See [Knowledge](knowledge.md#sync-a-google-drive-folder).
+GitLab is a Knowledge source. Ask your agent to sync a repository folder, for example "Sync the docs folder of the manual repository into Knowledge". It uses `knowledge__add_folder_source` with the GitLab source and a reference `<project>:<branch>:<path>` (for example `123:main:docs`; an empty path is the whole branch). Each Markdown, text, CSV, JSON or YAML file becomes a Knowledge document, filed in a collection for its folder, and the source keeps syncing every hour. A sync reads nothing more while the branch has not moved, and archives the documents of files removed upstream. The source then appears in **Settings › Apps › Knowledge › Synced sources**. See [Knowledge](knowledge.md#sync-a-google-drive-folder).
+
+## Check the connection
+
+`liaison config verify` checks the stored token with one read of its owner's profile and of the connected group, and so does `liaison config apply` after it saved the connection. The token itself never leaves the server's connection store.
 
 ## Roles and scopes
 

@@ -5,8 +5,8 @@
 // the status read never approval-gated.
 import { describe, expect, it } from "bun:test"
 import apiConnector from "~/apps/api-connector/app.manifest.json"
-import gitlab from "~/apps/gitlab/app.manifest.json"
 import database from "../../../../../bundled-apps/database/app.manifest.json"
+import gitlab from "../../../../../bundled-apps/gitlab/app.manifest.json"
 import googleDrive from "../../../../../bundled-apps/google-drive/app.manifest.json"
 import { validateAppManifest } from "./contract"
 

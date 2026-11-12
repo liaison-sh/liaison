@@ -1738,6 +1738,18 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/database"),
   },
+  // GitLab bundled-app oracles: the tools' answers over a fake ctx.fetch, the
+  // knowledge source's pages and cursor, provisioning verify (src/test-ctx.ts).
+  "bundled-gitlab": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/gitlab.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/gitlab"),
+  },
   // Monitoring bundled-app oracles -- same orphan class. Fully mock-driven
   // (test-ctx in-memory AppContext + the pure-node hmac testutil bridge): the
   // alert-webhook lifecycle (create/fold/reopen/escalate), the ack/resolve
@@ -2176,6 +2188,7 @@ if (suite === "full") {
     "bundled-monitoring",
     "bundled-database",
     "bundled-google-drive",
+    "bundled-gitlab",
     "bundled-pennylane",
     "bundled-calls",
     "bundled-social",

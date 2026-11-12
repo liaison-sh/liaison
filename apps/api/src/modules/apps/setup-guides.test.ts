@@ -11,7 +11,7 @@ const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 // validating against the manifest schema and carry a non-empty, well-formed,
 // tenant-generic setupGuide.
 const GUIDED: Array<{ path: string; connection: string }> = [
-  { path: "apps/api/src/apps/gitlab/app.manifest.json", connection: "gitlab" },
+  { path: "bundled-apps/gitlab/app.manifest.json", connection: "gitlab" },
   { path: "apps/api/src/apps/mail/app.manifest.json", connection: "gmail" },
   { path: "apps/api/src/apps/mail/app.manifest.json", connection: "imap" },
   { path: "apps/api/src/apps/tickets/app.manifest.json", connection: "gmail" },

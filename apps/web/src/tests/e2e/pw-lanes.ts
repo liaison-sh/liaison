@@ -67,7 +67,7 @@ export const WEB_DIR = path.resolve(__dirname, "../../..")
 
 /**
  * The API server env every default-fixture stack boots with. The mock servers
- * run in the worker process on the lane's ports [2..5]; their URLs are fixed
+ * run in the worker process on the lane's ports [2..4]; their URLs are fixed
  * by those ports, so the server can be booted before any worker exists.
  */
 export function pwServerEnv(ports: number[]): Record<string, string> {
@@ -77,9 +77,6 @@ export function pwServerEnv(ports: number[]): Record<string, string> {
     // The MCP device /initiate 403s any client id absent from this allow-list.
     DEVICE_FLOW_CLIENTS: "*",
     DRIVE_API_BASE_URL: `http://localhost:${ports[2]}/drive/v3`,
-    // The GitLab REST client's host-pinned egress is pinned to the configured
-    // base host, so the mock is reachable in test while prod stays on gitlab.com.
-    GITLAB_API_BASE_URL: `http://localhost:${ports[5]}/api/v4`,
     // The API connector reaches http only on loopback, and only with this flag
     // (a development setting): the api-connector scenario runs the fixture CRM
     // on 127.0.0.1. Link-local and metadata addresses stay refused.

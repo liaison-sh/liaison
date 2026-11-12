@@ -108,3 +108,5 @@ app run-job example: shopify backfill-customers is a declared job -> bundled-app
 apps[].provision: the app's own setup, checked against its manifest schema (exit 2 before any write), run after the connection, changed lines or unchanged -> apps/api/src/cli/config/schema.ts:338 ; apps/api/src/cli/provisioners/app-provision.ts ; apps/api/src/cli/provisioners/apps.ts:454
 config verify: provision dry run DRIFT, then the app's verify PASS/FAIL -> apps/api/src/cli/config/verify.ts:128
 cli guide: picker settings from the server env or the app's config keys -> apps/api/src/cli/guide/index.ts:178 ; apps/api/src/modules/apps/instance-config-defaults.ts:36
+config verify runs the app's provisioning.verify, the CLI reads no credential -> apps/api/src/cli/provisioners/verify-probes.ts:1-12 ; apps/api/src/cli/config/verify.ts:298
+config apply health is the same check -> apps/api/src/cli/provisioners/connector.ts:332 ; apps/api/src/cli/config/apply.ts:220

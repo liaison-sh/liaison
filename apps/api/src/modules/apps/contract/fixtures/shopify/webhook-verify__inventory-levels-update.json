@@ -2,13 +2,13 @@
   "entry": "webhook-verify:inventory-levels-update",
   "params": {
     "headers": {
-      "x-shopify-hmac-sha256": "/kUMLd+XpJklIcCKzljVmU4/S4nJ4D9TH43PAhEc1TE=",
+      "x-shopify-hmac-sha256": "ZB1kCctz+16AYjWOYhK+s/82t5erStUheqK5oQfizvs=",
       "x-shopify-webhook-id": "contract-inventory-levels-update-11",
       "x-shopify-topic": "inventory_levels/update",
       "x-shopify-shop-domain": "contract-shop.myshopify.com",
       "x-shopify-api-version": "2026-04"
     },
-    "body": "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":27,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}",
+    "body": "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":18,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}",
     "method": "POST",
     "query": {}
   },
@@ -25,8 +25,8 @@
       "method": "crypto_verifyHmacForConfig",
       "args": [
         "shopifyWebhookSecret",
-        "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":27,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}",
-        "/kUMLd+XpJklIcCKzljVmU4/S4nJ4D9TH43PAhEc1TE=",
+        "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":18,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}",
+        "ZB1kCctz+16AYjWOYhK+s/82t5erStUheqK5oQfizvs=",
         "base64"
       ],
       "reply": true
@@ -35,9 +35,9 @@
       "method": "crypto_hmacSha256Base64",
       "args": [
         "shopify-delivery",
-        "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":27,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}"
+        "{\"inventory_item_id\":54996169916582,\"location_id\":83457310886,\"available\":18,\"updated_at\":\"2026-11-12T02:00:00+00:00\",\"admin_graphql_api_id\":\"gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582\"}"
       ],
-      "reply": "D8JofPnBFc7A5oqTqLRsia9wY8B2rj/M+3jyeyxM3yM="
+      "reply": "5CDFrxZMO269OAHdpDYYc63kDW/zhTbjbwueVeh+l40="
     }
   ]
 }

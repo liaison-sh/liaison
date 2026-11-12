@@ -1,23 +1,23 @@
 {
   "entry": "webhook:draft-orders-update",
   "params": {
-    "id": 1674792501414,
+    "id": 1674823762086,
     "note": "Contract recorder order (updated)",
     "email": "marie@example.com",
     "taxes_included": false,
     "currency": "USD",
-    "invoice_sent_at": "2026-11-11T21:16:06-05:00",
-    "created_at": "2026-11-11T21:16:05-05:00",
-    "updated_at": "2026-11-11T21:16:09-05:00",
+    "invoice_sent_at": "2026-11-12T03:18:09-05:00",
+    "created_at": "2026-11-12T03:18:07-05:00",
+    "updated_at": "2026-11-12T03:18:11-05:00",
     "tax_exempt": false,
-    "completed_at": "2026-11-11T21:16:09-05:00",
-    "name": "#D940",
+    "completed_at": "2026-11-12T03:18:11-05:00",
+    "name": "#D949",
     "allow_discount_codes_in_checkout?": false,
     "b2b?": false,
     "status": "completed",
     "line_items": [
       {
-        "id": 59820833177766,
+        "id": 59820926206118,
         "variant_id": 56534760784038,
         "product_id": 15332593336486,
         "title": "The Minimal Snowboard",
@@ -36,7 +36,7 @@
         "properties": [],
         "custom": false,
         "price": "885.95",
-        "admin_graphql_api_id": "gid://shopify/DraftOrderLineItem/59820833177766"
+        "admin_graphql_api_id": "gid://shopify/DraftOrderLineItem/59820926206118"
       }
     ],
     "api_client_id": 372991328257,
@@ -58,10 +58,10 @@
       "province_code": null
     },
     "billing_address": null,
-    "invoice_url": "https://contract-shop.myshopify.com/74673684646/invoices/96e14cef8d55283ad96150a5c7d4f455",
+    "invoice_url": "https://contract-shop.myshopify.com/74673684646/invoices/2d5b054222b3109e8dacfe11aae64d4d",
     "created_on_api_version_handle": "2026-04",
     "applied_discount": null,
-    "order_id": 19010485158054,
+    "order_id": 19010984706214,
     "shipping_line": null,
     "tax_lines": [],
     "tags": "contract-fixture",
@@ -70,23 +70,23 @@
     "subtotal_price": "1771.90",
     "total_tax": "0.00",
     "payment_terms": null,
-    "admin_graphql_api_id": "gid://shopify/DraftOrder/1674792501414",
+    "admin_graphql_api_id": "gid://shopify/DraftOrder/1674823762086",
     "customer": {
       "id": 24929659846822,
       "created_at": "2026-05-26T18:50:38-04:00",
-      "updated_at": "2026-11-11T21:16:23-05:00",
+      "updated_at": "2026-11-12T03:18:26-05:00",
       "first_name": "Marie",
       "last_name": "Dupont",
-      "orders_count": 21,
+      "orders_count": 5,
       "state": "disabled",
-      "total_spent": "26301.60",
-      "last_order_id": 19010485354662,
+      "total_spent": "5148.80",
+      "last_order_id": 19010985230502,
       "note": null,
       "verified_email": true,
       "multipass_identifier": null,
       "tax_exempt": false,
       "tags": "liaison-seed, liaison-seed-cust-001, market:canada",
-      "last_order_name": "#2797",
+      "last_order_name": "#2803",
       "email": "marie@example.com",
       "phone": null,
       "currency": "USD",
@@ -121,7 +121,7 @@
   },
   "extraArgs": [
     {
-      "x-shopify-hmac-sha256": "HzOqpua/U2lbJ5y7TBRxadMvSUT1FOOOODELg8zvn9c=",
+      "x-shopify-hmac-sha256": "MKy1Y5RDNS8wPENQdtKzv22QCw44uHElZzV3FRV53M4=",
       "x-shopify-webhook-id": "contract-draft-orders-update-15",
       "x-shopify-topic": "draft_orders/update",
       "x-shopify-shop-domain": "contract-shop.myshopify.com",
@@ -135,7 +135,7 @@
       "args": [
         "shop"
       ],
-      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
@@ -143,7 +143,7 @@
         "install_metadata",
         "{\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
     },
     {
       "method": "db_findMany",
@@ -158,12 +158,12 @@
       "args": [
         "{\"email\":\"marie@example.com\",\"name\":\"Marie Dupont\",\"externalId\":\"24929659846822\"}"
       ],
-      "reply": "{\"id\":\"cb82ce40-6249-467a-b977-a38664af0a8b\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-4\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T02:16:29.629Z\",\"updatedAt\":\"2026-11-12T02:16:33.301Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
+      "reply": "{\"id\":\"daae5c10-a387-44fc-8ebf-c2e405c0aaee\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-7\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T08:18:33.019Z\",\"updatedAt\":\"2026-11-12T08:18:37.071Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"draft_order\",\"action\":\"completed\",\"entityId\":\"gid://shopify/DraftOrder/1674792501414\",\"data\":{\"draftOrderId\":\"gid://shopify/DraftOrder/1674792501414\",\"name\":\"#D940\",\"status\":\"completed\",\"orderId\":\"gid://shopify/Order/19010485158054\",\"orderName\":null,\"poNumber\":null,\"shopDomain\":\"contract-shop.myshopify.com\",\"createdAt\":\"2026-11-11T21:16:05-05:00\",\"updatedAt\":\"2026-11-11T21:16:09-05:00\",\"currency\":\"USD\",\"currencyIsPresentment\":false,\"totalPrice\":\"1771.90\",\"subtotalPrice\":\"1771.90\",\"totalTax\":\"0.00\",\"taxesIncluded\":false,\"taxExempt\":false,\"email\":\"marie@example.com\",\"note\":\"Contract recorder order (updated)\",\"tags\":[\"contract-fixture\"],\"customer\":{\"id\":\"gid://shopify/Customer/24929659846822\",\"email\":\"marie@example.com\",\"firstName\":\"Marie\",\"lastName\":\"Dupont\",\"company\":null},\"billingAddress\":null,\"shippingAddress\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"zip\":\"69002\",\"city\":\"Lyon\",\"province\":null,\"countryCode\":\"FR\",\"phone\":null},\"appliedDiscount\":null,\"shippingLine\":null,\"taxLines\":[],\"lineItems\":[{\"id\":\"59820833177766\",\"title\":\"The Minimal Snowboard\",\"sku\":\"\",\"variantId\":\"gid://shopify/ProductVariant/56534760784038\",\"productId\":\"gid://shopify/Product/15332593336486\",\"quantity\":2,\"unitPrice\":\"885.95\",\"discountedTotal\":\"1771.90\",\"appliedDiscount\":null,\"taxable\":true,\"requiresShipping\":true,\"custom\":false}]},\"metadata\":{\"shopify_webhook_id\":\"contract-draft-orders-update-15\",\"currency\":\"USD\"}}"
+        "{\"entity\":\"draft_order\",\"action\":\"completed\",\"entityId\":\"gid://shopify/DraftOrder/1674823762086\",\"data\":{\"draftOrderId\":\"gid://shopify/DraftOrder/1674823762086\",\"name\":\"#D949\",\"status\":\"completed\",\"orderId\":\"gid://shopify/Order/19010984706214\",\"orderName\":null,\"poNumber\":null,\"shopDomain\":\"contract-shop.myshopify.com\",\"createdAt\":\"2026-11-12T03:18:07-05:00\",\"updatedAt\":\"2026-11-12T03:18:11-05:00\",\"currency\":\"USD\",\"currencyIsPresentment\":false,\"totalPrice\":\"1771.90\",\"subtotalPrice\":\"1771.90\",\"totalTax\":\"0.00\",\"taxesIncluded\":false,\"taxExempt\":false,\"email\":\"marie@example.com\",\"note\":\"Contract recorder order (updated)\",\"tags\":[\"contract-fixture\"],\"customer\":{\"id\":\"gid://shopify/Customer/24929659846822\",\"email\":\"marie@example.com\",\"firstName\":\"Marie\",\"lastName\":\"Dupont\",\"company\":null},\"billingAddress\":null,\"shippingAddress\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"zip\":\"69002\",\"city\":\"Lyon\",\"province\":null,\"countryCode\":\"FR\",\"phone\":null},\"appliedDiscount\":null,\"shippingLine\":null,\"taxLines\":[],\"lineItems\":[{\"id\":\"59820926206118\",\"title\":\"The Minimal Snowboard\",\"sku\":\"\",\"variantId\":\"gid://shopify/ProductVariant/56534760784038\",\"productId\":\"gid://shopify/Product/15332593336486\",\"quantity\":2,\"unitPrice\":\"885.95\",\"discountedTotal\":\"1771.90\",\"appliedDiscount\":null,\"taxable\":true,\"requiresShipping\":true,\"custom\":false}]},\"metadata\":{\"shopify_webhook_id\":\"contract-draft-orders-update-15\",\"currency\":\"USD\"}}"
       ]
     },
     {
@@ -172,7 +172,7 @@
         "webhook_deliveries",
         "{\"webhookId\":\"contract-draft-orders-update-15\",\"topic\":\"draft_orders/update\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
       ],
-      "reply": "{\"id\":\"5a4a4598-bcec-40ad-b327-71c77c3d3950\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:16:33.307096+00\",\"updated_at\":\"2026-11-12 02:16:33.307096+00\",\"webhook_id\":\"contract-draft-orders-update-15\",\"topic\":\"draft_orders/update\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+      "reply": "{\"id\":\"e2b1b756-aaab-45ae-8455-3d98c4d46487\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:37.075691+00\",\"updated_at\":\"2026-11-12 08:18:37.075691+00\",\"webhook_id\":\"contract-draft-orders-update-15\",\"topic\":\"draft_orders/update\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
     }
   ]
 }

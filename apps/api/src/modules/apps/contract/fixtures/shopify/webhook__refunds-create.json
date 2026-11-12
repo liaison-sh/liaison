@@ -1,12 +1,12 @@
 {
   "entry": "webhook:refunds-create",
   "params": {
-    "id": 1214588289190,
-    "order_id": 19010485158054,
-    "created_at": "2026-11-11T21:16:19-05:00",
+    "id": 1214628561062,
+    "order_id": 19010984706214,
+    "created_at": "2026-11-12T03:18:22-05:00",
     "note": "Goodwill refund",
     "user_id": null,
-    "processed_at": "2026-11-11T21:16:19-05:00",
+    "processed_at": "2026-11-12T03:18:22-05:00",
     "duties": [],
     "total_duties_set": {
       "shop_money": {
@@ -21,12 +21,12 @@
     "return": null,
     "refund_shipping_lines": [],
     "restock": false,
-    "admin_graphql_api_id": "gid://shopify/Refund/1214588289190",
+    "admin_graphql_api_id": "gid://shopify/Refund/1214628561062",
     "order_adjustments": [
       {
-        "id": 619298619558,
-        "order_id": 19010485158054,
-        "refund_id": 1214588289190,
+        "id": 619333222566,
+        "order_id": 19010984706214,
+        "refund_id": 1214628561062,
         "amount": "875.95",
         "tax_amount": "0.00",
         "kind": "refund_discrepancy",
@@ -56,26 +56,26 @@
     "refund_line_items": [],
     "transactions": [
       {
-        "id": 20951006216358,
-        "order_id": 19010485158054,
+        "id": 20951765090470,
+        "order_id": 19010984706214,
         "kind": "refund",
         "gateway": "manual",
         "status": "success",
         "message": "Refunded 10.00 USD from manual gateway",
-        "created_at": "2026-11-11T21:16:19-05:00",
+        "created_at": "2026-11-12T03:18:22-05:00",
         "test": false,
         "authorization": null,
         "location_id": null,
         "user_id": null,
-        "parent_id": 20951005790374,
-        "processed_at": "2026-11-11T21:16:19-05:00",
+        "parent_id": 20951764566182,
+        "processed_at": "2026-11-12T03:18:22-05:00",
         "device_id": null,
         "error_code": null,
         "source_name": "372991328257",
         "receipt": {},
         "amount": "10.00",
         "currency": "USD",
-        "payment_id": "#2796.1",
+        "payment_id": "#2802.1",
         "total_unsettled_set": {
           "presentment_money": {
             "amount": "0.0",
@@ -88,13 +88,13 @@
         },
         "manual_payment_gateway": true,
         "amount_rounding": null,
-        "admin_graphql_api_id": "gid://shopify/OrderTransaction/20951006216358"
+        "admin_graphql_api_id": "gid://shopify/OrderTransaction/20951765090470"
       }
     ]
   },
   "extraArgs": [
     {
-      "x-shopify-hmac-sha256": "PR6pZZnq9W8RKfOTM/4MtH5Hw2Nwf7yKXAofd8fze5s=",
+      "x-shopify-hmac-sha256": "3hgEqZQXZaZaoXMS0OpIunI2iDv/Jk5CGPRMaYuJsRQ=",
       "x-shopify-webhook-id": "contract-refunds-create-8",
       "x-shopify-topic": "refunds/create",
       "x-shopify-shop-domain": "contract-shop.myshopify.com",
@@ -108,7 +108,7 @@
       "args": [
         "shop"
       ],
-      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
@@ -116,7 +116,7 @@
         "install_metadata",
         "{\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
     },
     {
       "method": "db_findMany",
@@ -129,13 +129,13 @@
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"refund\",\"action\":\"created_manual\",\"entityId\":\"1214588289190\",\"data\":{\"id\":\"1214588289190\",\"orderId\":\"19010485158054\",\"totalPrice\":{\"amount\":\"10.00\",\"currencyCode\":\"USD\"}},\"metadata\":{\"shopify_webhook_id\":\"contract-refunds-create-8\",\"market\":\"default\",\"currency\":\"USD\"}}"
+        "{\"entity\":\"refund\",\"action\":\"created_manual\",\"entityId\":\"1214628561062\",\"data\":{\"id\":\"1214628561062\",\"orderId\":\"19010984706214\",\"totalPrice\":{\"amount\":\"10.00\",\"currencyCode\":\"USD\"}},\"metadata\":{\"shopify_webhook_id\":\"contract-refunds-create-8\",\"market\":\"default\",\"currency\":\"USD\"}}"
       ]
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"refund\",\"action\":\"created\",\"entityId\":\"1214588289190\",\"data\":{\"id\":\"1214588289190\",\"order_id\":\"19010485158054\",\"amount\":\"10.00\",\"currency\":\"USD\",\"shop_id\":\"contract-shop.myshopify.com\"},\"metadata\":{\"shopify_webhook_id\":\"contract-refunds-create-8\"}}"
+        "{\"entity\":\"refund\",\"action\":\"created\",\"entityId\":\"1214628561062\",\"data\":{\"id\":\"1214628561062\",\"order_id\":\"19010984706214\",\"amount\":\"10.00\",\"currency\":\"USD\",\"shop_id\":\"contract-shop.myshopify.com\"},\"metadata\":{\"shopify_webhook_id\":\"contract-refunds-create-8\"}}"
       ]
     },
     {
@@ -144,7 +144,7 @@
         "webhook_deliveries",
         "{\"webhookId\":\"contract-refunds-create-8\",\"topic\":\"refunds/create\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
       ],
-      "reply": "{\"id\":\"629c7d95-7667-4589-9c64-f4fe5cbbf23f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:16:31.62027+00\",\"updated_at\":\"2026-11-12 02:16:31.62027+00\",\"webhook_id\":\"contract-refunds-create-8\",\"topic\":\"refunds/create\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+      "reply": "{\"id\":\"efd6b61d-2e4a-48e2-ad6c-c5d2e210755b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:35.228212+00\",\"updated_at\":\"2026-11-12 08:18:35.228212+00\",\"webhook_id\":\"contract-refunds-create-8\",\"topic\":\"refunds/create\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
     }
   ]
 }

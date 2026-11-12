@@ -2,7 +2,7 @@
   "entry": "preflight:order_update",
   "params": {
     "input": {
-      "id": "gid://shopify/Order/19010485158054",
+      "id": "gid://shopify/Order/19010984706214",
       "tags": [
         "contract-fixture",
         "recorded"

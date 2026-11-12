@@ -3,19 +3,19 @@
   "params": {
     "id": 24929659846822,
     "created_at": "2026-05-26T18:50:38-04:00",
-    "updated_at": "2026-11-11T21:16:23-05:00",
+    "updated_at": "2026-11-12T03:18:26-05:00",
     "first_name": "Marie",
     "last_name": "Dupont",
-    "orders_count": 21,
+    "orders_count": 5,
     "state": "disabled",
-    "total_spent": "26301.60",
-    "last_order_id": 19010485354662,
+    "total_spent": "5148.80",
+    "last_order_id": 19010985230502,
     "note": null,
     "verified_email": true,
     "multipass_identifier": null,
     "tax_exempt": false,
     "tags": "liaison-seed, liaison-seed-cust-001, market:canada",
-    "last_order_name": "#2797",
+    "last_order_name": "#2803",
     "email": "marie@example.com",
     "phone": null,
     "currency": "USD",
@@ -89,7 +89,7 @@
   },
   "extraArgs": [
     {
-      "x-shopify-hmac-sha256": "7TS971ILjjz0u+L5CiygeMgKWJCCw4MwdlgmoIk2f8k=",
+      "x-shopify-hmac-sha256": "9FaXpHje3LtGKEKMt2VLtjUDy9UgINcnOjfDzbtkDc8=",
       "x-shopify-webhook-id": "contract-customers-update-6",
       "x-shopify-topic": "customers/update",
       "x-shopify-shop-domain": "contract-shop.myshopify.com",
@@ -103,7 +103,7 @@
       "args": [
         "shop"
       ],
-      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
@@ -111,7 +111,7 @@
         "install_metadata",
         "{\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
     },
     {
       "method": "db_findMany",
@@ -126,7 +126,7 @@
       "args": [
         "{\"email\":\"marie@example.com\",\"name\":\"Marie Dupont\",\"externalId\":\"24929659846822\"}"
       ],
-      "reply": "{\"id\":\"cb82ce40-6249-467a-b977-a38664af0a8b\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-4\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T02:16:29.629Z\",\"updatedAt\":\"2026-11-12T02:16:31.221Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
+      "reply": "{\"id\":\"daae5c10-a387-44fc-8ebf-c2e405c0aaee\",\"orgId\":\"00000000-0000-4000-8000-00000000c0de\",\"handle\":\"@contact-7\",\"name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{\"shopify\":\"24929659846822\"},\"metadata\":null,\"tags\":[],\"createdBy\":\"00000000-0000-4000-8000-00000000c0df\",\"createdAt\":\"2026-11-12T08:18:33.019Z\",\"updatedAt\":\"2026-11-12T08:18:34.864Z\",\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"orgAccess\":\"editor\",\"aclUserIds\":[],\"aclRoleIds\":[],\"audienceKey\":null,\"orgWide\":true}"
     },
     {
       "method": "emit",
@@ -140,7 +140,7 @@
         "webhook_deliveries",
         "{\"webhookId\":\"contract-customers-update-6\",\"topic\":\"customers/update\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
       ],
-      "reply": "{\"id\":\"aaf0f6a6-fad1-412c-a29b-e946cdd09fbf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:16:31.224461+00\",\"updated_at\":\"2026-11-12 02:16:31.224461+00\",\"webhook_id\":\"contract-customers-update-6\",\"topic\":\"customers/update\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+      "reply": "{\"id\":\"af4961a7-b92c-4fc3-872c-15e288884255\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:34.868749+00\",\"updated_at\":\"2026-11-12 08:18:34.868749+00\",\"webhook_id\":\"contract-customers-update-6\",\"topic\":\"customers/update\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "entry": "preflight:products_update",
   "params": {
     "input": {
-      "id": "gid://shopify/Product/15989319368870",
+      "id": "gid://shopify/Product/15992372494502",
       "title": "Contract Fixture Synth II",
       "tags": [
         "contract-fixture",

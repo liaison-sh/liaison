@@ -1,7 +1,7 @@
 {
   "entry": "preflight:draft_orders_update",
   "params": {
-    "id": "gid://shopify/DraftOrder/1674792501414",
+    "id": "gid://shopify/DraftOrder/1674823762086",
     "input": {
       "note": "Contract recorder order (updated)"
     }

@@ -1,21 +1,21 @@
 {
   "entry": "webhook:returns-request-created",
   "params": {
-    "id": 41780773030,
-    "admin_graphql_api_id": "gid://shopify/Return/41780773030",
+    "id": 41792077990,
+    "admin_graphql_api_id": "gid://shopify/Return/41792077990",
     "status": "requested",
     "order": {
-      "id": 19010485158054,
-      "admin_graphql_api_id": "gid://shopify/Order/19010485158054"
+      "id": 19010984706214,
+      "admin_graphql_api_id": "gid://shopify/Order/19010984706214"
     },
     "total_return_line_items": 1,
     "name": "#R1",
     "return_line_items": [
       {
-        "id": 65890812070,
-        "admin_graphql_api_id": "gid://shopify/ReturnLineItem/65890812070",
+        "id": 65905885350,
+        "admin_graphql_api_id": "gid://shopify/ReturnLineItem/65905885350",
         "fulfillment_line_item": {
-          "id": 19331824091302
+          "id": 19332754047142
         },
         "quantity": 1,
         "return_reason": "defective"
@@ -24,7 +24,7 @@
   },
   "extraArgs": [
     {
-      "x-shopify-hmac-sha256": "/MmSD7rJpz/0h+Uy47M3YX6nVnofgbWO77D65zGVzXo=",
+      "x-shopify-hmac-sha256": "vkZdfyiJmGMhsM1fWuQgU0H5wywXQulu5YmXCt1yuJw=",
       "x-shopify-webhook-id": "contract-returns-request-created-9",
       "x-shopify-topic": "returns/request",
       "x-shopify-shop-domain": "contract-shop.myshopify.com",
@@ -38,7 +38,7 @@
       "args": [
         "shop"
       ],
-      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
@@ -46,7 +46,7 @@
         "install_metadata",
         "{\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
     },
     {
       "method": "db_findMany",
@@ -59,7 +59,7 @@
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"return\",\"action\":\"requested\",\"entityId\":\"41780773030\",\"data\":{\"id\":\"41780773030\",\"orderId\":null,\"orderName\":\"#R1\",\"itemSummary\":\"1×\"},\"metadata\":{\"shopify_webhook_id\":\"contract-returns-request-created-9\",\"market\":\"default\",\"currency\":\"USD\"}}"
+        "{\"entity\":\"return\",\"action\":\"requested\",\"entityId\":\"41792077990\",\"data\":{\"id\":\"41792077990\",\"orderId\":null,\"orderName\":\"#R1\",\"itemSummary\":\"1×\"},\"metadata\":{\"shopify_webhook_id\":\"contract-returns-request-created-9\",\"market\":\"default\",\"currency\":\"USD\"}}"
       ]
     },
     {
@@ -68,7 +68,7 @@
         "webhook_deliveries",
         "{\"webhookId\":\"contract-returns-request-created-9\",\"topic\":\"returns/request_created\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
       ],
-      "reply": "{\"id\":\"074e41c8-aa1c-4423-986e-57257500ae70\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:16:31.65733+00\",\"updated_at\":\"2026-11-12 02:16:31.65733+00\",\"webhook_id\":\"contract-returns-request-created-9\",\"topic\":\"returns/request_created\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+      "reply": "{\"id\":\"01c90ee8-f609-4cbb-aba0-9930aef748b9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:35.286532+00\",\"updated_at\":\"2026-11-12 08:18:35.286532+00\",\"webhook_id\":\"contract-returns-request-created-9\",\"topic\":\"returns/request_created\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
     }
   ]
 }

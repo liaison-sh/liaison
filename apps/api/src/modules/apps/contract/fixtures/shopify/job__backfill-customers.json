@@ -1,0 +1,70 @@
+{
+  "entry": "job:backfill-customers",
+  "params": {},
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": [
+        "shop"
+      ],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "backfill_progress",
+        "{\"where\":{\"entityType\":\"customers\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "backfill_progress",
+        "{\"entityType\":\"customers\",\"cursorExternalId\":null,\"blobId\":null,\"status\":\"running\"}"
+      ],
+      "reply": "{\"id\":\"cb4fcc28-9b7e-4596-93e7-6104f0fe953b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:18:31.228772+00\",\"updated_at\":\"2026-11-12 08:18:31.228772+00\",\"entity_type\":\"customers\",\"cursor_external_id\":null,\"blob_id\":null,\"status\":\"running\"}"
+    },
+    {
+      "method": "steps_get",
+      "args": [
+        "backfill-customers"
+      ],
+      "reply": "null"
+    },
+    {
+      "method": "_steps_begin",
+      "args": [
+        "backfill-customers",
+        "{}"
+      ],
+      "reply": "{\"state\":\"run\",\"token\":\"redacted\",\"cursor\":null}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation StartCustomerBackfill {\\\\n    bulkOperationRunQuery(query: \\\\\\\"{ customers { edges { node { id email firstName lastName } } } }\\\\\\\") {\\\\n      bulkOperation { id status }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"errors\\\":[{\\\"message\\\":\\\"Access denied for bulkOperationRunQuery field. Required access: Only accessible by supported access tokens: https://shopify.dev/docs/api/usage/bulk-operations/queries#access-token-considerations.\\\",\\\"locations\\\":[{\\\"line\\\":3,\\\"column\\\":5}],\\\"extensions\\\":{\\\"code\\\":\\\"ACCESS_DENIED\\\",\\\"documentation\\\":\\\"https://shopify.dev/api/usage/access-scopes\\\",\\\"requiredAccess\\\":\\\"Only accessible by supported access tokens: https://shopify.dev/docs/api/usage/bulk-operations/queries#access-token-considerations.\\\"},\\\"path\\\":[\\\"bulkOperationRunQuery\\\"]}],\\\"data\\\":{\\\"bulkOperationRunQuery\\\":null},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "_steps_save",
+      "args": [
+        "backfill-customers",
+        "redacted",
+        "{\"failed\":true}"
+      ],
+      "reply": "{\"state\":\"failed\"}"
+    }
+  ]
+}

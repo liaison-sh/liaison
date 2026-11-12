@@ -8,8 +8,9 @@
 //     bun run ../../scripts/with-test-lock.ts -- \
 //     bun test ./src/modules/apps/contract/record-shopify.recorder.ts)
 //
-// Needs SHOPIFY_DEV_STORE_DOMAIN and SHOPIFY_DEV_STORE_OFFLINE_TOKEN (a
-// development store's offline Admin API token). The run installs the app for an
+// Needs SHOPIFY_DEV_STORE_DOMAIN and the app's SHOPIFY_OAUTH_CLIENT_ID /
+// SHOPIFY_OAUTH_CLIENT_SECRET: the run takes the app's offline token for the
+// development store through the client credentials grant. The run installs the app for an
 // org whose ids are the contract's own (replay-bridge.ts), connects the store,
 // and runs every entry the plan below names (recording-plan-shopify.ts) on the
 // live bridge, in order: later steps use what earlier ones created (a product,
@@ -66,7 +67,31 @@ function requiredEnv(name: string): string {
 
 const rawDomain = requiredEnv("SHOPIFY_DEV_STORE_DOMAIN").toLowerCase()
 const SHOP = rawDomain.endsWith(".myshopify.com") ? rawDomain : `${rawDomain}.myshopify.com`
-const TOKEN = requiredEnv("SHOPIFY_DEV_STORE_OFFLINE_TOKEN")
+/**
+ * The app's own offline Admin API token for the store, from the client
+ * credentials grant (an app and a development store of the same organization):
+ * an app token, as a connected store gives the app in production, not a
+ * user's. Neither can start a bulk operation (Shopify keeps those to tokens
+ * from the authorization-code grant), so the customer backfill's fixture
+ * holds the store's refusal; its bulk-operation path is covered by its unit
+ * tests.
+ */
+async function appToken(): Promise<string> {
+  const res = await fetch(`https://${SHOP}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: requiredEnv("SHOPIFY_OAUTH_CLIENT_ID"),
+      client_secret: requiredEnv("SHOPIFY_OAUTH_CLIENT_SECRET"),
+    }),
+  })
+  if (!res.ok) throw new Error(`client credentials grant: ${res.status}`)
+  const token = ((await res.json()) as { access_token?: string }).access_token
+  if (!token) throw new Error("client credentials grant: no access_token")
+  return token
+}
+const TOKEN = await appToken()
 
 const manifest = JSON.parse(readFileSync(join(DIR, "app.manifest.json"), "utf8")) as Record<
   string,
@@ -343,6 +368,10 @@ describe("record Shopify contract fixtures", () => {
         limits: productionLimits(entry),
       })
       if (problem) {
+        if (process.env.CONTRACT_RECORD_DEBUG) {
+          // The rejected fixture, for a look at what the replay asked for (outside the repo).
+          writeFixture(join(process.env.TMPDIR ?? "/tmp", "contract-rejected"), APP, scrubbed)
+        }
         report.push(`FAIL ${step.entry}: ${problem} | ${summary}`)
         continue
       }

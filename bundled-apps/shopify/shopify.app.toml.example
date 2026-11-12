@@ -11,7 +11,7 @@ embedded = false
 
 [access_scopes]
 # Shopify grants a store exactly these scopes when it connects (managed installation).
-scopes = "read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,write_customers,read_products,write_products,read_inventory,write_inventory,read_locations,read_returns,write_returns,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_markets,read_companies,read_discounts,write_discounts,read_reports,read_publications,write_publications"
+scopes = "read_orders,write_orders,read_draft_orders,write_draft_orders,read_customers,write_customers,read_products,write_products,read_inventory,write_inventory,read_locations,read_returns,write_returns,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_markets,read_companies,read_discounts,write_discounts,read_reports,read_publications,write_publications,write_online_store_navigation"
 use_legacy_install_flow = false
 
 [auth]

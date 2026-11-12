@@ -3,7 +3,8 @@
 // Shopify mutation tools: products_merge (fold a duplicate product into a survivor).
 
 import type { AppContext } from "@liaison/app-sdk"
-import { getShopifyClient } from "../lib/get-client"
+import { grantSatisfies, recordedGrantedScopes } from "../lib/constants"
+import { getShopifyClient, resolveInstallMetadata } from "../lib/get-client"
 import { inventory_adjust } from "./inventory"
 import { PRODUCT_DELETE } from "./products"
 import {
@@ -175,8 +176,9 @@ export async function products_merge_preflight(
 ): Promise<PreflightResult> {
   try {
     const { survivorId, duplicateId } = resolveMergeIds(params)
-    await readMergeProduct(ctx, survivorId, "survivor (keep)")
-    await readMergeProduct(ctx, duplicateId, "duplicate (remove)")
+    const survivor = await readMergeProduct(ctx, survivorId, "survivor (keep)")
+    const duplicate = await readMergeProduct(ctx, duplicateId, "duplicate (remove)")
+    await assertRedirectScope(ctx, redirectPlan(survivor, duplicate))
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -187,6 +189,11 @@ export async function products_merge(params: Record<string, unknown>, ctx: AppCo
   const { survivorId, duplicateId } = resolveMergeIds(params)
   const survivor = await readMergeProduct(ctx, survivorId, "survivor (keep)")
   const duplicate = await readMergeProduct(ctx, duplicateId, "duplicate (remove)")
+  // The redirect leg needs a scope the variant leg does not: check it BEFORE the first write, so a
+  // connection without it gets a refusal, never variants copied onto the survivor with the duplicate
+  // left in place (the grant can change between staging and approval, so the handler checks again).
+  const plannedRedirect = redirectPlan(survivor, duplicate)
+  await assertRedirectScope(ctx, plannedRedirect)
 
   // SKUs already on the survivor — duplicate variants matching these are NOT recreated (a duplicate SKU
   // 422s "SKU has already been taken"). Case-insensitive, trimmed.
@@ -298,11 +305,8 @@ export async function products_merge(params: Record<string, unknown>, ctx: AppCo
   // links + SEO. Skipped only when the duplicate has no handle (a never-published throwaway has none →
   // there is no inbound URL to preserve, so this is a legitimate no-op, not a swallowed failure).
   let redirect: { path: string; target: string } | null = null
-  const dupHandle = typeof duplicate.handle === "string" ? duplicate.handle.trim() : ""
-  const survivorHandle = typeof survivor.handle === "string" ? survivor.handle.trim() : ""
-  if (dupHandle.length > 0 && survivorHandle.length > 0 && dupHandle !== survivorHandle) {
-    const path = `/products/${dupHandle}`
-    const target = `/products/${survivorHandle}`
+  if (plannedRedirect) {
+    const { path, target } = plannedRedirect
     const client = await getShopifyClient(ctx)
     markExternalEffect(ctx) // direct mutation send (bypasses runMutation's marking)
     const rdata = await client.query<{
@@ -381,6 +385,36 @@ export async function products_merge(params: Record<string, unknown>, ctx: AppCo
     redirect,
     note,
   }
+}
+
+/** The Shopify scope `urlRedirectCreate` / `urlRedirectUpdate` need. */
+export const REDIRECT_WRITE_SCOPE = "write_online_store_navigation"
+
+/** The duplicate-handle -> survivor-handle redirect a merge sets up (PURE), or null when there is no
+ *  inbound URL to preserve (the duplicate has no handle, or both share it). */
+function redirectPlan(
+  survivor: MergeProductNode,
+  duplicate: MergeProductNode,
+): { path: string; target: string } | null {
+  const dupHandle = typeof duplicate.handle === "string" ? duplicate.handle.trim() : ""
+  const survivorHandle = typeof survivor.handle === "string" ? survivor.handle.trim() : ""
+  if (dupHandle.length === 0 || survivorHandle.length === 0 || dupHandle === survivorHandle) return null
+  return { path: `/products/${dupHandle}`, target: `/products/${survivorHandle}` }
+}
+
+/** Refuse a merge that needs a redirect when the connection's recorded grant does not hold the
+ *  redirect scope. An UNRECORDED grant refuses too: the scope was added to the OAuth request after
+ *  grant tracking, so a connection whose grant was never recorded cannot hold it, and letting it
+ *  through would copy the variants, then fail on the redirect with the duplicate still in place. */
+async function assertRedirectScope(ctx: AppContext, plan: { path: string } | null): Promise<void> {
+  if (!plan) return
+  const granted = recordedGrantedScopes(await resolveInstallMetadata(ctx))
+  if (grantSatisfies(new Set(granted), REDIRECT_WRITE_SCOPE)) return
+  throw makeMutationError(
+    "MISSING_SHOPIFY_SCOPE",
+    `products_merge needs the Shopify "${REDIRECT_WRITE_SCOPE}" permission to redirect ${plan.path} to the kept listing, and this store's connection has not granted it, so nothing was changed. An admin must add it to the Shopify app's configuration (its shopify.app.toml scopes, then shopify app deploy), then reconnect Shopify (Settings, Shopify, Reconnect) to approve the updated permissions, then retry.`,
+    403,
+  )
 }
 
 // ── products_merge inventory/option helpers ──────────────────────────────

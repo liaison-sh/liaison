@@ -202,3 +202,4 @@ names and addresses in Boxtal's character set, transliterated -> bundled-apps/bo
 refusals carry Boxtal's own message -> bundled-apps/boxtal/src/lib/boxtal-v3-client.ts:48 ; bundled-apps/boxtal/src/shipment.ts:2727
 boxtal:order papers generated at To prepare, after the buy, in the pack -> bundled-apps/boxtal/src/customs-documents.ts:466
 order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602
+Boxtal shipment declares pick -> bundled-apps/boxtal/app.manifest.json:225

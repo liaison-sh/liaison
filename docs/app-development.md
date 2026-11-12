@@ -750,6 +750,16 @@ app versions they were built from: during a rolling deploy, a process still on
 an older version of your app leaves them as the newer release built them, so
 raise your app's version whenever you change these declarations.
 
+**Let people pick a record your search does not index.** A dashboard table's
+link cell picks a record of an app ([Keep data in tables](agents/dashboard-tables.md)).
+An entity the search index does not hold (a record of an outside service) can
+declare `pick: { "tool", "queryParam", "idField", "labelField", "itemsPath"? }`:
+`tool` is one of your app's own read tools, `readOnly` and never gated, run as
+the person with `{ [queryParam]: <what they typed> }`. Each item of its result
+(at `itemsPath`, else the result itself or its only list) gives the record's id
+(`idField`) and label (`labelField`). Registration refuses a pick tool that is
+not yours, not read-only, gated, or takes no `queryParam`.
+
 **What the search index holds for an entity.** A searchable entity's
 `indexFields` names the columns its search document is built from: `title`,
 `handle`, `labelSecondary` and `body`. Two keys add more text to the body.

@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.23",
+  "version": "0.4.24",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -420,6 +420,7 @@
   "entities": {
     "order": {
       "labelField": "name",
+      "pick": { "tool": "orders_search", "queryParam": "query", "idField": "id", "labelField": "title", "itemsPath": "results" },
       "handlePrefix": "shopify_ord_",
       "tableName": "orders",
       "readScope": "shopify:orders:read",
@@ -427,6 +428,7 @@
     },
     "customer": {
       "labelField": "email",
+      "pick": { "tool": "customers_search", "queryParam": "query", "idField": "id", "labelField": "title", "itemsPath": "results" },
       "handlePrefix": "shopify_cus_",
       "tableName": "customers",
       "readScope": "shopify:customers:read",
@@ -434,6 +436,7 @@
     },
     "product": {
       "labelField": "title",
+      "pick": { "tool": "products_search", "queryParam": "query", "idField": "id", "labelField": "title", "itemsPath": "results" },
       "handlePrefix": "shopify_prd_",
       "tableName": "products",
       "readScope": "shopify:products:read",
@@ -448,6 +451,7 @@
     },
     "return": {
       "labelField": "name",
+      "pick": { "tool": "returns_search", "queryParam": "query", "idField": "id", "labelField": "title", "itemsPath": "results" },
       "handlePrefix": "shopify_ret_",
       "tableName": "returns",
       "readScope": "shopify:returns:read",

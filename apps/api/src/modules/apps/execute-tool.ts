@@ -216,6 +216,7 @@ import {
   conversationReadersTaintGap,
   holdsEveryScope,
   readersTaintGap,
+  resourceReadersTaintGap,
   selfReaderTaintGap,
   sinkReaderScopes,
   type TaintAudienceGap,
@@ -3975,6 +3976,26 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         allowedBySinkReaders = readersGap === null
         if (readersGap) {
           audience = "member"
+          gap = readersGap
+        }
+      }
+      // A write read by the readers of one shared resource (rule 6j, tables_rows_write: a
+      // dashboard table's rows follow its sharing) runs when they all hold what the turn read.
+      if (
+        tool.gated !== true &&
+        tool.sinkReadersResource &&
+        err.writeTargetTable === tool.writesToTable
+      ) {
+        const resource = tool.sinkReadersResource
+        const readersGap = await resourceReadersTaintGap({
+          orgId: opts.orgId,
+          resourceType: resource.type,
+          resourceId: (opts.params as Record<string, unknown> | null)?.[resource.idParam],
+          taintScopes: knownTaint,
+        })
+        allowedBySinkReaders = readersGap === null
+        if (readersGap) {
+          audience = "readers"
           gap = readersGap
         }
       }

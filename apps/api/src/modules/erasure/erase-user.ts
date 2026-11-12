@@ -504,6 +504,23 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "anonymize → NULL (who saved a kept version of a surviving org dashboard)",
   },
+  "dashboard_tables.owner_user_id": {
+    kind: "handled",
+    reason:
+      "anonymize → NULL (a table is org data; the people and roles it is shared with keep it)",
+  },
+  "dashboard_tables.created_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (creator attribution on a surviving table)",
+  },
+  "dashboard_tables.updated_by": {
+    kind: "handled",
+    reason: "anonymize → NULL (last-editor attribution on a surviving table)",
+  },
+  "dashboard_table_changes.actor_id": {
+    kind: "handled",
+    reason: "anonymize → NULL (who changed a row; the history reads 'Former member')",
+  },
   "app_documents.created_by": {
     kind: "handled",
     reason: "anonymize → NULL (creator attribution; the document is org data)",
@@ -1335,6 +1352,19 @@ export async function eraseUser(
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboard_versions SET saved_by = NULL WHERE saved_by = ${userId}
+      `)
+      // Dashboard tables (0296): org data, so attribution only; a row change's actor too.
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboard_tables SET owner_user_id = NULL WHERE owner_user_id = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboard_tables SET created_by = NULL WHERE created_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboard_tables SET updated_by = NULL WHERE updated_by = ${userId}
+      `)
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.dashboard_table_changes SET actor_id = NULL WHERE actor_id = ${userId}
       `)
       await tx.execute(drizzleSql`
         UPDATE ${K}.app_documents SET created_by = NULL WHERE created_by = ${userId}

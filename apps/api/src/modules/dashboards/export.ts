@@ -27,7 +27,7 @@ import {
   getBlockData,
   getDashboard,
 } from "~/modules/dashboards/service"
-import { checkStoreSource, checkToolSource } from "~/modules/dashboards/sources"
+import { checkSource } from "~/modules/dashboards/sources"
 import {
   type BlockSource,
   blockSourceOf,
@@ -440,12 +440,11 @@ async function recipientRefusal(ctx: UserContext, dashboardId: string): Promise<
     }
   }
   for (const s of sources) {
-    const check =
-      s.kind === "tool"
-        ? await checkToolSource(ctx.orgId, s.tool, ctx)
-        : await checkStoreSource(ctx.orgId, s.app, s.collection, ctx)
+    const check = await checkSource(ctx.orgId, s, ctx)
     if (!check.ok) {
-      return `cannot read ${s.kind === "tool" ? s.tool : `${s.app}/${s.collection}`} (${check.code})`
+      const name =
+        s.kind === "tool" ? s.tool : s.kind === "store" ? `${s.app}/${s.collection}` : "a table"
+      return `cannot read ${name} (${check.code})`
     }
   }
   return null

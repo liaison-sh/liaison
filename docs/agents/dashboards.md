@@ -298,3 +298,5 @@ Signed-in requests, with the person's own access:
 | `DELETE /api/dashboards/:id/viewer-state` | Forget it: the dashboard opens on its defaults again. |
 
 A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, a note's `markdown`, and `meta`; with a comparison, `previous`; a metric's `target` and `sparkline`; how a chart is drawn in `display`; a table's `links`), with `computedAt`, `window` (the days it read, or its own dates) and `compareWindow`, or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named; an unknown filter or a value outside a filter's list answers 400.
+
+Tables a dashboard shows and edits have their own API and tools: [Keep data in tables](dashboard-tables.md).

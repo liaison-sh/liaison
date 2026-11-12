@@ -103,6 +103,7 @@ import { cloudRoutes } from "~/modules/cloud/routes"
 import { contacts } from "~/modules/contacts/routes"
 import { trustedSendersRoutes } from "~/modules/contacts/trusted-senders-routes"
 import { dashboardsRoutes } from "~/modules/dashboards/routes"
+import { tablesRoutes } from "~/modules/dashboards/tables/routes"
 import { documentRoutes, documentTemplateRoutes } from "~/modules/documents/routes"
 import { documentTemplateRuleRoutes } from "~/modules/documents/rules-routes"
 import { orgExportDownloadRelay, orgExportRoutes } from "~/modules/export/org-archive/routes"
@@ -850,6 +851,8 @@ app.use("/api/saved-views/*", authMw, orgLimiter)
 app.route("/api/saved-views", savedViewsRoutes)
 app.use("/api/dashboards", authMw, orgLimiter)
 app.use("/api/dashboards/*", authMw, orgLimiter)
+// Before /api/dashboards: its /:id would take "tables" for a dashboard id.
+app.route("/api/dashboards/tables", tablesRoutes)
 app.route("/api/dashboards", dashboardsRoutes)
 
 app.use("/api/org", authMw, orgLimiter)

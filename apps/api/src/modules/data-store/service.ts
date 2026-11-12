@@ -537,7 +537,11 @@ export async function listCollections(
     .where(
       and(
         eq(appDocumentUsage.orgId, filter.orgId),
-        filter.app !== undefined ? eq(appDocumentUsage.app, filter.app) : undefined,
+        // A dashboard table's rows (app `dashboards`, modules/dashboards/tables) follow the
+        // table's own sharing: their collections are not listed with the org's store.
+        filter.app !== undefined
+          ? eq(appDocumentUsage.app, filter.app)
+          : sql`${appDocumentUsage.app} <> 'dashboards'`,
         sql`${appDocumentUsage.docs} > 0`,
       ),
     )
@@ -740,6 +744,8 @@ export async function queryDocuments(
   caller: StoreCaller,
   collection: string,
   query: StoreQuery = {},
+  /** Host-only narrowing, never taken from a tool's query: documents holding this text in a value. */
+  host: { contains?: string } = {},
 ): Promise<StoreQueryResult> {
   assertCaller(caller)
   assertCollection(collection)
@@ -785,6 +791,13 @@ export async function queryDocuments(
     eq(appDocuments.collection, collection),
     ...compiled.conditions,
   ]
+  const text = host.contains?.trim()
+  if (text) {
+    const pattern = `%${text.slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM jsonb_each(${appDocuments.data}) e WHERE e.value::text ILIKE ${pattern})`,
+    )
+  }
   if (query.cursor !== undefined) {
     const c = decodeCursor(query.cursor, order)
     if (orderField === DOC_ID_FIELD) {
@@ -811,7 +824,7 @@ export async function queryDocuments(
       .orderBy(...(sortKey ? [sortDir(sortKey)] : []), sortDir(appDocuments.docId))
       .limit(limit + 1)
 
-  const unindexed = compiled.unindexed || orderField !== UPDATED_AT_FIELD
+  const unindexed = compiled.unindexed || orderField !== UPDATED_AT_FIELD || Boolean(text)
   const rows = unindexed
     ? await withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run)
     : await run(tx)

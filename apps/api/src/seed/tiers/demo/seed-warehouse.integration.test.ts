@@ -32,7 +32,7 @@
 //   bun scripts/db-reset.ts hardening
 //   cd apps/api && bun test src/seed/tiers/demo/seed-warehouse.integration.test.ts --timeout 600000
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { sql } from "drizzle-orm"
@@ -41,6 +41,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { CryptoContext, decryptSecret, encryptSecret } from "~/lib/crypto"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { resetCatalogCache } from "~/modules/apps/catalog"
 import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -51,6 +52,7 @@ import {
   DEMO_WAREHOUSE_SCHEMA,
   DEMO_WAREHOUSE_SENTINEL_DSN,
 } from "~/modules/demo/warehouse"
+import { stageDemoCatalog } from "../../../../test-support/seed/stage-demo-catalog"
 import { seedDemoWarehouse } from "./seed-warehouse"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
@@ -65,6 +67,7 @@ const SLUG = `demo-warehouse-${Date.now()}`
 let ORG = ""
 let USER = ""
 let COUNTS: Record<string, number> = {}
+let catalogDir = ""
 
 const ACTOR = () => ({
   actorType: "user" as const,
@@ -119,6 +122,13 @@ beforeAll(async () => {
     process.env.LIAISON_APPS_DIR = path.join(mkdtempSync(path.join(tmpdir(), "demo-wh-")), "apps")
   }
   DemoModeTestAccess.set(true)
+  // The warehouse layer installs the `database` catalog app, as the image would.
+  catalogDir = stageDemoCatalog("demo-wh", ["database"])
+  process.env.LIAISON_APP_CATALOG_DIR = catalogDir
+  resetCatalogCache()
+  // This run's install root is new: an install a previous run recorded is not in it.
+  await db.execute(sql`DELETE FROM kernel.apps_active_version WHERE name = 'database'`)
+  await db.execute(sql`DELETE FROM kernel.apps_installed WHERE name = 'database'`)
 
   const [org] = extractRows<{ id: string }>(
     await db.execute(
@@ -136,6 +146,9 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
 
+  // The roles the world's domain access names (the org seed makes them first).
+  await db.execute(sql`INSERT INTO kernel.roles (org_id, name, description)
+    VALUES (${ORG}::uuid, 'finance', 'Finance'), (${ORG}::uuid, 'operations', 'Operations')`)
   await markOrgAsDemo(ORG, reservedMarker())
   await ensureAppsForOrg(ORG)
 
@@ -147,6 +160,9 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  delete process.env.LIAISON_APP_CATALOG_DIR
+  resetCatalogCache()
+  if (catalogDir) rmSync(catalogDir, { recursive: true, force: true })
   SqlPoolTestAccess.reset()
   resetAppRegistries()
   DemoModeTestAccess.set(null)

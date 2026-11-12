@@ -245,12 +245,22 @@ async function credentialsOf(
   if (declaration.catalog === "instance") {
     // On the public demo box a demo org's stored DSN is a sentinel that
     // resolves to the demo warehouse's own login (null everywhere else).
-    const { resolveDemoWarehouseHandle } = await import("~/modules/demo/warehouse/resolve")
-    const demo = await resolveDemoWarehouseHandle(ctx.orgId, {
-      connectionString: stored.connectionString,
-      gateUrl: stored.gateUrl,
-      gateToken: stored.gateToken,
-    })
+    const { DemoWarehouseRefused, resolveDemoWarehouseHandle } = await import(
+      "~/modules/demo/warehouse/resolve"
+    )
+    let demo: Awaited<ReturnType<typeof resolveDemoWarehouseHandle>>
+    try {
+      demo = await resolveDemoWarehouseHandle(ctx.orgId, {
+        connectionString: stored.connectionString,
+        gateUrl: stored.gateUrl,
+        gateToken: stored.gateToken,
+      })
+    } catch (err) {
+      // A demo org holding anything but the sentinel (or a sentinel outside a
+      // demo org) has no usable connection: said so, with the reason.
+      if (err instanceof DemoWarehouseRefused) refuse("not_connected", err.message)
+      throw err
+    }
     if (demo) return { connectionString: demo.connectionString, sharedPool: demo.sharedPool }
   }
   return stored

@@ -32,6 +32,7 @@
 // caller records the seed as failed, exactly like the other layers.
 
 import { runAppProvisioning } from "~/modules/apps/app-provisioning"
+import { ensureAppsForOrg } from "~/modules/apps/init"
 import {
   DEMO_WAREHOUSE_DSN_ENV,
   DEMO_WAREHOUSE_SCHEMA,
@@ -101,6 +102,7 @@ export async function seedDemoWarehouse(
   // a visitor changed).
   const [app] = await installApps(org.orgId, org.adminUserId, ["database"], log)
   if (!app?.enabled) throw new Error(`the database app did not install: ${app?.error ?? "unknown"}`)
+  await ensureAppsForOrg(org.orgId)
   const access = await runAppProvisioning({
     orgId: org.orgId,
     appName: "database",

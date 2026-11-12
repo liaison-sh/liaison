@@ -18,10 +18,19 @@ export const DEMO_CATALOG_APPS = DEMO_APPS.filter((name) =>
  * (commerce's invoicing, the sales routine's quote) fails to seed.
  * Point `LIAISON_APP_CATALOG_DIR` at the returned folder; delete it after.
  */
-export function stageDemoCatalog(prefix: string): string {
+/**
+ * Catalog apps a demo layer installs itself (the warehouse layer's `database`
+ * app), staged beside the demo's.
+ */
+export const DEMO_LAYER_CATALOG_APPS = ["database"] as const
+
+export function stageDemoCatalog(
+  prefix: string,
+  apps: readonly string[] = [...DEMO_CATALOG_APPS, ...DEMO_LAYER_CATALOG_APPS],
+): string {
   const dir = mkdtempSync(path.join(tmpdir(), `${prefix}-catalog-`))
   const repo = path.join(import.meta.dir, "..", "..", "..", "..")
-  const entries = DEMO_CATALOG_APPS.map((name) => {
+  const entries = apps.map((name) => {
     const manifest = JSON.parse(
       readFileSync(path.join(repo, "bundled-apps", name, "app.manifest.json"), "utf8"),
     ) as {

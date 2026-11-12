@@ -141,6 +141,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "who on an approval's route is an active member; next in line by stored ids",
   ],
+  "modules/apps/contract/recording-run.test-helpers.ts": [
+    "creates-member",
+    "the contract org's recorder, run by hand",
+  ],
   "modules/apps/app-pages.ts": [
     "one-row",
     "re-checks the person a page link was minted for, who acts with their own scopes",
@@ -256,6 +260,11 @@ const TREATED: Record<string, [Treatment, string]> = {
     "people named by id, refused when external; the deciders list skips external users",
   ],
   "modules/users/service.ts": ["one-row", "reads run on RLS; the merge target by id"],
+  "modules/users/routes.ts": ["member-filter", "a member's sidebar, by the id an admin names"],
+  "modules/users/sidebar-agent-tools.ts": [
+    "member-filter",
+    "a member's sidebar, by the id an admin's agent names",
+  ],
   "modules/webhooks/handler-run.ts": [
     "walks-org",
     "the oldest active row as a stored webhook's acting user",

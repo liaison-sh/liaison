@@ -327,7 +327,7 @@ async function memberInOrg(tx: PrivilegedDb, orgId: string, userId: string): Pro
   const [row] = await tx
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
+    .where(and(eq(users.id, userId), eq(users.orgId, orgId), eq(users.userType, "member")))
     .limit(1)
   return Boolean(row)
 }

@@ -15,13 +15,14 @@
 //
 // An exclusion carries one of the reasons a read may stay off dashboards: a spec rule, a
 // read limited to a person's own turn, a DM or a trust boundary (a secret, a key), a web
-// read, a contract op another app or the kernel calls, or (pending a ruling) a duplicate
-// of a read that is itself a source. Nothing else: a flag set for convenience goes instead.
+// read, or a contract op another app or the kernel calls. Nothing else: a flag set for
+// convenience goes instead, and "a duplicate of a source" is not a reason.
 //
 // `pendingMainFix` lists reads that do not qualify today for a reason that is not one of
-// those: a hidden page read (the rule refuses any read not offered to agents), a kernel read
-// not yet on the source list. Each waits on a fix on main, to the rule or to the tool; the
-// list must be empty before this epic's gate.
+// those: a hidden page read (the rule refuses any read not offered to agents), a hidden
+// read that repeats a source's rows, a kernel read not yet on the source list. Each waits
+// on a fix on main, to the rule or to the tool; the list must be empty before this epic's
+// gate.
 
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
@@ -39,7 +40,6 @@ type Reason =
   | "trust boundary"
   | "web read"
   | "contract-only op"
-  | "duplicate of a source"
 
 const REPO = join(import.meta.dir, "..", "..", "..", "..", "..")
 /** Apps no org runs: the template app and the contacts shim (tool-bench/catalog.ts). */
@@ -278,11 +278,6 @@ const SOURCES: Record<string, Shape> = {
 /** Reads that stay off dashboards, each with its reviewed reason. */
 const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
   {
-    tool: "ads:pending_approvals_list",
-    reason: "duplicate of a source",
-    why: "the same rows as kernel approvals_list, a source; hidden so the agent has one approvals read",
-  },
-  {
     tool: "calendar:activity_read",
     reason: "contract-only op",
     why: "the kernel's timeline contract: called by the kernel with its cursor; the app's own search reads give the same records",
@@ -316,11 +311,6 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     tool: "invoicing:draft_issue_preview",
     reason: "contract-only op",
     why: "what an approval card reads for a saved draft",
-  },
-  {
-    tool: "invoicing:pending_approvals_list",
-    reason: "duplicate of a source",
-    why: "the same rows as kernel approvals_list, a source; hidden so the agent has one approvals read",
   },
   {
     tool: "kernel:contacts_identity",
@@ -461,6 +451,14 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
 
 /** Reads that wait on a fix on main (the rule or the tool). Must be empty before the gate. */
 const pendingMainFix: ReadonlyArray<{ tool: string; why: string }> = [
+  {
+    tool: "ads:pending_approvals_list",
+    why: "hidden; the same rows as kernel approvals_list, a source; waits for the rule to stop requiring agentVisible or for the tool to go",
+  },
+  {
+    tool: "invoicing:pending_approvals_list",
+    why: "hidden; the same rows as kernel approvals_list, a source; waits for the rule to stop requiring agentVisible or for the tool to go",
+  },
   {
     tool: "projects:company_work",
     why: "hidden page read (a company's Work section); un-hiding costs the agent's search ranking and catalog, so it waits for the rule to stop requiring agentVisible",

@@ -32,6 +32,7 @@ import { writeAuditLog } from "~/modules/audit/service"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { revokeSessions } from "~/modules/auth/session-revocation"
 import { releaseErasedUserContacts } from "~/modules/contacts/erasure"
+import { cancelOwnerlessTableApprovals } from "~/modules/dashboards/tables/ownerless"
 import { erasedUserEmail } from "~/modules/erasure/erased-user"
 import { enqueueIndexerDelete } from "~/modules/search/indexer"
 import { collectSearchableRegistrations } from "~/modules/search/searchable-entities"
@@ -1357,6 +1358,8 @@ export async function eraseUser(
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboard_tables SET owner_user_id = NULL WHERE owner_user_id = ${userId}
       `)
+      // A change an agent staged for that owner to decide can no longer be decided (ownerless.ts).
+      await cancelOwnerlessTableApprovals(tx, orgId, userId)
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboard_tables SET created_by = NULL WHERE created_by = ${userId}
       `)

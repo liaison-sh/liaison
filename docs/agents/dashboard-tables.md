@@ -63,9 +63,11 @@ Your agent uses these tools, with your access:
 | `tables_rows_write` | Up to 50 row changes at once (add, update, delete), all or none. |
 | `tables_edit` | Create a table, change its columns or settings, or delete it. |
 
-A row change by an agent applies at once and is recorded, unless the table's **Agent row writes need approval** is on: then all its changes wait on one approval card. Creating a table, changing its columns or deleting it always waits for an approval. A restricted table's card goes to its owner; a table the whole organisation sees is decided by a dashboards administrator. A restricted table whose owner's account was erased has no one to decide: such a change is refused until the table has an owner. If a row changed between the request and its approval, the whole change is refused and names the row.
+A row change by an agent applies at once and is recorded, unless the table's **Agent row writes need approval** is on: then all its changes wait on one approval card. Creating a table, changing its columns or deleting it always waits for an approval. A restricted table's card goes to its owner; a table the whole organisation sees is decided by a dashboards administrator. A restricted table whose owner's account was erased has no one to decide: such a change is refused until the table has an owner, and a change already waiting for that owner is cancelled when the account is erased. If a row changed between the request and its approval, the whole change is refused and names the row.
 
 After your agent reads a table shared with some people only, anything it writes in the same turn runs at once only when everyone who will read it can read that table too. Otherwise it waits for your own approval (no one else sees the card): copying a restricted table's rows into a table the whole organisation sees, or posting them in a conversation with someone the table is not shared with, is a choice you make.
+
+In a conversation, your agent reads a table shared with some people only when everyone in the conversation can read it. Otherwise it answers that it cannot show it there, and the card under its answer offers to continue in a direct message or to share the answer with the conversation anyway, as for anything else not everyone in the room may see. A later answer in that conversation leaves out an earlier read of the table once someone who cannot read it has joined.
 
 Your own changes in the app never wait for an approval.
 

@@ -441,6 +441,18 @@
 //         deciders, who may not read the resource. A call no person asked for is refused.
 //      d. The record is per turn (the live origin store, forwarded across a hop like A46b): the
 //         reply stamp carries the scopes only, so a later turn is judged by its own reads.
+//      e. THE ROOM FLOOR REACHES IT. The agent's own answer is the turn's widest write: it lands in
+//         the conversation, and the reply stamp says `kernel:dashboards:read`, which everyone
+//         holds. So the room floor (effective-scope.ts) is applied to the resource's readers: in a
+//         turn whose room counts people (`roomPeople` on the frame: a conversation's people, the
+//         requester alone in a DM with the agent), a read of a restricted resource some of them
+//         may not read is withheld by the room, the same as a scope the floor took away
+//         (execute-tool.ts, `roomWithheldResourceRead`). The call returns "not read here", the
+//         resource's scope joins the turn's `withheld`, and the requester's card offers "Continue
+//         in a DM" and "Share anyway": the rerun bypasses the floor (no `roomPeople`) and writes
+//         the answer with the room's people on its disclosure list, audited. A routine tick has
+//         no floor. Later turns: the read never happened in that room, and a turn floored by
+//         another room replays only that room's history.
 //
 // SAME-RESOURCE ALLOWANCE (A46). The taint also records WHERE it came from: per table, the row
 // ids the turn's scoped reads RETURNED (A46b: filed after the read succeeded, never from its

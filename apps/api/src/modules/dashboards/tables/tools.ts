@@ -23,6 +23,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
+import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
   ADMIN_SCOPE,
   applyColumnOps,
@@ -142,9 +143,6 @@ async function tableDecider(
   if (!stored.ownerUserId) throw new TableError("forbidden", OWNERLESS_MESSAGE)
   return stored.ownerUserId
 }
-
-const OWNERLESS_MESSAGE =
-  "this table is shared with some people only and has no owner (its owner's account was erased), so nobody may approve an agent's change to it: it needs an owner first. Ask an editor of the table to make the change by hand, or an admin to share it with the whole organisation."
 
 /**
  * A gated change to a restricted table with no owner (its owner was erased) has no decider: the

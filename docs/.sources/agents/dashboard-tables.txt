@@ -45,5 +45,8 @@ A link column with no linkTo searches every app -> apps/api/src/modules/dashboar
 A removed column's cells are hidden from rows, history, search and filters -> apps/api/src/modules/dashboards/tables/service.ts:534 ; apps/api/src/modules/dashboards/tables/service.ts:547 ; apps/api/src/modules/dashboards/tables/service.ts:557
 An undo whose old values no longer fit is refused, naming the column -> apps/api/src/modules/dashboards/tables/service.ts:1239
 The grid search matches only what the reader sees -> apps/api/src/modules/dashboards/tables/service.ts:547
-A restricted table with no owner refuses an agent's gated change -> apps/api/src/modules/dashboards/tables/tools.ts:146
-After reading a restricted table, a write some readers cannot see waits for the requester -> apps/api/src/modules/apps/execute-tool.ts:4355
+A restricted table with no owner refuses an agent's gated change -> apps/api/src/modules/dashboards/tables/tools.ts:151
+After reading a restricted table, a write some readers cannot see waits for the requester -> apps/api/src/modules/apps/execute-tool.ts:4396
+A change waiting for an erased owner is cancelled with the erasure -> apps/api/src/modules/erasure/erase-user.ts:1362 ; apps/api/src/modules/dashboards/tables/ownerless.ts:29
+In a conversation, a restricted table is read only when everyone there can read it, else withheld by the room -> apps/api/src/modules/apps/execute-tool.ts:3785 ; apps/api/src/modules/agent/scopes/taint-approval-audience.ts:396
+A later answer leaves out an earlier read of it once someone who cannot read it has joined -> apps/api/src/modules/agent/context/context.ts:2324 ; apps/api/src/modules/agent/scopes/room-resource-history.ts:27

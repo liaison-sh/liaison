@@ -11,7 +11,9 @@ import crypto from "node:crypto"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
+import { computeEffectiveScopeForTurn } from "~/modules/agent/scopes/effective-scope"
+import { withoutRoomWithheldResourceReads } from "~/modules/agent/scopes/room-resource-history"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -68,7 +70,8 @@ async function table(orgAccess: "none" | "viewer" | "editor") {
 /** One agent turn of `userId`: every call in `steps` shares the turn's taint and origins. */
 async function turn<T>(
   userId: string,
-  steps: (call: Caller, origins: () => unknown) => Promise<T>,
+  steps: (call: Caller, origins: () => unknown, frame: RunContext) => Promise<T>,
+  opts: { roomPeople?: string[] } = {},
 ): Promise<T> {
   const actor = await asHeld(userId)
   const accumulator = createTurnScopeAccumulator({ orgId })
@@ -88,18 +91,17 @@ async function turn<T>(
       origin: "in-app-agent",
       stepBundleId: null,
     })
-  return runContextStore.run(
-    {
-      runId,
-      parentRunId: null,
-      rootRunId: runId,
-      nestingDepth: 0,
-      humanTurn: true,
-      effectiveScope: actor.scopes,
-      turnScopeAccumulator: accumulator,
-    },
-    () => steps(call, () => accumulator.originRows()),
-  )
+  const frame: RunContext = {
+    runId,
+    parentRunId: null,
+    rootRunId: runId,
+    nestingDepth: 0,
+    humanTurn: true,
+    effectiveScope: actor.scopes,
+    turnScopeAccumulator: accumulator,
+    ...(opts.roomPeople ? { roomPeople: opts.roomPeople } : {}),
+  }
+  return runContextStore.run(frame, () => steps(call, () => accumulator.originRows(), frame))
 }
 type Caller = (
   toolName: string,
@@ -178,5 +180,90 @@ describe("a restricted table's read narrows the turn's writes", () => {
       SELECT count(*)::int AS n FROM kernel.messages
        WHERE thread_id = ${room}::uuid AND content LIKE '%91000%'`
     expect(posted?.n).toBe(0)
+  })
+})
+
+describe("the agent's answer in a conversation never carries a table someone there may not read", () => {
+  it("the room floor counts the conversation's people", async () => {
+    const room = await minimal.thread(orgId, editorId, {
+      title: "Floor people",
+      participantIds: [outsiderId],
+    })
+    const floor = await withSystemDb("resource-taint-floor", (tx) =>
+      computeEffectiveScopeForTurn(tx as never, orgId, room, editorId, ["*"]),
+    )
+    expect([...(floor.roomPeople ?? [])].sort()).toEqual([editorId, outsiderId].sort())
+  })
+
+  it("a restricted table is not read where someone it is not shared with will see the answer", async () => {
+    const source = await table("none")
+    const { res, frame, origins } = await turn(
+      editorId,
+      async (call, origins, frame) => ({
+        res: await call("kernel:tables_query", { tableId: source }).then(
+          (r) => ({ code: undefined as string | undefined, text: JSON.stringify(r) }),
+          (err: Error & { code?: string }) => ({ code: err.code, text: err.message }),
+        ),
+        frame,
+        origins: origins(),
+      }),
+      { roomPeople: [editorId, outsiderId] },
+    )
+    expect(res.code).toBe("E_ROOM_WITHHELD_RESOURCE")
+    expect(res.text).toContain("not everyone in this conversation may read it")
+    expect(res.text).not.toContain("91000")
+    // Withheld by the room like a floored scope: the requester's card offers a DM or Share anyway.
+    expect(frame.withheld).toContain(READ_SCOPE)
+    expect(origins).toEqual({})
+  })
+
+  it("is read when everyone in the conversation may read it, or the whole org sees it", async () => {
+    const restricted = await table("none")
+    const readers = await turn(
+      editorId,
+      (call) => call("kernel:tables_query", { tableId: restricted }),
+      { roomPeople: [editorId, ownerId] },
+    )
+    expect(JSON.stringify(readers)).toContain("91000")
+    const orgWide = await table("viewer")
+    const anyone = await turn(
+      editorId,
+      (call) => call("kernel:tables_query", { tableId: orgWide }),
+      { roomPeople: [editorId, outsiderId] },
+    )
+    expect(JSON.stringify(anyone)).toContain("91000")
+  })
+
+  it("a later turn does not replay an earlier read of it once someone who may not read it is there", async () => {
+    const source = await table("none")
+    const reply = {
+      id: "m1",
+      metadata: {
+        toolCalls: [
+          {
+            toolName: "kernel:tables_query",
+            args: { tableId: source },
+            result: { rows: [{ cells: { salary: 91000 } }] },
+            status: "completed",
+          },
+        ],
+      },
+    }
+    const plain = { id: "m2", metadata: {} }
+    const failed = {
+      id: "m3",
+      metadata: {
+        toolCalls: [
+          { toolName: "kernel:tables_query", args: { tableId: source }, status: "error" },
+        ],
+      },
+    }
+    const all = [reply, plain, failed]
+    expect(
+      (await withoutRoomWithheldResourceReads(orgId, all, [editorId, outsiderId])).map((m) => m.id),
+    ).toEqual(["m2", "m3"])
+    expect(
+      (await withoutRoomWithheldResourceReads(orgId, all, [editorId, ownerId])).map((m) => m.id),
+    ).toEqual(["m1", "m2", "m3"])
   })
 })

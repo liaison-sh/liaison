@@ -221,6 +221,7 @@ import {
   resourceReaders,
   resourceReadersTaintGap,
   resourceReadsGap,
+  roomWithheldResourceRead,
   selfReaderTaintGap,
   sinkReaderScopes,
   type TaintAudienceGap,
@@ -3758,6 +3759,46 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           message: `tool ${opts.toolName} would write (${blocked.writeTargetTable}) and this run may only read`,
           retryable: false,
         },
+      }
+    }
+  }
+
+  // THE ROOM FLOOR REACHES A SHARED RESOURCE (scope-taint.ts, rule 15e, 2026-11-12). In a
+  // conversation, the agent reads only what every person of it may read: the room floor takes away
+  // a scope one of them lacks, and the answer never quotes it to them. A dashboard table shared
+  // with some people only sits below every scope (`kernel:dashboards:read` is every member's), so
+  // the floor is applied to its readers here: a read of it in a room where someone may not read it
+  // is withheld by the room, exactly as a floored scope is. The requester's card under the answer
+  // then offers "Continue in a DM" and "Share anyway" (whose rerun bypasses the floor and discloses
+  // the answer to the room's people, recorded). No frame, or a frame no floor applies to (a
+  // routine tick, the Share anyway rerun), withholds nothing.
+  {
+    const roomFrame = currentRunContext()
+    const roomPeople = roomFrame?.roomPeople
+    const resourceType = tool.readsFromTable
+    if (
+      roomFrame &&
+      roomPeople !== undefined &&
+      isReadOnlyTool(tool) &&
+      typeof resourceType === "string"
+    ) {
+      const withheldScope = await roomWithheldResourceRead({
+        orgId: opts.orgId,
+        resourceType,
+        resourceIds: targetRowIds(tool, opts.params),
+        roomPeople,
+      })
+      if (withheldScope !== null) {
+        roomFrame.withheld = [...new Set([...(roomFrame.withheld ?? []), withheldScope])]
+        log.info({ toolName: opts.toolName }, "Shared resource read withheld by the room")
+        return {
+          error: {
+            code: "E_ROOM_WITHHELD_RESOURCE",
+            message: `tool ${opts.toolName}: NOT READ: this is shared with some people only, and not everyone in this conversation may read it, so it is not read here. Tell the person you cannot show it in this conversation: they can ask you in a direct message, or share your answer with this conversation from the card under it.`,
+            retryable: false,
+            status: 403,
+          },
+        }
       }
     }
   }

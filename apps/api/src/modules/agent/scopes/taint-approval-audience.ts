@@ -386,6 +386,36 @@ export async function resourceReadsGap(opts: {
   return outside.size === 0 ? null : { lacking: outside.size, resources: narrowed, readScopes }
 }
 
+/**
+ * THE ROOM FLOOR REACHES A SHARED RESOURCE (scope-taint.ts, rule 15e). A read of a resource only
+ * some people see, in a turn whose room counts `roomPeople`: null when every one of them reads
+ * every resource the call names (or the whole org sees it), else the scope to report as withheld
+ * by the room (the requester's card offers "Continue in a DM" and "Share anyway", as for a scope
+ * the floor took away). Fails closed: readers that cannot be enumerated withhold the read.
+ */
+export async function roomWithheldResourceRead(opts: {
+  orgId: string
+  resourceType: string
+  resourceIds: readonly string[]
+  roomPeople: readonly string[]
+}): Promise<string | null> {
+  if (!SHAREABLE_RESOURCES[opts.resourceType]) return null
+  const scope = RESOURCE_READ_SCOPE[opts.resourceType] ?? opts.resourceType
+  for (const id of opts.resourceIds) {
+    let readers: "everyone" | string[] | null
+    try {
+      readers = await resourceReaders(opts.orgId, opts.resourceType, id)
+    } catch {
+      readers = null
+    }
+    if (readers === "everyone") continue
+    if (readers === null) return scope
+    const allowed = new Set(readers)
+    if (opts.roomPeople.some((u) => !allowed.has(u))) return scope
+  }
+  return null
+}
+
 /** The people (user participants) of `threadId`, deduplicated: a parked post's audience. */
 export async function threadPeopleIds(orgId: string, threadId: string): Promise<string[]> {
   const rows = await withPrivilegedDb(orgId, "scope-taint-thread-people", (db) =>

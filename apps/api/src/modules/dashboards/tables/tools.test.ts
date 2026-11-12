@@ -9,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { decideApproval } from "~/modules/approvals/decide"
+import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import {
@@ -19,6 +21,7 @@ import {
   writeRows,
 } from "~/modules/dashboards/tables/service"
 import { registerDashboardTools } from "~/modules/dashboards/tools"
+import { eraseUser } from "~/modules/erasure/erase-user"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -133,6 +136,58 @@ describe("tables_rows_write", () => {
        WHERE org_id = ${orgId}::uuid AND tool_name LIKE '%tables_rows_write%'
          AND tool_params::text LIKE '%R-orphan%'`
     expect(pending?.n).toBe(0)
+  })
+
+  it("a waiting change to a restricted table whose owner is then erased can no longer be approved", async () => {
+    // Its own owner: erasing the file's shared owner would orphan every other test's table.
+    const leaver = (await minimal.person(orgId, { name: "Leaver" })).id
+    const lead = await asHeld(leaver)
+    const t = await createTable(lead, {
+      name: "Leaver's repairs",
+      columns: COLUMNS,
+      agentWritesNeedApproval: true,
+    })
+    await setTableSharing(lead, t.id, { users: [{ userId: editorId, role: "editor" }] })
+    const res = await agentCall(editorId, "kernel:tables_rows_write", {
+      tableId: t.id,
+      ops: [{ op: "add", cells: { batch: "R-left" } }],
+    })
+    const requestId = String(res.blocked?.approvalRequestId)
+    expect(
+      (await sql`SELECT resource_owner_id FROM kernel.approval_requests WHERE id = ${requestId}`)[0]
+        ?.resource_owner_id,
+    ).toBe(leaver)
+
+    expect((await eraseUser(leaver)).exitCode).toBe(0)
+
+    // An administrator of dashboards (and of approvals) tries to decide it.
+    const admin = (await minimal.person(orgId, { name: "Dashboards admin" })).id
+    for (const scope of ["kernel:dashboards:admin", "kernel:approvals:admin", "kernel:approve"]) {
+      await minimal.grantScope(admin, scope)
+    }
+    const [row] =
+      await sql`SELECT tool_name, current_payload FROM kernel.approval_requests WHERE id = ${requestId}`
+    const decided = await decideApproval({
+      orgId,
+      requestId,
+      actor: await asHeld(admin),
+      decision: "approve",
+      payloadHash: approvalPayloadHash(row?.tool_name as string, row?.current_payload),
+    }).then(
+      (d) => ({ status: d.status as string, text: JSON.stringify(d) }),
+      (err: Error) => ({ status: "refused", text: err.message }),
+    )
+    expect(decided.status).not.toBe("approved")
+    const [after] = await sql`
+      SELECT status, reason, resource_owner_id, notify_user_ids FROM kernel.approval_requests WHERE id = ${requestId}`
+    expect(after?.status).not.toBe("pending")
+    expect(after?.status).not.toBe("approved")
+    expect(String(after?.reason)).toContain("needs an owner")
+    // Nothing was written to the table.
+    const [rows] = await sql`
+      SELECT count(*)::int AS n FROM kernel.app_documents
+       WHERE collection = ${`t_${t.id.replaceAll("-", "")}`} AND data::text LIKE '%R-left%'`
+    expect(rows?.n).toBe(0)
   })
 
   it("an agent of someone the table is not shared with finds no table", async () => {

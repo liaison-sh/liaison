@@ -226,6 +226,26 @@ Blended sources join on the same date bucket only -> apps/api/src/modules/dashbo
 Blended figures from the sources' totals (units per session) -> apps/api/src/modules/dashboards/spec.ts:348
 One source failing shows its reason, the others still draw -> apps/api/src/modules/dashboards/transform.ts:1184
 Records behind a blended chart read one source at a time -> apps/api/src/modules/dashboards/service.ts:1752
+Filters list in edit mode, rename in place, remove -> apps/web/src/modules/dashboards/FilterEditor.tsx:125 ; apps/web/src/modules/dashboards/FilterEditor.tsx:152 ; packages/shared/src/i18n/locales/en/kernel.json:6519
+Blocks: N a filter narrows -> apps/web/src/modules/dashboards/FilterEditor.tsx:147 ; packages/shared/src/i18n/locales/en/kernel.json:6521
+Add filter opens an inline form, fields read when it opens -> apps/web/src/modules/dashboards/FilterEditor.tsx:68 ; packages/shared/src/i18n/locales/en/kernel.json:6523
+Fields come from the blocks' own data rows -> apps/api/src/modules/dashboards/service.ts:1811 ; apps/api/src/modules/dashboards/service.ts:1275
+Name starts as the field, every block holding it ticked -> apps/web/src/modules/dashboards/FilterEditor.tsx:87 ; apps/web/src/modules/dashboards/FilterEditor.tsx:88
+Kinds: choose one, several, type text -> packages/shared/src/i18n/locales/en/kernel.json:6531 ; packages/shared/src/i18n/locales/en/kernel.json:6532 ; packages/shared/src/i18n/locales/en/kernel.json:6533
+Text filter keeps rows containing what is typed -> apps/web/src/modules/dashboards/filter-editor.ts:161
+Values listed from a block's own data that reads no filter -> apps/web/src/modules/dashboards/filter-editor.ts:116 ; packages/shared/src/i18n/locales/en/kernel.json:6537
+Save filter, Cancel, Applies to -> packages/shared/src/i18n/locales/en/kernel.json:6524 ; packages/shared/src/i18n/locales/en/kernel.json:6525 ; packages/shared/src/i18n/locales/en/kernel.json:6536
+Add, rename, remove are edits (versioned, undo) -> apps/web/src/modules/dashboards/filter-editor.ts:146 ; apps/web/src/modules/dashboards/filter-editor.ts:168 ; apps/web/src/modules/dashboards/filter-editor.ts:173 ; apps/web/src/modules/dashboards/DashboardView.tsx:863
+Headline figure, change in the text's colour with an arrow -> apps/web/src/modules/dashboards/blocks/ChartHeadline.tsx:34 ; apps/web/src/modules/dashboards/blocks/ChartHeadline.tsx:73
+vs the compared days -> apps/web/src/modules/dashboards/blocks/ChartHeadline.tsx:86 ; packages/shared/src/i18n/locales/en/kernel.json:6516
+Legend names the periods by their days -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:81 ; apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:95
+Hover shows both days' values -> apps/web/src/modules/dashboards/blocks/Chart.tsx:221
+Today's bucket dotted, Today, still counting -> apps/web/src/modules/dashboards/blocks/Chart.tsx:190 ; apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:299 ; packages/shared/src/i18n/locales/en/kernel.json:6515
+Right axis named in the legend -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:260 ; packages/shared/src/i18n/locales/en/kernel.json:6514
+Smooth line drawn -> apps/web/src/modules/dashboards/blocks/Chart.tsx:200
+A failed source of a blended chart named under it -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:571
+Click on a blended chart opens that source's records -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:151
+Rows answer lists the names of the rows' fields; layer param -> apps/api/src/modules/dashboards/service.ts:1961 ; apps/api/src/modules/dashboards/routes.ts:172
 An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
 Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
 A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257

@@ -14,7 +14,14 @@ import { verifySurface } from "./apps.test-helpers"
 import type { ContractEntry } from "./entries"
 import { surfaceFor } from "./harness"
 import { quickJsContractExecutor } from "./quickjs-isolate"
-import { recordEntry, scrubFixture, scrubValue, verifyFixture, writeFixture } from "./recorder"
+import {
+  recordEntry,
+  scrubFixture,
+  scrubStoreIdentity,
+  scrubValue,
+  verifyFixture,
+  writeFixture,
+} from "./recorder"
 import type { EgressFixture } from "./replay-bridge"
 
 const SCRIPT = `async function lookup(params, ctx) {
@@ -167,6 +174,132 @@ describe("scrubValue", () => {
       ],
     }
     expect(scrubFixture(fixture, [])).toEqual(fixture)
+  })
+})
+
+// A live store's identity: what a recording reads from a real store and must
+// never write into a public fixture.
+const LIVE = {
+  title: "Nimbus Keyboard Mk II",
+  variantTitle: "Graphite",
+  sku: "NMB-MK2-GR",
+  vendor: "Nimbus Instruments Ltd",
+  handle: "nimbus-keyboard-mk-ii",
+  firstName: "Oriane",
+  lastName: "Valcourt",
+  company: "Valcourt Studios SARL",
+  address1: "17 Quai des Brumes",
+  location: "Valcourt Warehouse",
+}
+const LIVE_VALUES = Object.values(LIVE)
+
+/** A product, its variant, an order line and a customer, the shapes a store answers with. */
+function storeAnswer() {
+  return {
+    product: {
+      id: "gid://shopify/Product/1",
+      title: LIVE.title,
+      handle: LIVE.handle,
+      vendor: LIVE.vendor,
+      variants: [
+        {
+          id: "gid://shopify/ProductVariant/2",
+          title: LIVE.variantTitle,
+          displayName: `${LIVE.title} - ${LIVE.variantTitle}`,
+          sku: LIVE.sku,
+          price: "499.00",
+        },
+        { id: "gid://shopify/ProductVariant/3", title: "Default Title", sku: null },
+      ],
+    },
+    customer: {
+      first_name: LIVE.firstName,
+      last_name: LIVE.lastName,
+      email: "oriane@valcourt.test",
+      displayName: `${LIVE.firstName} ${LIVE.lastName}`,
+      companyContactProfiles: [{ company: { name: LIVE.company } }],
+      defaultAddress: { address1: LIVE.address1, city: "Lyon", zip: "69002", countryCode: "FR" },
+    },
+    location: { name: LIVE.location, address1: LIVE.address1, city: "Lyon" },
+    shipping_lines: [{ title: "Standard", price: "9.00" }],
+    tax_lines: [{ title: "FR TVA", rate: 0.2 }],
+  }
+}
+
+const RESTOCK = `async function restock(params, ctx) {
+  var p = await ctx.fetch("https://" + params.host + "/products/" + params.id, { method: "GET" })
+  var v = p.body.product.variants[0]
+  var q = await ctx.fetch("https://" + params.host + "/search?sku=" + encodeURIComponent(v.sku) +
+    "&q=" + encodeURIComponent(p.body.product.title), { method: "GET" })
+  var line = { title: p.body.product.title, sku: v.sku, quantity: 2 }
+  await ctx.fetch("https://" + params.host + "/orders", { method: "POST", body: JSON.stringify({ line_items: [line] }) })
+  return { line: line, buyer: q.body.customer.first_name + " " + q.body.customer.last_name }
+}
+globalThis.restock = restock;`
+const RESTOCK_ENTRY: ContractEntry = { entry: "tool:restock", kind: "tool", exportName: "restock" }
+
+describe("store identity in a recorded fixture", () => {
+  it("leaves no value of the live store's identity fields, and the scrubbed fixture still replays", async () => {
+    const isolate = await quickJsContractExecutor.open(
+      { script: RESTOCK },
+      { memoryBytes: 64 * 1024 * 1024 },
+    )
+    try {
+      const real: AppBridge = {
+        fetch: async () =>
+          JSON.stringify({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: storeAnswer(),
+          }),
+        log_info: () => undefined,
+      }
+      const { fixture, outcome } = await recordEntry({
+        isolate,
+        entry: RESTOCK_ENTRY,
+        input: { params: { host: "live-store.test", id: "1", note: `restock ${LIVE.title}` } },
+        real,
+        surface: SURFACE,
+        limits: limits(),
+        recordedFrom: "a test bridge",
+      })
+      expect(outcome.ok).toBe(true)
+      const live = JSON.stringify(fixture)
+      for (const v of LIVE_VALUES) expect(live).toContain(v)
+
+      const scrubbed = scrubFixture(fixture, [{ from: "live-store.test", to: "shop.example" }])
+      const text = JSON.stringify(scrubbed)
+      for (const v of LIVE_VALUES) expect(text).not.toContain(v)
+      for (const v of LIVE_VALUES) expect(text).not.toContain(encodeURIComponent(v))
+      // What carries no identity stays as recorded.
+      for (const kept of ["Default Title", "Standard", "FR TVA", "Lyon", "69002", "499.00"]) {
+        expect(text).toContain(kept)
+      }
+      // A title and a SKU the run passes back in a later call match their recording.
+      expect(
+        await verifyFixture({
+          isolate,
+          entry: RESTOCK_ENTRY,
+          fixture: scrubbed,
+          surface: SURFACE,
+          limits: limits(),
+        }),
+      ).toBeNull()
+    } finally {
+      isolate.dispose()
+    }
+  })
+
+  it("gives a live value the same invented stand-in every time", () => {
+    const a = JSON.stringify(scrubStoreIdentity({ calls: [{ reply: storeAnswer() }] }))
+    const b = JSON.stringify(scrubStoreIdentity({ other: JSON.stringify(storeAnswer()) }))
+    const titleIn = (s: string) => /Item [0-9a-f]{8}/.exec(s)?.[0]
+    const skuIn = (s: string) => /SKU-[0-9A-F]{8}/.exec(s)?.[0]
+    expect(titleIn(a)).toBeDefined()
+    expect(titleIn(a)).toBe(titleIn(b))
+    expect(skuIn(a)).toBe(skuIn(b))
+    // Scrubbing a scrubbed value changes nothing.
+    expect(JSON.stringify(scrubStoreIdentity(JSON.parse(a)))).toBe(a)
   })
 })
 

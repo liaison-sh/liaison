@@ -25,8 +25,6 @@ import {
 import type { Server } from "bun"
 import { Hono } from "hono"
 import { buildWorkerModule } from "~/modules/app-builder/build/freeze-core"
-import { createAppBridgeRoutes } from "~/modules/apps/workers/bridge-route"
-import { RunRegistry } from "~/modules/apps/workers/run-registry"
 import {
   CONTRACT_EPOCH_MS,
   type ContractExecutor,
@@ -34,7 +32,9 @@ import {
   type ContractRunOutcome,
   type ContractRunRequest,
   type ContractSource,
-} from "./isolate"
+} from "~/modules/apps/contract/isolate"
+import { createAppBridgeRoutes } from "~/modules/apps/workers/bridge-route"
+import { RunRegistry } from "~/modules/apps/workers/run-registry"
 
 interface Service {
   url: string
@@ -157,7 +157,16 @@ const WORKERD_VIRTUAL_TIME = `(function () {
 })();`
 
 const WORKER_ENTRY_RE = /[\\/]modules[\\/]apps[\\/]workers[\\/]worker-entry\.ts$/
-const WORKER_CORE_PATH = join(import.meta.dir, "..", "workers", "worker-core.ts")
+const WORKER_CORE_PATH = join(
+  import.meta.dir,
+  "..",
+  "..",
+  "src",
+  "modules",
+  "apps",
+  "workers",
+  "worker-core.ts",
+)
 
 /**
  * The product's Worker entry with the virtual clock in front: reset at the

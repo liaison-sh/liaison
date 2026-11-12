@@ -288,13 +288,12 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/modules/apps/connections/sql/catalog.ts:185` |
 | `LIAISON_DATABASE_ALLOW_RAW_QUERY` | `apps/api/src/modules/apps/connections/sql/service.ts:416` |
 | `LIAISON_DATABASE_ALLOWED_HOSTS` | `apps/api/src/modules/apps/connections/sql/credentials.ts:109` |
-| `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165`, `apps/api/src/modules/apps/workers/executor-parity.suite.ts:568` and 1 more |
-| `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154`, `apps/api/src/modules/apps/workers/executor-parity.suite.ts:567`, `apps/api/src/modules/apps/workers/executor-parity.suite.ts:571` |
+| `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
+| `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
 | `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1662` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_SANDBOX_TIMEOUT_MS` | `apps/api/src/modules/apps/workers/executor-parity.suite.ts:547`, `apps/api/src/modules/apps/workers/executor-parity.suite.ts:548`, `apps/api/src/modules/apps/workers/executor-parity.suite.ts:553` and 1 more |
 | `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1387` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |

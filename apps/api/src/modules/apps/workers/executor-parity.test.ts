@@ -1,7 +1,1186 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The executor parity suite (executor-parity.suite.ts) on the Workers
-// executor, against the local loader stand-in (__fixtures__/fake-loader.ts).
-import { executorParitySuite } from "./executor-parity.suite"
+// Executor parity, run on two remote executors in turn (the Workers loader
+// stand-in, then the sandbox service on workerd): the same fixture apps, installed through the real install
+// path, called through the real tool route / webhook route / runApp, on the
+// QuickJS worker pool and on the Workers executor (a local loader that behaves
+// like the real one, module caching included: __fixtures__/fake-loader.ts).
+// Results, errors and database effects must be equal, and nothing secret may
+// cross the bridge route to the isolate.
+//
+// Plus the Workers-only properties: concurrent runs of one org each reach
+// their own run, a nested hop under a breadth cap of 1 completes, a replayed
+// /run body drives no second effect, and every fallback to QuickJS is tagged.
 
-executorParitySuite("workers")
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { createHash, createHmac } from "node:crypto"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { Server } from "bun"
+import { app } from "~/app"
+import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
+import { knowledgeActorFromContext } from "~/apps/knowledge/service"
+import { createSyncedSource } from "~/apps/knowledge/synced-sources"
+import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { createRlsSession, withRlsContext } from "~/db/rls"
+import * as jobsModule from "~/infra/jobs/jobs"
+import { env } from "~/lib/env"
+import { appBridgeManifestRegistry, connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { createCredentialConnection } from "~/modules/apps/connections/service"
+import { reloadInstalledApps } from "~/modules/apps/init"
+import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
+import { buildJobBridge } from "~/modules/apps/runtime"
+import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
+import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { clearInstalledIdentityCache, runApp } from "~/modules/apps/sandbox/run-app"
+import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { runDeferredAppEvent } from "~/modules/apps/usage/deferred-event"
+import { getDeclaredCollection } from "~/modules/data-store/declared"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { buildWorkerBundle } from "../../../../../../scripts/apps-build-worker-bundle"
+import { freezeApp } from "../../../../../../scripts/freeze-app"
+import { type FakeLoader, startFakeLoader } from "./__fixtures__/fake-loader"
+import { APP_SECRET, CARRIER_KEY, CELL_KEY } from "./__fixtures__/parity-secrets"
+import { startWorkerdLoader, type WorkerdLoader } from "./__fixtures__/workerd-loader"
+import { workersAdmission } from "./admission"
+import { loaderBreaker, WorkersFallbackTestAccess } from "./fallback"
+import { runRegistry } from "./run-registry"
+import { assertNoSecretsIn } from "./secret-scan"
+import { clearBridgeTimings, recentBridgeTimings, recentRunTimings } from "./timings"
+
+/** The remote executor the suite runs against: the Workers loader, or the sandbox service. */
+type ParityTarget = "workers" | "workerd"
+
+type ParityLoader = Pick<FakeLoader, "url" | "runs" | "bridgeResponses" | "coldLoads"> & {
+  stop(): void | Promise<void>
+}
+
+function executorParitySuite(target: ParityTarget): void {
+  const REPO = join(import.meta.dir, "../../../../../..")
+  const FIXTURES = join(import.meta.dir, "__fixtures__", "apps")
+  const FIXTURE_APPS = ["wparityb", "wparity"]
+  const CELL_ID = "cell-parity"
+  const SECRETS = { carrierKey: CARRIER_KEY, cellKey: CELL_KEY }
+
+  const ENV_KEYS = [
+    "LIAISON_APP_LOADER_URL",
+    "LIAISON_APP_FALLBACK_LOADER_URL",
+    "LIAISON_APP_LOADER_CELL_ID",
+    "LIAISON_APP_LOADER_KEY",
+    "LIAISON_APP_BRIDGE_BASE_URL",
+  ] as const
+  const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, env[k]]))
+  const savedRole = env.LIAISON_ROLE
+  const savedAppsDir = process.env.LIAISON_APPS_DIR
+
+  let scratch = ""
+  let orgId = ""
+  let userA: minimal.Person
+  let userB: minimal.Person
+  let bearerA = ""
+  let bearerB = ""
+  let cell: Server<undefined> | null = null
+  /** The bulk download's host (the bulk fetch resolves its host before the stub answers). */
+  let files: Server<undefined> | null = null
+  let cellOrigin = ""
+  let loader: ParityLoader
+  /** `<app>@<version>` -> the sha256 of the Worker module its install recorded. */
+  const bundles: Record<string, string> = {}
+  /** The credential values the carrier stub received (host-side injection). */
+  const injectedKeys: string[] = []
+  const loaderFiles: Record<string, { workerPath: string; corePath: string }> = {}
+  /** Backends sitting in an open transaction while an event handler asked the carrier. */
+  const openAtEventFetch: number[] = []
+
+  type Mutable = Record<string, unknown>
+
+  function workersOn(over: Partial<Record<(typeof ENV_KEYS)[number], string>> = {}) {
+    const e = env as unknown as Mutable
+    if (target === "workerd") {
+      // The primary loader always faults and the sandbox service is the
+      // fallback target: every run lands on workerd through the product's path.
+      e.LIAISON_APP_LOADER_URL = (loader as WorkerdLoader).deadLoaderUrl
+      e.LIAISON_APP_FALLBACK_LOADER_URL = loader.url
+    } else {
+      e.LIAISON_APP_LOADER_URL = loader.url
+    }
+    e.LIAISON_APP_LOADER_CELL_ID = CELL_ID
+    e.LIAISON_APP_LOADER_KEY = CELL_KEY
+    e.LIAISON_APP_BRIDGE_BASE_URL = cellOrigin
+    Object.assign(e, over)
+  }
+
+  /** QuickJS: no loader (sandboxed runs are still timed and tagged). */
+  function workersOff() {
+    const e = env as unknown as Mutable
+    for (const k of ENV_KEYS) e[k] = undefined
+  }
+
+  const bearerOf = (who: "A" | "B") => (who === "A" ? bearerA : bearerB)
+
+  async function callTool(tool: string, params: unknown = {}, who: "A" | "B" = "A") {
+    const res = await app.request(`http://localhost/api/apps/wparity/tools/${tool}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${bearerOf(who)}`, "content-type": "application/json" },
+      body: JSON.stringify({ params }),
+    })
+    return { status: res.status, body: (await res.json()) as Record<string, any> }
+  }
+
+  async function countTitled(title: string): Promise<number> {
+    const rows = await sql.unsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM app_wparity.items WHERE org_id = $1 AND title = $2`,
+      [orgId, title],
+    )
+    return rows[0]?.n ?? 0
+  }
+
+  async function eventsMarked(markers: string[]) {
+    return sql<{ marker: string; actor: string }[]>`
+      SELECT payload->'data'->>'marker' AS marker, payload->>'actorId' AS actor
+      FROM kernel.pending_events
+      WHERE org_id = ${orgId} AND payload->'data'->>'marker' IN ${sql(markers)}`
+  }
+
+  function lastRun(entry: string) {
+    const runs = recentRunTimings().filter((r) => r.app === "wparity" && r.entry === entry)
+    return runs[runs.length - 1]
+  }
+
+  /** Run `fn` on QuickJS then on Workers; return both, and check the executor tags. */
+  async function both<T>(entry: string, fn: (mode: "quickjs" | "workers") => Promise<T>) {
+    workersOff()
+    const quickjs = await fn("quickjs")
+    expect(lastRun(entry)?.executor).toBe("quickjs")
+    workersOn()
+    const before = loader.bridgeResponses.length
+    const workers = await fn("workers")
+    expect(lastRun(entry)?.executor).toBe(target)
+    for (const text of loader.bridgeResponses.slice(before)) assertNoSecretsIn(text, SECRETS)
+    assertNoSecretsIn(workers, SECRETS)
+    return { quickjs, workers }
+  }
+
+  type StoreExecutor = "inprocess" | "pool" | "workers"
+  const STORE_EXECUTORS: StoreExecutor[] = ["inprocess", "pool", "workers"]
+
+  /**
+   * Run `exportName` of an installed fixture app through runApp with the app's
+   * real session bridge (one RLS transaction per bridge call, as a tool run),
+   * on the given executor: trusted in-process QuickJS, the worker pool, or
+   * Workers through the fake loader.
+   */
+  async function runStore(
+    executor: StoreExecutor,
+    appName: "wparity" | "wparityb",
+    exportName: string,
+    params: unknown,
+    opts: { readOnly?: boolean } = {},
+  ) {
+    if (executor === "workers") workersOn()
+    else workersOff()
+    const manifest = appBridgeManifestRegistry.get([orgId, appName])
+    if (!manifest) throw new Error(`${appName} is not registered`)
+    const scopes = [`${appName}:*`]
+    const session = createRlsSession({
+      actorType: "user",
+      userId: userA.id,
+      orgId,
+      scopes,
+      dimensionGrants: {},
+    })
+    const bridge = createSessionRpcBridge(
+      appName,
+      userA.id,
+      orgId,
+      session,
+      manifest as Parameters<typeof createSessionRpcBridge>[4],
+      scopes,
+      "user",
+      undefined,
+      opts.readOnly ? { readOnlyRunOverride: true } : undefined,
+    )
+    const result = await runApp({
+      trusted: executor === "inprocess",
+      appName,
+      orgId,
+      bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", appName, "1.0.0", "bundle.js"),
+      exportName,
+      entry: `handler:${exportName}`,
+      params,
+      bridge,
+      holdsTx: false,
+    })
+    if (executor !== "inprocess") {
+      expect(
+        recentRunTimings()
+          .filter((r) => r.app === appName)
+          .at(-1)?.executor,
+      ).toBe(executor === "workers" ? target : "quickjs")
+    }
+    return result
+  }
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    scratch = mkdtempSync(join(tmpdir(), "executor-parity-"))
+    process.env.LIAISON_APPS_DIR = join(scratch, "installed")
+    ;(env as unknown as Mutable).LIAISON_ROLE = "all"
+    orgId = (await createTestOrg()).id
+    userA = await minimal.orgAdmin(orgId)
+    userB = await minimal.person(orgId, { role: "admin" })
+    bearerA = await minimal.token(userA.id)
+    bearerB = await minimal.token(userB.id)
+    // A previous run's records (the namespace database outlives the install root).
+    for (const name of FIXTURE_APPS) await uninstallApp({ name }).catch(() => undefined)
+
+    for (const name of FIXTURE_APPS) {
+      const appDir = join(FIXTURES, name)
+      const { tarballPath, manifest } = await freezeApp({
+        appName: name,
+        appDir,
+        repoRoot: REPO,
+        outDir: join(scratch, "tarballs"),
+      })
+      await installAppFromTarball({
+        tarballPath,
+        installedBy: userA.id,
+        grantedScopes: manifest.scopes ?? [],
+        grantedConnections: Object.keys(manifest.connections ?? {}),
+        grantedCapabilities: (manifest as { capabilities?: string[] }).capabilities ?? [],
+        grantedCrossAppCalls: name === "wparity" ? ["wparityb:echo"] : [],
+        requireSignature: false,
+        approveUiFullAccess: true,
+      })
+      const built = await buildWorkerBundle({ appDir, outRoot: join(scratch, "dist-worker") })
+      // The package carried its worker.js and the install recorded it: the same
+      // bytes the standalone build makes (the loader below serves those).
+      const [row] = await sql`SELECT worker_sha256 FROM kernel.apps_installed
+        WHERE name = ${name} AND version = ${manifest.version}`
+      expect(row?.worker_sha256).toBe(built.sha256)
+      bundles[`${built.app}@${built.version}`] = built.sha256
+      loaderFiles[`${built.app}/${built.version}/${built.sha256}.js`] = {
+        workerPath: built.workerPath,
+        corePath: built.corePath,
+      }
+    }
+    await reloadInstalledApps(orgId)
+
+    await withPrivilegedDb(orgId, "parity-carrier-connection", (tx) =>
+      createCredentialConnection(tx as never, orgId, userA.id, "wparity", "carrier", {
+        identifier: "carrier-1",
+        credentials: { key: CARRIER_KEY },
+        displayName: "Carrier",
+        ownerType: "org",
+      }),
+    )
+
+    // The carrier's API, for both executors (egress happens host-side either way).
+    SandboxBridgeTestAccess.setFetchInterceptsHost((h) => h === "api.carrier.test")
+    SandboxBridgeTestAccess.setFetch((async (url: string, init?: RequestInit) => {
+      const u = new URL(String(url))
+      if (u.pathname === "/bulk.jsonl") {
+        return new Response('{"n":1}\n{"n":2}\n{"n":3}\n', {
+          headers: { "content-type": "application/x-ndjson" },
+        })
+      }
+      if (u.pathname.startsWith("/event/")) {
+        const [r] = await sql`SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND pid <> pg_backend_pid()
+            AND state LIKE 'idle in transaction%'`
+        openAtEventFetch.push(r!.n as number)
+      }
+      const headers = new Headers(init?.headers)
+      if (headers.get("x-api-key")) injectedKeys.push(headers.get("x-api-key") as string)
+      // Echo the credential back: the host must redact it from the answer.
+      return Response.json({ path: u.pathname, sawKey: headers.get("x-api-key") })
+    }) as unknown as typeof fetch)
+
+    files = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response('{"n":1}\n{"n":2}\n{"n":3}\n', {
+          headers: { "content-type": "application/x-ndjson" },
+        }),
+    })
+    cell = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (req) => app.fetch(req) })
+    cellOrigin = `http://127.0.0.1:${cell.port}`
+    loader =
+      target === "workerd"
+        ? await startWorkerdLoader({ cellOrigin })
+        : startFakeLoader({
+            cells: { [CELL_ID]: { key: CELL_KEY, bridgeOrigin: cellOrigin } },
+            bundles: loaderFiles,
+          })
+    workersOff()
+  }, 600_000)
+
+  afterAll(async () => {
+    const e = env as unknown as Mutable
+    for (const k of ENV_KEYS) e[k] = savedEnv[k]
+    e.LIAISON_ROLE = savedRole
+    SandboxBridgeTestAccess.setFetch(null)
+    SandboxBridgeTestAccess.setFetchInterceptsHost(null)
+    await loader?.stop()
+    cell?.stop(true)
+    files?.stop(true)
+    await shutdownWorkerPool()
+    for (const name of FIXTURE_APPS) await uninstallApp({ name }).catch(() => undefined)
+    // Uninstall keeps an app's schema; these fixtures' schemas go too, so a later file that reads
+    // every app schema of the database (an org transfer's closure) never meets them.
+    for (const name of FIXTURE_APPS) await sql.unsafe(`DROP SCHEMA IF EXISTS app_${name} CASCADE`)
+    clearInstalledIdentityCache()
+    if (savedAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
+    else process.env.LIAISON_APPS_DIR = savedAppsDir
+    rmSync(scratch, { recursive: true, force: true })
+    await releaseTestLock()
+  }, 120_000)
+
+  describe(`${target === "workers" ? "Workers" : "workerd"} executor parity with the QuickJS pool`, () => {
+    it("db write then read: same answers, same rows", async () => {
+      const r = await both("tool:create", (mode) => callTool("create", { title: `w-${mode}` }))
+      expect(r.quickjs.status).toBe(200)
+      expect(r.workers.status).toBe(r.quickjs.status)
+      expect(r.workers.body.data).toEqual({ ...r.quickjs.body.data, title: "w-workers" })
+      expect(await countTitled("w-quickjs")).toBe(1)
+      expect(await countTitled("w-workers")).toBe(1)
+      const l = await both("tool:list", () => callTool("list"))
+      expect(l.workers).toEqual(l.quickjs)
+      expect(l.quickjs.body.data.titles).toEqual(expect.arrayContaining(["w-quickjs", "w-workers"]))
+    })
+
+    it("an atomic tool that writes then throws: the same error and the same rows on both", async () => {
+      // Installed apps are never trusted, so the runtime ignores their `atomic`
+      // flag (runtime.ts, tool registration) and each bridge call commits on its
+      // own: the write survives the throw, identically on both executors.
+      const r = await both("tool:atomicFail", (mode) =>
+        callTool("atomicFail", { title: `atomic-${mode}` }),
+      )
+      expect(r.quickjs.status).toBeGreaterThanOrEqual(400)
+      expect(r.workers).toEqual(r.quickjs)
+      expect(await countTitled("atomic-workers")).toBe(await countTitled("atomic-quickjs"))
+    })
+
+    it("a ctx.db.batch guard that fails: the same typed error, nothing written, on both", async () => {
+      const r = await both("tool:batchGuard", (mode) =>
+        callTool("batchGuard", { title: `guard-${mode}` }),
+      )
+      expect(r.quickjs.status).toBe(200)
+      expect(r.quickjs.body.data).toEqual({
+        message:
+          "ctx.db.batch: precondition_failed at ops[1] (update items): expected at least 1 row, matched 0",
+        code: "precondition_failed",
+        status: 409,
+      })
+      expect(r.workers).toEqual(r.quickjs)
+      expect(await countTitled("guard-quickjs")).toBe(0)
+      expect(await countTitled("guard-workers")).toBe(0)
+    })
+
+    it("a nested cross-app call into a second Workers app", async () => {
+      const r = await both("tool:hop", () => callTool("hop", { v: "x1" }))
+      expect(r.quickjs.status).toBe(200)
+      expect(r.workers).toEqual(r.quickjs)
+      const hop = lastRun("tool:hop")
+      const nested = recentRunTimings().filter(
+        (t) => t.app === "wparityb" && t.at >= (hop?.at ?? 0),
+      )
+      expect(nested.at(-1)).toMatchObject({
+        executor: target,
+        nested: true,
+        parentApp: "wparity",
+        entry: "tool:echo",
+      })
+      if (target === "workerd") {
+        // The nested run reached the sandbox service marked one level deep.
+        const recs = (loader as WorkerdLoader).supervisor.recent
+        expect(recs.some((r) => r.depth === 1)).toBe(true)
+      }
+    })
+
+    it("ctx.fetch outside allowedDomains is refused the same way", async () => {
+      const r = await both("tool:fetchOutside", () => callTool("fetchOutside"))
+      expect(r.quickjs.body.data.refused).toBe(true)
+      expect(r.workers).toEqual(r.quickjs)
+    })
+
+    it("ctx.fetch auth: the credential is added host-side and never reaches the isolate", async () => {
+      injectedKeys.length = 0
+      const r = await both("tool:fetchAuth", () => callTool("fetchAuth"))
+      expect(r.quickjs.status).toBe(200)
+      expect(injectedKeys).toEqual([CARRIER_KEY, CARRIER_KEY])
+      expect(r.workers).toEqual(r.quickjs)
+      assertNoSecretsIn(r.quickjs, SECRETS)
+    })
+
+    it("ctx.limiter.pause holds the connection's next ctx.fetch, the same on both", async () => {
+      injectedKeys.length = 0
+      const r = await both("tool:limited", () => callTool("limited", { ms: 300 }))
+      expect(r.quickjs.status).toBe(200)
+      expect(r.quickjs.body.data).toEqual({ paused: true, status: 200, held: true })
+      expect(r.workers).toEqual(r.quickjs)
+      // The credential still went on host-side, after the wait.
+      expect(injectedKeys).toEqual([CARRIER_KEY, CARRIER_KEY])
+    })
+
+    it("ctx.limiter.pause of a connection without limits is refused the same way", async () => {
+      const r = await both("tool:limited", () =>
+        callTool("limited", { ms: 300, connection: "nope" }),
+      )
+      expect(r.quickjs.body.data).toEqual({ refused: "limiter_connection_not_limited" })
+      expect(r.workers).toEqual(r.quickjs)
+    })
+
+    it("ctx.config.get of a declared secret: QuickJS reads it, Workers refuses it, even with the registry cleared", async () => {
+      // The refusal must come from the bridge's own manifest (what config_get
+      // decrypts), never the in-memory connection registry, which can be empty.
+      const registered = connectionConfigRegistry.snapshotUnder([orgId, "wparity"])
+      connectionConfigRegistry.deleteByPrefix([orgId, "wparity"])
+      try {
+        workersOff()
+        const quickjs = await callTool("configSecret", { value: APP_SECRET })
+        expect(lastRun("tool:configSecret")?.executor).toBe("quickjs")
+        expect(quickjs.status).toBe(200)
+        expect(quickjs.body.data).toEqual({ read: APP_SECRET })
+        workersOn()
+        const before = loader.bridgeResponses.length
+        const workers = await callTool("configSecret", { value: APP_SECRET })
+        expect(lastRun("tool:configSecret")?.executor).toBe(target)
+        expect(workers.status).toBe(200)
+        expect(workers.body.data).toEqual({
+          refused: true,
+          code: "secret_not_available_on_workers",
+          status: 403,
+        })
+        for (const text of loader.bridgeResponses.slice(before)) {
+          assertNoSecretsIn(text, { ...SECRETS, app: APP_SECRET })
+        }
+      } finally {
+        connectionConfigRegistry.restoreUnder([orgId, "wparity"], registered)
+      }
+    })
+
+    it("emit and logger", async () => {
+      const r = await both("tool:stamp", (mode) => callTool("stamp", { marker: `m-${mode}` }))
+      expect(r.workers.body.data).toEqual({ stamped: "m-workers" })
+      expect(r.quickjs.body.data).toEqual({ stamped: "m-quickjs" })
+      const events = await eventsMarked(["m-quickjs", "m-workers"])
+      expect(events.map((e) => e.marker).sort()).toEqual(["m-quickjs", "m-workers"])
+      expect(new Set(events.map((e) => e.actor))).toEqual(new Set([userA.id]))
+    })
+
+    it("the bulk iterator over a downloaded blob", async () => {
+      const r = await both("tool:bulk", () => callTool("bulk", { url: `${files?.url}bulk.jsonl` }))
+      expect(r.quickjs.body.data?.rows).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }])
+      expect(r.workers).toEqual(r.quickjs)
+    })
+
+    it("WebCrypto: the same digests, HMACs and random values on QuickJS (both) and Workers", async () => {
+      const text = "Héllo, wörld 𝄞 parity@example.com"
+      const key = "parity-hmac-kéy"
+      const hexOf = (alg: string) => createHash(alg).update(text, "utf8").digest("hex")
+      const hmacOf = (alg: string) => createHmac(alg, key).update(text, "utf8").digest("hex")
+      const expected = {
+        digests: {
+          "SHA-1": hexOf("sha1"),
+          "SHA-256": hexOf("sha256"),
+          "SHA-384": hexOf("sha384"),
+          "SHA-512": hexOf("sha512"),
+        },
+        hmacs: {
+          "SHA-1": { sig: hmacOf("sha1"), ok: true, bad: false },
+          "SHA-256": { sig: hmacOf("sha256"), ok: true, bad: false },
+          "SHA-512": { sig: hmacOf("sha512"), ok: true, bad: false },
+        },
+        randomBytes: 16,
+        uuid: true,
+      }
+      const r = await both("tool:webcrypto", () => callTool("webcrypto", { text, key }))
+      expect(r.quickjs.status).toBe(200)
+      expect(r.quickjs.body.data).toEqual(expected)
+      expect(r.workers).toEqual(r.quickjs)
+      expect(await runStore("inprocess", "wparity", "webcrypto", { text, key })).toEqual(expected)
+    })
+
+    it("the approval literal", async () => {
+      const approval = {
+        approvalRequestId: "00000000-0000-4000-8000-0000000a0001",
+        approvalDeciderId: userA.id,
+        toolName: "wparity:approvalEcho",
+      }
+      const bundlePath = join(process.env.LIAISON_APPS_DIR ?? "", "wparity", "1.0.0", "bundle.js")
+      const r = await both("handler:approvalEcho", () =>
+        runApp({
+          trusted: false,
+          appName: "wparity",
+          orgId,
+          bundlePath,
+          exportName: "approvalEcho",
+          params: {},
+          bridge: { log_info: async () => null },
+          holdsTx: false,
+          syncContext: { approval },
+        }),
+      )
+      expect(r.quickjs).toEqual({ approval, truthy: true })
+      expect(r.workers).toEqual(r.quickjs)
+    })
+
+    it("thrown errors: a typed error and a ToolError keep message, status and code", async () => {
+      const typed = await both("tool:fail", () => callTool("fail"))
+      expect(typed.quickjs.status).toBe(422)
+      expect(typed.workers).toEqual(typed.quickjs)
+      const tool = await both("tool:toolFail", () => callTool("toolFail"))
+      expect(tool.quickjs.status).toBeGreaterThanOrEqual(400)
+      expect(JSON.stringify(tool.quickjs.body)).toContain("the carrier refused the parcel")
+      expect(tool.workers).toEqual(tool.quickjs)
+    })
+
+    it("a timeout answers the same error, and the run's token dies with it", async () => {
+      // The tool declares 1.5 s; the sandbox floor (60 s outside production) is lowered under it.
+      const savedFloor = process.env.LIAISON_SANDBOX_TIMEOUT_MS
+      process.env.LIAISON_SANDBOX_TIMEOUT_MS = "1000"
+      let r: Awaited<ReturnType<typeof both<{ status: number; body: Record<string, any> }>>>
+      try {
+        r = await both("tool:slow", () => callTool("slow", { ms: 4_000 }))
+      } finally {
+        if (savedFloor === undefined) delete process.env.LIAISON_SANDBOX_TIMEOUT_MS
+        else process.env.LIAISON_SANDBOX_TIMEOUT_MS = savedFloor
+      }
+      expect(JSON.stringify(r.quickjs.body)).toContain("timed out")
+      expect(r.workers).toEqual(r.quickjs)
+      const run = lastRun("tool:slow")
+      expect(run?.runId).toBeDefined()
+      expect(runRegistry.authenticate(run?.runId as string, "x", "n").kind).toBe("bad_token")
+    }, 30_000)
+
+    it("ctx.sql, ctx.accounts and ctx.kernel.findByIds: equal answers, no credential crosses", async () => {
+      const dsn =
+        process.env.DATABASE_URL ?? "postgres://liaison_app:liaison_app@localhost:5432/liaison_test"
+      const saved = {
+        privileged: process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION,
+        plaintext: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL,
+      }
+      // The test database's own login (see database-app.integration.test.ts).
+      process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION = "true"
+      process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL = "true"
+      try {
+        await withPrivilegedDb(orgId, "parity-sql-connection", (tx) =>
+          createCredentialConnection(tx as never, orgId, userA.id, "wparity", "warehouse", {
+            identifier: "warehouse",
+            credentials: { connectionString: dsn },
+            displayName: "Warehouse",
+            ownerType: "org",
+          }),
+        )
+        const bridgeTextsBefore = loader.bridgeResponses.length
+        const r = await both("tool:platformReads", () =>
+          callTool("platformReads", { n: 7, userIds: [userA.id, userB.id] }),
+        )
+        expect(r.quickjs.status).toBe(200)
+        expect(r.quickjs.body.data ?? r.quickjs.body).toMatchObject({
+          rows: [{ n: 7 }],
+          cappedRows: 5,
+          cappedTruncated: true,
+          refused: "not_sql_connection",
+          accounts: [["carrier-1", "org"]],
+          users: 2,
+        })
+        expect(r.workers).toEqual(r.quickjs)
+        // The DSN never reaches the isolate, not even inside a bridge answer.
+        const password = new URL(dsn).password
+        for (const text of [
+          JSON.stringify(r),
+          ...loader.bridgeResponses.slice(bridgeTextsBefore),
+        ]) {
+          expect(text).not.toContain(dsn)
+          if (password.length >= 6) assertNoSecretsIn(text, { dsnPassword: password })
+        }
+      } finally {
+        for (const [k, v] of [
+          ["LIAISON_DB_ALLOW_PRIVILEGED_SESSION", saved.privileged],
+          ["LIAISON_DB_ALLOW_PLAINTEXT_LOCAL", saved.plaintext],
+        ] as const) {
+          if (v === undefined) delete process.env[k]
+          else process.env[k] = v
+        }
+      }
+    }, 60_000)
+
+    it("a webhook delivery: a short transaction per bridge call", async () => {
+      const post = (title: string) =>
+        app.request(`http://localhost/webhooks/${orgId}/wparity/ping`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        })
+      const r = await both("webhook:onPing", async (mode) => {
+        const res = await post(`hook-${mode}`)
+        return { status: res.status, body: await res.text() }
+      })
+      expect(r.quickjs.status).toBe(200)
+      expect(r.workers).toEqual(r.quickjs)
+      expect(await countTitled("hook-quickjs")).toBe(1)
+      expect(await countTitled("hook-workers")).toBe(1)
+      expect(lastRun("webhook-verify:verifyPing")?.executor).toBe(target)
+    })
+
+    it("a webhook delivery that fails after its write: the same answer, row and inbox status", async () => {
+      const post = (title: string) =>
+        app.request(`http://localhost/webhooks/${orgId}/wparity/pingfail`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        })
+      const inbox = async (title: string) => {
+        const [r] = await sql<{ status: string; attempts: number }[]>`
+          SELECT status, attempts FROM kernel.webhook_inbox
+          WHERE org_id = ${orgId} AND endpoint_name = 'pingfail' AND payload->>'title' = ${title}`
+        return r
+      }
+      const r = await both("webhook:onPingFail", async (mode) => {
+        const res = await post(`hookfail-${mode}`)
+        return { status: res.status, inbox: await inbox(`hookfail-${mode}`) }
+      })
+      expect(r.quickjs).toEqual({ status: 500, inbox: { status: "pending", attempts: 1 } })
+      expect(r.workers).toEqual(r.quickjs)
+      // The write committed on its own; the replay dedups like any redelivery.
+      expect(await countTitled("hookfail-quickjs")).toBe(1)
+      expect(await countTitled("hookfail-workers")).toBe(1)
+    })
+
+    it("an event handler: no transaction open across its provider call, the same rows", async () => {
+      openAtEventFetch.length = 0
+      const r = await both("event:onProbe", async (mode) => {
+        await runDeferredAppEvent({
+          orgId,
+          appName: "wparity",
+          eventType: "probe:fired",
+          exportName: "onProbe",
+          event: {
+            app: "wparity",
+            entity: "probe",
+            action: "fired",
+            entityId: mode,
+            data: { marker: `event-${mode}` },
+            actorId: "system:wparity",
+            actorType: "system",
+            orgId,
+            timestamp: new Date().toISOString(),
+          },
+        })
+        return countTitled(`event-${mode}:200`)
+      })
+      expect(r).toEqual({ quickjs: 1, workers: 1 })
+      expect(openAtEventFetch).toEqual([0, 0])
+    })
+  })
+
+  describe("ctx.store on every executor", () => {
+    it("the manifest's store declaration registers with the install", () => {
+      expect(getDeclaredCollection(orgId, "wparity", "notes")).toEqual({
+        app: "wparity",
+        collection: "notes",
+        readScope: "wparity:items:read",
+        searchable: { labelField: "title", fields: ["title"] },
+        agentReadable: true,
+      })
+      expect(getDeclaredCollection(orgId, "wparity", "undeclared")).toBeNull()
+    })
+
+    it("set, get, update, query, count, delete and a version conflict: equal answers", async () => {
+      const answers: Record<string, unknown> = {}
+      for (const ex of STORE_EXECUTORS) {
+        answers[ex] = await runStore(ex, "wparity", "storeFlow", { c: `flow_${ex}` })
+      }
+      expect(answers.inprocess).toEqual({
+        missing: null,
+        a1: { id: "a", data: { title: "A", n: 1 }, version: 1 },
+        got: { id: "a", data: { title: "A", n: 1 }, version: 1 },
+        up: { id: "a", data: { title: "A", n: 5 }, version: 2 },
+        conflict: { thrown: true, code: "version_conflict", status: 409 },
+        q: [
+          { id: "b", n: 2, version: 1 },
+          { id: "a", n: 5, version: 2 },
+        ],
+        nextCursor: null,
+        count: 1,
+        total: 2,
+        del: { deleted: true },
+        after: 1,
+        badName: { thrown: true, code: "invalid_name", status: 400 },
+      })
+      expect(answers.pool).toEqual(answers.inprocess)
+      expect(answers.workers).toEqual(answers.inprocess)
+      const rows = await sql<{ collection: string; n: number }[]>`
+        SELECT collection, count(*)::int AS n FROM kernel.app_documents
+        WHERE org_id = ${orgId} AND app = 'wparity' AND collection LIKE 'flow\_%'
+        GROUP BY collection ORDER BY collection`
+      expect(rows.map((r) => [r.collection, r.n])).toEqual([
+        ["flow_inprocess", 1],
+        ["flow_pool", 1],
+        ["flow_workers", 1],
+      ])
+    }, 60_000)
+
+    it("a read-only run refuses every store write and still reads, on all three", async () => {
+      const answers: Record<string, any> = {}
+      for (const ex of STORE_EXECUTORS) {
+        answers[ex] = await runStore(
+          ex,
+          "wparity",
+          "storeWrites",
+          { c: `ro_${ex}` },
+          { readOnly: true },
+        )
+      }
+      for (const op of ["set", "update", "delete"]) {
+        expect(answers.inprocess[op].thrown).toBe(true)
+        expect(String(answers.inprocess[op].message)).toContain(`ctx.store_${op}`)
+      }
+      expect(answers.inprocess.read).toBeNull()
+      expect(answers.pool).toEqual(answers.inprocess)
+      expect(answers.workers).toEqual(answers.inprocess)
+      const [row] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM kernel.app_documents
+        WHERE org_id = ${orgId} AND app = 'wparity' AND collection LIKE 'ro\_%'`
+      expect(row?.n).toBe(0)
+    }, 60_000)
+
+    it("app B cannot read app A's collection of the same name", async () => {
+      await runStore("pool", "wparity", "storePut", {
+        c: "shared",
+        id: "kept",
+        data: { title: "a" },
+      })
+      for (const ex of STORE_EXECUTORS) {
+        expect(await runStore(ex, "wparity", "storeGet", { c: "shared", id: "kept" })).toEqual({
+          id: "kept",
+          data: { title: "a" },
+          version: 1,
+        })
+        expect(await runStore(ex, "wparityb", "storeGet", { c: "shared", id: "kept" })).toBeNull()
+      }
+    }, 60_000)
+  })
+
+  describe("ctx.pages on every executor", () => {
+    it("a handle for the run's person (never a URL), and an unknown page refused: equal answers", async () => {
+      const answers: Record<string, unknown> = {}
+      for (const ex of STORE_EXECUTORS) {
+        answers[ex] = await runStore(ex, "wparity", "pageLink", {})
+      }
+      expect(answers.inprocess).toEqual({
+        handle: true,
+        url: false,
+        expiresInSeconds: 300,
+        missing: { thrown: true, code: "page_not_found", status: 404 },
+      })
+      expect(answers.pool).toEqual(answers.inprocess)
+      expect(answers.workers).toEqual(answers.inprocess)
+    }, 60_000)
+  })
+
+  describe("ctx.steps on every executor: a job processes N pages over several runs", () => {
+    /**
+     * Run the fixture's `pages` job the way the job worker does (a session job
+     * bridge from buildJobBridge, runApp), with the queue captured: each run's
+     * continuation is run next, until none is left.
+     */
+    async function drive(executor: StoreExecutor, tag: string, total: number) {
+      if (executor === "workers") workersOn()
+      else workersOff()
+      const manifest = appBridgeManifestRegistry.get([orgId, "wparity"])
+      if (!manifest) throw new Error("wparity is not registered")
+      const scopes = ["wparity:*"]
+      const queued: Array<{ job: string; payload: Record<string, unknown>; opts: any }> = []
+      const spy = spyOn(jobsModule, "enqueueAppJob").mockImplementation((async (
+        _app: string,
+        job: string,
+        payload: unknown,
+        opts?: unknown,
+      ) => {
+        queued.push({ job, payload: payload as Record<string, unknown>, opts })
+        return "id"
+      }) as never)
+      const results: unknown[] = []
+      const jobIds: string[] = []
+      try {
+        let payload: Record<string, unknown> = { total, tag, orgId }
+        for (let run = 0; run < total + 2; run++) {
+          const session = createRlsSession({
+            actorType: "user",
+            userId: userA.id,
+            orgId,
+            scopes,
+            dimensionGrants: {},
+          })
+          const bridge = buildJobBridge(
+            "wparity",
+            userA.id,
+            orgId,
+            { ...payload, _session: session } as never,
+            manifest,
+            scopes,
+            { name: "pages", timeoutMs: 30_000 },
+          )
+          results.push(
+            await runApp({
+              trusted: executor === "inprocess",
+              appName: "wparity",
+              orgId,
+              bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", "wparity", "1.0.0", "bundle.js"),
+              exportName: "pages",
+              entry: "job:pages",
+              params: payload,
+              bridge,
+              holdsTx: false,
+            }),
+          )
+          if (executor !== "inprocess") {
+            expect(lastRun("job:pages")?.executor).toBe(executor === "workers" ? target : "quickjs")
+          }
+          const next = queued.shift()
+          if (!next) break
+          expect(next.job).toBe("pages")
+          jobIds.push(next.opts.jobId)
+          payload = next.payload
+        }
+      } finally {
+        spy.mockRestore()
+      }
+      return { results, jobIds }
+    }
+
+    it("three pages, three runs, one row per page, on QuickJS (both) and Workers", async () => {
+      const answers: Record<string, unknown> = {}
+      for (const ex of STORE_EXECUTORS) {
+        const tag = `steps_${ex}`
+        const { results, jobIds } = await drive(ex, tag, 3)
+        expect(results).toEqual([
+          { state: "scheduled", cursor: 1, chunks: 1 },
+          { state: "scheduled", cursor: 2, chunks: 1 },
+          { state: "done", cursor: 3, chunks: 1 },
+        ])
+        // One continuation per generation, deduplicated by an org-scoped id.
+        expect(jobIds).toHaveLength(2)
+        expect(jobIds[0]).toMatch(new RegExp(`^${orgId}:steps:pages-${tag}:[0-9a-f-]+:1$`))
+        expect(jobIds[1]).toMatch(new RegExp(`^${orgId}:steps:pages-${tag}:[0-9a-f-]+:2$`))
+        const rows = await sql<{ title: string }[]>`
+          SELECT title FROM app_wparity.items
+          WHERE org_id = ${orgId} AND title LIKE ${`${tag}-page-%`} ORDER BY title`
+        expect(rows.map((r) => r.title)).toEqual([0, 1, 2].map((n) => `${tag}-page-${n}`))
+        // A later trigger of a finished step runs nothing.
+        const again = await drive(ex, tag, 3)
+        expect(again.results).toEqual([{ state: "done", cursor: 3, chunks: 0 }])
+        answers[ex] = results
+      }
+      expect(answers.pool).toEqual(answers.inprocess)
+      expect(answers.workers).toEqual(answers.inprocess)
+      const [state] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM kernel.app_documents
+        WHERE org_id = ${orgId} AND app = 'wparity' AND collection = 'liaison_steps'
+          AND (data->>'done')::boolean AND data->'lease' = 'null'::jsonb`
+      expect(state?.n).toBe(3)
+    }, 120_000)
+  })
+
+  describe("a knowledge source kind on every executor: N pages over several jobs", () => {
+    const SCOPES = ["knowledge:sources:manage", "knowledge:documents:read", "wparity:items:read"]
+
+    async function newSource(tag: string, total: number) {
+      return withRlsContext(
+        { actorType: "user", orgId, userId: userA.id, scopes: SCOPES, dimensionGrants: {} },
+        (tx) =>
+          createSyncedSource(
+            tx,
+            {
+              appName: "wparity",
+              folderRef: "app-source:notes",
+              sourceKind: "notes",
+              sourceConfig: { total, tag },
+              displayName: `Parity notes ${tag}`,
+              syncIntervalSeconds: 3600,
+              scope: "organization",
+              defaultSensitivity: "internal",
+            },
+            knowledgeActorFromContext({
+              orgId,
+              userId: userA.id,
+              scopes: SCOPES,
+              dimensionGrants: {},
+            }),
+          ),
+      )
+    }
+
+    /**
+     * The sync job, then each continuation it enqueued (one page per job). The
+     * pool and Workers run the registered dispatch (runApp picks the executor);
+     * in-process QuickJS runs the same export through runApp as trusted code.
+     */
+    async function drive(executor: StoreExecutor, sourceId: string) {
+      if (executor === "workers") workersOn()
+      else workersOff()
+      const queue: Array<"schedule" | "continue"> = ["schedule"]
+      let jobs = 0
+      while (queue.length > 0) {
+        const trigger = queue.shift()!
+        jobs++
+        await runSyncWorker(
+          { sourceId, trigger },
+          {
+            appSource: {
+              setUpAppSourceOrg: async () => undefined,
+              ownerScopes: async () => SCOPES,
+              enqueueContinuation: async () => {
+                queue.push("continue")
+              },
+              limits: { maxPagesPerJob: 1 },
+              ...(executor === "inprocess"
+                ? { dispatch: (input) => runStore("inprocess", "wparity", "syncNotes", input) }
+                : {}),
+            },
+          },
+        )
+        if (executor !== "inprocess") {
+          expect(lastRun("knowledge-sync:notes")?.executor).toBe(
+            executor === "workers" ? target : "quickjs",
+          )
+        }
+      }
+      return jobs
+    }
+
+    it("four pages, four jobs, the same documents on in-process QuickJS, the pool and Workers", async () => {
+      const answers: Record<string, unknown> = {}
+      for (const ex of STORE_EXECUTORS) {
+        const tag = `ks_${ex}`
+        const source = await newSource(tag, 4)
+        expect(await drive(ex, source.id)).toBe(4)
+        const rows = await sql.unsafe<{ title: string; body: string; archived: boolean }[]>(
+          `SELECT replace(title, $2, 'TAG') AS title, body, archived_at IS NOT NULL AS archived
+           FROM app_knowledge.documents WHERE synced_source_id = $1 ORDER BY title`,
+          [source.id, tag],
+        )
+        expect([...rows]).toEqual([
+          { title: "TAG note 0", body: "page 0", archived: true },
+          { title: "TAG note 1", body: "page 1", archived: false },
+          { title: "TAG note 2", body: "page 2", archived: false },
+          { title: "TAG note 3", body: "page 3", archived: false },
+        ])
+        const [state] = await sql<{ status: string; cursor: unknown; generation: number }[]>`
+          SELECT last_sync_status AS status, sync_cursor AS cursor, sync_generation AS generation
+          FROM app_knowledge.synced_sources WHERE id = ${source.id}`
+        expect(state).toEqual({ status: "ok", cursor: 4, generation: 4 })
+        const folders = await sql.unsafe<{ name: string; parent: string | null; notes: number }[]>(
+          `SELECT c.name, p.name AS parent,
+                  (SELECT count(*)::int FROM app_knowledge.collection_memberships cm
+                   JOIN app_knowledge.documents d ON d.id = cm.target_id AND d.archived_at IS NULL
+                   WHERE cm.collection_id = c.id AND cm.target_type = 'document') AS notes
+           FROM app_knowledge.collections c
+           LEFT JOIN app_knowledge.collections p
+             ON p.id = c.parent_collection_id AND p.description LIKE 'synced:%'
+           WHERE c.description LIKE $1 AND c.archived_at IS NULL ORDER BY c.name`,
+          [`synced:${source.id}:%`],
+        )
+        expect([...folders]).toEqual([
+          { name: "even", parent: "notes", notes: 1 },
+          { name: "notes", parent: null, notes: 0 },
+          { name: "odd", parent: "notes", notes: 2 },
+        ])
+        answers[ex] = rows
+      }
+      expect(answers.pool).toEqual(answers.inprocess)
+      expect(answers.workers).toEqual(answers.inprocess)
+    }, 120_000)
+  })
+
+  describe(`${target === "workers" ? "Workers" : "workerd"}: the remote executor's own properties`, () => {
+    // Properties of the Workers loader only. On workerd a process serves one
+    // run at a time (two concurrent runs load the module in two processes), the
+    // service holds no cell key (nothing to sign against), and the breaker is
+    // the primary loader's, which the fallback target's runs never touch.
+    const onlyWorkers = target === "workers" ? it : it.skip
+    onlyWorkers(
+      "two concurrent runs of one org, by two users, each reach their own run (module cached)",
+      async () => {
+        workersOn()
+        clearBridgeTimings()
+        const cold = loader.coldLoads
+        const [a, b] = await Promise.all([
+          callTool("stamp", { marker: "conc-A" }, "A"),
+          callTool("stamp", { marker: "conc-B" }, "B"),
+        ])
+        expect(a.body.data).toEqual({ stamped: "conc-A" })
+        expect(b.body.data).toEqual({ stamped: "conc-B" })
+        expect(loader.coldLoads).toBe(cold) // the cached module served both
+        const runs = recentRunTimings().filter((t) => t.entry === "tool:stamp")
+        const runIds = new Set(runs.map((t) => t.runId))
+        expect(runIds.size).toBe(2)
+        for (const id of runIds) {
+          expect(recentBridgeTimings().filter((t) => t.runId === id).length).toBeGreaterThan(0)
+        }
+        const events = await eventsMarked(["conc-A", "conc-B"])
+        expect(Object.fromEntries(events.map((e) => [e.marker, e.actor]))).toEqual({
+          "conc-A": userA.id,
+          "conc-B": userB.id,
+        })
+      },
+    )
+
+    it("a nested hop under a breadth cap of 1 and an org cap of 1 completes (no deadlock)", async () => {
+      workersOn()
+      const limits = workersAdmission.getLimits()
+      workersAdmission.setLimits({ perOrg: 1, nestedBreadthPerParent: 1, holdsTxGlobal: 1 })
+      try {
+        const r = await callTool("hop", { v: "capped" })
+        expect(r.status).toBe(200)
+        expect(JSON.stringify(r.body)).toContain("capped")
+      } finally {
+        workersAdmission.setLimits(limits)
+      }
+    }, 30_000)
+
+    it("a replayed /run body drives no second effect (nonce pinned, then settled)", async () => {
+      workersOn()
+      const from = loader.runs.length
+      const pending = callTool("slowCreate", { ms: 800, title: "replay-1" })
+      let recorded: (typeof loader.runs)[number] | undefined
+      for (let i = 0; i < 100 && !recorded; i++) {
+        recorded = loader.runs.slice(from).find((r) => r.body.includes('"slowCreate"'))
+        if (!recorded) await new Promise((r) => setTimeout(r, 20))
+      }
+      expect(recorded).toBeDefined()
+      const replay = () =>
+        fetch(`${loader.url}/run`, {
+          method: "POST",
+          headers: recorded?.headers ?? {},
+          body: recorded?.body ?? "",
+        }).then(async (res) => ({ status: res.status, body: (await res.json()) as any }))
+      const during = await replay()
+      expect((await pending).status).toBe(200)
+      const after = await replay()
+      // The replays ran the module, but every bridge call was refused, so the
+      // handler failed before its insert.
+      expect(during.body.ok).toBe(false)
+      expect(after.body.ok).toBe(false)
+      expect(await countTitled("replay-1")).toBe(1)
+    }, 30_000)
+
+    it("a version installed without a Worker module runs on QuickJS, tagged", async () => {
+      const [row] =
+        await sql`SELECT version, worker_sha256, worker_module FROM kernel.apps_installed
+        WHERE name = 'wparity' AND worker_sha256 IS NOT NULL`
+      await sql`UPDATE kernel.apps_installed SET worker_sha256 = NULL, worker_module = NULL
+        WHERE name = 'wparity' AND version = ${row!.version}`
+      clearInstalledIdentityCache()
+      try {
+        workersOn()
+        const r = await callTool("list")
+        expect(r.status).toBe(200)
+        expect(lastRun("tool:list")?.executor).toBe("quickjs")
+      } finally {
+        await sql`UPDATE kernel.apps_installed
+          SET worker_sha256 = ${row!.worker_sha256}, worker_module = ${row!.worker_module}
+          WHERE name = 'wparity' AND version = ${row!.version}`
+        clearInstalledIdentityCache()
+      }
+    })
+
+    onlyWorkers(
+      "a bad loader signature: retried once, then the run runs on QuickJS; the tokens are revoked",
+      async () => {
+        workersOn({ LIAISON_APP_LOADER_KEY: "not-the-cell-key-at-all-000000" })
+        const live = runRegistry.size()
+        const from = loader.runs.length
+        const r = await callTool("list")
+        // A loader-level fault before any bridge call: the caller gets the QuickJS answer.
+        expect(r.status).toBe(200)
+        expect(lastRun("tool:list")).toMatchObject({
+          executor: "quickjs",
+          ok: true,
+          fallback: "loader_fault",
+        })
+        expect(runRegistry.size()).toBe(live)
+        const sent = JSON.parse(loader.runs[from]?.body ?? "{}") as {
+          runId: string
+          runToken: string
+        }
+        const res = await fetch(`${cellOrigin}/api/app-bridge/${sent.runId}`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sent.runToken}`,
+            "x-exec-nonce": "n",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ callId: 1, method: "db_findMany", args: ["items", "{}"] }),
+        })
+        expect(res.status).toBe(410)
+        // Both Workers attempts are on the record of the run that fell back.
+        expect(lastRun("tool:list")).toMatchObject({
+          attempts: 2,
+          faultClass: "loader",
+          errorKind: "auth",
+        })
+        expect(loader.runs.length - from).toBe(2)
+        WorkersFallbackTestAccess.reset()
+      },
+    )
+
+    onlyWorkers(
+      "an open loader breaker sends every app to QuickJS, tagged, until a probe closes it",
+      async () => {
+        let now = Date.now()
+        WorkersFallbackTestAccess.reset(() => now)
+        try {
+          workersOn()
+          for (let i = 0; i < 5; i++) loaderBreaker.record("loader_fault")
+          expect(loaderBreaker.state()).toBe("open")
+          const from = loader.runs.length
+          const r = await callTool("list")
+          expect(r.status).toBe(200)
+          expect(lastRun("tool:list")).toMatchObject({
+            executor: "quickjs",
+            ok: true,
+            fallback: "breaker",
+          })
+          expect(loader.runs.length).toBe(from)
+          // Half-open after 60 s: the next run is the probe, the loader answers, the breaker closes.
+          now += 61_000
+          expect((await callTool("list")).status).toBe(200)
+          const probe = lastRun("tool:list")
+          expect(probe?.executor).toBe("workers")
+          expect(probe?.fallback).toBeUndefined()
+          expect(loaderBreaker.state()).toBe("closed")
+        } finally {
+          WorkersFallbackTestAccess.reset()
+        }
+      },
+    )
+
+    it('role "worker" runs apps on Workers too, its isolate calling back on the bridge URL', async () => {
+      workersOn()
+      ;(env as unknown as Mutable).LIAISON_ROLE = "worker"
+      try {
+        const r = await callTool("list")
+        expect(r.status).toBe(200)
+        expect(lastRun("tool:list")?.executor).toBe(target)
+      } finally {
+        ;(env as unknown as Mutable).LIAISON_ROLE = "all"
+      }
+    })
+  })
+}
+
+// One after the other: each installs and removes the same fixture apps.
+describe("on the Workers loader", () => executorParitySuite("workers"))
+// The sandbox service (real workerd processes running the shared app loader)
+// as the fallback target, so every run is labelled `workerd`. Re-run on every
+// bump of the pinned workerd.
+describe("on workerd", () => executorParitySuite("workerd"))

@@ -7,14 +7,14 @@
 // no trivial pass on QuickJS), workerd must agree: every entry keeps it.
 import { afterAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
-import { loadAppUnderContract } from "./apps.test-helpers"
-import { EXPECTED_FAILURES_PATH, failuresOf, readFailures, trivialEntriesOf } from "./expected"
-import { runAppContract } from "./harness"
 import {
   stopWorkerdContractService,
   workerdContractExecutor,
   workerModuleSource,
-} from "./workerd-isolate"
+} from "../../../../test-support/contract/workerd-isolate"
+import { loadAppUnderContract } from "./apps.test-helpers"
+import { EXPECTED_FAILURES_PATH, failuresOf, readFailures, trivialEntriesOf } from "./expected"
+import { runAppContract } from "./harness"
 
 const APPS = ["shopify", "invoicing"]
 const expected = readFailures(EXPECTED_FAILURES_PATH)

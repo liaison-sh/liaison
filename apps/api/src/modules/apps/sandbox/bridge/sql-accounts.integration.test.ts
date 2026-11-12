@@ -12,11 +12,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { KERNEL_ACCOUNT_METADATA_KEYS } from "~/modules/apps/connections/kernel-account-metadata"
 import {
   createCredentialConnection,
   disconnectConnection,
 } from "~/modules/apps/connections/service"
-import { KERNEL_ACCOUNT_METADATA_KEYS } from "~/modules/apps/connections/kernel-account-metadata"
 import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import * as minimal from "~/seed/tiers/minimal"
@@ -264,7 +264,17 @@ describe("ctx.accounts: the app's own accounts", () => {
       withRlsContext(
         { actorType: "system", orgId: ORG_A, scopes: [`${APP}:*`], dimensionGrants: {} } as never,
         (tx) =>
-          fn(createRpcBridge(APP, `system:${APP}`, ORG_A, tx as never, manifest as never, [`${APP}:*`], "system")),
+          fn(
+            createRpcBridge(
+              APP,
+              `system:${APP}`,
+              ORG_A,
+              tx as never,
+              manifest as never,
+              [`${APP}:*`],
+              "system",
+            ),
+          ),
       )
     for (const key of KERNEL_ACCOUNT_METADATA_KEYS) {
       for (const value of [["widened"], null]) {
@@ -280,7 +290,8 @@ describe("ctx.accounts: the app's own accounts", () => {
     }
     const [row] = await sql<{ metadata: Record<string, unknown> | null }[]>`
       SELECT metadata FROM kernel.connected_accounts WHERE id = ${ACC_A_ORG}`
-    for (const key of KERNEL_ACCOUNT_METADATA_KEYS) expect(row?.metadata ?? {}).not.toHaveProperty(key)
+    for (const key of KERNEL_ACCOUNT_METADATA_KEYS)
+      expect(row?.metadata ?? {}).not.toHaveProperty(key)
   })
 
   it("never reaches another member's account or another org's", async () => {

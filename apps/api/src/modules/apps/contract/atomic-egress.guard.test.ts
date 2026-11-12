@@ -140,21 +140,37 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
     const notRefused: string[] = []
     for (const name of methods) {
       if (isAtomicLocalMethod(name)) {
-        expect({ name, same: atomic[name] === plain[name] || String(atomic[name]) === String(plain[name]) }).toEqual({ name, same: true })
+        expect({
+          name,
+          same: atomic[name] === plain[name] || String(atomic[name]) === String(plain[name]),
+        }).toEqual({ name, same: true })
         continue
       }
       const err = await (atomic[name] as () => Promise<unknown>)().catch((e: unknown) => e)
       if ((err as { code?: string })?.code !== "atomic_run_egress_refused") notRefused.push(name)
     }
     expect(notRefused).toEqual([])
-    for (const m of ["sql_query", "sql_reads", "sql_schema", "sql_probe", "files_analyzeDocument", "pdf_render"]) {
-      expect({ m, present: methods.includes(m), local: isAtomicLocalMethod(m) }).toEqual({ m, present: true, local: false })
+    for (const m of [
+      "sql_query",
+      "sql_reads",
+      "sql_schema",
+      "sql_probe",
+      "files_analyzeDocument",
+      "pdf_render",
+    ]) {
+      expect({ m, present: methods.includes(m), local: isAtomicLocalMethod(m) }).toEqual({
+        m,
+        present: true,
+        local: false,
+      })
     }
   })
 
   it("the named egress methods all exist on the bridge and none is classed local", () => {
     const methods = new Set(Object.keys(bridgeOf(false)))
-    const stale = ATOMIC_REFUSED_EGRESS_METHODS.filter((m) => !methods.has(m) && !m.startsWith("connector_"))
+    const stale = ATOMIC_REFUSED_EGRESS_METHODS.filter(
+      (m) => !methods.has(m) && !m.startsWith("connector_"),
+    )
     expect(stale).toEqual([])
     expect(ATOMIC_REFUSED_EGRESS_METHODS.filter(isAtomicLocalMethod)).toEqual([])
     // A local entry that no bridge method carries any more is stale.

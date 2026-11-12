@@ -90,7 +90,9 @@ export const ATOMIC_LOCAL_METHODS: ReadonlySet<string> = new Set([
 
 /** True when an atomic job may call bridge method `name` (it stays local). */
 export function isAtomicLocalMethod(name: string): boolean {
-  return ATOMIC_LOCAL_METHODS.has(name) || ATOMIC_LOCAL_METHOD_PREFIXES.some((p) => name.startsWith(p))
+  return (
+    ATOMIC_LOCAL_METHODS.has(name) || ATOMIC_LOCAL_METHOD_PREFIXES.some((p) => name.startsWith(p))
+  )
 }
 
 /**

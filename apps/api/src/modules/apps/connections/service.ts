@@ -32,6 +32,7 @@ import { UUID_RE } from "~/lib/uuid"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
+import type { KernelAccountMetadataKey } from "~/modules/apps/connections/kernel-account-metadata"
 import { assertMailboxAllowed } from "~/modules/apps/connections/mail-domains"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { MINTING_CLIENT_GONE_MESSAGE } from "~/modules/apps/connections/oauth-client"
@@ -53,7 +54,6 @@ import {
   protectedScopesOf,
   recordedGrant,
 } from "~/modules/apps/connections/protected-scopes"
-import type { KernelAccountMetadataKey } from "~/modules/apps/connections/kernel-account-metadata"
 import { buildConnectedAccountCreateEvent } from "~/modules/apps/connections/reconcile-event"
 import {
   restrictedScopesAllowed,

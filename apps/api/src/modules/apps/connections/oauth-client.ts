@@ -149,10 +149,16 @@ const CONVENTION_KEY_REST = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/
  * uppercase letter, a doubled or edge separator, a second `:`) has no convention
  * pair: null.
  */
-export function instanceClientEnvNames(connectionKey: string): { id: string; secret: string } | null {
+export function instanceClientEnvNames(
+  connectionKey: string,
+): { id: string; secret: string } | null {
   const parts = connectionKey.split(":")
   const [app, rest] = parts
-  if (parts.length !== 2 || !CONVENTION_KEY_APP.test(app ?? "") || !CONVENTION_KEY_REST.test(rest ?? "")) {
+  if (
+    parts.length !== 2 ||
+    !CONVENTION_KEY_APP.test(app ?? "") ||
+    !CONVENTION_KEY_REST.test(rest ?? "")
+  ) {
     return null
   }
   // `-` and `_` both become `_`. The app part holds no `_`, so it maps one to

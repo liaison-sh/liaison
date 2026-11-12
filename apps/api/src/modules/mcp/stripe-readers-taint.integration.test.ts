@@ -226,23 +226,20 @@ describe("Stripe reads of outside text", () => {
     expect(await threadTainted(clean.seed.threadId)).toBe(false)
   }, 120_000)
 
-  it("over MCP, a reader's scope then customer_link: the link waits for approval even when the read handed back no outside text", async () => {
+  // Scope taint rule 14f: a person's own client (a connection bound to no agent) is the person
+  // acting, as in the web UI, so the link after a read is not judged.
+  it("over MCP from a person's own client, a reader's scope then customer_link: the link runs", async () => {
     const { seed, ctx } = await seeded()
-    // The approver holds the scope the session read, so the link parks rather than being refused.
     await grantScope(seed.orgId, seed.ownerId, "stripe:approve")
     const runs = register(seed.orgId, { recordsRead: true, found: false })
     const read = await handleToolCall(ctx, "stripe__customers_search", {})
     expect(read.content.map((b) => b.text)).not.toContain(EXTERNAL_CONTENT_NOTICE)
     expect(await threadTainted(ctx.connectionThreadId!)).toBe(false)
-    const parked = (await handleToolCall(ctx, "stripe__customer_link", {})).structuredContent as {
+    const linked = (await handleToolCall(ctx, "stripe__customer_link", {})).structuredContent as {
       gated?: boolean
-      executed?: boolean
     }
-    expect({ gated: parked.gated, executed: parked.executed }).toEqual({
-      gated: true,
-      executed: false,
-    })
-    expect(runs.linkRuns).toBe(0)
+    expect(linked?.gated).not.toBe(true)
+    expect(runs.linkRuns).toBe(1)
   }, 60_000)
 
   it("the six readers and the link load on demand, and their seven schemas stay within 1,500 tokens", () => {

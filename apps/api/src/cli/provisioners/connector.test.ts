@@ -279,51 +279,49 @@ describe("generic connector (Task 11)", () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const group = `grp-${crypto.randomUUID().slice(0, 8)}`
     const spec = (token: string) => ({
-      name: "gitlab",
+      name: "service",
       identifier: group,
       ownerType: "org" as const,
       credentials: { token, group },
     })
-    await provisionConnection(ctx, "gitlab", spec("glpat-GOOD"))
+    await provisionConnection(ctx, "test", spec("glpat-GOOD"))
     // The connection checks a key before keeping it, as the credentials route does.
-    const config = connectionConfigRegistry.get([orgId, "gitlab", "gitlab"])
+    const config = connectionConfigRegistry.get([orgId, "test", "service"])
     const checked: string[] = []
-    connectionConfigRegistry.set([orgId, "gitlab", "gitlab"], {
+    connectionConfigRegistry.set([orgId, "test", "service"], {
       ...config,
       checkBeforeStore: "key_check",
     } as never)
-    toolRegistry.set([orgId, "gitlab", "key_check"], {
-      appName: "gitlab",
+    toolRegistry.set([orgId, "test", "key_check"], {
+      appName: "test",
       name: "key_check",
       description: "Check a key",
-      requiredScopes: ["gitlab:read"],
+      requiredScopes: ["test:items:read"],
       readOnly: true,
       handler: async () => {
         checked.push("ran")
-        throw Object.assign(new Error("GitLab refused the token"), {
+        throw Object.assign(new Error("The service refused the token"), {
           code: "key_rejected",
           status: 401,
         })
       },
     } as never)
     try {
-      const err = await provisionConnection(ctx, "gitlab", spec("glpat-BAD")).catch(
-        (e: unknown) => e,
-      )
+      const err = await provisionConnection(ctx, "test", spec("glpat-BAD")).catch((e: unknown) => e)
       expect(err).toBeInstanceOf(ConfigError)
       expect(String(err)).toContain("key_rejected")
       expect(String(err)).toContain("stored key was kept")
       expect(checked).toEqual(["ran"])
-      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+      expect(await countActive(orgId, "test", "service", group)).toBe(1)
       const creds = await withPrivilegedDb(orgId, "t", (tx) =>
-        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", group, {
+        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "test", "service", group, {
           actorType: "system",
         }),
       )
       expect(creds.token).toBe("glpat-GOOD")
     } finally {
-      connectionConfigRegistry.set([orgId, "gitlab", "gitlab"], config as never)
-      toolRegistry.delete([orgId, "gitlab", "key_check"])
+      connectionConfigRegistry.set([orgId, "test", "service"], config as never)
+      toolRegistry.delete([orgId, "test", "key_check"])
     }
   })
 

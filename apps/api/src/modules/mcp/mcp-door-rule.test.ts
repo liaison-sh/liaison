@@ -244,7 +244,9 @@ describe("the rule for tools called over MCP", () => {
     expect(outbound.runs).toBe(1)
   }, 30_000)
 
-  it("a clean read whose scope the session keeps, then an outbound call: the call waits for approval", async () => {
+  // Scope taint rule 14f: a person's own client (a connection bound to no agent) is the person
+  // acting, as in the web UI, so its writes other than conversation posts are not judged.
+  it("a clean read whose scope the session keeps, then an outbound call from a person's own client: the call runs", async () => {
     const { seed, ctx } = await seeded()
     toolRegistry.set([seed.orgId, "test", "notesList"], {
       appName: "test",
@@ -261,8 +263,11 @@ describe("the rule for tools called over MCP", () => {
     const clean = await handleToolCall(ctx, "test__notesList", {})
     expect(texts(clean)).not.toContain(EXTERNAL_CONTENT_NOTICE)
     expect(await threadTainted(ctx.connectionThreadId!)).toBe(false)
-    expectParked(await handleToolCall(ctx, "test__sendOut", {}))
-    expect(outbound.runs).toBe(0)
+    const sent = (await handleToolCall(ctx, "test__sendOut", {})).structuredContent as {
+      gated?: boolean
+    }
+    expect(sent?.gated).not.toBe(true)
+    expect(outbound.runs).toBe(1)
   }, 30_000)
 })
 

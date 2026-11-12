@@ -261,10 +261,10 @@ describe("request_secret kernel tool", () => {
   it("a credentials card's note names what the card asks for, by its labels", async () => {
     const posted = await tool()({
       kind: "connection_credentials",
-      target: { app: "gitlab", connection: "gitlab" },
+      target: { app: "mail", connection: "imap" },
     })
     const secretLabels = (
-      connectionConfigRegistry.get([orgId, "gitlab", "gitlab"])?.credentialFields ?? []
+      connectionConfigRegistry.get([orgId, "mail", "imap"])?.credentialFields ?? []
     )
       .filter((f) => f.type === "password")
       .map((f) => f.label)

@@ -145,13 +145,13 @@ const CASES: Case[] = [
   // GitLab labels and file names are written by whoever can push to the project.
   {
     app: "gitlab",
-    dir: API_APPS,
+    dir: BUNDLED,
     tool: "gitlab_list_labels",
     row: { labels: [{ name: "bug", color: "#f00", description: INJECTED }] },
   },
   {
     app: "gitlab",
-    dir: API_APPS,
+    dir: BUNDLED,
     tool: "gitlab_list_tree",
     row: { entries: [{ name: INJECTED, path: `docs/${INJECTED}`, type: "blob", id: "b1" }] },
   },
@@ -604,7 +604,9 @@ describe("reads that hand back outside text mark the turn", () => {
     }, 120_000)
   }
 
-  it("a read that hands back no row but keeps its scope in the session: a later outbound waits for approval", async () => {
+  // Scope taint rule 14f: a person's own client (a connection bound to no agent) is the person
+  // acting, as in the web UI, so its outbound call after a clean read is not judged.
+  it("a read that hands back no row but keeps its scope in the session: a later outbound from a person's own client runs", async () => {
     const seed = await seedOrgWithTicketsApp()
     orgs.push(seed.orgId)
     const outbound = registerOutbound(seed.orgId)
@@ -620,14 +622,10 @@ describe("reads that hand back outside text mark the turn", () => {
     const empty = await handleToolCall(ctx, tool, {})
     expect(texts(empty)).not.toContain(EXTERNAL_CONTENT_NOTICE)
     expect(await threadTainted(ctx.connectionThreadId)).toBe(false)
-    const parked = (await handleToolCall(ctx, "test__sendOut", {})).structuredContent as {
+    const sent = (await handleToolCall(ctx, "test__sendOut", {})).structuredContent as {
       gated?: boolean
-      executed?: boolean
     }
-    expect({ gated: parked.gated, executed: parked.executed }).toEqual({
-      gated: true,
-      executed: false,
-    })
-    expect(outbound.runs).toBe(0)
+    expect(sent?.gated).not.toBe(true)
+    expect(outbound.runs).toBe(1)
   }, 60_000)
 })

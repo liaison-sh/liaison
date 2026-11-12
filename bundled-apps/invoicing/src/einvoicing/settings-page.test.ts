@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { appSettingsSchema } from "@liaison/app-sdk"
 import type { TaxTreatment } from "../tax"
-import { einvoicingProviderOptions, einvoicingSettingsValues } from "./transmission-read"
+import { einvoicingProviderOptions, einvoicingSettingsGet, einvoicingSettingsValues } from "./transmission-read"
 
 type Ctx = Parameters<typeof einvoicingProviderOptions>[0]
 
@@ -47,6 +47,33 @@ describe("einvoicing_settings_values", () => {
     for (const key of Object.keys(await einvoicingSettingsValues(ctxWith(null)))) {
       expect(accepted).toContain(key)
     }
+  })
+})
+
+describe("einvoicing_settings_get", () => {
+  it("answers the settings and the bound provider's registration, and the same as rows", async () => {
+    const ctx = {
+      db: {
+        findMany: async () => [
+          { id: "s1", provider_app: "pennylane", cutover_date: "2026-09-01", send_enabled: true, book_enabled: false },
+        ],
+      },
+      contracts: {
+        providers: async () => ["pennylane"],
+        call: async () => ({ status: "completed", result: { status: "active" } }),
+      },
+    } as unknown as Parameters<typeof einvoicingSettingsGet>[0]
+    const out = await einvoicingSettingsGet(ctx)
+    expect(out).toMatchObject({ status: "ok", providers: ["pennylane"], registration: { status: "active" } })
+    expect(out.settings.provider_app).toBe("pennylane")
+    // The settings as key/value rows, for a dashboard block.
+    expect(out.rows).toEqual([
+      { key: "provider_app", value: "pennylane" },
+      { key: "cutover_date", value: "2026-09-01" },
+      { key: "send_enabled", value: true },
+      { key: "book_enabled", value: false },
+      { key: "registration_status", value: "active" },
+    ])
   })
 })
 

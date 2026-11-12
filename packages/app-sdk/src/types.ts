@@ -46,8 +46,22 @@ export interface DbClient {
    * `sequences` (instead of `sequence`) allocates several named sequences in one commit (two
    * numbered documents that must land together), referenced as `{ $seq: "<name>.value" }` /
    * `{ $seq: "<name>.formatted" }`, and answered in the result's `sequences`.
+   * An `update`, `delete` or `updateMany` may carry `expect: { minRows?, maxRows? }`: when the
+   * rows it matched fall outside it, nothing in the batch commits (sequence values included)
+   * and the call rejects with an Error whose `code` is `"precondition_failed"` (`status` 409)
+   * and whose message names the op (`... at ops[2] (update subscriptions): expected at least
+   * 1 row, matched 0`); `batchPreconditionFailure(err)` reads it.
    */
   batch(spec: DbBatchSpec): Promise<DbBatchResult>
+}
+
+/**
+ * A guard on the rows an op matched (`DbClient.batch`): at least one bound, `minRows <= maxRows`.
+ * `{ minRows: 1 }` = the row must exist; `{ minRows: 1, maxRows: 1 }` = exactly one.
+ */
+export interface DbBatchExpect {
+  minRows?: number
+  maxRows?: number
 }
 
 export type DbBatchOp =
@@ -60,9 +74,15 @@ export type DbBatchOp =
       append?: Record<string, unknown[]>
       /** Keys merged into json object fields of the row as it is at commit (`field || keys`). */
       merge?: Record<string, Record<string, unknown>>
+      expect?: DbBatchExpect
     }
-  | { delete: string; id: string | { $ref: string } }
-  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
+  | { delete: string; id: string | { $ref: string }; expect?: DbBatchExpect }
+  | {
+      updateMany: string
+      where: Record<string, unknown>
+      data: Record<string, unknown>
+      expect?: DbBatchExpect
+    }
 
 export interface DbBatchSequence {
   key: string

@@ -172,6 +172,7 @@ import {
   captureActingAgentId,
   currentRunContext,
   currentToolCallScopesBefore,
+  isPersonClientFrame,
   isPersonExternalClientCall,
   runHasPerson,
   type SpawnParentFrame,
@@ -189,6 +190,7 @@ import {
   markPlatformTaintRefusal,
   markRefusedBeforeRun,
   mcpReadOfOwnServer,
+  personClientWriteUnjudged,
   postDisclosureRelay,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
@@ -546,6 +548,12 @@ export interface ExecuteToolCoreOptions extends ExecuteToolParams {
    * (an in-frame caller) falls back to the frame itself.
    */
   turnTaintScopes?: string[] | null
+  /**
+   * With `turnTaintScopes`: the calling turn was a person's own external client (its captured
+   * frame's `personClient`), so only a post into a kernel thread is judged against them
+   * (scope-taint.ts, rule 14f). Absent (an in-frame caller) the live frame says.
+   */
+  personClientTurn?: boolean
   /**
    * The calling turn's taint ORIGIN STORE (A46, A46b), forwarded by a caller that has
    * crossed a hop losing the ALS frame (the sandbox bridge's `ctx.executeTool`). It is
@@ -3788,20 +3796,43 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // routing the write through a sandboxed app. The forwarded value wins when the
   // caller supplies one: it is the only witness of the calling turn left.
   const taintFrame = currentRunContext()
+  // A PERSON'S OWN CLIENT IS JUDGED ON ITS POSTS ONLY (scope-taint.ts, rule 14f, 2026-11-12). Its
+  // gateway frame (or, across a sandbox hop that lost it, the frame captured from it) records what
+  // it reads, but only a post into a kernel thread is judged against that: every other write runs
+  // as the person's own, as it did before rule 14 gave such a client a frame. Not judged, its
+  // handler is told the turn read nothing (the empty stamp a UI write carries) and any approval it
+  // parks (its own gate) records no proposing taint, so nothing is narrowed or written hidden.
+  const personClientCall =
+    taintFrame !== undefined
+      ? isPersonClientFrame(taintFrame)
+      : opts.turnTaintScopes !== undefined && opts.personClientTurn === true
+  const personClientUnjudged = personClientWriteUnjudged(personClientCall, tool)
   const inFrameTaintScopes = taintFrame
     ? taintFrame.turnScopeAccumulator
       ? (currentToolCallScopesBefore() ?? taintFrame.turnScopeAccumulator.snapshot())
       : null
     : undefined
-  const turnTaintScopes =
-    opts.turnTaintScopes !== undefined ? opts.turnTaintScopes : inFrameTaintScopes
+  const turnTaintScopes = personClientUnjudged
+    ? undefined
+    : opts.turnTaintScopes !== undefined
+      ? opts.turnTaintScopes
+      : inFrameTaintScopes
   // The same taint, normalized (an unreadable value is the unknown sentinel), for the handler.
-  const handlerTurnTaint: string[] | undefined =
-    turnTaintScopes === undefined
+  const handlerTurnTaint: string[] | undefined = personClientUnjudged
+    ? []
+    : turnTaintScopes === undefined
       ? undefined
       : Array.isArray(turnTaintScopes) && turnTaintScopes.every((s) => typeof s === "string")
         ? turnTaintScopes
         : [...UNKNOWN_TURN_TAINT]
+  // What the approvals this dispatch records carry as the proposing turn's scopes (FX4/FX13):
+  // the forwarded value, else the live frame (`undefined`). A person's own client: `[]` for what
+  // rule 14f leaves unjudged, the window for its posts.
+  const dispatchProposingTurnScopes: string[] | null | undefined = personClientUnjudged
+    ? []
+    : personClientCall && opts.turnTaintScopes === undefined
+      ? proposingTurnWriteScopes({ personClientPost: true })
+      : opts.turnTaintScopes
   // SAME-RESOURCE ALLOWANCE (A46). The origin rows travel with the taint: the live
   // frame's accumulator in frame, and the store forwarded by the caller across a hop
   // that lost it (the sandbox bridge), exactly as the scopes above are. It is read
@@ -5034,7 +5065,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       approveScope,
       dimensionConstraint,
       origin: opts.origin,
-      proposingTurnScopes: opts.turnTaintScopes,
+      proposingTurnScopes: dispatchProposingTurnScopes,
       ...(parkTaint
         ? {
             audienceMustHold: parkTaint,
@@ -5431,7 +5462,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           origin: opts.origin,
           bundleId: opts.stepBundleId ?? null,
           tighten: approvalTighten,
-          proposingTurnScopes: opts.turnTaintScopes,
+          proposingTurnScopes: dispatchProposingTurnScopes,
           ...(opts.spawnParentFrame !== undefined
             ? { originRun: opts.spawnParentFrame?.run ?? null }
             : {}),
@@ -5514,7 +5545,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         approveScope,
         dimensionConstraint,
         bundle,
-        proposingTurnScopes: opts.turnTaintScopes,
+        proposingTurnScopes: dispatchProposingTurnScopes,
         actingAgentId,
       })
       envelope = {
@@ -6098,7 +6129,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         requestedBy: userId,
         appName,
         policyId: autoApprovedByPolicy,
-        proposingTurnScopes: opts.turnTaintScopes,
+        proposingTurnScopes: dispatchProposingTurnScopes,
         actingAgentId,
       })
     } catch (err) {

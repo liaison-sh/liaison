@@ -14,7 +14,10 @@
 //   - `append` / `merge` add to json fields of the row as it is at commit, so a
 //     write made between the app's read and the batch is kept;
 //   - named `sequences` number two rows of two series in one commit, and a
-//     failing op consumes neither number.
+//     failing op consumes neither number;
+//   - an op's `expect` guard: a batch whose guarded op matched a row count
+//     outside it writes nothing, consumes no number and rejects with a typed
+//     `precondition_failed` (409) naming the op.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { RlsClient } from "~/db"
 import { sql } from "~/db/connection"
@@ -302,5 +305,176 @@ describe("ctx.db.batch", () => {
     )
     const b = await sql.unsafe(`SELECT log FROM "${SCHEMA}".docs WHERE id = $1`, [bare.rows.d.id])
     expect(b[0]?.log).toEqual([1])
+  })
+
+  describe("expect: a per-op row-count guard", () => {
+    /** One doc of `series`; returns its id. */
+    async function seedDoc(series: string): Promise<string> {
+      const r = JSON.parse(
+        await bridge().db_batch(
+          JSON.stringify({ ops: [{ insert: "docs", as: "d", data: { series } }] }),
+        ),
+      ) as { rows: { d: { id: string } } }
+      return r.rows.d.id
+    }
+    const MISSING_ID = "00000000-0000-0000-0000-00000000dead"
+
+    async function rejection(
+      p: Promise<unknown>,
+    ): Promise<Error & { code?: string; status?: number }> {
+      try {
+        await p
+      } catch (err) {
+        return err as Error & { code?: string; status?: number }
+      }
+      throw new Error("the batch did not reject")
+    }
+
+    async function count(series: string): Promise<number> {
+      const rows = await sql.unsafe(
+        `SELECT count(*)::int AS n FROM "${SCHEMA}".docs WHERE org_id = $1 AND series = $2`,
+        [TEST_ORG, series],
+      )
+      return Number(rows[0]?.n)
+    }
+
+    it("a guard that holds lets the batch commit", async () => {
+      const id = await seedDoc("J")
+      await bridge().db_batch(
+        JSON.stringify({
+          ops: [
+            { update: "docs", id, data: { number: "J-1" }, expect: { minRows: 1, maxRows: 1 } },
+            {
+              updateMany: "docs",
+              where: { series: "J" },
+              data: { number: "J-2" },
+              expect: { minRows: 1 },
+            },
+            { insert: "doc_lines", data: { doc_id: id, label: "after" } },
+            { delete: "doc_lines", id: MISSING_ID, expect: { maxRows: 0 } },
+          ],
+        }),
+      )
+      const rows = await sql.unsafe(`SELECT number FROM "${SCHEMA}".docs WHERE id = $1`, [id])
+      expect(rows[0]?.number).toBe("J-2")
+    })
+
+    it("an update that matched nothing rolls back every op and the sequence, with a typed error", async () => {
+      const guarded = (id: string) =>
+        JSON.stringify({
+          sequence: { key: `${APP}:K`, format: { prefix: "K-", pad: 2 } },
+          ops: [
+            {
+              insert: "docs",
+              as: "doc",
+              data: { series: "K", number: { $seq: "formatted" }, number_int: { $seq: "value" } },
+            },
+            { insert: "doc_lines", data: { doc_id: { $ref: "doc" }, label: "line" } },
+            { update: "docs", id, data: { number: "touched" }, expect: { minRows: 1 } },
+          ],
+        })
+      const err = await rejection(bridge().db_batch(guarded(MISSING_ID)))
+      expect(err.code).toBe("precondition_failed")
+      expect(err.status).toBe(409)
+      expect(err.message).toContain("precondition_failed at ops[2] (update docs)")
+      expect(err.message).toContain("matched 0")
+      expect(await count("K")).toBe(0)
+      const lines = await sql.unsafe(
+        `SELECT count(*)::int AS n FROM "${SCHEMA}".doc_lines WHERE org_id = $1 AND label = 'line'`,
+        [TEST_ORG],
+      )
+      expect(lines[0]?.n).toBe(0)
+      // The failed batch burned no number: the next one takes K-01.
+      const target = await seedDoc("K-target")
+      const ok = JSON.parse(await bridge().db_batch(guarded(target))) as {
+        sequence: { value: number; formatted: string }
+      }
+      expect(ok.sequence).toEqual({ value: 1, formatted: "K-01" })
+      expect(await numbers("K")).toEqual([1])
+    })
+
+    it("append/merge-only updates, deletes and updateMany are guarded the same way", async () => {
+      const id = await seedDoc("L")
+      await seedDoc("L")
+      const appendMissing = await rejection(
+        bridge().db_batch(
+          JSON.stringify({
+            ops: [
+              { update: "docs", id, data: { number: "L-x" } },
+              { update: "docs", id: MISSING_ID, append: { log: [1] }, expect: { minRows: 1 } },
+            ],
+          }),
+        ),
+      )
+      expect(appendMissing.code).toBe("precondition_failed")
+      expect(appendMissing.message).toContain("ops[1] (update docs)")
+      const deleteMissing = await rejection(
+        bridge().db_batch(
+          JSON.stringify({
+            ops: [
+              { update: "docs", id, data: { number: "L-y" } },
+              { delete: "docs", id: MISSING_ID, expect: { minRows: 1 } },
+            ],
+          }),
+        ),
+      )
+      expect(deleteMissing.message).toContain("ops[1] (delete docs)")
+      const tooMany = await rejection(
+        bridge().db_batch(
+          JSON.stringify({
+            ops: [
+              { update: "docs", id, data: { number: "L-z" } },
+              {
+                updateMany: "docs",
+                where: { series: "L" },
+                data: { number: "L-all" },
+                expect: { maxRows: 1 },
+              },
+            ],
+          }),
+        ),
+      )
+      expect(tooMany.code).toBe("precondition_failed")
+      expect(tooMany.message).toContain("ops[1] (updateMany docs)")
+      expect(tooMany.message).toContain("matched 2")
+      // None of the three batches changed the row.
+      const rows = await sql.unsafe(
+        `SELECT number FROM "${SCHEMA}".docs WHERE org_id = $1 AND series = 'L' AND number IS NOT NULL`,
+        [TEST_ORG],
+      )
+      expect(rows.length).toBe(0)
+    })
+
+    it("refuses a malformed guard, and a guard on an insert, before writing", async () => {
+      const id = await seedDoc("M")
+      for (const expectValue of [
+        {},
+        { minRows: -1 },
+        { minRows: 2, maxRows: 1 },
+        { rows: 1 },
+        "exactlyOne",
+      ]) {
+        const err = await rejection(
+          bridge().db_batch(
+            JSON.stringify({
+              ops: [
+                { insert: "docs", data: { series: "M" } },
+                { update: "docs", id, data: { number: "M-1" }, expect: expectValue },
+              ],
+            }),
+          ),
+        )
+        expect(err.message).toContain("ops[1].expect")
+      }
+      const onInsert = await rejection(
+        bridge().db_batch(
+          JSON.stringify({
+            ops: [{ insert: "docs", data: { series: "M" }, expect: { minRows: 1 } }],
+          }),
+        ),
+      )
+      expect(onInsert.message).toContain("ops[0].expect")
+      expect(await count("M")).toBe(1)
+    })
   })
 })

@@ -592,7 +592,7 @@ export class WebSocketManager {
    */
   async markNodeConnection(ws: WsLike, nodeId: string): Promise<NotifyPresenceEntry | null> {
     const conn = this.notifyConns.get(ws)
-    if (!conn || conn.kind !== "desktop_app") return null
+    if (conn?.kind !== "desktop_app") return null
     conn.nodeId = nodeId
     return this.writeNotifyPresence(conn)
   }
@@ -1969,7 +1969,7 @@ export class WebSocketManager {
     if (payload.app !== "kernel" || payload.entity !== "connected_account") return true
 
     const data = payload.data as Record<string, unknown> | undefined
-    if (!data || data.ownerType !== "user") return true
+    if (data?.ownerType !== "user") return true
 
     return data.ownerId === client.userId
   }

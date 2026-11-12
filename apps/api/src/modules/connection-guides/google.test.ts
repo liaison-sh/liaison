@@ -370,9 +370,8 @@ describe("scopes and APIs (drift against the manifests)", () => {
     expect(src("tickets/manifest-descriptor.ts")).toContain("resolveGoogleOAuthClientConfig")
     expect(src("calendar/manifest-descriptor.ts")).toContain("resolveGoogleOAuthClientConfig")
     expect(src("mail/manifest-descriptor.ts")).toContain("resolveEnabledMailProviderOAuthClient")
-    expect(src("google-drive/manifest-descriptor.ts")).not.toContain(
-      "resolveGoogleOAuthClientConfig",
-    )
+    // Drive is a catalog app: no resolver code at all, its client is its manifest key's.
+    expect(existsSync(path.join(API_SRC, "apps", "google-drive"))).toBe(false)
   })
 
   test("the workspace's own Google client set: Drive and YouTube (own clients) leave the steps, Calendar's APIs stay", () => {

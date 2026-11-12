@@ -166,25 +166,25 @@ describe("generic connector (Task 11)", () => {
     expect(await countActive(orgId, "gitlab", "gitlab", "")).toBe(0)
   })
 
-  test("oauth2 connector (google-drive/drive) → pending, no write", async () => {
+  test("oauth2 connector (calendar/google-calendar) → pending, no write", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const spec = {
-      name: "drive",
-      identifier: "drive-account",
+      name: "google-calendar",
+      identifier: "calendar-account",
       ownerType: "org" as const,
     }
 
-    const r = await provisionConnection(ctx, "google-drive", spec)
+    const r = await provisionConnection(ctx, "calendar", spec)
     expect(r.connected).toBeFalsy()
     expect(r.pending).toBeDefined()
-    expect(r.pending?.app).toBe("google-drive")
-    expect(r.pending?.connection).toBe("drive")
+    expect(r.pending?.app).toBe("calendar")
+    expect(r.pending?.connection).toBe("google-calendar")
 
     // No connected_account written for an oauth2 connection.
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'google-drive'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'calendar'
       `),
     )
     expect(extractRows(rows).length).toBe(0)
@@ -193,27 +193,27 @@ describe("generic connector (Task 11)", () => {
   test("oauth2 with oauthClient → provisions the OAuth client (oauth_providers row) + pending", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const spec = {
-      name: "drive",
-      identifier: "drive-account",
+      name: "google-calendar",
+      identifier: "calendar-account",
       ownerType: "org" as const,
-      oauthClient: { clientId: "gdrive-client-id", clientSecret: "gdrive-secret" },
+      oauthClient: { clientId: "gcal-client-id", clientSecret: "gcal-secret" },
     }
 
-    const r = await provisionConnection(ctx, "google-drive", spec)
+    const r = await provisionConnection(ctx, "calendar", spec)
     expect(r.connected).toBeFalsy()
     expect(r.pending).toBeDefined()
-    expect(r.changed ?? []).toContain("apps.google-drive.drive.oauthClient")
+    expect(r.changed ?? []).toContain("apps.calendar.google-calendar.oauthClient")
 
     // The per-connection OAuth client row was written under `<app>:<connection>`.
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT client_id FROM ${kernelRel("oauth_providers")}
-        WHERE org_id = ${orgId}::uuid AND name = 'google-drive:drive'
+        WHERE org_id = ${orgId}::uuid AND name = 'calendar:google-calendar'
       `),
     )
     const providerRows = extractRows<{ client_id: string }>(rows)
     expect(providerRows.length).toBe(1)
-    expect(providerRows[0].client_id).toBe("gdrive-client-id")
+    expect(providerRows[0].client_id).toBe("gcal-client-id")
   })
 
   test("oauth2 with EMPTY oauthClient → skip client provisioning, pending, no oauth_providers row", async () => {
@@ -221,22 +221,22 @@ describe("generic connector (Task 11)", () => {
     // An unset `${ENV:-}` ref interpolates to "" -- a declared-but-unconfigured
     // client. The connector must SKIP it (not throw) and still report pending.
     const spec = {
-      name: "drive",
-      identifier: "drive-account",
+      name: "google-calendar",
+      identifier: "calendar-account",
       ownerType: "org" as const,
       oauthClient: { clientId: "", clientSecret: "" },
     }
 
-    const r = await provisionConnection(ctx, "google-drive", spec)
+    const r = await provisionConnection(ctx, "calendar", spec)
     expect(r.connected).toBeFalsy()
     expect(r.pending).toBeDefined()
     // No client change recorded, and no oauth_providers row written.
-    expect(r.changed ?? []).not.toContain("apps.google-drive.drive.oauthClient")
+    expect(r.changed ?? []).not.toContain("apps.calendar.google-calendar.oauthClient")
 
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT client_id FROM ${kernelRel("oauth_providers")}
-        WHERE org_id = ${orgId}::uuid AND name = 'google-drive:drive'
+        WHERE org_id = ${orgId}::uuid AND name = 'calendar:google-calendar'
       `),
     )
     expect(extractRows(rows).length).toBe(0)

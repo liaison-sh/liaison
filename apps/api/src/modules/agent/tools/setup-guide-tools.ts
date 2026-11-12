@@ -189,9 +189,8 @@ export async function handleGoogleSetup(
         separateClientsStep(values),
       ]
     : [pathStep(plan), ...switchedOff]
-  const driveOn = values.connections.some(
-    (c) => c.app === "google-drive" && c.connection === "drive",
-  )
+  // The Drive family's own connection (connection-guides/google.ts FAMILY_KEYS).
+  const driveOn = values.connections.some((c) => `${c.app}:${c.connection}` === DRIVE_FAMILY_KEY)
   const drive =
     driveOn && plan.driveMode
       ? { mode: plan.driveMode, nextStep: driveSetupStep(plan.driveMode, plan.email) }
@@ -213,6 +212,9 @@ export async function handleGoogleSetup(
     ...(drive ? { drive } : {}),
   }
 }
+
+/** The connection of the Google Drive family (the Drive app's own client). */
+const DRIVE_FAMILY_KEY = "google-drive:drive"
 
 /** What the agent does to connect Google Drive for an address, by mode. */
 export function driveSetupStep(mode: "full" | "picked", email?: string): string {

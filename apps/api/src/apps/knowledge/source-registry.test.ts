@@ -40,15 +40,8 @@ describe("registerDefaultKnowledgeSources: the source app's own read scope gates
     expect(sources).not.toContain("google-drive")
   })
 
-  it("holding the Drive read scope adds the Drive adapter only", () => {
-    const sources = sourcesFor(["google-drive:accounts:read"])
-    expect(sources).toContain("google-drive")
-    expect(sources).not.toContain("gitlab")
-  })
-
-  it("the wildcard holder gets both", () => {
-    const sources = sourcesFor(["*"])
-    expect(sources).toContain("gitlab")
-    expect(sources).toContain("google-drive")
+  it("Google Drive is no adapter here: its folders sync through the app's own source kinds", () => {
+    expect(sourcesFor(["google-drive:accounts:read"])).toEqual([])
+    expect(sourcesFor(["*"])).not.toContain("google-drive")
   })
 })

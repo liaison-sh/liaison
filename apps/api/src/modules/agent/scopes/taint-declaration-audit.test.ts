@@ -126,6 +126,9 @@ const EXTERNAL_WRITES = new Set([
 // projects:checklist_set_validation declare kernel.messages and are pinned below.
 const KERNEL_TABLE_WRITES = new Set([
   "google-drive:import", // a kernel.files row
+  "google-drive:drive_picker", // a one-time page link for the person
+  "google-drive:picker_remove", // the account's metadata (picked items) and its Knowledge sync
+  "google-drive:shared_drives_save", // the org account's metadata (chosen shared drives)
   "mail:export_conversations", // a kernel.files row
   "pennylane:einvoicing_received_file", // a kernel.files row (the received original or rendering)
   "example:resolve_contact", // may create a kernel.contacts row

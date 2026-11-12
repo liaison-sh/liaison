@@ -23,8 +23,7 @@
   ],
   "dependencies": {
     "required": [
-      "kernel",
-      "knowledge"
+      "kernel"
     ]
   },
   "network": {

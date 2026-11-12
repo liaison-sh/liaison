@@ -122,6 +122,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   sql_probe: "read",
   accounts_list: "read",
   kernel_listApprovals: "read",
+  knowledge_appSource: "read",
   knowledge_attentionItems: "read",
   knowledge_create_validate: "read",
   knowledge_find_by_title: "read",

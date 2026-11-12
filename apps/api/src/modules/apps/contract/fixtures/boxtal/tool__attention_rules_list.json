@@ -1,0 +1,12 @@
+{
+  "entry": "tool:attention_rules_list",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["attention_rule", "{\"limit\":200}"],
+      "reply": "[{\"id\":\"c221d57e-7613-4ed5-945b-7b4dbff3bcc9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-05-19 12:00:00+00\",\"updated_at\":\"2026-05-19 12:00:00+00\",\"name\":\"Aluminium declaration for US imports\",\"enabled\":true,\"conditions\":[{\"op\":\"eq\",\"field\":\"destination\",\"value\":\"US\"}],\"documents\":[{\"name\":\"Smelt and cast declaration\",\"note\":\"Country of smelt for the chassis. Customs asks for it at the border, not before.\"},{\"name\":\"Commercial invoice, three copies\",\"note\":\"One in the pouch, two inside the carton.\"}],\"knowledge_ref\":null},{\"id\":\"bab56847-0d82-4b1e-bee4-58d3d7bd81dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-05-19 12:00:00+00\",\"updated_at\":\"2026-05-19 12:00:00+00\",\"name\":\"Two person lift over 15 kg\",\"enabled\":true,\"conditions\":[{\"op\":\"gte\",\"field\":\"weight\",\"value\":15}],\"documents\":[{\"name\":\"Heavy parcel label\",\"note\":\"Yellow label on the two long faces.\"}],\"knowledge_ref\":null}]"
+    }
+  ]
+}

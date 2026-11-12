@@ -101,7 +101,7 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
   // — Job 1: the label, normalized —
   let label: PrintPackResult["label"] = null
   let labelError: string | undefined
-  const imported = await importLabelDocument(ctx, { id: String(row.id) }, {}, { mergeParcels: false })
+  const imported = await importLabelDocument(ctx, { id: String(row.id) }, { mergeParcels: false })
   const labelIds = imported.label_file_ids ?? (imported.label_file_id ? [imported.label_file_id] : [])
   if (imported.error || labelIds.length === 0) {
     labelError = imported.error?.message ?? "Label not available yet."

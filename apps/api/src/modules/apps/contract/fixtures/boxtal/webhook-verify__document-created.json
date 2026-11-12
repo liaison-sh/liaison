@@ -1,0 +1,49 @@
+{
+  "entry": "webhook-verify:document-created",
+  "params": {
+    "headers": {
+      "content-type": "application/json",
+      "x-bxt-signature": "c8a07f3cd1c793e8ff013e80599b22e98d978a66d6d7254f644031780301d9b3",
+      "x-bxt-delivery-id": "contract-DOCUMENT_CREATED"
+    },
+    "body": "{\"id\":\"evt-document-2611121002CHRP5CXMFR\",\"type\":\"DOCUMENT_CREATED\",\"shippingOrderId\":\"2611121002CHRP5CXMFR\"}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": ["boxtalWebhookSecret"],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "boxtalWebhookSecret",
+        "{\"id\":\"evt-document-2611121002CHRP5CXMFR\",\"type\":\"DOCUMENT_CREATED\",\"shippingOrderId\":\"2611121002CHRP5CXMFR\"}",
+        "c8a07f3cd1c793e8ff013e80599b22e98d978a66d6d7254f644031780301d9b3",
+        "base64"
+      ],
+      "reply": false
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "boxtalWebhookSecret",
+        "{\"id\":\"evt-document-2611121002CHRP5CXMFR\",\"type\":\"DOCUMENT_CREATED\",\"shippingOrderId\":\"2611121002CHRP5CXMFR\"}",
+        "c8a07f3cd1c793e8ff013e80599b22e98d978a66d6d7254f644031780301d9b3",
+        "hex"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "boxtal-delivery",
+        "{\"id\":\"evt-document-2611121002CHRP5CXMFR\",\"type\":\"DOCUMENT_CREATED\",\"shippingOrderId\":\"2611121002CHRP5CXMFR\"}"
+      ],
+      "reply": "RBHtXtBDCHV2TnpfxgWmmwXxt3EFu6T0l58WTbeTjXQ="
+    }
+  ]
+}

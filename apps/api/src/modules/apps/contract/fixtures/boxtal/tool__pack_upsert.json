@@ -1,0 +1,37 @@
+{
+  "entry": "tool:pack_upsert",
+  "params": {
+    "name": "CT-CABLE-BOX",
+    "length": 25,
+    "width": 20,
+    "height": 10,
+    "gross_weight": 0.9,
+    "carton_tare": 0.2,
+    "components": [
+      {
+        "product_source": "local",
+        "product_id": "CT-CABLE-1",
+        "quantity": 2
+      }
+    ]
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_insert",
+      "args": [
+        "pack",
+        "{\"name\":\"CT-CABLE-BOX\",\"length\":25,\"width\":20,\"height\":10,\"gross_weight\":0.9,\"content_category\":null,\"carton_tare\":0.2}"
+      ],
+      "reply": "{\"id\":\"f99ecab9-61bd-4ba2-a3da-692cbae1f185\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:23.385396+00\",\"updated_at\":\"2026-11-12 09:02:23.385396+00\",\"name\":\"CT-CABLE-BOX\",\"length\":25,\"width\":20,\"height\":10,\"gross_weight\":0.9,\"content_category\":null,\"carton_tare\":0.2,\"external_ref\":null}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "pack_component",
+        "{\"pack_id\":\"f99ecab9-61bd-4ba2-a3da-692cbae1f185\",\"product_source\":\"local\",\"product_id\":\"CT-CABLE-1\",\"quantity\":2}"
+      ],
+      "reply": "{\"id\":\"81e4cee7-7be2-49b5-a83e-e6342e7a5e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:23.389614+00\",\"updated_at\":\"2026-11-12 09:02:23.389614+00\",\"pack_id\":\"f99ecab9-61bd-4ba2-a3da-692cbae1f185\",\"product_source\":\"local\",\"product_id\":\"CT-CABLE-1\",\"quantity\":2}"
+    }
+  ]
+}

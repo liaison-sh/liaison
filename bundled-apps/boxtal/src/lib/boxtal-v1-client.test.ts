@@ -248,7 +248,7 @@ describe("BoxtalV1Client.quote", () => {
 })
 
 describe("BoxtalV1Client - request timeout", () => {
-  it("hands the cotation fetch a per-request abort deadline", async () => {
+  it("hands the cotation fetch its per-request deadline as a plain timeoutMs (no signal: the options cross the bridge as JSON)", async () => {
     const seen: Array<{ timeoutMs?: number; hasSignal: boolean }> = []
     const client = new BoxtalV1Client({
       fetch: async (_url, opts) => {
@@ -260,6 +260,6 @@ describe("BoxtalV1Client - request timeout", () => {
       requestTimeoutMs: 1234,
     })
     await client.quote(singleParcelInput)
-    expect(seen).toEqual([{ timeoutMs: 1234, hasSignal: true }])
+    expect(seen).toEqual([{ timeoutMs: 1234, hasSignal: false }])
   })
 })

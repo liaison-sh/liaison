@@ -1,0 +1,17 @@
+{
+  "entry": "tool:prep_document_pdf",
+  "params": {
+    "document_ref": "4da92a37-d5dd-4407-a753-84c86fda324a"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "invoicing:documents_download_pdf",
+        "{\"id\":\"4da92a37-d5dd-4407-a753-84c86fda324a\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"file_id\":null,\"url\":null,\"legal_original\":false,\"management_copy\":null,\"facturx_xml_file_id\":null}}"
+    }
+  ]
+}

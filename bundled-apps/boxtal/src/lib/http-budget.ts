@@ -18,12 +18,9 @@
 // client CAN do, and does, is
 //   a) refuse to START a request once the call budget is spent (a hard, timer
 //      free bound on everything after the first hung round trip), and
-//   b) hand the fetch layer an AbortSignal (when the runtime has one) plus a
-//      plain `timeoutMs` hint, so any fetch implementation that honours either
-//      one aborts at OUR deadline instead of the sandbox limit. The real global
-//      fetch honours the signal; the sandbox RPC bridge currently ignores both
-//      and falls back to its own 10s cap, which is why (a) carries the bound in
-//      production today.
+//   b) hand the fetch layer a plain `timeoutMs` hint (the options cross the
+//      sandbox bridge as JSON, so no AbortSignal), so a fetch implementation
+//      that honours it aborts at OUR deadline instead of the sandbox limit.
 
 /** One HTTP round trip. Deliberately under the sandbox-wide 10s cap so our own
  *  deadline is the one that fires first wherever it can be honoured. */
@@ -59,24 +56,16 @@ export function budgetExhaustedMessage(what: string, budgetMs: number): string {
   return `Boxtal ${what} exceeded its ${budgetMs}ms budget (upstream too slow): nothing further was sent.`
 }
 
-/** The per-request opts a timed fetch adds on top of {method, headers, body}.
- *  Both are hints: a fetch implementation may honour either, one, or neither. */
+/** The per-request opts a timed fetch adds on top of {method, headers, body}. */
 export interface TimedFetchHints {
-  signal?: unknown
   timeoutMs?: number
 }
 
-/** Build the abort hints for one request, capped by whatever the call has left. */
+/**
+ * The abort hint for one request: a plain `timeoutMs`. ctx.fetch is a bridge call whose
+ * options cross as JSON, so an AbortSignal could not reach the host (it would arrive as `{}`
+ * on one executor and not at all on another); the host honours the number.
+ */
 export function timeoutHints(perRequestMs: number): TimedFetchHints {
-  const hints: TimedFetchHints = { timeoutMs: perRequestMs }
-  const AS = (globalThis as { AbortSignal?: { timeout?: (ms: number) => unknown } }).AbortSignal
-  if (AS && typeof AS.timeout === "function") {
-    try {
-      hints.signal = AS.timeout(perRequestMs)
-    } catch {
-      // No AbortSignal.timeout in this runtime (QuickJS): the timeoutMs hint and
-      // the caller's deadline check are the bound.
-    }
-  }
-  return hints
+  return { timeoutMs: perRequestMs }
 }

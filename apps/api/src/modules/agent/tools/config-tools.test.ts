@@ -187,48 +187,6 @@ describe("config tools: the approval flow", () => {
 })
 
 describe("config tools: a pending secret names the request_secret call that fills it", () => {
-  it("an API connection saved without credentials hands back the card's exact call", async () => {
-    const res = await executeTool({
-      toolName: "kernel:config_apiConnectors",
-      orgId,
-      actor: admin,
-      params: {
-        apiConnectors: [
-          {
-            identifier: "pending-crm",
-            adapter: {
-              id: "pending-crm",
-              name: "Pending CRM",
-              version: "1",
-              baseUrl: "https://crm.example.com",
-              auth: { type: "bearer" },
-              operations: [
-                {
-                  name: "list_companies",
-                  description: "Companies.",
-                  kind: "read",
-                  method: "GET",
-                  path: "/companies",
-                  params: { type: "object", properties: {} },
-                  fields: ["id", "name"],
-                },
-              ],
-            },
-          },
-        ],
-      },
-      origin: "human-ui",
-      stepBundleId: null,
-    })
-    const data = res.data as { pending?: Array<Record<string, unknown>>; next?: string }
-    const item = data.pending?.find((p) => p.identifier === "pending-crm")
-    expect(item?.askWith).toEqual({
-      tool: "kernel__request_secret",
-      params: { kind: "api_connector_credentials", target: { identifier: "pending-crm" } },
-    })
-    expect(data.next).toContain("askWith")
-  })
-
   it("a Gmail mailbox asks for the Google client, then for the consent: two cards, no CLI", async () => {
     const res = await executeTool({
       toolName: "kernel:config_mail",
@@ -976,7 +934,6 @@ describe("config tools: one code path", () => {
       "mail",
       "tickets",
       "apps",
-      "apiConnectors",
       "knowledge",
       "agents",
       "invoicing",

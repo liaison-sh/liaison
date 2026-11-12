@@ -22,6 +22,7 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import * as catalogSources from "~/modules/apps/catalog-sources"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg, reloadInstalledApps } from "~/modules/apps/init"
 import { processImportRunJob, registerImportJobWorker } from "~/modules/imports/job"
 import * as importKinds from "~/modules/imports/kinds"
@@ -331,6 +332,7 @@ describe("import tools: kinds and transforms", () => {
 
   it("samples with the agent's own scopes, never more: a file under a ticket stays out of reach of an agent without tickets access", async () => {
     await ensureAppsForOrg(orgId, {})
+    await registerApiConnectorApp(orgId)
     await reloadInstalledApps(orgId)
     await rebuildFilesSelectPolicy()
     const p = `Sc${crypto.randomUUID().slice(0, 5)}`

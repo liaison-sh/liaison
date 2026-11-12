@@ -544,7 +544,9 @@ export function createApiConnectionMethods(
         })
       } catch (err) {
         if (!(err instanceof ApiConnectorError)) throw err
-        if (TEST_REQUEST_ERRORS.has(err.code)) return connectorErrorJson(err)
+        // The settings screen reads a demo org's refusal as a test result.
+        const refused = raw ? err.code !== "demo_restricted" : true
+        if (refused && TEST_REQUEST_ERRORS.has(err.code)) return connectorErrorJson(err)
         if (raw) {
           return JSON.stringify({
             ok: false,

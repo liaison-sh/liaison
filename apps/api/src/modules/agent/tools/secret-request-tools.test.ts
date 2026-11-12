@@ -22,6 +22,7 @@ import {
 } from "~/modules/agent/tools/secret-request-tools"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setMailProviderEnabled } from "~/modules/mail/provider-settings"
 import { requestSecretParams, secretRequestForPending } from "~/modules/secret-requests/targets"
@@ -103,6 +104,7 @@ describe("request_secret kernel tool", () => {
       RETURNING id`
     agentId = agent.id
     await ensureAppsForOrg(orgId)
+    await registerApiConnectorApp(orgId)
     await registerKernelAgentTools(orgId)
   }, 180_000)
 

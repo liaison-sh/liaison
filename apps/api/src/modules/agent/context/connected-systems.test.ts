@@ -30,6 +30,7 @@ import { assembleContext } from "~/modules/agent/context/context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { handleToolSearch } from "~/modules/agent/tools/tool-search"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -102,6 +103,7 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   THREAD = randomUUID()
   await db.execute(drizzleSql`
     INSERT INTO kernel.threads (id, org_id, handle, type, created_by)

@@ -171,7 +171,8 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
   it("the named egress methods all exist on the bridge and none is classed local", () => {
     const methods = new Set(Object.keys(bridgeOf(false)))
     const stale = ATOMIC_REFUSED_EGRESS_METHODS.filter(
-      (m) => !methods.has(m) && !m.startsWith("connector_"),
+      // `api_*` exist only on the bridge of an app declaring an API connection.
+      (m) => !methods.has(m) && !m.startsWith("api_"),
     )
     expect(stale).toEqual([])
     expect(ATOMIC_REFUSED_EGRESS_METHODS.filter(isAtomicLocalMethod)).toEqual([])

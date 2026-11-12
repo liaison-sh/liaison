@@ -43,6 +43,7 @@ import { buildToolSet, isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
 import { initSandboxPool } from "~/modules/apps/sandbox/pool"
@@ -236,6 +237,7 @@ async function freshWorkspace(label: string): Promise<void> {
     })
   ).userId
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   await registerKernelAgentTools(ORG)
   scopes = (
     await withPrivilegedDb(ORG, "chain-scopes", (tx) => loadEffectivePermissions(tx, ADMIN, ORG))

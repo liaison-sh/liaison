@@ -11,6 +11,10 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { secretRequests } from "~/db/schema/kernel"
+import {
+  registerApiConnectorApp,
+  saveAdapterForTest,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import {
@@ -94,6 +98,7 @@ describe("secret requests: completion is derived from the store", () => {
     adminToken = await minimal.token(adminId)
     threadId = await minimal.thread(orgId, adminId)
     await ensureAppsForOrg(orgId)
+    await registerApiConnectorApp(orgId)
     const perms = await withPrivilegedDb(orgId, "test-secret-perms", (tx) =>
       loadEffectivePermissions(tx, adminId, orgId),
     )
@@ -260,7 +265,7 @@ describe("secret requests: completion is derived from the store", () => {
         },
       ],
     }
-    const put = await req("/api/api-connector/adapters/crm", { method: "PUT", body: adapter })
+    const put = await saveAdapterForTest(orgId, "crm", adapter)
     expect(put.status).toBeLessThan(300)
     const row = await ask({ kind: "api_connector_credentials", identifier: "crm" })
     await expectNothingStored(row.id)

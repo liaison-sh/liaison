@@ -30,6 +30,7 @@ import { checkToolScopeTaint } from "~/modules/agent/scopes/scope-taint"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -112,6 +113,7 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   const [t] = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
       INSERT INTO app_tickets.tickets (

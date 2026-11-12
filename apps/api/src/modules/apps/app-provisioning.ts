@@ -23,6 +23,7 @@ import { appBridgeManifest } from "~/modules/apps/app-registries"
 import { type AppSurface, appSurfaceRegistry } from "~/modules/apps/app-surface"
 import { createParamValidatorCache } from "~/modules/apps/param-validator"
 import { runLimits } from "~/modules/apps/run-limits"
+import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 
 const compiled = createParamValidatorCache({
   allErrors: true,
@@ -93,7 +94,7 @@ export async function provisionBridge(
   appName: string,
   orgId: string,
   readOnly: boolean,
-): Promise<ReturnType<typeof import("~/modules/apps/sandbox/rpc-bridge").createSessionRpcBridge>> {
+): Promise<AppBridge> {
   const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
   const manifest = appBridgeManifest(orgId, appName) ?? { name: appName }
   const session = createRlsSession(

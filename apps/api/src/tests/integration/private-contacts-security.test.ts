@@ -9,6 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
+import { exportContacts } from "~/apps/contacts/export"
 import { createTicket } from "~/apps/tickets/create"
 import { extractRows, type RlsClient } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
@@ -34,7 +35,6 @@ import {
   resolveContact,
 } from "~/modules/contacts/service"
 import { getContactSharing, setContactSharing } from "~/modules/contacts/sharing"
-import { BUILTIN_EXPORT_HANDLERS } from "~/modules/export/builtin-handlers"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import { canManageSharing } from "~/modules/sharing/service"
@@ -186,11 +186,7 @@ describe("a private contact stays its owner's on every surface", () => {
 
     const exportAs = (userId: string) =>
       as(userId, (tx) =>
-        BUILTIN_EXPORT_HANDLERS.contacts!(
-          { db: tx, orgId, userId } as never,
-          "csv" as never,
-          {} as never,
-        ),
+        exportContacts({ db: tx, orgId, userId } as never, "csv" as never, {} as never),
       ).then((out) => String((out as { body?: unknown }).body ?? out))
     expect(await exportAs(userA)).toContain(privateEmail)
     expect(await exportAs(userB)).not.toContain(privateEmail)

@@ -1891,7 +1891,7 @@ export async function evaluateSegment(
 
 // ----------------------------------------------------------------------------
 // Export — CSV file artifact over a segment (or the whole directory).
-// RFC-4180 serializer COPIED (not shared) from the export builtin-handlers.
+// RFC-4180 serializer COPIED (not shared) from the contacts app export (apps/contacts/export.ts).
 // ----------------------------------------------------------------------------
 
 const CONTACTS_EXPORT_COLUMNS: Array<[string, keyof typeof contacts.$inferSelect]> = [

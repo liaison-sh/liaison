@@ -103,9 +103,13 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
     const bridge: Record<string, unknown> = { db_findMany: original, db_batch: original }
     for (const m of ATOMIC_REFUSED_EGRESS_METHODS) bridge[m] = original
     guardAtomicToolEgress(bridge, "pennylane", "refresh-snapshots")
-    // A listed in-tree tool keeps its bridge as it is.
+    // A listed in-tree tool keeps its bridge as it is (once the list is empty,
+    // there is nothing left to leave alone).
+    const listedRow = (
+      JSON.parse(readFileSync(TOOLS_ALLOWLIST_PATH, "utf8")) as AtomicToolAllowance[]
+    )[0]
     const listed: Record<string, unknown> = { fetch: original }
-    guardAtomicToolEgress(listed, "tickets", "convertToMail")
+    if (listedRow) guardAtomicToolEgress(listed, listedRow.app, listedRow.tool)
     expect(listed.fetch).toBe(original)
     expect(bridge.db_findMany).toBe(original)
     expect(bridge.db_batch).toBe(original)

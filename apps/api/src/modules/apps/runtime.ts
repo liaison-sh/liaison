@@ -94,6 +94,7 @@ import {
   validateAppDescriptor,
   validateAppManifest,
 } from "~/modules/apps/contract"
+import { CORE_EXPORT_HANDLERS } from "~/modules/apps/core/exports"
 // --- DDL helpers ---
 import {
   computeSchemaHash,
@@ -137,7 +138,6 @@ import {
 import { reviewTriggerBody } from "~/modules/apps/trigger-review"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
-import { BUILTIN_EXPORT_HANDLERS } from "~/modules/export/builtin-handlers"
 import { BUILTIN_IMPORT_KINDS } from "~/modules/imports/builtin-kinds"
 import { type ImportKindDecl, importKindRestrictionErrors } from "~/modules/imports/kind-schema"
 
@@ -4477,10 +4477,9 @@ async function registerSingleApp(
       registerAppSlots(orgId, desc.name, desc.slots, desc.contributions)
 
       // Register export handlers. A manifest app with a handler bundle resolves
-      // to the sandbox export by name. Bundle-less manifest apps (kernel-owned
-      // UI surfaces / source adapters with no app schema, e.g. contacts,
-      // google-drive) fall back to a built-in in-process handler keyed by app
-      // name; in-process descriptors carry the function directly.
+      // to its export by name. A core app with no handler module (contacts, over
+      // its kernel table) resolves to its own server export (core/exports.ts),
+      // keyed by app name; in-process descriptors carry the function directly.
       if (desc.export) {
         const useBundle =
           isManifestFormat && typeof bundlePath === "string" && bundlePath.length > 0
@@ -4494,7 +4493,9 @@ async function registerSingleApp(
             trusted: desc.trusted !== false,
           }
         } else if (isManifestFormat) {
-          const builtin = BUILTIN_EXPORT_HANDLERS[desc.name]
+          const builtin = Object.hasOwn(CORE_EXPORT_HANDLERS, desc.name)
+            ? CORE_EXPORT_HANDLERS[desc.name]
+            : undefined
           if (!builtin) {
             throw new Error(
               `App "${desc.name}" declares an export but has no handler bundle and no built-in export handler`,

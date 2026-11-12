@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Tickets sandbox handlers — each handler validates params with simple shape
-// checks and dispatches to a Node-side bridge method. The actual business logic
-// (state machine, SLA math, search, merge) lives Node-side under `apps/tickets/*`
-// and is exposed via tickets_* bridge methods on the sandbox.
-// biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
+// Tickets handlers: a core app's server module (modules/apps/core/registry.ts).
+// Every handler the manifest names is a named export `(params, ctx)`, imported
+// and called in the API process with a typed host ctx (modules/apps/core/ctx.ts):
+// the run's bridge methods, called directly. Each handler validates params and
+// dispatches to a tickets_* host method; the business logic (state machine, SLA
+// math, search, merge) lives in the sibling modules behind those methods.
 
-// Type-only import forces TypeScript to treat this file as a module (so its
-// top-level function names don't collide with another app's handlers in the
-// shared global type scope). Bun's transpiler strips the import at bundle
-// time, so the QuickJS runtime still sees pure script-mode source where the
-// function declarations auto-promote to global as expected.
-import type {} from "node:buffer"
+import { csvCell } from "@liaison/shared"
+import type { CoreCtx } from "~/modules/apps/core/ctx"
 
-interface TicketsSandboxCtx {
-  tickets_activityRead(paramsJson: string): Promise<string>
+export interface TicketsMethods {
+  tickets_activityRead: (paramsJson: string) => Promise<string>
   tickets_validateAndApply: (ticketId: string, inputJson: string) => Promise<string>
   tickets_setPriority: (ticketId: string, priority: string) => Promise<string>
   tickets_search: (paramsJson: string) => Promise<string>
@@ -78,8 +75,10 @@ interface TicketsSandboxCtx {
   log_info: (message: string) => void
 }
 
+type TicketsCtx = CoreCtx<TicketsMethods>
+
 function emitUpdate(
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
   ticketId: string,
   changes: Record<string, unknown>,
   // The display handle after the change (`ticket-B2B-12`): a segment field
@@ -117,7 +116,7 @@ type TicketToolError = { error: { code: string; message: string; retryable: bool
  * not_found / invalid_params the caller can act on.
  */
 async function resolveTicketId(
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
   raw: unknown,
 ): Promise<{ ticketId: string } | TicketToolError> {
   const value = ensureString(raw, "ticketId").trim()
@@ -129,7 +128,7 @@ async function resolveTicketId(
 
 async function dispatchTransition(
   params: Record<string, unknown>,
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
   buildInput: (p: Record<string, unknown>) => unknown,
 ): Promise<unknown> {
   const ref = await resolveTicketId(ctx, params.ticketId)
@@ -151,18 +150,18 @@ async function dispatchTransition(
   return out
 }
 
-async function search(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function search(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   // Bridge returns the camelCase envelope already (projection + read-state
   // augmentation happens privileged-side in rpc-bridge.tickets_search).
   return JSON.parse(await ctx.tickets_search(JSON.stringify(params ?? {})))
 }
 
-async function get(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function get(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_get(JSON.stringify(params ?? {})))
 }
 
 /** Who a pending approval about a ticket is for: whoever the ticket is assigned to. */
-async function approvalRouteRead(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function approvalRouteRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const { entityType, entityId } = (params ?? {}) as { entityType?: unknown; entityId?: unknown }
   if (entityType !== "ticket" || typeof entityId !== "string") return { personId: null }
   const data = JSON.parse(await ctx.tickets_get(JSON.stringify({ ticketId: entityId })))
@@ -170,16 +169,16 @@ async function approvalRouteRead(params: unknown, ctx: TicketsSandboxCtx): Promi
   return { personId: typeof assignee === "string" ? assignee : null }
 }
 
-async function create(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function create(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_create(JSON.stringify(params ?? {})))
 }
 
-async function setStatus(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function setStatus(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return dispatchTransition(p, ctx, (q) => ({ kind: "setStatus", intended: q.status }))
 }
 
-async function setPriority(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function setPriority(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -188,7 +187,12 @@ async function setPriority(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   return JSON.parse(await ctx.tickets_setPriority(ticketId, priority))
 }
 
-async function setCategory(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function setCategory(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => setCategoryInTx(params, tx))
+}
+
+async function setCategoryInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -223,7 +227,12 @@ async function setCategory(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   return { ticketId, categoryId, ...(result.handle ? { handle: result.handle } : {}) }
 }
 
-async function setLanguage(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function setLanguage(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => setLanguageInTx(params, tx))
+}
+
+async function setLanguageInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -238,7 +247,12 @@ async function setLanguage(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   return { ticketId, language }
 }
 
-async function setTeam(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function setTeam(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => setTeamInTx(params, tx))
+}
+
+async function setTeamInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -253,7 +267,12 @@ async function setTeam(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown
   return { ticketId, team, ...(result.handle ? { handle: result.handle } : {}) }
 }
 
-async function setAudience(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function setAudience(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => setAudienceInTx(params, tx))
+}
+
+async function setAudienceInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -268,7 +287,12 @@ async function setAudience(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   return { ticketId, audience, ...(result.handle ? { handle: result.handle } : {}) }
 }
 
-async function assign(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function assign(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => assignInTx(params, tx))
+}
+
+async function assignInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -285,8 +309,8 @@ async function assign(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown>
   const expectedAssignee = hasExpected
     ? ((p.expectedAssignee as string | null | undefined) ?? null)
     : null
-  // Pass the guard as PRIMITIVE positional args — the QuickJS→host bridge shim
-  // stringifies any object arg, which would silently disable an object guard.
+  // The guard travels as positional args: the bridge route (a sandboxed caller's
+  // path to the same method) stringifies an object arg.
   const result = JSON.parse(
     await ctx.tickets_assign(ticketId, assignedTo, onlyIfUnassigned, hasExpected, expectedAssignee),
   )
@@ -298,7 +322,7 @@ async function assign(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown>
   return { ticketId, assignedTo: resolvedAssignee }
 }
 
-async function setFollowup(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function setFollowup(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return dispatchTransition(p, ctx, (q) => ({
     kind: "setFollowup",
@@ -308,17 +332,17 @@ async function setFollowup(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   }))
 }
 
-async function clearFollowup(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function clearFollowup(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return dispatchTransition(p, ctx, () => ({ kind: "clearFollowup" }))
 }
 
-async function reopen(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function reopen(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return dispatchTransition(p, ctx, () => ({ kind: "reopen" }))
 }
 
-async function addNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function addNote(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ticketId = ensureString(p.ticketId, "ticketId")
   const text = (typeof p.text === "string" ? p.text : "") as string
@@ -335,7 +359,7 @@ async function addNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown
   )
 }
 
-async function editNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function editNote(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ticketId = ensureString(p.ticketId, "ticketId")
   const messageId = ensureString(p.messageId, "messageId")
@@ -345,7 +369,7 @@ async function editNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unknow
   )
 }
 
-async function deleteNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function deleteNote(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ticketId = ensureString(p.ticketId, "ticketId")
   const messageId = ensureString(p.messageId, "messageId")
@@ -355,7 +379,7 @@ async function deleteNote(params: unknown, ctx: TicketsSandboxCtx): Promise<unkn
 // PROPOSE-time preflights for the two GATED note tools (manifest `preflight` slot). A gated call must
 // not be parked for a human when the data it needs is missing: a messageId naming no internal note on
 // that ticket is refused HERE rather than after the approver clicked approve. Read-only lookups.
-async function editNotePreflight(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function editNotePreflight(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ticketId = ensureString(p.ticketId, "ticketId")
   const messageId = ensureString(p.messageId, "messageId")
@@ -365,7 +389,7 @@ async function editNotePreflight(params: unknown, ctx: TicketsSandboxCtx): Promi
   )
 }
 
-async function deleteNotePreflight(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function deleteNotePreflight(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ticketId = ensureString(p.ticketId, "ticketId")
   const messageId = ensureString(p.messageId, "messageId")
@@ -374,7 +398,12 @@ async function deleteNotePreflight(params: unknown, ctx: TicketsSandboxCtx): Pro
   )
 }
 
-async function convertToMail(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+// One transaction: its writes and its update event land together or not at all.
+export function convertToMail(params: unknown, ctx: TicketsCtx): Promise<unknown> {
+  return ctx.transaction((tx) => convertToMailInTx(params, tx))
+}
+
+async function convertToMailInTx(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -424,11 +453,11 @@ async function convertToMail(params: unknown, ctx: TicketsSandboxCtx): Promise<u
   return { ticketId, mailConversationId }
 }
 
-async function createFromMail(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function createFromMail(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_createFromMail(JSON.stringify(params ?? {})))
 }
 
-async function pullMailReply(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function pullMailReply(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return JSON.parse(
     await ctx.tickets_pullMailReply(
@@ -439,11 +468,11 @@ async function pullMailReply(params: unknown, ctx: TicketsSandboxCtx): Promise<u
   )
 }
 
-async function pullMailReplyFromBanner(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function pullMailReplyFromBanner(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return pullMailReply(params, ctx)
 }
 
-async function deleteIfUnreferenced(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function deleteIfUnreferenced(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   return JSON.parse(
     await ctx.tickets_deleteIfUnreferenced(
@@ -453,25 +482,25 @@ async function deleteIfUnreferenced(params: unknown, ctx: TicketsSandboxCtx): Pr
   )
 }
 
-async function ensureSummary(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ensureSummary(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
   return JSON.parse(await ctx.tickets_summary_ensure(ref.ticketId))
 }
 
-async function regenerateSummary(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function regenerateSummary(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
   return JSON.parse(await ctx.tickets_summary_regenerate(ref.ticketId))
 }
 
-async function merge(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function merge(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_merge(JSON.stringify(params ?? {})))
 }
 
-async function ticketsMarkRead(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsMarkRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const ref = await resolveTicketId(ctx, p.ticketId)
   if ("error" in ref) return ref
@@ -492,10 +521,8 @@ async function ticketsMarkRead(params: unknown, ctx: TicketsSandboxCtx): Promise
   }
   return outcome
 }
-// Exposed for the handler test (mark-read-broadcast.test.ts), like the sync entries below.
-;(globalThis as any).ticketsMarkRead = ticketsMarkRead
 
-async function ticketsInboxCounts(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsInboxCounts(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const inboxIds = Array.isArray(p.inboxIds)
     ? (p.inboxIds as unknown[]).filter((v): v is string => typeof v === "string")
@@ -503,21 +530,21 @@ async function ticketsInboxCounts(params: unknown, ctx: TicketsSandboxCtx): Prom
   return JSON.parse(await ctx.tickets_inboxCounts(JSON.stringify({ inboxIds })))
 }
 
-async function ticketsListForContact(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsListForContact(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const contactId = ensureString(p.contactId, "contactId")
   const limit = typeof p.limit === "number" ? p.limit : undefined
   return JSON.parse(await ctx.tickets_listForContact(JSON.stringify({ contactId, limit })))
 }
 
-async function categoriesList(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesList(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesList", "{}"))
 }
 
 // Authoritative backlog-health aggregate — exact server-side counts by status,
 // category, and age bucket + the oldest open tickets, computed by a real GROUP BY
 // over the org's tickets under RLS (NOT a bounded search-page sample).
-async function backlogHealth(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function backlogHealth(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const team = typeof p.team === "string" ? p.team : undefined
   return JSON.parse(await ctx.tickets_admin("backlogHealth", JSON.stringify({ team })))
@@ -527,20 +554,20 @@ async function backlogHealth(params: unknown, ctx: TicketsSandboxCtx): Promise<u
 // breached ticket with its breach margin, over a date window (default last 7d),
 // computed by a real aggregate over the org's tickets under RLS (NOT a bounded
 // search-page sample, which has no "breached" filter and no rate/margin rollup).
-async function slaReport(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function slaReport(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const windowDays = typeof p.windowDays === "number" ? p.windowDays : undefined
   return JSON.parse(await ctx.tickets_admin("slaReport", JSON.stringify({ windowDays })))
 }
 // The org's live team dimension, read off the tickets themselves (there is no
 // teams table). Same source the backlogHealth team filter validates against.
-async function teamsList(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function teamsList(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("teamsList", "{}"))
 }
 
 // Org-wide rename/merge of a free-text team. `dryRun` reports the blast radius
 // without touching anything.
-async function teamsRename(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function teamsRename(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const from = ensureString(p.from, "from")
   const to = ensureString(p.to, "to")
@@ -549,101 +576,101 @@ async function teamsRename(params: unknown, ctx: TicketsSandboxCtx): Promise<unk
   )
 }
 
-async function categoriesCreate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesCreate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesCreate", JSON.stringify(params ?? {})))
 }
-async function categoriesUpdate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesUpdate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesUpdate", JSON.stringify(params ?? {})))
 }
-async function categoriesArchive(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesArchive(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesArchive", JSON.stringify(params ?? {})))
 }
 // The settings page's categories tree: rows + version, and the one-call save.
-async function categoriesTree(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesTree(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesTree", "{}"))
 }
-async function categoriesReorder(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function categoriesReorder(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("categoriesReorder", JSON.stringify(params ?? {})))
 }
 
 // Reply-template (canned-response macro) tools — BL-169 #9.
-async function templatesList(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function templatesList(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("templatesList", JSON.stringify(params ?? {})))
 }
-async function templatesCreate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function templatesCreate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("templatesCreate", JSON.stringify(params ?? {})))
 }
-async function templatesUpdate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function templatesUpdate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("templatesUpdate", JSON.stringify(params ?? {})))
 }
-async function templatesDelete(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function templatesDelete(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("templatesDelete", JSON.stringify(params ?? {})))
 }
 
 // CSAT post-resolution satisfaction-survey tools — BL-169 #8.
-async function csatRequest(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function csatRequest(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("csatRequest", JSON.stringify(params ?? {})))
 }
-async function csatSummary(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function csatSummary(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("csatSummary", JSON.stringify(params ?? {})))
 }
-async function csatList(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function csatList(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("csatList", JSON.stringify(params ?? {})))
 }
 
-async function inboxesList(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function inboxesList(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("inboxesList", "{}"))
 }
-async function inboxesCreate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function inboxesCreate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("inboxesCreate", JSON.stringify(params ?? {})))
 }
-async function inboxesUpdate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function inboxesUpdate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("inboxesUpdate", JSON.stringify(params ?? {})))
 }
-async function inboxesDisconnect(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function inboxesDisconnect(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("inboxesDisconnect", JSON.stringify(params ?? {})))
 }
-async function ticketsMove(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsMove(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("ticketsMove", JSON.stringify(params ?? {})))
 }
 
-async function idSegmentGet(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function idSegmentGet(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("idSegmentGet", "{}"))
 }
-async function idSegmentSet(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function idSegmentSet(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("idSegmentSet", JSON.stringify(params ?? {})))
 }
 
 // Propose-time check for the gated set: a bad or duplicate code is refused
 // before an approval is parked, not after the approver clicked approve.
-async function idSegmentSetPreflight(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function idSegmentSetPreflight(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("idSegmentSetPreflight", JSON.stringify(params ?? {})))
 }
 
-async function approveFromHomeGet(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function approveFromHomeGet(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("approveFromHomeGet", "{}"))
 }
-async function approveFromHomeSet(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function approveFromHomeSet(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("approveFromHomeSet", JSON.stringify(params ?? {})))
 }
 // Propose-time check for the gated set: a missing or non-boolean `enabled` is
 // refused before an approval is parked.
-async function approveFromHomeSetPreflight(
+export async function approveFromHomeSetPreflight(
   params: unknown,
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
 ): Promise<unknown> {
   return JSON.parse(
     await ctx.tickets_admin("approveFromHomeSetPreflight", JSON.stringify(params ?? {})),
   )
 }
 
-async function apiKeysList(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function apiKeysList(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("apiKeysList", "{}"))
 }
-async function apiKeysCreate(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function apiKeysCreate(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("apiKeysCreate", JSON.stringify(params ?? {})))
 }
-async function apiKeysRevoke(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function apiKeysRevoke(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_admin("apiKeysRevoke", JSON.stringify(params ?? {})))
 }
 
@@ -666,9 +693,9 @@ interface InboxRow {
   email_address: string
 }
 
-const ticketsOnAccountConnected = async (
+export const ticketsOnAccountConnected = async (
   event: TicketsKernelConnectionEvent,
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
 ): Promise<void> => {
   if (event.data?.appName !== "tickets") return
   const { id: connectedAccountId, identifier, connectionName } = event.data
@@ -736,11 +763,10 @@ const ticketsOnAccountConnected = async (
     // Job dispatch failure is non-fatal at handler boundary; sync will be retried.
   }
 }
-;(globalThis as any).ticketsOnAccountConnected = ticketsOnAccountConnected
 
-const ticketsOnAccountDisconnected = async (
+export const ticketsOnAccountDisconnected = async (
   event: TicketsKernelConnectionEvent,
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
 ): Promise<void> => {
   if (event.data?.appName !== "tickets") return
   const connectedAccountId = event.data.id
@@ -760,9 +786,8 @@ const ticketsOnAccountDisconnected = async (
     )
   }
 }
-;(globalThis as any).ticketsOnAccountDisconnected = ticketsOnAccountDisconnected
 
-const ticketsOnContactMerge = async (event: any, ctx: TicketsSandboxCtx): Promise<void> => {
+const ticketsOnContactMerge = async (event: any, ctx: TicketsCtx): Promise<void> => {
   const data = event?.data ?? {}
   const sourceId = data.sourceId ?? data.mergedFrom
   const targetId = data.targetId ?? data.mergedInto
@@ -775,22 +800,22 @@ const ticketsOnContactMerge = async (event: any, ctx: TicketsSandboxCtx): Promis
     await emitUpdate(ctx, t.id, { contactId: { from: sourceId, to: targetId } })
   }
 }
-;(globalThis as any).onContactMerge = ticketsOnContactMerge
+export const onContactMerge = ticketsOnContactMerge
 
-async function computeAttentionItems(_p: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function computeAttentionItems(_p: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_attentionItems())
 }
 
-async function slaCheck(_payload: any, ctx: TicketsSandboxCtx): Promise<void> {
+export async function slaCheck(_payload: any, ctx: TicketsCtx): Promise<void> {
   await ctx.tickets_runJob("slaCheck")
 }
-async function followupCheck(_payload: any, ctx: TicketsSandboxCtx): Promise<void> {
+export async function followupCheck(_payload: any, ctx: TicketsCtx): Promise<void> {
   await ctx.tickets_runJob("followupCheck")
 }
-async function closeSilentCheck(_payload: any, ctx: TicketsSandboxCtx): Promise<void> {
+export async function closeSilentCheck(_payload: any, ctx: TicketsCtx): Promise<void> {
   await ctx.tickets_runJob("closeSilentCheck")
 }
-async function ticketsSummarize(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsSummarize(payload: any, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_summary_runJob(JSON.stringify(payload ?? {})))
 }
 
@@ -802,15 +827,15 @@ async function ticketsSummarize(payload: any, ctx: TicketsSandboxCtx): Promise<u
 // dead/lagging push missed. Mirrors the mail app's scheduled fan-out.
 //
 // Each enqueued job carries a real connectedAccountId and re-enters the SAME
-// handler, which then runs the per-account sync in its own worker slot (own sandbox
-// budget + BullMQ retry). No jobId: an enqueue's jobId is a BullMQ deduplication id
+// handler, which then runs the per-account sync as its own job (own wall budget +
+// BullMQ retry). No jobId: an enqueue's jobId is a BullMQ deduplication id
 // (infra/jobs/jobs.ts), dropped only while a job with it is waiting, delayed or
 // running; a finished one never blocks a new add. A stable per-account id would
 // therefore only collapse overlapping ticks, which is harmless to skip: the syncs
 // are idempotent (inbound dedup by external message id, monotonic history cursor,
 // idempotent watch renewal), so a rare tick overlap is benign.
 async function fanOutMailboxSync(
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
   provider: "gmail" | "imap",
   jobName: string,
 ): Promise<unknown> {
@@ -843,45 +868,39 @@ async function fanOutMailboxSync(
 // 2. From a manifest cron — the scheduler dispatches the job with NO payload.
 //    That tick fans out into one per-account job per connected mailbox (above),
 //    so every mailbox gets renewed + polled on schedule.
-async function ticketsGmailIncrementalSync(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsGmailIncrementalSync(payload: any, ctx: TicketsCtx): Promise<unknown> {
   if (!payload?.connectedAccountId) {
     return await fanOutMailboxSync(ctx, "gmail", "gmail-incremental-sync")
   }
   const cid = ensureString(payload.connectedAccountId, "connectedAccountId")
   return JSON.parse(await ctx.tickets_runSync("gmail-incremental-sync", cid))
 }
-async function ticketsGmailInitialSync(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsGmailInitialSync(payload: any, ctx: TicketsCtx): Promise<unknown> {
   const cid = ensureString(payload?.connectedAccountId, "connectedAccountId")
   return JSON.parse(await ctx.tickets_runSync("gmail-initial-sync", cid))
 }
-async function ticketsGmailWatchRenewal(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsGmailWatchRenewal(payload: any, ctx: TicketsCtx): Promise<unknown> {
   if (!payload?.connectedAccountId) {
     return await fanOutMailboxSync(ctx, "gmail", "gmail-watch-renewal")
   }
   const cid = ensureString(payload.connectedAccountId, "connectedAccountId")
   return JSON.parse(await ctx.tickets_runSync("gmail-watch-renewal", cid))
 }
-async function ticketsImapIncrementalSync(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsImapIncrementalSync(payload: any, ctx: TicketsCtx): Promise<unknown> {
   if (!payload?.connectedAccountId) {
     return await fanOutMailboxSync(ctx, "imap", "imap-incremental-sync")
   }
   const cid = ensureString(payload.connectedAccountId, "connectedAccountId")
   return JSON.parse(await ctx.tickets_runSync("imap-incremental-sync", cid))
 }
-async function ticketsImapInitialSync(payload: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsImapInitialSync(payload: any, ctx: TicketsCtx): Promise<unknown> {
   const cid = ensureString(payload?.connectedAccountId, "connectedAccountId")
   return JSON.parse(await ctx.tickets_runSync("imap-initial-sync", cid))
 }
-// Explicit global registration (harmless in the sandbox, where getProp resolves the
-// script-mode function anyway) so these scheduled handlers are reachable from bun:test,
-// matching the event-handler pattern above.
-;(globalThis as any).ticketsGmailIncrementalSync = ticketsGmailIncrementalSync
-;(globalThis as any).ticketsGmailWatchRenewal = ticketsGmailWatchRenewal
-;(globalThis as any).ticketsImapIncrementalSync = ticketsImapIncrementalSync
 
-async function ticketsVerifyGmailPush(
+export async function ticketsVerifyGmailPush(
   request: { headers: Record<string, string>; body: string },
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
 ): Promise<unknown> {
   const auth = request.headers.authorization ?? request.headers.Authorization ?? ""
   const m = /^Bearer\s+(.+)$/i.exec(auth)
@@ -925,7 +944,7 @@ async function ticketsVerifyGmailPush(
 async function runGatedTicketTool(
   toolName: "tickets:reply" | "tickets:nudge" | "tickets:close",
   adminOp: "tools.reply" | "tools.nudge" | "tools.close",
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
   payload: Record<string, unknown>,
 ): Promise<unknown> {
   await ctx.approval_recordStarted(toolName)
@@ -966,7 +985,7 @@ async function runGatedTicketTool(
 // fails AT CALL TIME and the agent recovers in-loop — instead of the approval being queued then
 // EXECUTED-FAIL post-approval with a non-2xx the chaos runner verdict-overrides to fail. Returns the
 // host validation result verbatim: an `{error}` blocks the gate; `{ok:true}` lets it proceed.
-async function ticketsReplyPreflight(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsReplyPreflight(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   const htmlBody = (params?.htmlBody as string | undefined) ?? ""
   const textBody = (params?.textBody as string | undefined) ?? ""
@@ -983,7 +1002,7 @@ async function ticketsReplyPreflight(params: any, ctx: TicketsSandboxCtx): Promi
   )
 }
 
-async function ticketsReply(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsReply(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   let htmlBody = (params?.htmlBody as string | undefined) ?? ""
   let textBody = (params?.textBody as string | undefined) ?? ""
@@ -1005,8 +1024,8 @@ async function ticketsReply(params: any, ctx: TicketsSandboxCtx): Promise<unknow
     | { at?: string; reason?: string; trigger?: string }
     | undefined
   // Forward agent-supplied attachments so they reach the host `ticketsReply`
-  // — without this the manifest `attachments` param is silently dropped at the
-  // sandbox boundary and the reply ships with no files.
+  // — without this the manifest `attachments` param is silently dropped and the
+  // reply ships with no files.
   const attachmentSessionId = params?.attachmentSessionId as string | undefined
   const attachments = Array.isArray(params?.attachments)
     ? (params.attachments as string[])
@@ -1028,7 +1047,7 @@ async function ticketsReply(params: any, ctx: TicketsSandboxCtx): Promise<unknow
 // be parked for a human when the data it needs is missing: an unknown/merged ticket, a ticket that is
 // not awaiting the customer, an already-nudged ticket or an empty body is refused HERE, at call time,
 // instead of after the approver clicked approve. Read-only, returns the host result verbatim.
-async function ticketsNudgePreflight(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsNudgePreflight(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   const htmlBody = (params?.htmlBody as string | undefined) ?? ""
   const textBody = (params?.textBody as string | undefined) ?? ""
@@ -1040,7 +1059,7 @@ async function ticketsNudgePreflight(params: any, ctx: TicketsSandboxCtx): Promi
   )
 }
 
-async function ticketsNudge(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsNudge(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   const htmlBody = (params?.htmlBody as string | undefined) ?? ""
   const textBody = (params?.textBody as string | undefined) ?? ""
@@ -1055,12 +1074,12 @@ async function ticketsNudge(params: any, ctx: TicketsSandboxCtx): Promise<unknow
 // be parked for a human when the data it needs is missing: a ticketId that resolves to no ticket, or to
 // one already merged/converted away, is refused HERE. The handler keeps the same check for the genuine
 // race where a merge lands between staging and approval. Read-only.
-async function ticketsClosePreflight(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsClosePreflight(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   return JSON.parse(await ctx.tickets_admin("tools.closePreflight", JSON.stringify({ ticketId })))
 }
 
-async function ticketsClose(params: any, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function ticketsClose(params: any, ctx: TicketsCtx): Promise<unknown> {
   const ticketId = ensureString(params?.ticketId, "ticketId")
   const closedReason =
     typeof params?.closedReason === "string" && params.closedReason.length > 0
@@ -1076,30 +1095,7 @@ async function ticketsClose(params: any, ctx: TicketsSandboxCtx): Promise<unknow
   })
 }
 
-// QuickJS sandbox lacks atob; this hand-rolled decoder lifts Mail's pattern so
-// the handler can decode base64url Pub/Sub payloads in-sandbox.
-function decodeBase64Sandbox(input: string): string {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/")
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-  let output = ""
-  let i = 0
-  while (i < padded.length) {
-    const e1 = chars.indexOf(padded.charAt(i++))
-    const e2 = chars.indexOf(padded.charAt(i++))
-    const e3 = chars.indexOf(padded.charAt(i++))
-    const e4 = chars.indexOf(padded.charAt(i++))
-    const c1 = (e1 << 2) | (e2 >> 4)
-    const c2 = ((e2 & 15) << 4) | (e3 >> 2)
-    const c3 = ((e3 & 3) << 6) | e4
-    output += String.fromCharCode(c1)
-    if (e3 !== 64) output += String.fromCharCode(c2)
-    if (e4 !== 64) output += String.fromCharCode(c3)
-  }
-  return output
-}
-
-// Per-app data export (Phase 13, E1/E3). Runs in the sandbox via the manifest
+// Per-app data export (Phase 13, E1/E3). Runs from the manifest
 // export slot: signature is (params, ctx) with params = { format }. Rows are
 // read through ctx.db_findMany under the caller's RLS context, so the export
 // never escalates — it contains exactly the tickets the requester can see.
@@ -1117,18 +1113,7 @@ const TICKETS_EXPORT_COLUMNS: Array<[string, string]> = [
   ["createdAt", "created_at"],
 ]
 
-function csvCell(value: unknown): string {
-  let s = value === null || value === undefined ? "" : String(value)
-  // Spreadsheet formula injection: a leading = + - @ tab or CR makes the cell a formula, so prefix a
-  // single quote (plain numbers like "-5000" stay numeric). Verbatim copy of @liaison/shared csvCell.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`
-  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
-async function exportTickets(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function exportTickets(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const format = p.format ?? "json"
   const dateRange = p.dateRange as { from?: string; to?: string } | undefined
@@ -1172,15 +1157,15 @@ async function exportTickets(params: unknown, ctx: TicketsSandboxCtx): Promise<u
   return projected
 }
 
-async function ticketsOnGmailPush(
+export async function ticketsOnGmailPush(
   payload: { message?: { data?: string } },
-  ctx: TicketsSandboxCtx,
+  ctx: TicketsCtx,
 ): Promise<unknown> {
   const dataB64 = payload?.message?.data
   if (!dataB64) return { received: true, skipped: "no_data" }
   let inner: { emailAddress?: string; historyId?: string }
   try {
-    const json = decodeBase64Sandbox(dataB64)
+    const json = Buffer.from(dataB64, "base64").toString("latin1")
     inner = JSON.parse(json)
   } catch {
     return { received: true, skipped: "invalid_data" }
@@ -1193,7 +1178,7 @@ async function ticketsOnGmailPush(
 }
 
 /** Timeline rows for the kernel's activity read (activitySources), host-side. */
-async function activityRead(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function activityRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_activityRead(JSON.stringify(params ?? {})))
 }
 
@@ -1205,7 +1190,7 @@ const COMPANY_TICKETS_LIMIT = 20
  * section of its page: the people the caller can see (`kernel:companies_read`),
  * then their tickets under the caller's row security.
  */
-async function companyTickets(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+export async function companyTickets(params: unknown, ctx: TicketsCtx): Promise<unknown> {
   const companyId = String((params as { companyId?: unknown } | null)?.companyId ?? "")
   if (!COMPANY_TICKETS_UUID_RE.test(companyId)) {
     return { items: [], message: "companyId is not a company id. Nothing was read." }

@@ -146,12 +146,11 @@ describe("tickets field setters resolve a ticket handle", () => {
     expect(err?.message).not.toContain("invalid input syntax")
   })
 
-  it("a bad uuid inside an atomic tool's bridge call is a typed invalid_params, not a 500", async () => {
-    // tickets:assign is `atomic: true`, so it runs on the ambient bridge, not
-    // the session one. A teammate NAME where a user uuid belongs makes the
-    // bridge's user lookup raise 22P02; before the ambient bridge inlined the
-    // pg cause, only the bare "Failed query" text crossed the sandbox IPC and
-    // the classifier logged it at error level as an opaque db_error.
+  it("a bad uuid inside a transaction's bridge call is a typed invalid_params, not a 500", async () => {
+    // tickets:assign runs in `ctx.transaction`, on a bridge bound to that
+    // transaction, not the session one. A teammate NAME where a user uuid
+    // belongs makes the bridge's user lookup raise 22P02; that bridge inlines
+    // the pg cause, so the classifier sees it rather than an opaque db_error.
     const { err } = await call("tickets:assign", { ticketId, assignedTo: "Priya" })
     expect(err).not.toBeNull()
     expect(err?.code).toBe("invalid_params")

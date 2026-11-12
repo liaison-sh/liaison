@@ -57,3 +57,9 @@ MCP connections projected per org at first touch -> apps/api/src/modules/mcp-cli
 Env bootstrap upsert queues the connection event; processes that projected the org project it again -> apps/api/src/modules/mcp-client/env-bootstrapper.ts:191 ; apps/api/src/modules/mcp-client/index.ts:298
 Org runtime cap LIAISON_ORG_RUNTIME_MAX_ORGS: least recently touched org with no request, socket, job, event or turn and not moving is released, set up again at next touch -> apps/api/src/modules/apps/org-runtime-release.ts:180-215 ; apps/api/src/lib/env.ts:1123 ; apps/api/src/modules/apps/init.ts:613 ; apps/api/src/modules/org/transfer-state/state.ts
 Local sandbox installs globalThis.crypto (WebCrypto subset) after hardening -> apps/api/src/modules/apps/sandbox/pool.ts:159 ; apps/api/src/modules/apps/sandbox/sandbox-worker.ts:162 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:276
+Core apps: handlers.ts named exports, CORE_APP_MODULES keyed by name and _bundlePath -> apps/api/src/modules/apps/core/registry.ts:26-41 ; apps/api/src/apps/tickets/manifest-descriptor.ts:38
+runApp calls the core module in process, whatever the site -> apps/api/src/modules/apps/sandbox/run-app.ts:261-277 ; apps/api/src/modules/apps/core/run-core.ts:57-80
+loadBundle never transpiles a core module -> apps/api/src/modules/apps/sandbox/bundle-loader.ts:151
+CoreCtx: bridge called directly, approval, transaction -> apps/api/src/modules/apps/core/ctx.ts:12-22 ; apps/api/src/modules/apps/core/run-core.ts:36-55
+Session tool run opens the transaction under the run's actor -> apps/api/src/modules/apps/execute-tool.ts:3212-3235
+Registry test checks every manifest handler is an export -> apps/api/src/modules/apps/core/run-core.test.ts:46-63

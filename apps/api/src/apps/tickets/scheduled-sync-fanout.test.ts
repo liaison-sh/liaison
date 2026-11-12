@@ -5,21 +5,14 @@
 // These tests pin that a payload-less tick now enumerates the org's connected
 // mailboxes and enqueues one per-account job (with a stable jobId), while a tick that
 // already carries a connectedAccountId runs the per-account sync directly.
-import { beforeAll, describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
+import * as handlers from "~/apps/tickets/handlers"
 
 type Handler = (payload: any, ctx: any) => Promise<any>
 
-let ticketsGmailIncrementalSync: Handler
-let ticketsGmailWatchRenewal: Handler
-let ticketsImapIncrementalSync: Handler
-
-beforeAll(async () => {
-  const handlersUrl = new URL("../tickets/handlers.ts", import.meta.url)
-  await import(handlersUrl.pathname)
-  ticketsGmailIncrementalSync = (globalThis as any).ticketsGmailIncrementalSync
-  ticketsGmailWatchRenewal = (globalThis as any).ticketsGmailWatchRenewal
-  ticketsImapIncrementalSync = (globalThis as any).ticketsImapIncrementalSync
-})
+const ticketsGmailIncrementalSync = handlers.ticketsGmailIncrementalSync as Handler
+const ticketsGmailWatchRenewal = handlers.ticketsGmailWatchRenewal as Handler
+const ticketsImapIncrementalSync = handlers.ticketsImapIncrementalSync as Handler
 
 function makeCtx(accounts: Array<{ connectedAccountId: string; provider: string }>) {
   const enqueued: Array<{ jobName: string; payload: any; opts: any }> = []

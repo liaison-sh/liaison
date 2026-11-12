@@ -38,6 +38,7 @@
  * makes is answered first, and the builds follow in the quiet after it. A build
  * that waits MAX_DEFER_MS runs anyway, so a host that is never idle still trims.
  */
+import { CORE_MODULE_SOURCE } from "~/modules/apps/core/registry"
 import {
   esmExportsToGlobalThis,
   unwrapGlobalThisExports,
@@ -179,6 +180,8 @@ export function exportOnlyBundle(
   provenance: BundleProvenance,
 ): string {
   if (!platformVouchesFor(provenance)) return source
+  // A core app's module is not a bundle (core/registry.ts): nothing to shake.
+  if (source === CORE_MODULE_SOURCE) return source
   const key = keyFor(source, exportName)
   const hit = cache.get(key)
   if (hit) {

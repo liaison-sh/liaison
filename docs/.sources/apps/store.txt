@@ -216,3 +216,7 @@ bulk codes still being added: approved action finishes when they are in -> bundl
 bulk codes poll handler returns the codes -> bundled-apps/shopify/src/mutations/discounts.ts:727
 calls to one store limited to four at a time across runs -> bundled-apps/shopify/app.manifest.json:371
 low query budget pauses the store's next calls -> bundled-apps/shopify/src/lib/get-client.ts:284
+analytics_query timeGrain day, week or month -> bundled-apps/shopify/app.manifest.json:1242
+one row per bucket, oldest first, date = bucket start YYYY-MM-DD -> bundled-apps/shopify/src/analytics.ts:151
+grouped by SKU a series row names the product -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:157
+sessions and conversion_rate from the sessions dataset, groupBy none only -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:141

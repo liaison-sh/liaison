@@ -2145,8 +2145,8 @@
       "schema": 37
     },
     "shopify__analytics_query": {
-      "desc": 964,
-      "schema": 84
+      "desc": 1387,
+      "schema": 135
     },
     "shopify__apply_seed_suggestion": {
       "desc": 118,

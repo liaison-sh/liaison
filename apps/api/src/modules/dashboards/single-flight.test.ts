@@ -81,4 +81,27 @@ describe("singleFlight", () => {
     gate.resolve(1)
     await Promise.all([a, b])
   })
+
+  it("a caller arriving after everyone left, before the run settles, starts a fresh run", async () => {
+    const gate = deferred<string>()
+    let runs = 0
+    const leaving = new AbortController()
+    const fn = async (signal: AbortSignal) => {
+      runs++
+      if (runs === 1) {
+        await gate.promise
+        if (signal.aborted) throw new Error("cancelled")
+        return "stale"
+      }
+      return "fresh"
+    }
+    const old = singleFlight("sf:rejoin", fn, leaving.signal).catch((e: Error) => e.message)
+    leaving.abort()
+    // A reload of the tab: same key, while the aborted run has not settled yet.
+    const next = singleFlight("sf:rejoin", fn, new AbortController().signal)
+    gate.resolve("late")
+    expect(await next).toBe("fresh")
+    expect(runs).toBe(2)
+    expect(await old).toBe("cancelled")
+  })
 })

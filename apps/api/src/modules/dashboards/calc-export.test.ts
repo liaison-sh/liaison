@@ -9,10 +9,16 @@ import {
   type ComputedDashboard,
   changeOf,
   renderDashboardPdf,
+  rowAccessCovers,
   rowsCsv,
   snapshotBlock,
 } from "~/modules/dashboards/export"
-import { type DashboardBlock, dashboardSpecSchema, specIssues } from "~/modules/dashboards/spec"
+import {
+  type DashboardBlock,
+  dashboardSpecSchema,
+  MAX_SOURCE_ROWS,
+  specIssues,
+} from "~/modules/dashboards/spec"
 import { transformBlock } from "~/modules/dashboards/transform"
 import { extractPdfText } from "~/modules/pdf/pdf-text"
 
@@ -235,5 +241,105 @@ describe("exports", () => {
     expect(text).toContain("Filters: Market: FR")
     expect(text).toContain("+20.0%")
     expect(text).toContain("Not shown: no access to shop:orders")
+  })
+})
+
+describe("measures in dependency order (step-3 review MED 7)", () => {
+  const measures = [
+    { label: "Margin %", expr: "margin / revenue * 100" },
+    { label: "Revenue", name: "revenue", field: "total" },
+    { label: "Margin", name: "margin", expr: "revenue - cost" },
+    { label: "Cost", name: "cost", field: "cost" },
+  ]
+  const rows = [
+    { day: "2026-11-01", total: 100, cost: 60 },
+    { day: "2026-11-02", total: 0, cost: 0 },
+  ]
+
+  it("a measure reading one defined after it is computed, not 0", () => {
+    const out = transformBlock("bar", { x: "day", measures }, rows)
+    if (out.kind !== "bar") throw new Error("bar")
+    expect(out.series.map((s) => s.name)).toEqual(["Margin %", "Revenue", "Margin", "Cost"])
+    expect(out.series[0]!.values[0]).toBe(40)
+    expect(out.series[2]!.values).toEqual([40, 0])
+  })
+
+  it("a value that cannot compute (division by 0) stays null: the chart draws a gap", () => {
+    const out = transformBlock("bar", { x: "day", measures }, rows)
+    if (out.kind !== "bar") throw new Error("bar")
+    expect(out.series[0]!.values[1]).toBeNull()
+  })
+
+  it("the spec refuses a cycle and a self-reference at save time", () => {
+    const spec = (ms: unknown[]) =>
+      dashboardSpecSchema.safeParse({
+        v: 1,
+        blocks: [
+          {
+            id: "c",
+            type: "bar",
+            title: "C",
+            source: { kind: "tool", tool: "shop:orders" },
+            map: { x: "day", measures: ms },
+          },
+        ],
+      })
+    const self = spec([{ label: "A", name: "a", expr: "a + 1" }])
+    expect(self.success).toBe(false)
+    expect(self.success ? "" : specIssues(self.error).join("\n")).toMatch(/reads itself|cycle/)
+    const loop = spec([
+      { label: "A", name: "a", expr: "b + 1" },
+      { label: "B", name: "b", expr: "a + 1" },
+      { label: "T", name: "t", field: "total" },
+    ])
+    expect(loop.success).toBe(false)
+    expect(loop.success ? "" : specIssues(loop.error).join("\n")).toMatch(/cycle/)
+    expect(spec(measures).success).toBe(true)
+  })
+})
+
+describe("exports (step-3 review LOWs)", () => {
+  it("CSV keeps a negative number sent as text numeric; a formula still gets its quote", () => {
+    expect(
+      rowsCsv([{ field: "n", label: "N" }], [{ n: "-12.50" }, { n: "+3" }, { n: "-A1+1" }]),
+    ).toBe("N\r\n-12.50\r\n+3\r\n'-A1+1\r\n")
+  })
+
+  it("a measure read from a dataset cut at the row limit says the figures are truncated", () => {
+    const many = Array.from({ length: MAX_SOURCE_ROWS + 5 }, (_, i) => ({
+      date: "2026-11-01",
+      cost: i,
+    }))
+    const out = transformBlock(
+      "bar",
+      {
+        x: "day",
+        measures: [
+          { label: "Revenue", field: "total" },
+          { label: "Spend", field: "cost", dataset: "ads", categoryField: "date" },
+        ],
+      },
+      orders,
+      { datasetRows: { ads: many } },
+    )
+    expect(out.meta.truncated).toBe(true)
+  })
+})
+
+describe("recipient row access (step-3 review MED 4)", () => {
+  it("covers only when every dimension value and role of the caller is the recipient's too", () => {
+    const all = { dimensionGrants: { "*": ["*"] }, roles: ["r1"] }
+    const fr = { dimensionGrants: { market: ["FR"] }, roles: ["r1"] }
+    const frDe = { dimensionGrants: { market: ["FR", "DE"] }, roles: ["r1", "r2"] }
+    const anyMarket = { dimensionGrants: { market: ["*"] }, roles: ["r1"] }
+    expect(rowAccessCovers(all, fr)).toBe(true)
+    expect(rowAccessCovers(fr, all)).toBe(false)
+    expect(rowAccessCovers(frDe, fr)).toBe(true)
+    expect(rowAccessCovers(fr, frDe)).toBe(false)
+    expect(rowAccessCovers(anyMarket, fr)).toBe(true)
+    expect(rowAccessCovers(fr, anyMarket)).toBe(false)
+    // A role the caller holds shares rows with it: every grant, but not the role, is narrower.
+    expect(rowAccessCovers({ dimensionGrants: { "*": ["*"] }, roles: [] }, fr)).toBe(false)
+    expect(rowAccessCovers({ dimensionGrants: {} }, { dimensionGrants: {} })).toBe(true)
   })
 })

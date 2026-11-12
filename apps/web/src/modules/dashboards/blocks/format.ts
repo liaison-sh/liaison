@@ -101,6 +101,8 @@ export function formatValue(value: unknown, opts: FormatOptions): string {
         })
       : String(value)
   }
+  // A year bucket ("2026") is a label, never "2,026"; a real number stays a number.
+  if (!format && typeof value === "string" && /^\d{4}$/.test(value)) return value
   const n = asNumber(value)
   if (n === null) {
     if (typeof value === "boolean") return String(value)

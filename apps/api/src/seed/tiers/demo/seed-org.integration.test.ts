@@ -469,27 +469,6 @@ describe("seedDemoOrg against a real database", () => {
     expect(rows[0]?.default_locale).toBe("en")
   })
 
-  it("grants the warehouse's confidential domains to finance and operations only", async () => {
-    const rows = await withSystemDb("demo-seed-test-domain-access", async (tx) => {
-      const result = await tx.execute(
-        sql`SELECT r.name, d.key AS domain
-            FROM kernel.organizations o,
-                 jsonb_each(o.settings->'database'->'domainAccess') d,
-                 jsonb_array_elements_text(d.value->'roles') role_id
-            JOIN kernel.roles r ON r.id = role_id::uuid
-            WHERE o.id = ${second.orgId} AND d.value->>'tier' = 'confidential'`,
-      )
-      return (Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])) as {
-        name: string
-        domain: string
-      }[]
-    })
-    const byDomain = new Map<string, string[]>()
-    for (const r of rows) byDomain.set(r.domain, [...(byDomain.get(r.domain) ?? []), r.name].sort())
-    expect([...byDomain.keys()].sort()).toEqual(["customers", "dealers", "revenue"])
-    for (const names of byDomain.values()) expect(names).toEqual(["finance", "operations"])
-  })
-
   it("holds NO platform credit, on any seeding path", async () => {
     // A demo org that is created holding platform credit is money whoever was
     // handed the org can spend, and a visitor org is handed to anyone who asks. The balance ROW exists (it is the org's)

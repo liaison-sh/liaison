@@ -19,7 +19,7 @@
  * Tracked paths are the non-secret, readable-back fields: `org.*` (name,
  * timezone, defaultLocale, requireAdminSecondFactor), `limits.<cap>`,
  * `email.from|replyTo`, `setup.features`, `roles.<name>`,
- * `apps.<name>.enable|config.<key>|settings.<path>|domainAccess`,
+ * `apps.<name>.enable|config.<key>|settings.<path>`,
  * `agents.<handle>.<field>` and `invoicing.issuerProfiles.<legalName>.<field>`.
  * Credentials, keys, tokens and passwords are never tracked (nor hashed), and
  * neither are users, mail, tickets, knowledge, BYOK, API keys or API
@@ -45,7 +45,6 @@ export type FieldKind =
   | "text"
   | "agentScopes"
   | "role"
-  | "domainAccess"
   | "json"
   | "appEnable"
 
@@ -324,9 +323,6 @@ export function trackedFields(config: unknown): TrackedField[] {
         out.push({ path: `${p}.settings.${k}`, loc: [...base, "settings", k], kind: "json" })
       }
     }
-    if (isRecord(a.domainAccess)) {
-      out.push({ path: `${p}.domainAccess`, loc: [...base, "domainAccess"], kind: "domainAccess" })
-    }
   }
   for (const a of Array.isArray(agents) ? agents : []) {
     if (!isRecord(a) || typeof a.handle !== "string") continue
@@ -387,26 +383,6 @@ export function normalize(field: TrackedField, value: unknown, fileValue?: unkno
       const out: Record<string, unknown> = { scopes: [...new Set(sortedStrings(value.scopes))] }
       if (isRecord(fileValue) && present(fileValue, "description")) {
         out.description = typeof value.description === "string" ? value.description : null
-      }
-      return out
-    }
-    case "domainAccess": {
-      if (!isRecord(value)) return {}
-      const out: Record<string, unknown> = {}
-      for (const domain of Object.keys(value).sort()) {
-        const rule = value[domain]
-        if (!isRecord(rule)) continue
-        out[domain] = {
-          tier: rule.tier ?? null,
-          ...(Array.isArray(rule.roles) ? { roles: sortedStrings(rule.roles) } : {}),
-          ...(Array.isArray(rule.users)
-            ? {
-                users: sortedStrings(
-                  rule.users.map((u) => (typeof u === "string" ? u.toLowerCase() : u)),
-                ),
-              }
-            : {}),
-        }
       }
       return out
     }

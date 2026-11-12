@@ -262,7 +262,7 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     // needs rows replaces the member it calls.
     sql: {
       query: async () => ({ error: { code: "not_connected", message: "No connection (mock)" } }),
-      reads: async () => ({ adapter: "none", reads: {} }),
+      reads: async () => ({ adapter: "none", reads: {}, domains: {} }),
       schema: async () => ({ tables: [] }),
       probe: async () => ({ ok: true, mode: "direct", warnings: [] }),
     },

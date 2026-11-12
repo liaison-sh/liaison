@@ -2,9 +2,10 @@
 //
 // ReadCatalog — the transport-agnostic, per-deployment unit: a set of named,
 // parameterized SELECT reads (SQL template + JSON-Schema params + a column
-// allow-list), grouped under an adapter name. Shared by the in-tree
-// `apps/api/src/apps/database` app and the `apps/db-gate` sidecar so both
-// consume exactly one implementation of catalog shape + validation.
+// allow-list), grouped under an adapter name. Shared by the platform's SQL
+// connections (`apps/api/src/modules/apps/connections/sql`) and the
+// `apps/db-gate` sidecar so both consume exactly one implementation of
+// catalog shape + validation.
 //
 // The column allow-list on each read is a projection layer — defense in
 // depth on top of (never instead of) the DB grant layer (see

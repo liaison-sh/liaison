@@ -39,10 +39,6 @@ describe("db import enforcement", () => {
     // Provisioning CLI: the connection's stored credentials are read in a privileged
     // transaction of the org being provisioned, after the plan's org-less precheck.
     "cli/provisioners/connector.ts",
-    // Knowledge sync of a connected database run by a job (no request transaction):
-    // the org-owned connection's credentials are read in a short privileged
-    // transaction of the source's own org; the database read itself holds no slot.
-    "apps/database/knowledge-read-runner.ts",
     "modules/security/security-events.ts", // security signals: the org comes from the event the auth path raised; writes the outbox event and reads the account it names
     // Magic-wand proofread/polish assist service — reads org model config + agent
     // keys via system-db (no per-request RLS context), like other host services.
@@ -140,6 +136,10 @@ describe("db import enforcement", () => {
     // org-owned accounts are invisible to RLS; every read and write pins org,
     // app and connection in its predicate, and the caller's own personal rows.
     "modules/apps/sandbox/bridge/accounts.ts",
+    // ctx.kernel.caller: the caller's own roles and grants in the run's org
+    // (loadEffectivePermissions, the same read the domain checks used); answers
+    // only whether each asked scope is held, never the person's other grants.
+    "modules/apps/sandbox/bridge/directory.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
@@ -391,12 +391,6 @@ describe("db import enforcement", () => {
     // The customer resolver's domain fallback excludes the org's own mailbox
     // and inbox domains: configuration, read org-scoped, only ever to exclude.
     "apps/api-connector/customer.ts",
-    // Database connector report access: the org's domainAccess setting (one
-    // jsonb key, org-scoped by id) and the caller's own role memberships, read
-    // for the per-domain read check; written only after the route checks
-    // kernel:apps:admin and every named role and person belongs to the org.
-    "apps/database/domain-access-store.ts",
-    "modules/database/routes.ts",
     "apps/tickets/admin.ts",
     // Close silent tickets: the per-org scan of inboxes with the option on, the
     // acting person's active row and permissions, and the cancel of a pending

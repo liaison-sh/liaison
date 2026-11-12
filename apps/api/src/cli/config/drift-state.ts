@@ -15,7 +15,6 @@
 
 import { ORG_CAP_KINDS } from "@liaison/shared"
 import { and, eq, inArray, sql } from "drizzle-orm"
-import { readOrgDomainAccess } from "~/apps/database/domain-access-store"
 import type { AppliedRecord } from "~/cli/config/drift"
 import type { ProvisionContext } from "~/cli/provisioners/types"
 import { configAppliedFields, organizations, roles, users } from "~/db/schema/kernel"
@@ -101,49 +100,11 @@ export async function readServerConfig(
           Object.keys(a.settings).map((p) => [p, settingAtPath(ns, p.split(".")) ?? null] as const),
         )
       }
-      if (a.domainAccess !== undefined) entry.domainAccess = await readDomainAccessConfig(ctx)
       apps.push(entry)
     }
     out.apps = apps
   }
   return out
-}
-
-/** The stored domain access map with role ids as names and people as emails. */
-async function readDomainAccessConfig(ctx: ProvisionContext): Promise<Record<string, unknown>> {
-  return ctx.priv("config-drift-domain-access", async (tx) => {
-    const stored = await readOrgDomainAccess(tx, ctx.orgId)
-    const roleIds = new Set<string>()
-    const userIds = new Set<string>()
-    for (const rule of Object.values(stored)) {
-      for (const id of rule?.roles ?? []) roleIds.add(id)
-      for (const id of rule?.users ?? []) userIds.add(id)
-    }
-    const roleRows = roleIds.size
-      ? await tx
-          .select({ id: roles.id, name: roles.name })
-          .from(roles)
-          .where(and(eq(roles.orgId, ctx.orgId), inArray(roles.id, [...roleIds])))
-      : []
-    const userRows = userIds.size
-      ? await tx
-          .select({ id: users.id, email: users.email })
-          .from(users)
-          .where(and(eq(users.orgId, ctx.orgId), inArray(users.id, [...userIds])))
-      : []
-    const roleName = new Map(roleRows.map((r) => [r.id, r.name] as const))
-    const userEmail = new Map(userRows.map((u) => [u.id, u.email.toLowerCase()] as const))
-    const out: Record<string, unknown> = {}
-    for (const [domain, rule] of Object.entries(stored)) {
-      if (!rule) continue
-      out[domain] = {
-        tier: rule.tier,
-        ...(rule.roles ? { roles: rule.roles.map((id) => roleName.get(id) ?? id) } : {}),
-        ...(rule.users ? { users: rule.users.map((id) => userEmail.get(id) ?? id) } : {}),
-      }
-    }
-    return out
-  })
 }
 
 export async function loadAppliedRecords(

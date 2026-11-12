@@ -1,0 +1,48 @@
+{
+  "entry": "provision:handler",
+  "params": {
+    "config": {
+      "domainAccess": {
+        "revenue": {
+          "tier": "restricted",
+          "users": [
+            "recorder@example.com"
+          ]
+        }
+      }
+    },
+    "dryRun": false
+  },
+  "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
+  "calls": [
+    {
+      "method": "kernel_roles",
+      "args": [],
+      "reply": "[{\"id\":\"4276d243-fb9e-425a-ade5-01b1adfda9e0\",\"name\":\"Full Member\"},{\"id\":\"0a6fe43c-c5e4-44c3-94ea-c8392ddc72f6\",\"name\":\"api-connector.admin\"},{\"id\":\"c2de48a3-b8e7-4df8-ae78-4d0dcd315173\",\"name\":\"api-connector.member\"},{\"id\":\"4a41bc16-23da-4223-b9f4-d3c812bc92d0\",\"name\":\"calendar.admin\"},{\"id\":\"345882cf-9fce-4e4d-8e31-9dd539f697c2\",\"name\":\"calendar.member\"},{\"id\":\"831c601d-c9a5-43b1-b088-40089d9f9537\",\"name\":\"database.admin\"},{\"id\":\"620864e0-e84e-4e59-a80d-5a6ed40ec1d9\",\"name\":\"database.member\"},{\"id\":\"00000000-0000-4000-8000-00000000c0e1\",\"name\":\"finance\"},{\"id\":\"f28a4ec7-bfe7-47e4-8cd6-1d24d8a75ec6\",\"name\":\"gitlab.admin\"},{\"id\":\"3b5c369e-455f-437f-a977-30298ac2b9aa\",\"name\":\"gitlab.member\"},{\"id\":\"57bc6b9f-a0ed-490a-8830-afdba361781e\",\"name\":\"google-drive.admin\"},{\"id\":\"aae7b1f2-7873-4f64-b931-1c8948ec28d2\",\"name\":\"google-drive.member\"},{\"id\":\"09d4b734-15d4-42a1-b325-6fbdd2028fc8\",\"name\":\"knowledge.admin\"},{\"id\":\"b4602708-577b-4ab9-92ed-316c8ae138d5\",\"name\":\"knowledge.curator\"},{\"id\":\"131e7717-8e73-44d5-a05e-80d31cfb5515\",\"name\":\"knowledge.member\"},{\"id\":\"279e7cda-f9df-4a60-bbc2-8791af81a62d\",\"name\":\"mcp-manager.admin\"},{\"id\":\"746fdbcc-ef8d-4cd8-8821-a48d2539a535\",\"name\":\"mcp-manager.editor\"},{\"id\":\"83cc1a87-40a0-44a1-b1e4-c18487a6edcb\",\"name\":\"mcp-manager.member\"},{\"id\":\"e6e3f040-a895-4d13-83f9-3d799ba2abd7\",\"name\":\"mcp-manager.viewer\"},{\"id\":\"56ad78d0-f77c-42f2-9d4b-7b21530c67cd\",\"name\":\"projects.admin\"},{\"id\":\"4de64ba2-2d4a-4b52-a06d-6adc1d7982c5\",\"name\":\"projects.lead\"},{\"id\":\"1f58acbd-1e10-4982-970d-e967704acdce\",\"name\":\"projects.member\"},{\"id\":\"256bb7cf-69c2-4025-b035-62d50ae60e44\",\"name\":\"tickets.admin\"},{\"id\":\"d988159a-9cef-477e-8a4d-167d2783abc7\",\"name\":\"tickets.support\"},{\"id\":\"7fca2933-3dcc-4c37-88cd-2fd2a1c267dd\",\"name\":\"tickets.support_lead\"}]"
+    },
+    {
+      "method": "kernel_findUsersByEmail",
+      "args": [
+        "[\"recorder@example.com\"]"
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000c0df\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"email\":\"recorder@example.com\",\"name\":\"Contract Recorder\",\"avatar_url\":null,\"avatar_key\":null,\"timezone\":null,\"locale\":null,\"status\":\"active\",\"created_at\":\"2026-11-12 11:08:16.183783+00\",\"updated_at\":\"2026-11-12 11:08:16.183783+00\"}]"
+    },
+    {
+      "method": "store_get",
+      "args": [
+        "settings",
+        "domain_access"
+      ],
+      "reply": "{\"id\":\"domain_access\",\"data\":{\"value\":{\"revenue\":{\"tier\":\"confidential\",\"roles\":[\"00000000-0000-4000-8000-00000000c0e1\"]}}},\"version\":1,\"updatedAt\":\"2026-11-12T11:08:18.153Z\"}"
+    },
+    {
+      "method": "store_set",
+      "args": [
+        "settings",
+        "domain_access",
+        "{\"value\":{\"revenue\":{\"tier\":\"restricted\",\"users\":[\"00000000-0000-4000-8000-00000000c0df\"]}}}"
+      ],
+      "reply": "{\"id\":\"domain_access\",\"data\":{\"value\":{\"revenue\":{\"tier\":\"restricted\",\"users\":[\"00000000-0000-4000-8000-00000000c0df\"]}}},\"version\":2,\"updatedAt\":\"2026-11-12T11:08:18.430Z\"}"
+    }
+  ]
+}

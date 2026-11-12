@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { createDatabaseKnowledgeAdapter } from "~/apps/database/knowledge-adapter"
-import { createDatabaseKnowledgeReadRunner } from "~/apps/database/knowledge-read-runner"
 import { createGitlabAdapter } from "~/apps/gitlab/adapter"
 import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { createGoogleDriveAdapter, type GoogleDriveAdapterDeps } from "~/apps/google-drive/adapter"
@@ -118,16 +116,6 @@ export function registerDefaultKnowledgeSources(input: {
       createGitlabAdapter({ client: gitlabClient, resolveDefaultGroupId: resolveGitlabGroup }),
     )
   }
-
-  // Database — folder-capable synced source, registered UNCONDITIONALLY (like
-  // GitLab). Capability is answered by the read runner's `hasRead`: when no
-  // database connection / catalog exists, or the connected catalog does not
-  // declare the knowledge_sync_* reads, `hasRead` is false and the adapter
-  // degrades to empty/unsupported (never crashes). This is an app-to-app
-  // connector: it reuses the `database` app's pooled transport + curated-reads
-  // catalog rather than opening its own client.
-  const dbRunner = createDatabaseKnowledgeReadRunner({ tx, orgId, userId, identifier })
-  registry.register(createDatabaseKnowledgeAdapter(dbRunner))
 
   return registry
 }

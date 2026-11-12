@@ -1,0 +1,23 @@
+{
+  "entry": "event:kernel/connected_account:create",
+  "params": {
+    "app": "kernel",
+    "entity": "connected_account",
+    "action": "create",
+    "data": {
+      "appName": "database",
+      "connectionName": "database"
+    }
+  },
+  "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
+  "calls": [
+    {
+      "method": "sql_probe",
+      "args": [
+        "database",
+        "{\"timeoutMs\":55000}"
+      ],
+      "reply": "{\"ok\":false,\"mode\":\"direct\",\"writeGrantsDetected\":false,\"dangerousExecuteGrantsDetected\":true,\"warnings\":[\"Role \\\"liaison_contract_db_reader\\\" has 93 effective EXECUTE privilege(s) (direct, PUBLIC, or inherited) beyond built-ins — verify against the curated allow-list\"]}"
+    }
+  ]
+}

@@ -545,31 +545,6 @@
     "reason": "no-fixture"
   },
   {
-    "app": "database",
-    "entry": "tool:db_describe",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_list_reads",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_probe",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_query",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_read",
-    "reason": "no-fixture"
-  },
-  {
     "app": "gitlab",
     "entry": "tool:gitlab_get_commit",
     "reason": "no-fixture"

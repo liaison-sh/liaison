@@ -8,6 +8,86 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
 
 /** Knowledge curation: collections, verification, folder sources, source links and attention items. */
+/**
+ * `add_folder_source` on an app that declares a knowledge source kind: the
+ * app's own handler syncs it (app-sources.ts). The same app, kind and owner
+ * reuse their source (reactivated when archived), so its documents keep their
+ * identities. The first pass runs on the sync schedule, not inside this call.
+ */
+async function addAppSource(input: {
+  txDb: unknown
+  orgId: string
+  actor: import("~/apps/knowledge/service").KnowledgeActor
+  source: string
+  kinds: Array<{ kind: string; title: string }>
+  scope: "personal" | "organization"
+  params: { kind?: string; displayName?: string; defaultSensitivity?: string; oneShot?: boolean }
+}): Promise<Record<string, unknown>> {
+  const { txDb, orgId, actor, source, kinds, scope, params: p } = input
+  if (p.oneShot) {
+    throw new Error(
+      `invalid_params: ${source} syncs through its own source on a schedule; oneShot is for folder sources`,
+    )
+  }
+  const chosen = p.kind
+    ? kinds.find((k) => k.kind === p.kind)
+    : kinds.length === 1
+      ? kinds[0]
+      : null
+  if (!chosen) {
+    throw new Error(`invalid_params: kind required, one of ${kinds.map((k) => k.kind).join(", ")}`)
+  }
+  const { knowledgeRel } = await import("~/apps/knowledge/schema-refs")
+  const owner = scope === "organization" ? null : actor.userId
+  const [existing] = extractRows<{ id: string; last_sync_status: string | null }>(
+    await (txDb as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
+      SELECT id, last_sync_status FROM ${knowledgeRel("synced_sources")}
+      WHERE org_id = ${orgId}::uuid AND app_name = ${source} AND source_kind = ${chosen.kind}
+        AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
+      ORDER BY archived_at IS NULL DESC, created_at DESC
+      LIMIT 1
+    `),
+  )
+  if (existing) {
+    const { reactivateSyncedSource } = await import("~/apps/knowledge/synced-sources")
+    await reactivateSyncedSource(orgId, existing.id)
+    return {
+      sourceId: existing.id,
+      syncedSourceId: existing.id,
+      source,
+      kind: chosen.kind,
+      lastSyncStatus: existing.last_sync_status ?? "idle",
+      oneShot: false,
+      documentsCreated: 0,
+    }
+  }
+  const { createSyncedSource } = await import("~/apps/knowledge/synced-sources")
+  const created = await createSyncedSource(
+    txDb as never,
+    {
+      appName: source,
+      sourceKind: chosen.kind,
+      sourceConfig: {},
+      folderRef: `app-source:${chosen.kind}`,
+      displayName: p.displayName ?? chosen.title,
+      scope,
+      syncIntervalSeconds: 3600,
+      defaultSensitivity:
+        scope === "organization" ? ((p.defaultSensitivity as never) ?? "internal") : null,
+    },
+    actor,
+  )
+  return {
+    sourceId: created.id,
+    syncedSourceId: created.id,
+    source,
+    kind: chosen.kind,
+    lastSyncStatus: created.lastSyncStatus,
+    oneShot: false,
+    documentsCreated: 0,
+  }
+}
+
 export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<string, any> {
   const { appName, bridgeActingAgentId, bridgeOptions, callerScopes, orgId, txDb, userId } = ctx
   return {
@@ -197,16 +277,17 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       })
     },
     // knowledge_addFolderSource — GENERIC folder-source harvest, unified across
-    // every folder-capable connector (google-drive | gitlab | database). `source`
-    // selects the connector (default "google-drive" for back-compat with callers
-    // that never passed it); `ref` is that connector's folder reference — for
+    // every folder-capable connector (google-drive | gitlab). `source` selects
+    // the connector (default "google-drive" for back-compat with callers that
+    // never passed it); `ref` is that connector's folder reference — for
     // google-drive the legacy `folderId` param is still accepted as an alias for
     // `ref` (back-compat: existing callers/tests keep working byte-for-byte).
-    // `ref` is optional ONLY for `database` (the connected catalog's curated
-    // reads define what syncs; the ref is just a logical root label, defaulted
-    // below). Resolves the adapter from the SAME request-scoped registry the
-    // HTTP route uses (`registerDefaultKnowledgeSources`), so any registered,
-    // enabled, folder-capable source works here with zero per-source code.
+    // Resolves the adapter from the SAME request-scoped registry the HTTP route
+    // uses (`registerDefaultKnowledgeSources`), so any registered, enabled,
+    // folder-capable source works here with zero per-source code. A `source`
+    // that is an installed app declaring a knowledge source kind (manifest
+    // `knowledgeSources`, app-sources.ts) becomes an app source of that kind
+    // instead: no `ref`, the app's own handler decides what syncs.
     // The settings page's synced sources list (tools synced_sources.list /
     // archive / run_now): the same reads, checks and job as GET / DELETE
     // /api/knowledge/synced-sources and POST .../:id/run-now. Refusals come
@@ -274,6 +355,7 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
         scope?: "personal" | "organization"
         defaultSensitivity?: string
         oneShot?: boolean
+        kind?: string
       }
       const source = p.source ?? "google-drive"
       // Back-compat alias: `folderId` is the pre-generalization param name,
@@ -281,12 +363,6 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       // caller that passes it without `source`). `database` is the only
       // source where `ref` may be omitted entirely (defaulted below).
       const ref = p.ref ?? p.folderId
-      if (!ref && source !== "database") {
-        throw new Error(
-          "invalid_params: ref required (folderId accepted as an alias for google-drive)",
-        )
-      }
-      const resolvedRef = ref ?? "default"
       const { knowledgeActorFromContext } = await import("~/apps/knowledge/service")
       const { createSyncedSource, archiveSyncedSource, MIN_INTERVAL_SECONDS } = await import(
         "~/apps/knowledge/synced-sources"
@@ -321,9 +397,23 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
           scopes: callerScopes ?? [],
         })
       const adapter = registry.listEnabled(actor).find((a) => a.source === source)
-      if (!adapter)
-        throw new Error(`connect the ${source} app first: source is not connected/enabled`)
       const scope = p.scope ?? "personal"
+      if (!adapter) {
+        const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
+        const kinds = listAppSourceKinds(actor).filter((k) => k.appName === source)
+        if (kinds.length === 0) {
+          throw new Error(`connect the ${source} app first: source is not connected/enabled`)
+        }
+        return JSON.stringify(
+          await addAppSource({ txDb, orgId, actor, source, kinds, scope, params: p }),
+        )
+      }
+      if (!ref) {
+        throw new Error(
+          "invalid_params: ref required (folderId accepted as an alias for google-drive)",
+        )
+      }
+      const resolvedRef = ref
       // Re-ingesting the SAME folder reuses (and reactivates) the existing
       // source so the reconciler's in-source document dedupe stays effective —
       // a fresh source id would re-materialize every file as a duplicate.

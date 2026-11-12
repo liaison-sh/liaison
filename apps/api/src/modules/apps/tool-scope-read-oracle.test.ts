@@ -207,6 +207,11 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     REASONS.SQL_RAW,
   ],
   [
+    "apps/api/src/modules/apps/connections/sql/service.ts",
+    "const schemaScope = declaration.schema?.scope ?? rawQueryScopeOf(declaration)",
+    "a SQL connection's own schema scope (manifest connections.<name>.sql.schema), not a tool definition",
+  ],
+  [
     "apps/api/src/modules/mcp-client/call.ts",
     'return err.challenge.scope ?? ""',
     REASONS.MCP_OAUTH,

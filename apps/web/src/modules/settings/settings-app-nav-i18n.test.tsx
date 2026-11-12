@@ -24,7 +24,7 @@ import projectsEn from "../../../../../packages/shared/src/i18n/locales/en/proje
 import fr from "../../../../../packages/shared/src/i18n/locales/fr/kernel.json"
 import projectsFr from "../../../../../packages/shared/src/i18n/locales/fr/projects.json"
 import calendarManifest from "../../../../api/src/apps/calendar/app.manifest.json"
-import databaseManifest from "../../../../api/src/apps/database/app.manifest.json"
+import databaseManifest from "../../../../../bundled-apps/database/app.manifest.json"
 import gitlabManifest from "../../../../api/src/apps/gitlab/app.manifest.json"
 import driveManifest from "../../../../api/src/apps/google-drive/app.manifest.json"
 import knowledgeManifest from "../../../../api/src/apps/knowledge/app.manifest.json"

@@ -1710,6 +1710,19 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/boxtal"),
   },
+  // Database bundled-app oracles: Report access, the db_* answers, provisioning
+  // and the knowledge source's paging over an in-memory ctx (src/test-ctx.ts).
+  // No Postgres needed: ctx.sql itself is the platform's (connections/sql).
+  "bundled-database": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/database.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/database"),
+  },
   // Monitoring bundled-app oracles -- same orphan class. Fully mock-driven
   // (test-ctx in-memory AppContext + the pure-node hmac testutil bridge): the
   // alert-webhook lifecycle (create/fold/reopen/escalate), the ack/resolve
@@ -2146,6 +2159,7 @@ if (suite === "full") {
     "bundled-invoicing",
     "bundled-boxtal",
     "bundled-monitoring",
+    "bundled-database",
     "bundled-pennylane",
     "bundled-calls",
     "bundled-social",

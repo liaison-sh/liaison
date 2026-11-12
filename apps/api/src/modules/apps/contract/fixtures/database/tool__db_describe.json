@@ -1,0 +1,17 @@
+{
+  "entry": "tool:db_describe",
+  "params": {
+    "table": "contract_shop.orders"
+  },
+  "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
+  "calls": [
+    {
+      "method": "sql_schema",
+      "args": [
+        "database",
+        "{\"table\":\"contract_shop.orders\",\"timeoutMs\":55000}"
+      ],
+      "reply": "{\"tables\":[{\"table\":\"contract_shop.orders\",\"columns\":[{\"column\":\"id\",\"dataType\":\"text\"},{\"column\":\"status\",\"dataType\":\"text\"},{\"column\":\"total_cents\",\"dataType\":\"integer\"},{\"column\":\"created_at\",\"dataType\":\"timestamp with time zone\"}]}]}"
+    }
+  ]
+}

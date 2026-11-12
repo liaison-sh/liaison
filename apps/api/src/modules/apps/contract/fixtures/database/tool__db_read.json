@@ -1,0 +1,42 @@
+{
+  "entry": "tool:db_read",
+  "params": {
+    "name": "orders_by_status",
+    "params": {
+      "status": "open"
+    }
+  },
+  "recordedFrom": "a contract org reading two contract schemas of the test database as a read-only login, scripts/contract/record-database.ts",
+  "calls": [
+    {
+      "method": "sql_reads",
+      "args": [
+        "database"
+      ],
+      "reply": "{\"adapter\":\"contract-shop\",\"reads\":{\"knowledge_sync_list\":{\"description\":\"Knowledge articles, keyset-paginated by (updated_at, id).\",\"domain\":\"knowledge\",\"params\":{\"after_updated_at\":{\"type\":\"string\"},\"after_id\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"}},\"columns\":[\"id\",\"title\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"knowledge_sync_get\":{\"description\":\"One knowledge article with its body.\",\"domain\":\"knowledge\",\"params\":{\"id\":{\"type\":\"string\"}},\"columns\":[\"id\",\"title\",\"body\",\"updated_at\"],\"tables\":[\"contract_kb.articles\"],\"allowed\":true},\"orders_by_status\":{\"description\":\"Orders in one status, newest first.\",\"domain\":\"support\",\"params\":{\"status\":{\"type\":\"string\"}},\"columns\":[\"id\",\"status\",\"total_cents\",\"created_at\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true},\"revenue_by_month\":{\"description\":\"Revenue per month.\",\"domain\":\"revenue\",\"params\":{},\"columns\":[\"month\",\"revenue_cents\"],\"tables\":[\"contract_shop.orders\"],\"allowed\":true}},\"domains\":{\"revenue\":{\"tier\":\"confidential\"}}}"
+    },
+    {
+      "method": "store_get",
+      "args": [
+        "settings",
+        "domain_access"
+      ],
+      "reply": "null"
+    },
+    {
+      "method": "kernel_caller",
+      "args": [
+        "[\"kernel:org:admin\",\"database:query:read\"]"
+      ],
+      "reply": "{\"kind\":\"person\",\"userId\":\"00000000-0000-4000-8000-00000000c0df\",\"roleIds\":[],\"holds\":{\"kernel:org:admin\":true,\"database:query:read\":true}}"
+    },
+    {
+      "method": "sql_query",
+      "args": [
+        "database",
+        "{\"read\":\"orders_by_status\",\"params\":{\"status\":\"open\"},\"timeoutMs\":55000,\"maxRows\":2000}"
+      ],
+      "reply": "{\"rows\":[{\"id\":\"o-3\",\"status\":\"open\",\"total_cents\":8800,\"created_at\":\"2026-05-02T10:00:00.000Z\"},{\"id\":\"o-1\",\"status\":\"open\",\"total_cents\":12900,\"created_at\":\"2026-04-03T10:00:00.000Z\"}],\"truncated\":false,\"durationMs\":39}"
+    }
+  ]
+}

@@ -36,19 +36,19 @@ const RULES = { finance: { tier: "confidential", roles: ["r1"] } }
 let catalogDir: string
 let installRoot: string
 
-function bakeCatalog(withApp: boolean): void {
+function bakeCatalog(withApp: boolean, name: string = APP): void {
   const entries: unknown[] = []
   if (withApp) {
-    const file = `${APP}-${VERSION}.liaisonapp`
+    const file = `${name}-${VERSION}.liaisonapp`
     const stage = mkdtempSync(join(tmpdir(), "moved-stage-"))
     writeFileSync(
       join(stage, "app.manifest.json"),
       JSON.stringify({
-        name: APP,
+        name,
         version: VERSION,
         packageFormat: 1,
         license: "MIT",
-        scopes: [`${APP}:items:read`],
+        scopes: [`${name}:items:read`],
       }),
     )
     writeFileSync(join(stage, "bundle.js"), "// noop\n")
@@ -62,10 +62,10 @@ function bakeCatalog(withApp: boolean): void {
     ])
     rmSync(stage, { recursive: true, force: true })
     entries.push({
-      name: APP,
+      name,
       version: VERSION,
       file,
-      scopes: [`${APP}:items:read`],
+      scopes: [`${name}:items:read`],
       connections: [],
     })
   }
@@ -343,5 +343,150 @@ describe("the moved-app list", () => {
     }
     // Sanity: the paths above resolve to the repository.
     expect(readdirSync(join(repoRoot, "bundled-apps")).length).toBeGreaterThan(0)
+  })
+})
+
+// The database app's own move, with the real step list: its Report access
+// rules leave the org's settings for the app's store under the key the app
+// reads (settings / domain_access, bundled-apps/database/src/access.ts), its
+// knowledge sources become the app's `catalog` kind, and every other row it
+// had (registration, both connections and their credentials, the synced
+// source's documents and identities) is the same row before and after.
+describe("the database app's move", () => {
+  const DB = "database"
+  const DB_ACCOUNT = "00000000-0000-0000-0000-0000000ad013"
+  const WH_ACCOUNT = "00000000-0000-0000-0000-0000000ad023"
+  const DB_SOURCE = "00000000-0000-0000-0000-0000000ad015"
+  const DB_IDENTITY = "00000000-0000-0000-0000-0000000ad016"
+  const DB_DOCUMENT = "00000000-0000-0000-0000-0000000ad017"
+  const ACCESS = { revenue: { tier: "confidential", roles: ["00000000-0000-0000-0000-0000000ad0a1"] } }
+  const json = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
+
+  async function seedDatabaseApp(): Promise<void> {
+    await sql`UPDATE kernel.organizations
+      SET settings = settings || ${JSON.stringify({ database: { domainAccess: ACCESS } })}::jsonb
+      WHERE id = ${ORG}`
+    const rows: Array<[string, Record<string, RowValue>]> = [
+      ["kernel.apps", { org_id: ORG, name: DB, version: "1.4.0", status: "active", config: json({}) }],
+      ...[
+        [DB_ACCOUNT, "database"],
+        [WH_ACCOUNT, "warehouse"],
+      ].map(
+        ([id, conn]) =>
+          [
+            "kernel.connected_accounts",
+            {
+              id: id as string,
+              org_id: ORG,
+              app_name: DB,
+              connection_name: conn as string,
+              owner_type: "org",
+              provider_type: "credentials",
+              identifier: conn === "warehouse" ? "warehouse" : "default",
+              credentials_encrypted: `enc:v1:${conn}`,
+              created_by: USER,
+            },
+          ] as [string, Record<string, RowValue>],
+      ),
+      [
+        "app_knowledge.synced_sources",
+        {
+          id: DB_SOURCE,
+          org_id: ORG,
+          app_name: DB,
+          folder_ref: "default",
+          display_name: "database folder default",
+          root_collection_id: COLLECTION,
+          default_sensitivity: "internal",
+          created_by: USER,
+        },
+      ],
+      [
+        "app_knowledge.source_identities",
+        { id: DB_IDENTITY, org_id: ORG, source: DB, external_id: "kb-1" },
+      ],
+      [
+        "app_knowledge.documents",
+        {
+          id: DB_DOCUMENT,
+          org_id: ORG,
+          title: "Pairing",
+          body: "Hold the button",
+          sensitivity: "internal",
+          created_by: USER,
+          synced_source_id: DB_SOURCE,
+          source_identity_id: DB_IDENTITY,
+          required_scopes: { raw: "'{}'::text[]" },
+        },
+      ],
+    ]
+    for (const [table, row] of rows) await sql.unsafe(insertSql(table, row))
+  }
+
+  async function dbSnapshot(): Promise<Record<string, unknown[]>> {
+    const strip = (rows: readonly unknown[]) =>
+      rows.map((r) => {
+        const { updated_at: _u, ...rest } = r as Record<string, unknown>
+        return rest
+      })
+    return {
+      settings: strip(await sql`SELECT settings FROM kernel.organizations WHERE id = ${ORG}`),
+      apps: strip(await sql`SELECT id, name, status, config FROM kernel.apps
+        WHERE org_id = ${ORG} AND name = ${DB}`),
+      accounts: strip(await sql`SELECT * FROM kernel.connected_accounts
+        WHERE org_id = ${ORG} AND app_name = ${DB} ORDER BY connection_name`),
+      sources: strip(await sql`SELECT * FROM app_knowledge.synced_sources
+        WHERE org_id = ${ORG} AND app_name = ${DB}`),
+      identities: strip(await sql`SELECT * FROM app_knowledge.source_identities
+        WHERE org_id = ${ORG} AND source = ${DB}`),
+      documents: strip(await sql`SELECT * FROM app_knowledge.documents WHERE id = ${DB_DOCUMENT}`),
+      store: strip(await sql`SELECT collection, doc_id, data FROM kernel.app_documents
+        WHERE org_id = ${ORG} AND app = ${DB}`),
+      adoptions: strip(await sql`SELECT step_id, report FROM kernel.app_adoptions
+        WHERE app_name = ${DB} ORDER BY step_id`),
+    }
+  }
+
+  afterEach(async () => {
+    await withSystemDb("moved-apps-db-test-cleanup", async (db) => {
+      await db.delete(appsInstalled).where(eq(appsInstalled.name, DB))
+      await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, DB))
+    })
+    await sql`DELETE FROM kernel.app_adoptions WHERE app_name = ${DB}`
+  })
+
+  it("keeps every row and moves Report access and the knowledge source, once", async () => {
+    MovedAppsTestAccess.set(null)
+    bakeCatalog(true, DB)
+    await seedDatabaseApp()
+    const before = await dbSnapshot()
+
+    const first = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(first.failed).toEqual([])
+    expect(first.repaired).toContain(DB)
+    const after = await dbSnapshot()
+
+    // Same rows: the settings (the source of the copy is kept for a rollback),
+    // the registration, both connections with their credentials, the
+    // identity and the document.
+    for (const table of ["settings", "apps", "accounts", "identities", "documents"] as const) {
+      expect({ table, rows: after[table] }).toEqual({ table, rows: before[table] })
+    }
+    expect(before.store).toEqual([])
+    expect(after.store).toEqual([
+      { collection: "settings", doc_id: "domain_access", data: { value: ACCESS } },
+    ])
+    const [sourceBefore] = before.sources as Array<Record<string, unknown>>
+    expect(after.sources).toEqual([
+      { ...sourceBefore, source_kind: "catalog", source_config: sourceBefore?.source_config ?? {} },
+    ])
+    expect(after.adoptions).toEqual([
+      { step_id: "domain-access-to-store", report: { orgs: 1, copied: 1, kept: 0 } },
+      { step_id: "knowledge-sources-to-catalog", report: { sources: 1 } },
+    ])
+
+    const second = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(second.failed).toEqual([])
+    expect(await dbSnapshot()).toEqual(after)
   })
 })

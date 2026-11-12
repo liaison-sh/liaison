@@ -136,6 +136,26 @@ describe("scrubValue", () => {
     expect(JSON.parse(out.body as string)).toEqual({ phone: "+15550100000", note: "hi" })
   })
 
+  it("replaces a credential-named value everywhere it appears, so a call passing it back still matches", () => {
+    const out = scrubValue(
+      {
+        calls: [
+          { method: "begin", reply: JSON.stringify({ state: "run", token: "lease-123" }) },
+          { method: "save", args: ["step", "lease-123", { done: true }] },
+          { method: "other", reply: { checkout_token: "c0ffee" } },
+        ],
+      },
+      [],
+    )
+    const text = JSON.stringify(out)
+    expect(text).not.toContain("lease-123")
+    expect(text).not.toContain("c0ffee")
+    const calls = (out as { calls: Array<{ reply?: unknown; args?: unknown[] }> }).calls
+    const lease = (JSON.parse(calls[0]?.reply as string) as { token: string }).token
+    expect(calls[1]?.args?.[1]).toBe(lease)
+    expect((calls[2]?.reply as { checkout_token: string }).checkout_token).not.toBe(lease)
+  })
+
   it("keeps a fetch answer's error and non-fetch calls untouched by header trimming", () => {
     const fixture: EgressFixture = {
       entry: "tool:x",

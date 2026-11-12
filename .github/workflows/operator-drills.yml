@@ -171,7 +171,9 @@ jobs:
           # Each process's /healthz: the sandbox service answers with its release
           # and calls that process back on its own bridge listener.
           for id in $(docker compose ps -q api worker); do
-            docker exec "$id" bun --eval "fetch('http://localhost:3000/healthz').then(r => r.json()).then(b => { console.log('$id', JSON.stringify(b.dependencies)); process.exit(b.dependencies?.sandbox === 'ok' ? 0 : 1) })"
+            # The monitor token unlocks the detail on every role (a worker's
+            # health-only server does not treat a loopback caller as local).
+            docker exec "$id" bun --eval "fetch('http://localhost:3000/healthz', { headers: { authorization: 'Bearer ' + process.env.MONITOR_TOKEN } }).then(r => r.json()).then(b => { console.log('$id', JSON.stringify(b.dependencies)); process.exit(b.dependencies?.sandbox === 'ok' ? 0 : 1) })"
           done
       - name: Logs on failure
         if: failure()

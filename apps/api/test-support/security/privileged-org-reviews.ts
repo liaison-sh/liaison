@@ -76,10 +76,6 @@ export const TRUSTED_SOURCES: Record<string, string> = {
  * dispatcher was reviewed: name → what calls it and with which org.
  */
 export const REVIEWED_DISPATCH: Record<string, string> = {
-  bridgeExtension:
-    "a manifest's bridge extension factory, kept in appBridgeExtensionRegistry per [org, app] (runtime.ts:3279); createRpcBridge calls it with the run's bridge context",
-  _bridgeExtension:
-    "a manifest's bridge extension factory, carried into the RPC bridge (runtime.ts:2098), which calls it with the run's bridge context (the org the kernel runs the app for)",
   exportName:
     "a string (the sandbox export to run, sandbox-worker.ts; the Worker export to run, workers/worker-core.ts), never a function: a property-name collision in the alias graph",
   handlerName:

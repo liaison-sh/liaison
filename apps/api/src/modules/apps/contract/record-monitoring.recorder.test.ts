@@ -13,7 +13,9 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
+import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { insertAppRow } from "~/seed/factories/app-tables"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   installForRecording,
@@ -95,10 +97,19 @@ const PLAN: RecordingStep[] = [
     entry: "job:assign-refs",
     // A new incident still waiting for its ref, as one that arrived while another numberer held the lease.
     before: async () => {
-      await sql`INSERT INTO app_monitoring.incidents
-        (org_id, source, severity, title, status, count, first_seen_at, last_seen_at, dedup_key)
-        VALUES (${CONTRACT_ORG_ID}, 'watchdog', 'warning', 'Queue latency above 30 s', 'open', 1,
-          ${NOW}, ${NOW}, 'queue-latency')`
+      await withPrivilegedDb(CONTRACT_ORG_ID, "contract-recording", (tx) =>
+        insertAppRow(tx, "monitoring", "incidents", {
+          org_id: CONTRACT_ORG_ID,
+          source: "watchdog",
+          severity: "warning",
+          title: "Queue latency above 30 s",
+          status: "open",
+          count: 1,
+          first_seen_at: NOW,
+          last_seen_at: NOW,
+          dedup_key: "queue-latency",
+        }),
+      )
     },
     input: () => params({}),
   },

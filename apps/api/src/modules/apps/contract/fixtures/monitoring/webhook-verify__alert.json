@@ -14,7 +14,9 @@
   "calls": [
     {
       "method": "config_get",
-      "args": ["monitoringWebhookSecret"],
+      "args": [
+        "monitoringWebhookSecret"
+      ],
       "reply": "contract-webhook-secret-not-real"
     },
     {
@@ -35,7 +37,9 @@
     },
     {
       "method": "config_get",
-      "args": ["monitoringAlertTtlSeconds"],
+      "args": [
+        "monitoringAlertTtlSeconds"
+      ],
       "reply": null
     },
     {

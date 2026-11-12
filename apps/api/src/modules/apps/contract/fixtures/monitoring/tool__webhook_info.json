@@ -5,7 +5,9 @@
   "calls": [
     {
       "method": "config_get",
-      "args": ["monitoringWebhookSecret"],
+      "args": [
+        "monitoringWebhookSecret"
+      ],
       "reply": "contract-webhook-secret-not-real"
     }
   ]

@@ -1719,7 +1719,13 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
   // Google Drive bundled-app oracles: the handlers against a fake Drive behind
   // ctx.fetch (test-ctx.ts), no Postgres.
   "bundled-google-drive": {
-    cmd: ["bun", "test", ...bailBun, ...bunTestFlags, ...(fileFilter ? fileArg : ["src/drive.test.ts"])],
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/drive.test.ts"]),
+    ],
     cwd: path.join(ROOT, "bundled-apps/google-drive"),
   },
   "bundled-database": {

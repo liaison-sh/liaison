@@ -110,7 +110,7 @@ export async function deleteSyncedSourceContent(
   }
   // The collections the sync created: the subcollections it marks
   // `synced:<sourceId>:...` and, with the sources, their roots (mount points).
-  
+
   const roots = opts.keepSources
     ? []
     : sources.map((s) => s.root_collection_id).filter((id): id is string => !!id)

@@ -393,72 +393,72 @@ describe("apps provisioner (Task 11)", () => {
     )
     if (!org) throw new Error("org not found")
     const identifier = `gate-${crypto.randomUUID().slice(0, 8)}`
-    const configWith = (gateUrl: string): ProvisioningConfig => ({
+    const configWith = (group: string): ProvisioningConfig => ({
       org: { slug: org.slug, name: "X" },
       apps: [
         {
-          name: "database",
+          name: "gitlab",
           enable: true,
           connection: {
-            name: "database",
+            name: "gitlab",
             identifier,
             ownerType: "org",
-            credentials: { gateUrl, gateToken: "tok-SECRET-1" },
+            credentials: { group, token: "tok-SECRET-1" },
           },
         },
       ],
     })
-    await appsProvisioner.apply(ctx, { actions: [] }, configWith("https://gate-old.example.com"))
+    await appsProvisioner.apply(ctx, { actions: [] }, configWith("team-old"))
 
     // Dry run: the CLI plans with no org set yet (resolved by slug).
     const planCtx = buildProvisionContext({ log: () => {}, validateByok: false })
-    const plan = await appsProvisioner.plan(planCtx, configWith("https://gate-new.example.com"))
+    const plan = await appsProvisioner.plan(planCtx, configWith("team-new"))
     expect(plan.actions).toContain(
-      `update app 'database' connection 'database': gateUrl "https://gate-old.example.com" -> "https://gate-new.example.com"`,
+      `update app 'gitlab' connection 'gitlab': group "team-old" -> "team-new"`,
     )
     const afterPlan = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
         actorType: "system",
       }),
     )
-    expect(afterPlan.gateUrl).toBe("https://gate-old.example.com")
+    expect(afterPlan.group).toBe("team-old")
 
     // Apply: replaced, reported, then probed.
     ctx.connectionProbes = {
-      database: async () => {
+      gitlab: async () => {
         throw new Error("HTTP 404 from gate-new.example.com")
       },
     }
     const r = await appsProvisioner.apply(
       ctx,
       { actions: [] },
-      configWith("https://gate-new.example.com"),
+      configWith("team-new"),
     )
-    expect(r.changed).toContain("apps.database.connection.gateUrl")
+    expect(r.changed).toContain("apps.gitlab.connection.group")
     const entry = (r.section as { apps: Array<Record<string, unknown>> }).apps.find(
-      (a) => a.name === "database",
+      (a) => a.name === "gitlab",
     )
     expect(entry?.connectionChanges).toEqual([
       {
-        field: "gateUrl",
+        field: "group",
         secret: false,
-        from: "https://gate-old.example.com",
-        to: "https://gate-new.example.com",
+        from: "team-old",
+        to: "team-new",
       },
     ])
     expect(entry?.health).toEqual({ status: "FAIL", error: "HTTP 404 from gate-new.example.com" })
     const healthPending = (r.pending ?? []).find(
-      (p) => p.app === "database" && p.kind === "credentials",
+      (p) => p.app === "gitlab" && p.kind === "credentials",
     )
     expect(healthPending?.message).toContain("health check failed")
     expect(JSON.stringify(r)).not.toContain("tok-SECRET")
 
     const afterApply = await withPrivilegedDb(orgId, "t", (tx) =>
-      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "database", "database", identifier, {
+      getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", identifier, {
         actorType: "system",
       }),
     )
-    expect(afterApply.gateUrl).toBe("https://gate-new.example.com")
+    expect(afterApply.group).toBe("team-new")
   })
 
   test("oauth2 connection (google-drive/drive): pending, no write", async () => {

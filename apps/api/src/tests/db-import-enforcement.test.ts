@@ -1000,7 +1000,6 @@ describe("db import enforcement", () => {
     "seed/factories/org/apps.ts",
     "seed/factories/org/org.ts",
     "seed/factories/people/people.ts",
-    "seed/factories/people/role-grants.ts",
     // Bare rows for tests (an org, a user, a role, an audit entry; a connected
     // account, an MCP connection, a pending event; an org's billing state and
     // credit rows) written over the system connection as the provisioning and

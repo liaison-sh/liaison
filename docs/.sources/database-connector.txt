@@ -1,15 +1,15 @@
-Restrict reports by domain: tiers internal / confidential / restricted -> apps/api/src/apps/database/domain-access.ts:7-9 ; apps/api/src/apps/database/domain-access.ts:111-123
-Org admins (kernel:org:admin) and holders of database:query:read always pass -> apps/api/src/apps/database/domain-access.ts:35-37 ; apps/api/src/apps/database/domain-access.ts:117-120
-Org rule wins over the catalog default; neither = internal -> apps/api/src/apps/database/domain-access.ts:85-96
-No gated domain = nothing looked up, today's behaviour -> apps/api/src/apps/database/bridge.ts:385 ; apps/api/src/apps/database/domain-access.test.ts:1
+Restrict reports by domain: tiers internal / confidential / restricted -> bundled-apps/database/src/access.ts:1-24
+Org admins (kernel:org:admin) and holders of database:query:read always pass -> bundled-apps/database/src/access.ts:88-97
+Org rule wins over the catalog default; neither = internal -> bundled-apps/database/src/access.ts:76-86
+No gated domain = nothing looked up, today's behaviour -> bundled-apps/database/src/access.ts:107-113
 Catalog `domains` block (optional, tier + description) -> packages/db-core/src/catalog.ts:81-100
-db_list_reads leaves out reads the caller may not run -> apps/api/src/apps/database/bridge.ts:460
-db_read answers domain_restricted and points to Report access -> apps/api/src/apps/database/bridge.ts:530
-The caller is the person the call acts for (ctx.userId), jobs are the system -> apps/api/src/apps/database/bridge.ts:853 ; apps/api/src/apps/database/domain-access-store.ts:49
+db_list_reads leaves out reads the caller may not run -> bundled-apps/database/src/tools.ts:122-125
+db_read answers domain_restricted and points to Report access -> bundled-apps/database/src/tools.ts:160-166
+The caller is the person the call acts for, jobs are the system -> bundled-apps/database/src/access.ts:113 ; apps/api/src/modules/apps/sandbox/bridge/directory.ts:52-70
 An asked agent's turn runs as the person who asked -> apps/api/src/modules/agent/tools/coordination-tools.scope.test.ts:1
-Knowledge sync of database reads does not go through the tier check -> apps/api/src/apps/database/knowledge-read-runner.ts:71
-Settings › Connectors › Database › Report access, kernel:apps:admin -> apps/api/src/apps/database/app.manifest.json:261-275 ; apps/api/src/modules/database/routes.ts:92-97
+Knowledge sync of database reads does not go through the tier check -> bundled-apps/database/src/knowledge.ts:45-60
+Settings › Connectors › Database › Report access, database:access:admin -> bundled-apps/database/app.manifest.json:395-410 ; bundled-apps/database/app.manifest.json:351-366
 Raw queries are not limited by tiers -> packages/shared/src/i18n/locales/en/database.json:8
-config apply: apps[].domainAccess on the database entry -> apps/api/src/cli/config/schema.ts:304-357
-A read param cast once is cast at every use -> packages/db-core/src/catalog.ts:164-179 ; packages/db-core/src/catalog.ts:192-217 ; apps/api/src/apps/database/knowledge-sync.integration.test.ts:1
-db_query takes at most 100,000 characters; over it the code is query_too_long -> packages/db-core/src/sql-guard.ts:25 ; packages/db-core/src/sql-guard.ts:275-280 ; apps/api/src/apps/database/app.manifest.json:213
+config apply: the database entry's provision block (domainAccess) -> bundled-apps/database/app.manifest.json:425-470 ; bundled-apps/database/src/report-access.ts:120-170
+A read param cast once is cast at every use -> packages/db-core/src/catalog.ts:164-179 ; packages/db-core/src/catalog.ts:192-217 ; bundled-apps/database/src/database.test.ts:1
+db_query takes at most 100,000 characters; over it the code is query_too_long -> packages/db-core/src/sql-guard.ts:25 ; packages/db-core/src/sql-guard.ts:275-280 ; bundled-apps/database/app.manifest.json:272

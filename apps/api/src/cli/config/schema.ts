@@ -13,10 +13,7 @@
  * roles are checked against `kernel.roles` at plan time (the users provisioner),
  * env interpolation is `parse.ts`.
  */
-import {
-  googleOAuthClientIdSchema,
-  orgCapsSchema,
-} from "@liaison/shared"
+import { googleOAuthClientIdSchema, orgCapsSchema } from "@liaison/shared"
 import { z } from "zod"
 import { MAIL_PROVIDER_IDS } from "~/modules/mail/provider-ids"
 
@@ -350,7 +347,8 @@ const appSchema = z
     path: ["provision"],
   })
   .refine((a) => a.domainAccess === undefined, {
-    message: "domainAccess moved into the app's provisioning: write it as provision: { domainAccess: ... }",
+    message:
+      "domainAccess moved into the app's provisioning: write it as provision: { domainAccess: ... }",
     path: ["domainAccess"],
   })
 

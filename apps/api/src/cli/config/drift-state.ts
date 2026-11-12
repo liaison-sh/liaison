@@ -14,10 +14,10 @@
  */
 
 import { ORG_CAP_KINDS } from "@liaison/shared"
-import { and, eq, inArray, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import type { AppliedRecord } from "~/cli/config/drift"
 import type { ProvisionContext } from "~/cli/provisioners/types"
-import { configAppliedFields, organizations, roles, users } from "~/db/schema/kernel"
+import { configAppliedFields, organizations } from "~/db/schema/kernel"
 import { isRecord } from "~/lib/guards"
 import { readOrgAppNamespace, settingAtPath } from "~/lib/settings"
 import { readAppConfig } from "~/modules/apps/app-config"

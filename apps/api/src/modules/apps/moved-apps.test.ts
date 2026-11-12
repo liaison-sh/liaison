@@ -359,7 +359,9 @@ describe("the database app's move", () => {
   const DB_SOURCE = "00000000-0000-0000-0000-0000000ad015"
   const DB_IDENTITY = "00000000-0000-0000-0000-0000000ad016"
   const DB_DOCUMENT = "00000000-0000-0000-0000-0000000ad017"
-  const ACCESS = { revenue: { tier: "confidential", roles: ["00000000-0000-0000-0000-0000000ad0a1"] } }
+  const ACCESS = {
+    revenue: { tier: "confidential", roles: ["00000000-0000-0000-0000-0000000ad0a1"] },
+  }
   const json = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
 
   async function seedDatabaseApp(): Promise<void> {
@@ -367,7 +369,10 @@ describe("the database app's move", () => {
       SET settings = settings || ${JSON.stringify({ database: { domainAccess: ACCESS } })}::jsonb
       WHERE id = ${ORG}`
     const rows: Array<[string, Record<string, RowValue>]> = [
-      ["kernel.apps", { org_id: ORG, name: DB, version: "1.4.0", status: "active", config: json({}) }],
+      [
+        "kernel.apps",
+        { org_id: ORG, name: DB, version: "1.4.0", status: "active", config: json({}) },
+      ],
       ...[
         [DB_ACCOUNT, "database"],
         [WH_ACCOUNT, "warehouse"],
@@ -431,19 +436,31 @@ describe("the database app's move", () => {
       })
     return {
       settings: strip(await sql`SELECT settings FROM kernel.organizations WHERE id = ${ORG}`),
-      apps: strip(await sql`SELECT id, name, status, config FROM kernel.apps
-        WHERE org_id = ${ORG} AND name = ${DB}`),
-      accounts: strip(await sql`SELECT * FROM kernel.connected_accounts
-        WHERE org_id = ${ORG} AND app_name = ${DB} ORDER BY connection_name`),
-      sources: strip(await sql`SELECT * FROM app_knowledge.synced_sources
-        WHERE org_id = ${ORG} AND app_name = ${DB}`),
-      identities: strip(await sql`SELECT * FROM app_knowledge.source_identities
-        WHERE org_id = ${ORG} AND source = ${DB}`),
+      apps: strip(
+        await sql`SELECT id, name, status, config FROM kernel.apps
+        WHERE org_id = ${ORG} AND name = ${DB}`,
+      ),
+      accounts: strip(
+        await sql`SELECT * FROM kernel.connected_accounts
+        WHERE org_id = ${ORG} AND app_name = ${DB} ORDER BY connection_name`,
+      ),
+      sources: strip(
+        await sql`SELECT * FROM app_knowledge.synced_sources
+        WHERE org_id = ${ORG} AND app_name = ${DB}`,
+      ),
+      identities: strip(
+        await sql`SELECT * FROM app_knowledge.source_identities
+        WHERE org_id = ${ORG} AND source = ${DB}`,
+      ),
       documents: strip(await sql`SELECT * FROM app_knowledge.documents WHERE id = ${DB_DOCUMENT}`),
-      store: strip(await sql`SELECT collection, doc_id, data FROM kernel.app_documents
-        WHERE org_id = ${ORG} AND app = ${DB}`),
-      adoptions: strip(await sql`SELECT step_id, report FROM kernel.app_adoptions
-        WHERE app_name = ${DB} ORDER BY step_id`),
+      store: strip(
+        await sql`SELECT collection, doc_id, data FROM kernel.app_documents
+        WHERE org_id = ${ORG} AND app = ${DB}`,
+      ),
+      adoptions: strip(
+        await sql`SELECT step_id, report FROM kernel.app_adoptions
+        WHERE app_name = ${DB} ORDER BY step_id`,
+      ),
     }
   }
 

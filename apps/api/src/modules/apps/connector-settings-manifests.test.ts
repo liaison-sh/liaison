@@ -43,7 +43,7 @@ const CONNECTORS: Array<{ manifest: Manifest; adminScope?: string; status?: stri
 ]
 
 /** A section that names its own scope: who may open report access is the apps admin. */
-const SECTION_SCOPE: Record<string, string> = { "report-access": "kernel:apps:admin" }
+const SECTION_SCOPE: Record<string, string> = { "report-access": "database:access:admin" }
 
 describe.each(CONNECTORS)("connector $manifest.name", ({ manifest, adminScope, status }) => {
   it("validates as a manifest", () => {

@@ -150,10 +150,10 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
+| `database:access:admin` | manifest scopes; role admin; settings section report-access; tools report_access_find_people, report_access_get, report_access_set |  |
 | `database:approve` | approver scope | Decide (approve, edit, or deny) database approvals raised by its gated tools |
-| `database:query:read` | role admin; tool db_query |  |
-| `database:reads:read` | role member; tools db_describe, db_list_reads, db_probe, db_read |  |
-| `kernel:apps:admin` | settings section report-access |  |
+| `database:query:read` | manifest scopes; role admin; tool db_query |  |
+| `database:reads:read` | manifest scopes; role member; tools db_describe, db_list_reads, db_probe, db_read |  |
 
 ## gitlab
 

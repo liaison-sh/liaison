@@ -212,6 +212,11 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     "a SQL connection's own schema scope (manifest connections.<name>.sql.schema), not a tool definition",
   ],
   [
+    "apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts",
+    "const { txDb, orgId, actor, source, kinds, scope, params: p } = input",
+    "add_folder_source's own `scope` param (personal or organization), not a tool definition",
+  ],
+  [
     "apps/api/src/modules/mcp-client/call.ts",
     'return err.challenge.scope ?? ""',
     REASONS.MCP_OAUTH,

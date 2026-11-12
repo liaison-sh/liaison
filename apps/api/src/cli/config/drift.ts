@@ -39,14 +39,7 @@ import { canonicalJson } from "~/modules/apps/app-config"
 /** One step of a location: an object key, or the array entry whose `key` is `id`. */
 export type Seg = string | { key: string; id: string }
 
-export type FieldKind =
-  | "scalar"
-  | "list"
-  | "text"
-  | "agentScopes"
-  | "role"
-  | "json"
-  | "appEnable"
+export type FieldKind = "scalar" | "list" | "text" | "agentScopes" | "role" | "json" | "appEnable"
 
 export interface TrackedField {
   /** Dotted path shown to people and matched by `--only` / `--prefer`. */

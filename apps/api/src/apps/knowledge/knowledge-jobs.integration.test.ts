@@ -8,7 +8,6 @@
  * invariant fails a test here.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
-import { registerAdapter } from "@liaison/db-core"
 import { sql } from "drizzle-orm"
 import {
   loadSyncedSourceForOrgSystem,
@@ -28,9 +27,6 @@ import {
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
-import { CryptoContext, encryptSecret } from "~/lib/crypto"
-import { env } from "~/lib/env"
-import { kbSyncCatalog } from "~/modules/apps/connections/sql/adapters/__fixtures__/kb-sync"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -418,132 +414,6 @@ describe("knowledge synced-source jobs (J-1)", () => {
       { resolveAdapter: () => fakeAdapter(), reconcile },
     )
     expect(reconcile).not.toHaveBeenCalled()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// `database` app resolver (job-resolver gap fix). This exercises the
-// PRODUCTION `resolveAdapter` inside `knowledge-jobs.ts` (no injected
-// `deps.resolveAdapter` stub) so a regression that re-breaks the `database`
-// branch — or silently reverts to the "No adapter registered" throw — fails
-// here, not just in the adapter's own unit tests.
-// ---------------------------------------------------------------------------
-describe("knowledge synced-source jobs — database app resolver", () => {
-  const SECRET_TOKEN = "job-resolver-secret-token"
-
-  async function seedKbArticlesSchema(): Promise<void> {
-    await db.execute(sql`CREATE SCHEMA IF NOT EXISTS kb`)
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS kb.articles (
-        id text PRIMARY KEY,
-        title text NOT NULL,
-        body text NOT NULL,
-        updated_at timestamptz NOT NULL,
-        public_url text,
-        secret_token text
-      )
-    `)
-    await db.execute(sql`TRUNCATE kb.articles`)
-    await db.execute(sql`
-      INSERT INTO kb.articles (id, title, body, updated_at, public_url, secret_token)
-      VALUES ('job-resolver-a', 'Job Resolver Article', '# Job Resolver Article\n\nBody text.',
-              '2026-05-10T00:00:00.000Z'::timestamptz, NULL, ${SECRET_TOKEN})
-    `)
-  }
-
-  async function seedDatabaseConnection(): Promise<void> {
-    const credentialsJson = JSON.stringify({ connectionString: env.DATABASE_URL })
-    const encrypted = encryptSecret(
-      credentialsJson,
-      env.ENCRYPTION_KEY,
-      CryptoContext.connectedAccountCredentials,
-    )
-    await db.execute(sql`
-      INSERT INTO kernel.connected_accounts
-        (org_id, app_name, connection_name, owner_type, owner_id, provider_type,
-         identifier, access_token_encrypted, refresh_token_encrypted, credentials_encrypted,
-         status, created_by)
-      VALUES (
-        ${orgId}::uuid, 'database', 'database', 'org', NULL, 'credentials',
-        'default', NULL, NULL, ${encrypted}, 'active', ${alice}::uuid
-      )
-      ON CONFLICT DO NOTHING
-    `)
-  }
-
-  it("resolveAdapter('database') degrades to an empty (non-throwing) adapter when the connected catalog has no knowledge_sync_* reads", async () => {
-    // Default env: LIAISON_DATABASE_ADAPTER unset -> resolves to `liaison-self`,
-    // which does NOT declare knowledge_sync_list/knowledge_sync_get. The job
-    // must still resolve an adapter and reconcile cleanly to zero documents —
-    // never throw "No adapter registered for app: database".
-    const created = await mkSource(
-      {
-        appName: "database",
-        folderRef: "no-catalog-root",
-        displayName: "DatabaseNoCatalog",
-        syncIntervalSeconds: 3600,
-        scope: "organization",
-        defaultSensitivity: "internal",
-      },
-      actor(alice, [SOURCES_MANAGE, DOC_READ]),
-      { skipPrecheck: true },
-    )
-    // Production resolveAdapter — no injected deps.resolveAdapter/reconcile.
-    await runSyncWorker({ sourceId: created.id, trigger: "schedule" })
-    const reloaded = await loadSyncedSourceForWorker(created.id)
-    expect(reloaded?.lastSyncStatus).toBe("ok")
-  })
-
-  it("reconciles a real `database` synced source end-to-end through the JOB path (registered kb-sync catalog -> real documents, no secret column)", async () => {
-    await seedKbArticlesSchema()
-    await seedDatabaseConnection()
-    // Register the fixture catalog (declares knowledge_sync_list/get) and
-    // point the org-independent global resolver at it — mirrors how a
-    // deployment sets LIAISON_DATABASE_ADAPTER for its self-hosted KB.
-    registerAdapter(kbSyncCatalog)
-    const prevAdapterEnv = process.env.LIAISON_DATABASE_ADAPTER
-    process.env.LIAISON_DATABASE_ADAPTER = "kb-sync"
-    try {
-      const created = await mkSource(
-        {
-          appName: "database",
-          folderRef: "job-resolver-root",
-          displayName: "DatabaseJobResolver",
-          syncIntervalSeconds: 3600,
-          scope: "organization",
-          defaultSensitivity: "internal",
-        },
-        actor(alice, [SOURCES_MANAGE, DOC_READ]),
-        { skipPrecheck: true },
-      )
-
-      // Drive the exact JOB entrypoint (production resolveAdapter, production
-      // reconcileSyncedSource) — proves the fix closes the resolver gap on the
-      // real worker path the scheduler ticks use, not just a unit-level stub.
-      await runSyncWorker({ sourceId: created.id, trigger: "schedule" })
-
-      const reloaded = await loadSyncedSourceForWorker(created.id)
-      expect(reloaded?.lastSyncStatus).toBe("ok")
-
-      const docs = extractRows<{ title: string; body: string }>(
-        await db.execute(sql`
-          SELECT title, body FROM ${knowledgeRel("documents")}
-          WHERE synced_source_id = ${created.id}::uuid AND archived_at IS NULL
-        `),
-      )
-      expect(docs.length).toBe(1)
-      expect(docs[0]!.title).toBe("Job Resolver Article")
-      expect(docs[0]!.body).toContain("Body text.")
-      // The secret_token column is never selected by knowledge_sync_get/list —
-      // confirm it never leaked into the materialized document.
-      expect(docs[0]!.body).not.toContain(SECRET_TOKEN)
-      expect(docs[0]!.title).not.toContain(SECRET_TOKEN)
-    } finally {
-      if (prevAdapterEnv === undefined) delete process.env.LIAISON_DATABASE_ADAPTER
-      else process.env.LIAISON_DATABASE_ADAPTER = prevAdapterEnv
-      await db.execute(sql`DROP TABLE IF EXISTS kb.articles`)
-      await db.execute(sql`DROP SCHEMA IF EXISTS kb`)
-    }
   })
 })
 

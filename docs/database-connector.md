@@ -376,8 +376,9 @@ queries (`db_query`) are not limited by tiers: they need
 Set the tiers in **Settings › Connectors › Database › Report access**: one row per domain
 of the connected catalog, with its reads, a tier picker (the catalog's default
 is marked) and role or person pickers. Save writes them all at once. You need
-`kernel:apps:admin`. From config-as-code, use the database app entry's
-`domainAccess` (see [Provisioning CLI](provisioning-cli.md#apps)).
+`database:access:admin` (the connector's `admin` role; org admins hold it).
+From config-as-code, use the database app entry's `provision` block (see
+[Provisioning CLI](provisioning-cli.md#apps)).
 
 A catalog can declare a default tier per domain:
 

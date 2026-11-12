@@ -303,3 +303,4 @@ Rolling deploy adds COMPOSE_PROFILES' profiles to rolling; with meaning starts t
 Opt-out link is built on BASE_URL -> apps/api/src/lib/org-public-url.ts:44-45 ; apps/api/src/modules/mail/commercial-footer.ts:92-100
 List-Unsubscribe and One-Click headers on a Gmail send and on an SMTP send -> apps/api/src/modules/mail/commercial-footer.ts:192-196 ; apps/api/src/apps/mail/handlers.ts:630 ; apps/api/src/modules/apps/sandbox/smtp-bridge.ts:61
 Commercial identity must be set first -> apps/api/src/modules/mail/commercial-footer.ts:37 ; apps/web/src/modules/settings/AdminOrgSettings.tsx:157
+LIAISON_APP_FALLBACK_LOADER_URL names the server's own sandbox service for runs the loader cannot take -> apps/api/src/lib/env.ts:1182-1187 ; apps/api/src/modules/apps/workers/config.ts:78-93

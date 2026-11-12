@@ -879,6 +879,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             path.join(ROOT, "packages/api-connector-core"),
+            path.join(ROOT, "packages/app-loader"),
             path.join(ROOT, "packages/app-sdk"),
             path.join(ROOT, "packages/app-ui"),
             path.join(ROOT, "packages/control-plane-contract"),

@@ -5,7 +5,7 @@
 // the same file). v2 both directions; v1 kept as the legacy check.
 
 import { describe, expect, it } from "bun:test"
-import vectors from "./__fixtures__/sign-vectors.json"
+import vectors from "@liaison/app-loader/vectors/sign.json"
 import {
   CELL_ID_HEADER,
   CELL_SIGNATURE_HEADER,

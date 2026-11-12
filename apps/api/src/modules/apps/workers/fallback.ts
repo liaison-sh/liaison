@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// When a run meant for Workers runs on QuickJS instead. Every app has both
-// builds (its QuickJS bundle.js beside its Worker module; a custom app's
-// installed row keeps both), and the two keep one contract, so falling back
-// changes where the code runs, never what it answers.
+// When a run meant for Workers runs on the fallback target instead. The
+// target is one setting (config.ts readFallbackTarget): this instance's own
+// sandbox service (executor `workerd`, the same Worker module through the same
+// loader code, on a secret-free bridge) once LIAISON_APP_FALLBACK_LOADER_URL
+// names it, else the local QuickJS sandbox. Every app has both builds (its
+// QuickJS bundle.js beside its Worker module; a custom app's installed row
+// keeps both), and the two keep one contract, so falling back changes where
+// the code runs, never what it answers. Every fallback is labelled on the
+// run's settled event: `fallback` says why, `executor` where it ran.
 //
 // Two scopes, by who is at fault (faults.ts):
 //
@@ -106,7 +111,7 @@ export class LoaderBreaker {
     this.openUntil = now + this.opts.openMs
     log.warn(
       { openMs: this.opts.openMs, why },
-      "App loader breaker opened: every app runs on QuickJS until a probe succeeds",
+      "App loader breaker opened: every app runs on the fallback target until a probe succeeds",
     )
   }
 
@@ -145,10 +150,28 @@ export class AppFallbacks {
     if (fresh) {
       log.warn(
         { key, kind, fallbackMs: this.ttlMs },
-        "App-level Workers fault: this org's app version runs on QuickJS for a while",
+        "App-level Workers fault: this org's app version runs on the fallback target for a while",
       )
     }
   }
+}
+
+/** An app fallback that never marks: the fallback target's runs have nowhere further to go. */
+class NoAppFallbacks extends AppFallbacks {
+  override active(): boolean {
+    return false
+  }
+  override mark(): void {}
+}
+
+/**
+ * The state a run on the fallback target (the instance's sandbox service)
+ * runs with: its own breaker, fresh per run (only its retry reads it; it never
+ * opens within one run), and no app fallbacks, so its faults never take an app
+ * off the loader or open the loader's breaker.
+ */
+export function fallbackTargetRunState(): { breaker: LoaderBreaker; appFallbacks: AppFallbacks } {
+  return { breaker: new LoaderBreaker(), appFallbacks: new NoAppFallbacks() }
 }
 
 /** This process's breaker and app fallbacks. */

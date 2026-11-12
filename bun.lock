@@ -41,6 +41,7 @@
         "@hono/zod-validator": "^0.9.1",
         "@huggingface/transformers": "^4.3.2",
         "@liaison/api-connector-core": "workspace:*",
+        "@liaison/app-loader": "workspace:*",
         "@liaison/control-plane-contract": "workspace:*",
         "@liaison/db-core": "workspace:*",
         "@liaison/host": "workspace:*",
@@ -245,6 +246,13 @@
         "yaml": "^2.9.1",
         "zod": "^4.6.7",
       },
+      "devDependencies": {
+        "@types/bun": "^1",
+        "typescript": "^6",
+      },
+    },
+    "packages/app-loader": {
+      "name": "@liaison/app-loader",
       "devDependencies": {
         "@types/bun": "^1",
         "typescript": "^6",
@@ -760,6 +768,8 @@
     "@liaison/api": ["@liaison/api@workspace:apps/api"],
 
     "@liaison/api-connector-core": ["@liaison/api-connector-core@workspace:packages/api-connector-core"],
+
+    "@liaison/app-loader": ["@liaison/app-loader@workspace:packages/app-loader"],
 
     "@liaison/app-sdk": ["@liaison/app-sdk@workspace:packages/app-sdk"],
 
@@ -2253,6 +2263,8 @@
 
     "@liaison/api-connector-core/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 
+    "@liaison/app-loader/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
+
     "@liaison/app-sdk/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 
     "@liaison/control-plane-contract/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
@@ -2438,6 +2450,8 @@
     "@liaison/api-connector-core/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
     "@liaison/api/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
+
+    "@liaison/app-loader/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
     "@liaison/app-sdk/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 

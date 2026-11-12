@@ -27,6 +27,7 @@
 // credential and dies with it; provider secrets never leave this server
 // (forWorkersRun, sandbox/bridge/secret-free.ts, applied by runApp).
 
+import type { RunBody } from "@liaison/app-loader"
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import { type RunEntryKind, runLimits, workersLoaderLimits } from "~/modules/apps/run-limits"
@@ -338,7 +339,9 @@ async function attemptOnWorkers(
     delete info.loader
     delete info.logs
     delete info.logsDropped
-    const body = JSON.stringify({
+    // The loader's wire body (@liaison/app-loader protocol.ts), typed so a
+    // field the loader requires cannot go missing here.
+    const runBody: RunBody = {
       runId: run.runId,
       orgId: opts.orgId,
       app: opts.appName,
@@ -353,7 +356,8 @@ async function attemptOnWorkers(
       runToken: run.runToken,
       deadlineMs: timeoutMs,
       limits: workersLoaderLimits(runLimits(opts.entryKind ?? "tool")),
-    })
+    }
+    const body = JSON.stringify(runBody)
     const runUrl = `${opts.config.loaderUrl}/run`
     const headers = {
       "content-type": "application/json",

@@ -53,12 +53,21 @@ let flushTimer: ReturnType<typeof setInterval> | null = null
 let flushing: Promise<void> = Promise.resolve()
 let unsubscribe: (() => void) | null = null
 
+/**
+ * The usage row's executor. A run on this instance's own sandbox service
+ * (`workerd`) is counted with the local sandbox: both run on this instance's
+ * hardware, and the usage report's executor list does not name it yet.
+ */
+export function usageExecutorOf(executor: RunSettledInfo["executor"]): AppUsageExecutor {
+  return executor === "workerd" ? "quickjs" : executor
+}
+
 /** Add one settled run to the batch (and to the day counters, for a capped org). */
 export function recordSettledRun(info: RunSettledInfo): void {
   const day = utcDay(info.at)
   const bridgeCalls = Math.max(0, Math.trunc(info.bridgeCalls ?? 0))
   const wallMs = Math.max(0, Math.trunc(info.ms))
-  const key = `${info.orgId}|${info.app}|${day}|${info.executor}`
+  const key = `${info.orgId}|${info.app}|${day}|${usageExecutorOf(info.executor)}`
   const row = pending.get(key)
   if (row) {
     row.runs += 1
@@ -69,7 +78,7 @@ export function recordSettledRun(info: RunSettledInfo): void {
       orgId: info.orgId,
       app: info.app,
       day,
-      executor: info.executor,
+      executor: usageExecutorOf(info.executor),
       runs: 1,
       bridgeCalls,
       wallMs,

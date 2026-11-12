@@ -17,10 +17,11 @@ import type { LoaderTimings } from "./timings"
 const log = rootLogger.child({ module: "app-run-settled" })
 
 /**
- * Why a run that would have gone to Workers ran on QuickJS instead: the
+ * Why a run that would have gone to Workers ran on the fallback target instead
+ * (the instance's own sandbox service when configured, else QuickJS): the
  * breaker was open, this org's app@version is under an app fallback, or this
  * run's Workers attempts met a loader-level fault before any bridge call
- * (`loader_fault`: the run then ran once more, on QuickJS).
+ * (`loader_fault`: the run then ran once more, on the fallback target).
  */
 export type WorkersFallback = "breaker" | "app" | "loader_fault"
 
@@ -34,7 +35,11 @@ export interface RunSettledInfo {
   orgId: string
   /** `<kind>:<name>`: tool:<tool>, webhook:<export>, job:<job>, event:<export>, ... */
   entry: string
-  executor: "workers" | "quickjs" | "inprocess"
+  /**
+   * `workerd`: this instance's own sandbox service, the target of a fallback
+   * when one is configured (workers/config.ts readFallbackTarget).
+   */
+  executor: "workers" | "workerd" | "quickjs" | "inprocess"
   nested: boolean
   /** The app of the run this one is nested in, when known. */
   parentApp?: string

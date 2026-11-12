@@ -169,6 +169,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_APP_LOADER_URL` | `string (URL)` |  | no | Running sandboxed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are all set: every installed sandboxed app then runs there (any LIAISON_ROLE: a bridge call on another process is forwarded to the run's own), on the Worker module its package carried, which the loader fetches from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with LIAISON_APP_LOADER_KEY) when it has no copy. Unset by default: every app runs on QuickJS and /api/app-bridge answers 404. The loader's base URL (it is called at `<url>/run`). |
 | `LIAISON_APP_LOADER_CELL_ID` | `string` |  | no | This instance's id at the loader; it picks the signing key and the bridge origin the loader accepts. |
 | `LIAISON_APP_LOADER_KEY` | `string` |  | no | The shared key that signs this instance's requests to the loader. |
+| `LIAISON_APP_FALLBACK_LOADER_URL` | `string (URL)` |  | no | Where a run meant for the loader goes when the loader cannot take it (its breaker open, an app-level fallback, a loader fault before any bridge call): the base URL of this instance's own sandbox service, which speaks the loader's protocol (`<url>/run`, signed with the same cell id and key). Unset: those runs fall back to the local QuickJS sandbox. |
 | `LIAISON_APP_BRIDGE_BASE_URL` | `string (URL)` |  | no | The public base URL the loader's isolates call back on (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL. |
 | `LIAISON_APP_BRIDGE_TIMINGS_FILE` | `string` |  | no | A JSONL file that receives one timing line per /api/app-bridge call (run, app, method, duration, status). Unset, the timings stay in memory only. |
 | `LIAISON_READY_WARM_MS` | `number` | `30000` | no | How long a serving process may spend, before /readyz answers 200, registering the apps of the orgs with a live socket in the cell (the orgs a deploy's reconnecting sockets bring it first). Past it the process turns ready and the rest register on demand. 0 skips it. |
@@ -300,7 +301,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1763` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1769` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:517`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1486` |

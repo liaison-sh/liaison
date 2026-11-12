@@ -372,3 +372,4 @@ sidebar_apps_get tool: scope and approval flag -> apps/api/src/modules/agent/too
 sidebar_apps_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
 sidebar tools: another member needs kernel:users:admin -> apps/api/src/modules/users/sidebar-agent-tools.ts:102
 Agent post: DM always posted, one approval covers later posts of the same data in that conversation, also for a connected app -> apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:60 ; apps/api/src/modules/mcp/tool-call.ts:510
+A connected app as you waits only on its messages; its other writes run as yours -> apps/api/src/modules/agent/scopes/scope-taint.ts:1080 ; apps/api/src/modules/apps/execute-tool.ts:3808

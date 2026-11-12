@@ -11,6 +11,7 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
     bridgeOptions,
     bridgeSpawnParentFrame,
     bridgeTurnTaintScopes,
+    bridgePersonClient,
     orgId,
     userId,
     callerScopes,
@@ -354,7 +355,8 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
       return JSON.stringify(
         await impl(
           input,
-          bridgeTurnTaintScopes,
+          // A person's own client's handler parks with no proposing taint (rule 14f).
+          bridgePersonClient ? [] : bridgeTurnTaintScopes,
           bridgeActingAgentId,
           // The proposing run (depth, root), captured with the frame: an
           // approved re-entry nests what it spawns below it.

@@ -1368,11 +1368,13 @@ async function csatSummary(tx: SqlClient, orgId: string): Promise<AdminResult> {
     responses: Number(r.responses) || 0,
     averageScore: r.avg_score == null ? null : Number(r.avg_score),
   }))
+  const pending = Number(agg.pending) || 0
+  const declined = Number(agg.declined) || 0
   return {
     total,
     responded,
-    pending: Number(agg.pending) || 0,
-    declined: Number(agg.declined) || 0,
+    pending,
+    declined,
     averageScore, // null until responses accrue — NEVER fabricate a score
     responseRate: total > 0 ? Math.round((responded / total) * 1000) / 10 : 0,
     trend, // week-over-week buckets over RECORDED responses; [] until responses accrue
@@ -1380,6 +1382,13 @@ async function csatSummary(tx: SqlClient, orgId: string): Promise<AdminResult> {
       averageScore === null
         ? "No CSAT responses recorded yet — surveys accrue ratings as customers respond. No aggregate CSAT score or week-over-week trend is computable until responses come in (trend is empty); do not invent one."
         : "averageScore + trend aggregate ONLY the RECORDED responses so far (trend bucketed by response week); responses accrue over time, so report the trend only across weeks that actually have responses and never extrapolate beyond them.",
+    // The surveys by response status as rows, the list a dashboard block charts by default
+    // (`trend` stays reachable by name, a block's rowsPath).
+    rows: [
+      { key: "responded", value: responded },
+      { key: "pending", value: pending },
+      { key: "declined", value: declined },
+    ],
   }
 }
 
@@ -2348,7 +2357,15 @@ async function idSegmentOp(
   }
   if (op === "idSegmentGet") {
     const cfg = await loadSegmentConfig(orgId)
-    return { idSegment: cfg, examples: segmentExamples(cfg) }
+    const examples = segmentExamples(cfg)
+    // `rows`: one per example (`key` = the field's value, its `code` and the `example` handle),
+    // the list a dashboard block reads.
+    const rows = Object.entries(examples).map(([key, example]) => ({
+      key,
+      code: cfg.codes[key] ?? null,
+      example,
+    }))
+    return { idSegment: cfg, examples, rows }
   }
   const parsed = ticketIdSegmentSchema.safeParse({ by: params.by, codes: params.codes ?? {} })
   if (!parsed.success) {

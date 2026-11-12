@@ -16,7 +16,8 @@
 // Every read is a source unless it is on the reviewed exclusion list of
 // every-read-is-a-source.guard.test.ts, which fails CI for a read that is neither. An org's own custom app is
 // a source under the same rules (its secrets are placed per request);
-// another org's never is.
+// another org's never is. A read that answers one document's text (DOCUMENT_TEXT_READS) or
+// hands out a secret (SECRET_READS) is never one.
 //
 // The `readOnly` marker is still the app's own claim. What makes a view safe
 // against a manifest that lies is the run itself, which is read-only
@@ -113,6 +114,18 @@ export const SECRET_READS: ReadonlySet<string> = new Set([
   "projects:webhook_info",
 ])
 
+/**
+ * App reads that answer one document's text, not records: never a source, whatever their
+ * declaration says. A repository file or a Drive file is outside text, fenced for the agent
+ * that asked for it, and the connector reference is the authoring guide an adapter's author
+ * reads in their own turn. Neither has rows a block can chart.
+ */
+export const DOCUMENT_TEXT_READS: ReadonlyMap<string, string> = new Map([
+  ["gitlab:gitlab_read_file", "it returns one repository file's text"],
+  ["google-drive:read", "it returns one Drive file's text"],
+  ["api-connector:connector_adapter_reference", "it returns the connector authoring guide"],
+])
+
 export type SourceRefusalCode = "unknown_tool" | "not_allowed" | "no_access"
 
 export type SourceCheck =
@@ -166,6 +179,14 @@ export async function checkToolSource(
       ok: false,
       code: "not_allowed",
       message: `${toolName} cannot feed a dashboard: it returns a secret`,
+    }
+  }
+  const text = DOCUMENT_TEXT_READS.get(toolName)
+  if (text) {
+    return {
+      ok: false,
+      code: "not_allowed",
+      message: `${toolName} cannot feed a dashboard: ${text}`,
     }
   }
   if (app !== "kernel" && !(await appVisibleToOrg(app, orgId))) {
@@ -251,7 +272,7 @@ export async function listEligibleSources(
     }
     if (app === "kernel" ? !KERNEL_DASHBOARD_SOURCES.has(name) : declarationRefusal(tool) !== null)
       continue
-    if (SECRET_READS.has(full)) continue
+    if (SECRET_READS.has(full) || DOCUMENT_TEXT_READS.has(full)) continue
     names.push(full)
   }
   for (const full of names.sort()) {

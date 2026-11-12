@@ -147,6 +147,12 @@ describe("tickets.backlogHealth", () => {
       expect(out.byStatus.awaitingFollowup).toBe(1) // fw d
       expect(out.byStatus.totalOpen).toBe(7)
       expect(out.authoritative).toBe(true)
+      // The status split as rows, the list a dashboard block charts by default.
+      expect(out.rows).toEqual([
+        { key: "open", value: 4 },
+        { key: "awaitingCustomer", value: 2 },
+        { key: "awaitingFollowup", value: 1 },
+      ])
     })
   })
 

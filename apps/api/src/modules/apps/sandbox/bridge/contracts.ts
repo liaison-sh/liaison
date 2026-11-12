@@ -40,6 +40,7 @@ export function createContractsMethods(ctx: BridgeContext): Record<string, any> 
     bridgeReadOnlyRun,
     bridgeTaintOriginStore,
     bridgeTurnTaintScopes,
+    bridgePersonClient,
     inheritedActor,
     orgId,
     txDb,
@@ -296,6 +297,7 @@ export function createContractsMethods(ctx: BridgeContext): Record<string, any> 
         params,
         readOnlyRun: bridgeReadOnlyRun,
         turnTaintScopes: bridgeTurnTaintScopes,
+        personClientTurn: bridgePersonClient,
         ...(bridgeTaintOriginStore !== undefined
           ? { turnTaintOrigins: bridgeTaintOriginStore }
           : {}),

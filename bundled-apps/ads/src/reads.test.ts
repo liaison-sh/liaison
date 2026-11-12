@@ -552,9 +552,11 @@ describe("ad_preview", () => {
     const { ctx } = makeCtx([
       { status: 200, body: JSON.stringify({ data: [{ body: "<iframe src='https://fb.com/preview'>" }] }) },
     ])
-    const result = await ad_preview({ ad_id: "ad_1", ad_format: "DESKTOP_FEED_STANDARD" }, ctx) as { ad_format: string; body: string | null }
+    const result = await ad_preview({ ad_id: "ad_1", ad_format: "DESKTOP_FEED_STANDARD" }, ctx) as { ad_format: string; body: string | null; rows: unknown[] }
     expect(result.ad_format).toBe("DESKTOP_FEED_STANDARD")
     expect(result.body).toContain("iframe")
+    // The preview is also the one row a dashboard block reads.
+    expect(result.rows).toEqual([{ ad_format: "DESKTOP_FEED_STANDARD", body: result.body }])
   })
 
   it("default format is DESKTOP_FEED_STANDARD when omitted", async () => {
@@ -579,6 +581,8 @@ describe("ad_preview", () => {
     expect(result.previews.length).toBe(2)
     expect(result.previews[0]?.ad_format).toBe("DESKTOP_FEED_STANDARD")
     expect(result.previews[1]?.ad_format).toBe("MOBILE_FEED_STANDARD")
+    // One row per format, for a dashboard block.
+    expect((result as unknown as { rows: unknown[] }).rows).toEqual(result.previews)
   })
 
   it("partial failure: data:[] → body:null for that format; others succeed", async () => {

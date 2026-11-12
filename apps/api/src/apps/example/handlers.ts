@@ -65,12 +65,18 @@ async function items_create(params: { text: string }, ctx: AppContext): Promise<
 async function external_fetch(
   _params: Record<string, unknown>,
   ctx: AppContext,
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{
+  ok: boolean
+  status: number
+  rows: Array<{ key: "ping"; ok: boolean; status: number }>
+}> {
   const token = await ctx.connections.exampleApi?.getToken()
   const res = await ctx.fetch("https://api.example.com/ping", {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   })
-  return { ok: res.status >= 200 && res.status < 300, status: res.status }
+  const ok = res.status >= 200 && res.status < 300
+  // `rows`: the check as one row, the list a dashboard block reads.
+  return { ok, status: res.status, rows: [{ key: "ping", ok, status: res.status }] }
 }
 
 /** SDK surface: ctx.resolveContact — resolve or create a contact by email. */

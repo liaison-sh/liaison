@@ -368,6 +368,12 @@ describe("legal original at issue", () => {
         legal_original: true,
         management_copy: { file_id: "file-2", url: "/api/files/file-2/inline" },
         facturx_xml_file_id: "xml-file-1",
+        // The same files as rows, for a dashboard block.
+        rows: [
+          { kind: "legal_original", file_id: "file-1", url: "/api/files/file-1/inline" },
+          { kind: "management_copy", file_id: "file-2", url: "/api/files/file-2/inline" },
+          { kind: "facturx_xml", file_id: "xml-file-1", url: null },
+        ],
       })
     }
   })

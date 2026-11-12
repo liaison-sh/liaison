@@ -36,7 +36,13 @@ import {
   assertAppRunRoom,
   holdAppJobIfCapped,
 } from "./app-day-cap"
-import { AppUsageTestAccess, crossed, flushAppUsage, recordSettledRun } from "./app-usage"
+import {
+  AppUsageTestAccess,
+  crossed,
+  flushAppUsage,
+  recordSettledRun,
+  usageExecutorOf,
+} from "./app-usage"
 import { fetchLoaderUsage, LoaderUsageTestAccess, storeLoaderUsage } from "./loader-usage"
 
 const ORG = randomUUID()
@@ -331,5 +337,14 @@ describe("the daily apps.usage report", () => {
       ctx,
     )
     expect(report.kind).toBe("delivered")
+  })
+})
+
+describe("usageExecutorOf", () => {
+  it("counts a run on the instance's own sandbox service with the local sandbox", () => {
+    expect(usageExecutorOf("workerd")).toBe("quickjs")
+    expect(usageExecutorOf("workers")).toBe("workers")
+    expect(usageExecutorOf("quickjs")).toBe("quickjs")
+    expect(usageExecutorOf("inprocess")).toBe("inprocess")
   })
 })

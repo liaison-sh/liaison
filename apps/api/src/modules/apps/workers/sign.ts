@@ -19,14 +19,14 @@
 // no bundle GET, and a bundle GET for one sha is none for another.
 //
 // v1 (legacy, no version header): base64(HMAC-SHA256(cellKey, "<ts>.<sha256hex(body)>")).
-// The loader still accepts it on /run during the transition (this cell sends
-// v2 only); it goes once every cell runs a release that signs v2. The cell
-// never accepts v1.
+// Neither side accepts it any more; the v1 helpers below only keep the
+// vectors' refusal cases provable. This cell signs v2 only.
 //
 // Either side accepts a timestamp within ±60 s of its own clock. The same
-// vectors (__fixtures__/sign-vectors.json) prove this signer and the loader's
-// verifier; the verifiers here are the loader's checks (the test loader uses
-// them) and the cell's own check of the bundle GET.
+// vectors (@liaison/app-loader's test/__fixtures__/sign-vectors.json) prove
+// this signer and the loader's verifier (the loader package's sign.ts, which
+// every loader host runs); the verifier here is the cell's own check of the
+// bundle GET.
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto"
 

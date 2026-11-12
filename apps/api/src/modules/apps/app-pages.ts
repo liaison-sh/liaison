@@ -546,9 +546,10 @@ export async function renderAppPage(
     `<meta name="referrer" content="no-referrer"><title>${title}</title>` +
     `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params)}</script>` +
     // A widget page: the platform's script, its config in its closure only.
+    // An app's page script is deferred: it runs once its root element exists.
     (widget && decl.widget
       ? `<script nonce="${nonce}">${widgetScript(decl.widget, widget)}</script>`
-      : `<script nonce="${nonce}" src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>`) +
+      : `<script nonce="${nonce}" defer src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>`) +
     `</head><body><div id="root"></div></body></html>`
   return { html, policy: await appPagePolicy(binding.app, decl, nonce, origin, framed) }
 }

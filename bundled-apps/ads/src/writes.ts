@@ -8,7 +8,7 @@
 import type { CrossAppEnvelope } from "@liaison/app-sdk"
 import { metaFetch, BudgetCapError, ParamError, toMinorUnits } from "./lib/meta-client"
 import { getMetaClient } from "./lib/get-client"
-import { hashIdentifier } from "./lib/sha256"
+import { hashIdentifier } from "./lib/hash-identifier"
 import { filterByBuyerConsent, filterByNewsletterConsent } from "./lab/consent-join"
 import {
   type PreflightOutcome,
@@ -100,7 +100,7 @@ async function applyConsentJoin(
   }
 }
 
-function buildAudiencePayload(customers: CustomerIdentifiers[]): AudiencePayload {
+async function buildAudiencePayload(customers: CustomerIdentifiers[]): Promise<AudiencePayload> {
   let hasEmail = false
   let hasPhone = false
   const rows: Array<{ email?: string; phone?: string }> = []
@@ -108,11 +108,11 @@ function buildAudiencePayload(customers: CustomerIdentifiers[]): AudiencePayload
   for (const c of customers) {
     const row: { email?: string; phone?: string } = {}
     if (typeof c.email === "string" && c.email) {
-      row.email = hashIdentifier("email", c.email)
+      row.email = await hashIdentifier("email", c.email)
       hasEmail = true
     }
     if (typeof c.phone === "string" && c.phone) {
-      row.phone = hashIdentifier("phone", c.phone)
+      row.phone = await hashIdentifier("phone", c.phone)
       hasPhone = true
     }
     if (row.email || row.phone) rows.push(row)
@@ -700,7 +700,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
 
     // Step 3: extract + hash identifiers PER TYPE — NEVER send raw PII to Meta,
     // and NEVER label a phone hash as EMAIL_SHA256 (Meta matches positionally).
-    const payload = buildAudiencePayload(consentedCustomers)
+    const payload = await buildAudiencePayload(consentedCustomers)
 
     // Step 4: upload hashed users to Meta with the per-identifier schema
     if (payload.rowCount > 0) {
@@ -924,7 +924,7 @@ export async function add_users_to_audience(params: unknown, ctx: CrossAppCtx): 
   const { customers: consentedCustomers, outcome } = await applyConsentJoin(audiencePurpose, pulledCustomers, ctx)
 
   // Hash identifiers PER TYPE — NEVER send raw PII; phone→PHONE_SHA256, email→EMAIL_SHA256
-  const payload = buildAudiencePayload(consentedCustomers)
+  const payload = await buildAudiencePayload(consentedCustomers)
 
   // APPEND endpoint — this is NOT a replace; it adds users to the existing audience
   if (payload.rowCount > 0) {

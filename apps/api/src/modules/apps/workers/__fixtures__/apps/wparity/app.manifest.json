@@ -155,6 +155,11 @@
       "description": "Pause the carrier connection, then call it",
       "handler": "limited",
       "requiredScopes": ["wparity:items:read"]
+    },
+    "webcrypto": {
+      "description": "Digests, HMACs and random values through crypto.subtle",
+      "handler": "webcrypto",
+      "requiredScopes": ["wparity:items:read"]
     }
   },
   "jobs": {

@@ -473,6 +473,30 @@ To let anything else read a collection (the agent's data tools, dashboard blocks
 
 `readScope` must be one of the app's own scopes (in `scopes` or a tool's `requiredScopes`); a reader needs it. `agentReadable` defaults to `false`. A collection that is not declared stays reachable by its own app only.
 
+### Hash, sign and draw random values (`crypto`)
+
+Use WebCrypto, the global `crypto`, for hashes, HMACs and random values. Workers have it natively. The local sandbox (in-process and the worker pool) gives the same calls, computed by the server:
+
+| Call | What |
+|---|---|
+| `crypto.subtle.digest(alg, data)` | SHA-1, SHA-256, SHA-384 or SHA-512 |
+| `crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash }, extractable, usages)` | An HMAC key (`usages`: `"sign"`, `"verify"`) |
+| `crypto.subtle.sign("HMAC", key, data)` / `crypto.subtle.verify("HMAC", key, signature, data)` | HMAC with that key's hash |
+| `crypto.subtle.exportKey("raw", key)` | The bytes of a key imported with `extractable: true` |
+| `crypto.getRandomValues(array)` / `crypto.randomUUID()` | Random bytes (at most 65,536 per call) and a random v4 UUID |
+
+The local sandbox has no typed arrays (`Uint8Array`, `ArrayBuffer` and the rest are removed: they would allocate outside the run's heap limit). There, bytes are plain arrays of numbers from 0 to 255: `crypto.subtle` takes them where WebCrypto takes a `Uint8Array` and answers them where it answers an `ArrayBuffer`. To write one piece of code for every executor, convert through `@liaison/app-sdk/bytes`:
+
+```ts
+import { bytesToHex, digestHex, utf8Bytes } from "@liaison/app-sdk/bytes"
+
+const hash = await digestHex("SHA-256", "someone@example.com") // lower-case hex
+const key = await crypto.subtle.importKey("raw", utf8Bytes(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+const signature = bytesToHex(await crypto.subtle.sign("HMAC", key, utf8Bytes(body)))
+```
+
+Other algorithms and other `crypto.subtle` methods (`encrypt`, `deriveKey`, `generateKey` and the rest) reject with `NotSupportedError` on the local sandbox. To sign or verify with a secret held in the app's configuration, keep using `ctx.crypto_hmacSha256Base64ForConfig` and `ctx.crypto_verifyHmacForConfig`: the secret never reaches the app.
+
 ### Long work: come back later (`ctx.steps`, `ctx.timers`, `ctx.jobs`)
 
 A run is short and bounded: a job has `timeoutMs` (60 s unless the manifest says otherwise), a tool less. Never sleep or poll in a loop inside a run to wait for something, and never loop over a whole backlog in one run. Do one bounded piece of work, save where you are, and let a later run carry on.

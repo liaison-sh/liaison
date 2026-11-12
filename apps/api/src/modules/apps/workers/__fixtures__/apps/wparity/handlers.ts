@@ -267,3 +267,58 @@ export async function pages(p: { total: number; tag: string }, ctx: Ctx) {
     return { done: page + 1 >= p.total, cursor: page + 1 }
   })
 }
+
+// WebCrypto, the crypto primitive of every executor: native on Workers,
+// host-backed in QuickJS, where typed arrays are absent and bytes are arrays
+// of numbers. The two byte helpers below are the only branch (what
+// @liaison/app-sdk/bytes does); every crypto call is the same code.
+function utf8(text: string): Uint8Array | number[] {
+  if (typeof Uint8Array === "function") return new TextEncoder().encode(text)
+  const s = unescape(encodeURIComponent(text))
+  const out: number[] = []
+  for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i))
+  return out
+}
+
+function hex(bytes: ArrayBuffer | ArrayLike<number>): string {
+  const view: ArrayLike<number> =
+    typeof ArrayBuffer === "function" && bytes instanceof ArrayBuffer
+      ? new Uint8Array(bytes)
+      : (bytes as ArrayLike<number>)
+  let out = ""
+  for (let i = 0; i < view.length; i++) out += (view[i] ?? 0).toString(16).padStart(2, "0")
+  return out
+}
+
+export async function webcrypto(p: { text: string; key: string }) {
+  const subtle = crypto.subtle as any
+  const digests: Record<string, string> = {}
+  for (const alg of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]) {
+    digests[alg] = hex(await subtle.digest(alg, utf8(p.text)))
+  }
+  const hmacs: Record<string, { sig: string; ok: boolean; bad: boolean }> = {}
+  for (const hash of ["SHA-1", "SHA-256", "SHA-512"]) {
+    const key = await subtle.importKey("raw", utf8(p.key), { name: "HMAC", hash }, false, [
+      "sign",
+      "verify",
+    ])
+    const sig = await subtle.sign("HMAC", key, utf8(p.text))
+    const other = await subtle.sign("HMAC", key, utf8(`${p.text}!`))
+    hmacs[hash] = {
+      sig: hex(sig),
+      ok: await subtle.verify("HMAC", key, sig, utf8(p.text)),
+      bad: await subtle.verify("HMAC", key, other, utf8(p.text)),
+    }
+  }
+  const random = crypto.getRandomValues(
+    (typeof Uint8Array === "function" ? new Uint8Array(16) : new Array(16).fill(0)) as Uint8Array,
+  )
+  return {
+    digests,
+    hmacs,
+    randomBytes: random.length,
+    uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      crypto.randomUUID(),
+    ),
+  }
+}

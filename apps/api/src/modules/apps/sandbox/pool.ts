@@ -9,6 +9,7 @@ import type {
 import { newQuickJSAsyncWASMModuleFromVariant, newVariant, RELEASE_ASYNC } from "quickjs-emscripten"
 import { appsLogger as log } from "~/lib/logger"
 import { resolveSandboxMemoryLimit } from "~/modules/apps/run-limits"
+import { installWebCrypto } from "~/modules/apps/sandbox/webcrypto-shim"
 
 /**
  * The 1MB asyncify QuickJS WASM binary is compiled ONCE per process and the
@@ -154,6 +155,8 @@ function hardenContext(ctx: QuickJSAsyncContext): void {
   } else {
     result.value.dispose()
   }
+  // WebCrypto (webcrypto-shim.ts): the crypto primitive apps share with Workers.
+  installWebCrypto(ctx)
 }
 
 async function createSlot(memoryLimit: number, overflow = false): Promise<SandboxSlot> {

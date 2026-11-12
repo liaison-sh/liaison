@@ -56,8 +56,6 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "app_boxtal.webhook_delivery": { exempt: "sync", reason: "shipping sync and preparation state" },
   "app_calendar.sync_log": { exempt: "system", reason: "calendar sync log" },
-  "app_example.items": { exempt: "system", reason: "development scaffold app" },
-  "app_example.summaries": { exempt: "system", reason: "development scaffold app" },
   "app_google_drive.imports": {
     exempt: "sync",
     reason:

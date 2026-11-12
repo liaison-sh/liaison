@@ -110,7 +110,6 @@ import { createScopeRequest } from "~/modules/scope-requests/service"
 import {
   handleSidebarAppsGet,
   handleSidebarAppsSet,
-  type SidebarToolContext,
   sidebarAppsGetParams,
   sidebarAppsSetParams,
 } from "~/modules/users/sidebar-agent-tools"
@@ -1799,8 +1798,6 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
   // (same always-held scope as notifications_set); another member's needs
   // kernel:users:admin, checked in the handler with the org. Not gated: hiding
   // changes no access, the app still opens from search and links.
-  const sidebarHandler = (h: (p: never, c: SidebarToolContext) => Promise<unknown>) =>
-    h as unknown as (p: unknown, c: unknown) => Promise<unknown>
   toolRegistry.set([orgId, "kernel", "sidebar_apps_get"], {
     appName: "kernel",
     name: "sidebar_apps_get",
@@ -1811,7 +1808,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     searchKeywords: ["sidebar", "barre latérale", "masquer", "hide", "apps", "rail"],
     requiredScopes: ["kernel:agent:memory"],
     params: sidebarAppsGetParams,
-    handler: sidebarHandler(handleSidebarAppsGet),
+    handler: handleSidebarAppsGet as unknown as (p: unknown, c: unknown) => Promise<unknown>,
   })
   toolRegistry.set([orgId, "kernel", "sidebar_apps_set"], {
     appName: "kernel",
@@ -1822,7 +1819,7 @@ export async function registerSkillRoutineTools(orgId: string): Promise<void> {
     searchKeywords: ["sidebar", "barre latérale", "masquer", "afficher", "hide", "apps", "rail"],
     requiredScopes: ["kernel:agent:memory"],
     params: sidebarAppsSetParams,
-    handler: sidebarHandler(handleSidebarAppsSet),
+    handler: handleSidebarAppsSet as unknown as (p: unknown, c: unknown) => Promise<unknown>,
     writesToTable: "kernel.user_preferences",
   })
 

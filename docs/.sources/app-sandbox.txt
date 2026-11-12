@@ -168,3 +168,4 @@ WebCrypto on every executor; the local sandbox installs crypto.subtle digest/HMA
 Random values at most 65,536 per call; other methods reject NotSupportedError -> apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:45 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:253
 No typed arrays in the local sandbox; bytes are arrays of numbers -> apps/api/src/modules/apps/sandbox/pool.ts:131 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:56
 @liaison/app-sdk/bytes converts text and bytes the same on every executor -> packages/app-sdk/src/bytes.ts:48 ; packages/app-sdk/src/bytes.ts:80 ; packages/app-sdk/src/bytes.ts:91 ; packages/app-sdk/src/bytes.ts:96
+ctx.db.batch update append/merge apply to the row as it is at commit -> apps/api/src/modules/apps/sandbox/bridge/batch.ts:26 ; apps/api/src/modules/apps/sandbox/bridge/batch.ts:204-213 ; packages/app-sdk/src/types.ts:54-59

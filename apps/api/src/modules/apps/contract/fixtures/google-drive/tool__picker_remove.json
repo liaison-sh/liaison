@@ -8,17 +8,12 @@
   "calls": [
     {
       "method": "accounts_list",
-      "args": [
-        "drive"
-      ],
+      "args": ["drive"],
       "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:40.182Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.846Z\",\"canManage\":true}]"
     },
     {
       "method": "accounts_setMetadata",
-      "args": [
-        "00000000-0000-4000-8000-00000000d001",
-        "{\"pickedItems\":[]}"
-      ],
+      "args": ["00000000-0000-4000-8000-00000000d001", "{\"pickedItems\":[]}"],
       "reply": "{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:40.311Z\",\"canManage\":true}"
     },
     {
@@ -30,9 +25,7 @@
     },
     {
       "method": "knowledge_appSourceWrite",
-      "args": [
-        "{\"op\":\"sync\",\"id\":\"1c8175f3-2fb6-4367-a2de-2421b14f25d4\"}"
-      ],
+      "args": ["{\"op\":\"sync\",\"id\":\"1c8175f3-2fb6-4367-a2de-2421b14f25d4\"}"],
       "reply": "{\"id\":\"1c8175f3-2fb6-4367-a2de-2421b14f25d4\",\"enqueued\":false,\"due\":true}"
     }
   ]

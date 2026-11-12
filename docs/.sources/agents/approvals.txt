@@ -244,3 +244,4 @@ A tool that can ask the provider is reconciled about a minute after the outcome 
 happened: approved; did not: back to pending; cannot tell: waits for a person -> apps/api/src/modules/approvals/reconcile-outcome.ts:60
 Summary built once at request and on edit, stored; card reads stored summary -> apps/api/src/modules/approvals/served-summary.ts:1-15 ; apps/api/src/modules/approvals/edit.ts:641
 Card lists 8 lines; a pooled dashboard card up to 50, scrolling -> packages/shared/src/types/approvals.ts:48 ; apps/web/src/modules/approvals/ApprovalCard.tsx:2014
+The credentials step names the app, connection and slug of the API connection -> apps/api/src/modules/approvals/required-step.ts:52

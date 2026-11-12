@@ -124,8 +124,8 @@ describe("export-only bundles", () => {
     expect(exportOnlyBundleCacheSize()).toBeLessThanOrEqual(64)
   })
 
-  // Tickets is a core app module (core/registry.ts), never a bundle to shake.
-  for (const app of ["knowledge", "projects"]) {
+  // Tickets, calendar and projects are core app modules (core/registry.ts), never bundles to shake.
+  for (const app of ["knowledge"]) {
     it(`${app}: the export-only attention provider behaves like the full bundle`, async () => {
       const full = await loadBundle(join(APPS_DIR, app, "handlers.ts"))
       const shaken = await buildExportOnlyBundle(full, "computeAttentionItems")

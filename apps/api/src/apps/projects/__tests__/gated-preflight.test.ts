@@ -10,14 +10,9 @@
 // exports refusing at STAGING: the call fails in the agent's loop and NO write
 // bridge method (and so no approval) is reached.
 import { describe, expect, it } from "bun:test"
+import * as handlers from "~/apps/projects/handlers"
 import manifest from "../app.manifest.json"
 
-// handlers.ts is script-mode by design (see its header) — transpile + eval to
-// reach the preflight exports, the same way the knowledge app's gate test does.
-const handlersSource = await Bun.file(new URL("../handlers.ts", import.meta.url)).text()
-const transpiled = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(
-  handlersSource,
-)
 type Preflight = (
   params: Record<string, unknown>,
   ctx: Record<string, unknown>,
@@ -30,9 +25,7 @@ const {
   deleteTaskPreflight,
   mergeTasksPreflight,
   checklistRemoveItemPreflight,
-} = new Function(
-  `${transpiled}\nreturn { deleteStatusPreflight, deleteTaskPreflight, mergeTasksPreflight, checklistRemoveItemPreflight };`,
-)() as Record<string, Preflight>
+} = handlers as unknown as Record<string, Preflight>
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111"
 const STATUS_TODO = "33333333-3333-4333-8333-333333333333"

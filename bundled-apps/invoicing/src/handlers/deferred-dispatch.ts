@@ -23,6 +23,7 @@ import {
   deferredRetryJob,
   type DeferredRetryResult,
 } from "./deferred-retry"
+import { parkInterruptedIssues } from "./resume-interrupted"
 import { isParkedDraftOrderQuote, retryParkedDraftOrderQuote } from "./shopify-draft-order"
 import {
   findIssuerByShopId,
@@ -196,5 +197,8 @@ export async function deferredRetryJobHandler(
       : { status: "ok" }
   }
 
+  // Issues a dead run left half done (numbered, never rendered) get their render and email parked
+  // first, so this same drain picks them up.
+  await parkInterruptedIssues(ctx, opts?.now)
   return deferredRetryJob(ctx, dispatch, { ...opts, identityChangedAt: identityChangedAtLoader(ctx) })
 }

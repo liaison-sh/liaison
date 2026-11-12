@@ -1848,12 +1848,15 @@ export const AppSchemaDdlTestAccess = {
 }
 
 /**
- * An app's event handler runs only while the app is On for the EVENT's org
- * (S19, A6): subscriptions are channel-global, so a handler registered for one
- * org also receives other orgs' events, and the gate keys on `event.orgId`.
+ * An app's event handler runs only for its own org's events, and only while the
+ * app is On for that org. Subscriptions are channel-global: every org that
+ * registers the app subscribes on the same channel, so without the first check
+ * an event ran the app's handler once per org registered in the process. The
+ * event's own org is set up before dispatch (event-bus.ts), so its registration
+ * is the one that hears it. An event that names no org is the registering org's.
  * Fail-closed: an unreadable state throws, so a durable delivery retries
  * instead of running or silently dropping. Events received while Off are not
- * replayed on re-enable (D24).
+ * replayed on re-enable.
  */
 export function gateEventOnAppState(
   appName: string,
@@ -1862,6 +1865,7 @@ export function gateEventOnAppState(
 ): (event: any) => Promise<void> {
   return async (event: any) => {
     const eventOrgId: string = event?.orgId ?? registeringOrgId
+    if (eventOrgId !== registeringOrgId) return
     // An org-private app hears its own org's events only (app-org-scope.ts),
     // and none while that org is suspended or closed.
     if (!(await appVisibleToOrg(appName, eventOrgId))) {

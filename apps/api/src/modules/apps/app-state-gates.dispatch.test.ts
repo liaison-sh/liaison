@@ -87,13 +87,30 @@ describe("Off app: dispatch chokepoints", () => {
     await setOrgAppStatus(seed.orgId, "test", "disabled")
     await handler({ orgId: seed.orgId, app: "test", entity: "items", action: "created" })
     expect(inner).not.toHaveBeenCalled()
-    // The same channel-global handler still serves an org where the app is On.
-    await handler({ orgId: other.orgId, app: "test", entity: "items", action: "created" })
-    expect(inner).toHaveBeenCalledTimes(1)
+    // The other org, where the app is On, is served by its own registration.
+    const otherInner = mock(async (_event: unknown) => {})
+    const otherHandler = gateEventOnAppState("test", other.orgId, otherInner)
+    await otherHandler({ orgId: other.orgId, app: "test", entity: "items", action: "created" })
+    expect(otherInner).toHaveBeenCalledTimes(1)
 
     await setOrgAppStatus(seed.orgId, "test", "active")
     await handler({ orgId: seed.orgId, app: "test", entity: "items", action: "created" })
-    expect(inner).toHaveBeenCalledTimes(2)
+    expect(inner).toHaveBeenCalledTimes(1)
+  }, 60_000)
+
+  it("an org's registration never runs for another org's events, so an event runs its handler once", async () => {
+    const seed = await seedOrgWithTicketsApp()
+    const other = await seedOrgWithTicketsApp()
+    orgs.push(seed.orgId, other.orgId)
+    const seen: string[] = []
+    const handlers = [seed.orgId, other.orgId].map((orgId) =>
+      gateEventOnAppState("test", orgId, async () => {
+        seen.push(orgId)
+      }),
+    )
+    const event = { orgId: other.orgId, app: "test", entity: "items", action: "created" }
+    for (const handler of handlers) await handler(event)
+    expect(seen).toEqual([other.orgId])
   }, 60_000)
 
   it("a PDF render of an Off app's template is refused with app_disabled", async () => {

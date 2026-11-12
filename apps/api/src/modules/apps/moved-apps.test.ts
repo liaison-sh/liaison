@@ -19,6 +19,7 @@ import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { reconcileCatalogApps, resetCatalogCache } from "~/modules/apps/catalog"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { MOVED_APPS, MovedAppsTestAccess } from "~/modules/apps/moved-apps"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
 const ORG = "00000000-0000-0000-0000-0000000ad001"
@@ -74,33 +75,85 @@ function bakeCatalog(withApp: boolean): void {
 
 /** The in-tree app's state, as an instance that ran it holds it. */
 async function seedInTreeState(): Promise<void> {
-  await sql`INSERT INTO kernel.organizations (id, name, slug, settings)
-    VALUES (${ORG}, 'Moved Org', 'moved-org',
-      ${JSON.stringify({ movedTest: { rules: RULES, other: "kept" }, theme: "dark" })}::jsonb)
-    ON CONFLICT (id) DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-    VALUES (${USER}, ${ORG}, 'moved@test.com', 'hash', 'Moved', 'active')
-    ON CONFLICT (id) DO NOTHING`
+  const settings = JSON.stringify({ movedTest: { rules: RULES, other: "kept" }, theme: "dark" })
+  const json = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
+  await sql.unsafe(
+    insertSql(
+      "kernel.organizations",
+      { id: ORG, name: "Moved Org", slug: "moved-org", settings: { raw: `'${settings}'::jsonb` } },
+      { onConflictDoNothing: true },
+    ),
+  )
+  await sql.unsafe(
+    insertSql(
+      "kernel.users",
+      {
+        id: USER,
+        org_id: ORG,
+        email: "moved@test.com",
+        password_hash: "hash",
+        name: "Moved",
+        status: "active",
+      },
+      { onConflictDoNothing: true },
+    ),
+  )
   // An org that is already set up, as on a running instance.
   await ensureAppsForOrg(ORG)
-  await sql`INSERT INTO kernel.apps (org_id, name, version, status, config)
-    VALUES (${ORG}, ${APP}, '0.9.0', 'active', ${JSON.stringify({ kept: true })}::jsonb)`
-  await sql`INSERT INTO kernel.connected_accounts
-      (id, org_id, app_name, connection_name, owner_type, provider_type, identifier,
-       credentials_encrypted, metadata, created_by)
-    VALUES (${ACCOUNT}, ${ORG}, ${APP}, 'main', 'org', 'credentials', 'default',
-      'enc:v1:opaque', ${JSON.stringify({ note: "kept" })}::jsonb, ${USER})`
-  await sql`INSERT INTO app_knowledge.collections (id, org_id, name)
-    VALUES (${COLLECTION}, ${ORG}, 'Synced root')`
-  await sql`INSERT INTO app_knowledge.synced_sources
-      (id, org_id, app_name, folder_ref, display_name, root_collection_id,
-       default_sensitivity, created_by)
-    VALUES (${SOURCE}, ${ORG}, ${APP}, 'root', 'Synced', ${COLLECTION}, 'internal', ${USER})`
-  await sql`INSERT INTO app_knowledge.source_identities (id, org_id, source, external_id)
-    VALUES (${IDENTITY}, ${ORG}, ${APP}, 'row-1')`
-  await sql`INSERT INTO app_knowledge.documents
-      (id, org_id, title, body, sensitivity, created_by, synced_source_id, source_identity_id, required_scopes)
-    VALUES (${DOCUMENT}, ${ORG}, 'Doc', 'Body', 'internal', ${USER}, ${SOURCE}, ${IDENTITY}, '{}'::text[])`
+  const fixtures: Array<[string, Record<string, RowValue>]> = [
+    [
+      "kernel.apps",
+      { org_id: ORG, name: APP, version: "0.9.0", status: "active", config: json({ kept: true }) },
+    ],
+    [
+      "kernel.connected_accounts",
+      {
+        id: ACCOUNT,
+        org_id: ORG,
+        app_name: APP,
+        connection_name: "main",
+        owner_type: "org",
+        provider_type: "credentials",
+        identifier: "default",
+        credentials_encrypted: "enc:v1:opaque",
+        metadata: json({ note: "kept" }),
+        created_by: USER,
+      },
+    ],
+    ["app_knowledge.collections", { id: COLLECTION, org_id: ORG, name: "Synced root" }],
+    [
+      "app_knowledge.synced_sources",
+      {
+        id: SOURCE,
+        org_id: ORG,
+        app_name: APP,
+        folder_ref: "root",
+        display_name: "Synced",
+        root_collection_id: COLLECTION,
+        default_sensitivity: "internal",
+        created_by: USER,
+      },
+    ],
+    [
+      "app_knowledge.source_identities",
+      { id: IDENTITY, org_id: ORG, source: APP, external_id: "row-1" },
+    ],
+    [
+      "app_knowledge.documents",
+      {
+        id: DOCUMENT,
+        org_id: ORG,
+        title: "Doc",
+        body: "Body",
+        sensitivity: "internal",
+        created_by: USER,
+        synced_source_id: SOURCE,
+        source_identity_id: IDENTITY,
+        required_scopes: { raw: "'{}'::text[]" },
+      },
+    ],
+  ]
+  for (const [table, row] of fixtures) await sql.unsafe(insertSql(table, row))
 }
 
 /** Every row of the app's state, timestamps that a step may touch left out. */
@@ -241,9 +294,17 @@ describe("an app moved from the source tree to the catalog", () => {
 
   it("never overwrites a document the catalog app already holds", async () => {
     bakeCatalog(true)
-    await sql`INSERT INTO kernel.app_adoptions (app_name, step_id) VALUES (${APP}, 'sources-kind')`
-    await sql`INSERT INTO kernel.app_documents (org_id, app, collection, doc_id, data, size_bytes)
-      VALUES (${ORG}, ${APP}, 'settings', 'rules', ${JSON.stringify({ value: { mine: true } })}::jsonb, 20)`
+    await sql.unsafe(insertSql("kernel.app_adoptions", { app_name: APP, step_id: "sources-kind" }))
+    await sql.unsafe(
+      insertSql("kernel.app_documents", {
+        org_id: ORG,
+        app: APP,
+        collection: "settings",
+        doc_id: "rules",
+        data: { raw: `'${JSON.stringify({ value: { mine: true } })}'::jsonb` },
+        size_bytes: 20,
+      }),
+    )
     const result = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
     expect(result.failed).toEqual([])
     const [doc] = await sql`SELECT data FROM kernel.app_documents

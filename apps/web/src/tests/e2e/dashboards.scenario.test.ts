@@ -388,5 +388,11 @@ test("edit mode resizes a block, and the PDF and a block's CSV download", async 
   await page.getByTestId("dashboard-block-csv-data-list").click()
   const csvResponse = await csv
   expect(csvResponse.status()).toBe(200)
-  expect(await csvResponse.text()).toContain("Order e1")
+  expect(csvResponse.headers()["content-type"]).toContain("text/csv")
+  // The page saves the body as a file; the same link read directly holds the rows.
+  const direct = await fetch(`${env.serverUrl}${new URL(csvResponse.url()).pathname}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  expect(direct.status).toBe(200)
+  expect(await direct.text()).toContain("Order e1")
 })

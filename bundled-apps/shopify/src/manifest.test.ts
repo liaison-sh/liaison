@@ -980,7 +980,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.24: both of the above, merged.
     // 0.4.25: both of the above, merged (main's 0.4.24: every package carries its Worker module).
     // 0.4.26: above main's 0.4.25, merged.
-    expect(m.version).toBe("0.4.26")
+    // 0.4.27: above main's 0.4.26 (bundled apps formatted and linted), merged.
+    expect(m.version).toBe("0.4.27")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

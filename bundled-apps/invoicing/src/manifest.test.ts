@@ -1712,7 +1712,8 @@ describe("invoicing manifest", () => {
     //   item issue hold no transaction either, each commits its writes in one batch.
     // 0.21.5: both of the above, merged (main's 0.21.4: every package carries its Worker module).
     // 0.21.6: above main's 0.21.5, merged.
-    expect(m.version).toBe("0.21.6")
+    // 0.21.7: above main's 0.21.6 (bundled apps formatted and linted), merged.
+    expect(m.version).toBe("0.21.7")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"
     ]

@@ -12,55 +12,11 @@
  * pull requests never add lines next to each other in this table.
  */
 export const FR: Record<string, string> = {
-  "If nobody decides by then, it lapses and nothing is done.":
-    "Si personne ne décide d'ici là, la demande expire et rien n'est fait.",
-  "Expires in {{count}} second": "Expire dans {{count}} seconde",
-  "Expires in {{count}} seconds": "Expire dans {{count}} secondes",
-  "Expires in {{count}} minute": "Expire dans {{count}} minute",
-  "Expires in {{count}} minutes": "Expire dans {{count}} minutes",
-  "Expires in {{count}} hour": "Expire dans {{count}} heure",
-  "Expires in {{count}} hours": "Expire dans {{count}} heures",
-  "Expires in {{count}} day": "Expire dans {{count}} jour",
-  "Expires in {{count}} days": "Expire dans {{count}} jours",
-  "Could not load what needs you": "Impossible de charger ce qui vous attend",
-  "Home did not answer. Anything waiting is safe and still waiting.":
-    "L'accueil n'a pas répondu. Tout ce qui attend est en sécurité et attend toujours.",
-  "{{name}} is away until {{date}}. You are next in line.":
-    "{{name}} est absent jusqu'au {{date}}. Vous êtes son remplaçant.",
-  "While you are away, what needs you also shows on {{name}}'s Home. {{name}} gets no new rights. Your personal mail, direct conversations and personal agent stay private.":
-    "Pendant votre absence, ce qui vous attend apparaît aussi sur l'accueil de {{name}}. {{name}} ne reçoit aucun nouveau droit. Votre messagerie personnelle, vos conversations directes et votre agent personnel restent privés.",
-  "Routine {{name}} finished: 1 draft waits for a person":
-    "La routine {{name}} est terminée : 1 brouillon attend une personne",
-  "Routine {{name}} finished: {{count}} drafts wait for a person":
-    "La routine {{name}} est terminée : {{count}} brouillons attendent une personne",
   "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",
   "We sent a new 6-digit code to {{email}}. It expires in 10 minutes.":
     "Nous avons envoy\u00e9 un nouveau code \u00e0 6 chiffres \u00e0 {{email}}. Il expire dans 10 minutes.",
   "We can't send email right now. Try again later, or sign in with your password if you have one.":
     "Nous ne pouvons pas envoyer d'e-mails pour le moment. R\u00e9essayez plus tard, ou connectez-vous avec votre mot de passe si vous en avez un.",
-  "Nothing ran: the server could not be reached.":
-    "Rien n'a été exécuté : le serveur est injoignable.",
-  "It answered this time. Ask again to see the result here.":
-    "Cette fois, la réponse est arrivée. Redemandez pour voir le résultat ici.",
-  "{{app}} did not answer": "{{app}} n'a pas répondu",
-  "Could not run {{tool}}": "Impossible d'exécuter {{tool}}",
-  "How this number is worked out": "Comment ce chiffre est calculé",
-  "The tool gave no reason.": "L'outil n'a donné aucune raison.",
-  "Not saved: the server could not be reached. Your text is kept.":
-    "Non enregistré : le serveur est injoignable. Votre texte est conservé.",
-  "Read {{count}} apps": "{{count}} apps lues",
-  "Read 1 app": "1 app lue",
-  "Read {{count}} of {{total}} apps": "{{count}} apps lues sur {{total}}",
-  "Reading {{app}}": "Lecture de {{app}}",
-  "Source: {{source}}": "Source : {{source}}",
-  "Not sent: the server could not be reached.": "Rien n'est parti : le serveur est injoignable.",
-  "Suggested next steps": "Étapes suggérées",
-  "Replaced by a newer card": "Remplacée par une carte plus récente",
-  "Nothing ran: this card cannot reach the server here.":
-    "Rien n'a été exécuté : cette carte ne peut pas joindre le serveur ici.",
-  "Waiting for approval. Nothing ran yet.":
-    "En attente d'approbation. Rien n'a encore été exécuté.",
-  "Working…": "En cours…",
   "Send me occasional news about Liaison": "M'envoyer de temps en temps des nouvelles de Liaison",
   "We use your email to send your confirmation code. Unless you tick the box and confirm your email, your name and email are deleted when your demo ends, after 72 hours.":
     "Nous utilisons votre mail pour vous envoyer votre code de confirmation. Sauf si vous cochez la case et confirmez votre mail, votre nom et votre mail sont supprimés à la fin de votre démo, après 72 heures.",
@@ -627,7 +583,6 @@ export const FR: Record<string, string> = {
   "Nudge customer": "Relancer le client",
   "Only mail admins can manage mail setup.":
     "Seuls les administrateurs de messagerie peuvent gérer la configuration.",
-  "Open the board": "Ouvrir le tableau",
   "Open the full contact list": "Ouvrir la liste complète des contacts",
   "Optional UUID": "UUID facultatif",
   "Optional note": "Note facultative",
@@ -1039,15 +994,6 @@ export const FR: Record<string, string> = {
   "KPI service": "Service KPI",
   "Alert webhook": "Webhook des alertes",
   "Pennylane account": "Compte Pennylane",
-  "Stripe account": "Compte Stripe",
-  "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.":
-    "Connecteur Stripe : une copie en lecture des clients, abonnements, factures, paiements, remboursements et litiges, tenue à jour par un webhook signé.",
-  "Stripe reader: customers, subscriptions, invoices, payments, refunds and disputes":
-    "Lecture Stripe : clients, abonnements, factures, paiements, remboursements et litiges",
-  "Stripe billing: link customers to companies and contacts, request refunds and cancellations through approvals":
-    "Facturation Stripe : relier les clients aux entreprises et aux contacts, demander des remboursements et des résiliations par approbation",
-  "Stripe administrator: connect the account and manage its key and webhook":
-    "Administrateur Stripe : connecter le compte, gérer sa clé et son webhook",
   "Shopify store": "Boutique Shopify",
   "Instagram account": "Compte Instagram",
   "Instagram account (Unified login, preview)": "Compte Instagram (connexion unifiée, aperçu)",
@@ -1496,7 +1442,6 @@ export const FR: Record<string, string> = {
   "Full kernel access": "Accès complet à l'espace de travail",
   "Manage users, roles, and invitations": "Gérer les utilisateurs, les rôles et les invitations",
   "Read user list": "Lire la liste des utilisateurs",
-  "See and manage clients' portal accounts": "Voir et gérer les comptes de portail des clients",
   "Edit org settings": "Modifier les réglages de l'organisation",
   "Read threads": "Lire les discussions",
   "Write threads": "Écrire dans les discussions",
@@ -1820,10 +1765,6 @@ export const FR: Record<string, string> = {
   "missing e-invoicing identity": "identité de facturation électronique manquante",
   "missing e-invoicing identities": "identités de facturation électronique manquantes",
   "missing label": "étiquette manquante",
-  "card number hidden": "numéro de carte masqué",
-  "card numbers hidden": "numéros de carte masqués",
-  "connection problem": "problème de connexion",
-  "connection problems": "problèmes de connexion",
   "missing labels": "étiquettes manquantes",
   // Unsaved work, asked before a reload or closing tabs (lib/unsaved-work.ts).
   "Reload and lose unsaved work?": "Recharger et perdre le travail non enregistré ?",
@@ -2109,10 +2050,6 @@ export const FR: Record<string, string> = {
   "This one cannot be shared here.": "Celle-ci ne peut pas être partagée ici.",
   "Share anyway": "Partager quand même",
   "Write a message... (@ people, # threads)": "Écrire un message… (@ personnes, # discussions)",
-  "That looks like a Stripe key, so it was not sent.":
-    "Cela ressemble à une clé Stripe, le message n’a donc pas été envoyé.",
-  "That is your secret key, so I did not keep it. Create a restricted key in Stripe (Developers, API keys, Create restricted key: it starts with rk_) and paste that one.":
-    "C’est votre clé secrète, je ne l’ai donc pas gardée. Créez une clé restreinte dans Stripe (Développeurs, Clés API, Créer une clé restreinte : elle commence par rk_) et collez celle-ci.",
   "Best on a larger screen": "Préférable sur un écran plus grand",
   "Continue anyway": "Continuer quand même",
   "Could not save the Face ID setting": "Impossible d'enregistrer le réglage Face ID",
@@ -2148,13 +2085,6 @@ export const FR: Record<string, string> = {
   Denied: "Refusée",
   Withdrawn: "Retirée",
   "Last attempt failed:": "Dernière tentative échouée :",
-  "Cancelled: the ticket was merged into another":
-    "Annulée : le ticket a été fusionné dans un autre",
-  "Cancelled: the requester deleted their account": "Annulée : le demandeur a supprimé son compte",
-  "Cancelled: the only approver deleted their account":
-    "Annulée : le seul approbateur a supprimé son compte",
-  "Cancelled: the task it would change was deleted":
-    "Annulée : la tâche qu'elle devait modifier a été supprimée",
   "Approval request no longer exists.": "Cette demande d'approbation n'existe plus.",
   "Requested by": "Demandée par",
   "Routed privately to the resource owner. Only they can see and decide it.":
@@ -4466,7 +4396,6 @@ export const FR: Record<string, string> = {
   public: "public",
   Administration: "Administration",
   Pennylane: "Pennylane",
-  Stripe: "Stripe",
   Attention: "Attention",
   MCP: "MCP",
   Public: "Public",
@@ -4922,44 +4851,6 @@ export const FR: Record<string, string> = {
   "Drop-down list": "Liste déroulante",
   Signature: "Signature",
   Button: "Bouton",
-  // Commercial mail: the identity it states and the footer it ends with.
-  "Commercial identity": "Identité commerciale",
-  'Every commercial mail (a follow-up or offer to a prospect) ends with this legal name and postal address, an opt-out link and "or reply stop". Until both are set, Liaison sends no commercial mail.':
-    "Chaque message commercial (une relance ou une offre à un prospect) se termine par cette raison sociale et cette adresse postale, un lien de désinscription et « ou répondez stop ». Tant que les deux ne sont pas renseignées, Liaison n'envoie aucun message commercial.",
-  "Legal name": "Raison sociale",
-  "Postal address": "Adresse postale",
-  "Commercial identity saved.": "Identité commerciale enregistrée.",
-  "The commercial identity could not be saved.":
-    "L'identité commerciale n'a pas pu être enregistrée.",
-  "To stop commercial messages from {{name}}: {{url}} or reply stop.":
-    "Pour ne plus recevoir de messages commerciaux de {{name}} : {{url}} ou répondez stop.",
-  "(opt-out link)": "(lien de désinscription)",
-  "{{name}} received your address from a third party and uses it only for professional messages like this one. You can object at any time with the link below.":
-    "{{name}} a reçu votre adresse d'un tiers et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
-  "{{name}} found your address in a public business source and uses it only for professional messages like this one. You can object at any time with the link below.":
-    "{{name}} a trouvé votre adresse dans une source professionnelle publique et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
-  "If you did not give us your address yourself, {{name}} obtained it from another source and uses it only for professional messages like this one. You can object at any time with the link below.":
-    "Si vous ne nous avez pas donné votre adresse vous-même, {{name}} l'a obtenue d'une autre source et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
-  "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.":
-    "Ce message va à un prospect : ces lignes y sont ajoutées à l'envoi, dans sa langue. Elles ne peuvent pas être retirées.",
-  "No recorded basis for writing to {{name}} commercially":
-    "Aucune base enregistrée pour écrire à {{name}} à des fins commerciales",
-  "Record a basis": "Enregistrer une base",
-  Consent: "Consentement",
-  "Existing customer": "Client existant",
-  "Basis: {{basis}}": "Base : {{basis}}",
-  "No recorded basis": "Aucune base enregistrée",
-  Business: "Professionnel",
-  Consumer: "Consommateur",
-  "Consumer or business not recorded": "Consommateur ou professionnel non enregistré",
-  "Opted out on {{date}}": "Désinscrit le {{date}}",
-  "Not opted out": "Non désinscrit",
-  "Professional interest": "Intérêt professionnel",
-  "Generic company address": "Adresse générique d'entreprise",
-  "The basis was not recorded. Try again, or record it on their contact.":
-    "La base n'a pas été enregistrée. Réessayez, ou enregistrez-la sur sa fiche contact.",
-  "Could not check whether this mail is commercial. It is checked again when you send.":
-    "Impossible de vérifier si ce message est commercial. La vérification est refaite à l'envoi.",
 }
 
 /**
@@ -4969,224 +4860,6 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
-  "kernel.homeRouting.heldGroup": "Mis de côté jusqu'à leur retour",
-  "kernel.demo.paymentsUnsupported":
-    "Ceci est une instance de démonstration : le simulateur de paiements par carte ne reproduit pas {{what}}. Les clients, abonnements, factures, paiements, remboursements et litiges peuvent être lus, et les remboursements et résiliations en fin de période n'agissent que sur le simulateur.",
-  "kernel.demo.need.money": "Abonnements et paiements par IA",
-  "kernel.demo.need.client": "Travail client par IA",
-  "kernel.demo.needShort.money": "Abonnements et paiements",
-  "kernel.demo.needShort.client": "Travail client",
-  "kernel.demo.needDesc.money":
-    "Un paiement par carte échoue : une routine rédige la note au client, vous l'approuvez.",
-  "kernel.demo.needDesc.client":
-    "Un client demande plus : votre agent vérifie le contrat, puis rédige la réponse.",
-  "kernel.demo.needsNotInWorld":
-    "Aucun des sujets choisis ne fait partie de la démo de cette entreprise. Choisissez au moins un des sujets proposés.",
-  "kernel.demo.world.saas.companyFacts": "Entreprise fictive · Paris · 14 personnes",
-  "kernel.demo.world.saas.companyExample":
-    "Ceci est une entreprise d'exemple : Tideform, qui édite un logiciel de planning pour les groupes d'hôtellerie-restauration. Votre propre espace contiendrait vos données.",
-  "kernel.demo.world.saas.companyAbout":
-    "Tideform édite un logiciel de planning et de gestion des équipes pour les hôtels, les restaurants et les cantines, vendu par abonnement de 149 € à 1 450 € par mois. 169 clients paient par carte via Stripe, et quelques grands groupes paient par virement.",
-  "kernel.demo.world.saas.companyOps.payments.title": "Abonnements et paiements",
-  "kernel.demo.world.saas.companyOps.payments.body":
-    "169 clients paient par carte via Stripe. L'agent Finance Desk surveille les paiements échoués et rédige la note ; Sara l'approuve.",
-  "kernel.demo.world.saas.companyOps.invoicing.body":
-    "Liaison émet chaque facture, sans aucun trou, y compris pour les groupes qui paient par virement.",
-  "kernel.demo.world.saas.companyOps.support.body":
-    "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse.",
-  "kernel.demo.world.saas.companyOps.sales.title": "Ventes",
-  "kernel.demo.world.saas.companyOps.sales.body":
-    "Les affaires de Tom sont sur un tableau. Une routine rédige les relances.",
-  "kernel.demo.world.saas.companyOps.product.title": "Produit et messagerie",
-  "kernel.demo.world.saas.companyOps.product.body":
-    "L'équipe planifie le travail produit dans Projets et échange dans la messagerie.",
-  "kernel.demo.world.saas.companyOps.knowledge.title": "Connaissances de l'entreprise",
-  "kernel.demo.world.saas.companyOps.knowledge.body":
-    "Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir.",
-  "kernel.demo.world.saas.companyYou":
-    "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
-  "kernel.demo.world.saas.companySimulated":
-    "Seul le monde extérieur est simulé : aucun mail ne part, et le compte Stripe et ses paiements sont fictifs.",
-  "kernel.demo.world.saas.teamRole.tom": "Ventes",
-  "kernel.demo.world.saas.teamRole.elodie": "Responsable de comptes",
-  "kernel.demo.world.saas.teamRole.ines": "Responsable du support",
-  "kernel.demo.world.saas.teamRole.yann": "Directeur technique",
-  "kernel.demo.world.saas.teamRole.lucie": "Responsable produit",
-  "kernel.demo.world.saas.teamRole.baptiste": "Développement",
-  "kernel.demo.world.saas.teamRole.amel": "Développement",
-  "kernel.demo.world.saas.teamRole.jonas": "Développement",
-  "kernel.demo.world.saas.teamRole.maxime": "Ventes",
-  "kernel.demo.world.saas.teamRole.rose": "Responsable du bureau",
-  "kernel.demo.world.saas.limitConnectors":
-    "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif.",
-  "projects.deals.subline":
-    "{{count}} affaires en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineOne":
-    "1 affaire en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineNoAmount":
-    "{{count}} affaires en cours. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineNoAmountOne":
-    "1 affaire en cours. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.newDeal": "Nouvelle affaire",
-  "projects.deals.needsDealAccess": "Accès aux affaires requis",
-  "projects.deals.noAmount": "Aucun montant",
-  "projects.deals.next": "Ensuite : {{step}}",
-  "projects.deals.quietOne": "Calme depuis 1 jour",
-  "projects.deals.quietMany": "Calme depuis {{count}} jours",
-  "projects.deals.activeToday": "Active aujourd'hui",
-  "projects.deals.wonOn": "Gagnée le {{date}}",
-  "projects.deals.lostOn": "Perdue le {{date}}",
-  "projects.deals.closedThisMonth": "{{label}} ce mois-ci",
-  "projects.deals.movedTo": "{{key}} déplacée vers {{stage}}.",
-  "projects.deals.undo": "Annuler",
-  "projects.deals.dismiss": "Fermer",
-  "projects.deals.lostReason": "Raison",
-  "projects.deals.lostReasonPlaceholder": "Pourquoi a-t-elle été perdue ? (facultatif)",
-  "projects.deals.lostReasonSaved": "Raison enregistrée.",
-  "projects.deals.lostReasonFailed": "Impossible d'enregistrer la raison. L'affaire reste perdue.",
-  "projects.deals.moveFailed": "Projets n'a pas répondu. Aucune affaire n'a été déplacée.",
-  "projects.deals.undoFailed": "Impossible d'annuler le déplacement. L'affaire reste où elle est.",
-  "projects.deals.boardFailed": "Impossible de lire les affaires de ce pipeline.",
-  "projects.deals.panelTitle": "Affaire",
-  "projects.deals.markWon": "Marquer gagnée",
-  "projects.deals.markLost": "Marquer perdue",
-  "projects.deals.reopen": "Rouvrir",
-  "projects.deals.amount": "Montant",
-  "projects.deals.company": "Entreprise",
-  "projects.deals.contact": "Contact",
-  "projects.deals.nextStep": "Prochaine étape",
-  "projects.deals.none": "Aucun",
-  "projects.deals.perMonth": "{{amount}} par mois",
-  "projects.deals.perYear": "{{amount}} par an",
-  "projects.deals.readFailed":
-    "Impossible de lire l'affaire. La tâche ci-dessous n'est pas affectée.",
-  "projects.deals.updateFailed": "Impossible de modifier l'affaire. Rien n'a changé.",
-  "projects.deals.routineLine":
-    "La routine {{name}} rédige les relances des affaires calmes ici, et {{owner}} approuve chacune avant son envoi.",
-  "projects.deals.routineLineNoOwner":
-    "La routine {{name}} rédige les relances des affaires calmes ici, et rien ne part avant qu'une personne l'approuve.",
-  "projects.deals.client": "Client (facultatif)",
-  "projects.deals.clientSearch": "Rechercher des entreprises",
-  "projects.deals.clientNone": "Aucun client",
-  "projects.deals.clientClear": "Retirer le client",
-  "projects.deals.clientNoMatch": "Aucune entreprise ne correspond.",
-  "projects.deals.clientUnavailable": "Une entreprise que vous ne voyez pas",
-  "contacts.companies.title": "Entreprises",
-  "contacts.companies.newCompany": "Nouvelle entreprise",
-  "contacts.companies.newCompanyDomain": "Domaine du site",
-  "contacts.companies.search": "Rechercher des entreprises...",
-  "contacts.companies.countLine": "{{count}} entreprises, activité la plus récente d'abord",
-  "contacts.companies.emptyTitle": "Aucune entreprise pour l'instant",
-  "contacts.companies.emptyHint":
-    "Une entreprise regroupe les personnes avec qui vous y travaillez.",
-  "contacts.companies.emptyProposal":
-    "Vos contacts nomment déjà {{count}} entreprises. Demandez à l'agent de les créer.",
-  "contacts.companies.loadError": "Impossible de charger les entreprises.",
-  "contacts.companies.noMatch": "Aucune entreprise ne correspond à « {{query}} ».",
-  "contacts.companies.possibleDuplicate": "Doublon possible",
-  "contacts.companies.noDeal": "Aucune affaire",
-  "contacts.companies.dealIn": "Affaire en {{stage}}",
-  "contacts.companies.dealInAmount": "Affaire en {{stage}}, {{amount}}",
-  "contacts.companies.openDeal": "Affaire en cours",
-  "contacts.companies.personOne": "1 personne",
-  "contacts.companies.personMany": "{{count}} personnes",
-  "contacts.companies.addPerson": "Ajouter une personne",
-  "contacts.companies.addPersonSearch": "Rechercher une personne à ajouter",
-  "contacts.companies.addPersonNone": "Personne ne correspond.",
-  "contacts.companies.addPersonFailed": "Impossible d'ajouter {{name}}. Rien n'a changé.",
-  "contacts.companies.addPersonDone": "{{name}} travaille maintenant chez {{company}}.",
-  "contacts.companies.mergeSearch": "Rechercher l'entreprise à garder",
-  "contacts.companies.mergeInto": "Fusionner dans {{name}}",
-  "contacts.companies.mergeConfirm":
-    "{{source}} rejoint {{target}} : ses personnes, affaires et sa discussion y passent, et {{source}} est supprimée. C'est définitif.",
-  "contacts.companies.mergeFailed": "La fusion n'a pas eu lieu. Rien n'a changé.",
-  "contacts.companies.accountManager": "Responsable du compte",
-  "contacts.companies.noAccountManager": "Aucun responsable du compte",
-  "contacts.companies.awayUntil": "absent jusqu'au {{date}}",
-  "contacts.companies.visibleToTeam": "Visible par toute l'équipe",
-  "contacts.companies.onlyYou": "Vous seul voyez cette entreprise",
-  "contacts.companies.sharedWithSome": "Partagée avec certaines personnes",
-  "contacts.companies.relationshipEnded": "Relation terminée",
-  "contacts.companies.waiting": "En attente",
-  "contacts.companies.showAll": "Tout afficher ({{count}})",
-  "contacts.companies.peopleUnavailable": "Impossible de lire les personnes de cette entreprise.",
-  "contacts.companies.mainContact": "Contact principal",
-  "contacts.companies.deals": "Affaires",
-  "contacts.companies.openTheBoard": "Ouvrir le tableau des affaires",
-  "contacts.companies.noOpenDeal": "Aucune affaire en cours.",
-  "contacts.companies.timeline": "Historique",
-  "contacts.companies.discussionHint":
-    "Parlez de {{name}} ici. Un agent que vous mentionnez lit d'abord cette page.",
-  "contacts.companies.discussionPlaceholder":
-    "Demandez à l'agent à propos de {{name}}, ou mentionnez une personne avec @",
-  "contacts.companies.discussionUnavailable":
-    "La discussion n'a pas pu être ouverte. Le reste de la page n'est pas affecté.",
-  "contacts.companies.noAccess": "Pas d'accès",
-  "contacts.companies.noAccessHint":
-    "Cette entreprise ne vous est pas partagée, ou elle n'existe plus.",
-  "contacts.companies.loading": "Chargement de l'entreprise",
-  "contacts.companies.shareTitle": "Partager {{name}}",
-  "contacts.companies.managerChange": "Changer le responsable du compte",
-  "contacts.companies.managerFailed": "Le responsable du compte n'a pas changé.",
-  "contacts.companies.managerPending":
-    "Envoyé pour approbation. Le responsable du compte change une fois la demande approuvée.",
-  "contacts.companies.noPeopleNew":
-    "Personne pour l'instant. Les mails, tickets, factures et affaires s'affichent ici dès qu'une personne de cette entreprise y est liée.",
-  "contacts.companies.askFindPeople": "Demander à l'agent de trouver les personnes",
-  "contacts.companies.askFindPeoplePrompt":
-    "Trouve les personnes qui travaillent chez {{name}} parmi mes contacts et mes mails, et lie-les à l'entreprise.",
-  "contacts.companies.askLinkMail": "Lier les anciens mails de ce domaine",
-  "contacts.companies.askLinkMailPrompt":
-    "Lie à {{name}} les personnes qui nous ont écrit depuis {{domain}}.",
-  "contacts.companies.duplicateTitle": "Ressemble à la même entreprise que {{name}}",
-  "contacts.companies.duplicateSameDomain":
-    "Même domaine web. Rien n'est fusionné sans votre accord.",
-  "contacts.companies.duplicateSameName":
-    "Le nom est écrit de deux façons. Rien n'est fusionné sans votre accord.",
-  "contacts.companies.duplicateBoth":
-    "Même domaine web, et le nom est écrit de deux façons. Rien n'est fusionné sans votre accord.",
-  "contacts.companies.keepSeparate": "Les garder séparées",
-  "contacts.companies.keptSeparate":
-    "Gardées séparées : {{name}} n'est plus proposée comme la même entreprise.",
-  "contacts.companies.notSameFailed": "Impossible d'enregistrer. Rien n'a changé.",
-  "contacts.companies.mergeHolding":
-    "{{source}} est fusionnée dans {{target}} dans quelques secondes.",
-  "contacts.companies.mergeDone": "{{source}} est fusionnée dans {{target}}.",
-  "contacts.companies.undo": "Annuler",
-  "contacts.companies.phoneTabs": "Sections de l'entreprise",
-  "contacts.companies.phoneOverview": "Aperçu",
-  "contacts.companies.phoneTimeline": "Historique",
-  "contacts.companies.phoneDiscussion": "Discussion",
-  "contacts.companies.askBox": "Demander à l'agent à propos de {{name}}",
-  "contacts.activity.reading": "Lecture de vos applications",
-  "contacts.activity.sources.company": "Entreprise",
-  "contacts.companies.money": "Finances",
-  "contacts.companies.support": "Support",
-  "contacts.companies.work": "Travail",
-  "tickets.companySupport.empty": "Aucun ticket ouvert par les personnes de cette entreprise.",
-  "tickets.companySupport.error": "Impossible de lire les tickets de cette entreprise.",
-  "projects.companyWork.empty": "Aucun projet pour cette entreprise pour l'instant.",
-  "projects.companyWork.error": "Impossible de lire les projets de cette entreprise.",
-  "projects.companyWork.openTasks": "Ouvertes : {{count}}",
-  "contacts.activity.allActivity": "Toute l'activité",
-  "contacts.activity.filter": "Filtrer l'historique",
-  "contacts.activity.empty": "Rien ne s'est encore passé avec cette entreprise.",
-  "contacts.activity.error": "Impossible de lire l'historique.",
-  "contacts.activity.retry": "Réessayer",
-  "contacts.activity.unavailable":
-    "{{source}} n'a pas répondu, son activité manque donc ici. Le reste est à jour.",
-  "contacts.activity.truncatedContacts":
-    "Activité des {{count}} personnes les plus récemment actives",
-  "contacts.activity.truncatedDeals":
-    "{{count}} affaires plus anciennes ne sont pas dans cet historique.",
-  "contacts.activity.showOlder": "Afficher l'activité plus ancienne",
-  "contacts.activity.today": "Aujourd'hui",
-  "contacts.activity.earlierThisMonth": "Plus tôt ce mois-ci",
-  "contacts.activity.sources.mail": "Mail",
-  "contacts.activity.sources.tickets": "Tickets",
-  "contacts.activity.sources.invoicing": "Facturation",
-  "contacts.activity.sources.calendar": "Agenda",
-  "contacts.activity.sources.projects": "Affaires",
   "contacts.addresses.role.other": "Autre",
   "contacts.addresses.sourceOption.other": "Autre",
   // The main panel's answer to an address no page owns.
@@ -5701,28 +5374,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeSidebar.sourceUnavailable": "{{source}} indisponible, nouvelle tentative",
   "kernel.homeSidebar.expiringSoon": "Expire bientôt",
   "kernel.homeSidebar.newMail": "Nouveaux mails",
-  "kernel.homeStatusOtherWork": "DANS VOS AUTRES TÂCHES",
-  "kernel.homeDecisions.notNow": "Plus tard",
-  "kernel.homeDecisions.setAside": "Mis de côté jusqu'à lundi. Il reviendra alors.",
-  "kernel.homeDecisions.setAsideFailed": "Impossible de mettre ceci de côté. Réessayez.",
-  "kernel.homeDecisions.askDraft": "Demander un brouillon à l'agent",
-  "kernel.homeDecisions.askDraftMessage": "Rédige ce qu'il faut pour ceci : {{summary}}",
-  "kernel.homeDecisions.askDraftFailed": "Impossible de joindre votre agent. Réessayez.",
-  "kernel.homeDecisions.askReassign": "Demander à l'agent de les confier",
-  "kernel.homeDecisions.askReassignMessage":
-    "Aide-moi à confier ces entreprises à un nouveau responsable de compte. {{summary}}. Entreprises : {{companyIds}}",
-  "kernel.homeDecisions.dismiss": "Retirer",
-  "kernel.homeDecisions.guardClear":
-    "Ne partira pas si on vous répond d'abord, même après votre accord.",
-  "kernel.homeDecisions.sourceFailedTitle": "Impossible de charger ce que {{app}} a pour vous",
-  "kernel.homeDecisions.sourceFailedBody":
-    "{{app}} n'a pas répondu. Ce qui y attend est en sécurité et attend toujours.",
-  "kernel.homeDecisions.retry": "Réessayer",
-  "kernel.homeDecisions.briefTitle": "Le point du jour",
-  "kernel.homeDecisions.briefNone":
-    "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
-  "kernel.homeDecisions.briefSetUp": "Mettre en place un point du matin",
-  "kernel.homeDecisions.briefOpen": "Ouvrir",
   "kernel.homeReadAll.button": "Tout marquer comme lu",
   "kernel.homeReadAll.title":
     "Marquer comme lu tout ce que cette vue affiche. Les approbations et les demandes restent affichées.",
@@ -6542,16 +6193,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeKind.transmission_failed.other": "factures électroniques non envoyées",
   "kernel.homeKind.not_in_directory.one": "destinataire absent de l'annuaire",
   "kernel.homeKind.not_in_directory.other": "destinataires absents de l'annuaire",
-  "kernel.homeKind.partial.one": "facture mensuelle non émise",
-  "kernel.homeKind.partial.other": "factures mensuelles non émises",
-  "kernel.homeKind.due.one": "facturation mensuelle à valider",
-  "kernel.homeKind.due.other": "facturations mensuelles à valider",
-  "kernel.homeKind.held.one": "facturation suspendue par la limite du jour",
-  "kernel.homeKind.held.other": "facturation suspendue par la limite du jour",
-  "kernel.homeKind.late.one": "facturation mensuelle en retard",
-  "kernel.homeKind.late.other": "facturations mensuelles en retard",
-  "kernel.homeKind.issuer_timezone_unset.one": "émetteur sans fuseau horaire",
-  "kernel.homeKind.issuer_timezone_unset.other": "émetteurs sans fuseau horaire",
   "kernel.homeKind.routing_mismatch.one": "acheminement incohérent",
   "kernel.homeKind.routing_mismatch.other": "acheminements incohérents",
   "kernel.homeKind.booking_failed.one": "comptabilisation échouée",
@@ -7825,35 +7466,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeCluster.routine_mailbox_wait": "exécutions de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.one": "exécution de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.other": "exécutions de routine en attente de votre boîte",
-  "kernel.homeKind.send_waiting.one":
-    "facture électronique en attente de la carte d'envoi quotidienne",
-  "kernel.homeKind.send_waiting.other":
-    "factures électroniques en attente de la carte d'envoi quotidienne",
-  "kernel.homeKind.standing_lapsed.one": "autorisation permanente d'envoi expirée",
-  "kernel.homeKind.standing_lapsed.other": "autorisations permanentes d'envoi expirées",
-  "kernel.homeKind.collection_manual.one": "encaissement à déclarer sur votre plateforme",
-  "kernel.homeKind.collection_manual.other": "encaissements à déclarer sur votre plateforme",
-  "kernel.homeKind.issuer_switched.one": "facturation carte modifiée avec des factures impayées",
-  "kernel.homeKind.issuer_switched.other":
-    "changements de facturation carte avec des factures impayées",
-  "kernel.homeKind.issuer_undecided.one": "facture Stripe en attente du choix de l'émetteur",
-  "kernel.homeKind.issuer_undecided.other": "factures Stripe en attente du choix de l'émetteur",
-  "kernel.homeKind.undecided_listed.one": "factures Stripe à émettre après le choix",
-  "kernel.homeKind.undecided_listed.other": "factures Stripe à émettre après le choix",
-  "kernel.homeKind.needs_person.one": "facture Stripe à traiter par une personne",
-  "kernel.homeKind.needs_person.other": "factures Stripe à traiter par une personne",
-  "kernel.homeKind.payment_failed.one": "paiement par carte échoué",
-  "kernel.homeKind.payment_failed.other": "paiements par carte échoués",
-  "kernel.homeKind.voided.one": "facture Stripe annulée",
-  "kernel.homeKind.voided.other": "factures Stripe annulées",
-  "kernel.homeKind.uncollectible.one": "facture Stripe irrécouvrable",
-  "kernel.homeKind.uncollectible.other": "factures Stripe irrécouvrables",
-  "kernel.homeKind.refund_failed.one": "remboursement Stripe échoué",
-  "kernel.homeKind.refund_failed.other": "remboursements Stripe échoués",
-  "kernel.homeKind.refund_waiting.one": "remboursement Stripe en attente de sa facture",
-  "kernel.homeKind.refund_waiting.other": "remboursements Stripe en attente de leur facture",
-  "kernel.homeKind.unmatched.one": "paiement Stripe sans facture",
-  "kernel.homeKind.unmatched.other": "paiements Stripe sans facture",
   "kernel.notificationSettings.kinds.routine_mailbox_wait":
     "Exécutions de routine en attente de votre boîte privée",
   "kernel.agents.status.mailboxWaitDismissed": "Ignorée : vous avez choisi de ne pas la lancer",
@@ -7921,12 +7533,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.accessRequestRow.adminsChip": "Admins des demandes d'accès",
   "kernel.decisionToast.grantingIn": "Accord dans {{seconds}} s",
   "kernel.decisionToast.denyingIn": "Refus dans {{seconds}} s",
-  "kernel.decisionToast.dismissingIn": "Ignoré dans {{seconds}} s",
-  "kernel.decisionToast.dismissing": "En cours…",
-  "kernel.decisionToast.dismissed": "Ignoré",
-  "kernel.approvalsUi.sendGuard.holdDate": "Jusqu'au {{until}}",
-  "kernel.homeRouting.showCovering": "Voir ce que vous couvrez",
-  "kernel.homeRouting.coveringTitle": "Ce que vous couvrez",
   "kernel.decisionToast.granting": "Accord en cours…",
   "kernel.decisionToast.denying": "Refus en cours…",
   "kernel.decisionToast.granted": "Accordé",
@@ -8032,95 +7638,6 @@ export const FR_BY_KEY: Record<string, string> = {
     "Laissez vide pour envoyer le texte par défaut, dans la langue du client.",
   "tickets.closeSilent.defaultNudge":
     "Bonjour,\n\nSans nouvelles de votre part, nous revenons vers vous : notre dernier message a-t-il répondu à votre question, ou pouvons-nous encore vous aider ?\n\nSans réponse de votre part d'ici {{days}} jours, nous clôturerons ce ticket. Vous pourrez toujours répondre à cet e-mail pour le rouvrir.\n\nMerci",
-  "kernel.approvalsUi.err.sendGuardNotHeld":
-    "Ce brouillon n'est plus retenu : une réponse est arrivée, ou la retenue a pris fin. Rien n'a été envoyé. La carte affiche maintenant le résultat du contrôle.",
-  "kernel.approvalsUi.sendGuard.theOtherSide": "L'autre partie",
-  "kernel.approvalsUi.sendGuard.held":
-    "Retenu : {{who}} a envoyé une réponse automatique. Le message attend jusqu'au {{until}}, puis revient tout seul sur l'accueil.",
-  "kernel.approvalsUi.sendGuard.replied":
-    "Non envoyé : {{who}} a répondu après la rédaction de ce brouillon.",
-  "kernel.approvalsUi.sendGuard.repliedElsewhere":
-    "Non envoyé : une réponse est arrivée dans une autre boîte mail.",
-  "kernel.approvalsUi.sendGuard.bounced":
-    "Non envoyé : un échec de livraison est revenu pour cette adresse.",
-  "kernel.approvalsUi.sendGuard.optedOut":
-    "Envoi impossible : {{who}} a refusé les e-mails commerciaux. Retirez cette personne des destinataires, ou laissez le message non envoyé.",
-  "kernel.approvalsUi.sendGuard.refStop":
-    "Non envoyé : la fiche concernée par ce message indique de ne pas l'envoyer.",
-  "kernel.approvalsUi.sendGuard.refStopLabel": "Non envoyé : {{label}}",
-  "kernel.approvalsUi.sendGuard.unavailable":
-    "Le contrôle avant envoi n'a pas pu s'exécuter. Réessayez dans un instant.",
-  "kernel.approvalsUi.sendGuard.sendNow": "Envoyer maintenant",
-  // The profile's Away section and the line a colleague's away mark leaves on Home.
-  "kernel.settings.profile.away.title": "Absence",
-  "kernel.settings.profile.away.hint":
-    "Indiquez quand vous êtes absent et qui prend le relais. Seules les dates sont gardées, jamais le motif.",
-  "kernel.settings.profile.away.from": "Premier jour",
-  "kernel.settings.profile.away.to": "Dernier jour",
-  "kernel.settings.profile.away.nextInLine": "Relais",
-  "kernel.settings.profile.away.nobody": "Personne",
-  "kernel.settings.profile.away.standing": "Relais par défaut",
-  "kernel.settings.profile.away.standingHint":
-    "Enregistré dès que vous choisissez. Utilisé pour toute absence qui ne nomme personne.",
-  "kernel.settings.profile.away.save": "Me déclarer absent",
-  "kernel.settings.profile.away.question":
-    "Votre agenda contient un événement {{dates}} qui ressemble à une absence. Le compter comme absence ?",
-  "kernel.settings.profile.away.yes": "Oui",
-  "kernel.settings.profile.away.no": "Non",
-  "kernel.settings.profile.away.fromCalendar": "Depuis votre agenda",
-  "kernel.settings.profile.away.endEarly": "Terminer maintenant",
-  "kernel.settings.profile.away.undo": "Annuler",
-  "kernel.settings.profile.away.range": "Du {{from}} au {{to}}",
-  "kernel.settings.profile.away.weekly": "Chaque {{days}} à partir du {{from}}",
-  "kernel.settings.profile.away.setBy": "Indiqué par {{name}}",
-  "kernel.settings.profile.away.nextInLineIs": "Relais : {{name}}",
-  "kernel.settings.profile.away.awayToo": "{{name}} est aussi absent, jusqu'au {{until}}.",
-  "kernel.settings.profile.away.hasLeft": "{{name}} a quitté l'organisation, choisissez quelqu'un.",
-  "kernel.settings.profile.away.awayUntilOption": "{{name}} (absent jusqu'au {{until}})",
-  "kernel.settings.profile.away.none": "Aucune absence enregistrée.",
-  "kernel.settings.profile.away.failed": "Impossible d'enregistrer votre absence.",
-  "kernel.settings.profile.away.endFailed": "Impossible d'y mettre fin.",
-  "kernel.attentionTitle.awayNamed": "{{name}} vous a indiqué absent {{dates}}",
-  "kernel.attentionTitle.routedReminder":
-    "En attente d'une décision depuis plus de {{hours}} heures : {{title}}",
-  "kernel.attentionTitle.awayCalendar.set": "Votre agenda vous indique absent {{dates}}. {{next}}",
-  "kernel.attentionTitle.awayCalendar.moved": "Votre absence a changé : {{dates}}. {{next}}",
-  "kernel.attentionTitle.awayCalendar.asked":
-    "« {{title}} » est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
-  "kernel.attentionTitle.awayCalendar.askedNoTitle":
-    "Cet événement de l’agenda est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
-  "kernel.attentionTitle.awayCalendar.next": "Suivant : {{name}}.",
-  "kernel.attentionTitle.awayCalendar.nobody":
-    "Personne n’est désigné : vos éléments restent chez les approbateurs habituels.",
-  "kernel.entityDiscussion.empty": "Aucun message pour l'instant.",
-  "kernel.entityDiscussion.placeholder": "Écrivez à ce sujet, ou @ un agent",
-  "kernel.entityDiscussion.send": "Envoyer",
-  "kernel.entityDiscussion.unavailable": "La discussion n'a pas pu être ouverte.",
-  "kernel.entityDiscussion.retry": "Réessayer",
-  "kernel.entityDiscussion.loading": "Ouverture de la discussion…",
-  "kernel.homeRouting.othersGroup": "Pour d'autres, vous pouvez aussi approuver",
-  "kernel.homeRouting.someone": "un collègue",
-  "kernel.homeRouting.standingIn":
-    "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
-  "kernel.homeRouting.othersAsked":
-    "Pour {{name}}, qui l'a demandé et peut l'approuver. Vous aussi : vous avez le droit d'approuver.",
-  "kernel.homeRouting.othersOnItem":
-    "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
-  "kernel.homeRouting.othersManager":
-    "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
-  "kernel.homeRouting.blocked":
-    "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
-  "kernel.homeRouting.mineAsked": "Vous l'avez demandé",
-  "kernel.homeRouting.mineOnItem": "Pour vous : attribué à vous",
-  "kernel.homeRouting.mineManager": "Pour vous : vous gérez ce compte",
-  "kernel.homeRouting.recapApproved": "{{title}} : approuvé par {{name}}",
-  "kernel.homeRouting.recapDenied": "{{title}} : refusé par {{name}}",
-  "kernel.homeRouting.recapMore": "et {{count}} de plus",
-  "kernel.homeRouting.dismissFailed": "Impossible de fermer ceci. Réessayez.",
-  "kernel.homeRouting.awayUntil": "absent jusqu'au {{date}}",
-  "kernel.homeRouting.awayToday": "absent aujourd'hui",
-  "kernel.homeRouting.awayTodayBack": "absent aujourd'hui, de retour {{day}}",
-  "kernel.homeRouting.recapTitle": "Pendant votre absence",
   // Dashboards (P3): the dashboard tab and its blocks.
   "kernel.nav.dashboard": "Tableau de bord",
   "kernel.nav.dashboards": "Tableaux de bord",
@@ -8349,24 +7866,6 @@ export const FR_BY_KEY: Record<string, string> = {
     "La source a plus de lignes : seules les 2 000 premières sont parcourues.",
   "kernel.dashboards.blockNetwork":
     "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
-  "tickets.card.pill": "Ticket",
-  "tickets.card.assignee": "Responsable",
-  "tickets.card.category": "Catégorie",
-  "tickets.card.slaDeadline": "Réponse attendue avant",
-  "tickets.card.lastInbound": "Dernier message du client",
-  "tickets.card.messages": "Messages",
-  "tickets.card.statusOpen": "Ouvert",
-  "tickets.card.statusAwaitingCustomer": "En attente du client",
-  "tickets.card.statusAwaitingFollowup": "Reporté",
-  "tickets.card.statusClosed": "Fermé",
-  "tickets.card.backlogPill": "Tickets ouverts",
-  "tickets.card.backlogHow":
-    "Compté par le serveur sur tous les tickets ouverts que vous pouvez voir, et non sur une page de résultats",
-  "tickets.card.runningGet": "Lecture du ticket",
-  "tickets.card.runningBacklog": "Comptage des tickets ouverts",
-  "projects.card.pill": "Projets",
-  "projects.card.more": "Ouvrir Projets",
-  "projects.card.runningSearch": "Recherche dans les projets et les tâches",
   "kernel.appBuilder.check": "Vérifier",
   "kernel.appBuilder.checking": "Vérification…",
   "kernel.appBuilder.preview": "Aperçu",
@@ -8454,54 +7953,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.appStore.outboundGranted": "Autorisés",
   "kernel.appStore.outboundRevoke": "Retirer",
   "kernel.appStore.outboundChangeFailed": "La modification n'a pas été enregistrée : {{message}}",
-  "kernel.homeStatusNothingUrgent": "RIEN NE VOUS ATTEND",
-  "kernel.approvalsUi.sendGuard.repliedOnTicket":
-    "Non envoyé : une réponse est arrivée sur un ticket.",
-  "kernel.approvalsUi.sendGuard.badgeStopped": "Non envoyé",
-  "kernel.approvalsUi.sendGuard.badgeOptedOut": "Envoi impossible",
-  "kernel.approvalsUi.sendGuard.badgeHeld": "Retenu",
-  "kernel.approvalsUi.sendGuard.redraft": "Rédiger une nouvelle réponse à son message",
-  "kernel.approvalsUi.sendGuard.redraftMessage":
-    "Rédige une nouvelle réponse au message que {{who}} a envoyé après ce brouillon : {{title}}",
-  "kernel.approvalsUi.sendGuard.redraftFailed": "Impossible de joindre votre agent. Réessayez.",
-  "kernel.approvalsUi.sendGuard.keepHolding": "Retenir jusqu'au {{until}}",
-  "kernel.approvalsUi.sendGuard.heldFolded":
-    "Retenu jusqu'au {{until}}. Il revient sur l'accueil ce matin-là.",
-  "kernel.homeDecisions.needsYouTitle": "Vous attend",
-  "kernel.homeDecisions.everythingForNow":
-    "C'est tout pour l'instant. Vos agents apporteront ici la prochaine demande.",
-  "kernel.homeRouting.recapApprovedStandIn":
-    "Approuvé par {{name}}, remplaçant de {{forName}} : {{title}}",
-  "kernel.homeRouting.recapDeniedStandIn":
-    "Refusé par {{name}}, remplaçant de {{forName}} : {{title}}",
-  "kernel.decisionToast.notSent":
-    "Non envoyée : cette décision datait de plus de 15 minutes. Décidez à nouveau.",
-  "kernel.settingsUi.accountsToQuestion":
-    "{{name}} est responsable de compte de {{count}} entreprises. Qui les reprend ?",
-  "kernel.settingsUi.accountsToGiveTo": "Les confier à",
-  "kernel.settingsUi.accountsToChoose": "Choisir une personne",
-  "kernel.settingsUi.accountsToNobody": "Les laisser sans responsable de compte",
-  "contacts.activity.emptyContact": "Rien ne s'est encore passé avec cette personne.",
-  "contacts.activity.onlyThisPerson":
-    "Uniquement ce qui concerne {{name}}. Tout ce qui touche l'entreprise est sur {{company}}.",
-  "contacts.followUps.optedOut": "Désinscrit des messages commerciaux.",
-  "contacts.followUps.since": "Depuis le {{date}}.",
-  "contacts.followUps.sinceBy": "Depuis le {{date}}, par {{by}}.",
-  "contacts.followUps.by.link": "le lien d'un message précédent",
-  "contacts.followUps.by.reply": "une réponse demandant l'arrêt",
-  "contacts.followUps.by.person": "une personne de cette organisation",
-  "contacts.followUps.by.import": "une liste importée",
-  "contacts.followUps.noBasis":
-    "Aucune base enregistrée. Les relances commerciales ignorent cette personne.",
-  "contacts.followUps.unknown":
-    "Le statut de désinscription n'a pas pu être lu. Les relances commerciales l'attendent.",
-  "contacts.followUps.allowed": "Relances commerciales autorisées : {{basis}}.",
-  "contacts.followUps.recorded":
-    "Enregistré le {{date}}. Les factures et messages de compte partent toujours.",
-  "contacts.followUps.basis.consent": "ils y ont consenti",
-  "contacts.followUps.basis.customer": "client existant",
-  "contacts.followUps.basis.professional_interest": "intérêt professionnel",
-  "contacts.followUps.basis.generic_address": "adresse professionnelle générique",
   "kernel.nav.section.sidebar": "Barre latérale",
   "kernel.nav.hideFromSidebar": "Masquer de la barre latérale",
   "kernel.nav.railEntryMenu": "Options de {{app}}",

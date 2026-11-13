@@ -6,6 +6,9 @@
  */
 import type { RoutineFlowCondition, RoutineFlowOutcome, RoutineFlowStep } from "@liaison/shared"
 import { type Component, For, Index, Show } from "solid-js"
+import { ComposerAssist } from "~/modules/assist/ComposerAssist"
+import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
+import { useDictation } from "~/modules/assist/useDictation"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { prettyStatus } from "~/modules/projects/status-label"
 import {
@@ -220,6 +223,7 @@ const TextArea: Component<{
 }> = (props) => {
   const i18n = useI18n()
   let area: HTMLTextAreaElement | undefined
+  const areaDictation = useDictation({ target: () => area })
   const insert = (token: string) => {
     const at = area?.selectionStart ?? props.value.length
     props.onChange(insertPlaceholder(props.value, at, token))
@@ -237,6 +241,12 @@ const TextArea: Component<{
           onInput={(e) => props.onChange(e.currentTarget.value)}
         />
       </label>
+      <div class="flex items-center justify-end gap-0.5">
+        <ComposerAssist target={() => area} />
+        <RecorderRow dictation={areaDictation}>
+          <DictationMic dictation={areaDictation} />
+        </RecorderRow>
+      </div>
       <Show when={(props.placeholders?.length ?? 0) > 0}>
         <select
           data-testid={`${props.testid}-insert`}

@@ -4,6 +4,7 @@ import { routineFlowSchema } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { createSignal } from "solid-js"
 import { afterEach, describe, expect, it } from "vitest"
+import { ApiContext } from "~/modules/shell/ApiContext"
 import FlowList from "./FlowList"
 import type { FlowEventFilter, FlowProject } from "./flow-model"
 
@@ -63,17 +64,19 @@ function renderList(mode: "view" | "edit" | "run", extra: Record<string, unknown
   const [flow, setFlow] = createSignal<RoutineFlow>(structuredClone(FLOW))
   const [filter, setFilter] = createSignal<FlowEventFilter | null>({ ...FILTER })
   render(() => (
-    <FlowList
-      flow={flow()}
-      event="projects:task:status_changed"
-      eventFilter={filter()}
-      project={PROJECT}
-      people={PEOPLE}
-      mode={mode}
-      onChange={setFlow}
-      onFilterChange={setFilter}
-      {...extra}
-    />
+    <ApiContext.Provider value={{} as never}>
+      <FlowList
+        flow={flow()}
+        event="projects:task:status_changed"
+        eventFilter={filter()}
+        project={PROJECT}
+        people={PEOPLE}
+        mode={mode}
+        onChange={setFlow}
+        onFilterChange={setFilter}
+        {...extra}
+      />
+    </ApiContext.Provider>
   ))
   return { flow, filter }
 }
@@ -136,7 +139,9 @@ describe("FlowList", () => {
       ],
     }
     render(() => (
-      <FlowList flow={flow} event={null} eventFilter={null} project={PROJECT} mode="view" />
+      <ApiContext.Provider value={{} as never}>
+        <FlowList flow={flow} event={null} eventFilter={null} project={PROJECT} mode="view" />
+      </ApiContext.Provider>
     ))
     expect(screen.getByTestId("routine-flow-step-tell-text").textContent).toBe(
       "task key task link assignee field: Kind {{task.nope}}",

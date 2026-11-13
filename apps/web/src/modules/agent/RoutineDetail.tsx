@@ -767,7 +767,7 @@ const RoutineDetail: Component<Props> = (props) => {
                             data-testid="routine-flow-save"
                             disabled={flowSaving() || !!flowDraftProblem()}
                             onClick={() => void saveFlow()}
-                            class="rounded-md bg-accent px-3 py-1 text-[12px] text-white disabled:opacity-50"
+                            class="rounded-md bg-accent px-3 py-1 text-[12px] text-accent-foreground disabled:opacity-50"
                           >
                             {i18n.t("kernel.routineFlow.save")}
                           </button>

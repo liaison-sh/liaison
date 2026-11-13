@@ -164,7 +164,13 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
   await grantProjectScopes(env, world.org.id, qa.admin.id)
   await loginAs(page, env, "admin@test.com", "12345678")
   const token = qa.admin.token
-  const { project, tasks } = await seedProject(env.serverUrl, token, ["RMA-7", "RMA-8"])
+  const { project, status, tasks } = await seedProject(env.serverUrl, token, ["RMA-7", "RMA-8"])
+  // One task past its due date (overdue) still in Doing; Todo then holds RMA-7 and RMA-8.
+  const late = await api(env.serverUrl, `/api/projects/${project.id}/tasks`, {
+    token,
+    body: { title: "RMA-9", statusId: status("Doing"), dueDate: "2020-01-01" },
+  })
+  expect(late.status, JSON.stringify(late.body)).toBe(200)
   const aggregate = (params: Record<string, unknown> = {}) => ({
     kind: "tool",
     tool: "projects:tasks_aggregate",
@@ -174,6 +180,12 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
     x: "groupLabel",
     y: "value",
     drillRows: "tasks",
+    drillColumns: [
+      { field: "title", label: "Title" },
+      { field: "status", label: "Status" },
+      { field: "assigneeName", label: "Handler" },
+      { field: "dueDate", label: "Due" },
+    ],
     link: { entity: "task", idField: "id", app: "projects" },
   }
   const dash = await api(env.serverUrl, "/api/dashboards", {
@@ -207,6 +219,38 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
             source: aggregate({ groupBy: "age_in_status" }),
             map: bar,
           },
+          {
+            id: "sla",
+            type: "metric",
+            title: "SLA missed",
+            source: aggregate({
+              groupBy: "sla",
+              sla: { toStatusIds: [status("Done")], withinWorkingDays: 2 },
+            }),
+            map: {
+              value: "value",
+              agg: "sum",
+              where: [{ field: "group", op: "in", value: ["missed", "open_late"] }],
+            },
+          },
+          {
+            id: "overdue",
+            type: "table",
+            title: "Overdue",
+            source: {
+              kind: "tool",
+              tool: "projects:tasks_byProject",
+              params: { projectId: project.id, due: "overdue" },
+            },
+            map: {
+              columns: [
+                { field: "title", label: "Task" },
+                { field: "assigneeName", label: "Handler" },
+                { field: "dueDate", label: "Due" },
+              ],
+              link: { entity: "task", idField: "id", app: "projects" },
+            },
+          },
         ],
       },
     },
@@ -218,7 +262,14 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
   await page.getByTestId(`dashboards-sidebar-row-${dashId}`).click()
   const block = page.getByTestId("dashboard-block-status")
   await expect(block).toHaveAttribute("data-state", "ready", { timeout: 20_000 })
-  await expect(page.getByTestId("dashboard-block-open")).toContainText("2")
+  await expect(page.getByTestId("dashboard-block-open")).toContainText("3")
+  // All six blocks render: the two other bars, the SLA metric and the overdue list.
+  for (const id of ["handler", "aging", "sla", "overdue"]) {
+    await expect(page.getByTestId(`dashboard-block-${id}`)).toHaveAttribute("data-state", "ready", {
+      timeout: 20_000,
+    })
+  }
+  await expect(page.getByTestId("dashboard-block-overdue")).toContainText("RMA-9")
   await shot(page, info, "p3-05-overview")
 
   // The Todo bar opens its two tasks; the first opens in Projects.
@@ -229,6 +280,9 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
   await expect(drill).toBeVisible()
   await expect(drill).toContainText("RMA-7")
   await expect(drill).toContainText("RMA-8")
+  // The recipe's drill columns, in people's words.
+  for (const label of ["Title", "Status", "Handler", "Due"])
+    await expect(drill).toContainText(label)
   await shot(page, info, "p3-06-drill-tasks")
   await page.getByTestId("dashboard-drill-open-0").click()
   await expect(page.getByTestId("task-detail")).toBeVisible({ timeout: 15_000 })

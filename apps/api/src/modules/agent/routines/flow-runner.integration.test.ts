@@ -302,6 +302,69 @@ describe("routine flows: actions", () => {
     expect(row.steps).toBeNull()
   }, 60_000)
 
+  // No model key (or no credits): a flow with no agent step makes no model call, so it runs
+  // and the routine stays active; one that starts with an agent step is still refused.
+  const noModel = async () => ({ reason: "Auto has no model to run", pause: true })
+  it("an action-only flow runs with no model to run, and the routine is not paused", async () => {
+    const routineId = await flowRoutine("intake-no-model", {
+      version: 1,
+      steps: [
+        { id: "assign", type: "action", action: "assign", args: { to: ALICE } },
+        { id: "note", type: "action", action: "comment", args: { text: "No model needed" } },
+      ],
+    })
+    const taskId = await task("No model")
+    const result = await runRoutineTick({
+      orgId: ORG,
+      routineId,
+      scheduledAt: new Date().toISOString(),
+      triggerEvent: {
+        app: "projects",
+        entity: "task",
+        action: "status_changed",
+        entityId: taskId,
+        data: { id: taskId, projectId, fromStatusId: null, toStatusId: openStatus },
+        origin: "internal",
+      },
+      checkCredits: noModel,
+    })
+    expect(result.status).toBe("succeeded")
+    const [r] = await sql<{ status: string }[]>`
+      SELECT status FROM kernel.routines WHERE id = ${routineId}::uuid`
+    expect(r!.status).toBe("active")
+  }, 60_000)
+
+  it("a flow that starts with an agent step is still refused with no model to run", async () => {
+    const routineId = await flowRoutine("intake-no-model-agent", {
+      version: 1,
+      steps: [
+        {
+          id: "think",
+          type: "agent",
+          prompt: "Look at it",
+          outcomes: [{ kind: "field_set", field: "kind" }],
+        },
+      ],
+    })
+    const taskId = await task("No model agent")
+    const result = await runRoutineTick({
+      orgId: ORG,
+      routineId,
+      scheduledAt: new Date().toISOString(),
+      triggerEvent: {
+        app: "projects",
+        entity: "task",
+        action: "status_changed",
+        entityId: taskId,
+        data: { id: taskId, projectId, fromStatusId: null, toStatusId: openStatus },
+        origin: "internal",
+      },
+      checkCredits: noModel,
+      agentInvoker: async () => ({ turnsAdded: 1 }),
+    })
+    expect(result.status).toBe("skipped_no_credits")
+  }, 60_000)
+
   for (const decision of ["approved", "denied"] as const) {
     it(`a gated action parks on its approval and goes on once ${decision}`, async () => {
       const routineId = await flowRoutine(`intake-gated-${decision}`, {

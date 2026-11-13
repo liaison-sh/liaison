@@ -1046,7 +1046,7 @@ async function endParked(
  * fresh tick would run: the flow is the one it started with (an edited flow ends it
  * `skipped_condition`, "flow changed"), and the tick's pre-run checks pass again
  * (`routineResumeGate`: switched on and active, owner active and holding its scopes, the owner
- * agent's ceiling, and the credit gate when a step left is an agent step). A refused check ends
+ * agent's ceiling, and the credit gate when an agent step comes before the next wait). A refused check ends
  * the run with its skipped status. `fromIndex`: the first step the resume may run.
  */
 async function resumeChecks(
@@ -1062,10 +1062,9 @@ async function resumeChecks(
     )
     return { refused }
   }
-  const { routineResumeGate, routineRunScopes, ensureOutputThread } = await import(
-    "./routine-worker"
-  )
-  const needsCredits = routine.flow.steps.slice(fromIndex).some((s) => s.type === "agent")
+  const { routineResumeGate, routineRunScopes, ensureOutputThread, flowLegNeedsCredits } =
+    await import("./routine-worker")
+  const needsCredits = flowLegNeedsCredits(routine.flow.steps, fromIndex)
   const gate = await routineResumeGate(orgId, routine, bare.deps, needsCredits)
   if (!gate.ok) {
     const refused = await endParked(bare, gate.status, gate.reason)

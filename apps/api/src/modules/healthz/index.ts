@@ -199,6 +199,18 @@ export async function probeStorage(): Promise<DepStatus> {
   return "ok"
 }
 
+/** Active app versions with no Worker module, or "none" when no remote executor runs apps. */
+async function workerModuleCensus(): Promise<number | "none"> {
+  const { quickjsForced, readSandboxConfig, readWorkersConfig } = await import(
+    "~/modules/apps/workers/config"
+  )
+  if (quickjsForced() || !(readWorkersConfig() ?? readSandboxConfig(null))) return "none"
+  const { countInstallsWithoutWorkerModule } = await import(
+    "~/modules/apps/workers/worker-module-backfill"
+  )
+  return countInstallsWithoutWorkerModule()
+}
+
 export interface HealthzDetail {
   status: "ok"
   version: string
@@ -216,6 +228,13 @@ export interface HealthzDetail {
      */
     sandbox?: SandboxProbe
   }
+  /**
+   * On an instance whose apps run on Workers or the sandbox service: active
+   * app versions with no Worker module, whose runs are refused
+   * (app_worker_module_missing) until they are reinstalled. Not a dependency:
+   * the process itself is healthy. Absent when no remote executor is configured.
+   */
+  appsWithoutWorkerModule?: number
 }
 
 // The detailed payload costs four dependency probes plus a ledger count, so it is
@@ -245,6 +264,10 @@ async function computeDetail(): Promise<HealthzDetail> {
     ]),
     probeSandbox({ timeoutMs: TIMEOUT_MS }),
   ])
+  const withoutModule = await Promise.race([
+    workerModuleCensus().catch(() => undefined),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), TIMEOUT_MS)),
+  ])
   return {
     status: "ok",
     version: env.LIAISON_VERSION,
@@ -257,6 +280,7 @@ async function computeDetail(): Promise<HealthzDetail> {
       objectStorage: storageR,
       ...(sandboxR ? { sandbox: sandboxR.status } : {}),
     },
+    ...(typeof withoutModule === "number" ? { appsWithoutWorkerModule: withoutModule } : {}),
   }
 }
 

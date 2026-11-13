@@ -421,13 +421,26 @@ describe("resolveWorkersTarget: every sandboxed app once a loader is configured"
     expect(target?.config.cellId).toBe("cell-sel")
   })
 
-  it("keeps a version installed without a Worker module on QuickJS", async () => {
+  it("refuses a version installed without a Worker module (never QuickJS behind the operator's back)", async () => {
     loaderOn()
-    expect(
-      await resolveWorkersTarget(
-        at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: null }),
-      ),
-    ).toBeNull()
+    await expect(
+      resolveWorkersTarget(at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: null })),
+    ).rejects.toMatchObject({ status: 409, code: "app_worker_module_missing" })
+  })
+
+  it("runs it on QuickJS only when the instance says so (LIAISON_APP_RUNTIME=quickjs)", async () => {
+    loaderOn()
+    const before = (env as unknown as Mutable).LIAISON_APP_RUNTIME
+    ;(env as unknown as Mutable).LIAISON_APP_RUNTIME = "quickjs"
+    try {
+      expect(
+        await resolveWorkersTarget(
+          at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: null }),
+        ),
+      ).toBeNull()
+    } finally {
+      ;(env as unknown as Mutable).LIAISON_APP_RUNTIME = before
+    }
   })
 })
 

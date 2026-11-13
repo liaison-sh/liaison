@@ -91,6 +91,7 @@ import {
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
 import { appSandboxRelease } from "~/modules/apps/workers/sandbox-release"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
+import { AppWorkerModuleMissingError } from "~/modules/apps/workers/worker-module-missing"
 // The run timing records subscribe to the run-settled event (timings.ts).
 import "~/modules/apps/workers/timings"
 
@@ -225,8 +226,12 @@ export interface WorkersTarget {
  * The remote target of a run, or null (QuickJS): the loader when it is
  * configured, else the instance's sandbox service, on the Worker module the
  * run's installed version recorded (the package's worker.js, recorded at
- * install). A version whose package had none warns (every run) and runs on
- * QuickJS. Code with no installed version (`installed: null`: a draft
+ * install). A version recorded without one is refused
+ * (`AppWorkerModuleMissingError`, app_worker_module_missing): never QuickJS
+ * behind the operator's back; the boot and every upkeep give such a version
+ * the worker.js of its own package when it has one
+ * (workers/worker-module-backfill.ts), and LIAISON_APP_RUNTIME=quickjs runs
+ * every app on QuickJS (this release only). Code with no installed version (`installed: null`: a draft
  * preview, an import transform, a PDF template) runs on the module its site
  * builds (`workerModule`, workers/adhoc-module.ts); without one it stays on
  * QuickJS.
@@ -257,10 +262,19 @@ export async function resolveWorkersTarget(
     // A caller-supplied identity carries no module: the row of that version does.
     identity = await readIdentity(opts.appName, opts.orgId, identity.version)
   }
+  if (identity && !identity.workerSha256) {
+    log.error(
+      { app: opts.appName, orgId: opts.orgId, version: identity.version },
+      "App has no Worker module for its installed version; run refused",
+    )
+    throw new AppWorkerModuleMissingError(opts.appName, identity.version)
+  }
   if (!identity?.workerSha256) {
+    // No installed version at all (an app registered from source, in
+    // development): nothing to run remotely.
     log.warn(
-      { app: opts.appName, orgId: opts.orgId, version: identity?.version ?? null },
-      "App has no Worker module for its installed version; running on QuickJS",
+      { app: opts.appName, orgId: opts.orgId },
+      "App has no installed version; running on QuickJS",
     )
     return null
   }

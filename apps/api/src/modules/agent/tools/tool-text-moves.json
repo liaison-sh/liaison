@@ -3654,7 +3654,7 @@
     {
       "tool": "projects:tasks_byProject",
       "field": "description",
-      "sentence": "This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions).",
+      "sentence": "This single call answers a 'sprint board / burndown' proxy (done-vs-remaining task counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions).",
       "to": "guide:projects"
     },
     {

@@ -1,0 +1,1211 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+/**
+ * Routine flows (0303): a routine's ordered steps after its trigger.
+ *
+ * `runRoutineTick` (routine-worker.ts) hands a routine whose `flow` is set to `runFlow`, after the
+ * same owner, scope, ceiling and credit checks a legacy tick gets. A legacy routine (`flow` null)
+ * never reaches this file.
+ *
+ * - ACTION steps run without an agent, as the routine's OWNER: each is a tool call through
+ *   `executeTool` (projects update / comment, kernel threads_create for a direct message) with the
+ *   run's scopes (the routine's scopes bounded by the owner's, and by the owner agent's ceiling on
+ *   the routine thread, exactly as a tick's tool calls), inside the routine's run frame, so a
+ *   write is attributed to the routine ("Routine <name>") and never to the person, and a gated
+ *   tool parks as an approval (the step `awaiting_approval`, never auto-approved). `notify` queues
+ *   the attention pipeline's `kernel:agent_notification:create`.
+ * - CONDITIONS (`if`, a wait's `until`) read the trigger task fresh, under the owner's RLS: a task
+ *   the owner cannot read makes every condition false.
+ * - WAIT steps compute a deadline in working time (lib/working-time.ts), park the run (`waiting`)
+ *   and enqueue `kernel:routine-flow-resume` with that delay. A newer run for the same record
+ *   supersedes a waiting one (it ends `skipped_condition`, "superseded").
+ * - AGENT steps run the routine's agent invoker with the step's prompt; required outcomes are
+ *   checked after the turn, a missing one bumps the agent (at most `maxBumps`), and one still
+ *   missing flags the run and tells the owner.
+ *
+ * Each step's state is written to `routine_runs.steps` after the step (one UPDATE per step).
+ */
+import crypto from "node:crypto"
+import type {
+  RoutineFlow,
+  RoutineFlowCondition,
+  RoutineFlowOutcome,
+  RoutineFlowStep,
+} from "@liaison/shared"
+import { and, eq, inArray } from "drizzle-orm"
+import { extractRows } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { routineRuns, routines } from "~/db/schema/kernel"
+import type { RoutineRunStepState } from "~/db/schema/kernel/routine-runs"
+import { taskCellMatches } from "~/infra/jobs/event-routine-gate"
+import { rootLogger } from "~/lib/logger"
+import { addWorkingTime, resolveWorkingCalendar, type WorkingCalendar } from "~/lib/working-time"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
+import type {
+  RoutineRunStatus,
+  RoutineTickOpts,
+  RoutineTickResult,
+  RoutineTriggerEvent,
+} from "./routine-worker"
+
+const log = rootLogger.child({ module: "routine-flow" })
+
+type RoutineRow = typeof routines.$inferSelect
+
+export const FLOW_RESUME_JOB = "routine-flow-resume"
+const DEFAULT_MAX_BUMPS = 2
+
+/** What `runFlow` needs from the tick that started it. */
+export interface FlowRunInput {
+  orgId: string
+  routine: RoutineRow
+  ownerScopes: string[]
+  /** The routine's scopes bounded by the owner's (routine-worker.ts `routineRunScopes`). */
+  runScopes: string[]
+  outputThreadId: string
+  tick: Pick<RoutineTickOpts, "triggerEvent" | "requestUuid" | "requestedByUserId">
+  deps?: FlowDeps
+}
+
+/** Seams tests replace. */
+export interface FlowDeps {
+  agentInvoker?: RoutineTickOpts["agentInvoker"]
+  /** Arms the wait's resume job (default: the kernel job, delayed, jobId per routine+record+step). */
+  enqueueResume?: (
+    payload: FlowResumePayload,
+    opts: { delayMs: number; jobId: string },
+  ) => Promise<void>
+  /** Runs one tool call as the owner (default: `executeTool`). */
+  callTool?: (call: FlowToolCall) => Promise<FlowToolResult>
+  now?: () => Date
+}
+
+export interface FlowResumePayload {
+  orgId: string
+  routineId: string
+  runId: string
+  stepId: string
+}
+
+export interface FlowToolCall {
+  toolName: string
+  orgId: string
+  actor: UserContext
+  params: Record<string, unknown>
+  threadId: string
+}
+export type FlowToolResult =
+  | { ok: true; data: unknown }
+  | { blocked: { approvalRequestId: string | null } }
+  | { error: string }
+
+/** The trigger task as a condition, an action or a message reads it. */
+interface FlowTask {
+  id: string
+  projectId: string
+  statusId: string
+  assigneeId: string | null
+  assigneeName: string | null
+  title: string
+  key: string | null
+  fields: Record<string, unknown>
+  statusEnteredAt: string | null
+}
+
+/** One run's working state. */
+interface FlowRun {
+  orgId: string
+  routine: RoutineRow
+  flow: RoutineFlow
+  runId: string
+  steps: RoutineRunStepState[]
+  startedAt: number
+  /** When the trigger fired (the run's start): `status_unchanged_since_trigger` compares to it. */
+  triggerAt: Date
+  /** The trigger record (a task id for projects task events), or null. */
+  entityId: string | null
+  isTaskTrigger: boolean
+  outputThreadId: string
+  actor: UserContext
+  agentId: string | null
+  agentCeiling: string[] | null
+  hop: number
+  triggerEvent?: RoutineTriggerEvent
+  deps: FlowDeps
+}
+
+// ── Entry ────────────────────────────────────────────────────────────────────
+
+/** Runs a flow routine's tick: a new run row, then its steps from the first. */
+export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
+  const { orgId, routine } = input
+  const flow = routine.flow
+  if (!flow) throw new Error("runFlow: the routine has no flow")
+  const ev = input.tick.triggerEvent
+  const deps = input.deps ?? {}
+  const now = deps.now?.() ?? new Date()
+  const entityId = ev?.entityId ?? null
+  if (entityId) await supersedeWaitingRuns(orgId, routine.id, entityId)
+
+  const steps: RoutineRunStepState[] = flow.steps.map((s) => ({
+    id: s.id,
+    type: s.type,
+    state: "pending",
+    startedAt: null,
+    endedAt: null,
+    note: null,
+  }))
+  const { writeRunRow } = await import("./routine-worker")
+  const runId = await writeRunRow(orgId, routine.id, "running", {
+    tick: input.tick,
+    startedAt: now,
+    steps,
+  })
+  const run = await buildRun({
+    orgId,
+    routine,
+    flow,
+    runId,
+    steps,
+    startedAt: now.getTime(),
+    triggerAt: now,
+    entityId,
+    isTaskTrigger: ev?.app === "projects" && ev.entity === "task",
+    outputThreadId: input.outputThreadId,
+    runScopes: input.runScopes,
+    hop: ev?.hop ?? 0,
+    triggerEvent: ev,
+    deps,
+  })
+  // A task event whose task the owner cannot read (now): nothing runs, and nothing it holds leaks
+  // into a step's note. The run ends `skipped_condition`.
+  if (run.isTaskTrigger && run.entityId && !(await readTriggerTask(run))) {
+    for (const s of run.steps) {
+      setState(s, "skipped", "The routine's owner cannot read the task that triggered it.")
+    }
+    return endFlowRun(run, "skipped_condition", null)
+  }
+  return continueFlow(run, 0)
+}
+
+async function buildRun(a: {
+  orgId: string
+  routine: RoutineRow
+  flow: RoutineFlow
+  runId: string
+  steps: RoutineRunStepState[]
+  startedAt: number
+  triggerAt: Date
+  entityId: string | null
+  isTaskTrigger: boolean
+  outputThreadId: string
+  runScopes: string[]
+  hop: number
+  triggerEvent?: RoutineTriggerEvent
+  deps: FlowDeps
+}): Promise<FlowRun> {
+  // The scope the run's tool calls hold: resolved as a tick's turn resolves it (the routine's
+  // owner agent, its ceiling on the routine thread, bounded by the routine's scopes).
+  const { resolveTurnScope } = await import("~/modules/agent/runtime/agent-service")
+  const turn = await withPrivilegedDb(a.orgId, "routine-flow-scope", (tx) =>
+    resolveTurnScope(
+      tx,
+      a.orgId,
+      a.outputThreadId,
+      { userId: a.routine.ownerUserId, scopes: a.runScopes },
+      a.routine.id,
+    ),
+  )
+  const { resolveRoutineOwnerDimensionGrants } = await import("~/infra/jobs/kernel-jobs")
+  const dimensionGrants = await resolveRoutineOwnerDimensionGrants(a.orgId, a.routine.ownerUserId)
+  return {
+    ...a,
+    actor: {
+      actorType: "user",
+      userId: a.routine.ownerUserId,
+      orgId: a.orgId,
+      scopes: turn ? turn.effectiveScope : a.runScopes,
+      dimensionGrants,
+    },
+    agentId: turn?.agentId ?? null,
+    agentCeiling: turn?.agentCeiling ?? null,
+  }
+}
+
+/** The run frame every step's work happens in: the routine's, so writes are attributed to it. */
+function inRunFrame<T>(run: FlowRun, fn: () => Promise<T>): Promise<T> {
+  return runContextStore.run(
+    {
+      runId: run.runId,
+      parentRunId: null,
+      rootRunId: run.runId,
+      nestingDepth: 0,
+      background: true,
+      routineId: run.routine.id,
+      routineRunId: run.runId,
+      ...(run.hop > 0 ? { eventHop: run.hop } : {}),
+      ...(run.agentId && run.agentCeiling
+        ? { agentId: run.agentId, agentCeiling: run.agentCeiling }
+        : {}),
+    },
+    fn,
+  )
+}
+
+// ── The step loop ───────────────────────────────────────────────────────────
+
+type StepOutcome =
+  | { kind: "next" }
+  | { kind: "end"; status: RoutineRunStatus; error: string | null }
+  | { kind: "park"; status: "waiting" | "waiting_approval" }
+
+/** Runs the flow's steps from `from` until it ends or parks. */
+async function continueFlow(run: FlowRun, from: number): Promise<RoutineTickResult> {
+  let flagged: string | null = null
+  for (let i = from; i < run.flow.steps.length; i++) {
+    const step = run.flow.steps[i]!
+    const state = run.steps[i]!
+    let outcome: StepOutcome
+    try {
+      outcome = await runStep(run, step, state)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.error(
+        { err, routineId: run.routine.id, runId: run.runId, stepId: step.id },
+        "flow step failed",
+      )
+      setState(state, "failed", `Failed: ${message}`)
+      outcome = { kind: "end", status: "failed", error: `Step ${step.id} failed: ${message}` }
+    }
+    if (state.state === "flagged") flagged = state.note
+    await saveSteps(run)
+    if (outcome.kind === "park") {
+      await setRunStatus(run, outcome.status)
+      await clearInFlight(run)
+      return { status: outcome.status, runId: run.runId }
+    }
+    if (outcome.kind === "end") return endFlowRun(run, outcome.status, outcome.error)
+  }
+  return endFlowRun(run, flagged ? "flagged" : "succeeded", flagged)
+}
+
+function setState(
+  s: RoutineRunStepState,
+  state: RoutineRunStepState["state"],
+  note: string | null,
+  output?: Record<string, unknown>,
+): void {
+  const at = new Date().toISOString()
+  if (!s.startedAt) s.startedAt = at
+  s.state = state
+  s.note = note
+  if (output) s.output = { ...(s.output ?? {}), ...output }
+  if (state !== "running" && state !== "waiting" && state !== "awaiting_approval") s.endedAt = at
+}
+
+async function runStep(
+  run: FlowRun,
+  step: RoutineFlowStep,
+  state: RoutineRunStepState,
+): Promise<StepOutcome> {
+  setState(state, "running", null)
+  if ("if" in step && step.if) {
+    const task = await readTriggerTask(run)
+    if (!evaluateCondition(step.if, task, run.triggerAt)) {
+      setState(state, "skipped", "Its condition did not hold.")
+      return { kind: "next" }
+    }
+  }
+  if (step.type === "action") return runAction(run, step, state)
+  if (step.type === "wait") return armWait(run, step, state)
+  return runAgentStep(run, step, state)
+}
+
+// ── Conditions ──────────────────────────────────────────────────────────────
+
+const isEmptyCell = (cell: unknown) =>
+  cell === undefined || cell === null || cell === "" || (Array.isArray(cell) && cell.length === 0)
+
+function conditionField(task: FlowTask, field: string): unknown {
+  if (field === "status") return task.statusId
+  if (field === "assignee") return task.assigneeId
+  return task.fields[field.slice("fields.".length)]
+}
+
+/** Pure: does the condition hold for the task (null: the owner cannot read it, so nothing holds)? */
+export function evaluateCondition(
+  c: RoutineFlowCondition,
+  task: FlowTask | null,
+  triggerAt: Date,
+): boolean {
+  if ("all" in c) return c.all.every((x) => evaluateCondition(x, task, triggerAt))
+  if ("any" in c) return c.any.some((x) => evaluateCondition(x, task, triggerAt))
+  if (!task) return false
+  if (c.op === "status_unchanged_since_trigger") {
+    if (!task.statusEnteredAt) return false
+    return new Date(task.statusEnteredAt).getTime() <= triggerAt.getTime()
+  }
+  const cell = conditionField(task, c.field)
+  if (c.op === "empty") return isEmptyCell(cell)
+  if (c.op === "not_empty") return !isEmptyCell(cell)
+  const values = Array.isArray(c.value) ? c.value : [c.value]
+  return values.some((v) => taskCellMatches(cell, v ?? null))
+}
+
+/** The trigger task, read now under the owner's RLS; null when there is none or it is hidden. */
+async function readTriggerTask(run: FlowRun): Promise<FlowTask | null> {
+  if (!run.isTaskTrigger || !run.entityId) return null
+  const { loadTaskDetails } = await import("~/apps/projects/service/task-detail")
+  const entityId = run.entityId
+  try {
+    const [t] = await withRlsContext(
+      run.actor,
+      (tx) => loadTaskDetails(tx, run.orgId, [entityId]),
+      {
+        pool: "jobs",
+      },
+    )
+    if (!t) return null
+    return {
+      id: t.id,
+      projectId: t.projectId,
+      statusId: t.statusId,
+      assigneeId: t.assigneeId,
+      assigneeName: t.assignee?.name ?? null,
+      title: t.title,
+      key: t.key ?? null,
+      fields: t.fields ?? {},
+      statusEnteredAt: t.statusEnteredAt,
+    }
+  } catch (err) {
+    // A read the owner may not make (no projects scope) is the same as a hidden task.
+    log.warn(
+      { err, routineId: run.routine.id, taskId: entityId },
+      "flow: trigger task not readable",
+    )
+    return null
+  }
+}
+
+// ── Text ────────────────────────────────────────────────────────────────────
+
+function cellText(cell: unknown): string {
+  if (cell === undefined || cell === null) return ""
+  if (Array.isArray(cell)) return cell.map(cellText).join(", ")
+  if (typeof cell === "object") {
+    const o = cell as { label?: unknown; name?: unknown; id?: unknown }
+    return String(o.label ?? o.name ?? o.id ?? "")
+  }
+  return String(cell)
+}
+
+/** Pure: fills {{task.title}}, {{task.key}}, {{task.url}}, {{task.assigneeName}}, {{task.fields.<key>}}. */
+export function interpolateFlowText(text: string, task: FlowTask | null, baseUrl = ""): string {
+  return text.replace(
+    /\{\{\s*task\.([a-zA-Z]+)(?:\.([a-z][a-z0-9_]*))?\s*\}\}/g,
+    (_, prop, key) => {
+      if (!task) return ""
+      if (prop === "title") return task.title
+      if (prop === "key") return task.key ?? ""
+      if (prop === "url") return `${baseUrl.replace(/\/$/, "")}/projects/tasks/${task.id}`
+      if (prop === "assigneeName") return task.assigneeName ?? ""
+      if (prop === "fields" && key) return cellText(task.fields[key])
+      return ""
+    },
+  )
+}
+
+function resolvePerson(ref: string, run: FlowRun, task: FlowTask | null): string | null {
+  if (ref === "{{owner}}") return run.routine.ownerUserId
+  if (ref === "{{task.assigneeId}}") return task?.assigneeId ?? null
+  return ref
+}
+
+/** The org's link base, read only when the text asks for {{task.url}}. */
+async function taskBaseUrl(run: FlowRun, text: string): Promise<string> {
+  if (!/\{\{\s*task\.url\s*\}\}/.test(text)) return ""
+  const { orgPublicBaseUrl } = await import("~/lib/org-public-url")
+  return orgPublicBaseUrl(run.orgId)
+}
+
+/** The org's working calendar (its time zone and business hours), the flow's override on top. */
+async function loadOrgWorkingCalendar(
+  orgId: string,
+  override: Partial<WorkingCalendar> | null,
+): Promise<WorkingCalendar> {
+  const { organizations } = await import("~/db/schema/kernel")
+  const [org] = await withPrivilegedDb(orgId, "routine-flow-calendar", (tx) =>
+    tx
+      .select({ timezone: organizations.timezone, businessHours: organizations.businessHours })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1),
+  )
+  return resolveWorkingCalendar(org ?? null, override)
+}
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+
+type ActionStep = Extract<RoutineFlowStep, { type: "action" }>
+
+async function defaultCallTool(call: FlowToolCall): Promise<FlowToolResult> {
+  const { executeTool } = await import("~/modules/apps/execute-tool")
+  try {
+    const res = await executeTool({
+      toolName: call.toolName,
+      orgId: call.orgId,
+      actor: call.actor,
+      params: call.params,
+      threadId: call.threadId,
+      // A routine's action is the routine's agent acting, never the human UI: it gates like any
+      // agent call (an approval, never auto-approved).
+      origin: "in-app-agent",
+      priority: "background",
+    })
+    if (res.blocked) {
+      const blocked = res.blocked as { approvalRequestId?: string | null }
+      return { blocked: { approvalRequestId: blocked.approvalRequestId ?? null } }
+    }
+    const data = res.data as { error?: { message?: string } | string } | null
+    if (data && typeof data === "object" && "error" in data && data.error) {
+      const e = data.error
+      return { error: typeof e === "string" ? e : (e.message ?? "the tool returned an error") }
+    }
+    return { ok: true, data: res.data }
+  } catch (err) {
+    const e = err as { message?: string; code?: string }
+    return { error: `${call.toolName}: ${e.code ? `${e.code}: ` : ""}${e.message ?? String(err)}` }
+  }
+}
+
+async function callTool(
+  run: FlowRun,
+  toolName: string,
+  params: Record<string, unknown>,
+): Promise<FlowToolResult> {
+  const call = run.deps.callTool ?? defaultCallTool
+  return inRunFrame(run, () =>
+    call({ toolName, orgId: run.orgId, actor: run.actor, params, threadId: run.outputThreadId }),
+  )
+}
+
+/** The candidate holding the fewest open tasks of the project (ties: list order). */
+async function leastLoaded(run: FlowRun, projectId: string, candidates: string[]): Promise<string> {
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const { projectsRel } = await import("~/apps/projects/schema-refs")
+  const rows = await withRlsContext(
+    run.actor,
+    async (tx) =>
+      extractRows<{ assignee_id: string; n: number }>(
+        await tx.execute(drizzleSql`
+          SELECT t.assignee_id::text AS assignee_id, count(*)::int AS n
+            FROM ${projectsRel("tasks")} t
+            JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
+           WHERE t.org_id = ${run.orgId}::uuid AND t.project_id = ${projectId}::uuid
+             AND NOT s.terminal AND t.archived_at IS NULL
+             AND t.assignee_id IN (${drizzleSql.join(
+               candidates.map((c) => drizzleSql`${c}::uuid`),
+               drizzleSql`, `,
+             )})
+           GROUP BY t.assignee_id`),
+      ),
+    { pool: "jobs" },
+  )
+  const load = new Map(rows.map((r) => [r.assignee_id, r.n]))
+  let best = candidates[0]!
+  for (const c of candidates) if ((load.get(c) ?? 0) < (load.get(best) ?? 0)) best = c
+  return best
+}
+
+async function runAction(
+  run: FlowRun,
+  step: ActionStep,
+  state: RoutineRunStepState,
+): Promise<StepOutcome> {
+  const task = await readTriggerTask(run)
+  const fail = (note: string): StepOutcome => {
+    setState(state, "failed", note)
+    return { kind: "end", status: "failed", error: `Step ${step.id}: ${note}` }
+  }
+  const needsTask = step.action !== "message" && step.action !== "notify"
+  if (needsTask && !task) {
+    return fail("The trigger task is not there, or the routine's owner cannot read it.")
+  }
+
+  if (step.action === "notify") {
+    const targets = [
+      ...new Set(
+        step.args.to.map((ref) => resolvePerson(ref, run, task)).filter((id): id is string => !!id),
+      ),
+    ]
+    if (targets.length === 0) return fail("Nobody to notify: the task has no assignee.")
+    const summary = interpolateFlowText(
+      step.args.text,
+      task,
+      await taskBaseUrl(run, step.args.text),
+    )
+    await withPrivilegedDb(run.orgId, "routine-flow-notify", (tx) =>
+      tx.queueEvent({
+        app: "kernel",
+        entity: "agent_notification",
+        action: "create",
+        entityId: crypto.randomUUID(),
+        data: {
+          summary,
+          urgency: step.args.urgency ?? 50,
+          targetUserIds: targets,
+          ...(task ? { link: { tabType: "projects:task", entityId: task.id } } : {}),
+        },
+        actorId: run.routine.ownerUserId,
+        actorType: "system",
+        agentId: run.routine.ownerAgentId ?? null,
+        orgId: run.orgId,
+        timestamp: new Date().toISOString(),
+      }),
+    )
+    setState(
+      state,
+      "done",
+      `Notified ${targets.length} ${targets.length === 1 ? "person" : "people"}.`,
+      {
+        targetUserIds: targets,
+      },
+    )
+    return { kind: "next" }
+  }
+
+  let toolName: string
+  let params: Record<string, unknown>
+  let done: string
+  let output: Record<string, unknown> = {}
+  if (step.action === "message") {
+    const to = resolvePerson(step.args.to, run, task)
+    if (!to) return fail("Nobody to message: the task has no assignee.")
+    toolName = "kernel:threads_create"
+    params = {
+      participantIds: [to],
+      initialMessage: interpolateFlowText(
+        step.args.text,
+        task,
+        await taskBaseUrl(run, step.args.text),
+      ),
+    }
+    done = "Message sent."
+    output = { to }
+  } else if (step.action === "assign") {
+    const to =
+      typeof step.args.to === "object"
+        ? await leastLoaded(run, task!.projectId, step.args.to.leastLoaded)
+        : resolvePerson(step.args.to, run, task)
+    if (!to) return fail("Nobody to assign: the task has no assignee.")
+    toolName = "projects:update"
+    params = { taskId: task!.id, assigneeId: to }
+    done = "Assigned."
+    output = { assigneeId: to }
+  } else if (step.action === "set_field") {
+    toolName = "projects:update"
+    params = { taskId: task!.id, fields: { [step.args.key]: step.args.value } }
+    done = `Set ${step.args.key}.`
+  } else if (step.action === "set_status") {
+    toolName = "projects:update"
+    params = { taskId: task!.id, statusId: step.args.statusId }
+    done = "Status set."
+    output = { statusId: step.args.statusId }
+  } else {
+    toolName = "projects:comment"
+    params = {
+      taskId: task!.id,
+      body: interpolateFlowText(step.args.text, task, await taskBaseUrl(run, step.args.text)),
+    }
+    done = "Comment posted."
+  }
+  const res = await callTool(run, toolName, params)
+  if ("error" in res) return fail(res.error)
+  if ("blocked" in res) {
+    setState(state, "awaiting_approval", "Waiting for an approval.", {
+      ...output,
+      approvalId: res.blocked.approvalRequestId,
+      tool: toolName,
+    })
+    return { kind: "park", status: "waiting_approval" }
+  }
+  setState(state, "done", done, output)
+  return { kind: "next" }
+}
+
+// ── Waits ───────────────────────────────────────────────────────────────────
+
+type WaitStep = Extract<RoutineFlowStep, { type: "wait" }>
+
+/** The resume job's id: one wait per routine, record and step, so a newer run replaces it. */
+export function flowWaitJobId(routineId: string, entityId: string | null, stepId: string): string {
+  return `flowwait:${routineId}:${entityId ?? "none"}:${stepId}`
+}
+
+async function armWait(
+  run: FlowRun,
+  step: WaitStep,
+  state: RoutineRunStepState,
+): Promise<StepOutcome> {
+  const cal = await loadOrgWorkingCalendar(run.orgId, run.flow.calendar ?? null)
+  const now = run.deps.now?.() ?? new Date()
+  const deadline = addWorkingTime(now, step.for.amount, step.for.unit, cal)
+  setState(state, "waiting", `Waits until ${deadline.toISOString()}.`, {
+    deadline: deadline.toISOString(),
+    hop: run.hop,
+  })
+  const payload: FlowResumePayload = {
+    orgId: run.orgId,
+    routineId: run.routine.id,
+    runId: run.runId,
+    stepId: step.id,
+  }
+  const delayMs = Math.max(0, deadline.getTime() - now.getTime())
+  const jobId = flowWaitJobId(run.routine.id, run.entityId, step.id)
+  const enqueue = run.deps.enqueueResume ?? defaultEnqueueResume
+  await enqueue(payload, { delayMs, jobId })
+  return { kind: "park", status: "waiting" }
+}
+
+async function defaultEnqueueResume(
+  payload: FlowResumePayload,
+  opts: { delayMs: number; jobId: string },
+): Promise<void> {
+  const { enqueueAppJob } = await import("~/infra/jobs/jobs")
+  await enqueueAppJob("kernel", FLOW_RESUME_JOB, payload, {
+    delay: opts.delayMs,
+    jobId: opts.jobId,
+    replaceDelayed: true,
+  })
+}
+
+/** A newer run for the same record takes over: older waiting runs end, "superseded". */
+async function supersedeWaitingRuns(
+  orgId: string,
+  routineId: string,
+  entityId: string,
+): Promise<void> {
+  const waiting = await withPrivilegedDb(orgId, "routine-flow-supersede", (tx) =>
+    tx
+      .select({ id: routineRuns.id, steps: routineRuns.steps, startedAt: routineRuns.startedAt })
+      .from(routineRuns)
+      .where(
+        and(
+          eq(routineRuns.orgId, orgId),
+          eq(routineRuns.routineId, routineId),
+          eq(routineRuns.eventEntityId, entityId),
+          eq(routineRuns.status, "waiting"),
+        ),
+      ),
+  )
+  for (const w of waiting) {
+    const steps = (w.steps ?? []).map((s) =>
+      s.state === "waiting"
+        ? {
+            ...s,
+            state: "skipped" as const,
+            endedAt: new Date().toISOString(),
+            note: "Superseded by a newer run for the same record.",
+          }
+        : s,
+    )
+    await withPrivilegedDb(orgId, "routine-flow-superseded", (tx) =>
+      tx
+        .update(routineRuns)
+        .set({
+          status: "skipped_condition",
+          steps,
+          ranAt: new Date(),
+          error: "Superseded by a newer run for the same record.",
+          durationMs: w.startedAt ? Date.now() - w.startedAt.getTime() : null,
+        })
+        .where(and(eq(routineRuns.id, w.id), eq(routineRuns.status, "waiting"))),
+    )
+  }
+}
+
+/**
+ * A wait's deadline came (the `routine-flow-resume` job): when the run still waits on that step,
+ * its `until` is checked on the task as it is now; holding, the run goes on with the next step,
+ * else it ends `skipped_condition`. A job that fires early (clock drift) re-arms for the rest.
+ */
+export async function resumeFlowWait(
+  payload: FlowResumePayload,
+  deps: FlowDeps & {
+    loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]>
+  } = {},
+): Promise<RoutineTickResult> {
+  const { orgId, routineId, runId, stepId } = payload
+  const loaded = await loadWaitingRun(orgId, routineId, runId)
+  if (!loaded) return { status: "no_run" }
+  const { routine, runRow } = loaded
+  const flow = routine.flow
+  const steps = runRow.steps ?? []
+  const index = flow?.steps.findIndex((s) => s.id === stepId) ?? -1
+  const step = flow?.steps[index]
+  const state = steps[index]
+  if (!flow || !step || step.type !== "wait" || !state || state.state !== "waiting") {
+    return { status: "no_run", runId }
+  }
+  const deadline = new Date(String(state.output?.deadline ?? ""))
+  const now = deps.now?.() ?? new Date()
+  if (Number.isFinite(deadline.getTime()) && deadline.getTime() > now.getTime() + 1000) {
+    const enqueue = deps.enqueueResume ?? defaultEnqueueResume
+    await enqueue(payload, {
+      delayMs: deadline.getTime() - now.getTime(),
+      jobId: flowWaitJobId(routineId, runRow.eventEntityId, stepId),
+    })
+    return { status: "waiting", runId }
+  }
+  // Claim the run: only one resume goes on with it.
+  const claimed = await withPrivilegedDb(orgId, "routine-flow-claim", (tx) =>
+    tx
+      .update(routineRuns)
+      .set({ status: "running" })
+      .where(and(eq(routineRuns.id, runId), eq(routineRuns.status, "waiting")))
+      .returning({ id: routineRuns.id }),
+  )
+  if (claimed.length === 0) return { status: "no_run", runId }
+
+  const loadScopes = deps.loadOwnerScopes ?? defaultLoadOwnerScopes
+  const ownerScopes = await loadScopes(orgId, routine.ownerUserId)
+  const { routineRunScopes } = await import("./routine-worker")
+  const run = await buildRun({
+    orgId,
+    routine,
+    flow,
+    runId,
+    steps,
+    startedAt: runRow.startedAt?.getTime() ?? Date.now(),
+    triggerAt: runRow.startedAt ?? new Date(),
+    entityId: runRow.eventEntityId,
+    isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
+    outputThreadId: routine.outputThreadId ?? "",
+    runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
+    hop: typeof state.output?.hop === "number" ? state.output.hop : 0,
+    deps,
+  })
+  const task = await readTriggerTask(run)
+  if (!evaluateCondition(step.until, task, run.triggerAt)) {
+    setState(state, "skipped", "Its condition no longer held at the deadline.")
+    for (const later of steps.slice(index + 1)) {
+      if (later.state === "pending")
+        setState(later, "skipped", "The flow ended at an earlier wait.")
+    }
+    await saveSteps(run)
+    return endFlowRun(run, "skipped_condition", null)
+  }
+  setState(state, "done", "Its condition still held at the deadline.")
+  await saveSteps(run)
+  return continueFlow(run, index + 1)
+}
+
+async function loadWaitingRun(orgId: string, routineId: string, runId: string) {
+  return withPrivilegedDb(orgId, "routine-flow-load", async (tx) => {
+    const [routine] = await tx
+      .select()
+      .from(routines)
+      .where(and(eq(routines.id, routineId), eq(routines.orgId, orgId)))
+      .limit(1)
+    const [runRow] = await tx
+      .select()
+      .from(routineRuns)
+      .where(and(eq(routineRuns.id, runId), eq(routineRuns.orgId, orgId)))
+      .limit(1)
+    if (!routine || !runRow || runRow.status !== "waiting") return null
+    return { routine, runRow }
+  })
+}
+
+async function defaultLoadOwnerScopes(orgId: string, userId: string): Promise<string[]> {
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  return withPrivilegedDb(orgId, "routine-flow-perms", async (tx) => {
+    const perms = await loadEffectivePermissions(tx, userId, orgId)
+    return perms.scopes
+  })
+}
+
+// ── Agent steps ─────────────────────────────────────────────────────────────
+
+type AgentStep = Extract<RoutineFlowStep, { type: "agent" }>
+
+async function runAgentStep(
+  run: FlowRun,
+  step: AgentStep,
+  state: RoutineRunStepState,
+): Promise<StepOutcome> {
+  const invoker = run.deps.agentInvoker
+  if (!invoker) {
+    setState(state, "failed", "No agent is available to run this step.")
+    return { kind: "end", status: "failed", error: `Step ${step.id}: no agent invoker` }
+  }
+  const stepStartedAt = new Date()
+  const outcomes = step.outcomes ?? []
+  const maxBumps = step.maxBumps ?? DEFAULT_MAX_BUMPS
+  let bumps = 0
+  const missingNow = async () => missingOutcomes(run, outcomes, stepStartedAt)
+  const result = await inRunFrame(run, () =>
+    invoker({
+      orgId: run.orgId,
+      ownerUserId: run.routine.ownerUserId,
+      threadId: run.outputThreadId,
+      prompt: step.prompt,
+      scopes: run.actor.scopes,
+      triggerEvent: run.triggerEvent,
+      ...(outcomes.length > 0
+        ? {
+            // The bump (spec S10): after each turn, the outcomes still missing are named back to
+            // the agent, at most `maxBumps` times (kernel-jobs.ts runs the steer as a re-prompt).
+            nextSteer: async () => {
+              if (bumps >= maxBumps) return null
+              const missing = await missingNow()
+              if (missing.length === 0) return null
+              bumps++
+              return `Before finishing you still need to: ${missing.map(describeOutcome).join("; ")}.`
+            },
+          }
+        : {}),
+    }),
+  )
+  if (result.failure) {
+    setState(state, "failed", result.failure)
+    return { kind: "end", status: "failed", error: `Step ${step.id}: ${result.failure}` }
+  }
+  const missing = outcomes.length > 0 ? await missingNow() : []
+  if (missing.length > 0) {
+    const note = `Still missing after ${bumps} ${bumps === 1 ? "reminder" : "reminders"}: ${missing
+      .map(describeOutcome)
+      .join("; ")}.`
+    setState(state, "flagged", note, { bumps, missing })
+    await notifyFlagged(run, step, note)
+    return { kind: "next" }
+  }
+  setState(
+    state,
+    "done",
+    bumps > 0 ? `Done after ${bumps} ${bumps === 1 ? "reminder" : "reminders"}.` : "Done.",
+    {
+      bumps,
+      turnsAdded: result.turnsAdded,
+    },
+  )
+  return { kind: "next" }
+}
+
+/** Pure: one outcome, as the bump and the flag name it. */
+export function describeOutcome(o: RoutineFlowOutcome): string {
+  if (o.kind === "message_posted") {
+    return o.to === "{{task.assigneeId}}"
+      ? "post a message to the task's assignee"
+      : o.to === "{{owner}}"
+        ? "post a message to the routine's owner"
+        : `post a message in ${o.to}`
+  }
+  if (o.kind === "field_set") return `set the task field "${o.field}"`
+  if (o.kind === "status_is") return `move the task to status ${o.status}`
+  return `call the tool ${o.tool}`
+}
+
+/** The outcomes not met yet: read from the record now and from this step's own writes. */
+async function missingOutcomes(
+  run: FlowRun,
+  outcomes: RoutineFlowOutcome[],
+  since: Date,
+): Promise<RoutineFlowOutcome[]> {
+  if (outcomes.length === 0) return []
+  const task = outcomes.some((o) => o.kind === "field_set" || o.kind === "status_is")
+    ? await readTriggerTask(run)
+    : null
+  const needTask = outcomes.some((o) => o.kind === "message_posted")
+  const msgTask = needTask ? (task ?? (await readTriggerTask(run))) : null
+  const missing: RoutineFlowOutcome[] = []
+  for (const o of outcomes) {
+    let met = false
+    if (o.kind === "field_set") met = !!task && !isEmptyCell(task.fields[o.field])
+    else if (o.kind === "status_is") met = !!task && task.statusId === o.status
+    else if (o.kind === "tool_called") met = await toolCalledSince(run, o.tool, since)
+    else met = await messagePostedSince(run, resolvePerson(o.to, run, msgTask), since)
+    if (!met) missing.push(o)
+  }
+  return missing
+}
+
+/** Did this run's agent call `tool` (app:name or app__name) since the step began? */
+async function toolCalledSince(run: FlowRun, tool: string, since: Date): Promise<boolean> {
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const { schemaRef } = await import("~/db/schema-ref")
+  const names = [tool, tool.replace(":", "__"), tool.replace("__", ":")]
+  const rows = await withPrivilegedDb(run.orgId, "routine-flow-tool-called", async (tx) =>
+    extractRows<{ n: number }>(
+      await tx.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM ${drizzleSql.raw(schemaRef("kernel"))}.messages m,
+               jsonb_array_elements(
+                 CASE WHEN jsonb_typeof(m.metadata->'toolCalls') = 'array'
+                      THEN m.metadata->'toolCalls' ELSE '[]'::jsonb END
+               ) AS c
+         WHERE m.org_id = ${run.orgId}::uuid AND m.thread_id = ${run.outputThreadId}::uuid
+           AND m.created_at >= ${since.toISOString()}::timestamptz
+           AND c->>'toolName' IN (${drizzleSql.join(
+             names.map((n) => drizzleSql`${n}`),
+             drizzleSql`, `,
+           )})
+           AND COALESCE(c->>'status', '') <> 'error' AND c->'error' IS NULL`),
+    ),
+  )
+  return (rows[0]?.n ?? 0) > 0
+}
+
+/**
+ * Was a message posted since the step began, by the routine's agent or under its owner, to `to`:
+ * a thread id, or a person (a thread whose participants are the owner and that person)?
+ */
+async function messagePostedSince(run: FlowRun, to: string | null, since: Date): Promise<boolean> {
+  if (!to) return false
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const { schemaRef } = await import("~/db/schema-ref")
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const rows = await withPrivilegedDb(run.orgId, "routine-flow-message-posted", async (tx) =>
+    extractRows<{ n: number }>(
+      await tx.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM ${K}.messages m
+         WHERE m.org_id = ${run.orgId}::uuid
+           AND m.created_at >= ${since.toISOString()}::timestamptz
+           AND m.thread_id <> ${run.outputThreadId}::uuid
+           AND m.author_id = ${run.routine.ownerUserId}::uuid
+           AND (
+             m.thread_id::text = ${to}
+             OR EXISTS (
+               SELECT 1 FROM ${K}.thread_participants p
+                WHERE p.thread_id = m.thread_id AND p.user_id = ${to}::uuid
+                  AND ${to} <> ${run.routine.ownerUserId}
+             )
+           )`),
+    ),
+  )
+  return (rows[0]?.n ?? 0) > 0
+}
+
+/** The owner hears of a flagged step on Home (attention pipeline), naming what is missing. */
+async function notifyFlagged(run: FlowRun, step: AgentStep, note: string): Promise<void> {
+  try {
+    await withPrivilegedDb(run.orgId, "routine-flow-flagged", (tx) =>
+      tx.queueEvent({
+        app: "kernel",
+        entity: "agent_notification",
+        action: "create",
+        entityId: crypto.randomUUID(),
+        data: {
+          summary: `Routine "${run.routine.name}", step ${step.id}: ${note}`,
+          urgency: 60,
+          targetUserIds: [run.routine.ownerUserId],
+          link:
+            run.entityId && run.isTaskTrigger
+              ? { tabType: "projects:task", entityId: run.entityId }
+              : { tabType: "thread", entityId: run.outputThreadId },
+          routineFlag: { routineId: run.routine.id, runId: run.runId, stepId: step.id },
+        },
+        actorId: run.routine.ownerUserId,
+        actorType: "system",
+        agentId: run.routine.ownerAgentId ?? null,
+        orgId: run.orgId,
+        timestamp: new Date().toISOString(),
+      }),
+    )
+  } catch (err) {
+    log.error({ err, routineId: run.routine.id, runId: run.runId }, "flow: flagged alert failed")
+  }
+}
+
+// ── Persistence and the end ─────────────────────────────────────────────────
+
+async function saveSteps(run: FlowRun): Promise<void> {
+  await withPrivilegedDb(run.orgId, "routine-flow-steps", (tx) =>
+    tx.update(routineRuns).set({ steps: run.steps }).where(eq(routineRuns.id, run.runId)),
+  )
+}
+
+async function setRunStatus(run: FlowRun, status: RoutineRunStatus): Promise<void> {
+  await withPrivilegedDb(run.orgId, "routine-flow-status", (tx) =>
+    tx.update(routineRuns).set({ status }).where(eq(routineRuns.id, run.runId)),
+  )
+}
+
+async function clearInFlight(run: FlowRun): Promise<void> {
+  const eventId = run.triggerEvent?.eventId
+  if (!eventId) return
+  const { inFlightKey } = await import("./routine-event-reconciler")
+  const { redis } = await import("~/lib/redis")
+  await redis.del(inFlightKey(run.routine.id, eventId)).catch(() => undefined)
+}
+
+/** The end of a flow run: its row, the routine's last run, the live event, the owner's alert. */
+async function endFlowRun(
+  run: FlowRun,
+  status: RoutineRunStatus,
+  error: string | null,
+): Promise<RoutineTickResult> {
+  const durationMs = Date.now() - run.startedAt
+  for (const s of run.steps) {
+    if (s.state === "pending" && status !== "succeeded" && status !== "flagged") {
+      setState(s, "skipped", "The flow ended before this step.")
+    }
+  }
+  await withPrivilegedDb(run.orgId, "routine-flow-end", (tx) =>
+    tx
+      .update(routineRuns)
+      .set({ status, steps: run.steps, ranAt: new Date(), durationMs, error })
+      .where(
+        and(
+          eq(routineRuns.id, run.runId),
+          inArray(routineRuns.status, ["running", "waiting", "waiting_approval"]),
+        ),
+      ),
+  )
+  await clearInFlight(run)
+  const failed = status === "failed"
+  await withPrivilegedDb(run.orgId, "routine-flow-last-run", (tx) =>
+    tx
+      .update(routines)
+      .set({
+        lastRunAt: new Date(),
+        lastRunStatus: failed ? "failed" : "succeeded",
+        lastRunError: failed ? error : null,
+        ...(run.routine.kind === "scheduled" && !failed ? { status: "completed" as const } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(routines.id, run.routine.id)),
+  )
+  const { emitRoutineEvent } = await import("./routine-worker")
+  const ranAt = new Date().toISOString()
+  await emitRoutineEvent(
+    run.orgId,
+    run.routine.ownerUserId,
+    run.routine.ownerAgentId,
+    run.routine.id,
+    "run_completed",
+    {
+      run: {
+        id: run.runId,
+        routineId: run.routine.id,
+        ranAt,
+        status,
+        durationMs,
+        errorMessage: error,
+        eventEntityId: run.entityId,
+      },
+      runId: run.runId,
+      status,
+      routineName: run.routine.name,
+      eventEntityId: run.entityId,
+      durationMs,
+      ranAt,
+      error,
+    },
+  )
+  if (failed) {
+    try {
+      const { queueRoutineAlert } = await import("./routine-alert")
+      await withPrivilegedDb(run.orgId, "routine-flow-failed-notify-owner", (tx) =>
+        queueRoutineAlert(tx, {
+          orgId: run.orgId,
+          routine: { ...run.routine, outputThreadId: run.outputThreadId },
+          status: "failed",
+          error,
+        }),
+      )
+    } catch (err) {
+      log.error({ err, routineId: run.routine.id }, "flow: failed-run alert not queued")
+    }
+  }
+  return { status, runId: run.runId, durationMs }
+}
+
+// ── Approvals ───────────────────────────────────────────────────────────────
+
+const UNDECIDED_APPROVAL = new Set(["pending", "deferred", "approving"])
+
+/**
+ * An approval a flow run's action parked on was decided (routine-run-resume.ts hands every
+ * routine decision here first). Approved: the step is done (the approved call ran) and the flow
+ * goes on; refused or lapsed: the step and the run fail. Null when the approval is not a flow
+ * run's, so the legacy resume handles it.
+ */
+export async function resumeFlowOnDecision(
+  orgId: string,
+  approvalId: string,
+  deps: FlowDeps & { loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]> } = {},
+): Promise<RoutineTickResult | null> {
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const { schemaRef } = await import("~/db/schema-ref")
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [hit] = await withPrivilegedDb(orgId, "routine-flow-approval", async (tx) =>
+    extractRows<{ run_id: string; routine_id: string; approval_status: string }>(
+      await tx.execute(drizzleSql`
+        SELECT r.id::text AS run_id, r.routine_id::text AS routine_id, a.status AS approval_status
+          FROM ${K}.approval_requests a
+          JOIN ${K}.routine_runs r
+            ON r.org_id = a.org_id AND r.id::text = a.metadata->>'originRoutineRunId'
+         WHERE a.id = ${approvalId}::uuid AND a.org_id = ${orgId}::uuid
+           AND r.steps IS NOT NULL
+         LIMIT 1`),
+    ),
+  )
+  if (!hit) return null
+  if (UNDECIDED_APPROVAL.has(hit.approval_status)) return { status: "no_run", runId: hit.run_id }
+  const claimed = await withPrivilegedDb(orgId, "routine-flow-approval-claim", (tx) =>
+    tx
+      .update(routineRuns)
+      .set({ status: "running" })
+      .where(and(eq(routineRuns.id, hit.run_id), eq(routineRuns.status, "waiting_approval")))
+      .returning({ id: routineRuns.id }),
+  )
+  if (claimed.length === 0) return { status: "no_run", runId: hit.run_id }
+  const loaded = await withPrivilegedDb(orgId, "routine-flow-approval-load", async (tx) => {
+    const [routine] = await tx
+      .select()
+      .from(routines)
+      .where(eq(routines.id, hit.routine_id))
+      .limit(1)
+    const [runRow] = await tx
+      .select()
+      .from(routineRuns)
+      .where(eq(routineRuns.id, hit.run_id))
+      .limit(1)
+    return routine && runRow ? { routine, runRow } : null
+  })
+  const flow = loaded?.routine.flow
+  if (!loaded || !flow) return { status: "no_run", runId: hit.run_id }
+  const { routine, runRow } = loaded
+  const steps = runRow.steps ?? []
+  const index = steps.findIndex(
+    (s) => s.state === "awaiting_approval" && s.output?.approvalId === approvalId,
+  )
+  if (index < 0) return { status: "no_run", runId: hit.run_id }
+  const loadScopes = deps.loadOwnerScopes ?? defaultLoadOwnerScopes
+  const ownerScopes = await loadScopes(orgId, routine.ownerUserId)
+  const { routineRunScopes } = await import("./routine-worker")
+  const run = await buildRun({
+    orgId,
+    routine,
+    flow,
+    runId: runRow.id,
+    steps,
+    startedAt: runRow.startedAt?.getTime() ?? Date.now(),
+    triggerAt: runRow.startedAt ?? new Date(),
+    entityId: runRow.eventEntityId,
+    isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
+    outputThreadId: routine.outputThreadId ?? "",
+    runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
+    hop: 0,
+    deps,
+  })
+  const state = steps[index]!
+  if (hit.approval_status !== "approved") {
+    setState(state, "failed", `The approval was ${hit.approval_status}.`)
+    await saveSteps(run)
+    return endFlowRun(run, "failed", `Step ${state.id}: the approval was ${hit.approval_status}`)
+  }
+  setState(state, "done", "Approved and done.")
+  await saveSteps(run)
+  return continueFlow(run, index + 1)
+}

@@ -125,21 +125,3 @@ export function addWorkingTime(
   const dayMinutes = (minutesOf(cal.end) ?? 0) - (minutesOf(cal.start) ?? 0)
   return walkWorkingSeconds(from, amount * dayMinutes * 60, cal)
 }
-
-/** The org's calendar, read from its row, with the override on top. */
-export async function loadOrgWorkingCalendar(
-  orgId: string,
-  override?: Partial<WorkingCalendar> | null,
-): Promise<WorkingCalendar> {
-  const { withPrivilegedDb } = await import("~/db/privileged")
-  const { organizations } = await import("~/db/schema/kernel")
-  const { eq } = await import("drizzle-orm")
-  const [org] = await withPrivilegedDb(orgId, "working-calendar", (tx) =>
-    tx
-      .select({ timezone: organizations.timezone, businessHours: organizations.businessHours })
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .limit(1),
-  )
-  return resolveWorkingCalendar(org ?? null, override)
-}

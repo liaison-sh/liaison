@@ -47,7 +47,7 @@
  * `defaultAgentInvoker` which calls `sendMessage` + `invokeAgentForThread`.
  */
 import crypto from "node:crypto"
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNotNull } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import {
   agents as agentsTbl,
@@ -58,7 +58,7 @@ import {
   users,
   userThreadState,
 } from "~/db/schema/kernel"
-import type { RoutineRunPauseState } from "~/db/schema/kernel/routine-runs"
+import type { RoutineRunPauseState, RoutineRunStepState } from "~/db/schema/kernel/routine-runs"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { removeScheduledJob } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
@@ -115,6 +115,12 @@ export type RoutineRunStatus =
   | "mailbox_wait_expired"
   // The owner dismissed it from their approvals list instead of running it.
   | "mailbox_wait_dismissed"
+  // A flow run (0303, flow-runner.ts): in progress, parked on a wait step, ended with an agent
+  // step's required outcome missing, or ended because a wait's condition no longer held.
+  | "running"
+  | "waiting"
+  | "flagged"
+  | "skipped_condition"
 
 /**
  * The triggering event for a kind:'event' tick — a compact projection of the `<app>:<entity>:<action>`
@@ -180,6 +186,8 @@ export interface RoutineTickOpts {
   mailboxWaitRunId?: string
   /** The mail the owner's browser opened at Run now, for this run only (run-context.ts). */
   mailboxHandoff?: MailboxHandoff
+  /** A flow routine's seams (flow-runner.ts): tests replace the tool call and the wait's job. */
+  flowDeps?: import("~/modules/agent/routines/flow-runner").FlowDeps
   /**
    * Resolve effective scopes for the routine owner. Defaults to
    * `loadEffectivePermissions` against the kernel DB.
@@ -207,6 +215,13 @@ export interface RoutineTickOpts {
     /** The triggering event for an event-fired tick (undefined for cron/scheduled/run-now). The
      *  invoker prepends a compact, prompt-injection-safe DATA block describing it to the prompt. */
     triggerEvent?: RoutineTriggerEvent
+    /**
+     * A flow's agent step with required outcomes (flow-runner.ts): asked after each turn, it
+     * returns the steer naming what is still missing (the invoker re-prompts the tick with it,
+     * the `repromptTickOnce` seam), or null when nothing is missing or the bumps are spent.
+     * Absent on a legacy tick.
+     */
+    nextSteer?: () => Promise<string | null>
   }) => Promise<{
     turnsAdded: number
     /**
@@ -415,6 +430,8 @@ export async function writeRunRow(
   routineId: string,
   status: RoutineRunStatus,
   fields: {
+    /** A flow run's step states (flow-runner.ts). */
+    steps?: RoutineRunStepState[]
     durationMs?: number
     error?: string
     turnsAdded?: number
@@ -446,6 +463,7 @@ export async function writeRunRow(
         eventEntityId: ev?.entityId ?? null,
         attempt: ev?.retryAttempt ?? 0,
         pauseState: fields.pauseState ?? null,
+        ...(fields.steps ? { steps: fields.steps } : {}),
       })
       .returning({ id: routineRuns.id })
     return row.id
@@ -515,9 +533,12 @@ export const RoutineLockTestAccess = { heartbeatMs: ROUTINE_HEARTBEAT_INTERVAL_M
  * Keep the routine lock alive while a long run holds it (a tick, a paused
  * run's resume): its TTL is refreshed every few minutes. Returns the stop.
  */
-export function startRoutineLockHeartbeat(routineId: string): () => void {
+export function startRoutineLockHeartbeat(
+  routineId: string,
+  lockKey = `routine-lock:${routineId}`,
+): () => void {
   const heartbeat = setInterval(() => {
-    redis.expire(`routine-lock:${routineId}`, ROUTINE_LOCK_TTL_SECONDS).catch((err) => {
+    redis.expire(lockKey, ROUTINE_LOCK_TTL_SECONDS).catch((err) => {
       log.warn({ err, routineId }, "Failed to refresh routine lock TTL")
     })
   }, RoutineLockTestAccess.heartbeatMs)
@@ -1099,8 +1120,31 @@ async function dispatchToNode(
  * Per-tick state machine. Returns a `RoutineTickResult` so callers can
  * observe what happened (used by tests + kernel-jobs metrics).
  */
+/**
+ * The lock a tick takes: the routine's, or for an event tick of a FLOW routine the routine's and
+ * the record's (0303), so a flow runs for two tasks at once while one task's runs stay in order.
+ */
+async function tickLockKey(opts: RoutineTickOpts): Promise<string> {
+  const entityId = opts.triggerEvent?.entityId
+  if (!entityId) return `routine-lock:${opts.routineId}`
+  const [row] = await withPrivilegedDb(opts.orgId, "routine-lock-kind", (tx) =>
+    tx
+      .select({ id: routines.id })
+      .from(routines)
+      .where(
+        and(
+          eq(routines.id, opts.routineId),
+          eq(routines.orgId, opts.orgId),
+          isNotNull(routines.flow),
+        ),
+      )
+      .limit(1),
+  )
+  return row ? `routine-lock:${opts.routineId}:${entityId}` : `routine-lock:${opts.routineId}`
+}
+
 export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTickResult> {
-  const lockKey = `routine-lock:${opts.routineId}`
+  const lockKey = await tickLockKey(opts)
   const lockToken = crypto.randomUUID()
 
   const got = await redis.set(lockKey, lockToken, "EX", ROUTINE_LOCK_TTL_SECONDS, "NX")
@@ -1114,7 +1158,7 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
   }
 
   // Heartbeat the lock so a long agent run doesn't release it early.
-  const stopHeartbeat = startRoutineLockHeartbeat(opts.routineId)
+  const stopHeartbeat = startRoutineLockHeartbeat(opts.routineId, lockKey)
 
   try {
     const routine = await withPrivilegedDb(opts.orgId, "routine-load", async (tx) => {
@@ -1278,6 +1322,24 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
 
     // Output thread
     const { threadId: outputThreadId, recreated } = await ensureOutputThread(opts.orgId, routine)
+
+    // A FLOW routine (0303) runs its steps here, after the same checks: actions without an
+    // agent, waits, agent steps (flow-runner.ts). A legacy routine (no flow) goes on below.
+    if (routine.flow) {
+      const { runFlow } = await import("~/modules/agent/routines/flow-runner")
+      return await runFlow({
+        orgId: opts.orgId,
+        routine,
+        ownerScopes,
+        runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
+        outputThreadId,
+        tick: opts,
+        deps: {
+          ...(opts.agentInvoker ? { agentInvoker: opts.agentInvoker } : {}),
+          ...opts.flowDeps,
+        },
+      })
+    }
 
     if (plan.where === "node") return dispatchToNode(opts, routine, outputThreadId)
     if (plan.fellBack) {

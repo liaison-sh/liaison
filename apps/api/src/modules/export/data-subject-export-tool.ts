@@ -943,7 +943,11 @@ export async function buildMemberDataSubjectBundle(
   )[0]
   if (!member) return { error: { code: "NOT_FOUND", message: NOT_VISIBLE.user } }
 
-  const sections = await readMemberSections(ctx.db, { orgId: ctx.orgId, subjectUserId })
+  const sections = await readMemberSections(ctx.db, {
+    orgId: ctx.orgId,
+    subjectUserId,
+    callerUserId: ctx.userId,
+  })
   const memory = await buildMemorySection({ userId: subjectUserId }, ctx)
 
   const counts: Record<string, number> = {}

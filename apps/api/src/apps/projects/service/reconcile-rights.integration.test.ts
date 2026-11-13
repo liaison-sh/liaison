@@ -72,7 +72,7 @@ const proposal = (why = "The export.") => ({
 type Outcome = { error?: { code?: string }; data?: unknown; [k: string]: unknown }
 
 async function viaTool(
-  name: "reconcile_facts" | "reconcile_propose",
+  name: "reconcile_facts" | "reconcile_propose" | "reconcile_get" | "reconcile_line_update",
   params: Record<string, unknown>,
   opts: {
     origin: "in-app-agent" | "mcp"
@@ -225,6 +225,38 @@ describe("what a reconcile reads through", () => {
     expect(viaMcp.reconciliationId).toBe(viaChat.reconciliationId)
     expect(viaMcp.revision).toBe(viaChat.revision)
     expect(viaMcp.lines).toEqual(viaChat.lines)
+  })
+
+  it("the saved card is read and edited only in a DM, refused in a shared thread", async () => {
+    const saved = await viaTool("reconcile_propose", proposal(), {
+      origin: "in-app-agent",
+      threadId: dmThread,
+      frame: { humanTurn: true },
+    })
+    const card = (saved.data ?? saved) as Record<string, any>
+    expect(card.reconciliationId).toBeString()
+    const line = (card.groups as Array<{ lines: Array<{ lineId: string }> }>)
+      .flatMap((g) => g.lines)
+      .at(0)
+    const update = {
+      reconciliationId: card.reconciliationId,
+      revision: card.revision,
+      lineId: line?.lineId,
+      wording: "Export, reworded",
+    }
+    const shared = {
+      origin: "in-app-agent" as const,
+      threadId: sharedThread,
+      frame: { humanTurn: true },
+    }
+    const get = await viaTool("reconcile_get", { reconciliationId: card.reconciliationId }, shared)
+    expect(get.error?.code).toBe("dm_only")
+    const edit = await viaTool("reconcile_line_update", update, shared)
+    expect(edit.error?.code).toBe("dm_only")
+    const inDm = { origin: "in-app-agent" as const, threadId: dmThread, frame: { humanTurn: true } }
+    const read = await viaTool("reconcile_get", { reconciliationId: card.reconciliationId }, inDm)
+    expect(read.error).toBeUndefined()
+    expect(JSON.stringify(read)).not.toContain("Export, reworded")
   })
 
   it("what was not seen is kept on the card, with the sentence that someone else may see more", async () => {

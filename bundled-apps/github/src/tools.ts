@@ -558,9 +558,13 @@ const SEARCH_KINDS: Record<string, { endpoint: string; qualifier: string }> = {
   pull_requests: { endpoint: "issues", qualifier: " is:pr" },
 }
 
-/** Refuses a qualifier that points the search at another owner's repositories. */
+/**
+ * Refuses a qualifier that points the search at another owner's repositories, wherever it
+ * stands: after a space, a parenthesis (GitHub ORs scope qualifiers in a group), a minus or a
+ * quote. A value ends at a space or a parenthesis.
+ */
 function ownerOnlyQuery(owner: string, text: string): string {
-  const re = /(?:^|\s)(repo|org|user|owner):("[^"]*"|\S+)/gi
+  const re = /(?:^|[^\w])(repo|org|user|owner):("[^"]*"|[^\s()]+)/gi
   for (const m of text.matchAll(re)) {
     const kind = (m[1] ?? "").toLowerCase()
     const value = (m[2] ?? "").replace(/"/g, "")

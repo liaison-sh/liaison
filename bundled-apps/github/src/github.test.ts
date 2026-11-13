@@ -84,8 +84,8 @@ const issue = (n: number, extra: Record<string, unknown> = {}) => ({
 })
 
 describe("manifest", () => {
-  it("is version 1.0.1", () => {
-    expect(MANIFEST.version).toBe("1.0.1")
+  it("is version 1.0.2", () => {
+    expect(MANIFEST.version).toBe("1.0.2")
   })
 
   it("shows the agent seven reads; each one kept off its catalog names the visible read to use", () => {
@@ -382,6 +382,21 @@ describe("tools", () => {
       })
     }
     expect(search.calls).toEqual([])
+    // A qualifier inside parentheses, after NOT, after a minus or a quote is still checked.
+    const grouped = fakeCtx()
+    for (const query of [
+      "key (repo:someone-else/site)",
+      "key OR(org:someone-else)",
+      "key NOT(user:x)",
+      "key -repo:someone-else/site",
+      'key "x"owner:someone-else',
+      "(launch) (REPO:someone-else/site OR x)",
+    ]) {
+      expect(await githubSearch({ scope: "code", query }, asCtx(grouped))).toMatchObject({
+        error: { code: "repo_outside_owner" },
+      })
+    }
+    expect(grouped.calls).toEqual([])
     // The owner's name is matched without regard to case, as GitHub does.
     const ok = fakeCtx({ routes: { [`${R}/tags?per_page=100`]: json([]) } })
     expect(await githubListTags({ repo: "Maison-Example/site" }, asCtx(ok))).toEqual({ tags: [] })
@@ -730,5 +745,53 @@ describe("text helpers", () => {
     expect(redactSecrets(`a ${GH_KEY} b ${fine} c sha 0123456789abcdef`)).toBe(
       "a [REDACTED] b [REDACTED] c sha 0123456789abcdef",
     )
+  })
+  // Every armoured private key header in use: PKCS#8 (no algorithm word), the
+  // algorithm-named PKCS#1 and SEC1 forms, OpenSSH, encrypted PKCS#8, PGP and SSH2.
+  const PEM_LABELS: Array<[string, string]> = [
+    ["-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----"],
+    ["-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----"],
+    ["-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----"],
+    ["-----BEGIN DSA PRIVATE KEY-----", "-----END DSA PRIVATE KEY-----"],
+    ["-----BEGIN OPENSSH PRIVATE KEY-----", "-----END OPENSSH PRIVATE KEY-----"],
+    ["-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----"],
+    ["-----BEGIN PGP PRIVATE KEY BLOCK-----", "-----END PGP PRIVATE KEY BLOCK-----"],
+    ["---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----", "---- END SSH2 ENCRYPTED PRIVATE KEY ----"],
+  ]
+  const KEY_BODY = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nBKcwggSjAgEAAoIBAQC7"
+
+  it("redacts every form of armoured private key, keeping the text around it", () => {
+    for (const [begin, end] of PEM_LABELS) {
+      const out = redactSecrets(`before\n${begin}\n${KEY_BODY}\n${end}\nafter`)
+      expect(out).toBe("before\n[REDACTED]\nafter")
+    }
+  })
+
+  it("redacts a private key removed or added in a diff", () => {
+    for (const [begin, end] of PEM_LABELS) {
+      const diff = `@@ -1,4 +0,0 @@\n-${begin}\n-${KEY_BODY.replace("\n", "\n-")}\n-${end}\n ok`
+      const out = redactSecrets(diff)
+      expect(out).not.toContain("MIIEvQ")
+      expect(out).not.toContain("BKcwgg")
+      expect(out).toContain(" ok")
+    }
+  })
+
+  it("redacts a private key whose end is cut off through the end of its hunk", () => {
+    for (const [begin] of PEM_LABELS) {
+      const diff = `@@ -1,3 +1,3 @@\n+${begin}\n+${KEY_BODY}\n@@ -40,2 +40,2 @@\n kept line`
+      const out = redactSecrets(diff)
+      expect(out).not.toContain("MIIEvQ")
+      expect(out).not.toContain("BKcwgg")
+      expect(out).toContain("@@ -40,2 +40,2 @@\n kept line")
+      expect(redactSecrets(`${begin}\n${KEY_BODY}`)).toBe("[REDACTED]")
+    }
+  })
+
+  it("keeps public keys and certificates", () => {
+    const pub = "-----BEGIN PUBLIC KEY-----\nMFkwEwYH\n-----END PUBLIC KEY-----"
+    const cert = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    expect(redactSecrets(pub)).toBe(pub)
+    expect(redactSecrets(cert)).toBe(cert)
   })
 })

@@ -217,20 +217,23 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
     }
   })
 
-  /** The flow runs fired on this task (any routine the viewer may read), newest first. */
-  const [entityRuns, { refetch: refetchEntityRuns }] = createResource(
-    () => props.entityId,
-    async (taskId) => {
-      try {
-        const rows = await api.get<EntityRun[]>(
-          `/agent/routines/entity-runs?entityId=${encodeURIComponent(taskId)}&limit=5`,
-        )
-        return Array.isArray(rows) ? rows : []
-      } catch {
-        return []
-      }
-    },
-  )
+  /**
+   * The flow runs fired on this task (any routine the viewer may read), newest first. A plain
+   * signal, not a resource: a side box must never suspend the page while it loads.
+   */
+  const [entityRuns, setEntityRuns] = createSignal<EntityRun[]>([])
+  const loadEntityRuns = async (taskId: string) => {
+    try {
+      const rows = await api.get<EntityRun[]>(
+        `/agent/routines/entity-runs?entityId=${encodeURIComponent(taskId)}&limit=5`,
+      )
+      if (props.entityId === taskId) setEntityRuns(Array.isArray(rows) ? rows : [])
+    } catch {
+      if (props.entityId === taskId) setEntityRuns([])
+    }
+  }
+  const refetchEntityRuns = () => loadEntityRuns(props.entityId)
+  createEffect(on(() => props.entityId, (id) => void loadEntityRuns(id)))
 
   const project = () => {
     const projectId = liveTask()?.projectId

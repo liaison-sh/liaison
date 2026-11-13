@@ -11,14 +11,10 @@
 // STAGING: an incomplete create is refused in the agent's loop and NO approval
 // is parked.
 import { describe, expect, it } from "bun:test"
+import * as handlers from "~/apps/knowledge/handlers"
 
-// handlers.ts is script-mode by design (see its header) — transpile + eval to
-// reach `create`, the same way ci-webhook.test.ts reaches the projects handlers.
-const handlersSource = await Bun.file(new URL("./handlers.ts", import.meta.url)).text()
-const transpiled = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(
-  handlersSource,
-)
-const { create, update } = new Function(`${transpiled}\nreturn { create, update };`)() as {
+// The core module's handlers, called with a plain object as their ctx.
+const { create, update } = handlers as unknown as {
   create: (params: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<unknown>
   update: (params: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<unknown>
 }

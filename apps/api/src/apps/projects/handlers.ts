@@ -631,6 +631,9 @@ export async function portfolioRollup(
   return JSON.parse(await ctx.projects_portfolioRollup(JSON.stringify(params ?? {})))
 }
 
+// A dashboard table backed by a project's tasks (manifest entities.task.tableBacking).
+export { taskTableBacking } from "~/apps/projects/service/table-backing"
+
 // tasks_aggregate — tasks grouped by status / assignee / priority / due / age in status / SLA
 // state / a field, counted or summed (a manager's dashboard chart).
 export async function tasksAggregate(

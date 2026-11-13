@@ -1033,6 +1033,22 @@ export const routineFlowRecordRegistry = createTypedRegistry<
 >({ orgScoped: true })
 
 /**
+ * `entities.<e>.tableBacking` (manifest-schema.ts, contract.ts tableBackingDeclarationErrors): the
+ * entity's records can be a dashboard table's rows, one `parent` record's worth (a project's
+ * tasks). `provider` names an export of the app's own server module (a core app only), loaded
+ * by `load`; it reads and writes under the caller's RLS (modules/dashboards/tables/backing.ts,
+ * TableBackingProvider).
+ */
+export const tableBackingRegistry = createTypedRegistry<
+  [orgId: string, appName: string, entityName: string],
+  {
+    parent: string
+    provider: string
+    load: () => Promise<Record<string, unknown>>
+  }
+>({ orgScoped: true })
+
+/**
  * Per-app, per-entity declarations describing where attached files live and the
  * read/write scopes used to gate them. Populated when a manifest entity declares
  * `fileParent`. The kernel files RLS builder reads this to project policies onto
@@ -1610,6 +1626,7 @@ export function resetAppRegistries(): void {
   entityRegistry.clear()
   manifestFileParentRegistry.clear()
   routineFlowRecordRegistry.clear()
+  tableBackingRegistry.clear()
   manifestAttentionRegistry.clear()
   manifestAttentionAxesRegistry.clear()
   exportRegistry.clear()

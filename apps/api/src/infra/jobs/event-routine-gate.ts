@@ -27,6 +27,11 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
+import {
+  flowRecordSource,
+  readFlowRecords,
+  takesRecordFilter,
+} from "~/modules/agent/routines/flow-records"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -495,12 +500,13 @@ export async function ownerTableRowFilterMatches(
   return tableRowFilterMatches(filter, evt, change)
 }
 
-// ── Projects task filter (0303) ─────────────────────────────────────────────
+// ── Record filter (0303) ────────────────────────────────────────────────────
 
 /**
- * The filter of a `projects:task:status_changed|updated|created` routine: one project, a status
- * change (from, to; `fromStatusId: null` = a task created directly in `toStatusId`), and field
- * values (a value, or a list of accepted values; null = the field is empty).
+ * The filter of a routine on a flow record's event (an entity declaring `routineFlow`, e.g. a
+ * project task's `status_changed|updated|created`): one container (`projectId`), a status change
+ * (from, to; `fromStatusId: null` = a record created directly in `toStatusId`), and field values
+ * (a value, or a list of accepted values; null = the field is empty).
  */
 export interface ProjectTaskFilter {
   projectId?: string
@@ -509,17 +515,14 @@ export interface ProjectTaskFilter {
   fields?: Record<string, unknown>
 }
 
-const PROJECT_TASK_FILTER_ACTIONS = new Set(["status_changed", "updated", "created"])
-
+/** Whether the event's entity declares a flow record whose filter applies to this action. */
 export function isProjectTaskFilterEvent(
-  evt: Pick<GateEvent, "app" | "entity" | "action">,
+  evt: Pick<GateEvent, "orgId" | "app" | "entity" | "action">,
 ): boolean {
-  return (
-    evt.app === "projects" && evt.entity === "task" && PROJECT_TASK_FILTER_ACTIONS.has(evt.action)
-  )
+  return takesRecordFilter(flowRecordSource(evt.orgId, evt.app, evt.entity), evt.action)
 }
 
-/** Whether the filter names anything a projects task filter matches on. */
+/** Whether the filter names anything a record filter matches on. */
 export function isProjectTaskFilter(filter: unknown): filter is ProjectTaskFilter {
   if (!filter || typeof filter !== "object") return false
   const f = filter as ProjectTaskFilter
@@ -583,30 +586,28 @@ export function projectTaskFilterMatches(
 }
 
 /**
- * Evaluates a projects task filter as the routine owner: the task is read fresh under the owner's
- * RLS (its project and fields), so a task the owner cannot read never matches. Fails closed.
+ * Evaluates a record filter as the routine owner: the record is read fresh under the owner's RLS
+ * through its app's declared reader (its container and fields), so a record the owner cannot
+ * read never matches, and neither does an event whose entity declares no flow record. Fails
+ * closed.
  */
 export async function ownerProjectTaskFilterMatches(
   owner: UserContext,
   filter: ProjectTaskFilter,
   evt: GateEvent,
 ): Promise<boolean> {
-  const taskId = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
-  if (!taskId) return false
-  const task = await withRlsContext(
-    owner,
-    async (tx) => {
-      const rows = extractRows<{ project_id: string; fields: Record<string, unknown> | null }>(
-        await tx.execute(drizzleSql`
-          SELECT project_id, fields FROM ${tableSql("app_projects", "tasks")}
-           WHERE id = ${taskId}::uuid AND org_id = ${owner.orgId}::uuid LIMIT 1`),
-      )
-      const r = rows[0]
-      return r ? { projectId: r.project_id, fields: r.fields ?? {} } : null
-    },
-    { pool: "jobs" },
+  const recordId = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
+  if (!recordId) return false
+  const { awaitOrgApps } = await import("~/modules/apps/init")
+  await awaitOrgApps(owner.orgId)
+  const src = flowRecordSource(owner.orgId, evt.app, evt.entity)
+  if (!takesRecordFilter(src, evt.action) || !src) return false
+  const [record] = await readFlowRecords(src, owner, [recordId], { includeArchived: true })
+  return projectTaskFilterMatches(
+    filter,
+    evt,
+    record ? { projectId: record.containerId, fields: record.fields } : null,
   )
-  return projectTaskFilterMatches(filter, evt, task)
 }
 
 /**

@@ -449,6 +449,18 @@
         "readScope": "projects:tasks:read",
         "writeScope": "projects:tasks:write",
         "deleteScope": "projects:settings:admin"
+      },
+      "routineFlow": {
+        "filterEvents": ["status_changed", "updated", "created"],
+        "uncoalescedEvents": ["status_changed"],
+        "recordParam": "taskId",
+        "updateTool": "update",
+        "commentTool": "comment",
+        "notifyScope": "projects:tasks:write",
+        "tabType": "projects:task",
+        "urlPath": "/projects/tasks/{id}",
+        "readRecords": "routineFlowReadRecords",
+        "leastLoaded": "routineFlowLeastLoaded"
       }
     }
   },

@@ -1018,6 +1018,19 @@ export const entityRegistry = createTypedRegistry<
 >({ orgScoped: true })
 
 /**
+ * `entities.<e>.routineFlow` (manifest-schema.ts, contract.ts routineFlowDeclarationErrors): the
+ * entity is a routine flow's trigger record. Read through modules/agent/routines/flow-records.ts,
+ * never directly; `bundlePath` is the core app's server module its handler exports live in.
+ */
+export const routineFlowRecordRegistry = createTypedRegistry<
+  [orgId: string, appName: string, entityName: string],
+  {
+    decl: import("~/modules/agent/routines/flow-records").RoutineFlowDeclaration
+    bundlePath: string
+  }
+>({ orgScoped: true })
+
+/**
  * Per-app, per-entity declarations describing where attached files live and the
  * read/write scopes used to gate them. Populated when a manifest entity declares
  * `fileParent`. The kernel files RLS builder reads this to project policies onto
@@ -1594,6 +1607,7 @@ export function resetAppRegistries(): void {
   contributionRegistry.clear()
   entityRegistry.clear()
   manifestFileParentRegistry.clear()
+  routineFlowRecordRegistry.clear()
   manifestAttentionRegistry.clear()
   manifestAttentionAxesRegistry.clear()
   exportRegistry.clear()

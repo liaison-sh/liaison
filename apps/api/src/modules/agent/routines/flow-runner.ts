@@ -7,14 +7,16 @@
  * never reaches this file.
  *
  * - ACTION steps run without an agent, as the routine's OWNER: each is a tool call through
- *   `executeTool` (projects update / comment, kernel threads_create for a direct message) with the
+ *   `executeTool` (the trigger record's app's declared update / comment tool, kernel
+ *   threads_create for a direct message) with the
  *   run's scopes (the routine's scopes bounded by the owner's, and by the owner agent's ceiling on
  *   the routine thread, exactly as a tick's tool calls), inside the routine's run frame, so a
  *   write is attributed to the routine ("Routine <name>") and never to the person, and a gated
  *   tool parks as an approval (the step `awaiting_approval`, never auto-approved). `notify` queues
  *   the attention pipeline's `kernel:agent_notification:create`.
- * - CONDITIONS (`if`, a wait's `until`) read the trigger task fresh, under the owner's RLS: a task
- *   the owner cannot read makes every condition false.
+ * - CONDITIONS (`if`, a wait's `until`) read the trigger record fresh, under the owner's RLS, through
+ *   its app's declared reader (flow-records.ts; a project task): a record the owner cannot read, or
+ *   an entity that declares no flow record, makes every condition false.
  * - WAIT steps compute a deadline in working time (lib/working-time.ts), park the run (`waiting`)
  *   and enqueue `kernel:routine-flow-resume` with that delay. A newer run for the same record
  *   supersedes a waiting one (it ends `skipped_condition`, "superseded").
@@ -34,13 +36,23 @@ import type {
 import { and, eq, inArray } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { type UserContext, withRlsContext } from "~/db/rls"
+import type { UserContext } from "~/db/rls"
 import { routineRuns, routines } from "~/db/schema/kernel"
 import type { RoutineRunFlowContext, RoutineRunStepState } from "~/db/schema/kernel/routine-runs"
 import { taskCellMatches } from "~/infra/jobs/event-routine-gate"
 import { rootLogger } from "~/lib/logger"
 import { addWorkingTime, resolveWorkingCalendar, type WorkingCalendar } from "~/lib/working-time"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import {
+  type FlowRecord,
+  type FlowRecordSource,
+  flowRecordPath,
+  flowRecordSource,
+  flowRecordSourceOfLabel,
+  flowRecordTool,
+  readFlowRecordLoad,
+  readFlowRecords,
+} from "./flow-records"
 import type {
   RoutineRunStatus,
   RoutineTickOpts,
@@ -107,11 +119,11 @@ export type FlowToolResult =
   | { blocked: { approvalRequestId: string | null } }
   | { error: string }
 
-/** The trigger task as a condition, an action or a message reads it. */
+/** The trigger record (a task) as a condition, an action or a message reads it. */
 interface FlowTask {
   id: string
   projectId: string
-  statusId: string
+  statusId: string | null
   assigneeId: string | null
   assigneeName: string | null
   title: string
@@ -130,9 +142,10 @@ interface FlowRun {
   startedAt: number
   /** When the trigger fired (the run's start): `status_unchanged_since_trigger` compares to it. */
   triggerAt: Date
-  /** The trigger record (a task id for projects task events), or null. */
+  /** The trigger record's id (a task id for a project task event), or null. */
   entityId: string | null
-  isTaskTrigger: boolean
+  /** The trigger entity's declared flow record (flow-records.ts), or null: it has none. */
+  record: FlowRecordSource | null
   outputThreadId: string
   actor: UserContext
   agentId: string | null
@@ -153,6 +166,7 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
   const deps = input.deps ?? {}
   const now = deps.now?.() ?? new Date()
   const entityId = ev?.entityId ?? null
+  await ensureOrgApps(orgId)
   if (entityId) await supersedeWaitingRuns(orgId, routine.id, entityId)
 
   const steps: RoutineRunStepState[] = flow.steps.map((s) => ({
@@ -183,7 +197,7 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
     startedAt: now.getTime(),
     triggerAt: now,
     entityId,
-    isTaskTrigger: ev?.app === "projects" && ev.entity === "task",
+    record: flowRecordSource(orgId, ev?.app, ev?.entity),
     outputThreadId: input.outputThreadId,
     hop: ev?.hop ?? 0,
     triggerEvent: ev,
@@ -195,7 +209,7 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
     const run = await buildRun({ ...base, runScopes: input.runScopes })
     // A task event whose task the owner cannot read (now): nothing runs, and nothing it holds
     // leaks into a step's note. The run ends `skipped_condition`.
-    if (run.isTaskTrigger && run.entityId && !(await readTriggerTask(run))) {
+    if (run.record && run.entityId && !(await readTriggerTask(run))) {
       for (const s of run.steps) {
         setState(s, "skipped", "The routine's owner cannot read the task that triggered it.")
       }
@@ -414,33 +428,35 @@ export function evaluateCondition(
   return values.some((v) => taskCellMatches(cell, v ?? null))
 }
 
-/** The trigger task, read now under the owner's RLS; null when there is none or it is hidden. */
+/** The org's app registries, set up before a declaration is read (job dispatch has done it). */
+async function ensureOrgApps(orgId: string): Promise<void> {
+  const { awaitOrgApps } = await import("~/modules/apps/init")
+  await awaitOrgApps(orgId)
+}
+
+function asFlowTask(r: FlowRecord): FlowTask {
+  return {
+    id: r.id,
+    projectId: r.containerId,
+    statusId: r.statusId,
+    assigneeId: r.assigneeId,
+    assigneeName: r.assigneeName,
+    title: r.title,
+    key: r.key,
+    fields: r.fields,
+    statusEnteredAt: r.statusEnteredAt,
+  }
+}
+
+/** The trigger record, read now under the owner's RLS; null when there is none or it is hidden. */
 async function readTriggerTask(run: FlowRun): Promise<FlowTask | null> {
-  if (!run.isTaskTrigger || !run.entityId) return null
-  const { loadTaskDetails } = await import("~/apps/projects/service/task-detail")
+  if (!run.record || !run.entityId) return null
   const entityId = run.entityId
   try {
-    const [t] = await withRlsContext(
-      run.actor,
-      (tx) => loadTaskDetails(tx, run.orgId, [entityId]),
-      {
-        pool: "jobs",
-      },
-    )
-    if (!t) return null
-    return {
-      id: t.id,
-      projectId: t.projectId,
-      statusId: t.statusId,
-      assigneeId: t.assigneeId,
-      assigneeName: t.assignee?.name ?? null,
-      title: t.title,
-      key: t.key ?? null,
-      fields: t.fields ?? {},
-      statusEnteredAt: t.statusEnteredAt,
-    }
+    const [t] = await readFlowRecords(run.record, run.actor, [entityId])
+    return t ? asFlowTask(t) : null
   } catch (err) {
-    // A read the owner may not make (no projects scope) is the same as a hidden task.
+    // A read the owner may not make (no scope on the record's app) is the same as a hidden record.
     log.warn(
       { err, routineId: run.routine.id, taskId: entityId },
       "flow: trigger task not readable",
@@ -462,14 +478,21 @@ function cellText(cell: unknown): string {
 }
 
 /** Pure: fills {{task.title}}, {{task.key}}, {{task.url}}, {{task.assigneeName}}, {{task.fields.<key>}}. */
-export function interpolateFlowText(text: string, task: FlowTask | null, baseUrl = ""): string {
+export function interpolateFlowText(
+  text: string,
+  task: FlowTask | null,
+  baseUrl = "",
+  record: FlowRecordSource | null = null,
+): string {
   return text.replace(
     /\{\{\s*task\.([a-zA-Z]+)(?:\.([a-z][a-z0-9_]*))?\s*\}\}/g,
     (_, prop, key) => {
       if (!task) return ""
       if (prop === "title") return task.title
       if (prop === "key") return task.key ?? ""
-      if (prop === "url") return `${baseUrl.replace(/\/$/, "")}/projects/tasks/${task.id}`
+      if (prop === "url") {
+        return record ? `${baseUrl.replace(/\/$/, "")}${flowRecordPath(record, task.id)}` : ""
+      }
       if (prop === "assigneeName") return task.assigneeName ?? ""
       if (prop === "fields" && key) return cellText(task.fields[key])
       return ""
@@ -512,15 +535,18 @@ type ActionStep = Extract<RoutineFlowStep, { type: "action" }>
 
 /**
  * The scope a `notify` step needs to notify anyone but the routine's owner. The attention event
- * itself asks for none (`notify_user` is self-targeted), so notifying a teammate about a task
- * takes the right to act on the task: the trigger app's write scope.
+ * itself asks for none (`notify_user` is self-targeted), so notifying a teammate about a record
+ * takes the right to act on it: the scope its app declares (`routineFlow.notifyScope`, a project
+ * task's `projects:tasks:write`). A run with no trigger record has none: it notifies its owner only.
  */
-export const FLOW_NOTIFY_OTHERS_SCOPE = "projects:tasks:write"
+function notifyOthersScope(run: FlowRun): string | null {
+  return run.record?.decl.notifyScope ?? null
+}
 
 /**
  * Why a `notify` step may not reach its targets, or null. The owner alone is always allowed (the
  * same as `notify_user`). Anyone else must be an active member of the org, the run must hold
- * `FLOW_NOTIFY_OTHERS_SCOPE`, and each target must be able to read the trigger task under their
+ * the record's notify scope, and each target must be able to read the trigger task under their
  * own grants and RLS: the summary carries the task's title and fields.
  */
 async function notifyRefusal(
@@ -531,8 +557,12 @@ async function notifyRefusal(
   const others = targets.filter((t) => t !== run.routine.ownerUserId)
   if (others.length === 0) return null
   const { isScopeCovered } = await import("~/modules/agent/scopes/scope-coverage")
-  if (!isScopeCovered([FLOW_NOTIFY_OTHERS_SCOPE], run.actor.scopes)) {
-    return `Notifying someone other than the routine's owner needs the scope ${FLOW_NOTIFY_OTHERS_SCOPE}, which this routine does not hold.`
+  const scope = notifyOthersScope(run)
+  if (!scope) {
+    return "Notifying someone other than the routine's owner needs a trigger record: this run has none."
+  }
+  if (!isScopeCovered([scope], run.actor.scopes)) {
+    return `Notifying someone other than the routine's owner needs the scope ${scope}, which this routine does not hold.`
   }
   const { users } = await import("~/db/schema/kernel")
   const active = await withPrivilegedDb(run.orgId, "routine-flow-notify-targets", (tx) =>
@@ -565,9 +595,10 @@ async function userCanReadTask(run: FlowRun, userId: string, taskId: string): Pr
   const perms = await withPrivilegedDb(run.orgId, "routine-flow-notify-perms", (tx) =>
     loadEffectivePermissions(tx, userId, run.orgId),
   )
-  const { loadTaskDetails } = await import("~/apps/projects/service/task-detail")
+  if (!run.record) return false
   try {
-    const rows = await withRlsContext(
+    const rows = await readFlowRecords(
+      run.record,
       {
         actorType: "user",
         userId,
@@ -575,8 +606,7 @@ async function userCanReadTask(run: FlowRun, userId: string, taskId: string): Pr
         scopes: perms.scopes,
         dimensionGrants: perms.dimensionGrants,
       },
-      (tx) => loadTaskDetails(tx, run.orgId, [taskId]),
-      { pool: "jobs" },
+      [taskId],
     )
     return rows.length > 0
   } catch (err) {
@@ -626,29 +656,14 @@ async function callTool(
   )
 }
 
-/** The candidate holding the fewest open tasks of the project (ties: list order). */
-async function leastLoaded(run: FlowRun, projectId: string, candidates: string[]): Promise<string> {
-  const { sql: drizzleSql } = await import("drizzle-orm")
-  const { projectsRel } = await import("~/apps/projects/schema-refs")
-  const rows = await withRlsContext(
-    run.actor,
-    async (tx) =>
-      extractRows<{ assignee_id: string; n: number }>(
-        await tx.execute(drizzleSql`
-          SELECT t.assignee_id::text AS assignee_id, count(*)::int AS n
-            FROM ${projectsRel("tasks")} t
-            JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
-           WHERE t.org_id = ${run.orgId}::uuid AND t.project_id = ${projectId}::uuid
-             AND NOT s.terminal AND t.archived_at IS NULL
-             AND t.assignee_id IN (${drizzleSql.join(
-               candidates.map((c) => drizzleSql`${c}::uuid`),
-               drizzleSql`, `,
-             )})
-           GROUP BY t.assignee_id`),
-      ),
-    { pool: "jobs" },
-  )
-  const load = new Map(rows.map((r) => [r.assignee_id, r.n]))
+/** The candidate holding the fewest open records of the container (ties: list order). */
+async function leastLoaded(
+  run: FlowRun,
+  record: FlowRecordSource,
+  containerId: string,
+  candidates: string[],
+): Promise<string> {
+  const load = await readFlowRecordLoad(record, run.actor, containerId, candidates)
   let best = candidates[0]!
   for (const c of candidates) if ((load.get(c) ?? 0) < (load.get(best) ?? 0)) best = c
   return best
@@ -665,7 +680,8 @@ async function runAction(
     return { kind: "end", status: "failed", error: `Step ${step.id}: ${note}` }
   }
   const needsTask = step.action !== "message" && step.action !== "notify"
-  if (needsTask && !task) {
+  const record = run.record
+  if (needsTask && (!task || !record)) {
     return fail("The trigger task is not there, or the routine's owner cannot read it.")
   }
 
@@ -682,6 +698,7 @@ async function runAction(
       step.args.text,
       task,
       await taskBaseUrl(run, step.args.text),
+      run.record,
     )
     await withPrivilegedDb(run.orgId, "routine-flow-notify", (tx) =>
       tx.queueEvent({
@@ -693,7 +710,9 @@ async function runAction(
           summary,
           urgency: step.args.urgency ?? 50,
           targetUserIds: targets,
-          ...(task ? { link: { tabType: "projects:task", entityId: task.id } } : {}),
+          ...(task && run.record
+            ? { link: { tabType: run.record.decl.tabType, entityId: task.id } }
+            : {}),
         },
         actorId: run.routine.ownerUserId,
         actorType: "system",
@@ -727,6 +746,7 @@ async function runAction(
         step.args.text,
         task,
         await taskBaseUrl(run, step.args.text),
+        run.record,
       ),
     }
     done = "Message sent."
@@ -734,27 +754,32 @@ async function runAction(
   } else if (step.action === "assign") {
     const to =
       typeof step.args.to === "object"
-        ? await leastLoaded(run, task!.projectId, step.args.to.leastLoaded)
+        ? await leastLoaded(run, record!, task!.projectId, step.args.to.leastLoaded)
         : resolvePerson(step.args.to, run, task)
     if (!to) return fail("Nobody to assign: the task has no assignee.")
-    toolName = "projects:update"
-    params = { taskId: task!.id, assigneeId: to }
+    toolName = flowRecordTool(record!, "update")
+    params = { [record!.decl.recordParam]: task!.id, assigneeId: to }
     done = "Assigned."
     output = { assigneeId: to }
   } else if (step.action === "set_field") {
-    toolName = "projects:update"
-    params = { taskId: task!.id, fields: { [step.args.key]: step.args.value } }
+    toolName = flowRecordTool(record!, "update")
+    params = { [record!.decl.recordParam]: task!.id, fields: { [step.args.key]: step.args.value } }
     done = `Set ${step.args.key}.`
   } else if (step.action === "set_status") {
-    toolName = "projects:update"
-    params = { taskId: task!.id, statusId: step.args.statusId }
+    toolName = flowRecordTool(record!, "update")
+    params = { [record!.decl.recordParam]: task!.id, statusId: step.args.statusId }
     done = "Status set."
     output = { statusId: step.args.statusId }
   } else {
-    toolName = "projects:comment"
+    toolName = flowRecordTool(record!, "comment")
     params = {
-      taskId: task!.id,
-      body: interpolateFlowText(step.args.text, task, await taskBaseUrl(run, step.args.text)),
+      [record!.decl.recordParam]: task!.id,
+      body: interpolateFlowText(
+        step.args.text,
+        task,
+        await taskBaseUrl(run, step.args.text),
+        run.record,
+      ),
     }
     done = "Comment posted."
   }
@@ -914,7 +939,7 @@ export async function resumeFlowWait(
       startedAt: bare.startedAt,
       triggerAt: bare.triggerAt,
       entityId: bare.entityId,
-      isTaskTrigger: bare.isTaskTrigger,
+      record: bare.record,
       outputThreadId: ready.outputThreadId,
       hop: bare.hop,
       triggerEvent: bare.triggerEvent,
@@ -983,7 +1008,7 @@ function claimedRun(
     startedAt: runRow.startedAt?.getTime() ?? Date.now(),
     triggerAt: runRow.startedAt ?? new Date(),
     entityId: runRow.eventEntityId,
-    isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
+    record: flowRecordSourceOfLabel(orgId, runRow.triggerLabel),
     outputThreadId: routine.outputThreadId ?? "",
     hop: context?.hop ?? 0,
     triggerEvent: (context?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined,
@@ -1292,8 +1317,8 @@ async function notifyFlagged(run: FlowRun, step: AgentStep, note: string): Promi
           urgency: 60,
           targetUserIds: [run.routine.ownerUserId],
           link:
-            run.entityId && run.isTaskTrigger
-              ? { tabType: "projects:task", entityId: run.entityId }
+            run.entityId && run.record
+              ? { tabType: run.record.decl.tabType, entityId: run.entityId }
               : { tabType: "thread", entityId: run.outputThreadId },
           routineFlag: { routineId: run.routine.id, runId: run.runId, stepId: step.id },
         },
@@ -1435,6 +1460,7 @@ export async function resumeFlowOnDecision(
   /** The seams, or how to get them for the run's routine (the production tick's, per routine). */
   depsOf: FlowDeps | ((routineId: string) => Promise<FlowDeps>) = {},
 ): Promise<RoutineTickResult | null> {
+  await ensureOrgApps(orgId)
   const { sql: drizzleSql } = await import("drizzle-orm")
   const { schemaRef } = await import("~/db/schema-ref")
   const K = drizzleSql.raw(schemaRef("kernel"))
@@ -1488,7 +1514,7 @@ export async function resumeFlowOnDecision(
       startedAt: bare.startedAt,
       triggerAt: bare.triggerAt,
       entityId: bare.entityId,
-      isTaskTrigger: bare.isTaskTrigger,
+      record: bare.record,
       outputThreadId: ready.outputThreadId,
       hop: bare.hop,
       triggerEvent: bare.triggerEvent,
@@ -1527,6 +1553,7 @@ export async function runFlowResumeJob(
     log.warn({ payload }, "routine-flow-resume: missing ids")
     return { status: "no_run" }
   }
+  await ensureOrgApps(orgId)
   const [run] = await withPrivilegedDb(orgId, "routine-flow-resume-entity", (tx) =>
     tx
       .select({ entityId: routineRuns.eventEntityId })
@@ -1593,6 +1620,7 @@ export const FLOW_WAIT_OVERDUE_MS = 2 * 60 * 60 * 1000
  * the event reconciler fires the routine again for its event. Returns how many ended.
  */
 export async function sweepStuckFlowRuns(orgId: string, now = new Date()): Promise<number> {
+  await ensureOrgApps(orgId)
   const { sql: drizzleSql } = await import("drizzle-orm")
   const staleBefore = new Date(now.getTime() - FLOW_RUN_STALE_MS)
   const overdueBefore = new Date(now.getTime() - FLOW_WAIT_OVERDUE_MS)
@@ -1662,7 +1690,7 @@ export async function sweepStuckFlowRuns(orgId: string, now = new Date()): Promi
         startedAt: runRow.startedAt?.getTime() ?? now.getTime(),
         triggerAt: runRow.startedAt ?? now,
         entityId: runRow.eventEntityId,
-        isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
+        record: flowRecordSourceOfLabel(orgId, runRow.triggerLabel),
         outputThreadId: routine.outputThreadId ?? "",
         hop: ctx?.hop ?? 0,
         triggerEvent: (ctx?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined,

@@ -691,6 +691,54 @@ export function pickDeclarationErrors(app: unknown): string[] {
   return errors
 }
 
+/**
+ * `entities.<e>.routineFlow` (modules/agent/routines/flow-records.ts): `updateTool` and
+ * `commentTool` are this app's own write tools taking `recordParam`, and `notifyScope` is one of
+ * this app's scopes. The handler exports are checked when the app registers (core apps only).
+ */
+export function routineFlowDeclarationErrors(app: unknown): string[] {
+  const root = asRecord(app)
+  const entities = asRecord(root?.entities)
+  if (!entities) return []
+  const appName = typeof root?.name === "string" ? root.name : ""
+  const tools = asRecord(root?.tools) ?? {}
+  const errors: string[] = []
+  for (const [entityName, rawEntity] of Object.entries(entities)) {
+    const decl = asRecord(asRecord(rawEntity)?.routineFlow)
+    if (!decl) continue
+    const where = `entities.${entityName}.routineFlow`
+    const recordParam = typeof decl.recordParam === "string" ? decl.recordParam : ""
+    for (const key of ["updateTool", "commentTool"] as const) {
+      const toolName = typeof decl[key] === "string" ? (decl[key] as string) : ""
+      const tool = asRecord(tools[toolName])
+      if (!tool) {
+        errors.push(
+          `routine_flow_invalid: ${where}.${key}: "${toolName}" is not a tool of this app`,
+        )
+        continue
+      }
+      if (tool.readOnly === true) {
+        errors.push(`routine_flow_invalid: ${where}.${key}: tool "${toolName}" must write`)
+      }
+      const params = asRecord(tool.params)
+      const properties =
+        params && !("safeParse" in params) ? asRecord(params.properties) : undefined
+      if (properties && !(recordParam in properties)) {
+        errors.push(
+          `routine_flow_invalid: ${where}.recordParam: tool "${toolName}" takes no parameter "${recordParam}"`,
+        )
+      }
+    }
+    const notifyScope = typeof decl.notifyScope === "string" ? decl.notifyScope : ""
+    if (appName && !notifyScope.startsWith(`${appName}:`)) {
+      errors.push(
+        `routine_flow_invalid: ${where}.notifyScope: "${notifyScope}" is not a scope of this app`,
+      )
+    }
+  }
+  return errors
+}
+
 export function printDeclarationErrors(app: unknown): string[] {
   const root = asRecord(app)
   const entities = asRecord(root?.entities)
@@ -817,6 +865,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   errors.push(...dimensionReferenceErrors(descriptor))
   errors.push(...printDeclarationErrors(descriptor))
   errors.push(...pickDeclarationErrors(descriptor))
+  errors.push(...routineFlowDeclarationErrors(descriptor))
 
   // Every tool scope must be prefixed with the app's scope namespace
   if (data.tools) {
@@ -1364,6 +1413,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
 
   errors.push(...printDeclarationErrors(manifest))
   errors.push(...pickDeclarationErrors(manifest))
+  errors.push(...routineFlowDeclarationErrors(manifest))
 
   // Cross-field: searchable entities must declare tableName + readScope
   if (manifest.entities) {

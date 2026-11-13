@@ -73,6 +73,7 @@ import {
   type ReconcileOutcome,
   registeredApps,
   registeredAppVersions,
+  routineFlowRecordRegistry,
   routineTemplateRegistry,
   setDeclaredEmits,
   skillRegistry,
@@ -4113,6 +4114,21 @@ async function registerSingleApp(
           // a parent in an immutable table carries its retention.
           const fileParent = manifestFileParentOf(desc, entityDef)
           if (fileParent) manifestFileParentRegistry.set([orgId, desc.name, entityName], fileParent)
+          // A routine flow trigger record (flow-records.ts): its readers are server code, so only
+          // a core app's declaration registers; a sandboxed app's is refused, loudly.
+          if (entityDef.routineFlow) {
+            if (core && typeof bundlePath === "string") {
+              routineFlowRecordRegistry.set([orgId, desc.name, entityName], {
+                decl: entityDef.routineFlow,
+                bundlePath,
+              })
+            } else {
+              log.warn(
+                { app: desc.name, entity: entityName, orgId },
+                "routineFlow declaration refused: only a core app's server module can read flow records",
+              )
+            }
+          }
         }
       }
 
@@ -4492,6 +4508,7 @@ const APP_KEYED_REGISTRIES = [
   webhookHandlers,
   entityRegistry,
   manifestFileParentRegistry,
+  routineFlowRecordRegistry,
   manifestAttentionRegistry,
   manifestAttentionAxesRegistry,
   dimensionDefRegistry,

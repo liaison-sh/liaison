@@ -514,6 +514,9 @@ async function reconcileRoutine(
     const filterApplies =
       isMailSenderFilterActive(routine.eventFilter) && isMailSenderFilterEvent(gateEvent)
     let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
+    // The record filter's declaration lives in the org's registries (flow-records.ts).
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(routine.orgId)
     const taskFilter =
       isProjectTaskFilterEvent(gateEvent) && isProjectTaskFilter(routine.eventFilter)
         ? routine.eventFilter

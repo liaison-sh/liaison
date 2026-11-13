@@ -986,3 +986,6 @@ export async function listTemplates(
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_listTemplates(JSON.stringify(params ?? {})))
 }
+
+// The routine flow record readers (entities.task.routineFlow), server code the kernel calls in process.
+export { routineFlowLeastLoaded, routineFlowReadRecords } from "./routine-flow-record"

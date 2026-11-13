@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { and, sql as drizzleSql, eq, inArray } from "drizzle-orm"
 import Redis from "ioredis"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
@@ -34,6 +35,7 @@ import { registerSingleton } from "~/infra/leadership"
 import { env } from "~/lib/env"
 import { jobsLogger as log } from "~/lib/logger"
 import { REDIS_PREFIX, RESP_PROTOCOL, redis } from "~/lib/redis"
+import { flowRecordSource, isUncoalescedRecordEvent } from "~/modules/agent/routines/flow-records"
 import { isSeededEvent } from "~/modules/notifications/seeded"
 
 /**
@@ -289,8 +291,8 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
   // The owner, once the gate loaded it: the data the routine is handed is masked for them.
   let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
-  // A projects task routine's filter (0303): project, from/to status, field values, matched on the
-  // task as the owner reads it, before the window opens.
+  // A flow record routine's filter (0303, a project task's): container, from/to status, field
+  // values, matched on the record as the owner reads it, before the window opens.
   const taskFilter =
     isProjectTaskFilterEvent(evt) && isProjectTaskFilter(sub.filter) ? sub.filter : null
   if (isOwnerScopedEvent(evt) || filterApplies || tableFilter || taskFilter) {
@@ -416,11 +418,13 @@ const uncoalescedOnceKey = (routineId: string, eventId: string) =>
 
 /**
  * Events whose every occurrence fires its own run: no coalesce window (0303), deduplicated on the
- * event's outbox id instead. `projects:task:status_changed` is new in the release that added
- * flows, so no routine subscribed to it before: no existing routine's runs change (S14).
+ * event's outbox id instead. The entity's app declares them (`routineFlow.uncoalescedEvents`, a
+ * project task's `status_changed`), and they are new in the release that added flows, so no
+ * routine subscribed to them before: no existing routine's runs change (S14). The bus dispatch
+ * has set the org up (event-bus.ts awaitOrgApps), so its registries are filled here.
  */
-function isUncoalescedEvent(evt: Pick<AppEvent, "app" | "entity" | "action">): boolean {
-  return evt.app === "projects" && evt.entity === "task" && evt.action === "status_changed"
+function isUncoalescedEvent(evt: Pick<AppEvent, "orgId" | "app" | "entity" | "action">): boolean {
+  return isUncoalescedRecordEvent(flowRecordSource(evt.orgId, evt.app, evt.entity), evt.action)
 }
 
 /** Tells the routine's owner (attention pipeline) that a chain stopped at it, once an hour. */
@@ -481,7 +485,7 @@ function subscriptionSignature(sub: EventRoutineSub): string {
         sub.filter.to === undefined ? "<any>" : sub.filter.to,
       ]
     : null
-  // A projects task filter (0303): its keys sorted, so a jsonb round trip reads the same.
+  // A record filter (0303): its keys sorted, so a jsonb round trip reads the same.
   const task = isProjectTaskFilter(sub.filter)
     ? [
         sub.filter.projectId ?? null,

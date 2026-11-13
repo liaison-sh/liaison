@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { and, eq, sql } from "drizzle-orm"
+import { projectsRel } from "~/apps/projects/schema-refs"
 import { createProject } from "~/apps/projects/service/create-project"
 import { createTask, deleteTask, updateTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
@@ -246,6 +247,31 @@ describe("a backed table reads the project's tasks", () => {
       (await listRows(owner, id, { limit: 1, sort: "title", cursor: page.nextCursor! })).rows[0]!
         .cells.title,
     ).toBe("No power")
+  })
+})
+
+describe("a finished task's deadline", () => {
+  it("a task in a terminal status reads terminal, an open one does not", async () => {
+    const b = await board()
+    const id = await backedTable(b)
+    const done = await withRlsContext(owner, async (tx) => {
+      const statuses = extractRows<{ id: string }>(
+        await tx.execute(
+          sql`SELECT id FROM ${projectsRel("project_statuses")} WHERE project_id = ${b.id}::uuid AND terminal IS TRUE`,
+        ),
+      )
+      return updateTask({
+        tx,
+        orgId,
+        actor: owner,
+        taskId: b.tasks[1]!,
+        input: { statusId: statuses[0]!.id },
+      })
+    })
+    expect(done).toBeTruthy()
+    const rows = byId((await listRows(owner, id)).rows)
+    expect(rows.get(b.tasks[1]!)!.terminal).toBe(true)
+    expect(rows.get(b.tasks[0]!)!.terminal).toBeUndefined()
   })
 })
 

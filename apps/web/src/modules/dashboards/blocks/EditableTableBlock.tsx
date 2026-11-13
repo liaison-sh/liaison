@@ -396,7 +396,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const value = () => p.row.cells[p.column.key]
     const text = () => cellText(p.column, value(), textOpts())
     const color = () => choiceColor(p.column, value())
-    const deadline = () => (p.column.deadline ? deadlineState(value(), today()) : null)
+    // A finished record (its provider marks it terminal) has no deadline to miss.
+    const deadline = () =>
+      p.column.deadline && !p.row.terminal ? deadlineState(value(), today()) : null
     return (
       <Switch fallback={<span class="truncate">{text()}</span>}>
         <Match when={p.column.type === "choice" && !isEmptyCell(value()) && color()}>
@@ -442,7 +444,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
             <span
               class={cn(
                 "truncate text-[12.5px]",
-                deadline()?.tone === "late" ? "text-error" : "text-warning",
+                // The warning tone fails AA on small text: near reads in the text colour, toned by its track.
+                deadline()?.tone === "late" ? "text-error" : "text-text-primary",
               )}
             >
               {text()}

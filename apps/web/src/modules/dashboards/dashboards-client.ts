@@ -1396,6 +1396,8 @@ export interface TableRow {
   /** A backed table's row: its record's version, sent back as `ifRecordVersion` to change a
    *  read-through cell (the server refuses the change when the record moved since). */
   recordVersion?: string
+  /** A backed table's row whose record is finished in its app (a done task): no deadline tint. */
+  terminal?: true
   updatedAt: string
   updatedBy: TableActor
 }

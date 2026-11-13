@@ -95,7 +95,7 @@ export const TookField: Component<{
           when={props.editable}
           fallback={
             <span data-testid="task-took-value" class="text-text-secondary">
-              {shown() || "–"}
+              {shown() || i18n.t("projects.time.tookNone")}
             </span>
           }
         >

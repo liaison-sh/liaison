@@ -43,7 +43,7 @@ const SENDERS = Number(process.argv[4] ?? 400)
 const PAGE = 25
 
 /** Bridge methods that never touch the database (external I/O, logs, codecs). */
-const NON_DB = /^(fetch|imap_|smtp_|codec_|log_|getUserId|getOrgId|connections_getToken|config_get)/
+const NON_DB = /^(fetch|imap_|smtp_|log_|getUserId|getOrgId|connections_getToken|config_get)/
 
 function b64url(text: string): string {
   return Buffer.from(text, "utf8").toString("base64url")

@@ -579,59 +579,6 @@ describe("createSessionRpcBridge — attachmentBytesLedger survives per-call bri
   })
 })
 
-describe("codec bridge methods — host-side bulk encoders", () => {
-  // Bulk encodes must run host-side (native Buffer, milliseconds) because the
-  // in-sandbox fallback encoder is interpreted per-byte on the main thread: a
-  // multi-MB payload (Gmail send raw = base64url of the whole RFC 2822
-  // message) froze the entire process for tens of seconds in prod.
-  it("codec_base64UrlEncodeUtf8 / codec_base64EncodeUtf8 match native Buffer output, including multi-byte UTF-8", async () => {
-    const session = createRlsSession(actorA)
-    const sessionBridge = createSessionRpcBridge(
-      APP_NAME,
-      USER_A,
-      ORG_A,
-      session,
-      MANIFEST as never,
-      actorA.scopes,
-    )
-    const samples = [
-      "hello world",
-      "MIME-Version: 1.0\r\nSubject: héllo — ünïcode ✓\r\n\r\nbody",
-      "a".repeat(100_000),
-    ]
-    for (const s of samples) {
-      expect(await sessionBridge.codec_base64UrlEncodeUtf8(s)).toBe(
-        Buffer.from(s, "utf8").toString("base64url"),
-      )
-      expect(await sessionBridge.codec_base64EncodeUtf8(s)).toBe(
-        Buffer.from(s, "utf8").toString("base64"),
-      )
-    }
-  })
-
-  it("codec methods run TXLESS on the session bridge — they execute against the poison tx and still succeed (no RLS transaction opened per encode)", async () => {
-    // A session whose run() would blow up if invoked proves the codec call
-    // never opens a transaction.
-    const explodingSession = {
-      ctx: actorA,
-      run: async () => {
-        throw new Error("codec method must not open a session.run transaction")
-      },
-    }
-    const sessionBridge = createSessionRpcBridge(
-      APP_NAME,
-      USER_A,
-      ORG_A,
-      explodingSession as never,
-      MANIFEST as never,
-      actorA.scopes,
-    )
-    expect(await sessionBridge.codec_base64UrlEncodeUtf8("txless")).toBe(
-      Buffer.from("txless", "utf8").toString("base64url"),
-    )
-  })
-})
-
 describe("effects bridge methods: one claimer for the handler's whole run", () => {
   afterAll(async () => {
     await sql`DELETE FROM kernel.effect_ledger WHERE org_id = ${ORG_A}`

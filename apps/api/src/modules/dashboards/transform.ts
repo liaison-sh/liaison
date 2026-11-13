@@ -441,6 +441,8 @@ export interface TransformOptions {
   datasetRows?: Record<string, Row[] | null>
   /** Today in the org's zone (YYYY-MM-DD): a date chart's bucket holding it is in progress. */
   today?: string
+  /** Field labels by key (a dashboard table's columns): a single series is named by its field's. */
+  fieldLabels?: Record<string, string>
 }
 
 /** The rows a block aggregates: the source's rows (cut to MAX_SOURCE_ROWS), where applied. */
@@ -682,7 +684,7 @@ export function transformBlock(
       ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
       : [
           {
-            name: aggField ?? DEFAULT_SERIES,
+            name: aggField ? (opts.fieldLabels?.[aggField] ?? aggField) : DEFAULT_SERIES,
             values: kept.map((g) => totals.get(g.key) ?? totalOf(g)),
           },
         ]

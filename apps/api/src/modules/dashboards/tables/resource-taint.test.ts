@@ -71,7 +71,7 @@ async function table(orgAccess: "none" | "viewer" | "editor") {
 async function turn<T>(
   userId: string,
   steps: (call: Caller, origins: () => unknown, frame: RunContext) => Promise<T>,
-  opts: { roomPeople?: string[] } = {},
+  opts: { roomPeople?: string[]; earlierReads?: string[] } = {},
 ): Promise<T> {
   const actor = await asHeld(userId)
   const accumulator = createTurnScopeAccumulator({ orgId })
@@ -79,6 +79,8 @@ async function turn<T>(
   // taint stays empty and only the resource origin narrows the turn.
   accumulator.recordInjected([READ_SCOPE])
   expect(accumulator.snapshot()).toEqual([])
+  // What the conversation's history carries in (earlier replies' requiredScopes).
+  if (opts.earlierReads) accumulator.recordInjected(opts.earlierReads)
   const runId = crypto.randomUUID()
   const threadId = await minimal.thread(orgId, userId, { title: `turn ${runId}` })
   const call: Caller = (toolName, params, opts = {}) =>
@@ -265,5 +267,58 @@ describe("the agent's answer in a conversation never carries a table someone the
     expect(
       (await withoutRoomWithheldResourceReads(orgId, all, [editorId, ownerId])).map((m) => m.id),
     ).toEqual(["m1", "m2", "m3"])
+  })
+})
+
+describe("an agent's row write to a table after reading data some of its readers lack", () => {
+  // Prod 2026-11-12: a named agent's long conversation had read shop orders turns earlier; its
+  // one-cell write to an org-wide table parked (rightly) on a card that named the data store
+  // (kernel.app_documents), listed every scope the turn held and was decided by a holder of an
+  // app read scope instead of the table's deciders.
+  const LACKED = "kernel:audit:read"
+  const HELD_BY_ALL = "kernel:threads:read"
+
+  it("parks for the table's deciders, naming the table and only the scopes some readers lack", async () => {
+    const outsider = await asHeld(outsiderId)
+    expect(outsider.scopes).toContain(HELD_BY_ALL)
+    expect(outsider.scopes).not.toContain(LACKED)
+    await minimal.grantScope(editorId, LACKED)
+    const admin = (await minimal.person(orgId, { role: "admin", name: "Dashboards admin" })).id
+    const target = await table("editor")
+    const name = `People ${n}`
+    const res = await turn(
+      editorId,
+      async (call, _origins, frame) => {
+        expect(frame.turnScopeAccumulator?.snapshot()).toEqual([HELD_BY_ALL, LACKED].sort())
+        return call("kernel:tables_rows_write", {
+          tableId: target,
+          ops: [{ op: "add", cells: { name: "Sam" } }],
+        })
+      },
+      { earlierReads: [LACKED, HELD_BY_ALL] },
+    )
+    const requestId = res.blocked?.approvalRequestId
+    expect(requestId).toBeDefined()
+    const [row] = await sql<
+      {
+        approve_scope: string
+        resource_owner_id: string | null
+        notify_user_ids: string[]
+        summary: { lines: string[] }
+        metadata: { taintAudienceMustHold?: string[] }
+      }[]
+    >`SELECT approve_scope, resource_owner_id, notify_user_ids, summary, metadata
+        FROM kernel.approval_requests WHERE id = ${String(requestId)}`
+    // The table's decider rule (A6): an org-wide table's changes go to the dashboards admins.
+    expect(row?.approve_scope).toBe("kernel:dashboards:admin")
+    expect(row?.resource_owner_id).toBeNull()
+    expect(row?.notify_user_ids).toContain(admin)
+    // Only what some readers lack, never what every member holds.
+    expect(row?.metadata.taintAudienceMustHold).toEqual([LACKED])
+    const line = row?.summary.lines.at(-1) ?? ""
+    expect(line).toContain(`some people who can read the table "${name}" cannot see`)
+    expect(line).not.toContain("app_documents")
+    // Nothing was written yet.
+    expect((await listRows(await asHeld(ownerId), target)).rows).toHaveLength(1)
   })
 })

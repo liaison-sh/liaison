@@ -208,7 +208,7 @@ function secretConfigKeyResolver(
  * the cost, while missing a write repeats a side effect the requester never
  * asked to repeat. Pure reads (`*_get`, `*_search`, `*_list*`, `db_findMany`,
  * `db_findOne`, `db_count`, `config_get`, `connections_get*`, `time_civil`, the log
- * and codec helpers) are absent, so a rerun can still answer.
+ * helpers) are absent, so a rerun can still answer.
  *
  * A new write method goes here in the same change:
  * `tests/security/tool-side-effect-invariant.test.ts` enumerates the bridge and
@@ -405,7 +405,6 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
 const SESSION_TXLESS_METHOD_PREFIXES = [
   "imap_",
   "smtp_",
-  "codec_",
   "effects_",
   "_steps_",
   "limiter_",

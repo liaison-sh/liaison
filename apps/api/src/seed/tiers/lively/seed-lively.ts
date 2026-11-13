@@ -22,7 +22,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { users } from "~/db/schema/kernel"
 import { routines } from "~/db/schema/kernel/routines"
-import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
+import { isPublicDemoInstance } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, loadDemoMarker } from "~/modules/demo/demo-org"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
 import { runAsSeed } from "~/modules/notifications/seeded"
@@ -84,7 +84,7 @@ export interface SeedLivelyOptions {
   /** The caller's own people in the world's seats (the roster overlay). */
   people?: readonly LivelySeat[]
   orgName?: string
-  /** Every person's password (private boxes only; refused in demo mode). */
+  /** Every person's password (private boxes only; refused on a public demo box). */
   personaPassword?: string
   /** Delete an earlier demo org under this slug first, so the world is fresh. */
   replace?: boolean
@@ -124,15 +124,16 @@ const ticketRef = (key: string) => `lively:${key}`
 
 /**
  * Delete the demo org under `slug`, when there is one. Refused for an org
- * without the demo marker (a real workspace never goes this way) and on a demo
- * box, where demo orgs belong to visitors and the reaper.
+ * without the demo marker (a real workspace never goes this way) and on a public
+ * demo box, where demo orgs belong to visitors and the reaper (a private
+ * demo-mode box, `isPublicDemoInstance`, has none).
  */
 export async function replaceLivelyOrg(slug: string, log: (msg: string) => void): Promise<boolean> {
   const orgId = await findOrgIdBySlug(slug)
   if (!orgId) return false
-  if (isDemoModeEnabled()) {
+  if (isPublicDemoInstance()) {
     throw new Error(
-      `seedLivelyWorld: refusing to replace '${slug}' on a box running in demo mode: its demo orgs belong to visitors.`,
+      `seedLivelyWorld: refusing to replace '${slug}' on a public demo box: its demo orgs belong to visitors.`,
     )
   }
   const guard = async (id: string) => {

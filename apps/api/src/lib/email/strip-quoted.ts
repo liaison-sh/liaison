@@ -15,10 +15,8 @@
 // re-fetch with the stripping disabled if it genuinely needs the chain).
 // Deny-safe: when no marker matches, the body passes through untouched.
 //
-// KEEP THIS MODULE PURE (string in, string out, no imports): the mail app's
-// handler bundle runs sandboxed and cannot import host lib code, so it carries
-// a byte-identical copy of `stripQuotedHistory` (see apps/mail/handlers.ts —
-// same rule as `buildRfc2822Message`). Change one copy, change both.
+// Used by ticket reads (apps/tickets/search.ts) and mail reads
+// (apps/mail/handlers.ts), each naming how its reader re-fetches the chain.
 
 import { htmlToText } from "@liaison/shared"
 
@@ -134,7 +132,10 @@ export function stripQuotedHtml(html: string): StripQuotedHtmlResult {
   }
 }
 
-export function stripQuotedHistory(text: string): StripQuotedResult {
+export function stripQuotedHistory(
+  text: string,
+  rereadHint = "re-read with stripQuoted:false if you need the full chain",
+): StripQuotedResult {
   if (!text) return { text, trimmedChars: 0 }
   let cut = -1
   for (const marker of QUOTE_MARKERS) {
@@ -154,7 +155,7 @@ export function stripQuotedHistory(text: string): StripQuotedResult {
   const trimmedChars = text.length - head.length
   if (trimmedChars <= 0) return { text, trimmedChars: 0 }
   return {
-    text: `${head}\n[quoted history trimmed: ${trimmedChars} chars — re-read with stripQuoted:false if you need the full chain]`,
+    text: `${head}\n[quoted history trimmed: ${trimmedChars} chars — ${rereadHint}]`,
     trimmedChars,
   }
 }

@@ -285,7 +285,11 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
         }
         return { ...out, id: r.id, updated_at: r.updatedAt, updated_by: r.updatedBy.label }
       })
-      return { result: flat, totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length }
+      return {
+        result: flat,
+        totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length,
+        fieldLabels: Object.fromEntries(loaded.columns.map((c) => [c.key, c.label])),
+      }
     })
   } catch (err) {
     if (err instanceof TableError) {
@@ -391,6 +395,8 @@ export interface SourceRows {
    * (names only): what a person can add a filter on.
    */
   fieldNames?: string[]
+  /** A dashboard table's column labels by key: a series drawn from a column is named by it. */
+  fieldLabels?: Record<string, string>
 }
 
 export type SourceOutcome =
@@ -437,6 +443,9 @@ export async function runSource(
                 "totalRows" in read && typeof read.totalRows === "number"
                   ? read.totalRows
                   : rows.length,
+              ...("fieldLabels" in read && read.fieldLabels
+                ? { fieldLabels: read.fieldLabels }
+                : {}),
             }
           : { rows: null, object, totalRows: 0 },
       }
@@ -484,6 +493,7 @@ export function mapBlock(
       data: transformBlock(block.type, block.map, read.rows ?? read.object, {
         window: opts.window ?? null,
         totalRows: read.totalRows,
+        ...(read.fieldLabels ? { fieldLabels: read.fieldLabels } : {}),
         ...(opts.where ? { where: opts.where } : {}),
         ...(opts.linkApp ? { linkApp: opts.linkApp } : {}),
         ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),

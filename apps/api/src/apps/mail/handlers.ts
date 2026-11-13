@@ -8,7 +8,18 @@
 // called directly. Host-side writes (a sync page, the seal, purges) live in
 // modules/mail behind the `mail_*` and `mailbox_*` methods.
 
+import { csvCell, imapSyncSummary } from "@liaison/shared"
+import { emailBody } from "~/lib/email/email-body"
+import {
+  encodeAddressString,
+  encodeHeaderValue,
+  formatMailbox,
+  sanitizeHeaderValue,
+} from "~/lib/email/header-encoding"
+import { stripQuotedHistory } from "~/lib/email/strip-quoted"
+import { wrapExternalContent } from "~/lib/external-content"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
+import type { MailSyncOrigin } from "~/modules/mail/page-write"
 
 export interface MailMethods {
   getUserId(): string
@@ -92,12 +103,12 @@ export interface MailMethods {
   files_importFromUrl?(argsJson: string): Promise<string>
   files_listAttachments?(parentJson: string): Promise<string>
   approvals_pendingFor?(payloadKey: string, toolNamesJson?: string): Promise<string>
-  codec_base64UrlEncodeUtf8?(text: string): Promise<string>
-  codec_base64EncodeUtf8?(text: string): Promise<string>
-  codec_markdownToEmail?(markdown: string): Promise<string>
 }
 
 type MailCtx = CoreCtx<MailMethods>
+
+/** How a read whose quoted history was trimmed tells the agent to get it back. */
+const MAIL_REREAD_HINT = "re-read this message via messageId if you need the full chain"
 
 interface MailAttachmentSummary {
   id: string
@@ -235,305 +246,21 @@ interface KernelAccount {
   status: string
 }
 
-// Wrap externally-authored email text (an inbound message body / snippet the
-// customer wrote) so the agent reads it as DATA, not instructions — the same
-// untrusted-content fence web_search/web_fetch apply to fetched page text
-// (modules/agent/tools/web-tools.ts `wrapExternalContent`). The mail handler bundle
-// runs in QuickJS with NO imports allowed, so the helper is inlined here rather
-// than imported. Pairs with the mail:read/mail:search `taintSource: true`
-// manifest flag (the flag marks the thread tainted; this fences the content).
-function wrapExternalContent(content: string): string {
-  // A closing (or opening) fence tag inside the content is escaped, so the text
-  // cannot end its own fence. Byte-identical to lib/external-content.ts.
-  const safe = content.replace(/<(\s*\/?\s*external-content)/gi, "&lt;$1")
-  return `<external-content source="untrusted">\n${safe}\n</external-content>`
-}
-
-// ── Quoted-history stripper (mail-private copy) ─────────────────────────────
-// BYTE-IDENTICAL copy of `apps/api/src/lib/email/strip-quoted.ts`
-// `stripQuotedHistory` (this bundle runs in QuickJS with NO host imports —
-// same rule as `buildRfc2822Message`). Change one copy, change both.
-const QUOTE_MARKERS: RegExp[] = [
-  /^On .{4,300}? wrote:\s*$/ms,
-  /^Le .{4,300}? a écrit\s?:\s*$/ms,
-  /^Am .{4,300}? schrieb .{0,200}?:\s*$/ms,
-  /^El .{4,300}? escribió:\s*$/ms,
-  /^Il .{4,300}? ha scritto:\s*$/ms,
-  /^-{2,}\s*Original Message\s*-{2,}\s*$/im,
-  /^-{2,}\s*Message d'origine\s*-{2,}\s*$/im,
-  /^-{2,}\s*Ursprüngliche Nachricht\s*-{2,}\s*$/im,
-  /^_{10,}\s*$/m,
-  /^(?:From|Von|De)\s?: .+\r?\n(?:.*\r?\n)?(?:Sent|Date|Gesendet|Envoyé)\s?:/m,
-  /^-{2,}\s*Forwarded message\s*-{2,}\s*$/im,
-]
-
-function findQuotePyramidStart(text: string): number {
-  const lines = text.split("\n")
-  let runStart = -1
-  let quotedLines = 0
-  let offset = 0
-  const offsets: number[] = []
-  for (const line of lines) {
-    offsets.push(offset)
-    offset += line.length + 1
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const isQuoted = /^\s*>/.test(lines[i])
-    const isBlank = lines[i].trim() === ""
-    if (isQuoted) {
-      if (runStart === -1) runStart = i
-      quotedLines++
-    } else if (!isBlank) {
-      runStart = -1
-      quotedLines = 0
-    }
-  }
-  if (runStart !== -1 && quotedLines >= 3) return offsets[runStart]
-  return -1
-}
-
-function stripQuotedHistory(text: string): { text: string; trimmedChars: number } {
-  if (!text) return { text, trimmedChars: 0 }
-  let cut = -1
-  for (const marker of QUOTE_MARKERS) {
-    const m = marker.exec(text)
-    if (m && m.index >= 0 && (cut === -1 || m.index < cut)) cut = m.index
-  }
-  const pyramid = findQuotePyramidStart(text)
-  if (pyramid !== -1 && (cut === -1 || pyramid < cut)) cut = pyramid
-  if (cut === -1) return { text, trimmedChars: 0 }
-  let head = text.slice(0, cut).replace(/\s+$/, "")
-  if (head.length === 0) {
-    head = text.slice(0, 400).replace(/\s+$/, "")
-  }
-  const trimmedChars = text.length - head.length
-  if (trimmedChars <= 0) return { text, trimmedChars: 0 }
-  return {
-    text: `${head}\n[quoted history trimmed: ${trimmedChars} chars — re-read this message via messageId if you need the full chain]`,
-    trimmedChars,
-  }
-}
-
-function decodeBase64Binary(input: string): string {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/")
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4)
-  if (typeof atob === "function") return atob(padded)
-
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-  let output = ""
-  let index = 0
-
-  while (index < padded.length) {
-    const enc1 = chars.indexOf(padded.charAt(index++))
-    const enc2 = chars.indexOf(padded.charAt(index++))
-    const enc3 = chars.indexOf(padded.charAt(index++))
-    const enc4 = chars.indexOf(padded.charAt(index++))
-
-    const chr1 = (enc1 << 2) | (enc2 >> 4)
-    const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2)
-    const chr3 = ((enc3 & 3) << 6) | enc4
-
-    output += String.fromCharCode(chr1)
-    if (enc3 !== 64) output += String.fromCharCode(chr2)
-    if (enc4 !== 64) output += String.fromCharCode(chr3)
-  }
-
-  return output
-}
-
-function decodeUtf8Binary(binary: string): string {
-  let escaped = ""
-  for (let index = 0; index < binary.length; index++) {
-    escaped += `%${binary.charCodeAt(index).toString(16).padStart(2, "0")}`
-  }
-  return decodeURIComponent(escaped)
-}
-
+/**
+ * A base64 (or base64url) body part as text: UTF-8 when its charset says so
+ * and the bytes are valid UTF-8, otherwise one character per byte.
+ */
 function decodeBase64(input: string, charset = "utf-8"): string {
-  const binary = decodeBase64Binary(input)
+  const bytes = Buffer.from(input, "base64")
   if (/^(?:utf-?8|unicode-1-1-utf-8)$/i.test(charset)) {
     try {
-      return decodeUtf8Binary(binary)
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
     } catch {
-      return binary
+      return bytes.toString("latin1")
     }
   }
-  return binary
+  return bytes.toString("latin1")
 }
-
-function encodeUtf8Bytes(input: string): number[] {
-  const encoded = encodeURIComponent(input)
-  const bytes: number[] = []
-
-  for (let index = 0; index < encoded.length; index++) {
-    if (encoded[index] === "%") {
-      bytes.push(parseInt(encoded.slice(index + 1, index + 3), 16))
-      index += 2
-      continue
-    }
-
-    bytes.push(encoded.charCodeAt(index))
-  }
-
-  return bytes
-}
-
-function encodeBase64Url(input: string): string {
-  const bytes = encodeUtf8Bytes(input)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-  let output = ""
-
-  for (let index = 0; index < bytes.length; index += 3) {
-    const byte1 = bytes[index] ?? 0
-    const byte2 = bytes[index + 1] ?? 0
-    const byte3 = bytes[index + 2] ?? 0
-
-    const triplet = (byte1 << 16) | (byte2 << 8) | byte3
-    output += chars[(triplet >> 18) & 63]
-    output += chars[(triplet >> 12) & 63]
-    output += index + 1 < bytes.length ? chars[(triplet >> 6) & 63] : "="
-    output += index + 2 < bytes.length ? chars[triplet & 63] : "="
-  }
-
-  return output.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
-}
-
-// Standard RFC-4648 base64 (alphabet +/, "=" padding) over a UTF-8 string. Used
-// by the mail export tool to hand bytes to the files bridge, which decodes with
-// Buffer.from(bytesBase64, "base64"). Distinct from encodeBase64Url (URL-safe
-// alphabet, no padding) which the bridge would mis-decode. No imports in the
-// QuickJS bundle, so the encoder is inlined.
-function encodeBase64Std(input: string): string {
-  const bytes = encodeUtf8Bytes(input)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-  let output = ""
-  for (let index = 0; index < bytes.length; index += 3) {
-    const byte1 = bytes[index] ?? 0
-    const byte2 = bytes[index + 1] ?? 0
-    const byte3 = bytes[index + 2] ?? 0
-    const triplet = (byte1 << 16) | (byte2 << 8) | byte3
-    output += chars[(triplet >> 18) & 63]
-    output += chars[(triplet >> 12) & 63]
-    output += index + 1 < bytes.length ? chars[(triplet >> 6) & 63] : "="
-    output += index + 2 < bytes.length ? chars[triplet & 63] : "="
-  }
-  return output
-}
-
-function sanitizeHeaderValue(value: unknown): string {
-  return String(value ?? "")
-    .replace(/[\r\n]+/g, " ")
-    .trim()
-}
-
-// --- RFC 2047 header encoding: inlined copy of apps/api/src/lib/email/header-encoding.ts
-// (this QuickJS bundle cannot import). handlers.test.ts asserts both copies give
-// identical output; change them together.
-const HEADER_BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-// 39 bytes → 52 base64 chars → a 64-char encoded word, so even the first line
-// ("Subject: " + word) stays under RFC 2047's 76-char line limit, and every
-// word stays well under its 75-char cap.
-const MAX_ENCODED_WORD_BYTES = 39
-
-function codePointUtf8Bytes(codePoint: number): number[] {
-  if (codePoint < 0x80) return [codePoint]
-  if (codePoint < 0x800) return [0xc0 | (codePoint >> 6), 0x80 | (codePoint & 63)]
-  if (codePoint < 0x10000) {
-    return [0xe0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 63), 0x80 | (codePoint & 63)]
-  }
-  return [
-    0xf0 | (codePoint >> 18),
-    0x80 | ((codePoint >> 12) & 63),
-    0x80 | ((codePoint >> 6) & 63),
-    0x80 | (codePoint & 63),
-  ]
-}
-
-function base64Bytes(bytes: number[]): string {
-  let output = ""
-  for (let index = 0; index < bytes.length; index += 3) {
-    const byte1 = bytes[index] ?? 0
-    const byte2 = bytes[index + 1] ?? 0
-    const byte3 = bytes[index + 2] ?? 0
-    const triplet = (byte1 << 16) | (byte2 << 8) | byte3
-    output += HEADER_BASE64_CHARS[(triplet >> 18) & 63]
-    output += HEADER_BASE64_CHARS[(triplet >> 12) & 63]
-    output += index + 1 < bytes.length ? HEADER_BASE64_CHARS[(triplet >> 6) & 63] : "="
-    output += index + 2 < bytes.length ? HEADER_BASE64_CHARS[triplet & 63] : "="
-  }
-  return output
-}
-
-function isAsciiHeaderText(value: string): boolean {
-  return !/[\u0080-\uffff]/.test(value)
-}
-
-/**
- * Encode an already-sanitized string as RFC 2047 B encoded words, never
- * splitting a UTF-8 sequence across words, folded with CRLF + space.
- */
-function toEncodedWords(value: string): string {
-  const words: string[] = []
-  let chunk: number[] = []
-  for (const char of value) {
-    const bytes = codePointUtf8Bytes(char.codePointAt(0) ?? 0)
-    if (chunk.length > 0 && chunk.length + bytes.length > MAX_ENCODED_WORD_BYTES) {
-      words.push(`=?UTF-8?B?${base64Bytes(chunk)}?=`)
-      chunk = []
-    }
-    chunk.push(...bytes)
-  }
-  if (chunk.length > 0) words.push(`=?UTF-8?B?${base64Bytes(chunk)}?=`)
-  return words.join("\r\n ")
-}
-
-/**
- * An unstructured header value (Subject): CR/LF stripped, then RFC 2047
- * encoded only when it holds non-ASCII. ASCII values are returned as-is.
- */
-export function encodeHeaderValue(value: unknown): string {
-  const sanitized = sanitizeHeaderValue(value)
-  if (isAsciiHeaderText(sanitized)) return sanitized
-  return toEncodedWords(sanitized)
-}
-
-/**
- * A mailbox display name: RFC 2047 when non-ASCII, a quoted-string when it
- * holds RFC 5322 specials (a period is allowed bare, as obs-phrase permits), otherwise the bare name.
- */
-export function encodeDisplayName(name: unknown): string {
-  const sanitized = sanitizeHeaderValue(name)
-  if (!isAsciiHeaderText(sanitized)) return toEncodedWords(sanitized)
-  if (/[()<>[\]:;@\\,"]/.test(sanitized)) {
-    return `"${sanitized.replace(/[\\"]/g, "\\$&")}"`
-  }
-  return sanitized
-}
-
-/** `Name <addr>` (or the bare addr-spec when there is no name). The addr-spec is never encoded. */
-export function formatMailbox(name: unknown, email: unknown): string {
-  const address = sanitizeHeaderValue(email)
-  const display = sanitizeHeaderValue(name)
-  if (!display) return address
-  return `${encodeDisplayName(display)} <${address}>`
-}
-
-/**
- * A pre-formatted address string ("Élodie <e@x.test>"). ASCII strings pass
- * through unchanged; a non-ASCII display name in the `name <addr>` form is
- * re-encoded. Anything else is returned sanitized (a non-ASCII addr-spec needs
- * SMTPUTF8 and cannot be fixed by header encoding).
- */
-export function encodeAddressString(value: unknown): string {
-  const sanitized = sanitizeHeaderValue(value)
-  if (isAsciiHeaderText(sanitized)) return sanitized
-  const match = /^(.*?)\s*<([^<>\s]+)>$/.exec(sanitized)
-  if (!match) return sanitized
-  const name = (match[1] ?? "").trim().replace(/^"(.*)"$/, "$1")
-  return formatMailbox(name, match[2])
-}
-// --- end RFC 2047 header encoding
 
 /**
  * Sanitize a value that will be interpolated into a MIME header parameter
@@ -1421,12 +1148,11 @@ async function enqueueEnvelopeTriggeredJobs(
  * re-import after a mailbox reset; no call site passes it today (a reset
  * mailbox goes back to `pending_enrollment` and fetches nothing).
  */
-type MailSyncOrigin = "initial" | "incremental" | "imap" | "sent" | "imap-sent" | "reset"
 
 // --- Page writes -------------------------------------------------------------
 //
 // A sync delivers mail a PAGE at a time (a Gmail list page, a history page, an
-// IMAP batch). The bundle fetches and normalizes it; the host writes it in ONE
+// IMAP batch). The handlers fetch and normalize it; the host writes it in ONE
 // transaction through `mail_writePage` (modules/mail/page-write.ts): stored
 // messages skipped, conversations created and rolled up, messages inserted (and
 // sealed for an armed personal mailbox), senders resolved to contacts under the
@@ -1443,9 +1169,9 @@ type MailSyncOrigin = "initial" | "incremental" | "imap" | "sent" | "imap-sent" 
 /** Messages per `mail_writePage` call (the host's bound). */
 const PAGE_WRITE_MAX_MESSAGES = 100
 
-/** Decoded bytes a page may hold in the QuickJS heap before it is written. A
- *  Gmail page is fetched message by message; buffering it whole must not
- *  bring back the multi-MB peaks that 32 MB heap cannot absorb. */
+/** Decoded bytes a page may hold in memory before it is written. A Gmail page
+ *  is fetched message by message; buffering it whole would hold multi-MB
+ *  peaks per running sync. */
 const PAGE_WRITE_BYTE_BUDGET = 2_000_000
 
 /** A rough size of a decoded message in the heap, for the page byte budget. */
@@ -1457,7 +1183,7 @@ function messageHeapBytes(message: any): number {
   return bytes
 }
 
-/** Attachments this bundle must import after the page commits: decoded bytes
+/** Attachments these handlers must import after the page commits: decoded bytes
  *  (IMAP), or a provider attachment id whose bytes the host downloads (Gmail
  *  hands every real attachment over as an `attachmentId`, never inline). */
 function hasAttachmentsToImport(message: any): boolean {
@@ -2290,7 +2016,7 @@ export async function listAccounts(params: { includeDisconnected?: boolean }, ct
       kernelStatus: kernel?.status,
       kernelDisplayName: kernel?.displayName,
       ...(row.provider === "imap"
-        ? { serverSync: imapServerSync(row.sync_state?.capabilities, row.sync_state) }
+        ? { serverSync: imapSyncSummary(row.sync_state?.capabilities, row.sync_state) }
         : {}),
     }
   })
@@ -2298,26 +2024,6 @@ export async function listAccounts(params: { includeDisconnected?: boolean }, ct
   // mailboxes connected to this org" read an empty list as "this org has no
   // mailbox", to a person whose org has five.
   return { accounts, note: LIST_ACCOUNTS_NOTE }
-}
-
-/**
- * What an IMAP mailbox keeps in step with its server, from the capabilities
- * the sync recorded (the bundle's copy of `imapSyncSummary` in
- * packages/shared/src/imap-login-failures.ts, which it cannot import). Null
- * before the first sync read them.
- */
-function imapServerSync(capabilities: any, syncState?: any): Record<string, unknown> | null {
-  if (!capabilities || typeof capabilities !== "object") return null
-  const folders = capabilities.folders ?? {}
-  const has = (key: string) => typeof folders[key] === "string" && folders[key] !== ""
-  return {
-    readAndStar: true,
-    archive: (capabilities.gmail === true && has("all")) || has("archive"),
-    trash: has("trash"),
-    sent: has("sent"),
-    archiveReadBack: syncState?.inboxTracked !== false,
-    pollMinutes: 2,
-  }
 }
 
 export async function getAccount(params: { accountId: string }, ctx: MailCtx) {
@@ -2564,8 +2270,9 @@ function isOversizedResponseError(err: unknown): boolean {
   return /exceeds .* bytes/i.test(String(err))
 }
 
-/** True for the QuickJS execution-deadline error ("InternalError: interrupted"). */
-function isSandboxInterrupt(err: unknown): boolean {
+/** True for a run's deadline error: every host call past it throws one saying
+ *  "interrupted" (modules/apps/core/run-core.ts). */
+function isRunInterrupt(err: unknown): boolean {
   return String(err).includes("interrupted")
 }
 
@@ -2626,7 +2333,7 @@ async function fetchGmailMessageResilient(
     // would record the message as "skipped" and let the page continue on a
     // budget that is already gone. Let it unwind to the run-level catch, which
     // schedules the paced continuation.
-    if (isSandboxInterrupt(err)) throw err
+    if (isRunInterrupt(err)) throw err
     if (!isOversizedResponseError(err)) {
       // A single bad message must never kill the page: log and skip.
       ctx.log_warn(
@@ -2667,7 +2374,7 @@ async function fetchGmailMessageResilient(
       )
       return { record, degraded: true }
     } catch (metaErr) {
-      if (isSandboxInterrupt(metaErr)) throw metaErr
+      if (isRunInterrupt(metaErr)) throw metaErr
       ctx.log_warn(
         "Skipping oversized Gmail message: metadata fallback failed",
         JSON.stringify({ accountId, messageId, error: String(metaErr) }),
@@ -3307,7 +3014,7 @@ export async function gmailIncrementalSync(
       // A Gmail per-user rate limit (HTTP 403 "Quota exceeded", 429) is the
       // other way a healthy replay ends early: the quota refills within a
       // minute, so the same continuation applies, paced back to a minute.
-      const interrupted = isSandboxInterrupt(err)
+      const interrupted = isRunInterrupt(err)
       const rateLimited = isGmailRateLimit(err)
       const progressed = messagesThisRun > 0 || latestHistoryId !== historyId
       if ((interrupted || rateLimited) && progressed) {
@@ -5118,11 +4825,7 @@ async function sendViaGmail(
   const token = await ctx.connections_getToken("gmail", accountEmail).catch((err: unknown) => {
     throw mailboxNotConnected(err, accountEmail)
   })
-  // Encode host-side: the message can carry multi-MB attachments, and the
-  // interpreted fallback encoder freezes the whole process for its duration.
-  const raw = ctx.codec_base64UrlEncodeUtf8
-    ? await ctx.codec_base64UrlEncodeUtf8(rfc2822)
-    : encodeBase64Url(rfc2822)
+  const raw = Buffer.from(rfc2822, "utf8").toString("base64url")
   opts?.onDispatch?.()
   const response = JSON.parse(
     await ctx.fetch(
@@ -5368,18 +5071,13 @@ async function relinkStagedAttachments(
 /**
  * A body written as markdown or plain text (an agent's draft, an approver's
  * edit, which blanks the stale htmlBody) goes out as formatted email through
- * the host's emailBody (codec_markdownToEmail), as a ticket reply does. A body
+ * emailBody (lib/email/email-body.ts), as a ticket reply does. A body
  * that already carries HTML is the browser composer's, whose textBody is
  * already the text part: both are sent as given.
  */
-async function withEmailBody<T extends { htmlBody?: string; textBody?: string }>(
-  params: T,
-  ctx: MailCtx,
-): Promise<T> {
-  if (params.htmlBody?.trim() || !params.textBody?.trim() || !ctx.codec_markdownToEmail) {
-    return params
-  }
-  const body = JSON.parse(await ctx.codec_markdownToEmail(params.textBody))
+function withEmailBody<T extends { htmlBody?: string; textBody?: string }>(params: T): T {
+  if (params.htmlBody?.trim() || !params.textBody?.trim()) return params
+  const body = emailBody({ textBody: params.textBody })
   return { ...params, htmlBody: body.html, textBody: body.text }
 }
 
@@ -6048,14 +5746,12 @@ interface ExportConvRow {
 
 function buildExportCsv(rows: ExportConvRow[]): string {
   // RFC-4180: CRLF line endings, header row, each field quoted when it contains
-  // a comma / quote / CR / LF (mailCsvCell handles the doubling of embedded
+  // a comma / quote / CR / LF (csvCell handles the doubling of embedded
   // quotes). Deterministic column order.
   const header = MAIL_EXPORT_CSV_COLUMNS.map(([k]) => k).join(",")
   const body = rows
     .map((r) =>
-      MAIL_EXPORT_CSV_COLUMNS.map(([, key]) => mailCsvCell(r[key as keyof ExportConvRow])).join(
-        ",",
-      ),
+      MAIL_EXPORT_CSV_COLUMNS.map(([, key]) => csvCell(r[key as keyof ExportConvRow])).join(","),
     )
     .join("\r\n")
   return body ? `${header}\r\n${body}\r\n` : `${header}\r\n`
@@ -6307,12 +6003,8 @@ export async function exportConversations(
   // Encode UTF-8 → STANDARD base64 for the files bridge (it decodes via
   // Buffer.from(bytesBase64, "base64"), which expects standard +/ alphabet and
   // = padding — NOT base64url). Encoded deterministically so two runs over the
-  // same scoped set produce byte-identical artifacts. Host-side when
-  // available: exports can span thousands of messages and the interpreted
-  // encoder blocks the process for the whole encode.
-  const bytesBase64 = ctx.codec_base64EncodeUtf8
-    ? await ctx.codec_base64EncodeUtf8(content)
-    : encodeBase64Std(content)
+  // same scoped set produce byte-identical artifacts.
+  const bytesBase64 = Buffer.from(content, "utf8").toString("base64")
 
   const written = JSON.parse(
     await ctx.files_importAttachment(
@@ -6429,7 +6121,7 @@ export async function agentMailRead(
       // budget on duplication. The messageId drill-down path passes
       // stripQuoted:false — asking for one exact message is the opt-in to its
       // full chain.
-      const stripped = stripQuoted ? stripQuotedHistory(body).text : body
+      const stripped = stripQuoted ? stripQuotedHistory(body, MAIL_REREAD_HINT).text : body
       const capped = stripped.length > bodyCap ? stripped.slice(0, bodyCap) : stripped
       projected.textBody = isInbound ? wrapExternalContent(capped) : capped
       projected.bodyTruncated = stripped.length > bodyCap
@@ -6678,23 +6370,20 @@ export async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
       )
       throw new Error("No valid reply recipient")
     }
-    const sendParams = await withEmailBody(
-      {
-        provider: account.provider,
-        accountEmail: account.email_address,
-        to,
-        cc: params.cc ?? [],
-        bcc: params.bcc ?? [],
-        subject,
-        textBody: params.textBody,
-        htmlBody: params.htmlBody,
-        externalThreadId: conversation.external_thread_id,
-        inReplyTo: latest.external_message_id,
-        references: latest.message_references ?? [],
-        attachments: attachmentParts,
-      },
-      ctx,
-    )
+    const sendParams = withEmailBody({
+      provider: account.provider,
+      accountEmail: account.email_address,
+      to,
+      cc: params.cc ?? [],
+      bcc: params.bcc ?? [],
+      subject,
+      textBody: params.textBody,
+      htmlBody: params.htmlBody,
+      externalThreadId: conversation.external_thread_id,
+      inReplyTo: latest.external_message_id,
+      references: latest.message_references ?? [],
+      attachments: attachmentParts,
+    })
     const result = await sendReply(sendParams, ctx, {
       onDispatch: () => {
         dispatched = true
@@ -6931,20 +6620,17 @@ async function _doCompose(
       attachmentParts = staged.parts
       stagedFileIds = staged.stagedFileIds
     }
-    const sendParams = await withEmailBody(
-      {
-        provider: account.provider,
-        accountEmail: account.email_address,
-        to: params.to,
-        cc: params.cc ?? [],
-        bcc: params.bcc ?? [],
-        subject: params.subject,
-        textBody: params.textBody,
-        htmlBody: params.htmlBody,
-        attachments: attachmentParts,
-      },
-      ctx,
-    )
+    const sendParams = withEmailBody({
+      provider: account.provider,
+      accountEmail: account.email_address,
+      to: params.to,
+      cc: params.cc ?? [],
+      bcc: params.bcc ?? [],
+      subject: params.subject,
+      textBody: params.textBody,
+      htmlBody: params.htmlBody,
+      attachments: attachmentParts,
+    })
     const result = await sendCompose(sendParams, ctx, {
       onDispatch: () => {
         dispatched = true
@@ -7384,17 +7070,6 @@ const MAIL_EXPORT_COLUMNS: Array<[string, string]> = [
   ["createdAt", "created_at"],
 ]
 
-function mailCsvCell(value: unknown): string {
-  let s = value === null || value === undefined ? "" : String(value)
-  // Spreadsheet formula injection: a leading = + - @ tab or CR makes the cell a formula, so prefix a
-  // single quote (plain numbers like "-5000" stay numeric). Verbatim copy of @liaison/shared csvCell.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`
-  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
 export async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const format = p.format ?? "json"
@@ -7480,7 +7155,7 @@ export async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown
   if (format === "csv") {
     const header = MAIL_EXPORT_COLUMNS.map(([k]) => k).join(",")
     const body = projected
-      .map((r) => MAIL_EXPORT_COLUMNS.map(([k]) => mailCsvCell(r[k])).join(","))
+      .map((r) => MAIL_EXPORT_COLUMNS.map(([k]) => csvCell(r[k])).join(","))
       .join("\n")
     return body ? `${header}\n${body}\n` : `${header}\n`
   }

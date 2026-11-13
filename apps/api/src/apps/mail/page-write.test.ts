@@ -43,7 +43,7 @@ let knownContactId: string
 const suffix = crypto.randomUUID().slice(0, 8)
 
 /** Bridge methods that never reach the database. */
-const NON_DB = /^(fetch|imap_|smtp_|codec_|log_|getUserId|getOrgId)/
+const NON_DB = /^(fetch|imap_|smtp_|log_|getUserId|getOrgId)/
 
 function bridgeFor(
   counter: { db: number; byMethod: Record<string, number> },

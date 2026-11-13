@@ -3940,6 +3940,10 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // would reach people outside them. It parks for the requester alone (who read it), never for
   // the org's deciders, who may not be its readers either.
   let resourceReadRoutesToRequester = false
+  // Rule 6j: the scopes the turn read that some readers of the shared resource it writes to lack
+  // (counted, never empty when set). A disclosure decision over that resource demands these only:
+  // every reader, the resource's deciders among them, holds the rest. Its card names these.
+  let resourceReadersMissing: string[] | null = null
   // What a judged tainted turn read, whatever the sink check answered (rule 13, 2026-11-03): a
   // write the taint lets through (an enforcing sink such as memory, readers who hold it, the
   // same-resource allowance) can still park for another reason (the outside-content hold, a host
@@ -4104,6 +4108,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         if (readersGap) {
           audience = "readers"
           gap = readersGap
+          if (readersGap.lacking !== null && readersGap.missingScopes.length > 0) {
+            resourceReadersMissing = [...readersGap.missingScopes].sort()
+          }
         }
       }
       // A sequenced @ref step is decided by its bundle head's approval (scope-taint.ts, rule
@@ -4232,7 +4239,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           taintScopes: knownTaint,
         })
         if (roomGap === null) {
-          taintForcedApprovalScopes = [...new Set(knownTaint)].sort()
+          // A shared resource's readers (rule 6j) hold everything but what some of them lack:
+          // the approval demands, and its card names, only that.
+          taintForcedApprovalScopes = resourceReadersMissing ?? [...new Set(knownTaint)].sort()
           taintDisclosedToReaders = true
         } else {
           audience = roomGap.audience
@@ -5090,8 +5099,14 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         )
         return true
       }))
+  // A write whose readers are one shared resource's (rule 6j, a dashboard table's rows) is
+  // decided by that resource's own deciders (the tool's approval authority and owner routing),
+  // never by a holder of an app's read scope: who may widen what a table's readers see is the
+  // table's question. Rule 15 (the requester alone decides) keeps the taint authority.
   const disclosureAuthority =
-    taintDisclosureOnly && taintForcedApprovalScopes !== null
+    taintDisclosureOnly &&
+    taintForcedApprovalScopes !== null &&
+    (!tool.sinkReadersResource || resourceReadRoutesToRequester)
       ? taintDisclosureAuthority(taintForcedApprovalScopes)
       : null
 
@@ -5124,7 +5139,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   let envelope: ExecuteToolEnvelope
 
   // Rule 8: a tainted proposal some readers of its target cannot see says so on its card, in
-  // plain words, because approving it is the disclosure. Kept inside the 8-line cap.
+  // plain words, because approving it is the disclosure. Kept inside the 8-line cap. The place
+  // is named as people know it when the tool can (a dashboard table by its name).
+  const taintSurface = taintDisclosedToReaders
+    ? ((await tool.taintCardPlace?.(validatedParams, { orgId: opts.orgId }).catch(() => null)) ??
+      taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable))
+    : ""
   const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary =>
     taintDisclosedToReaders
       ? {
@@ -5136,10 +5156,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
                   taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
                   taintPostHiddenFrom,
                 )
-              : taintDisclosureLine(
-                  taintForcedApprovalScopes ?? [],
-                  taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable),
-                ),
+              : taintDisclosureLine(taintForcedApprovalScopes ?? [], taintSurface),
           ],
         }
       : s

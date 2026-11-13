@@ -221,6 +221,10 @@ export interface InvoicingDocumentSpec {
   incoterm?: string
   /** The document's links to records outside invoicing (a payment processor's invoice). */
   externalRefs?: Record<string, string>
+  /** The project the document bills (a services company's invoice). */
+  billingProjectId?: string
+  /** A credit note: the key of the document it corrects. */
+  correctsKey?: string
 }
 
 /** Prefix per document type: the issuer profile's own defaults. */
@@ -570,6 +574,10 @@ export async function seedInvoicingHistory(
         po_number: d.spec.poNumber ?? null,
         notes: d.spec.notes ?? null,
         lifecycle_log: jsonCell(buildLifecycleLog(d)),
+        ...(d.spec.billingProjectId ? { billing_project_id: d.spec.billingProjectId } : {}),
+        ...(d.spec.correctsKey
+          ? { original_document_id: ctx.id("document", d.spec.correctsKey) }
+          : {}),
         created_at: iso(d.issuedAt ?? shiftTime(now, -1, 16)),
         updated_at: iso(d.paidAt ?? d.issuedAt ?? shiftTime(now, -1, 16)),
       }

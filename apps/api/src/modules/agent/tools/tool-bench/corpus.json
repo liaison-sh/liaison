@@ -3384,5 +3384,32 @@
     "typed": ["hours per day", "time settings", "heures par jour"],
     "any": ["projects__time_settings_get", "projects__time_settings_set"],
     "modelRun": true
+  },
+  {
+    "id": "C82",
+    "set": "seed",
+    "lang": "en",
+    "say": "what margin are we making on the portal project",
+    "typed": ["project margin", "profit project", "marge projet", "invoiced minus cost"],
+    "any": ["projects__margin_get"],
+    "modelRun": true
+  },
+  {
+    "id": "C83",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quels sont les taux de coût horaires de l'équipe",
+    "typed": ["cost rates", "taux de coût", "coût horaire"],
+    "any": ["projects__cost_rates_list"],
+    "modelRun": true
+  },
+  {
+    "id": "C84",
+    "set": "seed",
+    "lang": "en",
+    "say": "Paul costs us 52 an hour from December",
+    "typed": ["set cost rate", "cost per hour", "taux de coût"],
+    "any": ["projects__cost_rate_set"],
+    "modelRun": true
   }
 ]

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.21.12",
+  "version": "0.21.13",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1068,7 +1068,8 @@
             ],
             "required": false
           },
-          "external_ref": "text?"
+          "external_ref": "text?",
+          "billing_project_id": "uuid?"
       },
       "constraints": {
         "unique": [
@@ -1136,6 +1137,9 @@
         ],
         [
           "pdf_status"
+        ],
+        [
+          "billing_project_id"
         ]
       ]
     },
@@ -2322,6 +2326,25 @@
         }
       },
       "readOnly": true
+    },
+    "project_invoiced_get": {
+      "description": "What one project has been invoiced, excluding VAT and net of credit notes, and the paid part, in minor units. Called by the projects app only.",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "projectInvoicedGetHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "readOnly": true,
+      "timeoutMs": 20000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." },
+          "from": { "type": ["string", "null"], "description": "Inclusive lower bound on the issue date, YYYY-MM-DD." },
+          "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the issue date, YYYY-MM-DD." }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+      }
     },
     "customer_history": {
       "focusCore": true,

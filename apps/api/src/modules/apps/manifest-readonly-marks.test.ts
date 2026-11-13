@@ -58,6 +58,9 @@ const READ_ONLY: Record<string, string[]> = {
     "comments",
     "task_time_get",
     "budget_get",
+    // Margin and the cost rates behind it: finance's reads, nothing stored.
+    "margin_get",
+    "cost_rates_list",
     "capacity_get",
     // The dated sheet, and its file staged for the caller only (no record is written).
     "timesheet_get",
@@ -292,6 +295,8 @@ const READ_ONLY: Record<string, string[]> = {
     "received_einvoices_get",
     // A customer's earlier sales, lines and Shopify orders (cross-calls only reads).
     "customer_history",
+    // A project's invoiced amount, for the projects app's margin; writes nothing.
+    "project_invoiced_get",
     // Recurring schedules and a month-end run with its rows, read as stored.
     "recurring_list",
     "recurring_run_get",

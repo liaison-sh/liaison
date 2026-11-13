@@ -171,6 +171,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_search: "read",
   projects_taskTimeGet: "read",
   projects_budgetGet: "read",
+  projects_marginCost: "read",
+  projects_costRatesList: "read",
   projects_capacityGet: "read",
   projects_timesheetGet: "read",
   projects_timesheetExport:

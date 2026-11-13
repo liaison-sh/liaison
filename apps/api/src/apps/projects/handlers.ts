@@ -7,6 +7,7 @@
 
 import { csvCell } from "@liaison/shared"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
+import { composeMargin, type InvoicedRead, type MarginCost } from "./service/margin"
 
 export interface ProjectsMethods {
   projects_activityRead(paramsJson: string): Promise<string>
@@ -47,6 +48,11 @@ export interface ProjectsMethods {
   projects_billingTermsSet: (paramsJson: string) => Promise<string>
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
+  projects_marginCost: (paramsJson: string) => Promise<string>
+  projects_costRatesList: (paramsJson: string) => Promise<string>
+  projects_costRateSet: (paramsJson: string) => Promise<string>
+  /** A declared cross-app call (manifest `cross_app_calls`), answered in the K4 envelope. */
+  executeTool: (toolName: string, paramsJson: string) => Promise<string>
   projects_capacityGet: (paramsJson: string) => Promise<string>
   projects_timesheetGet: (paramsJson: string) => Promise<string>
   projects_timesheetExport: (paramsJson: string) => Promise<string>
@@ -1196,7 +1202,113 @@ export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promi
 }
 
 export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {})))
+  const out = JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {}))) as {
+    projectId?: string
+    money?: { price: number; currency: string | null }
+    totals?: Array<{ k: string; text: string }>
+  }
+  // The money half: a holder of the money scope also reads what is invoiced and what is left.
+  if (out?.money && out.projectId) {
+    const read = await readProjectInvoiced(ctx, out.projectId)
+    if (read.ok) {
+      const invoiced = read.invoicedMinor / 100
+      const left = Math.round((out.money.price - invoiced) * 100) / 100
+      out.money = { ...out.money, invoiced, leftToInvoice: left } as typeof out.money
+      const fmt = (v: number) => formatMoney(v, out.money?.currency ?? read.currency)
+      out.totals?.push(
+        { k: "Invoiced", text: fmt(invoiced) },
+        { k: "Left to invoice", text: fmt(left) },
+      )
+    } else {
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = read.off
+        ? "Invoicing is not on in this workspace, so what is invoiced is not shown."
+        : "I cannot read invoices right now, so what is invoiced is not shown."
+    }
+  }
+  return out
+}
+
+function formatMoney(amount: number, currency: string | null): string {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: currency ?? "EUR",
+    }).format(amount)
+  } catch {
+    return `${amount} ${currency ?? ""}`.trim()
+  }
+}
+
+/** Error codes that mean the invoicing app is not there to ask, rather than failing. */
+const INVOICING_ABSENT = new Set([
+  "tool_not_found",
+  "unknown_tool",
+  "app_disabled",
+  "app_not_enabled",
+  "not_found",
+])
+
+/**
+ * A project's invoiced amount, from invoicing's internal `project_invoiced_get` through the
+ * declared cross-app call. Any failure is reported as such, never as zero.
+ */
+async function readProjectInvoiced(
+  ctx: ProjectsCtx,
+  projectId: string,
+  range?: { from: string; to: string },
+): Promise<InvoicedRead> {
+  let env: {
+    status?: string
+    result?: unknown
+    data?: unknown
+    error?: { code?: string } | string
+    blocked?: unknown
+  }
+  try {
+    env = JSON.parse(
+      await ctx.executeTool(
+        "invoicing:project_invoiced_get",
+        JSON.stringify({ projectId, ...(range ? { from: range.from, to: range.to } : {}) }),
+      ),
+    )
+  } catch {
+    return { ok: false, off: false }
+  }
+  const body = (env.status === "completed" ? env.result : env.data) as
+    | { invoicedExcl?: unknown; currency?: unknown; documents?: unknown[]; error?: unknown }
+    | undefined
+  if (body && typeof body.invoicedExcl === "number" && !body.error) {
+    return {
+      ok: true,
+      invoicedMinor: body.invoicedExcl,
+      currency: typeof body.currency === "string" ? body.currency : null,
+      documents: Array.isArray(body.documents) ? body.documents.length : 0,
+    }
+  }
+  const code = typeof env.error === "object" && env.error ? env.error.code : undefined
+  return { ok: false, off: typeof code === "string" && INVOICING_ABSENT.has(code) }
+}
+
+// Margin and cost rates: finance only, chat only, one figure per project.
+export async function marginGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const cost = JSON.parse(await ctx.projects_marginCost(JSON.stringify(params ?? {}))) as
+    | MarginCost
+    | { error: unknown }
+  if ("error" in cost) return cost
+  const read = await readProjectInvoiced(
+    ctx,
+    cost.projectId,
+    cost.period ? { from: cost.period.from, to: cost.period.to } : undefined,
+  )
+  return composeMargin(cost, read)
+}
+
+export async function costRatesList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_costRatesList(JSON.stringify(params ?? {})))
+}
+
+export async function costRateSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_costRateSet(JSON.stringify(params ?? {})))
 }
 
 // The dated sheet of one project and month, and its export.

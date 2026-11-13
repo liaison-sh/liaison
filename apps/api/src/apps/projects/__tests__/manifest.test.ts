@@ -100,7 +100,8 @@ describe("projects.manifest", () => {
     // 1.26.0: the dated sheet's tools and corrections run only on a person's turn, in a DM,
     // behind their own scope; the reconcile card's reads and edits stay in a DM.
     // 1.27.0: a reconcile line changes only on a person's turn; dated sheet for members; keywords trimmed.
-    expect(projectsManifest.version).toBe("1.27.0")
+    // 1.28.0: margin and cost rates, and the money half of the budget read from invoicing.
+    expect(projectsManifest.version).toBe("1.28.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

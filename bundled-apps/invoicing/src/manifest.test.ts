@@ -1706,6 +1706,8 @@ describe("invoicing manifest", () => {
     // 0.21.3: no tool holds a transaction across its run: credit notes and convert-to-invoice commit
     //   their writes with the document, and order_reissue_apply issues the credit note and its
     //   replacement in one commit (both or neither).
+    // 0.21.13: a document may name the project it bills (billing_project_id), and the projects app
+    //   reads a project's invoiced amount through project_invoiced_get.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

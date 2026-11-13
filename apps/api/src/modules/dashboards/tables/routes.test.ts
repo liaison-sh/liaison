@@ -85,6 +85,11 @@ describe("tables REST", () => {
     expect(stale.status).toBe(409)
     expect(stale.body.error.code).toBe("version_conflict")
     expect(stale.body.error.details.current).toMatchObject({ id: row.id, version: 2 })
+    // Version 0 (a backed table's row with no own cells yet) is a version like any other.
+    const zero = await req(owner, "POST", `/api/dashboards/tables/${t.id}/rows`, {
+      ops: [{ op: "update", id: row.id, ifVersion: 0, cells: { status: "ordered" } }],
+    })
+    expect(zero.status).toBe(409)
 
     const bad = await req(owner, "POST", `/api/dashboards/tables/${t.id}/rows`, {
       ops: [{ op: "add", cells: { batch: "B-3", status: "lost" } }],

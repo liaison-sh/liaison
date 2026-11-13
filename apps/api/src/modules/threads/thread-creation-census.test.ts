@@ -21,7 +21,16 @@
 // silently.
 
 import { describe, expect, it } from "bun:test"
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import ts from "typescript"
 
@@ -321,10 +330,10 @@ function walkFile(file: string, rel: string): FoundSite[] {
   return found
 }
 
-function census(): FoundSite[] {
+function census(root: string = SRC): FoundSite[] {
   const sites: FoundSite[] = []
-  for (const file of sourceFiles(SRC)) {
-    const rel = relative(SRC, file)
+  for (const file of sourceFiles(root)) {
+    const rel = relative(root, file)
     sites.push(...walkFile(file, rel))
   }
   return sites
@@ -346,7 +355,10 @@ describe("thread creation census: every threads insert is an accounted-for ancho
 
   it("bites: an unlisted insert(threads) site under apps/api/src fails the census", () => {
     const fixtureRel = "modules/threads/__census_fixture_offender.ts"
-    const fixturePath = join(SRC, fixtureRel)
+    // Planted in a copy of the tree's layout, never in the shared source tree: other test
+    // files walking apps/api/src at the same time would list it, then fail to read it.
+    const root = mkdtempSync(join(tmpdir(), "thread-census-"))
+    const fixturePath = join(root, fixtureRel)
     const fixtureBody = `// SPDX-License-Identifier: FSL-1.1-ALv2
 import { threads, threads as aliasedThreads } from "~/db/schema/kernel"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -374,7 +386,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
     try {
       mkdirSync(dirname(fixturePath), { recursive: true })
       writeFileSync(fixturePath, fixtureBody)
-      const sites = census()
+      const sites = census(root)
       const planted = sites.filter((s) => s.file === fixtureRel)
       expect(planted.length).toBeGreaterThan(0)
       // An aliased table import is found too (no allowlisted file aliases
@@ -386,7 +398,7 @@ export async function planEphemeralHiddenAgentChat(orgId: string): Promise<void>
       expect(unlisted.length).toBeGreaterThan(0)
       expect(planted.some((s) => s.dangerousCombo)).toBe(true)
     } finally {
-      rmSync(fixturePath, { force: true })
+      rmSync(root, { recursive: true, force: true })
       expect(existsSync(fixturePath)).toBe(false)
     }
   })

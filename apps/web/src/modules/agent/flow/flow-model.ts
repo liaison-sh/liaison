@@ -15,6 +15,7 @@ import type {
 import { routineEventFilterSchema, routineFlowSchema } from "@liaison/shared"
 import type { Translate } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
+import { prettyStatus } from "~/modules/projects/status-label"
 
 /** The project a flow's trigger and steps name: its statuses and task fields. */
 export interface FlowProject {
@@ -102,7 +103,7 @@ const ASSIGNEE = "{{task.assigneeId}}"
 export function statusName(names: FlowNames, id: string | null | undefined): string {
   if (!id) return names.t("kernel.routineFlow.unknownStatus")
   const s = names.project?.statuses.find((x) => x.id === id)
-  return s ? s.label : names.t("kernel.routineFlow.unknownStatus")
+  return s ? prettyStatus(s.label) : names.t("kernel.routineFlow.unknownStatus")
 }
 
 export function personName(names: FlowNames, ref: string): string {

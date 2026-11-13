@@ -309,21 +309,17 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
       return JSON.stringify({ result, userMessageId: chat.userMessageId })
     },
 
-    // --- Agent dispatch (capability: agent.spawn + trusted) ---
-    // T10 — Allows a TRUSTED sandbox app to dispatch a fresh-context child
-    // agent run via spawnAgent(). Untrusted apps are refused (E_NOT_TRUSTED);
-    // trusted apps missing the capability declaration are also refused
-    // (E_CAPABILITY_NOT_DECLARED via requireCapability). Successful calls
-    // return `{ runId }` as a JSON envelope. Sandboxed callers may then
-    // await the structured result via `agent_awaitRun` (companion method
-    // below, same gating).
+    // --- Agent dispatch (capability: agent.spawn) ---
+    // Lets a sandboxed app dispatch a fresh-context child agent run via
+    // spawnAgent(). Like every capability it is declared in the manifest,
+    // listed on the install screen and granted by the admin who installs the
+    // app (an install that does not grant it is refused); an org's own custom
+    // apps may not declare it at all. No app is privileged by who published
+    // it: an app without the declaration is refused (CAPABILITY_NOT_DECLARED).
+    // Successful calls return `{ runId }` as a JSON envelope. Sandboxed callers
+    // may then await the structured result via `agent_awaitRun` (companion
+    // method below, same gating).
     agent_spawn: async (paramsJson: string): Promise<string> => {
-      if (!manifest.trusted) {
-        return envelopeError(
-          "E_NOT_TRUSTED",
-          `App "${appName}" is not trusted; agent.spawn refused`,
-        )
-      }
       try {
         requireCapability("agent.spawn")
       } catch (e) {
@@ -390,18 +386,12 @@ export function createAgentMethods(ctx: BridgeContext): Record<string, any> {
     },
 
     // Companion to `agent_spawn`: awaits the structured result of a sub-run
-    // dispatched earlier. Same gating (trusted + `agent.spawn` capability)
+    // dispatched earlier. Same gating (the `agent.spawn` capability)
     // applies. Honours the same defaults as the kernel-trusted callers — a
     // generous 10-minute wall-clock so a long-running ticket investigation
     // completes; callers can pass `timeoutMs` to tighten. Returns the same
     // `SubRunResult` envelope the host-side `awaitResult()` returns.
     agent_awaitRun: async (runId: string, optsJson?: string): Promise<string> => {
-      if (!manifest.trusted) {
-        return envelopeError(
-          "E_NOT_TRUSTED",
-          `App "${appName}" is not trusted; agent.awaitRun refused`,
-        )
-      }
       try {
         requireCapability("agent.spawn")
       } catch (e) {

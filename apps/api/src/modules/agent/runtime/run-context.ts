@@ -543,7 +543,7 @@ export interface SpawnParentFrame {
   tokenLimit?: SubRunTokenLimit
   /**
    * The run that owns the frame: its id, root and nesting depth. A spawn made
-   * after a hop that loses the frame (a trusted app's `ctx.agent.spawn`) nests
+   * after a hop that loses the frame (an app's `ctx.agent.spawn`) nests
    * its child one level below THIS run, so a depth-2 sub-run cannot reach a
    * fresh depth-0 chain through an app tool (MAX_NESTING_DEPTH).
    */

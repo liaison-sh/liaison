@@ -23,6 +23,10 @@ export interface CardLine {
   traceEstimateMinutes: number | null
   billMinutes: number
   proofs: Array<{ label: string; url?: string }>
+  /** The line's tasks: a line of one task done for another client can be moved there. */
+  taskIds?: readonly string[]
+  /** The project the line's work belongs to, readable by the asker. */
+  moveTo?: { projectId: string; key: string }
 }
 
 export interface CardInput {
@@ -151,6 +155,14 @@ export function reconcileCardFields(input: CardInput) {
       ...(fixed ? {} : { bill: q(l.billMinutes) }),
       ...(amount ? { amount } : {}),
       unit: unitOf(basis),
+      // One task done for another client: the row offers to move it there (projects:move).
+      ...(input.state === "proposed" && l.moveTo && l.taskIds?.length === 1
+        ? {
+            moveTaskId: l.taskIds[0],
+            moveProjectId: l.moveTo.projectId,
+            moveLabel: `Move it to ${l.moveTo.key}`,
+          }
+        : {}),
       ...(editable
         ? {
             billValue: inUnit(l.billMinutes, basis, hpd),

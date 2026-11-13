@@ -12,6 +12,7 @@ import { parseDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
+import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
 import { reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
@@ -27,6 +28,7 @@ import {
   NOT_EVERYTHING_SEEN,
   namedMember,
   type Period,
+  type ProofKind,
   type ProposedLine,
   proofLabel,
   readProposedLines,
@@ -463,6 +465,8 @@ interface StoredShape {
       id?: string
       wording?: string | null
       realNoteMinutes?: number | null
+      /** The other project's key, as the asker reads it now: the card's "Move it to" label. */
+      otherProjectKey?: string | null
     }
   >
   notSeen: Array<{ source: string; why: string }>
@@ -477,6 +481,59 @@ export const TRACE_SOURCES: ReadonlyArray<{ source: string; scope: string }> = [
   { source: "Knowledge", scope: "knowledge:documents:read" },
 ]
 export const NOT_YOURS_TO_READ = "you cannot read it here"
+/** Why a meeting or a document cited as proof was dropped: the asker cannot open that record. */
+export const RECORD_NOT_YOURS = "a record cited as proof is not one you can open"
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The records a proof may cite that belong to someone: a calendar event (a person's own calendar
+ * is theirs alone) and a knowledge document (one shared with named people only). Each is read
+ * again under the asker's own rows, like a task, so a proof naming one they cannot open never
+ * reaches the card.
+ */
+const OWNED_PROOFS: ReadonlyArray<{
+  kind: ProofKind
+  source: string
+  schema: string
+  table: string
+}> = [
+  { kind: "calendar_event", source: "Calendar", schema: "app_calendar", table: "events" },
+  { kind: "knowledge_doc", source: "Knowledge", schema: "app_knowledge", table: "documents" },
+]
+
+/** The cited record ids the asker can open, per proof kind; a kind whose app is absent reads none. */
+async function readableProofRefs(
+  tx: Tx,
+  orgId: string,
+  lines: readonly ProposedLine[],
+): Promise<Map<ProofKind, Set<string>>> {
+  const out = new Map<ProofKind, Set<string>>()
+  for (const owned of OWNED_PROOFS) {
+    const ids = [
+      ...new Set(
+        lines.flatMap((l) =>
+          l.proofs.filter((p) => p.kind === owned.kind && UUID_RE.test(p.ref)).map((p) => p.ref),
+        ),
+      ),
+    ]
+    const seen = new Set<string>()
+    out.set(owned.kind, seen)
+    if (ids.length === 0) continue
+    const rel = `${schemaRef(owned.schema)}.${owned.table}`
+    const present = extractRows<{ t: string | null }>(
+      await tx.execute(drizzleSql`SELECT to_regclass(${rel})::text AS t`),
+    )[0]?.t
+    if (!present) continue
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM ${drizzleSql.raw(rel)}
+         WHERE org_id = ${orgId}::uuid AND id = ANY(${`{${ids.join(",")}}`}::uuid[])`),
+    )
+    for (const r of rows) seen.add(r.id.toLowerCase())
+  }
+  return out
+}
 
 /**
  * What the agent said it did not see, plus every trace source the caller's scopes for this call
@@ -533,12 +590,14 @@ function sameShape(a: StoredShape, b: StoredShape): boolean {
   const canon = (s: StoredShape) =>
     JSON.stringify({
       ...s,
-      lines: s.lines.map(({ tag: _tag, id: _id, wording: _w, realNoteMinutes: _r, ...l }) => ({
-        ...l,
-        proofs: [...l.proofs].sort((x, y) =>
-          `${x.kind}|${x.ref}|${x.label}`.localeCompare(`${y.kind}|${y.ref}|${y.label}`),
-        ),
-      })),
+      lines: s.lines.map(
+        ({ tag: _tag, id: _id, wording: _w, realNoteMinutes: _r, otherProjectKey: _k, ...l }) => ({
+          ...l,
+          proofs: [...l.proofs].sort((x, y) =>
+            `${x.kind}|${x.ref}|${x.label}`.localeCompare(`${y.kind}|${y.ref}|${y.label}`),
+          ),
+        }),
+      ),
     })
   return canon(a) === canon(b)
 }
@@ -567,14 +626,19 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
     bill_minutes: number
     wording: string | null
     real_note_minutes: number | null
+    other_project_id: string | null
+    other_project_key: string | null
   }>(
     await tx.execute(drizzleSql`
-      SELECT id::text AS id, position, name, why, kind, reason, task_ids::text[] AS task_ids,
-             planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes, wording,
-             real_note_minutes
-        FROM ${projectsRel("reconciliation_lines")}
-       WHERE reconciliation_id = ${id}::uuid AND org_id = ${orgId}::uuid
-       ORDER BY position`),
+      SELECT l.id::text AS id, l.position, l.name, l.why, l.kind, l.reason,
+             l.task_ids::text[] AS task_ids, l.planned_minutes, l.real_minutes,
+             l.trace_estimate_minutes, l.bill_minutes, l.wording, l.real_note_minutes,
+             l.other_project_id::text AS other_project_id, op.key AS other_project_key
+        FROM ${projectsRel("reconciliation_lines")} l
+        LEFT JOIN ${projectsRel("projects")} op
+          ON op.id = l.other_project_id AND op.org_id = l.org_id AND op.archived_at IS NULL
+       WHERE l.reconciliation_id = ${id}::uuid AND l.org_id = ${orgId}::uuid
+       ORDER BY l.position`),
   )
   const proofs = extractRows<{
     line_id: string
@@ -619,6 +683,8 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
       realMinutes: l.real_minutes ?? 0,
       traceEstimateMinutes: l.trace_estimate_minutes,
       billMinutes: l.bill_minutes,
+      ...(l.other_project_id ? { otherProjectId: l.other_project_id } : {}),
+      ...(l.other_project_key ? { otherProjectKey: l.other_project_key } : {}),
       proofs: proofs
         .filter((p) => p.line_id === l.id)
         .map((p) => ({
@@ -641,11 +707,11 @@ async function writeLines(tx: Tx, orgId: string, id: string, lines: StoredShape[
       await tx.execute(drizzleSql`
         INSERT INTO ${projectsRel("reconciliation_lines")}
           (org_id, reconciliation_id, position, name, why, kind, reason, task_ids,
-           planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes)
+           planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes, other_project_id)
         VALUES (${orgId}::uuid, ${id}::uuid, ${l.position}, ${l.name}, ${l.why ?? null},
           ${l.kind}, ${l.reason ?? null},
           ${`{${l.taskIds.join(",")}}`}::uuid[], ${l.plannedMinutes}, ${l.realMinutes},
-          ${l.traceEstimateMinutes}, ${l.billMinutes})
+          ${l.traceEstimateMinutes}, ${l.billMinutes}, ${l.otherProjectId ?? null}::uuid)
         RETURNING id::text AS id`),
     )
     const lineId = inserted[0]!.id
@@ -657,6 +723,64 @@ async function writeLines(tx: Tx, orgId: string, id: string, lines: StoredShape[
           ${p.url ?? null}, ${p.occurredOn ?? null}::date)`)
     }
   }
+}
+
+/**
+ * The projects the lines say their work belongs to, by key or id, read under the asker's own
+ * rows. A project the asker cannot read, an archived one or this one is refused, so a card never
+ * offers a move it cannot make.
+ */
+async function resolveOtherProjects(
+  tx: Tx,
+  orgId: string,
+  ownProjectId: string,
+  lines: readonly ProposedLine[],
+): Promise<Map<string, string>> {
+  const refs = [
+    ...new Set(
+      lines
+        .map((l) => l.otherProjectKey?.trim().toLowerCase())
+        .filter((r): r is string => Boolean(r)),
+    ),
+  ]
+  const out = new Map<string, string>()
+  if (refs.length === 0) return out
+  // A text[] literal: each ref quoted, with the two characters a quoted element escapes.
+  const list = `{${refs.map((r) => `"${r.replace(/[\\"]/g, (ch) => `\\${ch}`)}"`).join(",")}}`
+  const rows = extractRows<{ id: string; key: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT id::text AS id, key FROM ${projectsRel("projects")}
+       WHERE org_id = ${orgId}::uuid AND archived_at IS NULL
+         AND (lower(key) = ANY(${list}::text[]) OR id::text = ANY(${list}::text[]))`),
+  )
+  for (const r of rows) {
+    if (r.key) out.set(r.key.toLowerCase(), r.id)
+    out.set(r.id.toLowerCase(), r.id)
+  }
+  const missing = refs.filter((r) => !out.has(r))
+  if (missing.length > 0) {
+    throw new ProjectsServiceError(
+      400,
+      "project_not_found",
+      `No project ${missing.join(", ")} you can read, so no line can be moved there. Nothing was saved.`,
+      {
+        projects: missing,
+        next: "Send the line again with the key of a project the person can open, or without otherProjectKey.",
+      },
+    )
+  }
+  const own = refs.filter((r) => out.get(r) === ownProjectId)
+  if (own.length > 0) {
+    throw new ProjectsServiceError(
+      400,
+      "invalid_params",
+      `${own.join(", ")} is the project being reconciled; otherProjectKey names another one. Nothing was saved.`,
+      {
+        next: "Send the line again without otherProjectKey, or with the project the work belongs to.",
+      },
+    )
+  }
+  return out
 }
 
 export async function reconcilePropose(args: {
@@ -717,6 +841,9 @@ export async function reconcilePropose(args: {
   const resolve = (ref: string) => byRef.get(ref) ?? byRef.get(ref.toLowerCase())
   const unknown: string[] = []
   const repoHosts = repoHostsOf(c.sourceRepos)
+  const otherProjects = await resolveOtherProjects(tx, orgId, c.project.id, proposed)
+  const readable = await readableProofRefs(tx, orgId, proposed)
+  const unreadable = new Set<string>()
   const linesIn = proposed.map((line: ProposedLine) => {
     const resolvedTaskIds: string[] = []
     for (const ref of line.taskIds) {
@@ -737,6 +864,11 @@ export async function reconcilePropose(args: {
         })
         continue
       }
+      const owned = OWNED_PROOFS.find((o) => o.kind === p.kind)
+      if (owned && UUID_RE.test(p.ref) && !readable.get(owned.kind)?.has(p.ref.toLowerCase())) {
+        unreadable.add(owned.source)
+        continue
+      }
       const url = keptProofUrl(p, repoHosts)
       proofsOut.push({
         kind: p.kind,
@@ -746,7 +878,10 @@ export async function reconcilePropose(args: {
         ...(p.occurredOn ? { occurredOn: p.occurredOn } : {}),
       })
     }
-    return { ...line, resolvedTaskIds, proofsOut }
+    const otherProjectId = line.otherProjectKey
+      ? otherProjects.get(line.otherProjectKey.trim().toLowerCase())
+      : undefined
+    return { ...line, resolvedTaskIds, proofsOut, ...(otherProjectId ? { otherProjectId } : {}) }
   })
   if (unknown.length > 0) {
     throw new ProjectsServiceError(
@@ -777,7 +912,13 @@ export async function reconcilePropose(args: {
   })
   const shape: StoredShape = {
     lines: computed,
-    notSeen,
+    // A cited meeting or document the asker cannot open is said, never shown.
+    notSeen: [
+      ...notSeen,
+      ...[...unreadable]
+        .filter((source) => !notSeen.some((n) => n.source.toLowerCase() === source.toLowerCase()))
+        .map((source) => ({ source, why: RECORD_NOT_YOURS })),
+    ],
     excludedCount: [...excludedIds].filter((id) => c.inPeriod.some((r) => r.id === id)).length,
   }
 
@@ -800,7 +941,7 @@ export async function reconcilePropose(args: {
        WHERE reconciliation_id = ${id}::uuid AND org_id = ${orgId}::uuid`)
     await tx.execute(drizzleSql`
       UPDATE ${projectsRel("reconciliations")}
-         SET revision = ${revision}, not_seen = ${JSON.stringify(notSeen)}::jsonb,
+         SET revision = ${revision}, not_seen = ${JSON.stringify(shape.notSeen)}::jsonb,
              excluded_count = ${shape.excludedCount}, basis = ${c.basis},
              period_end = ${c.period.to}::date,
              thread_id = coalesce(${args.threadId ?? null}::uuid, thread_id), updated_at = now()
@@ -814,7 +955,7 @@ export async function reconcilePropose(args: {
            not_seen, excluded_count)
         VALUES (${orgId}::uuid, ${c.project.id}::uuid, ${c.period.from}::date,
           ${c.period.to}::date, ${c.basis}, 'proposed', ${userId}::uuid,
-          ${args.threadId ?? null}::uuid, ${JSON.stringify(notSeen)}::jsonb,
+          ${args.threadId ?? null}::uuid, ${JSON.stringify(shape.notSeen)}::jsonb,
           ${shape.excludedCount})
         RETURNING id::text AS id`),
     )[0]!.id
@@ -875,6 +1016,7 @@ function cardData(args: {
     ...(l.reason ? { reason: l.reason } : {}),
     ...(l.tag ? { tag: l.tag } : {}),
     taskIds: l.taskIds,
+    ...(l.otherProjectKey ? { otherProject: l.otherProjectKey } : {}),
     plannedMinutes: l.plannedMinutes,
     realMinutes: l.realMinutes,
     traceEstimateMinutes: l.traceEstimateMinutes,
@@ -934,6 +1076,10 @@ function cardData(args: {
       ...(l.realNoteMinutes !== undefined ? { realNoteMinutes: l.realNoteMinutes } : {}),
       traceEstimateMinutes: l.traceEstimateMinutes,
       billMinutes: l.billMinutes,
+      taskIds: l.taskIds,
+      ...(l.otherProjectId && l.otherProjectKey
+        ? { moveTo: { projectId: l.otherProjectId, key: l.otherProjectKey } }
+        : {}),
       proofs: l.proofs.map((p) => ({ label: p.label, ...(p.url ? { url: p.url } : {}) })),
     })),
     rateMinor: money ? c.rateMinor : null,

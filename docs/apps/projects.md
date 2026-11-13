@@ -195,6 +195,8 @@ On a project that uses time and budgets, ask your agent in your DM with it, or y
 - **The server works out every figure.** A line groups tasks and says why; its planned time comes from the tasks' timeboxes, its real time from what people entered, and its bill by a fixed rule: a planned line bills what was planned, never more; a line not in the plan bills nothing; a retainer bills what was spent. Nothing a commit or a note says changes a figure.
 - **No one is named.** A line that names a member of the team is refused; a client's own contact may be named. Tasks the client's own people did can be left out, and every other task of the period appears, in "Other closed tasks" if no line lists it.
 - **An estimate is not time.** Where no time was entered, the agent may show an estimate tied to a proof, marked `~`. It never counts as time spent, in the budget, the coverage or the bill.
+- **What you cannot open stays off.** A meeting from a colleague's personal calendar, or a document not shared with you, cited as proof is dropped from the card, and the card lists Calendar or Knowledge as not seen.
+- **Work for another client.** A line of one task done for another client, with that client's project named, offers "Move it to" that project's key on the card; the click moves the task there. A project you cannot open is refused when the card is saved.
 - **Only you see it.** The card stays yours while it is a proposal. Asking again with nothing changed returns the same card; a change updates it. Asked after the period ended, the card says the invoice issues with today's date.
 
 ## Roles and scopes

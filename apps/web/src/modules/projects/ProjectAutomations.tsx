@@ -9,8 +9,9 @@
  */
 import type { RoutineFlow } from "@liaison/shared"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
-import { formatDateTime } from "~/lib/relative-time"
+import { relativeTime } from "~/lib/relative-time"
 import FlowList from "~/modules/agent/flow/FlowList"
+import { RunStrip, runStatusDot } from "~/modules/agent/flow/FlowRunTimeline"
 import { loadFlowPeople, loadFlowProject } from "~/modules/agent/flow/flow-data"
 import {
   describeTrigger,
@@ -18,12 +19,14 @@ import {
   fillTemplate,
   flowProblem,
 } from "~/modules/agent/flow/flow-model"
+import { StatusText } from "~/modules/agent/flow/StatusText"
 import { openRoutineOnAgentPage } from "~/modules/agent/open-routine"
 import { runStatusLabel } from "~/modules/agent/routine-status-copy"
 import {
   createRoutine,
   loadProjectRoutines,
   type RoutineRow,
+  type RoutineRunRow,
   type RoutineTemplateRow,
   routineLabel,
   updateRoutine,
@@ -78,6 +81,27 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
   const [routines, { refetch: refetchRoutines, mutate: setRoutines }] = createResource(
     projectId,
     (id) => loadProjectRoutines(api, id),
+  )
+  /** Each flow routine's last run, for its row's mini progress strip. */
+  const [lastRuns] = createResource(
+    () => (routines() ?? []).filter((r) => r.flow && r.lastRunAt),
+    async (rows) => {
+      const out: Record<string, RoutineRunRow> = {}
+      await Promise.all(
+        rows.map(async (r) => {
+          try {
+            const runs = await api.get<RoutineRunRow[]>(
+              `/agent/routines/${encodeURIComponent(r.id)}/runs?limit=1`,
+            )
+            const first = Array.isArray(runs) ? runs[0] : undefined
+            if (first) out[r.id] = first
+          } catch {
+            // The strip is a hint; the row stands without it.
+          }
+        }),
+      )
+      return out
+    },
   )
   const [templates] = createResource(async () => {
     try {
@@ -263,25 +287,51 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                       data-testid={`project-automations.toggle-${r.id}`}
                     />
                   </div>
-                  <p class="break-words text-[12px] text-text-secondary">
-                    {describeTrigger(
-                      names(),
-                      r.event,
-                      (r.eventFilter ?? null) as FlowEventFilter | null,
-                      r.description,
-                    )}
-                  </p>
                   <p
-                    data-testid={`project-automations.last-run-${r.id}`}
-                    class="text-[11px] text-text-tertiary"
+                    data-testid={`project-automations.trigger-${r.id}`}
+                    class="break-words text-[12.5px] leading-relaxed text-text-secondary"
                   >
-                    {r.lastRunAt
-                      ? i18n.t("projects.automations.lastRun", {
-                          when: formatDateTime(r.lastRunAt, i18n.locale()),
-                          status: runStatusLabel(i18n.t, r.lastRunStatus ?? ""),
-                        })
-                      : i18n.t("projects.automations.neverRan")}
+                    <StatusText
+                      names={names()}
+                      text={describeTrigger(
+                        names(),
+                        r.event,
+                        (r.eventFilter ?? null) as FlowEventFilter | null,
+                        r.description,
+                      )}
+                    />
                   </p>
+                  <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <span class="flex min-w-0 items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        data-testid={`project-automations.last-run-dot-${r.id}`}
+                        data-status={r.lastRunStatus ?? "none"}
+                        class={`h-2 w-2 shrink-0 rounded-full ${runStatusDot(r.lastRunAt ? r.lastRunStatus : null)}`}
+                      />
+                      <span
+                        data-testid={`project-automations.last-run-${r.id}`}
+                        class="text-[12px] text-text-tertiary"
+                      >
+                        {r.lastRunAt
+                          ? i18n.t("projects.automations.lastRun", {
+                              when: relativeTime(r.lastRunAt, i18n.locale()),
+                              status: runStatusLabel(i18n.t, r.lastRunStatus ?? ""),
+                            })
+                          : i18n.t("projects.automations.neverRan")}
+                      </span>
+                    </span>
+                    <Show when={r.flow && lastRuns()?.[r.id]}>
+                      {(run) => (
+                        <RunStrip
+                          flow={r.flow as RoutineFlow}
+                          runSteps={run().steps ?? []}
+                          data-testid={`project-automations.last-run-strip-${r.id}`}
+                          class="w-24"
+                        />
+                      )}
+                    </Show>
+                  </div>
                 </li>
               )}
             </For>

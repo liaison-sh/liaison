@@ -88,6 +88,22 @@ function setup(routines: unknown[]) {
     get: vi.fn(async (path: string) => {
       if (path === `/projects/${P_ID}`) return PROJECT
       if (path === `/agent/routines?projectId=${P_ID}`) return routines
+      if (path === "/agent/routines/r-9/runs?limit=1") {
+        return [
+          {
+            id: "run-1",
+            routineId: "r-9",
+            ranAt: "2026-11-13T09:00:00Z",
+            status: "waiting",
+            durationMs: null,
+            errorMessage: null,
+            steps: (TEMPLATE.flow?.steps ?? []).map((st, i) => ({
+              id: st.id,
+              state: i === 0 ? "done" : "waiting",
+            })),
+          },
+        ]
+      }
       if (path === "/agent/routines/templates") {
         return [
           TEMPLATE,
@@ -264,5 +280,25 @@ describe("ProjectAutomations", () => {
     } finally {
       PROJECT.statuses[0]!.label = "Todo"
     }
+  })
+
+  it("a row that ran shows its state dot, the time since, and its last run's progress strip", async () => {
+    const api = setup([
+      { ...ROUTINE, id: "r-9", lastRunAt: new Date().toISOString(), lastRunStatus: "waiting" },
+    ])
+    await waitFor(() =>
+      expect(screen.getByTestId("project-automations.last-run-strip-r-9")).toBeInTheDocument(),
+    )
+    expect(api.get).toHaveBeenCalledWith("/agent/routines/r-9/runs?limit=1")
+    expect(screen.getByTestId("project-automations.last-run-dot-r-9").className).toContain(
+      "var(--color-warning)",
+    )
+    const segs = screen
+      .getByTestId("project-automations.last-run-strip-r-9")
+      .querySelectorAll("[data-state]")
+    expect(segs[0]?.getAttribute("data-state")).toBe("done")
+    expect(
+      screen.getByTestId("project-automations.trigger-r-9").querySelector("[data-status-pill]"),
+    ).not.toBeNull()
   })
 })

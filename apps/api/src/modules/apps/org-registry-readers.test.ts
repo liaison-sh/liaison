@@ -110,6 +110,10 @@ const READERS: Record<string, string> = {
   // Register the kernel dashboard and data tools for an org while it is set up.
   "modules/dashboards/tools.ts": SETUP,
   "modules/dashboards/tables/link-search.ts": ENSURES,
+  // A backed table's read tool: read when its rows are listed or written, from the table
+  // routes, the table tools and a dashboard block's run, each of which sets the org up first.
+  "modules/dashboards/tables/backing.ts":
+    "request, agent turn or block run: each caller sets the org up first",
   // Register the kernel table tools for an org while it is set up.
   "modules/dashboards/tables/tools.ts": SETUP,
   // Register (or, with custom apps off, remove) the kernel app builder tools while an org is set up.

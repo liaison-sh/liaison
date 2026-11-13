@@ -1396,9 +1396,13 @@ export async function registerKernelJobs(): Promise<void> {
   // minutes it checks whether this server's daily minute (derived from its
   // instance id) has come and queues one heartbeat for a registered server.
   // Also at boot: one heartbeat when the version changed since the last one.
+  // The same tick queues the hourly app performance report of a server that
+  // shares it (modules/liaison-team/performance.ts; every managed cell).
   await registerScheduledJob("kernel", "control-plane-heartbeat", "*/10 * * * *", async () => {
     const { heartbeatTick } = await import("~/modules/liaison-team/heartbeat")
     await heartbeatTick(new Date())
+    const { performanceTick } = await import("~/modules/liaison-team/performance")
+    await performanceTick(new Date())
   })
   void import("~/modules/liaison-team/heartbeat")
     .then(({ heartbeatOnBoot }) => heartbeatOnBoot(new Date()))

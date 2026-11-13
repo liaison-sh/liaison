@@ -384,6 +384,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         /** "Recently involved": only the caller's tasks touched in the last N days. */
         involvedWithinDays?: number
         projectId?: string
+        kind?: "project" | "task"
       }
       if (params.involvedWithinDays !== undefined && params.involvedWithinDays !== null) {
         const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
@@ -421,6 +422,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return JSON.stringify(result)
       } catch (err) {
         if ((err as Error).message === "invalid_cursor") throw new Error("invalid_cursor")
+        const { ProjectsServiceError } = await import("~/apps/projects/service/statuses")
+        if (err instanceof ProjectsServiceError) return envelopeError(err.code, err.message)
         throw err
       }
     },
@@ -1162,6 +1165,9 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         completedBefore?: string
         /** Field filter {key: value | value[] | null}. */
         fields?: Record<string, unknown> | null
+        /** One assignee's tasks; null = unassigned ones. */
+        assigneeId?: string | null
+        priority?: string
       }
       if (!params.projectId) throw new Error("invalid_params: projectId required")
       const projectId = params.projectId
@@ -1183,6 +1189,38 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           completedAfter: params.completedAfter,
           completedBefore: params.completedBefore,
           fields: params.fields,
+          assigneeId: params.assigneeId,
+          priority: params.priority,
+        }),
+      )
+    },
+    // tasks_aggregate: one or several projects' tasks grouped and measured (a manager's chart).
+    projects_tasksAggregate: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_tasksAggregate is only available to the projects app")
+      }
+      const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
+      if (!checkScope("projects:tasks:read", callerScopes ?? [])) {
+        return envelopeError("forbidden", "Missing required scope: projects:tasks:read")
+      }
+      const params = JSON.parse(paramsJson || "{}") as Omit<
+        import("~/apps/projects/service/tasks-aggregate").TasksAggregateArgs,
+        "tx" | "orgId" | "now"
+      >
+      const { tasksAggregate } = await import("~/apps/projects/service/tasks-aggregate")
+      return typedCall(() =>
+        tasksAggregate({
+          tx: txDb as never,
+          orgId,
+          projectId: params.projectId,
+          projectIds: params.projectIds,
+          groupBy: params.groupBy,
+          series: params.series,
+          measure: params.measure,
+          where: params.where,
+          includeTerminal: params.includeTerminal,
+          ageBuckets: params.ageBuckets,
+          sla: params.sla,
         }),
       )
     },

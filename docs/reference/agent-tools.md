@@ -212,7 +212,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `tables_edit` | Create a dashboard table, change it, or delete it; always waits for a person's approval. | yes | `kernel:dashboards:write` |
 | `tables_get` | Read one dashboard table: its columns (key, label, type, choices, required), version, row count, your access and who it is shared with. |  | `kernel:dashboards:read` |
 | `tables_list` | List the dashboard tables you can see (org data people and agents keep, such as inbound batches or repairs): id, name, columns, your access and row count. |  | `kernel:dashboards:read` |
-| `tables_query` | Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. |  | `kernel:dashboards:read` |
+| `tables_query` | Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. |  | `kernel:dashboards:read` |
 | `tables_rows_write` | Add, change or delete rows of a dashboard table, up to 50 operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. |  | `kernel:dashboards:write` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
 | `threads_create` | Message teammates: participantIds [kernel__users_search ids], no title, text as initialMessage. |  | `kernel:threads:write` |
@@ -727,8 +727,9 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `deals_search` | Find deals by pipeline, company, contact, outcome or close date; taskId gives one deal. |  | `projects:projects:read` |
 | `deals_update` | Change a deal: company, contact, amount, probability, next step, or its outcome (won, lost, open moves it to that stage). |  | `projects:tasks:write` |
 | `delete` | Delete a task and all of its subtasks. | yes | `projects:tasks:write` |
+| `fields_set` | Set a project's TASK FIELDS: the typed attributes every task of the project can carry (e.g. |  | `projects:projects:write` |
 | `get` | Get a project or task by id (id comes from a search result). |  | `projects:projects:read` |
-| `instantiate_template` | Create a new project from a stored project template, materializing the template's full task tree. |  | `projects:projects:write` |
+| `instantiate_template` | Create a new project from a stored project template: its status columns, its task fields and its full task tree (each task's priority, status and field values). |  | `projects:projects:write` |
 | `labels.archive` | Archive a label group or value (`archived: true`, the default), or restore it (`archived: false`). |  | `projects:labels:admin` |
 | `labels.create` | Create a label group (omit parentId) or a value inside a live group. |  | `projects:labels:admin` |
 | `labels.list` | List the org's task label groups, each with its values, in order. |  | `projects:projects:read` |
@@ -742,8 +743,11 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `status_add` | Add a new STATUS COLUMN to a project's board (e.g. |  | `projects:projects:write` |
 | `status_delete` | Delete an EMPTY status column from a project's board. | yes | `projects:projects:write` |
 | `status_update` | Rename or reconfigure an existing STATUS COLUMN on a project's board: change its label, color, or whether it is terminal (counts as done). |  | `projects:projects:write` |
+| `tasks_aggregate` | Group and count (or sum) the tasks of one project (`projectId`) or up to 50 (`projectIds`) on the server, for a manager's view or a dashboard chart: open tasks per status, per handler (assignee), per priority, per due bucket, per age in their current status, per SLA state, or per value of a choice / choices / person / checkbox / date field. |  | `projects:tasks:read` |
 | `tasks_byAssignee` | List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). |  | `projects:tasks:read` |
 | `tasks_byProject` | List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). |  | `projects:tasks:read` |
+| `template_save` | Create or replace a PROJECT TEMPLATE: the status columns, task fields and task tree a new project starts with (`instantiate_template` builds a project from it). |  | `projects:projects:write` |
+| `templates_list` | List the organisation's project templates: id, name and how many statuses, fields and tasks each carries. |  | `projects:projects:read` |
 | `update` | Update a task. |  | `projects:tasks:write` |
 | `update_project` | Edit an existing PROJECT (the board itself, not a task): its name, description, icon, colour, group or key. |  | `projects:projects:write` |
 | `webhook_info` | Operator setup read: reports whether the CI webhook signing secret has been minted (a 'ci-source' connection was established) and returns it so the CI system (TeamCity notifier / GitLab pipeline-hook relay) can be configured to sign deliveries. |  | `projects:settings:admin` |

@@ -59,6 +59,8 @@ export interface LiaisonTeamSharing {
   forwardBugReports: boolean
   /** Bug reports go only to the Liaison team (no local ticket). Implies forwardBugReports. */
   bugReportsTeamOnly: boolean
+  /** The hourly app performance report (performance.ts). Needs register; always on in the managed edition. */
+  sharePerformance: boolean
   decidedAt: string | null
   decidedBy: string | null
 }
@@ -86,6 +88,7 @@ const OFF: LiaisonTeamSharing = {
   register: false,
   forwardBugReports: false,
   bugReportsTeamOnly: false,
+  sharePerformance: false,
   decidedAt: null,
   decidedBy: null,
 }
@@ -101,6 +104,7 @@ export async function readSharing(db: Db): Promise<LiaisonTeamSharing> {
       register: true,
       forwardBugReports: true,
       bugReportsTeamOnly: v.bugReportsTeamOnly === true,
+      sharePerformance: true,
       decidedAt: typeof v.decidedAt === "string" ? v.decidedAt : null,
       decidedBy: typeof v.decidedBy === "string" ? v.decidedBy : null,
     }
@@ -110,6 +114,7 @@ export async function readSharing(db: Db): Promise<LiaisonTeamSharing> {
     register: v.register === true,
     forwardBugReports,
     bugReportsTeamOnly: forwardBugReports && v.bugReportsTeamOnly === true,
+    sharePerformance: v.register === true && v.sharePerformance === true,
     decidedAt: typeof v.decidedAt === "string" ? v.decidedAt : null,
     decidedBy: typeof v.decidedBy === "string" ? v.decidedBy : null,
   }
@@ -147,7 +152,12 @@ async function liveDeregister(db: Db): Promise<{ id: string; status: string } | 
  * transaction. Returns the switches as stored.
  */
 export async function setSharing(
-  change: { register?: boolean; forwardBugReports?: boolean; bugReportsTeamOnly?: boolean },
+  change: {
+    register?: boolean
+    forwardBugReports?: boolean
+    bugReportsTeamOnly?: boolean
+    sharePerformance?: boolean
+  },
   actor: { userId: string | null; orgId?: string },
   now: Date = new Date(),
 ): Promise<LiaisonTeamSharing> {
@@ -180,6 +190,14 @@ export async function setSharing(
         "Allow bug report forwarding to the Liaison team before sending bug reports only to the Liaison team",
         400,
         "FORWARDING_REQUIRED",
+      )
+    }
+    const sharePerformance = register ? (change.sharePerformance ?? before.sharePerformance) : false
+    if (change.sharePerformance === true && !register) {
+      throw new LiaisonTeamError(
+        "Turn on registration with the Liaison team before sharing app performance",
+        400,
+        "REGISTRATION_REQUIRED",
       )
     }
     if (register && !before.register && !liaisonTeamEndpoint()) {
@@ -237,6 +255,7 @@ export async function setSharing(
       register,
       forwardBugReports,
       bugReportsTeamOnly,
+      sharePerformance,
       decidedAt: now.toISOString(),
       decidedBy: actor.userId,
     }
@@ -248,15 +267,19 @@ export async function setSharing(
         actorType: "user",
         entityType: "liaison_team",
         action: "liaison_team.updated",
-        metadata: { register, forwardBugReports, bugReportsTeamOnly },
+        metadata: { register, forwardBugReports, bugReportsTeamOnly, sharePerformance },
       })
     }
     if (
       register !== before.register ||
       forwardBugReports !== before.forwardBugReports ||
-      bugReportsTeamOnly !== before.bugReportsTeamOnly
+      bugReportsTeamOnly !== before.bugReportsTeamOnly ||
+      sharePerformance !== before.sharePerformance
     ) {
-      log.info({ register, forwardBugReports, bugReportsTeamOnly }, "Liaison team sharing changed")
+      log.info(
+        { register, forwardBugReports, bugReportsTeamOnly, sharePerformance },
+        "Liaison team sharing changed",
+      )
     }
     return sharing
   })

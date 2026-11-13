@@ -8,7 +8,12 @@ import { laneCaps, readSupervisorConfig } from "../src/config"
 import { QUEUE_HEADER } from "../src/supervisor"
 import { startSandbox } from "./helpers"
 
-const ORIGIN = { SANDBOX_BRIDGE_ORIGIN: "http://127.0.0.1:9" }
+// A 2 GiB, 2 CPU service (the compose defaults), so the sizes do not follow this machine.
+const ORIGIN = {
+  SANDBOX_BRIDGE_ORIGIN: "http://127.0.0.1:9",
+  SANDBOX_SERVICE_MEM_LIMIT: "2g",
+  SANDBOX_SERVICE_CPUS: "2",
+}
 
 describe("lane caps", () => {
   test("defaults: a pool of 6 runs 2 background runs and keeps 2 for interactive ones", () => {
@@ -21,6 +26,7 @@ describe("lane caps", () => {
     const cfg = readSupervisorConfig({
       ...ORIGIN,
       SANDBOX_POOL_SIZE: "10",
+      SANDBOX_POOL_RESERVED: "2",
       SANDBOX_POOL_RESERVED_INTERACTIVE: "3",
     })
     expect(laneCaps(cfg)).toEqual({ interactive: 8, background: 5 })

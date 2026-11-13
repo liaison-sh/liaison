@@ -295,3 +295,4 @@ gVisor for the sandbox service; quickstart runs it on runc without gVisor -> dep
 sandbox service row, 2 GB cap -> deploy/docker-compose.yml (sandbox mem_limit)
 Rolling deploy recreates or starts the sandbox service -> deploy/rolling-deploy.sh (step 4b)
 SANDBOX_POOL_RESERVED_INTERACTIVE passed by compose (2) -> deploy/docker-compose.yml (sandbox environment) ; packages/sandbox-supervisor/src/config.ts (laneCaps)
+Pool sized from LIAISON_SANDBOX_MEM_LIMIT / LIAISON_SANDBOX_CPUS passed as SANDBOX_SERVICE_* -> deploy/docker-compose.yml (sandbox environment) ; packages/sandbox-supervisor/src/config.ts (envServiceLimits, autoPoolSize)

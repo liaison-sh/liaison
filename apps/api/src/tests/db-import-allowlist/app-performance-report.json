@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/liaison-team/performance.ts": "The hourly app performance report to the Liaison team: reads the instance-wide sharing switches and identity, queues the outbox row and stamps the last send under the same advisory lock as the heartbeat (heartbeat.ts). Instance-wide state, no org context."
+  }
+}

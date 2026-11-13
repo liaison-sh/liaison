@@ -133,6 +133,50 @@ On a task's page, the **Fields** section lists the project's fields under the st
 
 Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. On the task's page, the line under the status reads how long the task has been in its status (**In Review · 3d ago**); click **Status history** to list its changes, newest first. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
 
+## Chart a project on a dashboard
+
+`tasks_aggregate` counts a project's tasks (or up to 50 projects' at once) by status, handler (assignee), priority, due date, time in their status, SLA state or a choice, person, checkbox or date field, and can sum or average a number or amount field. Amounts in different currencies are never added together: each row then says its currency, one row per currency. Done tasks are left out unless you ask for them. It counts only the tasks you can read, so a dashboard shows each viewer their own figures. Any dashboard block can read it: a bar on `groupLabel` and `value`, a metric that sums `value`.
+
+- **Time in status** groups tasks by how long they have been in their current status: less than 1 day, 1 to 3 days, 3 to 7, 7 to 14, 14 to 30, 30 days or more (or your own bounds).
+- **SLA state** checks whether each task reached one of the statuses you name within a number of working days of its creation (the organisation's working hours, Monday to Friday 09:00 to 18:00 by default): met, missed, open and on time, open and late.
+- Each group lists its tasks when there are at most 50 (`taskIds`, and `tasks` with each task's title, status, handler and due date), and the `tasks_byProject` filter that lists exactly them. A bar with `"drillRows": "tasks"` and a task `link` opens the tasks behind it, each opening the task; `drillColumns` names what the list shows (Title, Status, Handler, Due).
+
+### A project overview dashboard
+
+Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, bars by status, by handler and by time in status, a metric of missed SLAs, and a table of overdue tasks that opens each task. Example spec, with your project and status ids:
+
+```json
+{
+  "v": 1,
+  "blocks": [
+    { "id": "open", "type": "metric", "title": "Open tasks",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
+      "map": { "value": "value", "agg": "sum" } },
+    { "id": "status", "type": "bar", "title": "By status",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+    { "id": "handler", "type": "bar", "title": "By handler",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+    { "id": "aging", "type": "bar", "title": "Time in status",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+    { "id": "sla", "type": "metric", "title": "SLA missed",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate",
+        "params": { "projectId": "<project id>", "groupBy": "sla", "sla": { "toStatusIds": ["<status id>"], "withinWorkingDays": 2 } } },
+      "map": { "value": "value", "agg": "sum", "where": [{ "field": "group", "op": "in", "value": ["missed", "open_late"] }] } },
+    { "id": "overdue", "type": "table", "title": "Overdue",
+      "source": { "kind": "tool", "tool": "projects:tasks_byProject", "params": { "projectId": "<project id>", "due": "overdue" } },
+      "map": { "columns": [{ "field": "title", "label": "Task" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }],
+        "link": { "entity": "task", "idField": "id", "app": "projects" } } }
+  ]
+}
+```
+
+### Edit tasks from a dashboard table
+
+A [dashboard table](../agents/dashboard-tables.md) can show a project's tasks as its rows: its read-through columns are task values (title, status, assignee, due, priority, or any task field), and its own columns are notes kept per task. Editing a task value changes the task, with its history, as you; it needs the right to edit tasks, and it is refused when someone changed the task since you loaded the table (load it again and retry). The table shows tasks only to people who may read them in Projects. Adding a row creates a task; delete or archive a task in Projects.
+
 ## Automate a project with routines
 
 A routine can react to a project's status changes and act on its tasks without an agent: assign the task, set a field or the status, comment, message a person or notify them, wait some working days and check again. The Projects app ships four routine templates for one project: `assign-on-status` (assign a task that reaches a status and tell the assignee), `remind-if-still` (remind the assignee when a task stays in a status two working days), `sla-to-reach` (tell the routine's owner when a new task is not done after three working days) and `notify-on-status` (tell the owner when a task reaches a status). See [Schedule routines](../agents/routines.md) for flows and filters.

@@ -74,6 +74,8 @@ const READ_ONLY: Record<string, string[]> = {
     "attentionItems",
     "tasks_byProject",
     "portfolio_rollup",
+    // Grouped counts and sums of tasks the caller can read: no write, no gate.
+    "tasks_aggregate",
     // Lists the org's project templates (names, sizes, readable flag): no write, no gate.
     "templates_list",
     "webhook_info",

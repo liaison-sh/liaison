@@ -143,6 +143,7 @@ A block that keeps its own dates says them in a small label next to its title, s
 - A chart draws the compared period's values lighter (dashed for a line), named **Same period last year** or **Previous period**.
 - Under each block, "Updated 4 min. ago" says when its figures were read. A block built with its own refresh interval reads again on that interval, but only while its tab is on screen.
 - A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
+- A bar of a chart over a project's tasks opens the tasks behind it, each opening the task in Projects, when the block lists them (`map.drillRows: "tasks"` with `map.link`, as in the [project overview](../apps/projects.md#a-project-overview-dashboard)). Any block can do the same: `map.drillRows` names a field of each row that lists the records behind it.
 - "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
 ## Chart types and notes
@@ -242,6 +243,7 @@ Each block reads one source:
 
 - a **read tool** of an app or a connector, such as a connector's read of a shop's orders. Every read can feed a block, including the reads an app's own settings pages use. A tool that changes data, sends something, needs an approval or acts outside Liaison is refused, and so are a few reads: one that hands out a secret (a webhook signing secret), one that answers a single file's text (a repository file, a Drive file) or the connector authoring guide, a provider operation only another app calls, and the kernel reads that belong to one person or one conversation (an agent's memory, a conversation's messages, your own computer) or to the agent's own work (tool search, setup guides, block previews). The kernel's reads of the organization's records and settings qualify: people, contacts and their groups, companies and their timelines, conversations, routines and their events, approvals and policies, roles and scopes, skills, agents, files, document templates and rules, product attributes, imports, dashboards, app builds, AI models and the audit log. An organization's own custom app feeds a dashboard under the same rules; another organization's never does. A read that answers a few figures rather than a list (queue counts, a profit and loss summary, a monitoring summary) also answers them as rows, one per figure, so a block can chart or total them.
 - a **data store collection** that its app declares readable outside the app, read with the collection's read scope (the agent's own collections need `kernel:data:read`).
+- a **dashboard table**, including one backed by a project, whose rows are the project's tasks the viewer can read ([Keep data in tables](dashboard-tables.md)). A project's figures by status, handler, time in status or SLA come from Projects' `tasks_aggregate` read ([Projects](../apps/projects.md)).
 
 The same holds for a shared dataset and for a filter that lists the values of a source. The source is checked when the dashboard is saved, as its author, and again every time a block is shown, as the viewer. A tool that later starts asking for approval shows "This block's source can no longer be shown on a dashboard". A block's run may only read: any write it attempts is refused, even when the tool claims to be a read. A tool can still call an outside service while it reads; a dashboard does not stop that.
 
@@ -285,6 +287,7 @@ A table holds rows that people and agents write, such as incoming batches or rep
 - A record your access does not let you read shows as **Linked record**.
 - Rows come 50 a page, with **Previous** and **Next**. Click a column's name to sort by it, again to reverse.
 - With view access only, you see the rows without the editors.
+- A table backed by a project shows its tasks as rows. Editing a task value (its title, status, assignee or a field) changes the task in Projects; its own columns are kept per task. Adding a row creates a task; its rows have no bin.
 
 In **Settings**, an editor of the table adds a column, renames one, edits a choice column's choices or removes a column (after a confirm). Each change applies at once. A removed column's name cannot be used again, and its values stay in the history. **Who can see and edit** opens the same sharing dialog as a dashboard's. **Agent row writes need approval** makes an agent's row change wait for someone to approve it; off, agents write at once and every change is kept in the history.
 

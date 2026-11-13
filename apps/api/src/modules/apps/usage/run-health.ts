@@ -31,7 +31,7 @@
 
 import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
-import { entryKindOf } from "~/modules/apps/run-limits"
+import { runLaneOf } from "~/modules/apps/run-limits"
 import {
   onRunSettled,
   type RunSettledInfo,
@@ -72,46 +72,25 @@ const OTHER = "(other)"
 
 // -- Lane ------------------------------------------------------------------------
 
-/** Entry kinds nobody waits on (run-limits.ts entry kinds). */
-const BACKGROUND_KINDS: ReadonlySet<string> = new Set([
-  "webhook",
-  "job",
-  "event",
-  "poll",
-  "reconcile",
-  "import",
-  "import-transform",
-  "knowledge-sync",
-])
-
 /**
- * The lane a run is counted in: `nested` for a run another run started,
- * else the lane the run reported (`lane`, when the executor sets one), else
- * its entry kind's: background for jobs, events, webhooks, polls, syncs and
- * imports, interactive for the rest (tools, attention, previews, ...).
+ * The lane a run is counted in: `nested` for a run another run started, else
+ * the lane runApp decided for it (`lane`, run-limits.ts runLaneOf), else the
+ * one runLaneOf gives its entry (an event from an older emitter).
  */
 export function runHealthLaneOf(
-  info: Pick<RunSettledInfo, "entry" | "nested"> & { lane?: string },
+  info: Pick<RunSettledInfo, "entry" | "nested" | "lane">,
 ): RunHealthLane {
   if (info.nested) return "nested"
-  if (info.lane === "interactive" || info.lane === "background") return info.lane
-  const kind = entryKindOf(info.entry)
-  return kind !== null && BACKGROUND_KINDS.has(kind) ? "background" : "interactive"
+  return info.lane ?? runLaneOf({ entry: info.entry })
 }
 
 /**
  * The run's wait for a sandbox slot (ms), when its executor reported one:
- * the Workers admission's (`admissionMs`), the sandbox service's
- * (`loader.queueMs`) or a total (`queueMs`). Undefined when none did.
+ * the Workers admission's (`admissionMs`) plus the sandbox service's lane
+ * queue (`loader.queueMs`). Undefined when neither did.
  */
 export function runQueueWaitOf(info: RunSettledInfo): number | undefined {
-  const i = info as RunSettledInfo & {
-    queueMs?: number
-    admissionMs?: number
-    loader?: { queueMs?: number }
-  }
-  if (typeof i.queueMs === "number") return Math.max(0, i.queueMs)
-  const parts = [i.admissionMs, i.loader?.queueMs].filter(
+  const parts = [info.admissionMs, info.loader?.queueMs].filter(
     (n): n is number => typeof n === "number" && Number.isFinite(n),
   )
   if (parts.length === 0) return undefined

@@ -1,0 +1,2 @@
+Each group lists `tasks` (id, title, status, handler) beside taskIds when at most 50 -> apps/api/src/apps/projects/service/tasks-aggregate.ts (AggregateTask, MAX_ROW_TASK_IDS)
+drillRows "tasks" with a task link opens a bar's tasks -> apps/api/src/apps/projects/__tests__/tasks-aggregate.test.ts (the Project overview dashboard)

@@ -85,6 +85,11 @@ describe("tables REST", () => {
     expect(stale.status).toBe(409)
     expect(stale.body.error.code).toBe("version_conflict")
     expect(stale.body.error.details.current).toMatchObject({ id: row.id, version: 2 })
+    // Version 0 (a backed table's row with no own cells yet) is a version like any other.
+    const zero = await req(owner, "POST", `/api/dashboards/tables/${t.id}/rows`, {
+      ops: [{ op: "update", id: row.id, ifVersion: 0, cells: { status: "ordered" } }],
+    })
+    expect(zero.status).toBe(409)
 
     const bad = await req(owner, "POST", `/api/dashboards/tables/${t.id}/rows`, {
       ops: [{ op: "add", cells: { batch: "B-3", status: "lost" } }],
@@ -142,5 +147,23 @@ describe("tables REST", () => {
     const again = await req(owner, "POST", "/api/dashboards/tables", { name: "Twice", columns: [] })
     expect(again.status).toBe(409)
     expect(again.body.error.code).toBe("conflict")
+  })
+})
+
+describe("tables REST: a project backing", () => {
+  it("takes a backing on create and refuses one naming no project the person can read", async () => {
+    const res = await req(owner, "POST", "/api/dashboards/tables", {
+      name: "Backed by nothing",
+      columns: [],
+      backing: {
+        app: "projects",
+        entity: "task",
+        parentId: "00000000-0000-4000-8000-000000000000",
+        fields: ["title"],
+      },
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatchObject({ code: "invalid_request" })
+    expect(res.body.error.message).toContain("backing: no projects record you can read")
   })
 })

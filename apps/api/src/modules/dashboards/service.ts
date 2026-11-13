@@ -1435,6 +1435,7 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
     for (const w of m.where ?? []) add(w.field)
     for (const x of [...(m.measures ?? []), ...(m.stages ?? [])]) add(x.field)
     for (const f of linkFields(m.link)) add(f)
+    add(m.drillRows)
     for (const v of Object.values(m.values ?? {})) {
       if (v.dataset) continue
       add(v.field)
@@ -1516,7 +1517,7 @@ async function readSourceCached(
   // A table's cached read keys on its generation and version, read under the viewer's RLS first
   // (A8): a row write, a column change or a sharing change is a new key at its commit, and a
   // reader who lost access gets no cached rows (the stamp itself is unreadable to them).
-  let stamp: { generation: number; version: number } | null = null
+  let stamp: Awaited<ReturnType<typeof tableStamp>> = null
   if (source.kind === "table") {
     stamp = await tableStamp(viewer, source.table)
     if (!stamp) {
@@ -2023,6 +2024,22 @@ export function rowFieldsOf(rows: Record<string, unknown>[] | null | undefined):
   return [...out].sort((a, b) => a.localeCompare(b))
 }
 
+/** The records a row lists in `field`: its objects as they are, a bare id as {id}. */
+export function drillRecordsOf(
+  row: Record<string, unknown>,
+  field: string,
+): Record<string, unknown>[] {
+  const list = readPath(row, field)
+  if (!Array.isArray(list)) return []
+  return list.flatMap((v): Record<string, unknown>[] =>
+    typeof v === "object" && v !== null && !Array.isArray(v)
+      ? [v as Record<string, unknown>]
+      : typeof v === "string" || typeof v === "number"
+        ? [{ id: v }]
+        : [],
+  )
+}
+
 function drillColumnsOf(
   block: DashboardBlock,
   sample: Record<string, unknown> | undefined,
@@ -2030,6 +2047,14 @@ function drillColumnsOf(
   const m = block.map
   if (m.drillColumns) return m.drillColumns
   if (m.columns) return m.columns
+  if (m.drillRows) {
+    // The listed records: their own values, a name or title first, the id only when alone.
+    const keys = Object.keys(sample ?? {})
+    const named: string[] = keys.filter((k) => k === "name" || k === "title")
+    const rest = keys.filter((k) => k !== "id" && !named.includes(k))
+    const fields = [...named, ...rest].slice(0, 8)
+    return (fields.length > 0 ? fields : keys.slice(0, 1)).map((field) => ({ field, label: field }))
+  }
   const fields: string[] = []
   const add = (f: string | undefined) => {
     if (f && !fields.includes(f)) fields.push(f)
@@ -2151,7 +2176,9 @@ export async function getBlockRows(
     rows = rows.filter((r) => seriesNameOf(r, field) === opts.series)
   }
 
-  const columns = drillColumnsOf(block, read.read.rows?.[0])
+  // The records each row lists (`map.drillRows`): the drill shows them instead of the rows.
+  if (m.drillRows) rows = rows.flatMap((r) => drillRecordsOf(r, m.drillRows!))
+  const columns = drillColumnsOf(block, m.drillRows ? rows[0] : read.read.rows?.[0])
   const offset = Math.max(0, opts.offset ?? 0)
   const limit = Math.min(
     Math.max(1, opts.limit ?? DRILL_DEFAULT_LIMIT),

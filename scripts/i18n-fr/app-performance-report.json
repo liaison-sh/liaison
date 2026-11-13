@@ -1,0 +1,8 @@
+{
+  "key": {
+    "kernel.liaisonTeam.performanceLabel": "Partager les performances des apps avec l'équipe Liaison",
+    "kernel.liaisonTeam.performanceHelp": "Envoie une fois par heure les chiffres des exécutions d'apps : nombre d'exécutions, durées, dépassements de délai et erreurs par app et par file, et la charge du bac à sable. Aucun nom d'organisation ou de personne, aucun contenu, aucun nom d'app personnalisée.",
+    "kernel.liaisonTeam.performancePreview": "Voir ce qui est envoyé",
+    "kernel.liaisonTeam.performancePreviewHide": "Masquer ce qui est envoyé"
+  }
+}

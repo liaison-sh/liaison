@@ -18,6 +18,7 @@ export interface LiaisonTeamBody {
   }
   forwardBugReports: { enabled: boolean }
   bugReportsTeamOnly?: { enabled: boolean }
+  sharePerformance?: { enabled: boolean }
   outbox?: {
     pending: number
     failed: number
@@ -44,11 +45,31 @@ export const LiaisonTeamSection: Component = () => {
     api.get<LiaisonTeamBody>("/admin/liaison-team").catch(() => null),
   )
   const [saving, setSaving] = createSignal(false)
+  // The performance report exactly as it would be sent now (operator only).
+  const [preview, setPreview] = createSignal<string | null>(null)
+  async function showPreview() {
+    if (preview() !== null) {
+      setPreview(null)
+      return
+    }
+    try {
+      const body = await api.get<{ message: string; data: unknown }>(
+        "/admin/liaison-team/performance",
+      )
+      setPreview(JSON.stringify(body.data, null, 2))
+    } catch (err) {
+      addToast({
+        message: err instanceof Error ? err.message : i18n.t("kernel.liaisonTeam.saveFailed"),
+        type: "error",
+      })
+    }
+  }
 
   async function change(body: {
     register?: boolean
     forwardBugReports?: boolean
     bugReportsTeamOnly?: boolean
+    sharePerformance?: boolean
   }) {
     if (saving()) return
     setSaving(true)
@@ -183,6 +204,54 @@ export const LiaisonTeamSection: Component = () => {
                 {onOff(s().bugReportsTeamOnly?.enabled === true)}
               </Toggle>
             </div>
+
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex flex-col gap-1">
+                <div class="text-sm">{i18n.t("kernel.liaisonTeam.performanceLabel")}</div>
+                <p class="text-xs text-muted-foreground">
+                  {i18n.t("kernel.liaisonTeam.performanceHelp")}
+                </p>
+                <Show when={!locked() && !s().register.enabled}>
+                  <p
+                    class="text-xs text-muted-foreground"
+                    data-testid="liaison-team-performance-hint"
+                  >
+                    {i18n.t("kernel.liaisonTeam.needsRegistration")}
+                  </p>
+                </Show>
+                <Show when={s().canManage}>
+                  <button
+                    type="button"
+                    class="self-start text-xs underline"
+                    onClick={() => void showPreview()}
+                    data-testid="liaison-team-performance-preview"
+                  >
+                    {preview() === null
+                      ? i18n.t("kernel.liaisonTeam.performancePreview")
+                      : i18n.t("kernel.liaisonTeam.performancePreviewHide")}
+                  </button>
+                </Show>
+              </div>
+              <Toggle
+                pressed={s().sharePerformance?.enabled === true}
+                onChange={(next) => change({ sharePerformance: next })}
+                disabled={locked() || !s().register.enabled || saving()}
+                aria-label={i18n.t("kernel.liaisonTeam.performanceLabel")}
+                data-testid="toggle-liaison-performance"
+              >
+                {onOff(s().sharePerformance?.enabled === true)}
+              </Toggle>
+            </div>
+            <Show when={preview()}>
+              {(text) => (
+                <pre
+                  class="max-h-80 overflow-auto rounded border p-2 text-xs"
+                  data-testid="liaison-team-performance-json"
+                >
+                  {text()}
+                </pre>
+              )}
+            </Show>
 
             <Show when={reason()}>
               {(r) => (

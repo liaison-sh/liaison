@@ -35,6 +35,9 @@ vi.mock("~/modules/shell/ApiContext", () => ({
           : { running: state.running, updateAvailable: false, enabled: false }
       }
       if (path === "/admin/liaison-team") return state.team
+      if (path === "/admin/liaison-team/performance") {
+        return { message: "performance", data: { version: "1.4.0", windows: {} } }
+      }
       return {
         status: "ok",
         version: state.running,
@@ -56,6 +59,7 @@ interface TeamBody {
   register: Record<string, unknown>
   forwardBugReports: { enabled: boolean }
   bugReportsTeamOnly: { enabled: boolean }
+  sharePerformance?: { enabled: boolean }
   outbox?: Record<string, unknown>
 }
 
@@ -236,6 +240,38 @@ describe("SystemSettings: Liaison team", () => {
       ),
     )
     expect(state.put).toHaveBeenCalledWith("/admin/liaison-team", { bugReportsTeamOnly: true })
+  })
+
+  it("performance sharing needs registration, turns on, and shows exactly what is sent", async () => {
+    state.team = team()
+    render(() => <SystemSettings />)
+    expect(await screen.findByTestId("toggle-liaison-performance")).toBeDisabled()
+    expect(screen.getByTestId("liaison-team-performance-hint")).toHaveTextContent(
+      "Register this server first",
+    )
+    fireEvent.click(screen.getByTestId("liaison-team-performance-preview"))
+    expect(await screen.findByTestId("liaison-team-performance-json")).toHaveTextContent(
+      '"version": "1.4.0"',
+    )
+  })
+
+  it("performance sharing switch sends sharePerformance", async () => {
+    const registered = { enabled: true, state: "registered", instanceId: "abc" }
+    state.team = team({ register: registered, sharePerformance: { enabled: false } })
+    state.put = vi.fn(async () =>
+      team({ register: registered, sharePerformance: { enabled: true } }),
+    )
+    render(() => <SystemSettings />)
+    const toggle = await screen.findByTestId("toggle-liaison-performance")
+    expect(toggle).not.toBeDisabled()
+    fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(screen.getByTestId("toggle-liaison-performance")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    )
+    expect(state.put).toHaveBeenCalledWith("/admin/liaison-team", { sharePerformance: true })
   })
 
   it("when sharing is unavailable, both switches are disabled and the reason says so", async () => {

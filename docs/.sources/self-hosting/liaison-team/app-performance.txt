@@ -1,0 +1,7 @@
+switch, needs registration, off with registration, always on managed -> apps/api/src/modules/liaison-team/settings.ts (readSharing, setSharing)
+See what is sent, operator only -> apps/api/src/modules/liaison-team/routes.ts (liaisonTeamRoutes /performance) ; apps/web/src/modules/settings/LiaisonTeamSection.tsx (showPreview)
+one report an hour, registered only -> apps/api/src/modules/liaison-team/performance.ts (performanceTick, PERFORMANCE_EVERY_MS) ; apps/api/src/infra/jobs/kernel-jobs.ts (control-plane-heartbeat)
+fields, windows, lanes, rows, slowest, pools, alerts -> packages/control-plane-contract/src/index.ts (performanceDataSchema) ; apps/api/src/modules/liaison-team/performance.ts (performanceDataOf)
+catalog names verbatim, any other app (custom) -> apps/api/src/modules/liaison-team/performance.ts (reportedAppName)
+envelope v 2, refused logged as a warning -> packages/control-plane-contract/src/index.ts (INSTANCE_V2_MESSAGE_TYPES) ; apps/api/src/modules/liaison-team/outbox.ts (sendRow)
+labels -> packages/shared/src/i18n/locales/en/kernel.json (liaisonTeam.performanceLabel)

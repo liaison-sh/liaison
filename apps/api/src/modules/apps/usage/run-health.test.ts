@@ -57,9 +57,11 @@ describe("lane and queue wait", () => {
 
   it("reads the queue wait from whichever field the executor set", () => {
     expect(runQueueWaitOf(run())).toBeUndefined()
-    expect(runQueueWaitOf({ ...run(), admissionMs: 40 } as RunSettledInfo)).toBe(40)
+    expect(runQueueWaitOf(run({ admissionMs: 40 }))).toBe(40)
     expect(runQueueWaitOf(run({ loader: { queueMs: 900 } as RunSettledInfo["loader"] }))).toBe(900)
-    expect(runQueueWaitOf({ ...run(), queueMs: 7 } as RunSettledInfo)).toBe(7)
+    expect(
+      runQueueWaitOf(run({ admissionMs: 10, loader: { queueMs: 5 } as RunSettledInfo["loader"] })),
+    ).toBe(15)
   })
 
   it("classifies a thrown error by name, code and message prefix", () => {

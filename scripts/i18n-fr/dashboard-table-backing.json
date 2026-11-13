@@ -1,0 +1,27 @@
+{
+  "key": {
+    "kernel.dashboards.tables.fromProject": "Depuis un projet",
+    "kernel.dashboards.tables.fromProjectHint": "Ses lignes sont les tâches du projet. Changer une valeur de tâche ici change la tâche.",
+    "kernel.dashboards.tables.project": "Projet",
+    "kernel.dashboards.tables.projectValues": "Valeurs des tâches à afficher",
+    "kernel.dashboards.tables.create": "Créer",
+    "kernel.dashboards.tables.pickProject": "Choisissez un projet.",
+    "kernel.dashboards.tables.pickValue": "Choisissez au moins une valeur.",
+    "kernel.dashboards.tables.projectUnreadable": "Ce projet n'a pas pu être lu.",
+    "kernel.dashboards.tables.theProject": "le projet",
+    "kernel.dashboards.tables.fromProjectColumn": "Vient de {{name}} : la changer change la tâche.",
+    "kernel.dashboards.tables.ownColumn": "Gardée dans cette table seulement.",
+    "kernel.dashboards.tables.fromProjectShort": "Vient du projet",
+    "kernel.dashboards.tables.projectForbidden": "Vous ne pouvez pas modifier les tâches de {{name}}. Demandez à un admin le droit de modifier les tâches.",
+    "kernel.dashboards.tables.deleteRowBacked": "Chaque ligne est une tâche de {{name}}. Pour en retirer une, archivez la tâche dans Projets.",
+    "kernel.dashboards.tables.openLink": "Ouvrir {{label}}",
+    "kernel.dashboards.tables.addTask": "Ajouter une tâche",
+    "kernel.dashboards.tables.builtin.title": "Titre",
+    "kernel.dashboards.tables.builtin.status": "Statut",
+    "kernel.dashboards.tables.builtin.assignee": "Responsable",
+    "kernel.dashboards.tables.builtin.due": "Échéance",
+    "kernel.dashboards.tables.builtin.priority": "Priorité",
+    "kernel.dashboards.tables.recordChanged": "Cette tâche a changé entre-temps. Rechargez et réessayez.",
+    "kernel.dashboards.tables.recordLastChange": "Tâche modifiée {{when}}"
+  }
+}

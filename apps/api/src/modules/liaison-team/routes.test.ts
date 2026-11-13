@@ -283,3 +283,31 @@ describe("/api/admin/liaison-team in the managed edition (LIAISON_EDITION=manage
     expect(queued.length).toBe(0)
   })
 })
+
+describe("/api/admin/liaison-team app performance", () => {
+  it("the operator shares app performance once registered, and reads exactly what is sent", async () => {
+    const operator = await minimal.adminSession((await createTestOrg()).id)
+    const on = await put(operator, { register: true, sharePerformance: true })
+    expect(on.status).toBe(200)
+    expect(
+      ((await on.json()) as { data: { sharePerformance: { enabled: boolean } } }).data
+        .sharePerformance,
+    ).toEqual({ enabled: true })
+    const preview = await app.request("/api/admin/liaison-team/performance", {
+      headers: { Authorization: `Bearer ${operator.bearer}` },
+    })
+    expect(preview.status).toBe(200)
+    const body = (await preview.json()) as {
+      data: { message: string; data: { windows: Record<string, { windowS: number }> } }
+    }
+    expect(body.data.message).toBe("performance")
+    expect(body.data.data.windows["24h"]?.windowS).toBe(86_400)
+    const other = await foreignAdmin()
+    DemoModeTestAccess.set(true)
+    setOperator(operator.orgId)
+    const denied = await app.request("/api/admin/liaison-team/performance", {
+      headers: { Authorization: `Bearer ${other.bearer}` },
+    })
+    expect(denied.status).toBe(403)
+  })
+})

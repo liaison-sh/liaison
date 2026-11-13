@@ -31,6 +31,7 @@ export interface ProjectsMethods {
   projects_dealsFollowupCandidates: (paramsJson: string) => Promise<string>
   projects_dealSendState: (paramsJson: string) => Promise<string>
   projects_companyProjects: (paramsJson: string) => Promise<string>
+  projects_tasksAggregate: (paramsJson: string) => Promise<string>
   projects_deleteTask: (paramsJson: string) => Promise<string>
   projects_addComment: (paramsJson: string) => Promise<string>
   projects_listComments: (paramsJson: string) => Promise<string>
@@ -835,6 +836,18 @@ export async function companyWork(
     projects,
     message: `${projects.length} project${projects.length === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company.`,
   }
+}
+
+// A dashboard table backed by a project's tasks (manifest entities.task.tableBacking).
+export { taskTableBacking } from "~/apps/projects/service/table-backing"
+
+// tasks_aggregate — tasks grouped by status / assignee / priority / due / age in status / SLA
+// state / a field, counted or summed (a manager's dashboard chart).
+export async function tasksAggregate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_tasksAggregate(JSON.stringify(params ?? {})))
 }
 
 // comment / comments — the task's own discussion thread. There was no comment

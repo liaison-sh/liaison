@@ -103,7 +103,8 @@ describe("projects.manifest", () => {
     // 1.28.0: margin and cost rates, and the money half of the budget read from invoicing.
     // 1.29.0: capacity_move for the board's Move to, and calendar days marked in the days-off list.
     // 1.30.0: the project Automations view from main joins the time and budgets views.
-    expect(projectsManifest.version).toBe("1.30.0")
+    // 1.31.0: main's task aggregates and project-backed tables join the time and budgets tools.
+    expect(projectsManifest.version).toBe("1.31.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
@@ -568,6 +569,7 @@ describe("projects.manifest", () => {
       "tasks_byAssignee",
       "attentionItems",
       "portfolio_rollup",
+      "tasks_aggregate",
       "labels.list",
       "labels.tree",
     ]) {

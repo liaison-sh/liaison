@@ -54,6 +54,8 @@ console.log(
     reserved: cfg.reserved,
     reservedInteractive: cfg.reservedInteractive,
     laneCaps: sup.pool.caps,
+    // What the pool was sized from (config.ts): the limits seen and their sources.
+    sizing: cfg.sizing,
     overflow: cfg.overflow,
     recycleRuns: cfg.recycleRuns,
     idleMs: cfg.idleMs,

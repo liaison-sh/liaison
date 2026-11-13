@@ -8,6 +8,10 @@
 //                                 state and, for the instance operator only, the
 //                                 server id and the outbox counts.
 //   PUT /api/admin/liaison-team   kernel:org:admin + requireInstanceOperator.
+//   GET /api/admin/liaison-team/performance
+//                                 kernel:org:admin + requireInstanceOperator. The
+//                                 app performance report exactly as it would be
+//                                 sent now (performance.ts), whether or not it is on.
 //
 // The switches are instance-wide while `kernel:org:admin` is org-scoped, so on a
 // multi-tenant instance (demo, managed) a visitor's admin may read the switches
@@ -19,6 +23,7 @@ import type { AppEnv } from "~/app"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { canManageInstanceApps, requireInstanceOperator } from "~/modules/apps/operator-org"
+import { performanceData } from "./performance"
 import { type LiaisonTeamStatus, readStatus, setSharing } from "./settings"
 
 const updateSchema = z
@@ -26,6 +31,7 @@ const updateSchema = z
     register: z.boolean().optional(),
     forwardBugReports: z.boolean().optional(),
     bugReportsTeamOnly: z.boolean().optional(),
+    sharePerformance: z.boolean().optional(),
   })
   .strict()
 
@@ -41,6 +47,7 @@ function view(status: LiaisonTeamStatus, canManage: boolean) {
     },
     forwardBugReports: { enabled: status.sharing.forwardBugReports },
     bugReportsTeamOnly: { enabled: status.sharing.bugReportsTeamOnly },
+    sharePerformance: { enabled: status.sharing.sharePerformance },
     ...(canManage ? { outbox: status.outbox } : {}),
   }
 }
@@ -55,3 +62,6 @@ export const liaisonTeamRoutes = new Hono<AppEnv>()
     await setSharing(change, { userId: c.get("userId"), orgId: c.get("orgId") })
     return success(c, view(await readStatus(), true))
   })
+  .get("/performance", requireInstanceOperator, async (c) =>
+    success(c, { message: "performance", data: await performanceData() }),
+  )

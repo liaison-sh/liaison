@@ -19,9 +19,11 @@ import { dashboards, dashboardTables } from "~/db/schema/kernel"
 import {
   type ApprovalSummarizer,
   approvalResourceOwnerRegistry,
+  tableBackingRegistry,
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import { backingProvider, backingSchema, parseBacking } from "~/modules/dashboards/tables/backing"
 import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
@@ -96,6 +98,7 @@ function compactRow(r: Row) {
   return {
     id: r.id,
     version: r.version,
+    ...(r.recordVersion !== undefined ? { recordVersion: r.recordVersion } : {}),
     cells: r.cells,
     updatedAt: r.updatedAt,
     updatedBy: r.updatedBy.label,
@@ -109,6 +112,7 @@ interface StoredTable {
   orgAccess: "none" | "viewer" | "editor"
   ownerUserId: string | null
   agentWritesNeedApproval: boolean
+  backing: unknown
 }
 
 /** A table's sharing and switch, read for the gate and its routing (before the handler runs). */
@@ -121,12 +125,37 @@ async function storedTable(orgId: string, id: unknown): Promise<StoredTable | nu
         orgAccess: dashboardTables.orgAccess,
         ownerUserId: dashboardTables.ownerUserId,
         agentWritesNeedApproval: dashboardTables.agentWritesNeedApproval,
+        backing: dashboardTables.backing,
       })
       .from(dashboardTables)
       .where(and(eq(dashboardTables.id, id), eq(dashboardTables.orgId, orgId)))
       .limit(1)
     return row ?? null
   })
+}
+
+/**
+ * A row write that changes a backed table's read-through cells lands in the backing app's records,
+ * which every reader of those records reads, whoever the table is shared with: the scope taint
+ * judges it as the app's own write tool (`writeTool`), exactly as a direct call of it. A write of
+ * the table's own columns only (or of a plain table) is judged by the table's sharing.
+ */
+async function backedWriteJudgedAs(orgId: string, params: unknown): Promise<string | null> {
+  const p = (params ?? {}) as { tableId?: unknown; ops?: unknown }
+  const backing = parseBacking((await storedTable(orgId, p.tableId))?.backing)
+  if (!backing) return null
+  const ops = Array.isArray(p.ops) ? (p.ops as Array<{ op?: unknown; cells?: unknown }>) : []
+  const writesRecord = ops.some(
+    (op) =>
+      op?.op === "add" ||
+      (op?.cells !== null &&
+        typeof op?.cells === "object" &&
+        Object.keys(op.cells as object).some((k) => backing.fields.includes(k))),
+  )
+  if (!writesRecord) return null
+  const provider = await backingProvider(orgId, backing)
+  // No provider: an undeclared target, so a tainted write parks (fails closed).
+  return provider ? `${backing.app}:${provider.writeTool}` : "undeclared"
 }
 
 /**
@@ -353,8 +382,17 @@ const rowOp = z.discriminatedUnion("op", [
     .object({
       op: z.literal("update"),
       id: z.string().min(1).max(200),
-      ifVersion: z.number().int().min(1).describe("The row's version from kernel__tables_query"),
+      // 0: a backed table's row whose own cells were never written (tables/backing.ts).
+      ifVersion: z.number().int().min(0).describe("The row's version from kernel__tables_query"),
       cells,
+      ifRecordVersion: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          "A backed table: the row's recordVersion from kernel__tables_query, needed to change a read-through cell",
+        ),
     })
     .strict(),
   z
@@ -399,6 +437,7 @@ const editVariants = z.discriminatedUnion("action", [
         .optional()
         .describe("Share the table exactly like this dashboard (the one it will show on)"),
       orgAccess: z.enum(["none", "viewer", "editor"]).optional(),
+      backing: backingSchema.optional(),
     })
     .strict(),
   z
@@ -410,6 +449,7 @@ const editVariants = z.discriminatedUnion("action", [
       description: z.string().max(2000).nullable().optional(),
       agentWritesNeedApproval: z.boolean().optional(),
       columns: columnOps.optional(),
+      backing: backingSchema.nullable().optional(),
     })
     .strict(),
   z.object({ action: z.literal("delete"), tableId: z.string().uuid() }).strict(),
@@ -434,6 +474,12 @@ const editParams = z
       .optional()
       .describe("create: share the table exactly like this dashboard (the one it will show on)"),
     orgAccess: z.enum(["none", "viewer", "editor"]).optional().describe("create"),
+    backing: backingSchema
+      .nullable()
+      .optional()
+      .describe(
+        "create, alter: make the rows the records of one parent record of an app that offers it (the tool's description lists them; the app's instructions name the fields); null (alter) makes it plain",
+      ),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -450,6 +496,22 @@ interface EditParams {
   fromDashboardId?: string
   orgAccess?: "none" | "viewer" | "editor"
   columns?: unknown
+  backing?: unknown
+}
+
+const TABLES_EDIT_DESCRIPTION =
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are the table\'s own, kept per record. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+
+/**
+ * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
+ * them: read from the registry, so the kernel's own text names no app.
+ */
+export function backingHint(orgId: string): string {
+  const offered = [...tableBackingRegistry.snapshotUnder([orgId]).entries()].map(([raw, decl]) => {
+    const [, app, entity] = raw.split("\0")
+    return `{app:"${app}", entity:"${entity}", parentId:<its ${decl.parent}'s id>}`
+  })
+  return offered.length > 0 ? ` Backings offered here: ${offered.join(", ")}.` : ""
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -520,7 +582,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({
@@ -560,6 +622,7 @@ export function registerTableTools(orgId: string): void {
           tableId: p.tableId,
           rows: page.rows.map(compactRow),
           nextCursor: page.nextCursor,
+          ...(page.truncated ? { truncated: true } : {}),
         }
       })) as Handler,
   })
@@ -568,7 +631,7 @@ export function registerTableTools(orgId: string): void {
     appName: "kernel",
     name: "tables_rows_write",
     deferLoading: true,
-    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry.`,
+    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry. In a table backed by an app's records, changing a read-through cell also takes ifRecordVersion, the row's recordVersion; a row cannot be deleted there.`,
     searchKeywords: ["table", "row", "ligne", "add", "ajouter", "update", "statut"],
     requiredScopes: [WRITE_SCOPE],
     params: z.object({
@@ -590,6 +653,8 @@ export function registerTableTools(orgId: string): void {
       })) as Handler,
     writesToTable: ROWS_SINK,
     sinkReadersResource: { type: TABLE_RESOURCE, idParam: "tableId" },
+    taintJudgedAs: (params: unknown, { orgId: o }: { orgId: string }) =>
+      backedWriteJudgedAs(o, params),
     taintCardPlace: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const t = await storedTable(o, (params as { tableId?: unknown } | null)?.tableId)
       return t ? `the table "${t.name}"`.slice(0, 120) : null
@@ -614,8 +679,10 @@ export function registerTableTools(orgId: string): void {
     appName: "kernel",
     name: "tables_edit",
     deferLoading: true,
-    description:
-      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
+    // The backings this org's apps declare, named from the registry (the kernel names no app).
+    get description() {
+      return TABLES_EDIT_DESCRIPTION + backingHint(orgId)
+    },
     searchKeywords: ["table", "create", "créer", "column", "colonne", "tableau", "tracker"],
     requiredScopes: [WRITE_SCOPE],
     params: editParams,
@@ -635,6 +702,7 @@ export function registerTableTools(orgId: string): void {
                 : {}),
               ...(p.fromDashboardId ? { fromDashboardId: p.fromDashboardId } : {}),
               ...(p.orgAccess ? { orgAccess: p.orgAccess } : {}),
+              ...(p.backing ? { backing: p.backing } : {}),
             },
             ctx.db,
           )
@@ -660,6 +728,7 @@ export function registerTableTools(orgId: string): void {
               ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
               : {}),
             ...(p.columns ? { columns: p.columns } : {}),
+            ...(p.backing !== undefined ? { backing: p.backing } : {}),
           },
           ctx.db,
         )
@@ -710,7 +779,7 @@ export function registerTableTools(orgId: string): void {
         }
         if (p.columns) {
           applyColumnOps(
-            t.columns,
+            t.backing ? t.columns.filter((c) => t.backing?.own.includes(c.key)) : t.columns,
             t.droppedKeys.map((key) => ({ key, label: key, type: "text" as const })),
             p.columns,
           )

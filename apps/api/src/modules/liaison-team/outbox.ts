@@ -44,6 +44,7 @@ import {
   cellBillingMessageSchemas,
   INSTANCE_ENVELOPE_VERSION,
   INSTANCE_HEADER,
+  INSTANCE_V2_MESSAGE_TYPES,
   MAX_FORWARD_ATTACHMENT_BYTES,
   type MessageType,
   messageSchemas,
@@ -560,7 +561,7 @@ async function sendRow(
   }
   const cellBilling = isCellBillingType(row.type)
   const envelope = {
-    v: cellBilling ? 2 : INSTANCE_ENVELOPE_VERSION,
+    v: cellBilling || INSTANCE_V2_MESSAGE_TYPES.has(row.type) ? 2 : INSTANCE_ENVELOPE_VERSION,
     type: row.type,
     messageId: row.messageId,
     instanceId: identity.instanceId,
@@ -612,7 +613,10 @@ async function sendRow(
   }
   const outcome = classifyReply(row, reply, { now, clockOffsetMs: identity.clockOffsetMs })
   if (outcome.kind === "refused") {
-    log.error(
+    // A performance report is diagnostics only, and a control plane that
+    // predates it refuses the type: a warning, never a page.
+    const level = row.type === "performance" ? "warn" : "error"
+    log[level](
       { type: row.type, messageId: row.messageId, status: reply.status, error: outcome.error },
       "Liaison team control plane refused a message",
     )

@@ -5,7 +5,8 @@
 // ones others share with the team, each by title, then the tables (org data people and agents
 // write) the viewer can see. The open one is lit. The agent
 // builds dashboards, so the foot says to ask it. The list is the store's, so it
-// stays live like the page.
+// stays live like the page. A new table is named in place; "From a project" makes it a view of
+// a project's tasks (the project picked, the task values to show ticked).
 import { LayoutDashboard, LayoutGrid, Plus, Search, Sparkles, Table2, Users } from "lucide-solid"
 import { type Component, createSignal, For, type JSX, onMount, Show } from "solid-js"
 import { cn } from "~/lib/cn"
@@ -13,9 +14,14 @@ import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openTab, tabStore } from "~/modules/shell/tab-store"
+import { Button } from "~/ui/Button"
+import { CellEditor } from "./blocks/CellEditor"
+import { isLinkCell } from "./blocks/table-cells"
 import {
   createTable,
   type DashboardSummary,
+  type LinkCell,
+  type TableColumn,
   type TablesApi,
   tableErrorFrom,
 } from "./dashboards-client"
@@ -27,6 +33,7 @@ import {
   openDashboard,
   splitDashboards,
 } from "./dashboards-store"
+import { type BackingField, readProjectShape } from "./table-backing"
 import { loadTables, openTable, rememberTable, TABLE_TAB_TYPE, tablesList } from "./tables-store"
 
 /** The tab the shell shows now, if any. */
@@ -110,23 +117,78 @@ export const DashboardsSidebar: Component = () => {
   }
   const indexOpen = () => activeTab()?.type === DASHBOARDS_TAB_TYPE
 
-  // A new table: its name typed in place, then it opens on its Settings to add columns.
+  // A new table: its name typed in place, then it opens on its Settings to add columns. From a
+  // project, it reads the project's tasks: the project and the task values to show are picked.
   const [naming, setNaming] = createSignal(false)
   const [newName, setNewName] = createSignal("")
   const [creating, setCreating] = createSignal(false)
   const [createError, setCreateError] = createSignal<string | null>(null)
+  const [fromProject, setFromProject] = createSignal(false)
+  const [project, setProject] = createSignal<LinkCell | null>(null)
+  const [offered, setOffered] = createSignal<BackingField[]>([])
+  const [picked, setPicked] = createSignal<string[]>([])
+  let projectSeq = 0
   function stopNaming(): void {
     setNaming(false)
     setNewName("")
     setCreateError(null)
+    setFromProject(false)
+    setProject(null)
+    setOffered([])
+    setPicked([])
+  }
+  const projectColumn: TableColumn = {
+    key: "project",
+    label: t("kernel.dashboards.tables.project"),
+    type: "link",
+    linkTo: { app: "projects", entityType: "project" },
+  }
+  const fieldLabel = (f: BackingField) =>
+    f.builtin ? t(`kernel.dashboards.tables.builtin.${f.key}`) : (f.label ?? f.key)
+  async function pickProject(cell: LinkCell | null): Promise<void> {
+    setProject(cell)
+    setOffered([])
+    setCreateError(null)
+    if (!cell) return
+    const mine = ++projectSeq
+    try {
+      const shape = await readProjectShape(api, cell.id)
+      if (mine !== projectSeq) return
+      setOffered(shape.fields)
+      // The usual view of a project's work: what, where it stands, who and when.
+      setPicked(["title", "status", "assignee", "due"])
+    } catch {
+      if (mine === projectSeq) setCreateError(t("kernel.dashboards.tables.projectUnreadable"))
+    }
+  }
+  function toggleField(key: string): void {
+    setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
   }
   async function submitNewTable(): Promise<void> {
     const name = newName().trim()
     if (!name || creating()) return
+    const chosen = project()
+    if (fromProject() && !chosen) {
+      setCreateError(t("kernel.dashboards.tables.pickProject"))
+      return
+    }
+    // The ticked values in the order the project offers them.
+    const fields = offered()
+      .map((f) => f.key)
+      .filter((k) => picked().includes(k))
+    if (fromProject() && fields.length === 0) {
+      setCreateError(t("kernel.dashboards.tables.pickValue"))
+      return
+    }
     setCreating(true)
     setCreateError(null)
     try {
-      const table = await createTable(api as unknown as TablesApi, { name })
+      const table = await createTable(api as unknown as TablesApi, {
+        name,
+        ...(fromProject() && chosen
+          ? { backing: { app: "projects", entity: "task", parentId: chosen.id, fields } }
+          : {}),
+      })
       rememberTable(table)
       stopNaming()
       openTable(table)
@@ -292,6 +354,91 @@ export const DashboardsSidebar: Component = () => {
                 }}
                 class="w-full rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
               />
+              <label class="flex items-center gap-2 pt-1.5 text-[12px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  data-testid="dashboards-sidebar-new-table-from-project"
+                  checked={fromProject()}
+                  disabled={creating()}
+                  onChange={(e) => {
+                    setFromProject(e.currentTarget.checked)
+                    setCreateError(null)
+                  }}
+                />
+                {t("kernel.dashboards.tables.fromProject")}
+              </label>
+              <Show when={fromProject()}>
+                <div
+                  data-testid="dashboards-sidebar-new-table-project-form"
+                  class="flex flex-col gap-1.5 pt-1.5"
+                >
+                  <p class="text-[11.5px] text-text-tertiary">
+                    {t("kernel.dashboards.tables.fromProjectHint")}
+                  </p>
+                  <span class="text-[11.5px] text-text-secondary">
+                    {t("kernel.dashboards.tables.project")}
+                  </span>
+                  <CellEditor
+                    column={projectColumn}
+                    value={project()}
+                    inline
+                    testid="dashboards-sidebar-new-table-project"
+                    onCommit={(v) => void pickProject(isLinkCell(v) ? v : null)}
+                  />
+                  <Show when={project()}>
+                    {(p) => (
+                      <p
+                        data-testid="dashboards-sidebar-new-table-project-picked"
+                        class="truncate text-[12px] font-medium text-text"
+                      >
+                        {p().label}
+                      </p>
+                    )}
+                  </Show>
+                  <Show when={offered().length > 0}>
+                    <fieldset
+                      data-testid="dashboards-sidebar-new-table-fields"
+                      class="flex flex-col gap-1"
+                    >
+                      <legend class="pb-0.5 text-[11.5px] text-text-secondary">
+                        {t("kernel.dashboards.tables.projectValues")}
+                      </legend>
+                      <For each={offered()}>
+                        {(f) => (
+                          <label class="flex items-center gap-2 text-[12px] text-text-secondary">
+                            <input
+                              type="checkbox"
+                              data-testid={`dashboards-sidebar-new-table-field-${f.key}`}
+                              checked={picked().includes(f.key)}
+                              disabled={creating()}
+                              onChange={() => toggleField(f.key)}
+                            />
+                            <span class="truncate">{fieldLabel(f)}</span>
+                          </label>
+                        )}
+                      </For>
+                    </fieldset>
+                  </Show>
+                  <div class="flex items-center gap-2 pt-0.5">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      data-testid="dashboards-sidebar-new-table-create"
+                      disabled={creating() || !newName().trim()}
+                    >
+                      {t("kernel.dashboards.tables.create")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="dashboards-sidebar-new-table-cancel"
+                      onClick={stopNaming}
+                    >
+                      {t("kernel.common.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              </Show>
               <Show when={createError()}>
                 <p
                   data-testid="dashboards-sidebar-new-table-error"

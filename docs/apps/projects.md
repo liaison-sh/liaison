@@ -115,6 +115,10 @@ Ask an agent to set them (`fields_set`), or to create the project with them (`cr
 
 Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
 
+## Automate a project with routines
+
+A routine can react to a project's status changes and act on its tasks without an agent: assign the task, set a field or the status, comment, message a person or notify them, wait some working days and check again. The Projects app ships four routine templates for one project: `assign-on-status` (assign a task that reaches a status and tell the assignee), `remind-if-still` (remind the assignee when a task stays in a status two working days), `sla-to-reach` (tell the routine's owner when a new task is not done after three working days) and `notify-on-status` (tell the owner when a task reaches a status). See [Schedule routines](../agents/routines.md) for flows and filters.
+
 ## Project templates
 
 A template holds the status columns, the task fields and a task tree a new project starts with, each task with its priority, status and field values. Ask an agent to save one (`template_save`), from scratch or by copying a project's statuses, fields and open tasks, then to create a project from it (`instantiate_template`). A stored template that can no longer be read refuses to create a project rather than create one without its tasks; `templates_list` marks it `unreadable`.

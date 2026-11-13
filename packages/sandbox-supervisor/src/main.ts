@@ -52,6 +52,8 @@ console.log(
     bridgeOrigin: cfg.bridgeOrigin,
     poolSize: cfg.poolSize,
     reserved: cfg.reserved,
+    reservedInteractive: cfg.reservedInteractive,
+    laneCaps: sup.pool.caps,
     overflow: cfg.overflow,
     recycleRuns: cfg.recycleRuns,
     idleMs: cfg.idleMs,

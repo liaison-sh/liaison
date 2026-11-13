@@ -15,6 +15,7 @@ import type { Subprocess } from "bun"
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { appsLogger as log } from "~/lib/logger"
 import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
+import type { RunLane } from "~/modules/apps/run-limits"
 import {
   resolveSandboxDefaultTimeoutMs,
   resolveSandboxMemoryLimit,
@@ -97,7 +98,8 @@ const DEFAULT_WORKER_HOLD_WARN_MS = Number(process.env.SANDBOX_WORKER_HOLD_WARN_
 const DEFAULT_POOL_REPORT_INTERVAL_MS =
   Number(process.env.SANDBOX_POOL_REPORT_INTERVAL_MS) || 30_000
 
-export type ExecPriority = "interactive" | "background"
+/** The worker pool's scheduling class: the run's lane (run-limits.ts runLaneOf). */
+export type ExecPriority = RunLane
 
 // TENANT BUDGET (every edition). Every org's custom apps share this pool with
 // every other org's apps, and a sandboxed handler holds a worker and an open

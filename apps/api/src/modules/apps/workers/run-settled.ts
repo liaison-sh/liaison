@@ -12,6 +12,7 @@
 // subscriber's to batch or defer.
 
 import { rootLogger } from "~/lib/logger"
+import type { RunLane } from "~/modules/apps/run-limits"
 import type { LoaderTimings } from "./timings"
 
 const log = rootLogger.child({ module: "app-run-settled" })
@@ -43,8 +44,12 @@ export interface RunSettledInfo {
   nested: boolean
   /** The app of the run this one is nested in, when known. */
   parentApp?: string
+  /** The run's lane (run-limits.ts runLaneOf). */
+  lane?: RunLane
   /** Wall time of the whole run as runApp saw it (admission, retries and loader included). */
   ms: number
+  /** Of that, the wait for a slot of the Workers admission (Workers and workerd only). */
+  admissionMs?: number
   ok: boolean
   /** Start time (epoch ms). */
   at: number

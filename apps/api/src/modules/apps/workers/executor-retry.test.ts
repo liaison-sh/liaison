@@ -253,3 +253,38 @@ describe("the breaker hears every attempt", () => {
     expect(breaker.state()).toBe("closed")
   })
 })
+
+describe("the run's lane", () => {
+  it("goes in the signed body and to the admission; the service's queue time comes back", async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    const admission = new WorkersAdmission({ perOrg: 2, backgroundPerOrg: 1 })
+    const h = harness([ok], {
+      admission,
+      lane: "background",
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(String(init.body)))
+        // While it runs, it holds the org's one background slot.
+        expect(admission.stats().lanes.background.orgs).toEqual({ [ORG]: 1 })
+        return new Response(JSON.stringify(ok.body), {
+          status: 200,
+          headers: { "x-liaison-sandbox-queue-ms": "1234" },
+        })
+      },
+    })
+    const r = await run(h)
+    expect(r.result).toEqual({ done: 1 })
+    expect(bodies[0]?.lane).toBe("background")
+    expect(r.info.loader?.queueMs).toBe(1234)
+    expect(r.info.admissionMs).toBeGreaterThanOrEqual(0)
+    // Default: interactive.
+    const h2 = harness([ok])
+    let sent: Record<string, unknown> = {}
+    const inner = h2.opts.fetchImpl as NonNullable<WorkersRunOptions["fetchImpl"]>
+    h2.opts.fetchImpl = (url, init) => {
+      sent = JSON.parse(String(init.body))
+      return inner(url, init)
+    }
+    await run(h2)
+    expect(sent.lane).toBe("interactive")
+  })
+})

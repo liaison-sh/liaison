@@ -7,9 +7,11 @@ import {
   egressLimits,
   entryKindOf,
   RUN_ENTRY_KINDS,
+  RUN_LANE_OF_KIND,
   resolveSandboxMemoryLimit,
   resolveToolTimeoutMs,
   resolveTransformCallBudgetMs,
+  runLaneOf,
   runLimits,
   workersLoaderLimits,
 } from "./run-limits"
@@ -107,5 +109,23 @@ describe("run limit table", () => {
     expect(entryKindOf("knowledge-sync:notes")).toBe("knowledge-sync")
     expect(entryKindOf("handler:foo")).toBeNull()
     expect(entryKindOf("tool")).toBeNull()
+  })
+})
+
+describe("runLaneOf", () => {
+  it("puts every entry kind in a lane: interactive when someone waits, background otherwise", () => {
+    for (const kind of RUN_ENTRY_KINDS) {
+      expect(["interactive", "background"]).toContain(RUN_LANE_OF_KIND[kind])
+    }
+    expect(runLaneOf({})).toBe("interactive")
+    expect(runLaneOf({ entry: "tool:orders_get" })).toBe("interactive")
+    expect(runLaneOf({ entry: "attention:computeItems" })).toBe("interactive")
+    expect(runLaneOf({ entry: "webhook-verify:verify" })).toBe("interactive")
+    expect(runLaneOf({ entry: "handler:go" })).toBe("interactive")
+    expect(runLaneOf({ entry: "job:sync" })).toBe("background")
+    expect(runLaneOf({ entry: "event:onCreated" })).toBe("background")
+    expect(runLaneOf({ entry: "webhook:onOrder" })).toBe("background")
+    expect(runLaneOf({ entry: "tool:x", priority: "background" })).toBe("background")
+    expect(runLaneOf({ entry: "job:sync", priority: "interactive" })).toBe("background")
   })
 })

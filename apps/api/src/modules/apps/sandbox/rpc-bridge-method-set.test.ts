@@ -204,6 +204,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_billingTermsSet", "async"],
   ["projects_budgetGet", "async"],
   ["projects_capacityGet", "async"],
+  ["projects_capacityMove", "async"],
   ["projects_checklistAddItems", "async"],
   ["projects_checklistGet", "async"],
   ["projects_checklistRemoveItem", "async"],

@@ -298,6 +298,8 @@
       "hoursPerDay": "Hours in a day",
       "label": "Label",
       "remove": "Remove",
+      "source": "Read from",
+      "sourceCalendar": "The shared calendar",
       "title": "Time and budgets",
       "to": "To",
       "yearly": "Every year"
@@ -440,7 +442,15 @@
     "whoCanTake": "Who can take this?",
     "whoMessage": "Who can take {{task}}?",
     "footnoteDays": "Company days off and away days reduce what fits. No reason is shown.",
-    "sidebar": "Capacity"
+    "sidebar": "Capacity",
+    "moveTo": "Move to {{name}}",
+    "noneFits": "Nobody has that much free planned time this week.",
+    "candidatesError": "Could not read who has time. Nothing was moved.",
+    "moved": "{{task}} is now with {{name}}.",
+    "toldBoth": "{{a}} and {{b}} were both told.",
+    "toldOne": "{{a}} was told.",
+    "undo": "Undo",
+    "moveFailed": "Could not move {{task}}. Nothing was moved."
   },
   "fields": {
     "title": "Fields",

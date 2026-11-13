@@ -29,6 +29,8 @@ const WEEK_RE = /^(\d{4})-W(\d{2})$/
 const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true })
 
 export interface CapacityTask {
+  /** The task's id, so a board can open or move it. */
+  id: string
   key: string | null
   title: string
   minutes: number
@@ -265,6 +267,7 @@ export async function getCapacity(args: {
     const tasks = live
       .filter((r) => r.assignee_id === userId)
       .map((r) => ({
+        id: r.id,
         key: r.key,
         title: r.title,
         minutes: inWeek(r),
@@ -286,7 +289,7 @@ export async function getCapacity(args: {
 
   const left = live
     .filter((r) => !active.includes(r.assignee_id as string))
-    .map((r) => ({ key: r.key, title: r.title, minutes: Math.round(inWeek(r)) }))
+    .map((r) => ({ id: r.id, key: r.key, title: r.title, minutes: Math.round(inWeek(r)) }))
     .filter((t) => t.minutes > 0)
 
   const availableMinutes = out.reduce((s, p) => s + p.availableMinutes, 0)

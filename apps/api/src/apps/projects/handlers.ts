@@ -48,6 +48,7 @@ export interface ProjectsMethods {
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
   projects_capacityGet: (paramsJson: string) => Promise<string>
+  projects_capacityMove: (paramsJson: string) => Promise<string>
   projects_timesheetGet: (paramsJson: string) => Promise<string>
   projects_timesheetExport: (paramsJson: string) => Promise<string>
   projects_daysOffSet: (paramsJson: string) => Promise<string>
@@ -1219,6 +1220,10 @@ export async function daysOffSet(params: unknown, ctx: ProjectsCtx): Promise<unk
 
 export async function daysOffList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_daysOffList(JSON.stringify(params ?? {})))
+}
+
+export async function capacityMove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_capacityMove(JSON.stringify(params ?? {})))
 }
 
 export async function daysOffRemove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {

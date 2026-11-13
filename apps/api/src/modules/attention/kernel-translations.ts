@@ -253,6 +253,9 @@ export const kernelTranslations: Translation[] = [
       // `routedReminder`: a request waiting a day tells its deciders once
       // (approvals/routed-reminders.ts); `link` opens the request's conversation.
       "routedReminder",
+      // `capacityNamed`: a colleague set the person's days per week (projects time settings);
+      // the row offers "Back to 5 days" from it.
+      "capacityNamed",
     ],
   },
   {

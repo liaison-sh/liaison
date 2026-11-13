@@ -32,6 +32,7 @@ import {
 } from "~/modules/mail/mail-draft-store"
 import { useApi } from "~/modules/shell/ApiContext"
 import { closeTab, makeTabId } from "~/modules/shell/tab-store"
+import { createDockLift } from "~/primitives/dockLift"
 
 interface MailComposeProps {
   entityId: string
@@ -197,6 +198,9 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
     closeTab(makeTabId("mail:compose", props.entityId))
   }
 
+  const [footer, setFooter] = createSignal<HTMLDivElement>()
+  const footerLift = createDockLift(footer)
+
   return (
     <div class="flex flex-col h-full" data-testid="mail-compose">
       <div class="border-b border-border px-4 py-3">
@@ -299,8 +303,13 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
       </div>
 
       {/* pb-dock-clearance: Send sits in the panel's bottom right corner,
-          under the dock's bar (index.css). */}
-      <div class="flex items-center justify-between border-t border-border px-4 pt-3 pb-dock-clearance">
+          under the dock's bar (index.css); the row rises above the bar once
+          the bar hides one of its controls (primitives/dockLift.ts). */}
+      <div
+        ref={setFooter}
+        class="flex items-center justify-between border-t border-border px-4 pt-3 pb-dock-clearance"
+        style={footerLift() > 0 ? { "margin-bottom": `${footerLift()}px` } : undefined}
+      >
         <RecorderRow dictation={dictation}>
           <div class="flex items-center gap-3">
             <AttachmentUploadButton

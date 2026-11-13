@@ -748,7 +748,9 @@
    partially (owner, 2026-11-02): never lift a row, pad it or move the dock
    for a partial overlap; only a fully hidden action is a bug. Right-side
    panels (task comments, discussion-rail.ts) are the one exception and keep
-   their own clearance (CLAUDE.md, "Chat dock overlap"); a long form's scroll
+   their own clearance (CLAUDE.md, "Chat dock overlap"); a bottom composer
+   rises above the bar once the bar covers one of its controls' centre
+   (primitives/dockLift.ts, applied by DockedComposer); a long form's scroll
    end may carry a runway (pb-dock-runway, below). */
 @utility pb-dock-clearance {
   padding-bottom: max(0.75rem, var(--shell-dock-clearance, 0px));

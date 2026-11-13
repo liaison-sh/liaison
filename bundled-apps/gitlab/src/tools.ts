@@ -171,7 +171,7 @@ export async function gitlabListProjects(_params: unknown, ctx: GitlabCtx) {
   return guarded(ctx, async (group) => {
     const { items, truncated } = await getList<Project>(
       ctx,
-      `/groups/${encodeId(group)}/projects?per_page=50&include_subgroups=true&simple=true`,
+      `/groups/${encodeId(group)}/projects?per_page=100&include_subgroups=true&simple=true`,
     )
     return withTruncation(
       {

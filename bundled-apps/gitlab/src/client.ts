@@ -13,6 +13,9 @@
 // Pagination: list endpoints follow `x-next-page` (offset) up to MAX_PAGES
 // pages and say `truncated` when more were left; the tree follows the keyset
 // `Link: rel="next"` URL one page at a time.
+// The tools that follow pages declare `timeoutMs` in the manifest: up to
+// MAX_PAGES sequential calls of about a second each do not fit the 5 s base
+// wall clock of a tool run.
 
 import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
 

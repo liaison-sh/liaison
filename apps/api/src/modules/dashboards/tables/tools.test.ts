@@ -267,7 +267,9 @@ describe("a table on a dashboard", () => {
     await setDashboardSharing(owner, dash.id, { users: [{ userId: outsiderId, role: "viewer" }] })
     const theirs = await getBlockData(await asHeld(outsiderId), dash.id, "total")
     expect(JSON.stringify(theirs)).toContain("no_access")
-    expect(JSON.stringify(theirs)).not.toContain("15")
+    // The refusal names the table by its random id, which can contain "15":
+    // only the figure itself must not reach a non-reader.
+    expect(JSON.stringify(theirs).replaceAll(id, "")).not.toContain("15")
   })
 })
 

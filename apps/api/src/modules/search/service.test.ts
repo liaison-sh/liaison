@@ -563,11 +563,12 @@ describe("executor capability matrix basics", () => {
     for (const call of meiliSearch.mock.calls) {
       expect((call[1] as { distinct?: string }).distinct).toBe("dedupe_key")
     }
-    // Four reads, not three: `pageSearch` also runs the exact-count pass, and
-    // the loop above is what matters here — the count query dedupes the SAME
-    // way as the page it counts, or the total would disagree with the hits it
-    // is a total of.
-    expect(meiliSearch.mock.calls.length).toBe(4)
+    // Five reads: `globalSearch` reads two windows (its people/thread buckets
+    // and every other record), and `pageSearch` also runs the exact-count
+    // pass. The loop above is what matters here — the count query dedupes the
+    // SAME way as the page it counts, or the total would disagree with the
+    // hits it is a total of.
+    expect(meiliSearch.mock.calls.length).toBe(5)
     expect(
       meiliSearch.mock.calls.filter((c) =>
         Array.isArray((c[1] as { attributesToRetrieve?: unknown }).attributesToRetrieve),
@@ -1067,5 +1068,125 @@ describe("pageSearch total never counts what the searcher cannot read", () => {
     expect(r.hits.length).toBe(25)
     expect(r.total).toBe(60)
     expect(r.offset + r.hits.length < r.total).toBe(true)
+  })
+})
+
+describe("one kind of record is narrowed in the engine, never filtered out of a shared window", () => {
+  const actor = {
+    actorType: "user" as const,
+    userId: USER_A,
+    orgId: ORG,
+    scopes: ["tickets:tickets:read", "kernel:contacts:read", "kernel:threads:read"],
+    dimensionGrants: {},
+  }
+
+  it("globalSearch reads the people/thread buckets and the other records in two windows", async () => {
+    const { globalSearch } = await importService()
+    await withRlsContext(actor, () =>
+      globalSearch({ orgId: ORG, userId: USER_A, scopes: actor.scopes, q: "erae", limit: 5 }),
+    )
+    const filters = meiliSearch.mock.calls.map((c) => c[1].filter ?? "")
+    expect(filters).toHaveLength(2)
+    expect(
+      filters.filter((f) => f.includes('entity_type NOT IN ["thread","user","contact"]')),
+    ).toHaveLength(1)
+    expect(
+      filters.filter(
+        (f) => f.includes('entity_type IN ["thread","user","contact"]') && !f.includes("NOT IN"),
+      ),
+    ).toHaveLength(1)
+  })
+
+  it("globalSearch lists a contact once when both windows return it", async () => {
+    const contact = {
+      id: "kernel:contact:c1",
+      app: "kernel",
+      entity_type: "contact",
+      entity_id: "c1",
+      title: "Erae Dealer",
+    }
+    meiliSearch.mockImplementation(async () => ({ hits: [contact], estimatedTotalHits: 1 }))
+    try {
+      const { globalSearch } = await importService()
+      const res = await withRlsContext(actor, () =>
+        globalSearch({ orgId: ORG, userId: USER_A, scopes: actor.scopes, q: "erae", limit: 5 }),
+      )
+      expect(res.contacts.map((c) => c.id)).toEqual(["c1"])
+    } finally {
+      meiliSearch.mockImplementation(async () => ({ hits: [], estimatedTotalHits: 0 }))
+    }
+  })
+
+  it("scopedEntitySearch puts the app and entity type in the engine filter", async () => {
+    const { scopedEntitySearch } = await importService()
+    await withRlsContext(actor, () =>
+      scopedEntitySearch({
+        orgId: ORG,
+        userId: USER_A,
+        scopes: actor.scopes,
+        q: "erae",
+        app: ["tickets"],
+        entityType: ["ticket"],
+        limit: 50,
+        offset: 50,
+      }),
+    )
+    const [, opts] = meiliSearch.mock.calls[0]!
+    expect(opts.filter).toContain('app IN ["tickets"]')
+    expect(opts.filter).toMatch(/entity_type IN \["ticket"\]/)
+    expect(opts.offset).toBe(50)
+  })
+
+  it("mentionSearch narrows to the picker's app and entity type in the engine", async () => {
+    const { mentionSearch } = await importService()
+    await withRlsContext(actor, () =>
+      mentionSearch({
+        orgId: ORG,
+        userId: USER_A,
+        scopes: actor.scopes,
+        q: "erae",
+        limit: 10,
+        app: "tickets",
+        entityType: "ticket",
+      }),
+    )
+    const [, opts] = meiliSearch.mock.calls[0]!
+    expect(opts.filter).toContain('app IN ["tickets"]')
+    expect(opts.filter).toMatch(/entity_type IN \["ticket"\]/)
+  })
+
+  it("resolveThreadMessageMatches past the room-clause cap pages and keeps the caller's rooms only", async () => {
+    const mine = Array.from({ length: 2001 }, (_, i) => `room-${i}`)
+    const msg = (n: number, thread: string) => ({
+      entity_id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+      thread_id: thread,
+    })
+    // Page 1: 200 messages of a room the caller is not in; page 2: two of theirs.
+    meiliSearch.mockImplementation(async (_q, opts) => ({
+      hits:
+        (opts.offset ?? 0) === 0
+          ? Array.from({ length: 200 }, (_, i) => msg(i, "someone-elses-room"))
+          : [msg(900, "room-7"), msg(901, "room-2000")],
+      estimatedTotalHits: 202,
+    }))
+    const { SearchDriftTestAccess } = await import("./drift")
+    SearchDriftTestAccess.setSearchReady(true)
+    try {
+      const { resolveThreadMessageMatches } = await importService()
+      const ids = await resolveThreadMessageMatches({
+        orgId: ORG,
+        userId: USER_A,
+        scopes: ["*"],
+        q: "erae",
+        threadIds: mine,
+        limit: 20,
+      })
+      expect(ids).toEqual([msg(900, "").entity_id, msg(901, "").entity_id])
+      expect(meiliSearch.mock.calls.map((c) => c[1].offset)).toEqual([0, 200])
+      expect(meiliSearch.mock.calls[0]![1].filter).not.toContain("thread_id IN")
+    } finally {
+      SearchDriftTestAccess.resetSearchReady()
+      meiliSearch.mockImplementation(async () => ({ hits: [], estimatedTotalHits: 0 }))
+    }
   })
 })

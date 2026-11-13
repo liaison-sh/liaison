@@ -1,0 +1,1 @@
+appsWithoutWorkerModule in /healthz detail, not a dependency -> apps/api/src/modules/healthz/index.ts (workerModuleCensus) ; apps/api/src/modules/apps/workers/worker-module-backfill.ts (countInstallsWithoutWorkerModule)

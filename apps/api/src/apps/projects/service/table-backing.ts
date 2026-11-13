@@ -11,10 +11,14 @@
 //   transitions and events record it; status is given by its label, null empties a value. A
 //   refused value throws the dashboard CellError naming the column.
 import { sql } from "drizzle-orm"
-import { projectsRel } from "~/apps/projects/schema-refs"
+import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
-import type { BackedRecord, TableBackingProvider } from "~/modules/dashboards/tables/backing"
+import type {
+  BackedRecord,
+  RecordActor,
+  TableBackingProvider,
+} from "~/modules/dashboards/tables/backing"
 import { CellError, type Column } from "~/modules/dashboards/tables/columns"
 import { activeFields, parseStoredFields } from "./fields"
 import { TASK_PRIORITIES } from "./resolve"
@@ -98,12 +102,56 @@ interface TaskRow {
   fields: Record<string, unknown> | null
   updated_at: string | Date
   version: string
+  /** The latest status change, when it is the task's last write (who made it). */
+  by_type: "user" | "agent" | "routine" | "system" | null
+  by_id: string | null
+  by_name: string | null
+  by_routine: string | null
 }
 
 // A task's version: a digest of what a backed table reads of it and of its last write time, so
 // it moves with any change, whichever write path made it and whenever it committed.
 const TASK_VERSION = sql`md5(concat_ws('|', t.title, t.status_id, t.assignee_id, t.priority,
   t.due_date, t.fields::text, t.archived_at, (extract(epoch from t.updated_at) * 1000000)::bigint))`
+
+// Who made a task's last change, as far as the task knows: its latest status change, when that is
+// its last write (within a few seconds of updated_at); a later edit of another field names no one
+// here, and the table's own history says who made it there.
+const LAST_BY = sql`lx.actor_type AS by_type, lx.actor_id::text AS by_id, lu.name AS by_name,
+  COALESCE(NULLIF(lr.title, ''), lr.name) AS by_routine`
+const LAST_BY_JOIN = sql`
+  LEFT JOIN LATERAL (
+    SELECT x.actor_type, x.actor_id, x.routine_id
+      FROM ${projectsRel("task_transitions")} x
+     WHERE x.task_id = t.id AND x.org_id = t.org_id
+       AND x."at" >= t.updated_at - interval '5 seconds'
+     ORDER BY x."at" DESC, x.seq DESC
+     LIMIT 1
+  ) lx ON true
+  LEFT JOIN ${kernelRel("users")} lu ON lu.id = lx.actor_id AND lu.org_id = t.org_id
+  LEFT JOIN ${kernelRel("routines")} lr ON lr.id = lx.routine_id AND lr.org_id = t.org_id`
+
+/**
+ * A task's last change as a backed row names it: the person, "<Name>'s agent" (attributed, never
+ * the person themself), "Routine <title>"; none for the system or an unknown actor.
+ */
+export function taskChangedBy(
+  r: Pick<TaskRow, "by_type" | "by_id" | "by_name" | "by_routine">,
+): RecordActor | undefined {
+  if (r.by_type === "user" && r.by_id)
+    return { type: "user", id: r.by_id, label: r.by_name ?? "Former member" }
+  if (r.by_type === "agent") {
+    return { type: "agent", id: null, label: r.by_name ? `${r.by_name}'s agent` : "An agent" }
+  }
+  if (r.by_type === "routine") {
+    return {
+      type: "agent",
+      id: null,
+      label: r.by_routine ? `Routine ${r.by_routine}` : "A routine",
+    }
+  }
+  return undefined
+}
 
 const iso = (d: string | Date) => (d instanceof Date ? d.toISOString() : String(d))
 const day = (d: string | Date | null) =>
@@ -124,8 +172,9 @@ async function rows(
     ? extractRows<TaskRow>(
         await t.execute(sql`
           SELECT t.id, t.title, t.status_id, t.assignee_id, t.priority, t.due_date, t.fields,
-                 t.updated_at, ${TASK_VERSION} AS version
+                 t.updated_at, ${TASK_VERSION} AS version, ${LAST_BY}
             FROM ${projectsRel("tasks")} t
+            ${LAST_BY_JOIN}
            WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
              AND t.archived_at IS NULL ${one}
            LIMIT 1
@@ -135,8 +184,9 @@ async function rows(
     : extractRows<TaskRow>(
         await t.execute(sql`
           SELECT t.id, t.title, t.status_id, t.assignee_id, t.priority, t.due_date, t.fields,
-                 t.updated_at, ${TASK_VERSION} AS version
+                 t.updated_at, ${TASK_VERSION} AS version, ${LAST_BY}
             FROM ${projectsRel("tasks")} t
+            ${LAST_BY_JOIN}
             LEFT JOIN ${projectsRel("project_statuses")} s
                    ON s.id = t.status_id AND s.org_id = t.org_id
            WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
@@ -163,11 +213,13 @@ async function rows(
     }
     // A task in a terminal status (done, cancelled) is finished: its due date no longer reads late.
     const terminal = r.status_id !== null && terminalStatus.has(r.status_id)
+    const changedBy = taskChangedBy(r)
     return {
       id: r.id,
       cells,
       updatedAt: iso(r.updated_at),
       version: r.version,
+      ...(changedBy ? { changedBy } : {}),
       ...(terminal ? { terminal: true } : {}),
     }
   })

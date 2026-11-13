@@ -28,11 +28,20 @@ export const MAX_BACKED_ROWS = 2000
 /** The cap in force (MAX_BACKED_ROWS; a test lowers it to reach the cut). */
 export const backedRowCap = { max: MAX_BACKED_ROWS }
 
+/** Who last changed a record, as its app knows it (a person, "<Name>'s agent", a routine). */
+export interface RecordActor {
+  type: "user" | "agent" | "system"
+  id: string | null
+  label: string
+}
+
 /** One record as a backed table reads it: its id and the read-through cells asked for. */
 export interface BackedRecord {
   id: string
   cells: Record<string, unknown>
   updatedAt: string
+  /** Who made the record's last change, when the app knows (else the table's own history says). */
+  changedBy?: RecordActor
   /** Moves whenever the record changes (an opaque token): a read-through edit names the one it
    *  read (`ifRecordVersion`) and is refused when the record changed since. */
   version: string
@@ -42,7 +51,13 @@ export interface BackedRecord {
 }
 
 /** A merged row of a backed table: the overlay document plus its record's version. */
-export type BackedDocument = StoreDocument & { recordVersion?: string; terminal?: boolean }
+export type BackedDocument = StoreDocument & {
+  recordVersion?: string
+  terminal?: boolean
+  /** The record's own last change: when, and who made it (when its app knows). */
+  recordUpdatedAt?: string
+  recordChangedBy?: RecordActor
+}
 
 /**
  * What an app implements to back a table (its entity's records under one parent record). Every
@@ -226,6 +241,8 @@ export function mergeOverlay(
       version: doc?.version ?? 0,
       updatedAt,
       recordVersion: task.version,
+      recordUpdatedAt: task.updatedAt,
+      ...(task.changedBy ? { recordChangedBy: task.changedBy } : {}),
       ...(task.terminal ? { terminal: true } : {}),
     }
   })

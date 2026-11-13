@@ -23,6 +23,11 @@ export const ProjectWorkspace = lazy(() =>
 export const TaskDetail = lazy(() =>
   import("~/modules/projects/TaskDetail").then((m) => ({ default: m.TaskDetail })),
 )
+export const ProjectAutomations = lazy(() =>
+  import("~/modules/projects/ProjectAutomations").then((m) => ({
+    default: m.ProjectAutomations,
+  })),
+)
 export const ProjectsSidebar = lazy(() =>
   import("~/modules/projects/ProjectsSidebar").then((m) => ({ default: m.ProjectsSidebar })),
 )

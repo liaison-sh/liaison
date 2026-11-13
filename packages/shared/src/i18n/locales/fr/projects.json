@@ -332,5 +332,29 @@
     "byAgent": "un agent",
     "byRoutine": "une routine",
     "bySystem": "Liaison"
+  },
+  "automations": {
+    "title": "Automatisations",
+    "new": "Nouvelle automatisation",
+    "back": "Retour",
+    "explainer": "Une automatisation exécute des étapes toute seule quand une tâche de ce projet change, par exemple l'assigner ou relancer quelqu'un.",
+    "empty": "Aucune automatisation pour l'instant.",
+    "loadFailed": "Les automatisations n'ont pas pu être chargées.",
+    "enabled": "Activée",
+    "lastRun": "Dernière exécution {{when}} : {{status}}",
+    "neverRan": "Pas encore exécutée",
+    "pickTemplate": "Partez de l'un de ces modèles, puis ajustez ses étapes.",
+    "noTemplates": "Aucun modèle disponible.",
+    "template_assign_on_status": "Quand un statut est atteint, assigner",
+    "template_remind_if_still": "Relancer si toujours dans un statut",
+    "template_sla_to_reach": "Délai pour atteindre un statut",
+    "template_notify_on_status": "Notifier quand un statut est atteint",
+    "name": "Nom",
+    "description": "Description",
+    "nameRequired": "Donnez-lui un nom.",
+    "descriptionRequired": "Ajoutez une courte description.",
+    "missingStatuses": "Ce projet n'a pas de statut nommé {{labels}} : choisissez-en un ci-dessous.",
+    "save": "Créer l'automatisation",
+    "saveFailed": "L'automatisation n'a pas pu être créée."
   }
 }

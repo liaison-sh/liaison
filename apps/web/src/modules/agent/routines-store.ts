@@ -5,12 +5,13 @@
  * that show it.
  */
 
-import type { ReasoningLevel } from "@liaison/shared"
+import type { ReasoningLevel, RoutineFlow } from "@liaison/shared"
 import { createStore, produce } from "solid-js/store"
 import type { ApiClient } from "~/lib/api-client"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
 import { englishT } from "~/modules/i18n/i18n-context"
 import type { Message } from "~/modules/threads/message-store"
+import type { FlowRunStep } from "./flow/flow-model"
 
 export type RoutineStatus =
   | "active"
@@ -33,6 +34,11 @@ export type RoutineApprover = "default" | "owner"
 export interface RoutineEventFilter {
   fromContactIds?: string[]
   fromGroupIds?: string[]
+  /** Projects task events (0303): one project, a status change from/to, field values. */
+  projectId?: string
+  fromStatusId?: string | null
+  toStatusId?: string
+  fields?: Record<string, unknown>
 }
 
 export interface RoutineRow {
@@ -43,6 +49,8 @@ export interface RoutineRow {
    *  post, which is what the destination picker filters on. */
   ownerAgentId: string | null
   name: string
+  /** Its human name (0304): what lists and headers show. Null or absent = `name`. */
+  title?: string | null
   description: string
   kind: RoutineKind
   cron: string | null
@@ -76,6 +84,8 @@ export interface RoutineRow {
   eventFilter?: RoutineEventFilter | null
   /** Who approves its drafts (S29). Optional: older servers omit it (= default). */
   approver?: RoutineApprover
+  /** The routine's steps after its trigger (0303); null = a legacy prompt routine. */
+  flow?: RoutineFlow | null
   enabled: boolean
   status: RoutineStatus
   lastRunAt: string | null
@@ -106,6 +116,8 @@ export interface RoutineRunRow {
   messageCount?: number
   hasTranscript?: boolean
   outputThreadId?: string | null
+  /** A flow run's per-step state (0303); null for a legacy run. */
+  steps?: FlowRunStep[] | null
 }
 
 /** One run's transcript: its slice of the routine's output thread. */
@@ -123,6 +135,12 @@ export interface RoutineTemplateRow {
   kind: string
   /** True when an instance already exists for the org. */
   enabled: boolean
+  /** A flow template (0303): what the editor prefills, placeholders unfilled. */
+  event?: string
+  scopes?: string[]
+  prompt?: string
+  flow?: RoutineFlow
+  eventFilter?: RoutineEventFilter
 }
 
 /** One subscribable event, as `/agent/routines/events` returns it. */
@@ -215,6 +233,11 @@ export async function loadRoutines(
 }
 
 /** The rows one surface reads: an agent's own list, or the flat listing. */
+/** What a routine is called on screen: its human name, else its identifier. */
+export function routineLabel(r: Pick<RoutineRow, "name" | "title">): string {
+  return r.title?.trim() || r.name
+}
+
 export function routinesForAgent(ownerAgentId?: string): RoutineRow[] {
   if (!ownerAgentId) return routinesStore.routines
   return routinesStore.byAgent[ownerAgentId] ?? []
@@ -230,6 +253,17 @@ function mapEveryRoutineList(fn: (rows: RoutineRow[]) => RoutineRow[]): void {
 }
 
 /** The row behind an id, wherever it is cached. */
+/** A project's automations (0303): the routines whose event filter names that project. */
+export async function loadProjectRoutines(
+  api: ApiClient,
+  projectId: string,
+): Promise<RoutineRow[]> {
+  const data = await api.get<RoutineRow[]>(
+    `/agent/routines?projectId=${encodeURIComponent(projectId)}`,
+  )
+  return Array.isArray(data) ? data : []
+}
+
 export function findRoutineRow(id: string): RoutineRow | undefined {
   const flat = routinesStore.routines.find((r) => r.id === id)
   if (flat) return flat
@@ -338,6 +372,8 @@ export async function enableRoutineTemplate(
 
 export interface CreateRoutineInput {
   name: string
+  /** Its human name (0304); null or absent = `name` is shown. */
+  title?: string | null
   description: string
   kind?: RoutineKind
   cron?: string
@@ -356,6 +392,7 @@ export interface CreateRoutineInput {
   hardTokenLimit?: number | null
   runsOn?: RoutineRunsOn
   eventFilter?: RoutineEventFilter | null
+  flow?: RoutineFlow | null
   approver?: RoutineApprover
   /** Create the routine FOR this agent (P4c-T32b). A15 decides on the server:
    *  a refusal is a 403 `agent_write_forbidden`, never a silent relocation. */
@@ -407,6 +444,7 @@ export async function createRoutine(
 }
 
 export interface UpdateRoutineInput {
+  title?: string | null
   name?: string
   description?: string
   kind?: RoutineKind
@@ -424,6 +462,7 @@ export interface UpdateRoutineInput {
   hardTokenLimit?: number | null
   runsOn?: RoutineRunsOn
   eventFilter?: RoutineEventFilter | null
+  flow?: RoutineFlow | null
   approver?: RoutineApprover
   /** Where this routine posts its runs (a conversation or channel). Null: only its own run thread. */
   reportThreadId?: string | null

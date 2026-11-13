@@ -24,6 +24,7 @@ import {
   Pencil,
   Tag,
   Trash2,
+  Zap,
 } from "lucide-solid"
 import {
   type Component,
@@ -184,6 +185,16 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
     } finally {
       setArchiveBusy(false)
     }
+  }
+
+  /** The project's Automations open as their own tab (a project-scoped view, never a modal). */
+  function openAutomations() {
+    openTab({
+      type: "projects:automations",
+      entityId: props.entityId,
+      label: `${i18n.t("projects.automations.title")} · ${project()?.name ?? ""}`,
+      routePath: `/automations/${props.entityId}`,
+    })
   }
 
   const openTask = (taskId: string) => {
@@ -622,6 +633,11 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
                   {i18n.t("projects.fields.manage")}
                 </span>
               </Button>
+              <Button variant="ghost" size="sm" onClick={openAutomations}>
+                <span data-testid="project-workspace.open-automations">
+                  {i18n.t("projects.automations.title")}
+                </span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={openTrash}>
                 <span data-testid="project-workspace.open-trash">{i18n.t("projects.trash")}</span>
               </Button>
@@ -668,6 +684,13 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
                   >
                     <ListPlus class="h-3.5 w-3.5" />
                     <span>{i18n.t("projects.fields.manage")}</span>
+                  </PopupMenu.Item>
+                  <PopupMenu.Item
+                    data-testid="project-workspace.menu-automations"
+                    onSelect={openAutomations}
+                  >
+                    <Zap class="h-3.5 w-3.5" />
+                    <span>{i18n.t("projects.automations.title")}</span>
                   </PopupMenu.Item>
                   <PopupMenu.Item
                     data-testid="project-workspace.menu-release"

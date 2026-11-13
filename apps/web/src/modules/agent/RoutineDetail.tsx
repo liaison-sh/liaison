@@ -51,6 +51,7 @@ import {
   type RoutineNodePlacement,
   type RoutineRow,
   type RoutineRunsOn,
+  routineLabel,
   routinesForAgent,
   routinesStore,
   runRoutineNow,
@@ -542,7 +543,7 @@ const RoutineDetail: Component<Props> = (props) => {
   function openOutputThread() {
     const r = routine()
     if (!r?.outputThreadId) return
-    openTab({ type: "kernel:thread", entityId: r.outputThreadId, label: r.name })
+    openTab({ type: "kernel:thread", entityId: r.outputThreadId, label: routineLabel(r) })
   }
 
   async function onLoadOlder() {
@@ -599,7 +600,9 @@ const RoutineDetail: Component<Props> = (props) => {
 
             <div class="flex items-start justify-between border-b border-border-subtle px-6 py-4">
               <div class="min-w-0">
-                <h1 class="text-[16px] font-medium text-text">{r().name}</h1>
+                <h1 data-testid="routine-detail-title" class="text-[16px] font-medium text-text">
+                  {routineLabel(r())}
+                </h1>
                 <p class="mt-1 text-[13px] text-text-tertiary">{r().description}</p>
               </div>
               <div class="flex shrink-0 items-center gap-2">
@@ -648,7 +651,7 @@ const RoutineDetail: Component<Props> = (props) => {
                 comes for; how it is set up is one click away. */}
             <div
               role="tablist"
-              aria-label={r().name}
+              aria-label={routineLabel(r())}
               class="flex gap-4 border-b border-border-subtle px-6"
             >
               <For

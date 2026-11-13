@@ -42,6 +42,10 @@ test("projects.automations-from-template", async ({ page, env, qa, world }) => {
   await expect(editor.getByTestId("routine-flow-step-tell-title")).toHaveText(
     "Notify the routine's owner",
   )
+  // A human name, never a slug.
+  await expect(editor.getByTestId("project-automations.name")).toHaveValue(
+    /^Notify when a status is reached · Automations \d+$/,
+  )
   // Edit the step's text in place.
   await editor.getByTestId("routine-flow-step-tell-edit").click()
   await editor.getByTestId("flow-step-tell-text").fill("Finished: {{task.title}}")
@@ -55,6 +59,7 @@ test("projects.automations-from-template", async ({ page, env, qa, world }) => {
   const rows = listed.body.data as Array<{
     id: string
     name: string
+    title: string | null
     eventFilter: { projectId: string; toStatusId: string }
     flow: { steps: Array<{ args: { text: string } }> }
   }>
@@ -62,11 +67,15 @@ test("projects.automations-from-template", async ({ page, env, qa, world }) => {
   const routine = rows[0]!
   expect(routine.eventFilter).toMatchObject({ projectId, toStatusId: done!.id })
   expect(routine.flow.steps[0]?.args.text).toBe("Finished: {{task.title}}")
+  expect(routine.title).toMatch(/^Notify when a status is reached · Automations \d+$/)
 
   // 4. Listed, on, and opening it shows the routine's Flow tab first.
   const row = view.getByTestId(`project-automations.row-${routine.id}`)
   await expect(row).toBeVisible()
   await expect(row.getByTestId(`project-automations.toggle-${routine.id}`)).toBeVisible()
+  await expect(row.getByTestId(`project-automations.open-${routine.id}`)).toHaveText(
+    routine.title ?? "",
+  )
   await row.getByTestId(`project-automations.open-${routine.id}`).click()
   const detail = page.getByTestId("routine-detail")
   await expect(detail).toBeVisible({ timeout: 10_000 })
@@ -77,4 +86,9 @@ test("projects.automations-from-template", async ({ page, env, qa, world }) => {
   await expect(
     detail.getByTestId("routine-flow-panel").getByTestId("routine-flow-step-tell-title"),
   ).toHaveText("Notify the routine's owner")
+  await expect(detail.getByTestId("routine-detail-title")).toHaveText(routine.title ?? "")
+  // View mode names the placeholder in words.
+  await expect(
+    detail.getByTestId("routine-flow-panel").getByTestId("routine-flow-step-tell-text"),
+  ).toHaveText("Finished: task title")
 })

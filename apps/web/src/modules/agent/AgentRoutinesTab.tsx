@@ -32,7 +32,7 @@ import { shellTier } from "~/modules/shell/shell-tier"
 import RoutineDetail from "./RoutineDetail"
 import RoutineRunTranscript from "./RoutineRunTranscript"
 import RoutinesList from "./RoutinesList"
-import { findRoutineRow, routinesForAgent } from "./routines-store"
+import { findRoutineRow, routineLabel, routinesForAgent } from "./routines-store"
 
 interface Props {
   agentId: string
@@ -180,7 +180,10 @@ const AgentRoutinesTab: Component<Props> = (props) => {
               {(runId) => (
                 <RoutineRunTranscript
                   routineId={id}
-                  routineName={findRoutineRow(id)?.name ?? ""}
+                  routineName={(() => {
+                    const row = findRoutineRow(id)
+                    return row ? routineLabel(row) : ""
+                  })()}
                   routineKind={findRoutineRow(id)?.kind ?? null}
                   runId={runId}
                   onBack={() => openRun(id, null)}

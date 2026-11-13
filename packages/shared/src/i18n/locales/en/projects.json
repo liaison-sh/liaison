@@ -310,7 +310,7 @@
     "template_notify_on_status": "Notify when a status is reached",
     "name": "Name",
     "description": "Description",
-    "nameRule": "The name uses lowercase letters, digits and hyphens.",
+    "nameRequired": "Give it a name.",
     "descriptionRequired": "Add a short description.",
     "missingStatuses": "This project has no status named {{labels}}: choose one below.",
     "save": "Create the automation",

@@ -17,7 +17,10 @@ import {
   describeCondition,
   type FlowNames,
   type FlowPerson,
+  type FlowPlaceholder,
   type FlowProject,
+  flowPlaceholders,
+  insertPlaceholder,
   WAIT_UNITS,
   type WaitStep,
   type WaitUnit,
@@ -212,18 +215,49 @@ const TextArea: Component<{
   testid: string
   label: string
   rows?: number
-}> = (props) => (
-  <label class="flex min-w-0 flex-col gap-1">
-    <span class={labelClass}>{props.label}</span>
-    <textarea
-      data-testid={props.testid}
-      class={`${fieldClass} resize-y`}
-      rows={props.rows ?? 2}
-      value={props.value}
-      onInput={(e) => props.onChange(e.currentTarget.value)}
-    />
-  </label>
-)
+  /** Offers an "Insert" menu of these placeholders, put in at the caret. */
+  placeholders?: ReadonlyArray<FlowPlaceholder>
+}> = (props) => {
+  const i18n = useI18n()
+  let area: HTMLTextAreaElement | undefined
+  const insert = (token: string) => {
+    const at = area?.selectionStart ?? props.value.length
+    props.onChange(insertPlaceholder(props.value, at, token))
+  }
+  return (
+    <div class="flex min-w-0 flex-col gap-1">
+      <label class="flex min-w-0 flex-col gap-1">
+        <span class={labelClass}>{props.label}</span>
+        <textarea
+          ref={area}
+          data-testid={props.testid}
+          class={`${fieldClass} resize-y`}
+          rows={props.rows ?? 2}
+          value={props.value}
+          onInput={(e) => props.onChange(e.currentTarget.value)}
+        />
+      </label>
+      <Show when={(props.placeholders?.length ?? 0) > 0}>
+        <select
+          data-testid={`${props.testid}-insert`}
+          aria-label={i18n.t("kernel.routineFlow.insertPlaceholder")}
+          class="w-fit max-w-full rounded-md border border-border-subtle bg-surface-elevated px-2 py-1 text-[12px] text-text-secondary"
+          value=""
+          onChange={(e) => {
+            const token = e.currentTarget.value
+            e.currentTarget.value = ""
+            if (token) insert(token)
+          }}
+        >
+          <option value="">{i18n.t("kernel.routineFlow.insertPlaceholder")}</option>
+          <For each={props.placeholders ?? []}>
+            {(p) => <option value={p.token}>{p.label}</option>}
+          </For>
+        </select>
+      </Show>
+    </div>
+  )
+}
 
 // ── Conditions ────────────────────────────────────────────────────────────────
 
@@ -517,6 +551,7 @@ const ActionForm: Component<{
               onChange={(v) => props.onChange({ ...st(), args: { ...st().args, text: v } })}
               testid={`${tid()}-text`}
               label={i18n.t("kernel.routineFlow.text")}
+              placeholders={flowPlaceholders(props.ctx.names)}
             />
           </>
         )}
@@ -536,6 +571,7 @@ const ActionForm: Component<{
               onChange={(v) => props.onChange({ ...st(), args: { ...st().args, text: v } })}
               testid={`${tid()}-text`}
               label={i18n.t("kernel.routineFlow.text")}
+              placeholders={flowPlaceholders(props.ctx.names)}
             />
           </>
         )}
@@ -547,6 +583,7 @@ const ActionForm: Component<{
             onChange={(v) => props.onChange({ ...st(), args: { text: v } })}
             testid={`${tid()}-text`}
             label={i18n.t("kernel.routineFlow.text")}
+            placeholders={flowPlaceholders(props.ctx.names)}
           />
         )}
       </Show>

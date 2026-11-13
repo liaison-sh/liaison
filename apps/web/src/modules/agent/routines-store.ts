@@ -49,6 +49,8 @@ export interface RoutineRow {
    *  post, which is what the destination picker filters on. */
   ownerAgentId: string | null
   name: string
+  /** Its human name (0304): what lists and headers show. Null or absent = `name`. */
+  title?: string | null
   description: string
   kind: RoutineKind
   cron: string | null
@@ -231,6 +233,11 @@ export async function loadRoutines(
 }
 
 /** The rows one surface reads: an agent's own list, or the flat listing. */
+/** What a routine is called on screen: its human name, else its identifier. */
+export function routineLabel(r: Pick<RoutineRow, "name" | "title">): string {
+  return r.title?.trim() || r.name
+}
+
 export function routinesForAgent(ownerAgentId?: string): RoutineRow[] {
   if (!ownerAgentId) return routinesStore.routines
   return routinesStore.byAgent[ownerAgentId] ?? []
@@ -365,6 +372,8 @@ export async function enableRoutineTemplate(
 
 export interface CreateRoutineInput {
   name: string
+  /** Its human name (0304); null or absent = `name` is shown. */
+  title?: string | null
   description: string
   kind?: RoutineKind
   cron?: string
@@ -435,6 +444,7 @@ export async function createRoutine(
 }
 
 export interface UpdateRoutineInput {
+  title?: string | null
   name?: string
   description?: string
   kind?: RoutineKind

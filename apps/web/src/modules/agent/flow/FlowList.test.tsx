@@ -279,4 +279,84 @@ describe("FlowList", () => {
     renderList("run", { runSteps: [] })
     expect(screen.getByTestId("routine-flow-step-agent-state").textContent).toBe("Not reached")
   })
+
+  it("draws typed nodes, status pills in the copy, avatar discs and a dashed wait connector", () => {
+    renderList("view", {
+      project: {
+        ...PROJECT,
+        statuses: PROJECT.statuses.map((s) => (s.id === S_DOING ? { ...s, color: "#3b82f6" } : s)),
+      },
+    })
+    const pills = screen.getAllByTestId("routine-flow-trigger-status")
+    expect(pills.map((p) => p.textContent)).toEqual(["To do", "Doing"])
+    expect(pills[1]?.getAttribute("style")).toContain("color-mix")
+    const assign = screen.getByTestId("routine-flow-step-assign")
+    expect(assign.querySelector("[data-node='action-assign']")).not.toBeNull()
+    expect(screen.getByTestId("routine-flow-step-assign-people").textContent).toBe("AL")
+    const late = screen.getByTestId("routine-flow-step-late")
+    expect(late.querySelector("[data-node='wait']")).not.toBeNull()
+    expect(late.querySelector("[data-connector='dashed']")).not.toBeNull()
+    expect(
+      screen.getByTestId("routine-flow-step-agent").querySelector("[data-node='agent']"),
+    ).not.toBeNull()
+  })
+
+  it("two groups that split one field render as lanes, 'is X' and 'otherwise'", () => {
+    const flow: RoutineFlow = {
+      version: 1,
+      steps: [
+        {
+          id: "bug",
+          type: "action",
+          action: "assign",
+          args: { to: U_ANA },
+          if: { field: "fields.kind", op: "eq", value: "Bug" },
+        },
+        {
+          id: "idea",
+          type: "action",
+          action: "comment",
+          args: { text: "Later" },
+          if: { field: "fields.kind", op: "eq", value: "Idea" },
+        },
+      ],
+    }
+    renderList("view", { flow })
+    expect(screen.getByTestId("routine-flow-lane-0-label").textContent).toBe("is Bug")
+    expect(screen.getByTestId("routine-flow-lane-1-label").textContent).toBe("otherwise")
+    expect(screen.getByTestId("routine-flow-step-bug").dataset.lane).toBe("0")
+    expect(screen.getByTestId("routine-flow-step-idea").dataset.lane).toBe("1")
+    cleanup()
+    // Edit mode keeps the plain spine, so moving steps stays simple.
+    renderList("edit", { flow })
+    expect(screen.queryByTestId("routine-flow-lane-0")).toBeNull()
+    expect(screen.getByTestId("routine-flow-if-bug")).toBeInTheDocument()
+  })
+
+  it("a waiting run says when it resumes and draws one progress segment per step", () => {
+    renderList("run", {
+      runSteps: [
+        { id: "assign", state: "done", endedAt: "2026-11-13T09:00:01Z" },
+        { id: "tell", state: "done" },
+        {
+          id: "late",
+          state: "waiting",
+          note: "Waits until 2026-11-16T09:00:00.000Z.",
+          output: { deadline: "2026-11-16T09:00:00.000Z" },
+        },
+      ],
+    })
+    const chip = screen.getByTestId("routine-flow-run-chip")
+    expect(chip.dataset.runState).toBe("waiting")
+    expect(chip.textContent).toMatch(/^waiting · resumes /)
+    expect(screen.getByTestId("routine-flow-step-late-resumes")).toBeInTheDocument()
+    expect(screen.queryByTestId("routine-flow-step-late-note")).toBeNull()
+    const segs = screen.getByTestId("routine-flow-run-progress").querySelectorAll("[data-state]")
+    expect([...segs].map((s) => s.getAttribute("data-state"))).toEqual([
+      "done",
+      "done",
+      "waiting",
+      "pending",
+    ])
+  })
 })

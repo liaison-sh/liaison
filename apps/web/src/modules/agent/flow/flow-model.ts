@@ -21,7 +21,7 @@ import { prettyStatus } from "~/modules/projects/status-label"
 export interface FlowProject {
   id: string
   name: string
-  statuses: ReadonlyArray<{ id: string; label: string }>
+  statuses: ReadonlyArray<{ id: string; label: string; color?: string | null }>
   fields: ReadonlyArray<FlowField>
 }
 
@@ -62,6 +62,8 @@ export interface FlowRunStep {
   startedAt?: string | null
   endedAt?: string | null
   note?: string | null
+  /** What the step produced: a wait's `deadline` (ISO), an agent step's `bumps`... */
+  output?: Record<string, unknown> | null
 }
 
 /** The projects event filter keys (0303) next to the older filter keys. */
@@ -562,4 +564,168 @@ export function flowProblem(
     if (!g.success) return g.error.issues[0]?.message ?? t("kernel.routineFlow.problemGeneric")
   }
   return null
+}
+
+// ── Visual helpers (the spine, the lanes, the run timeline) ──────────────────
+
+export type StatusTextPart =
+  | { kind: "text"; text: string }
+  | { kind: "status"; text: string; color: string | null }
+
+/**
+ * Copy cut around the project's status names, so each one renders as a status pill
+ * ("a task in Repairs moves to [Received]"). The longest names match first; a name
+ * only matches as a whole word. Without a project the copy is one text part.
+ */
+export function statusTextParts(names: FlowNames, text: string): StatusTextPart[] {
+  const statuses = (names.project?.statuses ?? [])
+    .map((s) => ({ label: prettyStatus(s.label), color: s.color ?? null }))
+    .filter((s) => s.label.trim().length > 0)
+    .sort((a, b) => b.label.length - a.label.length)
+  if (statuses.length === 0 || !text) return text ? [{ kind: "text", text }] : []
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const re = new RegExp(
+    `(^|[^\\p{L}\\p{N}])(${statuses.map((s) => esc(s.label)).join("|")})(?=$|[^\\p{L}\\p{N}])`,
+    "gu",
+  )
+  const parts: StatusTextPart[] = []
+  let last = 0
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const start = m.index + (m[1]?.length ?? 0)
+    const label = m[2] ?? ""
+    if (start > last) parts.push({ kind: "text", text: text.slice(last, start) })
+    const hit = statuses.find((s) => s.label === label)
+    parts.push({ kind: "status", text: label, color: hit?.color ?? null })
+    last = start + label.length
+  }
+  if (last < text.length) parts.push({ kind: "text", text: text.slice(last) })
+  return parts
+}
+
+/** The people an assign step names (one person, or the least-loaded pool), as refs. */
+export function stepPeople(step: RoutineFlowStep): string[] {
+  if (step.type !== "action" || step.action !== "assign") return []
+  const to = step.args.to
+  return typeof to === "string" ? [to] : to.leastLoaded
+}
+
+/** A step's icon kind: the action itself, or the step type. */
+export type StepIconKind = ActionKind | "wait" | "agent"
+
+export function stepIconKind(step: RoutineFlowStep): StepIconKind {
+  if (step.type === "action") return step.action
+  return step.type
+}
+
+type LeafCondition = Extract<RoutineFlowCondition, { field: string }>
+
+function leafOf(c: RoutineFlowCondition | undefined): LeafCondition | null {
+  if (!c || !("field" in c)) return null
+  return c
+}
+
+function leafValues(c: LeafCondition): string[] | null {
+  if (c.op === "eq") return [String(c.value)]
+  if (c.op === "in" && Array.isArray(c.value)) return c.value.map(String)
+  return null
+}
+
+/** One lane of a split: its label ("is Technical", "otherwise") and its steps. */
+export interface FlowLane {
+  label: string
+  indices: number[]
+}
+
+/** The flow cut into segments: plain runs of steps, and splits drawn as lanes. */
+export type FlowSegment =
+  | { kind: "steps"; indices: number[] }
+  | { kind: "split"; field: string; lanes: [FlowLane, FlowLane] }
+
+/**
+ * Two consecutive "if" groups that test the same field with complementary values
+ * (disjoint values, or empty against not empty) form one split drawn as two lanes;
+ * every other group stays a plain run (its `if` drawn as the indented line).
+ */
+export function flowSegments(names: FlowNames, steps: readonly RoutineFlowStep[]): FlowSegment[] {
+  const groups = groupSteps(steps)
+  const out: FlowSegment[] = []
+  for (let g = 0; g < groups.length; g++) {
+    const a = groups[g]
+    const b = groups[g + 1]
+    const split = a && b ? splitOf(names, a.condition, b.condition) : null
+    if (a && b && split) {
+      out.push({
+        kind: "split",
+        field: split.field,
+        lanes: [
+          { label: split.labels[0], indices: a.indices },
+          { label: split.labels[1], indices: b.indices },
+        ],
+      })
+      g++
+      continue
+    }
+    if (a) out.push({ kind: "steps", indices: a.indices })
+  }
+  return out
+}
+
+function splitOf(
+  names: FlowNames,
+  ca: RoutineFlowCondition | null,
+  cb: RoutineFlowCondition | null,
+): { field: string; labels: [string, string] } | null {
+  const a = leafOf(ca ?? undefined)
+  const b = leafOf(cb ?? undefined)
+  if (!a || !b || a.field !== b.field) return null
+  const field = conditionFieldName(names, a.field)
+  const otherwise = names.t("kernel.routineFlow.laneOtherwise")
+  const isWords = (c: LeafCondition, vals: string[]) =>
+    names.t("kernel.routineFlow.laneIs", {
+      values: joinList(
+        names,
+        vals.map((v) => valueWords(names, c.field, v)),
+        "or",
+      ),
+    })
+  if ((a.op === "empty" && b.op === "not_empty") || (a.op === "not_empty" && b.op === "empty")) {
+    const first =
+      a.op === "empty"
+        ? names.t("kernel.routineFlow.laneEmpty")
+        : names.t("kernel.routineFlow.laneNotEmpty")
+    return { field, labels: [first, otherwise] }
+  }
+  const va = leafValues(a)
+  const vb = leafValues(b)
+  if (!va || !vb) return null
+  if (va.some((v) => vb.includes(v))) return null
+  const choices = names.project?.fields.find((f) => `fields.${f.key}` === a.field)?.choices
+  const covers =
+    !!choices && choices.length > 0 && choices.every((c) => va.includes(c) || vb.includes(c))
+  return { field, labels: [isWords(a, va), covers ? otherwise : isWords(b, vb)] }
+}
+
+/** A run's overall state, for its header chip. */
+export type FlowRunSummary =
+  | { kind: "waiting"; resumesAt: string | null }
+  | { kind: "failed" | "flagged" | "running" | "done" | "pending" }
+
+export function runSummary(
+  flow: RoutineFlow,
+  runSteps: readonly FlowRunStep[] | null | undefined,
+): FlowRunSummary {
+  const states = flow.steps.map((s) => runStateFor(runSteps, s.id))
+  const waiting = states.find((s) => s?.state === "waiting")
+  if (waiting) {
+    const at = waiting.output?.deadline
+    return { kind: "waiting", resumesAt: typeof at === "string" ? at : null }
+  }
+  if (states.some((s) => s?.state === "failed")) return { kind: "failed" }
+  if (states.some((s) => s?.state === "flagged")) return { kind: "flagged" }
+  if (states.some((s) => s?.state === "running" || s?.state === "awaiting_approval")) {
+    return { kind: "running" }
+  }
+  if (states.every((s) => !s)) return { kind: "pending" }
+  if (states.every((s) => s?.state === "done" || s?.state === "skipped")) return { kind: "done" }
+  return { kind: "running" }
 }

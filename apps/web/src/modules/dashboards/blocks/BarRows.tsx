@@ -13,6 +13,7 @@ import { Avatar } from "~/ui/AvatarStack"
 import { avatarColors } from "~/ui/avatar-palette"
 import type { SeriesData, ValueFormat } from "../dashboards-client"
 import { CHART_PALETTE_SIZE } from "./Chart"
+import { markColor, useColourScope } from "./data-colour"
 import { formatValue } from "./format"
 
 export interface BarRowsProps {
@@ -45,10 +46,15 @@ export function barRowsForm(d: SeriesData): "pipeline" | "people" | null {
 export const PipelineBar: Component<BarRowsProps> = (props) => {
   const values = () => props.data.series[0]?.values ?? []
   const total = () => values().reduce<number>((t, v) => t + num(v), 0)
-  const colorAt = (i: number) => props.data.paint?.labels?.[i] ?? paletteColor(i)
+  const scope = useColourScope()
+  const name = (i: number) => String(props.data.x[i] ?? "")
+  // A category's own colour, readable on the surface; else its value's palette slot.
+  const colorAt = (i: number) => {
+    const own = props.data.paint?.labels?.[i]
+    return own ? markColor(own) : scope(name(i))
+  }
   const fmt = (v: number | null | undefined) =>
     formatValue(v ?? 0, { format: props.format, currency: props.currency, locale: props.locale })
-  const name = (i: number) => String(props.data.x[i] ?? "")
   const pick = (i: number) => props.onPick?.(i, 0)
   return (
     <div data-testid="dashboard-pipeline" class="flex flex-col gap-3.5 pt-1">
@@ -111,11 +117,16 @@ export const PeopleRows: Component<BarRowsProps> = (props) => {
   const max = () => Math.max(1, ...props.data.x.map((_, i) => rowTotal(i)))
   const person = (i: number) => props.data.paint?.people?.[i] ?? null
   const name = (i: number) => String(props.data.x[i] ?? "")
-  // A split by series: each series its colour; one series: the person's own avatar colour.
+  const scope = useColourScope()
+  // A split by series: each series its colour (else its name's palette slot); one series: the
+  // person's own avatar colour.
   const colorOf = (i: number, j: number) => {
-    if (series().length > 1) return props.data.paint?.series?.[j] ?? paletteColor(j)
+    if (series().length > 1) {
+      const own = props.data.paint?.series?.[j]
+      return own ? markColor(own) : scope(series()[j]?.name ?? "")
+    }
     const own = props.data.paint?.labels?.[i]
-    if (own) return own
+    if (own) return markColor(own)
     const p = person(i)
     return p ? avatarColors(p).bg : paletteColor(0)
   }

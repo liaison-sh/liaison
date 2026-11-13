@@ -19,6 +19,8 @@ import {
   fillTemplate,
   flowProblem,
   markedNames,
+  type TemplateHole,
+  unresolvedStatuses,
 } from "~/modules/agent/flow/flow-model"
 import { StatusText } from "~/modules/agent/flow/StatusText"
 import { openRoutineOnAgentPage } from "~/modules/agent/open-routine"
@@ -51,10 +53,16 @@ interface Draft {
   scopes: string[]
   flow: RoutineFlow
   eventFilter: FlowEventFilter | null
-  missing: string[]
+  /** Where the template's statuses the project lacks were left empty. */
+  holes: TemplateHole[]
 }
 
 const TITLE_MAX = 120
+
+/** The statuses the draft still lacks: none once each empty place has one chosen. */
+function missingStatuses(d: Draft): string[] {
+  return unresolvedStatuses(d.holes, { flow: d.flow, eventFilter: d.eventFilter })
+}
 
 /**
  * A routine identifier (kebab-case, at most 60) from a template key and the project, with a
@@ -123,7 +131,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
       scopes: t.scopes ?? [],
       flow: filled.value.flow,
       eventFilter: filled.value.eventFilter,
-      missing: filled.missing,
+      holes: filled.holes,
     })
     setError(null)
     setMode("edit")
@@ -382,13 +390,13 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                   onInput={(e) => setDraft({ ...d(), description: e.currentTarget.value })}
                 />
               </label>
-              <Show when={d().missing.length > 0}>
+              <Show when={missingStatuses(d()).length > 0}>
                 <p
                   data-testid="project-automations.missing"
                   class="text-[12px] text-text-secondary"
                 >
                   {i18n.t("projects.automations.missingStatuses", {
-                    labels: d().missing.join(", "),
+                    labels: missingStatuses(d()).join(", "),
                   })}
                 </p>
               </Show>

@@ -60,16 +60,6 @@
   --color-warning-text: #d4a020;
   --color-warning-glow: rgba(212, 160, 32, 0.06);
   --color-warning-border: rgba(212, 160, 32, 0.16);
-  /* Chart series without a colour of their own (a status's, a person's): categorical hues,
-   * told apart, none alarming; each clears 3:1 against the surface (theme-chart-palette.test). */
-  --color-chart-1: #6f97e8;
-  --color-chart-2: #3fb0a2;
-  --color-chart-3: #cf9f45;
-  --color-chart-4: #a487e0;
-  --color-chart-5: #d97f9c;
-  --color-chart-6: #6db374;
-  --color-chart-7: #d98c5a;
-  --color-chart-8: #8e9cb5;
   --color-overlay: rgba(17, 17, 19, 0.5);
   --color-overlay-heavy: rgba(17, 17, 19, 0.75);
   --color-glass-bg: rgba(18, 18, 22, 0.65);
@@ -168,6 +158,22 @@
   --agent-avatar-6-solid: #dc2626;
   --agent-avatar-7-bg: linear-gradient(135deg, #64748b, #334155);
   --agent-avatar-7-solid: #475569;
+}
+
+/* Chart series without a colour of their own (a status's, a person's): categorical hues, told
+ * apart, none alarming; each clears 3:1 against the surface (theme-chart-palette.test). STATIC:
+ * charts read these by name at run time (`var(--color-chart-N)` built from a slot number), never
+ * as a utility class, and a plain @theme emits only the variables the scanned source names, so
+ * the dark theme drew slots 2, 4 and 5 transparent. */
+@theme static {
+  --color-chart-1: #6f97e8;
+  --color-chart-2: #3fb0a2;
+  --color-chart-3: #cf9f45;
+  --color-chart-4: #a487e0;
+  --color-chart-5: #d97f9c;
+  --color-chart-6: #6db374;
+  --color-chart-7: #d98c5a;
+  --color-chart-8: #8e9cb5;
 }
 
 /* ── Light theme ─────────────────────────────────────────────

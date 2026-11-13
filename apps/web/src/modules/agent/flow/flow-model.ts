@@ -511,6 +511,17 @@ export function appendStep(flow: RoutineFlow, step: RoutineFlowStep): RoutineFlo
 // ── Templates ─────────────────────────────────────────────────────────────────
 
 /**
+ * A place a template left empty because the project has no status of that label: the value's
+ * path, what the prefill put there ("" for a whole placeholder, or an array's length once the
+ * empty entry was dropped). The editor's hint names the label while the place is still so.
+ */
+export interface TemplateHole {
+  label: string
+  path: ReadonlyArray<string | number>
+  filled: string | number
+}
+
+/**
  * Fills a template's `{{projectId}}` and `{{status:<label>}}` placeholders for
  * one project, leniently: a status the project lacks becomes "" (the editor
  * then asks for it) instead of failing the whole prefill. The server's
@@ -519,7 +530,7 @@ export function appendStep(flow: RoutineFlow, step: RoutineFlowStep): RoutineFlo
 export function fillTemplate<T>(
   value: T,
   project: { id: string; statuses: ReadonlyArray<{ id: string; label: string }> },
-): { value: T; missing: string[] } {
+): { value: T; missing: string[]; holes: TemplateHole[] } {
   const norm = (s: string) =>
     s
       .trim()
@@ -527,23 +538,71 @@ export function fillTemplate<T>(
       .replace(/[\s_-]+/g, "_")
   const byLabel = new Map(project.statuses.map((s) => [norm(s.label), s.id]))
   const missing = new Set<string>()
-  const fill = (s: string): string =>
+  const holes: TemplateHole[] = []
+  const fill = (s: string, lacking: string[]): string =>
     s
       .replace(/\{\{\s*projectId\s*\}\}/g, project.id)
       .replace(/\{\{\s*status:([^}]+)\}\}/g, (_, label: string) => {
         const id = byLabel.get(norm(label))
-        if (!id) missing.add(label.trim())
+        if (!id) {
+          missing.add(label.trim())
+          lacking.push(label.trim())
+        }
         return id ?? ""
       })
-  const walk = (v: unknown): unknown => {
-    if (typeof v === "string") return fill(v)
-    if (Array.isArray(v)) return v.map(walk).filter((x) => x !== "")
+  const walk = (v: unknown, path: Array<string | number>): unknown => {
+    if (typeof v === "string") {
+      const lacking: string[] = []
+      const out = fill(v, lacking)
+      for (const label of lacking) holes.push({ label, path, filled: out })
+      return out
+    }
+    if (Array.isArray(v)) {
+      const before = holes.length
+      const kept = v.map((x, i) => walk(x, [...path, i])).filter((x) => x !== "")
+      // An entry dropped for its status: the hole is the array, until it grows again.
+      if (kept.length < v.length) {
+        const mine = holes.splice(before)
+        for (const h of mine) {
+          const dropped = h.path.length === path.length + 1 && h.filled === ""
+          holes.push(dropped ? { label: h.label, path, filled: kept.length } : h)
+        }
+      }
+      return kept
+    }
     if (v && typeof v === "object") {
-      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, [...path, k])]))
     }
     return v
   }
-  return { value: walk(value) as T, missing: [...missing] }
+  return { value: walk(value, []) as T, missing: [...missing], holes }
+}
+
+function valueAt(root: unknown, path: ReadonlyArray<string | number>): unknown {
+  let at: unknown = root
+  for (const key of path) {
+    if (at === null || typeof at !== "object") return undefined
+    at = (at as Record<string | number, unknown>)[key]
+  }
+  return at
+}
+
+/**
+ * The status labels the editor still has to ask for: those whose place in `current` (the draft
+ * as edited) is still as the prefill left it. A status chosen there clears its label; once every
+ * place is chosen there is none.
+ */
+export function unresolvedStatuses(holes: readonly TemplateHole[], current: unknown): string[] {
+  const out = new Set<string>()
+  for (const h of holes) {
+    const v = valueAt(current, h.path)
+    const open =
+      typeof h.filled === "number"
+        ? !Array.isArray(v) || v.length <= h.filled
+        : v === undefined || v === null || v === "" || v === h.filled
+    if (open) out.add(h.label)
+  }
+  return [...out]
 }
 
 /** The run's state for one step; a step the run never reached is pending. */

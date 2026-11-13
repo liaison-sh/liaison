@@ -272,6 +272,10 @@ describe("a finished task's deadline", () => {
     const rows = byId((await listRows(owner, id)).rows)
     expect(rows.get(b.tasks[1]!)!.terminal).toBe(true)
     expect(rows.get(b.tasks[0]!)!.terminal).toBeUndefined()
+    // A task changed in Projects names who changed it, never "System".
+    const by = rows.get(b.tasks[1]!)!.updatedBy
+    expect(by).toMatchObject({ type: "user", id: owner.userId })
+    expect(by.label).not.toBe("System")
   })
 })
 

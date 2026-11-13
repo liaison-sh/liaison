@@ -141,7 +141,7 @@ class Checked<K extends CheckKind> {
   get kind(): K {
     return this.#kind
   }
-  static holds(value: unknown): value is Checked<CheckKind> {
+  static checkedBrandHeld(value: unknown): value is Checked<CheckKind> {
     return typeof value === "object" && value !== null && #kind in value
   }
 }
@@ -174,7 +174,7 @@ export async function checkPlainScript(source: string): Promise<CheckResult<Chec
 
 /** Whether `value` was made by one of the checks above (not a look-alike). */
 export function isCheckedSource(value: unknown): value is CheckedSource {
-  return Checked.holds(value)
+  return Checked.checkedBrandHeld(value)
 }
 
 /**
@@ -182,6 +182,7 @@ export function isCheckedSource(value: unknown): value is CheckedSource {
  * the only Bun parse of non-repo text in this process.
  */
 export function transpileChecked(source: CheckedSource): string {
-  if (!Checked.holds(source)) throw new TypeError("transpileChecked takes a checked source only")
+  if (!Checked.checkedBrandHeld(source))
+    throw new TypeError("transpileChecked takes a checked source only")
   return new Bun.Transpiler({ loader: "js" }).transformSync(source.text)
 }

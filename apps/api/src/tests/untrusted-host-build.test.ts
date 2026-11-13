@@ -438,7 +438,7 @@ describe("untrusted code never reaches Bun's parser in the API process", () => {
           if (ts.isCallExpression(n)) {
             const callee = n.expression
             if (
-              callee.getText() === "Checked.holds" &&
+              callee.getText() === "Checked.checkedBrandHeld" &&
               params.includes(n.arguments[0]?.getText() ?? "")
             )
               guarded = true
@@ -448,7 +448,8 @@ describe("untrusted code never reaches Bun's parser in the API process", () => {
           ts.forEachChild(n, visit)
         }
         visit(fn)
-        if (!guarded) problems.push(`${e.file} ${siteKey(s)}: no Checked.holds run-time test`)
+        if (!guarded)
+          problems.push(`${e.file} ${siteKey(s)}: no Checked.checkedBrandHeld run-time test`)
         if (parseArgs.length === 0 || parseArgs.some((a) => !params.some((p) => a === `${p}.text`)))
           problems.push(`${e.file} ${siteKey(s)}: parses ${parseArgs.join(", ")}`)
       }

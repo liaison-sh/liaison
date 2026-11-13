@@ -391,6 +391,14 @@ describe("the picker", () => {
     expect(out).toEqual({
       picked: [{ id: "doc00001", name: "Plan", mimeType: DOC }],
       sourceId: "source-1",
+      // Posted by the platform in the conversation the picker was opened from.
+      pageResult: {
+        summary: "Picked 1 item in Google Drive: Plan.",
+        data: expect.objectContaining({
+          count: 1,
+          items: [{ driveFileId: "doc00001", name: "Plan", mimeType: DOC }],
+        }),
+      },
     })
     expect(f.metadataWrites[0]?.patch).toEqual({
       pickedItems: [{ id: "doc00001", name: "Plan", mimeType: DOC }],

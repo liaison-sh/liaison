@@ -23,8 +23,10 @@
 // way those handlers write them, with deterministic ids so a re-run is a no-op.
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
+import { rowsOf } from "~/seed/factories/people/actors"
 
 export interface MailMessageSpec {
   direction: "inbound" | "outbound"
@@ -78,25 +80,34 @@ export async function insertUnarmedMail(
     const ownerByBox: Record<string, string | null> = {}
     for (const box of input.mailboxes) {
       const isOrg = box.ownerUserId === null
-      const accountId = ctx.id("mail-account", box.box)
+      const seededId = ctx.id("mail-account", box.box)
       // A personal mailbox starts awaiting its owner's mailbox password
       // (encryption_state pending_enrollment): it has never synced, so it
       // carries no last sync. Only an org mailbox has fetched mail.
       const lastSyncAt = isOrg ? clock.hoursBefore(0.1).toISOString() : null
       await tx.execute(
-        sql`INSERT INTO app_mail.accounts (
+        sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.accounts (
               id, org_id, connected_account_id, owner_type, owner_id, provider,
               email_address, display_name, sync_status, last_sync_at, created_at, updated_at
             ) VALUES (
-              ${accountId}::uuid, ${orgId}::uuid,
+              ${seededId}::uuid, ${orgId}::uuid,
               ${ctx.id("mail-connection", box.box)}::uuid,
               ${isOrg ? "org" : "user"}, ${box.ownerUserId}::uuid,
               'imap', ${box.email}, ${box.displayName},
               'idle', ${lastSyncAt},
               ${clock.daysBefore(60).toISOString()}, ${clock.hoursBefore(0.1).toISOString()}
             )
-            ON CONFLICT (id) DO NOTHING`,
+            ON CONFLICT DO NOTHING`,
       )
+      // An org that already holds this address (a world seeded before this
+      // tier, an earlier run) keeps its mailbox: the conversations join it.
+      const existing = rowsOf<{ id: string }>(
+        await tx.execute(
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_mail"))}.accounts
+              WHERE org_id = ${orgId}::uuid AND email_address = ${box.email} LIMIT 1`,
+        ),
+      )
+      const accountId = existing[0]?.id ?? seededId
       accountByBox[box.box] = accountId
       ownerByBox[box.box] = box.ownerUserId
       accountIds.push(accountId)
@@ -112,7 +123,7 @@ export async function insertUnarmedMail(
       const first = conv.messages[0] as MailMessageSpec
 
       await tx.execute(
-        sql`INSERT INTO app_mail.conversations (
+        sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.conversations (
               id, org_id, account_id, owner_type, owner_id, external_thread_id,
               subject, snippet, from_email, status, labels, is_read, is_starred,
               last_message_at, message_count, created_at, updated_at
@@ -134,7 +145,7 @@ export async function insertUnarmedMail(
         const m = conv.messages[i] as MailMessageSpec
         const sentAt = clock.hoursBefore(m.hoursAgo)
         await tx.execute(
-          sql`INSERT INTO app_mail.messages (
+          sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.messages (
                 id, org_id, conversation_id, account_id, external_message_id,
                 message_references, from_address, to_addresses, cc_addresses, bcc_addresses,
                 subject, text_body, html_body, snippet,

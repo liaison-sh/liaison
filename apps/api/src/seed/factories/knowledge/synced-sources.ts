@@ -35,6 +35,7 @@ import {
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel/roles"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "~/seed/factories/people/actors"
@@ -124,7 +125,7 @@ async function findOrCreateSource(
 ): Promise<SyncedSourceRow> {
   const rows = await withPrivilegedDb(ctx.orgId, "seed-knowledge-sources:find", async (tx) =>
     rowsOf<SyncedSourceDbRow>(
-      await tx.execute(sql`SELECT * FROM app_knowledge.synced_sources
+      await tx.execute(sql`SELECT * FROM ${sql.raw(schemaRef("app_knowledge"))}.synced_sources
         WHERE org_id = ${ctx.orgId}::uuid AND app_name = ${spec.appName}
           AND folder_ref = ${spec.folderRef} AND archived_at IS NULL
         LIMIT 1`),
@@ -166,14 +167,14 @@ async function stampSyncHistory(
 ): Promise<Array<{ id: string; title: string }>> {
   return withPrivilegedDb(ctx.orgId, "seed-knowledge-sources:docs", async (tx) => {
     const at = syncedAt.toISOString()
-    await tx.execute(sql`UPDATE app_knowledge.synced_sources
+    await tx.execute(sql`UPDATE ${sql.raw(schemaRef("app_knowledge"))}.synced_sources
       SET last_sync_at = ${at}::timestamptz, last_sync_status = 'ok', last_error = NULL
       WHERE id = ${sourceId}::uuid`)
-    await tx.execute(sql`UPDATE app_knowledge.documents
+    await tx.execute(sql`UPDATE ${sql.raw(schemaRef("app_knowledge"))}.documents
       SET last_synced_at = ${at}::timestamptz
       WHERE synced_source_id = ${sourceId}::uuid`)
     return rowsOf<{ id: string; title: string }>(
-      await tx.execute(sql`SELECT id, title FROM app_knowledge.documents
+      await tx.execute(sql`SELECT id, title FROM ${sql.raw(schemaRef("app_knowledge"))}.documents
         WHERE synced_source_id = ${sourceId}::uuid AND archived_at IS NULL`),
     )
   })

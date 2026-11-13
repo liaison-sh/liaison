@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm"
 import { createProject } from "~/apps/projects/service/create-project"
 import { addDependency, createTask } from "~/apps/projects/service/tasks"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "~/seed/factories/people/actors"
@@ -78,7 +79,7 @@ export async function seedProject(
   await asUser(owner, async (tx) => {
     const found = rowsOf<{ id: string }>(
       await (tx as ExecTx).execute(
-        sql`SELECT id FROM app_projects.projects
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.projects
             WHERE org_id = ${orgId} AND key = ${spec.key} LIMIT 1`,
       ),
     )
@@ -100,7 +101,7 @@ export async function seedProject(
       const externalRef = input.externalRefOf(task.key)
       const existing = rowsOf<{ id: string }>(
         await (tx as ExecTx).execute(
-          sql`SELECT id FROM app_projects.tasks
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.tasks
               WHERE org_id = ${orgId} AND external_ref = ${externalRef} LIMIT 1`,
         ),
       )
@@ -140,7 +141,7 @@ export async function seedProject(
         if (!blockerId) continue
         const already = rowsOf<{ task_id: string }>(
           await (tx as ExecTx).execute(
-            sql`SELECT task_id FROM app_projects.task_dependencies
+            sql`SELECT task_id FROM ${sql.raw(schemaRef("app_projects"))}.task_dependencies
                 WHERE task_id = ${taskId}::uuid AND depends_on_task_id = ${blockerId}::uuid`,
           ),
         )
@@ -182,14 +183,14 @@ export async function seedProjectTask(
   return asUser(creator, async (tx) => {
     const existing = rowsOf<{ id: string }>(
       await tx.execute(
-        sql`SELECT id FROM app_projects.tasks
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.tasks
             WHERE org_id = ${orgId} AND external_ref = ${task.externalRef} LIMIT 1`,
       ),
     )
     if (existing[0]) return existing[0].id
     const project = rowsOf<{ id: string }>(
       await tx.execute(
-        sql`SELECT id FROM app_projects.projects
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.projects
             WHERE org_id = ${orgId} AND key = ${task.projectKey} LIMIT 1`,
       ),
     )[0]

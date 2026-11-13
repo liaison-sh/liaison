@@ -22,6 +22,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { users } from "~/db/schema/kernel"
 import { routines } from "~/db/schema/kernel/routines"
+import { schemaRef } from "~/db/schema-ref"
 import { isPublicDemoInstance } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, loadDemoMarker } from "~/modules/demo/demo-org"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
@@ -546,7 +547,7 @@ async function seedLivelyActivity(
   // queue sorts on it, so it follows the ticket's own last activity.
   await withPrivilegedDb(ctx.orgId, "seed-lively:ticket-updated-at", (tx) =>
     tx.execute(sql`
-      UPDATE app_tickets.tickets
+      UPDATE ${sql.raw(schemaRef("app_tickets"))}.tickets
       SET updated_at = coalesce(last_message_at, created_at)
       WHERE org_id = ${ctx.orgId}::uuid AND external_ref LIKE 'lively:%'`),
   )

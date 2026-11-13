@@ -167,9 +167,21 @@ A routine that fails or pauses tells its owner on **Home**, under **Routines fai
 
 The Routines list groups routines as **Running** and **Switched off** and filters with **Mine** and **Shared**. A switched-off schedule routine shows **Switched off: no next run scheduled**.
 
+## Add steps after the trigger
+
+A routine can run a flow: a list of steps after its trigger, instead of one agent turn. An agent sets it with `create_routine` or `update_routine` (`flow`), which stays an approval request like any routine change. A flow holds at most 20 steps, run in order:
+
+- **Action** steps run without an agent, as the routine's owner and with the routine's scopes: `assign` (to a person, or to the person of a list with the fewest open tasks in the project), `set_field`, `set_status`, `comment` on the task, `message` (a direct message to a person) and `notify` (a notification on Home). Messages and comments are signed with the routine's name, never the owner's. A step whose tool needs approval waits for it, and the flow goes on once it is approved.
+- **Wait** steps hold the run for some hours or days, or working hours or days (your workspace's time zone and business hours, Monday to Friday 09:00-18:00 by default, at most 60 days). At the end of the wait the run goes on only if its condition still holds, for example the task's status did not change; otherwise it ends as **skipped**. A newer run for the same task replaces a waiting one.
+- **Agent** steps run an agent turn with their own prompt. They can list required outcomes (a message posted, a task field set, a status reached, a tool called). After the turn, each missing outcome is named back to the agent, at most twice by default. If one is still missing, the run is **flagged** and you get a notification naming it.
+
+Any step can carry a condition on the task (its status, assignee or a field), read fresh when the step starts: a step whose condition does not hold is skipped and the flow goes on. A flow with no agent step makes no model call. Each run keeps the state of every step (done, skipped, failed, flagged, waiting), returned with the run.
+
+A routine on `projects:task:status_changed`, `projects:task:updated` or `projects:task:created` can filter its tasks with `eventFilter`: `projectId`, `fromStatusId` and `toStatusId` (status changes only; `fromStatusId: null` is a task created in that status) and `fields` (a value, or a list of accepted values). A task the owner cannot read never starts a run. Every status change starts its own run, without the 30 second grouping other events get. Routines that trigger one another stop after 5 in a row, and the owner is told.
+
 ## Start from a template
 
-Apps and the platform ship routine templates. In the **Routines** list, **App templates** shows them, with **Built in** and **Enable**. The platform template `morning-brief` posts a short brief every weekday at 08:00 in your own timezone: overnight mail, drafts waiting for your approval and tasks due. It also sends you a one-line notification with the counts. An agent enables one with `enable_routine_template`, and puts a routine back to its template with `reset_routine_to_template`.
+Apps and the platform ship routine templates. In the **Routines** list, **App templates** shows them, with **Built in** and **Enable**. The platform template `morning-brief` posts a short brief every weekday at 08:00 in your own timezone: overnight mail, drafts waiting for your approval and tasks due. It also sends you a one-line notification with the counts. An agent enables one with `enable_routine_template`, and puts a routine back to its template with `reset_routine_to_template`. The Projects app ships four flow templates, enabled for one project (`projectId`): `assign-on-status`, `remind-if-still`, `sla-to-reach` and `notify-on-status`. The project's statuses fill them in. The routines of a project are listed with `GET /api/agent/routines?projectId=<id>`.
 
 ## Read the sender's website in a mail-started run
 

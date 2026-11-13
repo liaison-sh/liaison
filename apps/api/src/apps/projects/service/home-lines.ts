@@ -5,7 +5,8 @@
 //   before its last calendar day, to the project's biller, for daily, hourly and retainer
 //   projects with no reconcile past proposed for that month, whoever drafted it (read
 //   privileged, as project ids alone). It reads plans, days off and reconciles only: no time
-//   entered, commit, calendar or mail. A day missed is not shown later.
+//   entered, commit, calendar or mail. A day missed is not shown later, except by a biller away
+//   that day with nobody next in line: they see it once, on their first working day back.
 // - More planned than fits: one persisted line per person and ISO week, to the leads of the
 //   projects holding that person's planned work that week, never to the person. Planned time
 //   comes from timeboxes only (capacity), never from time entered or activity. A line once
@@ -23,7 +24,9 @@ import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db
 import { afterCurrentCommit } from "~/db/commit-hooks"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { rootLogger } from "~/lib/logger"
+import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { scopeHoldersInTx } from "~/modules/permissions/scope-holders"
+import { awayDays, nextInLineOn } from "~/modules/users/away"
 import { getCapacity } from "./capacity"
 import { orgTimezone } from "./time-plan"
 import { todayIn } from "./took"
@@ -118,9 +121,29 @@ async function monthsReconciled(
   )
 }
 
+/** The month's first and last day, and its name, for a date in it. */
+function monthOf(date: string) {
+  const year = Number(date.slice(0, 4))
+  const month = Number(date.slice(5, 7))
+  return {
+    year,
+    month,
+    period: date.slice(0, 7),
+    start: `${date.slice(0, 7)}-01`,
+    end: lastDayOfMonth(year, month),
+    name: MONTHS[month - 1] as string,
+  }
+}
+
+const isWorkingDay = (d: string, companyOff: ReadonlySet<string>) =>
+  isoWeekdayOf(d) <= 5 && !companyOff.has(d)
+
 /**
  * The month-close rows for the caller (and for the people away today who name the caller next
- * in line, each tagged). Empty on every day but the month's one day.
+ * in line, each tagged). Shown on the month's one day only, with one exception: a biller away
+ * that day with nobody next in line gets no line while away and sees it once, on their first
+ * working day back (a weekday that is neither a company day off nor one of their away days).
+ * Days per week is a count with no weekday, so it cannot move that day.
  */
 export async function monthCloseItems(
   tx: SqlClient,
@@ -130,16 +153,75 @@ export async function monthCloseItems(
   now: Date = new Date(),
 ): Promise<AttentionItem[]> {
   const today = todayIn(await orgTimezone(tx as RlsClient | PrivilegedDb, orgId), now)
-  const year = Number(today.slice(0, 4))
-  const month = Number(today.slice(5, 7))
-  const monthStart = `${today.slice(0, 7)}-01`
-  const monthEnd = lastDayOfMonth(year, month)
+  const m = monthOf(today)
   // The feed polls often: only the month's last two weeks can hold its one day.
-  if (today < addCalendarDays(monthEnd, -14) || today >= monthEnd) return []
-  const off = await companyDaysOff(tx, orgId, monthStart, monthEnd)
-  if (today !== monthCloseDay(year, month, off)) return []
+  if (today >= addCalendarDays(m.end, -14) && today < m.end) {
+    const off = await companyDaysOff(tx, orgId, m.start, m.end)
+    if (today === monthCloseDay(m.year, m.month, off)) {
+      // Away today with nobody next in line: the line waits for the biller's return.
+      const waits =
+        (await awayDays(orgId, [callerUserId], today, today)).has(callerUserId) &&
+        (await nextInLineOn(orgId, callerUserId, today)) === null
+      const people = [
+        ...(waits ? [] : [callerUserId]),
+        ...forUserIds.filter((id) => id !== callerUserId),
+      ]
+      return monthCloseRows(tx, orgId, callerUserId, people, m, "ends soon", now)
+    }
+  }
+  return backFromAwayItems(tx, orgId, callerUserId, today, now)
+}
 
-  const people = [callerUserId, ...forUserIds.filter((id) => id !== callerUserId)]
+/**
+ * The line a biller missed while away with nobody next in line, on their first working day
+ * back. Only the close days of this month and the last are looked at: a line is not kept past
+ * the next month's own. Reads away days and company days off only.
+ */
+async function backFromAwayItems(
+  tx: SqlClient,
+  orgId: string,
+  callerUserId: string,
+  today: string,
+  now: Date,
+): Promise<AttentionItem[]> {
+  if (isoWeekdayOf(today) > 5) return []
+  const prev = monthOf(addCalendarDays(`${today.slice(0, 7)}-01`, -1))
+  const away = (await awayDays(orgId, [callerUserId], prev.start, today)).get(callerUserId)
+  if (away === undefined || away.includes(today)) return []
+  const awayOn = new Set(away)
+  const cur = monthOf(today)
+  const off = await companyDaysOff(tx, orgId, prev.start, cur.end)
+  if (off.has(today)) return []
+  const items: AttentionItem[] = []
+  for (const m of [prev, cur]) {
+    const close = monthCloseDay(m.year, m.month, off)
+    if (close >= today || !awayOn.has(close)) continue
+    // Today is the first working day back: every working day since the close was away.
+    let first = true
+    for (let d = addCalendarDays(close, 1); d < today; d = addCalendarDays(d, 1)) {
+      if (isWorkingDay(d, off) && !awayOn.has(d)) {
+        first = false
+        break
+      }
+    }
+    if (!first || (await nextInLineOn(orgId, callerUserId, close)) !== null) continue
+    const verb = today > m.end ? "has ended" : "ends soon"
+    items.push(...(await monthCloseRows(tx, orgId, callerUserId, [callerUserId], m, verb, now)))
+  }
+  return items
+}
+
+/** The rows of the month's line for the projects these people bill, not yet reconciled. */
+async function monthCloseRows(
+  tx: SqlClient,
+  orgId: string,
+  callerUserId: string,
+  people: readonly string[],
+  m: ReturnType<typeof monthOf>,
+  verb: "ends soon" | "has ended",
+  now: Date,
+): Promise<AttentionItem[]> {
+  if (people.length === 0) return []
   const rows = extractRows<{ id: string; name: string; biller: string }>(
     await tx.execute(drizzleSql`
       SELECT p.id::text AS id, p.name, COALESCE(tp.biller_id, p.owner_id)::text AS biller
@@ -161,40 +243,42 @@ export async function monthCloseItems(
   const done = await monthsReconciled(
     orgId,
     rows.map((r) => r.id),
-    monthStart,
-    monthEnd,
+    m.start,
+    m.end,
   )
-  const monthName = MONTHS[month - 1]
   return rows
     .filter((r) => !done.has(r.id))
     .map((r) => ({
-      id: `projects:month_close:${r.id}:${today.slice(0, 7)}`,
+      id: `projects:month_close:${r.id}:${m.period}`,
       app: "projects",
       entity: "project",
       entityId: r.id,
       // An app-qualified kind, outside the kernel list (as kernel:away.recap is).
       kind: MONTH_CLOSE_KIND as AttentionKind,
-      summary: `${r.name}: ${monthName} ends soon. Reconcile it when you are ready.`,
+      summary: `${r.name}: ${m.name} ${verb}. Reconcile it when you are ready.`,
       urgency: CALM_URGENCY,
       occurredAt: now.toISOString(),
       action: { type: "open_entity", tabType: "projects:project", entityId: r.id },
       metadata: {
         projectId: r.id,
         projectName: r.name,
-        period: today.slice(0, 7),
+        period: m.period,
         ...(r.biller !== callerUserId ? { forUserId: r.biller } : {}),
       },
     }))
 }
 
-/** Orgs with at least one work project using time and budgets. */
+/** Orgs with at least one work project using time and budgets, leaving moving orgs out. */
 async function orgsUsingTime(): Promise<string[]> {
-  return withSystemDb("projects-home-lines-orgs", async (tx) =>
-    extractRows<{ org_id: string }>(
-      await tx.execute(drizzleSql`
-        SELECT DISTINCT org_id::text AS org_id FROM ${projectsRel("projects")}
-         WHERE kind = 'work' AND time_budgets_on AND archived_at IS NULL`),
-    ).map((r) => r.org_id),
+  return sweepSkippingMoving((notMoving) =>
+    withSystemDb("projects-home-lines-orgs", async (tx) =>
+      extractRows<{ org_id: string }>(
+        await tx.execute(drizzleSql`
+          SELECT DISTINCT org_id::text AS org_id FROM ${projectsRel("projects")}
+           WHERE kind = 'work' AND time_budgets_on AND archived_at IS NULL
+             AND ${notMoving(drizzleSql.raw("org_id"))}`),
+      ).map((r) => r.org_id),
+    ),
   )
 }
 
@@ -286,12 +370,15 @@ export function scheduleCapacityLines(orgId: string): void {
   if (!afterCurrentCommit(start)) start()
 }
 
-/** The daily pass: this week's lines for every org using time and budgets. */
+/**
+ * The daily pass: this week's lines for every org using time and budgets. Each org's writes run
+ * in `writeUnlessMoving`, so an org that started moving after the list was read is skipped.
+ */
 export async function raiseCapacityLinesAll(now: Date = new Date()): Promise<{ orgs: number }> {
   const orgs = await orgsUsingTime()
   for (const orgId of orgs) {
     try {
-      await raiseCapacityLines(orgId, now)
+      await writeUnlessMoving(orgId, () => raiseCapacityLines(orgId, now))
     } catch (err) {
       log.warn({ err, orgId }, "capacity lines failed for one org")
     }

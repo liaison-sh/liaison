@@ -16,6 +16,7 @@ import { readStandingInFor } from "~/modules/approvals/route-world"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { orgTransferView } from "~/modules/org/transfer-state/state"
 import { setAway } from "~/modules/users/away"
 import { seedContext } from "~/seed/context"
 import { seedReconciliation } from "~/seed/factories/projects/reconcile"
@@ -30,6 +31,7 @@ import {
   MONTH_CLOSE_KIND,
   monthCloseDay,
   raiseCapacityLines,
+  raiseCapacityLinesAll,
 } from "./home-lines"
 import { awaitTimeFeatureSync } from "./time-feature"
 import { awaitTimeRowWrites } from "./time-rows"
@@ -294,6 +296,43 @@ describe("the month-close line across people", () => {
       await db.execute(drizzleSql`DELETE FROM kernel.away_ranges WHERE id = ${said.id}::uuid`)
     }
   })
+
+  it("an away biller with nobody next in line sees the line once, on their first working day back", async () => {
+    const biller = await newPerson("Eve Away")
+    const project = await newProject("Hourly away client")
+    await call("projects_timePlanSet", { projectId: project, basis: "hourly", billerId: biller })
+    // December 2027 ends on a Friday: its one day is Thursday 30. The biller is away from the
+    // 29th to Tuesday 4 January, and Wednesday 5 January is a company day off.
+    expect(monthCloseDay(2027, 12, new Set())).toBe("2027-12-30")
+    const said = await setAway({
+      orgId,
+      actorId: biller,
+      actorScopes: MEMBER_SCOPES,
+      form: { from: "2027-12-29", to: "2028-01-04" },
+    })
+    if (!said.ok || said.action !== "set") throw new Error(`away not set: ${JSON.stringify(said)}`)
+    const off = await call<{ created?: boolean }>("projects_daysOffSet", {
+      on: "2028-01-05",
+      label: "Studio day",
+    })
+    expect(off.created).toBe(true)
+    try {
+      const shown: string[] = []
+      for (let d = "2027-12-20"; d <= "2028-01-12"; d = addCalendarDays(d, 1)) {
+        for (const item of monthClose(await feed(biller, noon(d)))) {
+          shown.push(`${d}:${item.id}:${item.summary}`)
+        }
+        expect(monthClose(await feed(owner.userId, noon(d)))).toEqual([])
+      }
+      expect(shown).toEqual([
+        `2028-01-06:projects:month_close:${project}:2027-12:Hourly away client: December has ended. Reconcile it when you are ready.`,
+      ])
+    } finally {
+      await db.execute(drizzleSql`DELETE FROM kernel.away_ranges WHERE id = ${said.id}::uuid`)
+      await db.execute(drizzleSql`
+        DELETE FROM app_projects.days_off WHERE org_id = ${orgId}::uuid AND starts_on = '2028-01-05'`)
+    }
+  })
 })
 
 describe("the capacity line", () => {
@@ -365,6 +404,31 @@ describe("the capacity line", () => {
     expect(after.map((l) => l.entity_id)).toEqual([`${nadia}:${week}`, `${nadia}:${nextWeek}`])
     expect(after[0]?.read_at).not.toBeNull()
     expect(after[1]?.read_at).toBeNull()
+  })
+
+  it("the daily pass writes no capacity line for an org that is being moved", async () => {
+    const later = new Date(Date.now() + 21 * 86_400_000)
+    const week = isoWeekOf(later.toISOString().slice(0, 10))
+    const ofWeek = async () =>
+      (await capacityLines(lena)).filter((l) => l.entity_id === `${nadia}:${week}`)
+    await db.execute(drizzleSql`
+      UPDATE kernel.organizations
+         SET transfer_state = 'frozen', transfer_id = ${crypto.randomUUID()}, transfer_at = now()
+       WHERE id = ${orgId}::uuid`)
+    try {
+      await orgTransferView.refresh()
+      await raiseCapacityLinesAll(later)
+      expect(await ofWeek()).toEqual([])
+    } finally {
+      await db.execute(drizzleSql`
+        UPDATE kernel.organizations
+           SET transfer_state = NULL, transfer_id = NULL, transfer_at = NULL
+         WHERE id = ${orgId}::uuid`)
+      await orgTransferView.refresh()
+    }
+    // Once the move is over, the next pass raises it.
+    await raiseCapacityLinesAll(later)
+    expect(await ofWeek()).toHaveLength(1)
   })
 })
 

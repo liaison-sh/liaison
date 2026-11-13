@@ -236,6 +236,7 @@ BEGIN
     WHEN 'kernel.contact' THEN ARRAY['owner_user_id']
     WHEN 'knowledge.document' THEN ARRAY['owner_user_id', 'created_by']
     WHEN 'kernel.dashboard' THEN ARRAY['owner_user_id']
+    WHEN 'kernel.dashboard_table' THEN ARRAY['owner_user_id']
     WHEN 'kernel.company' THEN ARRAY['created_by']
   END;
   SELECT resource_table INTO v_table

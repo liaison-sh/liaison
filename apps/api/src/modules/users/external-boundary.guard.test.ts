@@ -184,9 +184,17 @@ const TREATED: Record<string, [Treatment, string]> = {
     "the names and status of a company's previous and new manager, by the ids an event carries",
   ],
   "modules/contacts/erasure.ts": ["walks-org", "who to tell of an erasure, by role"],
+  "modules/dashboards/execute.ts": [
+    "stored-ids",
+    "the names of the people a table block's person cells hold",
+  ],
   "modules/dashboards/service.ts": [
     "stored-ids",
     "the names of a dashboard's owner and of who saved a version",
+  ],
+  "modules/dashboards/tables/service.ts": [
+    "stored-ids",
+    "the names of who changed a table's rows, and whether a person cell names an active member",
   ],
   "modules/dashboards/tools.ts": ["one-row", "the names of the ids a share call names"],
   "modules/demo/demo-pool.ts": ["one-row", "a demo org's own owner"],

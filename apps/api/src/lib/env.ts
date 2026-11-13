@@ -1494,6 +1494,18 @@ export const envSchema = z
     // Bearer token guarding GET /diag (monitoring watchdog, ops/monitor/ in the monorepo).
     // Empty default allowed in non-production; the production guard below rejects empty.
     MONITOR_TOKEN: z.string().default(""),
+    // App-run health checks (modules/apps/usage/run-health-checks.ts), judged
+    // over the last 15 minutes and reported in /diag `appRuns.alerts`.
+    // Interactive timeouts: at least this many, and this share of the
+    // interactive runs (critical).
+    LIAISON_APP_HEALTH_TIMEOUTS_MIN: z.coerce.number().int().min(1).default(10),
+    LIAISON_APP_HEALTH_TIMEOUT_RATE: z.coerce.number().min(0).max(1).default(0.02),
+    // Interactive queue wait p95 above this many ms, over 20 queued runs at least.
+    LIAISON_APP_HEALTH_QUEUE_P95_MS: z.coerce.number().int().min(1).default(2000),
+    // A pool saturated this long without a break (or twice this long in all).
+    LIAISON_APP_HEALTH_SATURATED_S: z.coerce.number().int().min(1).default(60),
+    // Interactive p95 this many times its 24-hour p95 (and 1 s above it).
+    LIAISON_APP_HEALTH_P95_REGRESSION: z.coerce.number().min(1).default(2),
     // Phase 10: MeiliSearch
     MEILISEARCH_HOST: z.string().default("http://localhost:7700"),
     MEILISEARCH_API_KEY: z.string().default(""),

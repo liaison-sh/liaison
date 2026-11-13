@@ -37,6 +37,15 @@
         "pattern": "^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
       }
     },
+    "linkHosts": {
+      "maxItems": 10,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 253,
+        "pattern": "^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+      }
+    },
     "auth": {
       "oneOf": [
         {
@@ -638,6 +647,64 @@
               "required": ["operation", "params"],
               "additionalProperties": false
             }
+          },
+          "approval": {
+            "type": "object",
+            "properties": {
+              "link": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "linkLabel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "read": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                  },
+                  "params": {
+                    "default": {},
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "maxItems": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": ["read"],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["name", "description", "kind", "method", "path", "params", "fields"],

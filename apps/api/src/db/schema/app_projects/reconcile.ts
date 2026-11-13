@@ -14,7 +14,7 @@ import {
 import { appProjects, projects } from "./projects"
 
 /*
- * Reconciling a project's period (migration 0318). Tables and policies are
+ * Reconciling a project's period (migration 0320). Tables and policies are
  * owned by the migration; these mirror it. Left out of the projects
  * manifest's schema block for the reason given in ./time.ts: a proposed
  * reconciliation is its creator's alone.

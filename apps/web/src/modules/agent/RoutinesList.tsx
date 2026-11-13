@@ -10,6 +10,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { openTab } from "~/modules/shell/tab-store"
 import Chip from "./Chip"
 import { cronPreview } from "./cron-preview"
+import { openRoutineOnAgentPage } from "./open-routine"
 import { routineStatusLabel, routineStoppedReason, runStatusLabel } from "./routine-status-copy"
 import {
   describeSchedule,
@@ -17,6 +18,7 @@ import {
   loadRoutines,
   loadRoutineTemplates,
   type RoutineRow,
+  routineLabel,
   routinesForAgent,
   routinesStore,
   updateRoutine,
@@ -64,13 +66,13 @@ const RoutinesList: Component<Props> = (props) => {
   onMount(() => {
     const owner = scoped()
     if (owner) {
-      void loadRoutines(api as any, { ownerAgentId: owner })
+      void loadRoutines(api, { ownerAgentId: owner })
       return
     }
     // Load both buckets once on mount; sub-tabs filter client-side from the
     // union so toggling Mine/Shared never round-trips.
-    void loadRoutines(api as any, { visibility: "all" })
-    void loadRoutineTemplates(api as any)
+    void loadRoutines(api, { visibility: "all" })
+    void loadRoutineTemplates(api)
   })
 
   const showNew = () => (scoped() ? props.canCreate === true : true)
@@ -82,7 +84,7 @@ const RoutinesList: Component<Props> = (props) => {
 
   async function onEnableTemplate(appName: string, templateKey: string) {
     try {
-      await enableRoutineTemplate(api as any, appName, templateKey)
+      await enableRoutineTemplate(api, appName, templateKey)
     } catch (err) {
       console.error("Enable routine template failed", err)
     }
@@ -110,7 +112,7 @@ const RoutinesList: Component<Props> = (props) => {
       const aDone = a.status === "completed" ? 1 : 0
       const bDone = b.status === "completed" ? 1 : 0
       if (aDone !== bDone) return aDone - bDone
-      return a.name.localeCompare(b.name)
+      return routineLabel(a).localeCompare(routineLabel(b))
     })
     return all
   })
@@ -144,7 +146,7 @@ const RoutinesList: Component<Props> = (props) => {
 
   async function toggleEnabled(r: RoutineRow) {
     try {
-      await updateRoutine(api as any, r.id, { enabled: !r.enabled })
+      await updateRoutine(api, r.id, { enabled: !r.enabled })
     } catch (err) {
       console.error("Toggle routine failed", err)
     }
@@ -155,11 +157,7 @@ const RoutinesList: Component<Props> = (props) => {
       props.onSelect(r)
       return
     }
-    openTab({
-      type: namespaceRegistryKey("agents", "routine"),
-      entityId: r.id,
-      label: r.name,
-    })
+    openRoutineOnAgentPage(r)
   }
 
   return (
@@ -289,7 +287,7 @@ const RoutinesList: Component<Props> = (props) => {
                       data-testid={`routine-title-${r.name}`}
                       class="truncate text-[13px] font-medium text-text"
                     >
-                      {r.name}
+                      {routineLabel(r)}
                     </div>
                     <div
                       data-testid={`routine-chips-${r.name}`}

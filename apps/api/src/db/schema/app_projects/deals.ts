@@ -6,7 +6,7 @@ import { appProjects } from "./projects"
 import { tasks } from "./tasks"
 
 /**
- * app_projects.deals (migration 0312): a deal is a root task of a pipeline.
+ * app_projects.deals (migration 0314): a deal is a root task of a pipeline.
  * Read like the task (projects:projects:read), written with
  * projects:tasks:write. `companyId` and `contactId` are soft references to the
  * kernel, re-pointed or cleared by its merge and delete paths.
@@ -42,7 +42,7 @@ export const deals = appProjects.table(
 )
 
 /**
- * app_projects.deal_values (migration 0312): a deal's amount, alone, so a
+ * app_projects.deal_values (migration 0314): a deal's amount, alone, so a
  * reader without projects:deals:read sees the deal and not its value. A new
  * deal's empty row comes from app_projects.ensure_deal_value(task).
  */

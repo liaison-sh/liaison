@@ -163,12 +163,14 @@ describe("runApp", () => {
     })
   })
 
-  it("leaves unset options unset (the pool and executor defaults apply)", async () => {
+  it("leaves unset options unset (the pool and executor defaults apply), but for the lane", async () => {
     const { execute } = spyBoundaries()
     await runApp(base)
     expect(Object.keys(execute.mock.calls[0]?.[0] as object).sort()).toEqual(
-      ["bridge", "bundleSource", "exportName", "params"].sort(),
+      ["bridge", "bundleSource", "exportName", "params", "priority"].sort(),
     )
+    // The lane is always decided (run-limits.ts runLaneOf): a tool's is interactive.
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({ priority: "interactive" })
   })
 
   it("loads the bundle from bundlePath when no source is given", async () => {
@@ -513,6 +515,30 @@ describe("runApp on a self-hosted instance (the sandbox service, no loader)", ()
     expect(opts.breaker).not.toBe(loaderBreaker)
     expect(settled.at(-1)).toMatchObject({ executor: "workerd", ok: true, runId: "r-sh" })
     expect(settled.at(-1)?.fallback).toBeUndefined()
+  })
+
+  it("sends each run's lane, from its entry kind or its site's background priority", async () => {
+    sandboxOn()
+    spyBoundaries()
+    const calls = serviceAnswers()
+    await run()
+    await run({ entry: "attention:computeItems" })
+    await run({ entry: "summarizer:refund" })
+    await run({ entry: "job:reconcilePayments" })
+    await run({ entry: "event:onOrder" })
+    await run({ entry: "knowledge-sync:pages" })
+    // A tool call a routine or a job makes is background work too.
+    await run({ entry: "tool:orders_get", priority: "background" })
+    expect(calls.map((c) => c.lane)).toEqual([
+      "interactive",
+      "interactive",
+      "interactive",
+      "background",
+      "background",
+      "background",
+      "background",
+    ])
+    expect(settled.map((s) => s.lane)).toEqual(calls.map((c) => c.lane))
   })
 
   it("keeps code with no installed version on QuickJS, in process only where its site asks", async () => {

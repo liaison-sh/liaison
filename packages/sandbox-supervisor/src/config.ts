@@ -12,6 +12,14 @@
 //                            container it listens on the sandbox network only.
 //   SANDBOX_POOL_SIZE        workerd processes for top-level and nested runs (6)
 //   SANDBOX_POOL_RESERVED    of those, kept for nested runs (2)
+//   SANDBOX_POOL_RESERVED_INTERACTIVE  of the top-level rest, kept for
+//                            interactive runs (tool calls, attention computes,
+//                            summarizers, page reads): background runs (jobs,
+//                            events, syncs) may hold at most POOL_SIZE -
+//                            RESERVED - RESERVED_INTERACTIVE processes (2, so
+//                            a pool of 6 runs 2 background runs at once and
+//                            always has 2 for interactive ones; at least one
+//                            process is left for background runs)
 //   SANDBOX_POOL_OVERFLOW    extra processes only nested runs may start when the
 //                            pool is full, so a chain of depth 4 never waits (2)
 //   SANDBOX_SPARES           blank processes kept started (1)
@@ -59,7 +67,10 @@ export interface SupervisorConfig {
   /** host:port the bridge calls go to (default: the origin's). */
   bridgeAddress?: string
   poolSize: number
+  /** Processes kept for nested runs. */
   reserved: number
+  /** Top-level processes kept for interactive runs (background runs may not hold them). */
+  reservedInteractive: number
   overflow: number
   spares: number
   recycleRuns: number
@@ -87,6 +98,7 @@ export const DEFAULTS: Omit<SupervisorConfig, "bridgeOrigin"> = {
   port: 8790,
   poolSize: 6,
   reserved: 2,
+  reservedInteractive: 2,
   overflow: 2,
   spares: 1,
   recycleRuns: 100,
@@ -153,6 +165,11 @@ export function readSupervisorConfig(env: NodeJS.ProcessEnv = process.env): Supe
     bridgeOrigin: origin.origin,
     poolSize: int(env, "SANDBOX_POOL_SIZE", DEFAULTS.poolSize, 1),
     reserved: int(env, "SANDBOX_POOL_RESERVED", DEFAULTS.reserved),
+    reservedInteractive: int(
+      env,
+      "SANDBOX_POOL_RESERVED_INTERACTIVE",
+      DEFAULTS.reservedInteractive,
+    ),
     overflow: int(env, "SANDBOX_POOL_OVERFLOW", DEFAULTS.overflow),
     spares: int(env, "SANDBOX_SPARES", DEFAULTS.spares),
     recycleRuns: int(env, "SANDBOX_RECYCLE_RUNS", DEFAULTS.recycleRuns, 1),
@@ -185,4 +202,24 @@ export function readSupervisorConfig(env: NodeJS.ProcessEnv = process.env): Supe
     throw new Error("SANDBOX_POOL_RESERVED must leave at least one process for top-level runs")
   }
   return cfg
+}
+
+/** How many processes each kind of top-level run may hold at once (pool.ts). */
+export interface LaneCaps {
+  /** Interactive top-level runs: every process but the nested reserve. */
+  interactive: number
+  /** Background top-level runs: that, less the interactive reserve (at least 1). */
+  background: number
+}
+
+/**
+ * The lane caps of a pool. A reserve too large for a small pool shrinks: a
+ * top-level run always has one process, and so does a background one.
+ */
+export function laneCaps(
+  cfg: Pick<SupervisorConfig, "poolSize" | "reserved" | "reservedInteractive">,
+): LaneCaps {
+  const interactive = Math.max(1, cfg.poolSize - cfg.reserved)
+  const background = Math.max(1, interactive - cfg.reservedInteractive)
+  return { interactive, background }
 }

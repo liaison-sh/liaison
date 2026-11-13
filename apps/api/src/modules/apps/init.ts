@@ -828,6 +828,30 @@ export interface OrgSetupTrigger {
   queuedAt: number
 }
 
+/**
+ * Load, once per process, the modules every org's first touch imports (the app
+ * runtime, the kernel tools and the setup's own helpers). Evaluating them is
+ * synchronous and takes hundreds of milliseconds on a cold process: left to
+ * the first org's setup, it blocks the event loop under that org's first job or
+ * request, and every other org's work with it. Boot calls this before the
+ * process takes jobs or turns ready; each org's setup then imports them from
+ * the module cache. Idempotent.
+ */
+export async function loadOrgSetupModules(): Promise<void> {
+  await Promise.all([
+    import("~/modules/apps/runtime"),
+    import("~/modules/audit/timeline"),
+    import("~/modules/agent/tools/kernel-tools"),
+    import("~/modules/apps/kernel-bulk"),
+    import("~/modules/apps/app-registries"),
+    import("~/infra/events/event-bus"),
+    import("~/modules/apps/setup-stamp"),
+    import("~/modules/apps/org-apps"),
+    import("~/db/process-pool-plan"),
+    import("~/modules/apps/org-runtime-release"),
+  ])
+}
+
 export async function awaitOrgApps(orgId: string, trigger?: OrgSetupTrigger): Promise<void> {
   if (initializedOrgRuntimes.has(orgId)) {
     orgRuntimeLastTouch.set(orgId, Date.now())

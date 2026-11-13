@@ -146,9 +146,9 @@ describe("declared pinned params", () => {
     expect(after).toBe(before)
   })
 
-  it("connector_write declares its pinned target", () => {
+  it("connector_write declares its pinned target and approval", () => {
     const def = toolRegistry.get([orgId, "api-connector", "connector_write"])
-    expect(def?.pinnedParams).toEqual(["target"])
+    expect(def?.pinnedParams).toEqual(["target", "approval"])
   })
 })
 

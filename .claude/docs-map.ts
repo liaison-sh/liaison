@@ -210,6 +210,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "deploy/sandbox-firewall.sh", pages: ["self-hosting/sandbox"] },
   { glob: "packages/sandbox-supervisor/**", pages: ["self-hosting/sandbox"] },
   { glob: "apps/api/src/modules/apps/workers/bridge-listener.ts", pages: ["self-hosting/sandbox"] },
+  { glob: "apps/api/src/modules/apps/usage/run-{health,health-checks,pool-gauges}.ts", pages: ["self-hosting/docker"] },
+  { glob: "apps/api/src/modules/admin/app-health.ts", pages: ["self-hosting/docker"] },
   { glob: "docker-compose.yml", pages: ["self-hosting/docker"] },
   { glob: "Dockerfile*", pages: ["self-hosting/docker"] },
   { glob: "apps/api/Dockerfile", pages: ["self-hosting/docker"] },

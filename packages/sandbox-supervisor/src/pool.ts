@@ -10,8 +10,15 @@
 //  - A process is replaced after `recycleRuns` runs, stopped after `idleMs`
 //    idle, and killed (SIGKILL) when a run on it overruns a limit
 //    (supervisor.ts). A few blank processes are kept started (`spares`).
-//  - Top-level runs (depth 0) may hold at most `poolSize - reserved`
-//    processes at once; they queue for one, until their deadline. Nested runs
+//  - Top-level runs (depth 0) come in two lanes (the run body's `lane`).
+//    Interactive runs (a person or an agent waits: tool calls, attention
+//    computes, summarizers, page reads) may hold at most `poolSize - reserved`
+//    processes at once; background runs (jobs, events, syncs) at most that
+//    less `reservedInteractive` (config.ts laneCaps), so a burst of long
+//    background runs always leaves processes for interactive ones. A run
+//    that may not take one queues, first come first served within its lane,
+//    until its deadline; a freed process goes to the oldest waiter whose lane
+//    may take it. Nested runs
 //    (depth 1..maxDepth: a cross-app call, a render, a summarizer started by
 //    another run) may take any process and, when the pool is full, start up to
 //    `overflow` more. They never queue (their parent holds a process while it
@@ -35,8 +42,9 @@ import { randomBytes } from "node:crypto"
 import { chmodSync, chownSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { RunLane } from "@liaison/app-loader"
 import type { Subprocess } from "bun"
-import type { SupervisorConfig } from "./config"
+import { type LaneCaps, laneCaps, type SupervisorConfig } from "./config"
 import { resolveWorkerdBinary } from "./workerd-bin"
 
 export const COMPATIBILITY_DATE = "2026-10-01"
@@ -59,6 +67,8 @@ export interface WorkerdProcess {
   busy: boolean
   /** Depth of the run on it (0 top-level). */
   depth: number
+  /** Lane of the run on it. */
+  lane: RunLane
   dead: boolean
   lastUsed: number
   readyMs?: number
@@ -80,17 +90,46 @@ export class PoolError extends Error {
   }
 }
 
-type Waiter = { depth: number; wake: () => void }
+type Waiter = { lane: RunLane; wake: () => void }
+
+export interface LaneCounters {
+  /** Top-level runs of the lane that started. */
+  started: number
+  /** Of those, the ones that waited in the queue first. */
+  waited: number
+  /** Their total time in the queue. */
+  waitMsTotal: number
+  /** The longest time a run of the lane waited (started or not). */
+  waitMsMax: number
+  /** Runs of the lane whose deadline passed in the queue. */
+  queueTimeouts: number
+}
 
 export interface PoolCounters {
   spawned: number
   runs: number
   killed: Record<string, number>
+  lanes: Record<RunLane, LaneCounters>
 }
+
+const laneCounters = (): LaneCounters => ({
+  started: 0,
+  waited: 0,
+  waitMsTotal: 0,
+  waitMsMax: 0,
+  queueTimeouts: 0,
+})
 
 export class WorkerdPool {
   readonly procs: WorkerdProcess[] = []
-  readonly counters: PoolCounters = { spawned: 0, runs: 0, killed: {} }
+  readonly counters: PoolCounters = {
+    spawned: 0,
+    runs: 0,
+    killed: {},
+    lanes: { interactive: laneCounters(), background: laneCounters() },
+  }
+  /** How many processes each lane's top-level runs may hold (config.ts laneCaps). */
+  readonly caps: LaneCaps
   private seq = 0
   private waiters: Waiter[] = []
   private stopped = false
@@ -111,6 +150,7 @@ export class WorkerdPool {
     private readonly cfg: SupervisorConfig,
     readonly hostSource: string,
   ) {
+    this.caps = laneCaps(cfg)
     this.bin = cfg.workerdBin ?? resolveWorkerdBinary()
     // Short paths: a unix socket path is capped near 100 bytes.
     this.ownWorkDir = !cfg.workDir
@@ -123,47 +163,65 @@ export class WorkerdPool {
     this.sweep = setInterval(() => this.sweepIdle(), every)
   }
 
-  /** Processes running a top-level run. */
-  private busyTopLevel(): number {
-    return this.procs.filter((p) => p.busy && p.depth === 0).length
+  /** Whether a top-level run of this lane may take a process now (its lane cap). */
+  private laneHasRoom(lane: RunLane): boolean {
+    let top = 0
+    let background = 0
+    for (const p of this.procs) {
+      if (!p.busy || p.depth !== 0) continue
+      top++
+      if (p.lane === "background") background++
+    }
+    if (top >= this.caps.interactive) return false
+    return lane === "interactive" || background < this.caps.background
   }
 
-  private generalCap(): number {
-    return Math.max(1, this.cfg.poolSize - this.cfg.reserved)
-  }
-
-  async acquire(key: string, depth: number, deadlineAt: number): Promise<Acquired> {
+  /**
+   * A process for a run. `lane` is the run's (top-level runs only: a nested
+   * run's parent already holds a process of its lane).
+   */
+  async acquire(
+    key: string,
+    depth: number,
+    deadlineAt: number,
+    lane: RunLane = "interactive",
+  ): Promise<Acquired> {
     if (depth > this.cfg.maxDepth) {
       throw new PoolError(
         "nesting_depth",
         `nesting depth ${depth} is over the cap of ${this.cfg.maxDepth}`,
       )
     }
+    const queuedAt = Date.now()
+    let waited = false
+    let woken = false
+    const started = (a: Acquired): Acquired => {
+      if (depth === 0) {
+        const c = this.counters.lanes[lane]
+        const ms = Date.now() - queuedAt
+        c.started++
+        if (waited) {
+          c.waited++
+          c.waitMsTotal += ms
+          if (ms > c.waitMsMax) c.waitMsMax = ms
+        }
+      }
+      return a
+    }
     for (;;) {
       if (this.stopped) throw new PoolError("stopped", "the sandbox is stopping")
-      const mayTake = depth > 0 || this.busyTopLevel() < this.generalCap()
+      // First come first served within a lane: a new run never passes a
+      // queued one of its own lane (a woken waiter goes ahead of them).
+      const mayTake =
+        depth > 0 ||
+        (this.laneHasRoom(lane) && (woken || !this.waiters.some((w) => w.lane === lane)))
       if (mayTake) {
-        const warm = this.procs.find(
-          (p) => !p.busy && !p.dead && p.key === key && p.runs < this.cfg.recycleRuns,
-        )
-        if (warm) return this.take(warm, key, depth, "warm")
-        const blank = this.procs.find((p) => !p.busy && !p.dead && p.key === undefined)
-        if (blank) return this.take(blank, key, depth, "blank")
-        if (this.procs.length < this.cfg.poolSize) {
-          return this.take(await this.spawn(true), key, depth, "spawn")
-        }
-        // An idle process bound to another key is stopped, never rebound.
-        const victim = this.procs
-          .filter((p) => !p.busy && !p.dead)
-          .sort((a, b) => a.lastUsed - b.lastUsed)[0]
-        if (victim) {
-          this.kill(victim, "evict")
-          return this.take(await this.spawn(true), key, depth, "evict")
-        }
+        const got = await this.takeAny(key, depth, lane)
+        if (got) return started(got)
       }
       if (depth > 0) {
         if (this.procs.length < this.cfg.poolSize + this.cfg.overflow) {
-          return this.take(await this.spawn(true), key, depth, "overflow")
+          return this.take(await this.spawn(true, depth, lane), key, depth, lane, "overflow")
         }
         throw new PoolError(
           "nested_capacity",
@@ -171,24 +229,60 @@ export class WorkerdPool {
         )
       }
       const left = deadlineAt - Date.now()
-      if (left <= 0 || !(await this.waitForRelease(depth, left))) {
+      waited = true
+      if (left <= 0 || !(await this.waitForRelease(lane, left, woken))) {
+        const c = this.counters.lanes[lane]
+        c.queueTimeouts++
+        const ms = Date.now() - queuedAt
+        if (ms > c.waitMsMax) c.waitMsMax = ms
         throw new PoolError("queue_timeout", "no sandbox process became free before the deadline")
       }
+      woken = true
     }
   }
 
-  private take(p: WorkerdProcess, key: string, depth: number, how: Acquired["how"]): Acquired {
+  /** A warm, blank, new or evicted process for the run, or null when none is free. */
+  private async takeAny(key: string, depth: number, lane: RunLane): Promise<Acquired | null> {
+    const warm = this.procs.find(
+      (p) => !p.busy && !p.dead && p.key === key && p.runs < this.cfg.recycleRuns,
+    )
+    if (warm) return this.take(warm, key, depth, lane, "warm")
+    const blank = this.procs.find((p) => !p.busy && !p.dead && p.key === undefined)
+    if (blank) return this.take(blank, key, depth, lane, "blank")
+    if (this.procs.length < this.cfg.poolSize) {
+      return this.take(await this.spawn(true, depth, lane), key, depth, lane, "spawn")
+    }
+    // An idle process bound to another key is stopped, never rebound.
+    const victim = this.procs
+      .filter((p) => !p.busy && !p.dead)
+      .sort((a, b) => a.lastUsed - b.lastUsed)[0]
+    if (victim) {
+      this.kill(victim, "evict")
+      return this.take(await this.spawn(true, depth, lane), key, depth, lane, "evict")
+    }
+    return null
+  }
+
+  private take(
+    p: WorkerdProcess,
+    key: string,
+    depth: number,
+    lane: RunLane,
+    how: Acquired["how"],
+  ): Acquired {
     p.busy = true
     p.depth = depth
+    p.lane = lane
     p.key ??= key
     if (p.key !== key) throw new Error("internal: a process is bound to another key")
     return { proc: p, how }
   }
 
-  private waitForRelease(depth: number, ms: number): Promise<boolean> {
+  /** Wait for a process; `front`: a woken waiter that lost the race keeps its place. */
+  private waitForRelease(lane: RunLane, ms: number, front: boolean): Promise<boolean> {
     return new Promise((resolve) => {
       const w: Waiter = {
-        depth,
+        lane,
         wake: () => {
           clearTimeout(t)
           resolve(true)
@@ -199,12 +293,21 @@ export class WorkerdPool {
         if (i >= 0) this.waiters.splice(i, 1)
         resolve(false)
       }, ms)
-      this.waiters.push(w)
+      if (front) {
+        // Ahead of the others of its lane, behind none it was already behind.
+        const i = this.waiters.findIndex((o) => o.lane === lane)
+        this.waiters.splice(i === -1 ? this.waiters.length : i, 0, w)
+      } else {
+        this.waiters.push(w)
+      }
     })
   }
 
+  /** A process may be free: wake the oldest waiter whose lane may take one. */
   private wakeOne(): void {
-    const w = this.waiters.shift()
+    const i = this.waiters.findIndex((w) => this.laneHasRoom(w.lane))
+    if (i === -1) return
+    const [w] = this.waiters.splice(i, 1)
     w?.wake()
   }
 
@@ -212,6 +315,7 @@ export class WorkerdPool {
   release(p: WorkerdProcess): void {
     p.busy = false
     p.depth = 0
+    p.lane = "interactive"
     p.lastUsed = Date.now()
     if (!p.dead && p.runs >= this.cfg.recycleRuns) this.kill(p, "recycle")
     else if (!p.dead && this.procs.length > this.cfg.poolSize) this.kill(p, "overflow")
@@ -268,7 +372,7 @@ export class WorkerdPool {
         this.procs.length < this.cfg.poolSize
       ) {
         try {
-          await this.spawn(false)
+          await this.spawn(false, 0, "interactive")
         } catch {
           break
         }
@@ -321,7 +425,8 @@ const host :Workerd.Worker = (
     throw new Error("no free sandbox process uid (raise SANDBOX_PROCESS_UID_COUNT)")
   }
 
-  async spawn(busy: boolean): Promise<WorkerdProcess> {
+  /** A new process; `busy`: started for a run of this depth and lane, counted as one at once. */
+  async spawn(busy: boolean, depth: number, lane: RunLane): Promise<WorkerdProcess> {
     if (this.stopped) throw new PoolError("stopped", "the sandbox is stopping")
     const n = ++this.seq
     const uid = this.takeUid()
@@ -371,7 +476,8 @@ const host :Workerd.Worker = (
       pushed: new Set(),
       runs: 0,
       busy: true,
-      depth: 0,
+      depth: busy ? depth : 0,
+      lane: busy ? lane : "interactive",
       dead: false,
       lastUsed: Date.now(),
       stderrTail: "",
@@ -426,6 +532,20 @@ const host :Workerd.Worker = (
       size: this.procs.length,
       busy: this.procs.filter((p) => p.busy).length,
       waiting: this.waiters.length,
+      lanes: {
+        caps: this.caps,
+        busy: {
+          interactive: this.procs.filter((p) => p.busy && p.depth === 0 && p.lane === "interactive")
+            .length,
+          background: this.procs.filter((p) => p.busy && p.depth === 0 && p.lane === "background")
+            .length,
+          nested: this.procs.filter((p) => p.busy && p.depth > 0).length,
+        },
+        waiting: {
+          interactive: this.waiters.filter((w) => w.lane === "interactive").length,
+          background: this.waiters.filter((w) => w.lane === "background").length,
+        },
+      },
       counters: this.counters,
       procs: this.procs.map((p) => ({
         n: p.n,
@@ -435,6 +555,7 @@ const host :Workerd.Worker = (
         runs: p.runs,
         busy: p.busy,
         depth: p.depth,
+        lane: p.lane,
         readyMs: p.readyMs === undefined ? null : Math.round(p.readyMs),
       })),
     }

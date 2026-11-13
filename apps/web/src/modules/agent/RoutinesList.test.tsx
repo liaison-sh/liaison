@@ -125,6 +125,21 @@ describe("RoutinesList", () => {
     expect(api.get).not.toHaveBeenCalled()
   })
 
+  it("a row shows the routine's human name and, with no onSelect, opens it on its owner agent's Routines tab", async () => {
+    setup([{ ...FIXTURE, title: "Morning digest", ownerAgentId: "agent-9" }])
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-title-daily-digest")).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("routine-title-daily-digest")).toHaveTextContent("Morning digest")
+    fireEvent.click(screen.getByTestId("routine-open-daily-digest"))
+    expect(openTab).toHaveBeenCalledTimes(1)
+    const tab = vi.mocked(openTab).mock.calls[0]?.[0]
+    // Never the removed agents:routine tab type: the agent page, Routines tab, routine selected.
+    expect(tab?.type).toBe("agents:agent")
+    expect(tab?.label).toBe("Morning digest")
+    expect(tab?.routePath).toMatch(new RegExp(`^/agents/[^/]+/routines\\?selected=${FIXTURE.id}$`))
+  })
+
   it("each row shows name + schedule + enable toggle", async () => {
     setup([FIXTURE])
     await waitFor(() => expect(screen.getByTestId("routine-row-daily-digest")).toBeInTheDocument())

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import {
+  APPROVAL_SUMMARY_FULL_TEXT_KINDS,
   type ApprovalRequestSummary,
   canDecidePure,
   containsRefToken,
@@ -2392,7 +2393,15 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                       >
                         <For each={visibleSummaryLines()}>
                           {(line) => (
-                            <li>
+                            // A full-text card (a drafted reply shown whole) keeps the
+                            // draft's paragraphs; other cards' lines are one-liners.
+                            <li
+                              class={
+                                APPROVAL_SUMMARY_FULL_TEXT_KINDS.has(c().summary?.kind ?? "")
+                                  ? "whitespace-pre-line break-words"
+                                  : undefined
+                              }
+                            >
                               <SummaryLineText line={line} format={refText} />
                             </li>
                           )}

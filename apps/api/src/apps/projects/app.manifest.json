@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.29.0",
+  "version": "1.30.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -182,7 +182,7 @@
         "timeBudgetsOn": {
           "type": "boolean",
           "default": false,
-          "description": "Time and budgets on this project (migration 0317). Off by default; a pipeline never holds it."
+          "description": "Time and budgets on this project (migration 0319). Off by default; a pipeline never holds it."
         },
         "timeBudgetsChangedBy": "uuid?",
         "timeBudgetsChangedAt": "date?"
@@ -369,12 +369,12 @@
         "timeboxMinutes": {
           "type": "integer",
           "required": false,
-          "description": "The task's timebox in minutes, above 0 (migration 0317)."
+          "description": "The task's timebox in minutes, above 0 (migration 0319)."
         },
         "isMilestone": {
           "type": "boolean",
           "default": false,
-          "description": "The task is a milestone (migration 0317)."
+          "description": "The task is a milestone (migration 0319)."
         },
         "externalRef": {
           "type": "string",
@@ -5323,6 +5323,15 @@
         "urlPattern": "/projects/timesheet/:entityId",
         "referenceable": false,
         "feature": "time_budgets"
+      },
+      "automations": {
+        "component": "ProjectAutomations",
+        "entity": "project",
+        "sidebar": "ProjectsSidebar",
+        "label": "Automations",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/automations/:entityId",
+        "referenceable": false
       }
     },
     "activityBar": {

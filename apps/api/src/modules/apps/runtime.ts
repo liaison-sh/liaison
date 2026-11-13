@@ -1467,6 +1467,33 @@ async function loadCoreSummarizer(bundlePath: string, exportName: string): Promi
   throw new Error(`Export "${exportName}" not found in the core app module`)
 }
 
+/**
+ * A gated tool's manifest `summarizerContext`: the app's own ungated read the
+ * kernel runs before its summarizer, its params mapped by dot-path from the
+ * gated call's, and (`when`) the path that must hold a value for it to run.
+ */
+export interface SummarizerContextDecl {
+  tool: string
+  params: Record<string, string>
+  when?: string
+}
+
+/** The value at a dot-path of a gated call's params (`input.id`), or undefined. */
+function readParamPath(obj: unknown, path: string): unknown {
+  return path
+    .split(".")
+    .reduce<unknown>(
+      (cur, key) =>
+        cur && typeof cur === "object" ? (cur as Record<string, unknown>)[key] : undefined,
+      obj,
+    )
+}
+
+/** Whether the declared hydration read runs for these params: always, or only when `when` holds a value. */
+export function summarizerContextWanted(decl: SummarizerContextDecl, params: unknown): boolean {
+  return decl.when === undefined || (readParamPath(params, decl.when) ?? null) !== null
+}
+
 /** Non-secret metadata handed to approval summarizers as a third argument. */
 export interface SummarizerMeta {
   connectionIdentifier: string | null
@@ -1484,7 +1511,7 @@ export interface SummarizerMeta {
 async function buildSummarizerMeta(
   orgId: string,
   appName: string,
-  summarizerContext: { tool: string; params: Record<string, string> } | undefined,
+  summarizerContext: SummarizerContextDecl | undefined,
   params: unknown,
   actor: import("~/db/rls").ActorContext | undefined,
 ): Promise<SummarizerMeta> {
@@ -1504,21 +1531,13 @@ async function buildSummarizerMeta(
     /* identifier is a nicety — links degrade to in-app lists */
   }
   let context: unknown = null
-  if (summarizerContext && actor) {
+  if (summarizerContext && actor && summarizerContextWanted(summarizerContext, params)) {
     try {
       const target = toolRegistry.get([orgId, appName, summarizerContext.tool])
       if (target && target.gated !== true) {
-        const readPath = (obj: unknown, path: string): unknown =>
-          path
-            .split(".")
-            .reduce<unknown>(
-              (cur, key) =>
-                cur && typeof cur === "object" ? (cur as Record<string, unknown>)[key] : undefined,
-              obj,
-            )
         const mapped: Record<string, unknown> = {}
         for (const [ctxParam, sourcePath] of Object.entries(summarizerContext.params)) {
-          const value = readPath(params, sourcePath)
+          const value = readParamPath(params, sourcePath)
           if (value !== undefined) mapped[ctxParam] = value
         }
         const { executeTool } = await import("~/modules/apps/execute-tool")
@@ -3561,9 +3580,7 @@ async function registerSingleApp(
               const summarizerName = tool.summarizer
               const summarizerBundlePath = bundlePath
               const summarizerAppName = desc.name
-              const summarizerContext = tool.summarizerContext as
-                | { tool: string; params: Record<string, string> }
-                | undefined
+              const summarizerContext = tool.summarizerContext as SummarizerContextDecl | undefined
               const summarize: ApprovalSummarizer = async (params, sctx) => {
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
                 const meta = await buildSummarizerMeta(
@@ -3600,9 +3617,7 @@ async function registerSingleApp(
                 tool.summarizer,
               )) as ApprovalSummarizer
               const trustedAppName = desc.name
-              const trustedContext = tool.summarizerContext as
-                | { tool: string; params: Record<string, string> }
-                | undefined
+              const trustedContext = tool.summarizerContext as SummarizerContextDecl | undefined
               const summarize: ApprovalSummarizer = async (params, sctx) =>
                 inner(
                   params,

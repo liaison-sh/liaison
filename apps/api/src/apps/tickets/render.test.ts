@@ -602,3 +602,82 @@ describe("renderTicketEmail with a display handle", () => {
     expect(r.subject).toBe("Re: Help [#ticket-120] [#ticket-B2B-12]")
   })
 })
+
+describe("renderTicketEmail {{team}}", () => {
+  const teamInbox = {
+    ...inbox,
+    from_display_name: "Help Desk - {{team}}",
+    signature_text: "L'équipe Support pour {{team}}",
+    signature_html: "<p>L'équipe Support pour <b>{{team}}</b></p>",
+  }
+  const render = (
+    team: string | null | undefined,
+    inboxRow: typeof teamInbox | typeof inbox,
+    kind: "reply" | "ack" = "ack",
+  ) =>
+    renderTicketEmail(
+      { ...ticket, team },
+      { htmlBody: "<p>Hello</p>" },
+      orgSettings,
+      inboxRow,
+      [],
+      {
+        kind,
+        requester: "cust@example.com",
+      },
+    )
+
+  it("names the ticket's team in the sender name, on replies too", async () => {
+    for (const kind of ["ack", "reply"] as const) {
+      const r = await render("Riverside Office", teamInbox, kind)
+      expect((r.from as { name?: string }).name).toBe("Help Desk - Riverside Office")
+      expect((r.replyTo as { name: string }).name).toBe("Help Desk - Riverside Office")
+    }
+  })
+
+  it("names the team in the acknowledgement signature (html wins over text)", async () => {
+    const r = await render("Riverside Office", teamInbox)
+    expect(r.html).toContain("L'équipe Support pour <b>Riverside Office</b>")
+    expect(r.html).not.toContain("{{team}}")
+  })
+
+  it("derives the acknowledgement signature from the text when there is no html", async () => {
+    const r = await render("Riverside Office", { ...teamInbox, signature_html: undefined })
+    expect(r.html).toContain("L'équipe Support pour Riverside Office")
+  })
+
+  it("escapes the team in the html signature and keeps it out of markup", async () => {
+    const r = await render(`<img src=x onerror=alert(1)> & "Co"`, teamInbox)
+    expect(r.html).not.toContain("<img src=x")
+    expect(r.html).toContain("&lt;img src=x onerror=alert(1)&gt; &amp; &quot;Co&quot;")
+  })
+
+  it("a ticket without a team drops the placeholder and its separator", async () => {
+    for (const team of [null, undefined, "", "  "]) {
+      const r = await render(team, teamInbox)
+      expect((r.from as { name?: string }).name).toBe("Help Desk")
+      expect(r.html).not.toContain("{{")
+      expect(r.html).toContain("L'équipe Support")
+      expect(r.html).not.toContain("pour")
+    }
+  })
+
+  it("a sender name that is only the placeholder falls back to the org header name", async () => {
+    const r = await render(null, { ...teamInbox, from_display_name: "{{team}}" })
+    expect((r.from as { name?: string }).name).toBe("Acme Help")
+  })
+
+  it("an inbox without the placeholder renders exactly as before, team or not", async () => {
+    const plain = {
+      ...inbox,
+      signature_text: "The Acme team",
+      signature_html: "<p>The Acme team</p>",
+    }
+    const withTeam = await render("Riverside Office", plain)
+    const without = await render(null, plain)
+    expect((withTeam.from as { name?: string }).name).toBe("Acme Support")
+    expect(withTeam.html).toContain("<p>The Acme team</p>")
+    expect(withTeam.html).toBe(without.html)
+    expect(withTeam.text).toBe(without.text)
+  })
+})

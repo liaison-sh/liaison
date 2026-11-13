@@ -219,6 +219,20 @@ describe("TicketDetail", () => {
     expect(screen.getByTestId("tickets-readby-item-u2")).toBeTruthy()
   })
 
+  it("shows the ticket's team with its label in the detail header when it has one", async () => {
+    reactive.setStore("byId", "t1", { ...TICKET, team: "North Store" })
+    render(() => <TicketDetail entityId="t1" />)
+    const chip = await screen.findByTestId("tickets-detail-team")
+    expect(chip.textContent).toContain("Team")
+    expect(chip.textContent).toContain("North Store")
+  })
+
+  it("renders no team chip when the ticket has no team", async () => {
+    render(() => <TicketDetail entityId="t1" />)
+    await waitFor(() => expect(screen.getByTestId("tickets-detail-subject")).toBeTruthy())
+    expect(screen.queryByTestId("tickets-detail-team")).toBeNull()
+  })
+
   it("picking a status from the popup calls setStatus", async () => {
     render(() => <TicketDetail entityId="t1" />)
     await waitFor(() => expect(screen.getByTestId("tickets-detail-status")).toBeTruthy())

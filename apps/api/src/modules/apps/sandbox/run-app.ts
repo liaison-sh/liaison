@@ -57,7 +57,7 @@ import { flushRunLogs } from "~/modules/app-builder/logs"
 import { coreModuleFor } from "~/modules/apps/core/registry"
 import { runCoreHandler } from "~/modules/apps/core/run-core"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
-import { entryKindOf, type RunEntryKind, runLimits } from "~/modules/apps/run-limits"
+import { entryKindOf, type RunEntryKind, runLaneOf, runLimits } from "~/modules/apps/run-limits"
 import {
   forWorkersRun,
   isWorkersRunBridge,
@@ -88,7 +88,11 @@ import {
   fallbackTargetRunState,
   loaderBreaker,
 } from "~/modules/apps/workers/fallback"
-import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import {
+  emitRunSettled,
+  runErrorKindOf,
+  type WorkersFallback,
+} from "~/modules/apps/workers/run-settled"
 import { appSandboxRelease } from "~/modules/apps/workers/sandbox-release"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
 import { AppWorkerModuleMissingError } from "~/modules/apps/workers/worker-module-missing"
@@ -346,6 +350,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     inProcess: opts.quickjs?.inProcess === true,
   })
   let fallback: WorkersFallback | undefined
+  let failure: unknown
   try {
     // A core app's handler is server code: called here, whatever the site asked.
     const core = coreModuleFor(opts.appName, opts.bundlePath)
@@ -420,6 +425,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     }
     ok = true
     return result
+  } catch (err) {
+    failure = err
+    throw err
   } finally {
     if (opts.executionToken) runningExecutions.delete(opts.executionToken)
     if (info.logs || info.logsDropped) {
@@ -448,7 +456,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       executor: executor === "pool" ? "quickjs" : executor === "core" ? "inprocess" : executor,
       nested: opts.nested === true,
       ...(parentApp ? { parentApp } : {}),
+      lane: runLaneOf(opts),
       ms: Date.now() - started,
+      ...(info.admissionMs !== undefined ? { admissionMs: info.admissionMs } : {}),
       ok,
       at: started,
       ...(info.bridgeCalls !== undefined ? { bridgeCalls: info.bridgeCalls } : {}),
@@ -458,7 +468,11 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
       ...(fallback ? { fallback } : {}),
       ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
-      ...(info.fault ? { errorKind: info.fault.kind, faultClass: info.fault.class } : {}),
+      ...(info.fault
+        ? { errorKind: info.fault.kind, faultClass: info.fault.class }
+        : !ok
+          ? { errorKind: runErrorKindOf(failure) }
+          : {}),
     })
   }
 }
@@ -531,6 +545,7 @@ async function runOnExecutor(
         bridge,
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
         entryKind: runEntryKind(opts),
+        lane: runLaneOf(opts),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
         holdsTx: opts.holdsTx,
         nested: opts.nested === true,
@@ -577,7 +592,7 @@ async function runOnExecutor(
       if (opts.extraArgs !== undefined) exec.extraArgs = opts.extraArgs
       if (opts.timeoutMs !== undefined) exec.timeoutMs = opts.timeoutMs
       if (opts.syncContext !== undefined) exec.syncContext = opts.syncContext
-      if (opts.priority !== undefined) exec.priority = opts.priority
+      exec.priority = runLaneOf(opts)
       if (opts.backgroundGroup !== undefined) exec.backgroundGroup = opts.backgroundGroup
       if (opts.nested !== undefined) exec.nested = opts.nested
       if (opts.nestedParentKey !== undefined) exec.nestedParentKey = opts.nestedParentKey

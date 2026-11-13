@@ -464,6 +464,16 @@ export const routineReportThreadRefSchema = z
 
 const createRoutineBaseSchema = z.object({
   name: routineNameSchema,
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .nullable()
+    .optional()
+    .describe(
+      "The routine's human name, shown in lists (e.g. 'Assign on status · Phone'). Null: show `name`.",
+    ),
   description: z.string().min(1).max(200),
   kind: routineKindSchema.default("recurring"),
   cron: cronExpressionSchema.optional(),
@@ -604,6 +614,16 @@ export type CreateRoutineRequest = z.infer<typeof createRoutineRequestSchema>
  */
 const updateRoutineBaseSchema = z.object({
   name: routineNameSchema.optional(),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .nullable()
+    .optional()
+    .describe(
+      "The routine's human name, shown in lists (e.g. 'Assign on status · Phone'). Null: show `name`.",
+    ),
   description: z.string().min(1).max(200).optional(),
   kind: routineKindSchema.optional(),
   cron: cronExpressionSchema.optional(),
@@ -658,6 +678,7 @@ export const routineResponseSchema = z.object({
   orgId: z.string().uuid(),
   ownerUserId: z.string().uuid(),
   name: routineNameSchema,
+  title: z.string().nullable().optional(),
   description: z.string(),
   kind: routineKindSchema,
   cron: z.string().nullable(),

@@ -204,7 +204,7 @@ Owner cannot read the task: nothing runs -> apps/api/src/modules/agent/routines/
 Projects task event filter keys -> packages/shared/src/validation/agent/routines.ts:393
 Status changes are not grouped -> apps/api/src/infra/jobs/event-routine-subscriber.ts:275
 Routine chains stop at 5 -> apps/api/src/infra/jobs/event-routine-subscriber.ts:387
-Projects flow templates -> apps/api/src/apps/projects/app.manifest.json:2654
+Projects flow templates -> apps/api/src/apps/projects/app.manifest.json:2662
 Template placeholders filled from the project's statuses -> packages/shared/src/validation/agent/routines.ts:701
 Routines of a project listed by projectId -> apps/api/src/modules/agent/routines/routines-routes.ts:174
 A notify to others needs projects:tasks:write, active members who can read the task -> apps/api/src/modules/agent/routines/flow-runner.ts:518
@@ -212,3 +212,15 @@ A resumed run makes a new run's checks, ends skipped otherwise -> apps/api/src/m
 An edited flow ends its waiting runs -> apps/api/src/modules/agent/routines/flow-runner.ts:1036
 The sweep ends runs that stopped or lost their wait -> apps/api/src/modules/agent/routines/flow-runner.ts:1595
 The sweep runs every 15 minutes -> apps/api/src/infra/jobs/kernel-jobs.ts:1254
+Flow tab first for a flow routine -> apps/web/src/modules/agent/RoutineDetail.tsx:656
+Edit flow button -> apps/web/src/modules/agent/RoutineDetail.tsx:707
+Flow saved through the routine update -> apps/web/src/modules/agent/RoutineDetail.tsx:189
+Steps sharing a condition indented under one If line -> apps/web/src/modules/agent/flow/FlowList.tsx:96
+Step move, add, remove controls -> apps/web/src/modules/agent/flow/FlowList.tsx:280
+Run state chips over the flow -> apps/web/src/modules/agent/flow/FlowList.tsx:259
+Flow run row expands to the overlay -> apps/web/src/modules/agent/RoutineDetail.tsx:802
+Flow labels (Flow, Edit flow, Add a wait, state names) -> packages/shared/src/i18n/locales/en/kernel.json:6818
+Save checks the flow first -> apps/web/src/modules/agent/flow/flow-model.ts:465
+Placeholders as words in view mode -> apps/web/src/modules/agent/flow/flow-model.ts:341
+Trigger field filter on its own line -> apps/web/src/modules/agent/flow/FlowList.tsx:144
+Insert placeholder menu -> apps/web/src/modules/agent/flow/FlowStepForm.tsx:225

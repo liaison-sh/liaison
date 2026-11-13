@@ -23,8 +23,15 @@ export interface Sandbox {
   run(
     exportName: string,
     params?: unknown,
-    o?: { orgId?: string; depth?: number; deadlineMs?: number; cpuMs?: number; token?: string },
-  ): Promise<{ status: number; body: Record<string, any> }>
+    o?: {
+      orgId?: string
+      depth?: number
+      deadlineMs?: number
+      cpuMs?: number
+      token?: string
+      lane?: "interactive" | "background"
+    },
+  ): Promise<{ status: number; body: Record<string, any>; headers: Headers }>
   stop(): Promise<void>
 }
 
@@ -110,10 +117,15 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
           runToken,
           deadlineMs: o.deadlineMs ?? 10_000,
           ...(o.cpuMs ? { limits: { cpuMs: o.cpuMs } } : {}),
+          ...(o.lane ? { lane: o.lane } : {}),
         }),
       })
       tokens.delete(`${runId} ${runToken}`)
-      return { status: res.status, body: (await res.json()) as Record<string, any> }
+      return {
+        status: res.status,
+        body: (await res.json()) as Record<string, any>,
+        headers: res.headers,
+      }
     },
     async stop() {
       server.stop(true)

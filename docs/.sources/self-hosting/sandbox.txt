@@ -36,3 +36,7 @@ Warning when processes share one uid -> packages/sandbox-supervisor/src/main.ts 
 check probes each workerd uid -> deploy/sandbox-firewall.sh (check)
 /healthz omits the sandbox dependency while LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)
 Rolling deploy starts a defined sandbox service when none runs, not under the quickjs switch -> deploy/rolling-deploy.sh (step 4b, sandbox_wanted)
+Background runs hold at most POOL_SIZE - RESERVED - RESERVED_INTERACTIVE, interactive POOL_SIZE - RESERVED -> packages/sandbox-supervisor/src/config.ts (laneCaps, SANDBOX_POOL_RESERVED_INTERACTIVE) ; packages/sandbox-supervisor/src/pool.ts (laneHasRoom)
+A run waits FIFO in its lane until its deadline, then times out -> packages/sandbox-supervisor/src/pool.ts (acquire, wakeOne) ; packages/sandbox-supervisor/src/supervisor.ts (queue_timeout)
+Lane caps logged at start; /stats pool.lanes and pool.counters.lanes -> packages/sandbox-supervisor/src/main.ts ; packages/sandbox-supervisor/src/pool.ts (stats)
+Compose passes SANDBOX_POOL_RESERVED_INTERACTIVE (2) -> deploy/docker-compose.yml (sandbox environment)

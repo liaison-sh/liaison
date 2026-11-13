@@ -48,7 +48,7 @@ export const projects = appProjects.table(
       .default("work"),
     // The client of this project (0295): a soft reference to kernel.companies.
     companyId: uuid("company_id"),
-    // Time and budgets for this project (0312): off by default, work projects
+    // Time and budgets for this project (0319): off by default, work projects
     // only (CHECK projects_time_budgets_work_only); who turned it and when.
     timeBudgetsOn: boolean("time_budgets_on").notNull().default(false),
     timeBudgetsChangedBy: uuid("time_budgets_changed_by"),

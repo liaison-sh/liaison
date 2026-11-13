@@ -64,8 +64,10 @@ import {
 import { registerProcessShutdownPhases } from "~/lib/shutdown-phases"
 import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
-import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
+import { awaitOrgApps, getDefaultApps, loadOrgSetupModules } from "~/modules/apps/init"
 import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
+import { startRunHealth, stopRunHealth } from "~/modules/apps/usage/run-health"
+import { registerRunPoolGauges } from "~/modules/apps/usage/run-pool-gauges"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { startBridgeListener } from "~/modules/apps/workers/bridge-listener"
@@ -224,6 +226,11 @@ registerEventSubscribers(wsManager)
 // routine changed on another process is announced, and a resync covers a lost one.
 await startEventRoutineSync()
 
+// The modules every org's setup imports load now, before this process takes a
+// job or turns ready, so the first org's setup does not block the event loop
+// evaluating them (modules/apps/init.ts loadOrgSetupModules).
+await loadOrgSetupModules()
+
 // Register kernel scheduled jobs + webhook retry worker. Phase 10 register*
 // happens after app manifests are loaded (post createServer block), then the
 // outbox worker is started so durable consumers can pick up events.
@@ -270,6 +277,16 @@ registerShutdownPhase({
   at: "after-drain",
   deadlineMs: 3_000,
   run: () => stopAppUsageRecorder(),
+})
+// App-run health (modules/apps/usage/run-health.ts): per app and lane, rolling
+// windows in memory and in Redis, read by /diag and the admin read.
+registerRunPoolGauges()
+startRunHealth()
+registerShutdownPhase({
+  name: "app-run-health-flush",
+  at: "after-drain",
+  deadlineMs: 2_000,
+  run: () => stopRunHealth(),
 })
 // The load harness's synthetic job, only on a box with the harness key.
 if (loadHarnessEnabled()) registerLoadSyntheticWorker()

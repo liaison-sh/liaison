@@ -11,7 +11,9 @@
 // once per subscriber and ignored). Anything slow (a database write) is the
 // subscriber's to batch or defer.
 
+import { CALLER_CANCELLED_ERROR_NAME, isTimeoutFailure } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
+import type { RunLane } from "~/modules/apps/run-limits"
 import type { LoaderTimings } from "./timings"
 
 const log = rootLogger.child({ module: "app-run-settled" })
@@ -43,8 +45,12 @@ export interface RunSettledInfo {
   nested: boolean
   /** The app of the run this one is nested in, when known. */
   parentApp?: string
+  /** The run's lane (run-limits.ts runLaneOf). */
+  lane?: RunLane
   /** Wall time of the whole run as runApp saw it (admission, retries and loader included). */
   ms: number
+  /** Of that, the wait for a slot of the Workers admission (Workers and workerd only). */
+  admissionMs?: number
   ok: boolean
   /** Start time (epoch ms). */
   at: number
@@ -60,7 +66,11 @@ export interface RunSettledInfo {
   fallback?: WorkersFallback
   /** Workers attempts made (2 when the run was retried). */
   attempts?: number
-  /** The loader's error kind of the failing attempt, or "network" / "http_<status>". */
+  /**
+   * Why a failed run failed: the loader's error kind of the failing Workers
+   * attempt ("network", "http_<status>", "deadline", ...), else the kind of
+   * the error runApp threw (runErrorKindOf). Absent on a run that succeeded.
+   */
   errorKind?: string
   faultClass?: WorkersFaultClass
 }
@@ -92,4 +102,44 @@ export function emitRunSettled(info: RunSettledInfo): void {
       )
     }
   }
+}
+
+/**
+ * The error kinds that mean the run ran out of time: its own wall clock
+ * (`timeout`), the wait for a sandbox slot (`queue_timeout`) or the cell's
+ * deadline on a Workers attempt (`deadline`).
+ */
+export const TIMEOUT_ERROR_KINDS: ReadonlySet<string> = new Set([
+  "timeout",
+  "queue_timeout",
+  "deadline",
+])
+
+/**
+ * The kind of the error a run threw, for a run with no Workers fault:
+ * `queue_timeout` (no sandbox slot in time), `timeout` (its wall clock),
+ * `cancelled` (the caller went away), `tenant_busy` (the org's share of the
+ * sandbox was full), `memory`, `sandbox` (the sandbox itself failed), else
+ * `handler` (the app's own error). Reads the error's name, code and message
+ * prefix only, never its content.
+ */
+export function runErrorKindOf(err: unknown): string {
+  if (typeof err !== "object" || err === null) return isTimeoutFailure(err) ? "timeout" : "handler"
+  const e = err as { name?: unknown; code?: unknown; message?: unknown }
+  const message = typeof e.message === "string" ? e.message : ""
+  if (message.startsWith("Queued sandbox request timed out")) return "queue_timeout"
+  if (message.startsWith("App execution timed out") || isTimeoutFailure(err)) return "timeout"
+  if (e.name === CALLER_CANCELLED_ERROR_NAME) return "cancelled"
+  if (e.code === "custom_app_busy") return "tenant_busy"
+  if (message.startsWith("App execution exceeded the sandbox worker memory ceiling"))
+    return "memory"
+  if (
+    message.startsWith("Sandbox worker ") ||
+    message.startsWith("Worker pool ") ||
+    message.startsWith("Worker startup timeout") ||
+    message.startsWith("Worker exited during startup")
+  ) {
+    return "sandbox"
+  }
+  return "handler"
 }

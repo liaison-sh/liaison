@@ -1074,6 +1074,18 @@ export const TicketDetail: Component<Props> = (props) => {
                           )}
                         </Show>
 
+                        <Show when={t().team}>
+                          {(team) => (
+                            <span
+                              data-testid="tickets-detail-team"
+                              class="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-text-secondary"
+                            >
+                              <span class="text-text-tertiary">{i18n.t("tickets.team")}</span>
+                              <span class="font-medium">{team()}</span>
+                            </span>
+                          )}
+                        </Show>
+
                         <div class="ml-auto flex items-center gap-1">
                           {/* Actions other apps add to the ticket's header. */}
                           <SlotPanels

@@ -115,7 +115,7 @@ from its first paint; the Test panel and the agent tools work.
 |---|---|---|
 | `connector_list_operations({connection?})` | read | Lists each connection's operations: name, kind, role, description, params schema, returned fields. The agent instructions tell the agent to call it first. |
 | `connector_read({connection, operation, params})` | read | Runs one `read` operation and returns the projected items. Output is wrapped as untrusted external content and taints the turn. |
-| `connector_write({connection, operation, params})` | write, gated | Runs one `write` operation after a person approves it. Checked at staging, then pinned (below). The approval names the connection, the operation, the request (method, host and path) and the params. |
+| `connector_write({connection, operation, params})` | write, gated | Runs one `write` operation after a person approves it. Checked at staging, then pinned (below). The approval names the connection, the operation, the request (method, host and path) and the params; for an operation that declares `approval`, also the link to the record, its current content and the full text drafted. |
 | `connector_adapter_reference({section?})` | read, admin | The agent's authoring guide (`apps/api/src/modules/apps/connections/api/reference/authoring.md`), one section per call (at most 30,000 characters); without `section`, the list of sections and the overview. Its field and roles tables are generated like this page's. Section `woocommerce` is a complete example adapter for a WooCommerce shop (orders, one order, products, best sellers). |
 | `connector_adapter_get({identifier, operationsPage?})` | read, admin | The stored adapter document and its credential status, with `bytes` and `truncated`. A document over 30,000 characters comes with one page of its operations at a time. |
 | `connector_adapter_test({identifier, operation, params})` | read, admin | One page of one `read` operation with the stored credentials, as `POST /test` runs it; items fenced as external content (it taints the turn). A `write` is refused (`write_not_testable`). |
@@ -176,6 +176,23 @@ host and path: an adapter replaced, or the params edited, between approval
 and execution never sends a request the approver did not see. A write staged
 without a pinned target (a sequenced step whose params carry references) is
 refused the same way.
+
+**What the approver sees for a write that declares `approval`.** A write
+operation may declare `approval` (section 3), so the person approving it sees
+the record it writes to. The preflight then also pins `approval` (dropped
+from the caller's params like `target`): the operation's description, the
+link rendered from the params, and the read to run. Before the card is
+written, the kernel runs that read through `connector_read` with the stored
+credentials (the manifest's `summarizerContext`, only when the write declares
+a context read): the read's own allow-listed fields, its usual request
+timeout and page budget. The card is titled with the first sentence of the
+operation's description and lists the `METHOD host/path` line, the read's
+last `maxItems` items as quotes of outside text (author, date and text fields
+when the item has them, else its first text-like fields), then every param,
+a long text one (a reply, a post) in full up to 8000 characters with its line
+breaks, and the link. A context read that fails never blocks the write: the
+approval is staged and the card says the preview could not be loaded. A
+write without `approval` keeps the card above.
 
 **The record a write made.** A write's result carries `record_id`: the `id` of
 the record it created or updated, read from the API's answer when the
@@ -393,6 +410,15 @@ operations:
   classifiers: a link-local or metadata address is always refused, a private
   one unless the private-hosts flag is set. The token request goes through the
   same egress checks, pinned to that host, with no redirect.
+- **Approval** (on a write only). `approval.link` is an https URL template
+  whose `{param}` placeholders, after the host, name the write's declared
+  params; written in normalized form, with no userinfo, port or fragment; its
+  host is the `baseUrl` host or one of `linkHosts` (hostnames under a
+  registrable domain, never an IP address or a public suffix). `linkLabel`
+  needs a `link`. `approval.context.read` names a read operation of this
+  adapter; its `params` name that read's params, cover its required ones, and
+  are literals or templates of the write's params (exactly `{param}` passes
+  the typed value). Nothing in `approval` reaches the write's request.
 - **Param formats** (`format` on a string param: `email` as a plain addr-spec,
   `date` as an existing `YYYY-MM-DD`, `date-time` as RFC 3339 with an offset,
   `uri` as an absolute URI, `uuid`) are enforced on every call, before any
@@ -744,6 +770,8 @@ Generated from the JSON Schema by `scripts/api-connector-schema-doc.ts`
 | `baseUrl` | string | yes | length ≤ 2048 | https, written as its own normalized URL (no backslash, userinfo, `%2e`, query or fragment; an IPv4 host only as a dotted quad). http only for a loopback host, and only reachable when LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true. Changing its origin deletes the stored credentials. |
 | `redirectHosts` | array | no | items ≤ 10 | Hosts a download from this API may be redirected to (a media or storage host), under a registrable domain: never an IP address or a public suffix. https only; credentials are never sent to them. |
 | `redirectHosts[]` | string | yes | pattern `^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`; length ≤ 253 |  |
+| `linkHosts` | array | no | items ≤ 10 | Hosts an operation's approval link may point to besides the baseUrl host (the product's web app when its API has a host of its own), under a registrable domain: never an IP address or a public suffix. Nothing is requested from them. |
+| `linkHosts[]` | string | yes | pattern `^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`; length ≤ 253 |  |
 | `auth` | object | yes | `type` one of `apiKey`, `bearer`, `basic`, `oauth2ClientCredentials` |  |
 | `auth[type=apiKey].in` | string | yes | one of `header`, `query` |  |
 | `auth[type=apiKey].name` | string | yes |  | Header or query parameter name the key is sent in. |
@@ -825,6 +853,15 @@ Generated from the JSON Schema by `scripts/api-connector-schema-doc.ts`
 | `operations[].chain[].operation` | string | yes | pattern `^[a-z][a-z0-9_]{0,63}$` | A read operation of this adapter that is not itself chained. |
 | `operations[].chain[].params` | object | yes | keys match `^[A-Za-z_][A-Za-z0-9_]{0,63}$` | The step's params: a literal, or exactly `{field}`, an output field of the previous step. |
 | `operations[].chain[].params.<key>` | string \| number \| boolean | no | string: length ≤ 2000 |  |
+| `operations[].approval` | object | no |  | A write only: what its approval card shows besides the request, so the person approving sees the record it writes to. Display only, never part of the request. |
+| `operations[].approval.link` | string | no | length ≤ 2048 | An https URL template to the target record, `{param}` placeholders (after the host) naming the write's params, each value URL-encoded. Its host is the baseUrl host or one of `linkHosts`. Left off the card when a placeholder's param is unset. |
+| `operations[].approval.linkLabel` | string | no | length 1..60 | The link's label on the card (default: Open the record). |
+| `operations[].approval.context` | object | no |  | A read of this adapter run at staging with the stored credentials, its last items quoted on the card as the record's current content (author, date and text fields when present). A failed read never blocks the write: the card says the preview could not be loaded. |
+| `operations[].approval.context.read` | string | yes | pattern `^[a-z][a-z0-9_]{0,63}$` | A read operation of this adapter. |
+| `operations[].approval.context.params` | object | no | default `{}`; keys match `^[A-Za-z_][A-Za-z0-9_]{0,63}$` | The read's params: a literal, exactly `{param}` (the write param's typed value) or a template of the write's params, covering the read's required params. |
+| `operations[].approval.context.params.<key>` | string \| number \| boolean | no | string: length ≤ 2000 |  |
+| `operations[].approval.context.label` | string | no | length 1..80 | The heading of the quoted items (default: Current content). |
+| `operations[].approval.context.maxItems` | integer | no | value 1..20 | How many of the read's last items the card quotes (default 8). |
 <!-- api-connector-schema:end -->
 
 ---

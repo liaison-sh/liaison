@@ -43,7 +43,7 @@ export const tasks = appProjects.table(
     // Free-text release (0106); filtering uses the effective release (own, else
     // nearest ancestor's).
     release: text("release"),
-    // A task's timebox in minutes and its milestone mark (0312).
+    // A task's timebox in minutes and its milestone mark (0319).
     timeboxMinutes: integer("timebox_minutes"),
     isMilestone: boolean("is_milestone").notNull().default(false),
     position: doublePrecision("position").notNull().default(1000),

@@ -18,6 +18,7 @@ Tickets arrive through inboxes. An inbox is a connected Gmail or IMAP mailbox, o
    - **Default team** for new tickets
    - **Signature (HTML)** and **Signature (plain text)**
    - **Send acknowledgement email on new ticket**, with an optional acknowledgement body
+   - One inbox for several teams: write `{{team}}` in the **From display name**, the signatures or the acknowledgement body, and each ticket's team replaces it. On a ticket with no team, the placeholder is dropped with the dash or short word (such as "for") in front of it
    - **Monitoring inbox: keep out of the attention feed**, for automated streams such as bug reports (reports from **Report a bug** keep their attached files on the ticket, and carry the server's recent error signatures only when the reporter belongs to the org that runs the server; a report can also be sent to the Liaison team, see [Share with the Liaison team](../self-hosting/liaison-team.md#forward-a-bug-report))
    - **Notify on new ticket**, off by default, see [Hear about new tickets](#hear-about-new-tickets)
    - **No SLA: exempt this inbox's tickets from SLA**
@@ -69,7 +70,7 @@ To turn an email into a ticket, open the conversation in [Mail](mail.md) and cli
 
 ## Answer a ticket
 
-1. Open the ticket and choose **Reply** or **Note**.
+1. Open the ticket and choose **Reply** or **Note**. When the ticket has a team, its header shows it next to the SLA as **Team**.
 2. For a reply, write in **Reply to customer…**. Add Cc recipients, attach files, or click **Insert saved reply** to use a saved reply.
 3. Tick **Set follow-up** if you want the ticket back in your queue later.
 4. Click **Send reply**. A note (**Add note**) is visible to agents only and posts immediately.

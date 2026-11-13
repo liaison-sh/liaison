@@ -102,7 +102,8 @@ describe("projects.manifest", () => {
     // 1.27.0: a reconcile line changes only on a person's turn; dated sheet for members; keywords trimmed.
     // 1.28.0: margin and cost rates, and the money half of the budget read from invoicing.
     // 1.29.0: capacity_move for the board's Move to, and calendar days marked in the days-off list.
-    expect(projectsManifest.version).toBe("1.29.0")
+    // 1.30.0: the project Automations view from main joins the time and budgets views.
+    expect(projectsManifest.version).toBe("1.30.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

@@ -1093,6 +1093,15 @@ shows a generic summary of its parameters. While it still awaits a decision,
 the server stores the real one in the background, a few at a time; a decided
 request keeps the generic summary.
 
+A summarizer is pure: it reads the call's parameters, never a record. To show
+the record a call acts on, declare `summarizerContext` on the tool:
+`{"tool": "<an ungated read tool of your app>", "params": {"<read param>":
+"<dot-path in the call's params>"}}`. Liaison runs that read as the person who
+asked, just before the summarizer, and passes its result as `meta.context`
+(the third argument); a failed read passes `null`, so the card degrades to the
+parameters. Add `"when": "<dot-path>"` to run the read only when that path of
+the call's parameters holds a value.
+
 ## 15. Serve a page of your own
 
 Some screens cannot sit in the app's panel: a provider's picker that loads the

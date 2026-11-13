@@ -49,11 +49,33 @@ export const APPROVAL_SUMMARY_LONG_KINDS: ReadonlySet<string> = new Set([
 ])
 export const APPROVAL_SUMMARY_LONG_LINES_MAX = 50
 
+/**
+ * The card kinds that show a drafted text IN FULL (a public reply or post the
+ * approver must read whole before it goes out), next to the record's current
+ * content: a line may hold up to APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX
+ * characters, and the card lists up to APPROVAL_SUMMARY_FULL_TEXT_LINES_MAX
+ * lines. The web card keeps such a line's line breaks.
+ */
+export const APPROVAL_SUMMARY_FULL_TEXT_KINDS: ReadonlySet<string> = new Set([
+  // api-connector: a write whose adapter declares what its card shows (approval).
+  "api-connector.write.full",
+])
+export const APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX = 8000
+export const APPROVAL_SUMMARY_FULL_TEXT_LINES_MAX = 16
+
 /** The most lines a card of this kind lists. */
 export function approvalSummaryLinesMax(kind: string): number {
+  if (APPROVAL_SUMMARY_FULL_TEXT_KINDS.has(kind)) return APPROVAL_SUMMARY_FULL_TEXT_LINES_MAX
   return APPROVAL_SUMMARY_LONG_KINDS.has(kind)
     ? APPROVAL_SUMMARY_LONG_LINES_MAX
     : APPROVAL_SUMMARY_LINES_MAX
+}
+
+/** The longest line a card of this kind holds. */
+export function approvalSummaryLineMax(kind: string): number {
+  return APPROVAL_SUMMARY_FULL_TEXT_KINDS.has(kind)
+    ? APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX
+    : APPROVAL_SUMMARY_LINE_MAX
 }
 
 export const approvalSummarySchema = z
@@ -61,7 +83,9 @@ export const approvalSummarySchema = z
     kind: z.string().min(1).max(100),
     title: z.string().min(1).max(200),
     subtitle: z.string().max(200).optional(),
-    lines: z.array(z.string().max(APPROVAL_SUMMARY_LINE_MAX)).max(APPROVAL_SUMMARY_LONG_LINES_MAX),
+    lines: z
+      .array(z.string().max(APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX))
+      .max(APPROVAL_SUMMARY_LONG_LINES_MAX),
     links: z.array(approvalSummaryLinkSchema).max(10).optional(),
     // Per-call blast-radius override for the attention feed. A summarizer sees
     // the actual params at gate time, so it can refine the manifest's static
@@ -78,6 +102,10 @@ export const approvalSummarySchema = z
     path: ["lines"],
     message: "too many lines for this kind of card",
   })
+  .refine((s) => s.lines.every((line) => line.length <= approvalSummaryLineMax(s.kind)), {
+    path: ["lines"],
+    message: "a line too long for this kind of card",
+  })
 
 export type ApprovalSummary = z.infer<typeof approvalSummarySchema>
 export type ApprovalSummaryLink = z.infer<typeof approvalSummaryLinkSchema>
@@ -91,13 +119,10 @@ export function truncateApprovalSummary(s: ApprovalSummary): ApprovalSummary {
     ref: s.ref !== undefined ? s.ref.slice(0, 40) : undefined,
     // A line past the cap ends on "…" so a reviewer can tell it was cut (the
     // full value stays in the card's exact payload).
-    lines: s.lines
-      .slice(0, approvalSummaryLinesMax(s.kind))
-      .map((line) =>
-        line.length > APPROVAL_SUMMARY_LINE_MAX
-          ? `${line.slice(0, APPROVAL_SUMMARY_LINE_MAX - 1)}…`
-          : line,
-      ),
+    lines: s.lines.slice(0, approvalSummaryLinesMax(s.kind)).map((line) => {
+      const max = approvalSummaryLineMax(s.kind)
+      return line.length > max ? `${line.slice(0, max - 1)}…` : line
+    }),
     links: s.links?.slice(0, 10).map((link) =>
       "url" in link
         ? { label: link.label.slice(0, 100), url: link.url.slice(0, 500) }

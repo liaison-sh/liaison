@@ -13,6 +13,7 @@
 //                `loader` is the loader's own timings (Workers only); `sleepMs`
 //                the time the app's code waited in its own timers inside the
 //                isolate (worker-core.ts; Workers only, QuickJS has no timers).
+//                `errorKind` says why a failed run failed (run-settled.ts runErrorKindOf).
 //                `fallback` ("breaker" | "app" | "loader_fault") marks a run meant for Workers that ran
 //                on QuickJS (workers/fallback.ts); `attempts` is 2 when it was retried.
 //
@@ -22,6 +23,7 @@
 import { appendFile } from "node:fs/promises"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import type { RunLane } from "~/modules/apps/run-limits"
 import {
   onRunSettled,
   type RunSettledInfo,
@@ -54,6 +56,11 @@ export interface LoaderTimings {
   bridgeMsTotal?: number
   cold?: boolean
   workerRunMs?: number
+  /**
+   * How long the run waited for a process of the sandbox service before it
+   * started (`workerd` only): its lane was full (@liaison/sandbox-supervisor pool.ts).
+   */
+  queueMs?: number
 }
 
 export interface RunTiming {
@@ -65,8 +72,12 @@ export interface RunTiming {
   executor: RunSettledInfo["executor"]
   nested: boolean
   parentApp?: string
+  /** The run's lane (run-limits.ts runLaneOf). */
+  lane?: RunLane
   /** Wall time of the whole run as runApp saw it (admission and loader included). */
   ms: number
+  /** Of that, the wait for a slot of the Workers admission (admission.ts). */
+  admissionMs?: number
   ok: boolean
   at: number
   loader?: LoaderTimings
@@ -142,7 +153,9 @@ export function runTimingOf(info: RunSettledInfo): RunTiming {
     executor: info.executor,
     nested: info.nested,
     ...(info.parentApp ? { parentApp: info.parentApp } : {}),
+    ...(info.lane ? { lane: info.lane } : {}),
     ms: info.ms,
+    ...(info.admissionMs !== undefined ? { admissionMs: info.admissionMs } : {}),
     ok: info.ok,
     at: info.at,
     ...(info.loader ? { loader: info.loader } : {}),

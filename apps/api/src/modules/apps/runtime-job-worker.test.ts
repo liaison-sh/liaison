@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db/connection"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { awaitOrgApps } from "~/modules/apps/init"
+import { loadOrgSetupModules } from "~/modules/apps/init"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { getWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
@@ -72,9 +72,9 @@ describe("manifest job handlers execute in the sandbox worker pool", () => {
       _bundlePath: new URL("./__fixtures__/event-spin/handler-bundle.ts", import.meta.url).pathname,
     }
     await registerApps([manifest as any], ORG)
-    // The org is set up before the job, as for an org the process already serves: a job is
-    // the first touch of an org otherwise, and that setup's own host work is not the job's.
-    await awaitOrgApps(ORG)
+    // As the server's boot does before it takes jobs. The org itself is not set up: the job
+    // is its first touch, and that setup must not stall the host event loop either.
+    await loadOrgSetupModules()
   })
 
   afterAll(async () => {
@@ -87,7 +87,7 @@ describe("manifest job handlers execute in the sandbox worker pool", () => {
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
   })
 
-  it("a CPU-burning job handler occupies a WORKER and does not stall the host event loop", async () => {
+  it("a CPU-burning job handler, the first touch of its org, occupies a WORKER and does not stall the host event loop", async () => {
     const gaps: number[] = []
     let prev = Date.now()
     const lagProbe = setInterval(() => {

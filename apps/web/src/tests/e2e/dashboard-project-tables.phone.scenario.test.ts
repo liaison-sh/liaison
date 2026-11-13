@@ -70,6 +70,12 @@ test("a project-backed table and the overview dashboard fit a phone", async ({
     x: "groupLabel",
     y: "value",
     drillRows: "tasks",
+    drillColumns: [
+      { field: "title", label: "Title" },
+      { field: "status", label: "Status" },
+      { field: "assigneeName", label: "Handler" },
+      { field: "dueDate", label: "Due" },
+    ],
     link: { entity: "task", idField: "id", app: "projects" },
   }
   const dash = await api(env.serverUrl, "/api/dashboards", {

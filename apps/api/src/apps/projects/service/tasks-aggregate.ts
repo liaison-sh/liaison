@@ -15,9 +15,9 @@
 // carries its `currency`, a group holding several currencies is one row per currency, and the
 // result's `currency` is set only when every project read uses the same one.
 //
-// Each row carries `taskIds` and `tasks` ({id, title, status, assigneeName}, what a dashboard drill
-// lists with map.drillRows "tasks") when it holds at most 50 tasks, and `filter`, the tasks_byProject
-// params that list exactly its tasks, when the group can be expressed as one (status, assignee,
+// Each row carries `taskIds` and `tasks` ({id, title, status, assigneeName, dueDate}, what a
+// dashboard drill lists with map.drillRows "tasks") when it holds at most 50 tasks, and `filter`,
+// the tasks_byProject params that list exactly its tasks, when the group can be expressed as one (status, assignee,
 // priority, due, a choice / choices / person / checkbox field, on one project).
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
@@ -89,6 +89,8 @@ export interface AggregateTask {
   title: string
   status: string | null
   assigneeName: string | null
+  /** The due date (YYYY-MM-DD), null when none. */
+  dueDate: string | null
 }
 
 export interface TasksAggregateResult {
@@ -115,6 +117,7 @@ interface TaskRow {
   status_order: number | null
   status_terminal: boolean | null
   assignee_name: string | null
+  due_date: string | Date | null
   due_bucket: string
 }
 
@@ -373,6 +376,12 @@ function rankOf(g: Grouping, key: string | null, ctx: Context): number {
   }
 }
 
+/** A due date as its calendar day (YYYY-MM-DD), whatever the driver returns. */
+function dueDay(d: string | Date | null): string | null {
+  if (d === null) return null
+  return typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10)
+}
+
 /** Every group a grouping always shows, even empty (so a chart keeps its columns). */
 function fixedKeys(g: Grouping, ctx: Context, includeTerminal: boolean): string[] {
   switch (g.kind) {
@@ -602,7 +611,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     await args.tx.execute(drizzleSql`
       SELECT
         t.id, t.title, t.project_id, t.status_id, t.assignee_id, t.priority, t.created_at,
-        t.status_entered_at, t.fields,
+        t.status_entered_at, t.fields, t.due_date,
         s.label AS status_label, s."order" AS status_order, s.terminal AS status_terminal,
         u.name AS assignee_name,
         ${dueBucketSql("t", "s")} AS due_bucket
@@ -738,6 +747,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
             title: t.title,
             status: t.status_label,
             assigneeName: t.assignee_name,
+            dueDate: dueDay(t.due_date),
           })
         }
       }

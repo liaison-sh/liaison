@@ -449,6 +449,13 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
       x: "groupLabel",
       y: "value",
       drillRows: "tasks",
+      // What a bar's drill lists per task, in people's words.
+      drillColumns: [
+        { field: "title", label: "Title" },
+        { field: "status", label: "Status" },
+        { field: "assigneeName", label: "Handler" },
+        { field: "dueDate", label: "Due" },
+      ],
       link: { entity: "task", idField: "id", app: "projects" },
     }
     const spec = {
@@ -532,11 +539,13 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
     expect(drill.ok).toBe(true)
     expect(drill.total).toBe(1)
     expect(drill.rows[0].title).toBe(todoTitle)
-    expect(drill.columns.map((c: { field: string }) => c.field)).toEqual([
-      "title",
-      "status",
-      "assigneeName",
+    expect(drill.columns.map((c: { label: string }) => c.label)).toEqual([
+      "Title",
+      "Status",
+      "Handler",
+      "Due",
     ])
+    expect(drill.rows[0].dueDate).toBe("2020-01-01")
     expect(drill.links).toEqual([
       { kind: "entity", app: "projects", entityType: "task", id: todoId },
     ])

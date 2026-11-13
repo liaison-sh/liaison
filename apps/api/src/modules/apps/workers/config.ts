@@ -86,6 +86,11 @@ export function workersConfigured(): boolean {
  * configured (the way back while an instance moves to the sandbox service; it
  * goes away with QuickJS).
  */
+/** Some app code may run remotely: the loader or the sandbox service is set and QuickJS is not forced. */
+export function remoteExecutorConfigured(): boolean {
+  return !quickjsForced() && (readWorkersConfig() ?? readSandboxConfig(null)) !== null
+}
+
 export function quickjsForced(): boolean {
   return env.LIAISON_APP_RUNTIME === "quickjs"
 }

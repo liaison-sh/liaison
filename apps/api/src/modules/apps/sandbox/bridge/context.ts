@@ -273,10 +273,9 @@ export type RpcBridgeOptions = {
   }>
   /**
    * Test-only seam (knowledge app): a pre-built source registry to use in the
-   * `knowledge_verify` source-link branch and `knowledge_addFolderSource`
-   * folder harvest, in place of `registerDefaultKnowledgeSources` (which needs
-   * a live Google-Drive OAuth token). Production never sets this — the bridge
-   * builds a request-scoped real-Drive registry on demand.
+   * knowledge search, remote get, source-link and folder-source methods, in
+   * place of `registerDefaultKnowledgeSources` (which wakes the installed apps
+   * that declare `knowledgeItems`). Production never sets this.
    */
   knowledgeRegistryOverride?: import("~/apps/knowledge/federated-search").KnowledgeSourceRegistry
   /**

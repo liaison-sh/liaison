@@ -2,7 +2,7 @@
 /**
  * Source policy management — `app_knowledge.source_policies`.
  *
- * Two operations:
+ * Operations:
  *   - `loadSourcePolicy(tx, source, actor)` — returns the real row if one
  *     exists, else a zero-cache default (R-I9). Read-side runs under
  *     `knowledge:sources:read` (RLS-enforced).
@@ -12,6 +12,8 @@
  *     for that source is invalidated (R-IS-1, M10) via a privileged connection
  *     (the cache table's RLS write-check requires a scope the curator role,
  *     which owns source settings, does not hold).
+ *   - `loadSearchPolicies(tx)` — every source's `broadSearchEnabled`, read by
+ *     federated search (source-registry.ts).
  */
 
 import type { KnowledgeSourcePolicyPatch } from "@liaison/shared"
@@ -96,6 +98,20 @@ export async function loadSourcePolicy(
   const row = extractRows<DbRow>(result)[0]
   if (row) return rowFromDb(row)
   return zeroCacheDefault(actor.orgId, source)
+}
+
+/**
+ * `broadSearchEnabled` of every source the org set a policy for (RLS scopes the
+ * read to the org): federated search includes an app's `knowledgeItems.search`
+ * when its row says so, or by the app's `searchByDefault` when it has no row.
+ */
+export async function loadSearchPolicies(tx: SqlClient): Promise<Map<string, boolean>> {
+  const rows = extractRows<{ source: string; broad_search_enabled: boolean }>(
+    await tx.execute(drizzleSql`
+      SELECT source, broad_search_enabled FROM ${knowledgeRel("source_policies")}
+    `),
+  )
+  return new Map(rows.map((r) => [r.source, r.broad_search_enabled]))
 }
 
 export async function updateSourcePolicy(

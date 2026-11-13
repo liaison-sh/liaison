@@ -32,7 +32,8 @@ A try (a preview) runs as you and changes nothing real:
 - one try of a draft runs at a time;
 - before the first publish the app has no tables and reaches no website; after it, only the websites the published version was approved for;
 - it never gets a password, a token or a connected account;
-- a try lasts 30 seconds at most, and its log lines come back with the result.
+- a try lasts 30 seconds at most, and its log lines come back with the result;
+- it runs where a published app would: on the server's sandbox service or the app loader when one is set up (the `worker.js` the draft's build made), else on the local sandbox.
 
 ## Publish it
 

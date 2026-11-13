@@ -5,7 +5,8 @@
 // Kinds follow the manifest: tools (handler, preflight, summarizer,
 // pollHandler, reconcileHandler), event subscriptions, jobs, webhooks (handler
 // and verifier), search, export, the attention provider, import kinds,
-// knowledge source kinds (their sync handler), connection before-disconnect
+// knowledge source kinds (their sync handler), knowledge items (search,
+// resolve), connection before-disconnect
 // hooks, PDF templates, the routes app pages call, and the provisioning
 // handlers.
 
@@ -161,6 +162,19 @@ export function contractEntries(manifest: Json): ContractEntry[] {
         kind: "knowledge-sync",
         exportName,
         ...(declaredMs ? { declaredMs } : {}),
+      })
+  }
+
+  const items = fieldObject(manifest, "knowledgeItems")
+  const itemsMs = fieldNumber(items, "timeoutMs")
+  for (const key of ["search", "resolve"] as const) {
+    const exportName = fieldString(items, key)
+    if (exportName)
+      out.push({
+        entry: `knowledge-items:${key}`,
+        kind: "search",
+        exportName,
+        ...(itemsMs ? { declaredMs: itemsMs } : {}),
       })
   }
 

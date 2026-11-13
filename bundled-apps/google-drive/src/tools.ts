@@ -53,7 +53,7 @@ function invalid(message: string): ToolError {
 }
 
 /** The client of the account a person's call goes through, or null when none is connected. */
-async function personClient(ctx: DriveCtx): Promise<DriveClient | null> {
+export async function personClient(ctx: DriveCtx): Promise<DriveClient | null> {
   const account = await personAccount(ctx)
   return account ? driveClient(ctx, accessOf(account)) : null
 }
@@ -87,7 +87,7 @@ const hitOf = (
   ...(f.webViewLink ? { webViewLink: f.webViewLink } : {}),
 })
 
-async function searchDrive(
+export async function searchDrive(
   client: DriveClient,
   safeQuery: string,
   limit: number | undefined,
@@ -174,7 +174,7 @@ export async function driveSearch(
 }
 
 /** A shortcut stands for its target: read the target. */
-async function resolved(client: DriveClient, id: string): Promise<DriveFile> {
+export async function resolved(client: DriveClient, id: string): Promise<DriveFile> {
   const meta = await client.metadata(id)
   const target = meta.mimeType === GOOGLE_SHORTCUT_MIME ? meta.shortcutDetails?.targetId : undefined
   return target ? client.metadata(target) : meta

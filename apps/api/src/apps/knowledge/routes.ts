@@ -60,8 +60,9 @@ import {
   refreshSourceLinkMetadata,
   verifySourceLink,
 } from "~/apps/knowledge/source-links"
+import { isFolderSourceCapable } from "~/apps/knowledge/source-protocol"
 import { registerDefaultKnowledgeSources } from "~/apps/knowledge/source-registry"
-import { loadSourcePolicy, updateSourcePolicy } from "~/apps/knowledge/sources"
+import { loadSearchPolicies, loadSourcePolicy, updateSourcePolicy } from "~/apps/knowledge/sources"
 import {
   archiveSyncedSource,
   assertCanForceSyncedSource,
@@ -79,6 +80,7 @@ import { qaSeedRoutesEnabled } from "~/lib/env"
 import { withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
+import { knowledgeItemsRegistry } from "~/modules/apps/app-registries"
 import { hasScope } from "~/modules/permissions/permissions"
 import { globalSearch } from "~/modules/search/service"
 import { listShareMembers, listShareRoles } from "~/modules/sharing/targets"
@@ -421,8 +423,8 @@ knowledgeRoutes.get("/roles", async (c) => {
 // ---------------------------------------------------------------------------
 //
 // Empty queries return an empty result without fanning out to remote sources
-// (spec §283). Non-empty queries currently return an empty hits array — the
-// source registry must be wired before remote fan-out works. The local
+// (spec §283). Non-empty queries search local Knowledge and every app that
+// declares `knowledgeItems.search` for the caller (source-registry.ts). The local
 // MeiliSearch path requires the kernel search service to be invoked with
 // already-expanded grants (knowledgeActorFromContext takes care of this).
 
@@ -430,69 +432,71 @@ knowledgeRoutes.post("/search", zValidator("json", knowledgeFederatedSearchSchem
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
-    const result = await withRequestRls(c, async (tx) => {
-      const registry = registerDefaultKnowledgeSources({
-        tx,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
-      return federatedKnowledgeSearch(
-        {
-          query: input.query,
-          limit: input.limit,
-          mode: input.mode,
-          sources: input.sources,
-          cursors: input.cursors,
-          filters: input.filters,
-        },
-        {
-          actor,
-          registry,
-          // Local-knowledge adapter: query the kernel MeiliSearch index
-          // for the caller's `knowledge_document` + `knowledge_source_link`
-          // entries and project each Meili hit into the canonical
-          // `KnowledgeSearchHit` shape so the federated fuser can rank
-          // them alongside Drive/other remote hits.
-          localSearch: async () => {
-            const q = input.query.trim()
-            if (!q) {
-              return {
-                hits: [],
-                status: {
-                  source: "knowledge",
-                  state: "skipped",
-                  retryable: false,
-                  hitCount: 0,
-                },
-              }
+    // Remote sources are apps woken for this search: no transaction is held
+    // across them (each DB step below opens its own).
+    const registry = await registerDefaultKnowledgeSources({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      scopes: actor.scopes,
+      searchPolicy: await withRequestRls(c, (tx) => loadSearchPolicies(tx)),
+    })
+    const result = await federatedKnowledgeSearch(
+      {
+        query: input.query,
+        limit: input.limit,
+        mode: input.mode,
+        sources: input.sources,
+        cursors: input.cursors,
+        filters: input.filters,
+      },
+      {
+        actor,
+        registry,
+        // Local-knowledge adapter: query the kernel MeiliSearch index
+        // for the caller's `knowledge_document` + `knowledge_source_link`
+        // entries and project each Meili hit into the canonical
+        // `KnowledgeSearchHit` shape so the federated fuser can rank
+        // them alongside Drive/other remote hits.
+        localSearch: async () => {
+          const q = input.query.trim()
+          if (!q) {
+            return {
+              hits: [],
+              status: {
+                source: "knowledge",
+                state: "skipped",
+                retryable: false,
+                hitCount: 0,
+              },
             }
-            try {
-              const limit = Math.min(Math.max(input.limit ?? 20, 1), 20)
-              const res = await globalSearch({
-                orgId: actor.orgId,
-                userId: actor.userId,
-                scopes: actor.scopes,
-                dimensionGrants: actor.dimensionGrants,
-                roleIds: actor.roles ?? [],
-                q,
-                limit,
-              })
-              const indexed = res.entities
-                .filter(
-                  (e) =>
-                    e.app === "knowledge" &&
-                    (e.entityType === "document" || e.entityType === "source_link"),
-                )
-                .map((e, i) => ({
-                  source: "knowledge",
-                  sourceEntityId: e.id,
-                  title: e.title ?? e.label,
-                  type: e.entityType,
-                  sourceRank: i + 1,
-                }))
-              // The index can lag an archive/delete: never hand back a hit whose
-              // row is archived or gone (opening it would return not_found).
+          }
+          try {
+            const limit = Math.min(Math.max(input.limit ?? 20, 1), 20)
+            const res = await globalSearch({
+              orgId: actor.orgId,
+              userId: actor.userId,
+              scopes: actor.scopes,
+              dimensionGrants: actor.dimensionGrants,
+              roleIds: actor.roles ?? [],
+              q,
+              limit,
+            })
+            const indexed = res.entities
+              .filter(
+                (e) =>
+                  e.app === "knowledge" &&
+                  (e.entityType === "document" || e.entityType === "source_link"),
+              )
+              .map((e, i) => ({
+                source: "knowledge",
+                sourceEntityId: e.id,
+                title: e.title ?? e.label,
+                type: e.entityType,
+                sourceRank: i + 1,
+              }))
+            // The index can lag an archive/delete: never hand back a hit whose
+            // row is archived or gone (opening it would return not_found).
+            const { hits, syncedAppByDocId } = await withRequestRls(c, async (tx) => {
               const hits = await dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor)
               // Tag document hits that are mirrored from an external synced
               // source so the UI can mark their provenance. One JOIN over just
@@ -517,51 +521,52 @@ knowledgeRoutes.post("/search", zValidator("json", knowledgeFederatedSearchSchem
                 )
                 syncedAppByDocId = new Map(syncedRows.map((r) => [r.id, r.app_name]))
               }
-              const enrichedHits = attachSyncedSourceApp(hits, syncedAppByDocId)
-              return {
-                hits: enrichedHits,
-                status: {
-                  source: "knowledge",
-                  state: "complete" as const,
-                  retryable: false,
-                  hitCount: enrichedHits.length,
-                },
-              }
-            } catch (err) {
-              // Server-side: log the real error so ops can diagnose. The
-              // outgoing source-status message is scrubbed (BS-6) — the
-              // client never sees this string.
-              const logger = c.get("logger") as
-                | { error?: (b: Record<string, unknown>, msg: string) => void }
-                | undefined
-              logger?.error?.(
-                {
-                  err: (err as Error)?.stack ?? String(err),
-                  cause:
-                    ((err as { cause?: unknown })?.cause as Error)?.stack ??
-                    String((err as { cause?: unknown })?.cause),
-                  orgId: actor.orgId,
-                  userId: actor.userId,
-                  meiliHost: process.env.MEILISEARCH_HOST ?? "(default)",
-                  hasMeiliKey: !!process.env.MEILISEARCH_API_KEY,
-                },
-                "knowledge_local_search_failed",
-              )
-              return {
-                hits: [],
-                status: {
-                  source: "knowledge",
-                  state: "error" as const,
-                  retryable: true,
-                  message: (err as Error)?.message,
-                  hitCount: 0,
-                },
-              }
+              return { hits, syncedAppByDocId }
+            })
+            const enrichedHits = attachSyncedSourceApp(hits, syncedAppByDocId)
+            return {
+              hits: enrichedHits,
+              status: {
+                source: "knowledge",
+                state: "complete" as const,
+                retryable: false,
+                hitCount: enrichedHits.length,
+              },
             }
-          },
+          } catch (err) {
+            // Server-side: log the real error so ops can diagnose. The
+            // outgoing source-status message is scrubbed (BS-6) — the
+            // client never sees this string.
+            const logger = c.get("logger") as
+              | { error?: (b: Record<string, unknown>, msg: string) => void }
+              | undefined
+            logger?.error?.(
+              {
+                err: (err as Error)?.stack ?? String(err),
+                cause:
+                  ((err as { cause?: unknown })?.cause as Error)?.stack ??
+                  String((err as { cause?: unknown })?.cause),
+                orgId: actor.orgId,
+                userId: actor.userId,
+                meiliHost: process.env.MEILISEARCH_HOST ?? "(default)",
+                hasMeiliKey: !!process.env.MEILISEARCH_API_KEY,
+              },
+              "knowledge_local_search_failed",
+            )
+            return {
+              hits: [],
+              status: {
+                source: "knowledge",
+                state: "error" as const,
+                retryable: true,
+                message: (err as Error)?.message,
+                hitCount: 0,
+              },
+            }
+          }
         },
-      )
-    })
+      },
+    )
     // BS-6: scrub adapter-supplied error messages on the wire — only the
     // `complete` state may carry an adapter message. Closes the leak surface
     // for any current or future error state (unauthorized, rate-limited,
@@ -588,22 +593,15 @@ knowledgeRoutes.post("/source-links", zValidator("json", knowledgeLinkRemoteSche
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
-    const link = await withRequestRls(c, async (tx) => {
-      const registry = registerDefaultKnowledgeSources({
-        tx,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
-      const adapter = registry.listEnabled(actor).find((a) => a.source === input.source)
-      if (!adapter) {
-        // Precondition, not an outage: the org hasn't enabled this source. 422,
-        // not 503 — a 503 here wrongly signals a server fault (and inflated the
-        // chaos server-error rate for every seeded Drive/Notion/Linear pointer).
-        throw new KnowledgeError("SOURCE_NOT_ENABLED", `Source '${input.source}' is not enabled`)
-      }
-      return linkRemoteDocument(tx, input, registry, actor)
+    // The source's app resolves the item outside any transaction; a source the
+    // org has not enabled is a 422 SOURCE_NOT_ENABLED (a precondition, not an
+    // outage), an unreachable one a 503 SOURCE_UNAVAILABLE.
+    const registry = await registerDefaultKnowledgeSources({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      scopes: actor.scopes,
     })
+    const link = await linkRemoteDocument((fn) => withRequestRls(c, fn), input, registry, actor)
     return success(c, link, undefined, 201)
   } catch (err) {
     return knowledgeErrorResponse(c, err)
@@ -630,15 +628,12 @@ knowledgeRoutes.post("/source-links/:id/verify", zValidator("param", idParamSche
   try {
     const actor = getActor(c)
     const { id } = c.req.valid("param")
-    const result = await withRequestRls(c, async (tx) => {
-      const registry = registerDefaultKnowledgeSources({
-        tx,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
-      return verifySourceLink(tx, id, registry, actor)
+    const registry = await registerDefaultKnowledgeSources({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      scopes: actor.scopes,
     })
+    const result = await verifySourceLink((fn) => withRequestRls(c, fn), id, registry, actor)
     return success(c, result)
   } catch (err) {
     return zeroKnowledgeResponse(c, err)
@@ -649,15 +644,17 @@ knowledgeRoutes.post("/source-links/:id/refresh", zValidator("param", idParamSch
   try {
     const actor = getActor(c)
     const { id } = c.req.valid("param")
-    const result = await withRequestRls(c, async (tx) => {
-      const registry = registerDefaultKnowledgeSources({
-        tx,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
-      return refreshSourceLinkMetadata(tx, id, registry, actor)
+    const registry = await registerDefaultKnowledgeSources({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      scopes: actor.scopes,
     })
+    const result = await refreshSourceLinkMetadata(
+      (fn) => withRequestRls(c, fn),
+      id,
+      registry,
+      actor,
+    )
     return success(c, result)
   } catch (err) {
     return zeroKnowledgeResponse(c, err)
@@ -680,15 +677,18 @@ knowledgeRoutes.post("/source-links/:id/archive", zValidator("param", idParamSch
 // ---------------------------------------------------------------------------
 
 /**
- * Registered source ids. Allowlist prevents callers from probing for arbitrary
- * source names — `/knowledge/sources/<anything>` would otherwise return a
- * polite zero-cache shape and leak the existence of the endpoint to anyone.
+ * Registered source ids: "knowledge" and every app of the org that declares a
+ * `knowledgeItems.search` (its `broadSearchEnabled` switches it in federated
+ * search). The allowlist keeps callers from probing arbitrary source names.
  */
-const REGISTERED_SOURCES = new Set(["knowledge"])
+function isRegisteredSource(orgId: string, source: string): boolean {
+  if (source === "knowledge") return true
+  return knowledgeItemsRegistry.get([orgId, source])?.decl.search !== undefined
+}
 
 knowledgeRoutes.get("/sources/:source", async (c) => {
   const source = c.req.param("source")
-  if (!REGISTERED_SOURCES.has(source)) {
+  if (!isRegisteredSource(getActor(c).orgId, source)) {
     return c.json({ error: { message: "Source not found", code: "NOT_FOUND" } }, 404)
   }
   try {
@@ -705,7 +705,7 @@ knowledgeRoutes.patch(
   zValidator("json", knowledgeSourcePolicyPatchSchema),
   async (c) => {
     const source = c.req.param("source")
-    if (!REGISTERED_SOURCES.has(source)) {
+    if (!isRegisteredSource(getActor(c).orgId, source)) {
       return c.json({ error: { message: "Source not found", code: "NOT_FOUND" } }, 404)
     }
     try {
@@ -968,14 +968,15 @@ knowledgeRoutes.post("/synced-sources", zValidator("json", syncedSourceCreateSch
       )
       return success(c, row, undefined, 201)
     }
+    const registry = await registerDefaultKnowledgeSources({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      scopes: actor.scopes,
+    })
     const row = await withRequestRls(c, async (tx) => {
-      const registry = registerDefaultKnowledgeSources({
-        tx,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
-      const adapter = registry.listEnabled(actor).find((a) => a.source === input.appName)
+      const adapter = registry
+        .listEnabled(actor)
+        .find((a) => a.source === input.appName && isFolderSourceCapable(a))
       // I1: if no adapter is registered/enabled, fail loud rather than
       // silently skipping the H-5 precheck. Persisting an unverified row
       // would leave an orphan row + collection that never syncs successfully.

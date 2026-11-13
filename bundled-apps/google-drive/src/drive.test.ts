@@ -7,6 +7,7 @@
 // provisioning and the export slot.
 import { describe, expect, it } from "bun:test"
 import manifest from "../app.manifest.json"
+import { resolveDriveItem, searchDriveKnowledge } from "./items"
 import { syncDriveFolder, syncPickedFiles } from "./knowledge"
 import { drivePicker, pickerRemove, pickerState, savePicks } from "./picker"
 import { provisionDrive } from "./provision"
@@ -95,9 +96,14 @@ function drive(path: string, q: URLSearchParams) {
 }
 
 describe("manifest", () => {
-  it("is the catalog app, version 2.0.1, with its pages, sources and provisioning", () => {
+  it("is the catalog app, with its pages, sources and provisioning", () => {
     expect(manifest.name).toBe("google-drive")
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(manifest.knowledgeItems).toMatchObject({
+      search: "searchDriveKnowledge",
+      resolve: "resolveDriveItem",
+      searchByDefault: false,
+    })
     // The platform's Picker widget: no page script, a drive.file token only.
     expect("source" in manifest.pages.picker).toBe(false)
     expect(manifest.pages.picker.widget).toEqual({
@@ -524,6 +530,44 @@ describe("export", () => {
     ])
     expect(await exportGoogleDrive({ format: "csv" }, f.ctx)).toBe(
       "id,connectionName,identifier,displayName,status,createdAt\nacc-me,drive,ana@example.com,,active,2026-01-01T00:00:00.000Z\n",
+    )
+  })
+})
+
+describe("knowledge items", () => {
+  it("search: the person's Drive by name and content, hits keyed by file id", async () => {
+    const f = fakeCtx({ accounts: [mine()], drive })
+    const out = await searchDriveKnowledge({ query: "plan", limit: 3 }, f.ctx)
+    expect(out.results[0]).toMatchObject({ id: "doc00001", entity: "file", title: "Plan" })
+    expect(out.results[0]?.url).toBe("https://drive/doc00001")
+    expect(f.calls[0]?.account).toBe("acc-me")
+    expect(await searchDriveKnowledge({ query: "plan" }, fakeCtx({ drive }).ctx)).toEqual({
+      results: [],
+      nextCursor: null,
+    })
+  })
+
+  it("resolve: metadata, text when asked, not found for a missing file", async () => {
+    const f = fakeCtx({ accounts: [mine()], drive })
+    expect(await resolveDriveItem({ ref: "doc00001" }, f.ctx)).toEqual({
+      found: true,
+      title: "Plan",
+      modifiedAt: "2026-11-01T00:00:00.000Z",
+    })
+    expect(await resolveDriveItem({ ref: "doc00001", content: true }, f.ctx)).toMatchObject({
+      text: "exported doc00001 as text/plain",
+    })
+    const pdf = await resolveDriveItem({ ref: "pdf00001", content: true }, f.ctx)
+    expect(pdf).toMatchObject({ found: true, title: "Scan.pdf" })
+    expect(pdf.text).toBeUndefined()
+    expect(await resolveDriveItem({ ref: "missing1" }, f.ctx)).toEqual({ found: false })
+  })
+
+  it("resolve: outside the organization's chosen shared drives is not visible; no account is an error", async () => {
+    const team = fakeCtx({ accounts: [org([{ id: "DRIVE_OPS", name: "Ops" }])], drive })
+    expect(await resolveDriveItem({ ref: "team0001" }, team.ctx)).toEqual({ found: false })
+    await expect(resolveDriveItem({ ref: "doc00001" }, fakeCtx({ drive }).ctx)).rejects.toThrow(
+      "No Google Drive connection",
     )
   })
 })

@@ -1704,6 +1704,27 @@ export const appManifestJsonSchema = {
       },
       additionalProperties: false,
     },
+    // Items of the app's provider that Knowledge reaches without syncing them
+    // (apps/knowledge/source-registry.ts): `search` is woken by Knowledge's
+    // federated search with `{ query, limit, cursor }` and answers
+    // `{ results, nextCursor }` (the external search contract); `resolve` is
+    // woken with `{ ref, content }` for one item (a source link's external id)
+    // and answers `{ found, title, url, modifiedAt, text }`. `readScope`: the
+    // scope a person must hold for Knowledge to reach the app's items for them;
+    // `searchByDefault`: whether federated search includes the app when the
+    // org set no policy for it (PATCH /knowledge/sources/<app>, default true).
+    knowledgeItems: {
+      type: "object",
+      properties: {
+        search: { type: "string", minLength: 1 },
+        resolve: { type: "string", minLength: 1 },
+        readScope: { type: "string", pattern: SCOPE_PATTERN },
+        searchByDefault: { type: "boolean" },
+        timeoutMs: { type: "integer", minimum: 100, maximum: 10000 },
+      },
+      anyOf: [{ required: ["search"] }, { required: ["resolve"] }],
+      additionalProperties: false,
+    },
     skills: {
       type: "object",
       additionalProperties: {

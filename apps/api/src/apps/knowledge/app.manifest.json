@@ -53,7 +53,7 @@
         "tools": [
           "source_link_create"
         ],
-        "text": "REGISTERING A SINGLE LIVING DOC AS A LINK (not a copy), when asked to 'register / track / link / reference' ONE external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X', use source_link_create, it registers a LIVING source_link that points at the remote doc (it always reflects the current version), NOT a frozen body copy. Resolve the real remote file id FIRST (google-drive__search, never guess it from the file's name), then source_link_create with source:'google-drive' + externalId:<the file id> + a title. Do NOT knowledge__create a document for a 'live link' request: create freezes a snapshot copy of the body, so calling it a 'live link' is a misrepresentation. Conversely, use knowledge__create (a document) only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy. NEVER claim a link was registered unless source_link_create returned a real id, and NEVER freeze a copy and label it a live link."
+        "text": "REGISTERING A SINGLE LIVING DOC AS A LINK (not a copy), when asked to 'register / track / link / reference' ONE external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X', use source_link_create, it registers a LIVING source_link that points at the remote doc (it always reflects the current version), NOT a frozen body copy. Resolve the real remote id FIRST, never guess it from the file's name: a knowledge__search hit from that source gives source + sourceEntityId directly; otherwise for Google Drive the file id from google-drive__search (source:'google-drive'), for GitLab '<project id>:<branch>:<file path>' from gitlab_search or gitlab_list_tree (source:'gitlab'). Then source_link_create with source + externalId + a title. Do NOT knowledge__create a document for a 'live link' request: create freezes a snapshot copy of the body, so calling it a 'live link' is a misrepresentation. Conversely, use knowledge__create (a document) only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy. NEVER claim a link was registered unless source_link_create returned a real id, and NEVER freeze a copy and label it a live link."
       },
       {
         "tools": ["create"],
@@ -61,7 +61,7 @@
       }
     ]
   },
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -843,7 +843,7 @@
       }
     },
     "source_link_create": {
-      "description": "Register a LIVING source_link in Knowledge that POINTS at a single remote document (e.g. a specific Google Drive file) — it always reflects the CURRENT remote doc and is NEVER a frozen copy of its content. This is the right tool when the user wants to 'register / track / link / reference' an external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X' — register the live pointer, do NOT use `create` (which freezes a local document copy of the body). FIRST resolve the real remote file id with the connector's search (e.g. google-drive__search — never guess the id from the file's name), then pass `source` (the connector id, e.g. 'google-drive') + `externalId` (the file id from that search hit) + a concise `title`. The remote is re-probed before the link is stored, so a link can only be registered for a doc that actually exists and is visible — never assert a link without a successful result + id. Requires the knowledge:links:create scope. (Use `create` instead only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy.)",
+      "description": "Register a LIVING source_link in Knowledge that POINTS at a single remote document (e.g. a specific Google Drive file) — it always reflects the CURRENT remote doc and is NEVER a frozen copy of its content. This is the right tool when the user wants to 'register / track / link / reference' an external doc 'that keeps changing' / 'always points to the live version' / 'don't want a frozen copy' / 'this is the canonical X' — register the live pointer, do NOT use `create` (which freezes a local document copy of the body). FIRST resolve the real remote id, never guess it from the file's name: a knowledge__search hit from that source carries `source` + `sourceEntityId`; otherwise use the connector's own search (Google Drive: the file id from google-drive__search; GitLab: '<project id>:<branch>:<file path>'). Then pass `source` (the app id, e.g. 'google-drive', 'gitlab') + `externalId` + a concise `title`. The source's app checks the item: an app that does not serve links answers SOURCE_NOT_ENABLED. The remote is re-probed before the link is stored, so a link can only be registered for a doc that actually exists and is visible — never assert a link without a successful result + id. Requires the knowledge:links:create scope. (Use `create` instead only when the user wants to SAVE / SUMMARISE / IMPORT the content as an editable local copy.)",
       "searchKeywords": ["lien", "source", "link"],
       "requiredScopes": ["knowledge:links:create"],
       "trustBoundary": "user",
@@ -853,11 +853,11 @@
         "properties": {
           "source": {
             "type": "string",
-            "description": "The connector id the remote doc lives in (e.g. 'google-drive'). REQUIRED."
+            "description": "The app id the remote doc lives in (e.g. 'google-drive', 'gitlab'). REQUIRED."
           },
           "externalId": {
             "type": "string",
-            "description": "The remote document's id (the file id from a google-drive__search hit) the living link should point at. REQUIRED — resolve it via search, never guess it from the file name."
+            "description": "The remote document's id the living link points at: a knowledge__search hit's sourceEntityId, a Google Drive file id, or a GitLab '<project id>:<branch>:<file path>'. REQUIRED — resolve it via search, never guess it from the file name."
           },
           "title": {
             "type": "string",

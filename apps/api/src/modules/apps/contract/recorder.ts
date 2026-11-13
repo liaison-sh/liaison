@@ -157,7 +157,14 @@ const PERSON_FIELDS: Record<string, string> = {
   lastName: "Family",
   last_name: "Family",
   company: "Company",
+  // A commit's or a tag's people (git hosts).
+  author_name: "Customer",
+  committer_name: "Customer",
 }
+/** A person's handle on a service (`username`, `login`): a stand-in handle. */
+const HANDLE_FIELDS = new Set(["username", "login"])
+/** A person's picture: its URL (a hash of their email, an upload path) becomes a stand-in. */
+const AVATAR_FIELDS = new Set(["avatar_url", "avatarUrl"])
 /** Fields naming a street address, wherever they appear. */
 const ADDRESS_FIELDS = new Set(["address1", "address2"])
 /** Keys whose presence marks an object as a product, a variant or an order line. */
@@ -184,10 +191,12 @@ const PERSON_MARKERS = [
   "email",
   "defaultAddress",
   "address1",
+  "username",
+  "login",
 ]
 /** One stand-in `identityStandIn` makes. */
 const STAND_IN =
-  "(?:(?:Item|Vendor|Given|Family|Customer|Company) [0-9a-f]{8}|SKU-[0-9A-F]{8}|item-[0-9a-f]{8}|[0-9a-f]{8} Example Street)"
+  "(?:(?:Item|Vendor|Given|Family|Customer|Company) [0-9a-f]{8}|SKU-[0-9A-F]{8}|item-[0-9a-f]{8}|person-[0-9a-f]{8}|[0-9a-f]{8} Example Street|https://avatars\\.example\\.com/[0-9a-f]{8}\\.png)"
 /** Values a recording plan writes itself, carry no identity, or are stand-ins already: they stay. */
 const KEPT_IDENTITY_RE = new RegExp(
   `^(?:Default Title|Store Owner|Contract\\b.*|contract-.*|CF-.*|redacted.*|${STAND_IN}(?:[\\s,-]+${STAND_IN})*)$`,
@@ -202,6 +211,8 @@ function identityStandIn(kind: string, value: string): string {
   const tag = identityTag(value)
   if (kind === "sku") return `SKU-${tag.toUpperCase()}`
   if (kind === "handle") return `item-${tag}`
+  if (kind === "person-handle") return `person-${tag}`
+  if (kind === "avatar") return `https://avatars.example.com/${tag}.png`
   if (kind === "address") return `${tag} Example Street`
   return `${kind} ${tag}`
 }
@@ -236,7 +247,11 @@ function collectIdentity(v: unknown, out: Map<string, string>): Map<string, stri
         add("Company", (x as { name?: unknown }).name)
       else if (Object.hasOwn(PERSON_FIELDS, k)) add(PERSON_FIELDS[k] as string, x)
       else if (ADDRESS_FIELDS.has(k)) add("address", x)
-      else if (product && (k === "title" || k === "productTitle" || k === "product_title"))
+      else if (HANDLE_FIELDS.has(k)) add("person-handle", x)
+      else if (AVATAR_FIELDS.has(k) && typeof x === "string" && x.length > 0) {
+        // A URL (absolute or a path) is otherwise kept: a person's picture is not.
+        if (!KEPT_IDENTITY_RE.test(x) && !out.has(x)) out.set(x, identityStandIn("avatar", x))
+      } else if (product && (k === "title" || k === "productTitle" || k === "product_title"))
         add("Item", x)
       else if (product && k === "handle") add("handle", x)
       else if (person && !product && (k === "displayName" || k === "name")) add("Customer", x)

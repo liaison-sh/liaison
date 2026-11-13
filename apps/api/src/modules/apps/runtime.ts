@@ -61,6 +61,7 @@ import {
   exportRegistry,
   getDeclaredEmits,
   importRegistry,
+  knowledgeItemsRegistry,
   knowledgeSourceKindRegistry,
   manifestAttentionAxesRegistry,
   manifestAttentionRegistry,
@@ -4481,6 +4482,28 @@ async function registerSingleApp(
         }
       }
 
+      // Knowledge items (manifest `knowledgeItems`): Knowledge's federated search
+      // and its source links wake the app's `search` / `resolve` exports
+      // (apps/knowledge/source-registry.ts), like the search handler above.
+      if ((desc as any).knowledgeItems && isManifestFormat && bundlePath) {
+        const { knowledgeItemsOf, makeKnowledgeItemsDispatch } = await import(
+          "~/modules/apps/knowledge-sync-dispatch"
+        )
+        const itemsDecl = knowledgeItemsOf((desc as any).knowledgeItems)
+        if (itemsDecl) {
+          knowledgeItemsRegistry.set([orgId, desc.name], {
+            decl: itemsDecl,
+            dispatch: makeKnowledgeItemsDispatch({
+              appName: desc.name,
+              decl: itemsDecl,
+              bundlePath,
+              bridgeManifest: manifestForBridge!,
+              vouched: hasPrivilegedBridge(desc),
+            }),
+          })
+        }
+      }
+
       // Register slots and contributions: one list, read by `listSlotPanels`.
       registerAppSlots(orgId, desc.name, desc.slots, desc.contributions)
 
@@ -4738,6 +4761,7 @@ const APP_KEYED_REGISTRIES = [
   exportRegistry,
   importRegistry,
   knowledgeSourceKindRegistry,
+  knowledgeItemsRegistry,
 ]
 
 /**

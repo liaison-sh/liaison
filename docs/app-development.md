@@ -1273,6 +1273,42 @@ through a disconnected account of your app, read from the kernel row), each a JS
 and out, pinned to your app. A folder `add_folder_source` names (`ref`) goes to your `folder`
 kind when you declare one, with config `{ ref }`.
 
+### Search and live links without a sync
+
+An app can also let Knowledge reach its items without copying them: in
+federated search, as live source links, and when an agent reads a remote hit.
+Declare `knowledgeItems` in the manifest:
+
+```json
+"knowledgeItems": {
+  "search": "searchNotes",
+  "resolve": "resolveNote",
+  "readScope": "my-app:notes:read",
+  "searchByDefault": true,
+  "timeoutMs": 10000
+}
+```
+
+- `search` gets `{ query, limit, cursor }` and returns
+  `{ results: [{ id, title, entity, snippet, url, modifiedAt }], nextCursor }`.
+  Each `id` is the item's reference.
+- `resolve` gets `{ ref, content }` (a reference `search` returned, or one a
+  source link stored) and returns `{ found: true, title, url, modifiedAt }`,
+  plus `text` when `content` is true and the item has text. Return
+  `{ found: false }` when the item is gone or the person cannot see it. Throw
+  for anything else (an outage, a revoked token): a link then stays as it was
+  instead of going stale.
+- Both run for the person searching or linking, through their own account of
+  your app's connection, and only for people who hold `readScope`.
+- `searchByDefault: false` keeps your app out of federated search until an
+  admin turns it on (`PATCH /api/knowledge/sources/<your app>` with
+  `{ "broadSearchEnabled": true }`).
+- `knowledge__source_link_create` with `source` set to your app's name and
+  `externalId` set to a reference stores a live link; verify and refresh ask
+  `resolve` again.
+- `timeoutMs`: one run's time limit, 5 s when absent, at most 10 s.
+
+
 ## See also
 
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec

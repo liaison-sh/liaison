@@ -176,6 +176,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.apps.schema_hash": CONTENT_HASH,
   "kernel.apps_installed.signature_bundle":
     "an org custom app's public release signature, proves the package, holds no secret",
+  "kernel.app_code_modules.source_key": NOT_SECRET_KEY,
   "kernel.attention_events.source_key": NOT_SECRET_KEY,
   "kernel.connected_accounts.token_expires_at": "a timestamp",
   "kernel.contacts.audience_key": NOT_SECRET_KEY,

@@ -18,6 +18,7 @@ Liaison never calls out to your transcript service. The connection exists so Lia
 
 Setting up the connection needs `calls:admin`.
 
+The app never holds the signing secret: `webhook_info` returns it because Liaison writes it into the answer for an admin, and Liaison checks each delivery's signature itself.
 ## Send transcripts from your service
 
 Configure your transcript service to POST segment and summary JSON to the Calls app's `segment` webhook, `https://<your-liaison-host>/webhooks/<org-id>/calls/segment`:

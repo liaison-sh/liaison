@@ -24,6 +24,8 @@ Grant the token the scopes Liaison needs to read invoices, the trial balance and
 4. Set **Scope (company|firm)** to `company` or `firm`, matching where you created the token. A mismatch makes the reads fail.
 5. For a firm token, fill in **Company ID (firm tokens only)**.
 
+The API token never reaches the app's code: Liaison adds it to each Pennylane request (and to the first hop of a received e-invoice download) itself. The scope and company id are plain settings the app reads, and the e-invoicing webhook signature is checked by Liaison with the stored secret.
+
 Connecting needs `pennylane:admin:connection`. Connect the book for the whole organization so agents and routines can reach it. A personal connection returns `not_connected` to everyone else. See [Connect apps](../connecting-apps.md).
 
 ## Ask finance questions

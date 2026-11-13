@@ -22,6 +22,8 @@ Connecting needs `boxtal:admin:connection`. Connect a shared company account as 
 
 Boxtal posts tracking and document events back to Liaison through two webhooks, signed with a secret Liaison generates (`boxtalWebhookSecret`). If tracking stops updating, an agent can re-register them with `webhooks_repair`. Each event is applied once: a repeat of an event already applied is acknowledged and ignored, and an event whose processing was interrupted is answered as not done yet, so it is delivered again and applied on a later attempt.
 
+The API keys never reach the app's code: Liaison adds them to each Boxtal request itself.
+
 ## Set the ship-from address and label format
 
 Open **Settings › Boxtal**. Editing these sections needs `boxtal:catalog:write`.

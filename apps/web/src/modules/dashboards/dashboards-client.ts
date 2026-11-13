@@ -1320,6 +1320,10 @@ export interface TableColumn {
   required?: boolean
   /** A choice or choices column's values, in order. */
   choices?: string[]
+  /** A backed choice column's colour per choice (a project's status colours): drawn as pills. */
+  choiceColors?: Record<string, string>
+  /** A backed date column that is a deadline (a task's due date): late or near reads tinted. */
+  deadline?: boolean
   /** An amount column's currency (ISO 4217). */
   currency?: string
   /** A link column may point only at this app (and entity type). */

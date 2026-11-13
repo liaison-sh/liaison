@@ -11,8 +11,11 @@ import {
   addFormColumns,
   cellText,
   changeSummary,
+  choiceColor,
   choicesFrom,
+  columnBands,
   columnKeyFrom,
+  deadlineState,
   isStale,
   parseCellInput,
   relativeTime,
@@ -197,5 +200,34 @@ describe("client helpers", () => {
     // A taken table name is a 409 too, but not a stale row: its own code.
     expect(tableErrorFrom(new ApiError("exists", 409, "conflict")).code).toBe("conflict")
     expect(tableErrorFrom(new ApiError("bad", 400, "invalid_request")).code).toBe("invalid_request")
+  })
+})
+
+describe("cells read like their data", () => {
+  const status = {
+    key: "status",
+    label: "Status",
+    type: "choice" as const,
+    choices: ["A", "B"],
+    choiceColors: { A: "#22c55e", B: "red" },
+  }
+  it("a choice's colour is hex only", () => {
+    expect(choiceColor(status, "A")).toBe("#22c55e")
+    expect(choiceColor(status, "B")).toBeNull()
+    expect(choiceColor(status, "C")).toBeNull()
+  })
+  it("a deadline reads late, near (its track filling) or neither", () => {
+    expect(deadlineState("2026-11-12", "2026-11-13")).toEqual({ tone: "late", fill: 1 })
+    expect(deadlineState("2026-11-13", "2026-11-13")).toEqual({ tone: "soon", fill: 1 })
+    expect(deadlineState("2026-11-16", "2026-11-13")).toEqual({ tone: "soon", fill: 0.25 })
+    expect(deadlineState("2026-11-20", "2026-11-13")).toEqual({ tone: null, fill: 0 })
+    expect(deadlineState(null, "2026-11-13")).toBeNull()
+  })
+  it("groups consecutive columns by where they come from", () => {
+    const cols = ["a", "b", "c"].map((key) => ({ key, label: key, type: "text" as const }))
+    expect(columnBands(cols, (k) => k !== "c")).toEqual([
+      { own: false, span: 2 },
+      { own: true, span: 1 },
+    ])
   })
 })

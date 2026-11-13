@@ -73,7 +73,11 @@ async function board(): Promise<Board> {
       actor: owner,
       input: {
         name: `backed-${randomUUID().slice(0, 8)}`,
-        statuses: [{ label: "Todo" }, { label: "Doing" }, { label: "Done", terminal: true }],
+        statuses: [
+          { label: "Todo", color: "#6b7280" },
+          { label: "Doing", color: "#3b82f6" },
+          { label: "Done", terminal: true },
+        ],
         fields: FIELDS,
       },
     })
@@ -195,6 +199,10 @@ describe("a backed table reads the project's tasks", () => {
       ["note", "text"],
     ])
     expect(t.columns[1]!.choices).toEqual(["Todo", "Doing", "Done"])
+    // The status column carries the statuses' colours (the grid's pills); a colourless one none.
+    expect(t.columns[1]!.choiceColors).toEqual({ Todo: "#6b7280", Doing: "#3b82f6" })
+    expect(t.columns[3]!.choiceColors).toBeUndefined()
+    expect(t.columns.some((c) => c.deadline)).toBe(false)
     expect(t.backing).toMatchObject({
       app: "projects",
       entity: "task",

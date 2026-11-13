@@ -60,6 +60,7 @@ const READ_ONLY: Record<string, string[]> = {
     "budget_get",
     // A reconcile's facts: the period's tasks under the asker's own rows, nothing stored.
     "reconcile_facts",
+    "reconcile_get",
     "tasks_byAssignee",
     "attentionItems",
     "tasks_byProject",

@@ -4,12 +4,16 @@
 // projects' switches (`syncTimeBudgetsFeature`), and time rows whose task moved
 // follow it to its project. It reads only the projects' switch state and the
 // task each time row belongs to, never anyone's activity, and tells no one.
+// Every hour it also tidies reconcile state it stored itself: a proposal nobody touched for
+// 30 days is deleted with the cards it drew, a reservation that never got its document is
+// released, and a reservation whose document was issued becomes billed. It reads no trace.
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { clearToolCardsByKey } from "~/modules/agent/runtime/tool-card-store"
 import {
   SKIPPED_MOVING,
   sweepSkippingMoving,
@@ -69,8 +73,93 @@ export async function healTimeBudgets(): Promise<{
   return { checked: orgIds.length, corrected, rowsRepointed }
 }
 
-/** One run of the hourly sweep: the heal runs at its hour of the day. */
+/** A proposal untouched this many days is housekeeping: it holds labels from someone's reads. */
+export const IDLE_PROPOSAL_DAYS = 30
+/** A reservation with no document after this many hours is released. */
+export const RESERVATION_HOLD_HOURS = 1
+/** Document states in which a reserved claim is billed. */
+const ISSUED_STATES = ["issued", "paid", "overdue"] as const
+
+/**
+ * Delete every proposed reconciliation untouched for 30 days, then clear the cards it drew in
+ * its thread, so no proof label outlives it. A card that left `proposed` is never touched.
+ */
+export async function sweepIdleProposals(now: Date = new Date()): Promise<{
+  deleted: number
+  cardsCleared: number
+}> {
+  const cutoff = new Date(now.getTime() - IDLE_PROPOSAL_DAYS * 86_400_000).toISOString()
+  const gone = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("projects-reconcile-sweep", async (tx) =>
+      extractRows<{ id: string; org_id: string; created_by: string; thread_id: string | null }>(
+        await tx.execute(drizzleSql`
+          DELETE FROM ${projectsRel("reconciliations")}
+           WHERE state = 'proposed' AND updated_at < ${cutoff}::timestamptz
+             AND ${notMoving(drizzleSql.raw("org_id"))}
+          RETURNING id::text AS id, org_id::text AS org_id, created_by::text AS created_by,
+                    thread_id::text AS thread_id`),
+      ),
+    ),
+  )
+  let cardsCleared = 0
+  for (const r of gone) {
+    if (!r.thread_id) continue
+    cardsCleared += await clearToolCardsByKey({
+      orgId: r.org_id,
+      actorId: r.created_by,
+      threadId: r.thread_id,
+      app: "projects",
+      key: `reconcile:${r.id}`,
+    })
+  }
+  return { deleted: gone.length, cardsCleared }
+}
+
+/**
+ * Claims follow their document: a reservation whose document was issued is billed, and one
+ * that still has no document an hour on is released, so its work can be billed again.
+ */
+export async function sweepClaims(): Promise<{ billed: number; released: number }> {
+  return sweepSkippingMoving((notMoving) =>
+    withSystemDb("projects-reconcile-sweep", async (tx) => {
+      const released = extractRows<{ id: string }>(
+        await tx.execute(drizzleSql`
+          UPDATE ${projectsRel("billing_claims")} SET state = 'released', updated_at = now()
+           WHERE state = 'reserved' AND document_id IS NULL
+             AND created_at < now() - make_interval(hours => ${RESERVATION_HOLD_HOURS})
+             AND ${notMoving(drizzleSql.raw("org_id"))}
+          RETURNING id::text AS id`),
+      ).length
+      const docs = `${schemaRef("app_invoicing")}.documents`
+      const present = extractRows<{ present: boolean }>(
+        await tx.execute(drizzleSql`SELECT to_regclass(${docs}) IS NOT NULL AS present`),
+      )[0]?.present
+      if (!present) return { billed: 0, released }
+      const billed = extractRows<{ id: string }>(
+        await tx.execute(drizzleSql`
+          UPDATE ${projectsRel("billing_claims")} c
+             SET state = 'billed', document_number = coalesce(c.document_number, d.number),
+                 updated_at = now()
+            FROM ${drizzleSql.raw(docs)} d
+           WHERE c.state = 'reserved' AND d.id = c.document_id AND d.org_id = c.org_id
+             AND d.status IN (${drizzleSql.join(
+               ISSUED_STATES.map((st) => drizzleSql`${st}`),
+               drizzleSql`, `,
+             )})
+             AND ${notMoving(drizzleSql.raw("c.org_id"))}
+          RETURNING c.id::text AS id`),
+      ).length
+      return { billed, released }
+    }),
+  )
+}
+
+/** One run of the hourly sweep: reconcile housekeeping every hour, the heal at its hour. */
 export async function runReconcileSweep(now: Date = new Date()): Promise<void> {
+  log.info(
+    { ...(await sweepIdleProposals(now)), ...(await sweepClaims()) },
+    "projects_reconcile_sweep",
+  )
   if (now.getUTCHours() !== HEAL_HOUR_UTC) return
   log.info(await healTimeBudgets(), "projects_reconcile_sweep_heal")
 }

@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.19.0",
+  "version": "1.20.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1956,6 +1956,213 @@
       "trustBoundary": "user",
       "handler": "reconcilePropose",
       "feature": "time_budgets",
+      "returns": {
+        "schema": {
+          "reconciliationId": "string",
+          "revision": "number",
+          "state": "string",
+          "title": "string",
+          "end": "string",
+          "sub": "string",
+          "fit": "string",
+          "groups": "object",
+          "cardNotes": "object",
+          "tot": "object",
+          "cover": "any",
+          "notice": "any",
+          "connectGithub": "any",
+          "fixedPrice": "any",
+          "editable": "any",
+          "foot": "any"
+        }
+      },
+      "resultCard": {
+        "kind": "groups",
+        "pill": {
+          "label": "Projects: reconcile"
+        },
+        "icon": "briefcase",
+        "title": "{{result.title}}",
+        "end": "{{result.end}}",
+        "sub": "{{result.sub}}",
+        "status": {
+          "path": "result.fit",
+          "map": {
+            "fits": {
+              "label": {
+                "label": "Fits the plan"
+              },
+              "tone": "success"
+            },
+            "over": {
+              "label": {
+                "label": "Over the plan"
+              },
+              "tone": "warning"
+            },
+            "estimated": {
+              "label": {
+                "label": "Time spent mostly estimated"
+              },
+              "tone": "muted"
+            },
+            "fixed": {
+              "label": {
+                "label": "Fixed price"
+              },
+              "tone": "muted"
+            },
+            "nothing": {
+              "label": {
+                "label": "Nothing to check"
+              },
+              "tone": "muted"
+            },
+            "billed": {
+              "label": {
+                "label": "Invoiced"
+              },
+              "tone": "accent"
+            }
+          }
+        },
+        "cover": "{{result.cover}}",
+        "notice": {
+          "when": {
+            "path": "result.notice",
+            "exists": true
+          },
+          "icon": "plug",
+          "title": "{{result.notice.title}}",
+          "text": "{{result.notice.text}}"
+        },
+        "columns": [
+          {
+            "key": "planned",
+            "label": {
+              "label": "Planned"
+            }
+          },
+          {
+            "key": "realNote",
+            "label": {
+              "label": "Time spent"
+            }
+          },
+          {
+            "key": "bill",
+            "label": {
+              "label": "Billed"
+            },
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          },
+          {
+            "key": "amount",
+            "label": {
+              "label": "Amount"
+            },
+            "format": "money",
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          }
+        ],
+        "groups": {
+          "path": "result.groups",
+          "label": "{{group.label}}",
+          "rows": {
+            "path": "group.rows",
+            "id": "row.id",
+            "name": "{{row.name}}",
+            "tag": "{{row.tag}}",
+            "why": "{{row.why}}",
+            "cells": {
+              "planned": "row.planned",
+              "realNote": "row.real",
+              "bill": "row.bill",
+              "amount": "row.amount"
+            },
+            "links": {
+              "path": "row.proof",
+              "label": "{{item.label}}",
+              "urlPath": "item.href",
+              "limit": 3
+            }
+          }
+        },
+        "tot": {
+          "path": "result.tot",
+          "k": "{{item.k}}",
+          "v": "{{item.v}}",
+          "format": "money"
+        },
+        "notes": {
+          "path": "result.cardNotes",
+          "text": "{{item.text}}"
+        },
+        "foot": "{{result.foot}}",
+        "actions": [
+          {
+            "kind": "open",
+            "label": {
+              "label": "Connect GitHub"
+            },
+            "view": "settings",
+            "idPath": "result.connectGithub",
+            "when": {
+              "path": "result.connectGithub",
+              "exists": true
+            }
+          }
+        ],
+        "edit": {
+          "when": {
+            "path": "result.editable",
+            "equals": "yes"
+          },
+          "openLabel": {
+            "label": "Change lines"
+          },
+          "doneLabel": {
+            "label": "Done changing"
+          },
+          "tool": "reconcile_line_update",
+          "params": {
+            "reconciliationId": "result.reconciliationId",
+            "revision": "result.revision"
+          },
+          "rowParam": "lineId",
+          "fields": [
+            {
+              "param": "bill",
+              "label": {
+                "label": "Billed"
+              },
+              "kind": "quantity",
+              "valuePath": "row.billValue",
+              "unitPath": "row.unit"
+            },
+            {
+              "param": "realNote",
+              "label": {
+                "label": "Time spent, only for you"
+              },
+              "kind": "quantity",
+              "valuePath": "row.realValue",
+              "unitPath": "row.unit",
+              "private": true
+            }
+          ]
+        },
+        "latestKey": "reconcile:{{result.reconciliationId}}",
+        "supersededLabel": {
+          "label": "First version"
+        }
+      },
       "params": {
         "type": "object",
         "properties": {
@@ -2113,6 +2320,508 @@
         "required": [
           "project",
           "lines"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_line_update": {
+      "description": "Change one line of your own proposed reconcile card: what it bills (bill, in the card's unit), its wording, or a time-spent note only you see (realNote). Send the card's revision; the card comes back updated.",
+      "searchKeywords": [
+        "reconcile",
+        "line",
+        "bill",
+        "change",
+        "modifier",
+        "ligne"
+      ],
+      "writesToTable": "app_projects.reconciliation_lines",
+      "sinkReadersSelf": true,
+      "requiredScopes": [
+        "projects:reconcile:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "reconcileLineUpdate",
+      "feature": "time_budgets",
+      "returns": {
+        "schema": {
+          "reconciliationId": "string",
+          "revision": "number",
+          "state": "string",
+          "title": "string",
+          "end": "string",
+          "sub": "string",
+          "fit": "string",
+          "groups": "object",
+          "cardNotes": "object",
+          "tot": "object",
+          "cover": "any",
+          "notice": "any",
+          "connectGithub": "any",
+          "fixedPrice": "any",
+          "editable": "any",
+          "foot": "any"
+        }
+      },
+      "resultCard": {
+        "kind": "groups",
+        "pill": {
+          "label": "Projects: reconcile"
+        },
+        "icon": "briefcase",
+        "title": "{{result.title}}",
+        "end": "{{result.end}}",
+        "sub": "{{result.sub}}",
+        "status": {
+          "path": "result.fit",
+          "map": {
+            "fits": {
+              "label": {
+                "label": "Fits the plan"
+              },
+              "tone": "success"
+            },
+            "over": {
+              "label": {
+                "label": "Over the plan"
+              },
+              "tone": "warning"
+            },
+            "estimated": {
+              "label": {
+                "label": "Time spent mostly estimated"
+              },
+              "tone": "muted"
+            },
+            "fixed": {
+              "label": {
+                "label": "Fixed price"
+              },
+              "tone": "muted"
+            },
+            "nothing": {
+              "label": {
+                "label": "Nothing to check"
+              },
+              "tone": "muted"
+            },
+            "billed": {
+              "label": {
+                "label": "Invoiced"
+              },
+              "tone": "accent"
+            }
+          }
+        },
+        "cover": "{{result.cover}}",
+        "notice": {
+          "when": {
+            "path": "result.notice",
+            "exists": true
+          },
+          "icon": "plug",
+          "title": "{{result.notice.title}}",
+          "text": "{{result.notice.text}}"
+        },
+        "columns": [
+          {
+            "key": "planned",
+            "label": {
+              "label": "Planned"
+            }
+          },
+          {
+            "key": "realNote",
+            "label": {
+              "label": "Time spent"
+            }
+          },
+          {
+            "key": "bill",
+            "label": {
+              "label": "Billed"
+            },
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          },
+          {
+            "key": "amount",
+            "label": {
+              "label": "Amount"
+            },
+            "format": "money",
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          }
+        ],
+        "groups": {
+          "path": "result.groups",
+          "label": "{{group.label}}",
+          "rows": {
+            "path": "group.rows",
+            "id": "row.id",
+            "name": "{{row.name}}",
+            "tag": "{{row.tag}}",
+            "why": "{{row.why}}",
+            "cells": {
+              "planned": "row.planned",
+              "realNote": "row.real",
+              "bill": "row.bill",
+              "amount": "row.amount"
+            },
+            "links": {
+              "path": "row.proof",
+              "label": "{{item.label}}",
+              "urlPath": "item.href",
+              "limit": 3
+            }
+          }
+        },
+        "tot": {
+          "path": "result.tot",
+          "k": "{{item.k}}",
+          "v": "{{item.v}}",
+          "format": "money"
+        },
+        "notes": {
+          "path": "result.cardNotes",
+          "text": "{{item.text}}"
+        },
+        "foot": "{{result.foot}}",
+        "actions": [
+          {
+            "kind": "open",
+            "label": {
+              "label": "Connect GitHub"
+            },
+            "view": "settings",
+            "idPath": "result.connectGithub",
+            "when": {
+              "path": "result.connectGithub",
+              "exists": true
+            }
+          }
+        ],
+        "edit": {
+          "when": {
+            "path": "result.editable",
+            "equals": "yes"
+          },
+          "openLabel": {
+            "label": "Change lines"
+          },
+          "doneLabel": {
+            "label": "Done changing"
+          },
+          "tool": "reconcile_line_update",
+          "params": {
+            "reconciliationId": "result.reconciliationId",
+            "revision": "result.revision"
+          },
+          "rowParam": "lineId",
+          "fields": [
+            {
+              "param": "bill",
+              "label": {
+                "label": "Billed"
+              },
+              "kind": "quantity",
+              "valuePath": "row.billValue",
+              "unitPath": "row.unit"
+            },
+            {
+              "param": "realNote",
+              "label": {
+                "label": "Time spent, only for you"
+              },
+              "kind": "quantity",
+              "valuePath": "row.realValue",
+              "unitPath": "row.unit",
+              "private": true
+            }
+          ]
+        },
+        "latestKey": "reconcile:{{result.reconciliationId}}",
+        "supersededLabel": {
+          "label": "First version"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "number",
+            "description": "The card's revision."
+          },
+          "lineId": {
+            "type": "string",
+            "description": "A lineId of the card."
+          },
+          "bill": {
+            "type": [
+              "number",
+              "string"
+            ],
+            "description": "3.5, or 3.5 days, 28 h."
+          },
+          "wording": {
+            "type": "string",
+            "description": "The work, never who did it."
+          },
+          "realNote": {
+            "type": [
+              "number",
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reconciliationId",
+          "revision",
+          "lineId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_get": {
+      "description": "Read a stored reconcile card by its reconciliationId, as it stands.",
+      "searchKeywords": [
+        "reconcile",
+        "card",
+        "carte",
+        "rapprochement"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:reconcile:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "reconcileGet",
+      "feature": "time_budgets",
+      "returns": {
+        "schema": {
+          "reconciliationId": "string",
+          "revision": "number",
+          "state": "string",
+          "title": "string",
+          "end": "string",
+          "sub": "string",
+          "fit": "string",
+          "groups": "object",
+          "cardNotes": "object",
+          "tot": "object",
+          "cover": "any",
+          "notice": "any",
+          "connectGithub": "any",
+          "fixedPrice": "any",
+          "editable": "any",
+          "foot": "any"
+        }
+      },
+      "resultCard": {
+        "kind": "groups",
+        "pill": {
+          "label": "Projects: reconcile"
+        },
+        "icon": "briefcase",
+        "title": "{{result.title}}",
+        "end": "{{result.end}}",
+        "sub": "{{result.sub}}",
+        "status": {
+          "path": "result.fit",
+          "map": {
+            "fits": {
+              "label": {
+                "label": "Fits the plan"
+              },
+              "tone": "success"
+            },
+            "over": {
+              "label": {
+                "label": "Over the plan"
+              },
+              "tone": "warning"
+            },
+            "estimated": {
+              "label": {
+                "label": "Time spent mostly estimated"
+              },
+              "tone": "muted"
+            },
+            "fixed": {
+              "label": {
+                "label": "Fixed price"
+              },
+              "tone": "muted"
+            },
+            "nothing": {
+              "label": {
+                "label": "Nothing to check"
+              },
+              "tone": "muted"
+            },
+            "billed": {
+              "label": {
+                "label": "Invoiced"
+              },
+              "tone": "accent"
+            }
+          }
+        },
+        "cover": "{{result.cover}}",
+        "notice": {
+          "when": {
+            "path": "result.notice",
+            "exists": true
+          },
+          "icon": "plug",
+          "title": "{{result.notice.title}}",
+          "text": "{{result.notice.text}}"
+        },
+        "columns": [
+          {
+            "key": "planned",
+            "label": {
+              "label": "Planned"
+            }
+          },
+          {
+            "key": "realNote",
+            "label": {
+              "label": "Time spent"
+            }
+          },
+          {
+            "key": "bill",
+            "label": {
+              "label": "Billed"
+            },
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          },
+          {
+            "key": "amount",
+            "label": {
+              "label": "Amount"
+            },
+            "format": "money",
+            "when": {
+              "path": "result.fixedPrice",
+              "exists": false
+            }
+          }
+        ],
+        "groups": {
+          "path": "result.groups",
+          "label": "{{group.label}}",
+          "rows": {
+            "path": "group.rows",
+            "id": "row.id",
+            "name": "{{row.name}}",
+            "tag": "{{row.tag}}",
+            "why": "{{row.why}}",
+            "cells": {
+              "planned": "row.planned",
+              "realNote": "row.real",
+              "bill": "row.bill",
+              "amount": "row.amount"
+            },
+            "links": {
+              "path": "row.proof",
+              "label": "{{item.label}}",
+              "urlPath": "item.href",
+              "limit": 3
+            }
+          }
+        },
+        "tot": {
+          "path": "result.tot",
+          "k": "{{item.k}}",
+          "v": "{{item.v}}",
+          "format": "money"
+        },
+        "notes": {
+          "path": "result.cardNotes",
+          "text": "{{item.text}}"
+        },
+        "foot": "{{result.foot}}",
+        "actions": [
+          {
+            "kind": "open",
+            "label": {
+              "label": "Connect GitHub"
+            },
+            "view": "settings",
+            "idPath": "result.connectGithub",
+            "when": {
+              "path": "result.connectGithub",
+              "exists": true
+            }
+          }
+        ],
+        "edit": {
+          "when": {
+            "path": "result.editable",
+            "equals": "yes"
+          },
+          "openLabel": {
+            "label": "Change lines"
+          },
+          "doneLabel": {
+            "label": "Done changing"
+          },
+          "tool": "reconcile_line_update",
+          "params": {
+            "reconciliationId": "result.reconciliationId",
+            "revision": "result.revision"
+          },
+          "rowParam": "lineId",
+          "fields": [
+            {
+              "param": "bill",
+              "label": {
+                "label": "Billed"
+              },
+              "kind": "quantity",
+              "valuePath": "row.billValue",
+              "unitPath": "row.unit"
+            },
+            {
+              "param": "realNote",
+              "label": {
+                "label": "Time spent, only for you"
+              },
+              "kind": "quantity",
+              "valuePath": "row.realValue",
+              "unitPath": "row.unit",
+              "private": true
+            }
+          ]
+        },
+        "latestKey": "reconcile:{{result.reconciliationId}}",
+        "supersededLabel": {
+          "label": "First version"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reconciliationId"
         ],
         "additionalProperties": false
       }

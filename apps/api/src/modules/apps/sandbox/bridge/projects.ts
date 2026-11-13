@@ -2106,7 +2106,43 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             userId: actor.userId,
             scopes: callerScopes ?? [],
             ...(bridgeOptions?.threadId ? { threadId: bridgeOptions.threadId } : {}),
+            ...(bridgeOptions?.origin ? { origin: bridgeOptions.origin } : {}),
             input: params as never,
+          }),
+        )
+      })
+    },
+    /** One line of the person's own proposed card: its bill, wording or time-spent note. */
+    projects_reconcileLineUpdate: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { reconcileLineUpdate } = await import("~/apps/projects/service/reconcile")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await reconcileLineUpdate({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            ...(bridgeOptions?.origin ? { origin: bridgeOptions.origin } : {}),
+            input: params as never,
+          }),
+        )
+      })
+    },
+    /** A stored reconcile card, read again under the reader's own rows. */
+    projects_reconcileGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { reconciliationId?: string }
+      return typedServiceCall(async () => {
+        const { reconcileGet } = await import("~/apps/projects/service/reconcile")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await reconcileGet({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            input: { reconciliationId: params.reconciliationId ?? "" },
           }),
         )
       })

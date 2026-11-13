@@ -1152,7 +1152,7 @@ async function enqueueEnvelopeTriggeredJobs(
 // --- Page writes -------------------------------------------------------------
 //
 // A sync delivers mail a PAGE at a time (a Gmail list page, a history page, an
-// IMAP batch). The bundle fetches and normalizes it; the host writes it in ONE
+// IMAP batch). The handlers fetch and normalize it; the host writes it in ONE
 // transaction through `mail_writePage` (modules/mail/page-write.ts): stored
 // messages skipped, conversations created and rolled up, messages inserted (and
 // sealed for an armed personal mailbox), senders resolved to contacts under the
@@ -1169,9 +1169,9 @@ async function enqueueEnvelopeTriggeredJobs(
 /** Messages per `mail_writePage` call (the host's bound). */
 const PAGE_WRITE_MAX_MESSAGES = 100
 
-/** Decoded bytes a page may hold in the QuickJS heap before it is written. A
- *  Gmail page is fetched message by message; buffering it whole must not
- *  bring back the multi-MB peaks that 32 MB heap cannot absorb. */
+/** Decoded bytes a page may hold in memory before it is written. A Gmail page
+ *  is fetched message by message; buffering it whole would hold multi-MB
+ *  peaks per running sync. */
 const PAGE_WRITE_BYTE_BUDGET = 2_000_000
 
 /** A rough size of a decoded message in the heap, for the page byte budget. */
@@ -1183,7 +1183,7 @@ function messageHeapBytes(message: any): number {
   return bytes
 }
 
-/** Attachments this bundle must import after the page commits: decoded bytes
+/** Attachments these handlers must import after the page commits: decoded bytes
  *  (IMAP), or a provider attachment id whose bytes the host downloads (Gmail
  *  hands every real attachment over as an `attachmentId`, never inline). */
 function hasAttachmentsToImport(message: any): boolean {
@@ -2270,8 +2270,9 @@ function isOversizedResponseError(err: unknown): boolean {
   return /exceeds .* bytes/i.test(String(err))
 }
 
-/** True for the QuickJS execution-deadline error ("InternalError: interrupted"). */
-function isSandboxInterrupt(err: unknown): boolean {
+/** True for a run's deadline error: every host call past it throws one saying
+ *  "interrupted" (modules/apps/core/run-core.ts). */
+function isRunInterrupt(err: unknown): boolean {
   return String(err).includes("interrupted")
 }
 
@@ -2332,7 +2333,7 @@ async function fetchGmailMessageResilient(
     // would record the message as "skipped" and let the page continue on a
     // budget that is already gone. Let it unwind to the run-level catch, which
     // schedules the paced continuation.
-    if (isSandboxInterrupt(err)) throw err
+    if (isRunInterrupt(err)) throw err
     if (!isOversizedResponseError(err)) {
       // A single bad message must never kill the page: log and skip.
       ctx.log_warn(
@@ -2373,7 +2374,7 @@ async function fetchGmailMessageResilient(
       )
       return { record, degraded: true }
     } catch (metaErr) {
-      if (isSandboxInterrupt(metaErr)) throw metaErr
+      if (isRunInterrupt(metaErr)) throw metaErr
       ctx.log_warn(
         "Skipping oversized Gmail message: metadata fallback failed",
         JSON.stringify({ accountId, messageId, error: String(metaErr) }),
@@ -3013,7 +3014,7 @@ export async function gmailIncrementalSync(
       // A Gmail per-user rate limit (HTTP 403 "Quota exceeded", 429) is the
       // other way a healthy replay ends early: the quota refills within a
       // minute, so the same continuation applies, paced back to a minute.
-      const interrupted = isSandboxInterrupt(err)
+      const interrupted = isRunInterrupt(err)
       const rateLimited = isGmailRateLimit(err)
       const progressed = messagesThisRun > 0 || latestHistoryId !== historyId
       if ((interrupted || rateLimited) && progressed) {

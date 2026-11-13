@@ -117,7 +117,7 @@ Every status change of a task is recorded: the status it left, the one it entere
 
 ## Chart a project on a dashboard
 
-`tasks_aggregate` counts a project's tasks (or up to 50 projects' at once) by status, handler (assignee), priority, due date, time in their status, SLA state or a choice, person, checkbox or date field, and can sum or average a number or amount field. Done tasks are left out unless you ask for them. It counts only the tasks you can read, so a dashboard shows each viewer their own figures. Any dashboard block can read it: a bar on `groupLabel` and `value`, a metric that sums `value`.
+`tasks_aggregate` counts a project's tasks (or up to 50 projects' at once) by status, handler (assignee), priority, due date, time in their status, SLA state or a choice, person, checkbox or date field, and can sum or average a number or amount field. Amounts in different currencies are never added together: each row then says its currency, one row per currency. Done tasks are left out unless you ask for them. It counts only the tasks you can read, so a dashboard shows each viewer their own figures. Any dashboard block can read it: a bar on `groupLabel` and `value`, a metric that sums `value`.
 
 - **Time in status** groups tasks by how long they have been in their current status: less than 1 day, 1 to 3 days, 3 to 7, 7 to 14, 14 to 30, 30 days or more (or your own bounds).
 - **SLA state** checks whether each task reached one of the statuses you name within a number of working days of its creation (the organisation's working hours, Monday to Friday 09:00 to 18:00 by default): met, missed, open and on time, open and late.
@@ -157,7 +157,7 @@ Ask an agent for "a project overview of Repairs" and it creates one dashboard in
 
 ### Edit tasks from a dashboard table
 
-A [dashboard table](../agents/dashboard-tables.md) can show a project's tasks as its rows: its read-through columns are task values (title, status, assignee, due, priority, or any task field), and its own columns are notes kept per task. Editing a task value changes the task, with its history, as you; it needs the right to edit tasks. Adding a row creates a task; delete or archive a task in Projects.
+A [dashboard table](../agents/dashboard-tables.md) can show a project's tasks as its rows: its read-through columns are task values (title, status, assignee, due, priority, or any task field), and its own columns are notes kept per task. Editing a task value changes the task, with its history, as you; it needs the right to edit tasks, and it is refused when someone changed the task since you loaded the table (load it again and retry). The table shows tasks only to people who may read them in Projects. Adding a row creates a task; delete or archive a task in Projects.
 
 ## Automate a project with routines
 

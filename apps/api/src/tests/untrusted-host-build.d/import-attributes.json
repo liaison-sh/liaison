@@ -1,0 +1,6 @@
+{
+  "file": "apps/api/src/modules/apps/sandbox/import-attributes.ts",
+  "sites": { "Bun.Transpiler@transpileChecked": 1 },
+  "input": "checked",
+  "reason": "transpileChecked is the one door for text that is not the repo's own (an installed package's handler bundle at activation): it takes a CheckedSource, which only the TypeScript-parser checks in this file make, and re-tests the brand at run time."
+}

@@ -454,16 +454,18 @@ async function loadsAsBundle(
   // Refused before the host parses it: Bun runs a macro import (`with { type: "macro" }`)
   // while it transforms the text, so the parse below would run the app's code here, outside
   // the sandbox. No sandboxed bundle needs an import attribute (it cannot import at all).
-  const { importAttributeIssue } = await import("~/modules/apps/sandbox/import-attributes")
-  const issue = await importAttributeIssue(source)
-  if (issue !== null) {
+  const { checkAttributeFree, transpileChecked } = await import(
+    "~/modules/apps/sandbox/import-attributes"
+  )
+  const checked = await checkAttributeFree(source)
+  if (!checked.ok) {
     return {
       code: "module_invalid",
-      message: `its handler bundle cannot be checked safely: ${issue}; a handler bundle may carry no import attribute`,
+      message: `its handler bundle cannot be checked safely: ${checked.issue}; a handler bundle may carry no import attribute`,
     }
   }
   try {
-    new Bun.Transpiler({ loader: "js" }).transformSync(source)
+    transpileChecked(checked.source)
     return true
   } catch (err) {
     return {

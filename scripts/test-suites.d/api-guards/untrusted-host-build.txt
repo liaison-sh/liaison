@@ -1,0 +1,2 @@
+# Untrusted code never reaches Bun's parser in the API process (a source scan plus the CheckedSource brand).
+src/tests/untrusted-host-build.test.ts

@@ -103,7 +103,9 @@ describe("gaqlSearch — request shape", () => {
     })
     for (const call of calls) {
       expect(Object.keys(call.headers)).not.toContain("developer-token")
-      expect(call.headers.Authorization).toBe("Bearer tok_abc")
+      // The token is attached host-side from the call's auth, never as an app-built header.
+      expect(call.headers.Authorization).toBeUndefined()
+      expect(call.auth).toEqual(GOOGLE_AUTH)
       expect(call.headers["login-customer-id"]).toBe("9998887777")
     }
   })

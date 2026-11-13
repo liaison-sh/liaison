@@ -597,8 +597,15 @@ describe("orders list: tags, items to ship, cart summary", () => {
       ],
       { "DEV-2": "E2", STAND: "FS" },
     )
-    expect(entries.map((e) => e.label)).toEqual(["1×E2", "2×FS", "3×?", "1×?"])
-    // An unknown line keeps its product title for the hover text.
+    expect(entries.map((e) => e.label)).toEqual(["1×E2", "2×FS", "3× Mystery box", "1× Gift wrap"])
+    // A long title is cut short in the cell; the hover text keeps it whole.
+    const [long] = cartSummary(
+      [{ sku: "LONG-1", title: "Kestrel Mk II studio monitor, pair", quantity: 2 }],
+      {},
+    )
+    expect(long?.label).toBe("2× Kestrel Mk II studio mo…")
+    expect(long?.title).toBe("Kestrel Mk II studio monitor, pair")
+    // A line without a code keeps its product title for the hover text.
     expect(entries[2]).toMatchObject({ code: null, title: "Mystery box" })
     expect(entries[3]).toMatchObject({ code: null, title: "Gift wrap" })
     expect(cartSummary([], {})).toEqual([])

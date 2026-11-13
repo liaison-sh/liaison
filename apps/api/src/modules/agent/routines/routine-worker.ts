@@ -74,6 +74,7 @@ import {
   type RoutineAlertRoutine,
   routineOwnerInactiveReason,
 } from "~/modules/agent/routines/routine-alert"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import {
   deliverRoutineReport,
   postRunStarted,
@@ -1047,6 +1048,22 @@ export async function applyRoutineCreditCheck(
   return null
 }
 
+/**
+ * Whether the leg of a flow that starts at `fromIndex` spends model tokens: an agent step comes
+ * before the next wait (a wait ends the leg; its resume checks again). Action, notify and message
+ * steps run without a model, so a leg of them needs no credits and no model key.
+ */
+export function flowLegNeedsCredits(
+  steps: ReadonlyArray<{ type: string }>,
+  fromIndex: number,
+): boolean {
+  for (const step of steps.slice(fromIndex)) {
+    if (step.type === "agent") return true
+    if (step.type === "wait") return false
+  }
+  return false
+}
+
 /** Why a run that resumes (a flow's wait came due, its approval was decided) may not go on. */
 export type RoutineResumeRefusal = {
   status: "skipped_condition" | "skipped_scope_mismatch" | "skipped_no_credits"
@@ -1403,7 +1420,11 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
     // no live node lands here too: out of credits it does not fall back (no
     // `fell_back` job, which records a run that went to the cloud) and is
     // skipped and paused like any cloud routine.
-    if (plan.where === "cloud") {
+    // A flow spends model tokens only in its agent steps: a flow whose first leg (up to its
+    // first wait) has none runs with no model and no credits, and the credit gate is made again
+    // when a run resumes before an agent step (`flowLegNeedsCredits`, flow-runner.ts).
+    const spendsTokens = !routine.flow || flowLegNeedsCredits(routine.flow.steps, 0)
+    if (plan.where === "cloud" && spendsTokens) {
       const refusal = await applyRoutineCreditCheck(opts.orgId, routine, opts.checkCredits)
       if (refusal) {
         const runId = await writeRunRow(opts.orgId, routine.id, "skipped_no_credits", {
@@ -1414,7 +1435,8 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
         return { status: "skipped_no_credits", runId }
       }
     } else if (creditPaused) {
-      // A node run spends no cloud credits: the credit pause does not hold for it.
+      // A node run, or a flow leg with no agent step, spends no cloud credits: the credit
+      // pause does not hold for it.
       await resumeSystemPausedRoutine(opts, routine, "paused_no_credits")
     }
 
@@ -1803,8 +1825,8 @@ export async function finishRun(end: RunEnd): Promise<RoutineTickResult> {
           entityId: crypto.randomUUID(),
           data: {
             summary: agentError
-              ? `Routine "${routine.name}" run failed`
-              : `Routine "${routine.name}" finished running`,
+              ? `Routine "${routineDisplayName(routine)}" run failed`
+              : `Routine "${routineDisplayName(routine)}" finished running`,
             urgency: agentError ? 60 : 30,
             targetUserIds: [end.requestedByUserId],
             link: { tabType: "thread", entityId: outputThreadId },

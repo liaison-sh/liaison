@@ -604,7 +604,10 @@ export function captureSpawnParentFrame(
     agentId: frame.agentId,
     run: { runId: frame.runId, rootRunId: frame.rootRunId, nestingDepth: frame.nestingDepth },
     hasPerson: runHasPerson(frame),
-    ...(frame.turnMessageId ? { turnMessageId: frame.turnMessageId } : {}),
+    // An approved call's re-entry has no message of its own: the ask it continues.
+    ...((frame.turnMessageId ?? frame.askId)
+      ? { turnMessageId: frame.turnMessageId ?? frame.askId }
+      : {}),
     ...(isPersonClientFrame(frame) ? { personClient: true } : {}),
     ...(account?.hardTokenLimit != null
       ? { tokenLimit: { accountId: account.id, hardTokenLimit: account.hardTokenLimit } }

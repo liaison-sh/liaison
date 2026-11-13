@@ -3849,7 +3849,10 @@ async function taintJudgedTool<T extends NonNullable<ReturnType<typeof toolRegis
   orgId: string,
   params: unknown,
 ): Promise<T> {
-  if (!tool.taintJudgedAs) return tool
+  if (!tool.taintJudgedAs) {
+    // A write read by its author alone for these params (a personal dashboard): judged so.
+    return tool.sinkReadersSelfWhen?.(params) === true ? { ...tool, sinkReadersSelf: true } : tool
+  }
   let as: string | null
   try {
     as = await tool.taintJudgedAs(params, { orgId })

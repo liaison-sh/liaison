@@ -221,6 +221,13 @@ function requestLabel(meta: SystemEventMetadata): string {
  */
 export function systemEventLine(msg: { content: string; metadata: unknown }): string | null {
   const meta = (msg.metadata ?? null) as SystemEventMetadata | null
+  // A turn refused before any model ran (no model to run, no credits: agent-service.ts writes
+  // the row with `turnRefusal`). The person's message above it was never answered and nothing
+  // was done for it: without this line a later turn read it as a request still pending and
+  // carried it out unasked (walk D11).
+  if ((meta as { turnRefusal?: unknown } | null)?.turnRefusal === true) {
+    return `[Event: the message above was refused before any model ran (${msg.content.trim()}). Nothing was done for it and it is closed: do not act on it now; if it still matters, the person will ask again.]`
+  }
   const type = typeof meta?.type === "string" ? meta.type : null
   if (!meta || !type || !REPLAYED_SYSTEM_EVENT_TYPES.has(type)) return null
   const content = msg.content.trim()

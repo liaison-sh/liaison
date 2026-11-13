@@ -32,12 +32,18 @@ import { organizations, systemConfig } from "~/db/schema/kernel"
 export type OrgConfig = Omit<ProvisioningConfig, "users">
 export type PeopleConfig = NonNullable<ProvisioningConfig["users"]>
 
+// A seeded org is the seeder's: what it declares is what the org holds after
+// the run, whatever moved on the server since (a release that changes a role's
+// scopes, an app upgrade extending a role, somebody's edit). Without `prefer`
+// such a path is a conflict the apply leaves unwritten (exit 3), and a re-seed
+// of an existing org stopped at its first pass for good.
 function applyOptions(log: (msg: string) => void) {
   return {
     format: "json" as const,
     dryRun: false,
     validateByok: false,
     echoSupplied: false,
+    prefer: { all: "file" as const, scoped: [] },
     log,
   }
 }

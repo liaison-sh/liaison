@@ -267,3 +267,6 @@ Money taint: a money-bearing result stamps projects:money:read -> apps/api/src/m
 No linked invoice, mixed price and invoice currencies -> apps/api/src/apps/projects/handlers.ts:1230
 Margin refuses mixed currencies -> apps/api/src/apps/projects/service/margin.ts:274
 cost_rate_set DM only, human turn only, margin scope, ISO 4217 -> apps/api/src/apps/projects/app.manifest.json:2285 ; apps/api/src/apps/projects/service/currency.ts:23
+The automation editor names a missing status until one is picked -> apps/web/src/modules/projects/ProjectAutomations.tsx:393 ; apps/web/src/modules/agent/flow/flow-model.ts:530
+A task opened from a dashboard drill is named by its title -> apps/web/src/modules/projects/exports.ts:43 ; apps/web/src/modules/shell/entity-opener.ts:135
+A project's task table names who last changed each task -> apps/api/src/apps/projects/service/table-backing.ts:138

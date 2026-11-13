@@ -35,8 +35,10 @@ const CHANNEL_ROUTE = "/threads/{question}"
 /**
  * The agent's own message in the channel Tobias asked in, written by the turn
  * answering `askBeat`'s message: a post by the person, by another turn or into
- * another thread does not count. Posting into a thread the person is in runs
- * at once (attributed to their agent, never held for approval).
+ * another thread does not count. A post held for approval (the conversation
+ * read outside text, or data a reader of the channel cannot see) completes the
+ * step once the person approved it: the approved call's message names the same
+ * ask (`metadata.turnMessageId`).
  */
 function channelPostBy(askBeat: string): TourEventBinding {
   return {

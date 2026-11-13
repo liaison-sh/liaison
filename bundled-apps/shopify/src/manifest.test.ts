@@ -979,6 +979,7 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.24: reads that answer figures also answer the rows a dashboard block charts.
     // 0.4.27: product, order, customer and return declare `pick` (their search tool), so a
     // dashboard table's link cell can pick one.
+    // 0.4.28: the orders list names a line without a short code by its product title, not "?".
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

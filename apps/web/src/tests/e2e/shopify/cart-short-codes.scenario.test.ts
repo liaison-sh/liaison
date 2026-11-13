@@ -6,7 +6,7 @@
 // migration that moved codes onto products, before any sync), the REAL job runs on the real queue
 // in the sandbox (the test stands in for the cron clock), it resolves each Shopify variant's SKU
 // through the shopify app, writes the attributes, and the rendered orders list shows "2×L4, 1×CB"
-// where it showed "2×?" before. Only the Shopify Admin API is mocked (offline mock).
+// where it showed the product's name before. Only the Shopify Admin API is mocked (offline mock).
 //
 // Fixtures are synthetic: products, SKUs, codes and order numbers are invented.
 
@@ -83,7 +83,7 @@ test.describe("Shopify orders: cart summary from product short codes", () => {
         { label: "USB-C cable 2 m", short_code: "CB", unit_weight: 0.1, ...shopifyVariant(CABLE) },
       ],
     })
-    // A line nobody profiled stays "N×?".
+    // A line nobody profiled reads its product title.
     const [gid] = await seedOpenOrders(s, token, [
       {
         name: "#9201",
@@ -109,7 +109,9 @@ test.describe("Shopify orders: cart summary from product short codes", () => {
     await loginAs(page, env, qa.admin.email, "12345678")
     await page.goto(`http://localhost:${env.ports[1]}/shopify/orders`)
     const cart = page.getByTestId(`shopify-orders-cart-${gid}`)
-    await expect(cart).toHaveText("2×?, 1×?, 1×?", { timeout: 30_000 })
+    await expect(cart).toHaveText("2× Lumen 4 controller, 1× USB-C cable 2 m, 1× Carry strap", {
+      timeout: 30_000,
+    })
 
     // The daily job, run now.
     const run = await api(s, "/api/_test/apps/run-job", {
@@ -130,6 +132,6 @@ test.describe("Shopify orders: cart summary from product short codes", () => {
 
     // The list, as a person opens it next: the codes, quantities summed, the unknown line kept.
     await page.reload()
-    await expect(cart).toHaveText("2×L4, 1×CB, 1×?", { timeout: 30_000 })
+    await expect(cart).toHaveText("2×L4, 1×CB, 1× Carry strap", { timeout: 30_000 })
   })
 })

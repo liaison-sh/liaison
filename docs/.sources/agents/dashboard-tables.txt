@@ -63,3 +63,4 @@ Undo of a first own-column change keeps the row -> apps/api/src/modules/dashboar
 Header bands From <project> / This table only -> apps/web/src/modules/dashboards/blocks/table-cells.ts:56 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:1
 Status pills, avatar discs, deadline tint and track -> apps/web/src/modules/dashboards/blocks/table-cells.ts:28 ; apps/web/src/modules/dashboards/blocks/table-cells.ts:44 ; apps/api/src/apps/projects/service/table-backing.ts:56
 A done or cancelled task's due date reads plain (the row's terminal flag) -> apps/api/src/apps/projects/service/table-backing.ts:165 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:401
+A backed row's last change names the task's changer (person, <Name>'s agent, Routine <title>), else Task changed -> apps/api/src/apps/projects/service/table-backing.ts:138 ; apps/api/src/modules/dashboards/tables/service.ts:708 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:851

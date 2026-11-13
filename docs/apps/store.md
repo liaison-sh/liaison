@@ -85,7 +85,7 @@ Open **Shopify** in the activity bar.
 - **Home** shows **Recent orders** and three attention cards: **Low inventory**, **Unfulfilled past SLA** and **Pending returns**.
 - **Orders** lists orders with a search box and the filters **All**, **Open**, **Unfulfilled**, **Cancelled**, **Refunded** and **Drafts**. When [Invoicing](invoicing.md) is installed, an order's invoice number shows on its row. Click it to open the invoice.
 - **Has items to ship** narrows the orders list to orders with at least one item that needs shipping. It hides software-only orders and drafts, and works together with the other filters.
-- **Items** sums up each order's cart with your product short codes, for example `1×E2, 2×FS`. A product with no short code shows as `1×?`: hover it to see the product name. An order with more lines than the list reads ends with `+N more`. Short codes are kept per SKU in Liaison's product attributes (a shipping app such as [Boxtal](boxtal.md) fills them from its shipping profiles, or an agent sets them with `product_attributes_upsert`).
+- **Items** sums up each order's cart with your product short codes, for example `1×E2, 2×FS`. A product with no short code shows under its name, for example `1× Carry strap` (a long name is cut short: hover it to read it whole). An order with more lines than the list reads ends with `+N more`. Short codes are kept per SKU in Liaison's product attributes (a shipping app such as [Boxtal](boxtal.md) fills them from its shipping profiles, or an agent sets them with `product_attributes_upsert`).
 - **Tags** shows each order's Shopify tags.
 - **Customers**, **Products** and **Markets** are searchable lists.
 

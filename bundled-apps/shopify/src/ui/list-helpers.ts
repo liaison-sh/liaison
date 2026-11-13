@@ -266,8 +266,9 @@ export const ORDER_COLUMNS: ListColumn[] = [
 // each line's SKU through the org's product short codes (the kernel's product
 // attributes, key `short_code`, fetched with this app's `products_short_codes`
 // tool): whichever app set them, this app never knows which. A SKU with no
-// code is NEVER given a made-up one: it shows as "1×?" with its product title
-// on hover, because a wrong code silently mislabels what is in the box.
+// code is NEVER given a made-up one, because a wrong code silently mislabels
+// what is in the box: it shows under its product title ("1× Kestrel Mk II",
+// cut short, whole on hover). An org that set no short codes reads names.
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface OrderLineLike {
@@ -332,7 +333,7 @@ export function cartMoreLabel(row: {
 }
 
 export interface CartEntry {
-  /** "2×FS", or "1×?" when the line's SKU has no short code. */
+  /** "2×FS", or "1× Kestrel Mk II" (the title, cut short) when the line's SKU has no short code. */
   label: string
   /** The short code, null when unknown. */
   code: string | null
@@ -343,8 +344,8 @@ export interface CartEntry {
 
 /**
  * The abbreviated cart: one entry per short code (quantities summed, first
- * appearance order), and one "N×?" entry per unknown product (by SKU, else by
- * title). `codes` maps a SKU to its short code.
+ * appearance order), and one entry per product without a code (by SKU, else by
+ * title), named by its title. `codes` maps a SKU to its short code.
  */
 export function cartSummary(
   lines: ReadonlyArray<OrderLineLike>,
@@ -369,8 +370,17 @@ export function cartSummary(
     byKey.set(key, entry)
     out.push(entry)
   }
-  for (const e of out) e.label = `${e.qty}×${e.code ?? "?"}`
+  for (const e of out) {
+    e.label = e.code ? `${e.qty}×${e.code}` : `${e.qty}× ${shortTitle(e.title)}`
+  }
   return out
+}
+
+/** How much of a product title the cart summary shows for a line without a short code. */
+const CART_TITLE_MAX = 24
+
+function shortTitle(title: string): string {
+  return title.length > CART_TITLE_MAX ? `${title.slice(0, CART_TITLE_MAX - 1).trimEnd()}…` : title
 }
 
 /** Every distinct SKU on a set of order lines (what `products_short_codes` is asked for). */

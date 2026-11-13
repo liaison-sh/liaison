@@ -38,6 +38,7 @@ import {
 } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import {
   type BackedDocument,
@@ -539,11 +540,11 @@ async function writerOf(viewer: UserContext, via: WriteVia = {}): Promise<Writer
   const label = await withPrivilegedDb(viewer.orgId, "dashboard-table-writer-label", async (tx) => {
     if (routineId && UUID.test(routineId)) {
       const [r] = await tx
-        .select({ name: routines.name })
+        .select({ name: routines.name, title: routines.title })
         .from(routines)
         .where(and(eq(routines.id, routineId), eq(routines.orgId, viewer.orgId)))
         .limit(1)
-      if (r) return `Routine ${r.name}`.slice(0, 200)
+      if (r) return `Routine ${routineDisplayName(r)}`.slice(0, 200)
     }
     if (agentId && UUID.test(agentId)) {
       const [a] = await tx
@@ -671,16 +672,17 @@ async function latestActors(
   orgId: string,
   tableId: string,
   rowIds: string[],
-): Promise<Map<string, Actor>> {
+): Promise<Map<string, { actor: Actor; at: string }>> {
   if (rowIds.length === 0) return new Map()
   const rows = extractRows<{
     row_id: string
     actor_type: "user" | "agent" | "system"
     actor_id: string | null
     actor_label: string | null
+    at: Date | string
   }>(
     await t.execute(sql`
-      SELECT DISTINCT ON (row_id) row_id, actor_type, actor_id::text AS actor_id, actor_label
+      SELECT DISTINCT ON (row_id) row_id, actor_type, actor_id::text AS actor_id, actor_label, at
         FROM ${K()}.dashboard_table_changes
        WHERE org_id = ${orgId}::uuid AND table_id = ${tableId}::uuid
          AND row_id IN (${sql.join(
@@ -694,9 +696,20 @@ async function latestActors(
     actorType: r.actor_type,
     actorId: r.actor_id,
     actorLabel: r.actor_label,
+    at: r.at instanceof Date ? r.at.toISOString() : new Date(r.at).toISOString(),
   }))
   const label = await actorLabels(t, orgId, mapped)
-  return new Map(mapped.map((r) => [r.rowId, label(r)]))
+  return new Map(mapped.map((r) => [r.rowId, { actor: label(r), at: r.at }]))
+}
+
+/**
+ * Who a row's last change is by: the table's own history (an edit made in it), unless the
+ * record behind a backed row changed later in its app, by whoever its app names.
+ */
+function rowActor(d: BackedDocument, change: { actor: Actor; at: string } | undefined): Actor {
+  const record = d.recordChangedBy
+  if (record && (!change || (d.recordUpdatedAt ?? "") > change.at)) return record
+  return change?.actor ?? UNKNOWN_ACTOR
 }
 
 const UNKNOWN_ACTOR: Actor = { type: "system", id: null, label: "System" }
@@ -715,7 +728,8 @@ async function toRows(
   )
   const columns = allColumns(loaded)
   return docs.map((d) => {
-    const { recordVersion, terminal } = d as BackedDocument
+    const backed = d as BackedDocument
+    const { recordVersion, terminal } = backed
     return {
       id: d.id,
       cells: visibleCells(viewer, columns, d.data),
@@ -723,7 +737,7 @@ async function toRows(
       ...(recordVersion !== undefined ? { recordVersion } : {}),
       ...(terminal ? { terminal: true as const } : {}),
       updatedAt: d.updatedAt,
-      updatedBy: actors.get(d.id) ?? UNKNOWN_ACTOR,
+      updatedBy: rowActor(backed, actors.get(d.id)),
     }
   })
 }

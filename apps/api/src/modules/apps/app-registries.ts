@@ -267,6 +267,10 @@ export const toolRegistry = createTypedRegistry<
      *  judged by that one reader (scope-taint.ts, rule 6d): it runs when the user's own
      *  grants hold every scope the turn read, and is refused otherwise. */
     sinkReadersSelf?: boolean
+    /** `sinkReadersSelf` for some calls only: true when this call's write is read by the
+     *  acting user alone (a personal dashboard; an org one has every member for readers).
+     *  Host-only, judged with the call's params (execute-tool.ts taintJudgedTool). */
+    sinkReadersSelfWhen?: (params: unknown) => boolean
     /** Kernel code only. Never judged by the scope taint (scope-taint.ts): a write the
      *  product never gates, `kernel:report_bug` filing a bug report about Liaison itself into
      *  the org's own inbox, or preparing one that leaves only on its reporter's click. */

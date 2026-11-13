@@ -11,6 +11,7 @@ import { paintPart, parseBlockResponse, type SeriesData } from "../dashboards-cl
 import { barRowsForm, PeopleRows, PipelineBar } from "./BarRows"
 import { categoryColors, seriesDatasets } from "./BlockRenderer"
 import { chartConfig, chartPalette } from "./Chart"
+import { readableOn } from "./data-colour"
 import { deltaTone, MetricBlock } from "./MetricBlock"
 
 afterEach(cleanup)
@@ -101,7 +102,9 @@ describe("chart colours", () => {
       },
       "en",
     ) as any
-    expect(cfg.data.datasets[0].backgroundColor[0]).toBe("#123456")
+    // Its own colour, made readable on the block surface (too dark for the dark card as given).
+    expect(cfg.data.datasets[0].backgroundColor[0]).toBe(readableOn("#123456", "#1a1a1e"))
+    expect(cfg.data.datasets[0].backgroundColor[1]).toBe(chartPalette(2)[1])
   })
 })
 
@@ -117,13 +120,13 @@ describe("the pipeline", () => {
     expect(screen.queryByTestId("dashboard-pipeline-segment-2")).toBeNull()
     expect(screen.getByTestId("dashboard-pipeline-legend-2").textContent).toContain("Diagnosed0")
     expect(screen.getByTestId("dashboard-pipeline-legend-1").textContent).toContain("5")
-    // A colourless category takes a palette token.
+    // A colourless category takes a palette token (its value's slot).
     expect(
       screen
         .getByTestId("dashboard-pipeline-legend-2")
         .querySelector("span")
         ?.getAttribute("style"),
-    ).toContain("var(--color-chart-3)")
+    ).toMatch(/var\(--color-chart-[1-8]\)/)
     fireEvent.click(screen.getByTestId("dashboard-pipeline-segment-1"))
     fireEvent.click(screen.getByTestId("dashboard-pipeline-legend-0"))
     expect(pick.mock.calls).toEqual([

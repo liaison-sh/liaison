@@ -171,6 +171,19 @@ async function approveRepliesFromHome(orgId: string): Promise<unknown> {
   return rows[0]?.value ?? null
 }
 
+/** A role's scopes, sorted. */
+async function scopesOfRole(orgId: string, role: string): Promise<string[]> {
+  const rows = (await withSystemDb("demo-seed-test-role-scopes", (tx) =>
+    tx.execute(
+      sql`SELECT g.scope FROM kernel.role_scope_grants g
+          JOIN kernel.roles r ON r.id = g.role_id
+          WHERE r.org_id = ${orgId} AND r.name = ${role} ORDER BY g.scope`,
+    ),
+  )) as unknown as Array<{ scope: string }>
+  return rows.map((r) => r.scope)
+}
+let scopesOfOperationsAfterFirst: string[] = []
+
 describe("seedDemoOrg against a real database", () => {
   let first: SeedDemoOrgResult
   let second: SeedDemoOrgResult
@@ -238,6 +251,24 @@ describe("seedDemoOrg against a real database", () => {
       )
     })
 
+    // And a role whose scopes moved on the server while the seeder's own list
+    // moved too (a release that changes the role, on a box seeded by the last
+    // one): one scope taken off the role, and its last-applied record made
+    // stale. To `config apply` that is a conflict it leaves unwritten; a re-seed
+    // of the demo box stopped there. The seeder owns the org: it writes its list.
+    scopesOfOperationsAfterFirst = await scopesOfRole(first.orgId, "operations")
+    await withSystemDb("demo-seed-test-drift-role-scopes", async (tx) => {
+      await tx.execute(
+        sql`DELETE FROM kernel.role_scope_grants g USING kernel.roles r
+            WHERE g.role_id = r.id AND r.org_id = ${first.orgId} AND r.name = 'operations'
+              AND g.scope = ${scopesOfOperationsAfterFirst[0] ?? ""}`,
+      )
+      await tx.execute(
+        sql`UPDATE kernel.config_applied_fields SET value_hash = 'sha256:stale'
+            WHERE org_id = ${first.orgId} AND path = 'roles.operations'`,
+      )
+    })
+
     // And turn ticket replies approved from Home back OFF, the way a reviewer
     // toggling the tickets settings page does. The reserved org's next seed has
     // to put it back on.
@@ -290,6 +321,11 @@ describe("seedDemoOrg against a real database", () => {
     expect(definition).toBeDefined()
     expect(stored).toBe(definition?.systemPrompt ?? "")
     expect(stored).not.toContain("stale prompt")
+  })
+
+  it("puts a role's scopes back when they moved on the server since the last seed", async () => {
+    expect(scopesOfOperationsAfterFirst.length).toBeGreaterThan(1)
+    expect(await scopesOfRole(second.orgId, "operations")).toEqual(scopesOfOperationsAfterFirst)
   })
 
   it("gives every desk person their desk's ticket team, through their role, and converges a drifted one", async () => {

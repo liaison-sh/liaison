@@ -36,6 +36,7 @@ import {
   threads,
 } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { normalizeRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
 import {
@@ -91,12 +92,12 @@ const UUID_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 export async function routineAuthorLabel(orgId: string, routineId: string): Promise<string | null> {
   const [row] = await withPrivilegedDb(orgId, "routine-author-label", (tx) =>
     tx
-      .select({ name: routines.name })
+      .select({ name: routines.name, title: routines.title })
       .from(routines)
       .where(and(eq(routines.id, routineId), eq(routines.orgId, orgId)))
       .limit(1),
   )
-  return row ? `Routine ${row.name}` : null
+  return row ? `Routine ${routineDisplayName(row)}` : null
 }
 
 /**
@@ -338,7 +339,7 @@ export async function deliverRoutineReport(params: {
       userId: routine.ownerUserId,
       threadId: reportThreadId,
       agentId: routine.ownerAgentId ?? undefined,
-      agentAuthorLabel: `Routine ${routine.name}`,
+      agentAuthorLabel: `Routine ${routineDisplayName(routine)}`,
       content: reply.content,
       requiredScopes: reply.requiredScopes,
       // Nobody in the conversation asked for it: news to its owner too.
@@ -535,7 +536,7 @@ export async function postRunStarted(params: {
           orgId,
           userId: routine.ownerUserId,
           threadId,
-          content: `Routine ${routine.name} is running.`,
+          content: `Routine ${routineDisplayName(routine)} is running.`,
           authorType: "system",
           agentId: routine.ownerAgentId ?? null,
           // A status line names the routine and nothing it read.
@@ -720,7 +721,7 @@ export async function postRoutineApproval(params: {
       userId: routine.ownerUserId,
       threadId,
       agentId: routine.ownerAgentId ?? undefined,
-      agentAuthorLabel: `Routine ${routine.name}`,
+      agentAuthorLabel: `Routine ${routineDisplayName(routine)}`,
       content: `Approval request ${params.handle} is waiting for a decision.`,
       // Unknown is never "nothing": the routine's ceiling, what the run could read.
       requiredScopes: normalizeRequiredScopes(params.requiredScopes ?? routine.scopes ?? []),

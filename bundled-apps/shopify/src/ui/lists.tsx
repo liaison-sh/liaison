@@ -483,7 +483,7 @@ export const ShopifyOrdersList: Component = () => {
 
   // Short codes for the cart summary: the org's product attributes, read by
   // SKU through this app's own `products_short_codes` tool. Best effort: a
-  // failure leaves every line as "N×?" with its title on hover.
+  // failure leaves every line under its product title.
   const visibleSkus = () =>
     lineSkus(mergedRows().flatMap((r) => r.lineItems))
       .sort()
@@ -565,9 +565,7 @@ export const ShopifyOrdersList: Component = () => {
               {(e, i) => (
                 <>
                   <Show when={i() > 0}>{", "}</Show>
-                  <span title={e.title} class={e.code ? undefined : "text-text-tertiary"}>
-                    {e.label}
-                  </span>
+                  <span title={e.title}>{e.label}</span>
                 </>
               )}
             </For>

@@ -42,6 +42,7 @@ import type { RoutineRunFlowContext, RoutineRunStepState } from "~/db/schema/ker
 import { taskCellMatches } from "~/infra/jobs/event-routine-gate"
 import { rootLogger } from "~/lib/logger"
 import { addWorkingTime, resolveWorkingCalendar, type WorkingCalendar } from "~/lib/working-time"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import {
   type FlowRecord,
@@ -1051,7 +1052,7 @@ async function endParked(
  * fresh tick would run: the flow is the one it started with (an edited flow ends it
  * `skipped_condition`, "flow changed"), and the tick's pre-run checks pass again
  * (`routineResumeGate`: switched on and active, owner active and holding its scopes, the owner
- * agent's ceiling, and the credit gate when a step left is an agent step). A refused check ends
+ * agent's ceiling, and the credit gate when an agent step comes before the next wait). A refused check ends
  * the run with its skipped status. `fromIndex`: the first step the resume may run.
  */
 async function resumeChecks(
@@ -1067,10 +1068,9 @@ async function resumeChecks(
     )
     return { refused }
   }
-  const { routineResumeGate, routineRunScopes, ensureOutputThread } = await import(
-    "./routine-worker"
-  )
-  const needsCredits = routine.flow.steps.slice(fromIndex).some((s) => s.type === "agent")
+  const { routineResumeGate, routineRunScopes, ensureOutputThread, flowLegNeedsCredits } =
+    await import("./routine-worker")
+  const needsCredits = flowLegNeedsCredits(routine.flow.steps, fromIndex)
   const gate = await routineResumeGate(orgId, routine, bare.deps, needsCredits)
   if (!gate.ok) {
     const refused = await endParked(bare, gate.status, gate.reason)
@@ -1122,6 +1122,8 @@ async function runAgentStep(
   const maxBumps = step.maxBumps ?? DEFAULT_MAX_BUMPS
   let bumps = 0
   const missingNow = async () => missingOutcomes(run, outcomes, stepStartedAt)
+  const names = await outcomePeopleNames(run.orgId, outcomes)
+  const describe = (o: RoutineFlowOutcome) => describeOutcome(o, names)
   const result = await inRunFrame(run, () =>
     invoker({
       orgId: run.orgId,
@@ -1139,7 +1141,7 @@ async function runAgentStep(
               const missing = await missingNow()
               if (missing.length === 0) return null
               bumps++
-              return `Before finishing you still need to: ${missing.map(describeOutcome).join("; ")}.`
+              return `Before finishing you still need to: ${missing.map(describe).join("; ")}.`
             },
           }
         : {}),
@@ -1152,7 +1154,7 @@ async function runAgentStep(
   const missing = outcomes.length > 0 ? await missingNow() : []
   if (missing.length > 0) {
     const note = `Still missing after ${bumps} ${bumps === 1 ? "reminder" : "reminders"}: ${missing
-      .map(describeOutcome)
+      .map(describe)
       .join("; ")}.`
     setState(state, "flagged", note, { bumps, missing })
     await notifyFlagged(run, step, note)
@@ -1190,18 +1192,46 @@ export async function driveFlowBumps(
   return n
 }
 
-/** Pure: one outcome, as the bump and the flag name it. */
-export function describeOutcome(o: RoutineFlowOutcome): string {
+/**
+ * Pure: one outcome, as the bump and the flag name it. A person is named by `names` (their id to
+ * their display name, `outcomePeopleNames`), never by their id.
+ */
+export function describeOutcome(
+  o: RoutineFlowOutcome,
+  names: ReadonlyMap<string, string> = new Map(),
+): string {
   if (o.kind === "message_posted") {
-    return o.to === "{{task.assigneeId}}"
-      ? "post a message to the task's assignee"
-      : o.to === "{{owner}}"
-        ? "post a message to the routine's owner"
-        : `post a message in ${o.to}`
+    if (o.to === "{{task.assigneeId}}") return "send the task's assignee a message"
+    if (o.to === "{{owner}}") return "send the routine's owner a message"
+    const name = names.get(o.to.toLowerCase())
+    return name ? `send ${name} a message` : "send the chosen person a message"
   }
   if (o.kind === "field_set") return `set the task field "${o.field}"`
   if (o.kind === "status_is") return `move the task to status ${o.status}`
   return `call the tool ${o.tool}`
+}
+
+/** The display names of the people `outcomes` name by id (a message outcome's `to`). */
+async function outcomePeopleNames(
+  orgId: string,
+  outcomes: readonly RoutineFlowOutcome[],
+): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(
+      outcomes
+        .map((o) => (o.kind === "message_posted" ? o.to.toLowerCase() : ""))
+        .filter((id) => /^[0-9a-f-]{36}$/.test(id)),
+    ),
+  ]
+  if (ids.length === 0) return new Map()
+  const { users } = await import("~/db/schema/kernel")
+  const rows = await withPrivilegedDb(orgId, "routine-flow-outcome-names", (tx) =>
+    tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.orgId, orgId), inArray(users.id, ids))),
+  )
+  return new Map(rows.map((r) => [r.id.toLowerCase(), r.name]))
 }
 
 /** The outcomes not met yet: read from the record now and from this step's own writes. */
@@ -1318,7 +1348,7 @@ async function notifyFlagged(run: FlowRun, step: AgentStep, note: string): Promi
         action: "create",
         entityId: crypto.randomUUID(),
         data: {
-          summary: `Routine "${run.routine.name}", step ${step.id}: ${note}`,
+          summary: `Routine "${routineDisplayName(run.routine)}", step ${step.id}: ${note}`,
           urgency: 60,
           targetUserIds: [run.routine.ownerUserId],
           link:

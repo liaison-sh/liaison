@@ -17,11 +17,15 @@
  * The caller hands in its own transaction so the alert commits with the run
  * row it reports on.
  */
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
+
 export type RoutineAlertStatus = "failed" | "paused_scope_mismatch" | "paused_no_credits"
 
 export interface RoutineAlertRoutine {
   id: string
   name: string
+  /** Its title (0304), shown in place of the identifier when set. */
+  title?: string | null
   ownerUserId: string
   ownerAgentId: string | null
   outputThreadId: string | null
@@ -77,7 +81,7 @@ export async function queueRoutineAlert(
     // Keyed on the routine: the unread row upserts instead of piling up.
     entityId: routine.id,
     data: {
-      summary: routineAlertSummary(routine.name, opts.status),
+      summary: routineAlertSummary(routineDisplayName(routine), opts.status),
       urgency: 60,
       targetUserIds: [routine.ownerUserId],
       ...(routine.outputThreadId

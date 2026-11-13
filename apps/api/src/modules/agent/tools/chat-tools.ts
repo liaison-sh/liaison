@@ -8,6 +8,7 @@ import { agents, messages, routines, threadParticipants, threads, users } from "
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { EXTERNAL_CLIENT_POST_KEY } from "~/modules/agent/context/agent-attribution"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import {
   captureActingAgentId,
   currentRunContext,
@@ -317,12 +318,12 @@ export async function resolveAgentAuthorLabel(ctx: ChatToolContext): Promise<str
     const execThreadId = ctx.agentExecutionThreadId
     const [routine] = await withPrivilegedDb(ctx.orgId, "resolve-agent-author-label", (tx) =>
       tx
-        .select({ name: routines.name })
+        .select({ name: routines.name, title: routines.title })
         .from(routines)
         .where(eq(routines.outputThreadId, execThreadId))
         .limit(1),
     )
-    if (routine) return `Routine ${routine.name}`
+    if (routine) return `Routine ${routineDisplayName(routine)}`
   }
   const personalLabel = personal
     ? agentSpeakerName({

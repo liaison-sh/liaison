@@ -103,7 +103,7 @@ export async function readApprovalRequesters(
       SELECT ar.id, ar.requested_by,
              u.id AS user_id, u.name AS user_name,
              a.id AS agent_id, a.kind AS agent_kind, a.display_name AS agent_name,
-             r.id AS routine_id, r.name AS routine_name,
+             r.id AS routine_id, COALESCE(NULLIF(btrim(r.title), ''), r.name) AS routine_name,
              CASE WHEN ar.metadata->>'originRoutineId' ~* ${UUID_PATTERN}
                THEN ar.metadata->>'originRoutineId' END AS origin_routine_id,
              ar.metadata->>'origin' AS origin, ar.tool_name

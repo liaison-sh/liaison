@@ -756,7 +756,6 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         ...(series ? { series: a.series, seriesLabel: labelOf(series, a.series, ctx) } : {}),
         value,
         count: a.count,
-        ...(a.currency ? { currency: a.currency } : {}),
       }
       if (a.taskIds.length <= MAX_ROW_TASK_IDS) row.taskIds = a.taskIds
       const filter = ctx.single
@@ -767,6 +766,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
           )
         : null
       if (filter) row.filter = filter
+      if (a.currency) row.currency = a.currency
       return row
     })
 

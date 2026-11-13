@@ -72,6 +72,7 @@ import {
   TEMPLATE_TIME_PATTERN,
   timeOfCron,
 } from "~/modules/agent/routines/kernel-routine-templates"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
@@ -3577,8 +3578,8 @@ export async function handleCreateRoutine(
       ? {
           reportsTo:
             (row.reportThreadId === ctx.agentExecutionThreadId
-              ? `Each run posts in this conversation as "Routine ${row.name}": `
-              : `Each run posts in its chosen conversation as "Routine ${row.name}": `) +
+              ? `Each run posts in this conversation as "Routine ${routineDisplayName(row)}": `
+              : `Each run posts in its chosen conversation as "Routine ${routineDisplayName(row)}": `) +
             "its running status, the approvals it asks for, and its final message. " +
             "The routine needs no extra step to message the user: its last message is that message.",
         }

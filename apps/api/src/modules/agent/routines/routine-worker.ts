@@ -74,6 +74,7 @@ import {
   type RoutineAlertRoutine,
   routineOwnerInactiveReason,
 } from "~/modules/agent/routines/routine-alert"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import {
   deliverRoutineReport,
   postRunStarted,
@@ -1805,8 +1806,8 @@ export async function finishRun(end: RunEnd): Promise<RoutineTickResult> {
           entityId: crypto.randomUUID(),
           data: {
             summary: agentError
-              ? `Routine "${routine.name}" run failed`
-              : `Routine "${routine.name}" finished running`,
+              ? `Routine "${routineDisplayName(routine)}" run failed`
+              : `Routine "${routineDisplayName(routine)}" finished running`,
             urgency: agentError ? 60 : 30,
             targetUserIds: [end.requestedByUserId],
             link: { tabType: "thread", entityId: outputThreadId },

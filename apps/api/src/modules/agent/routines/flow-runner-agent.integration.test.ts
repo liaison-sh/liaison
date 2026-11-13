@@ -214,6 +214,33 @@ describe("routine flow agent steps", () => {
     expect(alerts[0]!.summary).toContain('set the task field "diagnosis"')
   }, 60_000)
 
+  it("the flag names the routine by its title and the person by name, never by id", async () => {
+    const routineId = await routine("message-alice", {
+      version: 1,
+      steps: [
+        {
+          id: "tell",
+          type: "agent",
+          prompt: "Tell Alice about the task",
+          outcomes: [{ kind: "message_posted", to: ALICE }],
+          maxBumps: 0,
+        },
+      ],
+    })
+    await sql`UPDATE kernel.routines SET title = 'Tell Alice on a status' WHERE id = ${routineId}::uuid`
+    const taskId = await task("Rattle")
+    const res = await tick(routineId, taskId, stubAgent(taskId, null).invoker)
+    const row = await run(res.runId!)
+    expect(row.steps[0]!.note).toContain("send Alice a message")
+    expect(row.steps[0]!.note).not.toContain(ALICE)
+    const [alert] = await sql<{ summary: string }[]>`
+      SELECT payload->'data'->>'summary' AS summary FROM kernel.pending_events
+       WHERE org_id = ${ORG} AND payload->>'entity' = 'agent_notification'
+         AND payload->'data'->'routineFlag'->>'runId' = ${res.runId!}`
+    expect(alert!.summary).toStartWith('Routine "Tell Alice on a status"')
+    expect(alert!.summary).not.toContain(ALICE)
+  }, 60_000)
+
   it("maxBumps 0 flags at once, without a bump", async () => {
     const routineId = await routine("diagnose-strict", DIAGNOSE(0))
     const taskId = await task("Buzz")

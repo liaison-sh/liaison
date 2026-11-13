@@ -66,6 +66,7 @@ import { attentionEvents, auditLog, routineRuns, routines } from "~/db/schema/ke
 import type { RoutineRunMailboxWait, RoutineRunWaitEvent } from "~/db/schema/kernel/routine-runs"
 import { rootLogger } from "~/lib/logger"
 import { routineMailboxReader } from "~/modules/agent/mailbox-plaintext/routine-mailbox-trust"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { settleRunStarted } from "~/modules/agent/routines/routine-report"
 import type {
   RoutineTickOpts,
@@ -273,7 +274,7 @@ async function queueWaitItem(
     action: "create",
     entityId: mailboxWaitEntityId(runId),
     data: {
-      summary: `Routine "${routine.name}" is waiting for your private mailbox`,
+      summary: `Routine "${routineDisplayName(routine)}" is waiting for your private mailbox`,
       urgency: 60,
       targetUserIds: [wait.ownerUserId],
       link: { tabType: "thread", entityId: wait.outputThreadId },

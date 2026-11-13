@@ -38,6 +38,7 @@ import {
 } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import {
   type BackedDocument,
@@ -539,11 +540,11 @@ async function writerOf(viewer: UserContext, via: WriteVia = {}): Promise<Writer
   const label = await withPrivilegedDb(viewer.orgId, "dashboard-table-writer-label", async (tx) => {
     if (routineId && UUID.test(routineId)) {
       const [r] = await tx
-        .select({ name: routines.name })
+        .select({ name: routines.name, title: routines.title })
         .from(routines)
         .where(and(eq(routines.id, routineId), eq(routines.orgId, viewer.orgId)))
         .limit(1)
-      if (r) return `Routine ${r.name}`.slice(0, 200)
+      if (r) return `Routine ${routineDisplayName(r)}`.slice(0, 200)
     }
     if (agentId && UUID.test(agentId)) {
       const [a] = await tx

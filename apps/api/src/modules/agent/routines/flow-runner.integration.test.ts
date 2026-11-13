@@ -233,6 +233,27 @@ describe("routine flows: actions", () => {
     expect(notes[0]!.n).toBe(1)
   }, 60_000)
 
+  it("a routine with a title signs its messages with the title, not its identifier", async () => {
+    const routineId = await flowRoutine("intake-titled-x7k2", {
+      version: 1,
+      steps: [
+        {
+          id: "dm",
+          type: "action",
+          action: "message",
+          args: { to: BOB, text: "Titled hello {{task.title}}" },
+        },
+      ],
+    })
+    await sql`UPDATE kernel.routines SET title = 'Ping Bob on intake' WHERE id = ${routineId}::uuid`
+    const taskId = await task("Titled")
+    await tickFor(routineId, taskId, [])
+    const [dm] = await sql<{ label: string }[]>`
+      SELECT metadata->>'agentAuthorLabel' AS label FROM kernel.messages
+       WHERE org_id = ${ORG}::uuid AND content = 'Titled hello Titled'`
+    expect(dm!.label).toBe("Routine Ping Bob on intake")
+  }, 60_000)
+
   it("a step whose condition does not hold is skipped; the flow goes on", async () => {
     const routineId = await flowRoutine("intake-cond", {
       version: 1,

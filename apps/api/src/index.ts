@@ -64,7 +64,7 @@ import {
 import { registerProcessShutdownPhases } from "~/lib/shutdown-phases"
 import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
-import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
+import { awaitOrgApps, getDefaultApps, loadOrgSetupModules } from "~/modules/apps/init"
 import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
@@ -218,6 +218,11 @@ registerEventSubscribers(wsManager)
 // Event-routine subscriptions follow the cell (event-routine-subscriber.ts): a
 // routine changed on another process is announced, and a resync covers a lost one.
 await startEventRoutineSync()
+
+// The modules every org's setup imports load now, before this process takes a
+// job or turns ready, so the first org's setup does not block the event loop
+// evaluating them (modules/apps/init.ts loadOrgSetupModules).
+await loadOrgSetupModules()
 
 // Register kernel scheduled jobs + webhook retry worker. Phase 10 register*
 // happens after app manifests are loaded (post createServer block), then the

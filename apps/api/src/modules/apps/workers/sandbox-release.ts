@@ -25,7 +25,7 @@ import {
   sandboxRelease,
 } from "@liaison/sandbox-supervisor"
 import { rootLogger } from "~/lib/logger"
-import { readSandboxConfig } from "./config"
+import { quickjsForced, readSandboxConfig } from "./config"
 
 const log = rootLogger.child({ module: "app-sandbox-release" })
 
@@ -49,10 +49,13 @@ export type SandboxProbe =
   | "error"
   | "timeout"
 
-/** Ask the sandbox service's /health with this release. Null when no service is configured. */
+/** Ask the sandbox service's /health with this release. Null when no service is configured, or while LIAISON_APP_RUNTIME=quickjs. */
 export async function probeSandbox(
   opts: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<{ status: SandboxProbe; release?: string; message?: string } | null> {
+  // LIAISON_APP_RUNTIME=quickjs runs no app on the service: it is no
+  // dependency then (a host may even leave it out, `--scale sandbox=0`).
+  if (quickjsForced()) return null
   const config = readSandboxConfig(null)
   if (!config) return null
   const doFetch = opts.fetchImpl ?? fetch

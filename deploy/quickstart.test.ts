@@ -38,6 +38,7 @@ function sandbox() {
     `#!/bin/sh
 echo "$*" >> "${log}"
 case "$*" in
+  info*) [ -z "\${HAS_RUNSC:-}" ] || echo '{"runc":{},"runsc":{}}' ;;
   pull*) [ -z "\${FAIL_PULL:-}" ] || exit 1 ;;
   *logs*) echo "Liaison setup token: the-token" ;;
 esac
@@ -105,5 +106,22 @@ describe("quickstart.sh --channel", () => {
     const r = s.run(["--channel", "beta"])
     expect(r.code).not.toBe(0)
     expect(r.stderr).toContain("unknown channel: beta")
+  })
+})
+
+describe("quickstart.sh: the app sandbox runtime", () => {
+  it("runs the sandbox on runc, accepted explicitly, on a Docker host without gVisor", () => {
+    const qs = sandbox()
+    expect(qs.run([]).code).toBe(0)
+    expect(qs.envValue("LIAISON_SANDBOX_RUNTIME")).toBe("runc")
+    expect(qs.envValue("LIAISON_SANDBOX_ALLOW_NO_GVISOR")).toBe("1")
+    expect(qs.envValue("LIAISON_SANDBOX_ALLOW_OPEN_NETWORK")).toBe("1")
+  })
+
+  it("keeps gVisor where the host has it", () => {
+    const qs = sandbox()
+    expect(qs.run([], { HAS_RUNSC: "1" }).code).toBe(0)
+    expect(qs.envValue("LIAISON_SANDBOX_RUNTIME")).toBeUndefined()
+    expect(qs.envValue("LIAISON_SANDBOX_ALLOW_NO_GVISOR")).toBeUndefined()
   })
 })

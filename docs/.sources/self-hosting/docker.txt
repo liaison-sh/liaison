@@ -285,9 +285,11 @@ The three loader variables run every installed sandboxed app on the loader, as t
 LIAISON_CUSTOM_APPS on: org custom apps and the app builder; unset off when self-hosted, on when managed; instance installs and installed apps unaffected -> apps/api/src/lib/env.ts:1061 ; apps/api/src/lib/edition.ts:53 ; apps/api/src/modules/apps/install-routes.ts:265
 LIAISON_APP_FRAME_ORIGIN_TEMPLATE frames outside apps (and LIAISON_FRAMED_APPS first-party apps) on <app>--<org> of their own domain; empty = opaque frame; passed by compose -> apps/api/src/lib/env.ts:175 ; apps/api/src/lib/env.ts:188 ; deploy/docker-compose.yml:655 ; deploy/docker-compose.yml:657
 LIAISON_SANDBOX_URL names the server's own sandbox service for runs the loader cannot take, and for every run without a loader -> apps/api/src/lib/env.ts ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
-Sandbox service compose profile, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME -> deploy/docker-compose.yml sandbox ; apps/api/src/modules/apps/workers/bridge-listener.ts
+Sandbox service started with the stack, LIAISON_SANDBOX_URL default, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME -> deploy/docker-compose.yml sandbox ; apps/api/src/modules/apps/workers/bridge-listener.ts
 /healthz sandbox dependency when the sandbox service is configured -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox
 Rolling deploy recreates the sandbox service after the new processes are ready -> deploy/rolling-deploy.sh step 4b
 LIAISON_IMAGE shared by app, sandbox (anchor *liaison-image) and rolling processes (<<: *liaison-app) -> deploy/docker-compose.yml app image ; deploy/docker-compose.yml sandbox image
 App container health check ignores sandbox: network_open -> deploy/docker-compose.yml (app healthcheck) ; apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)
 LIAISON_SANDBOX_ALLOW_OPEN_NETWORK runs apps without the firewall step -> deploy/docker-compose.yml (SANDBOX_ALLOW_OPEN_NETWORK) ; deploy/.env.example (LIAISON_SANDBOX_ALLOW_OPEN_NETWORK)
+gVisor for the sandbox service; quickstart runs it on runc without gVisor -> deploy/docker-compose.yml (sandbox runtime) ; deploy/quickstart.sh (sandbox_runtime)
+sandbox service row, 2 GB cap -> deploy/docker-compose.yml (sandbox mem_limit)

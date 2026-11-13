@@ -53,11 +53,12 @@ function actor(scopes: string[] = ["*"]): UserContext {
   return { actorType: "user", userId: owner.userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
 }
 
-/** Every projects tool behind the feature, read from the registry. */
+/** Every projects tool behind the feature an agent is shown, read from the registry. */
 function timeTools(): string[] {
   const out: string[] = []
   for (const [key, def] of toolRegistry.entriesOf(orgId)) {
-    if (key[1] === "projects" && (def as { feature?: string }).feature === "time_budgets") {
+    const d = def as { feature?: string; agentVisible?: boolean }
+    if (key[1] === "projects" && d.feature === "time_budgets" && d.agentVisible !== false) {
       out.push(`projects__${key[2]}`)
     }
   }

@@ -313,6 +313,7 @@ export async function raiseCapacityLines(
             SELECT DISTINCT u.id::text AS id
               FROM ${projectsRel("projects")} p
               JOIN ${kernelRel("users")} u ON u.org_id = p.org_id AND u.status = 'active'
+                AND u.user_type = 'member'
              WHERE p.org_id = ${orgId}::uuid
                AND p.id IN (${drizzleSql.join(
                  projectIds.map((id) => drizzleSql`${id}::uuid`),

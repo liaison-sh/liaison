@@ -5425,6 +5425,7 @@
         "labelKey": "projects.timesheet.tab",
         "icon": "ProjectsIcon",
         "urlPattern": "/projects/timesheet/:entityId",
+        "entity": "project",
         "referenceable": false,
         "feature": "time_budgets"
       },

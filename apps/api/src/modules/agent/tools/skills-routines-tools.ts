@@ -6033,7 +6033,7 @@ function registerAuthoringTools(orgId: string): void {
     name: "create_routine",
     deferLoading: true,
     description:
-      "Author a routine: an agent task that runs unattended on one of three triggers, recurring (cron), scheduled (a one-off runAt) or event (an in-tree app:entity:action event). Pick the trigger from the user's phrasing, and read each parameter's own guidance before filling it in. Gated: it lands as a pending approval, so report it as drafted for approval, never as a live routine.",
+      "Author a routine: an agent task that runs unattended on a trigger, recurring (cron), scheduled (one runAt) or event (an app:entity:action event); each parameter says how to fill it. Gated: it lands as a pending approval, so report it as drafted for approval, never as a live routine.",
     searchKeywords: [
       "routine",
       "récurrente",

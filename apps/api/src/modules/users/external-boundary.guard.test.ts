@@ -37,6 +37,18 @@ const TREATED: Record<string, [Treatment, string]> = {
     "by-address",
     "an import's assignee, through imports/authority.ts",
   ],
+  "apps/projects/service/capacity.ts": [
+    "stored-ids",
+    "the name and status of the people the timeboxed tasks are assigned to",
+  ],
+  "apps/projects/service/home-lines.ts": [
+    "member-filter",
+    "a capacity line's leads: the project's owner or a person with a live task on it, members only",
+  ],
+  "apps/projects/service/time-plan.ts": [
+    "stored-ids",
+    "the names of a project's owner, its biller and who changed a time entry",
+  ],
   "apps/tickets/backlog-health.ts": ["stored-ids", "the name of a ticket's assignee"],
   "apps/tickets/close-silent.ts": ["one-row", "checks a closer's id"],
   "apps/tickets/create.ts": ["one-row", "checks a named id"],

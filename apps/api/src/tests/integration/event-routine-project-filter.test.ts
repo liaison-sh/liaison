@@ -125,7 +125,7 @@ function statusChanged(
   }
 }
 
-async function fire(evt: ReturnType<typeof statusChanged>) {
+async function fire(evt: ReturnType<typeof statusChanged> & { _eventId?: string }) {
   await _publishEventInternal({ ...evt, orgId: ORG })
   await flushEventHandlers()
   await new Promise((r) => setTimeout(r, 150))
@@ -232,6 +232,20 @@ describe("projects task filter", () => {
     await fire(statusChanged(id, board, board.open, board.next))
     await fire(statusChanged(id, board, board.next, board.open))
     expect(ticks().length).toBe(2)
+  })
+
+  test("a redelivered status change runs once, its job keyed by the event id", async () => {
+    await subscribe({ projectId: board.id })
+    const id = await task(board, {})
+    const eventId = crypto.randomUUID()
+    const evt = { ...statusChanged(id, board, board.open, board.next), _eventId: eventId }
+    await fire(evt)
+    await fire(evt)
+    expect(ticks().length).toBe(1)
+    const jobIds = enqueued
+      .filter(([, job]) => job === "routine-tick")
+      .map((a) => (a[3] as { jobId: string }).jobId)
+    expect(jobIds).toEqual([`routine-event:${ROUTINE}:${eventId}`])
   })
 
   test("a task the owner cannot read starts no tick", async () => {

@@ -352,6 +352,25 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       // The routine chain depth the run carries on (queue-event.ts stamps hop + 1).
       ...(hop > 0 ? { hop } : {}),
     }
+    // An uncoalesced event (a status change) runs once per outbox event: a redelivery of the
+    // same event (an outbox replay, a peer's copy) is the same transition, and a second run
+    // would assign, message and comment again, and supersede the first run's wait.
+    if (!coalesce && triggerEvent.eventId) {
+      const first = await redis.set(
+        uncoalescedOnceKey(sub.routineId, triggerEvent.eventId),
+        "1",
+        "EX",
+        UNCOALESCED_ONCE_TTL_SEC,
+        "NX",
+      )
+      if (first !== "OK") {
+        log.debug(
+          { routineId: sub.routineId, eventId: triggerEvent.eventId },
+          "event-routine: event already delivered; dropped",
+        )
+        return
+      }
+    }
     // In flight from this enqueue until its run row lands: the reconciler
     // must not fire a retry for an event whose first tick is still queued.
     if (triggerEvent.eventId) {
@@ -377,11 +396,12 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       // layer (prod: a ticket that never got an auto draft). Keying the jobId
       // per entity keeps distinct entities on distinct jobs.
       {
-        // An uncoalesced event (a status change) adds its outbox id: two transitions of one task
-        // in the same millisecond are two runs.
-        jobId: `routine-event:${sub.routineId}:${triggerEvent.entityId ?? "none"}:${Date.now()}${
-          !coalesce && triggerEvent.eventId ? `:${triggerEvent.eventId}` : ""
-        }`,
+        // An uncoalesced event (a status change) is keyed by its outbox id alone: two
+        // transitions of one task are two runs, a redelivery of one is the same job.
+        jobId:
+          !coalesce && triggerEvent.eventId
+            ? `routine-event:${sub.routineId}:${triggerEvent.eventId}`
+            : `routine-event:${sub.routineId}:${triggerEvent.entityId ?? "none"}:${Date.now()}`,
       },
     )
   } catch (err) {
@@ -389,7 +409,16 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   }
 }
 
-/** Events whose every occurrence fires its own run: no coalesce window (0303). */
+/** How long a delivered uncoalesced event is remembered: longer than any outbox redelivery. */
+const UNCOALESCED_ONCE_TTL_SEC = 24 * 60 * 60
+const uncoalescedOnceKey = (routineId: string, eventId: string) =>
+  `routine-event-once:${routineId}:${eventId}`
+
+/**
+ * Events whose every occurrence fires its own run: no coalesce window (0303), deduplicated on the
+ * event's outbox id instead. `projects:task:status_changed` is new in the release that added
+ * flows, so no routine subscribed to it before: no existing routine's runs change (S14).
+ */
 function isUncoalescedEvent(evt: Pick<AppEvent, "app" | "entity" | "action">): boolean {
   return evt.app === "projects" && evt.entity === "task" && evt.action === "status_changed"
 }

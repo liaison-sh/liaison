@@ -17,6 +17,7 @@
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient, type RlsTx } from "~/db"
+import { advisoryXactLock, advisoryXactLockShared } from "~/db/advisory-lock"
 import type { UserContext } from "~/db/rls"
 import {
   CellError,
@@ -53,6 +54,24 @@ export function parseStoredFields(raw: unknown): ProjectField[] {
 /** The project's active field definitions, in order (tombstones left out). */
 export function activeFields(defs: readonly ProjectField[]): Column[] {
   return defs.filter((f) => f.removed !== true).map(({ removed: _removed, ...col }) => col)
+}
+
+/**
+ * Serializes a project's definition changes against its value writes. A value write (a task
+ * create, a field update, a move into the project) takes the shared lock before it reads the
+ * definitions; `setFields` takes the exclusive one before it reads the values the tasks hold. So
+ * a write validated against definitions `setFields` is replacing commits first (and `setFields`
+ * then sees its value), or reads the new definitions. Transaction-scoped.
+ */
+export async function lockProjectFields(
+  tx: Db,
+  projectId: string,
+  mode: "write-values" | "change-definitions",
+): Promise<void> {
+  const name = `projects:task-fields:${projectId}`
+  await tx.execute(
+    mode === "change-definitions" ? advisoryXactLock(name) : advisoryXactLockShared(name),
+  )
 }
 
 /** Every stored definition of a project (tombstones included). */
@@ -139,7 +158,7 @@ export async function validateTaskFields(
 }
 
 /** May the reader open records of `app` (a link value's label is theirs to see)? */
-function seesApp(scopes: readonly string[], app: string): boolean {
+export function seesApp(scopes: readonly string[], app: string): boolean {
   if (app === "kernel") return true
   return scopes.some((s) => s === "*" || s === app || s.startsWith(`${app}:`))
 }
@@ -165,6 +184,29 @@ export function visibleTaskFields(
       const link = v as LinkCell
       out[col.key] = seesApp(scopes, link.app) ? link : { ...link, label: HIDDEN_LINK_LABEL }
     } else out[col.key] = v
+  }
+  return out
+}
+
+/**
+ * A copy of `values` ({key: cell}) where every link value (the only object cells) to an app the
+ * reader may not open carries the hidden label. For values read without their definitions: a
+ * template snapshot, an event payload.
+ */
+export function maskLinkCells(
+  values: Record<string, unknown>,
+  scopes: readonly string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(values)) {
+    const app =
+      typeof v === "object" && v !== null && !Array.isArray(v)
+        ? (v as { app?: unknown }).app
+        : undefined
+    out[k] =
+      typeof app === "string" && !seesApp(scopes, app)
+        ? { ...(v as Record<string, unknown>), label: HIDDEN_LINK_LABEL }
+        : v
   }
   return out
 }
@@ -267,6 +309,7 @@ export async function setFields(args: SetFieldsArgs): Promise<Column[]> {
 
   return tx.transaction(async (innerTx) => {
     await ensureProjectMutableForTasks(innerTx, orgId, projectId)
+    await lockProjectFields(innerTx, projectId, "change-definitions")
     const current = await readProjectFields(innerTx, orgId, projectId)
     // Every value the project's tasks hold (binned tasks too: they can be restored).
     const held = extractRows<{ id: string; fields: Record<string, unknown> | null }>(
@@ -279,8 +322,14 @@ export async function setFields(args: SetFieldsArgs): Promise<Column[]> {
     for (const col of next) {
       const map = renames[col.key]
       const before = current.find((f) => f.key === col.key)
-      // Unchanged definition: nothing the tasks hold can stop fitting it.
-      if (before && !map && sameJson(activeFields([{ ...before, removed: false }])[0], col)) {
+      // Unchanged active definition: nothing the tasks hold can stop fitting it. A tombstone put
+      // back is checked: while it was off the project, a move could bring in values it never saw.
+      if (
+        before &&
+        before.removed !== true &&
+        !map &&
+        sameJson(activeFields([{ ...before, removed: false }])[0], col)
+      ) {
         continue
       }
       const persons = new Set<string>()
@@ -388,12 +437,13 @@ const fitsField = (col: Column, value: unknown): boolean => {
 /**
  * A task's stored values as they go into another project: a value the destination declares a
  * field it does not fit is put aside under HIDDEN_FIELDS_KEY (and one put aside earlier comes
- * back when it fits); keys the destination does not declare stay as they are. `hidden` lists the
- * keys the destination does not show.
+ * back when it fits); keys the destination does not declare stay as they are. A tombstone of the
+ * destination counts as a declaration: putting the field back must never surface a value it does
+ * not fit. `hidden` lists the keys the destination does not show.
  */
 export function fieldsForProject(
   stored: Record<string, unknown>,
-  target: readonly Column[],
+  target: readonly ProjectField[],
 ): { fields: Record<string, unknown>; hidden: string[] } {
   const asideRaw = stored[HIDDEN_FIELDS_KEY]
   const aside: Record<string, unknown> =
@@ -402,7 +452,13 @@ export function fieldsForProject(
       : {}
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(stored)) if (k !== HIDDEN_FIELDS_KEY) out[k] = v
-  const byKey = new Map(target.map((c) => [c.key, c]))
+  const byKey = new Map(
+    target.map((f) => {
+      const { removed: _removed, ...col } = f
+      return [f.key, col as Column] as const
+    }),
+  )
+  const shown = new Set(activeFields(target).map((c) => c.key))
   for (const [k, v] of Object.entries(out)) {
     const col = byKey.get(k)
     if (col && !fitsField(col, v)) {
@@ -419,7 +475,7 @@ export function fieldsForProject(
   }
   if (Object.keys(aside).length > 0) out[HIDDEN_FIELDS_KEY] = aside
   const hidden = [
-    ...Object.keys(out).filter((k) => k !== HIDDEN_FIELDS_KEY && !byKey.has(k)),
+    ...Object.keys(out).filter((k) => k !== HIDDEN_FIELDS_KEY && !shown.has(k)),
     ...Object.keys(aside),
   ].sort()
   return { fields: out, hidden }

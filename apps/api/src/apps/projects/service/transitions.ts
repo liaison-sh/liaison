@@ -53,32 +53,36 @@ const uuidOrNull = (v: string | null) =>
  * Records status changes (rows whose from equals to are skipped): one statement for the rows, one
  * for the tasks' `status_entered_at`, one status lookup, then one compact `task:status_changed`
  * event per task {id, projectId, fromStatusId, toStatusId, labels, terminal, actor}.
+ * `opts.at` (an ISO instant) dates the changes, for an import that backdates a task's creation;
+ * by default they happen now.
  */
 export async function recordTransitions(
   tx: Db,
   orgId: string,
   rows: readonly TransitionInput[],
   actor: TransitionActor,
+  opts: { at?: string | null } = {},
 ): Promise<void> {
   const changes = rows.filter((r) => r.fromStatusId !== r.toStatusId)
   if (changes.length === 0) return
+  const at = opts.at ? drizzleSql`${opts.at}::timestamptz` : drizzleSql`now()`
   await tx.execute(drizzleSql`
     INSERT INTO ${projectsRel("task_transitions")}
       (org_id, project_id, task_id, from_status_id, to_status_id, actor_type, actor_id, agent_id,
-       routine_id)
+       routine_id, "at")
     VALUES ${drizzleSql.join(
       changes.map(
         (r) => drizzleSql`(
           ${orgId}::uuid, ${r.projectId}::uuid, ${r.taskId}::uuid, ${uuidOrNull(r.fromStatusId)},
           ${r.toStatusId}::uuid, ${actor.type}, ${uuidOrNull(actor.userId)},
-          ${uuidOrNull(actor.agentId)}, ${uuidOrNull(actor.routineId)}
+          ${uuidOrNull(actor.agentId)}, ${uuidOrNull(actor.routineId)}, ${at}
         )`,
       ),
       drizzleSql`, `,
     )}
   `)
   await tx.execute(drizzleSql`
-    UPDATE ${projectsRel("tasks")} SET status_entered_at = now()
+    UPDATE ${projectsRel("tasks")} SET status_entered_at = ${at}
     WHERE org_id = ${orgId}::uuid AND id IN (${drizzleSql.join(
       changes.map((r) => drizzleSql`${r.taskId}::uuid`),
       drizzleSql`, `,
@@ -136,7 +140,10 @@ export interface TaskTransition {
   at: string
 }
 
-/** A task's transitions, newest first (at most `limit`, default 50), labels and names joined. */
+/**
+ * A task's transitions, newest first (at most `limit`, default 50), labels and names joined. Rows
+ * of one transaction share `at`; `seq` (insert order) keeps them in the order they were made.
+ */
 export async function listTaskTransitions(
   tx: Db,
   orgId: string,
@@ -164,7 +171,7 @@ export async function listTaskTransitions(
       LEFT JOIN ${projectsRel("project_statuses")} ts ON ts.id = x.to_status_id AND ts.org_id = x.org_id
       LEFT JOIN ${kernelRel("users")} u ON u.id = x.actor_id AND u.org_id = x.org_id
       WHERE x.task_id = ${taskId}::uuid AND x.org_id = ${orgId}::uuid
-      ORDER BY x."at" DESC, x.created_at DESC
+      ORDER BY x."at" DESC, x.seq DESC
       LIMIT ${Math.max(1, Math.min(limit, 200))}
     `),
   )

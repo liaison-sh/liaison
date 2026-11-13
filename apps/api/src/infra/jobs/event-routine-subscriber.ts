@@ -11,6 +11,7 @@ import {
 } from "~/infra/events/event-bus"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import {
+  eventDataForOwner,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
@@ -263,9 +264,11 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // A table row routine's filter (0298): its table, column and the value it moves to, read from
   // the change as the owner, before the window opens (a non-matching edit absorbs nothing).
   const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
+  // The owner, once the gate loaded it: the data the routine is handed is masked for them.
+  let owner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
   if (isOwnerScopedEvent(evt) || filterApplies || tableFilter) {
     try {
-      const owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
+      owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
       if (!owner) return
       if (!(await ownerCanSeeEventEntity(owner, evt))) {
         log.debug(
@@ -310,7 +313,7 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       entity,
       action,
       entityId: typeof evt.entityId === "string" ? evt.entityId : null,
-      data: evt.data ?? null,
+      data: eventDataForOwner(owner, evt) ?? null,
       origin: await triggerEventOrigin(evt),
       // The outbox id the audit log keeps for this event: the run row records it, and
       // the reconciler matches runs to events by it (routine-event-reconciler.ts).

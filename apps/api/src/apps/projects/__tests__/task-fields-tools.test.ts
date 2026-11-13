@@ -17,13 +17,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import { setFields } from "~/apps/projects/service/fields"
 import { migrateStatusTasks } from "~/apps/projects/service/statuses"
+import { createTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { ActorContext, UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
-import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
+import { eventDataForOwner, ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { eraseUser } from "~/modules/erasure/erase-user"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 // Hermetic copy of execute-tool (a neighbouring file mock.module()s it; see
@@ -245,6 +248,80 @@ describe("fields_set: field definitions", () => {
     expect(restored.fields).toEqual({ problem: "Noise", serial: "SN-9" })
   })
 
+  it("a value moved in under a removed field is never restored by re-adding the field", async () => {
+    // The destination once had `cost: number`, now a tombstone; the source holds text there.
+    const target = await makeBoard([FIELDS[0], { key: "cost", label: "Cost", type: "number" }])
+    await ok("fields_set", { projectId: target.id, fields: [FIELDS[0]] })
+    const source = await makeBoard([FIELDS[0], { key: "cost", label: "Cost", type: "text" }])
+    const task = await ok("create", {
+      projectId: source.id,
+      title: "t",
+      fields: { problem: "Noise", cost: "abc" },
+    })
+    await ok("move", { taskId: task.id, projectId: target.id })
+    // Put aside on the move: the tombstone counts as a declaration.
+    expect(await storedFields(task.id)).toEqual({ problem: "Noise", _hidden: { cost: "abc" } })
+    await ok("fields_set", {
+      projectId: target.id,
+      fields: [FIELDS[0], { key: "cost", label: "Cost", type: "number" }],
+    })
+    expect((await ok("get", { taskId: task.id })).fields).toEqual({ problem: "Noise" })
+
+    // A value under a tombstone that slipped in without the move's check (written before this
+    // fix) is checked when the field is put back, never restored as is.
+    await ok("fields_set", { projectId: target.id, fields: [FIELDS[0]] })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET fields = fields || '{"cost": "abc"}'::jsonb
+      WHERE id = ${task.id}::uuid
+    `)
+    const readd = await run("fields_set", {
+      projectId: target.id,
+      fields: [FIELDS[0], { key: "cost", label: "Cost", type: "number" }],
+    })
+    expect(readd.error?.code).toBe("field_type_in_use")
+  })
+
+  it("a fields_set waits for a task write that read the old definitions (no removed option slips in)", async () => {
+    const board = await makeBoard([FIELDS[0]])
+    let release!: () => void
+    const held = new Promise<void>((r) => {
+      release = r
+    })
+    let created!: () => void
+    const createdSignal = new Promise<void>((r) => {
+      created = r
+    })
+    // A create validated against the current options, still uncommitted.
+    const writer = withRlsContext(actor, async (tx) => {
+      await createTask({
+        tx,
+        orgId,
+        actor,
+        input: { projectId: board.id, title: "racer", fields: { problem: "Power" } },
+      })
+      created()
+      await held
+    })
+    await createdSignal
+    // Meanwhile the option is removed.
+    const change = withRlsContext(actor, (tx) =>
+      setFields({
+        tx,
+        orgId,
+        actor,
+        projectId: board.id,
+        fields: [{ ...FIELDS[0], choices: ["Noise", "Other"] }],
+      }),
+    ).then(
+      () => null,
+      (err: { code?: string }) => err.code ?? "error",
+    )
+    await new Promise((r) => setTimeout(r, 300))
+    release()
+    await writer
+    expect(await change).toBe("choice_in_use")
+  })
+
   it("removing a choice option tasks use is refused unless renamed; a rename rewrites the values", async () => {
     const board = await makeBoard([FIELDS[0], FIELDS[4]])
     const task = await ok("create", {
@@ -390,6 +467,50 @@ describe("transitions and task:status_changed", () => {
       board.open,
     ])
     expect(typeof detail.statusEnteredAt).toBe("string")
+  })
+
+  it("a backdated create enters its status and records its transition at its createdAt", async () => {
+    const board = await makeBoard()
+    const task = await withRlsContext(actor, (tx) =>
+      createTask({
+        tx,
+        orgId,
+        actor,
+        input: { projectId: board.id, title: "imported", createdAt: "2025-03-01T10:00:00Z" },
+      }),
+    )
+    const [row] = extractRows<{ status_entered_at: Date; at: Date }>(
+      await db.execute(drizzleSql`
+        SELECT t.status_entered_at, x."at" FROM app_projects.tasks t
+        JOIN app_projects.task_transitions x ON x.task_id = t.id WHERE t.id = ${task.id}::uuid
+      `),
+    )
+    expect(new Date(row!.status_entered_at).toISOString()).toBe("2025-03-01T10:00:00.000Z")
+    expect(new Date(row!.at).toISOString()).toBe("2025-03-01T10:00:00.000Z")
+  })
+
+  it("transitions made in one transaction keep their order", async () => {
+    const board = await makeBoard()
+    const { updateTask } = await import("~/apps/projects/service/tasks")
+    const id = await withRlsContext(actor, async (tx) => {
+      const t = await createTask({
+        tx,
+        orgId,
+        actor,
+        input: { projectId: board.id, title: "fast" },
+      })
+      await updateTask({ tx, orgId, actor, taskId: t.id, input: { statusId: board.next } })
+      await updateTask({ tx, orgId, actor, taskId: t.id, input: { statusId: board.done } })
+      await updateTask({ tx, orgId, actor, taskId: t.id, input: { statusId: board.open } })
+      return t.id
+    })
+    const got = await ok("get", { taskId: id })
+    expect(got.transitions.map((x: Json) => x.toStatusId)).toEqual([
+      board.open,
+      board.done,
+      board.next,
+      board.open,
+    ])
   })
 
   it("records the actor: an agent's call is agent, a person's in the app is user", async () => {
@@ -556,6 +677,52 @@ describe("templates v2", () => {
     })
   })
 
+  it("a stored v1 template with a long description instantiates its tasks; an unreadable one refuses loudly", async () => {
+    const templateId = randomUUID()
+    const long = "d".repeat(30_000)
+    await db.execute(drizzleSql`
+      INSERT INTO app_projects.project_templates (id, org_id, name, structure, created_by)
+      VALUES (${templateId}::uuid, ${orgId}::uuid, 'Long v1',
+        ${JSON.stringify([{ title: "Long one", description: long, extra: 1 }])}::jsonb, ${userId}::uuid)
+    `)
+    const out = await ok("instantiate_template", {
+      templateId,
+      projectName: `long-${randomUUID().slice(0, 6)}`,
+    })
+    const rows = (await ok("tasks_byProject", { projectId: out.projectId })).items as Json[]
+    expect(rows.map((t) => t.title)).toEqual(["Long one"])
+
+    const brokenId = randomUUID()
+    await db.execute(drizzleSql`
+      INSERT INTO app_projects.project_templates (id, org_id, name, structure, created_by)
+      VALUES (${brokenId}::uuid, ${orgId}::uuid, 'Broken',
+        ${JSON.stringify({ version: 2, tasks: [{ title: "" }] })}::jsonb, ${userId}::uuid)
+    `)
+    const broken = await run("instantiate_template", {
+      templateId: brokenId,
+      projectName: `broken-${randomUUID().slice(0, 6)}`,
+    })
+    expect(broken.error?.code).toBe("template_unreadable")
+    const listed = (await ok("templates_list", {})).items as Json[]
+    expect(listed.find((t) => t.id === brokenId)?.unreadable).toBe(true)
+  })
+
+  it("a copy of a project masks the label of a link its maker may not open", async () => {
+    const board = await makeBoard([FIELDS[5]])
+    await ok("create", {
+      projectId: board.id,
+      title: "linked",
+      fields: { ref: { app: "tickets", entityType: "ticket", id: "t-1", label: "A ticket" } },
+    })
+    const copy = await ok("template_save", { name: "Linked copy", fromProjectId: board.id })
+    expect(copy.structure.tasks[0].fields.ref).toEqual({
+      app: "tickets",
+      entityType: "ticket",
+      id: "t-1",
+      label: "Linked record",
+    })
+  })
+
   it("refuses at save a task value its fields do not allow, and an unknown status", async () => {
     const badValue = await run("template_save", {
       name: "Bad",
@@ -605,6 +772,107 @@ describe("RLS on fields and transitions", () => {
   })
 })
 
+describe("task_transitions is append-only for every scope holder", () => {
+  it("`*` and `projects:*` holders cannot change, remove or add a foreign transition; the cascade and the erasure still apply", async () => {
+    // The registration-generated scope-only policies exist (so this test is not vacuous).
+    const generated = extractRows<{ policyname: string }>(
+      await db.execute(drizzleSql`
+        SELECT policyname FROM pg_policies
+        WHERE schemaname = 'app_projects' AND tablename = 'task_transitions'
+          AND policyname LIKE 'task_transitions_rls_%'
+      `),
+    )
+    expect(generated.length).toBeGreaterThan(0)
+
+    // A task of another org, made by that org's own member.
+    const [org2] = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        INSERT INTO kernel.organizations (id, name, slug)
+        VALUES (gen_random_uuid(), 'Foreign Org', ${`task-fields-foreign-${randomUUID()}`}) RETURNING id
+      `),
+    )
+    await ensureAppsForOrg(org2!.id, {})
+    const [u2] = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
+        VALUES (gen_random_uuid(), ${org2!.id}::uuid, ${`foreign-${randomUUID()}@test.com`}, 'Foreign', 'active', 'hash', 1, 1)
+        RETURNING id
+      `),
+    )
+    const foreignActor: UserContext = { ...actor, orgId: org2!.id, userId: u2!.id }
+    const foreign = await withRlsContext(foreignActor, async (tx) => {
+      const { createProject } = await import("~/apps/projects/service/create-project")
+      const p = await createProject({
+        tx,
+        orgId: org2!.id,
+        actor: foreignActor,
+        input: { name: `foreign-${randomUUID().slice(0, 6)}` },
+      })
+      const t = await createTask({
+        tx,
+        orgId: org2!.id,
+        actor: foreignActor,
+        input: { projectId: p.id, title: "foreign" },
+      })
+      return { id: t.id, project_id: p.id, status_id: p.statuses[0]!.id }
+    })
+    const board = await makeBoard()
+    const task = await ok("create", { projectId: board.id, title: "history" })
+    await ok("update", { taskId: task.id, statusId: board.next })
+    expect(await transitions(task.id)).toHaveLength(2)
+
+    for (const scopes of [["*"], ["projects:*"], ["projects"]]) {
+      const who = { ...actor, scopes }
+      const touched = await withRlsContext(who, async (tx) => {
+        const updated = extractRows(
+          await tx.execute(drizzleSql`
+            UPDATE app_projects.task_transitions SET to_status_id = ${board.open}::uuid
+            WHERE task_id = ${task.id}::uuid RETURNING id
+          `),
+        )
+        const deleted = extractRows(
+          await tx.execute(drizzleSql`
+            DELETE FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid RETURNING id
+          `),
+        )
+        return updated.length + deleted.length
+      })
+      expect({ scopes, touched }).toEqual({ scopes, touched: 0 })
+      {
+        const inserted = await withRlsContext(who, (tx) =>
+          tx.execute(drizzleSql`
+            INSERT INTO app_projects.task_transitions
+              (org_id, project_id, task_id, from_status_id, to_status_id, actor_type)
+            VALUES (${orgId}::uuid, ${foreign.project_id}::uuid, ${foreign.id}::uuid, NULL,
+                    ${foreign.status_id}::uuid, 'user')
+          `),
+        ).then(
+          () => "inserted",
+          () => "refused",
+        )
+        expect({ scopes, inserted }).toEqual({ scopes, inserted: "refused" })
+      }
+    }
+    expect(await transitions(task.id)).toHaveLength(2)
+    expect(await transitions(foreign.id)).toHaveLength(1)
+
+    // The erasure anonymizes the actor of a surviving transition.
+    const leaver = await insertUser("Leaver")
+    const leaverCtx: UserContext = { ...actor, userId: leaver }
+    const theirs = await withRlsContext(leaverCtx, (tx) =>
+      createTask({ tx, orgId, actor: leaverCtx, input: { projectId: board.id, title: "theirs" } }),
+    )
+    await ok("update", { taskId: theirs.id, statusId: board.next })
+    expect((await transitions(theirs.id)).map((t) => t.actor_id)).toContain(leaver)
+    expect((await eraseUser(leaver)).exitCode).toBe(0)
+    expect((await transitions(theirs.id)).map((t) => t.actor_id)).not.toContain(leaver)
+
+    // Removing the task removes its history (the foreign-key cascade).
+    await db.execute(drizzleSql`DELETE FROM app_projects.tasks WHERE id = ${task.id}::uuid`)
+    expect(await transitions(task.id)).toHaveLength(0)
+  }, 60_000)
+})
+
 describe("event routines: the owner gate covers project tasks", () => {
   it("a task event reaches a routine only when its owner can read the task", async () => {
     const board = await makeBoard()
@@ -624,5 +892,20 @@ describe("event routines: the owner gate covers project tasks", () => {
         evt,
       ),
     ).toBe(false)
+  })
+  it("a routine is handed the task's link values as its owner may read them", async () => {
+    const link = { app: "tickets", entityType: "ticket", id: "t-9", label: "A ticket" }
+    const evt = {
+      app: "projects",
+      entity: "task",
+      action: "updated",
+      orgId,
+      entityId: randomUUID(),
+      data: { id: "x", fields: { ref: link, serial: "S" } },
+    }
+    const blind = eventDataForOwner({ ...actor, scopes: ["projects:tasks:read"] }, evt) as Json
+    expect(blind.fields).toEqual({ ref: { ...link, label: "Linked record" }, serial: "S" })
+    const seeing = eventDataForOwner({ ...actor, scopes: ["tickets:tickets:read"] }, evt) as Json
+    expect(seeing.fields.ref.label).toBe("A ticket")
   })
 })

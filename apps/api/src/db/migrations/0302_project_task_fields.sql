@@ -4,7 +4,8 @@
 --                          `removed: true` tombstones for definitions taken off the project)
 --   tasks.fields           a task's values {key: cell}
 --   tasks.status_entered_at when the task entered its current status
---   task_transitions       every status change (append-only): from, to, actor, at
+--   task_transitions       every status change (append-only): from, to, actor, at, and `seq`,
+--                          the order of rows that share one `at` (one transaction's changes)
 -- Additive and idempotent.
 SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint
@@ -30,12 +31,13 @@ CREATE TABLE IF NOT EXISTS app_projects.task_transitions (
   agent_id UUID,
   routine_id UUID,
   "at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE app_projects.task_transitions OWNER TO liaison_admin;
 CREATE INDEX IF NOT EXISTS idx_task_transitions_task_at
-  ON app_projects.task_transitions (task_id, "at" DESC);
+  ON app_projects.task_transitions (task_id, "at" DESC, seq DESC);
 CREATE INDEX IF NOT EXISTS idx_task_transitions_project_to_at
   ON app_projects.task_transitions (project_id, to_status_id, "at");
 --> statement-breakpoint
@@ -43,11 +45,19 @@ CREATE INDEX IF NOT EXISTS idx_task_transitions_project_to_at
 ALTER TABLE app_projects.task_transitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_projects.task_transitions FORCE ROW LEVEL SECURITY;
 
--- Readable by who can read the task, written by who can write tasks; never changed or
--- removed (append-only: no update or delete policy, so the deny default refuses both).
+-- Readable by who can read the task, written by who can write tasks; never changed or removed.
+-- App registration also generates the permissive `task_transitions_rls_*` policies (scope only,
+-- passed by `*`, `projects` and `projects:*`) and grants UPDATE and DELETE on every table of the
+-- schema. Permissive policies OR together, so the rules here are RESTRICTIVE: they hold whatever
+-- else is granted. The erasure (anonymize actor_id) and the task-delete cascade do not run as
+-- liaison_rls (a privileged role; a foreign-key action bypasses RLS), so they still apply.
 DROP POLICY IF EXISTS task_transitions_deny_default ON app_projects.task_transitions;
 DROP POLICY IF EXISTS task_transitions_select ON app_projects.task_transitions;
 DROP POLICY IF EXISTS task_transitions_insert ON app_projects.task_transitions;
+DROP POLICY IF EXISTS task_transitions_follow_task ON app_projects.task_transitions;
+DROP POLICY IF EXISTS task_transitions_insert_scope ON app_projects.task_transitions;
+DROP POLICY IF EXISTS task_transitions_no_update ON app_projects.task_transitions;
+DROP POLICY IF EXISTS task_transitions_no_delete ON app_projects.task_transitions;
 
 CREATE POLICY task_transitions_deny_default ON app_projects.task_transitions
   FOR ALL TO liaison_rls USING (false) WITH CHECK (false);
@@ -71,6 +81,31 @@ CREATE POLICY task_transitions_insert ON app_projects.task_transitions FOR INSER
     )
     AND app_projects.app_has_scope('projects:tasks:write')
   );
+-- Restrictive: every read and write, whatever policy let it in, follows the task.
+CREATE POLICY task_transitions_follow_task ON app_projects.task_transitions
+  AS RESTRICTIVE FOR ALL TO liaison_rls
+  USING (
+    task_transitions.org_id = NULLIF((SELECT rls_ctx.org_id()), '')::uuid
+    AND EXISTS (
+      SELECT 1 FROM app_projects.tasks t
+      WHERE t.id = task_transitions.task_id AND t.org_id = task_transitions.org_id
+    )
+  )
+  WITH CHECK (
+    task_transitions.org_id = NULLIF((SELECT rls_ctx.org_id()), '')::uuid
+    AND EXISTS (
+      SELECT 1 FROM app_projects.tasks t
+      WHERE t.id = task_transitions.task_id AND t.org_id = task_transitions.org_id
+    )
+  );
+CREATE POLICY task_transitions_insert_scope ON app_projects.task_transitions
+  AS RESTRICTIVE FOR INSERT TO liaison_rls
+  WITH CHECK (app_projects.app_has_scope('projects:tasks:write'));
+-- Append-only: no row is ever changed or removed under RLS.
+CREATE POLICY task_transitions_no_update ON app_projects.task_transitions
+  AS RESTRICTIVE FOR UPDATE TO liaison_rls USING (false) WITH CHECK (false);
+CREATE POLICY task_transitions_no_delete ON app_projects.task_transitions
+  AS RESTRICTIVE FOR DELETE TO liaison_rls USING (false);
 --> statement-breakpoint
 
 GRANT SELECT, INSERT, REFERENCES ON app_projects.task_transitions
@@ -80,30 +115,35 @@ GRANT SELECT, INSERT, REFERENCES ON app_projects.task_transitions
 -- When each existing task entered its current status: the first task event that carried the
 -- current status after the last one that carried another (the audit log keeps every task event's
 -- data, statusId included). A task with no such event entered it when it was created.
-WITH ev AS (
-  SELECT al.org_id, al.entity_id, al."timestamp" AS at, al.changes->>'statusId' AS status_id
+-- One pass: the task events are joined to their tasks once (hash join), then grouped per task
+-- twice; no correlated subquery, so the cost grows with tasks + events, not their product.
+WITH pending AS (
+  SELECT t.id, t.org_id, t.status_id::text AS status_id
+  FROM app_projects.tasks t
+  WHERE NOT EXISTS (SELECT 1 FROM app_projects.task_transitions x WHERE x.task_id = t.id)
+),
+ev AS MATERIALIZED (
+  SELECT p.id AS task_id, al."timestamp" AS at,
+         (al.changes->>'statusId') IS NOT DISTINCT FROM p.status_id AS is_current
   FROM kernel.audit_log al
+  JOIN pending p ON p.org_id = al.org_id AND p.id::text = al.entity_id
   WHERE al.app = 'projects' AND al.entity_type = 'task'
     AND al.action IN ('task.created', 'task.updated', 'task.moved')
     AND al.changes ? 'statusId'
+),
+last_other AS (
+  SELECT task_id, max(at) AS at FROM ev WHERE NOT is_current GROUP BY task_id
+),
+entered AS (
+  SELECT e.task_id, min(e.at) AS at
+  FROM ev e LEFT JOIN last_other l ON l.task_id = e.task_id
+  WHERE e.is_current AND e.at > COALESCE(l.at, '-infinity'::timestamptz)
+  GROUP BY e.task_id
 )
 UPDATE app_projects.tasks t
-SET status_entered_at = COALESCE(
-  (
-    SELECT min(e.at) FROM ev e
-    WHERE e.org_id = t.org_id AND e.entity_id = t.id::text AND e.status_id = t.status_id::text
-      AND e.at > COALESCE(
-        (
-          SELECT max(e2.at) FROM ev e2
-          WHERE e2.org_id = t.org_id AND e2.entity_id = t.id::text
-            AND e2.status_id IS DISTINCT FROM t.status_id::text
-        ),
-        '-infinity'::timestamptz
-      )
-  ),
-  t.created_at
-)
-WHERE NOT EXISTS (SELECT 1 FROM app_projects.task_transitions x WHERE x.task_id = t.id);
+SET status_entered_at = COALESCE(en.at, t.created_at)
+FROM pending p LEFT JOIN entered en ON en.task_id = p.id
+WHERE t.id = p.id;
 --> statement-breakpoint
 
 -- One transition per existing task: how it entered its current status, so the time in status

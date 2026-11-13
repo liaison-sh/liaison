@@ -7,8 +7,9 @@
 //     in status starts at the move, not at the later edit;
 //   - a task with no status event: it entered its status when it was created;
 //   - each gets exactly one `system` transition into its status, and a second run adds none;
-//   - the table is FORCE RLS, readable exactly when the task is, and a task writer can neither
-//     change nor remove a transition.
+//   - the table is FORCE RLS, readable exactly when the task is, and no scope holder (`*`
+//     included) can change or remove a transition;
+//   - the backfill is one pass (no per-task scan of the audit events): measured below.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -156,6 +157,48 @@ describe("0302 project task fields", () => {
     expect((await state(moved)).enteredAt).toBe("2026-02-01T00:00:00.000Z")
   })
 
+  it("the backfill is one pass: 10 000 tasks with 100 000 audit events take seconds, not hours", async () => {
+    const template = await legacyTask("bulk-template", "2026-01-01T00:00:00Z")
+    const TASKS = 10_000
+    const PER_TASK = 10
+    await withSystemDb("0302-test-bulk", async (tx) => {
+      // Tasks shaped like the legacy one (no transition), each with ten audit events: A then B
+      // alternating, the last one B (its current status), at hourly steps.
+      await tx.execute(drizzleSql`
+        INSERT INTO app_projects.tasks
+          (id, org_id, project_id, status_id, number, title, thread_id, created_by, created_at)
+        SELECT gen_random_uuid(), t.org_id, t.project_id, t.status_id, 1000000 + g, 'bulk',
+               t.thread_id, t.created_by, t.created_at
+        FROM app_projects.tasks t, generate_series(1, ${TASKS}) g
+        WHERE t.id = ${template}::uuid
+      `)
+      await tx.execute(drizzleSql`
+        INSERT INTO kernel.audit_log (org_id, "timestamp", actor_type, app, entity_type, entity_id, action, changes)
+        SELECT t.org_id, '2026-01-01T00:00:00Z'::timestamptz + make_interval(hours => k), 'user',
+               'projects', 'task', t.id::text, 'task.updated',
+               jsonb_build_object('statusId', CASE WHEN k % 2 = 1 THEN ${statusB} ELSE ${statusA} END)
+        FROM app_projects.tasks t, generate_series(0, ${PER_TASK - 1}) k
+        WHERE t.project_id = ${projectId}::uuid AND t.title = 'bulk'
+      `)
+    })
+    const started = performance.now()
+    await runMigration()
+    const ms = Math.round(performance.now() - started)
+    console.log(`0302 backfill: ${TASKS} tasks, ${TASKS * PER_TASK} audit events: ${ms} ms`)
+    const [sample] = extractRows<{ status_entered_at: Date; n: number }>(
+      await db.execute(drizzleSql`
+        SELECT t.status_entered_at,
+               (SELECT COUNT(*)::int FROM app_projects.task_transitions x WHERE x.task_id = t.id) AS n
+        FROM app_projects.tasks t WHERE t.project_id = ${projectId}::uuid AND t.title = 'bulk' LIMIT 1
+      `),
+    )
+    // The last event (k = 9, status B) is the first after the last A (k = 8).
+    expect(new Date(sample!.status_entered_at).toISOString()).toBe("2026-01-01T09:00:00.000Z")
+    expect(sample!.n).toBe(1)
+    // The quadratic form took minutes at this size; one pass takes well under a minute.
+    expect(ms).toBeLessThan(60_000)
+  }, 180_000)
+
   it("task_transitions is FORCE RLS, follows the task, and a task writer cannot change or remove a row", async () => {
     const [rls] = extractRows<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       await db.execute(drizzleSql`
@@ -168,21 +211,25 @@ describe("0302 project task fields", () => {
     const task = await withRlsContext(actor, (tx) =>
       createTask({ tx, orgId, actor, input: { projectId, statusId: statusA, title: "rls" } }),
     )
-    const touched = await withRlsContext(actor, async (tx) => {
-      const updated = extractRows(
-        await tx.execute(drizzleSql`
-          UPDATE app_projects.task_transitions SET to_status_id = ${statusB}::uuid
-          WHERE task_id = ${task.id}::uuid RETURNING id
-        `),
-      )
-      const deleted = extractRows(
-        await tx.execute(drizzleSql`
-          DELETE FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid RETURNING id
-        `),
-      )
-      return updated.length + deleted.length
-    })
-    expect(touched).toBe(0)
+    // Registration's scope-only policies pass on `*`, `projects` and `projects:*`; the
+    // migration's restrictive ones hold for those holders too.
+    for (const scopes of [SCOPES, ["*"], ["projects:*"], ["projects"]]) {
+      const touched = await withRlsContext({ ...actor, scopes }, async (tx) => {
+        const updated = extractRows(
+          await tx.execute(drizzleSql`
+            UPDATE app_projects.task_transitions SET to_status_id = ${statusB}::uuid
+            WHERE task_id = ${task.id}::uuid RETURNING id
+          `),
+        )
+        const deleted = extractRows(
+          await tx.execute(drizzleSql`
+            DELETE FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid RETURNING id
+          `),
+        )
+        return updated.length + deleted.length
+      })
+      expect({ scopes, touched }).toEqual({ scopes, touched: 0 })
+    }
     const visible = (scopes: string[]) =>
       withRlsContext(
         { ...actor, scopes },

@@ -205,18 +205,23 @@ search leaves deleted tasks out unless asked, marks included ones -> apps/api/sr
 Up to 40 task fields with the dashboard column types -> apps/api/src/modules/dashboards/tables/columns.ts:9
 fields_set replaces a project's fields -> apps/api/src/apps/projects/app.manifest.json:1142
 createProject takes fields -> apps/api/src/apps/projects/service/create-project.ts:493
-Values checked like table cells, refusal names the field -> apps/api/src/apps/projects/service/fields.ts:111
+Values checked like table cells, refusal names the field -> apps/api/src/apps/projects/service/fields.ts:130
 Required on a person's or an agent's create only -> apps/api/src/apps/projects/routes.ts:606
 Required on an agent's create -> apps/api/src/modules/apps/sandbox/bridge/projects.ts:590
-Removed field kept hidden, restored when re-added -> apps/api/src/apps/projects/service/fields.ts:232
-Type change or used choice option refused unless renamed -> apps/api/src/apps/projects/service/fields.ts:327
-Link label hidden from readers who may not open the app -> apps/api/src/apps/projects/service/fields.ts:34
-Cross-project move puts aside values the destination does not fit -> apps/api/src/apps/projects/service/fields.ts:394
-Every status change recorded with actor and time -> apps/api/src/apps/projects/service/transitions.ts:57
-get returns the transitions -> apps/api/src/apps/projects/service/transitions.ts:140
+Removed field kept hidden, restored when re-added -> apps/api/src/apps/projects/service/fields.ts:274
+Type change or used choice option refused unless renamed -> apps/api/src/apps/projects/service/fields.ts:376
+Link label hidden from readers who may not open the app -> apps/api/src/apps/projects/service/fields.ts:35
+Cross-project move puts aside values the destination does not fit -> apps/api/src/apps/projects/service/fields.ts:444
+Every status change recorded with actor and time -> apps/api/src/apps/projects/service/transitions.ts:59
+get returns the transitions -> apps/api/src/apps/projects/service/transitions.ts:147
 projects:task:status_changed event -> apps/api/src/apps/projects/app.manifest.json:2405
-Template holds statuses, fields and task tree -> apps/api/src/apps/projects/service/templates.ts:65
-template_save copies a project -> apps/api/src/apps/projects/service/templates.ts:153
-instantiate_template creates statuses, fields and tasks -> apps/api/src/apps/projects/service/tasks.ts:1582
-tasks_byProject fields filter -> apps/api/src/apps/projects/service/fields.ts:437
+Template holds statuses, fields and task tree -> apps/api/src/apps/projects/service/templates.ts:90
+template_save copies a project -> apps/api/src/apps/projects/service/templates.ts:187
+instantiate_template creates statuses, fields and tasks -> apps/api/src/apps/projects/service/tasks.ts:1600
+tasks_byProject fields filter -> apps/api/src/apps/projects/service/fields.ts:493
 template_save and templates_list tools -> apps/api/src/apps/projects/app.manifest.json:1173
+Template copy masks link labels for its maker -> apps/api/src/apps/projects/service/templates.ts:228
+Event routine gets the task's links as its owner sees them -> apps/api/src/infra/jobs/event-routine-gate.ts:206
+Unreadable template refuses, listed as unreadable -> apps/api/src/apps/projects/service/templates.ts:94
+Status history append-only for every scope holder -> apps/api/src/db/migrations/0302_project_task_fields.sql:105
+Backdated import enters its status at createdAt -> apps/api/src/apps/projects/service/tasks.ts:439

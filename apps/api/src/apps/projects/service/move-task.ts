@@ -4,7 +4,7 @@ import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient, type RlsTx } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { readProjectLevels, remapChecklistValidations } from "./checklist"
-import { activeFields, fieldsForProject, readProjectFields, sameFields } from "./fields"
+import { fieldsForProject, lockProjectFields, readProjectFields, sameFields } from "./fields"
 import { resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import { MAX_TASK_DEPTH } from "./task-depth"
@@ -298,6 +298,11 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
     if (targetProjectId && task.project_id !== targetProjectId) {
       await ensureProjectMutableForTasks(innerTx, orgId, task.project_id)
       await ensureProjectMutableForTasks(innerTx, orgId, targetProjectId)
+      // The values move with the tasks: hold off a definition change on either side (in a fixed
+      // order) until they have.
+      for (const id of [task.project_id, targetProjectId].sort()) {
+        await lockProjectFields(innerTx, id, "write-values")
+      }
       // Only a ROOT task may cross projects — moving a child alone would split its
       // tree across projects. Move the whole subtree by re-rooting the task.
       if (task.parent_task_id !== null) {
@@ -347,7 +352,8 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
       // other choices) is put aside under HIDDEN_FIELDS_KEY, so it is never read as the
       // destination's field; values of keys the destination does not declare stay (reads skip
       // them). The destination's required fields are not enforced on a move.
-      const targetFields = activeFields(await readProjectFields(innerTx, orgId, targetProjectId))
+      // Tombstones included: a value a removed field would not fit is put aside too.
+      const targetFields = await readProjectFields(innerTx, orgId, targetProjectId)
       const hiddenByTask = new Map<string, string[]>()
       const transitions: TransitionInput[] = []
       for (const node of subtree) {

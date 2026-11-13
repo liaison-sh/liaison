@@ -39,6 +39,7 @@ import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
+  eventDataForOwner,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
@@ -463,8 +464,9 @@ async function reconcileRoutine(
     }
     const filterApplies =
       isMailSenderFilterActive(routine.eventFilter) && isMailSenderFilterEvent(gateEvent)
+    let owner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
     if (isOwnerScopedEvent(gateEvent) || filterApplies) {
-      const owner = await loadRoutineOwnerContext(routine.orgId, routine.id)
+      owner = await loadRoutineOwnerContext(routine.orgId, routine.id)
       if (!owner || !(await ownerCanSeeEventEntity(owner, gateEvent))) {
         push(ev, "skipped:owner_cannot_see")
         continue
@@ -505,7 +507,7 @@ async function reconcileRoutine(
       entity,
       action,
       entityId: ev.entityId,
-      data: ev.data ?? null,
+      data: eventDataForOwner(owner, gateEvent) ?? null,
       origin: await triggerEventOrigin({ ...gateEvent }),
       eventId: ev.eventId,
       retryAttempt: attempt,

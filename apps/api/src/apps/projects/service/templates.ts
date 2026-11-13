@@ -15,7 +15,13 @@ import type { UserContext } from "~/db/rls"
 import { UUID_RE } from "~/lib/uuid"
 import type { Column } from "~/modules/dashboards/tables/columns"
 import { normalizeFieldDefs, normalizeStatusSeeds, type ProjectStatusSeed } from "./create-project"
-import { activeFields, readProjectFields, validateTaskFields } from "./fields"
+import {
+  activeFields,
+  maskLinkCells,
+  readerScopes,
+  readProjectFields,
+  validateTaskFields,
+} from "./fields"
 import { assertTaskPriority } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import { MAX_TASK_DEPTH } from "./task-depth"
@@ -61,22 +67,50 @@ const statusSeedSchema = z
   })
   .strict()
 
-/** A stored structure as a v2 structure (tolerant: what cannot be read is left out). */
+/**
+ * The node shape a STORED structure is read with: unknown keys dropped, never refused, and limits
+ * at least those of every writer that ever stored one (the v1 importer took descriptions up to
+ * 100 000 characters, import-kind.ts). The strict `nodeSchema` above checks what is saved now.
+ */
+const storedNodeSchema: z.ZodType<TemplateNode> = z.lazy(() =>
+  z.object({
+    title: z.string().trim().min(1).max(500),
+    description: z.string().max(100_000).nullable().optional(),
+    priority: z.string().optional(),
+    statusLabel: z.string().nullable().optional(),
+    fields: z.record(z.string(), z.unknown()).optional(),
+    children: z.array(storedNodeSchema).optional(),
+  }),
+)
+
+/**
+ * A stored structure as a v2 structure. A part that cannot be read refuses the whole template
+ * (422 `template_unreadable`): an instantiation never builds a project short of its tasks.
+ */
 export function parseTemplateStructure(raw: unknown): TemplateStructure {
+  const unreadable = (part: string, issue?: { path: PropertyKey[]; message: string }) =>
+    new ProjectsServiceError(
+      422,
+      "template_unreadable",
+      `the stored template's ${part} cannot be read${issue ? ` (${issue.path.map(String).join(".") || "root"}: ${issue.message})` : ""}`,
+    )
   if (Array.isArray(raw)) {
-    const tasks = z.array(nodeSchema).safeParse(raw)
-    return { version: 2, tasks: tasks.success ? tasks.data : [] }
+    const tasks = z.array(storedNodeSchema).safeParse(raw)
+    if (!tasks.success) throw unreadable("tasks", tasks.error.issues[0])
+    return { version: 2, tasks: tasks.data }
   }
-  if (typeof raw !== "object" || raw === null) return { version: 2, tasks: [] }
+  if (typeof raw !== "object" || raw === null) throw unreadable("structure")
   const r = raw as Record<string, unknown>
-  const tasks = z.array(nodeSchema).safeParse(r.tasks ?? [])
+  const tasks = z.array(storedNodeSchema).safeParse(r.tasks ?? [])
+  if (!tasks.success) throw unreadable("tasks", tasks.error.issues[0])
   const statuses = z.array(statusSeedSchema).safeParse(r.statuses ?? [])
+  if (!statuses.success) throw unreadable("statuses", statuses.error.issues[0])
   const fields = Array.isArray(r.fields) ? (r.fields as Column[]) : []
   return {
     version: 2,
-    ...(statuses.success && statuses.data.length > 0 ? { statuses: statuses.data } : {}),
+    ...(statuses.data.length > 0 ? { statuses: statuses.data } : {}),
     ...(fields.length > 0 ? { fields } : {}),
-    tasks: tasks.success ? tasks.data : [],
+    tasks: tasks.data,
   }
 }
 
@@ -189,6 +223,9 @@ export async function snapshotProject(
   )
   const labelOf = new Map(statuses.map((s) => [s.id, s.label]))
   const keys = new Set(fields.map((f) => f.key))
+  // The copy holds what its maker may read: a link to an app they may not open keeps its record
+  // but carries the hidden label, as on the task itself (fields.ts, visibleTaskFields).
+  const scopes = fields.some((f) => f.type === "link") ? await readerScopes(tx) : []
   const byParent = new Map<string | null, typeof rows>()
   const ids = new Set(rows.map((r) => r.id))
   for (const r of rows) {
@@ -198,8 +235,11 @@ export async function snapshotProject(
   }
   const build = (parent: string | null): TemplateNode[] =>
     (byParent.get(parent) ?? []).map((r) => {
-      const values = Object.fromEntries(
-        Object.entries(r.fields ?? {}).filter(([k, v]) => keys.has(k) && v !== null),
+      const values = maskLinkCells(
+        Object.fromEntries(
+          Object.entries(r.fields ?? {}).filter(([k, v]) => keys.has(k) && v !== null),
+        ),
+        scopes,
       )
       const children = build(r.id)
       return {
@@ -225,6 +265,8 @@ export interface TemplateSummary {
   statusCount: number
   fieldCount: number
   taskCount: number
+  /** The stored structure cannot be read (instantiating it refuses); counts are then 0. */
+  unreadable?: true
   createdAt: string
 }
 
@@ -238,13 +280,19 @@ function summary(row: {
   structure: unknown
   created_at: Date | string
 }): TemplateSummary {
-  const s = parseTemplateStructure(row.structure)
+  let s: TemplateStructure | null = null
+  try {
+    s = parseTemplateStructure(row.structure)
+  } catch {
+    // Listed, and marked: instantiating it refuses with `template_unreadable`.
+  }
   return {
     id: row.id,
     name: row.name,
-    statusCount: s.statuses?.length ?? 0,
-    fieldCount: s.fields?.length ?? 0,
-    taskCount: countNodes(s.tasks),
+    ...(s ? {} : { unreadable: true }),
+    statusCount: s?.statuses?.length ?? 0,
+    fieldCount: s?.fields?.length ?? 0,
+    taskCount: s ? countNodes(s.tasks) : 0,
     createdAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }

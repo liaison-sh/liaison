@@ -10,9 +10,14 @@ import {
 } from "~/modules/approvals/cancel"
 import { applyCells, changedKeys } from "~/modules/dashboards/tables/columns"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
-import { type ChecklistStatus, checklistStatus } from "./checklist-status"
+import { checklistStatus } from "./checklist-status"
 import { dueBucketSql } from "./due-status"
-import { fieldFilterConditions, readProjectFields, validateTaskFields } from "./fields"
+import {
+  fieldFilterConditions,
+  lockProjectFields,
+  readProjectFields,
+  validateTaskFields,
+} from "./fields"
 import {
   computeNextCompletedAt,
   computePosition,
@@ -24,7 +29,6 @@ import { normalizeRelease, releaseFilterSql } from "./release-filter"
 import { assertTaskPriority, resolveAssignee, resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import {
-  type AssigneeRef,
   type DbTaskRow,
   loadTaskDetails,
   maskLinkFields,
@@ -199,6 +203,9 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
     const statusId = await resolveStatusId(innerTx as RlsClient, orgId, input.projectId, input)
     assertTaskPriority(input.priority)
     const labelAssignments = await resolveLabelInput(innerTx as RlsClient, orgId, input.labels)
+    // Before the definitions are read: a concurrent fields_set waits for this create, or this
+    // create reads what it wrote (fields.ts, lockProjectFields).
+    await lockProjectFields(innerTx, input.projectId, "write-values")
     const fieldDefs = await readProjectFields(innerTx, orgId, input.projectId)
     const fieldValues =
       (input.fields !== undefined && input.fields !== null) || input.requireFields === true
@@ -428,6 +435,8 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
       orgId,
       [{ taskId, projectId: input.projectId, fromStatusId: null, toStatusId: statusId }],
       args.via ?? transitionActorFor(actor),
+      // A backdated (imported) task entered its status when it was created, not at the import.
+      { at: createdAtIso },
     )
 
     return detail
@@ -758,10 +767,19 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
 
     const sets: ReturnType<typeof drizzleSql>[] = []
     if (input.fields !== undefined && input.fields !== null) {
+      await lockProjectFields(innerTx, existing.project_id, "write-values")
       const defs = await readProjectFields(innerTx, orgId, existing.project_id)
       const values = await validateTaskFields(innerTx, orgId, defs, input.fields, { full: false })
+      // The stored values are read again under the lock: a fields_set that committed before it
+      // may have renamed options in them.
+      const [fresh] = extractRows<{ fields: Record<string, unknown> | null }>(
+        await innerTx.execute(drizzleSql`
+          SELECT fields FROM ${projectsRel("tasks")}
+          WHERE id = ${taskId}::uuid AND org_id = ${orgId}::uuid LIMIT 1
+        `),
+      )
       // Applied onto the STORED values, so values of a field taken off the project stay.
-      const next = applyCells(existing.fields ?? {}, values)
+      const next = applyCells(fresh?.fields ?? existing.fields ?? {}, values)
       sets.push(drizzleSql`fields = ${JSON.stringify(next)}::jsonb`)
     }
     let nextStatusId: string | null = null

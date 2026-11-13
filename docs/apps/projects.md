@@ -108,16 +108,16 @@ Ask an agent to set them (`fields_set`), or to create the project with them (`cr
 
 - Taking a field off the project keeps the tasks' values, hidden. Putting the same key back shows them again.
 - A field's type cannot change while tasks hold values of it, and a choice option cannot be removed while tasks use it, unless you rename it to a kept option: the values are rewritten.
-- A link value shows its label only to people who may open the linked app. Others see **Linked record**.
+- A link value shows its label only to people who may open the linked app. Others see **Linked record**. The same holds for a template copied from a project (its maker's view) and for the task an event routine receives (its owner's view).
 - Moving a task to another project keeps the values that fit the destination's fields and puts the others aside. They come back if the task returns.
 
 ## Status history
 
-Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. A task created straight into a status counts as entering it. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
+Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
 
 ## Project templates
 
-A template holds the status columns, the task fields and a task tree a new project starts with, each task with its priority, status and field values. Ask an agent to save one (`template_save`), from scratch or by copying a project's statuses, fields and open tasks, then to create a project from it (`instantiate_template`).
+A template holds the status columns, the task fields and a task tree a new project starts with, each task with its priority, status and field values. Ask an agent to save one (`template_save`), from scratch or by copying a project's statuses, fields and open tasks, then to create a project from it (`instantiate_template`). A stored template that can no longer be read refuses to create a project rather than create one without its tasks; `templates_list` marks it `unreadable`.
 
 ## Manage labels
 

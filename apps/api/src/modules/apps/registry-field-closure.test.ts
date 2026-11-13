@@ -49,6 +49,7 @@ const TABLE_TOOLS = join(SRC, "modules", "dashboards", "tables", "tools.ts")
 const MCP_PROJECTOR = join(SRC, "modules", "mcp-client", "projector.ts")
 const REPORT_BUG_TOOL = join(SRC, "modules", "bug-reports", "tool.ts")
 const APP_BUILDER_TOOLS = join(SRC, "modules", "app-builder", "tools.ts")
+const DASHBOARD_TOOLS = join(SRC, "modules", "dashboards", "tools.ts")
 
 /**
  * Registry fields set ONLY by host-registered tools — see header — each with the
@@ -61,6 +62,8 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   approvalDimension: SKILL_TOOLS,
   gatedAgentNotes: SKILL_TOOLS,
   sinkReadersSelf: SKILL_TOOLS,
+  // dashboards_create: a personal dashboard is read by its author alone.
+  sinkReadersSelfWhen: DASHBOARD_TOOLS,
   // request_secret: its row is read by the requester and the conversation's participants alone.
   sinkReadersConversation: SECRET_TOOLS,
   // tables_rows_write: its rows are read by the dashboard table's readers (its sharing).

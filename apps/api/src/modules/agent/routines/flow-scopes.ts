@@ -22,7 +22,8 @@ import { flowRecordSource, flowRecordTool } from "./flow-records"
 
 /** One scope a flow needs, and the step that needs it (null: reading the trigger record). */
 export interface FlowScopeNeed {
-  scope: string
+  /** The scope needed. */
+  required: string
   stepId: string | null
 }
 
@@ -42,7 +43,7 @@ export function flowScopeNeeds(
   const src = flowRecordSource(orgId, app, entity)
   const needs: FlowScopeNeed[] = []
   const add = (scope: string, stepId: string | null) => {
-    if (!needs.some((n) => n.scope === scope)) needs.push({ scope, stepId })
+    if (!needs.some((n) => n.required === scope)) needs.push({ required: scope, stepId })
   }
   if (src) {
     const readScope = entityRegistry.get([orgId, src.app, src.entity])?.readScope
@@ -68,7 +69,7 @@ export function uncoveredFlowNeeds(
   needs: readonly FlowScopeNeed[],
   ownerScopes: readonly string[],
 ): FlowScopeNeed[] {
-  return needs.filter((n) => !isScopeCovered([n.scope], [...ownerScopes]))
+  return needs.filter((n) => !isScopeCovered([n.required], [...ownerScopes]))
 }
 
 /** The save refusal for needs the routine's owner lacks, or null when every need is covered. */
@@ -78,8 +79,8 @@ export function flowScopeRefusal(
   if (missing.length === 0) return null
   const parts = missing.map((n) =>
     n.stepId
-      ? `step "${n.stepId}" needs ${n.scope}`
-      : `reading the trigger record needs ${n.scope}`,
+      ? `step "${n.stepId}" needs ${n.required}`
+      : `reading the trigger record needs ${n.required}`,
   )
   return {
     error: {
@@ -95,6 +96,6 @@ export function withFlowScopes(
   needs: readonly FlowScopeNeed[],
 ): string[] {
   const out = [...new Set(scopes)]
-  for (const n of needs) if (!out.includes(n.scope)) out.push(n.scope)
+  for (const n of needs) if (!out.includes(n.required)) out.push(n.required)
   return out
 }

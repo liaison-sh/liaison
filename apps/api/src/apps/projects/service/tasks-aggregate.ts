@@ -780,6 +780,18 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     }
   }
 
+  // With a series, a group that can hold tasks but holds none still shows (a chart keeps its
+  // columns): one empty row under the first series seen, so the split adds a 0 there.
+  if (series) {
+    const first = [...accs.values()][0]
+    const held = new Set([...accs.values()].map((a) => a.group))
+    if (first) {
+      for (const k of fixedKeys(group, ctx, includeTerminal)) {
+        if (!held.has(k)) accFor(k, first.series, first.currency)
+      }
+    }
+  }
+
   const base: Record<string, unknown> = {}
   if (ctx.single) {
     base.projectId = ids[0]

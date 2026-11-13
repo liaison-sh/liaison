@@ -178,7 +178,16 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: text, boxWidth: 10 } },
+          legend: {
+            position: "bottom",
+            labels: {
+              color: text,
+              boxWidth: 7,
+              boxHeight: 7,
+              usePointStyle: true,
+              pointStyle: "circle",
+            },
+          },
           tooltip: {
             callbacks: {
               label: (c: { label: string; raw: unknown }) => `${c.label}: ${fmt(c.raw)}`,
@@ -307,7 +316,16 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
       ...(horizontal ? { indexAxis: "y" } : {}),
       ...pickOptions(props),
       plugins: {
-        legend: { display: props.datasets.length > 1, labels: { color: text, boxWidth: 10 } },
+        legend: {
+          display: props.datasets.length > 1,
+          labels: {
+            color: text,
+            boxWidth: 7,
+            boxHeight: 7,
+            usePointStyle: true,
+            pointStyle: "circle",
+          },
+        },
         tooltip: {
           // Every series at the hovered place: the current value beside the comparison's.
           mode: "index",

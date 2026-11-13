@@ -185,6 +185,17 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     }
   }
   /**
+   * An approved re-entry runs in no sub-run frame, so whether a person was behind the turn
+   * that asked is read from the approval itself (`metadata.originHasPerson`). Outside an
+   * approval this is false.
+   */
+  const approvedWithoutPerson = async (): Promise<boolean> => {
+    const id = approvalContext?.approvalRequestId
+    if (!id) return false
+    const { approvalOriginHadPerson } = await import("~/modules/bug-reports/service")
+    return !(await approvalOriginHadPerson(orgId, id))
+  }
+  /**
    * Turning time and budgets on or off is a person's own act: from a routine tick, a
    * sub-run or a job it is refused `human_turn_only`, before anything is written. Only
    * the `timeBudgets` argument is held to it; the rest of the call is not.
@@ -197,7 +208,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
     const origin = (bridgeOptions?.origin ?? "system") as Parameters<typeof humanTurnOnlyAllows>[0]
     const fromRoutine = Boolean(bridgeRoutineId ?? approvalContext?.originRoutineId)
-    if (!fromRoutine && humanTurnOnlyAllows(origin, currentRunContext())) return null
+    if (
+      !fromRoutine &&
+      !(await approvedWithoutPerson()) &&
+      humanTurnOnlyAllows(origin, currentRunContext())
+    )
+      return null
     return JSON.stringify({
       error: {
         code: HUMAN_TURN_ONLY_CODE,
@@ -290,7 +306,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       origin,
       frame: {
         ...(routineId ? { routineId } : {}),
-        ...(frame?.background ? { background: true } : {}),
+        ...(frame?.background || (await approvedWithoutPerson()) ? { background: true } : {}),
         ...(frame?.mcpGateway ? { mcpGateway: true } : {}),
         ...(frame?.agentId ? { agentId: frame.agentId } : {}),
       },

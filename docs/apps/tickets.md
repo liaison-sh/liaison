@@ -69,7 +69,7 @@ To turn an email into a ticket, open the conversation in [Mail](mail.md) and cli
 
 ## Answer a ticket
 
-1. Open the ticket and choose **Reply** or **Note**.
+1. Open the ticket and choose **Reply** or **Note**. When the ticket has a team, its header shows it next to the SLA as **Team**.
 2. For a reply, write in **Reply to customer…**. Add Cc recipients, attach files, or click **Insert saved reply** to use a saved reply.
 3. Tick **Set follow-up** if you want the ticket back in your queue later.
 4. Click **Send reply**. A note (**Add note**) is visible to agents only and posts immediately.

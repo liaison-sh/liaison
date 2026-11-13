@@ -3,8 +3,8 @@
 // Time and budgets under the real liaison_rls role. A person's time is theirs:
 // nobody else reads or writes a row, whatever they hold, except on a project
 // with dated hours on, where the project's owner and an exact holder of
-// projects:timesheet:read read and correct the rows from the day dated hours
-// were turned on. Totals come without a person; cost needs the exact margin
+// projects:timesheet:read read and correct the rows entered on that sheet
+// since dated hours were turned on. Totals come without a person; cost needs the exact margin
 // scope. A proposed reconciliation is its creator's alone. Nothing crosses orgs.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
@@ -255,6 +255,7 @@ beforeAll(async () => {
     userId: string,
     day: string,
     minutes: number,
+    entered: { at: string; dated: boolean },
     org: string = ORG,
   ) => ({
     id,
@@ -265,14 +266,44 @@ beforeAll(async () => {
     work_date: day,
     minutes,
     entered_via: "field",
+    entered_dated: entered.dated,
+    created_at: entered.at,
   })
+  // When each row was entered, and whether its project used dated hours then.
+  const plain = (at: string) => ({ at, dated: false })
+  const onSheet = (at: string) => ({ at, dated: true })
   await sql.unsafe(
     insertSql("app_projects.task_time", [
-      time(ANNA_PLAIN, PLAIN_TASK, PLAIN, ANNA, "2026-10-05", 60),
-      time(BRUNO_PLAIN, PLAIN_TASK, PLAIN, BRUNO, "2026-10-06", 90),
-      time(ANNA_DATED_BEFORE, DATED_TASK, DATED, ANNA, "2026-09-30", 30),
-      time(ANNA_DATED_AFTER, DATED_TASK, DATED, ANNA, "2026-10-01", 45),
-      time(OTHER_TIME, OTHER_TASK, OTHER_PROJECT, OUTSIDER, "2026-10-01", 20, OTHER_ORG),
+      time(ANNA_PLAIN, PLAIN_TASK, PLAIN, ANNA, "2026-10-05", 60, plain("2026-10-05T17:00:00Z")),
+      time(BRUNO_PLAIN, PLAIN_TASK, PLAIN, BRUNO, "2026-10-06", 90, plain("2026-10-06T17:00:00Z")),
+      time(
+        ANNA_DATED_BEFORE,
+        DATED_TASK,
+        DATED,
+        ANNA,
+        "2026-09-30",
+        30,
+        plain("2026-09-30T17:00:00Z"),
+      ),
+      time(
+        ANNA_DATED_AFTER,
+        DATED_TASK,
+        DATED,
+        ANNA,
+        "2026-10-01",
+        45,
+        onSheet("2026-10-01T17:00:00Z"),
+      ),
+      time(
+        OTHER_TIME,
+        OTHER_TASK,
+        OTHER_PROJECT,
+        OUTSIDER,
+        "2026-10-01",
+        20,
+        onSheet("2026-10-01T17:00:00Z"),
+        OTHER_ORG,
+      ),
     ]),
   )
   for (const [org, who, projectId] of [
@@ -530,7 +561,7 @@ describe("dated hours", () => {
     expect(await ids(ctx(MARGIN, BRUNO), onDated)).toEqual([])
   })
 
-  it("the owner and finance read and correct rows from the day dated hours were turned on, never earlier ones", async () => {
+  it("the owner and finance read and correct rows entered after dated hours were turned on, never earlier ones", async () => {
     for (const c of [ctx(MEMBER, OWNER), ctx(FINANCE, BRUNO)]) {
       expect(await ids(c, onDated)).toEqual([ANNA_DATED_AFTER])
       const corrected = await withRlsContext(c, async (tx) =>
@@ -543,8 +574,8 @@ describe("dated hours", () => {
       )
       expect(corrected).toEqual([ANNA_DATED_AFTER])
     }
-    // Turning dated hours off and on again moves the day forward: the row
-    // that was readable stays hidden until a later work date.
+    // Turning dated hours off and on again moves the moment forward: the row
+    // that was readable stays hidden, whatever its work date.
     await sql`UPDATE app_projects.project_time_plan SET dated_hours = false WHERE project_id = ${DATED}`
     expect(await ids(ctx(MEMBER, OWNER), onDated)).toEqual([])
     await sql`UPDATE app_projects.project_time_plan

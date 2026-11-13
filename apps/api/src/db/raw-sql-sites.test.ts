@@ -317,6 +317,13 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/org/purge/immutable-triggers.ts#ensureImmutableTriggersCurrent": {
     stmt: `${APP_DDL}; schema and table read from pg_catalog, the spec read back from the trigger body this generator wrote (immutableSpecFromTriggerBody: digits and identifiers only)`,
   },
+  "apps/api/src/modules/export/org-archive/writer.ts#scopeWhere": {
+    "withheld.keep()":
+      "a predicate from the code constant WITHHELD_ROWS (withheld.ts): fixed SQL over alias t and schemaRef names, no value from a request or a row",
+  },
+  "apps/api/src/apps/projects/service/time-plan.ts#keep": {
+    col: 'a column name the calling code writes as a literal (keep("basis") and the like) to keep a plan or terms column unchanged in an upsert',
+  },
   "apps/api/src/modules/export/org-archive/writer.ts#readBatch": {
     'pk.join(", ")': `${CATALOG_IDENT} (primary key columns), each quoteIdent'd`,
     'plan.pkTypes[i] ?? "text"': "format_type() of a primary key column, read from pg_catalog",

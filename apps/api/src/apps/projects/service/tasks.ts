@@ -1440,6 +1440,33 @@ export interface MergeTasksArgs {
  * the target, move any source-pointing dependencies to the target, then archive
  * the source. Modeled on contacts `mergeContacts` (reassign-then-archive).
  */
+/** Carry the source's time rows to the target (app_projects.merge_task_time). */
+async function mergeTaskTimeRows(
+  tx: RlsClient,
+  sourceId: string,
+  targetId: string,
+  checkOnly: boolean,
+) {
+  try {
+    await tx.transaction(async (sp) => {
+      await sp.execute(
+        drizzleSql`SELECT ${projectsRel("merge_task_time")}(${sourceId}::uuid, ${targetId}::uuid, ${checkOnly})`,
+      )
+    })
+  } catch (err) {
+    const e = err as { message?: string; cause?: { message?: string } }
+    if (`${e.cause?.message ?? ""} ${e.message ?? ""}`.includes("time_merge_over_limit")) {
+      throw new ProjectsServiceError(
+        409,
+        "time_over_limit",
+        "Nothing was merged: one person's time on the two tasks together would pass 744 h, the most one entry holds.",
+        { next: "That person corrects their time on one of the tasks, then merge again." },
+      )
+    }
+    throw err
+  }
+}
+
 export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   const { tx, orgId, sourceId, targetId } = args
   if (sourceId === targetId) {
@@ -1454,12 +1481,17 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   if (exists.length < 2) {
     throw new ProjectsServiceError(404, "not_found", "source or target task not found")
   }
+  // A fold past what one time row holds refuses the merge before anything is written.
+  await mergeTaskTimeRows(tx, sourceId, targetId, true)
   // Two deals naming different companies are refused before anything is
   // written; otherwise the survivor keeps its deal rows and the source's go.
   await mergeDealRows(tx, orgId, sourceId, targetId)
   // Append the source's checklist after the target's own (S11). First, so a
   // refusal (over the per-task limit) writes nothing.
   await appendChecklistOnMerge(tx, orgId, args.actor.userId, sourceId, targetId)
+  // The source's time rows join the target in this transaction, other people's
+  // included (a definer function), once nothing else refuses.
+  await mergeTaskTimeRows(tx, sourceId, targetId, false)
   // Reassign the source's direct children to the target.
   await tx.execute(drizzleSql`
     UPDATE ${projectsRel("tasks")}

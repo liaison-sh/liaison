@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Took: real time is only ever a person's own statement. A person typing in the
 // task's field states it themselves. An agent may record it only with the
-// person's words: the quote must be in the person's latest message of the
-// thread (in-app) and say the same duration as `time`. Over MCP there is no
+// person's words: the quote must be whole words of the person's latest message
+// of the thread (in-app), and the duration the message states there, read from
+// the message itself, must equal `time`. Over MCP there is no
 // thread, so the person's own connection and the quote's duration are what is
 // checked; a connection bound to an agent never records it. Nothing here ever
 // proposes, estimates or rounds a figure.
@@ -13,23 +14,77 @@ export const NEEDS_PERSON_STATEMENT = "needs_person_statement"
 export type TookOrigin = "in-app-agent" | "mcp" | "human-ui" | "system" | "dashboard"
 export type EnteredVia = "field" | "agent" | "mcp"
 
-/** The duration a person's words state: the first span of up to four words that reads as one. */
-export function durationInQuote(quote: string, hoursPerDayMinutes: number): number | null {
-  const words = quote
+/** Words of a text, lower case, without the punctuation around them. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
     .replace(/[.,;:!?()"'«»]+(?=\s|$)/g, " ")
+    .replace(/(?<=^|\s)[("'«»]+/g, " ")
     .split(/\s+/)
     .filter((w) => w !== "")
-  for (let start = 0; start < words.length; start++) {
-    for (let len = Math.min(4, words.length - start); len >= 1; len--) {
-      const minutes = parseDuration(words.slice(start, start + len).join(" "), hoursPerDayMinutes)
-      if (minutes !== null) return minutes
-    }
+}
+
+/** The longest span of up to four words from `start` that reads as one duration. */
+function durationAt(
+  words: readonly string[],
+  start: number,
+  hoursPerDayMinutes: number,
+): { minutes: number; len: number } | null {
+  for (let len = Math.min(4, words.length - start); len >= 1; len--) {
+    const minutes = parseDuration(words.slice(start, start + len).join(" "), hoursPerDayMinutes)
+    if (minutes !== null) return { minutes, len }
   }
   return null
 }
 
-function normalise(text: string): string {
-  return text.replace(/\s+/g, " ").trim().toLowerCase()
+function firstDuration(
+  words: readonly string[],
+  hoursPerDayMinutes: number,
+): { minutes: number; start: number; len: number } | null {
+  for (let start = 0; start < words.length; start++) {
+    const found = durationAt(words, start, hoursPerDayMinutes)
+    if (found) return { ...found, start }
+  }
+  return null
+}
+
+/** The duration a person's words state: the first span of up to four words that reads as one. */
+export function durationInQuote(quote: string, hoursPerDayMinutes: number): number | null {
+  return firstDuration(wordsOf(quote), hoursPerDayMinutes)?.minutes ?? null
+}
+
+const NEGATIONS = new Set(["not", "no", "never", "pas", "non", "jamais"])
+
+/**
+ * The duration the person's message states where the quote stands in it, read from the
+ * message's own words: the quote must be whole words of the message, and the figure is the
+ * message's whole duration there (so "2 hours" taken out of "12 hours", or "1h" out of
+ * "1h30", reads the person's figure, not the quote's). Null when the quote is not in the
+ * message as whole words, states no duration, or the duration there is negated.
+ */
+function durationSaidInMessage(
+  message: string,
+  quote: string,
+  hoursPerDayMinutes: number,
+): number | null {
+  const m = wordsOf(message)
+  const q = wordsOf(quote)
+  const inQuote = firstDuration(q, hoursPerDayMinutes)
+  if (q.length === 0 || !inQuote) return null
+  for (let i = 0; i + q.length <= m.length; i++) {
+    if (!q.every((w, k) => m[i + k] === w)) continue
+    const at = i + inQuote.start
+    const said = durationAt(m, at, hoursPerDayMinutes)
+    if (!said) continue
+    // A duration that starts before the quote's and covers it ("1 h 30" around "30").
+    const earlier = [1, 2, 3]
+      .map((back) => (at - back >= 0 ? durationAt(m, at - back, hoursPerDayMinutes) : null))
+      .some((d, idx) => d !== null && d.len > idx + 1)
+    if (earlier) continue
+    if (at > 0 && NEGATIONS.has(m[at - 1] ?? "")) continue
+    return said.minutes
+  }
+  return null
 }
 
 export interface TookPlace {
@@ -96,13 +151,20 @@ export function checkPersonStatement(input: {
   if (typeof quote !== "string" || quote.trim() === "") {
     return refuse("an agent records time only with the person's own words, given as quote.")
   }
-  if (place.origin === "in-app-agent") {
-    if (latestHumanMessage === null || !normalise(latestHumanMessage).includes(normalise(quote))) {
-      return refuse("the quote is not in the person's latest message in this conversation.")
+  const said =
+    place.origin === "in-app-agent"
+      ? latestHumanMessage === null
+        ? null
+        : durationSaidInMessage(latestHumanMessage, quote, hoursPerDayMinutes)
+      : durationInQuote(quote, hoursPerDayMinutes)
+  if (said === null) {
+    if (place.origin === "in-app-agent") {
+      return refuse(
+        "the quote is not, word for word, a duration the person states in their latest message in this conversation.",
+      )
     }
+    return refuse("the quote states no duration.")
   }
-  const said = durationInQuote(quote, hoursPerDayMinutes)
-  if (said === null) return refuse("the quote states no duration.")
   if (said !== minutes) {
     return refuse("the time given differs from the duration in the person's words.")
   }

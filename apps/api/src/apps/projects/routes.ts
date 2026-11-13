@@ -43,7 +43,7 @@ import {
   restoreTask,
   updateTask,
 } from "~/apps/projects/service/tasks"
-import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
+import { awaitTimeFeatureSync, scheduleTimeBudgetsSync } from "~/apps/projects/service/time-feature"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
@@ -460,8 +460,11 @@ export const projectsRoutes = new Hono<AppEnv>()
         actorType: "user",
         orgId,
       })
+      // An archived project no longer counts for the org's time tools (time-feature.ts).
+      scheduleTimeBudgetsSync(orgId, c.get("userId"))
       return loadProjectDetail(tx, orgId, projectId)
     })
+    await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post("/:projectId/restore", scopeProjectsWrite, async (c) => {
@@ -493,8 +496,11 @@ export const projectsRoutes = new Hono<AppEnv>()
         actorType: "user",
         orgId,
       })
+      // An archived project no longer counts for the org's time tools (time-feature.ts).
+      scheduleTimeBudgetsSync(orgId, c.get("userId"))
       return loadProjectDetail(tx, orgId, projectId)
     })
+    await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post(

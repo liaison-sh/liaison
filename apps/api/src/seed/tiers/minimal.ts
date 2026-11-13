@@ -30,7 +30,7 @@
 // never needs a random value and two orgs never collide.
 import { and, asc, eq, like, sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { organizations, roles, userRoles, users } from "~/db/schema/kernel"
+import { messages, organizations, roles, userRoles, users } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { inviteRegister } from "~/modules/auth/auth"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
@@ -244,6 +244,25 @@ export async function thread(
     ),
   )
   return (created as { id: string }).id
+}
+
+/** A message `userId` wrote in `threadId`: the person's own words in that conversation. */
+export async function message(
+  orgId: string,
+  threadId: string,
+  userId: string,
+  content: string,
+): Promise<void> {
+  await withPrivilegedDb(orgId, "seed-minimal:message", (tx) =>
+    tx.insert(messages).values({
+      threadId,
+      orgId,
+      authorId: userId,
+      authorType: "user",
+      content,
+      requiredScopes: [],
+    }),
+  )
 }
 
 /** A contact with `email`, resolved by the org's admin. */

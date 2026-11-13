@@ -83,9 +83,7 @@ async function newTask(projectId: string, title: string): Promise<string> {
 
 async function said(userId: string, text: string): Promise<string> {
   const threadId = await minimal.thread(orgId, userId)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.messages (thread_id, org_id, author_id, author_type, content, required_scopes)
-    VALUES (${threadId}::uuid, ${orgId}::uuid, ${userId}::uuid, 'user', ${text}, '{}')`)
+  await minimal.message(orgId, threadId, userId, text)
   return threadId
 }
 
@@ -296,7 +294,7 @@ describe("Took", () => {
 })
 
 describe("dated hours", () => {
-  it("turning dated hours on shows the lead only entries made after it, also after off and on", async () => {
+  it("turning dated hours on shows the lead only entries made after it, and off and on again hides what came before", async () => {
     const proj = await newProject("Dated reach", true)
     const taskId = await newTask(proj, "Before and after")
     const memberScopes = ["projects:tasks:write", "projects:projects:read", "projects:tasks:read"]
@@ -326,7 +324,7 @@ describe("dated hours", () => {
     expect(await leadSees()).toEqual([60])
     await setDated(proj, false)
     await setDated(proj, true)
-    expect(await leadSees()).toEqual([60])
+    expect(await leadSees()).toEqual([])
     const home = extractRows<{ n: number | string }>(
       await db.execute(drizzleSql`
         SELECT count(*) AS n FROM kernel.attention_events

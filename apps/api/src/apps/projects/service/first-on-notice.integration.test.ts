@@ -20,6 +20,7 @@ import {
   firstOnNotice,
   NEXT_MESSAGE_LINE,
   STAFF_CONSULTATION_MEMBERS,
+  syncTimeBudgetsFeature,
 } from "./time-feature"
 
 let orgId = ""
@@ -99,5 +100,30 @@ describe("the first project turned on", () => {
     expect(firstOnNotice(STAFF_CONSULTATION_MEMBERS)).toContain(
       "consult your staff representatives first",
     )
+  })
+})
+
+describe("an org whose time projects come and go", () => {
+  it("the admins are told once, also after every project goes off, a line is read and one comes back on", async () => {
+    const c = await call("projects_createProject", { name: "Comet build" })
+    await db.execute(drizzleSql`
+      UPDATE kernel.attention_events SET read_at = now()
+       WHERE org_id = ${orgId}::uuid AND kind = ${FIRST_ON_KIND}`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.projects SET time_budgets_on = false WHERE org_id = ${orgId}::uuid`)
+    expect((await syncTimeBudgetsFeature(orgId, null)).enabled).toBe(false)
+    await call("projects_updateProject", { projectId: c.id, timeBudgets: true })
+    expect(await homeLines()).toHaveLength(1)
+  })
+
+  it("an archived project no longer keeps the time tools on for the org", async () => {
+    await db.execute(drizzleSql`
+      UPDATE app_projects.projects SET archived_at = now()
+       WHERE org_id = ${orgId}::uuid AND time_budgets_on`)
+    expect((await syncTimeBudgetsFeature(orgId, null)).enabled).toBe(false)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.projects SET archived_at = NULL
+       WHERE org_id = ${orgId}::uuid AND time_budgets_on`)
+    expect((await syncTimeBudgetsFeature(orgId, null)).enabled).toBe(true)
   })
 })

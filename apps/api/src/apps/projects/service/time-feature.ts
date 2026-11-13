@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Time and budgets is per project (`projects.time_budgets_on`). The org row in
 // `kernel.org_app_features` (feature `time_budgets`) is derived from the
-// projects: on if and only if a work project has the switch on. It is what
+// projects: on if and only if a work project that is not archived has the
+// switch on. It is what
 // keeps the time tools out of every catalog of an org that uses none.
 //
 // The project writer (update-project.ts) changes the project in the person's
@@ -121,6 +122,7 @@ async function anyWorkProjectOn(tx: PrivilegedDb, orgId: string): Promise<boolea
       SELECT EXISTS (
         SELECT 1 FROM ${projectsRel("projects")}
         WHERE org_id = ${orgId}::uuid AND kind = 'work' AND time_budgets_on
+          AND archived_at IS NULL
       ) AS on
     `),
   )
@@ -135,7 +137,7 @@ export async function anotherProjectUsesTime(orgId: string, projectId: string): 
         SELECT EXISTS (
           SELECT 1 FROM ${projectsRel("projects")}
           WHERE org_id = ${orgId}::uuid AND kind = 'work' AND time_budgets_on
-            AND id <> ${projectId}::uuid
+            AND archived_at IS NULL AND id <> ${projectId}::uuid
         ) AS on
       `),
     )
@@ -157,14 +159,25 @@ export async function activeMemberCount(orgId: string): Promise<number> {
 }
 
 /**
- * One Home line per admin, once: the org row turning on happens once under the lock,
- * and an unread line is never doubled (the unread dedupe index).
+ * One Home line per admin, once for the org: an org that has had the line, read or not,
+ * is not told again when its projects go off and one comes back on. The unread dedupe
+ * index keeps two racing writers to one line.
  */
 async function tellAdminsFirstOn(
   tx: PrivilegedDb,
   orgId: string,
   actorUserId: string | null,
 ): Promise<void> {
+  const K0 = drizzleSql.raw(schemaRef("kernel"))
+  const told = extractRows<{ told: boolean }>(
+    await tx.execute(drizzleSql`
+      SELECT EXISTS (
+        SELECT 1 FROM ${K0}.attention_events
+         WHERE org_id = ${orgId}::uuid AND app = ${APP} AND entity_type = ${FIRST_ON_ENTITY}
+           AND entity_id = ${orgId} AND kind = ${FIRST_ON_KIND}
+      ) AS told`),
+  )
+  if (told[0]?.told === true) return
   const admins = await scopeHoldersInTx(tx, orgId, FIRST_ON_AUDIENCE_SCOPE)
   if (admins.length === 0) return
   const members = extractRows<{ n: number | string }>(

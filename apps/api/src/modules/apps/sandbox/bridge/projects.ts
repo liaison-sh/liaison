@@ -895,9 +895,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       if (!before) return moved
       const after = await projectOfTask(txDb, orgId, resolvedTaskId)
       if (after.project.id === before.project.id) return moved
-      // Its time rows follow the task once this commits; planned and spent stay on the task.
-      const { followTaskProject } = await import("~/apps/projects/service/time-rows")
-      followTaskProject(orgId, resolvedTaskId)
+      // Its time rows moved with it in this transaction; planned and spent stay on the task.
       const wasCounted = counted(before.project)
       const isCounted = counted(after.project)
       if (!wasCounted && !isCounted) return moved
@@ -1606,7 +1604,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         targetId: resolvedTargetId,
       })
       // The target keeps its timebox, or takes the source's when it has none; the
-      // source's time joins the target's (one person's row adds up) once this commits.
+      // source's time joined the target's in mergeTasks (one person's row adds up).
       await txDb.execute(drizzleSql`
         UPDATE ${drizzleSql.raw(schemaRef("app_projects"))}.tasks t
            SET timebox_minutes = COALESCE(t.timebox_minutes, s.timebox_minutes)
@@ -1614,8 +1612,6 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
          WHERE t.id = ${resolvedTargetId}::uuid AND s.id = ${resolvedSourceId}::uuid
            AND t.org_id = ${orgId}::uuid AND s.org_id = ${orgId}::uuid
            AND t.timebox_minutes IS NULL AND s.timebox_minutes IS NOT NULL`)
-      const { mergeTaskTime } = await import("~/apps/projects/service/time-rows")
-      mergeTaskTime(orgId, resolvedSourceId, resolvedTargetId)
       const { taskTimeKeys } = await import("~/apps/projects/service/time-plan")
       const keys = await taskTimeKeys(txDb, orgId, resolvedTargetId)
       return JSON.stringify({

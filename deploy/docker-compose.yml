@@ -843,10 +843,12 @@ services:
   # process that escaped V8 cannot read another's memory, key or run tokens.
   # The workerd processes themselves run with no capability.
   #
-  # Sizes (worst case = processes x SANDBOX_RSS_CAP_MB; the measured charge is
-  # far below): 2 GiB for the sandbox (the defaults): SANDBOX_POOL_SIZE 6 (2
-  # kept for nested runs) + SANDBOX_POOL_OVERFLOW 2 at 256 MiB, cpus 2;
-  # 3 GiB: SANDBOX_POOL_SIZE 10 + 2, LIAISON_SANDBOX_MEM_LIMIT=3g, cpus 3.
+  # Sizes: the pool sizes itself from LIAISON_SANDBOX_MEM_LIMIT and
+  # LIAISON_SANDBOX_CPUS (passed below as SANDBOX_SERVICE_MEM_LIMIT, SANDBOX_SERVICE_CPUS):
+  # as many processes as the memory holds at SANDBOX_RSS_CAP_MB, less the
+  # overflow, at most 4 a CPU. 2 GiB, 2 CPUs (the defaults): 6 processes (2
+  # kept for nested runs, 2 for interactive runs) + 2 overflow; 3 GiB, 3 CPUs:
+  # 10 + 2. SANDBOX_POOL_SIZE and the reserves set explicitly still win.
   sandbox:
     # Exactly the app's image (the anchor above, LIAISON_IMAGE): a service of
     # another release refuses every run (sandbox_release_mismatch).
@@ -871,9 +873,13 @@ services:
       # passes a run's bridge calls to the app process that sent the run, at
       # that process's address on this port (no DNS under gVisor).
       SANDBOX_BRIDGE_ORIGIN: http://app-bridge:${LIAISON_APP_BRIDGE_PORT:-3100}
-      SANDBOX_POOL_SIZE: ${SANDBOX_POOL_SIZE:-6}
-      SANDBOX_POOL_RESERVED: ${SANDBOX_POOL_RESERVED:-2}
-      SANDBOX_POOL_RESERVED_INTERACTIVE: ${SANDBOX_POOL_RESERVED_INTERACTIVE:-2}
+      # Empty: derived from the limits below (packages/sandbox-supervisor/src/config.ts).
+      SANDBOX_POOL_SIZE: ${SANDBOX_POOL_SIZE:-}
+      SANDBOX_POOL_RESERVED: ${SANDBOX_POOL_RESERVED:-}
+      SANDBOX_POOL_RESERVED_INTERACTIVE: ${SANDBOX_POOL_RESERVED_INTERACTIVE:-}
+      # The container's own limits (mem_limit, cpus below), which the pool is sized from.
+      SANDBOX_SERVICE_MEM_LIMIT: ${LIAISON_SANDBOX_MEM_LIMIT:-2g}
+      SANDBOX_SERVICE_CPUS: ${LIAISON_SANDBOX_CPUS:-2.0}
       SANDBOX_POOL_OVERFLOW: ${SANDBOX_POOL_OVERFLOW:-2}
       SANDBOX_RECYCLE_RUNS: ${SANDBOX_RECYCLE_RUNS:-100}
       SANDBOX_IDLE_MS: ${SANDBOX_IDLE_MS:-120000}

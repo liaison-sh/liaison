@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A backed dashboard table (kernel.dashboard_tables.backing, migration 0304): its rows are the
+// A backed dashboard table (kernel.dashboard_tables.backing, migration 0305): its rows are the
 // records of one parent record of an app (a project's tasks), read under the reader's RLS, so a
 // record the reader cannot read is no row.
 //

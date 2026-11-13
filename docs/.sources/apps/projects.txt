@@ -237,4 +237,7 @@ Row filter for tasks_byProject -> apps/api/src/apps/projects/service/tasks-aggre
 Read cap 5000 tasks -> apps/api/src/apps/projects/service/tasks-aggregate.ts:32
 Project overview spec runs -> apps/api/src/apps/projects/__tests__/tasks-aggregate.test.ts:404
 Backed table columns of a project -> apps/api/src/apps/projects/service/table-backing.ts:54
-Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/service.ts:1101
+Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/service.ts:1215
+Amount sums per currency -> apps/api/src/apps/projects/service/tasks-aggregate.ts:674
+Backed edit refused when the task changed since -> apps/api/src/modules/dashboards/tables/service.ts:1282
+Backed rows need the app's read tool scopes -> apps/api/src/modules/dashboards/tables/backing.ts:149

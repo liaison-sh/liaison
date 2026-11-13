@@ -10,7 +10,10 @@
 // reach one of `sla.toStatusIds` within `sla.withinWorkingDays` working days of its creation, in
 // the org's working calendar, lib/working-time.ts) and field:<key> (a choice, choices, person,
 // checkbox or date field; a date groups by month). An optional `series` splits each group again.
-// Measures: count, sum:<key> or avg:<key> of a number or amount field.
+// Measures: count, sum:<key> or avg:<key> of a number or amount field. Amounts in different
+// currencies (the field's `currency` per project) are never added together: each row then
+// carries its `currency`, a group holding several currencies is one row per currency, and the
+// result's `currency` is set only when every project read uses the same one.
 //
 // Each row carries `taskIds` when it holds at most 50 tasks, and `filter`, the tasks_byProject
 // params that list exactly its tasks, when the group can be expressed as one (status, assignee,
@@ -72,6 +75,8 @@ export interface AggregateRow {
   seriesLabel?: string
   value: number | null
   count: number
+  /** An amount measure: the currency of this row's value. */
+  currency?: string
   taskIds?: string[]
   filter?: Record<string, unknown>
 }
@@ -665,33 +670,50 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     now,
   }
 
+  // An amount measure's currency per project (its own field definition's).
+  const currencyOf = new Map<string, string | null>()
+  if (measure.kind !== "count" && measure.column.type === "amount") {
+    for (const p of projects) {
+      const f = activeFields(parseStoredFields(p.task_fields)).find((c) => c.key === measure.key)
+      currencyOf.set(p.id, f?.currency ?? null)
+    }
+  }
+  const currencies = [...new Set(currencyOf.values())]
+  const byCurrency = currencyOf.size > 0
+
   interface Acc {
     group: string | null
     series: string | null
+    currency: string | null
     count: number
     sum: number
     valued: number
     taskIds: string[]
   }
   const accs = new Map<string, Acc>()
-  const accFor = (g: string | null, s: string | null): Acc => {
-    const k = JSON.stringify([g, s])
+  const accFor = (g: string | null, s: string | null, c: string | null): Acc => {
+    const k = JSON.stringify([g, s, c])
     let a = accs.get(k)
     if (!a) {
-      a = { group: g, series: s, count: 0, sum: 0, valued: 0, taskIds: [] }
+      a = { group: g, series: s, currency: c, count: 0, sum: 0, valued: 0, taskIds: [] }
       accs.set(k, a)
     }
     return a
   }
-  if (!series) for (const k of fixedKeys(group, ctx, includeTerminal)) accFor(k, null)
+  if (!series) {
+    for (const k of fixedKeys(group, ctx, includeTerminal)) {
+      for (const c of byCurrency ? currencies : [null]) accFor(k, null, c)
+    }
+  }
   for (const t of tasks) {
     const gKeys = keysOf(group, t, ctx)
     const sKeys = series ? keysOf(series, t, ctx) : [null]
     const raw = measure.kind === "count" ? null : t.fields?.[measure.key]
     const num = typeof raw === "number" && Number.isFinite(raw) ? raw : null
+    const cur = byCurrency ? (currencyOf.get(t.project_id) ?? null) : null
     for (const g of gKeys) {
       for (const s of sKeys) {
-        const a = accFor(g, s)
+        const a = accFor(g, s, cur)
         a.count++
         if (num !== null) {
           a.sum += num
@@ -716,7 +738,8 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         (series
           ? rankOf(series, a.series, ctx) - rankOf(series, b.series, ctx) ||
             labelOf(series, a.series, ctx).localeCompare(labelOf(series, b.series, ctx))
-          : 0),
+          : 0) ||
+        String(a.currency ?? "").localeCompare(String(b.currency ?? "")),
     )
     .map((a) => {
       const value =
@@ -733,6 +756,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         ...(series ? { series: a.series, seriesLabel: labelOf(series, a.series, ctx) } : {}),
         value,
         count: a.count,
+        ...(a.currency ? { currency: a.currency } : {}),
       }
       if (a.taskIds.length <= MAX_ROW_TASK_IDS) row.taskIds = a.taskIds
       const filter = ctx.single
@@ -753,8 +777,13 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     measure: measureRaw,
     totalTasks: tasks.length,
     truncated,
-    ...(measure.kind !== "count" && measure.column.currency
-      ? { currency: measure.column.currency }
-      : {}),
+    // One currency across every project read: the result's; several: each row says its own.
+    ...(byCurrency
+      ? currencies.length === 1 && currencies[0]
+        ? { currency: currencies[0] }
+        : {}
+      : measure.kind !== "count" && measure.column.currency
+        ? { currency: measure.column.currency }
+        : {}),
   }
 }

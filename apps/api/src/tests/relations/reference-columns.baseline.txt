@@ -90,6 +90,7 @@ app_projects.project_time_plan.biller_id
 app_projects.project_time_plan.project_id
 app_projects.project_timeboxes.project_id
 app_projects.projects.owner_id
+app_projects.reconciliation_lines.other_project_id
 app_projects.reconciliation_lines.reconciliation_id
 app_projects.reconciliation_lines.task_ids
 app_projects.reconciliation_proofs.line_id
@@ -106,6 +107,13 @@ app_projects.task_labels.value_id
 app_projects.task_time.project_id
 app_projects.task_time.task_id
 app_projects.task_time.user_id
+app_projects.task_transitions.actor_id
+app_projects.task_transitions.agent_id
+app_projects.task_transitions.from_status_id
+app_projects.task_transitions.project_id
+app_projects.task_transitions.routine_id
+app_projects.task_transitions.task_id
+app_projects.task_transitions.to_status_id
 app_projects.tasks.assignee_id
 app_projects.tasks.created_by
 app_projects.tasks.parent_task_id

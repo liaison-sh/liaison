@@ -9,10 +9,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, eq } from "drizzle-orm"
 import postgres from "postgres"
-import { extractRows } from "~/db"
-import { __privileged_db__ as db } from "~/db/connection"
+import { withPrivilegedDb } from "~/db/privileged"
+import { routineRuns, routines } from "~/db/schema/kernel"
+import { seedContext } from "~/seed/context"
+import { seedRoutine } from "~/seed/factories/agent/routines"
+import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0303_routine_flows.sql")
@@ -40,52 +43,59 @@ let orgId: string
 let userId: string
 let legacyId: string
 
-async function insertRoutine(
-  name: string,
-  event: string,
-  filter: unknown,
-  flow: unknown,
-): Promise<string> {
-  const [row] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.routines
-        (org_id, owner_user_id, name, description, kind, event, prompt, scopes, created_by_actor_type,
-         event_filter, flow)
-      VALUES (${orgId}::uuid, ${userId}::uuid, ${name}, 'd', 'event', ${event}, 'p', '{}', 'user',
-              ${filter === null ? null : JSON.stringify(filter)}::jsonb,
-              ${flow === null ? null : JSON.stringify(flow)}::jsonb)
-      RETURNING id
-    `),
+function seed(name: string, event: string, eventFilter?: Record<string, unknown>) {
+  return seedRoutine(seedContext({ orgId, now: new Date() }), {
+    createdByUserId: userId,
+    ownerScopes: [],
+    routine: {
+      name,
+      description: "d",
+      kind: "event",
+      event,
+      ownerUserId: userId,
+      scopes: [],
+      prompt: "p",
+      ...(eventFilter ? { eventFilter } : {}),
+    },
+  })
+}
+
+/** A flow written as raw jsonb: shapes the typed column would not take. */
+function setFlowJson(id: string, json: string) {
+  return withPrivilegedDb(orgId, "0303-test-flow", (tx) =>
+    tx
+      .update(routines)
+      .set({ flow: drizzleSql`${json}::jsonb` })
+      .where(eq(routines.id, id)),
   )
-  return row!.id
+}
+
+function insertRun(status: string, steps?: Array<Record<string, unknown>>) {
+  return withPrivilegedDb(orgId, "0303-test-run", (tx) =>
+    tx.insert(routineRuns).values({
+      orgId,
+      routineId: legacyId,
+      status,
+      ...(steps ? { steps: drizzleSql`${JSON.stringify(steps)}::jsonb` } : {}),
+    }),
+  )
 }
 
 beforeAll(async () => {
   await acquireTestLock()
-  const [org] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), '0303 Org', ${`m0303-${Date.now()}-${Math.random()}`}) RETURNING id
-    `),
-  )
-  orgId = org!.id
-  const [u] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`m0303-${Date.now()}@test.com`}, 'Owner', 'active', 'hash', 1, 1)
-      RETURNING id
-    `),
-  )
-  userId = u!.id
-  legacyId = await insertRoutine("legacy", "projects:task:moved", null, null)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.routine_runs (org_id, routine_id, status) VALUES (${orgId}::uuid, ${legacyId}::uuid, 'succeeded')
-  `)
+  orgId = (await minimal.secondOrg({ name: "0303 Org" })).orgId
+  userId = (await minimal.person(orgId, { name: "Owner" })).id
+  legacyId = await seed("legacy", "projects:task:moved")
+  await insertRun("succeeded")
   await runMigration()
   await runMigration()
-})
+}, 60_000)
 
 afterAll(async () => {
+  await withPrivilegedDb(orgId, "0303-test-clean", async (tx) => {
+    await tx.delete(routineRuns).where(eq(routineRuns.orgId, orgId))
+    await tx.delete(routines).where(eq(routines.orgId, orgId))
+  })
   await releaseTestLock()
 })
 
@@ -96,50 +106,36 @@ describe("0303 routine flows", () => {
       "projects:task:updated",
       "projects:task:created",
     ]) {
-      await insertRoutine(`f-${event.split(":")[2]}`, event, { projectId: orgId }, null)
+      await seed(`f-${event.split(":")[2]}`, event, { projectId: orgId })
     }
-    await expect(
-      insertRoutine("f-moved", "projects:task:moved", { projectId: orgId }, null),
-    ).rejects.toThrow()
+    await expect(seed("f-moved", "projects:task:moved", { projectId: orgId })).rejects.toThrow()
   })
 
   it("takes a flow object with steps, refuses any other shape", async () => {
-    await insertRoutine("flow-ok", "projects:task:created", null, { version: 1, steps: [] })
-    await expect(
-      insertRoutine("flow-array", "projects:task:created", null, [{ id: "a" }]),
-    ).rejects.toThrow()
-    await expect(
-      insertRoutine("flow-nosteps", "projects:task:created", null, { version: 1 }),
-    ).rejects.toThrow()
+    const id = await seed("flow-shape", "projects:task:created")
+    await setFlowJson(id, JSON.stringify({ version: 1, steps: [] }))
+    await expect(setFlowJson(id, JSON.stringify([{ id: "a" }]))).rejects.toThrow()
+    await expect(setFlowJson(id, JSON.stringify({ version: 1 }))).rejects.toThrow()
   })
 
   it("keeps flow run statuses and their steps", async () => {
     for (const status of ["running", "waiting", "flagged", "skipped_condition"]) {
-      await db.execute(drizzleSql`
-        INSERT INTO kernel.routine_runs (org_id, routine_id, status, steps)
-        VALUES (${orgId}::uuid, ${legacyId}::uuid, ${status},
-                ${JSON.stringify([{ id: "a", type: "action", state: "done" }])}::jsonb)
-      `)
+      await insertRun(status, [{ id: "a", type: "action", state: "done" }])
     }
-    await expect(
-      (async () =>
-        db.execute(drizzleSql`
-          INSERT INTO kernel.routine_runs (org_id, routine_id, status)
-          VALUES (${orgId}::uuid, ${legacyId}::uuid, 'paused')
-        `))(),
-    ).rejects.toThrow()
+    await expect(insertRun("paused")).rejects.toThrow()
   })
 
   it("leaves a legacy routine and its runs as they were", async () => {
-    const [r] = extractRows<{ flow: unknown }>(
-      await db.execute(drizzleSql`SELECT flow FROM kernel.routines WHERE id = ${legacyId}::uuid`),
+    const [r] = await withPrivilegedDb(orgId, "0303-test-read", (tx) =>
+      tx.select({ flow: routines.flow }).from(routines).where(eq(routines.id, legacyId)),
     )
     expect(r!.flow).toBeNull()
-    const runs = extractRows<{ status: string; steps: unknown }>(
-      await db.execute(drizzleSql`
-        SELECT status, steps FROM kernel.routine_runs WHERE routine_id = ${legacyId}::uuid AND status = 'succeeded'
-      `),
+    const runs = await withPrivilegedDb(orgId, "0303-test-runs", (tx) =>
+      tx
+        .select({ status: routineRuns.status, steps: routineRuns.steps })
+        .from(routineRuns)
+        .where(eq(routineRuns.routineId, legacyId)),
     )
-    expect(runs).toEqual([{ status: "succeeded", steps: null }])
+    expect(runs.find((x) => x.status === "succeeded")).toEqual({ status: "succeeded", steps: null })
   })
 })

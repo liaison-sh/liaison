@@ -5,16 +5,12 @@
   "calls": [
     {
       "method": "connections_getAccounts",
-      "args": [
-        "google"
-      ],
+      "args": ["google"],
       "reply": "[{\"id\":\"16533636-b894-4d01-8e7f-8ccac90a214a\",\"identifier\":\"google-ads-user\",\"displayName\":\"google-ads-user\",\"status\":\"active\"}]"
     },
     {
       "method": "connections_getSettings",
-      "args": [
-        "google-config"
-      ],
+      "args": ["google-config"],
       "reply": "{\"values\":{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"},\"missing\":[\"developerToken\"]}"
     },
     {

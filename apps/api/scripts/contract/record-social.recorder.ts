@@ -644,7 +644,6 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fix
         "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
       fixturesDir: join(import.meta.dir, "../../src/modules/apps/contract/fixtures"),
       appConfig: CONFIG,
-
     })
     console.log(
       `\n${report.join("\n")}\n\nprovider misses:\n${[...new Set(fakes.misses)].join("\n")}\n`,

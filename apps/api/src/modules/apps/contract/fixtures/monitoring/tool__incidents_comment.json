@@ -8,10 +8,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "incidents",
-        "{\"where\":{\"ref_number\":1},\"limit\":1}"
-      ],
+      "args": ["incidents", "{\"where\":{\"ref_number\":1},\"limit\":1}"],
       "reply": "[{\"id\":\"19bc3a60-6df6-4215-aeac-9c927f6a2c50\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:30:59.348556+00\",\"updated_at\":\"2026-11-13 01:30:59.464824+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":1,\"created_pending\":null}]"
     },
     {
@@ -24,10 +21,7 @@
     },
     {
       "method": "db_findOne",
-      "args": [
-        "incident_comments",
-        "72d01918-3710-4b01-9cc5-8a0299fb3bcc"
-      ],
+      "args": ["incident_comments", "72d01918-3710-4b01-9cc5-8a0299fb3bcc"],
       "reply": "{\"id\":\"72d01918-3710-4b01-9cc5-8a0299fb3bcc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:30:59.562581+00\",\"updated_at\":\"2026-11-13 01:30:59.562581+00\",\"incident_id\":\"19bc3a60-6df6-4215-aeac-9c927f6a2c50\",\"kind\":\"comment\",\"body\":\"Node a restarted, watching the next checks.\",\"author_id\":\"00000000-0000-4000-8000-00000000c0df\",\"episode_title\":null,\"episode_resolved_at\":null,\"episode_resolution_note\":null}"
     },
     {

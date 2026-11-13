@@ -1,23 +1,14 @@
 {
   "entry": "tool:campaigns_list",
   "params": {
-    "fields": [
-      "id",
-      "name",
-      "status",
-      "effective_status",
-      "objective",
-      "daily_budget"
-    ],
+    "fields": ["id", "name", "status", "effective_status", "objective", "daily_budget"],
     "limit": 50
   },
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "meta"
-      ],
+      "args": ["meta"],
       "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {

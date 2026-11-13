@@ -15,11 +15,7 @@
     },
     {
       "method": "db_update",
-      "args": [
-        "finding",
-        "79bb73ad-733d-4a50-9bbb-dd8387813621",
-        "{\"status\":\"dismissed\"}"
-      ]
+      "args": ["finding", "79bb73ad-733d-4a50-9bbb-dd8387813621", "{\"status\":\"dismissed\"}"]
     }
   ]
 }

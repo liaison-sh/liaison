@@ -4,21 +4,14 @@
     "level": "ad",
     "time_increment": "1",
     "date_preset": "last_7d",
-    "fields": [
-      "spend",
-      "impressions",
-      "clicks",
-      "ctr"
-    ],
+    "fields": ["spend", "impressions", "clicks", "ctr"],
     "currency": "EUR"
   },
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "meta"
-      ],
+      "args": ["meta"],
       "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {

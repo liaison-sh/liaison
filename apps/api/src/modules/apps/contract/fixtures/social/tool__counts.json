@@ -5,34 +5,22 @@
   "calls": [
     {
       "method": "db_count",
-      "args": [
-        "finding",
-        "{\"where\":{\"status\":\"new\"}}"
-      ],
+      "args": ["finding", "{\"where\":{\"status\":\"new\"}}"],
       "reply": "3"
     },
     {
       "method": "db_count",
-      "args": [
-        "dm_conversation",
-        "{\"where\":{\"status\":\"open\"}}"
-      ],
+      "args": ["dm_conversation", "{\"where\":{\"status\":\"open\"}}"],
       "reply": "1"
     },
     {
       "method": "approvals_pendingFor",
-      "args": [
-        "finding_id",
-        "[\"social:reply_to_finding\",\"social:like_item\"]"
-      ],
+      "args": ["finding_id", "[\"social:reply_to_finding\",\"social:like_item\"]"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "finding",
-        "{\"where\":{\"status\":\"awaiting_approval\"},\"limit\":500}"
-      ],
+      "args": ["finding", "{\"where\":{\"status\":\"awaiting_approval\"},\"limit\":500}"],
       "reply": "[]"
     }
   ]

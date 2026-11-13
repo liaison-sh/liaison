@@ -13,23 +13,17 @@
     },
     {
       "method": "hasScope",
-      "args": [
-        "kernel:apps:admin"
-      ],
+      "args": ["kernel:apps:admin"],
       "reply": true
     },
     {
       "method": "config_get",
-      "args": [
-        "monitoringUrl"
-      ],
+      "args": ["monitoringUrl"],
       "reply": "https://status.example.com"
     },
     {
       "method": "config_get",
-      "args": [
-        "monitoringSources"
-      ],
+      "args": ["monitoringSources"],
       "reply": [
         {
           "rank": 1,

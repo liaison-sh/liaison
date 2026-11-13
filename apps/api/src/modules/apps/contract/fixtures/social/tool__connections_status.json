@@ -5,23 +5,17 @@
   "calls": [
     {
       "method": "connections_describe",
-      "args": [
-        "facebook"
-      ],
+      "args": ["facebook"],
       "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-13T01:32:42.998Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-13T01:32:42.998Z\",\"updatedAt\":\"2026-11-13T01:32:42.998Z\"}]"
     },
     {
       "method": "connections_describe",
-      "args": [
-        "google"
-      ],
+      "args": ["google"],
       "reply": "[{\"id\":\"51d230c8-1d04-4d1f-a959-8e458c8e7284\",\"identifier\":\"UCxContractChannel0000001\",\"displayName\":\"Resonant Audio Labs\",\"ownerType\":\"org\",\"isMine\":false,\"status\":\"active\",\"statusMessage\":null,\"tokenExpiresAt\":\"2036-11-13T01:32:42.999Z\",\"hasRefreshToken\":false,\"connectedByName\":\"Contract Recorder\",\"connectedAt\":\"2026-11-13T01:32:42.999Z\",\"updatedAt\":\"2026-11-13T01:32:42.999Z\"}]"
     },
     {
       "method": "connections_describe",
-      "args": [
-        "instagram"
-      ],
+      "args": ["instagram"],
       "reply": "[]"
     }
   ]

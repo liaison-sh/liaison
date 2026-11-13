@@ -5,17 +5,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"platform\":\"facebook\",\"active\":true},\"limit\":1}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\",\"active\":true},\"limit\":1}"],
       "reply": "[{\"id\":\"a2bc6ce0-47e9-4406-88da-5569479e35a2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.135248+00\",\"updated_at\":\"2026-11-13 01:32:43.409389+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "connections_getAccounts",
-      "args": [
-        "facebook"
-      ],
+      "args": ["facebook"],
       "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
     },
     {
@@ -91,10 +86,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "watched_object",
-        "{\"where\":{\"status\":\"active\"}}"
-      ],
+      "args": ["watched_object", "{\"where\":{\"status\":\"active\"}}"],
       "reply": "[{\"id\":\"421c0ad2-e23f-4b73-b721-1742f0b56397\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.587763+00\",\"updated_at\":\"2026-11-13 01:32:43.587763+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}},{\"id\":\"159a5150-ac57-4c87-addc-a03e1b6d57bf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.674544+00\",\"updated_at\":\"2026-11-13 01:32:43.674544+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}]"
     },
     {
@@ -155,10 +147,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"platform\":\"facebook\"}}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\"}}"],
       "reply": "[{\"id\":\"a2bc6ce0-47e9-4406-88da-5569479e35a2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.135248+00\",\"updated_at\":\"2026-11-13 01:32:43.409389+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"a3095fcf-ae46-4c9d-92e4-1f9b322d2095\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.173169+00\",\"updated_at\":\"2026-11-13 01:32:43.173169+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"b002873e-41d7-42f3-8868-fb7a17dfd88c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.155245+00\",\"updated_at\":\"2026-11-13 01:32:43.155245+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
@@ -171,9 +160,7 @@
     },
     {
       "method": "resolveContact",
-      "args": [
-        "{\"externalId\":\"6000000000000001\",\"name\":\"Camille Martin\"}"
-      ],
+      "args": ["{\"externalId\":\"6000000000000001\",\"name\":\"Camille Martin\"}"],
       "reply": "null"
     },
     {
@@ -200,9 +187,7 @@
     },
     {
       "method": "resolveContact",
-      "args": [
-        "{\"externalId\":\"6000000000000002\",\"name\":\"Jonas Weber\"}"
-      ],
+      "args": ["{\"externalId\":\"6000000000000002\",\"name\":\"Jonas Weber\"}"],
       "reply": "null"
     },
     {

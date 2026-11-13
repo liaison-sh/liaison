@@ -9,10 +9,7 @@
   "calls": [
     {
       "method": "approvals_pendingFor",
-      "args": [
-        "finding_id",
-        "[\"social:reply_to_finding\",\"social:like_item\"]"
-      ],
+      "args": ["finding_id", "[\"social:reply_to_finding\",\"social:like_item\"]"],
       "reply": "[]"
     },
     {
@@ -33,10 +30,7 @@
     },
     {
       "method": "db_count",
-      "args": [
-        "finding",
-        "{\"where\":{\"platform\":\"facebook\",\"status\":\"new\"}}"
-      ],
+      "args": ["finding", "{\"where\":{\"platform\":\"facebook\",\"status\":\"new\"}}"],
       "reply": "3"
     }
   ]

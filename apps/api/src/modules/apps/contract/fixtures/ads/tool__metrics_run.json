@@ -25,10 +25,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "manual_spend",
-        "{}"
-      ],
+      "args": ["manual_spend", "{}"],
       "reply": "[{\"id\":\"37318e4d-27a9-4f8c-9a02-983ea244b9c7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.078142+00\",\"updated_at\":\"2026-11-13 01:32:41.078142+00\",\"channel\":\"print\",\"site\":\"Studio magazine\",\"period_start\":\"2025-12-01 00:00:00+00\",\"period_end\":\"2025-12-31 00:00:00+00\",\"amount\":450,\"currency\":\"EUR\",\"notes\":\"Half-page ad, January issue\",\"created_by\":\"agent\"}]"
     },
     {

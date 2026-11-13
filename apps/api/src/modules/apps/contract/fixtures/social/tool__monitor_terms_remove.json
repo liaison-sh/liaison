@@ -15,10 +15,7 @@
     },
     {
       "method": "db_delete",
-      "args": [
-        "monitor_term",
-        "56101b76-8239-487e-9a12-c3c45d6a00d7"
-      ]
+      "args": ["monitor_term", "56101b76-8239-487e-9a12-c3c45d6a00d7"]
     }
   ]
 }

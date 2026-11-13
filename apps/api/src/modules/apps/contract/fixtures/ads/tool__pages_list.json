@@ -5,9 +5,7 @@
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "meta"
-      ],
+      "args": ["meta"],
       "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {

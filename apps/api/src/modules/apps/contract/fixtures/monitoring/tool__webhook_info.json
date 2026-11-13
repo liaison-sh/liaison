@@ -5,9 +5,7 @@
   "calls": [
     {
       "method": "config_has",
-      "args": [
-        "monitoringWebhookSecret"
-      ],
+      "args": ["monitoringWebhookSecret"],
       "reply": true
     }
   ]

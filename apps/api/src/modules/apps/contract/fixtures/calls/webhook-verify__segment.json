@@ -14,9 +14,7 @@
   "calls": [
     {
       "method": "config_has",
-      "args": [
-        "callsWebhookSecret"
-      ],
+      "args": ["callsWebhookSecret"],
       "reply": true
     },
     {
@@ -31,9 +29,7 @@
     },
     {
       "method": "config_get",
-      "args": [
-        "callsWebhookTtlSeconds"
-      ],
+      "args": ["callsWebhookTtlSeconds"],
       "reply": null
     },
     {

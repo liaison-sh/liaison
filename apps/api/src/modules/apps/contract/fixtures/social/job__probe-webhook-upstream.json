@@ -5,17 +5,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"platform\":\"facebook\",\"active\":true}}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\",\"active\":true}}"],
       "reply": "[{\"id\":\"a2bc6ce0-47e9-4406-88da-5569479e35a2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.135248+00\",\"updated_at\":\"2026-11-13 01:32:43.409389+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"a3095fcf-ae46-4c9d-92e4-1f9b322d2095\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.173169+00\",\"updated_at\":\"2026-11-13 01:32:44.009828+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"dmStateRepair\":{\"done\":true,\"offset\":0,\"version\":1},\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"b002873e-41d7-42f3-8868-fb7a17dfd88c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.155245+00\",\"updated_at\":\"2026-11-13 01:32:43.155245+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "connections_getAccounts",
-      "args": [
-        "facebook"
-      ],
+      "args": ["facebook"],
       "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
     },
     {

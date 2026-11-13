@@ -7,10 +7,7 @@
   "calls": [
     {
       "method": "kernel_listApprovals",
-      "args": [
-        "ads:",
-        20
-      ],
+      "args": ["ads:", 20],
       "reply": "[]"
     }
   ]

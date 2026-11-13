@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"source_type\":\"discovery\",\"active\":true}}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"source_type\":\"discovery\",\"active\":true}}"],
       "reply": "[{\"id\":\"a2bc6ce0-47e9-4406-88da-5569479e35a2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.135248+00\",\"updated_at\":\"2026-11-13 01:32:43.135248+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"111ee382-c569-4990-87ce-0f3e0e04cfd6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.252692+00\",\"updated_at\":\"2026-11-13 01:32:43.252692+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
@@ -21,9 +18,7 @@
     },
     {
       "method": "connections_getAccounts",
-      "args": [
-        "facebook"
-      ],
+      "args": ["facebook"],
       "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
     },
     {
@@ -36,10 +31,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "monitor_term",
-        "{\"where\":{\"enabled\":true}}"
-      ],
+      "args": ["monitor_term", "{\"where\":{\"enabled\":true}}"],
       "reply": "[{\"id\":\"56101b76-8239-487e-9a12-c3c45d6a00d7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.294884+00\",\"updated_at\":\"2026-11-13 01:32:43.294884+00\",\"kind\":\"keyword\",\"value\":\"Resonant Audio Labs\",\"platform\":\"youtube\",\"enabled\":true,\"notes\":\"Brand name as people write it\",\"metadata\":{}}]"
     },
     {
@@ -76,17 +68,12 @@
     },
     {
       "method": "connections_getAccounts",
-      "args": [
-        "google"
-      ],
+      "args": ["google"],
       "reply": "[{\"id\":\"51d230c8-1d04-4d1f-a959-8e458c8e7284\",\"identifier\":\"UCxContractChannel0000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "monitor_term",
-        "{\"where\":{\"enabled\":true}}"
-      ],
+      "args": ["monitor_term", "{\"where\":{\"enabled\":true}}"],
       "reply": "[{\"id\":\"56101b76-8239-487e-9a12-c3c45d6a00d7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.294884+00\",\"updated_at\":\"2026-11-13 01:32:43.294884+00\",\"kind\":\"keyword\",\"value\":\"Resonant Audio Labs\",\"platform\":\"youtube\",\"enabled\":true,\"notes\":\"Brand name as people write it\",\"metadata\":{}}]"
     },
     {
@@ -131,10 +118,7 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "sync_state",
-        "{\"where\":{\"platform\":\"youtube\"}}"
-      ],
+      "args": ["sync_state", "{\"where\":{\"platform\":\"youtube\"}}"],
       "reply": "[{\"id\":\"111ee382-c569-4990-87ce-0f3e0e04cfd6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.252692+00\",\"updated_at\":\"2026-11-13 01:32:43.252692+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"0ab1e934-65ee-4d36-afdb-9930edb7325f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.26866+00\",\"updated_at\":\"2026-11-13 01:32:43.26866+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
@@ -147,9 +131,7 @@
     },
     {
       "method": "resolveContact",
-      "args": [
-        "{\"externalId\":\"UCxMixRoomNotes0000000001\",\"name\":\"Mix Room Notes\"}"
-      ],
+      "args": ["{\"externalId\":\"UCxMixRoomNotes0000000001\",\"name\":\"Mix Room Notes\"}"],
       "reply": "null"
     },
     {

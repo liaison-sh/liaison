@@ -7,10 +7,7 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": [
-        "dm_conversation",
-        "4683315b-c35c-4140-b4fb-12495a0584fd"
-      ],
+      "args": ["dm_conversation", "4683315b-c35c-4140-b4fb-12495a0584fd"],
       "reply": "{\"id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.917666+00\",\"updated_at\":\"2026-11-13 01:32:44.005362+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\",\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
     },
     {

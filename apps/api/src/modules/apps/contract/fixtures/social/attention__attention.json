@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "approvals_pendingFor",
-      "args": [
-        "finding_id",
-        "[\"social:reply_to_finding\",\"social:like_item\"]"
-      ],
+      "args": ["finding_id", "[\"social:reply_to_finding\",\"social:like_item\"]"],
       "reply": "[{\"id\":\"2ace1faa-9a32-46e8-828c-aa12a4dd5c60\",\"tool_name\":\"social:reply_to_finding\",\"target_id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"payload\":{\"finding_id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"reply_text\":\"Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\"},\"created_at\":\"2026-11-13 01:32:44.463877+00\"},{\"id\":\"b688d497-5dd2-431c-b9e3-34fd303375b5\",\"tool_name\":\"social:like_item\",\"target_id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"payload\":{\"finding_id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\"},\"created_at\":\"2026-11-13 01:32:44.373442+00\"}]"
     },
     {
@@ -21,18 +18,12 @@
     },
     {
       "method": "db_findOne",
-      "args": [
-        "finding",
-        "1406d574-4a5e-494a-90cf-a23213ebf16d"
-      ],
+      "args": ["finding", "1406d574-4a5e-494a-90cf-a23213ebf16d"],
       "reply": "{\"id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:44.132451+00\",\"updated_at\":\"2026-11-13 01:32:44.260881+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"media_url\":null,\"permalink\":null,\"occurred_at\":\"2025-12-31 23:59:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":\"complaint\",\"sentiment\":null,\"urgency\":75,\"should_reply\":true,\"needs_human\":null,\"triage_reason\":\"The customer says the order failed at checkout\",\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"triaged\",\"metadata\":{\"siblingsAccessible\":true}}"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "dm_conversation",
-        "{\"where\":{\"status\":\"open\"}}"
-      ],
+      "args": ["dm_conversation", "{\"where\":{\"status\":\"open\"}}"],
       "reply": "[{\"id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.917666+00\",\"updated_at\":\"2026-11-13 01:32:44.005362+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\",\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}]"
     }
   ]

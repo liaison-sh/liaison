@@ -13,9 +13,7 @@
   "calls": [
     {
       "method": "config_has",
-      "args": [
-        "socialMetaAppSecret"
-      ],
+      "args": ["socialMetaAppSecret"],
       "reply": true
     },
     {

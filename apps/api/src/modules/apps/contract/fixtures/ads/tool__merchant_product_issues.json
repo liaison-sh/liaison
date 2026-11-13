@@ -7,16 +7,12 @@
   "calls": [
     {
       "method": "connections_getAccounts",
-      "args": [
-        "merchant"
-      ],
+      "args": ["merchant"],
       "reply": "[{\"id\":\"8d2bffef-9a86-40ac-9282-12ea2db4e95c\",\"identifier\":\"merchant-user\",\"displayName\":\"merchant-user\",\"status\":\"active\"}]"
     },
     {
       "method": "connections_getSettings",
-      "args": [
-        "google-config"
-      ],
+      "args": ["google-config"],
       "reply": "{\"values\":{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"},\"missing\":[\"developerToken\"]}"
     },
     {

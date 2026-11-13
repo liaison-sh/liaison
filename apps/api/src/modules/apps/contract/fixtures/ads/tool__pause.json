@@ -1,18 +1,14 @@
 {
   "entry": "tool:pause",
   "params": {
-    "object_ids": [
-      "120210000000000102"
-    ],
+    "object_ids": ["120210000000000102"],
     "reason": "ROAS under 1.5 for 7 days"
   },
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "meta"
-      ],
+      "args": ["meta"],
       "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {

@@ -10,9 +10,7 @@
     "status": "PAUSED",
     "targeting": {
       "geo_locations": {
-        "countries": [
-          "BE"
-        ]
+        "countries": ["BE"]
       },
       "age_min": 25,
       "age_max": 54,
@@ -28,9 +26,7 @@
   "calls": [
     {
       "method": "connections_getSettings",
-      "args": [
-        "meta"
-      ],
+      "args": ["meta"],
       "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {

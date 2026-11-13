@@ -16,11 +16,7 @@
     },
     {
       "method": "db_update",
-      "args": [
-        "watched_object",
-        "421c0ad2-e23f-4b73-b721-1742f0b56397",
-        "{\"status\":\"stopped\"}"
-      ]
+      "args": ["watched_object", "421c0ad2-e23f-4b73-b721-1742f0b56397", "{\"status\":\"stopped\"}"]
     }
   ]
 }

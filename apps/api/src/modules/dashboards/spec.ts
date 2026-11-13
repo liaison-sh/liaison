@@ -328,6 +328,9 @@ export const blockMapSchema = z
     link: linkSchema.optional(),
     /** What a drill-down shows of each row. */
     drillColumns: z.array(columnSchema).min(1).max(MAX_TABLE_COLUMNS).optional(),
+    /** A field of each row listing the records behind it (objects, or ids): a drill-down shows
+     *  those records, one row each, and `link` opens each (an aggregate's bar opens its tasks). */
+    drillRows: fieldPath.optional(),
     /** bar, area, combo: series stacked. */
     stacked: z.boolean().optional(),
     /** bar: categories down the side. */

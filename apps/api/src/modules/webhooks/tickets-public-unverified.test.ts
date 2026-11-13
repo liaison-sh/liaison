@@ -20,9 +20,13 @@ import { Hono } from "hono"
 import * as realSend from "~/apps/tickets/send"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { contacts } from "~/db/schema/kernel"
 import { redis } from "~/lib/redis"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { type AppRowWriter, insertAppRow, jsonCell } from "~/seed/factories/app-tables"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 
 const realSendModule = { ...realSend }
 
@@ -46,8 +50,6 @@ afterAll(() => {
 const { ticketsPublicRoutes } = await import("./tickets-public")
 const app = new Hono().route("/webhooks", ticketsPublicRoutes)
 
-const rows = (r: unknown): any[] => (r as any).rows ?? r
-
 const BROWSER_ORIGIN = "https://form.unverified.test"
 const ZEBRA = "Zebra-subject-42"
 
@@ -57,57 +59,66 @@ let serverKey: string
 let browserKey: string
 
 function seedKeyRow(
-  tx: { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> },
+  tx: AppRowWriter,
   plaintext: string,
   origins: string[],
   keyInboxId: string | null,
-): Promise<unknown> {
-  return tx.execute(drizzleSql`
-    INSERT INTO app_tickets.api_keys
-      (org_id, key_hash, key_prefix, label, allowed_origins, inbox_id, created_by)
-    VALUES (
-      ${orgId}, ${createHash("sha256").update(plaintext).digest("hex")}, ${plaintext.slice(0, 8)},
-      'unverified test key', ${JSON.stringify(origins)}::jsonb, ${keyInboxId},
-      '00000000-0000-0000-0000-000000000000'
-    )
-  `)
+): Promise<void> {
+  return insertAppRow(tx, "tickets", "api_keys", {
+    org_id: orgId,
+    key_hash: createHash("sha256").update(plaintext).digest("hex"),
+    key_prefix: plaintext.slice(0, 8),
+    label: "unverified test key",
+    allowed_origins: jsonCell(origins),
+    inbox_id: keyInboxId,
+    created_by: "00000000-0000-0000-0000-000000000000",
+  })
 }
 
 beforeAll(async () => {
   const slug = `unverified-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   serverKey = `srv-${randomUUID()}`
   browserKey = `brw-${randomUUID()}`
+  orgId = await seedOrgRow({ id: randomUUID(), name: "Unverified Submitter", slug })
+  const userId = await seedUserRow({
+    id: randomUUID(),
+    orgId,
+    email: `u-${slug}@x.test`,
+    name: "A",
+    status: "active",
+    passwordHash: "h",
+    authVersion: 1,
+    permissionVersion: 1,
+  })
+  const accountId = await seedConnectedAccountRow({
+    orgId,
+    appName: "tickets",
+    connectionName: "gmail",
+    ownerType: "org",
+    ownerId: null,
+    providerType: "oauth2",
+    identifier: "support@unverified.test",
+    status: "active",
+    createdBy: userId,
+    accessTokenEncrypted: "enc",
+  })
+  // A mailbox inbox with acknowledgements on, and the org default so the
+  // anonymous (generic route) case has somewhere to land.
+  inboxId = randomUUID()
   await withSystemDb("tickets-unverified-fixture", async (tx) => {
-    orgId = rows(
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), 'Unverified Submitter', ${slug}) RETURNING id`),
-    )[0].id
-    const userId = rows(
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-        VALUES (gen_random_uuid(), ${orgId}, ${`u-${slug}@x.test`}, 'A', 'active', 'h', 1, 1) RETURNING id`),
-    )[0].id
-    const accountId = rows(
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.connected_accounts
-          (id, org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier, status, created_by, access_token_encrypted)
-        VALUES (gen_random_uuid(), ${orgId}, 'tickets', 'gmail', 'org', null, 'oauth2', 'support@unverified.test', 'active', ${userId}, 'enc')
-        RETURNING id`),
-    )[0].id
-    // A mailbox inbox with acknowledgements on, and the org default so the
-    // anonymous (generic route) case has somewhere to land.
-    inboxId = rows(
-      await tx.execute(drizzleSql`
-        INSERT INTO app_tickets.inboxes
-          (id, org_id, kind, connected_account_id, name, email_address, from_display_name,
-           ack_enabled, is_default_for_create, created_at, updated_at)
-        VALUES (gen_random_uuid(), ${orgId}, 'mailbox', ${accountId}, 'Support', 'support@unverified.test',
-                'Unverified Support', true, true, now(), now())
-        RETURNING id`),
-    )[0].id
-    await seedKeyRow(tx as never, serverKey, [], null)
-    await seedKeyRow(tx as never, browserKey, [BROWSER_ORIGIN], inboxId)
+    await insertAppRow(tx, "tickets", "inboxes", {
+      id: inboxId,
+      org_id: orgId,
+      kind: "mailbox",
+      connected_account_id: accountId,
+      name: "Support",
+      email_address: "support@unverified.test",
+      from_display_name: "Unverified Support",
+      ack_enabled: true,
+      is_default_for_create: true,
+    })
+    await seedKeyRow(tx, serverKey, [], null)
+    await seedKeyRow(tx, browserKey, [BROWSER_ORIGIN], inboxId)
   })
   await ensureAppsForOrg(orgId, {})
 }, 60_000)
@@ -162,17 +173,19 @@ const inboxCreate = (payload: unknown, opts: { key?: string; ip?: string; origin
   post(`${orgId}/inboxes/${inboxId}/tickets/create`, payload, { key: serverKey, ...opts })
 
 async function seedNamelessContact(email: string): Promise<string> {
-  return withPrivilegedDb(
-    orgId,
-    "tickets-unverified-contact",
-    async (tx) =>
-      rows(
-        await tx.execute(drizzleSql`
-        INSERT INTO kernel.contacts (id, org_id, handle, name, email, org_access)
-        VALUES (gen_random_uuid(), ${orgId}, ${`c-${randomUUID().slice(0, 12)}`}, NULL, ${email}, 'editor')
-        RETURNING id`),
-      )[0].id,
+  const [row] = await withPrivilegedDb(orgId, "tickets-unverified-contact", (tx) =>
+    tx
+      .insert(contacts)
+      .values({
+        orgId,
+        handle: `c-${randomUUID().slice(0, 12)}`,
+        name: null,
+        email,
+        orgAccess: "editor",
+      })
+      .returning({ id: contacts.id }),
   )
+  return row?.id as string
 }
 
 async function ticketRow(ticketId: string): Promise<{

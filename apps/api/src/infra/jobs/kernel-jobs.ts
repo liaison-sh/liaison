@@ -1248,6 +1248,14 @@ export async function registerKernelJobs(): Promise<void> {
     await sweepExpiredMailboxWaits()
   })
 
+  // Routine flow runs nothing will carry on (0303, flow-runner.ts): a run left `running` by a
+  // process that died, or `waiting` on a resume job that was lost, ends failed every 15 minutes,
+  // so the run history says so and the event reconciler fires the routine again.
+  await registerScheduledJob("kernel", "routine-flow-sweep", "*/15 * * * *", async () => {
+    const { sweepAllStuckFlowRuns } = await import("~/modules/agent/routines/flow-runner")
+    await sweepAllStuckFlowRuns()
+  })
+
   // Lapsed local claim sweep — every minute. While a desktop holds a
   // conversation the server does not answer in it; if that machine dies
   // mid turn the lease lapses and the question it took with it would otherwise

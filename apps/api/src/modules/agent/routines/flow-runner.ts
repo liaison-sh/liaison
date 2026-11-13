@@ -939,7 +939,8 @@ async function claimRun(
   const claimed = await withPrivilegedDb(orgId, "routine-flow-claim", (tx) =>
     tx
       .update(routineRuns)
-      .set({ status: "running" })
+      // `ran_at` marks the run's progress while it runs: the sweep ends one that stopped moving.
+      .set({ status: "running", ranAt: new Date() })
       .where(and(eq(routineRuns.id, runId), eq(routineRuns.status, from)))
       .returning({ id: routineRuns.id }),
   )
@@ -1243,7 +1244,10 @@ async function notifyFlagged(run: FlowRun, step: AgentStep, note: string): Promi
 
 async function saveSteps(run: FlowRun): Promise<void> {
   await withPrivilegedDb(run.orgId, "routine-flow-steps", (tx) =>
-    tx.update(routineRuns).set({ steps: run.steps }).where(eq(routineRuns.id, run.runId)),
+    tx
+      .update(routineRuns)
+      .set({ steps: run.steps, ranAt: new Date() })
+      .where(eq(routineRuns.id, run.runId)),
   )
 }
 
@@ -1476,4 +1480,135 @@ export async function runFlowResumeJob(
       )
       .catch(() => undefined)
   }
+}
+
+// ── The stuck-run sweep ─────────────────────────────────────────────────────
+
+/** A flow run `running` with no step saved for this long stopped (its process died). */
+export const FLOW_RUN_STALE_MS = 2 * 60 * 60 * 1000
+/**
+ * A wait this far past its deadline lost its resume job: the job comes back for at most an hour
+ * while the record's lock is held (runFlowResumeJob), so this is well past any live resume.
+ */
+export const FLOW_WAIT_OVERDUE_MS = 2 * 60 * 60 * 1000
+
+/**
+ * Ends the org's flow runs nothing will carry on: `running` with no progress for
+ * `FLOW_RUN_STALE_MS`, or `waiting` on a wait whose deadline passed `FLOW_WAIT_OVERDUE_MS` ago.
+ * Each ends `failed`, its owner told as for any failed run, and no longer counts as served, so
+ * the event reconciler fires the routine again for its event. Returns how many ended.
+ */
+export async function sweepStuckFlowRuns(orgId: string, now = new Date()): Promise<number> {
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const staleBefore = new Date(now.getTime() - FLOW_RUN_STALE_MS)
+  const overdueBefore = new Date(now.getTime() - FLOW_WAIT_OVERDUE_MS)
+  const candidates = await withPrivilegedDb(orgId, "routine-flow-sweep-find", (tx) =>
+    tx
+      .select({ id: routineRuns.id, status: routineRuns.status })
+      .from(routineRuns)
+      .where(
+        and(
+          eq(routineRuns.orgId, orgId),
+          drizzleSql`${routineRuns.steps} IS NOT NULL`,
+          drizzleSql`(
+            (${routineRuns.status} = 'running' AND ${routineRuns.ranAt} < ${staleBefore.toISOString()}::timestamptz)
+            OR (${routineRuns.status} = 'waiting' AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(${routineRuns.steps}) e
+               WHERE e->>'state' = 'waiting'
+                 AND COALESCE(e->'output'->>'deadline', '') ~ '^[0-9]{4}-'
+                 AND (e->'output'->>'deadline')::timestamptz < ${overdueBefore.toISOString()}::timestamptz
+            ))
+          )`,
+        ),
+      )
+      .limit(500),
+  )
+  let ended = 0
+  for (const c of candidates) {
+    // Claimed as a resume claims it, so a resume racing the sweep and the sweep never both act.
+    const claimed = await withPrivilegedDb(orgId, "routine-flow-sweep-claim", (tx) =>
+      tx
+        .update(routineRuns)
+        .set({ status: "running", ranAt: now })
+        .where(
+          and(
+            eq(routineRuns.id, c.id),
+            c.status === "running"
+              ? and(
+                  eq(routineRuns.status, "running"),
+                  drizzleSql`${routineRuns.ranAt} < ${staleBefore.toISOString()}::timestamptz`,
+                )
+              : eq(routineRuns.status, "waiting"),
+          ),
+        )
+        .returning(),
+    )
+    const runRow = claimed[0]
+    if (!runRow) continue
+    const [routine] = await withPrivilegedDb(orgId, "routine-flow-sweep-routine", (tx) =>
+      tx.select().from(routines).where(eq(routines.id, runRow.routineId)).limit(1),
+    )
+    if (!routine) continue
+    const reason =
+      c.status === "running"
+        ? "The run stopped without finishing: it made no progress for two hours."
+        : "The run's wait never resumed: its deadline passed two hours ago."
+    const steps = runRow.steps ?? []
+    for (const s of steps) {
+      if (s.state === "running" || s.state === "waiting") setState(s, "failed", reason)
+    }
+    const ctx = runRow.flowContext ?? null
+    await endFlowRun(
+      bareRun({
+        orgId,
+        routine,
+        flow: routine.flow ?? { version: 1, steps: [] },
+        runId: runRow.id,
+        steps,
+        startedAt: runRow.startedAt?.getTime() ?? now.getTime(),
+        triggerAt: runRow.startedAt ?? now,
+        entityId: runRow.eventEntityId,
+        isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
+        outputThreadId: routine.outputThreadId ?? "",
+        hop: ctx?.hop ?? 0,
+        triggerEvent: (ctx?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined,
+        deps: {},
+      }),
+      "failed",
+      reason,
+    )
+    log.warn({ orgId, routineId: routine.id, runId: runRow.id, was: c.status }, "flow run swept")
+    ended++
+  }
+  return ended
+}
+
+/** Every org's stuck flow runs, for the scheduled sweep (kernel-jobs.ts). */
+export async function sweepAllStuckFlowRuns(): Promise<number> {
+  const { sql: drizzleSql } = await import("drizzle-orm")
+  const { withSystemDb } = await import("~/db/privileged")
+  // An org being moved keeps its runs as they are until the move ends.
+  const { sweepSkippingMoving, writeUnlessMoving } = await import(
+    "~/modules/org/transfer-state/skip-moving"
+  )
+  const orgs = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("routine-flow-sweep-orgs", (db) =>
+      db
+        .selectDistinct({ orgId: routineRuns.orgId })
+        .from(routineRuns)
+        .where(
+          and(
+            inArray(routineRuns.status, ["running", "waiting"]),
+            drizzleSql`${routineRuns.steps} IS NOT NULL`,
+            notMoving(routineRuns.orgId),
+          ),
+        ),
+    ),
+  )
+  let ended = 0
+  for (const { orgId } of orgs) {
+    const n = await writeUnlessMoving(orgId, () => sweepStuckFlowRuns(orgId))
+    if (typeof n === "number") ended += n
+  }
+  return ended
 }

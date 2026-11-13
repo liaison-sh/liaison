@@ -9,7 +9,9 @@
 //   - a flow edited while the run waited ends it `skipped_condition`, "flow changed";
 //   - a throw after the claim ends the run `failed`, never left `running`;
 //   - an approval decided on a routine switched off meanwhile ends the run the same way;
-//   - the resume job keeps the record's lock alive while a long step runs.
+//   - the resume job keeps the record's lock alive while a long step runs;
+//   - the sweep ends a run left `running` or `waiting` on a lost job, and the reconciler then
+//     fires the routine again for its event (a stuck run is not served).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import type { RoutineFlow } from "@liaison/shared"
@@ -24,7 +26,13 @@ import {
   resumeFlowOnDecision,
   resumeFlowWait,
   runFlowResumeJob,
+  sweepStuckFlowRuns,
 } from "~/modules/agent/routines/flow-runner"
+import {
+  type ReconcileOptions,
+  RoutineEventReconcilerTestAccess,
+  reconcileEventRoutines,
+} from "~/modules/agent/routines/routine-event-reconciler"
 import {
   RoutineLockTestAccess,
   type RoutineTickOpts,
@@ -36,6 +44,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { seedContext } from "~/seed/context"
 import { seedRoutine } from "~/seed/factories/agent/routines"
 import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
+import { seedAuditEntry } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 
@@ -190,6 +199,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await sql`DELETE FROM kernel.audit_log WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.routine_runs WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.routines WHERE org_id = ${ORG}`
 })
@@ -380,5 +390,61 @@ describe("a resumed flow run makes a tick's checks", () => {
       RoutineLockTestAccess.heartbeatMs = was
     }
     expect(ttlSeen).toBeGreaterThan(60)
+  }, 60_000)
+})
+
+describe("the stuck flow run sweep", () => {
+  async function eventRun(name: string) {
+    const routineId = await routine(name, COMMENT_FLOW)
+    const taskId = await task(name)
+    const ev = event(taskId)
+    await seedAuditEntry({
+      orgId: ORG,
+      actorType: "user",
+      actorId: OWNER,
+      app: "projects",
+      entityType: "task",
+      entityId: taskId,
+      action: "task.status_changed",
+      changes: ev.data as Record<string, unknown>,
+      eventId: ev.eventId!,
+      timestamp: new Date(Date.now() - 3600_000),
+    })
+    const res = await tick(routineId, taskId, { triggerEvent: ev })
+    expect(res.status).toBe("waiting")
+    return { routineId, runId: res.runId!, eventId: ev.eventId! }
+  }
+  async function retried(routineId: string, eventId: string) {
+    type Enq = Parameters<NonNullable<ReconcileOptions["enqueue"]>>[0]
+    const enqueued: Enq[] = []
+    await RoutineEventReconcilerTestAccess.clearInFlight(routineId)
+    await reconcileEventRoutines({ routineId, enqueue: async (p) => void enqueued.push(p) })
+    return enqueued.some((e) => e.triggerEvent.eventId === eventId)
+  }
+
+  it("ends a run left running with no progress, and its event is fired again", async () => {
+    const { routineId, runId, eventId } = await eventRun("left-running")
+    await sql`UPDATE kernel.routine_runs SET status = 'running', ran_at = now() - interval '3 hours'
+               WHERE id = ${runId}::uuid`
+    expect(await retried(routineId, eventId)).toBe(false)
+    expect(await sweepStuckFlowRuns(ORG)).toBeGreaterThanOrEqual(1)
+    const row = await run(runId)
+    expect(row.status).toBe("failed")
+    expect(row.error).toContain("made no progress")
+    expect(await retried(routineId, eventId)).toBe(true)
+  }, 60_000)
+
+  it("ends a run whose wait's resume never came, and leaves a live wait alone", async () => {
+    const lost = await eventRun("lost-wait")
+    const live = await eventRun("live-wait")
+    await sql`UPDATE kernel.routine_runs
+                 SET steps = jsonb_set(steps, '{0,output,deadline}', to_jsonb((now() - interval '3 hours')::text))
+               WHERE id = ${lost.runId}::uuid`
+    await sweepStuckFlowRuns(ORG)
+    const row = await run(lost.runId)
+    expect(row.status).toBe("failed")
+    expect(row.steps[0]!.state).toBe("failed")
+    expect((await run(live.runId)).status).toBe("waiting")
+    expect(await retried(lost.routineId, lost.eventId)).toBe(true)
   }, 60_000)
 })

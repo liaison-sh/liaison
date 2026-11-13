@@ -11,7 +11,7 @@
 //     run of the routine in the same thread at the same time never meets them), a tool reached
 //     through kernel__call_tool by its inner name, and `{{owner}}` as a direct message.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
-import type { RoutineFlow } from "@liaison/shared"
+import type { RoutineFlow, RoutineFlowOutcome } from "@liaison/shared"
 import { createProject } from "~/apps/projects/service/create-project"
 import { createTask, updateTask } from "~/apps/projects/service/tasks"
 import { sql } from "~/db"
@@ -238,13 +238,7 @@ describe("routine flow agent steps", () => {
 })
 
 describe("routine flow outcomes are this run's own", () => {
-  const withOutcome = (
-    outcome: RoutineFlow["steps"][number] extends infer S
-      ? S extends { type: "agent"; outcomes?: infer O }
-        ? NonNullable<O>[number]
-        : never
-      : never,
-  ): RoutineFlow => ({
+  const withOutcome = (outcome: RoutineFlowOutcome): RoutineFlow => ({
     version: 1,
     steps: [{ id: "act", type: "agent", prompt: "Act", outcomes: [outcome], maxBumps: 0 }],
   })

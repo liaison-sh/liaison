@@ -20,8 +20,10 @@
 // are what the product's reads make of these rows. Every write is idempotent:
 // a re-run adopts what is there.
 import { and, eq, inArray, sql } from "drizzle-orm"
+import { setCostRate } from "~/apps/projects/service/margin"
 import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
-import { setBillingTerms, setPeriodTimebox } from "~/apps/projects/service/time-plan"
+import { setBillingTerms, setPeriodTimebox, setTaskTime } from "~/apps/projects/service/time-plan"
+import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel"
@@ -33,12 +35,7 @@ import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { seedPipeline } from "~/seed/factories/projects/deals"
 import { seedProject, type TaskSpec } from "~/seed/factories/projects/projects"
-import {
-  seedCostRates,
-  seedTaskTime,
-  seedTimePlan,
-  seedTimeSettings,
-} from "~/seed/factories/projects/time"
+import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import type { DemoWorldLayerInput } from "../index"
 import { STUDIO_CLIENTS } from "./fiction"
@@ -346,32 +343,49 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   }
   ctx.log(`projects: ${Object.keys(tasksOf).join(", ")}`)
 
-  const byPerson = new Map<string, typeof plan.taskTime>()
-  for (const row of plan.taskTime)
-    byPerson.set(row.person, [...(byPerson.get(row.person) ?? []), row])
-  for (const [person, rows] of [...byPerson.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    await seedTaskTime(
-      ctx,
-      await actors(person),
-      rows.map((r) => {
-        const project = tasksOf[r.project]
-        const taskId = project?.taskIds[r.task]
-        if (!project || !taskId) throw new Error(`studio layer: no task ${r.task}`)
-        return { taskId, projectId: project.projectId, workDate: r.workDate, minutes: r.minutes }
+  // Each person enters their own time through the product's writer, on the day they worked it:
+  // a dated project takes the day, an undated one records the day the entry is made.
+  const datedProjects = new Set(plan.projects.filter((p) => p.datedHours).map((p) => p.key))
+  const rowsSorted = [...plan.taskTime].sort(
+    (a, b) => a.person.localeCompare(b.person) || a.workDate.localeCompare(b.workDate),
+  )
+  for (const r of rowsSorted) {
+    const project = tasksOf[r.project]
+    const taskId = project?.taskIds[r.task]
+    if (!project || !taskId) throw new Error(`studio layer: no task ${r.task}`)
+    const person = await actors(r.person)
+    const dated = datedProjects.has(r.project)
+    await asUser(person, (tx) =>
+      setTaskTime({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        userId: person.userId,
+        scopes: person.scopes,
+        place: { origin: "human-ui", frame: undefined, actingAgentId: null },
+        input: { taskId, time: `${r.minutes}m`, ...(dated ? { date: r.workDate } : {}) },
+        now: dated ? ctx.now : new Date(`${r.workDate}T12:00:00.000Z`),
       }),
     )
   }
+  await awaitTimeRowWrites()
   ctx.log(`time: ${plan.taskTime.length} rows`)
 
-  await seedCostRates(
-    ctx,
-    await actors("anais"),
-    plan.costRates.map((r) => ({
-      userId: userIdOf(org, r.person),
-      rateMinor: r.rateMinor,
-      currency: r.currency,
-      effectiveFrom: r.effectiveFrom,
-    })),
-  )
+  // Cost rates through the rate writer, as finance sets them.
+  const finance = await actors("anais")
+  for (const r of plan.costRates) {
+    await asUser(finance, (tx) =>
+      setCostRate({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        scopes: finance.scopes,
+        input: {
+          userId: userIdOf(org, r.person),
+          rate: r.rateMinor / 100,
+          from: r.effectiveFrom,
+          currency: r.currency,
+        },
+      }),
+    )
+  }
   await seedStudioAway(ctx, org, owner, plan)
 }

@@ -3355,6 +3355,10 @@ async function registerSingleApp(
                 ...(outsideFields.length > 0 ? { outsideFields } : {}),
               }
             }
+            // A classified part of the result widens the turn's taint; it only ever adds one.
+            if (tool.resultTaintWhen !== null && typeof tool.resultTaintWhen === "object") {
+              entry.resultTaintWhen = tool.resultTaintWhen
+            }
             // What a tool writes is read only by the person writing it: it narrows a scope-taint
             // refusal, so it counts for a first-party app alone (registration refuses any other).
             if (core || desc._firstParty === true) {

@@ -413,6 +413,8 @@ export interface MustNotLine {
   loadsOnlyApps?: string[]
   /** This tool is not the first hit. */
   notFirst?: string
+  /** None of these tools is among the first five hits (the ones the agent picks from). */
+  notInTop?: string[]
   /** Tools this query may load anyway, each for a stated reason (another meaning of the word). */
   allow?: Array<{ tool: string; reason: string }>
 }
@@ -438,6 +440,9 @@ export function mustNotBroken(
     }
     if (line.notFirst && ranked[0]?.tool.sdkName === line.notFirst)
       out.push(`"${line.query}" leads with ${line.notFirst}`)
+    const top = new Set(ranked.slice(0, TOP).map((r) => r.tool.sdkName))
+    const inTop = (line.notInTop ?? []).filter((n) => top.has(n))
+    if (inTop.length > 0) out.push(`"${line.query}" has ${inTop.join(", ")} in its top ${TOP}`)
   }
   return out
 }

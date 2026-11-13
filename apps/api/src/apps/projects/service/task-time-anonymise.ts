@@ -31,8 +31,8 @@ export async function anonymiseOldTaskTime(now: Date = new Date()): Promise<{
     withSystemDb("projects-task-time-anonymise", async (tx) => {
       await tx.execute(drizzleSql`
         UPDATE ${projectsRel("task_time")} tt
-           SET cost_minor = (
-             SELECT round(tt.minutes::numeric * c.rate_minor / 60)::bigint
+           SET (cost_minor, cost_currency) = (
+             SELECT round(tt.minutes::numeric * c.rate_minor / 60)::bigint, c.currency
                FROM ${projectsRel("cost_rates")} c
               WHERE c.org_id = tt.org_id AND c.user_id = tt.user_id
                 AND c.effective_from <= tt.work_date

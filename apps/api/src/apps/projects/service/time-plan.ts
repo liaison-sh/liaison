@@ -11,6 +11,7 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { UUID_RE } from "~/lib/uuid"
 import { hasScope } from "~/modules/permissions/permissions"
+import { parseCurrency } from "./currency"
 import { assertPlanningOn, orgUsesTimeBudgets, type PlanningProject } from "./planning"
 import { ProjectsServiceError } from "./statuses"
 import {
@@ -812,7 +813,7 @@ export async function setBillingTerms(args: {
       "Nothing changed: an amount cannot be negative.",
     )
   }
-  const currency = input.currency?.toUpperCase()
+  const currency = parseCurrency(input.currency)
   // Setting one clears the other, so the project never holds both.
   const rateValue =
     rate !== undefined ? rate : fixed !== undefined && fixed !== null ? null : undefined

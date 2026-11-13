@@ -728,6 +728,30 @@ const toolSchema = {
       required: ["field", "equals"],
       additionalProperties: false,
     },
+    // A read whose result may carry a part classified by a narrower read scope than the tool's
+    // own: a successful result holding one of `fields` (not null, at any depth) adds `scopes` to
+    // the turn's scope taint, so a later write is judged against them too (execute-tool.ts).
+    resultTaintWhen: {
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          minItems: 1,
+          maxItems: 8,
+          uniqueItems: true,
+        },
+        scopes: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          minItems: 1,
+          maxItems: 4,
+          uniqueItems: true,
+        },
+      },
+      required: ["fields", "scopes"],
+      additionalProperties: false,
+    },
     // On a tool with `agentVisible: false`: the visible tool of the same app to use instead.
     useInstead: { type: "string", minLength: 1 },
     approvalExpiryHours: { type: "integer", minimum: 1, maximum: 720 },

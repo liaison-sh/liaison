@@ -249,6 +249,9 @@ describe("known bad answers stay fixed", () => {
     expect(mustNotBroken(loud, [{ query: "list", notFirst: "shop__la_list" }])).toEqual([
       '"list" leads with shop__la_list',
     ])
+    expect(mustNotBroken(loud, [{ query: "list", notInTop: ["shop__la_list"] }])).toEqual([
+      '"list" has shop__la_list in its top 5',
+    ])
   })
 
   it("a French filler word alone loads nothing", () => {

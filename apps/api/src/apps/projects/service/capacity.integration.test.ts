@@ -811,6 +811,35 @@ describe("moving a task from the capacity board", () => {
     expect((await linesAbout(moving)).length).toBe(lines)
   })
 
+  it("a move from unassigned says how to undo it, and the undo leaves the task with nobody", async () => {
+    const moving = await task(projectId, nadia, "1 h", { dueDate: day(3), assigneeId: null })
+    expect((await assigneeOf(moving))?.assignee).toBeNull()
+    const out = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: mathis },
+      { userId: lead, scopes: LEAD_SCOPES },
+    )
+    expect(out.moved).toBe(true)
+    expect(out.from).toBeNull()
+    expect(out.message).toContain("To undo, leave it unassigned again (toUserId null).")
+    const back = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: null },
+      { userId: lead, scopes: LEAD_SCOPES },
+    )
+    expect(back.moved).toBe(true)
+    expect(back.to).toBeNull()
+    expect(back.told).toEqual(["Mathis Board"])
+    expect((await assigneeOf(moving))?.assignee).toBeNull()
+    const again = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: null },
+      { userId: lead, scopes: LEAD_SCOPES },
+    )
+    expect(again.moved).toBe(false)
+    expect(again.message).toContain("already unassigned")
+  })
+
   it("the person moving their own task away tells only the one who takes it", async () => {
     const moving = await task(projectId, nadia, "2 h", { dueDate: day(3) })
     const out = await call(

@@ -32,5 +32,26 @@
   {
     "query": "du",
     "loadsOnlyApps": []
+  },
+  {
+    "query": "set the day rate for the project to 600",
+    "notFirst": "projects__cost_rate_set"
+  },
+  {
+    "query": "monthly report for the client",
+    "notFirst": "kernel__contacts_export",
+    "notInTop": ["kernel__contacts_export", "kernel__data_subject_export"]
+  },
+  {
+    "query": "project report for the client",
+    "notFirst": "kernel__contacts_export"
+  },
+  {
+    "query": "export the report",
+    "notFirst": "kernel__contacts_export"
+  },
+  {
+    "query": "corriger mon temps",
+    "notFirst": "projects__time_settings_set"
   }
 ]

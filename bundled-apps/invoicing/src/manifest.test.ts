@@ -1708,6 +1708,8 @@ describe("invoicing manifest", () => {
     //   replacement in one commit (both or neither).
     // 0.21.13: a document may name the project it bills (billing_project_id), and the projects app
     //   reads a project's invoiced amount through project_invoiced_get.
+    // 0.21.14: project_invoiced_get pages on a unique order, counts only issued statuses in the
+    //   query, refuses past its cap and reads an issue date as a calendar day.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

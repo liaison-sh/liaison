@@ -14,7 +14,6 @@ const ENGLISH_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   edit: ["update"],
   modify: ["update"],
   correct: ["update", "set"],
-  report: ["export"],
   make: ["create"],
   new: ["create"],
   write: ["compose", "create"],
@@ -266,9 +265,36 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   ...ENGLISH_SYNONYMS,
 }
 
+/**
+ * Synonyms that hold only beside another word. "Report" means an export only when the query also
+ * names a file ("the report as a PDF"); alone ("the monthly report for the client") it asks for
+ * the report itself, not for whatever exports.
+ */
+export const COMPANION_SYNONYMS: Readonly<
+  Record<string, { names: readonly string[]; withAny: readonly string[] }>
+> = {
+  report: {
+    names: ["export"],
+    withAny: [
+      "pdf",
+      "csv",
+      "file",
+      "files",
+      "sheet",
+      "spreadsheet",
+      "excel",
+      "xlsx",
+      "download",
+      "fichier",
+      "tableur",
+    ],
+  },
+}
+
 /** The English words of the lexicon: its English entries and every name word. */
 export const ENGLISH_LEXICON_WORDS: ReadonlySet<string> = new Set([
   ...Object.keys(ENGLISH_SYNONYMS),
+  ...Object.keys(COMPANION_SYNONYMS),
   ...Object.values(NAME_WORD_SYNONYMS).flat(),
 ])
 

@@ -7,6 +7,7 @@
 
 import { csvCell } from "@liaison/shared"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
+import { mixedCurrencies } from "./service/currency"
 import { composeMargin, type InvoicedRead, type MarginCost } from "./service/margin"
 
 export interface ProjectsMethods {
@@ -1224,7 +1225,17 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
   // The money half: a holder of the money scope also reads what is invoiced and what is left.
   if (out?.money && out.projectId) {
     const read = await readProjectInvoiced(ctx, out.projectId)
-    if (read.ok) {
+    const price = out.money.currency
+    if (read.ok && read.documents > 0 && price && read.currency && price !== read.currency) {
+      // The price and the invoices are in two currencies: no subtraction means anything.
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = mixedCurrencies(
+        [price, read.currency],
+        "This project's price and its invoices",
+      ).error
+    } else if (read.ok && read.documents === 0) {
+      ;(out.money as Record<string, unknown>).invoicedUnavailable =
+        "No issued invoice is linked to this project, so what is invoiced and left to invoice are not shown."
+    } else if (read.ok) {
       const invoiced = read.invoicedMinor / 100
       const left = Math.round((out.money.price - invoiced) * 100) / 100
       out.money = { ...out.money, invoiced, leftToInvoice: left } as typeof out.money
@@ -1234,9 +1245,11 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
         { k: "Left to invoice", text: fmt(left) },
       )
     } else {
-      ;(out.money as Record<string, unknown>).invoicedUnavailable = read.off
-        ? "Invoicing is not on in this workspace, so what is invoiced is not shown."
-        : "I cannot read invoices right now, so what is invoiced is not shown."
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = read.refusal
+        ? read.refusal
+        : read.off
+          ? "Invoicing is not on in this workspace, so what is invoiced is not shown."
+          : "I cannot read invoices right now, so what is invoiced is not shown."
     }
   }
   return out
@@ -1300,6 +1313,19 @@ async function readProjectInvoiced(
     }
   }
   const code = typeof env.error === "object" && env.error ? env.error.code : undefined
+  // Invoicing refused to sum (documents in two currencies): its own words, not "cannot read".
+  const own = body?.error as { code?: unknown; message?: unknown; next?: unknown } | undefined
+  if (own && own.code === "mixed_currencies" && typeof own.message === "string") {
+    return {
+      ok: false,
+      off: false,
+      refusal: {
+        code: own.code,
+        message: own.message,
+        ...(typeof own.next === "string" ? { next: own.next } : {}),
+      },
+    }
+  }
   return { ok: false, off: typeof code === "string" && INVOICING_ABSENT.has(code) }
 }
 

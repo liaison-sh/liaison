@@ -378,13 +378,103 @@ describe("cost rates", () => {
   })
 })
 
+describe("currencies", () => {
+  /** What invoicing answers for a project, as its cross-app call returns it. */
+  const invoicedAs = (currency: string, documents: number) => ({
+    patch: {
+      executeTool: async () =>
+        JSON.stringify({
+          status: "completed",
+          result: {
+            invoicedExcl: 50_000,
+            paidExcl: 0,
+            currency,
+            documents: Array.from({ length: documents }, (_, i) => ({ id: `d${i}` })),
+            message: "",
+          },
+        }),
+    },
+  })
+
+  it("time costed in two currencies makes margin refuse with mixed_currencies", async () => {
+    const projectId = await newProject("Maison Duo")
+    const task = await newTask(projectId, "Build")
+    const [inEuros, inDollars] = [
+      await minimal.session(orgId, { role: "member" }),
+      await minimal.session(orgId, { role: "member" }),
+    ]
+    expect(
+      (
+        await run(costRateSet, {
+          userId: inEuros!.userId,
+          rate: 50,
+          from: "2026-01-01",
+          currency: "EUR",
+        })
+      ).error,
+    ).toBeUndefined()
+    expect(
+      (
+        await run(costRateSet, {
+          userId: inDollars!.userId,
+          rate: 80,
+          from: "2026-01-01",
+          currency: "usd",
+        })
+      ).error,
+    ).toBeUndefined()
+    await enter(inEuros!.userId, [
+      { projectId, taskId: task, minutes: hours(2), date: "2026-06-02" },
+    ])
+    await enter(inDollars!.userId, [
+      { projectId, taskId: task, minutes: hours(2), date: "2026-06-02" },
+    ])
+    const out = await run(marginGet, { projectId })
+    expect(out.error.code).toBe("mixed_currencies")
+    expect(out.error.message).toContain("EUR and USD")
+    expect(JSON.stringify(out)).not.toMatch(/"cost"|"margin"/)
+  })
+
+  it("a rate's currency must be an ISO 4217 code", async () => {
+    const out = await run(costRateSet, {
+      userId: people[0]!.userId,
+      rate: 60,
+      from: "2026-12-01",
+      currency: "e",
+    })
+    expect(out.error.code).toBe("invalid_currency")
+  })
+
+  it("a price in one currency and invoices in another leave left to invoice out", async () => {
+    const projectId = await newProject("Maison Sterling")
+    await call("projects_billingTermsSet", { projectId, fixedPrice: 1000, currency: "GBP" })
+    const out = await run(budgetGet, { projectId }, invoicedAs("EUR", 2))
+    expect(out.money.price).toBe(1000)
+    expect(out.money.leftToInvoice).toBeUndefined()
+    expect(out.money.invoicedUnavailable.code).toBe("mixed_currencies")
+    expect(out.totals.map((t: { k: string }) => t.k)).not.toContain("Left to invoice")
+  })
+
+  it("a priced project with no linked invoice says so instead of showing nothing invoiced", async () => {
+    const projectId = await newProject("Maison Neuve")
+    await call("projects_billingTermsSet", { projectId, fixedPrice: 2000, currency: "EUR" })
+    const out = await run(budgetGet, { projectId })
+    expect(out.money.invoiced).toBeUndefined()
+    expect(out.money.leftToInvoice).toBeUndefined()
+    expect(out.money.invoicedUnavailable).toStartWith("No issued invoice is linked to this project")
+  })
+})
+
 describe("who reads margin and cost", () => {
   it("margin needs its scope and is absent otherwise", async () => {
     const tools = (projectsAppManifest as { tools: Record<string, { requiredScopes: string[] }> })
       .tools
     expect(tools.margin_get?.requiredScopes).toEqual(["projects:margin:read"])
     expect(tools.cost_rates_list?.requiredScopes).toEqual(["projects:margin:read"])
-    expect(tools.cost_rate_set?.requiredScopes).toEqual(["projects:cost_rates:write"])
+    expect(tools.cost_rate_set?.requiredScopes).toEqual([
+      "projects:cost_rates:write",
+      "projects:margin:read",
+    ])
     // The member and lead roles do not hold it, so the tools are not in their catalog.
     const roles = (projectsAppManifest as { roles: Record<string, { scopes: string[] }> }).roles
     for (const role of ["member", "lead"]) {

@@ -2283,6 +2283,13 @@
       "when": 1900003416001,
       "tag": "0324_projects_time_cost_rates_missing",
       "breakpoints": true
+    },
+    {
+      "idx": 326,
+      "version": "7",
+      "when": 1900003417001,
+      "tag": "0325_projects_time_cost_currency",
+      "breakpoints": true
     }
   ]
 }

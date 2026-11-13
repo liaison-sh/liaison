@@ -870,6 +870,27 @@ export type TaintOriginRows = Readonly<Record<string, readonly string[]>>
 export type TaintOriginStore = {
   originRows: () => TaintOriginRows
   recordOriginRows: (table: string, rowIds: readonly string[]) => void
+  /** Adds scopes a read's result carried (a tool's `resultTaintWhen`) to the turn's set. */
+  recordInjected: (requiredScopes: string[]) => void
+}
+
+/** How deep `resultHoldsField` looks; a part nested deeper counts as held (fail closed). */
+const RESULT_FIELD_DEPTH = 8
+
+/**
+ * Does a successful result hold one of `fields` with a value (not null), at any depth? A tool's
+ * `resultTaintWhen` asks this of what it returned: the parts it names are classified by a
+ * narrower read scope than the tool's own. A result nested past the walk counts as holding one.
+ */
+export function resultHoldsField(result: unknown, fields: readonly string[], depth = 0): boolean {
+  if (result === null || typeof result !== "object") return false
+  if (depth > RESULT_FIELD_DEPTH) return true
+  if (Array.isArray(result)) return result.some((item) => resultHoldsField(item, fields, depth + 1))
+  const row = result as Record<string, unknown>
+  for (const field of fields) {
+    if (Object.hasOwn(row, field) && row[field] !== null && row[field] !== undefined) return true
+  }
+  return Object.values(row).some((child) => resultHoldsField(child, fields, depth + 1))
 }
 
 /**

@@ -106,7 +106,9 @@ describe("projects.manifest", () => {
     // 1.31.0: main's task aggregates and project-backed tables join the time and budgets tools.
     // 1.32.0: the reconcile skill and its guide section, the per-project time line, and the
     // wording of the dated-sheet and metrics lines.
-    expect(projectsManifest.version).toBe("1.32.0")
+    // 1.33.0: a money-bearing result taints the turn with the money scope, cost_rate_set runs only
+    //   in a person's DM, no instruction ranks people, and capacity_move can leave a task unassigned.
+    expect(projectsManifest.version).toBe("1.33.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
@@ -803,7 +805,10 @@ describe("projects.manifest", () => {
 
     it("the metrics line is true with time and budgets on or off", () => {
       const metrics = guide.sections.find((s) => s.text.startsWith("METRICS / BURNDOWN"))
-      expect(metrics?.text).toContain("NO story-points field")
+      expect(metrics?.text).toContain("NO story points")
+      expect(metrics?.text).toContain(
+        "planned time exists only on a project using time and budgets",
+      )
       expect(metrics?.text).not.toContain("estimate field")
       expect(guide.core).toContain("per project and off by default")
     })

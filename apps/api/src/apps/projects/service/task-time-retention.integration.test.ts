@@ -121,15 +121,17 @@ describe("time rows past 36 months", () => {
       work_date: string
       user_id: string | null
       cost_minor: string | null
+      cost_currency: string | null
     }>(
       await db.execute(drizzleSql`
-        SELECT work_date::text AS work_date, user_id::text AS user_id, cost_minor::text AS cost_minor
+        SELECT work_date::text AS work_date, user_id::text AS user_id, cost_minor::text AS cost_minor,
+               cost_currency
           FROM app_projects.task_time WHERE task_id = ${taskId}::uuid ORDER BY work_date`),
     )
     expect(rows).toEqual([
-      { work_date: "2023-03-10", user_id: null, cost_minor: "6000" },
-      { work_date: "2023-09-12", user_id: null, cost_minor: "10000" },
-      { work_date: "2026-10-05", user_id: ana.userId, cost_minor: null },
+      { work_date: "2023-03-10", user_id: null, cost_minor: "6000", cost_currency: "EUR" },
+      { work_date: "2023-09-12", user_id: null, cost_minor: "10000", cost_currency: "EUR" },
+      { work_date: "2026-10-05", user_id: ana.userId, cost_minor: null, cost_currency: null },
     ])
     expect(await figures()).toEqual(before)
     // A second pass finds nothing left to do and changes nothing.

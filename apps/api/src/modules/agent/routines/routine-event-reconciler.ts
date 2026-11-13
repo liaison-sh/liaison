@@ -35,18 +35,24 @@
 // predicate can (a ticket message someone already answered). Only
 // tickets:message:create is listed today.
 import { sql as drizzleSql } from "drizzle-orm"
+import { projectsRel } from "~/apps/projects/schema-refs"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
   eventDataForOwner,
+  eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
+  isProjectTaskFilter,
+  isProjectTaskFilterEvent,
   loadRoutineOwnerContext,
-  type MailSenderFilter,
   ownerCanSeeEventEntity,
   ownerMailSenderFilterMatches,
+  ownerProjectTaskFilterMatches,
+  ROUTINE_EVENT_MAX_HOP,
+  type RoutineEventFilter,
   triggerEventOrigin,
 } from "~/infra/jobs/event-routine-gate"
 import { rootLogger } from "~/lib/logger"
@@ -82,7 +88,17 @@ export const RECONCILE_DEFAULTS = {
  * approval and resumes with its result (routine-run-resume.ts); it is the
  * event's run, still going, and turns `failed` if it ends without doing its job.
  */
-const SERVED = new Set(["succeeded", "output_thread_recreated", "dispatched", "waiting_approval"])
+const SERVED = new Set([
+  "succeeded",
+  "output_thread_recreated",
+  "dispatched",
+  "waiting_approval",
+  // A flow run (0303): going, parked on a wait, flagged for its owner, or ended by its condition.
+  "running",
+  "waiting",
+  "flagged",
+  "skipped_condition",
+])
 
 interface AuditEvent {
   eventId: string
@@ -146,10 +162,37 @@ const ticketMessageStillNeedsTriage: FamilyCheck = async (orgId, ev) => {
   return { actionable: true }
 }
 
+/**
+ * A task status change still needs its run while the task exists and still sits in the status it
+ * moved to: a task that moved on since has a newer transition, with its own event (0303).
+ */
+const taskStatusChangeStillCurrent: FamilyCheck = async (orgId, ev) => {
+  const toStatusId = (ev.data as { toStatusId?: unknown } | null)?.toStatusId
+  if (!ev.entityId || typeof toStatusId !== "string")
+    return { actionable: false, reason: "no_task" }
+  const [row] = await withPrivilegedDb(orgId, "routine-reconcile-task", async (tx) =>
+    extractRows<{ status_id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT status_id FROM ${projectsRel("tasks")}
+        WHERE id = ${ev.entityId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`),
+    ),
+  )
+  if (!row) return { actionable: false, reason: "task_gone" }
+  if (row.status_id !== toStatusId) return { actionable: false, reason: "status_moved_on" }
+  return { actionable: true }
+}
+
 /** Event families the reconciler handles, keyed `app:entity:action`. */
 export const RECONCILE_FAMILIES: Record<string, FamilyCheck> = {
   "tickets:message:create": ticketMessageStillNeedsTriage,
+  "projects:task:status_changed": taskStatusChangeStillCurrent,
 }
+
+/**
+ * Families where a served run for an entity serves its every event (a ticket's newest message is
+ * triaged with the whole conversation). A task's status changes are each their own run.
+ */
+const EACH_EVENT_ITS_OWN_RUN = new Set(["projects:task:status_changed"])
 
 export interface ReconcileOptions {
   now?: Date
@@ -201,7 +244,7 @@ interface RoutineRow {
   orgId: string
   name: string
   event: string
-  eventFilter: MailSenderFilter | null
+  eventFilter: RoutineEventFilter
 }
 
 interface RunRow {
@@ -283,7 +326,7 @@ export async function reconcileEventRoutines(
           orgId: r.org_id,
           name: r.name,
           event: r.event,
-          eventFilter: (r.event_filter as MailSenderFilter | null) ?? null,
+          eventFilter: (r.event_filter as RoutineEventFilter) ?? null,
         }),
       ),
     ),
@@ -349,6 +392,10 @@ async function reconcileRoutine(
           AND "timestamp" <= ${ctx.until.toISOString()}::timestamptz
           AND COALESCE(metadata->>'firedByRoutineId', '') <> ${routine.id}
           AND COALESCE(metadata->>'seeded', '') <> 'true'
+          -- A routine chain this deep was dropped by the subscriber, on purpose: replaying it
+          -- would carry the loop on (0303).
+          AND CASE WHEN metadata->>'hop' ~ '^[0-9]{1,6}$' THEN (metadata->>'hop')::int ELSE 0 END
+              < ${ROUTINE_EVENT_MAX_HOP}
         ORDER BY "timestamp" ASC
         LIMIT 2000`),
     ).map(
@@ -415,7 +462,9 @@ async function reconcileRoutine(
 
   for (const ev of events) {
     const own = byEvent.get(ev.eventId) ?? []
-    if (own.some((r) => SERVED.has(r.status)) || (ev.entityId && servedEntities.has(ev.entityId))) {
+    const servedByEntity =
+      !EACH_EVENT_ITS_OWN_RUN.has(routine.event) && !!ev.entityId && servedEntities.has(ev.entityId)
+    if (own.some((r) => SERVED.has(r.status)) || servedByEntity) {
       push(ev, "served")
       continue
     }
@@ -465,7 +514,14 @@ async function reconcileRoutine(
     const filterApplies =
       isMailSenderFilterActive(routine.eventFilter) && isMailSenderFilterEvent(gateEvent)
     let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
-    if (isOwnerScopedEvent(gateEvent) || filterApplies) {
+    // The record filter's declaration lives in the org's registries (flow-records.ts).
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(routine.orgId)
+    const taskFilter =
+      isProjectTaskFilterEvent(gateEvent) && isProjectTaskFilter(routine.eventFilter)
+        ? routine.eventFilter
+        : null
+    if (isOwnerScopedEvent(gateEvent) || filterApplies || taskFilter) {
       const owner = await loadRoutineOwnerContext(routine.orgId, routine.id)
       if (!owner || !(await ownerCanSeeEventEntity(owner, gateEvent))) {
         push(ev, "skipped:owner_cannot_see")
@@ -477,6 +533,10 @@ async function reconcileRoutine(
         !(await ownerMailSenderFilterMatches(owner, routine.eventFilter, gateEvent))
       ) {
         push(ev, "skipped:sender_filter")
+        continue
+      }
+      if (taskFilter && !(await ownerProjectTaskFilterMatches(owner, taskFilter, gateEvent))) {
+        push(ev, "skipped:task_filter")
         continue
       }
     }
@@ -512,6 +572,8 @@ async function reconcileRoutine(
       origin: await triggerEventOrigin({ ...gateEvent }),
       eventId: ev.eventId,
       retryAttempt: attempt,
+      // The chain depth the event had: the retry's writes carry it on, as the first tick's would.
+      ...(eventHopOf(ev.metadata) > 0 ? { hop: eventHopOf(ev.metadata) } : {}),
     }
     try {
       await ctx.enqueue({

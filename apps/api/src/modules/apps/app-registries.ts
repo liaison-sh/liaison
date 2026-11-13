@@ -711,6 +711,9 @@ export const routineTemplateRegistry = createTypedRegistry<
      * kernel-routine-templates.ts; its routines carry no app_name).
      */
     sourceKind?: "app" | "kernel"
+    /** A flow template and its event filter (0303), placeholders unfilled. */
+    flow?: Record<string, unknown>
+    eventFilter?: Record<string, unknown>
   }
 >()
 
@@ -1073,6 +1076,19 @@ export const entityRegistry = createTypedRegistry<
         roleIdsField: string
       }
     }
+  }
+>({ orgScoped: true })
+
+/**
+ * `entities.<e>.routineFlow` (manifest-schema.ts, contract.ts routineFlowDeclarationErrors): the
+ * entity is a routine flow's trigger record. Read through modules/agent/routines/flow-records.ts,
+ * never directly; `bundlePath` is the core app's server module its handler exports live in.
+ */
+export const routineFlowRecordRegistry = createTypedRegistry<
+  [orgId: string, appName: string, entityName: string],
+  {
+    decl: import("~/modules/agent/routines/flow-records").RoutineFlowDeclaration
+    bundlePath: string
   }
 >({ orgScoped: true })
 
@@ -1661,6 +1677,7 @@ export function resetAppRegistries(): void {
   dimensionDefRegistry.clear()
   entityRegistry.clear()
   manifestFileParentRegistry.clear()
+  routineFlowRecordRegistry.clear()
   manifestAttentionRegistry.clear()
   manifestAttentionAxesRegistry.clear()
   exportRegistry.clear()

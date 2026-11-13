@@ -20,7 +20,7 @@
  *   PUT  /:id/node-placement → the folder, repo and model of the routine's node runs (P2-D6)
  */
 import { createRoutineRequestSchema, updateRoutineRequestSchema } from "@liaison/shared"
-import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm"
 import { type Context, Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
@@ -169,6 +169,28 @@ routinesRoutes.get("/", async (c) => {
     rows.sort((a, b) => a.name.localeCompare(b.name))
     return c.json({ data: await withCanWrite(actor, rows) })
   }
+  // A project's automations (0303): the routines the caller sees (their own, or shared) whose
+  // event filter names that project.
+  const projectId = c.req.query("projectId")
+  if (projectId) {
+    if (!z.string().uuid().safeParse(projectId).success) {
+      throw new HTTPException(400, { message: "Invalid projectId" })
+    }
+    const rows = await withPrivilegedDb(actor.orgId, "routines-list-project", (tx) =>
+      tx
+        .select()
+        .from(routinesTbl)
+        .where(
+          and(
+            eq(routinesTbl.orgId, actor.orgId),
+            or(eq(routinesTbl.ownerUserId, actor.userId), eq(routinesTbl.visibility, "shared")),
+            sql`${routinesTbl.eventFilter}->>'projectId' = ${projectId.toLowerCase()}`,
+          ),
+        ),
+    )
+    rows.sort((a, b) => a.name.localeCompare(b.name))
+    return c.json({ data: await withCanWrite(actor, rows) })
+  }
   const visibility = c.req.query("visibility") === "shared" ? "shared" : "mine"
   const rows = await withPrivilegedDb(actor.orgId, "routines-list", (tx) =>
     tx
@@ -307,6 +329,11 @@ routinesRoutes.get("/templates", async (c) => {
     description: string
     kind: string
     enabled: boolean
+    event?: string
+    scopes?: string[]
+    prompt?: string
+    flow?: Record<string, unknown>
+    eventFilter?: Record<string, unknown>
   }> = []
   for (const [key, tpl] of routineTemplateRegistry.entriesOf(actor.orgId)) {
     const [, appName, templateKey] = key
@@ -316,6 +343,17 @@ routinesRoutes.get("/templates", async (c) => {
       description: tpl.description,
       kind: tpl.kind,
       enabled: false,
+      // A flow template (0303) carries what the editor prefills: its trigger, scopes, summary,
+      // steps and filter, placeholders unfilled (resolveRoutineTemplatePlaceholders fills them).
+      ...(tpl.flow
+        ? {
+            event: tpl.event,
+            scopes: tpl.scopes,
+            prompt: tpl.promptTemplate,
+            flow: tpl.flow,
+            ...(tpl.eventFilter ? { eventFilter: tpl.eventFilter } : {}),
+          }
+        : {}),
     })
   }
   // Mark which templates already have an instantiated routine for this org.

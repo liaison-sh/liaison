@@ -134,6 +134,244 @@ export const routineRunsOnSchema = z
       "you confirm the routine is set up.",
   )
 
+// ── Routine flows (0303) ──────────────────────────────────────────────────────
+//
+// A flow is a routine's ordered steps after its trigger: actions (run by the server, no agent),
+// waits (in working time, durable) and agent steps (an agent turn with optional required
+// outcomes). `routines.flow` null = a legacy routine: one agent step, its prompt, no outcomes.
+// "If indents its branch" in the editor = consecutive steps sharing the same `if`; there are no
+// nested step lists.
+
+/** Most steps in one flow. */
+export const ROUTINE_FLOW_MAX_STEPS = 20
+/** Longest wait a flow step may hold, in days. */
+export const ROUTINE_FLOW_MAX_WAIT_DAYS = 60
+
+const FIELD_KEY = /^[a-z][a-z0-9_]{0,39}$/
+const flowStepIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/, "step id: a-z, 0-9, _ -")
+/** A person: a user id, the routine's owner, or the trigger task's assignee. */
+const flowPersonRefSchema = z.union([
+  z.string().uuid(),
+  z.literal("{{owner}}"),
+  z.literal("{{task.assigneeId}}"),
+])
+const flowScalarSchema = z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()])
+const flowFieldRefSchema = z.union([
+  z.literal("status"),
+  z.literal("assignee"),
+  z.string().regex(/^fields\.[a-z][a-z0-9_]{0,39}$/),
+])
+
+export type RoutineFlowCondition =
+  | { all: RoutineFlowCondition[] }
+  | { any: RoutineFlowCondition[] }
+  | {
+      field: string
+      op: "eq" | "in" | "empty" | "not_empty"
+      value?: string | number | boolean | null | Array<string | number>
+    }
+  | { op: "status_unchanged_since_trigger" }
+
+const flowLeafConditionSchema = z
+  .object({
+    field: flowFieldRefSchema,
+    op: z.enum(["eq", "in", "empty", "not_empty"]),
+    value: z
+      .union([
+        flowScalarSchema,
+        z.array(z.union([z.string().max(200), z.number().finite()])).max(50),
+      ])
+      .optional(),
+  })
+  .strict()
+  .refine((c) => (c.op === "eq" ? c.value !== undefined && !Array.isArray(c.value) : true), {
+    message: "op 'eq' needs a single value",
+  })
+  .refine((c) => (c.op === "in" ? Array.isArray(c.value) && c.value.length > 0 : true), {
+    message: "op 'in' needs a non-empty list of values",
+  })
+  .refine((c) => (c.op === "empty" || c.op === "not_empty" ? c.value === undefined : true), {
+    message: "ops 'empty' and 'not_empty' take no value",
+  })
+
+export const routineFlowConditionSchema: z.ZodType<RoutineFlowCondition> = z.lazy(() =>
+  z.union([
+    z.object({ all: z.array(routineFlowConditionSchema).min(1).max(10) }).strict(),
+    z.object({ any: z.array(routineFlowConditionSchema).min(1).max(10) }).strict(),
+    z.object({ op: z.literal("status_unchanged_since_trigger") }).strict(),
+    flowLeafConditionSchema,
+  ]),
+)
+
+function conditionDepth(c: RoutineFlowCondition): number {
+  if ("all" in c) return 1 + Math.max(...c.all.map(conditionDepth))
+  if ("any" in c) return 1 + Math.max(...c.any.map(conditionDepth))
+  return 1
+}
+
+const boundedConditionSchema = routineFlowConditionSchema.refine((c) => conditionDepth(c) <= 3, {
+  message: "conditions nest at most 3 levels deep",
+})
+
+const actionBase = {
+  id: flowStepIdSchema,
+  type: z.literal("action"),
+  if: boundedConditionSchema.optional(),
+}
+const flowActionStepSchema = z.union([
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("assign"),
+      args: z
+        .object({
+          to: z.union([
+            flowPersonRefSchema,
+            z.object({ leastLoaded: z.array(z.string().uuid()).min(1).max(50) }).strict(),
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("set_field"),
+      args: z
+        .object({
+          key: z.string().regex(FIELD_KEY),
+          value: z.union([flowScalarSchema, z.array(z.string().max(200)).max(50)]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("set_status"),
+      args: z.object({ statusId: z.string().uuid() }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("message"),
+      args: z.object({ to: flowPersonRefSchema, text: z.string().min(1).max(4000) }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("notify"),
+      args: z
+        .object({
+          to: z.array(flowPersonRefSchema).min(1).max(20),
+          text: z.string().min(1).max(500),
+          urgency: z.number().int().min(0).max(100).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("comment"),
+      args: z.object({ text: z.string().min(1).max(4000) }).strict(),
+    })
+    .strict(),
+])
+
+const WAIT_UNIT_MAX = { working_hours: 60 * 9, working_days: 60, hours: 60 * 24, days: 60 } as const
+const flowWaitStepSchema = z
+  .object({
+    id: flowStepIdSchema,
+    type: z.literal("wait"),
+    for: z
+      .object({
+        amount: z.number().int().positive(),
+        unit: z.enum(["working_hours", "working_days", "hours", "days"]),
+      })
+      .strict()
+      .refine((f) => f.amount <= WAIT_UNIT_MAX[f.unit], {
+        message: `a wait holds at most ${ROUTINE_FLOW_MAX_WAIT_DAYS} days`,
+      }),
+    until: boundedConditionSchema,
+    if: boundedConditionSchema.optional(),
+  })
+  .strict()
+
+export const routineFlowOutcomeSchema = z.union([
+  z
+    .object({
+      kind: z.literal("message_posted"),
+      to: z.union([flowPersonRefSchema, z.string().uuid()]),
+    })
+    .strict(),
+  z.object({ kind: z.literal("field_set"), field: z.string().regex(FIELD_KEY) }).strict(),
+  z.object({ kind: z.literal("status_is"), status: z.string().uuid() }).strict(),
+  z.object({ kind: z.literal("tool_called"), tool: z.string().min(1).max(120) }).strict(),
+])
+export type RoutineFlowOutcome = z.infer<typeof routineFlowOutcomeSchema>
+
+const flowAgentStepSchema = z
+  .object({
+    id: flowStepIdSchema,
+    type: z.literal("agent"),
+    prompt: z.string().min(1).max(20_000),
+    outcomes: z.array(routineFlowOutcomeSchema).max(10).optional(),
+    maxBumps: z.number().int().min(0).max(3).optional(),
+    if: boundedConditionSchema.optional(),
+  })
+  .strict()
+
+export const routineFlowStepSchema = z.union([
+  flowActionStepSchema,
+  flowWaitStepSchema,
+  flowAgentStepSchema,
+])
+export type RoutineFlowStep = z.infer<typeof routineFlowStepSchema>
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+export const routineFlowCalendarSchema = z
+  .object({
+    timezone: timezoneSchema.optional(),
+    days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+    start: z.string().regex(HHMM).optional(),
+    end: z.string().regex(HHMM).optional(),
+  })
+  .strict()
+  .refine((c) => !c.start || !c.end || c.start < c.end, { message: "start must be before end" })
+export type RoutineFlowCalendar = z.infer<typeof routineFlowCalendarSchema>
+
+export const routineFlowSchema = z
+  .object({
+    version: z.literal(1),
+    steps: z.array(routineFlowStepSchema).min(1).max(ROUTINE_FLOW_MAX_STEPS),
+    calendar: routineFlowCalendarSchema.optional(),
+  })
+  .strict()
+  .refine((f) => new Set(f.steps.map((s) => s.id)).size === f.steps.length, {
+    message: "step ids must be unique",
+  })
+  .describe(
+    "The routine's steps, run in order after its trigger. Steps: " +
+      "{id, type:'action', action:'assign'|'set_field'|'set_status'|'message'|'notify'|'comment', args, if?} " +
+      "(run by the server as the owner, no agent); {id, type:'wait', for:{amount, unit:'working_hours'|" +
+      "'working_days'|'hours'|'days'}, until: condition} (continue only if the condition still holds then); " +
+      "{id, type:'agent', prompt, outcomes?, maxBumps?, if?} (an agent turn; each outcome is checked after it). " +
+      "A condition reads the trigger task fresh: {field:'status'|'assignee'|'fields.<key>', op:'eq'|'in'|" +
+      "'empty'|'not_empty', value?}, {op:'status_unchanged_since_trigger'}, {all:[...]} or {any:[...]}. " +
+      "Text may use {{task.title}}, {{task.key}}, {{task.url}}, {{task.assigneeName}}, {{task.fields.<key>}}.",
+  )
+export type RoutineFlow = z.infer<typeof routineFlowSchema>
+
+/** The task events a projects event filter (projectId, from/to status, fields) applies to. */
+export const PROJECT_TASK_FILTER_EVENTS = [
+  "projects:task:status_changed",
+  "projects:task:updated",
+  "projects:task:created",
+] as const
+
 /**
  * Sender filter of a `mail:message:create` event routine (S26): the routine
  * fires only for inbound mail from one of these contacts, or from a member of
@@ -150,6 +388,17 @@ export const routineEventFilterSchema = z
       .regex(/^[a-z][a-z0-9_]{0,39}$/)
       .optional(),
     to: z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()]).optional(),
+    // Projects task events (0303): one project, a status change from/to, field values.
+    projectId: z.string().uuid().optional(),
+    fromStatusId: z.string().uuid().nullable().optional(),
+    toStatusId: z.string().uuid().optional(),
+    fields: z
+      .record(
+        z.string().regex(FIELD_KEY),
+        z.union([flowScalarSchema, z.array(flowScalarSchema).min(1).max(50)]),
+      )
+      .refine((f) => Object.keys(f).length <= 20, { message: "at most 20 fields" })
+      .optional(),
   })
   .strict()
   .nullable()
@@ -160,6 +409,10 @@ export const routineEventFilterSchema = z
       "mail never starts the routine. For 'kernel:dashboard_table_row:created|updated|deleted': " +
       "{tableId} fires only for rows of that table, {column} only when that column changed, " +
       "{to} only when the column changed TO that value (a choice, a number, true...). " +
+      "For 'projects:task:status_changed|updated|created': {projectId} fires only for that project's " +
+      "tasks, {fromStatusId} / {toStatusId} only for that status change (fromStatusId null: a task " +
+      "created in toStatusId), {fields: {key: value | [values]}} only when the task's fields equal " +
+      "(or are one of) those values. " +
       "Omit or null to react to every event the owner can read.",
   )
 export type RoutineEventFilter = NonNullable<z.infer<typeof routineEventFilterSchema>>
@@ -294,12 +547,51 @@ const createRoutineBaseSchema = z.object({
   approver: routineApproverSchema,
   followUp: routineFollowUpSchema,
   reportThreadId: routineReportThreadRefSchema,
+  // The routine's flow (0303): its steps after the trigger. Null/absent = a legacy routine (one
+  // agent step, its prompt). A flow routine still keeps a prompt: the plain summary of what it does.
+  flow: routineFlowSchema.nullable().optional(),
 })
 
-export const createRoutineRequestSchema = createRoutineBaseSchema.refine(kindColumnsValid, {
-  message:
-    "recurring routines need cron+timezone (no runAt); scheduled routines need runAt (no cron/timezone)",
-})
+const PROJECT_FILTER_KEYS = ["projectId", "fromStatusId", "toStatusId", "fields"] as const
+
+/**
+ * Whether an event filter fits its event: the projects keys only on a projects task event, and
+ * from/to status only on `projects:task:status_changed`. Mirrors routines_event_filter_chk.
+ */
+export function routineEventFilterFitsEvent(
+  event: string | null | undefined,
+  filter:
+    | ({
+        projectId?: unknown
+        fromStatusId?: unknown
+        toStatusId?: unknown
+        fields?: unknown
+      } & Record<string, unknown>)
+    | null
+    | undefined,
+): boolean {
+  if (!filter) return true
+  const projectKeys = PROJECT_FILTER_KEYS.filter((k) => filter[k] !== undefined)
+  if (projectKeys.length === 0) return true
+  if (!event || !(PROJECT_TASK_FILTER_EVENTS as readonly string[]).includes(event)) return false
+  if (event !== "projects:task:status_changed") {
+    return filter.fromStatusId === undefined && filter.toStatusId === undefined
+  }
+  return true
+}
+
+const EVENT_FILTER_MISFIT =
+  "eventFilter projectId/fromStatusId/toStatusId/fields need event projects:task:status_changed " +
+  "(fromStatusId/toStatusId) or projects:task:updated|created (projectId, fields)"
+
+export const createRoutineRequestSchema = createRoutineBaseSchema
+  .refine(kindColumnsValid, {
+    message:
+      "recurring routines need cron+timezone (no runAt); scheduled routines need runAt (no cron/timezone)",
+  })
+  .refine((v) => routineEventFilterFitsEvent(v.event, v.eventFilter), {
+    message: EVENT_FILTER_MISFIT,
+  })
 export type CreateRoutineRequest = z.infer<typeof createRoutineRequestSchema>
 
 /**
@@ -335,23 +627,30 @@ const updateRoutineBaseSchema = z.object({
   // (`outputThreadId`) is internal: always its own, made on its first run, and
   // never set by a person or a tool.
   reportThreadId: routineReportThreadRefSchema,
+  // The routine's flow (0303): its steps after the trigger. Null/absent = a legacy routine (one
+  // agent step, its prompt). A flow routine still keeps a prompt: the plain summary of what it does.
+  flow: routineFlowSchema.nullable().optional(),
 })
 
-export const updateRoutineRequestSchema = updateRoutineBaseSchema.refine(
-  (v) =>
-    v.kind === undefined ||
-    kindColumnsValid({
-      kind: v.kind,
-      cron: v.cron,
-      timezone: v.timezone,
-      runAt: v.runAt,
-      event: v.event,
-    }),
-  {
-    message:
-      "a kind change must arrive with its matching schedule columns (cron+timezone for recurring, runAt for scheduled)",
-  },
-)
+export const updateRoutineRequestSchema = updateRoutineBaseSchema
+  .refine((v) => v.event === undefined || routineEventFilterFitsEvent(v.event, v.eventFilter), {
+    message: EVENT_FILTER_MISFIT,
+  })
+  .refine(
+    (v) =>
+      v.kind === undefined ||
+      kindColumnsValid({
+        kind: v.kind,
+        cron: v.cron,
+        timezone: v.timezone,
+        runAt: v.runAt,
+        event: v.event,
+      }),
+    {
+      message:
+        "a kind change must arrive with its matching schedule columns (cron+timezone for recurring, runAt for scheduled)",
+    },
+  )
 export type UpdateRoutineRequest = z.infer<typeof updateRoutineRequestSchema>
 
 export const routineResponseSchema = z.object({
@@ -382,9 +681,14 @@ export const routineResponseSchema = z.object({
       tableId: z.string().optional(),
       column: z.string().optional(),
       to: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+      projectId: z.string().optional(),
+      fromStatusId: z.string().nullable().optional(),
+      toStatusId: z.string().optional(),
+      fields: z.record(z.string(), z.unknown()).optional(),
     })
     .nullable()
     .optional(),
+  flow: z.unknown().nullable().optional(),
   approver: z.enum(ROUTINE_APPROVERS).optional(),
   followUp: z.boolean().optional(),
   enabled: z.boolean(),
@@ -396,3 +700,43 @@ export const routineResponseSchema = z.object({
   updatedAt: z.string(),
 })
 export type RoutineResponse = z.infer<typeof routineResponseSchema>
+
+// ── Routine flow templates (0303) ────────────────────────────────────────────
+
+/**
+ * Fills a routine template's placeholders for one project: `{{projectId}}` becomes the project's
+ * id and `{{status:<label>}}` the id of its status with that label (any case, spaces or
+ * underscores alike). Pure; runs on the flow and the event filter alike, in the editor's prefill
+ * and at enable time. A label the project has no status for is an error naming it.
+ */
+export function resolveRoutineTemplatePlaceholders<T>(
+  value: T,
+  project: { id: string; statuses: ReadonlyArray<{ id: string; label: string }> },
+): { value: T } | { error: string } {
+  const norm = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "_")
+  const byLabel = new Map(project.statuses.map((s) => [norm(s.label), s.id]))
+  let missing: string | null = null
+  const fill = (s: string): string =>
+    s
+      .replace(/\{\{\s*projectId\s*\}\}/g, project.id)
+      .replace(/\{\{\s*status:([^}]+)\}\}/g, (_, label: string) => {
+        const id = byLabel.get(norm(label))
+        if (!id) missing ??= label.trim()
+        return id ?? ""
+      })
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") return fill(v)
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+    }
+    return v
+  }
+  const out = walk(value) as T
+  if (missing) return { error: `the project has no status "${missing}"` }
+  return { value: out }
+}

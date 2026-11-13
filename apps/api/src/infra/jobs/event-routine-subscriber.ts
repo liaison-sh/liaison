@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { and, sql as drizzleSql, eq, inArray } from "drizzle-orm"
 import Redis from "ioredis"
-import { withSystemDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { routines } from "~/db/schema/kernel"
 import {
   type AppEvent,
@@ -12,15 +13,20 @@ import {
 import { INSTANCE_ID } from "~/infra/instance-id"
 import {
   eventDataForOwner,
+  eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
+  isProjectTaskFilter,
+  isProjectTaskFilterEvent,
   isTableRowEvent,
   isTableRowFilter,
   loadRoutineOwnerContext,
   ownerCanSeeEventEntity,
   ownerMailSenderFilterMatches,
+  ownerProjectTaskFilterMatches,
   ownerTableRowFilterMatches,
+  ROUTINE_EVENT_MAX_HOP,
   type RoutineEventFilter,
   triggerEventOrigin,
 } from "~/infra/jobs/event-routine-gate"
@@ -29,6 +35,7 @@ import { registerSingleton } from "~/infra/leadership"
 import { env } from "~/lib/env"
 import { jobsLogger as log } from "~/lib/logger"
 import { REDIS_PREFIX, RESP_PROTOCOL, redis } from "~/lib/redis"
+import { flowRecordSource, isUncoalescedRecordEvent } from "~/modules/agent/routines/flow-records"
 import { isSeededEvent } from "~/modules/notifications/seeded"
 
 /**
@@ -236,6 +243,21 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const firedBy = (evt.metadata as { firedByRoutineId?: string } | null | undefined)
     ?.firedByRoutineId
   if (firedBy === sub.routineId) return
+  // CHAIN GUARD (0303): routines triggering one another (a routine's write firing another
+  // routine, whose write fires a third...) stop at depth 5. queue-event stamps `metadata.hop`
+  // (the firing run's hop + 1) on every event a routine run queues. The owner hears of it once an
+  // hour per routine, on Home.
+  const hop = eventHopOf(evt.metadata)
+  if (hop >= ROUTINE_EVENT_MAX_HOP) {
+    log.warn(
+      { routineId: sub.routineId, event: sub.event, entityId: evt.entityId, hop },
+      "event-routine: routine chain too deep; dropped",
+    )
+    await notifyChainTooDeep(sub).catch((err) =>
+      log.error({ err, routineId: sub.routineId }, "event-routine: chain alert failed"),
+    )
+    return
+  }
   // A SEED'S OWN WORLD (notifications/seeded.ts). The seed writes its tickets, mail and tasks
   // through the ordinary services, and the outbox delivers their events after the seed has
   // switched its routines on: without this, a demo workspace (a warm-pool one before any visitor
@@ -253,7 +275,10 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // that ticket then never gets a tick. Repeated events for the SAME entity still
   // collapse to one tick per window.
   const key = `${sub.routineId}:${sub.orgId}:${typeof evt.entityId === "string" ? evt.entityId : "none"}`
-  if (suppressed.has(key)) return // a leading tick already fired this window
+  // A task status change is never coalesced (0303): each transition is its own trigger (a task
+  // moved to Review then back to To do in 30 s fires twice), unlike edits, which burst.
+  const coalesce = !isUncoalescedEvent(evt)
+  if (coalesce && suppressed.has(key)) return // a leading tick already fired this window
   // OWNER GATE + SENDER FILTER (A32, A52, S26). The routine runs as its owner, so an
   // event about an entity the owner cannot read (another member's personal mailbox,
   // calendar, private contact, personal connection or document) is dropped, and a
@@ -266,7 +291,11 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
   // The owner, once the gate loaded it: the data the routine is handed is masked for them.
   let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
-  if (isOwnerScopedEvent(evt) || filterApplies || tableFilter) {
+  // A flow record routine's filter (0303, a project task's): container, from/to status, field
+  // values, matched on the record as the owner reads it, before the window opens.
+  const taskFilter =
+    isProjectTaskFilterEvent(evt) && isProjectTaskFilter(sub.filter) ? sub.filter : null
+  if (isOwnerScopedEvent(evt) || filterApplies || tableFilter || taskFilter) {
     try {
       const owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
       if (!owner) return
@@ -280,23 +309,26 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       }
       if (filterApplies && !(await ownerMailSenderFilterMatches(owner, sub.filter, evt))) return
       if (tableFilter && !(await ownerTableRowFilterMatches(owner, tableFilter, evt))) return
+      if (taskFilter && !(await ownerProjectTaskFilterMatches(owner, taskFilter, evt))) return
     } catch (err) {
       // Fail closed: an event the gate could not judge never reaches the routine.
       log.error({ err, routineId: sub.routineId }, "event-routine owner gate failed; dropped")
       return
     }
     // The gate awaited: an event for the same entity may have opened the window meanwhile.
-    if (suppressed.has(key)) return
+    if (coalesce && suppressed.has(key)) return
   }
   // Leading edge: open the suppression window FIRST (so a synchronous burst
   // of events delivered before the await below still sees the window open and
   // is absorbed), then enqueue the tick immediately.
-  suppressed.set(
-    key,
-    setTimeout(() => {
-      suppressed.delete(key)
-    }, coalesceMs),
-  )
+  if (coalesce) {
+    suppressed.set(
+      key,
+      setTimeout(() => {
+        suppressed.delete(key)
+      }, coalesceMs),
+    )
+  }
   try {
     // Payload extends `RoutineTickOpts` ({ routineId, orgId, scheduledAt }) with the
     // TRIGGERING EVENT so an event routine can REACT to the event that fired it (real-time
@@ -319,6 +351,27 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       // The outbox id the audit log keeps for this event: the run row records it, and
       // the reconciler matches runs to events by it (routine-event-reconciler.ts).
       eventId: (evt as { _eventId?: string })._eventId ?? null,
+      // The routine chain depth the run carries on (queue-event.ts stamps hop + 1).
+      ...(hop > 0 ? { hop } : {}),
+    }
+    // An uncoalesced event (a status change) runs once per outbox event: a redelivery of the
+    // same event (an outbox replay, a peer's copy) is the same transition, and a second run
+    // would assign, message and comment again, and supersede the first run's wait.
+    if (!coalesce && triggerEvent.eventId) {
+      const first = await redis.set(
+        uncoalescedOnceKey(sub.routineId, triggerEvent.eventId),
+        "1",
+        "EX",
+        UNCOALESCED_ONCE_TTL_SEC,
+        "NX",
+      )
+      if (first !== "OK") {
+        log.debug(
+          { routineId: sub.routineId, eventId: triggerEvent.eventId },
+          "event-routine: event already delivered; dropped",
+        )
+        return
+      }
     }
     // In flight from this enqueue until its run row lands: the reconciler
     // must not fire a retry for an event whose first tick is still queued.
@@ -345,12 +398,60 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       // layer (prod: a ticket that never got an auto draft). Keying the jobId
       // per entity keeps distinct entities on distinct jobs.
       {
-        jobId: `routine-event:${sub.routineId}:${triggerEvent.entityId ?? "none"}:${Date.now()}`,
+        // An uncoalesced event (a status change) is keyed by its outbox id alone: two
+        // transitions of one task are two runs, a redelivery of one is the same job.
+        jobId:
+          !coalesce && triggerEvent.eventId
+            ? `routine-event:${sub.routineId}:${triggerEvent.eventId}`
+            : `routine-event:${sub.routineId}:${triggerEvent.entityId ?? "none"}:${Date.now()}`,
       },
     )
   } catch (err) {
     log.error({ err, routineId: sub.routineId }, "event-routine enqueue failed")
   }
+}
+
+/** How long a delivered uncoalesced event is remembered: longer than any outbox redelivery. */
+const UNCOALESCED_ONCE_TTL_SEC = 24 * 60 * 60
+const uncoalescedOnceKey = (routineId: string, eventId: string) =>
+  `routine-event-once:${routineId}:${eventId}`
+
+/**
+ * Events whose every occurrence fires its own run: no coalesce window (0303), deduplicated on the
+ * event's outbox id instead. The entity's app declares them (`routineFlow.uncoalescedEvents`, a
+ * project task's `status_changed`), and they are new in the release that added flows, so no
+ * routine subscribed to them before: no existing routine's runs change (S14). The bus dispatch
+ * has set the org up (event-bus.ts awaitOrgApps), so its registries are filled here.
+ */
+function isUncoalescedEvent(evt: Pick<AppEvent, "orgId" | "app" | "entity" | "action">): boolean {
+  return isUncoalescedRecordEvent(flowRecordSource(evt.orgId, evt.app, evt.entity), evt.action)
+}
+
+/** Tells the routine's owner (attention pipeline) that a chain stopped at it, once an hour. */
+async function notifyChainTooDeep(sub: EventRoutineSub): Promise<void> {
+  const first = await redis.set(`routine-chain-alert:${sub.routineId}`, "1", "EX", 3600, "NX")
+  if (first !== "OK") return
+  const owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
+  if (!owner) return
+  await withPrivilegedDb(sub.orgId, "routine-chain-alert", (tx) =>
+    tx.queueEvent({
+      app: "kernel",
+      entity: "agent_notification",
+      action: "create",
+      entityId: crypto.randomUUID(),
+      data: {
+        summary:
+          "A routine stopped reacting: routines were triggering one another more than " +
+          `${ROUTINE_EVENT_MAX_HOP} times in a row. Check which routines change what the others watch.`,
+        urgency: 60,
+        targetUserIds: [owner.userId],
+      },
+      actorId: owner.userId,
+      actorType: "system",
+      orgId: sub.orgId,
+      timestamp: new Date().toISOString(),
+    }),
+  )
 }
 
 /** Drop the routine's handler, if any. Serialized per routine like registration. */
@@ -384,7 +485,16 @@ function subscriptionSignature(sub: EventRoutineSub): string {
         sub.filter.to === undefined ? "<any>" : sub.filter.to,
       ]
     : null
-  return JSON.stringify([sub.orgId, sub.event, contacts, groups, table])
+  // A record filter (0303): its keys sorted, so a jsonb round trip reads the same.
+  const task = isProjectTaskFilter(sub.filter)
+    ? [
+        sub.filter.projectId ?? null,
+        sub.filter.fromStatusId === undefined ? "<any>" : sub.filter.fromStatusId,
+        sub.filter.toStatusId ?? null,
+        Object.entries(sub.filter.fields ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+      ]
+    : null
+  return JSON.stringify([sub.orgId, sub.event, contacts, groups, table, task])
 }
 
 /** Register unless the same subscription is already in place here (decided in the routine's turn). */

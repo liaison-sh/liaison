@@ -728,6 +728,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/event-routine-owner-gate.test.ts",
             // A routine on a dashboard table's row events and its {tableId, column, to} filter.
             "src/tests/integration/event-routine-table-filter.test.ts",
+            // A routine on projects task events and its {projectId, from/to status, fields} filter.
+            "src/tests/integration/event-routine-project-filter.test.ts",
             "src/tests/integration/routine-event-filter-persistence.test.ts",
             "src/tests/integration/routine-tick-agents-ask.test.ts",
             "src/tests/integration/morning-brief-template.test.ts",

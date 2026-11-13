@@ -47,6 +47,8 @@ export interface RoutineSeed {
   eventFilter?: (typeof routines.$inferInsert)["eventFilter"]
   /** The conversation the routine reports its result to. */
   reportThreadId?: string | null
+  /** Its flow (0303): steps after the trigger; none = a legacy routine. */
+  flow?: (typeof routines.$inferInsert)["flow"]
   ownerUserId: string
   /** The agent it runs as; none runs it as the owner's own agent. */
   ownerAgentId?: string | null
@@ -99,6 +101,7 @@ export async function seedRoutine(
     event: spec.kind === "event" ? (spec.event ?? null) : null,
     ...(spec.eventFilter !== undefined ? { eventFilter: spec.eventFilter } : {}),
     ...(spec.reportThreadId !== undefined ? { reportThreadId: spec.reportThreadId } : {}),
+    ...(spec.flow !== undefined ? { flow: spec.flow } : {}),
     prompt: spec.prompt,
     ...(spec.template
       ? {

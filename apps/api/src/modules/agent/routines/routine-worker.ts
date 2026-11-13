@@ -47,7 +47,7 @@
  * `defaultAgentInvoker` which calls `sendMessage` + `invokeAgentForThread`.
  */
 import crypto from "node:crypto"
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNotNull } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import {
   agents as agentsTbl,
@@ -58,7 +58,11 @@ import {
   users,
   userThreadState,
 } from "~/db/schema/kernel"
-import type { RoutineRunPauseState } from "~/db/schema/kernel/routine-runs"
+import type {
+  RoutineRunFlowContext,
+  RoutineRunPauseState,
+  RoutineRunStepState,
+} from "~/db/schema/kernel/routine-runs"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { removeScheduledJob } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
@@ -115,6 +119,12 @@ export type RoutineRunStatus =
   | "mailbox_wait_expired"
   // The owner dismissed it from their approvals list instead of running it.
   | "mailbox_wait_dismissed"
+  // A flow run (0303, flow-runner.ts): in progress, parked on a wait step, ended with an agent
+  // step's required outcome missing, or ended because a wait's condition no longer held.
+  | "running"
+  | "waiting"
+  | "flagged"
+  | "skipped_condition"
 
 /**
  * The triggering event for a kind:'event' tick — a compact projection of the `<app>:<entity>:<action>`
@@ -139,6 +149,8 @@ export interface RoutineTriggerEvent {
   eventId?: string | null
   /** Set by the reconciler: the nth time it fires the routine again for this event (1, 2, ...). */
   retryAttempt?: number
+  /** How many routine runs led to the event (its `metadata.hop`; absent = 0). The run carries it on. */
+  hop?: number
 }
 
 export interface RoutineTickOpts {
@@ -178,6 +190,8 @@ export interface RoutineTickOpts {
   mailboxWaitRunId?: string
   /** The mail the owner's browser opened at Run now, for this run only (run-context.ts). */
   mailboxHandoff?: MailboxHandoff
+  /** A flow routine's seams (flow-runner.ts): tests replace the tool call and the wait's job. */
+  flowDeps?: import("~/modules/agent/routines/flow-runner").FlowDeps
   /**
    * Resolve effective scopes for the routine owner. Defaults to
    * `loadEffectivePermissions` against the kernel DB.
@@ -205,6 +219,13 @@ export interface RoutineTickOpts {
     /** The triggering event for an event-fired tick (undefined for cron/scheduled/run-now). The
      *  invoker prepends a compact, prompt-injection-safe DATA block describing it to the prompt. */
     triggerEvent?: RoutineTriggerEvent
+    /**
+     * A flow's agent step with required outcomes (flow-runner.ts): asked after each turn, it
+     * returns the steer naming what is still missing (the invoker re-prompts the tick with it,
+     * the `repromptTickOnce` seam), or null when nothing is missing or the bumps are spent.
+     * Absent on a legacy tick.
+     */
+    nextSteer?: () => Promise<string | null>
   }) => Promise<{
     turnsAdded: number
     /**
@@ -317,7 +338,7 @@ export function routineRunScopes(routineScopes: string[], ownerScopes: string[])
   return [...out]
 }
 
-async function ensureOutputThread(
+export async function ensureOutputThread(
   orgId: string,
   routine: typeof routines.$inferSelect,
 ): Promise<{ threadId: string; recreated: boolean }> {
@@ -413,6 +434,10 @@ export async function writeRunRow(
   routineId: string,
   status: RoutineRunStatus,
   fields: {
+    /** A flow run's step states (flow-runner.ts). */
+    steps?: RoutineRunStepState[]
+    /** What a flow run's resume needs (flow-runner.ts). */
+    flowContext?: RoutineRunFlowContext
     durationMs?: number
     error?: string
     turnsAdded?: number
@@ -444,6 +469,8 @@ export async function writeRunRow(
         eventEntityId: ev?.entityId ?? null,
         attempt: ev?.retryAttempt ?? 0,
         pauseState: fields.pauseState ?? null,
+        ...(fields.steps ? { steps: fields.steps } : {}),
+        ...(fields.flowContext ? { flowContext: fields.flowContext } : {}),
       })
       .returning({ id: routineRuns.id })
     return row.id
@@ -513,9 +540,12 @@ export const RoutineLockTestAccess = { heartbeatMs: ROUTINE_HEARTBEAT_INTERVAL_M
  * Keep the routine lock alive while a long run holds it (a tick, a paused
  * run's resume): its TTL is refreshed every few minutes. Returns the stop.
  */
-export function startRoutineLockHeartbeat(routineId: string): () => void {
+export function startRoutineLockHeartbeat(
+  routineId: string,
+  lockKey = `routine-lock:${routineId}`,
+): () => void {
   const heartbeat = setInterval(() => {
-    redis.expire(`routine-lock:${routineId}`, ROUTINE_LOCK_TTL_SECONDS).catch((err) => {
+    redis.expire(lockKey, ROUTINE_LOCK_TTL_SECONDS).catch((err) => {
       log.warn({ err, routineId }, "Failed to refresh routine lock TTL")
     })
   }, RoutineLockTestAccess.heartbeatMs)
@@ -851,7 +881,7 @@ async function markPaused(
  * pause; `status` set means the routine's status changes to it.
  */
 async function recordSkippedLastRun(
-  opts: RoutineTickOpts,
+  opts: Pick<RoutineTickOpts, "orgId">,
   routine: typeof routines.$inferSelect,
   status: "active" | null,
   error: string,
@@ -893,7 +923,7 @@ async function recordSkippedLastRun(
  * passes goes back to active.
  */
 async function resumeSystemPausedRoutine(
-  opts: RoutineTickOpts,
+  opts: Pick<RoutineTickOpts, "orgId">,
   routine: typeof routines.$inferSelect,
   from: "paused_no_credits" | "paused_scope_mismatch",
 ): Promise<void> {
@@ -919,6 +949,141 @@ async function resumeSystemPausedRoutine(
       ranAt: new Date().toISOString(),
     },
   )
+}
+
+// ── Pre-run checks, shared by a tick and a flow run's resume ────────────────
+
+/**
+ * The state that keeps a routine from running (switched off, paused by its owner or its app, a
+ * one-shot done, an app-run routine), or null when it may run. A routine the system paused for
+ * credits or for its owner's scopes (or account) is not inactive here: its run re-checks the cause
+ * (`applyRoutineCreditCheck`, `applyRoutineScopeCheck`), and a check that passes sets it back to
+ * active, as nothing else would.
+ */
+export function routineInactiveState(routine: typeof routines.$inferSelect): string | null {
+  if (!routine.enabled) return "disabled"
+  // An app-run routine has no tick of its own (kernel-routine-templates.ts).
+  if (isAppRunRoutine(routine.templateKey)) return "app_run"
+  if (
+    routine.status === "active" ||
+    routine.status === "paused_no_credits" ||
+    routine.status === "paused_scope_mismatch"
+  ) {
+    return null
+  }
+  return routine.status
+}
+
+/**
+ * The scope check (`routineScopeGap`: an owner who left, scope drift, an owner agent's ceiling
+ * that covers nothing it needs) with its effect on the routine: a gap pauses it (its owner is
+ * told once; a changed reason is written without a second alert), a cleared scope pause sets it
+ * back to active. Returns the gap, or null.
+ */
+export async function applyRoutineScopeCheck(
+  orgId: string,
+  routine: typeof routines.$inferSelect,
+  ownerScopes: string[],
+): Promise<string | null> {
+  const scopePaused = routine.enabled && routine.status === "paused_scope_mismatch"
+  const scopeGap = await routineScopeGap(orgId, routine, ownerScopes)
+  if (scopeGap) {
+    if (!scopePaused) {
+      await pauseRoutineForScopeGap(orgId, routine, scopeGap)
+    } else if (routine.lastRunError !== scopeGap) {
+      await markPaused(
+        orgId,
+        routine.ownerUserId,
+        routine.ownerAgentId,
+        routine.id,
+        "paused_scope_mismatch",
+        scopeGap,
+      )
+    }
+    return scopeGap
+  }
+  if (scopePaused) await resumeSystemPausedRoutine({ orgId }, routine, "paused_scope_mismatch")
+  return null
+}
+
+/**
+ * The credit pre-check with its effect on the routine: an org out of credits pauses it (its
+ * owner is told once), a refusal that never pauses (a demo visitor's gate) is recorded on it, and
+ * a cleared credit pause sets it back to active. Returns the refusal's reason, or null.
+ */
+export async function applyRoutineCreditCheck(
+  orgId: string,
+  routine: typeof routines.$inferSelect,
+  checkCredits: RoutineTickOpts["checkCredits"],
+): Promise<string | null> {
+  const creditPaused = routine.enabled && routine.status === "paused_no_credits"
+  const credit = checkCredits ?? defaultCheckCredits
+  const rawRefusal = await credit(orgId, routine.ownerUserId)
+  if (rawRefusal !== null) {
+    const refusal = creditRefusalOf(rawRefusal)
+    if (refusal.pause && !creditPaused) {
+      await markPaused(
+        orgId,
+        routine.ownerUserId,
+        routine.ownerAgentId,
+        routine.id,
+        "paused_no_credits",
+        refusal.reason,
+        routine,
+      )
+    } else {
+      // Still out of credits (already paused: its owner was told once), or a refusal that never
+      // pauses: the run says why, and a routine a demo refusal once paused goes back to active.
+      await recordSkippedLastRun(
+        { orgId },
+        routine,
+        refusal.pause ? null : "active",
+        refusal.reason,
+      )
+    }
+    return refusal.reason
+  }
+  if (creditPaused) await resumeSystemPausedRoutine({ orgId }, routine, "paused_no_credits")
+  return null
+}
+
+/** Why a run that resumes (a flow's wait came due, its approval was decided) may not go on. */
+export type RoutineResumeRefusal = {
+  status: "skipped_condition" | "skipped_scope_mismatch" | "skipped_no_credits"
+  reason: string
+}
+
+/**
+ * The checks a tick makes before it runs, made again by a run that resumes (flow-runner.ts):
+ * the routine still switched on and active, its owner still active and holding its scopes, its
+ * owner agent's ceiling still covering them, and, when the rest of the run spends model tokens
+ * (`needsCredits`), the credit gate. Their effects on the routine are a tick's (a pause, a resume).
+ */
+export async function routineResumeGate(
+  orgId: string,
+  routine: typeof routines.$inferSelect,
+  deps: Pick<RoutineTickOpts, "loadOwnerScopes" | "checkCredits">,
+  needsCredits: boolean,
+): Promise<{ ok: true; ownerScopes: string[] } | ({ ok: false } & RoutineResumeRefusal)> {
+  const inactive = routineInactiveState(routine)
+  if (inactive) {
+    return {
+      ok: false,
+      status: "skipped_condition",
+      reason: `The run did not go on: the routine is ${inactive === "disabled" ? "switched off" : inactive.replace(/_/g, " ")}.`,
+    }
+  }
+  const ownerScopes = await (deps.loadOwnerScopes ?? defaultLoadOwnerScopes)(
+    orgId,
+    routine.ownerUserId,
+  )
+  const scopeGap = await applyRoutineScopeCheck(orgId, routine, ownerScopes)
+  if (scopeGap) return { ok: false, status: "skipped_scope_mismatch", reason: scopeGap }
+  if (needsCredits) {
+    const refusal = await applyRoutineCreditCheck(orgId, routine, deps.checkCredits)
+    if (refusal) return { ok: false, status: "skipped_no_credits", reason: refusal }
+  }
+  return { ok: true, ownerScopes }
 }
 
 /**
@@ -1097,8 +1262,31 @@ async function dispatchToNode(
  * Per-tick state machine. Returns a `RoutineTickResult` so callers can
  * observe what happened (used by tests + kernel-jobs metrics).
  */
+/**
+ * The lock a tick takes: the routine's, or for an event tick of a FLOW routine the routine's and
+ * the record's (0303), so a flow runs for two tasks at once while one task's runs stay in order.
+ */
+async function tickLockKey(opts: RoutineTickOpts): Promise<string> {
+  const entityId = opts.triggerEvent?.entityId
+  if (!entityId) return `routine-lock:${opts.routineId}`
+  const [row] = await withPrivilegedDb(opts.orgId, "routine-lock-kind", (tx) =>
+    tx
+      .select({ id: routines.id })
+      .from(routines)
+      .where(
+        and(
+          eq(routines.id, opts.routineId),
+          eq(routines.orgId, opts.orgId),
+          isNotNull(routines.flow),
+        ),
+      )
+      .limit(1),
+  )
+  return row ? `routine-lock:${opts.routineId}:${entityId}` : `routine-lock:${opts.routineId}`
+}
+
 export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTickResult> {
-  const lockKey = `routine-lock:${opts.routineId}`
+  const lockKey = await tickLockKey(opts)
   const lockToken = crypto.randomUUID()
 
   const got = await redis.set(lockKey, lockToken, "EX", ROUTINE_LOCK_TTL_SECONDS, "NX")
@@ -1112,7 +1300,7 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
   }
 
   // Heartbeat the lock so a long agent run doesn't release it early.
-  const stopHeartbeat = startRoutineLockHeartbeat(opts.routineId)
+  const stopHeartbeat = startRoutineLockHeartbeat(opts.routineId, lockKey)
 
   try {
     const routine = await withPrivilegedDb(opts.orgId, "routine-load", async (tx) => {
@@ -1133,21 +1321,8 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
       return { status: "no_run" }
     }
 
-    // A routine paused for credits re-runs the check below: the cause may have
-    // cleared since (credits topped up, a model key added, a demo visitor's email
-    // confirmed), and nothing else would ever set it back to active.
     const creditPaused = routine.enabled && routine.status === "paused_no_credits"
-    // A routine paused for its owner's scopes (or account) re-runs the scope check the same way:
-    // the scope given back, or the owner reactivated, sets it back to active and it runs.
-    const scopePaused = routine.enabled && routine.status === "paused_scope_mismatch"
-    // An app-run routine has no tick of its own (kernel-routine-templates.ts).
-    if (
-      !routine.enabled ||
-      isAppRunRoutine(routine.templateKey) ||
-      (routine.status !== "active" && !creditPaused && !scopePaused)
-    ) {
-      return recordInactiveSkip(opts, routine)
-    }
+    if (routineInactiveState(routine)) return recordInactiveSkip(opts, routine)
 
     // A scheduled tick while an earlier run of this routine waits for an
     // approval (routine-run-resume.ts) is skipped: that run carries on once the
@@ -1204,31 +1379,15 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
     const ownerScopes = await loadScopes(opts.orgId, routine.ownerUserId)
     // Scope drift, and an owner agent that can call nothing it needs
     // (`routineScopeGap`): skipped loudly, with a run row and a pause.
-    const scopeGap = await routineScopeGap(opts.orgId, routine, ownerScopes)
+    const scopeGap = await applyRoutineScopeCheck(opts.orgId, routine, ownerScopes)
     if (scopeGap) {
       const runId = await writeRunRow(opts.orgId, routine.id, "skipped_scope_mismatch", {
         error: scopeGap,
         tick: opts,
       })
-      if (!scopePaused) {
-        await pauseRoutineForScopeGap(opts.orgId, routine, scopeGap)
-      } else if (routine.lastRunError !== scopeGap) {
-        // Still paused, for a reason that changed: the routine says the current one. Its owner
-        // was told when it paused, so no second alert.
-        await markPaused(
-          opts.orgId,
-          routine.ownerUserId,
-          routine.ownerAgentId,
-          routine.id,
-          "paused_scope_mismatch",
-          scopeGap,
-        )
-      }
       await emitRunSkipped(opts, routine, runId, "skipped_scope_mismatch", scopeGap)
       return { status: "skipped_scope_mismatch", runId }
     }
-    // The scope pause no longer holds: the routine is active again, and runs on.
-    if (scopePaused) await resumeSystemPausedRoutine(opts, routine, "paused_scope_mismatch")
 
     // WHERE THE RUN HAPPENS (S21, D9, A50/F8, A57). Decided after the scope
     // pre-checks and before the credit one: a node runs on its owner's own
@@ -1245,39 +1404,40 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
     // `fell_back` job, which records a run that went to the cloud) and is
     // skipped and paused like any cloud routine.
     if (plan.where === "cloud") {
-      const credit = opts.checkCredits ?? defaultCheckCredits
-      const rawRefusal = await credit(opts.orgId, routine.ownerUserId)
-      if (rawRefusal !== null) {
-        const refusal = creditRefusalOf(rawRefusal)
+      const refusal = await applyRoutineCreditCheck(opts.orgId, routine, opts.checkCredits)
+      if (refusal) {
         const runId = await writeRunRow(opts.orgId, routine.id, "skipped_no_credits", {
-          error: refusal.reason,
+          error: refusal,
           tick: opts,
         })
-        if (refusal.pause && !creditPaused) {
-          await markPaused(
-            opts.orgId,
-            routine.ownerUserId,
-            routine.ownerAgentId,
-            routine.id,
-            "paused_no_credits",
-            refusal.reason,
-            routine,
-          )
-        } else {
-          // Still out of credits (already paused: its owner was told once), or
-          // a refusal that never pauses: the run row says why, and a routine a
-          // demo refusal once paused goes back to active.
-          await recordSkippedLastRun(opts, routine, refusal.pause ? null : "active", refusal.reason)
-        }
-        await emitRunSkipped(opts, routine, runId, "skipped_no_credits", refusal.reason)
+        await emitRunSkipped(opts, routine, runId, "skipped_no_credits", refusal)
         return { status: "skipped_no_credits", runId }
       }
+    } else if (creditPaused) {
+      // A node run spends no cloud credits: the credit pause does not hold for it.
+      await resumeSystemPausedRoutine(opts, routine, "paused_no_credits")
     }
-    // The credit pause no longer holds: the routine is active again, and runs.
-    if (creditPaused) await resumeSystemPausedRoutine(opts, routine, "paused_no_credits")
 
     // Output thread
     const { threadId: outputThreadId, recreated } = await ensureOutputThread(opts.orgId, routine)
+
+    // A FLOW routine (0303) runs its steps here, after the same checks: actions without an
+    // agent, waits, agent steps (flow-runner.ts). A legacy routine (no flow) goes on below.
+    if (routine.flow) {
+      const { runFlow } = await import("~/modules/agent/routines/flow-runner")
+      return await runFlow({
+        orgId: opts.orgId,
+        routine,
+        ownerScopes,
+        runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
+        outputThreadId,
+        tick: opts,
+        deps: {
+          ...(opts.agentInvoker ? { agentInvoker: opts.agentInvoker } : {}),
+          ...opts.flowDeps,
+        },
+      })
+    }
 
     if (plan.where === "node") return dispatchToNode(opts, routine, outputThreadId)
     if (plan.fellBack) {
@@ -1331,6 +1491,7 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
           routineId: opts.routineId,
           routineRunId: tickRunId,
           ...(routine.followUp ? { routineFollowUp: true } : {}),
+          ...(opts.triggerEvent?.hop ? { eventHop: opts.triggerEvent.hop } : {}),
           ...(tokenAccount ? { tokenAccount } : {}),
           ...(mailboxReader ? { routineMailboxReaderUserId: mailboxReader } : {}),
           ...(mailboxWait ? { routineMailboxWait: mailboxWait } : {}),

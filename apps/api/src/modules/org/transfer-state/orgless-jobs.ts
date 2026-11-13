@@ -64,6 +64,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:approval-deferred-step-reaper": skips("modules/approvals/approving-reaper.ts"),
   "kernel:subrun-stuck-sweep": skips("modules/agent/subruns/subrun-worker.ts"),
   "kernel:routine-mailbox-wait-expiry": skips("modules/agent/routines/routine-mailbox-wait.ts"),
+  "kernel:routine-flow-sweep": skips("modules/agent/routines/flow-runner.ts"),
   "kernel:local-claim-lapse-sweep": skips("modules/agent/local-sessions/local-claim-lapse.ts"),
   "kernel:node-lease-sweep": skips(
     "modules/nodes/jobs.ts",

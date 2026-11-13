@@ -16,14 +16,18 @@ import { isSeeding } from "~/modules/notifications/seeded"
  * event's existing metadata is preserved. Outside a routine tick this is a no-op.
  */
 function stampFiringRoutineId(event: AppEvent): AppEvent {
-  const routineId = currentRunContext()?.routineId
+  const frame = currentRunContext()
+  const routineId = frame?.routineId
   if (!routineId) return event
   const existing =
     event.metadata && typeof event.metadata === "object"
       ? (event.metadata as Record<string, unknown>)
       : {}
   if (existing.firedByRoutineId) return event // already stamped (nested tick) — keep the outermost
-  return { ...event, metadata: { ...existing, firedByRoutineId: routineId } }
+  // The routine chain's depth (0303): one more than the event that fired this run, so a chain of
+  // routines triggering one another stops at depth 5 (event-routine-subscriber.ts).
+  const hop = (frame.eventHop ?? 0) + 1
+  return { ...event, metadata: { ...existing, firedByRoutineId: routineId, hop } }
 }
 
 /**

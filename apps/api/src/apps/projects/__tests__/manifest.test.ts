@@ -95,8 +95,8 @@ describe("projects.manifest", () => {
     // 1.20.0: the reconcile card, its line changes and its read.
     // 1.21.0: a reconcile line done for another client offers to move its task there.
     // 1.22.0: capacity, company days off, time settings, the capacity tab and the time section.
-    // 1.23.0: merged with typed task fields, status transitions and templates v2.
-    expect(projectsManifest.version).toBe("1.23.0")
+    // 1.24.0: merged with typed task fields, status transitions and templates v2.
+    expect(projectsManifest.version).toBe("1.24.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

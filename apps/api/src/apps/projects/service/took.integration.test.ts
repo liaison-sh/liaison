@@ -11,6 +11,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
@@ -371,6 +372,132 @@ describe("dated hours", () => {
     )[0]?.id as string
     const refused = await call("projects_taskTimeCorrect", { entryId: e2, time: "3 h" })
     expect(refused.error?.code).toBe("not_found")
+  })
+})
+
+describe("correcting an entry follows Took's rules", () => {
+  const memberScopes = ["projects:tasks:write", "projects:projects:read", "projects:tasks:read"]
+  const entryOf = async (taskId: string, userId: string) =>
+    extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.task_time
+         WHERE task_id = ${taskId}::uuid AND user_id = ${userId}::uuid`),
+    )[0]?.id as string
+
+  it("an agent correcting without the lead's words, with other words or a different figure is refused, and so is a routine or a sub-run", async () => {
+    const proj = await newProject("Dated agent correct", true)
+    await setDated(proj, true)
+    const taskId = await newTask(proj, "Correct by agent")
+    await call(
+      "projects_taskTimeSet",
+      { taskId, time: "2 h" },
+      { userId: member.userId, scopes: memberScopes },
+    )
+    const entryId = await entryOf(taskId, member.userId)
+    const threadId = await said(owner.userId, "Change it: it took 3 h, not 2.")
+    const agent = { origin: "in-app-agent" as const, threadId, frame: { humanTurn: true } }
+    for (const c of [
+      { time: "3 h" },
+      { time: "3 h", quote: "it was 3 h" },
+      { time: "4 h", quote: "took 3 h" },
+    ]) {
+      const out = await call("projects_taskTimeCorrect", { entryId, ...c }, agent)
+      expect(out.error?.code).toBe("needs_person_statement")
+      expect(out.error?.message).toMatch(/^Nothing changed/)
+    }
+    for (const f of [{ routineId: "00000000-0000-4000-8000-000000000001" }, { background: true }]) {
+      const out = await call(
+        "projects_taskTimeCorrect",
+        { entryId, time: "3 h", quote: "took 3 h" },
+        { ...agent, frame: f },
+      )
+      expect(out.error?.code).toBe("needs_person_statement")
+      // A clean turn record, so the call reaches the place check rather than the taint one.
+      const runId = crypto.randomUUID()
+      const toolFrame = {
+        runId,
+        parentRunId: null,
+        rootRunId: runId,
+        nestingDepth: 0,
+        turnScopeAccumulator: createTurnScopeAccumulator({ orgId }),
+        ...f,
+      }
+      const viaTool = await runContextStore.run(toolFrame as never, () =>
+        executeToolCore({
+          toolName: "projects:task_time_correct",
+          orgId,
+          actor: actorOf(owner.userId),
+          params: { entryId, time: "3 h", quote: "took 3 h" },
+          origin: "in-app-agent",
+        } as never),
+      )
+      expect((viaTool as { error?: { code?: string } }).error?.code).toBe("human_turn_only")
+    }
+    expect((await rows(taskId)).map((r) => r.minutes)).toEqual([120])
+    const ok = await call(
+      "projects_taskTimeCorrect",
+      { entryId, time: "3 h", quote: "took 3 h" },
+      agent,
+    )
+    expect(ok.minutes).toBe(180)
+  })
+
+  it("a person cannot correct their own private entry on a project without dated hours, finance included", async () => {
+    const proj = await newProject("Plain own correct", true)
+    const taskId = await newTask(proj, "Own private")
+    await call(
+      "projects_taskTimeSet",
+      { taskId, time: "2 h" },
+      { userId: member.userId, scopes: memberScopes },
+    )
+    const entryId = await entryOf(taskId, member.userId)
+    const out = await call(
+      "projects_taskTimeCorrect",
+      { entryId, time: "4 h" },
+      {
+        userId: member.userId,
+        scopes: [...memberScopes, "projects:dated_sheet:read", "projects:timesheet:read"],
+      },
+    )
+    expect(out.error?.code).toBe("not_found")
+    expect((await rows(taskId)).map((r) => r.minutes)).toEqual([120])
+  })
+
+  it("on a dated project only its lead or finance corrects, and only entries on the sheet", async () => {
+    const proj = await newProject("Dated who corrects", true)
+    const taskId = await newTask(proj, "Before and after")
+    // Entered before dated hours were on: never on the sheet.
+    await call(
+      "projects_taskTimeSet",
+      { taskId, time: "1 h" },
+      { userId: member.userId, scopes: memberScopes },
+    )
+    const before = await entryOf(taskId, member.userId)
+    await setDated(proj, true)
+    const early = await call("projects_taskTimeCorrect", { entryId: before, time: "2 h" })
+    expect(early.error?.code).toBe("not_found")
+    const other = await minimal.session(orgId, { role: "member" })
+    const t2 = await newTask(proj, "On the sheet")
+    await call(
+      "projects_taskTimeSet",
+      { taskId: t2, time: "2 h", date: "2026-11-02" },
+      { userId: member.userId, scopes: memberScopes },
+    )
+    const onSheet = await entryOf(t2, member.userId)
+    // A colleague holding every project scope but neither leading it nor finance.
+    const colleague = await call(
+      "projects_taskTimeCorrect",
+      { entryId: onSheet, time: "5 h" },
+      { userId: other.userId, scopes: ["projects:*"] },
+    )
+    expect(colleague.error?.code).toBe("not_found")
+    expect((await rows(t2)).map((r) => r.minutes)).toEqual([120])
+    const lead = await call("projects_taskTimeCorrect", { entryId: onSheet, time: "5 h" })
+    expect(lead.minutes).toBe(300)
+    const tool = (projectsAppManifest.tools as Record<string, Record<string, unknown>>)
+      .task_time_correct
+    expect(tool?.requiredScopes).toContain("projects:dated_sheet:read")
+    expect(tool?.humanTurnOnly).toBe(true)
   })
 })
 

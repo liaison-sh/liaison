@@ -14,6 +14,8 @@ import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { seedContext } from "~/seed/context"
+import { seedCostRates, seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -79,16 +81,28 @@ beforeAll(async () => {
   await call("projects_updateProject", { projectId, timeBudgets: true })
   await awaitTimeFeatureSync(orgId)
   taskId = (await call<{ id: string }>("projects_createTask", { projectId, title: "Archive" })).id
-  // Ana cost 40 an hour until mid 2023, then 50.
-  await db.execute(drizzleSql`
-    INSERT INTO app_projects.cost_rates (org_id, user_id, rate_minor, currency, effective_from)
-    VALUES (${orgId}::uuid, ${ana.userId}::uuid, 4000, 'EUR', '2022-01-01'),
-           (${orgId}::uuid, ${ana.userId}::uuid, 5000, 'EUR', '2023-06-01')`)
-  await db.execute(drizzleSql`
-    INSERT INTO app_projects.task_time (org_id, task_id, project_id, user_id, work_date, minutes, entered_via)
-    VALUES (${orgId}::uuid, ${taskId}::uuid, ${projectId}::uuid, ${ana.userId}::uuid, '2023-03-10', 90, 'field'),
-           (${orgId}::uuid, ${taskId}::uuid, ${projectId}::uuid, ${ana.userId}::uuid, '2023-09-12', 120, 'field'),
-           (${orgId}::uuid, ${taskId}::uuid, ${projectId}::uuid, ${ana.userId}::uuid, '2026-10-05', 60, 'field')`)
+  // Ana cost 40 an hour until mid 2023, then 50, written by a holder of the cost rate scope.
+  const ctx = seedContext({ orgId, now: NOW })
+  await seedCostRates(ctx, actor(["projects:cost_rates:write"]), [
+    { userId: ana.userId, rateMinor: 4000, currency: "EUR", effectiveFrom: "2022-01-01" },
+    { userId: ana.userId, rateMinor: 5000, currency: "EUR", effectiveFrom: "2023-06-01" },
+  ])
+  // Her own time, written as her.
+  await seedTaskTime(
+    ctx,
+    {
+      actorType: "user",
+      userId: ana.userId,
+      orgId,
+      scopes: ["projects:projects:read", "projects:tasks:read", "projects:tasks:write"],
+      dimensionGrants: { "*": ["*"] },
+    },
+    [
+      { taskId, projectId, workDate: "2023-03-10", minutes: 90 },
+      { taskId, projectId, workDate: "2023-09-12", minutes: 120 },
+      { taskId, projectId, workDate: "2026-10-05", minutes: 60 },
+    ],
+  )
 }, 120_000)
 
 afterAll(async () => {

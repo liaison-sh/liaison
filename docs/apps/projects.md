@@ -197,7 +197,7 @@ On a project that uses time and budgets, a task takes a timebox ("3 days", "20 h
 - Without dated hours you have one entry per task: editing replaces it, clearing removes it. With dated hours, each entry has a day, today by default, never a future day.
 - Nothing reminds anyone to enter time, and colleagues see only the task's total, never your part.
 - **On the task and in lists.** A task of a project that uses it shows its Timebox chip and your Took field in its details, and "N h so far", the task's total. Through the API, the task (`GET /api/projects/:projectId/tasks/:taskId`) and the task lists carry `timeboxMinutes`, `realTotalMinutes` (the total, never a person's part) and `isMilestone`; a task of any other project carries none of them. The cross-project task list shows "Planned" only on those tasks.
-- **Dated hours** are turned on in the project's plan. From that moment the project's lead and finance see each person's entries made on it and can correct one, to another day that is not in the future and has no entry of that person yet; the author then sees who changed it. Entries made before, including earlier the same day, stay private to their authors, and so do they after dated hours are turned off and on again. Everyone with entries is told once on Home.
+- **Dated hours** are turned on in the project's plan. From that moment the project's lead and finance see each person's entries made on it and can correct one, to another day that is not in the future and has no entry of that person yet; the author then sees who changed it. Only entries on the dated sheet can be corrected, never a private one, your own included. Like Took, a correction is a person's own statement: the agent passes your words for the new figure, and a routine or a sub-run is refused. Entries made before, including earlier the same day, stay private to their authors, and so do they after dated hours are turned off and on again. Everyone with entries is told once on Home.
 - A task moved to another project takes its time with it at once, whatever moved it (the board, the API or an agent). A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target, one entry per person (per day with dated hours); a merge that would put more than 744 h in one entry is refused. Entries made on a project without dated hours stay private to their authors after a move or a merge into one that uses them.
 
 ## Read a project's budget
@@ -230,6 +230,8 @@ Once a project uses time and budgets, ask the agent who is free ("who has room n
 
 On a project that uses time and budgets with dated hours on, its lead (the project's owner) and finance (`projects:timesheet:read`, held as such, not through `*`) can read its **Dated hours** sheet for one month: each line is a day, a person, a task and the time, with the month's total. Ask the agent ("the Atlas timesheet for October") or open the sheet's tab. Anyone else is refused, and a project without dated hours has no sheet. Only entries made after dated hours were turned on are on it.
 
+- **Only on your own turn, in a DM.** The agent reads or exports the sheet only when you ask in your DM with it (or from your own coding agent). In a shared conversation, from a routine, a sub-run or a dashboard block, it is refused, so the sheet is never posted where others read it and nothing reads it on a schedule. The tools need `projects:dated_sheet:read`, which the `lead` and `finance` roles hold; the sheet's own check (its lead, or `projects:timesheet:read` held as such) still applies.
+
 - **Read only.** The sheet has no input, sends no reminder and lists no one who has not entered time. It says "Not a legal working-time record, and it reminds nobody of anything."
 - **Coverage.** The sheet says on how many of the month's tasks (those closed in the month or with time on the sheet) real time is entered. Below all of them, the sheet is partial.
 - **Export PDF** and **Export CSV**, at the top of the sheet, make a file only you can open, with the same lines and total. A partial sheet asks once before it exports, and the file then carries the coverage line on the PDF's first page and in the CSV's first row.
@@ -249,7 +251,7 @@ The time and budgets lines sit together on Home under **Time and budgets**, quie
 
 On a project that uses time and budgets, ask your agent in your DM with it, or your own coding agent, to reconcile a period ("reconcile Atlas October"). The agent reads the period's closed tasks, then the traces you can read yourself (commits, meetings, notes, mail), and proposes a card of lines: what was planned, what was spent and what to bill.
 
-- **Only on your own turn, in a DM.** A routine, a sub-run, a job or a shared conversation is refused. The agent reads only what you can read, so the card says what it did not see, and that someone else may see more.
+- **Only on your own turn, in a DM.** A routine, a sub-run, a job or a shared conversation is refused. Opening a saved card or changing one of its lines through the agent is refused in a shared conversation too. The agent reads only what you can read, so the card says what it did not see, and that someone else may see more.
 - **The server works out every figure.** A line groups tasks and says why; its planned time comes from the tasks' timeboxes, its real time from what people entered, and its bill by a fixed rule: a planned line bills what was planned, never more; a line not in the plan bills nothing; a retainer bills what was spent. Nothing a commit or a note says changes a figure.
 - **No one is named.** A line that names a member of the team is refused; a client's own contact may be named. Tasks the client's own people did can be left out, and every other task of the period appears, in "Other closed tasks" if no line lists it.
 - **An estimate is not time.** Where no time was entered, the agent may show an estimate tied to a proof, marked `~`. It never counts as time spent, in the budget, the coverage or the bill.
@@ -263,11 +265,11 @@ On a project that uses time and budgets, ask your agent in your DM with it, or y
 |---|---|
 | `member` | `projects:projects:read`, `projects:tasks:read`, `projects:tasks:write` |
 | `sales` | `member` plus `projects:deals:read` and `projects:deals:write` (deal amounts) |
-| `lead` | `member` plus `projects:projects:write`, the deal scopes, `projects:money:*`, `projects:reconcile:*` and `projects:capacity:*` |
-| `finance` | `member` plus `projects:money:*`, `projects:reconcile:*`, `projects:margin:read`, `projects:cost_rates:write`, `projects:timesheet:read` and `projects:capacity:read` |
+| `lead` | `member` plus `projects:projects:write`, the deal scopes, `projects:money:*`, `projects:reconcile:*`, `projects:capacity:*` and `projects:dated_sheet:read` |
+| `finance` | `member` plus `projects:money:*`, `projects:reconcile:*`, `projects:margin:read`, `projects:cost_rates:write`, `projects:timesheet:read`, `projects:dated_sheet:read` and `projects:capacity:read` |
 | `admin` | `lead` plus `projects:settings:admin` and `projects:labels:admin` |
 
-`projects:money:read` and `projects:money:write` read and set a project's billing terms (rate or fixed price). `projects:reconcile:read` reads a reconciliation once it has left its creator's proposal, and `projects:reconcile:write` reconciles a project's period. `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
+`projects:money:read` and `projects:money:write` read and set a project's billing terms (rate or fixed price). `projects:reconcile:read` reads a reconciliation once it has left its creator's proposal, and `projects:reconcile:write` reconciles a project's period. `projects:dated_sheet:read` opens the dated sheet's tools and corrections, for the projects you lead (or all of them with `projects:timesheet:read`). `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
 
 ## What agents can do
 

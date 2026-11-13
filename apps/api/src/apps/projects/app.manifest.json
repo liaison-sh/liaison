@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.24.0",
+  "version": "1.25.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1937,9 +1937,11 @@
         "feuille"
       ],
       "readOnly": true,
+      "humanTurnOnly": true,
+      "dmOnly": true,
       "retryOnTransientDbError": true,
       "requiredScopes": [
-        "projects:projects:read"
+        "projects:dated_sheet:read"
       ],
       "trustBoundary": "user",
       "handler": "timesheetGet",
@@ -1995,9 +1997,11 @@
         "feuille"
       ],
       "readOnly": true,
+      "humanTurnOnly": true,
+      "dmOnly": true,
       "retryOnTransientDbError": true,
       "requiredScopes": [
-        "projects:projects:read"
+        "projects:dated_sheet:read"
       ],
       "trustBoundary": "user",
       "handler": "timesheetExport",
@@ -2607,6 +2611,7 @@
         "ligne"
       ],
       "writesToTable": "app_projects.reconciliation_lines",
+      "dmOnly": true,
       "sinkReadersSelf": true,
       "requiredScopes": [
         "projects:reconcile:read"
@@ -2878,6 +2883,7 @@
         "rapprochement"
       ],
       "readOnly": true,
+      "dmOnly": true,
       "retryOnTransientDbError": true,
       "requiredScopes": [
         "projects:reconcile:read"
@@ -3120,8 +3126,10 @@
         "timesheet"
       ],
       "writesToTable": "app_projects.task_time",
+      "humanTurnOnly": true,
       "requiredScopes": [
-        "projects:tasks:write"
+        "projects:tasks:write",
+        "projects:dated_sheet:read"
       ],
       "trustBoundary": "user",
       "handler": "taskTimeCorrect",
@@ -3140,6 +3148,10 @@
           "date": {
             "type": "string",
             "description": "Corrected day, YYYY-MM-DD."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The person's own words stating the time."
           }
         },
         "required": [
@@ -5269,7 +5281,7 @@
       ]
     },
     "lead": {
-      "description": "Project lead: create and edit projects, deal amounts, project money, reconciling and capacity, in addition to member rights",
+      "description": "Project lead: create and edit projects, deal amounts, project money, reconciling, capacity and the dated sheet of the projects they lead, in addition to member rights",
       "extends": "member",
       "scopes": [
         "projects:projects:write",
@@ -5280,7 +5292,8 @@
         "projects:reconcile:read",
         "projects:reconcile:write",
         "projects:capacity:read",
-        "projects:capacity:write"
+        "projects:capacity:write",
+        "projects:dated_sheet:read"
       ]
     },
     "finance": {
@@ -5294,6 +5307,7 @@
         "projects:margin:read",
         "projects:cost_rates:write",
         "projects:timesheet:read",
+        "projects:dated_sheet:read",
         "projects:capacity:read"
       ]
     },

@@ -13,6 +13,8 @@ import { withRlsContext } from "~/db/rls"
 import { files } from "~/db/schema/kernel"
 import { getObjectBuffer } from "~/infra/storage/object-storage"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
@@ -31,8 +33,8 @@ let leo: minimal.Session
 let finance: minimal.Session
 
 const MEMBER = ["projects:projects:read", "projects:tasks:read", "projects:tasks:write"]
-const LEAD = [...MEMBER, "projects:projects:write"]
-const FINANCE = [...MEMBER, "projects:timesheet:read"]
+const LEAD = [...MEMBER, "projects:projects:write", "projects:dated_sheet:read"]
+const FINANCE = [...MEMBER, "projects:timesheet:read", "projects:dated_sheet:read"]
 const MONTH = "2026-10"
 
 type Who = { userId: string; scopes: string[] }
@@ -228,36 +230,124 @@ describe("the dated sheet", () => {
     expect(first).toBe(`"Real time entered on 6 of 8 tasks of October 2026, partial."`)
   })
 
-  it("a dashboard block on timesheet_get saves and runs", async () => {
+  it("a dashboard block on timesheet_get does not run: the sheet is read only on a person's own turn", async () => {
     const viewer = actorOf({
       userId: leo.userId,
       scopes: [...LEAD, "kernel:dashboards:read", "kernel:dashboards:write"],
     })
-    const d = await createDashboard(viewer, {
-      title: "Dated hours",
-      visibility: "personal",
-      spec: {
-        v: 1,
-        blocks: [
-          {
-            id: "b",
-            type: "metric",
-            title: "Lines",
-            source: {
-              kind: "tool",
-              tool: "projects:timesheet_get",
-              params: { projectId: dated, month: MONTH },
-              rowsPath: "lines",
-            },
-            map: { agg: "count" },
+    const spec = {
+      v: 1,
+      blocks: [
+        {
+          id: "b",
+          type: "metric",
+          title: "Lines",
+          source: {
+            kind: "tool",
+            tool: "projects:timesheet_get",
+            params: { projectId: dated, month: MONTH },
+            rowsPath: "lines",
           },
-        ],
-      },
-    } as never)
-    expect(await getBlockData(viewer, d.id, "b")).toMatchObject({
-      ok: true,
-      data: { kind: "metric", value: 14 },
-    })
+          map: { agg: "count" },
+        },
+      ],
+    }
+    let data: unknown
+    try {
+      const d = await createDashboard(viewer, {
+        title: "Dated hours",
+        visibility: "personal",
+        spec,
+      } as never)
+      data = await getBlockData(viewer, d.id, "b")
+    } catch (err) {
+      data = { ok: false, thrown: String(err) }
+    }
+    expect(data).toMatchObject({ ok: false })
+    expect(JSON.stringify(data)).not.toContain('"value":14')
+  })
+})
+
+type Outcome = { error?: { code?: string }; data?: any }
+
+/** The in-app agent's call of a sheet tool, as `who`, in `threadId`, from a given run frame. */
+async function viaAgent(
+  name: "timesheet_get" | "timesheet_export",
+  who: Who,
+  threadId: string,
+  frame: Record<string, unknown>,
+): Promise<Outcome> {
+  const runId = crypto.randomUUID()
+  const params =
+    name === "timesheet_get"
+      ? { projectId: dated, month: MONTH }
+      : { projectId: dated, month: MONTH, format: "csv", acceptPartial: true }
+  return runContextStore.run(
+    {
+      runId,
+      parentRunId: null,
+      rootRunId: runId,
+      nestingDepth: 0,
+      turnScopeAccumulator: createTurnScopeAccumulator({ orgId }),
+      ...frame,
+    } as never,
+    () =>
+      executeToolCore({
+        toolName: `projects:${name}`,
+        orgId,
+        actor: actorOf(who),
+        params,
+        origin: "in-app-agent",
+        threadId,
+      } as never) as Promise<Outcome>,
+  )
+}
+
+describe("where the dated sheet may be read", () => {
+  const TOOLS = ["timesheet_get", "timesheet_export"] as const
+
+  it("a member without the dated sheet scope is refused both tools", async () => {
+    const dm = await minimal.agentDm(orgId, ana.userId)
+    for (const name of TOOLS) {
+      const out = await viaAgent(name, asAna(), dm, { humanTurn: true })
+      // Refused for the missing scope, before the sheet's own check would run.
+      expect(out.error?.code).toBe("forbidden")
+      expect(JSON.stringify(out)).not.toContain("Moodboard")
+    }
+  })
+
+  it("the lead in a shared thread is refused both tools, and nothing is read", async () => {
+    const shared = await minimal.thread(orgId, leo.userId, { participantIds: [ana.userId] })
+    for (const name of TOOLS) {
+      const out = await viaAgent(name, asLeo(), shared, { humanTurn: true })
+      expect(out.error?.code).toBe("dm_only")
+    }
+  })
+
+  it("the lead's routine or a sub-run is refused both tools", async () => {
+    const dm = await minimal.agentDm(orgId, leo.userId)
+    for (const frame of [
+      { routineId: "00000000-0000-4000-8000-000000000001" },
+      { background: true },
+    ]) {
+      for (const name of TOOLS) {
+        const out = await viaAgent(name, asLeo(), dm, frame)
+        expect(out.error?.code).toBe("human_turn_only")
+      }
+    }
+  })
+
+  it("the lead and finance in their DM read the sheet; a holder of every scope who leads nothing is refused", async () => {
+    const leoDm = await minimal.agentDm(orgId, leo.userId)
+    const lead = await viaAgent("timesheet_get", asLeo(), leoDm, { humanTurn: true })
+    expect(lead.error).toBeUndefined()
+    expect(JSON.stringify(lead)).toContain('"totalMinutes":2760')
+    const financeDm = await minimal.agentDm(orgId, finance.userId)
+    const fin = await viaAgent("timesheet_get", asFinance(), financeDm, { humanTurn: true })
+    expect(fin.error).toBeUndefined()
+    const adminDm = await minimal.agentDm(orgId, admin.userId)
+    const all = await viaAgent("timesheet_get", asAdmin(), adminDm, { humanTurn: true })
+    expect(all.error?.code).toBe("not_allowed")
   })
 })
 

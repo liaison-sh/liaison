@@ -5,7 +5,7 @@
 // anything is read. It shows the rows entered on the sheet (after dated hours were last turned
 // on), read under the asker's own row security, which says the same thing. Read only: no
 // input, no reminder, no list of who has not entered, and it never calls itself a legal record.
-import { formatDuration } from "@liaison/shared"
+import { csvCell, formatDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
@@ -13,13 +13,17 @@ import type { UserContext } from "~/db/rls"
 import { type Coverage, coverageOf, liveTasks } from "./coverage"
 import { resolvePeriod } from "./reconcile-lines"
 import { ProjectsServiceError } from "./statuses"
-import { loadPlanningProject, orgTimezone, requirePlanning } from "./time-plan"
+import {
+  loadPlanningProject,
+  orgTimezone,
+  requirePlanning,
+  TIMESHEET_READ_SCOPE,
+} from "./time-plan"
 import { todayIn } from "./took"
 
 type Tx = RlsClient
 
-/** Held exactly (never through `*`): the finance role's read of a dated sheet. */
-export const TIMESHEET_READ_SCOPE = "projects:timesheet:read"
+export { TIMESHEET_READ_SCOPE }
 
 /** What the sheet says about itself, on screen, in the PDF and in the CSV. */
 export const NOT_A_RECORD = "Not a legal working-time record, and it reminds nobody of anything."
@@ -213,11 +217,10 @@ export async function getTimesheet(args: {
 
 export type TimesheetFormat = "pdf" | "csv"
 
-function csvCell(v: string): string {
-  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
-}
-
-/** The sheet as CSV: the coverage line first, then the header, the lines and the total. */
+/**
+ * The sheet as CSV: the coverage line first, then the header, the lines and the total. Cells go
+ * through the shared escaper, so a title or a name that starts like a formula stays text.
+ */
 export function timesheetCsv(sheet: Timesheet): string {
   const out: string[][] = [
     [sheet.coverageLine],

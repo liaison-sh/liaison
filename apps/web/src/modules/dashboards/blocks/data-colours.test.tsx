@@ -177,7 +177,7 @@ describe("the metric's change", () => {
     expect(deltaTone(0, true)).toBe("neutral")
   })
 
-  it("draws the figure in the display face, the change toned beside it", () => {
+  it("draws the figure in the display face, the change toned beside it, the line in the series colour", () => {
     render(() => (
       <MetricBlock
         data={{
@@ -200,6 +200,6 @@ describe("the metric's change", () => {
         .getByTestId("block-metric-sparkline")
         .querySelector("polyline")
         ?.getAttribute("stroke"),
-    ).toBe("var(--color-error)")
+    ).toBe("var(--color-chart-1)")
   })
 })

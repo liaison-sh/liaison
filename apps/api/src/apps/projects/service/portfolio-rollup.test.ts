@@ -7,7 +7,6 @@
 // not exist), passes-with.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { projectsRel } from "~/apps/projects/schema-refs"
 import { createProject } from "~/apps/projects/service/create-project"
 import {
   createTask,

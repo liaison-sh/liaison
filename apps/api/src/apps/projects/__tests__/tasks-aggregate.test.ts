@@ -601,6 +601,8 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
     // Time in status keeps the buckets' order.
     const aging = await run("aging")
     expect(aging.data.labels[0]).toBe("Less than 1 day")
+    // Every bucket shows, the empty ones too (drawn as a hairline, not left out).
+    expect(aging.data.labels).toHaveLength(6)
     const overdue = await run("overdue")
     expect(overdue.ok).toBe(true)
     expect(overdue.data.rows).toHaveLength(1)

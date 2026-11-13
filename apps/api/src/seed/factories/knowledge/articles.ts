@@ -21,6 +21,7 @@ import {
   knowledgeActorFromContext,
 } from "~/apps/knowledge/service"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "~/seed/factories/people/actors"
@@ -76,7 +77,7 @@ export async function findOrCreateCollection(
   return asUser(admin, async (tx) => {
     const existing = rowsOf<{ id: string }>(
       await (tx as { execute: (q: unknown) => Promise<unknown> }).execute(
-        sql`SELECT id FROM app_knowledge.collections
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_knowledge"))}.collections
             WHERE org_id = ${ctx.orgId} AND name = ${spec.name} AND archived_at IS NULL LIMIT 1`,
       ),
     )

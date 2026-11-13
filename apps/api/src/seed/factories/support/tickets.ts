@@ -23,6 +23,7 @@ import { mergeTickets } from "~/apps/tickets/merge"
 import { ticketsRel } from "~/apps/tickets/schema-refs"
 import { validateAndApply } from "~/apps/tickets/state-machine"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import { HOUR_MS, seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 import { rowsOf, type SeedPerson } from "~/seed/factories/people/actors"
@@ -170,7 +171,7 @@ async function insertAnsweredCsat(
   },
 ): Promise<void> {
   await tx.execute(
-    sql`INSERT INTO app_tickets.ticket_csat (
+    sql`INSERT INTO ${sql.raw(schemaRef("app_tickets"))}.ticket_csat (
           id, org_id, ticket_id, contact_id, status, score, comment,
           survey_token, sent_at, responded_at, created_by, created_at
         ) VALUES (
@@ -202,7 +203,7 @@ export async function seedTickets(
       const externalRef = input.externalRefOf(spec.key)
       const existing = rowsOf<{ id: string }>(
         await tx.execute(
-          sql`SELECT id FROM app_tickets.tickets
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_tickets"))}.tickets
               WHERE org_id = ${orgId} AND external_ref = ${externalRef} LIMIT 1`,
         ),
       )
@@ -293,7 +294,7 @@ export async function seedTickets(
       if (spec.status === "awaiting_followup" && spec.followupInHours !== undefined) {
         const already = rowsOf<{ followup_at: string | null; db_now: string }>(
           await tx.execute(
-            sql`SELECT followup_at, now() AS db_now FROM app_tickets.tickets WHERE id = ${ticketId}::uuid`,
+            sql`SELECT followup_at, now() AS db_now FROM ${sql.raw(schemaRef("app_tickets"))}.tickets WHERE id = ${ticketId}::uuid`,
           ),
         )
         if (!already[0]?.followup_at) {
@@ -330,7 +331,7 @@ export async function seedTickets(
       if (spec.reopened) {
         const row = rowsOf<{ status: string }>(
           await tx.execute(
-            sql`SELECT status FROM app_tickets.tickets WHERE id = ${ticketId}::uuid`,
+            sql`SELECT status FROM ${sql.raw(schemaRef("app_tickets"))}.tickets WHERE id = ${ticketId}::uuid`,
           ),
         )
         if (row[0]?.status === "closed") {
@@ -369,7 +370,7 @@ export async function seedTickets(
       if (!target || !source) continue
       const sourceRow = rowsOf<{ merged_into_ticket_id: string | null }>(
         await tx.execute(
-          sql`SELECT merged_into_ticket_id FROM app_tickets.tickets WHERE id = ${source}::uuid`,
+          sql`SELECT merged_into_ticket_id FROM ${sql.raw(schemaRef("app_tickets"))}.tickets WHERE id = ${source}::uuid`,
         ),
       )
       if (sourceRow[0]?.merged_into_ticket_id) continue
@@ -408,7 +409,7 @@ export async function ticketIdsByExternalRef(
   const rows = await withPrivilegedDb(ctx.orgId, "seed-tickets:by-ref", async (tx) =>
     rowsOf<{ id: string; external_ref: string }>(
       await tx.execute(
-        sql`SELECT id, external_ref FROM app_tickets.tickets WHERE org_id = ${ctx.orgId}::uuid
+        sql`SELECT id, external_ref FROM ${sql.raw(schemaRef("app_tickets"))}.tickets WHERE org_id = ${ctx.orgId}::uuid
             AND external_ref IN (${sql.join(
               refs.map((r) => sql`${r}`),
               sql`, `,

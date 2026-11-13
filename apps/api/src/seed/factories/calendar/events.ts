@@ -14,6 +14,7 @@
 import { sql } from "drizzle-orm"
 import { createLocalEvent, onAccountConnected, runCalendarImport } from "~/apps/calendar/sync"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf, type SeedPerson } from "~/seed/factories/people/actors"
@@ -101,7 +102,7 @@ export async function seedTeamCalendar(
       const start = clock.dayAt(spec.day, spec.startHour, spec.startMinute ?? 0)
       const existing = rowsOf<{ id: string }>(
         await (tx as ExecTx).execute(
-          sql`SELECT id FROM app_calendar.events
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_calendar"))}.events
               WHERE org_id = ${orgId} AND calendar_id = ${calendarId}::uuid
                 AND title = ${spec.title} LIMIT 1`,
         ),
@@ -143,7 +144,7 @@ export async function seedTeamCalendar(
     // permanently stuck outbound queue. `'none'` (the column's own default) is
     // the honest state for a local only calendar.
     await (tx as ExecTx).execute(
-      sql`UPDATE app_calendar.events SET pending_push = 'none'
+      sql`UPDATE ${sql.raw(schemaRef("app_calendar"))}.events SET pending_push = 'none'
           WHERE org_id = ${orgId} AND calendar_id = ${calendarId}::uuid
             AND pending_push <> 'none'`,
     )

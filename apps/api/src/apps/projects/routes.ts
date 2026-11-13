@@ -20,6 +20,7 @@ import {
   listProjects,
   loadProjectDetail,
 } from "~/apps/projects/service/create-project"
+import { activeFields, readProjectFields, setFields } from "~/apps/projects/service/fields"
 import { moveTask } from "~/apps/projects/service/move-task"
 import {
   listRecentlyInvolvedTasks,
@@ -87,6 +88,13 @@ const reorderStatusesBodySchema = z.object({
 
 const migrateStatusBodySchema = z.object({
   targetStatusId: z.string().uuid(),
+})
+
+// The project's full list of task fields (replace-all; the service checks each definition, and the
+// values tasks hold, with the same errors as the fields_set tool).
+const putFieldsBodySchema = z.object({
+  fields: z.array(z.unknown()).max(200),
+  renames: z.record(z.string(), z.record(z.string(), z.string())).nullable().optional(),
 })
 
 const createTaskBodySchema = z.object({
@@ -544,6 +552,29 @@ export const projectsRoutes = new Hono<AppEnv>()
         migrateStatusTasks({ tx, orgId, projectId, sourceStatusId, targetStatusId, actor }),
       )
       return success(c, { movedCount: result.movedCount })
+    },
+  )
+  .get("/:projectId/fields", scopeProjectsRead, async (c) => {
+    const projectId = c.req.param("projectId")
+    const orgId = c.get("orgId")
+    const fields = await withRequestRls(c, async (tx) =>
+      activeFields(await readProjectFields(tx, orgId, projectId)),
+    )
+    return success(c, { projectId, fields })
+  })
+  .put(
+    "/:projectId/fields",
+    scopeProjectsWrite,
+    zValidator("json", putFieldsBodySchema),
+    async (c) => {
+      const projectId = c.req.param("projectId")
+      const orgId = c.get("orgId")
+      const { fields, renames } = c.req.valid("json")
+      const actor = extractRlsContext(c)
+      const result = await withRequestRls(c, (tx) =>
+        setFields({ tx, orgId, actor, projectId, fields, renames: renames ?? null }),
+      )
+      return success(c, { projectId, fields: result })
     },
   )
   .delete("/:projectId/statuses/:statusId", scopeProjectsWrite, async (c) => {

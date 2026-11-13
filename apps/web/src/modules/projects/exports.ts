@@ -26,6 +26,10 @@ export const CapacityView = lazy(() =>
 export const TimesheetView = lazy(() =>
   import("~/modules/projects/TimesheetView").then((m) => ({ default: m.TimesheetView })),
 )
+// The note under the "Time and budgets" settings section (the section's id, then "SettingsNote").
+export const TimeSettingsNote = lazy(() =>
+  import("~/modules/projects/TimeSettingsNote").then((m) => ({ default: m.TimeSettingsNote })),
+)
 export const TaskDetail = lazy(() =>
   import("~/modules/projects/TaskDetail").then((m) => ({ default: m.TaskDetail })),
 )

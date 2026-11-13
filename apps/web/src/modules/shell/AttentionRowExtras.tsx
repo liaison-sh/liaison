@@ -6,6 +6,7 @@
 import type { ApprovalSendGuard, AttentionItem } from "@liaison/shared"
 import { type Component, createSignal, Show } from "solid-js"
 import { cn } from "~/lib/cn"
+import { runTool } from "~/lib/run-tool"
 import {
   openRecordLabel,
   openStopRecord,
@@ -80,6 +81,13 @@ export function unownedCompanyIds(item: AttentionItem): string[] | null {
   if (kind !== UNOWNED_COMPANIES_KIND || !Array.isArray(ids)) return null
   const valid = ids.filter((i): i is string => typeof i === "string")
   return valid.length > 0 ? valid : null
+}
+
+/** The row that tells a person a colleague changed their days per week (`capacityNamed`), or null. */
+export function capacityNamedDays(item: AttentionItem): number | null {
+  const named = item.metadata?.capacityNamed as { daysPerWeek?: unknown } | undefined
+  const d = named?.daysPerWeek
+  return typeof d === "number" && d >= 1 && d < 5 ? d : null
 }
 
 /** The send check's line on a mail draft row, the same words the card uses. */
@@ -244,6 +252,52 @@ export const AskReassignButton: Component<{
           })}
         />
       )}
+    </Show>
+  )
+}
+
+/**
+ * Back to 5 days: on the row that says a colleague set the person's days per week, the person
+ * sets it back themselves, in one press. It writes their own count and nothing else.
+ */
+export const BackToFiveDaysButton: Component<{
+  item: AttentionItem
+  testId: string
+  compact: boolean
+}> = (props) => {
+  const api = useApi()
+  const i18n = useI18n()
+  const [busy, setBusy] = createSignal(false)
+  const run = async (e: MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (busy()) return
+    setBusy(true)
+    try {
+      await runTool(
+        api,
+        "projects:time_settings_set",
+        { daysPerWeek: 5 },
+        { suppressGlobalError: true },
+      )
+      attentionStore.resolveLocally(props.item.id)
+      attentionStore.markStaleAndReload(api)
+    } catch {
+      addToast({ message: i18n.t("kernel.homeDecisions.backToFiveDaysFailed"), type: "error" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Show when={capacityNamedDays(props.item) !== null}>
+      <button
+        type="button"
+        data-testid={`${props.testId}-back-to-five`}
+        disabled={busy()}
+        onClick={(e) => void run(e)}
+        class={buttonClass(props.compact)}
+      >
+        {i18n.t("kernel.homeDecisions.backToFiveDays")}
+      </button>
     </Show>
   )
 }

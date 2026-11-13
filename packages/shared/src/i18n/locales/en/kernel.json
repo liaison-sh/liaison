@@ -6767,7 +6767,9 @@
     "briefTitle": "Today's brief",
     "briefNone": "No brief set up. Ask your agent for one each morning, and say what you want in it.",
     "briefSetUp": "Set up a morning brief",
-    "briefOpen": "Open"
+    "briefOpen": "Open",
+    "backToFiveDays": "Back to 5 days",
+    "backToFiveDaysFailed": "Could not change your days per week. Nothing was changed."
   },
   "homeRouting": {
     "othersGroup": "For others, you can also approve",

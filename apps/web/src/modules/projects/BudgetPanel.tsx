@@ -15,6 +15,7 @@ import {
   savePlan,
 } from "~/modules/projects/time-budgets"
 import { dock } from "~/modules/shell/dock-prefill"
+import { openTab } from "~/modules/shell/tab-store"
 import { DISCUSSION_RAIL_BOTTOM_PAD } from "~/modules/threads/discussion-rail"
 import { Button } from "~/ui/Button"
 
@@ -260,6 +261,28 @@ export const BudgetPanel: Component<{
                   {i18n.t("projects.time.datedHours")}
                 </label>
                 <p class="text-[11.5px] text-text-tertiary">{i18n.t("projects.time.datedHelp")}</p>
+                <Show
+                  when={
+                    (s() as Extract<BudgetState, { status: "ready" }>).data.datedHours &&
+                    hasScope("projects:dated_sheet:read")
+                  }
+                >
+                  <button
+                    type="button"
+                    data-testid="budget-panel.open-sheet"
+                    class="self-start text-[12px] text-text-secondary underline-offset-2 hover:text-text hover:underline"
+                    onClick={() =>
+                      openTab({
+                        type: "projects:timesheet",
+                        entityId: props.projectId,
+                        label: i18n.t("projects.timesheet.tab"),
+                        preview: false,
+                      })
+                    }
+                  >
+                    {i18n.t("projects.time.openSheet")}
+                  </button>
+                </Show>
                 <Show when={error()}>
                   <p data-testid="budget-panel.error" class="text-[12px] text-text-tertiary">
                     {error()}

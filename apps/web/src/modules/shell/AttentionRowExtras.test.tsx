@@ -20,8 +20,21 @@ const { ensurePersonalAgentDm, sendMessage, openTab } = vi.hoisted(() => ({
 vi.mock("~/modules/threads/personal-dm-store", () => ({ ensurePersonalAgentDm }))
 vi.mock("~/modules/threads/message-store", () => ({ sendMessage }))
 vi.mock("~/modules/shell/tab-store", () => ({ openTab }))
+const { runTool, markStaleAndReload, resolveLocally } = vi.hoisted(() => ({
+  runTool: vi.fn(async () => ({})),
+  markStaleAndReload: vi.fn(),
+  resolveLocally: vi.fn(),
+}))
+vi.mock("~/lib/run-tool", () => ({ runTool }))
+vi.mock("~/modules/shell/attention-store", () => ({
+  attentionStore: { markStaleAndReload, resolveLocally },
+}))
 
-import { AskReassignButton, offersAskDraft } from "~/modules/shell/AttentionRowExtras"
+import {
+  AskReassignButton,
+  BackToFiveDaysButton,
+  offersAskDraft,
+} from "~/modules/shell/AttentionRowExtras"
 
 const unowned: AttentionItem = {
   id: "ev-unowned",
@@ -76,5 +89,39 @@ describe("Ask agent to reassign", () => {
       />
     ))
     expect(screen.queryByTestId("bare-ask-reassign")).toBeNull()
+  })
+})
+
+describe("Back to 5 days", () => {
+  const named = (days: number): AttentionItem => ({
+    id: "ev-days",
+    app: "kernel",
+    entity: "agent_notification",
+    entityId: "u-admin",
+    kind: "agent_notification" as AttentionItem["kind"],
+    summary: `Paul set your days per week to ${days}`,
+    urgency: 40,
+    occurredAt: "2026-11-08T12:00:00.000Z",
+    action: { type: "open_entity", tabType: "settings", entityId: "apps/projects" },
+    persisted: true,
+    metadata: { capacityNamed: { setBy: "u-paul", daysPerWeek: days } },
+  })
+
+  it("sets the person's own days per week back to 5 and clears the line", async () => {
+    render(() => <BackToFiveDaysButton item={named(4)} testId="row" compact={false} />)
+    fireEvent.click(screen.getByTestId("row-back-to-five"))
+    await vi.waitFor(() => expect(markStaleAndReload).toHaveBeenCalled())
+    expect(runTool).toHaveBeenCalledWith(
+      expect.anything(),
+      "projects:time_settings_set",
+      { daysPerWeek: 5 },
+      expect.anything(),
+    )
+    expect(resolveLocally).toHaveBeenCalledWith("ev-days")
+  })
+
+  it("is offered only on the line that names a changed count", () => {
+    render(() => <BackToFiveDaysButton item={unowned} testId="row" compact={false} />)
+    expect(screen.queryByTestId("row-back-to-five")).toBeNull()
   })
 })

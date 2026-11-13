@@ -15,7 +15,6 @@
     "projects.settingsPage.time.remove": "Retirer",
     "projects.capacity.loading": "Chargement de la charge",
     "projects.capacity.error": "Impossible de charger la charge. Projets n'a pas répondu. Aucune tâche n'a été déplacée.",
-    "projects.capacity.empty": "Personne n'a de temps prévu cette semaine sur un projet qui utilise le temps et les budgets.",
     "projects.capacity.of": "{{planned}} sur {{available}}",
     "projects.capacity.left": "Assigné à des personnes parties",
     "projects.capacity.footnote": "Le temps prévu vient des estimations des projets qui utilisent le temps et les budgets. Rien ici ne vient du temps saisi ni de l'activité."

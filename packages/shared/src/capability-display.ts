@@ -26,6 +26,7 @@ export const APP_DISPLAY_NAMES: Record<string, string> = {
   contacts: "Contacts",
   database: "Database",
   files: "Files",
+  github: "GitHub",
   gitlab: "GitLab",
   "google-drive": "Google Drive",
   invoicing: "Invoicing",

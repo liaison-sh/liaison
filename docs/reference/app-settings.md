@@ -127,6 +127,18 @@ Section `report-access`, scope `org`, edited with `database:access:admin`.
 | --- | --- | --- |
 |  | DatabaseReportAccess | custom |
 
+## github
+
+Read repositories, commits, pull requests and issues on GitHub, read-only.
+
+### Connection
+
+Section `connection`, scope `org`, edited with `github:accounts:admin`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | github | connections |
+
 ## gitlab
 
 Sync GitLab manuals into Knowledge and read projects, merge requests and issues.

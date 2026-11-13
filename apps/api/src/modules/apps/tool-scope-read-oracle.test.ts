@@ -122,6 +122,7 @@ const REASONS = {
     "an API adapter's OAuth2 client-credentials scope (RFC 6749), sent to its token URL",
   KNOW: "a knowledge source or document's personal or organization visibility",
   GITLAB: "the GitLab search API's own scope parameter",
+  GITHUB: "the GitHub search tool's own kind of result (code, commits, issues, pull requests)",
   GRANT: "a scope grant row or a grant table's scope column",
   POLICY: "a scope disclosure policy row or its table's column",
   FRAME: "a websocket status frame's scope",
@@ -941,6 +942,7 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
     REASONS.OAUTH,
   ],
   ["bundled-apps/gitlab/src/tools.ts", "scope: params.scope,", REASONS.GITLAB],
+  ["bundled-apps/github/src/tools.ts", "const searchKind = params.scope", REASONS.GITHUB],
   [
     "bundled-apps/gitlab/src/tools.ts",
     "results: items.map((r) => searchHitShape(params.scope, r)),",

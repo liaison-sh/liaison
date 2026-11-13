@@ -1,0 +1,35 @@
+Read-only connector for an organization or user -> bundled-apps/github/app.manifest.json:6
+No write operations, GET only -> bundled-apps/github/src/client.ts:8-12 ; bundled-apps/github/src/client.ts:178-186
+Credentials connection, no OAuth -> bundled-apps/github/README.md:31-36
+Token steps: Fine-grained tokens, Generate new token -> bundled-apps/github/app.manifest.json:52
+Resource owner and repository access -> bundled-apps/github/app.manifest.json:58
+Repository permissions Read-only, nothing else -> bundled-apps/github/app.manifest.json:64
+Longest expiry, expired token answers 401 -> bundled-apps/github/app.manifest.json:70
+Rotation replaces stored credential -> bundled-apps/github/app.manifest.json:88
+Settings app label GitHub -> packages/shared/src/i18n/locales/en/kernel.json:616
+Connection section, adminScope github:accounts:admin -> bundled-apps/github/app.manifest.json:571
+Connect button -> apps/web/src/modules/settings/app-page/ConnectionsBlock.tsx:252
+Token field and owner field labels -> bundled-apps/github/app.manifest.json:35 ; bundled-apps/github/app.manifest.json:40
+Write-capable classic token refused, fix named -> bundled-apps/github/src/client.ts:148-172
+Fine-grained permissions not shown, verify warns -> bundled-apps/github/src/provisioning.ts:17-20
+Start with github_list_repos -> bundled-apps/github/app.manifest.json:117
+Only the connected owner's repositories -> bundled-apps/github/src/client.ts:298-321
+Every text body redacted -> bundled-apps/github/src/client.ts:378-402 ; bundled-apps/github/src/tools.ts:171-239
+config verify and apply run the app's verify -> apps/api/src/cli/provisioners/verify-probes.ts:1-12 ; bundled-apps/github/src/provisioning.ts:28
+Role member -> bundled-apps/github/app.manifest.json:551
+Role admin -> bundled-apps/github/app.manifest.json:558
+github_list_repos -> bundled-apps/github/app.manifest.json:115
+github_list_commits -> bundled-apps/github/app.manifest.json:132
+github_get_commit -> bundled-apps/github/app.manifest.json:177
+github_list_pull_requests -> bundled-apps/github/app.manifest.json:211
+github_get_pull_request -> bundled-apps/github/app.manifest.json:256
+github_list_issues -> bundled-apps/github/app.manifest.json:293
+github_list_milestones -> bundled-apps/github/app.manifest.json:340
+github_list_labels -> bundled-apps/github/app.manifest.json:365
+github_list_releases -> bundled-apps/github/app.manifest.json:390
+github_list_tags -> bundled-apps/github/app.manifest.json:416
+github_read_file -> bundled-apps/github/app.manifest.json:441
+github_list_tree -> bundled-apps/github/app.manifest.json:477
+github_search -> bundled-apps/github/app.manifest.json:511
+Reads are dashboard sources, the file read excluded -> apps/api/src/modules/dashboards/sources.ts:124-125
+github:approve -> docs/reference/scopes.md:171

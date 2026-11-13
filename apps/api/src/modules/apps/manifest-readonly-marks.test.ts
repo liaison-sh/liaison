@@ -93,6 +93,21 @@ const READ_ONLY: Record<string, string[]> = {
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
   ],
   "mcp-manager": ["list_connections"],
+  github: [
+    "github_list_repos",
+    "github_list_commits",
+    "github_get_commit",
+    "github_list_pull_requests",
+    "github_get_pull_request",
+    "github_list_issues",
+    "github_list_milestones",
+    "github_list_labels",
+    "github_list_releases",
+    "github_list_tags",
+    "github_read_file",
+    "github_list_tree",
+    "github_search",
+  ],
   gitlab: [
     "gitlab_list_projects",
     "gitlab_list_commits",

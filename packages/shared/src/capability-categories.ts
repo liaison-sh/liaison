@@ -54,6 +54,7 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   calendar: "calendars",
   calls: "call recordings",
   database: "business records",
+  github: "the code repository",
   gitlab: "the code repository",
   "google-drive": "shared drive files",
   invoicing: "invoices and quotes",

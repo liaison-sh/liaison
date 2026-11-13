@@ -495,6 +495,10 @@
       "remove": "Remove",
       "quota": "API quota"
     },
+    "github": {
+      "connectionTitle": "Connection",
+      "connectionDescription": "The read-only token and the organization or user Liaison reads GitHub with."
+    },
     "pennylane": {
       "connectionTitle": "Connection",
       "connectionDescription": "The API token and scope (company or firm) Liaison reads Pennylane with."
@@ -609,6 +613,7 @@
       "contacts": "Contacts",
       "database": "Database",
       "files": "Files",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "invoicing": "Invoicing",
@@ -2025,6 +2030,7 @@
     "connectionStatus": "Connection status: {{status}}",
     "app": {
       "database": "Database",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "pennylane": "Pennylane",
@@ -2043,6 +2049,7 @@
       "syncedSources": "Synced sources",
       "calendarConnections": "Calendar Connections",
       "database": "Database",
+      "github": "GitHub",
       "gitlab": "GitLab",
       "googleDrive": "Google Drive",
       "profile": "Profile",
@@ -3920,6 +3927,8 @@
     "calendar__admin": "Calendar administrator: manage org-wide Google Calendar connections and calendar selection",
     "database__member": "Database connector reader: curated reads only",
     "database__admin": "Database connector administrator: curated reads plus raw query (when the deployment opts in)",
+    "github__member": "GitHub repository reader: read access to repositories, commits, pull requests, issues",
+    "github__admin": "GitHub connection administrator: manage the GitHub connection",
     "gitlab__member": "GitLab repository reader: read access to projects, commits, issues, MRs",
     "gitlab__admin": "GitLab connection administrator: manage GitLab connections",
     "google-drive__member": "Google Drive connection viewer: read connected Drive accounts, upload new files to the app-owned reports folder",
@@ -3956,6 +3965,7 @@
     "calendar": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
     "contacts": "Contact registry: kernel-owned, manifest-registered UI surface",
     "database": "Read-only connector for a deployment's own database, for troubleshooting and support: licenses/subscriptions, moderation surfaces (tickets/knowledge/mail), instance health.",
+    "github": "GitHub connector: read-only access to an organization's or a user's repositories, commits, pull requests, issues, releases and code.",
     "gitlab": "GitLab connector: sync group manuals into the knowledge base and provide read-only access to projects, commits, MRs, issues, releases, and more.",
     "google-drive": "Google Drive connector: a Knowledge federated-search source and a headless agent-tool surface (search + read + import Drive files, plus upload of NEW files into an app-owned 'Liaison Reports' folder under the drive.file scope; existing Drive files are never modified or deleted).",
     "knowledge": "Knowledge workspace for local documents and curated source links",
@@ -4843,6 +4853,9 @@
     "database": {
       "database": "Operational database",
       "warehouse": "Read-only warehouse"
+    },
+    "github": {
+      "github": "GitHub owner"
     },
     "gitlab": {
       "gitlab": "GitLab group"

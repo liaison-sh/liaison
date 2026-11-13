@@ -437,6 +437,15 @@
     "contacts.followUps.basis.consent": "ils y ont consenti",
     "contacts.followUps.basis.customer": "client existant",
     "contacts.followUps.basis.professional_interest": "intérêt professionnel",
-    "contacts.followUps.basis.generic_address": "adresse professionnelle générique"
+    "contacts.followUps.basis.generic_address": "adresse professionnelle générique",
+    "kernel.appSettings.github.connectionTitle": "Connexion",
+    "kernel.appSettings.github.connectionDescription": "Le jeton en lecture seule et l'organisation ou l'utilisateur avec lesquels Liaison lit GitHub.",
+    "kernel.capabilities.apps.github": "GitHub",
+    "kernel.nav.app.github": "GitHub",
+    "kernel.nav.section.github": "GitHub",
+    "kernel.roleDescriptions.github__member": "Lecteur GitHub : accès en lecture aux dépôts, commits, pull requests et tickets",
+    "kernel.roleDescriptions.github__admin": "Administrateur GitHub : gérer la connexion GitHub",
+    "kernel.appDescriptions.github": "Connecteur GitHub : accès en lecture seule aux dépôts, commits, pull requests, tickets, versions et au code d'une organisation ou d'un utilisateur.",
+    "kernel.appConnections.github.github": "Propriétaire GitHub"
   }
 }

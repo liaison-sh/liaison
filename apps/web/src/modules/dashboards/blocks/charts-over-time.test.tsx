@@ -13,7 +13,7 @@ vi.mock("chart.js", () => {
 import { parseBlockResponse, type SeriesData } from "../dashboards-client"
 import { layerErrors } from "./BlockCard"
 import { BlockRenderer, layerOfSeries, seriesDatasets, seriesPick } from "./BlockRenderer"
-import { chartConfig } from "./Chart"
+import { chartConfig, wholeNumbers } from "./Chart"
 import { headlineChange } from "./ChartHeadline"
 
 afterEach(() => cleanup())
@@ -329,5 +329,50 @@ describe("the headline", () => {
     expect(screen.getByTestId("chart-headline-value-2").textContent).toBe("0.57")
     expect(screen.queryByTestId("chart-headline-change-2")).toBeNull()
     expect(screen.queryByTestId("chart-in-progress")).toBeNull()
+  })
+})
+
+describe("count axes", () => {
+  it("reads whole-number ticks when every value is a count, decimals otherwise", () => {
+    const counts: Any = chartConfig(
+      { type: "bar", labels: ["Todo", "Done"], datasets: [{ label: "Tasks", values: [1, 2] }] },
+      "en",
+    )
+    expect(counts.options.scales.y.ticks.precision).toBe(0)
+    const bars: Any = chartConfig(
+      {
+        type: "bar",
+        horizontal: true,
+        labels: ["Ann", "Bo"],
+        datasets: [{ label: "Tasks", values: [3, null] }],
+      },
+      "en",
+    )
+    expect(bars.options.scales.x.ticks.precision).toBe(0)
+    const avg: Any = chartConfig(
+      { type: "bar", labels: ["a", "b"], datasets: [{ label: "Days", values: [1.5, 2] }] },
+      "en",
+    )
+    expect(avg.options.scales.y.ticks.precision).toBeUndefined()
+    // Each axis is judged on its own datasets: counts on the left, an average on the right.
+    const combo: Any = chartConfig(
+      {
+        type: "combo",
+        secondaryAxis: true,
+        labels: ["a", "b"],
+        datasets: [
+          { label: "Tasks", values: [4, 7] },
+          { label: "Avg days", values: [0.4, 1.2], asLine: true },
+        ],
+      },
+      "en",
+    )
+    expect(combo.options.scales.y.ticks.precision).toBe(0)
+    expect(combo.options.scales.y1.ticks.precision).toBeUndefined()
+  })
+
+  it("needs at least one value", () => {
+    expect(wholeNumbers([{ label: "x", values: [null] }])).toBe(false)
+    expect(wholeNumbers([{ label: "x", values: [0, 3] }])).toBe(true)
   })
 })

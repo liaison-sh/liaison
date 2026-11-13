@@ -14,6 +14,12 @@ import { schemaRef } from "~/db/schema-ref"
  *  - `caller`: rows that sit inside conversations and records other people
  *    share (messages, threads, uploaded files). Read under the CALLER's RLS, so
  *    the bundle never carries a conversation the caller could not open.
+ *  - `self`: rows that are the member's alone AND that other people may read only under a
+ *    rule of their own (the time a person entered). In a self-export they are read like a
+ *    `subject` section, all of them; when someone else exports the member they are read under
+ *    the CALLER's RLS, so the requester gets only the rows they could already read (an entry
+ *    on a project's dated sheet, for that project's lead or finance), never the member's
+ *    private ones, whatever authority the requester holds.
  *  - `subject`: rows that are about the member alone (preferences, routines,
  *    approvals, audit entries, connected accounts, the app drafts they made and
  *    the app runs they started). Read privileged and filtered strictly on the
@@ -37,13 +43,15 @@ export const MEMBER_SECTION_ROW_CAP = 1000
 export interface MemberSectionCtx {
   orgId: string
   subjectUserId: string
+  /** Who asked for the export. A `self` section is read in full only when it is the subject. */
+  callerUserId?: string
 }
 
 export interface MemberSection {
   key: string
   /** One plain sentence saying what the section holds, written into the bundle. */
   note: string
-  via: "caller" | "subject"
+  via: "caller" | "self" | "subject"
   /** Reads at most `limit` rows. `db` is the caller's RLS client or a privileged tx, per `via`. */
   read: (
     db: RlsClient | PrivilegedDb,
@@ -466,8 +474,8 @@ export const MEMBER_SECTIONS: MemberSection[] = [
   },
   {
     key: "ownTaskTime",
-    note: "The time the member entered on tasks: the day, the minutes, how it was entered, the task and its project, and whether someone else changed the entry (not who). Nobody else's time is included.",
-    via: "subject",
+    note: "The time the member entered on tasks: the day, the minutes, how it was entered, the task and its project, and whether someone else changed the entry (not who). Nobody else's time is included. Exported by someone else, it holds only the entries that person can already read on a project's dated sheet.",
+    via: "self",
     read: (db, ctx, limit) =>
       rows(
         db,
@@ -540,7 +548,10 @@ export const MEMBER_SECTIONS: MemberSection[] = [
   },
 ]
 
-/** Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged transaction. */
+/**
+ * Reads every section: the `caller` ones (and `self` ones of someone else's export) on
+ * `callerDb`, the rest in one privileged transaction.
+ */
 export async function readMemberSections(
   callerDb: RlsClient,
   ctx: MemberSectionCtx,
@@ -555,8 +566,12 @@ export async function readMemberSections(
       truncated: got.length > MEMBER_SECTION_ROW_CAP,
     }
   }
-  for (const s of sections) if (s.via === "caller") await take(s, callerDb)
-  const subjectSections = sections.filter((s) => s.via === "subject")
+  // A `self` section is the subject's own read only in a self-export; anyone else reads it
+  // under their own RLS (fail closed: no caller named is someone else).
+  const selfExport = ctx.callerUserId !== undefined && ctx.callerUserId === ctx.subjectUserId
+  const onCaller = (s: MemberSection) => s.via === "caller" || (s.via === "self" && !selfExport)
+  for (const s of sections) if (onCaller(s)) await take(s, callerDb)
+  const subjectSections = sections.filter((s) => !onCaller(s))
   if (subjectSections.length > 0) {
     const { withPrivilegedDb } = await import("~/db/privileged")
     await withPrivilegedDb(ctx.orgId, "data_subject_export member sections", async (tx) => {

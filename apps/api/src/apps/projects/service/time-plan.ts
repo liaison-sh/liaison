@@ -9,6 +9,7 @@ import { formatDuration, parseDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
+import { UUID_RE } from "~/lib/uuid"
 import { hasScope } from "~/modules/permissions/permissions"
 import { assertPlanningOn, orgUsesTimeBudgets, type PlanningProject } from "./planning"
 import { ProjectsServiceError } from "./statuses"
@@ -445,39 +446,88 @@ export async function getTaskTime(args: {
   }
 }
 
+/** Held exactly (never through `*`): finance's read and correction of a dated sheet. */
+export const TIMESHEET_READ_SCOPE = "projects:timesheet:read"
+
+const NOT_YOURS_TO_CHANGE =
+  "Only the project's lead or finance changes an entry, on a project with dated hours."
+
 /**
  * `task_time_correct`: the project's lead or an exact holder of the timesheet scope changes
- * an entry on a project with dated hours. The row policy is the rule: any other caller sees
- * no such entry. The person then reads "Changed by <name>" under their own Took.
+ * an entry on that project's dated sheet (entered while dated hours were on, after they were
+ * last turned on). Any other entry, the caller's own private ones included, is not found here,
+ * and the row policy says the same. Like Took, the new figure is a person's own statement: an
+ * agent passes the corrector's words as `quote`, and a routine or a sub-run is refused. The
+ * person then reads "Changed by <name>" under their own Took.
  */
 export async function correctTaskTime(args: {
   tx: Tx
   orgId: string
   actorId: string
   scopes: readonly string[]
-  input: { entryId: string; time: string; date?: string }
+  place: TookPlace
+  threadId?: string
+  input: { entryId: string; time: string; date?: string; quote?: string }
 }): Promise<{ id: string; taskId: string; date: string; minutes: number; message: string }> {
   const { tx, orgId, actorId, scopes, input } = args
-  const found = extractRows<{ task_id: string; project_id: string }>(
-    await tx.execute(drizzleSql`
-      SELECT task_id::text AS task_id, project_id::text AS project_id
-        FROM ${projectsRel("task_time")}
-       WHERE id = ${input.entryId}::uuid AND org_id = ${orgId}::uuid`),
-  )
-  const entry = found[0]
-  if (!entry) {
+  if (!UUID_RE.test(input.entryId)) {
     throw new ProjectsServiceError(
       404,
       "not_found",
       `No entry ${input.entryId} you may change was found; nothing changed.`,
-      {
-        next: "Only the project's lead or finance changes an entry, on a project with dated hours.",
-      },
+      { next: NOT_YOURS_TO_CHANGE },
+    )
+  }
+  const found = extractRows<{
+    task_id: string
+    project_id: string
+    on_sheet: boolean
+    owner_id: string | null
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT tt.task_id::text AS task_id, tt.project_id::text AS project_id,
+             (tt.entered_dated AND coalesce(tp.dated_hours, false) AND pr.time_budgets_on
+               AND tt.created_at >= tp.dated_hours_changed_at) AS on_sheet,
+             pr.owner_id::text AS owner_id
+        FROM ${projectsRel("task_time")} tt
+        JOIN ${projectsRel("projects")} pr ON pr.id = tt.project_id AND pr.org_id = tt.org_id
+        LEFT JOIN ${projectsRel("project_time_plan")} tp
+          ON tp.project_id = tt.project_id AND tp.org_id = tt.org_id
+       WHERE tt.id = ${input.entryId}::uuid AND tt.org_id = ${orgId}::uuid`),
+  )
+  const entry = found[0]
+  // Defence in depth over the row policy: only an entry on a dated sheet, only for that
+  // project's lead or an exact timesheet reader.
+  if (!entry?.on_sheet || (entry.owner_id !== actorId && !scopes.includes(TIMESHEET_READ_SCOPE))) {
+    throw new ProjectsServiceError(
+      404,
+      "not_found",
+      `No entry ${input.entryId} you may change was found; nothing changed.`,
+      { next: NOT_YOURS_TO_CHANGE },
     )
   }
   const project = await loadPlanningProject(tx, orgId, entry.project_id)
   requirePlanning(orgId, project, scopes)
-  const minutes = readDuration(input.time, await hoursPerDayMinutes(tx, orgId), "time")
+  const hpd = await hoursPerDayMinutes(tx, orgId)
+  const minutes = readDuration(input.time, hpd, "time")
+  const refusal = checkPersonStatement({
+    place: args.place,
+    minutes,
+    quote: input.quote,
+    hoursPerDayMinutes: hpd,
+    latestHumanMessage:
+      args.place.origin === "in-app-agent"
+        ? await latestHumanMessage(tx, orgId, args.threadId, actorId)
+        : null,
+  })
+  if (refusal) {
+    throw new ProjectsServiceError(
+      409,
+      refusal.code,
+      refusal.message.replace("Nothing was recorded", "Nothing changed"),
+      { next: refusal.next },
+    )
+  }
   if (input.date !== undefined) {
     if (!isCalendarDate(input.date)) {
       throw new ProjectsServiceError(
@@ -527,9 +577,7 @@ export async function correctTaskTime(args: {
       404,
       "not_found",
       `Entry ${input.entryId} was not changed: you may not change it.`,
-      {
-        next: "Only the project's lead or finance changes an entry, on a project with dated hours.",
-      },
+      { next: NOT_YOURS_TO_CHANGE },
     )
   }
   return {

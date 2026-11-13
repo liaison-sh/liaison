@@ -2061,12 +2061,13 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         })
       })
     },
-    /** The dated corrector (the project's lead or finance) changes an entry. */
+    /** The dated corrector (the project's lead or finance) changes an entry, in their own words. */
     projects_taskTimeCorrect: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as {
         entryId?: string
         time?: string
         date?: string
+        quote?: string
       }
       return typedServiceCall(async () => {
         const { correctTaskTime } = await import("~/apps/projects/service/time-plan")
@@ -2077,10 +2078,13 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             orgId,
             actorId: actor.userId,
             scopes: callerScopes ?? [],
+            place: await tookPlace(),
+            ...(bridgeOptions?.threadId ? { threadId: bridgeOptions.threadId } : {}),
             input: {
               entryId: params.entryId ?? "",
               time: params.time ?? "",
               ...(params.date !== undefined ? { date: params.date } : {}),
+              ...(params.quote !== undefined ? { quote: params.quote } : {}),
             },
           }),
         )

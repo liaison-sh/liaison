@@ -82,7 +82,7 @@ const rowOp = z.discriminatedUnion("op", [
     .object({
       op: z.literal("update"),
       id: z.string().min(1).max(200),
-      // 0: a backed table's row its own columns were never written for.
+      // 0: a backed table's row whose own cells were never written (tables/backing.ts).
       ifVersion: z.number().int().min(0),
       ifRecordVersion: z.string().min(1).max(200).optional(),
       cells,

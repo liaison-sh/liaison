@@ -77,7 +77,9 @@ Your own changes in the app never wait for an approval.
 
 A table can show the tasks of one project as its rows, live: `backing: { app: "projects", entity: "task", parentId: "<project id>", fields: ["title", "status", "assignee", "problem"] }` when you create it (or change it). `fields` names the task values the table reads through, as columns typed from the project: title, status (a choice of the project's statuses), assignee, due, priority, and the project's task fields by key. The table's own columns are an overlay kept per task, with the same history and undo as any row.
 
-- Each reader sees the tasks they can read: someone without access to the project's tasks sees no rows.
+- Each reader sees the tasks they can read: someone who may not read the project's tasks in Projects sees no rows, and the table says why. A table lists at most 2,000 tasks and says when there were more.
+- Each row carries the task's `recordVersion`: an edit of a task value passes it as `ifRecordVersion`, and is refused when someone changed the task since. Undoing a row's first own-column change empties its own cells; the task stays.
+- For an agent, reading the table counts as reading the tasks in Projects, and editing a task value counts as editing the task there: the same approvals apply as when it calls Projects itself.
 - Editing a read-through cell changes the task through Projects, as the writer, and needs the right to edit tasks; the task's own history records it, not the table's.
 - Adding a row creates a task (a title is required). A row cannot be deleted: delete or archive the task in Projects.
 - An own column cannot use the key of a read-through one.

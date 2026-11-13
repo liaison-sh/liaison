@@ -21,9 +21,18 @@
 // Each process listens on a unix socket in the pool's work dir and is started
 // with its own random key in its environment (host-worker.ts PROCESS_KEY):
 // only the supervisor, which signs every /run with it, can drive it.
+//
+// With `processUids` (the service runs as root, the compose file), each
+// process also runs as its own uid from that range, with no supplementary
+// group and no capability, in a private directory (mode 0700, its own) that
+// holds its socket and is its TMPDIR. A process that escaped V8 then cannot
+// read another process's memory or environment (its key, its runs' tokens):
+// the kernel (or gVisor) refuses /proc/<pid>/mem and /environ across uids, and
+// it cannot open another process's socket or files. A uid serves one process
+// at a time and is free again once that process has exited.
 
 import { randomBytes } from "node:crypto"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, chownSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Subprocess } from "bun"
@@ -40,6 +49,8 @@ export interface WorkerdProcess {
   readonly child: Subprocess
   /** This process's own key; the supervisor signs its /run requests with it. */
   readonly processKey: string
+  /** Its own uid (`processUids`), or undefined when processes share the service's. */
+  readonly uid?: number
   /** The one key it serves, once bound. */
   key?: string
   /** Module bundle keys already pushed to it. */
@@ -94,6 +105,7 @@ export class WorkerdPool {
   private readonly ownWorkDir: boolean
   private readonly bin: string
   private readonly sweep: ReturnType<typeof setInterval>
+  private readonly uidsInUse = new Set<number>()
 
   constructor(
     private readonly cfg: SupervisorConfig,
@@ -103,7 +115,10 @@ export class WorkerdPool {
     // Short paths: a unix socket path is capped near 100 bytes.
     this.ownWorkDir = !cfg.workDir
     this.workDir = cfg.workDir ?? mkdtempSync(join(tmpdir(), "wkd-"))
-    writeFileSync(join(this.workDir, "host.js"), hostSource)
+    writeFileSync(join(this.workDir, "host.js"), hostSource, { mode: 0o644 })
+    // Processes of other uids pass through it (to their own directory and the
+    // bridge relay's socket) and read host.js and their configs; they list nothing.
+    if (cfg.processUids) chmodSync(this.workDir, 0o711)
     const every = Math.min(5_000, Math.max(50, Math.floor(cfg.idleMs / 2)))
     this.sweep = setInterval(() => this.sweepIdle(), every)
   }
@@ -292,28 +307,67 @@ const host :Workerd.Worker = (
 `
   }
 
+  /** A uid of the range no live process holds. */
+  private takeUid(): number | undefined {
+    const range = this.cfg.processUids
+    if (!range) return undefined
+    for (let i = 0; i < range.count; i++) {
+      const uid = range.base + i
+      if (!this.uidsInUse.has(uid)) {
+        this.uidsInUse.add(uid)
+        return uid
+      }
+    }
+    throw new Error("no free sandbox process uid (raise SANDBOX_PROCESS_UID_COUNT)")
+  }
+
   async spawn(busy: boolean): Promise<WorkerdProcess> {
     if (this.stopped) throw new PoolError("stopped", "the sandbox is stopping")
     const n = ++this.seq
-    const socket = join(this.workDir, `p${n}.sock`)
+    const uid = this.takeUid()
+    // Its own directory (its uid's only) for its socket and temp files.
+    const dir = uid === undefined ? null : join(this.workDir, `p${n}`)
+    let child: Subprocess
+    let socket: string
     const file = join(this.workDir, `p${n}.capnp`)
-    writeFileSync(file, this.capnp(n, socket))
     const processKey = randomBytes(32).toString("base64url")
     const t0 = performance.now()
-    const child = Bun.spawn([this.bin, "serve", file, "--experimental"], {
-      cwd: this.workDir,
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "pipe",
-      // Nothing of the supervisor's environment: the process key only.
-      env: { SANDBOX_PROCESS_KEY: processKey },
-    })
+    try {
+      if (dir !== null && uid !== undefined) {
+        mkdirSync(dir, { mode: 0o700 })
+        chownSync(dir, uid, uid)
+        socket = join(dir, "s.sock")
+      } else {
+        socket = join(this.workDir, `p${n}.sock`)
+      }
+      writeFileSync(file, this.capnp(n, socket), { mode: 0o644 })
+      child = Bun.spawn([this.bin, "serve", file, "--experimental"], {
+        cwd: dir ?? this.workDir,
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "pipe",
+        // Nothing of the supervisor's environment: the process key (and, with
+        // its own uid, its own temp directory) only.
+        env: dir
+          ? { SANDBOX_PROCESS_KEY: processKey, TMPDIR: dir }
+          : { SANDBOX_PROCESS_KEY: processKey },
+        ...(uid !== undefined ? { uid, gid: uid } : {}),
+      })
+    } catch (e) {
+      if (uid !== undefined) this.uidsInUse.delete(uid)
+      if (dir) rmSync(dir, { recursive: true, force: true })
+      rmSync(file, { force: true })
+      throw new Error(
+        `a workerd process did not start${uid !== undefined ? ` as uid ${uid} (the service needs the SETUID, SETGID, CHOWN, KILL and DAC_OVERRIDE capabilities; SANDBOX_PROCESS_UIDS=off shares one uid)` : ""}: ${(e as Error).message}`,
+      )
+    }
     const p: WorkerdProcess = {
       n,
       socket,
       pid: child.pid,
       child,
       processKey,
+      ...(uid !== undefined ? { uid } : {}),
       pushed: new Set(),
       runs: 0,
       busy: true,
@@ -344,7 +398,10 @@ const host :Workerd.Worker = (
       try {
         rmSync(file, { force: true })
         rmSync(socket, { force: true })
+        if (dir) rmSync(dir, { recursive: true, force: true })
       } catch {}
+      // Its uid is free once nothing of it runs any more.
+      if (uid !== undefined) this.uidsInUse.delete(uid)
     })
     const until = Date.now() + START_TIMEOUT_MS
     while (Date.now() < until && !p.dead) {
@@ -373,6 +430,7 @@ const host :Workerd.Worker = (
       procs: this.procs.map((p) => ({
         n: p.n,
         pid: p.pid,
+        uid: p.uid ?? null,
         bound: p.key !== undefined,
         runs: p.runs,
         busy: p.busy,

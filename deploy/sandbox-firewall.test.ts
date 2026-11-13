@@ -47,7 +47,7 @@ if [ "$1" = compose ]; then
       shift
       for svc in "$@"; do case "$svc" in -*) ;; *) cat "$S/ps_$svc" 2>/dev/null || : ;; esac; done
       exit 0 ;;
-    exec) shift; printf '%s\\n' "$@" > "$S/exec.log"; exit 0 ;;
+    exec) shift; printf '%s\\n' "$@" >> "$S/exec.log"; exit 0 ;;
   esac
   exit 0
 fi
@@ -147,6 +147,9 @@ describe("sandbox-firewall.sh check finds the stack the way compose does", () =>
     expect(r.stdout).toContain("app processes on the sandbox network: 10.73.250.2")
     expect(exec()).toContain("APP_IPS=10.73.250.2 ")
     expect(exec()).toContain("'10.73.250.1', 22, 'blocked'")
+    // Then each workerd process's own uid, unreadable by another.
+    expect(exec()).toContain("workerd processes and their uids")
+    expect(exec()).toContain("const other = 39999")
   })
 
   it("-p and --env-file are passed to compose, and the settings come from that env file", () => {

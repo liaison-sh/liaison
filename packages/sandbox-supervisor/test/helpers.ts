@@ -5,7 +5,7 @@
 // refuses every other call, and records what it saw.
 import { createHash, randomBytes } from "node:crypto"
 import type { Server } from "bun"
-import { DEFAULTS, type SupervisorConfig } from "../src/config"
+import { DEFAULTS, readProcessUids, type SupervisorConfig } from "../src/config"
 import { createSupervisor, RUN_DEPTH_HEADER, type Supervisor } from "../src/supervisor"
 
 // The probe module, as text (the bytes the sandbox hashes and loads).
@@ -61,7 +61,15 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
     },
   })
   const bridgeOrigin = `http://127.0.0.1:${bridge.port}`
-  const sup = await createSupervisor({ ...DEFAULTS, bridgeOrigin, spares: 0, ...over })
+  // As root on Linux (the service's container), each process runs as its own uid.
+  const processUids = readProcessUids(process.env, DEFAULTS.poolSize + DEFAULTS.overflow + 8)
+  const sup = await createSupervisor({
+    ...DEFAULTS,
+    bridgeOrigin,
+    spares: 0,
+    processUids,
+    ...over,
+  })
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,

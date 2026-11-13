@@ -61,7 +61,13 @@ sudo deploy/sandbox-firewall.sh install   # rules now, and a systemd unit for ev
 deploy/sandbox-firewall.sh check          # from inside the sandbox: only the bridge port answers
 ```
 
-`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too) and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away.
+`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too), then one per workerd process (each runs as its own uid, and another uid cannot open its environment or memory), and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away.
+
+### The service checks it too
+
+The service does not take the firewall step on trust. At start, every hour, and every 30 seconds while it finds a problem, it tries to connect from its own network to every app process's main port (`SANDBOX_PROBE_APP_PORTS`, 3000), to the host on its gateway address (`SANDBOX_PROBE_GATEWAY_PORTS`: 22, 80, 443, 2375, 3000, 5432, 6379) and to the cloud metadata address. If any of them accepts, it logs an error naming them, refuses every app run with `sandbox_network_open`, and the app's `/healthz` reports `sandbox: network_open`, until a check finds them all closed again (a health check looks again at once, so `/healthz` turns `ok` as soon as the step is installed). The app container's own Docker health check ignores that one value, so the stack can start before you install the step.
+
+A development stack on a laptop, with no firewall step, may accept the risk: `LIAISON_SANDBOX_ALLOW_OPEN_NETWORK=1`. Runs then go on, and every check that finds the network open logs a warning. Never set it on a server that runs other people's apps.
 
 The script finds the stack and its settings the way `docker compose` does, so give it the same options you give compose, before the command:
 
@@ -117,6 +123,10 @@ LIAISON_SANDBOX_ALLOW_NO_GVISOR=1
 ```
 
 The service refuses to start with the first alone, and with both it logs a warning at start and every hour.
+
+## One uid per process
+
+Each workerd process runs as its own user id (from 40000; `SANDBOX_PROCESS_UID_BASE` and `SANDBOX_PROCESS_UID_COUNT`, 64, change the range), with no supplementary group and no capability, in a private directory that holds its socket and its temporary files. A run that escaped V8 in one organization's process cannot read another process's memory or environment (its key and its runs' tokens), nor open its socket. For that the service runs as root inside its container with five capabilities only (`SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `KILL`), as the compose file sets it. Started otherwise (as another user, or with `SANDBOX_PROCESS_UIDS=off`), every process shares one uid and the service warns at start and every hour.
 
 ## Risks it does not remove
 

@@ -17,7 +17,14 @@
 //                          A run whose module was never pushed answers
 //                          `bundle_missing`; the cell pushes it and runs again.
 //   GET  /health, /stats   (`/health?bridge=1` also says whether the caller's
-//                          bridge-only listener answers from here)
+//                          bridge-only listener answers from here, and answers
+//                          503 `sandbox_network_open` while the firewall
+//                          self-check finds more than that reachable)
+//
+// The firewall self-check (network-check.ts) runs at start, then every hour
+// (every 30 s while it finds the network open, and at once on a health check
+// then): while it finds an app's main port, the host or the metadata address
+// reachable from here, every /run is refused with `sandbox_network_open`.
 //
 // Every request may carry the app's release (`x-liaison-sandbox-release`,
 // release.ts). One of another release is refused (409
@@ -49,6 +56,7 @@
 // the loader itself timed out (an awaited promise that never settles) also
 // takes its process down: the isolate may still hold work.
 
+import { chmodSync } from "node:fs"
 import {
   bundleKey,
   deadlineDuration,
@@ -65,6 +73,12 @@ import {
 import { SANDBOX_CELL_ID } from "./cell"
 import type { SupervisorConfig } from "./config"
 import { hostWorkerSource } from "./host-build"
+import {
+  NETWORK_OPEN_CODE,
+  NetworkCheck,
+  type NetworkCheckOptions,
+  networkOpenMessage,
+} from "./network-check"
 import { PoolError, WorkerdPool, type WorkerdProcess } from "./pool"
 import { sampleProcess } from "./proc-meter"
 import {
@@ -109,6 +123,8 @@ export interface Supervisor {
   /** This service's release (release.ts). */
   readonly release: string
   readonly pool: WorkerdPool
+  /** The firewall self-check (network-check.ts). */
+  readonly network: NetworkCheck
   /** The last runs' records (newest last), for tests and /stats. */
   readonly recent: RunRecord[]
   stop(): Promise<void>
@@ -132,13 +148,54 @@ function hostPort(address: string, port: string): string {
   return a.includes(":") ? `[${a}]:${port}` : `${a}:${port}`
 }
 
+/** How often the firewall self-check runs while it finds the network closed, and while open. */
+export const NETWORK_RECHECK_MS = { closed: 60 * 60 * 1000, open: 30_000 }
+/** A health check re-runs the self-check at once when its last open verdict is older than this. */
+const NETWORK_HEALTH_FRESH_MS = 2_000
+
 export async function createSupervisor(
   cfg: SupervisorConfig,
-  opts: { release?: string } = {},
+  opts: {
+    release?: string
+    /** Tests: the self-check's probe and gateway. */
+    network?: Pick<NetworkCheckOptions, "accepts" | "gateway" | "timeoutMs">
+  } = {},
 ): Promise<Supervisor> {
   const release = opts.release ?? sandboxRelease()
   const pool = new WorkerdPool(cfg, await hostWorkerSource())
   const origin = new URL(cfg.bridgeOrigin)
+  const network = new NetworkCheck({
+    mode: cfg.networkCheck,
+    appPorts: cfg.probeAppPorts,
+    gatewayPorts: cfg.probeGatewayPorts,
+    appHosts: [origin.hostname],
+    ...opts.network,
+    log: (level, msg, extra) => {
+      const line = JSON.stringify({ level, msg, ...extra })
+      if (level === "info") console.log(line)
+      else console.error(line)
+    },
+  })
+  let networkTimer: ReturnType<typeof setTimeout> | undefined
+  let stopping = false
+  const scheduleNetworkCheck = () => {
+    if (stopping || network.mode === "off") return
+    if (networkTimer) clearTimeout(networkTimer)
+    const every =
+      network.verdict.state === "open" ? NETWORK_RECHECK_MS.open : NETWORK_RECHECK_MS.closed
+    networkTimer = setTimeout(() => {
+      void network.check().finally(scheduleNetworkCheck)
+    }, every)
+    networkTimer.unref?.()
+  }
+  const firstNetworkCheck = network.check().finally(scheduleNetworkCheck)
+  /** A caller seen for the first time: its main port joins the self-check. */
+  const noteCaller = (caller: string | null) => {
+    if (!caller) return
+    const host = caller.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "")
+    if (host === "127.0.0.1" || host === "::1") return
+    if (network.noteAppHost(host)) void network.check()
+  }
   const bridgePort = origin.port || "80"
   const fallbackTarget = cfg.bridgeAddress ?? `${origin.hostname}:${bridgePort}`
   /**
@@ -180,6 +237,8 @@ export async function createSupervisor(
       }
     },
   })
+  // Processes of their own uids connect to the relay too.
+  if (cfg.processUids) chmodSync(relaySocket, 0o666)
   pool.bridgeTarget = `unix:${relaySocket}`
   const modules = new Map<string, Uint8Array>()
   let moduleBytes = 0
@@ -227,6 +286,13 @@ export async function createSupervisor(
   }
 
   async function run(req: Request, caller: string | null): Promise<Response> {
+    noteCaller(caller)
+    await firstNetworkCheck
+    if (network.refusing && network.verdict.state === "open") {
+      return fail(503, "loader_internal", networkOpenMessage(network.verdict.reachable), {
+        code: NETWORK_OPEN_CODE,
+      })
+    }
     const raw = new Uint8Array(await req.arrayBuffer())
     let body: RunBody
     try {
@@ -452,13 +518,40 @@ export async function createSupervisor(
       )
     }
     if (new URL(req.url).searchParams.get("bridge") === "1") {
+      noteCaller(caller)
+      await firstNetworkCheck
+      // Open lately: look again now, so the firewall step shows at once.
+      const v = network.verdict
+      const recheck =
+        network.refusing && v.state === "open" && now - v.checkedAt > NETWORK_HEALTH_FRESH_MS
+      const [bridgeOk] = await Promise.all([
+        bridgeReachable(caller),
+        recheck ? network.check().then(scheduleNetworkCheck) : Promise.resolve(),
+      ])
+      const after = network.verdict
+      if (network.refusing && after.state === "open") {
+        return Response.json(
+          {
+            ok: false,
+            release,
+            code: NETWORK_OPEN_CODE,
+            message: networkOpenMessage(after.reachable),
+            reachable: after.reachable,
+          },
+          { status: 503 },
+        )
+      }
       return Response.json({
         ok: true,
         release,
-        bridge: (await bridgeReachable(caller)) ? "ok" : "unreachable",
+        bridge: bridgeOk ? "ok" : "unreachable",
+        network: after.state,
       })
     }
-    return Response.json({ ok: true, release })
+    // The container's own health: alive and of the callers' release. The
+    // firewall verdict is the app's to report (its /healthz), so a stack can
+    // start before its firewall step is installed.
+    return Response.json({ ok: true, release, network: network.verdict.state })
   }
 
   async function handle(req: Request, server?: CallerInfo): Promise<Response> {
@@ -472,6 +565,8 @@ export async function createSupervisor(
         workerd: pinnedWorkerdVersion(),
         release,
         modules: modules.size,
+        network: network.verdict,
+        processUids: cfg.processUids,
         pool: pool.stats(),
         recent: recent.slice(-20),
       })
@@ -486,6 +581,7 @@ export async function createSupervisor(
 
   return {
     pool,
+    network,
     recent,
     release,
     async fetch(req, server) {
@@ -497,6 +593,8 @@ export async function createSupervisor(
       }
     },
     async stop() {
+      stopping = true
+      if (networkTimer) clearTimeout(networkTimer)
       relay.stop(true)
       await pool.stop()
     },

@@ -24,3 +24,12 @@ Fail-closed rules on the bridge (app -> :8790, service -> bridge port, else drop
 apply/check stop when live subnet or service address differ -> deploy/sandbox-firewall.sh same_network ; deploy/sandbox-firewall.sh check
 Defaults 10.73.250.0/24 and 10.73.250.10, ranges avoided -> deploy/docker-compose.yml networks sandbox ; deploy/sandbox-firewall.test.ts
 Docker recreates the network on a subnet change; pin old 172.31.250.0/24 to keep it -> deploy/docker-compose.yml networks sandbox
+The service checks the firewall itself: targets, schedule, refusal -> packages/sandbox-supervisor/src/network-check.ts (NetworkCheck) ; packages/sandbox-supervisor/src/supervisor.ts (NETWORK_RECHECK_MS)
+Runs refused with sandbox_network_open, health 503 on bridge=1 -> packages/sandbox-supervisor/src/supervisor.ts (run) ; packages/sandbox-supervisor/src/network-check.ts (NETWORK_OPEN_CODE)
+/healthz reports sandbox: network_open -> apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)
+App container health check ignores network_open -> deploy/docker-compose.yml (app healthcheck)
+LIAISON_SANDBOX_ALLOW_OPEN_NETWORK=1 accepts an open network, warns -> packages/sandbox-supervisor/src/network-check.ts (networkCheckMode) ; deploy/docker-compose.yml (SANDBOX_ALLOW_OPEN_NETWORK)
+One uid per workerd process, private directory, range 40000 + 64 -> packages/sandbox-supervisor/src/pool.ts (takeUid) ; packages/sandbox-supervisor/src/config.ts (readProcessUids)
+Root with SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL -> deploy/docker-compose.yml (sandbox cap_add)
+Warning when processes share one uid -> packages/sandbox-supervisor/src/main.ts (processUids)
+check probes each workerd uid -> deploy/sandbox-firewall.sh (check)

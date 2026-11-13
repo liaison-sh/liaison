@@ -10,11 +10,15 @@
 //   probeSandbox    the `sandbox` dependency of /healthz (only when the
 //                   service is configured): ok (same release, and the service
 //                   reaches this process's bridge-only listener),
-//                   release_mismatch, bridge_unreachable, error or timeout
+//                   release_mismatch, bridge_unreachable, network_open (the
+//                   service reaches more than the bridge port: the host
+//                   firewall step is missing, and every run is refused),
+//                   error or timeout
 //   checkSandboxAtBoot  one probe at start; a mismatch or an unreachable
 //                   service is logged as an error, naming the fix
 
 import {
+  NETWORK_OPEN_CODE,
   RELEASE_HEADER,
   RELEASE_MISMATCH_CODE,
   releaseMismatchMessage,
@@ -37,7 +41,13 @@ export function appSandboxRelease(): string {
  * bridge-only listener; bridge_unreachable: it cannot call this process back
  * (the process is not on the sandbox network, or the firewall drops it).
  */
-export type SandboxProbe = "ok" | "release_mismatch" | "bridge_unreachable" | "error" | "timeout"
+export type SandboxProbe =
+  | "ok"
+  | "release_mismatch"
+  | "bridge_unreachable"
+  | "network_open"
+  | "error"
+  | "timeout"
 
 /** Ask the sandbox service's /health with this release. Null when no service is configured. */
 export async function probeSandbox(
@@ -67,6 +77,12 @@ export async function probeSandbox(
           body?.error?.message ?? body?.message ?? releaseMismatchMessage("?", appSandboxRelease()),
       }
     }
+    if (code === NETWORK_OPEN_CODE) {
+      return {
+        status: "network_open",
+        message: body?.error?.message ?? body?.message ?? "the sandbox network is open",
+      }
+    }
     if (res.ok && body?.ok === true && body.bridge === "unreachable") {
       return {
         status: "bridge_unreachable",
@@ -89,6 +105,11 @@ export async function checkSandboxAtBoot(): Promise<void> {
   if (!r) return
   if (r.status === "ok") {
     log.info({ release: appSandboxRelease() }, "Sandbox service answers with this release")
+  } else if (r.status === "network_open") {
+    log.error(
+      { detail: r.message },
+      "Sandbox service reaches more than the bridge port (no host firewall step); app runs on it are refused until it is installed",
+    )
   } else if (r.status === "release_mismatch") {
     log.error(
       { release: appSandboxRelease(), detail: r.message },

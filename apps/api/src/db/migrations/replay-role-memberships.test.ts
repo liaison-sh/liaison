@@ -14,6 +14,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 import {
   keepClusterRoleMemberships,
   listRoleMemberships,
@@ -92,7 +93,9 @@ describe("replaying migrations on a shared cluster", () => {
     restore = keep
 
     await admin.unsafe(`CREATE DATABASE "${dbName}"`)
-    await runMigrations(scratchUrl.toString(), { log: () => {}, migrationsFolder: folder })
+    await withRoleCatalogLock(scratchUrl, () =>
+      runMigrations(scratchUrl.toString(), { log: () => {}, migrationsFolder: folder }),
+    )
     // The replay ran on a scratch database, and still reached the shared role.
     expect(await holdsExtra()).toBe(false)
 

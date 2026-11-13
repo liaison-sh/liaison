@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import {
@@ -46,6 +46,21 @@ function stagingCount(): number {
 }
 
 describe("verifyAppPackage", () => {
+  // A private temp root: staging dirs are counted by name, so another test file or shard
+  // creating `liaison-app-*` dirs in the machine-wide tmpdir would change the count.
+  let originalTmpdir: string | undefined
+  let privateRoot = ""
+  beforeEach(() => {
+    originalTmpdir = process.env.TMPDIR
+    privateRoot = mkdtempSync(join(tmpdir(), "verify-pkg-"))
+    process.env.TMPDIR = privateRoot
+  })
+  afterEach(() => {
+    if (originalTmpdir === undefined) delete process.env.TMPDIR
+    else process.env.TMPDIR = originalTmpdir
+    rmSync(privateRoot, { recursive: true, force: true })
+  })
+
   it("returns sha256 + manifest for a valid tarball when signature check is disabled", async () => {
     const work = mkdtempSync(join(tmpdir(), "verify-"))
     try {

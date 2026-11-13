@@ -291,5 +291,46 @@
       "description": "Les groupes et leurs valeurs. Faites glisser pour réordonner dans un groupe ; une valeur ne peut pas changer de groupe."
     }
   },
-  "taskNotFound": "Tâche introuvable"
+  "taskNotFound": "Tâche introuvable",
+  "fields": {
+    "title": "Champs",
+    "notSet": "Non renseigné",
+    "edit": "Modifier {{field}}",
+    "requiredError": "Ce champ est obligatoire.",
+    "numberError": "Saisissez un nombre.",
+    "manage": "Champs",
+    "managerTitle": "Champs des tâches",
+    "managerHint": "Des valeurs typées que porte chaque tâche de ce projet. Un champ retiré garde les valeurs des tâches ; le rajouter les restaure.",
+    "none": "Aucun champ pour l'instant.",
+    "add": "Ajouter un champ",
+    "label": "Libellé",
+    "type": "Type",
+    "required": "Obligatoire",
+    "options": "Options",
+    "newOption": "Nouvelle option",
+    "addOption": "Ajouter l'option",
+    "removeOption": "Retirer l'option {{option}}",
+    "currency": "Devise",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "remove": "Retirer",
+    "save": "Enregistrer les champs",
+    "saved": "Champs enregistrés.",
+    "unsaved": "Modifications non enregistrées.",
+    "errorChoiceInUse": "Des tâches utilisent encore {{options}} dans « {{field}} ». Gardez l'option, ou renommez-la en une option conservée.",
+    "errorTypeInUse": "{{count}} tâche(s) ont dans « {{field}} » des valeurs qui ne correspondent pas à son nouveau type. Videz-les d'abord, ou gardez le type.",
+    "errorInvalid": "Ces champs ne sont pas valides : {{message}}",
+    "errorGeneric": "Impossible d'enregistrer les champs."
+  },
+  "statusHistory": {
+    "since": "En {{status}} · {{time}}",
+    "title": "Historique des statuts",
+    "empty": "Aucun changement de statut pour l'instant.",
+    "created": "Créée en {{status}}",
+    "moved": "{{from}} → {{to}}",
+    "unknownStatus": "un statut supprimé",
+    "byAgent": "un agent",
+    "byRoutine": "une routine",
+    "bySystem": "Liaison"
+  }
 }

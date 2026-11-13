@@ -68,7 +68,13 @@ import {
   type WhereClause,
   withSourceValue,
 } from "~/modules/dashboards/spec"
-import { loadTable, readAllRows, rowsOf, TableError } from "~/modules/dashboards/tables/service"
+import {
+  allColumns,
+  loadTable,
+  readAllRows,
+  rowsOf,
+  TableError,
+} from "~/modules/dashboards/tables/service"
 import {
   type BlockData,
   extractRows,
@@ -254,8 +260,9 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
         max: MAX_SOURCE_ROWS,
       })
       const rows = await rowsOf(tx, viewer, loaded, docs)
+      const columns = allColumns(loaded)
       const people = new Set<string>()
-      for (const col of loaded.columns) {
+      for (const col of columns) {
         if (col.type !== "person") continue
         for (const r of rows)
           if (typeof r.cells[col.key] === "string") people.add(r.cells[col.key] as string)
@@ -272,7 +279,7 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
         : new Map<string, string>()
       const flat = rows.map((r) => {
         const out: Record<string, unknown> = {}
-        for (const col of loaded.columns) {
+        for (const col of columns) {
           const v = r.cells[col.key]
           if (v === undefined) continue
           if (col.type === "link" && v && typeof v === "object") {

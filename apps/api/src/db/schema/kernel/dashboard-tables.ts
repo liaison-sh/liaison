@@ -37,6 +37,8 @@ export const dashboardTables = kernel.table(
       .$type<Record<string, unknown>[]>()
       .notNull()
       .default([]),
+    /** A project's tasks as the rows (migration 0304, tables/backing.ts); null = a plain table. */
+    backing: jsonb("backing").$type<Record<string, unknown> | null>(),
     agentWritesNeedApproval: boolean("agent_writes_need_approval").notNull().default(false),
     orgAccess: text("org_access").$type<DashboardOrgAccess>().notNull().default("none"),
     aclUserIds: jsonb("acl_user_ids").$type<string[]>().notNull().default([]),

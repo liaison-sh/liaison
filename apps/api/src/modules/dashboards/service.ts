@@ -1516,7 +1516,7 @@ async function readSourceCached(
   // A table's cached read keys on its generation and version, read under the viewer's RLS first
   // (A8): a row write, a column change or a sharing change is a new key at its commit, and a
   // reader who lost access gets no cached rows (the stamp itself is unreadable to them).
-  let stamp: { generation: number; version: number } | null = null
+  let stamp: Awaited<ReturnType<typeof tableStamp>> = null
   if (source.kind === "table") {
     stamp = await tableStamp(viewer, source.table)
     if (!stamp) {

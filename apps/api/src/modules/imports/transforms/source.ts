@@ -29,7 +29,9 @@ export class TransformSourceError extends Error {
  * The source with comments and string/template literal contents blanked out
  * (same length), so a keyword check never trips on text inside them.
  */
-function codeOnly(src: string): string {
+function codeOnly(source: string): string {
+  // Every JavaScript line terminator ends a line comment and a line: read them all as \n.
+  const src = source.replace(/[\r\u2028\u2029]/g, "\n")
   let out = ""
   let i = 0
   const n = src.length
@@ -81,11 +83,12 @@ function codeOnly(src: string): string {
   return out
 }
 
-const IMPORT_STATEMENT_RE = /(^|[;{}\n])\s*import\s*(?:[\w${}*\s,]+\s+from\s*)?["'`]/
+// A line ends at CR, LS and PS too (JavaScript line terminators).
+const IMPORT_STATEMENT_RE = /(^|[;{}\n\r\u2028\u2029])\s*import\s*(?:[\w${}*\s,]+\s+from\s*)?["'`]/
 const IMPORT_CALL_RE = /(^|[^\w$.])import\s*\(/
 const IMPORT_META_RE = /(^|[^\w$.])import\s*\.\s*meta\b/
 const EXPORT_RE =
-  /(^|[;{}\n])\s*export\s+(default\b|function\b|async\b|const\b|let\b|var\b|class\b|\{|\*)/
+  /(^|[;{}\n\r\u2028\u2029])\s*export\s+(default\b|function\b|async\b|const\b|let\b|var\b|class\b|\{|\*)/
 const REQUIRE_RE = /(^|[^\w$.])require\s*\(/
 
 const NO_MODULES =

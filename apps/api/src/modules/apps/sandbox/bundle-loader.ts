@@ -17,8 +17,9 @@
  */
 
 import { existsSync, readdirSync, statSync } from "node:fs"
-import { basename, dirname, join } from "node:path"
+import { basename, dirname, join, resolve, sep } from "node:path"
 import { CORE_MODULE_SOURCE, isCoreModulePath } from "~/modules/apps/core/registry"
+import { getInstallRoot } from "~/modules/apps/discover-apps"
 
 const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" })
 const cache = new Map<string, string>()
@@ -47,6 +48,13 @@ const STABLE_READ_ATTEMPTS = 3
 
 // bundle-loader.ts → liaison repo root (apps/api/src/modules/apps/sandbox → up 6).
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
+
+/** A path inside the repo's source tree and outside the install root. */
+function inRepoSource(path: string): boolean {
+  const p = resolve(path)
+  const inside = (dir: string) => p.startsWith(resolve(dir) + sep)
+  return inside(REPO_ROOT) && !inside(getInstallRoot())
+}
 
 function sourceChannelEnabled(): boolean {
   const v = process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE
@@ -216,6 +224,15 @@ async function loadBundleUnwrapped(bundlePath: string): Promise<string> {
   // the Bun.build ESM `export {...}` block into globalThis assignments so
   // the QuickJS sandbox's script-mode `evalCode` can resolve the named
   // exports as globals (the executor reads them via `ctx.getProp(ctx.global, exportName)`).
+  // Only the repo's own TypeScript (fixtures, in-tree apps) is transpiled here:
+  // Bun runs a macro import while it parses, in this process. An installed
+  // package's bundle is plain JS and is never handed to Bun.
+  if (!bundlePath.endsWith(".js") && !inRepoSource(bundlePath)) {
+    throw new BundleLoadError(
+      bundlePath,
+      new Error("only a .js handler bundle loads from outside the repo"),
+    )
+  }
   const code = esmExportsToGlobalThis(
     bundlePath.endsWith(".js") ? source : transpiler.transformSync(source),
   )

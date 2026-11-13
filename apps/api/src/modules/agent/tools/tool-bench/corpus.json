@@ -3292,6 +3292,24 @@
     "modelRun": true
   },
   {
+    "id": "C93",
+    "set": "seed",
+    "lang": "en",
+    "say": "show me the saved reconcile for Atlas from last month",
+    "typed": ["saved reconcile", "open reconcile card", "reconcile for client last month"],
+    "any": ["projects__reconcile_get"],
+    "modelRun": true
+  },
+  {
+    "id": "C94",
+    "set": "seed",
+    "lang": "fr",
+    "say": "sur le rapprochement d'Atlas du mois dernier, mets l'export de données à 3,5 jours",
+    "typed": ["corriger ligne rapprochement", "modifier ligne carte", "change reconcile line"],
+    "any": ["projects__reconcile_line_update"],
+    "modelRun": true
+  },
+  {
     "id": "C34",
     "set": "seed",
     "lang": "en",

@@ -12,6 +12,7 @@ import {
   type CorpusLine,
   catalogBars,
   corpusShapeErrors,
+  distinctForms,
   type FormRun,
   type LintInput,
   lint,
@@ -24,6 +25,7 @@ import {
   updatedBaseline,
 } from "./bench"
 import { type BenchTool, loadBenchCatalog, searchableTools } from "./catalog"
+import { calibrationMs, cpuMs, withinCpuBudget } from "./cpu-budget"
 import { readBenchFiles, runBench } from "./run"
 
 const started = performance.now()
@@ -99,24 +101,42 @@ describe("each typed form against the baseline", () => {
   })
 
   // The bench stays cheap enough to run on every change. Its cost is one ranking of the searchable
-  // catalog per typed form, so the bound is on that work: the number of tool scorings, and the CPU
-  // time the ranking itself takes. Wall clock is only printed: a loaded CI runner stretches it with
-  // no change here. Today: 658 forms, about 0.46 M scorings and under 1 s of CPU. The counter is
-  // the whole process's, so this file runs in a process of its own (test-unit-parallel.ts).
+  // catalog per distinct typed form, so the work bound counts those scorings (a form two lines
+  // type is ranked once). The CPU bound is a ratio to a fixed workload measured in this process,
+  // so a slow or loaded runner does not fail it (cpu-budget.ts). Wall clock is only printed: a
+  // loaded CI runner stretches it with no change here. Today: 665 distinct forms, about 0.47 M
+  // scorings. The counter is the whole process's, so this file runs in a process of its own
+  // (test-unit-parallel.ts).
   it("ranks within its budget of tool scorings and CPU time", () => {
-    const scorings =
-      files.corpus.reduce((n, l) => n + l.typed.length, 0) * searchableTools(catalog).length
+    const scorings = distinctForms(files.corpus).length * searchableTools(catalog).length
+    const workloadBefore = calibrationMs()
     const cpuBefore = process.cpuUsage()
     runForms(catalog, files.corpus)
-    const cpu = process.cpuUsage(cpuBefore)
-    const rankingCpuMs = (cpu.user + cpu.system) / 1000
+    const rankingCpuMs = cpuMs(cpuBefore)
+    const workloadMs = Math.max(workloadBefore, calibrationMs())
     const report = runBench(files, catalog)
     const ms = performance.now() - started
     console.log(
-      `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU, ${scorings} scorings\n${report.lines.join("\n")}`,
+      `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU (${Math.round(workloadMs)} ms workload), ${scorings} scorings\n${report.lines.join("\n")}`,
     )
     expect(scorings).toBeLessThan(500_000)
-    expect(rankingCpuMs).toBeLessThan(5_000)
+    expect(withinCpuBudget(rankingCpuMs, workloadMs)).toBe(true)
+  })
+
+  it("scales the CPU bound to the machine and still catches a slower ranker", () => {
+    // The flaked run: 6.2 s of ranking on a loaded runner, whose workload took about 0.4 s.
+    expect(withinCpuBudget(6_200, 400)).toBe(true)
+    // The same 6.2 s on a machine whose workload took 0.09 s is a ranker gone slow.
+    expect(withinCpuBudget(6_200, 50)).toBe(false)
+  })
+
+  it("ranks a form two lines type once and reads it the same for both", () => {
+    const a = line("X1", ["find invoice", "send mail"], ["invoicing__invoice_search"])
+    const b = line("X2", ["find invoice"], ["invoicing__invoice_search", "mail__mail_search"])
+    expect(distinctForms([a, b])).toEqual(["find invoice", "send mail"])
+    const both = runForms(catalog, [a, b])
+    const alone = runForms(catalog, [b])
+    expect(both.find((r) => r.key === "X2|find invoice")?.result).toEqual(alone[0]?.result)
   })
 })
 

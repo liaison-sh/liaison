@@ -134,6 +134,9 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // are web-unit, and the bundled-app UIs that run in it are playwright.
   { glob: "apps/web/src/app-frame/**", suites: ["web-unit", "playwright"] },
   { glob: "apps/web/src/ui/**", suites: ["web-unit", "playwright"] },
+  // The global stylesheet and the style tests beside it shape every screen.
+  { glob: "apps/web/src/index.css", suites: ["web-unit", "playwright"] },
+  { glob: "apps/web/src/styles/**", suites: ["web-unit", "playwright"] },
   { glob: "apps/web/src/tests/e2e/**", suites: ["playwright"] },
   { glob: "apps/web/src/lib/**", suites: ["web-unit", "playwright"] },
   // The socket and other shared reactive primitives: the blip and live-order
@@ -251,6 +254,10 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/scripts/**", suites: ["api-guards"] },
   // The French table feeds the fr dictionaries; its parity test is in shared.
   { glob: "scripts/i18n-*.ts", suites: ["shared"] },
+  // The per-feature French string files are read by the same parity test.
+  { glob: "scripts/i18n-fr/**", suites: ["shared"] },
+  // Which CI jobs a pull request needs: its pure tests run in guards.
+  { glob: "scripts/ci-scope*.ts", suites: ["guards"] },
   { glob: "docker-compose.yml", suites: ["root"] },
   { glob: "deploy/**", suites: ["root"] },
   // The deploy and load-test tooling and their repo-root tests (compose file

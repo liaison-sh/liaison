@@ -112,18 +112,24 @@ export function appNamesOf(catalog: readonly BenchTool[]): Set<string> {
   return apps
 }
 
-export function rankForm(
+/** What the ranker returned for one typed form: independent of the tools a corpus line wants. */
+export type Ranking = ReturnType<typeof rankDeferredTools>
+
+export function rankFormOnce(
   searchable: readonly BenchTool[],
   appNames: Set<string>,
   form: string,
+  meaning?: ToolMeaning | null,
+): Ranking {
+  return rankDeferredTools(searchable, form, { cap: TOP, appNames, meaning })
+}
+
+/** Read a ranking against the tools a line wants. Cheap: no scoring. */
+export function judgeRanking(
+  { ranked, all, strongNames }: Ranking,
   want: readonly string[],
   meaning?: ToolMeaning | null,
 ): FormResult {
-  const { ranked, all, strongNames } = rankDeferredTools(searchable, form, {
-    cap: TOP,
-    appNames,
-    meaning,
-  })
   const at = all.findIndex((s) => want.includes(s.tool.sdkName))
   const hit = all[at]
   // A tool tied at the cut takes the last tied place, so registration order
@@ -144,6 +150,21 @@ export function rankForm(
     zeroHit: all.length === 0,
     above,
   }
+}
+
+export function rankForm(
+  searchable: readonly BenchTool[],
+  appNames: Set<string>,
+  form: string,
+  want: readonly string[],
+  meaning?: ToolMeaning | null,
+): FormResult {
+  return judgeRanking(rankFormOnce(searchable, appNames, form, meaning), want, meaning)
+}
+
+/** The typed forms of a corpus, each once: the ranker's real work, however many lines type it. */
+export function distinctForms(corpus: readonly CorpusLine[]): string[] {
+  return [...new Set(corpus.flatMap((l) => l.typed))]
 }
 
 /** A form's result as the baseline stores it: "1" top 1, "5" top 5, "t" top 5 with ties, "l" loaded, "0" zero hit. */
@@ -168,6 +189,16 @@ export function runForms(catalog: readonly BenchTool[], corpus: readonly CorpusL
   const held = new Set(
     catalog.filter((t) => t.agentVisible && !t.deferred && !t.routineOnly).map((t) => t.sdkName),
   )
+  // A form two lines type ranks the same for both: rank it once, read it against each line.
+  const rankings = new Map<string, Ranking>()
+  const rankingOf = (form: string) => {
+    let r = rankings.get(form)
+    if (!r) {
+      r = rankFormOnce(searchable, appNames, form)
+      rankings.set(form, r)
+    }
+    return r
+  }
   return corpus.flatMap((line) =>
     line.typed.map((form) => ({
       key: formKey(line, form),
@@ -175,7 +206,7 @@ export function runForms(catalog: readonly BenchTool[], corpus: readonly CorpusL
       form,
       result: line.any.some((n) => held.has(n))
         ? { top1: true, top5: true, top5Ties: true, loaded: true, zeroHit: false, above: [] }
-        : rankForm(searchable, appNames, form, line.any),
+        : judgeRanking(rankingOf(form), line.any),
     })),
   )
 }

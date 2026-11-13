@@ -149,6 +149,48 @@ afterAll(async () => {
   await releaseTestLock()
 })
 
+/** The first argument of every tool call in a source: direct, optional (`?.(`), any
+ *  `executeTool*` variant, and by bracket access (`ctx["executeTool"](`). */
+function toolCallArgs(text: string): string[] {
+  const forms = [
+    /\b(?:executeTool\w*|callTool)\s*(?:\?\.)?\s*\(\s*([^,)]*)/g,
+    /\[\s*["'`](?:executeTool\w*|callTool)["'`]\s*\]\s*(?:\?\.)?\s*\(\s*([^,)]*)/g,
+  ]
+  return forms.flatMap((re) => [...text.matchAll(re)].map((m) => m[1]!.trim()))
+}
+
+/** Does a source import the kernel's tool dispatcher, statically or dynamically? */
+function importsExecuteTool(text: string): boolean {
+  return /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["'`][^"'`]*modules\/apps\/execute-tool(?:\.ts)?["'`]/.test(
+    text,
+  )
+}
+
+describe("the tool-call guard", () => {
+  it("catches each way of calling another app's tool", () => {
+    const forms = [
+      'ctx.executeTool("calendar:list_events", "{}")',
+      'ctx.executeTool?.("calendar:list_events", "{}")',
+      'ctx.executeTool ?.("calendar:list_events", "{}")',
+      'ctx["executeTool"]("calendar:list_events", "{}")',
+      "ctx['executeTool']?.(\"calendar:list_events\", \"{}\")",
+      'executeToolCore({ toolName: "calendar:list_events" })',
+      'ctx.callTool("calendar:list_events")',
+    ]
+    for (const form of forms) expect(toolCallArgs(form)).toHaveLength(1)
+    expect(toolCallArgs("executeTool: (name: string) => Promise<string>")).toEqual([])
+    for (const form of [
+      'import { executeToolCore } from "~/modules/apps/execute-tool"',
+      'const { executeTool } = await import("~/modules/apps/execute-tool")',
+      'import type { X } from "../../modules/apps/execute-tool.ts"',
+    ])
+      expect(importsExecuteTool(form)).toBe(true)
+    expect(importsExecuteTool('import { x } from "~/modules/apps/execute-tool-helpers"')).toBe(
+      false,
+    )
+  })
+})
+
 describe("what a reconcile reads through", () => {
   it("the projects app declares no cross-app call into a trace app and reconcile code reads nothing privileged", () => {
     const calls = JSON.stringify(
@@ -184,10 +226,9 @@ describe("what a reconcile reads through", () => {
     const toolCalls: string[] = []
     for (const f of sources) {
       const text = readFileSync(f, "utf8")
-      for (const m of text.matchAll(/\b(?:executeTool|callTool)\s*\(\s*([^,)]*)/g)) {
-        toolCalls.push(`${f.slice(SRC.length + 1)}: ${m[1]!.trim()}`)
-      }
+      for (const arg of toolCallArgs(text)) toolCalls.push(`${f.slice(SRC.length + 1)}: ${arg}`)
       expect(text).not.toMatch(/\bctx\.call\s*\(/)
+      if (f.includes("/apps/projects/")) expect(importsExecuteTool(text)).toBe(false)
     }
     expect(toolCalls).toEqual(['apps/projects/handlers.ts: "invoicing:project_invoiced_get"'])
     // The bridge methods of the two tools call the service alone.

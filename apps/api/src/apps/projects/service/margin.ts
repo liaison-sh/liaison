@@ -138,6 +138,8 @@ export interface MarginCost {
   currency: string | null
   /** The currencies the costed time is in (its rates', or a frozen cost's); empty when none says. */
   costCurrencies: string[]
+  /** Some costed time comes from a rate, or a frozen cost, with no currency. */
+  costUnlabelled: boolean
 }
 
 export async function getMarginCost(args: {
@@ -159,13 +161,16 @@ export async function getMarginCost(args: {
     cost: string | number
     without: string | number
     currencies: string[] | string | null
+    unlabelled: boolean | null
   }>(
     await tx.execute(drizzleSql`
       SELECT ${projectsRel("project_time_cost")}(${projectId}::uuid, ${from}, ${to}) AS cost,
              ${projectsRel("project_time_minutes_without_rate")}(${projectId}::uuid, ${from}, ${to})
                AS without,
              ${projectsRel("project_time_cost_currencies")}(${projectId}::uuid, ${from}, ${to})
-               AS currencies`),
+               AS currencies,
+             ${projectsRel("project_time_cost_unlabelled")}(${projectId}::uuid, ${from}, ${to})
+               AS unlabelled`),
   )[0]
   const totals = extractRows<{ task_id: string; minutes: string | number; has_entries: boolean }>(
     await tx.execute(drizzleSql`
@@ -194,6 +199,7 @@ export async function getMarginCost(args: {
     coverage,
     currency: terms?.currency ?? null,
     costCurrencies: textArray(cost?.currencies),
+    costUnlabelled: cost?.unlabelled === true,
   }
 }
 
@@ -275,9 +281,10 @@ export function composeMargin(cost: MarginCost, invoiced: InvoicedRead): MarginR
   const used = [
     ...new Set([...cost.costCurrencies, ...(invoiced.currency ? [invoiced.currency] : [])]),
   ]
-  if (used.length > 1) {
+  // Time at a rate with no currency beside time at one with a currency: two units, one sum.
+  if (used.length > 1 || (cost.costUnlabelled && cost.costCurrencies.length > 0)) {
     return mixedCurrencies(
-      used,
+      cost.costUnlabelled ? [...used, "time at a rate with no currency"] : used,
       `${cost.projectName}'s margin`,
       "cost_rates_list shows each rate's currency; set the odd one again in the invoices' currency with cost_rate_set.",
     )
@@ -423,6 +430,23 @@ export async function setCostRate(args: {
     })
   }
   const currency = parseCurrency(input.currency) ?? null
+  if (currency === null) {
+    // A new rate needs its currency; a rate already set on that day keeps its own.
+    const kept = extractRows<{ currency: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT currency FROM ${projectsRel("cost_rates")}
+         WHERE org_id = ${orgId}::uuid AND user_id = ${userId}::uuid
+           AND effective_from = ${from}::date`),
+    )[0]
+    if (!kept?.currency) {
+      throw new ProjectsServiceError(
+        400,
+        "currency_required",
+        "Nothing changed: a cost rate needs its currency.",
+        { next: "Call again with currency, an ISO 4217 code like EUR." },
+      )
+    }
+  }
   const row = extractRows<Parameters<typeof toRow>[0]>(
     await tx.execute(drizzleSql`
       INSERT INTO ${projectsRel("cost_rates")} (org_id, user_id, rate_minor, currency, effective_from)

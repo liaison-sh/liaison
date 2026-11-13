@@ -230,7 +230,12 @@ beforeAll(async () => {
   // Four people's rates, from the start of the year.
   const rates = [60, 48, 62, 55]
   for (const [i, p] of people.entries()) {
-    const set = await run(costRateSet, { userId: p.userId, rate: rates[i], from: "2026-01-01" })
+    const set = await run(costRateSet, {
+      userId: p.userId,
+      rate: rates[i],
+      from: "2026-01-01",
+      currency: "EUR",
+    })
     expect((set as { error?: unknown }).error).toBeUndefined()
   }
 
@@ -361,7 +366,12 @@ describe("cost rates", () => {
     ])
     const before = await run(marginGet, { projectId })
     expect(before.cost).toBe(220)
-    const set = await run(costRateSet, { userId: sofia, rate: 70, from: "2026-10-01" })
+    const set = await run(costRateSet, {
+      userId: sofia,
+      rate: 70,
+      from: "2026-10-01",
+      currency: "EUR",
+    })
     expect(set.from).toBe("2026-10-01")
     expect(set.rate).toBe(70)
     expect(set.message).toContain("Hours before 2026-10-01 keep the rate they had.")
@@ -433,6 +443,118 @@ describe("currencies", () => {
     expect(out.error.code).toBe("mixed_currencies")
     expect(out.error.message).toContain("EUR and USD")
     expect(JSON.stringify(out)).not.toMatch(/"cost"|"margin"/)
+  })
+
+  it("time at a rate with no currency beside a USD rate is refused on a USD-invoiced project", async () => {
+    const projectId = await newProject("Mixed labels")
+    const task = await newTask(projectId, "Build")
+    const [unlabelled, inDollars] = [
+      await minimal.session(orgId, { role: "member" }),
+      await minimal.session(orgId, { role: "member" }),
+    ]
+    // A rate written before a currency was required.
+    await db.execute(drizzleSql`
+      INSERT INTO app_projects.cost_rates (org_id, user_id, rate_minor, currency, effective_from)
+      VALUES (${orgId}::uuid, ${unlabelled!.userId}::uuid, 5000, NULL, '2026-01-01')`)
+    expect(
+      (
+        await run(costRateSet, {
+          userId: inDollars!.userId,
+          rate: 80,
+          from: "2026-01-01",
+          currency: "USD",
+        })
+      ).error,
+    ).toBeUndefined()
+    for (const p of [unlabelled!, inDollars!])
+      await enter(p.userId, [{ projectId, taskId: task, minutes: hours(2), date: "2026-06-02" }])
+    const out = await run(marginGet, { projectId }, invoicedAs("USD", 1))
+    expect(out.error.code).toBe("mixed_currencies")
+    expect(out.error.message).toContain("no currency")
+    expect(JSON.stringify(out)).not.toMatch(/"cost"|"margin"/)
+  })
+
+  it("a new rate needs its currency, and a rate already set on that day keeps its own", async () => {
+    const someone = await minimal.session(orgId, { role: "member" })
+    const missing = await run(costRateSet, { userId: someone.userId, rate: 60, from: "2026-03-01" })
+    expect(missing.error.code).toBe("currency_required")
+    expect(missing.error.details.next).toContain("currency")
+    const list = await run(costRatesList, {})
+    expect(list.rates.some((r: { userId: string }) => r.userId === someone.userId)).toBe(false)
+    await run(costRateSet, { userId: someone.userId, rate: 60, from: "2026-03-01", currency: "GBP" })
+    const again = await run(costRateSet, { userId: someone.userId, rate: 65, from: "2026-03-01" })
+    expect(again.error).toBeUndefined()
+    expect(again.currency).toBe("GBP")
+  })
+
+  it("stored currencies are trimmed and upper-cased, and one that is not ISO 4217 is cleared", async () => {
+    const odd = await newProject("Odd price")
+    const spaced = await newProject("Spaced price")
+    await call("projects_billingTermsSet", { projectId: odd, fixedPrice: 1000, currency: "EUR" })
+    await call("projects_billingTermsSet", { projectId: spaced, fixedPrice: 1000, currency: "EUR" })
+    const someone = await minimal.session(orgId, { role: "member" })
+    await run(costRateSet, { userId: someone.userId, rate: 60, from: "2026-02-01", currency: "USD" })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.project_billing_terms
+         SET currency = CASE project_id WHEN ${odd}::uuid THEN ' eu' ELSE 'usd' END
+       WHERE project_id IN (${odd}::uuid, ${spaced}::uuid)`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.cost_rates SET currency = ' US'
+       WHERE org_id = ${orgId}::uuid AND user_id = ${someone.userId}::uuid`)
+    // The forward migration's own statements, run again over these rows.
+    const file = readFileSync(
+      join(REPO_ROOT, "apps/api/src/db/migrations/0326_projects_currency_labels.sql"),
+      "utf8",
+    )
+    const updates = file
+      .split("--> statement-breakpoint")
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith("UPDATE"))
+    expect(updates).toHaveLength(6)
+    for (const u of updates) await db.execute(drizzleSql.raw(u))
+    const terms = extractRows<{ project_id: string; currency: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT project_id::text AS project_id, currency FROM app_projects.project_billing_terms
+         WHERE project_id IN (${odd}::uuid, ${spaced}::uuid)`),
+    )
+    expect(Object.fromEntries(terms.map((t) => [t.project_id, t.currency]))).toEqual({
+      [odd]: null,
+      [spaced]: "USD",
+    })
+    const rate = extractRows<{ currency: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT currency FROM app_projects.cost_rates
+         WHERE org_id = ${orgId}::uuid AND user_id = ${someone.userId}::uuid`),
+    )
+    expect(rate.map((r) => r.currency)).toEqual([null])
+    // A price left with no currency asks for it again rather than subtracting.
+    const out = await run(budgetGet, { projectId: odd }, invoicedAs("EUR", 2))
+    expect(out.money.leftToInvoice).toBeUndefined()
+    expect(out.money.invoicedUnavailable.code).toBe("currency_missing")
+    expect(out.money.invoicedUnavailable.next).toContain("billing_terms_set")
+  })
+
+  it("an invoicing refusal that retrying cannot help is passed on as it is", async () => {
+    const refusal = {
+      patch: {
+        executeTool: async () =>
+          JSON.stringify({
+            status: "completed",
+            result: {
+              error: {
+                code: "too_many_documents",
+                message: "Too many documents to sum. Nothing was read.",
+                retryable: false,
+              },
+            },
+          }),
+      },
+    }
+    const margin = await run(marginGet, { projectId: portal }, refusal)
+    expect(margin.error.code).toBe("too_many_documents")
+    expect(margin.error.retryable).toBe(false)
+    const budget = await run(budgetGet, { projectId: portal }, refusal)
+    expect(budget.money.invoicedUnavailable.code).toBe("too_many_documents")
   })
 
   it("a rate's currency must be an ISO 4217 code", async () => {

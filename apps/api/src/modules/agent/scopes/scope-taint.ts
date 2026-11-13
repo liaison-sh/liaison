@@ -872,6 +872,8 @@ export type TaintOriginStore = {
   recordOriginRows: (table: string, rowIds: readonly string[]) => void
   /** Adds scopes a read's result carried (a tool's `resultTaintWhen`) to the turn's set. */
   recordInjected: (requiredScopes: string[]) => void
+  /** The same, remembered as read just now, so a window that stamps read times can stamp them. */
+  recordResultScopes: (requiredScopes: string[]) => void
 }
 
 /** How deep `resultHoldsField` looks; a part nested deeper counts as held (fail closed). */

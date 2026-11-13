@@ -110,7 +110,8 @@ describe("projects.manifest", () => {
     //   in a person's DM, no instruction ranks people, and capacity_move can leave a task unassigned.
     // 1.33.1: merged with main: flow templates list the scopes their steps need (the project read),
     //   and the task tab resolves its label.
-    expect(projectsManifest.version).toBe("1.33.1")
+    // 1.34.0: cost_rate_set asks for the currency of a new rate.
+    expect(projectsManifest.version).toBe("1.34.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

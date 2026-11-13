@@ -6704,7 +6704,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // it is against the tool's own scopes. Filed from what the call RETURNED, like the origin above.
   if ("data" in envelope && tool.resultTaintWhen && taintOriginStore) {
     const { fields, scopes } = tool.resultTaintWhen
-    if (resultHoldsField(envelope.data, fields)) taintOriginStore.recordInjected([...scopes])
+    if (resultHoldsField(envelope.data, fields)) taintOriginStore.recordResultScopes([...scopes])
   }
 
   return envelope

@@ -1225,8 +1225,17 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
   // The money half: a holder of the money scope also reads what is invoiced and what is left.
   if (out?.money && out.projectId) {
     const read = await readProjectInvoiced(ctx, out.projectId)
-    const price = out.money.currency
-    if (read.ok && read.documents > 0 && price && read.currency && price !== read.currency) {
+    const price = out.money.currency?.trim() || null
+    if (read.ok && read.documents > 0 && !price) {
+      // A price with no currency cannot be set against invoices that have one.
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = {
+        code: "currency_missing",
+        message:
+          "This project's price has no currency, so what is invoiced and left to invoice are not shown.",
+        next: "Set the price again with its currency in billing_terms_set.",
+        retryable: false,
+      }
+    } else if (read.ok && read.documents > 0 && price && read.currency && price !== read.currency) {
       // The price and the invoices are in two currencies: no subtraction means anything.
       ;(out.money as Record<string, unknown>).invoicedUnavailable = mixedCurrencies(
         [price, read.currency],
@@ -1313,9 +1322,17 @@ async function readProjectInvoiced(
     }
   }
   const code = typeof env.error === "object" && env.error ? env.error.code : undefined
-  // Invoicing refused to sum (documents in two currencies): its own words, not "cannot read".
-  const own = body?.error as { code?: unknown; message?: unknown; next?: unknown } | undefined
-  if (own && own.code === "mixed_currencies" && typeof own.message === "string") {
+  // Invoicing refused for good (two currencies, too many documents): its own words, not
+  // "cannot read", which says to retry.
+  const own = body?.error as
+    | { code?: unknown; message?: unknown; next?: unknown; retryable?: unknown }
+    | undefined
+  if (
+    own &&
+    own.retryable === false &&
+    typeof own.code === "string" &&
+    typeof own.message === "string"
+  ) {
     return {
       ok: false,
       off: false,

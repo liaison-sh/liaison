@@ -56,6 +56,7 @@ const READ_ONLY: Record<string, string[]> = {
     // Enrols the caller on the task's discussion thread, exactly as opening the task does.
     "get",
     "comments",
+    "task_time_get",
     "tasks_byAssignee",
     "attentionItems",
     "tasks_byProject",

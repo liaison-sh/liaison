@@ -50,6 +50,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:suppression-links-prune": skips("modules/mail/commercial-footer.ts"),
   "kernel:prospect-retention": skips("modules/contacts/prospect-retention.ts"),
   "kernel:calendar-away-refresh": skips("apps/calendar/away-from-calendar.ts"),
+  "kernel:reconcile-sweep": skips("apps/projects/service/reconcile-sweep.ts"),
   "kernel:webhook-inbox-sweep": skips(
     "modules/webhooks/inbox.ts",
     "infra/jobs/webhook-inbox-jobs.ts",

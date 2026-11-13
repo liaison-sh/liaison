@@ -252,6 +252,52 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     return { ...detail, timeBudgets: on, timeBudgetsNote: note }
   }
   /**
+   * A task's timebox and milestone flag, then its time keys: present only on a project using
+   * time and budgets. A timebox on a project that does not use it refuses `planning_off`.
+   */
+  const taskPlanKeys = async (
+    taskId: string,
+    timebox: string | null | undefined,
+    isMilestone: boolean | undefined,
+  ): Promise<Record<string, unknown>> => {
+    const { taskTimeKeys, writeTaskPlan } = await import("~/apps/projects/service/time-plan")
+    const keys =
+      timebox !== undefined || isMilestone !== undefined
+        ? await writeTaskPlan({
+            tx: txDb,
+            orgId,
+            taskId,
+            scopes: callerScopes ?? [],
+            patch: {
+              ...(timebox !== undefined ? { timebox } : {}),
+              ...(isMilestone !== undefined ? { isMilestone } : {}),
+            },
+          })
+        : await taskTimeKeys(txDb, orgId, taskId)
+    return {
+      ...(keys ?? {}),
+      ...(isMilestone !== undefined ? { isMilestone } : {}),
+    }
+  }
+  /** Where a Took call comes from, for the person-statement rule. */
+  const tookPlace = async () => {
+    const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
+    const frame = currentRunContext()
+    const origin = (bridgeOptions?.origin ??
+      "system") as import("~/apps/projects/service/took").TookOrigin
+    const routineId = bridgeRoutineId ?? approvalContext?.originRoutineId
+    return {
+      origin,
+      frame: {
+        ...(routineId ? { routineId } : {}),
+        ...(frame?.background ? { background: true } : {}),
+        ...(frame?.mcpGateway ? { mcpGateway: true } : {}),
+        ...(frame?.agentId ? { agentId: frame.agentId } : {}),
+      },
+      actingAgentId: origin === "mcp" ? (bridgeActingAgentId ?? null) : null,
+    }
+  }
+  /**
    * The user actor of a write: the inherited user, else the bridge user (the
    * webhook fallback user for a system run) with the caller's scopes.
    */
@@ -606,6 +652,9 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         contactId?: string | null
         amountMinor?: number | null
         currency?: string | null
+        /** Planned size ("3 days", "20 h"), only on a project using time and budgets. */
+        timebox?: string | null
+        isMilestone?: boolean
       }
       return typedServiceCall(async () => {
         const { createTask, appendSourceCitation } = await import("~/apps/projects/service/tasks")
@@ -697,6 +746,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           contactId: _contactId,
           amountMinor: _amountMinor,
           currency: _currency,
+          timebox: _timebox,
+          isMilestone: _isMilestone,
           ...appParams
         } = params as typeof params & {
           createdBy?: unknown
@@ -719,7 +770,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             createdByAgentLabel: await agentCreatorLabel(),
           },
         })
-        if (!wantsDeal) return JSON.stringify(task)
+        const planned = await taskPlanKeys(task.id, params.timebox, params.isMilestone)
+        if (!wantsDeal) return JSON.stringify({ ...task, ...planned })
         await writeDealFields(txDb as never, orgId, callerScopes ?? [], task.id, dealFields)
         return JSON.stringify({ ...task, deal: dealFields })
       })
@@ -744,6 +796,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         parentTaskId?: string | null
         /** Own label values: group name/id to value name/id, null clears. */
         labels?: Record<string, string | null>
+        timebox?: string | null
+        isMilestone?: boolean
       }
       return typedServiceCall(async () => {
         const { updateTask, getTask } = await import("~/apps/projects/service/tasks")
@@ -754,7 +808,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           ? await resolveTaskRef(txDb as never, orgId, params.parentTaskId)
           : params.parentTaskId
         const actor = await writeActor()
-        const { assigneeName, ...rest } = params
+        const { assigneeName, timebox, isMilestone, ...rest } = params
         const taskId = resolvedTaskId
         const parentTaskId = resolvedParentTaskId
         delete (rest as { taskId?: unknown }).taskId
@@ -774,11 +828,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               parentTaskId: parentTaskId ?? null,
             })
           }
+          const planned = await taskPlanKeys(taskId, timebox, isMilestone)
           const hasOtherUpdates = Object.keys(input).length > 0
-          if (hasOtherUpdates) {
-            return updateTask({ tx: txDb as never, orgId, actor, taskId, input: input as never })
-          }
-          return getTask({ tx: txDb as never, orgId, taskId })
+          const task = hasOtherUpdates
+            ? await updateTask({ tx: txDb as never, orgId, actor, taskId, input: input as never })
+            : await getTask({ tx: txDb as never, orgId, taskId })
+          return planned && task && typeof task === "object" ? { ...task, ...planned } : task
         })
       })
     },
@@ -816,7 +871,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               scopes: callerScopes ?? [],
               dimensionGrants: {},
             }
-      return withChecklistWarning(resolvedTaskId, () =>
+      const { projectOfTask } = await import("~/apps/projects/service/time-plan")
+      const { planningOn, orgUsesTimeBudgets } = await import("~/apps/projects/service/planning")
+      const counted = (p: { kind: "work" | "pipeline"; timeBudgetsOn: boolean }) =>
+        planningOn(p, orgUsesTimeBudgets(orgId))
+      const before = await projectOfTask(txDb, orgId, resolvedTaskId).catch(() => null)
+      const moved = await withChecklistWarning(resolvedTaskId, () =>
         moveTask({
           tx: txDb as never,
           orgId,
@@ -832,6 +892,22 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           afterTaskId: resolvedAfterTaskId,
         }),
       )
+      if (!before) return moved
+      const after = await projectOfTask(txDb, orgId, resolvedTaskId)
+      if (after.project.id === before.project.id) return moved
+      // Its time rows follow the task once this commits; planned and spent stay on the task.
+      const { followTaskProject } = await import("~/apps/projects/service/time-rows")
+      followTaskProject(orgId, resolvedTaskId)
+      const wasCounted = counted(before.project)
+      const isCounted = counted(after.project)
+      if (!wasCounted && !isCounted) return moved
+      const note = isCounted
+        ? wasCounted
+          ? `Its planned time and time spent moved with it and now count on ${after.project.name}.`
+          : `${after.project.name} uses time and budgets, so this task's planned time and time spent count there from now.`
+        : `${after.project.name} does not use time and budgets: the task keeps its planned time and time spent, and they stop counting in any budget until it is back on a project that uses it.`
+      const parsed = JSON.parse(moved) as Record<string, unknown>
+      return JSON.stringify({ ...parsed, timeBudgetsNote: note })
     },
     projects_addStatus: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
@@ -1529,10 +1605,30 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         sourceId: resolvedSourceId,
         targetId: resolvedTargetId,
       })
+      // The target keeps its timebox, or takes the source's when it has none; the
+      // source's time joins the target's (one person's row adds up) once this commits.
+      await txDb.execute(drizzleSql`
+        UPDATE ${drizzleSql.raw(schemaRef("app_projects"))}.tasks t
+           SET timebox_minutes = COALESCE(t.timebox_minutes, s.timebox_minutes)
+          FROM ${drizzleSql.raw(schemaRef("app_projects"))}.tasks s
+         WHERE t.id = ${resolvedTargetId}::uuid AND s.id = ${resolvedSourceId}::uuid
+           AND t.org_id = ${orgId}::uuid AND s.org_id = ${orgId}::uuid
+           AND t.timebox_minutes IS NULL AND s.timebox_minutes IS NOT NULL`)
+      const { mergeTaskTime } = await import("~/apps/projects/service/time-rows")
+      mergeTaskTime(orgId, resolvedSourceId, resolvedTargetId)
+      const { taskTimeKeys } = await import("~/apps/projects/service/time-plan")
+      const keys = await taskTimeKeys(txDb, orgId, resolvedTargetId)
       return JSON.stringify({
         sourceId: resolvedSourceId,
         targetId: resolvedTargetId,
         merged: true,
+        ...(keys
+          ? {
+              timeboxMinutes: keys.timeboxMinutes,
+              timeBudgetsNote:
+                "The source's time spent now counts on the target, and the target keeps its timebox (or takes the source's when it had none).",
+            }
+          : {}),
       })
     },
     projects_instantiateTemplate: async (paramsJson: string): Promise<string> => {
@@ -1791,6 +1887,164 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         ...(await removeItem({ tx: stepTx, orgId, userId, actorKind, itemId: params.itemId! })),
         removed: true,
       }))
+    },
+    /** Took: the caller's own real time on a task, only from their own statement. */
+    projects_taskTimeSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        taskId?: string
+        time?: string | null
+        date?: string
+        quote?: string
+      }
+      return typedServiceCall(async () => {
+        const { setTaskTime } = await import("~/apps/projects/service/time-plan")
+        const actor = await writeActor()
+        const taskId = await resolveTask(params.taskId ?? "")
+        return JSON.stringify(
+          await setTaskTime({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            place: await tookPlace(),
+            ...(bridgeOptions?.threadId ? { threadId: bridgeOptions.threadId } : {}),
+            input: {
+              taskId,
+              time: params.time ?? null,
+              ...(params.date !== undefined ? { date: params.date } : {}),
+              ...(params.quote !== undefined ? { quote: params.quote } : {}),
+            },
+          }),
+        )
+      })
+    },
+    /** The caller's own Took rows on a task, and the task's total. */
+    projects_taskTimeGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { taskId?: string }
+      return typedCall(async () => {
+        const { getTaskTime } = await import("~/apps/projects/service/time-plan")
+        const actor = await writeActor()
+        return getTaskTime({
+          tx: txDb,
+          orgId,
+          userId: actor.userId,
+          scopes: callerScopes ?? [],
+          taskId: await resolveTask(params.taskId ?? ""),
+        })
+      })
+    },
+    /** The dated corrector (the project's lead or finance) changes an entry. */
+    projects_taskTimeCorrect: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        entryId?: string
+        time?: string
+        date?: string
+      }
+      return typedServiceCall(async () => {
+        const { correctTaskTime } = await import("~/apps/projects/service/time-plan")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await correctTaskTime({
+            tx: txDb,
+            orgId,
+            actorId: actor.userId,
+            scopes: callerScopes ?? [],
+            input: {
+              entryId: params.entryId ?? "",
+              time: params.time ?? "",
+              ...(params.date !== undefined ? { date: params.date } : {}),
+            },
+          }),
+        )
+      })
+    },
+    /** A project's plan: basis, timebox, biller, repositories and dated hours. */
+    projects_timePlanSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown> & {
+        projectId?: string
+        projectName?: string
+      }
+      return typedServiceCall(async () => {
+        const { setTimePlan } = await import("~/apps/projects/service/time-plan")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const actor = await writeActor()
+        const projectId = await resolveProjectId(txDb as never, orgId, params as never)
+        const { projectId: _p, projectName: _n, ...rest } = params
+        const out = await setTimePlan({
+          tx: txDb,
+          orgId,
+          actorId: actor.userId,
+          scopes: callerScopes ?? [],
+          input: { ...(rest as object), projectId },
+        })
+        if (out.datedTurnedOn) {
+          const { loadPlanningProject } = await import("~/apps/projects/service/time-plan")
+          const { tellEntrantsDatedOn } = await import("~/apps/projects/service/time-rows")
+          const project = await loadPlanningProject(txDb, orgId, projectId)
+          if (project) tellEntrantsDatedOn(orgId, project, actor.userId)
+        }
+        return JSON.stringify({ ...out.plan, message: out.message })
+      })
+    },
+    /** A project's rate or fixed price. */
+    projects_billingTermsSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        rate?: number | null
+        fixedPrice?: number | null
+        currency?: string
+      }
+      return typedServiceCall(async () => {
+        const { setBillingTerms } = await import("~/apps/projects/service/time-plan")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        return JSON.stringify(
+          await setBillingTerms({
+            tx: txDb,
+            orgId,
+            scopes: callerScopes ?? [],
+            input: {
+              projectId,
+              ...(params.rate !== undefined ? { rate: params.rate } : {}),
+              ...(params.fixedPrice !== undefined ? { fixedPrice: params.fixedPrice } : {}),
+              ...(params.currency !== undefined ? { currency: params.currency } : {}),
+            },
+          }),
+        )
+      })
+    },
+    /** A month's or a period's timebox on a project; null removes it. */
+    projects_periodTimeboxSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        month?: string
+        from?: string
+        to?: string
+        timebox?: string | null
+      }
+      return typedServiceCall(async () => {
+        const { setPeriodTimebox } = await import("~/apps/projects/service/time-plan")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const actor = await writeActor()
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        return JSON.stringify(
+          await setPeriodTimebox({
+            tx: txDb,
+            orgId,
+            actorId: actor.userId,
+            scopes: callerScopes ?? [],
+            input: {
+              projectId,
+              timebox: params.timebox ?? null,
+              ...(params.month !== undefined ? { month: params.month } : {}),
+              ...(params.from !== undefined ? { from: params.from } : {}),
+              ...(params.to !== undefined ? { to: params.to } : {}),
+            },
+          }),
+        )
+      })
     },
     projects_attentionItems: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {

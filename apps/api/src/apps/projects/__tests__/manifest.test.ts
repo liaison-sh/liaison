@@ -91,7 +91,8 @@ describe("projects.manifest", () => {
     // 1.14.0: the deal import kind.
     // 1.15.0: time and budgets columns on projects and tasks.
     // 1.16.0: the per-project time and budgets switch and its feature.
-    expect(projectsManifest.version).toBe("1.16.0")
+    // 1.17.0: timeboxes, Took and the plan tools.
+    expect(projectsManifest.version).toBe("1.17.0")
   })
 
   it("the member role holds no deal scope and sales and lead do", () => {

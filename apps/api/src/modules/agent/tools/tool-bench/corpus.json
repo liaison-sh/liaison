@@ -3200,5 +3200,68 @@
     "say": "search our GitHub code for the invoice export",
     "typed": ["search github code", "github search"],
     "any": ["github__github_search"]
+  },
+  {
+    "id": "C11",
+    "set": "seed",
+    "lang": "fr",
+    "say": "j'ai passé 3h sur cette tâche",
+    "typed": ["temps passé", "log time", "took", "track hours", "task time"],
+    "any": ["projects__task_time_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C69",
+    "set": "seed",
+    "lang": "en",
+    "say": "set a day rate on the project",
+    "typed": ["project rate", "billing terms", "day rate", "fixed price"],
+    "any": ["projects__billing_terms_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C70",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la tâche a pris moins que prévu, corrige",
+    "typed": ["corriger temps", "correct time entry"],
+    "any": ["projects__task_time_correct"],
+    "modelRun": true
+  },
+  {
+    "id": "C74",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la tâche a pris 2 jours",
+    "typed": ["took", "a pris", "durée tâche"],
+    "any": ["projects__task_time_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C77",
+    "set": "seed",
+    "lang": "en",
+    "say": "how much time have I logged on this task",
+    "typed": ["my time on task", "time logged", "temps saisi", "took entries"],
+    "any": ["projects__task_time_get"],
+    "modelRun": true
+  },
+  {
+    "id": "C78",
+    "set": "seed",
+    "lang": "en",
+    "say": "turn on dated hours for the project",
+    "typed": ["dated hours", "heures datées", "project plan", "billing basis"],
+    "any": ["projects__time_plan_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C79",
+    "set": "seed",
+    "lang": "fr",
+    "say": "le forfait a 20 heures en novembre",
+    "typed": ["period timebox", "forfait mensuel", "heures du mois", "retainer hours"],
+    "any": ["projects__period_timebox_set"],
+    "modelRun": true
   }
 ]

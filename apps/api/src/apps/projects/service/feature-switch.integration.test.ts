@@ -6,12 +6,11 @@
 // routes), the real privileged recompute and the real catalog readers.
 //
 // The time tools are every projects tool that declares the feature. The list is
-// computed from the registry, never frozen, plus one probe tool the test
-// registers so the check bites before the first real time tool exists.
+// computed from the registry, never frozen; `task_time_get` is the one each
+// check names, so the gate bites on a real time tool.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
@@ -31,7 +30,6 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, isFeatureOffForTool, primeOrgApps } from "~/modules/apps/org-apps"
-import { registerApps } from "~/modules/apps/runtime"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import {
   __resetCatalogNotifier,
@@ -43,7 +41,7 @@ import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { awaitTimeFeatureSync, syncTimeBudgetsFeature, timeFeatureTestHooks } from "./time-feature"
 
-const PROBE = "time_probe"
+const TIME_TOOL = "task_time_get"
 /** Keys a time-carrying row would hold; none may appear on a project without it. */
 const TIME_KEYS = ["timeboxMinutes", "realTotalMinutes", "coverage"]
 
@@ -52,22 +50,6 @@ let owner: minimal.Session
 
 function actor(scopes: string[] = ["*"]): UserContext {
   return { actorType: "user", userId: owner.userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
-}
-
-/** The projects manifest with one extra tool behind the feature, so the gate has a tool to hide. */
-function manifestWithProbe() {
-  // A version of its own: the registry skips a manifest whose version it already holds.
-  const base = {
-    ...projectsAppManifest,
-    version: "9.0.0",
-    tools: { ...projectsAppManifest.tools } as Record<string, Record<string, unknown>>,
-  }
-  base.tools[PROBE] = {
-    ...base.tools.portfolio_rollup,
-    description: "Probe tool behind time and budgets, for the gate test only.",
-    feature: "time_budgets",
-  }
-  return base
 }
 
 /** Every projects tool behind the feature, read from the registry. */
@@ -154,7 +136,6 @@ beforeAll(async () => {
   orgId = (await createTestOrg()).id
   owner = await minimal.adminSession(orgId)
   await ensureAppsForOrg(orgId)
-  await registerApps([manifestWithProbe() as never], orgId)
   await primeOrgApps(orgId, 0)
 }, 120_000)
 
@@ -168,7 +149,7 @@ describe("the org gate follows the projects", () => {
   it("an org with no project using time has none of the time tools in the MCP list, the in-app catalog, tool search and a turn's tool set", async () => {
     await allOff()
     const tools = timeTools()
-    expect(tools).toContain(`projects__${PROBE}`)
+    expect(tools).toContain(`projects__${TIME_TOOL}`)
     const seen = catalogNames()
     for (const tool of tools) {
       expect(seen.gateway).not.toContain(tool)
@@ -177,19 +158,19 @@ describe("the org gate follows the projects", () => {
     }
     // The plain projects tools stay: only the feature's are filtered.
     expect(seen.gateway).toContain("projects__update_project")
-    const found = await handleToolSearch({ query: `select:projects__${PROBE}` }, {
+    const found = await handleToolSearch({ query: `select:projects__${TIME_TOOL}` }, {
       orgId,
       userId: owner.userId,
       scopes: ["*"],
     } as never)
-    expect(JSON.stringify(found)).not.toContain(`"projects__${PROBE}"`)
+    expect(JSON.stringify(found)).not.toContain(`"projects__${TIME_TOOL}"`)
   })
 
   it("a time tool called directly in such an org answers feature_off and writes nothing, from the UI too", async () => {
     await allOff()
     for (const origin of ["in-app-agent", "human-ui", "mcp"] as const) {
       const envelope = await executeToolCore({
-        toolName: `projects:${PROBE}`,
+        toolName: `projects:${TIME_TOOL}`,
         orgId,
         actor: actor(),
         params: {},
@@ -228,14 +209,14 @@ describe("the org gate follows the projects", () => {
       await turn(a, true)
       expect(await orgRow()).toBe(true)
       for (const tool of timeTools()) expect(catalogNames().gateway).toContain(tool)
-      expect(catalogNames().turn).toContain(`projects__${PROBE}`)
+      expect(catalogNames().turn).toContain(`projects__${TIME_TOOL}`)
       await waitForNotice(1)
       expect(listChanged).toBe(1)
 
       await turn(b, true)
       await turn(a, false)
       expect(await orgRow()).toBe(true)
-      expect(catalogNames().gateway).toContain(`projects__${PROBE}`)
+      expect(catalogNames().gateway).toContain(`projects__${TIME_TOOL}`)
 
       await turn(b, false)
       expect(await orgRow()).toBe(false)

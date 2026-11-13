@@ -12,7 +12,6 @@ describe("validateAppManifest", () => {
     const result = validateAppManifest({
       name: "test",
       version: "1.0.0",
-      trusted: false,
       description: "A test app",
       agentInstructions: "Help users with items",
       dependencies: { required: ["contacts"], optional: ["search"] },

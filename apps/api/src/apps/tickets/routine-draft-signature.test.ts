@@ -164,7 +164,7 @@ async function registerDraftAndAppendTool(): Promise<void> {
     // the marker the scope-taint guard refuses it as an undeclared write (the
     // tick has read ticket data first), and the seam under test never runs.
     readOnly: true,
-    handler: { bundlePath, exportName: "draftAndAppend", trusted: true },
+    handler: { bundlePath, exportName: "draftAndAppend", core: true },
     _manifest: { name: "tickets", schema: {}, events: {}, connections: {}, network: {} },
   } as any)
 }

@@ -16,7 +16,7 @@ describe("attention.aggregator", () => {
     const entry = attentionItemsRegistry.get(["*", "kernel"])
     expect(entry?.handler).toBe("computeApprovalAttentionItems")
     expect(entry?.scope).toBeUndefined()
-    expect(entry?.trusted).toBe(true)
+    expect(entry?.core).toBe(true)
     expect(entry?.bundlePath).toBe("/abs/path/to/approvals-attention.js")
   })
 })

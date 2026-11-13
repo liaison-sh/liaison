@@ -1,33 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The apps the contract covers: every bundled app (bundled-apps/*) and the
-// in-tree sandboxed apps, with the bridge surface a production run of each
-// sees (the RPC bridge's methods, plus an in-tree app's own extension
-// methods), and their recorded egress fixtures (fixtures/<app>/*.json).
+// The apps the contract covers: every bundled app (bundled-apps/*; every
+// sandboxed app is one), with the bridge surface a production run of each
+// sees (the RPC bridge's methods, the same for every app), and their recorded
+// egress fixtures (fixtures/<app>/*.json).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RlsClient } from "~/db"
-import type { BridgeExtensionFactory } from "~/modules/apps/sandbox/bridge-extensions"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { buildVerifyBridge } from "~/modules/webhooks/verify-bridge"
 import { contractEntries } from "./entries"
-import {
-  type AppUnderContract,
-  type BridgeSurface,
-  bundledAppScripts,
-  inTreeAppScript,
-} from "./harness"
+import { type AppUnderContract, type BridgeSurface, bundledAppScripts } from "./harness"
 import { CONTRACT_ORG_ID, CONTRACT_USER_ID, type EgressFixture } from "./replay-bridge"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
 export const BUNDLED_APPS_DIR = join(REPO_ROOT, "bundled-apps")
-const IN_TREE_APPS_DIR = join(REPO_ROOT, "apps", "api", "src", "apps")
 const FIXTURES_DIR = join(import.meta.dir, "fixtures")
-
-/** In-tree apps that run sandboxed, with their manifest descriptors. */
-const IN_TREE: Record<string, { _bundlePath: string; _bridgeExtension?: BridgeExtensionFactory }> =
-  {}
 
 /** Construction of a bridge never touches the database; any access throws. */
 const poisonTx = new Proxy(
@@ -53,7 +42,6 @@ function kindOf(fn: unknown): "sync" | "async" {
  */
 export function bridgeSurfaceOf(
   app: string,
-  extension?: BridgeExtensionFactory,
   manifest?: { connections?: Record<string, unknown> },
 ): BridgeSurface {
   const bridge = createRpcBridge(app, CONTRACT_USER_ID, CONTRACT_ORG_ID, poisonTx, {
@@ -63,17 +51,6 @@ export function bridgeSurfaceOf(
   const surface = new Map<string, "sync" | "async">()
   for (const [name, fn] of Object.entries(bridge)) {
     if (typeof fn === "function") surface.set(name, kindOf(fn))
-  }
-  if (extension) {
-    const ext = extension({
-      appName: app,
-      orgId: CONTRACT_ORG_ID,
-      userId: CONTRACT_USER_ID,
-      txDb: poisonTx,
-      actorType: "user",
-    })
-    // Extension methods are dispatched async (BridgeExtensionMethod returns a promise).
-    for (const name of Object.keys(ext)) surface.set(name, "async")
   }
   return [...surface.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 }
@@ -106,25 +83,11 @@ export function appsUnderContract(): string[] {
     )
     .map((d) => d.name)
     .sort()
-  return [...bundled, ...Object.keys(IN_TREE).sort()]
+  return bundled
 }
 
 /** One app, ready for the harness on the QuickJS executor. */
 export async function loadAppUnderContract(app: string): Promise<AppUnderContract> {
-  const inTree = IN_TREE[app]
-  if (inTree) {
-    const dir = join(IN_TREE_APPS_DIR, app)
-    const manifest = JSON.parse(readFileSync(join(dir, "app.manifest.json"), "utf8"))
-    return {
-      app,
-      dir,
-      entries: contractEntries(manifest),
-      source: await inTreeAppScript(inTree._bundlePath),
-      surface: bridgeSurfaceOf(app, inTree._bridgeExtension),
-      verifySurface: verifySurface(),
-      fixtures: fixturesOf(app),
-    }
-  }
   const dir = join(BUNDLED_APPS_DIR, app)
   const manifest = JSON.parse(readFileSync(join(dir, "app.manifest.json"), "utf8"))
   const scripts = await bundledAppScripts(dir)
@@ -134,7 +97,7 @@ export async function loadAppUnderContract(app: string): Promise<AppUnderContrac
     entries: contractEntries(manifest),
     source: scripts.source,
     templateSource: scripts.templateSource,
-    surface: bridgeSurfaceOf(app, undefined, manifest),
+    surface: bridgeSurfaceOf(app, manifest),
     verifySurface: verifySurface(),
     fixtures: fixturesOf(app),
   }

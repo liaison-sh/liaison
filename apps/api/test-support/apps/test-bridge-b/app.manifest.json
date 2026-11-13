@@ -1,7 +1,6 @@
 {
   "name": "test-bridge-b",
   "version": "1.0.0",
-  "trusted": true,
   "dependencies": { "tools": ["test-bridge-a:callB"] },
   "tools": {
     "internalCallback": {

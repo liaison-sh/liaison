@@ -26,7 +26,7 @@ interface RegistryEntry {
   handler: string
   scope?: string
   bundlePath: string
-  trusted: boolean
+  core: boolean
 }
 
 /**

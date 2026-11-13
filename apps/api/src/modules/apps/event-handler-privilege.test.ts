@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // A system or cross-app event reaches an app's sandboxed handler through a bridge.
-// For code the platform vouches for (in-tree, trusted, or the image's own catalog
-// artifact) that bridge may sit on a privileged transaction; for any other install
-// it sits on an RLS transaction as the app itself, so the app's code never holds a
-// handle that bypasses row-level security.
+// Only a core app (core/registry.ts: server code) may sit on a privileged
+// transaction; every other app's bridge, first-party catalog apps and in-tree
+// fixtures included, sits on an RLS transaction as the app itself, so the app's
+// code never holds a handle that bypasses row-level security.
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql } from "~/db/connection"
 import * as privilegedModule from "~/db/privileged"
@@ -14,7 +14,8 @@ import {
   resetEventBus,
 } from "~/infra/events/event-bus"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { hasPrivilegedBridge, registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
+import { CORE_APP_NAMES, isCoreApp } from "~/modules/apps/core/registry"
+import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import testManifest from "../../../test-support/apps/test/app.manifest.json"
@@ -59,13 +60,30 @@ async function register(extra: Record<string, unknown>) {
   )
 }
 
-describe("hasPrivilegedBridge", () => {
-  it("vouches for trusted, in-tree and first-party catalog code only", () => {
-    expect(hasPrivilegedBridge({})).toBe(true)
-    expect(hasPrivilegedBridge({ trusted: true })).toBe(true)
-    expect(hasPrivilegedBridge({ trusted: false, _firstParty: true })).toBe(true)
-    expect(hasPrivilegedBridge({ trusted: false })).toBe(false)
-    expect(hasPrivilegedBridge({ trusted: false, _publisherSigned: true })).toBe(false)
+describe("isCoreApp", () => {
+  it("is the seven core apps shipped in the image, whatever a descriptor claims", () => {
+    expect([...CORE_APP_NAMES].sort()).toEqual([
+      "calendar",
+      "contacts",
+      "knowledge",
+      "mail",
+      "mcp-manager",
+      "projects",
+      "tickets",
+    ])
+    for (const name of CORE_APP_NAMES) expect(isCoreApp({ name })).toBe(true)
+    // A runtime install is never core, even under a core app's name.
+    expect(isCoreApp({ name: "tickets", _installed: true })).toBe(false)
+    // No field makes another app core: not trusted, not a platform or operator voucher.
+    for (const claim of [
+      {},
+      { trusted: true },
+      { _firstParty: true },
+      { _publisherSigned: true },
+    ]) {
+      expect(isCoreApp({ name: "gitlab", ...claim })).toBe(false)
+      expect(isCoreApp({ name: "database", _installed: true, ...claim })).toBe(false)
+    }
   })
 })
 
@@ -120,17 +138,26 @@ describe("system event handlers and the privileged pool", () => {
   })
 
   it("a third-party install's handler runs as the app under RLS, never privileged", async () => {
-    await register({ trusted: false, _installed: true })
+    await register({ _installed: true })
     await publishEvent(systemEvent("evt-priv-third-party") as never)
     expect(await pollUntil(() => logged("evt-priv-third-party"), 25_000)).toBe(true)
     expect(privReasons.filter((r) => r.startsWith("event:test:"))).toEqual([])
     expect(rlsActors).toContainEqual({ actorType: "system", scopes: ["test:*"] })
   }, 30_000)
 
-  it("a first-party handler keeps its privileged transaction", async () => {
-    await register({ trusted: false, _installed: true, _firstParty: true })
+  it("a first-party catalog app's handler runs as the app under RLS too: no first-party privilege", async () => {
+    await register({ _installed: true, _firstParty: true })
     await publishEvent(systemEvent("evt-priv-first-party") as never)
     expect(await pollUntil(() => logged("evt-priv-first-party"), 25_000)).toBe(true)
-    expect(privReasons.some((r) => r.startsWith("event:test:"))).toBe(true)
+    expect(privReasons.filter((r) => r.startsWith("event:test:"))).toEqual([])
+    expect(rlsActors).toContainEqual({ actorType: "system", scopes: ["test:*"] })
+  }, 30_000)
+
+  it("an in-tree app that is not core runs as the app under RLS", async () => {
+    await register({})
+    await publishEvent(systemEvent("evt-priv-in-tree") as never)
+    expect(await pollUntil(() => logged("evt-priv-in-tree"), 25_000)).toBe(true)
+    expect(privReasons.filter((r) => r.startsWith("event:test:"))).toEqual([])
+    expect(rlsActors).toContainEqual({ actorType: "system", scopes: ["test:*"] })
   }, 30_000)
 })

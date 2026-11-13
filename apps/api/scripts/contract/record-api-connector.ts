@@ -72,7 +72,7 @@ describe("record api-connector contract fixtures", () => {
   let isolate: ContractIsolate
   let crm: ReturnType<typeof startFixtureCrm>
   let bridgeManifest: unknown
-  const surface = bridgeSurfaceOf(APP, undefined, manifest)
+  const surface = bridgeSurfaceOf(APP, manifest)
   const entries = new Map(contractEntries(manifest).map((e) => [e.entry, e]))
 
   beforeAll(async () => {

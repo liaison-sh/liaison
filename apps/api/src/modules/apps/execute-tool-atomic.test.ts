@@ -166,7 +166,7 @@ describe("executeToolHandler — atomic: true keeps the legacy whole-run ambient
       name: "twoWritesThenThrow",
       description: "two writes then throw",
       requiredScopes: [`${APP_NAME}:items:write`],
-      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWritesThenThrow", trusted: true },
+      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWritesThenThrow", core: true },
       _manifest: MANIFEST,
       atomic: true,
     } as any)
@@ -190,7 +190,7 @@ describe("executeToolHandler — atomic: true keeps the legacy whole-run ambient
       name: "twoWritesThenThrowNonAtomic",
       description: "two writes then throw, non-atomic tool",
       requiredScopes: [`${APP_NAME}:items:write`],
-      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWritesThenThrow", trusted: true },
+      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWritesThenThrow", core: true },
       _manifest: MANIFEST,
       // atomic intentionally omitted — per-call bridge-owned transactions.
     } as any)
@@ -214,7 +214,7 @@ describe("executeToolHandler — atomic: true keeps the legacy whole-run ambient
       name: "twoWrites",
       description: "two writes, no throw",
       requiredScopes: [`${APP_NAME}:items:write`],
-      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWrites", trusted: true },
+      handler: { bundlePath: BUNDLE_PATH, exportName: "twoWrites", core: true },
       _manifest: MANIFEST,
       atomic: true,
     } as any)
@@ -236,7 +236,7 @@ describe("executeToolHandler — atomic: true keeps the legacy whole-run ambient
       name: "writeThenCallOutside",
       description: "a write, then an outside call",
       requiredScopes: [`${APP_NAME}:items:write`],
-      handler: { bundlePath: BUNDLE_PATH, exportName: "writeThenCallOutside", trusted: true },
+      handler: { bundlePath: BUNDLE_PATH, exportName: "writeThenCallOutside", core: true },
       _manifest: MANIFEST,
       atomic: true,
     } as any)

@@ -57,7 +57,6 @@ export function templateModule(bundleSource: string): Promise<string> {
 export async function runTemplateToPdf(args: RunTemplateToPdfArgs): Promise<Uint8Array> {
   const { bundleSource, data } = args
   const commands = await runApp({
-    trusted: false,
     appName: args.appName,
     orgId: args.orgId,
     // The template's own source, as its own Worker module on a remote executor.

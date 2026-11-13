@@ -8,10 +8,11 @@
 // `makeKnowledgeSyncDispatch`, and the Knowledge sync job
 // (apps/knowledge/app-sources.ts) calls it with `{ sourceId, kind, config,
 // cursor }` for each page. The run is the kind's `handler` export, entry
-// `knowledge-sync:<kind>`, under that row of the run-limit table: a vouched app
-// runs in-process, any other in the worker pool or on Workers (runApp picks).
-// Its bridge acts for the source's owner, with bridge-owned per-call
-// transactions: no run holds a database transaction.
+// `knowledge-sync:<kind>`, under that row of the run-limit table, sandboxed
+// like any non-core app's run (runApp picks the executor: Workers, workerd,
+// or QuickJS behind the release switch; never in-process). Its bridge acts for
+// the source's owner in an RLS session as the app, with per-call
+// transactions: no run holds a database transaction or a privileged handle.
 
 import type {
   BridgeManifest,
@@ -19,6 +20,7 @@ import type {
   KnowledgeSourceKindDecl,
 } from "~/modules/apps/app-registries"
 import { runLimits } from "~/modules/apps/run-limits"
+import { appSelfScopes } from "~/modules/apps/runtime-helpers"
 
 type Json = Record<string, unknown>
 
@@ -54,8 +56,6 @@ interface WakeAppExport {
   appName: string
   bundlePath: string
   bridgeManifest: BridgeManifest
-  /** The platform vouches for the app (hasPrivilegedBridge): it may run in-process. */
-  vouched: boolean
   exportName: string
   entry: string
   params: unknown
@@ -65,39 +65,28 @@ interface WakeAppExport {
 }
 
 /**
- * Run one export of an app for a tenant: a vouched app in-process, any other in
- * the worker pool or on Workers (runApp picks). Its bridge acts for
- * `tenant.userId` with the app's own scopes and bridge-owned per-call
- * transactions: no run holds a database transaction.
+ * Run one export of an app for a tenant, sandboxed (runApp picks the
+ * executor). Its bridge acts for `tenant.userId` with the app's own scopes, in
+ * an RLS session as the app, with per-call transactions.
  */
 async function wakeAppExport(w: WakeAppExport): Promise<unknown> {
-  const { appName, tenant, vouched } = w
-  const [{ runApp }, { createSessionRpcBridge }, { withPrivilegedDb }, { createRlsSession }] =
-    await Promise.all([
-      import("~/modules/apps/sandbox/run-app"),
-      import("~/modules/apps/sandbox/rpc-bridge"),
-      import("~/db/privileged"),
-      import("~/db/rls"),
-    ])
+  const { appName, tenant } = w
+  const [{ runApp }, { createSessionRpcBridge }, { createRlsSession }] = await Promise.all([
+    import("~/modules/apps/sandbox/run-app"),
+    import("~/modules/apps/sandbox/rpc-bridge"),
+    import("~/db/rls"),
+  ])
   const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
   // At an app day cap the run is refused (CapLimitError; the caller says so).
   const { assertAppRunRoom } = await import("~/modules/apps/usage/app-day-cap")
-  await assertAppRunRoom({ orgId: tenant.orgId, trusted: vouched })
+  await assertAppRunRoom({ orgId: tenant.orgId, core: false })
   const scopes = [`${appName}:*`]
-  // Per-call transactions: a vouched app's on the privileged connection, any
-  // other's in an RLS session as the app itself (the search handler's shape).
-  const session = vouched
-    ? ({
-        ctx: { actorType: "system", orgId: tenant.orgId, purpose: "job" },
-        run: (fn: (tx: any) => Promise<any>) =>
-          withPrivilegedDb(tenant.orgId, `${w.entry}:${appName}`, fn),
-      } as never)
-    : createRlsSession({
-        actorType: "system",
-        orgId: tenant.orgId,
-        purpose: "job",
-        scopes,
-      })
+  const session = createRlsSession({
+    actorType: "system",
+    orgId: tenant.orgId,
+    purpose: "job",
+    scopes: appSelfScopes(appName, w.bridgeManifest.scopes),
+  })
   const bridge = createSessionRpcBridge(
     appName,
     tenant.userId,
@@ -107,7 +96,6 @@ async function wakeAppExport(w: WakeAppExport): Promise<unknown> {
     scopes,
   )
   return runApp({
-    trusted: vouched,
     appName,
     orgId: tenant.orgId,
     bundlePath: w.bundlePath,
@@ -134,8 +122,6 @@ export function makeKnowledgeSyncDispatch(opts: {
   kinds: Record<string, KnowledgeSourceKindDecl>
   bundlePath: string
   bridgeManifest: BridgeManifest
-  /** The platform vouches for the app (hasPrivilegedBridge): it may run in-process. */
-  vouched: boolean
 }) {
   const { appName, kinds } = opts
   return async (
@@ -187,7 +173,6 @@ export function makeKnowledgeItemsDispatch(opts: {
   decl: KnowledgeItemsDecl
   bundlePath: string
   bridgeManifest: BridgeManifest
-  vouched: boolean
 }) {
   const { appName, decl } = opts
   return async (

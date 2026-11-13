@@ -14,7 +14,6 @@ import {
 } from "~/modules/apps/core/registry"
 import { coreCtxOf, runCoreHandler } from "~/modules/apps/core/run-core"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { exportOnlyBundle } from "~/modules/apps/sandbox/bundle-shake"
 import * as executor from "~/modules/apps/sandbox/executor"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import * as workerPool from "~/modules/apps/sandbox/worker-pool"
@@ -71,9 +70,8 @@ describe("core app registry", () => {
     expect(isCoreModulePath(tickets.modulePath)).toBe(true)
   })
 
-  it("a core module is never transpiled or shaken as a bundle", async () => {
+  it("a core module is never transpiled as a bundle", async () => {
     expect(await loadBundle(tickets.modulePath)).toBe(CORE_MODULE_SOURCE)
-    expect(exportOnlyBundle(CORE_MODULE_SOURCE, "search")).toBe(CORE_MODULE_SOURCE)
   })
 })
 
@@ -96,8 +94,6 @@ describe("runApp on a core app", () => {
     }
     try {
       const out = await runApp({
-        // What the site says about trust no longer decides where a core handler runs.
-        trusted: false,
         appName: "tickets",
         orgId: ORG,
         bundlePath: tickets.modulePath,
@@ -122,7 +118,6 @@ describe("runApp on a core app", () => {
   it("an unknown export fails typed, and a thrown error keeps its own shape", async () => {
     const run = (exportName: string, bridge: Record<string, (...a: any[]) => any>) =>
       runApp({
-        trusted: true,
         appName: "tickets",
         orgId: ORG,
         bundlePath: tickets.modulePath,

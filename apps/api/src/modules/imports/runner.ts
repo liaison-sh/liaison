@@ -1255,7 +1255,6 @@ async function runBundleExport(
   const bundle = k.bundle
   if (!bundle) throw new Error(`${k.kind} has no bundle`)
   return runApp({
-    trusted: bundle.trusted === true,
     appName: k.app,
     orgId,
     bundlePath: bundle.bundlePath,

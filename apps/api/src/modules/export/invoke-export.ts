@@ -111,10 +111,9 @@ export async function invokeAppExport(
         (manifest ?? { name: appName }) as never,
       )
       const source = await loadBundle(entry.handler.bundlePath)
-      // Only trusted code runs on the host's in-process pool; a sandboxed app's
+      // runApp runs a core app's export as server code; any other app's
       // export runs in the isolated worker pool, like its tools.
       return runApp({
-        trusted: entry.handler.trusted === true,
         appName,
         orgId,
         bundlePath: entry.handler.bundlePath,

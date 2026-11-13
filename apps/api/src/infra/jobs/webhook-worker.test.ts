@@ -248,7 +248,7 @@ describe("webhook retry worker: a handler's declared budget (S11)", () => {
   const job = { orgId: RORG, appName: RAPP, endpointName: RENDPOINT, payload: {} }
   const register = (exportName: string, timeoutMs?: number, path = bundlePath) =>
     webhookHandlers.set([RORG, RAPP, RENDPOINT], {
-      handler: { bundlePath: path, exportName, trusted: true },
+      handler: { bundlePath: path, exportName, core: true },
       verify: { bundlePath, exportName: "verify" },
       appName: RAPP,
       orgId: RORG,

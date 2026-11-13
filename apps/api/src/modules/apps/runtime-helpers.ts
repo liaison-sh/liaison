@@ -179,3 +179,14 @@ export function withAppDimensionAliases(actor: ActorContext, appName: string): A
   const scopes = scopeAliasProvider ? scopeAliasProvider([...actor.scopes]) : [...actor.scopes]
   return { ...actor, scopes, dimensionGrants }
 }
+
+/**
+ * The scopes a non-core app acts with when it runs as itself (a system or
+ * cross-app event, a poll, a reconcile, a search, a knowledge sync): its own
+ * namespace plus the scopes its manifest declares, which its install granted.
+ * The same for every app, first-party or not: an RLS session, never a handle
+ * that bypasses row-level security.
+ */
+export function appSelfScopes(appName: string, declared: readonly string[] | undefined): string[] {
+  return [...new Set([`${appName}:*`, ...(declared ?? [])])]
+}

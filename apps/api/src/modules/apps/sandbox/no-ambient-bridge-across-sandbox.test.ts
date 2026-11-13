@@ -137,7 +137,7 @@ describe("guard: no ambient bridge across sandbox execution", () => {
       'import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"',
       'import { runApp } from "~/modules/apps/sandbox/run-app"',
       "await withRlsContext(actor, (tx) =>",
-      "  runApp({ trusted: false, appName, orgId, bundlePath, exportName, params,",
+      "  runApp({ appName, orgId, bundlePath, exportName, params,",
       "    bridge: createRpcBridge(appName, userId, orgId, tx, manifest), holdsTx: true }),",
       ")",
     ].join("\n")

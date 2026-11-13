@@ -496,7 +496,6 @@ async function runPreview(args: {
   let outcome: Pick<PreviewResult, "ok" | "result" | "error">
   try {
     const result = await runApp({
-      trusted: false,
       appName: built.target.appName,
       orgId: actor.orgId,
       // Not installed: the version's own worker.js on a remote executor, never

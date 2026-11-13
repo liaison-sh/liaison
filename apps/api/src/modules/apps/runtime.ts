@@ -93,6 +93,7 @@ import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/au
 import { apiConnectionOf } from "~/modules/apps/connections/api/declarations"
 import { validateAppDescriptor, validateAppManifest } from "~/modules/apps/contract"
 import { CORE_EXPORT_HANDLERS } from "~/modules/apps/core/exports"
+import { isCoreApp } from "~/modules/apps/core/registry"
 // --- DDL helpers ---
 import {
   computeSchemaHash,
@@ -161,11 +162,7 @@ import {
   type RegistryJournal,
 } from "~/modules/apps/registries"
 import { resolveAppOrder } from "~/modules/apps/resolver"
-import { grantableScopesWithAppAliases } from "~/modules/apps/runtime-helpers"
-import {
-  appBridgeExtensionRegistry,
-  type BridgeExtensionFactory,
-} from "~/modules/apps/sandbox/bridge-extensions"
+import { appSelfScopes, grantableScopesWithAppAliases } from "~/modules/apps/runtime-helpers"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { orgSetupLockSql } from "~/modules/apps/setup-stamp"
@@ -285,27 +282,6 @@ export async function resolveJobApprovalRequester(
   return id
 }
 
-/**
- * May this app's sandboxed code be handed a bridge over a privileged (RLS-bypassing)
- * transaction? Only when the platform vouches for the code: an in-tree or trusted app,
- * or an install that is the image's own catalog artifact. A third-party install, signed
- * by a trusted publisher or not, always runs under RLS: a bridge over a privileged
- * transaction would let its code read any row of the org through the generic bridge
- * methods (files, users, settings) whose visibility checks are RLS reads.
- */
-export function hasPrivilegedBridge(desc: object): boolean {
-  const d = desc as { trusted?: unknown; _firstParty?: unknown }
-  return d.trusted !== false || d._firstParty === true
-}
-
-/**
- * The session of a background run that holds no transaction (an async-output
- * poll, an outcome reconcile): every bridge call opens one short transaction on
- * the jobs pool, as the app. Privileged for an app the platform vouches for
- * (its manifest's scopes become the transaction's, so a scope check in the
- * database reads them, db/privileged.ts setPrivilegedContext), else under RLS
- * with the app's own scopes. Nothing stays open across a provider call.
- */
 export function backgroundAppSession(opts: {
   appName: string
   orgId: string
@@ -329,7 +305,7 @@ export function backgroundAppSession(opts: {
           actorType: "system",
           orgId: opts.orgId,
           purpose: "job",
-          scopes: [`${opts.appName}:*`],
+          scopes: appSelfScopes(opts.appName, opts.scopes),
         },
         fn,
         { pool: "jobs" },
@@ -570,7 +546,6 @@ function sharedProjectionOf(desc: AppDescriptor): SharedAppProjection | null {
   const variant = JSON.stringify([
     d._format ?? null,
     d._bundlePath ?? null,
-    d.trusted ?? null,
     d._firstParty ?? null,
     d._publisherSigned ?? null,
     d._installed ?? null,
@@ -614,11 +589,13 @@ async function validateForRegistration(
     _bundlePath,
     _uiBundlePath,
     _oauthClientResolvers,
-    _bridgeExtension,
-    _registerHostTools,
     _firstParty,
     _publisherSigned,
     _installed,
+    // No manifest decides where its app runs (core/registry.ts): a descriptor
+    // still carrying `trusted` (an older package's on-disk manifest, which the
+    // package schema refuses since) has it dropped here, deciding nothing.
+    trusted: _ignoredTrusted,
     ...manifestOnly
   } = desc as any
   // Deep-clone the manifest before validation. Ajv's compiled validators
@@ -717,14 +694,6 @@ async function validateForRegistration(
       _bundlePath,
       _uiBundlePath,
       _oauthClientResolvers,
-      // _bridgeExtension is a FUNCTION factory — it must be carried through the
-      // validate-strip (JSON.stringify would drop it) and restored here, or the
-      // app's RPC bridge methods (e.g. google-drive's drive_export) silently
-      // never register and its sandboxed handlers fail with "not a function".
-      _bridgeExtension,
-      // Same (a function): a built-in app's host-side tools, the ones a manifest
-      // cannot declare (an `approveScope` other than `<app>:approve`).
-      _registerHostTools,
       // Set by init.ts discovery, never by the manifest: lets a sandboxed
       // first-party app's `readOnly` count (see the tool projection below).
       _firstParty,
@@ -1367,33 +1336,8 @@ function sortEntitiesByFk(schema: Record<string, any>): Array<[string, any]> {
   return sorted.map((n) => [n, schema[n]])
 }
 
-/**
- * Summarizer trust carve-out.
- *
- * Every installed manifest app is `trusted: false` by construction (init.ts:
- * process-isolated, untrusted worker pool), so its declared summarizers run in
- * the QuickJS sandbox with an EMPTY bridge. A summarizer that needs I/O to
- * build its preview (for example a read of the record's CURRENT state, to show
- * a before/after diff of an irreversible write) degrades there to "preview
- * unavailable", and the approver of that write sees only raw params.
- *
- * `LIAISON_TRUSTED_SUMMARIZER_APPS` (comma-separated app names) lets an
- * operator run the DECLARED summarizers of the named apps host-side. Default
- * EMPTY: nothing changes unless an operator opts an app in. It is meant for
- * host-authored, source-reviewed bundled apps, not a blanket trust upgrade:
- * the app's handlers stay process-isolated and `trusted: false` everywhere
- * else. Every registration through it logs a warning naming the override.
- */
-export function isSummarizerTrustCarveOutAllowed(appName: string): boolean {
-  const raw = process.env.LIAISON_TRUSTED_SUMMARIZER_APPS ?? ""
-  const allowlist = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return allowlist.includes(appName)
-}
-
-async function loadTrustedBundleFunction(bundlePath: string, exportName: string): Promise<unknown> {
+/** A core app's summarizer: an export of its server module (or a `summarizers` sibling). */
+async function loadCoreSummarizer(bundlePath: string, exportName: string): Promise<unknown> {
   const summarizerPath = bundlePath
     .replace(/handlers(\.[cm]?[tj]s)$/, "summarizers$1")
     .replace(/handler-bundle(\.[cm]?[tj]s)$/, "summarizers$1")
@@ -1406,11 +1350,11 @@ async function loadTrustedBundleFunction(bundlePath: string, exportName: string)
       const exported = mod[exportName]
       if (typeof exported === "function") return exported
     } catch (err) {
-      log.debug({ err, bundlePath: candidate, exportName }, "Trusted bundle function lookup failed")
+      log.debug({ err, bundlePath: candidate, exportName }, "Core summarizer lookup failed")
     }
   }
 
-  throw new Error(`Export "${exportName}" not found in trusted bundle`)
+  throw new Error(`Export "${exportName}" not found in the core app module`)
 }
 
 /** Non-secret metadata handed to approval summarizers as a third argument. */
@@ -2209,6 +2153,10 @@ async function registerSingleApp(
   // path reached it (boot, first touch, activation, reload): app-org-scope.ts.
   if (!(await appVisibleToOrg(desc.name, orgId))) return false
   const registrationKey = `${orgId}:${desc.name}`
+  // The one tier decision: a core app (core/registry.ts) is server code; every
+  // other app runs sandboxed, on an RLS bridge as itself. No manifest field
+  // changes it.
+  const core = isCoreApp(desc)
   let oldVersion: OldVersionSnapshot | null = null
   if (opts.swap) {
     const inFlight = appRegistrationPromises.get(registrationKey)
@@ -3041,7 +2989,6 @@ async function registerSingleApp(
       const isManifestFormat = (desc as any)._format === "manifest"
       const bundlePath = (desc as any)._bundlePath
       const oauthClientResolvers = (desc as any)._oauthClientResolvers
-      const bridgeExtension: BridgeExtensionFactory | undefined = desc._bridgeExtension
 
       // Build minimal manifest for RPC bridge — available for tools, events, and jobs.
       // Mirrored by modules/apps/bridge-manifest.ts (the CLI's installed import
@@ -3103,10 +3050,10 @@ async function registerSingleApp(
               conditionalGate: tool.conditionalGate,
               preflight:
                 isManifestFormat && tool.preflight
-                  ? { bundlePath, exportName: tool.preflight, trusted: desc.trusted !== false }
+                  ? { bundlePath, exportName: tool.preflight, core }
                   : tool.preflight,
               handler: isManifestFormat
-                ? { bundlePath, exportName: tool.handler, trusted: desc.trusted !== false }
+                ? { bundlePath, exportName: tool.handler, core }
                 : tool.handler,
               params: tool.params,
               returns: tool.returns,
@@ -3122,20 +3069,21 @@ async function registerSingleApp(
               // each bridge call in its own short transaction (executeToolHandler).
               // TRUSTED apps only: a third-party .liaisonapp must not opt back
               // into pinning a pool connection for its whole sandbox run.
-              atomic: tool.atomic === true && desc.trusted !== false,
+              atomic: tool.atomic === true && core,
             }
             if (manifestForBridge) entry._manifest = manifestForBridge
             // Scope-taint declarations. A write target counts only inside the app's
             // own schema, so no app can pass itself off as a kernel or another app's
             // sink; a dropped one leaves the tool an undeclared write (refused on a
-            // tainted turn). readOnly is a self-declaration, honoured for a trusted
+            // tainted turn). readOnly is a self-declaration, honoured for a core
             // app and for a sandboxed app SOMEONE OUTSIDE THE MANIFEST vouched for:
             // `_firstParty` (an in-tree app, or an install whose artifact is the
             // image's own catalog tarball) is the platform's voucher, and
             // `_publisherSigned` (this install's artifact carries a cosign signature
             // verified against the instance's configured trusted-publisher identity)
             // is the operator's own, taken at install time. Both are set by init.ts,
-            // never by the manifest. An unsigned third-party sandboxed app's claim
+            // never by the manifest, and neither changes where or how the app runs:
+            // they vouch for its declarations, not for a privilege. An unsigned third-party sandboxed app's claim
             // proves nothing and is ignored.
             if (
               typeof tool.writesToTable === "string" &&
@@ -3152,15 +3100,13 @@ async function registerSingleApp(
               typeof tool.writesToTable === "string" &&
               tool.writesToTable.startsWith("kernel.") &&
               TAINT_ENFORCING_SINKS.has(tool.writesToTable) &&
-              (desc.trusted !== false || desc._firstParty === true)
+              (core || desc._firstParty === true)
             ) {
               entry.writesToTable = tool.writesToTable
             }
             if (
               tool.readOnly === true &&
-              (desc.trusted !== false ||
-                desc._firstParty === true ||
-                desc._publisherSigned === true)
+              (core || desc._firstParty === true || desc._publisherSigned === true)
             ) {
               entry.readOnly = true
             } else if (
@@ -3187,9 +3133,7 @@ async function registerSingleApp(
               typeof tool.sinkReadScope === "string" &&
               entry.writesToTable !== undefined &&
               tool.sinkReadScope.startsWith(`${desc.name}:`) &&
-              (desc.trusted !== false ||
-                desc._firstParty === true ||
-                desc._publisherSigned === true)
+              (core || desc._firstParty === true || desc._publisherSigned === true)
             ) {
               entry.sinkReadScope = tool.sinkReadScope
             }
@@ -3200,9 +3144,7 @@ async function registerSingleApp(
             if (
               entry.sinkReadScope === undefined &&
               entry.writesToTable !== undefined &&
-              (desc.trusted !== false ||
-                desc._firstParty === true ||
-                desc._publisherSigned === true)
+              (core || desc._firstParty === true || desc._publisherSigned === true)
             ) {
               const derived = derivedSinkReadScope({
                 appName: desc.name,
@@ -3283,7 +3225,7 @@ async function registerSingleApp(
               const pollBundlePath = bundlePath
               const pollAppName = desc.name
               const pollManifest = manifestForBridge
-              const pollPrivileged = hasPrivilegedBridge(desc)
+              const pollPrivileged = core
               entry.poll = async (
                 pollCtx: { orgId: string; userId: string },
                 externalRef: unknown,
@@ -3291,7 +3233,7 @@ async function registerSingleApp(
                 // At an app day cap the output is "not ready": the poll job asks
                 // again on its schedule (modules/apps/usage/app-day-cap.ts).
                 const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
-                if ((await appRunHoldMs({ orgId: pollCtx.orgId, trusted: false })) !== null) {
+                if ((await appRunHoldMs({ orgId: pollCtx.orgId, core: false })) !== null) {
                   return { ready: false }
                 }
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
@@ -3315,7 +3257,6 @@ async function registerSingleApp(
                   )
                   // Always the worker pool.
                   return runApp({
-                    trusted: false,
                     appName: pollAppName,
                     orgId,
                     bundlePath: pollBundlePath,
@@ -3351,13 +3292,13 @@ async function registerSingleApp(
               const reconcileBundlePath = bundlePath
               const reconcileAppName = desc.name
               const reconcileManifest = manifestForBridge
-              const reconcilePrivileged = hasPrivilegedBridge(desc)
+              const reconcilePrivileged = core
               entry.reconcile = async (
                 rCtx: { orgId: string },
                 input: { approvalRequestId: string; payload: unknown; externalRef: unknown },
               ): Promise<ReconcileOutcome> => {
                 const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
-                if ((await appRunHoldMs({ orgId: rCtx.orgId, trusted: false })) !== null) {
+                if ((await appRunHoldMs({ orgId: rCtx.orgId, core: false })) !== null) {
                   return { outcome: "unknown", reason: "app_day_cap" }
                 }
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
@@ -3378,7 +3319,6 @@ async function registerSingleApp(
                     reconcileManifest as never,
                   )
                   return runApp({
-                    trusted: false,
                     appName: reconcileAppName,
                     orgId,
                     bundlePath: reconcileBundlePath,
@@ -3458,23 +3398,7 @@ async function registerSingleApp(
           }
 
           if (isManifestFormat && tool.summarizer) {
-            if (desc.trusted === false && isSummarizerTrustCarveOutAllowed(desc.name)) {
-              // Operator-explicit carve-out (LIAISON_TRUSTED_SUMMARIZER_APPS): run
-              // the summarizer HOST-SIDE. Kept ahead of the sandbox path below
-              // because a summarizer that reads current state (a before/after
-              // preview) cannot be served by the empty-bridge sandbox.
-              log.warn(
-                { app: desc.name, toolName },
-                "Registering summarizer for untrusted manifest app via LIAISON_TRUSTED_SUMMARIZER_APPS operator override",
-              )
-              const summarize = await loadTrustedBundleFunction(bundlePath, tool.summarizer)
-              registerApprovalSummarizer(
-                orgId,
-                desc.name,
-                toolName,
-                summarize as ApprovalSummarizer,
-              )
-            } else if (desc.trusted === false) {
+            if (!core) {
               // Untrusted bundle code must not run host-side, but it CAN run
               // in the same sandbox its handlers run in. The
               // summarizer executes with an EMPTY bridge (no db/http/kernel
@@ -3484,9 +3408,8 @@ async function registerSingleApp(
               // skipped wholesale, so every bundled-app approval (shopify,
               // meta-ads, boxtal, ...) fell back to the raw-params summary.
               // (Summarizers that need I/O, such as a before/after preview,
-              // must be operator-allowlisted for the host-side path above;
-              // under the empty bridge they degrade to a "preview unavailable"
-              // card rather than a real diff.)
+              // get it from their own export and an empty bridge degrades
+              // them to a "preview unavailable" card rather than a real diff.)
               const summarizerName = tool.summarizer
               const summarizerBundlePath = bundlePath
               const summarizerAppName = desc.name
@@ -3506,7 +3429,6 @@ async function registerSingleApp(
                 // remote executor is configured, else QuickJS in process (as
                 // before), always on an empty bridge.
                 return (await runApp({
-                  trusted: false,
                   appName: summarizerAppName,
                   orgId,
                   bundlePath: summarizerBundlePath,
@@ -3522,10 +3444,10 @@ async function registerSingleApp(
               }
               registerApprovalSummarizer(orgId, desc.name, toolName, summarize)
             } else {
-              // Trusted summarizers get the SAME meta (identifier + hydrated
+              // A core app's summarizers (server code) get the SAME meta (identifier + hydrated
               // context) as sandboxed ones — parity so a card is equally rich
               // regardless of the app's trust tier.
-              const inner = (await loadTrustedBundleFunction(
+              const inner = (await loadCoreSummarizer(
                 bundlePath,
                 tool.summarizer,
               )) as ApprovalSummarizer
@@ -3746,7 +3668,7 @@ async function registerSingleApp(
           handler,
           scope,
           bundlePath,
-          trusted: desc.trusted !== false,
+          core,
         })
       }
 
@@ -3842,7 +3764,6 @@ async function registerSingleApp(
                 // behave exactly as before. Background priority: events must not
                 // starve interactive tool calls (same rule as manifest webhooks).
                 await runApp({
-                  trusted: false,
                   appName,
                   orgId: eventOrgId,
                   bundlePath,
@@ -3862,9 +3783,9 @@ async function registerSingleApp(
               // transaction spans its run or each bridge call opens its own.
               const isSystemEvent = isCrossAppKernel || (event.actorType ?? "system") === "system"
               const inTx = async <T>(fn: (tx: any) => Promise<T>): Promise<T> => {
-                if (isSystemEvent && !hasPrivilegedBridge(desc)) {
-                  // An app nobody vouched for never holds a handle that bypasses
-                  // RLS: its cross-app and system events run as the app itself,
+                if (isSystemEvent && !core) {
+                  // A non-core app never holds a handle that bypasses RLS, first-party
+                  // or not: its cross-app and system events run as the app itself,
                   // under its own scopes, like its webhooks and crons.
                   const { withRlsContext } = await import("~/db/rls")
                   return withRlsContext(
@@ -3872,15 +3793,15 @@ async function registerSingleApp(
                       actorType: "system",
                       orgId: eventOrgId,
                       purpose: "job",
-                      scopes: [`${appName}:*`],
+                      scopes: appSelfScopes(appName, bridgeManifest.scopes),
                     },
                     fn,
                     { pool: "jobs" },
                   )
                 }
                 if (isSystemEvent) {
-                  // Cross-app or system events: the handler needs privileged DB to
-                  // see all rows. It acts as the app: a scope check in the database
+                  // A core app's cross-app or system events (server code): the
+                  // handler needs privileged DB to see all rows. It acts as the app: a scope check in the database
                   // (a task number, say) reads the scopes its manifest declares.
                   // The built-in projects app declares none, and needs none: it
                   // subscribes to no event and declares no poll, so no privileged
@@ -3912,7 +3833,7 @@ async function registerSingleApp(
               // listed exception's, still runs on one transaction for the whole run.
               if (
                 !handlerRunHoldsTx({
-                  trusted: desc.trusted !== false,
+                  core,
                   app: appName,
                   entry: `event:${exportName}`,
                 })
@@ -4040,7 +3961,7 @@ async function registerSingleApp(
                 // periodic, the first tick after midnight UTC runs it
                 // (modules/apps/usage/app-day-cap.ts).
                 const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
-                if ((await appRunHoldMs({ orgId: jobOrgId, trusted: false })) !== null) {
+                if ((await appRunHoldMs({ orgId: jobOrgId, core: false })) !== null) {
                   log.info(
                     { app: appName, job: jobName, orgId: jobOrgId },
                     "scheduled job skipped: the org reached an app day cap",
@@ -4067,7 +3988,6 @@ async function registerSingleApp(
                 // worker's params.
                 const { _tx, _session, ...sandboxPayload } = payload
                 const result = await runApp({
-                  trusted: false,
                   appName,
                   orgId: jobOrgId,
                   bundlePath,
@@ -4113,7 +4033,7 @@ async function registerSingleApp(
                 // At an app day cap the job is put back as delayed until the
                 // next UTC day (modules/apps/usage/app-day-cap.ts, jobs.ts).
                 const { holdAppJobIfCapped } = await import("~/modules/apps/usage/app-day-cap")
-                await holdAppJobIfCapped({ orgId: jobOrgId, trusted: false })
+                await holdAppJobIfCapped({ orgId: jobOrgId, core: false })
                 const actorId: string = payload._userId ?? `system:${appName}:${jobName}`
                 const bridge = buildJobBridge(
                   appName,
@@ -4129,7 +4049,6 @@ async function registerSingleApp(
                 // strip them from the params that cross the IPC boundary.
                 const { _tx, _session, ...sandboxPayload } = payload
                 await runApp({
-                  trusted: false,
                   appName,
                   orgId: jobOrgId,
                   bundlePath,
@@ -4168,12 +4087,8 @@ async function registerSingleApp(
         )
         for (const [name, def] of Object.entries(desc.webhooks as Record<string, any>)) {
           webhookHandlers.set([orgId, desc.name, name], {
-            handler: isManifestFormat
-              ? { bundlePath, exportName: def.handler, trusted: desc.trusted !== false }
-              : def.handler,
-            verify: isManifestFormat
-              ? { bundlePath, exportName: def.verify, trusted: desc.trusted !== false }
-              : def.verify,
+            handler: isManifestFormat ? { bundlePath, exportName: def.handler, core } : def.handler,
+            verify: isManifestFormat ? { bundlePath, exportName: def.verify, core } : def.verify,
             appName: desc.name,
             orgId,
             ...(typeof def.bodyLimitBytes === "number"
@@ -4250,13 +4165,13 @@ async function registerSingleApp(
             // Bridge-owned transactions: the privileged pool connection is
             // acquired per BRIDGE CALL, not held across the whole sandbox run —
             // a slow search handler no longer pins a privileged pool slot.
-            // An app the platform does not vouch for gets an RLS session as the
-            // app itself instead, and runs in the isolated worker pool.
-            const vouched = hasPrivilegedBridge(desc)
+            // A non-core app gets an RLS session as the app itself, and runs
+            // sandboxed; only a core app's (server code) bridge is privileged.
+            const vouched = core
             // At an app day cap the search is refused: no hits and a typed
             // reason (modules/search/external-bridge.ts).
             const { assertAppRunRoom } = await import("~/modules/apps/usage/app-day-cap")
-            await assertAppRunRoom({ orgId: searchOrgId, trusted: vouched })
+            await assertAppRunRoom({ orgId: searchOrgId, core: vouched })
             const searchSession = vouched
               ? ({
                   ctx: { actorType: "system", orgId: searchOrgId, purpose: "job" },
@@ -4267,7 +4182,7 @@ async function registerSingleApp(
                   actorType: "system",
                   orgId: searchOrgId,
                   purpose: "job",
-                  scopes: [`${appNameLocal}:*`],
+                  scopes: appSelfScopes(appNameLocal, bridgeManifest?.scopes),
                 })
             const bridge = createSessionRpcBridge(
               appNameLocal,
@@ -4277,9 +4192,8 @@ async function registerSingleApp(
               bridgeManifest,
               [`${appNameLocal}:*`],
             )
-            // A vouched app's search runs in-process; any other in the worker pool.
+            // runApp runs a core app's export as server code, any other sandboxed.
             return (await runApp({
-              trusted: vouched,
               appName: appNameLocal,
               orgId: searchOrgId,
               bundlePath,
@@ -4300,8 +4214,7 @@ async function registerSingleApp(
       // Knowledge source kinds (manifest `knowledgeSources`): the Knowledge sync
       // job wakes the kind's handler one page at a time and writes what it
       // returns (apps/knowledge/app-sources.ts). The dispatch runs the export
-      // like the search handler: a vouched app in-process, any other in the
-      // worker pool or on Workers.
+      // sandboxed (runApp picks the executor), on an RLS bridge as the app.
       if ((desc as any).knowledgeSources && isManifestFormat && bundlePath) {
         const { knowledgeSourceKindsOf, makeKnowledgeSyncDispatch } = await import(
           "~/modules/apps/knowledge-sync-dispatch"
@@ -4315,7 +4228,6 @@ async function registerSingleApp(
               kinds,
               bundlePath,
               bridgeManifest: manifestForBridge!,
-              vouched: hasPrivilegedBridge(desc),
             }),
           })
         }
@@ -4337,7 +4249,6 @@ async function registerSingleApp(
               decl: itemsDecl,
               bundlePath,
               bridgeManifest: manifestForBridge!,
-              vouched: hasPrivilegedBridge(desc),
             }),
           })
         }
@@ -4369,13 +4280,13 @@ async function registerSingleApp(
         const useBundle =
           isManifestFormat && typeof bundlePath === "string" && bundlePath.length > 0
         let handler:
-          | { bundlePath: string; exportName: string; trusted: boolean }
+          | { bundlePath: string; exportName: string; core: boolean }
           | ((ctx: any, format: string) => Promise<unknown>)
         if (useBundle) {
           handler = {
             bundlePath,
             exportName: desc.export.handler,
-            trusted: desc.trusted !== false,
+            core,
           }
         } else if (isManifestFormat) {
           const builtin = Object.hasOwn(CORE_EXPORT_HANDLERS, desc.name)
@@ -4424,7 +4335,7 @@ async function registerSingleApp(
           kinds: decl.kinds,
           ...(useBundle
             ? {
-                bundle: { bundlePath, trusted: desc.trusted !== false },
+                bundle: { bundlePath, core },
                 ...(manifestForBridge ? { _manifest: manifestForBridge } : {}),
               }
             : {}),
@@ -4522,18 +4433,6 @@ async function registerSingleApp(
         }
       }
 
-      // App-specific RPC bridge methods (e.g. a connector's REST calls). Merged
-      // into this app's sandbox bridge by `createRpcBridge` — keeps app logic out
-      // of the generic kernel bridge and off any app-name branch.
-      if (typeof bridgeExtension === "function") {
-        appBridgeExtensionRegistry.set([orgId, desc.name], bridgeExtension)
-      }
-
-      // A built-in app's host-side tools (TS descriptor only, never a manifest):
-      // registered under the app, so a teardown removes them with the rest and
-      // every re-registration brings them back.
-      const registerHostTools: ((orgId: string) => void) | undefined = desc._registerHostTools
-      if (typeof registerHostTools === "function") registerHostTools(orgId)
       // An app that declares a platform-held API connection gets the platform's
       // adapter save and restore (decided by the connection's admin scope).
       const apiConnection = apiConnectionOf(desc as AppManifestForBridge)
@@ -4600,7 +4499,6 @@ const APP_KEYED_REGISTRIES = [
   connectionConfigRegistry,
   connectionBeforeDisconnectRegistry,
   oauthClientResolverRegistry,
-  appBridgeExtensionRegistry,
   appDependenciesRegistry,
   appCrossAppCallsRegistry,
   appContractImplementationsRegistry,
@@ -4711,7 +4609,7 @@ export async function unregisterAppEverywhere(appName: string): Promise<void> {
 /**
  * Register a kernel-scoped (cross-org) attention provider.
  * The aggregator iterates all entries; entries with orgId "*" match every org and are
- * called as trusted in-process functions instead of via the sandbox executor.
+ * called in-process as kernel functions (server code), never through the sandbox executor.
  */
 export function registerKernelAttentionProvider(opts: {
   handler: string
@@ -4727,7 +4625,7 @@ export function registerKernelAttentionProvider(opts: {
     handler: opts.handler,
     scope: opts.scope,
     bundlePath: opts.bundlePath,
-    trusted: true,
+    core: true,
   })
 }
 

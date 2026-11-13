@@ -9,7 +9,6 @@ export const SETTINGS_FX_APP = "settingsfx"
 export const settingsFixtureManifest = {
   name: SETTINGS_FX_APP,
   version: "1.0.0",
-  trusted: true,
   kind: "app",
   description: "Declarative settings fixture",
   displayName: "Settings fixture",

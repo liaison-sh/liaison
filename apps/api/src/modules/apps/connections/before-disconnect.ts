@@ -107,7 +107,6 @@ const defaultExecutor: HookExecutor = async ({
   )
   // Always the isolated worker pool, whatever the app's trust.
   await runApp({
-    trusted: false,
     appName,
     orgId,
     bundlePath,

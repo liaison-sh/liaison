@@ -74,7 +74,7 @@ my-app-1.0.0.liaisonapp.cosign.bundle   (detached cosign signature — sibling f
 | `noRollback` | no | `true` marks a first-party security release: once it runs, a rollback never goes below it (ignored on other packages) — see "Versions on the server" below |
 | `updateUrl` | no | release-channel URL — see below |
 | `connections` | no | OAuth2 / credential connections the app declares |
-| `trusted` | no | **must be `false` or omitted** — see "Trust" below |
+| `trusted` | no | **refused** — see "Trust" below |
 | `capabilities` | no | array of opaque capability strings gating privileged runtime calls (e.g. `pdf.render`) |
 | `pdf_templates` | no | array of `{ kind, source }` declaring PDF templates the app ships; `source` is a relative `.ts` path transpiled into the package's `templates/` bundle at freeze time. Requires `pdf.render` in `capabilities` |
 | `cross_app_calls` | no | array of `{ target, reason }` declaring cross-app tool invocations (`target` is `appname:tool.name`); must agree with `dependencies.tools` when both are present |
@@ -291,12 +291,11 @@ scopes, source: "baked" | "registry", packageUrl?, installed, installedVersion? 
 
 ## Trust
 
-Installed apps are **always sandboxed** (process-isolated worker). The `trusted`
-flag — which lets in-tree apps run in the faster in-process sandbox — is reserved
-for the platform maintainers. A `.liaisonapp` manifest that declares
-`trusted: true` is rejected by the schema, by the freeze tool, and the install
-service force-coerces it to `false` regardless. There is no way for a
-third-party app to escalate out of the sandbox.
+Installed apps are **always sandboxed**. Only the platform's core apps run as
+server code, and that list is fixed in the server, never read from a manifest.
+A `.liaisonapp` manifest that carries a `trusted` field, `true` or `false`, is
+rejected by the schema and by the freeze tool. There is no way for an app to
+escape the sandbox.
 
 ## Reserved names and labels
 

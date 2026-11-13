@@ -160,7 +160,7 @@ describe("the gate", () => {
   it("refuses a top-level run at the runs cap, typed 429 with {limit, used}", async () => {
     caps[ORG] = { ...NO_CAPS, appRunsPerDay: 2 }
     await redis.set(appDayKey("appRunsPerDay", ORG, utcDay(Date.now())), "2")
-    const err = await assertAppRunRoom({ orgId: ORG, trusted: false }).then(
+    const err = await assertAppRunRoom({ orgId: ORG, core: false }).then(
       () => null,
       (e: unknown) => e,
     )
@@ -175,24 +175,24 @@ describe("the gate", () => {
   it("never refuses a nested run, trusted code, an org under the cap or without one", async () => {
     caps[ORG] = { ...NO_CAPS, appRunsPerDay: 2 }
     await redis.set(appDayKey("appRunsPerDay", ORG, utcDay(Date.now())), "5")
-    await assertAppRunRoom({ orgId: ORG, trusted: false, nested: true })
-    await assertAppRunRoom({ orgId: ORG, trusted: true })
-    expect(await appRunHoldMs({ orgId: ORG, trusted: false, nested: true })).toBeNull()
+    await assertAppRunRoom({ orgId: ORG, core: false, nested: true })
+    await assertAppRunRoom({ orgId: ORG, core: true })
+    expect(await appRunHoldMs({ orgId: ORG, core: false, nested: true })).toBeNull()
     caps[ORG] = { ...NO_CAPS, appRunsPerDay: 6 }
     AppDayCapTestAccess.clearCache()
-    await assertAppRunRoom({ orgId: ORG, trusted: false })
-    await assertAppRunRoom({ orgId: OTHER, trusted: false })
+    await assertAppRunRoom({ orgId: ORG, core: false })
+    await assertAppRunRoom({ orgId: OTHER, core: false })
   })
 
   it("holds background work until the next UTC day (job: AppDayCapHeldJobError)", async () => {
     caps[ORG] = { ...NO_CAPS, appBridgeCallsPerDay: 10 }
     await redis.set(appDayKey("appBridgeCallsPerDay", ORG, utcDay(Date.now())), "10")
     const now = Date.now()
-    const hold = await appRunHoldMs({ orgId: ORG, trusted: false }, now)
+    const hold = await appRunHoldMs({ orgId: ORG, core: false }, now)
     expect(hold).not.toBeNull()
     expect(hold as number).toBeGreaterThanOrEqual(msUntilNextUtcDay(now))
     expect(hold as number).toBeLessThanOrEqual(msUntilNextUtcDay(now) + 5 * 60_000)
-    const err = await holdAppJobIfCapped({ orgId: ORG, trusted: false }).then(
+    const err = await holdAppJobIfCapped({ orgId: ORG, core: false }).then(
       () => null,
       (e: unknown) => e,
     )

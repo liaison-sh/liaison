@@ -40,6 +40,7 @@ import {
   installFromCatalog,
   listMergedCatalog,
 } from "~/modules/apps/catalog-sources"
+import { isCoreApp } from "~/modules/apps/core/registry"
 import { discoverInTreeApps, getInstallRoot } from "~/modules/apps/discover-apps"
 import {
   declaredDomains,
@@ -814,7 +815,7 @@ installRoutes.get("/", requireScope("kernel:apps:admin"), async (c) => {
       version: app.version,
       source: "in-tree",
       status: "active",
-      trusted: true,
+      core: isCoreApp({ name: app.name }),
     })
   }
 
@@ -833,7 +834,7 @@ installRoutes.get("/", requireScope("kernel:apps:admin"), async (c) => {
       statusMessage: shadowed
         ? "A bundled app of the same name takes precedence — this install is inactive"
         : undefined,
-      trusted: false,
+      core: false,
       ...installedAuthor(row.name, row.version),
       grantedScopes: row.grantedScopes,
       updateUrl: row.updateUrl ?? undefined,

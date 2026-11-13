@@ -82,16 +82,21 @@ describe("package-format", () => {
     expect(bad.success).toBe(false)
   })
 
-  it("rejects manifest claiming trusted: true (only the platform can mark in-tree apps trusted)", () => {
-    const bad = packageManifestSchema.safeParse({
-      name: "my-app",
-      version: "1.0.0",
-      packageFormat: 1,
-      license: "MIT",
-      scopes: [],
-      trusted: true,
-    })
-    expect(bad.success).toBe(false)
+  it("rejects a manifest carrying trusted, true or false: only the platform decides which apps are core", () => {
+    for (const trusted of [true, false]) {
+      const bad = packageManifestSchema.safeParse({
+        name: "my-app",
+        version: "1.0.0",
+        packageFormat: 1,
+        license: "MIT",
+        scopes: [],
+        trusted,
+      })
+      expect(bad.success).toBe(false)
+      expect(bad.error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([
+        "trusted: trusted is not a manifest field: every package runs sandboxed, and the platform alone decides which apps are core. Remove it.",
+      ])
+    }
   })
 
   it("rejects scopes that don't match app:resource:action shape", () => {
@@ -146,7 +151,7 @@ describe("package-format", () => {
       version: "1.0.0",
       source: "in-tree",
       status: "active",
-      trusted: true,
+      core: true,
     })
     expect(ok.success).toBe(true)
   })

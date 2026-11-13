@@ -49,7 +49,7 @@ async function createItem(
       team: params.team,
       status: params.status || "open",
       sensitivity: params.sensitivity || "public",
-      createdBy: ctx.getUserId(),
+      createdBy: await ctx.getUserId(),
     }),
   )
   const item = JSON.parse(inserted)
@@ -98,7 +98,7 @@ async function gatedCreateItem(params: { title: string; team?: string }, ctx: Te
       team: params.team,
       status: "open",
       sensitivity: "public",
-      createdBy: ctx.getUserId(),
+      createdBy: await ctx.getUserId(),
     }),
   )
   const item = JSON.parse(inserted)

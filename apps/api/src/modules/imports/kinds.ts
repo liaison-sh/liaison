@@ -27,7 +27,7 @@ export interface ImportKindInfo {
   name: string
   decl: ImportKindDecl
   /** Set when the app has a handler bundle (installed apps). */
-  bundle?: { bundlePath: string; trusted: boolean }
+  bundle?: { bundlePath: string; core: boolean }
   /** The app's file parents, for a kind resolved without registering the app
    *  (the CLI); a registered app's come from the file-parent registry. */
   fileParents?: Record<string, ParentResolution>
@@ -167,7 +167,7 @@ async function installedImportKind(kind: string): Promise<ImportKindInfo | null>
     app: parts.app,
     name: parts.name,
     decl,
-    bundle: { bundlePath, trusted: false },
+    bundle: { bundlePath, core: false },
     manifest: { ...bridgeManifestOf(desc) },
     fileParents: fileParentsOf(parts.app, fields.get("entities")),
   }

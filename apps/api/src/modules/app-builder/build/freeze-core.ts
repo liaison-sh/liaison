@@ -33,16 +33,16 @@ export function checkPackageManifest(raw: unknown): ManifestCheck {
   return {
     ok: false,
     messages: result.error.issues.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`),
-    trusted: (raw as { trusted?: unknown } | null)?.trusted === true,
+    trusted: raw !== null && typeof raw === "object" && "trusted" in raw,
   }
 }
 
 /** The freeze's error text for a manifest `checkPackageManifest` refused. */
 export function manifestErrorMessage(check: { messages: string[]; trusted: boolean }): string {
-  // Surface the `trusted: true` rejection explicitly — installed apps can
-  // never be trusted, and the freeze tool fails loud at the source.
+  // Surface the `trusted` rejection explicitly: a package always runs
+  // sandboxed, and the freeze tool fails loud at the source.
   if (check.trusted) {
-    return `Manifest declares "trusted: true" — installed apps are always sandboxed and cannot claim trust. Remove the field. (${check.messages.join("; ")})`
+    return `Manifest declares "trusted": every package runs sandboxed and cannot claim trust. Remove the field. (${check.messages.join("; ")})`
   }
   return `Invalid app manifest: ${check.messages.join("; ")}`
 }

@@ -3114,7 +3114,7 @@ export async function executeToolHandler(
     // hop of a run already admitted) is counted, never refused.
     await assertAppRunRoom({
       orgId,
-      trusted: handlerRef.trusted === true,
+      core: handlerRef.core === true,
       nested: bridgeOptions?.nested === true || (bridgeOptions?.callChain?.length ?? 0) > 1,
     })
     const bundleSource = await loadBundle(handlerRef.bundlePath)
@@ -3178,7 +3178,6 @@ export async function executeToolHandler(
       )
     const runManifestHandler = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
       runApp({
-        trusted: handlerRef.trusted === true,
         appName: tool.appName,
         orgId,
         bundlePath: handlerRef.bundlePath,
@@ -6150,7 +6149,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     // crash is debuggable instead of an opaque "Tool execution failed" — the drafts_create
     // export-payload crash class. Production + the sandbox-worker test (no CHAOS_DEBUG) stay opaque.
     const isUntrustedProd =
-      isManifestHandler(tool.handler) && tool.handler.trusted === false && !process.env.CHAOS_DEBUG
+      isManifestHandler(tool.handler) && tool.handler.core !== true && !process.env.CHAOS_DEBUG
     // DELIBERATE sandboxed-handler errors. Sandboxed apps communicate agent-actionable
     // failures by throwing `some_error_code: human guidance` (e.g. invoicing's
     // `no_issuer_profile: …`), but the sandbox IPC marshals only the message STRING —

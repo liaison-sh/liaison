@@ -342,6 +342,8 @@ const bearerCache = new Map<string, CachedBearer>()
 const bearerInflight = new Map<string, Promise<CachedBearer | FetchResult>>()
 /** Account slot -> the full cache key (with its credential fingerprint) last cached there. */
 const bearerSlots = new Map<string, string>()
+/** Grant cache key -> the client secret its cached app token was granted for. */
+const grantSecrets = new Map<string, string>()
 /** Per-process key for the credential fingerprint, so the cache holds no plain digest of a secret. */
 const FINGERPRINT_KEY = randomBytes(32)
 
@@ -350,6 +352,7 @@ export const FetchAuthTestAccess = {
     bearerCache.clear()
     bearerInflight.clear()
     bearerSlots.clear()
+    grantSecrets.clear()
   },
   cachedCount(): number {
     return bearerCache.size
@@ -482,14 +485,18 @@ async function grantedBearer(
       `Connection "${connection}" has no OAuth client configured. Set its client id and secret in Settings.`,
     )
   }
-  const fingerprint = createHmac("sha256", FINGERPRINT_KEY)
-    .update(`${client.clientId.length}:${client.clientId}\u0000${client.clientSecret}`, "utf8")
-    .digest("hex")
+  // One slot per org, app, connection, token URL and client id. A token is kept with the
+  // client secret it was granted for (in this process only), so a rotated secret never
+  // reuses the old one's token.
   const slot = [deps.orgId, deps.appName, connection, tokenUrl, "client_credentials"].join("\u0000")
-  const key = `${slot}\u0000${fingerprint}`
+  const key = `${slot}\u0000${client.clientId}`
   const previous = bearerSlots.get(slot)
   if (previous !== undefined && previous !== key) bearerCache.delete(previous)
   bearerSlots.set(slot, key)
+  if (grantSecrets.get(key) !== client.clientSecret) {
+    bearerCache.delete(key)
+    grantSecrets.set(key, client.clientSecret)
+  }
   const cached = bearerCache.get(key)
   if (cached && Date.now() < cached.expiresAtMs) return { key, bearer: cached }
   let inflight = bearerInflight.get(key)

@@ -1758,16 +1758,16 @@
       "other": "projets qui utilisent désormais les heures datées"
     },
     "capacity_over": {
-      "one": "personne avec plus de travail prévu que de temps",
-      "other": "personnes avec plus de travail prévu que de temps"
+      "one": "personne avec plus de temps prévu que ce qui rentre",
+      "other": "personnes avec plus de temps prévu que ce qui rentre"
     },
     "month_close": {
       "one": "projet à rapprocher ce mois-ci",
       "other": "projets à rapprocher ce mois-ci"
     },
     "calendar_ended": {
-      "one": "calendrier partagé des jours non travaillés à choisir de nouveau",
-      "other": "calendriers partagés des jours non travaillés à choisir de nouveau"
+      "one": "calendrier partagé de jours non travaillés à choisir de nouveau",
+      "other": "calendriers partagés de jours non travaillés à choisir de nouveau"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",
@@ -6764,7 +6764,9 @@
     "briefTitle": "Le point du jour",
     "briefNone": "Aucun point du matin. Demandez-en un à votre agent chaque matin, et dites ce que vous voulez y voir.",
     "briefSetUp": "Mettre en place un point du matin",
-    "briefOpen": "Ouvrir"
+    "briefOpen": "Ouvrir",
+    "backToFiveDays": "Revenir à 5 jours",
+    "backToFiveDaysFailed": "Impossible de changer vos jours par semaine. Rien n'a été modifié."
   },
   "homeRouting": {
     "othersGroup": "Pour d'autres, vous pouvez aussi approuver",

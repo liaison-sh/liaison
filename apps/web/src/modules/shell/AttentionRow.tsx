@@ -64,6 +64,7 @@ import { AppPill, appIdOfTool } from "~/modules/shell/AppPill"
 import {
   AskDraftButton,
   AskReassignButton,
+  BackToFiveDaysButton,
   DismissButton,
   GuardLine,
   isStoppedDraft,
@@ -861,6 +862,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                 <AskDraftButton item={props.item} testId={testId()} compact />
               </Show>
               <AskReassignButton item={props.item} testId={testId()} compact />
+              <BackToFiveDaysButton item={props.item} testId={testId()} compact />
               <Show when={offersNotNow(props.item)}>
                 <NotNowButton item={props.item} testId={testId()} compact />
               </Show>
@@ -1118,6 +1120,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               <AskDraftButton item={props.item} testId={testId()} compact={false} />
             </Show>
             <AskReassignButton item={props.item} testId={testId()} compact={false} />
+            <BackToFiveDaysButton item={props.item} testId={testId()} compact={false} />
             <Show when={offersNotNow(props.item)}>
               <NotNowButton item={props.item} testId={testId()} compact={false} />
             </Show>

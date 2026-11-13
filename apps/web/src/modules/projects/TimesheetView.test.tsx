@@ -100,4 +100,23 @@ describe("TimesheetView", () => {
     await waitFor(() => screen.getByTestId("timesheet-view.no-access"))
     expect(screen.queryByTestId("timesheet-view.line")).toBeNull()
   })
+
+  it("no cell is editable and lines add up to the total", async () => {
+    render(() => <TimesheetView entityId="p1" />)
+    await waitFor(() => expect(screen.getAllByTestId("timesheet-view.line")).toHaveLength(2))
+    const view = screen.getByTestId("timesheet-view")
+    expect(view.querySelector("input, textarea, select, [contenteditable]")).toBeNull()
+    const sum = (answers.sheet as TimesheetData).lines.reduce((n, l) => n + l.minutes, 0)
+    expect(sum).toBe((answers.sheet as TimesheetData).totalMinutes)
+    expect(screen.getByTestId("timesheet-view.total").textContent).toContain("7h")
+  })
+
+  it("a viewer without access sees the no-access state", async () => {
+    answers.sheet = { error: { code: "not_allowed" } }
+    render(() => <TimesheetView entityId="p1" />)
+    expect((await screen.findByTestId("timesheet-view.no-access")).textContent).toContain(
+      "Only the project's lead and finance",
+    )
+    expect(screen.queryByTestId("timesheet-view.actions")).toBeNull()
+  })
 })

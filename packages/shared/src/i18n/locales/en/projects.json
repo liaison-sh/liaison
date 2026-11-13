@@ -423,16 +423,24 @@
     "askButton": "Ask",
     "askFits": "Does the rest still fit?",
     "askCheck": "Check planned against real",
-    "askAbout": "{{project}}: {{question}}"
+    "askAbout": "{{project}}: {{question}}",
+    "openSheet": "Open the dated hours"
   },
   "capacity": {
     "tab": "Capacity",
     "loading": "Loading capacity",
     "error": "Could not load capacity. Projects did not answer. No task was moved.",
-    "empty": "No one has planned time this week on a project that uses time and budgets.",
     "of": "{{planned}} of {{available}}",
     "left": "Assigned to people who have left",
-    "footnote": "Planned time comes from timeboxes on projects that use time and budgets. Nothing here comes from time entered or from activity."
+    "footnote": "Planned time comes from timeboxes on projects that use time and budgets. Nothing here comes from time entered or from activity.",
+    "emptyTitle": "No planned time on assigned work yet",
+    "emptyBody": "Capacity only adds up planned time on work someone is assigned to. Ask the agent to set it from a quote, or set it on a task.",
+    "retry": "Retry",
+    "summary": "{{planned}} planned, of {{available}} available.",
+    "whoCanTake": "Who can take this?",
+    "whoMessage": "Who can take {{task}}?",
+    "footnoteDays": "Company days off and away days reduce what fits. No reason is shown.",
+    "sidebar": "Capacity"
   },
   "fields": {
     "title": "Fields",
@@ -494,5 +502,12 @@
     "total": "Total",
     "whoSees": "Who sees it: the project's lead and finance. Entries made before dated hours were turned on stay with each person.",
     "not": "Not a legal working-time record, and it reminds nobody of anything."
+  },
+  "timeSettings": {
+    "using": "{{count}} projects use time and budgets. Each project turns it on in its own settings.",
+    "usingOne": "1 project uses time and budgets. It is turned on in that project's own settings.",
+    "costRates": "Cost rates are kept by finance, per person, and stay out of every other view.",
+    "costRatesAsk": "Set cost rates",
+    "costRatesMessage": "Show me the cost rates and who has none yet."
   }
 }

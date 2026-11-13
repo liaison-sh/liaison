@@ -52,7 +52,22 @@ beforeEach(() => {
   scopes.granted = new Set(["projects:projects:write"])
 })
 
+const openTab = vi.hoisted(() => vi.fn())
+vi.mock("~/modules/shell/tab-store", () => ({ openTab }))
+
 describe("BudgetPanel", () => {
+  it("opens the dated hours only with dated hours on and the sheet scope", () => {
+    scopes.granted = new Set(["projects:projects:write", "projects:dated_sheet:read"])
+    const off = panel(ready(data({ datedHours: false })))
+    expect(screen.queryByTestId("budget-panel.open-sheet")).toBeNull()
+    off.unmount()
+    panel(ready(data({ datedHours: true })))
+    fireEvent.click(screen.getByTestId("budget-panel.open-sheet"))
+    expect(openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "projects:timesheet", entityId: "p1" }),
+    )
+  })
+
   it("without money scope the panel shows hours only", () => {
     const { money: _price, ...hoursOnly } = data()
     panel(ready({ ...hoursOnly, state: "hours-only" }))

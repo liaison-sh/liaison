@@ -7,11 +7,8 @@
  * so any header value or display name containing non-ASCII goes out as
  * `=?UTF-8?B?...?=` encoded words. Plain ASCII values pass through unchanged.
  *
- * The mail app's QuickJS handler bundle cannot import modules, so it carries
- * an inlined copy of these functions (apps/api/src/apps/mail/handlers.ts);
- * `apps/api/src/apps/mail/handlers.test.ts` asserts the two produce identical
- * output. Change both together. Pure JS on purpose (no Buffer / TextEncoder),
- * so the same code runs in the sandbox.
+ * Used by the mail handlers (apps/api/src/apps/mail/handlers.ts) and the
+ * shared RFC 2822 encoder.
  */
 
 const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

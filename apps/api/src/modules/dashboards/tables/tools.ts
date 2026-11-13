@@ -22,6 +22,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import { backingSchema } from "~/modules/dashboards/tables/backing"
 import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
@@ -399,6 +400,7 @@ const editVariants = z.discriminatedUnion("action", [
         .optional()
         .describe("Share the table exactly like this dashboard (the one it will show on)"),
       orgAccess: z.enum(["none", "viewer", "editor"]).optional(),
+      backing: backingSchema.optional(),
     })
     .strict(),
   z
@@ -410,6 +412,7 @@ const editVariants = z.discriminatedUnion("action", [
       description: z.string().max(2000).nullable().optional(),
       agentWritesNeedApproval: z.boolean().optional(),
       columns: columnOps.optional(),
+      backing: backingSchema.nullable().optional(),
     })
     .strict(),
   z.object({ action: z.literal("delete"), tableId: z.string().uuid() }).strict(),
@@ -434,6 +437,12 @@ const editParams = z
       .optional()
       .describe("create: share the table exactly like this dashboard (the one it will show on)"),
     orgAccess: z.enum(["none", "viewer", "editor"]).optional().describe("create"),
+    backing: backingSchema
+      .nullable()
+      .optional()
+      .describe(
+        'create, alter: back the table by a project\'s tasks: {kind:"project_tasks", projectId, fields:[title|status|assignee|due|priority|<task field key>]}; null (alter) makes it plain',
+      ),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -450,6 +459,7 @@ interface EditParams {
   fromDashboardId?: string
   orgAccess?: "none" | "viewer" | "editor"
   columns?: unknown
+  backing?: unknown
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -615,7 +625,7 @@ export function registerTableTools(orgId: string): void {
     name: "tables_edit",
     deferLoading: true,
     description:
-      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
+      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {kind:"project_tasks", projectId, fields:[...]} makes the rows a project\'s tasks: fields names the task values read through (title, status, assignee, due, priority, or a task field key), edits to them change the task, and columns are the table\'s own, kept per task. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
     searchKeywords: ["table", "create", "créer", "column", "colonne", "tableau", "tracker"],
     requiredScopes: [WRITE_SCOPE],
     params: editParams,
@@ -635,6 +645,7 @@ export function registerTableTools(orgId: string): void {
                 : {}),
               ...(p.fromDashboardId ? { fromDashboardId: p.fromDashboardId } : {}),
               ...(p.orgAccess ? { orgAccess: p.orgAccess } : {}),
+              ...(p.backing ? { backing: p.backing } : {}),
             },
             ctx.db,
           )
@@ -660,6 +671,7 @@ export function registerTableTools(orgId: string): void {
               ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
               : {}),
             ...(p.columns ? { columns: p.columns } : {}),
+            ...(p.backing !== undefined ? { backing: p.backing } : {}),
           },
           ctx.db,
         )
@@ -710,7 +722,7 @@ export function registerTableTools(orgId: string): void {
         }
         if (p.columns) {
           applyColumnOps(
-            t.columns,
+            t.backing ? t.columns.filter((c) => t.backing?.own.includes(c.key)) : t.columns,
             t.droppedKeys.map((key) => ({ key, label: key, type: "text" as const })),
             p.columns,
           )

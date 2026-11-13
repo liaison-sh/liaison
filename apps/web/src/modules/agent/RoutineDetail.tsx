@@ -723,6 +723,7 @@ const RoutineDetail: Component<Props> = (props) => {
                           people={flowPeople() ?? []}
                           mode="view"
                           triggerFallback={triggerWords(r())}
+                          agentId={r().ownerAgentId}
                         />
                       </>
                     }
@@ -739,6 +740,7 @@ const RoutineDetail: Component<Props> = (props) => {
                           onChange={setFlowDraft}
                           onFilterChange={setFilterDraft}
                           triggerFallback={triggerWords(r())}
+                          agentId={r().ownerAgentId}
                         />
                         <Show when={flowDraftProblem() ?? flowError()}>
                           {(msg) => (
@@ -863,6 +865,7 @@ const RoutineDetail: Component<Props> = (props) => {
                               runSteps={run.steps ?? []}
                               testid={`run-flow-list-${run.id}`}
                               triggerFallback={triggerWords(r())}
+                          agentId={r().ownerAgentId}
                             />
                             <Show when={run.hasTranscript}>
                               <button

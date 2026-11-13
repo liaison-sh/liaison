@@ -19,6 +19,7 @@ import {
   type RoutineFlow,
   resolveRoutineTemplatePlaceholders,
   routineEventFilterFitsEvent,
+  routineEventFilterSchema,
   routineFlowSchema,
   routineKindSchema,
   routineVisibilitySchema,
@@ -5728,6 +5729,39 @@ export function kindColumnsRule(v: {
     : "kind:'recurring' (the default) needs `cron` (5 fields) and `timezone` (IANA, such as 'Europe/Paris'), and no runAt or event"
 }
 
+/**
+ * An object argument as the provider sees it: a plain object, checked against `schema` when the
+ * call is parsed. The full shape rides only on a refusal, so it is not paid on every tools/list
+ * by conversations that never use the argument.
+ */
+function checkedObjectParam(schema: z.ZodType, what: string) {
+  let shape: string | null = null
+  return z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (value === null || value === undefined) return
+      const parsed = schema.safeParse(value)
+      if (parsed.success) return
+      shape ??= JSON.stringify(z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }))
+      const issue = parsed.error.issues[0]
+      ctx.addIssue({
+        code: "custom",
+        path: issue?.path ?? [],
+        message: `${issue?.message ?? `invalid ${what}`}. A ${what} has this shape: ${shape}`,
+      })
+    })
+}
+
+const routineFlowParam = checkedObjectParam(routineFlowSchema, "flow").describe(
+  "The steps after the trigger, { version: 1, steps: [...] }: each step an action, a wait or an agent turn. Omit for a routine that is one agent turn. A malformed flow is refused with its full shape.",
+)
+const routineEventFilterParam = checkedObjectParam(
+  routineEventFilterSchema.unwrap().unwrap(),
+  "eventFilter",
+).describe(routineEventFilterSchema.description ?? "")
+
 const createRoutineToolParams = (
   createRoutineRequestSchema as unknown as {
     safeExtend: (shape: Record<string, z.ZodType>) => z.ZodType
@@ -5786,6 +5820,8 @@ const createRoutineToolParams = (
       .describe(
         "Run-as identity, a UUID and never a name. Leave it UNSET for a routine you build for yourself: the routine is then owned by you and runs under your identity.",
       ),
+    flow: routineFlowParam,
+    eventFilter: routineEventFilterParam,
   })
   .superRefine((value, ctx) => {
     const rule = kindColumnsRule(value as Parameters<typeof kindColumnsRule>[0])

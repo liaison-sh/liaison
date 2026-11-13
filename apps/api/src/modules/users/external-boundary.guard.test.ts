@@ -197,6 +197,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "the names of who changed a table's rows, and whether a person cell names an active member",
   ],
   "modules/dashboards/tools.ts": ["one-row", "the names of the ids a share call names"],
+  "modules/agent/routines/flow-runner.ts": [
+    "member-filter",
+    "a flow notifies active members only; a portal account is refused",
+  ],
   "modules/demo/demo-pool.ts": ["one-row", "a demo org's own owner"],
   "modules/demo/demo-verification.ts": ["one-row", "a demo org's own visitor"],
   "modules/demo/worlds/saas/scenario-start.ts": [

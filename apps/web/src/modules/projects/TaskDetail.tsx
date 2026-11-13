@@ -233,7 +233,12 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
     }
   }
   const refetchEntityRuns = () => loadEntityRuns(props.entityId)
-  createEffect(on(() => props.entityId, (id) => void loadEntityRuns(id)))
+  createEffect(
+    on(
+      () => props.entityId,
+      (id) => void loadEntityRuns(id),
+    ),
+  )
 
   const project = () => {
     const projectId = liveTask()?.projectId

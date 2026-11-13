@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { and, eq, sql } from "drizzle-orm"
+import { projectsRel } from "~/apps/projects/schema-refs"
 import { createProject } from "~/apps/projects/service/create-project"
 import { createTask, deleteTask, updateTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
@@ -73,7 +74,11 @@ async function board(): Promise<Board> {
       actor: owner,
       input: {
         name: `backed-${randomUUID().slice(0, 8)}`,
-        statuses: [{ label: "Todo" }, { label: "Doing" }, { label: "Done", terminal: true }],
+        statuses: [
+          { label: "Todo", color: "#6b7280" },
+          { label: "Doing", color: "#3b82f6" },
+          { label: "Done", terminal: true },
+        ],
         fields: FIELDS,
       },
     })
@@ -195,6 +200,10 @@ describe("a backed table reads the project's tasks", () => {
       ["note", "text"],
     ])
     expect(t.columns[1]!.choices).toEqual(["Todo", "Doing", "Done"])
+    // The status column carries the statuses' colours (the grid's pills); a colourless one none.
+    expect(t.columns[1]!.choiceColors).toEqual({ Todo: "#6b7280", Doing: "#3b82f6" })
+    expect(t.columns[3]!.choiceColors).toBeUndefined()
+    expect(t.columns.some((c) => c.deadline)).toBe(false)
     expect(t.backing).toMatchObject({
       app: "projects",
       entity: "task",
@@ -238,6 +247,31 @@ describe("a backed table reads the project's tasks", () => {
       (await listRows(owner, id, { limit: 1, sort: "title", cursor: page.nextCursor! })).rows[0]!
         .cells.title,
     ).toBe("No power")
+  })
+})
+
+describe("a finished task's deadline", () => {
+  it("a task in a terminal status reads terminal, an open one does not", async () => {
+    const b = await board()
+    const id = await backedTable(b)
+    const done = await withRlsContext(owner, async (tx) => {
+      const statuses = extractRows<{ id: string }>(
+        await tx.execute(
+          sql`SELECT id FROM ${projectsRel("project_statuses")} WHERE project_id = ${b.id}::uuid AND terminal IS TRUE`,
+        ),
+      )
+      return updateTask({
+        tx,
+        orgId,
+        actor: owner,
+        taskId: b.tasks[1]!,
+        input: { statusId: statuses[0]!.id },
+      })
+    })
+    expect(done).toBeTruthy()
+    const rows = byId((await listRows(owner, id)).rows)
+    expect(rows.get(b.tasks[1]!)!.terminal).toBe(true)
+    expect(rows.get(b.tasks[0]!)!.terminal).toBeUndefined()
   })
 })
 

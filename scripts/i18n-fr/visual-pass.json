@@ -1,0 +1,22 @@
+{
+  "key": {
+    "kernel.routineFlow.laneOtherwise": "sinon",
+    "kernel.routineFlow.laneIs": "vaut {{values}}",
+    "kernel.routineFlow.laneEmpty": "est vide",
+    "kernel.routineFlow.laneNotEmpty": "est rempli",
+    "kernel.routineFlow.splitOn": "Selon",
+    "kernel.routineFlow.runWaitingResumes": "en attente · reprend {{when}}",
+    "kernel.routineFlow.resumesAt": "reprend {{when}}",
+    "kernel.routineFlow.run_flagged": "signalé",
+    "kernel.routineFlow.run_running": "en cours",
+    "kernel.routineFlow.run_pending": "pas commencé",
+    "kernel.routineFlow.agentNoteHeading": "Ce qu'a rapporté l'étape agent",
+    "projects.taskTime.for": "depuis {{time}}",
+    "projects.taskTime.minutes": "{{n}} min",
+    "projects.taskTime.hours": "{{n}} h",
+    "projects.taskTime.days": "{{n}} j",
+    "projects.taskTime.slaPassed": "SLA dépassé {{when}}",
+    "projects.taskTime.whereTitle": "Où le temps est passé",
+    "projects.taskTime.automationsTitle": "Automatisations sur cette tâche"
+  }
+}

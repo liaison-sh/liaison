@@ -31,6 +31,7 @@ import {
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
+import { Avatar } from "~/ui/AvatarStack"
 import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
 import { openRecordLink } from "../BlockDrillPanel"
@@ -54,6 +55,9 @@ import { TableConfirmDialog } from "./TableConfirmDialog"
 import {
   addFormColumns,
   cellText,
+  choiceColor,
+  columnBands,
+  deadlineState,
   isEmptyCell,
   isLinkCell,
   isStale,
@@ -372,14 +376,89 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   const isEditing = (row: TableRow, c: TableColumn) =>
     editing()?.rowId === row.id && editing()?.key === c.key
 
+  /** Where a backed table's own columns begin after its read-through ones: a divider. */
+  const bandEdge = (c: TableColumn) => {
+    if (!backing()) return false
+    const cols = columns()
+    const i = cols.findIndex((x) => x.key === c.key)
+    const prev = cols[i - 1]
+    return i > 0 && prev !== undefined && isReadThrough(prev.key) !== isReadThrough(c.key)
+  }
+
+  /** Today as a calendar day, on the page's clock (what a deadline cell compares against). */
+  const today = () => {
+    const d = new Date(now())
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+
   const CellView: Component<{ row: TableRow; column: TableColumn }> = (p) => {
     const value = () => p.row.cells[p.column.key]
     const text = () => cellText(p.column, value(), textOpts())
+    const color = () => choiceColor(p.column, value())
+    // A finished record (its provider marks it terminal) has no deadline to miss.
+    const deadline = () =>
+      p.column.deadline && !p.row.terminal ? deadlineState(value(), today()) : null
     return (
       <Switch fallback={<span class="truncate">{text()}</span>}>
+        <Match when={p.column.type === "choice" && !isEmptyCell(value()) && color()}>
+          {(c) => (
+            <span
+              data-testid={`${tid()}-pill-${p.row.id}-${p.column.key}`}
+              class="inline-flex max-w-full items-center gap-1.5 truncate rounded-full px-2.5 py-0.5 text-[12.5px] text-text-primary"
+              style={{ background: `color-mix(in srgb, ${c()} 15%, transparent)` }}
+            >
+              <span
+                aria-hidden="true"
+                class="h-[7px] w-[7px] shrink-0 rounded-full"
+                style={{ background: c() }}
+              />
+              {text()}
+            </span>
+          )}
+        </Match>
         <Match when={p.column.type === "choice" && !isEmptyCell(value())}>
           <span class="inline-flex max-w-full truncate rounded-full border border-border-subtle bg-surface-hover px-2 py-0.5 text-[12px] text-text-secondary">
             {text()}
+          </span>
+        </Match>
+        <Match when={p.column.type === "person" && typeof value() === "string" && value()}>
+          {(id) => (
+            <span class="inline-flex min-w-0 items-center gap-2">
+              <Avatar user={{ id: id() as string, name: text(), avatarUrl: null }} pixelSize={22} />
+              <span class="truncate">{text()}</span>
+            </span>
+          )}
+        </Match>
+        <Match when={deadline()?.tone}>
+          <span
+            data-testid={`${tid()}-deadline-${p.row.id}-${p.column.key}`}
+            data-tone={deadline()?.tone}
+            title={
+              deadline()?.tone === "late"
+                ? i18n.t("kernel.dashboards.tables.pastDue")
+                : i18n.t("kernel.dashboards.tables.dueSoon")
+            }
+            class="flex min-w-[6rem] flex-col gap-1"
+          >
+            <span
+              class={cn(
+                "truncate text-[12.5px]",
+                // The warning tone fails AA on small text: near reads in the text colour, toned by its track.
+                deadline()?.tone === "late" ? "text-error" : "text-text-primary",
+              )}
+            >
+              {text()}
+            </span>
+            <span aria-hidden="true" class="h-[3px] rounded-sm bg-surface-sunken">
+              <span
+                class={cn(
+                  "block h-[3px] rounded-sm",
+                  deadline()?.tone === "late" ? "bg-error" : "bg-warning",
+                )}
+                style={{ width: `${Math.round((deadline()?.fill ?? 0) * 100)}%` }}
+              />
+            </span>
           </span>
         </Match>
         <Match when={p.column.type === "choices" && Array.isArray(value())}>
@@ -564,6 +643,33 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
           <div class="min-w-0 overflow-x-auto">
             <table data-testid={`${tid()}-grid`} class="w-full border-collapse text-[13px]">
               <thead>
+                <Show when={backing()}>
+                  <tr data-testid={`${tid()}-bands`}>
+                    <For each={columnBands(columns(), isReadThrough)}>
+                      {(band, i) => (
+                        <th
+                          scope="colgroup"
+                          colSpan={band.span}
+                          data-testid={`${tid()}-band-${band.own ? "own" : "record"}`}
+                          class={cn(
+                            "px-1.5 pt-2 pb-0.5 text-left text-[11px] font-medium tracking-[0.1em] text-text-secondary uppercase",
+                            i() > 0 && "border-l border-border",
+                          )}
+                        >
+                          <span class="inline-flex items-center gap-1.5">
+                            <Show when={!band.own}>
+                              <Link2 size={11} aria-hidden="true" class="shrink-0" />
+                            </Show>
+                            {band.own
+                              ? i18n.t("kernel.dashboards.tables.bandOwn")
+                              : i18n.t("kernel.dashboards.tables.bandFrom", { name: parentName() })}
+                          </span>
+                        </th>
+                      )}
+                    </For>
+                    <th colSpan={2} />
+                  </tr>
+                </Show>
                 <tr class="border-b border-border-subtle">
                   <For each={columns()}>
                     {(c) => (
@@ -579,6 +685,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                         class={cn(
                           "px-1.5 py-1.5 font-normal",
                           numeric(c) ? "text-right" : "text-left",
+                          bandEdge(c) && "border-l border-border",
                         )}
                       >
                         <button
@@ -643,6 +750,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                               class={cn(
                                 "max-w-[16rem] px-1.5 py-1.5",
                                 numeric(c) && "text-right tabular-nums",
+                                bandEdge(c) && "border-l border-border",
                               )}
                             >
                               <Switch>

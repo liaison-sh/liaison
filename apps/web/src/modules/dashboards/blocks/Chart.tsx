@@ -32,6 +32,10 @@ export interface ChartDataset {
   dayLabels?: Array<string | number | null>
   /** A comparison that is a stack's total: one lighter bar per place, beside the stack. */
   total?: boolean
+  /** The series' own colour, from the data (a status's colour): a CSS colour or a var(). */
+  color?: string
+  /** Each place's own colour, from the data (one per category); null takes the series'. */
+  colors?: Array<string | null>
 }
 
 export interface ChartProps {
@@ -97,8 +101,19 @@ export function loadChartJs(): Promise<ChartModule> {
   return loading
 }
 
-// Calm, low-saturation hues after the accent: series are told apart, nothing alarms.
-const MUTED_HUES = ["#7c8db5", "#8fb3a8", "#c2a878", "#a993c4", "#89a9c9", "#b59a8f", "#9ab07f"]
+/** The theme's chart palette slots (theme.css --color-chart-1..8, both themes). */
+export const CHART_PALETTE_SIZE = 8
+// What a slot reads as where no stylesheet is loaded (tests, a detached canvas): the dark theme's.
+const PALETTE_FALLBACK = [
+  "#6f97e8",
+  "#3fb0a2",
+  "#cf9f45",
+  "#a487e0",
+  "#d97f9c",
+  "#6db374",
+  "#d98c5a",
+  "#8e9cb5",
+]
 
 function cssVar(name: string, fallback: string): string {
   if (typeof document === "undefined" || typeof getComputedStyle !== "function") return fallback
@@ -106,12 +121,31 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback
 }
 
+/** A colour as the canvas can paint it: a `var(--token)` resolved against the theme. */
+export function resolveColor(color: string): string {
+  const m = /^var\((--[a-z0-9-]+)\)$/i.exec(color.trim())
+  return m?.[1] ? cssVar(m[1], "#888892") : color
+}
+
+/** The chart palette's first `count` hues, in order (series without a colour of their own). */
 export function chartPalette(count: number): string[] {
-  const accent = cssVar("--color-accent", "#6366f1")
   const out: string[] = []
-  for (let i = 0; i < count; i++)
-    out.push(i === 0 ? accent : MUTED_HUES[(i - 1) % MUTED_HUES.length])
+  for (let i = 0; i < count; i++) {
+    const slot = i % CHART_PALETTE_SIZE
+    out.push(cssVar(`--color-chart-${slot + 1}`, PALETTE_FALLBACK[slot] as string))
+  }
   return out
+}
+
+/** A hex colour with an alpha (0-1) appended; any other colour unchanged. */
+function withAlpha(color: string, alpha: number): string {
+  const full = /^#[0-9a-f]{3}$/i.test(color)
+    ? `#${[...color.slice(1)].map((c) => c + c).join("")}`
+    : color
+  if (!/^#[0-9a-f]{6}$/i.test(full)) return color
+  return `${full}${Math.round(alpha * 255)
+    .toString(16)
+    .padStart(2, "0")}`
 }
 
 /** The chart.js configuration for the props: pure, so it is tested without a canvas. */
@@ -123,17 +157,37 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
   const text = cssVar("--color-text-tertiary", "#65656e")
   if (props.type === "pie") {
     const values = props.datasets[0]?.values ?? []
+    const own = props.datasets[0]?.colors
+    const palette = chartPalette(values.length)
     return {
       type: "pie",
       data: {
         labels,
-        datasets: [{ data: values, backgroundColor: chartPalette(values.length), borderWidth: 0 }],
+        datasets: [
+          {
+            data: values,
+            backgroundColor: values.map((_, i) => {
+              const c = own?.[i]
+              return c ? resolveColor(c) : palette[i]
+            }),
+            borderWidth: 0,
+          },
+        ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: text, boxWidth: 10 } },
+          legend: {
+            position: "bottom",
+            labels: {
+              color: text,
+              boxWidth: 7,
+              boxHeight: 7,
+              usePointStyle: true,
+              pointStyle: "circle",
+            },
+          },
           tooltip: {
             callbacks: {
               label: (c: { label: string; raw: unknown }) => `${c.label}: ${fmt(c.raw)}`,
@@ -145,7 +199,10 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
     }
   }
   const current = props.datasets.filter((d) => !d.previous)
-  const colors = chartPalette(current.length)
+  const colors = chartPalette(current.length).map((fallback, i) => {
+    const own = current[i]?.color
+    return own ? resolveColor(own) : fallback
+  })
   const muted = cssVar("--color-border", "#3a3a42")
   const area = props.type === "area"
   const combo = props.type === "combo"
@@ -191,9 +248,19 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
     data: {
       labels,
       datasets: props.datasets.map((d) => {
-        const color = d.previous ? muted : colors[next++]
+        const color = (d.previous ? muted : colors[next++]) as string
         const line = props.type === "line" || area || (combo && d.asLine === true)
         const bar = !line
+        // Each bar its category's own colour (a status's), when the data gives one.
+        const placeColors =
+          bar && !d.previous && d.colors?.some((c) => c)
+            ? d.values.map((_, i) => {
+                const c = d.colors?.[i]
+                return c ? resolveColor(c) : color
+              })
+            : null
+        // A bar of 0 still draws: a hairline on the baseline, never a bare label.
+        const hairline = bar && !stacked && !d.previous
         // Today's bucket is still filling: its line segment dotted, its point hollow, its bar faint.
         const filling = partial && !d.previous
         return {
@@ -203,10 +270,16 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
           // An area's fill is the series' colour, faint (calm: hues, never alarms).
           backgroundColor:
             area && !d.previous
-              ? `${color}40`
+              ? withAlpha(color, 0.25)
               : filling && bar
-                ? (c: { dataIndex: number }) => (c.dataIndex === ip ? `${color}59` : color)
-                : color,
+                ? (c: { dataIndex: number }) => {
+                    const at = placeColors?.[c.dataIndex] ?? color
+                    return c.dataIndex === ip ? withAlpha(at, 0.35) : at
+                  }
+                : hairline
+                  ? (c: { dataIndex: number; raw?: unknown }) =>
+                      c.raw === 0 ? grid : (placeColors?.[c.dataIndex] ?? color)
+                  : (placeColors ?? color),
           borderColor: d.previous && line ? text : color,
           ...(filling && bar
             ? { borderWidth: (c: { dataIndex: number }) => (c.dataIndex === ip ? 1 : 0) }
@@ -223,6 +296,7 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
             : {}),
           borderRadius: bar ? 3 : undefined,
           maxBarThickness: bar ? 40 : undefined,
+          ...(hairline ? { minBarLength: 2 } : {}),
           tension: line ? (smooth ? 0.4 : 0) : undefined,
           ...(line && smooth ? { cubicInterpolationMode: "monotone" } : {}),
           pointRadius: line ? (d.previous ? 0 : 2) : undefined,
@@ -242,7 +316,16 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
       ...(horizontal ? { indexAxis: "y" } : {}),
       ...pickOptions(props),
       plugins: {
-        legend: { display: props.datasets.length > 1, labels: { color: text, boxWidth: 10 } },
+        legend: {
+          display: props.datasets.length > 1,
+          labels: {
+            color: text,
+            boxWidth: 7,
+            boxHeight: 7,
+            usePointStyle: true,
+            pointStyle: "circle",
+          },
+        },
         tooltip: {
           // Every series at the hovered place: the current value beside the comparison's.
           mode: "index",
@@ -295,10 +378,20 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
               grid: { color: grid },
               ticks: valueTicks(leftWhole),
             },
-            y: { stacked, grid: { display: false }, ticks: { color: text } },
+            y: {
+              stacked,
+              grid: { display: false },
+              border: { color: muted },
+              ticks: { color: text },
+            },
           }
         : {
-            x: { stacked, grid: { display: false }, ticks: { color: text } },
+            x: {
+              stacked,
+              grid: { display: false },
+              border: { color: muted },
+              ticks: { color: text },
+            },
             y: {
               beginAtZero: true,
               stacked,

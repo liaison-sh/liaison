@@ -37,6 +37,12 @@ export interface Column {
   type: ColumnType
   required?: boolean
   choices?: string[]
+  /** A backed choice column's colours by choice (a project's status colours), from its provider:
+   *  the grid draws each choice as a pill of its colour. Never set on a table's own columns. */
+  choiceColors?: Record<string, string>
+  /** A backed date column that is a deadline (a task's due date), from its provider: the grid
+   *  tints a past or near one. Never set on a table's own columns. */
+  deadline?: boolean
   currency?: string
   linkTo?: LinkTo
 }

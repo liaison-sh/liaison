@@ -322,6 +322,8 @@ export const blockMapSchema = z
       .object({ field: fieldPath, bucket: z.enum(DATE_BUCKETS).default("day") })
       .strict()
       .optional(),
+    /** A metric: whether a rise is good (true) or bad (false); absent, its change reads neutral. */
+    higherIsBetter: z.boolean().optional(),
     /** Row conditions applied to the source's rows before anything else (filters.ts). */
     where: z.array(whereClauseSchema).max(MAX_WHERE).optional(),
     /** Where a row leads: an app path template, or a record the app opens. */
@@ -335,6 +337,17 @@ export const blockMapSchema = z
     stacked: z.boolean().optional(),
     /** bar: categories down the side. */
     horizontal: z.boolean().optional(),
+    /** bar: one bar split into one segment per category (a pipeline), its legend carrying counts. */
+    stackedSingle: z.boolean().optional(),
+    /** bar, line, area, combo, pie: a row field holding a colour (#rgb or #rrggbb) for the row's
+     *  series (with map.series), else for its category. Without it, series take the chart palette. */
+    colorField: fieldPath.optional(),
+    /** bar, pie: a row field holding a user id for the row's category: the category reads as that
+     *  person (their avatar disc beside the name). */
+    personField: fieldPath.optional(),
+    /** bar, line, area, combo, pie: categories in the order the source returns them (a status
+     *  aggregate's status order), not by value. */
+    keepOrder: z.boolean().optional(),
     /** bar, line, area, combo: several values per category, one series each. */
     measures: z.array(measureSchema).min(1).max(MAX_MEASURES).optional(),
     /** combo: the series drawn as lines (default the last one); the others are bars. */
@@ -544,6 +557,32 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
     out.push("map.stacked is for a bar, area or combo chart")
   }
   if (map.horizontal && type !== "bar") out.push("map.horizontal is for a bar chart")
+  if (map.higherIsBetter !== undefined && type !== "metric") {
+    out.push("map.higherIsBetter is for a metric")
+  }
+  if (map.stackedSingle) {
+    if (type !== "bar") out.push("map.stackedSingle is for a bar chart")
+    if (map.series || map.measures || map.groupBy?.bucket) {
+      out.push(
+        "map.stackedSingle draws one bar of categories: no map.series, map.measures or date bucket",
+      )
+    }
+  }
+  if (
+    map.colorField &&
+    (type === "metric" || type === "table" || type === "funnel" || type === "text")
+  ) {
+    out.push("map.colorField is for a bar, line, area, combo or pie chart")
+  }
+  if (map.personField && type !== "bar" && type !== "pie") {
+    out.push("map.personField is for a bar or pie chart")
+  }
+  if (map.keepOrder) {
+    if (type === "metric" || type === "table" || type === "funnel" || type === "text") {
+      out.push("map.keepOrder is for a bar, line, area, combo or pie chart")
+    }
+    if (map.sort) out.push("map.keepOrder keeps the source's order: no map.sort beside it")
+  }
   if (map.measures && !chart) out.push("map.measures is for a bar, line, area or combo chart")
   if (map.measures && new Set(map.measures.map((m) => m.label)).size !== map.measures.length) {
     out.push("each measure needs its own label")

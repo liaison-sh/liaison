@@ -11,7 +11,7 @@ import type { FlowPerson, FlowProject } from "./flow-model"
 interface ProjectReply {
   id: string
   name: string
-  statuses?: Array<{ id: string; label: string; order?: number }>
+  statuses?: Array<{ id: string; label: string; order?: number; color?: string | null }>
   fields?: Array<{ key: string; label: string; type: string; choices?: string[] }>
 }
 
@@ -26,7 +26,7 @@ export async function loadFlowProject(
     return {
       id: p.id,
       name: p.name,
-      statuses: statuses.map((s) => ({ id: s.id, label: s.label })),
+      statuses: statuses.map((s) => ({ id: s.id, label: s.label, color: s.color ?? null })),
       fields: (p.fields ?? []).map((f) => ({
         key: f.key,
         label: f.label,

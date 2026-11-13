@@ -36,10 +36,13 @@ export interface BackedRecord {
   /** Moves whenever the record changes (an opaque token): a read-through edit names the one it
    *  read (`ifRecordVersion`) and is refused when the record changed since. */
   version: string
+  /** The record is finished in its app (a task in a done or cancelled status): the grid draws
+   *  no late or near tint on its deadline columns. The kernel does not know what finished means. */
+  terminal?: boolean
 }
 
 /** A merged row of a backed table: the overlay document plus its record's version. */
-export type BackedDocument = StoreDocument & { recordVersion?: string }
+export type BackedDocument = StoreDocument & { recordVersion?: string; terminal?: boolean }
 
 /**
  * What an app implements to back a table (its entity's records under one parent record). Every
@@ -217,7 +220,14 @@ export function mergeOverlay(
     const data: Record<string, unknown> = { ...task.cells }
     if (doc) for (const [k, v] of Object.entries(doc.data)) if (own.has(k)) data[k] = v
     const updatedAt = doc && doc.updatedAt > task.updatedAt ? doc.updatedAt : task.updatedAt
-    return { id: task.id, data, version: doc?.version ?? 0, updatedAt, recordVersion: task.version }
+    return {
+      id: task.id,
+      data,
+      version: doc?.version ?? 0,
+      updatedAt,
+      recordVersion: task.version,
+      ...(task.terminal ? { terminal: true } : {}),
+    }
   })
 }
 

@@ -108,6 +108,83 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+describe("a backed table reads like its project", () => {
+  const STYLED: TableInfo = {
+    ...BACKED,
+    columns: [
+      { key: "title", label: "Title", type: "text", required: true },
+      {
+        key: "status",
+        label: "Status",
+        type: "choice",
+        choices: ["To do", "Doing", "Done"],
+        choiceColors: { "To do": "#3b82f6" },
+      },
+      { key: "assignee", label: "Assignee", type: "person" },
+      { key: "due", label: "Due", type: "date", deadline: true },
+      { key: "note", label: "Note", type: "text" },
+      { key: "ref", label: "Ref", type: "link", linkTo: { app: "projects", entityType: "task" } },
+    ],
+    backing: {
+      ...BACKED.backing!,
+      fields: ["title", "status", "assignee", "due"],
+      readThrough: ["title", "status", "assignee", "due"],
+    },
+  }
+
+  it("a header band per source, status pills in their colour, a person's disc, a late due tinted", async () => {
+    mountBlock(STYLED, undefined, [
+      row({ title: "Return RMA-7", status: "To do", assignee: "u-7", due: "2026-11-10" }),
+    ])
+    await screen.findByTestId("table-block-row-task-1")
+    const record = screen.getByTestId("table-block-band-record")
+    expect(record.getAttribute("colspan")).toBe("4")
+    await waitFor(() => expect(record.textContent).toBe("From Returns"))
+    expect(screen.getByTestId("table-block-band-own").textContent).toBe("This table only")
+    const pill = screen.getByTestId("table-block-pill-task-1-status")
+    expect(pill.textContent).toBe("To do")
+    expect(pill.getAttribute("style")).toContain("color-mix")
+    // The person cell shows the disc beside the name.
+    expect(
+      screen.getByTestId("table-block-cell-task-1-assignee").querySelector(".rounded-full"),
+    ).toBeTruthy()
+    const due = screen.getByTestId("table-block-deadline-task-1-due")
+    expect(due.dataset.tone).toBe("late")
+    expect(due.querySelector(".text-error")).toBeTruthy()
+  })
+
+  it("a finished record's past due date stays untinted, an open one's is tinted", async () => {
+    mountBlock(STYLED, undefined, [
+      row({ title: "Shipped", status: "Done", due: "2026-11-01" }, 0, {
+        id: "done",
+        terminal: true,
+      }),
+      row({ title: "Waiting", status: "To do", due: "2026-11-01" }, 0, { id: "open" }),
+    ])
+    await screen.findByTestId("table-block-row-open")
+    expect(screen.getByTestId("table-block-deadline-open-due").dataset.tone).toBe("late")
+    expect(screen.queryByTestId("table-block-deadline-done-due")).toBeNull()
+    expect(screen.getByTestId("table-block-cell-done-due").textContent).not.toBe("")
+  })
+
+  it("a near due date keeps its words in the text colour, the tone on the track", async () => {
+    mountBlock(STYLED, undefined, [row({ title: "Soon", due: "2026-11-14" }, 0, { id: "soon" })])
+    const due = await screen.findByTestId("table-block-deadline-soon-due")
+    expect(due.dataset.tone).toBe("soon")
+    expect(due.querySelector(".text-warning")).toBeNull()
+    expect(due.querySelector(".bg-warning")).toBeTruthy()
+  })
+
+  it("a plain table has no band, a colourless choice a neutral pill", async () => {
+    mountBlock({ ...STYLED, backing: undefined }, undefined, [
+      row({ title: "x", status: "Doing", due: "2026-11-10" }),
+    ])
+    await screen.findByTestId("table-block-row-task-1")
+    expect(screen.queryByTestId("table-block-bands")).toBeNull()
+    expect(screen.queryByTestId("table-block-pill-task-1-status")).toBeNull()
+  })
+})
+
 describe("a table backed by a project", () => {
   it("marks the columns read from the project, naming it, and the table's own", async () => {
     mountBlock(BACKED)

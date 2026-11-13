@@ -300,3 +300,7 @@ The card names a dashboard table by its name, its columns by their labels, and a
 Backed table as a block source -> apps/api/src/modules/dashboards/execute.ts:263
 Backed table cache stamp follows the parent's records -> apps/api/src/modules/dashboards/sources.ts:396
 Backed table rows have no delete -> apps/api/src/modules/dashboards/tables/service.ts:1131
+Metric change toned only with map.higherIsBetter -> apps/api/src/modules/dashboards/spec.ts:326 ; apps/web/src/modules/dashboards/blocks/MetricBlock.tsx:25
+Colour from the data: colorField, keepOrder, personField, chart palette -> apps/api/src/modules/dashboards/spec.ts:344 ; apps/api/src/modules/dashboards/transform.ts:1 ; apps/web/src/styles/theme.css:61
+Bar of 0 drawn as a hairline on the baseline -> apps/web/src/modules/dashboards/blocks/Chart.tsx:299
+Pipeline bar and people rows -> apps/api/src/modules/dashboards/spec.ts:341 ; apps/web/src/modules/dashboards/blocks/BarRows.tsx:45 ; apps/web/src/modules/dashboards/blocks/BarRows.tsx:108

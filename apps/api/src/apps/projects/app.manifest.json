@@ -5,6 +5,13 @@
     "sections": [
       {
         "tools": [
+          "tasks_aggregate",
+          "tasks_byProject"
+        ],
+        "text": "DASHBOARDS: a project overview (open tasks, by status, by handler, time in status, SLA missed, an overdue list) is ONE kernel__dashboards_create call: metric and bar blocks on `tasks_aggregate` (groupBy status, assignee, age_in_status or sla; a bar on x groupLabel, y value; a metric sums value) and a table on `tasks_byProject` with due overdue (map.link {entity:\"task\", idField:\"id\", app:\"projects\"}). A sum of an amount field gives one row per currency (`currency`), never a mixed total. A dashboard table can list a project's tasks as its rows: kernel__tables_edit backing {app:\"projects\", entity:\"task\", parentId:<project id>, fields:[title, status, assignee, due, priority or a task field key]}; editing one of those cells changes the task (kernel__tables_rows_write with the row's recordVersion as ifRecordVersion) and needs projects:tasks:write."
+      },
+      {
+        "tools": [
           "labels.list",
           "create",
           "update",
@@ -1088,7 +1095,7 @@
       }
     },
     "tasks_aggregate": {
-      "description": "Group and count (or sum) the tasks of one project (`projectId`) or up to 50 (`projectIds`) on the server, for a manager's view or a dashboard chart: open tasks per status, per handler (assignee), per priority, per due bucket, per age in their current status, per SLA state, or per value of a choice / choices / person / checkbox / date field. Returns `rows` [{group, groupLabel, series?, seriesLabel?, value, count, currency? (a sum or avg of an amount field: the value's currency; amounts in different currencies are never added together, a group holding several is one row per currency), taskIds? (when at most 50), filter? (the tasks_byProject params listing exactly that group's tasks)}], sorted by the board's status order, the priority or bucket order, or the choice order, then the label; `totalTasks` and `truncated` (more than 5000 tasks). Groups that can hold tasks are listed even when empty (a status, a bucket, a choice), unless `series` is set. Done (terminal) tasks are left out unless `includeTerminal` is true. RLS-scoped: it counts only tasks you can read; a project you cannot read adds nothing.",
+      "description": "Group and count (or sum) the tasks of one project (`projectId`) or up to 50 (`projectIds`) on the server, for a manager's view or a dashboard chart: open tasks per status, per handler (assignee), per priority, per due bucket, per age in their current status, per SLA state, or per value of a choice / choices / person / checkbox / date field. Returns `rows` [{group, groupLabel, series?, seriesLabel?, value, count, taskIds? (when at most 50), filter? (the tasks_byProject params listing exactly that group's tasks)}], sorted by the board's status order, the priority or bucket order, or the choice order, then the label; `totalTasks` and `truncated` (more than 5000 tasks). Groups that can hold tasks are listed even when empty (a status, a bucket, a choice), unless `series` is set. Done (terminal) tasks are left out unless `includeTerminal` is true. RLS-scoped: it counts only tasks you can read; a project you cannot read adds nothing.",
       "searchKeywords": ["agrégat", "aggregate", "group", "regrouper", "statut", "responsable", "assignee", "SLA", "âge", "aging", "dashboard", "chart", "graphique", "manager"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],

@@ -1151,7 +1151,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_create",
     deferLoading: true,
     description:
-      "Save a new dashboard. personal (only you) saves at once; org (everyone) waits for a person's approval. Every block's source must be a read you can make: preview each with kernel__dashboards_preview_block first. Then open it with kernel__open_app (app kernel, view dashboard, id). A project overview (open tasks, by status, by handler, time in status, SLA missed, an overdue list) reads projects:tasks_aggregate (groupBy status, assignee, age_in_status or sla; a bar on x groupLabel, y value; a metric sums value) and projects:tasks_byProject with due overdue (map.link {entity:\"task\", idField:\"id\", app:\"projects\"}), all in this one call.",
+      'Save a new dashboard. personal (only you) saves at once; org (everyone) waits for a person\'s approval. Every block\'s source must be a read you can make: preview each with kernel__dashboards_preview_block first. Then open it with kernel__open_app (app kernel, view dashboard, id). A project overview (open tasks, by status, by handler, time in status, SLA missed, an overdue list) reads projects:tasks_aggregate (groupBy status, assignee, age_in_status or sla; a bar on x groupLabel, y value; a metric sums value) and projects:tasks_byProject with due overdue (map.link {entity:"task", idField:"id", app:"projects"}), all in this one call.',
     searchKeywords: ["dashboard", "tableau de bord", "créer"],
     requiredScopes: [WRITE],
     params: z.object({

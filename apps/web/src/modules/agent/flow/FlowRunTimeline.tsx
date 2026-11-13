@@ -249,3 +249,37 @@ export const FlowRunTimeline: Component<Props> = (props) => {
 }
 
 export default FlowRunTimeline
+
+/** The dot of a whole run's status (routine_runs.status), as the timeline draws a step. */
+export function runStatusDot(status: string | null | undefined): string {
+  if (!status) return STATE_DOT.pending
+  if (status === "succeeded") return STATE_DOT.done
+  if (status === "failed") return STATE_DOT.failed
+  if (status === "flagged") return STATE_DOT.flagged
+  if (status === "running") return STATE_DOT.running
+  if (status === "waiting" || status.startsWith("waiting_")) return STATE_DOT.waiting
+  return STATE_DOT.skipped
+}
+
+/** A mini progress strip of one run: a segment per step of the flow. */
+export const RunStrip: Component<{
+  flow: RoutineFlow
+  runSteps: ReadonlyArray<FlowRunStep>
+  "data-testid"?: string
+  class?: string
+}> = (props) => (
+  <span
+    data-testid={props["data-testid"]}
+    aria-hidden="true"
+    class={`flex min-w-0 gap-0.5 ${props.class ?? ""}`}
+  >
+    <For each={props.flow.steps}>
+      {(s) => {
+        const state = () => runStateFor(props.runSteps, s.id)?.state ?? "pending"
+        return (
+          <span data-state={state()} class={`h-1 flex-1 rounded-sm ${STATE_SEGMENT[state()]}`} />
+        )
+      }}
+    </For>
+  </span>
+)

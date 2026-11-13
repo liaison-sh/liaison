@@ -20,6 +20,8 @@
     "kernel.dashboards.tables.builtin.status": "Statut",
     "kernel.dashboards.tables.builtin.assignee": "Responsable",
     "kernel.dashboards.tables.builtin.due": "Échéance",
-    "kernel.dashboards.tables.builtin.priority": "Priorité"
+    "kernel.dashboards.tables.builtin.priority": "Priorité",
+    "kernel.dashboards.tables.recordChanged": "Cette tâche a changé entre-temps. Rechargez et réessayez.",
+    "kernel.dashboards.tables.recordLastChange": "Tâche modifiée {{when}}"
   }
 }

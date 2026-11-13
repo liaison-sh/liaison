@@ -4,7 +4,16 @@
 // as read-through columns, and the project's name, read once per project and kept for the
 // column markers and the plain-words refusals.
 import { createSignal } from "solid-js"
-import type { TableBacking } from "./dashboards-client"
+import type { TableActor, TableBacking } from "./dashboards-client"
+
+/**
+ * The actor the server names when no table change is recorded for a row (id null, "System"): in a
+ * backed table that is a record no one changed through the table, whose last change was made in
+ * its app, so the grid shows when the record last changed rather than a "System" author.
+ */
+export function isUnknownActor(actor: TableActor): boolean {
+  return actor.type === "system" && actor.id === null
+}
 
 /** The task values every project offers, in the order the create form lists them. */
 export const BUILTIN_TASK_FIELDS = ["title", "status", "assignee", "due", "priority"] as const

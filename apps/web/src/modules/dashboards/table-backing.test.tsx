@@ -55,12 +55,18 @@ const BACKED: TableInfo = {
   },
 }
 
-const row = (cells: Record<string, unknown>, version = 0): TableRow => ({
+const row = (
+  cells: Record<string, unknown>,
+  version = 0,
+  more: Partial<TableRow> = {},
+): TableRow => ({
   id: "task-1",
   cells,
   version,
+  recordVersion: "rv1",
   updatedAt: "2026-11-13T08:00:00Z",
   updatedBy: { type: "user", id: "u1", label: "Nico" },
+  ...more,
 })
 
 const ROW = row({
@@ -72,10 +78,11 @@ const ROW = row({
 function mountBlock(
   table: TableInfo,
   write: (body: { ops: Array<Record<string, unknown>> }) => unknown = () => ({ rows: [] }),
+  rows: TableRow[] = [ROW],
 ) {
   const get = vi.fn(async (path: string) => {
     if (path === "/dashboards/tables/t1") return table
-    if (path.startsWith("/dashboards/tables/t1/rows?")) return { rows: [ROW], nextCursor: null }
+    if (path.startsWith("/dashboards/tables/t1/rows?")) return { rows, nextCursor: null }
     if (path === `/projects/${PROJECT}`) return { id: PROJECT, name: "Returns", fields: [] }
     throw new Error(`unexpected GET ${path}`)
   })
@@ -131,9 +138,49 @@ describe("a table backed by a project", () => {
     )
     expect(post).toHaveBeenCalledWith(
       "/dashboards/tables/t1/rows",
-      { ops: [{ op: "update", id: "task-1", ifVersion: 0, cells: { status: "Doing" } }] },
+      {
+        ops: [
+          {
+            op: "update",
+            id: "task-1",
+            ifVersion: 0,
+            cells: { status: "Doing" },
+            // The record's version from the read: the server refuses the change if the task moved.
+            ifRecordVersion: "rv1",
+          },
+        ],
+      },
       expect.anything(),
     )
+  })
+
+  it("says plainly when the task changed meanwhile (409) and shows its latest version", async () => {
+    mountBlock(BACKED, () => {
+      throw new ApiError("stale", 409, "version_conflict", undefined, {
+        current: row({ ...ROW.cells, status: "Done" }, 0, {
+          recordVersion: "rv2",
+          updatedBy: { type: "system", id: null, label: "System" },
+        }),
+      })
+    })
+    await screen.findByTestId("table-block-row-task-1")
+    fireEvent.click(screen.getByTestId("table-block-edit-task-1-status"))
+    fireEvent.click(await screen.findByTestId("table-block-editor-task-1-status-choice-1"))
+    const notice = await screen.findByTestId("table-block-notice-task-1")
+    expect(notice.textContent).toBe("This task changed meanwhile. Reload and try again.")
+    expect(notice.textContent).not.toContain("System")
+  })
+
+  it("a row no one changed through the table shows when its task last changed", async () => {
+    mountBlock(BACKED, undefined, [
+      row(ROW.cells, 0, {
+        updatedAt: "2026-11-10T09:00:00Z",
+        updatedBy: { type: "system", id: null, label: "System" },
+      }),
+    ])
+    const last = await screen.findByTestId("table-block-history-task-1")
+    expect(last.textContent).not.toContain("System")
+    expect(last.textContent).toMatch(/^Task changed /)
   })
 
   it("says in plain words when the person may not change the project's tasks", async () => {

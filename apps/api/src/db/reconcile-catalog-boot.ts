@@ -131,7 +131,10 @@ export async function runReconcileCatalogBoot(): Promise<boolean> {
       })
       if (modules) {
         log.info(
-          { backfilled: modules.backfilled.length, withoutWorkerModule: modules.missing.length },
+          {
+            backfilled: modules.backfilled.length,
+            withoutWorkerModule: modules.missing.filter((m) => m.active).length,
+          },
           "Boot: app versions and their Worker modules",
         )
       }

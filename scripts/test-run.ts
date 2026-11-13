@@ -443,7 +443,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // real chat seam and decide path.
             "src/tests/integration/kernel-approval-deciding-scope.test.ts",
             "src/tests/integration/tickets-primitives.test.ts",
-            "src/tests/integration/real-cards.test.ts",
             "src/tests/integration/tickets.conversion.dependency-check.test.ts",
             "src/tests/integration/mail-tickets-conversion.test.ts",
             // Mailbox encryption (Phase 1, Task 1.7). mail-sync and mail-api
@@ -508,8 +507,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // the real chat seam, no module replaced.
             "src/tests/integration/scope-taint-audience-readers.test.ts",
             "src/tests/integration/contacts-write-taint.test.ts",
-            // A system guard's identity read of contacts leaves the turn untainted.
-            "src/tests/integration/contacts-identity-taint.integration.test.ts",
             "src/tests/integration/notify-user-self-reader-taint.test.ts",
             "src/tests/integration/contact-groups-agent-tools.test.ts",
             // Agent tools over documents, contact addresses and mail conversation
@@ -582,7 +579,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/attention-digest-resend.test.ts",
             "src/tests/integration/attention.feed.integration.test.ts",
             "src/tests/integration/attention.mark-read-bulk.integration.test.ts",
-            "src/tests/integration/home-brief-set-aside.integration.test.ts",
             "src/tests/integration/contacts-agent-merge.test.ts",
             "src/tests/integration/contacts-merge-taint-chat.test.ts",
             "src/tests/integration/private-contacts-security.test.ts",
@@ -625,20 +621,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-facturx-issue.test.ts",
             // The issue date and number year at instants set on the host clock, through the sandbox.
             "src/tests/integration/invoicing-issue-date.test.ts",
-            // Recurring schedules on the real kernel: the gate, the policy that cannot turn on issuing, the scopes.
-            "src/tests/integration/invoicing-recurring-tools.test.ts",
-            // Month-end run rows on the real kernel: the draft tools' own paths, the writers' compare, and who may change a row without a person deciding.
-            "src/tests/integration/invoicing-month-end-run.test.ts",
-            "src/tests/integration/run-edit.integration.test.ts",
-            "src/tests/integration/run-edit-taint.integration.test.ts",
-            // Rolling a payments app's webhook signing secret: the old secret keeps verifying for 24 hours, then stops.
-            "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
-            // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
-            "src/tests/integration/stripe-invoicing-money.test.ts",
-            // A signed Stripe refund through the webhook route to one credit note, and the safety job.
-            "src/tests/integration/stripe-refund-to-credit-note.test.ts",
-            // The demo's card-payments stand-in: reads from the mirror, modelled writes through the app's handler.
-            "src/modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
             "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
@@ -654,20 +636,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-identity-tools.test.ts",
             "src/tests/integration/invoicing-identity-backfill.test.ts",
             "src/tests/integration/invoicing-imported-original.test.ts",
-            // The month-end run on the real kernel and sandbox: drafted, approved without a
-            // number, issued one transaction per draft on Monday morning in Paris.
-            "src/tests/integration/invoicing-month-end-run.test.ts",
             "src/tests/integration/shopify-invoicing-po-number-seam.test.ts",
             "src/tests/integration/shopify-invoicing-refund-seam.test.ts",
             "src/tests/integration/shopify-oauth-callback.test.ts",
             // An instance-provided Shopify app: OAuth and webhook HMAC with its client.
             "src/tests/integration/shopify-instance-client.test.ts",
-            // Rolling a payments app's webhook signing secret: the old one verifies for 24 hours.
-            "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
-            // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
-            "src/tests/integration/stripe-invoicing-money.test.ts",
-            // A signed Stripe refund through the webhook route to one credit note, and the safety job.
-            "src/tests/integration/stripe-refund-to-credit-note.test.ts",
             // Accounts keep the OAuth client that minted them (refresh, webhooks, reconnect).
             "src/tests/integration/oauth-minting-client.test.ts",
             // A protected (opt-in) OAuth scope is requested only when the org opted in.
@@ -978,14 +951,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/ci-scope.test.ts",
             // The raw test INSERT ratchet's counter and comparison. Pure file reads.
             "scripts/check-raw-insert.test.ts",
-            // Tool finding: the phrase corpus through the real ranker over the
-            // catalog read from source, its baseline, the catalog lint and the
-            // known bad answers. Pure file reads, about 2 s.
-            "apps/api/src/modules/agent/tools/tool-bench/bench.test.ts",
-            // The tool ladder's numbers (announcement, tools listed, summary lines,
-            // each app's schema total) against their targets, from source with no
-            // server; a number over target needs a reason line. About 3 s.
-            "apps/api/src/modules/agent/context/ladder-budget.guard.test.ts",
           ]),
     ],
     cwd: ROOT,
@@ -1015,8 +980,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // decoration was decoration. Its dispatcher half lives here; the suite
             // routing half is a `guards` gate.
             "scripts/test-run.test.ts",
-            // The path-to-suite map for the demo worlds.
-            "scripts/test-map.test.ts",
             // The memory budget and the run lock: pure, fast, and in no other suite.
             "scripts/lib/mem-budget.test.ts",
             // The runtime guard spawns a real small process tree and kills it, so it
@@ -1147,55 +1110,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/demo/seed-profile.test.ts",
             "src/seed/tiers/demo/seed-apps.test.ts",
             "src/seed/tiers/demo/seed-support.test.ts",
-            // The role scopes, the routines' scope sets and the recurring
-            // schedules the demo seed writes, pinned without a database.
-            "src/seed/tiers/demo/role-scopes.test.ts",
-            "src/seed/tiers/demo/seed-routine-scopes.test.ts",
-            "src/seed/factories/commerce/recurring-schedules.test.ts",
-            // What a visitor's picks install and write, per world (the
-            // products plan pinned), and the worlds' seed packs.
-            "src/seed/tiers/demo/seed-plan.test.ts",
-            "src/seed/worlds/worlds.test.ts",
             // The seed engine's own rule: one `now`, no randomness.
             "src/seed/seed-determinism.test.ts",
-            // The world packs' story clock (dates from the anchor, on the
-            // company's calendar) and the guard that keeps literal dates and
-            // relative day words out of pack prose.
-            "src/seed/worlds/story-clock.test.ts",
-            "src/seed/worlds/prose-guard.test.ts",
-            // The software world's plan held to its invariants at anchors
-            // across a year, with no database.
-            "src/seed/worlds/saas/plan-invariants.test.ts",
-            // Its desks' prompts against the products desks they are built from.
-            "src/seed/worlds/saas/desk-prompts.test.ts",
-            // The owner's Morning brief, computed from the plan.
-            "src/seed/worlds/saas/brief.test.ts",
-            // No world's text holds another world's names.
-            "src/seed/worlds/literals.test.ts",
-            // Every door claim about a world maps to a criterion.
-            "src/seed/worlds/world-claims.test.ts",
-            // The software world's card mirror read back through the
-            // payments stand-in rebuilds to the rows it was seeded with.
-            "src/seed/factories/payments/stripe-mirror-roundtrip.test.ts",
-            // The software world seeded once and read through the product's
-            // own tools: pipeline, companies, team, agents, routines, MRR,
-            // invoice numbers, schedules and the money decisions on Home.
-            "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
-            // The owner's question about the hotel group, played through the
-            // real agent loop with a scripted model: it reaches the company,
-            // customer, documents, tickets and deals reads, and the company card.
-            "src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts",
-            // A visitor's first turn on a prospect with no card customer, played
-            // through the real agent loop with a scripted model: every read answers.
-            "src/seed/worlds/saas/visitor-first-turn.saas.integration.test.ts",
-            "src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts",
-            // The money scenario's recovered card: the outside state and the
-            // processor's events through the payments app's own handler, the
-            // figures moved, and the waiting reminder stopped by its own check.
-            "src/modules/demo/worlds/saas/stripe-payment-recovered.integration.test.ts",
-            // The software world's workspace ended and reaped: nothing of it
-            // remains in any table, at the payments stand-in or in search.
-            "src/seed/worlds/saas/stripe-world-reset.saas.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",
@@ -1254,11 +1170,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // and a reserved one never is, and that a table the rules do not
             // cover refuses the reset instead of leaking.
             "src/seed/tiers/demo/demo-reset.integration.test.ts",
-            // The persona passwords, the support seed's wait on a lock and the
-            // size of a visitor's first turn.
-            "src/seed/tiers/demo/seed-personas-password.integration.test.ts",
-            "src/seed/tiers/demo/seed-support-lock-wait.integration.test.ts",
-            "src/seed/tiers/demo/visitor-turn-size.integration.test.ts",
             // The lively tier: the plan's own rules, then ten people and
             // fourteen days of activity per domain (recency, no future rows),
             // a re-run that writes nothing, and a replace.
@@ -1473,22 +1384,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             "src/mutations.test.ts",
-            // Who issues what, and the issuer guard on every path that invoices a named customer.
-            "src/issuer-guard.test.ts",
-            "src/streams.test.ts",
-            // Card payments on Stripe: invoices, payments, refunds, unmatched payments (pure store).
-            "src/handlers/stripe-subscribers.test.ts",
-            "src/handlers/stripe-refund-credit-note.test.ts",
-            // A Stripe invoice or refund credit note e-invoices like any no-person issue (pure store).
-            "src/handlers/stripe-einvoice-send.test.ts",
-            "src/handlers/orphan-actions.test.ts",
-            // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
-            "src/recurring/draft-job.test.ts",
-            "src/recurring/run-card.test.ts",
-            // A row billing far from the schedule's last invoice asks for a look (pure store).
-            "src/recurring/amount-check.test.ts",
-            // Timeline rows (issued, paid, credited), paged past the app database's page size (pure store).
-            "src/activity.test.ts",
             // The invoicing.document import kind (bundle export, create-only).
             "src/import-kind.test.ts",
             // Pinned export set of the mutations index over src/mutations/ (pure, no I/O).
@@ -1503,14 +1398,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/numbering.test.ts",
             // The one door of the issue date and number year, with its guard over the issue paths.
             "src/issue-date.test.ts",
-            // The issuer time zone is asked once, at the first issue on a profile nobody gave one.
-            "src/issue-timezone-ask.test.ts",
-            // Recurring schedules: the date rules (pure) and the four tools against the store.
-            "src/recurring/schedule.test.ts",
-            "src/recurring/tools.test.ts",
-            "src/recurring/manifest.test.ts",
-            "src/recurring/month-end-check.test.ts",
-            "src/recurring/import-kind.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
             // What the order-created auto-flow would park, asked before a draft order is staged (pure).
@@ -1520,11 +1407,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // E-invoicing transmission and booking through the bound PA provider (the Pennylane
             // adapter over its recorded-shape fake behind a contract-call stub).
             "src/einvoicing/transmit.test.ts",
-            "src/einvoicing/send-batch.test.ts",
-            "src/einvoicing/collection.test.ts",
-            "src/einvoicing/standing.test.ts",
-            "src/einvoicing/run-send.test.ts",
-            "src/send-state.test.ts",
             // Received supplier e-invoices: the safe XML reader (DTD/entity/size/time refusals),
             // the mirror and its refuse/dispute approvals over the same adapter and fake.
             "src/received/xml.test.ts",
@@ -1577,18 +1459,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The editor links a contact by name (search + pick), never by raw id.
             "src/ui/ContactPicker.test.tsx",
             "src/ui/ContactDocumentsPanel.test.tsx",
-            // The company page's Money section reads only that company's documents.
-            "src/ui/CompanyMoneyPanel.test.tsx",
             "src/ui/DocumentDetail.test.tsx",
             // The Deferred tab: open parks, tax reviews first, gated override outcome.
             "src/ui/DeferredList.test.tsx",
-            // Who issues what, in the issuer settings: the streams, and Checked only after a person's click.
-            "src/ui/IssuerStreams.test.tsx",
-            // Recurring schedules: the list, its empty and refused states, a run's detail, the editor.
-            "src/ui/RecurringList.test.tsx",
-            "src/ui/RecurringStates.test.tsx",
-            "src/ui/RunDetail.test.tsx",
-            "src/ui/ScheduleEditor.test.tsx",
             // E-invoicing surfaces: the calm regime line, the customer identity tab (lookup never
             // picks a candidate) and the readiness tab (one action per blocker).
             "src/ui/einvoicing/RegimeLine.test.tsx",
@@ -2339,16 +2212,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // can run them in a second.
             "src/modules/apps/tool-required-scopes-guard.test.ts",
             "src/modules/apps/tool-scope-read-oracle.test.ts",
-            // Outside text is declared by data (outsideTextFields and taint sources on every
-            // manifest), and the static half of the rule for tools called over MCP.
-            "src/modules/apps/outside-fields.guard.test.ts",
-            "src/modules/mcp/mcp-tool-rule.guard.test.ts",
-            // Privileged code that reads kernel.users says what it does about a client's
-            // row (a source scan), and the manifest declarations that feed the context
-            // ladder and the result cards are valid (pure schema checks).
-            "src/modules/users/external-boundary.guard.test.ts",
-            "src/modules/apps/context-provider-manifest.test.ts",
-            "src/modules/apps/result-card-schema.test.ts",
             // the monitoring notification group lists the incident kinds
             // by name; this reads the monitoring manifest (pure fs, no database)
             // so a manifest-only edit, which the test map sends to this suite,

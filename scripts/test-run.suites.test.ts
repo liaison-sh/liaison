@@ -983,8 +983,10 @@ describe("test-run.ts suite coverage: the seed engine", () => {
   })
 
   it("notices a seed test file whose entry is dropped from its suite", () => {
-    const target = "src/seed/worlds/worlds.test.ts"
-    const mutated = SOURCE.replaceAll(`"${target}"`, `"src/seed/worlds/other.test.ts"`)
-    expect(unlisted(files, mutated)).toEqual([target])
+    const target = "src/seed/seed-determinism.test.ts"
+    const mutated = SOURCE.replaceAll(`"${target}"`, `"src/seed/other.test.ts"`)
+    // A mutated source reads without the suite extras, so the files they list are left aside.
+    const extra = new Set([...readSuiteExtras().values()].flat())
+    expect(unlisted(files, mutated).filter((f) => !extra.has(f))).toEqual([target])
   })
 })

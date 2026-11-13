@@ -57,7 +57,8 @@ describe("compose images", () => {
       for (const image of Object.values(imagesByService(file))) {
         // A bare repository name (no tag, no interpolated variable) would
         // float on whatever `latest` happens to be on the day of a rebuild.
-        if (image.startsWith("${")) continue
+        // A YAML alias (`*liaison-image`) names the app's interpolated image.
+        if (image.startsWith("${") || image.startsWith("*")) continue
         expect(image).toMatch(/:[^/]+$/)
       }
     })

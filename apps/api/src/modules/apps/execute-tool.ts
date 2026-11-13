@@ -4731,9 +4731,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       },
     }
   }
+  // Hidden from agents holds for a coding agent over MCP too: its actor is the person's, but a
+  // model chose the call. A dashboard source, a settings page and the app itself still read it.
   if (
     tool.agentVisible === false &&
-    (opts.actor as { actorType?: string }).actorType === "agent" &&
+    ((opts.actor as { actorType?: string }).actorType === "agent" || opts.origin === "mcp") &&
     !opts.internalCall
   ) {
     return {
@@ -4818,21 +4820,25 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
 
   // WHERE THE CALL COMES FROM (manifest `humanTurnOnly`, `dmOnly`, first-party apps only): a tool
   // called from the wrong place is refused with where to ask instead, before anything can park
-  // an approval for it. An approved outer action's nested call carries a person's decision.
-  if (tool.humanTurnOnly === true && !approvalExecutingNestedCall) {
-    if (!humanTurnOnlyAllows(opts.origin, currentRunContext())) {
+  // an approval for it. Another app's call is never the person's own turn or their DM, declared
+  // or not, inside an approved action or not: the person decided the outer action, not this.
+  const fromAnotherApp =
+    opts.internalCall?.callerApp != null && opts.internalCall.callerApp !== appName
+  if (tool.humanTurnOnly === true) {
+    if (fromAnotherApp || !humanTurnOnlyAllows(opts.origin, currentRunContext())) {
       return { error: markRefusedBeforeRun(humanTurnOnlyRefusal(tool), opts.toolName) }
     }
   }
-  if (
-    tool.dmOnly === true &&
-    !approvalExecutingNestedCall &&
-    opts.origin === "in-app-agent" &&
-    opts.threadId
-  ) {
-    const requester = (opts.actor as { userId?: string }).userId ?? ""
-    if (!(await isAgentDm(opts.orgId, opts.threadId, requester))) {
+  if (tool.dmOnly === true) {
+    if (fromAnotherApp) {
       return { error: markRefusedBeforeRun(dmOnlyRefusal(tool), opts.toolName) }
+    }
+    // An in-app agent's call with no thread is in no DM.
+    if (opts.origin === "in-app-agent") {
+      const requester = (opts.actor as { userId?: string }).userId ?? ""
+      if (!opts.threadId || !(await isAgentDm(opts.orgId, opts.threadId, requester))) {
+        return { error: markRefusedBeforeRun(dmOnlyRefusal(tool), opts.toolName) }
+      }
     }
   }
 

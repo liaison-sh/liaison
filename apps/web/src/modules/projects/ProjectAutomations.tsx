@@ -18,6 +18,7 @@ import {
   type FlowEventFilter,
   fillTemplate,
   flowProblem,
+  markedNames,
 } from "~/modules/agent/flow/flow-model"
 import { StatusText } from "~/modules/agent/flow/StatusText"
 import { openRoutineOnAgentPage } from "~/modules/agent/open-routine"
@@ -272,7 +273,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                     <StatusText
                       names={names()}
                       text={describeTrigger(
-                        names(),
+                        markedNames(names()),
                         r.event,
                         (r.eventFilter ?? null) as FlowEventFilter | null,
                         r.description,

@@ -49,6 +49,7 @@ import {
   type FlowProject,
   type FlowRunStep,
   flowSegments,
+  markedNames,
   moveStep,
   newStep,
   personName,
@@ -142,7 +143,7 @@ const FlowList: Component<Props> = (props) => {
 
   /** The trigger's words, one line (run mode's timeline names it). */
   const triggerWords = () => {
-    const parts = triggerParts(names(), props.event, props.eventFilter)
+    const parts = triggerParts(markedNames(names()), props.event, props.eventFilter)
     return parts ? parts.head : (props.triggerFallback ?? "")
   }
 
@@ -237,7 +238,7 @@ const FlowList: Component<Props> = (props) => {
           class="break-words text-[13px] leading-relaxed text-text"
           classList={{ "text-[14px]": step().type === "wait" }}
         >
-          <StatusText names={names()} text={describeStep(names(), step())} />
+          <StatusText names={names()} text={describeStep(markedNames(names()), step())} />
         </p>
         <Show when={people().length > 0 && !editing()}>
           <div
@@ -300,7 +301,7 @@ const FlowList: Component<Props> = (props) => {
               <StatusText
                 names={names()}
                 text={i18n.t("kernel.routineFlow.waitThen", {
-                  condition: describeCondition(names(), w().until),
+                  condition: describeCondition(markedNames(names()), w().until),
                 })}
               />
             </p>
@@ -428,7 +429,7 @@ const FlowList: Component<Props> = (props) => {
                   names={names()}
                   text={i18n.t("kernel.routineFlow.ifLine", {
                     condition: describeCondition(
-                      names(),
+                      markedNames(names()),
                       step().if ?? { op: "status_unchanged_since_trigger" },
                     ),
                   })}
@@ -543,7 +544,7 @@ const FlowList: Component<Props> = (props) => {
           {i18n.t("kernel.routineFlow.triggerHeading")}
         </p>
         <Show
-          when={triggerParts(names(), props.event, props.eventFilter)}
+          when={triggerParts(markedNames(names()), props.event, props.eventFilter)}
           fallback={
             <p
               data-testid={`${tid()}-trigger-text`}
@@ -650,7 +651,7 @@ const FlowList: Component<Props> = (props) => {
               </Index>
             }
           >
-            <For each={flowSegments(names(), steps())}>
+            <For each={flowSegments(markedNames(names()), steps())}>
               {(seg, k) => {
                 const lastSeg = () => k() === flowSegments(names(), steps()).length - 1
                 return seg.kind === "split" ? (

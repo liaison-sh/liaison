@@ -407,7 +407,7 @@ export const connectionRoutes = new Hono<AppEnv>()
     }
 
     if (multiInstanceIdentifier !== null) {
-      const check = getMultiInstanceCredentialCheck(appName, connectionName)
+      const check = getMultiInstanceCredentialCheck(orgId, appName, connectionName)
       if (check) {
         const verdict = await check({
           orgId,

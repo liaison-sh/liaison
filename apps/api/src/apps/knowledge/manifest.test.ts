@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs"
 import { validateAppManifest } from "~/modules/apps/contract"
 import manifest from "./app.manifest.json"
 import * as attention from "./attention"
+import * as handlers from "./handlers"
 import { assertCanReadDocumentRow, type KnowledgeActor } from "./service"
 
 // The app guide is a short core plus sections keyed by the tools they are
@@ -21,9 +22,7 @@ const guideText = (m: { agentInstructions?: unknown }): string => {
   return typeof g === "string" ? g : [g.core, ...(g.sections ?? []).map((s) => s.text)].join("\n\n")
 }
 
-// handlers.ts uses bare function declarations (no module exports) so QuickJS
-// can resolve them at sandbox runtime. We assert by source-scanning the
-// bundle for the declared names rather than via dynamic import.
+// handlers.ts is a core app module; the gating structure is pinned by source below.
 const handlersSource = readFileSync(new URL("./handlers.ts", import.meta.url), "utf8")
 
 describe("knowledge app manifest (T14)", () => {
@@ -34,12 +33,11 @@ describe("knowledge app manifest (T14)", () => {
     expect(typeof (attention as Record<string, unknown>)[handlerName]).toBe("function")
   })
 
-  it("tool handlers all map to a function declaration in handlers.ts", () => {
+  it("tool handlers all map to an exported function of handlers.ts", () => {
     const tools = (manifest as { tools: Record<string, { handler: string }> }).tools
+    const exports = handlers as unknown as Record<string, unknown>
     for (const [name, tool] of Object.entries(tools)) {
-      // handlers.ts declares `async function <name>(...)` for each manifest tool
-      const decl = new RegExp(`async\\s+function\\s+${tool.handler}\\s*\\(`)
-      expect(handlersSource).toMatch(decl)
+      expect(typeof exports[tool.handler]).toBe("function")
       expect(tool.handler).toMatch(/^[a-zA-Z][a-zA-Z0-9_]*$/)
       expect(name.length).toBeGreaterThan(0)
     }
@@ -264,8 +262,7 @@ describe("org-wide write gating (handler-conditional, tighten-only)", () => {
   })
 
   it("handlers gate org-scope writes through parkForApproval and bypass for personal notes", () => {
-    // handlers.ts is script-mode (QuickJS globals), so pin the gating structure
-    // by source: each write handler consults ctx.approval (post-approval
+    // Pin the gating structure by source: each write handler consults ctx.approval (post-approval
     // re-entry) and routes the organization-scope case into parkForApproval;
     // create's bypass keys on documentScope === "personal".
     expect(handlersSource).toMatch(/function\s+parkForApproval/)

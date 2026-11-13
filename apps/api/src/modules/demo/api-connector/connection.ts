@@ -19,12 +19,9 @@ import { connectedAccounts } from "~/db/schema/kernel"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import {
-  API_CONNECTOR_APP,
-  API_CONNECTOR_CONNECTION,
-  upsertAdapterRow,
-} from "~/modules/apps/connections/api/store"
-import {
+  DEMO_API_CONNECTION,
   DEMO_API_CONNECTOR_BASE_URL,
   DEMO_API_CONNECTOR_IDENTIFIER,
   DEMO_API_CONNECTOR_SENTINEL_KEY,
@@ -45,7 +42,8 @@ export async function installDemoApiConnectorConnection(opts: {
   createdByUserId: string
 }): Promise<DemoApiConnectorConnection> {
   const adapter = loadFixtureCrmAdapter({ baseUrl: DEMO_API_CONNECTOR_BASE_URL })
-  await upsertAdapterRow(opts.orgId, DEMO_API_CONNECTOR_IDENTIFIER, adapter, opts.createdByUserId)
+  const conn = { orgId: opts.orgId, ...DEMO_API_CONNECTION }
+  await upsertAdapterRow(conn, DEMO_API_CONNECTOR_IDENTIFIER, adapter, opts.createdByUserId)
 
   const credentialsEncrypted = encryptSecret(
     JSON.stringify({ apiKey: DEMO_API_CONNECTOR_SENTINEL_KEY }),
@@ -58,8 +56,8 @@ export async function installDemoApiConnectorConnection(opts: {
     async (tx) => {
       const match = and(
         eq(connectedAccounts.orgId, opts.orgId),
-        eq(connectedAccounts.appName, API_CONNECTOR_APP),
-        eq(connectedAccounts.connectionName, API_CONNECTOR_CONNECTION),
+        eq(connectedAccounts.appName, DEMO_API_CONNECTION.app),
+        eq(connectedAccounts.connectionName, DEMO_API_CONNECTION.connection),
         eq(connectedAccounts.ownerType, "org"),
         eq(connectedAccounts.identifier, DEMO_API_CONNECTOR_IDENTIFIER),
       )
@@ -89,8 +87,8 @@ export async function installDemoApiConnectorConnection(opts: {
         .values({
           ...fields,
           orgId: opts.orgId,
-          appName: API_CONNECTOR_APP,
-          connectionName: API_CONNECTOR_CONNECTION,
+          appName: DEMO_API_CONNECTION.app,
+          connectionName: DEMO_API_CONNECTION.connection,
           ownerType: "org",
           ownerId: null,
           identifier: DEMO_API_CONNECTOR_IDENTIFIER,
@@ -101,6 +99,6 @@ export async function installDemoApiConnectorConnection(opts: {
       return row.id
     },
   )
-  await invalidateConnectionCaches(opts.orgId, DEMO_API_CONNECTOR_IDENTIFIER)
+  await invalidateConnectionCaches(conn, DEMO_API_CONNECTOR_IDENTIFIER)
   return { identifier: DEMO_API_CONNECTOR_IDENTIFIER, connectionId }
 }

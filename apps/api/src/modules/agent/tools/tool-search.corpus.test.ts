@@ -26,6 +26,9 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createTestOrg } from "~/tests/helpers/org"
 import corpus from "./tool-bench/corpus.json"
 
+/** The apps of the catalog that declare an API connection (they connect systems no app covers). */
+const CONNECTOR_APPS: ReadonlySet<string> = new Set(["api-connector"])
+
 const BUNDLED_APPS = join(import.meta.dir, "../../../../../../bundled-apps")
 const LEFT_OUT_APPS = new Set(["example", "contacts"])
 const ACCENT = /[àâäéèêëîïôöùûüçœæ]/i
@@ -134,7 +137,11 @@ describe("a tool is found by what people say", () => {
     let noHit = 0
     for (const line of lines) {
       for (const form of formsOf(line)) {
-        const { ranked, all } = rankDeferredTools(catalog, form, { cap: 5, appNames })
+        const { ranked, all } = rankDeferredTools(catalog, form, {
+          cap: 5,
+          appNames,
+          connectorApps: CONNECTOR_APPS,
+        })
         forms++
         if (all.length === 0) noHit++
         if (ranked.some((s) => line.any.includes(s.tool.sdkName))) found++
@@ -203,7 +210,11 @@ describe("a tool is found by what people say", () => {
   it("an accent typed or left out finds the same tools", () => {
     const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "")
     const names = (query: string) =>
-      rankDeferredTools(catalog, query, { cap: 5, appNames }).ranked.map((s) => s.tool.sdkName)
+      rankDeferredTools(catalog, query, {
+        cap: 5,
+        appNames,
+        connectorApps: CONNECTOR_APPS,
+      }).ranked.map((s) => s.tool.sdkName)
     for (const line of corpus) {
       for (const form of line.typed) {
         // Words under 3 letters are left as typed, by design ("à" is not "a").

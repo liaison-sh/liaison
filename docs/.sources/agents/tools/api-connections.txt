@@ -1,0 +1,1 @@
+Credentials card names the app and connection, and an API connection's address and auth type -> apps/api/src/modules/secret-requests/routes.ts:142

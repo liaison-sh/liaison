@@ -8,11 +8,12 @@
 //   - the demo box's in-process answerer for a demo org's fixture connection.
 
 import { AUTH_CREDENTIAL_FIELDS } from "@liaison/api-connector-core"
-import { registerMultiInstanceCredentialCheck } from "~/modules/apps/connections/service"
+import { registerMultiInstanceCredentialResolver } from "~/modules/apps/connections/service"
 import { maybeDemoApiConnectorResponse } from "~/modules/demo/api-connector/responder"
 import { assertDemoEgressAllowed, isDemoRestriction } from "~/modules/demo/demo-egress"
 import { invalidateConnectionCaches } from "./cache"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION, getAdapterRow } from "./store"
+import { apiConnFor } from "./declarations"
+import { getAdapterRow } from "./store"
 import { registerDemoApiConnectorResponder } from "./transport"
 
 /** A demo org's connections are pre-configured: changing them is refused, as JSON text. */
@@ -34,14 +35,16 @@ export async function demoChangeRefusal(orgId: string): Promise<string | null> {
   }
 }
 
-registerMultiInstanceCredentialCheck(
-  API_CONNECTOR_APP,
-  API_CONNECTOR_CONNECTION,
-  async ({ orgId, identifier, credentials }) => {
+// Any app's API connection (declarations.ts): its credentials are admitted
+// only for an adapter of that very app and connection.
+registerMultiInstanceCredentialResolver((orgId, appName, connectionName) => {
+  const api = apiConnFor(orgId, appName)
+  if (!api || api.connection !== connectionName) return undefined
+  return async ({ identifier, credentials }) => {
     // Before the generic credential refusal, so a demo org reads why: its
     // connections are pre-configured, not merely "no real credentials".
     await assertDemoEgressAllowed(orgId, "api_connector_change")
-    const row = await getAdapterRow(orgId, identifier)
+    const row = await getAdapterRow(api, identifier)
     if (!row) {
       return {
         ok: false,
@@ -66,10 +69,10 @@ registerMultiInstanceCredentialCheck(
         message: `The ${row.adapter.auth.type} auth of "${identifier}" takes no ${extra.join(", ")}`,
       }
     }
-    await invalidateConnectionCaches(orgId, identifier)
+    await invalidateConnectionCaches(api, identifier)
     return { ok: true }
-  },
-)
+  }
+})
 
 // A demo org's connection (installed by the demo seeder) is answered by the
 // in-process fixture CRM; every other request goes on to the egress checks.

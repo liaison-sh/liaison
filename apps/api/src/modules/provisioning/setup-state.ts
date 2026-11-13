@@ -31,11 +31,8 @@ import { rootLogger } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
 import { hasUsableModelKey } from "~/modules/agent/credits/credit-meter"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
-import {
-  API_CONNECTOR_APP,
-  API_CONNECTOR_CONNECTION,
-  listAdapterRows,
-} from "~/modules/apps/connections/api/store"
+import { apiConnectionsOf } from "~/modules/apps/connections/api/declarations"
+import { credentialStatuses, listAdapterRows } from "~/modules/apps/connections/api/store"
 import { oauthConnectionKey, resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import {
@@ -136,7 +133,6 @@ interface Counts {
   invitations: number
   doneImports: number
   ownRoles: number
-  activeConnectorCredentials: string[]
 }
 
 async function readKernelCounts(orgId: string): Promise<Counts> {
@@ -185,24 +181,12 @@ async function readKernelCounts(orgId: string): Promise<Counts> {
           drizzleSql`${roles.name} !~ ${APP_ROLE_NAME}`,
         ),
       )
-    const connectorCredentials = await tx
-      .select({ identifier: connectedAccounts.identifier })
-      .from(connectedAccounts)
-      .where(
-        and(
-          eq(connectedAccounts.orgId, orgId),
-          eq(connectedAccounts.appName, API_CONNECTOR_APP),
-          eq(connectedAccounts.connectionName, API_CONNECTOR_CONNECTION),
-          eq(connectedAccounts.status, "active"),
-        ),
-      )
     return {
       activeMailboxes: mail?.n ?? 0,
       people: people?.n ?? 0,
       invitations: invites?.n ?? 0,
       doneImports: imports?.n ?? 0,
       ownRoles: ownRoles?.n ?? 0,
-      activeConnectorCredentials: connectorCredentials.map((r) => r.identifier),
     }
   })
 }
@@ -227,17 +211,27 @@ async function countKnowledgeDocuments(orgId: string): Promise<number> {
   }
 }
 
-/** Adapters that also hold active credentials: a connector that can be called. */
-async function countUsableConnectors(orgId: string, credentialed: string[]): Promise<number> {
-  if (credentialed.length === 0) return 0
-  try {
-    const adapters = await listAdapterRows(orgId)
-    const withCredentials = new Set(credentialed)
-    return adapters.filter((a) => withCredentials.has(a.identifier)).length
-  } catch (err) {
-    log.warn({ err, orgId }, "setup state: API connector adapters unreadable, counted as none")
-    return 0
+/**
+ * Adapters that also hold active credentials, across every app's API
+ * connection (declarations.ts): a connector that can be called.
+ */
+async function countUsableConnectors(orgId: string): Promise<number> {
+  let n = 0
+  for (const conn of apiConnectionsOf(orgId)) {
+    try {
+      const [adapters, statuses] = await Promise.all([
+        listAdapterRows(conn),
+        credentialStatuses(conn),
+      ])
+      n += adapters.filter((a) => statuses.get(a.identifier) === "ok").length
+    } catch (err) {
+      log.warn(
+        { err, orgId, app: conn.app },
+        "setup state: API connection adapters unreadable, counted as none",
+      )
+    }
   }
+  return n
 }
 
 /** Every connection of an app that is on (`app/connection`), and those with an active account. */
@@ -381,7 +375,7 @@ export async function computeSetupState(orgId: string): Promise<SetupState> {
     countKnowledgeDocuments(orgId),
   ])
   const [connectors, connections] = await Promise.all([
-    countUsableConnectors(orgId, counts.activeConnectorCredentials),
+    countUsableConnectors(orgId),
     readConnections(orgId, enabledApps),
   ])
 

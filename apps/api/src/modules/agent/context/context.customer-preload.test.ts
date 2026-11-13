@@ -18,7 +18,10 @@ import type { UserContext } from "~/db/rls"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { assembleContext } from "~/modules/agent/context/context"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
@@ -128,7 +131,7 @@ beforeAll(async () => {
   await db.execute(drizzleSql`
     INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
     VALUES (${THREAD}::uuid, ${USER}::uuid, ${ORG}::uuid)`)
-  await upsertAdapterRow(ORG, "crm", CRM, USER)
+  await upsertAdapterRow(testApiConn(ORG), "crm", CRM, USER)
   await withPrivilegedDb(ORG, "customer-preload-test", (tx) =>
     createCredentialConnection(tx, ORG, USER, "api-connector", "api", {
       identifier: "crm",
@@ -139,13 +142,13 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await invalidateConnectionCaches(ORG, "crm")
+  await invalidateConnectionCaches(testApiConn(ORG), "crm")
   resetAppRegistries()
   await releaseTestLock()
 })
 
 beforeEach(async () => {
-  await invalidateConnectionCaches(ORG, "crm")
+  await invalidateConnectionCaches(testApiConn(ORG), "crm")
   lookupSpy = spyOn(dnsPromises, "lookup").mockImplementation((async () => [
     { address: "93.184.216.34", family: 4 },
   ]) as never)

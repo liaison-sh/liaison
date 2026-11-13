@@ -24,3 +24,4 @@ google-drive:approve -> docs/reference/scopes.md:161
 search, read, import, upload, shared_drives, choose_shared_drives, drive_picker -> bundled-apps/google-drive/app.manifest.json:1
 The picker page is Liaison's own widget (drive.file grant only, org address, app gets only picks) -> apps/api/src/modules/apps/page-widgets.ts:1 ; bundled-apps/google-drive/app.manifest.json:427
 Link a Drive file in Knowledge; Drive search off until enabled -> bundled-apps/google-drive/src/items.ts (resolveDriveItem, searchDriveKnowledge) ; bundled-apps/google-drive/app.manifest.json (knowledgeItems.searchByDefault)
+A pick from a conversation's picker posts what was picked there and the agent carries on -> bundled-apps/google-drive/src/picker.ts (savePicks pageResult) ; apps/api/src/modules/apps/page-result.ts

@@ -2112,8 +2112,15 @@
     {
       "idx": 301,
       "version": "7",
-      "when": 1900003393000,
-      "tag": "0300_dashboard_table_actor_label",
+      "when": 1900003392001,
+      "tag": "0300_api_adapters",
+      "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1900003393001,
+      "tag": "0301_dashboard_table_actor_label",
       "breakpoints": true
     }
   ]

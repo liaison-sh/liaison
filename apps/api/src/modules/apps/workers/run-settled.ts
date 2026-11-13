@@ -54,6 +54,8 @@ export interface RunSettledInfo {
   loader?: LoaderTimings
   sleepMs?: number
   sleepExact?: boolean
+  /** CPU milliseconds the sandbox service measured for the run (`workerd` only). */
+  cpuMs?: number
   /** Set when the run was meant for Workers and ran on QuickJS. */
   fallback?: WorkersFallback
   /** Workers attempts made (2 when the run was retried). */

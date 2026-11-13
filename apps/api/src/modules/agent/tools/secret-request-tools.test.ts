@@ -21,7 +21,10 @@ import {
 } from "~/modules/agent/tools/secret-request-tools"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setMailProviderEnabled } from "~/modules/mail/provider-settings"
@@ -222,7 +225,7 @@ describe("request_secret kernel tool", () => {
       ],
     })
     if (!r.ok) throw new Error(JSON.stringify(r.issues))
-    await upsertAdapterRow(orgId, identifier, r.adapter, userId)
+    await upsertAdapterRow(testApiConn(orgId), identifier, r.adapter, userId)
     const ask = (scopes: string[]) =>
       tool(
         threadId,
@@ -234,7 +237,7 @@ describe("request_secret kernel tool", () => {
     const reader = await ask(["kernel:threads:read", "api-connector:read"])
     expect(String(reader.error)).toContain(identifier)
     const other = await ask(["kernel:threads:read"])
-    expect(String(other.error)).toContain('No API connector adapter "no-such-adapter"')
+    expect(String(other.error)).toContain('No API connection adapter "no-such-adapter"')
     expect(String(other.error)).not.toContain(identifier)
     expect(String(other.error)).toContain("save the adapter first")
   })
@@ -364,17 +367,25 @@ describe("request_secret kernel tool", () => {
     })
   })
 
-  it("sends the API connector to its own kind, and refuses a missing adapter", async () => {
+  it("asks for an API connection's credentials as connection_credentials of its app, the old kind included", async () => {
+    // Generic: the app that declares the API connection, its connection, the adapter's slug.
     const generic = await tool()({
       kind: "connection_credentials",
-      target: { app: "api-connector", connection: "api", identifier: "crm" },
+      target: { app: "api-connector", connection: "api", identifier: "no-such-adapter" },
     })
-    expect(String(generic.error)).toContain("api_connector_credentials")
-    const missing = await tool()({
+    expect(String(generic.error)).toContain('No API connection adapter "no-such-adapter"')
+    // The old kind (a pending request, or a call that still uses it) reads as the same target.
+    const legacy = await tool()({
       kind: "api_connector_credentials",
       target: { identifier: "no-such-adapter" },
     })
-    expect(String(missing.error)).toContain('No API connector adapter "no-such-adapter"')
+    expect(String(legacy.error)).toContain('No API connection adapter "no-such-adapter"')
+    // An API connection asked without its adapter slug is refused with what to pass.
+    const bare = await tool()({
+      kind: "connection_credentials",
+      target: { app: "api-connector", connection: "api" },
+    })
+    expect(String(bare.error)).toContain("pass identifier")
   })
 
   it("asks for one mailbox of a single-account connection by its address", async () => {
@@ -414,7 +425,10 @@ describe("request_secret kernel tool", () => {
         identifier: "crm",
         action: "set the bearer credentials",
       }),
-    ).toEqual({ kind: "api_connector_credentials", target: { identifier: "crm" } })
+    ).toEqual({
+      kind: "connection_credentials",
+      target: { app: "api-connector", connection: "api", identifier: "crm" },
+    })
     expect(
       secretRequestForPending(orgId, {
         kind: "credentials",

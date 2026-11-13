@@ -31,6 +31,11 @@ const kernelTable = (name: string) =>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_SCOPES = 20
+
+/** The system identity: the platform's own runs (`system`) and jobs (`system:<app>:<job>`). */
+export function isSystemActorId(userId: string): boolean {
+  return userId === "system" || userId.startsWith("system:")
+}
 const MAX_EMAILS = 200
 
 function scopeList(raw: unknown): string[] {
@@ -46,16 +51,20 @@ function scopeList(raw: unknown): string[] {
 /**
  * The person the run acts for (the human behind an agent turn, also when
  * another agent asked it inline), judged on their own roles and grants joined
- * with the call's; a job's `system:...` id, or any id that is not a person, is
- * the system.
+ * with the call's; the system identity (`system`, or a job's `system:...`)
+ * holds every scope asked. Any other id that is not a person fails closed: the
+ * call is refused, never answered as the system.
  */
 export async function kernelCaller(
   input: { orgId: string; userId: string; callerScopes: readonly string[] },
   rawScopes: unknown,
 ): Promise<KernelCaller> {
   const asked = scopeList(rawScopes)
-  if (!UUID_RE.test(input.userId)) {
+  if (isSystemActorId(input.userId)) {
     return { kind: "system", holds: Object.fromEntries(asked.map((s) => [s, true])) }
+  }
+  if (!UUID_RE.test(input.userId)) {
+    throw new Error("kernel_caller: the run acts for no person and is not a system run")
   }
   const perms = await withPrivilegedDb(input.orgId, "app-bridge-kernel-caller", (tx) =>
     loadEffectivePermissions(tx, input.userId, input.orgId),

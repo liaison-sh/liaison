@@ -8,9 +8,9 @@
 // a formula and an accounting export needs its credit-note totals to stay numeric.
 //
 // KEEP IN SYNC: sandboxed app scripts cannot import this module, so verbatim copies live in
-// apps/api/src/apps/mail/handlers.ts (mailCsvCell), apps/api/src/apps/knowledge/handlers.ts and
-// bundled-apps/invoicing/src/csv.ts; csv.parity.test.ts in apps/api pins all of them to this one.
-// Core app modules (tickets, projects) import it.
+// apps/api/src/apps/mail/handlers.ts (mailCsvCell) and bundled-apps/invoicing/src/csv.ts;
+// csv.parity.test.ts in apps/api pins both to this one. Core app modules (tickets, projects,
+// knowledge) import it.
 
 const FORMULA_START = /^[=+\-@\t\r]/
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/

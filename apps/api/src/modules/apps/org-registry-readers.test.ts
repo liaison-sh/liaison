@@ -35,7 +35,6 @@ const READERS: Record<string, string> = {
   // The connection's declared limits: read on a call of an API connection, whose
   // callers (the app's tools in a request or an agent turn, an import job, the
   // CLI) each set the org up first.
-  "modules/apps/connections/api/transport.ts": `${REQUEST}; ${AGENT}; ${JOB}; ${CLI}`,
   "apps/mcp-manager/routes.ts": REQUEST,
   "cli/search/reindex.ts": CLI,
   "infra/jobs/webhook-inbox-jobs.ts": JOB,

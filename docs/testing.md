@@ -2,7 +2,7 @@
 
 ## Running Tests
 
-Run suites from the repo root through `bun run <script>`, single files with `bun run scripts/test-run.ts <suite> --file <path>` (`--file` may repeat), and the tests a change needs with `bun run test:gate`. `.claude/skills/run-tests/SKILL.md` has the details (namespaces, slots, memory budget, per-directory quirks).
+Run suites from the repo root through `bun run <script>`, single files with `bun run scripts/test-run.ts <suite> --file <path>` (`--file` may repeat), and the tests a change needs with `bun run test:gate`. A suite that lists its files by name also runs the files listed in `scripts/test-suites.d/<suite>/*.txt` (one path per line, relative to the suite's cwd): a new test file goes in a file of its own there, so two pull requests never add lines to the same list. `.claude/skills/run-tests/SKILL.md` has the details (namespaces, slots, memory budget, per-directory quirks).
 
 ### Scripts (repo root)
 

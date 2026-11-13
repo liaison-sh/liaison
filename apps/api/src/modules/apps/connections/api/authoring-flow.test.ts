@@ -16,7 +16,10 @@ import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { errorHandler } from "~/middleware/error-handler"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -97,7 +100,7 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await invalidateConnectionCaches(ORG, "crm")
+  await invalidateConnectionCaches(testApiConn(ORG), "crm")
   resetAppRegistries()
   await releaseTestLock()
 })
@@ -260,7 +263,7 @@ describe("connecting the fixture CRM through the authoring tools", () => {
     expect(validateAdapter(legacy).ok).toBe(false)
     const stored = validateAdapter(legacy, { stored: true })
     if (!stored.ok) throw new Error(JSON.stringify(stored.issues))
-    await upsertAdapterRow(ORG, "legacy", stored.adapter, REQUESTER)
+    await upsertAdapterRow(testApiConn(ORG), "legacy", stored.adapter, REQUESTER)
     const saved = await routes(ADMIN).request("/api/connections/api-connector/api/credentials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

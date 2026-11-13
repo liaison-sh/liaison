@@ -356,6 +356,11 @@ services:
       objectstore-init: { condition: service_completed_successfully }
       # Block app start until the data dir is writable by the app user.
       data-init: { condition: service_completed_successfully }
+      # The sandbox service (profile `sandbox`), when it is in use: `docker
+      # compose up -d app` then recreates it too when its image moved, so it
+      # never stays on the previous release. Not required: without the profile
+      # nothing waits for it.
+      sandbox: { condition: service_started, required: false }
     environment: &liaison-env
       NODE_ENV: production
       PORT: "3000"
@@ -755,13 +760,12 @@ services:
     networks:
       internal: {}
       # The sandbox network: the sandbox service reaches the app here, on the
-      # bridge-only listener (LIAISON_APP_BRIDGE_PORT), at a fixed address
-      # (LIAISON_APP_SANDBOX_IP): under gVisor the sandbox cannot use Docker's
-      # embedded DNS, so it calls the address, with `app-bridge` as the name
-      # its runs' bridge URL carries.
-      sandbox:
-        ipv4_address: ${LIAISON_APP_SANDBOX_IP:-172.31.250.2}
-        aliases: [app-bridge]
+      # bridge-only listener (LIAISON_APP_BRIDGE_PORT). It needs no name or
+      # fixed address (under gVisor the sandbox cannot use Docker's embedded
+      # DNS): it sends each run's bridge calls back to the address that run
+      # came from, so every app process on this network (`app`, or the rolling
+      # `api` and `worker` processes) is reached on its own listener.
+      sandbox: {}
     # Hardening: the image already runs as the non-root `bun` user. Block
     # privilege escalation, drop all capabilities (the app binds an
     # unprivileged port and needs none), and make the root filesystem
@@ -843,10 +847,11 @@ services:
       SANDBOX_ALLOW_NO_GVISOR: ${LIAISON_SANDBOX_ALLOW_NO_GVISOR:-}
       SANDBOX_HOST: 0.0.0.0
       SANDBOX_PORT: "8790"
-      # The only address a workerd process may call: the app's bridge-only listener.
+      # The bridge origin runs name (its port is the app's bridge-only listener).
+      # A workerd process may call nothing but the service's own relay, which
+      # passes a run's bridge calls to the app process that sent the run, at
+      # that process's address on this port (no DNS under gVisor).
       SANDBOX_BRIDGE_ORIGIN: http://app-bridge:${LIAISON_APP_BRIDGE_PORT:-3100}
-      # ...reached at the app's fixed address (no DNS under gVisor).
-      SANDBOX_BRIDGE_ADDRESS: ${LIAISON_APP_SANDBOX_IP:-172.31.250.2}:${LIAISON_APP_BRIDGE_PORT:-3100}
       SANDBOX_POOL_SIZE: ${SANDBOX_POOL_SIZE:-6}
       SANDBOX_POOL_RESERVED: ${SANDBOX_POOL_RESERVED:-2}
       SANDBOX_POOL_OVERFLOW: ${SANDBOX_POOL_OVERFLOW:-2}
@@ -867,6 +872,12 @@ services:
     mem_limit: ${LIAISON_SANDBOX_MEM_LIMIT:-2g}
     cpus: ${LIAISON_SANDBOX_CPUS:-2.0}
     pids_limit: 512
+    # Unhealthy also when, lately, only app processes of another release reach
+    # it: the container was left on an older image after an upgrade. Recreate
+    # it with the app (`docker compose up -d` with COMPOSE_PROFILES=sandbox
+    # recreates both; deploy/rolling-deploy.sh recreates it after the new
+    # processes are ready). Until then every run it is sent is refused with
+    # `sandbox_release_mismatch` (docs/self-hosting/sandbox.md, Upgrades).
     healthcheck:
       test:
         - CMD
@@ -893,9 +904,11 @@ services:
   api:
     <<: *liaison-app
     profiles: ["rolling"]
-    # No fixed address on the sandbox network (several run at once): the
-    # sandbox service is for the single `app` topology in this release.
-    networks: [internal]
+    # On the sandbox network like `app`, with no fixed address (several run at
+    # once): the sandbox service calls each process back where its run came from.
+    networks:
+      internal: {}
+      sandbox: {}
     # An old process drains for up to 10 min (turns and jobs finish where they
     # run). The process exits by itself at SHUTDOWN_HARD_DEADLINE_MS (638 s =
     # 605 s drain group: a 600 s turn drain + its 5 s handoff, above the 600 s
@@ -950,7 +963,9 @@ services:
   worker:
     <<: *liaison-app
     profiles: ["rolling"]
-    networks: [internal]
+    networks:
+      internal: {}
+      sandbox: {}
     stop_grace_period: 11m
     environment:
       <<: *liaison-env

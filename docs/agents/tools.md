@@ -367,7 +367,7 @@ A change that changes nothing (an app that is already on, a setting already at t
 
 ## Secrets the agent asks for
 
-An agent never handles a secret: an API key, a password or an OAuth client secret. When it needs one, it calls `request_secret` and a card appears under its message. The card names what is asked for and where it goes: the model provider, the app and connection, the API connector and the address it sends to, or the label of a new API key.
+An agent never handles a secret: an API key, a password or an OAuth client secret. When it needs one, it calls `request_secret` and a card appears under its message. The card names what is asked for and where it goes: the model provider, the app and connection (for an API connection, also the address it sends to and its auth type), or the label of a new API key.
 
 - Type the secret into the card and select **Save**. The card sends it straight to the place that stores it, the same one the Settings page uses. App and connector credentials are saved for the organization, not for you alone, unless the agent asked for your own account: a personal mailbox over IMAP (your @gmail.com address, for one) is saved as yours, and only you can fill in that card.
 - Liaison then checks that a new secret was stored. Only then is the request marked saved, and the agent is told it was saved with a short hint: the last 4 characters of a provider key, the end of an OAuth client ID, or the prefix of a new API key. A password gets no hint.

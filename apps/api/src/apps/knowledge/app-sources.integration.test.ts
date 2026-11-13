@@ -117,6 +117,17 @@ function registerKind(orgId: string) {
           additionalProperties: false,
         },
       },
+      folder: {
+        title: "Folder",
+        handler: "syncFolder",
+        readScope: READ_SCOPE,
+        configSchema: {
+          type: "object",
+          properties: { ref: { type: "string" }, account: { type: "string" } },
+          required: ["ref"],
+          additionalProperties: false,
+        },
+      },
     },
     dispatch: (_kind, input, tenant) => notesHandler(input, tenant),
   })
@@ -854,5 +865,93 @@ describe("synced documents stay where they belong", () => {
     expect(await visible(orgA, alice)).toContain("iso-mine-1")
     expect(await visible(orgA, alice)).not.toContain("iso-b-1")
     expect((await docsOf(personal.id)).map((d) => d.org_id)).toEqual([orgA])
+  })
+})
+
+// One source per identity (synced-sources.ts findAppSource): a source added
+// with a `ref` is the same source whatever else its config holds, so adding a
+// folder that an earlier release synced (its config carrying the account it
+// read through) finds that source instead of adding a second one.
+describe("adding an app source that exists", () => {
+  const scopes = [SOURCES_MANAGE, DOC_READ, READ_SCOPE]
+  const add = (
+    config: Record<string, unknown>,
+    over: { kind?: string; account?: string; reuseSameConfig?: boolean } = {},
+  ) =>
+    withRlsContext(
+      { actorType: "user", orgId: orgA, userId: alice, scopes, dimensionGrants: {} },
+      (tx) =>
+        createSyncedSource(
+          tx,
+          {
+            appName: APP,
+            folderRef:
+              typeof config.ref === "string" ? config.ref : `app-source:${over.kind ?? "folder"}`,
+            sourceKind: over.kind ?? "folder",
+            sourceConfig: config,
+            ...(over.account ? { sourceAccount: over.account } : {}),
+            displayName: "Folder",
+            syncIntervalSeconds: 3600,
+            scope: "organization",
+            defaultSensitivity: "internal",
+          },
+          actorOf(orgA, alice, scopes),
+          over.reuseSameConfig ? { reuseSameConfig: true } : {},
+        ),
+    )
+  const countRef = async (ref: string) =>
+    Number(
+      extractRows<{ n: number }>(
+        await db.execute(sql`
+          SELECT count(*)::int AS n FROM ${knowledgeRel("synced_sources")}
+          WHERE org_id = ${orgA}::uuid AND app_name = ${APP} AND folder_ref = ${ref}
+        `),
+      )[0]!.n,
+    )
+
+  it("a source whose config also carries an account is found by its ref", async () => {
+    const adopted = await add(
+      { ref: "FOLDER_A", account: "team@example.com" },
+      {
+        account: "team@example.com",
+      },
+    )
+    const again = await add({ ref: "FOLDER_A" })
+    expect(again.id).toBe(adopted.id)
+    expect(await countRef("FOLDER_A")).toBe(1)
+  })
+
+  it("an archived one comes back instead of a new one", async () => {
+    const first = await add({ ref: "FOLDER_B" })
+    await db.execute(sql`
+      UPDATE ${knowledgeRel("synced_sources")} SET archived_at = now() WHERE id = ${first.id}::uuid
+    `)
+    const again = await add({ ref: "FOLDER_B" })
+    expect(again.id).toBe(first.id)
+    expect(again.archivedAt).toBeNull()
+  })
+
+  it("concurrent adds of one folder make one source", async () => {
+    const rows = await Promise.all([1, 2, 3].map(() => add({ ref: "FOLDER_C" })))
+    expect(new Set(rows.map((r) => r.id)).size).toBe(1)
+    expect(await countRef("FOLDER_C")).toBe(1)
+  })
+
+  it("another named account, kind or owner is another source", async () => {
+    const a = await add({ ref: "PICKS", account: "a@example.com" }, { account: "a@example.com" })
+    const b = await add({ ref: "PICKS", account: "b@example.com" }, { account: "b@example.com" })
+    expect(b.id).not.toBe(a.id)
+    const other = await add({ prefix: "" }, { kind: "notes" })
+    expect(other.id).not.toBe(a.id)
+  })
+
+  it("a source without a ref is reused by its whole config only when asked", async () => {
+    const one = await add({ prefix: "Z:" }, { kind: "notes" })
+    const two = await add({ prefix: "Z:" }, { kind: "notes" })
+    expect(two.id).not.toBe(one.id)
+    const reused = await add({ prefix: "Z:" }, { kind: "notes", reuseSameConfig: true })
+    expect([one.id, two.id]).toContain(reused.id)
+    const otherConfig = await add({ prefix: "Y:" }, { kind: "notes", reuseSameConfig: true })
+    expect([one.id, two.id]).not.toContain(otherConfig.id)
   })
 })

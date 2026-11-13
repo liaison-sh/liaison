@@ -110,6 +110,18 @@ describe("ctx.kernel.caller", () => {
     expect(caller).toEqual({ kind: "system", holds: { "kernel:org:admin": true } })
   })
 
+  it("is the system only for the system identity; any other id that is no person is refused", async () => {
+    for (const userId of ["system", "system:cli-api-connector-test"]) {
+      const caller = await call("kernel_caller", [["kernel:org:admin"]], { userId })
+      expect(caller).toEqual({ kind: "system", holds: { "kernel:org:admin": true } })
+    }
+    for (const userId of ["", "anonymous", "agent:x", "systemx", "not-a-uuid"]) {
+      await expect(call("kernel_caller", [["kernel:org:admin"]], { userId })).rejects.toThrow(
+        /no person/,
+      )
+    }
+  })
+
   it("refuses more than 20 scopes", async () => {
     const many = Array.from({ length: 21 }, (_, i) => `a:b:${i}`)
     await expect(call("kernel_caller", [many])).rejects.toThrow("at most 20")

@@ -15,7 +15,7 @@ import { MAX_PAGES_PER_CALL, type Operation } from "@liaison/api-connector-core"
 import type { CliRunResult } from "~/cli/api-connector/validate"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { runConnectorOperation } from "~/modules/apps/connections/api/service"
-import { getAdapterRow } from "~/modules/apps/connections/api/store"
+import { findAdapterConnections, getAdapterRow } from "~/modules/apps/connections/api/store"
 import {
   API_CONNECTOR_PAGES_BUDGET_MS,
   API_CONNECTOR_REQUEST_TIMEOUT_MS,
@@ -101,10 +101,25 @@ export async function runApiConnectorTest(input: {
   operation: string
   argv: readonly string[]
   orgSlug?: string
+  /** The app holding the connection, when several apps hold one of that name. */
+  app?: string
 }): Promise<CliRunResult> {
   const org = await resolveOrgId(input.orgSlug, "more than one org exists: pass --org <slug>")
   if (!org.ok) return { exitCode: 2, report: { ok: false }, message: org.message }
-  const row = await getAdapterRow(org.orgId, input.identifier)
+  // The API connection holding the identifier (any app's); `app` picks one
+  // when several apps hold an adapter of that name.
+  const held = (await findAdapterConnections(org.orgId, input.identifier)).filter(
+    (c) => !input.app || c.app === input.app,
+  )
+  if (held.length > 1) {
+    return {
+      exitCode: 2,
+      report: { ok: false },
+      message: `several apps hold an API connection "${input.identifier}" (${held.map((c) => c.app).join(", ")}): pass --app <name>`,
+    }
+  }
+  const conn = held[0] ?? null
+  const row = conn ? await getAdapterRow(conn, input.identifier) : null
   const op = row?.adapter.operations.find((o) => o.name === input.operation)
   const parsed = op ? parseParamFlags(input.argv, op) : { ok: true as const, params: {} }
   if (!parsed.ok) return { exitCode: 2, report: { ok: false }, message: parsed.message }
@@ -144,9 +159,15 @@ export async function runApiConnectorTest(input: {
     flags.flags.pages === "all"
       ? Math.min(op?.pagination?.maxPages ?? MAX_PAGES_PER_CALL, MAX_PAGES_PER_CALL)
       : flags.flags.pages
+  if (!conn) {
+    return errorReport(
+      new ApiConnectorError("unknown_connection", `No API connection named "${input.identifier}".`),
+    )
+  }
   try {
     const r = await runConnectorOperation({
       actor: { orgId: org.orgId, userId: "system:cli-api-connector-test", actorType: "system" },
+      conn,
       identifier: input.identifier,
       operation: input.operation,
       params: parsed.params,

@@ -19,7 +19,10 @@
 // trusted platform code in-process are recorded in the table but never in the
 // day counters (the caps are for the org's apps, not the platform). Bridge
 // calls are those the cell counted for a Workers run; a QuickJS run reports
-// none. CPU comes from the loader (loader-usage.ts), never from here.
+// none. CPU: a run on the instance's sandbox service (`workerd`) brings the
+// CPU time the service measured for it, added here per run; the Workers
+// loader's comes from its hourly pull (loader-usage.ts), never from here;
+// QuickJS reports none (the row's cpu_ms stays null).
 
 import { sql as drizzleSql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
@@ -46,6 +49,8 @@ interface PendingRow {
   runs: number
   bridgeCalls: number
   wallMs: number
+  /** Summed CPU of runs that reported one; null when none did. */
+  cpuMs: number | null
 }
 
 const pending = new Map<string, PendingRow>()
@@ -58,12 +63,17 @@ export function recordSettledRun(info: RunSettledInfo): void {
   const day = utcDay(info.at)
   const bridgeCalls = Math.max(0, Math.trunc(info.bridgeCalls ?? 0))
   const wallMs = Math.max(0, Math.trunc(info.ms))
+  const cpuMs =
+    info.cpuMs !== undefined && Number.isFinite(info.cpuMs)
+      ? Math.max(0, Math.trunc(info.cpuMs))
+      : null
   const key = `${info.orgId}|${info.app}|${day}|${info.executor}`
   const row = pending.get(key)
   if (row) {
     row.runs += 1
     row.bridgeCalls += bridgeCalls
     row.wallMs += wallMs
+    if (cpuMs !== null) row.cpuMs = (row.cpuMs ?? 0) + cpuMs
   } else {
     pending.set(key, {
       orgId: info.orgId,
@@ -73,6 +83,7 @@ export function recordSettledRun(info: RunSettledInfo): void {
       runs: 1,
       bridgeCalls,
       wallMs,
+      cpuMs,
     })
   }
   if (info.executor !== "inprocess") void countDay(info.orgId, day, bridgeCalls)
@@ -139,6 +150,10 @@ async function writeUsageBatch(): Promise<void> {
             runs: drizzleSql`${appUsageDaily.runs} + excluded.runs`,
             bridgeCalls: drizzleSql`${appUsageDaily.bridgeCalls} + excluded.bridge_calls`,
             wallMs: drizzleSql`${appUsageDaily.wallMs} + excluded.wall_ms`,
+            // Added per run (the sandbox service's measure); a batch without
+            // one keeps what is there (the loader's pull writes its own).
+            cpuMs: drizzleSql`CASE WHEN excluded.cpu_ms IS NULL THEN ${appUsageDaily.cpuMs}
+              ELSE COALESCE(${appUsageDaily.cpuMs}, 0) + excluded.cpu_ms END`,
             updatedAt: drizzleSql`now()`,
           },
         }),

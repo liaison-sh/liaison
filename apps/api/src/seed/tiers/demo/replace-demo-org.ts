@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
+import { isPublicDemoInstance } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, loadDemoMarker } from "~/modules/demo/demo-org"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
 import { findOrgIdBySlug } from "~/seed/factories/org/org"
@@ -7,7 +7,7 @@ import { findOrgIdBySlug } from "~/seed/factories/org/org"
 /**
  * Delete the demo org under `slug`, when there is one, so a seed starts it
  * fresh on a private box. Refused for an org without the demo marker (a real
- * workspace never goes this way) and on a demo box, where demo orgs belong to
+ * workspace never goes this way) and on a public demo box (`isPublicDemoInstance`), where demo orgs belong to
  * visitors and the reaper (there, a content reset keeps the org instead).
  */
 export async function replaceSeededDemoOrg(
@@ -17,9 +17,9 @@ export async function replaceSeededDemoOrg(
 ): Promise<boolean> {
   const orgId = await findOrgIdBySlug(slug)
   if (!orgId) return false
-  if (isDemoModeEnabled()) {
+  if (isPublicDemoInstance()) {
     throw new Error(
-      `${opts.who}: refusing to replace '${slug}' on a box running in demo mode: its demo orgs belong to visitors.`,
+      `${opts.who}: refusing to replace '${slug}' on a public demo box: its demo orgs belong to visitors.`,
     )
   }
   const guard = async (id: string) => {

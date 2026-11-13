@@ -40,7 +40,7 @@ export interface SeedLoadOptions {
   /** Re-index each bulk org's search documents at the end (default on with volume). */
   reindex?: boolean
   ttlHours?: number
-  /** Every person's password, so a load script can sign in (refused in demo mode). */
+  /** Every person's password, so a load script can sign in (refused on a public demo box). */
   personaPassword?: string
   /** Orgs seeded at once. */
   concurrency?: number

@@ -332,6 +332,26 @@ describe("kernel tools", () => {
     ])
   })
 
+  test("a description written as a template of a string constant and a number constant is read in full", () => {
+    const src = KERNEL_TOOLS_SRC.replace(
+      '  const LOCAL_SCOPE = "kernel:fixture:read"\n',
+      `  const LOCAL_SCOPE = "kernel:fixture:read"
+  const ROW_NOUN = "rows"
+  const MAX_ROWS = 500
+  toolRegistry.set([orgId, "kernel", "template_tool"], {
+    appName: "kernel",
+    name: "template_tool",
+    description: \`Write up to \${MAX_ROWS} \${ROW_NOUN} in one call. More.\`,
+    requiredScopes: [LOCAL_SCOPE],
+  })
+`,
+    )
+    const { tools } = collectKernelTools(kernelToolsRoot(src))
+    expect(tools.find((t) => t.name === "template_tool")?.description).toBe(
+      "Write up to 500 rows in one call.",
+    )
+  })
+
   test("web_search, built by a function and registered conditionally, is listed with its condition", () => {
     const kernel = collectKernelTools(kernelToolsRoot())
     expect(kernel.tools.map((t) => t.name)).toEqual([

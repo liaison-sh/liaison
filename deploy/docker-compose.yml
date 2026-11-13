@@ -436,6 +436,9 @@ services:
       # deployment byte identical: demo mode parses false when unset, and the
       # reserved App Review org is simply not created without a password.
       LIAISON_DEMO_MODE: ${LIAISON_DEMO_MODE:-}
+      # A private demo-mode QA box (tunnel only, loopback BASE_URL) may reseed its
+      # own demo org with passwords; empty everywhere else (see lib/env.ts).
+      LIAISON_PRIVATE_DEMO_BOX: ${LIAISON_PRIVATE_DEMO_BOX:-}
       # Demo signup ceilings (box-wide signups per hour, live visitor workspaces).
       # Empty keeps the built-in defaults (60 and 500).
       LIAISON_DEMO_SIGNUPS_PER_HOUR: ${LIAISON_DEMO_SIGNUPS_PER_HOUR:-}

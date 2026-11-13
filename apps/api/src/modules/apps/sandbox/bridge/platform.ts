@@ -2,7 +2,6 @@
 
 import { sql as drizzleSql } from "drizzle-orm"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
-import { emailBody } from "~/lib/email/email-body"
 import { quoteIdent } from "~/lib/sql-utils"
 import { civilTimeAt, instantOf } from "~/modules/apps/sandbox/bridge/civil-time"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -409,22 +408,6 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
         ...(typeof opts?.jobId === "string" ? { jobId: opts.jobId } : {}),
       })
     },
-
-    // --- Codec utilities ---
-    // Bulk binary/text transforms MUST NOT run inside QuickJS: the interpreter
-    // executes on the Bun main thread with no await points, so a hand-rolled
-    // per-byte encoder over a multi-MB payload (e.g. base64url of a whole
-    // RFC 2822 message with attachments for the Gmail send API) freezes the
-    // entire process for tens of seconds — every concurrent request 504s and
-    // websockets drop. These host-side codecs do the same work natively in
-    // milliseconds. Txless: pure CPU, no DB access.
-    codec_base64UrlEncodeUtf8: async (text: string) =>
-      Buffer.from(text, "utf8").toString("base64url"),
-    codec_base64EncodeUtf8: async (text: string) => Buffer.from(text, "utf8").toString("base64"),
-    // A body written as markdown or plain text, as the email the customer
-    // receives: `{ html, text }` JSON (emailBody, size-capped).
-    codec_markdownToEmail: async (markdown: string) =>
-      JSON.stringify(emailBody({ textBody: markdown })),
 
     invalidateIdempotency: async (targetTool: string, idempotencyKey: string): Promise<void> => {
       // Only this app's own tools: releasing another app's key would let a

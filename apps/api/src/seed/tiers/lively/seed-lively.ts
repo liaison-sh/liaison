@@ -82,7 +82,7 @@ export interface SeedLivelyOptions {
   /** The caller's own people in the world's seats (the roster overlay). */
   people?: readonly LivelySeat[]
   orgName?: string
-  /** Every person's password (private boxes only; refused in demo mode). */
+  /** Every person's password (private boxes only; refused on a public demo box). */
   personaPassword?: string
   /** Delete an earlier demo org under this slug first, so the world is fresh. */
   replace?: boolean

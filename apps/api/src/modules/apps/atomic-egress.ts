@@ -30,7 +30,7 @@ import toolAllowlist from "./contract/atomic-tools.allowlist.json"
 
 /**
  * Prefixes of bridge methods an atomic job keeps: the app's own rows and data
- * store, kernel row reads, logs, pure codecs and crypto, and the effect ledger
+ * store, kernel row reads, logs, crypto, and the effect ledger
  * and step state (their own short writes on the privileged pool).
  */
 export const ATOMIC_LOCAL_METHOD_PREFIXES: readonly string[] = [
@@ -38,7 +38,6 @@ export const ATOMIC_LOCAL_METHOD_PREFIXES: readonly string[] = [
   "store_",
   "kernel_",
   "log_",
-  "codec_",
   "crypto_",
   "effects_",
   "_steps_",

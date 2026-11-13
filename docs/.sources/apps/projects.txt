@@ -262,3 +262,4 @@ SLA words only when an automation's wait keeps a deadline on the task -> apps/we
 Where the time went, one segment per status in its colour -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:74
 Automations on this task, the recent runs fired on it -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:119
 Automations list row: last run dot, time since and step strip -> apps/web/src/modules/projects/ProjectAutomations.tsx:330
+An SLA whose time came reads as passed -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:34

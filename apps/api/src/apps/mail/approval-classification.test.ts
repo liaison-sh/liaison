@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
-
-const bundlePath = new URL("./handlers.ts", import.meta.url).pathname
+import { describe, expect, it } from "bun:test"
+import { runMailHandler } from "~/apps/mail/test-mail-runner"
 
 function bridgeFor(status: number) {
   const calls: Array<{ method: string; toolName: string; payload?: any }> = []
@@ -73,12 +69,9 @@ function bridgeFor(status: number) {
 }
 
 async function runReply(status: number) {
-  const bundleSource = await loadBundle(bundlePath)
   const { bridge, calls } = bridgeFor(status)
   await expect(
-    executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    runMailHandler({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Hello", htmlBody: "" },
       bridge,
@@ -88,14 +81,6 @@ async function runReply(status: number) {
 }
 
 describe("mail approved handler provider classification", () => {
-  beforeAll(async () => {
-    await initSandboxPool()
-  })
-
-  afterAll(async () => {
-    await shutdownSandboxPool()
-  })
-
   it("classifies clear Gmail 4xx send failures as failed_no_effect", async () => {
     const calls = await runReply(400)
     expect(calls).toContainEqual({ method: "started", toolName: "mail:reply" })

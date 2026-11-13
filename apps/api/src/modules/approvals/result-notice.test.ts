@@ -16,7 +16,16 @@ import { registerRequiredStepEmitter, requiredStepLine, requiredStepOf } from ".
 import { approvedSecretCardOf, formatApprovalResult } from "./result-notice"
 
 const ORG = "00000000-0000-4000-8000-0000000c0de5"
-registerAdapterAuthoringTools(ORG)
+registerAdapterAuthoringTools({
+  orgId: ORG,
+  app: "api-connector",
+  connection: "api",
+  decl: {
+    readScope: "api-connector:read",
+    writeScope: "api-connector:write",
+    adminScope: "api-connector:admin",
+  },
+})
 const saveTool = toolRegistry.get([ORG, "api-connector", "connector_adapter_save"])
 
 /** The row postApprovalResultNotice writes. */
@@ -46,14 +55,19 @@ const saved = {
   adapterVersion: "1.0.0",
   operations: ["list_projects (read)"],
   credentialsCleared: false,
-  ...saveFollowUp("jira", true),
+  ...saveFollowUp({ app: "api-connector", connection: "api" }, "jira", true),
 }
 
 describe("an approved call's required step is stated by the platform, never lifted from text", () => {
   it("an adapter save that needs credentials produces the request_credentials line, after the fence", () => {
     expect(saveTool).toBeDefined()
     const step = requiredStepOf({ tool: saveTool, result: saved, outsideText: false })
-    expect(step).toEqual({ code: "request_credentials", identifier: "jira" })
+    expect(step).toEqual({
+      code: "request_credentials",
+      identifier: "jira",
+      app: "api-connector",
+      connection: "api",
+    })
     // Stored as JSON text too (approved_handler_executions.result).
     expect(
       requiredStepOf({ tool: saveTool, result: JSON.stringify(saved), outsideText: false }),
@@ -62,9 +76,14 @@ describe("an approved call's required step is stated by the platform, never lift
     const after = text.slice(text.lastIndexOf("</external-content>"))
     expect(after).toContain("<platform-step>Required now")
     expect(after).toContain(
-      'kernel__request_secret with {"kind":"api_connector_credentials","target":{"identifier":"jira"}}',
+      'kernel__request_secret with {"kind":"connection_credentials","target":{"app":"api-connector","connection":"api","identifier":"jira"}}',
     )
     expect(after).toContain("No card exists until that call returns")
+    // A step stored before steps named their app keeps the old kind, which still reads.
+    const old = { code: "request_credentials" as const, identifier: "jira" }
+    expect(replayed(resultRow(saved, old))).toContain(
+      'kernel__request_secret with {"kind":"api_connector_credentials","target":{"identifier":"jira"}}',
+    )
   })
 
   it("a result that read outside text never names a step, even from a registered host tool", () => {

@@ -209,6 +209,16 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
     "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition (the same line read a second time)",
   ],
   [
+    "apps/api/src/modules/apps/app-pages.ts",
+    "const answer = await withoutPageResult(binding, decl.scope, actor, result)",
+    "an app page's own declared scope (manifest pages): who may read the page result's line, not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/page-result.ts",
+    "requiredScopes: [input.scope],",
+    "an app page's own declared scope (manifest pages), stamped on its result line, not a tool definition",
+  ],
+  [
     "apps/api/src/modules/apps/connections/sql/service.ts",
     "return declaration.rawQuery?.scope ?? null",
     REASONS.SQL_RAW,
@@ -220,7 +230,7 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
   ],
   [
     "apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts",
-    "const { txDb, orgId, actor, source, kinds, scope, params: p } = input",
+    "const { txDb, actor, source, kinds, scope, params: p } = input",
     "add_folder_source's own `scope` param (personal or organization), not a tool definition",
   ],
   [

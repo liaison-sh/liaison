@@ -265,6 +265,11 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // The org layer reinstalls the Shopify fixture connection and resets its
   // write overlay; deleting the row would strand that reset.
   connected_accounts: "restore",
+  // API connection adapters (any app's, connections/api/store.ts) and their kept
+  // versions: a visitor's adapter is durable egress, so they go; the org layer
+  // saves the fixture connection's adapter again (demo/api-connector/connection.ts).
+  api_adapters: "clear",
+  api_adapter_versions: "clear",
   // Zeroed explicitly by `resetDemoOrgContent`, not deleted: the balance row is
   // the org's, and a demo org's balance must be zero rather than absent.
   credit_balances: "restore",

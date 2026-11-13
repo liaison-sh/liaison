@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-li
 import { createSignal } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { BlockResult, DashboardBlockSpec } from "../dashboards-client"
-import { BlockCard } from "./BlockCard"
+import { BlockCard, ownWindowText } from "./BlockCard"
 
 afterEach(cleanup)
 
@@ -120,5 +120,18 @@ describe("BlockCard", () => {
     fireEvent.click(screen.getByTestId("dashboard-block-refresh-b1"))
     await waitFor(() => expect(screen.getByTestId("own-content").textContent).toBe("refreshed 1"))
     expect(load).not.toHaveBeenCalled()
+  })
+})
+
+describe("a block's own window chip", () => {
+  const t = ((key: string) => (key === "kernel.dashboards.ownPeriod" ? "Own period" : key)) as never
+  const fixedNoDates = { mode: "fixed" as const, dates: [] }
+
+  it("says Own period for a source that keeps its own window", () => {
+    expect(ownWindowText(fixedNoDates, t, "en")).toBe("Own period")
+  })
+
+  it("shows no chip for a block over a dashboard table that names no date: it reads every row", () => {
+    expect(ownWindowText(fixedNoDates, t, "en", true)).toBeNull()
   })
 })

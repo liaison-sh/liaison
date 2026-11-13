@@ -11,7 +11,7 @@
  * Liaison team opt-ins (operator only).
  * mail and tickets have no reader yet and say so.
  */
-import { API_CONNECTOR_APP as API_CONNECTIONS_APP } from "@liaison/api-connector-core/contract"
+
 import { commercialIdentitySchema, orgKernelSettingsSchema } from "@liaison/shared"
 import { and, sql as drizzleSql, eq, isNull } from "drizzle-orm"
 import { listKnowledgeCollections } from "~/apps/knowledge/collections"
@@ -26,6 +26,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
 import { COMMON_AGENT_BASE_SCOPES } from "~/modules/agent/directory/common-base-scopes"
+import { type ApiConnDecl, apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { canManageInstanceApps } from "~/modules/apps/operator-org"
 import { loadSharing } from "~/modules/liaison-team/settings"
@@ -62,11 +63,13 @@ export async function exportOrgConfig(orgId: string, actor: ProvisionActor): Pro
     tickets: NOT_EXPORTABLE,
     apps: await Promise.all(
       (await getEnabledApps(orgId)).map(async (name) => {
-        if (name !== API_CONNECTIONS_APP) return { name, enable: true }
-        // The API connections: the app's provisioning (adapters), and the
-        // accounts whose credentials the file names (values never exported).
-        const connectors = await gated("api-connector:admin", () =>
-          exportApiConnectors(priv, orgId, secrets),
+        // An app's API connection (declarations.ts): its adapters, in the
+        // provisioning field it declares, and the accounts whose credentials
+        // the file names (values never exported).
+        const api = apiConnFor(orgId, name)
+        if (!api) return { name, enable: true }
+        const connectors = await gated(api.decl.adminScope, () =>
+          exportApiConnectors(priv, api, secrets),
         )
         return { name, enable: true, ...(connectors as Record<string, unknown>) }
       }),
@@ -137,18 +140,16 @@ async function exportUsers(priv: Priv, orgId: string) {
 
 async function exportApiConnectors(
   priv: Priv,
-  orgId: string,
+  api: ApiConnDecl,
   secrets: ConfigExport["secrets"],
 ): Promise<Record<string, unknown>> {
-  const { listAdapterRows, API_CONNECTOR_APP } = await import(
-    "~/modules/apps/connections/api/store"
-  )
+  const { listAdapterRows } = await import("~/modules/apps/connections/api/store")
+  const orgId = api.orgId
   let rows: Awaited<ReturnType<typeof listAdapterRows>>
   try {
-    rows = await listAdapterRows(orgId)
+    rows = await listAdapterRows(api)
   } catch (err) {
-    // The api-connector app is not set up on this org: nothing to export.
-    log.debug({ err, orgId }, "config export: no api connector adapters")
+    log.debug({ err, orgId, app: api.app }, "config export: no API connection adapters")
     return {}
   }
   const connected = new Set(
@@ -156,23 +157,27 @@ async function exportApiConnectors(
       await priv("config-export-api-connections", (tx) =>
         tx.execute(drizzleSql`
           SELECT identifier FROM ${drizzleSql.raw(schemaRef("kernel"))}.connected_accounts
-          WHERE org_id = ${orgId}::uuid AND app_name = ${API_CONNECTOR_APP} AND status = 'active'`),
+          WHERE org_id = ${orgId}::uuid AND app_name = ${api.app}
+            AND connection_name = ${api.connection} AND status = 'active'`),
       ),
     ).map((r) => r.identifier),
   )
   for (const r of rows) {
     secrets.push({
-      section: `apps.${API_CONNECTOR_APP}.connections`,
+      section: `apps.${api.app}.connections`,
       identifier: r.identifier,
       state: connected.has(r.identifier) ? "set" : "missing",
     })
   }
   if (rows.length === 0) return {}
+  const key = api.decl.provisionKey
   return {
-    provision: {
-      connectors: rows.map((r) => ({ identifier: r.identifier, adapter: r.adapter })),
-    },
-    connections: rows.map((r) => ({ name: "api", identifier: r.identifier })),
+    ...(key
+      ? {
+          provision: { [key]: rows.map((r) => ({ identifier: r.identifier, adapter: r.adapter })) },
+        }
+      : {}),
+    connections: rows.map((r) => ({ name: api.connection, identifier: r.identifier })),
   }
 }
 

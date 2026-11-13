@@ -469,6 +469,58 @@ export interface DescribeContext {
   now: Date
   /** The saved versions a revert names (absent: the line says it could not be read). */
   versions?: VersionLookup
+  /** The dashboard tables the operations read, by id, as the requester sees them: a line names
+   *  a table by its name and a column by its label (absent: by id and key). */
+  tables?: ReadonlyMap<string, CardTable>
+}
+
+/** A dashboard table as a card names it. */
+export interface CardTable {
+  name: string
+  /** Column key to its label. */
+  labels: Record<string, string>
+}
+
+/** Every dashboard table id a value reads (a block's, a layer's, a dataset's or a filter's source). */
+export function tableIdsIn(value: unknown, out: Set<string> = new Set()): string[] {
+  if (Array.isArray(value)) for (const v of value) tableIdsIn(v, out)
+  else if (isObject(value)) {
+    if (value.kind === "table" && typeof value.table === "string") out.add(value.table)
+    for (const v of Object.values(value)) tableIdsIn(v, out)
+  }
+  return [...out]
+}
+
+/** A dashboard table in words: its name when the card knows it, else its id. */
+function tableWords(id: unknown, ctx: DescribeContext): string {
+  const t = typeof id === "string" ? ctx.tables?.get(id) : undefined
+  return t ? `the dashboard table "${t.name}"` : `the dashboard table ${String(id)}`
+}
+
+/** A block's field as people read it: a table column's label, else the field itself. */
+type FieldLabel = (field: string) => string
+const asWritten: FieldLabel = (f) => f
+
+function fieldLabelOf(source: unknown, ctx: DescribeContext): FieldLabel {
+  const s = isObject(source) ? source : {}
+  const t = s.kind === "table" && typeof s.table === "string" ? ctx.tables?.get(s.table) : undefined
+  return t ? (f) => t.labels[f] ?? f : asWritten
+}
+
+/**
+ * What a table block over a dashboard table shows, when it shows the table itself (no columns,
+ * measures or value of its own): "an editable table of "Arrivages"", "the rows of "Arrivages"".
+ */
+function tableBlockWords(b: Record<string, unknown>, ctx: DescribeContext): string | null {
+  const s = isObject(b.source) ? b.source : {}
+  if (b.type !== "table" || s.kind !== "table") return null
+  const map = isObject(b.map) ? b.map : {}
+  if (map.columns !== undefined || map.measures !== undefined || map.value !== undefined) {
+    return null
+  }
+  const t = typeof s.table === "string" ? ctx.tables?.get(s.table) : undefined
+  const name = t ? `"${t.name}"` : "a dashboard table"
+  return map.editable === true ? `an editable table of ${name}` : `the rows of ${name}`
 }
 
 function rangeWords(tr: TimeRange, ctx: DescribeContext): string {
@@ -579,16 +631,21 @@ function paramWords(params: Record<string, unknown>): string {
 }
 
 /** One aggregation in words: "sum of total", "a count of rows". */
-function aggWords(field: unknown, agg: unknown): string {
+function aggWords(field: unknown, agg: unknown, label: FieldLabel = asWritten): string {
   const a = agg ?? (field ? "sum" : "count")
-  return a === "count" && !field ? "a count of rows" : `${String(a)} of ${String(field)}`
+  return a === "count" && !field ? "a count of rows" : `${String(a)} of ${label(String(field))}`
 }
 
 /**
  * What a block's map draws, in words: "sum of total by status, target 5000; keeps only rows
  * where status is not cancelled". `spec` names the filters a where clause reads.
  */
-function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}, layered = false): string {
+function mapWords(
+  rawMap: unknown,
+  spec: Record<string, unknown> = {},
+  layered = false,
+  label: FieldLabel = asWritten,
+): string {
   const map = isObject(rawMap) ? rawMap : {}
   if (layered) return displayWords(map).join(", ") || "the layers as they are drawn"
   const field = map.value ?? map.y
@@ -618,13 +675,13 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}, layered =
       })
       .join(", ")
     parts.push(`the computed value ${compact(map.expr, 120)} (${named})`)
-  } else parts.push(aggWords(field, map.agg))
+  } else parts.push(aggWords(field, map.agg, label))
   if (isObject(map.groupBy)) {
     const bucket = map.groupBy.bucket ? ` per ${String(map.groupBy.bucket)}` : ""
-    parts[0] += ` by ${String(map.groupBy.field)}${bucket}`
-  } else if (map.x ?? map.label) parts[0] += ` by ${String(map.x ?? map.label)}`
+    parts[0] += ` by ${label(String(map.groupBy.field))}${bucket}`
+  } else if (map.x ?? map.label) parts[0] += ` by ${label(String(map.x ?? map.label))}`
   if (Array.isArray(map.order)) parts.push(`stages in the order ${map.order.join(", ")}`)
-  if (map.series) parts.push(`split by ${String(map.series)}`)
+  if (map.series) parts.push(`split by ${label(String(map.series))}`)
   if (map.stacked) parts.push("stacked")
   if (map.horizontal) parts.push("horizontal bars")
   if (Array.isArray(map.lineSeries)) parts.push(`drawn as lines: ${map.lineSeries.join(", ")}`)
@@ -705,7 +762,7 @@ function layerLines(
 ): string[] {
   return layerList(layers).map((l, k) => {
     const drawn = `${l.as === "line" ? "a line" : "bars"}${l.axis === "right" ? " on the right axis" : ""}`
-    return `   ${number}${k + 1}. Layer ${layerName(l)}: ${drawn}, ${mapWords(l.map, spec)}; ${blockSourceWords(l, spec, window, ctx, datasetRef)}.`
+    return `   ${number}${k + 1}. Layer ${layerName(l)}: ${drawn}, ${mapWords(l.map, spec, false, fieldLabelOf(l.source, ctx))}; ${blockSourceWords(l, spec, window, ctx, datasetRef)}.`
   })
 }
 
@@ -769,7 +826,7 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   if (s.kind === "table") {
     const where =
       isObject(s.where) && Object.keys(s.where).length ? ` where ${compact(s.where)}` : ""
-    return `the dashboard table ${String(s.table)}${where}${tokenMeanings(s.where, window, ctx)}`
+    return `${tableWords(s.table, ctx)}${where}${tokenMeanings(s.where, window, ctx)}`
   }
   if (s.kind === "store") {
     const query =
@@ -947,7 +1004,7 @@ function changeWords(
     } else if (k === "text") parts.push(`now shows ${noteHead(String(v ?? ""))}`)
     else if (k === "map") {
       parts.push(
-        `now shows ${mapWords(mergeKeys(before.map, v), spec, Array.isArray(before.layers) || Array.isArray(changes.layers))}`,
+        `now shows ${tableBlockWords(mergeBlock(before, { map: mergeKeys(before.map, v) }), ctx) ?? mapWords(mergeKeys(before.map, v), spec, Array.isArray(before.layers) || Array.isArray(changes.layers), fieldLabelOf(before.source, ctx))}`,
       )
     } else if (k === "layers") {
       parts.push(v === null ? "no layers any more" : `now ${layersWords(v)}`)
@@ -1063,7 +1120,10 @@ function describeNumbered(
           b.refreshSec !== undefined ? `, refreshed every ${String(b.refreshSec)} s` : ""
         const head = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}`
         const reads = blockSourceWords(b, specOf(next), window, ctx, datasetRef)
-        const shows = `it shows ${mapWords(b.map, specOf(next), Array.isArray(b.layers))}, ${rangeModeWords(b, specOf(next))}${refresh}`
+        const what =
+          tableBlockWords(b, ctx) ??
+          mapWords(b.map, specOf(next), Array.isArray(b.layers), fieldLabelOf(b.source, ctx))
+        const shows = `it shows ${what}, ${rangeModeWords(b, specOf(next))}${refresh}`
         // What the block is and shows first, where it reads (params, tokens) last; a layered
         // block names its layers here and lists each on its own line below.
         line =

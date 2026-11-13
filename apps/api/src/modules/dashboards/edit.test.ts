@@ -629,3 +629,55 @@ describe("layered blocks and shared datasets on the card", () => {
     )
   })
 })
+
+describe("a block over a dashboard table, on the card", () => {
+  const T = "177d81dc-74f2-4e8c-8e41-cbd4b820a9f7"
+  const tctx = {
+    timeZone: "UTC",
+    now: new Date("2026-11-12T10:00:00Z"),
+    tables: new Map([
+      [T, { name: "Arrivals", labels: { qty_ordered: "Qty ordered", status: "Status" } }],
+    ]),
+  }
+  const tableSource = { kind: "table", table: T, where: {} }
+
+  it("names an editable table block's table and what it shows, never a count of rows or an id", () => {
+    const [line] = describeOperations(
+      dashboard(),
+      [
+        {
+          op: "addBlock",
+          block: block("arr", {
+            type: "table",
+            title: "Arrivals",
+            source: tableSource,
+            map: { editable: true },
+          }),
+        },
+      ],
+      tctx,
+    )
+    expect(line).toContain('it shows an editable table of "Arrivals"')
+    expect(line).toContain('reading the dashboard table "Arrivals"')
+    expect(line).not.toContain("a count of rows")
+    expect(line).not.toContain(T)
+  })
+
+  it("names a chart's fields by their column labels", () => {
+    const [line] = describeOperations(
+      dashboard(),
+      [
+        {
+          op: "addBlock",
+          block: block("bars", {
+            type: "bar",
+            source: tableSource,
+            map: { y: "qty_ordered", groupBy: { field: "status" } },
+          }),
+        },
+      ],
+      tctx,
+    )
+    expect(line).toContain("it shows sum of Qty ordered by Status")
+  })
+})

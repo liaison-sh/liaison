@@ -23,6 +23,7 @@ import {
   type FixtureCrm,
   startFixtureCrm,
 } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/server"
+import { testApiConn } from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
@@ -115,7 +116,12 @@ describeLive("api-connector live Auto turn (OpenRouter-only org, fixture CRM)", 
     expect(auto.status).toBe(200)
 
     // The connection: the fixture adapter at the server's loopback address.
-    await upsertAdapterRow(ORG_ID, "crm", loadFixtureCrmAdapter({ baseUrl: crm.baseUrl }), USER_ID)
+    await upsertAdapterRow(
+      testApiConn(ORG_ID),
+      "crm",
+      loadFixtureCrmAdapter({ baseUrl: crm.baseUrl }),
+      USER_ID,
+    )
     await withPrivilegedDb(ORG_ID, "connector-live-credentials", (tx) =>
       createCredentialConnection(tx, ORG_ID, USER_ID, "api-connector", "api", {
         identifier: "crm",
@@ -126,7 +132,7 @@ describeLive("api-connector live Auto turn (OpenRouter-only org, fixture CRM)", 
   }, 120_000)
 
   afterAll(async () => {
-    await invalidateConnectionCaches(ORG_ID, "crm")
+    await invalidateConnectionCaches(testApiConn(ORG_ID), "crm")
     await crm?.stop()
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k]

@@ -231,6 +231,20 @@ export interface PageRouteParams<B = unknown> {
   page: string
 }
 
+/**
+ * Optional in a route's answer: what the page did, for the conversation it was opened from
+ * (a page minted by a tool during an agent's turn). The platform takes it out of the answer
+ * the page receives, posts `summary` there as a line from the person (`data` beside it, for
+ * the agent), and runs one turn of the agent that showed the page. A page opened from
+ * anywhere else posts nothing.
+ */
+export interface PageResult {
+  /** 1 to 500 characters, shown in the conversation. */
+  summary: string
+  /** A JSON object of at most 8 KiB the agent reads (ids it needs to carry on). */
+  data?: Record<string, unknown>
+}
+
 /** What a provisioning handler (manifest `provisioning.handler`) receives. */
 export interface ProvisionParams<C = Record<string, unknown>> {
   /** The `apps[].provision` block of the config file, validated against `provisioning.schema`. */

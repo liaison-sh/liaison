@@ -23,3 +23,9 @@ export const DEMO_API_CONNECTOR_SENTINEL_KEY = "liaison-demo-fixture-not-an-api-
 export function isDemoApiConnectorOrigin(url: URL): boolean {
   return url.origin === new URL(DEMO_API_CONNECTOR_BASE_URL).origin
 }
+
+/**
+ * The app and connection the demo seeds its fixture connection in: the demo
+ * world turns on the API connector app (seed/tiers/demo/demo-apps.ts).
+ */
+export const DEMO_API_CONNECTION = { app: "api-connector", connection: "api" } as const

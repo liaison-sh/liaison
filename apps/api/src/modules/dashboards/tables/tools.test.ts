@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { agents } from "~/db/schema/kernel"
 import { decideApproval } from "~/modules/approvals/decide"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -20,6 +21,7 @@ import {
   updateTable,
   writeRows,
 } from "~/modules/dashboards/tables/service"
+import { linkWords } from "~/modules/dashboards/tables/tools"
 import { registerDashboardTools } from "~/modules/dashboards/tools"
 import { eraseUser } from "~/modules/erasure/erase-user"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -266,5 +268,57 @@ describe("a table on a dashboard", () => {
     const theirs = await getBlockData(await asHeld(outsiderId), dash.id, "total")
     expect(JSON.stringify(theirs)).toContain("no_access")
     expect(JSON.stringify(theirs)).not.toContain("15")
+  })
+})
+
+describe("who a change is recorded for", () => {
+  it("records a named agent's handle with one @", async () => {
+    const agentId = crypto.randomUUID()
+    await withSystemDb("table-tools-agent", (tx) =>
+      tx.insert(agents).values({
+        id: agentId,
+        orgId,
+        kind: "role",
+        handle: "@stock",
+        displayName: "Stock",
+      }),
+    )
+    const id = await table()
+    await writeRows(await asHeld(editorId), id, [{ op: "add", cells: { batch: "A-1" } }], {
+      via: { agentId },
+    })
+    const [change] = await sql`
+      SELECT actor_type, actor_label FROM kernel.dashboard_table_changes WHERE table_id = ${id}`
+    expect(change).toMatchObject({ actor_type: "agent", actor_label: "@stock" })
+  })
+
+  it("records the approval a change was applied under", async () => {
+    const id = await table({ switchOn: true })
+    const res = await agentCall(editorId, "kernel:tables_rows_write", {
+      tableId: id,
+      ops: [{ op: "add", cells: { batch: "R-approved" } }],
+    })
+    const requestId = String(res.blocked?.approvalRequestId)
+    const [row] =
+      await sql`SELECT tool_name, current_payload FROM kernel.approval_requests WHERE id = ${requestId}`
+    const decided = await decideApproval({
+      orgId,
+      requestId,
+      actor: await asHeld(ownerId),
+      decision: "approve",
+      payloadHash: approvalPayloadHash(row?.tool_name as string, row?.current_payload),
+    })
+    expect(decided.status).toBe("approved")
+    const [change] = await sql`
+      SELECT approval_id::text AS approval_id FROM kernel.dashboard_table_changes WHERE table_id = ${id}`
+    expect(change?.approval_id).toBe(requestId)
+  })
+})
+
+describe("a link column on the card", () => {
+  it("reads as a link to a record of the app, by its name", () => {
+    expect(linkWords({ app: "shopify", entityType: "product" })).toBe("link to a Shopify product")
+    expect(linkWords({ app: "invoicing" })).toBe("link to an Invoicing record")
+    expect(linkWords(undefined)).toBe("link to a record")
   })
 })

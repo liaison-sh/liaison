@@ -31,6 +31,7 @@ import type { PrivilegedDb, RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type AuditEntry, writeAuditLog } from "~/modules/audit/service"
 import { forgetCustomerLookups } from "./cache"
+import type { ApiConn } from "./declarations"
 import {
   type AdapterRow,
   type ConnectionCredentials,
@@ -114,6 +115,8 @@ export interface ConnectorCallActor {
 
 export interface RunConnectorOperationInput {
   actor: ConnectorCallActor
+  /** The app's API connection the identifier belongs to (its org is the actor's). */
+  conn: ApiConn
   identifier: string
   operation: string
   params: Record<string, unknown>
@@ -158,12 +161,6 @@ export interface RunConnectorOperationResult {
   ms: number
 }
 
-const AUDIT_ACTION: Record<ConnectorCallMode, string> = {
-  read: "api-connector.read",
-  write: "api-connector.write",
-  test: "api-connector.test",
-}
-
 async function audit(
   input: RunConnectorOperationInput,
   outcome: { status?: number; code?: string; ms: number; ok: boolean },
@@ -172,8 +169,8 @@ async function audit(
     orgId: input.actor.orgId,
     actorId: input.actor.userId,
     actorType: input.actor.actorType,
-    app: "api-connector",
-    action: AUDIT_ACTION[input.mode],
+    app: input.conn.app,
+    action: `${input.conn.app}.${input.mode}`,
     metadata: {
       connection: input.identifier,
       operation: input.operation,
@@ -213,13 +210,13 @@ export async function writeConnectorAudits(orgId: string, entries: AuditEntry[])
 
 /** Resolve the connection and its operation, refusing what this mode may not run. */
 export async function resolveConnectorOperation(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   operationName: string,
   mode: ConnectorCallMode,
   loadedRow?: AdapterRow,
 ) {
-  const row = loadedRow ?? (await getAdapterRow(orgId, identifier))
+  const row = loadedRow ?? (await getAdapterRow(conn, identifier))
   if (!row)
     throw new ApiConnectorError("unknown_connection", `No API connection named "${identifier}".`)
   const operation = row.adapter.operations.find((o) => o.name === operationName)
@@ -256,7 +253,7 @@ export async function runConnectorOperation(
   const started = Date.now()
   try {
     const { row, operation } = await resolveConnectorOperation(
-      input.actor.orgId,
+      input.conn,
       input.identifier,
       input.operation,
       input.mode,
@@ -290,7 +287,7 @@ export async function runConnectorOperation(
     }
     const credentials =
       input.connection?.credentials ??
-      (await resolveConnectionCredentials(input.actor.orgId, input.actor.userId, input.identifier))
+      (await resolveConnectionCredentials(input.conn, input.identifier))
     if (!credentials) {
       throw new ApiConnectorError(
         "not_configured",
@@ -300,7 +297,7 @@ export async function runConnectorOperation(
     const deadline = Date.now() + (input.budgetMs ?? API_CONNECTOR_PAGES_BUDGET_MS)
     const call = (op: Operation, params: Record<string, unknown>, maxPages?: number) =>
       callOperation({
-        orgId: input.actor.orgId,
+        ...input.conn,
         identifier: input.identifier,
         adapter: row.adapter,
         credentials: credentials.values,
@@ -336,7 +333,7 @@ export async function runConnectorOperation(
       }
     }
     await audit(input, { ok: true, status: result.status, ms: result.ms })
-    if (operation.kind === "write") await forgetCustomerLookups(input.actor.orgId, input.identifier)
+    if (operation.kind === "write") await forgetCustomerLookups(input.conn, input.identifier)
     return {
       connection: input.identifier,
       operation: operation.name,

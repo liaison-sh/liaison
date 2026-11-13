@@ -151,15 +151,19 @@ export function updatedAgo(computedAt: string, now: number, t: T, locale: string
   return t("kernel.dashboards.blockUpdatedAgo", { ago })
 }
 
-/** A fixed block's own window as a chip: its days, "Since 13 Aug 2026", or "Own period". */
+/**
+ * A fixed block's own window as a chip: its days, "Since 13 Aug 2026", or "Own period". A block
+ * over a dashboard table that names no date reads every row: it has no period, so no chip.
+ */
 export function ownWindowText(
   window: BlockWindow | undefined,
   t: T,
   locale: string,
+  readsTable = false,
 ): string | null {
   if (window?.mode !== "fixed") return null
   const days = [...new Set(window.dates.map((d) => d.date.slice(0, 10)))].sort()
-  if (days.length === 0) return t("kernel.dashboards.ownPeriod")
+  if (days.length === 0) return readsTable ? null : t("kernel.dashboards.ownPeriod")
   if (days.length === 1) return t("kernel.dashboards.since", { date: formatDay(days[0], locale) })
   return formatWindow({ from: days[0], to: days[days.length - 1] }, locale)
 }
@@ -239,7 +243,10 @@ export const BlockCard: Component<BlockCardProps> = (props) => {
 
   const locale = () => props.locale ?? i18n.locale()
   const t: T = (key, params) => i18n.t(key, params)
-  const ownWindow = () => (props.showOwnWindow ? ownWindowText(info()?.window, t, locale()) : null)
+  const ownWindow = () =>
+    props.showOwnWindow
+      ? ownWindowText(info()?.window, t, locale(), props.block.source?.kind === "table")
+      : null
   const compareMode = () => info()?.compareWindow?.mode
   const dashboardWindow = () => {
     const w = info()?.window

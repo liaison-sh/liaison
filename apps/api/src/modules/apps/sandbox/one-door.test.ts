@@ -35,7 +35,6 @@ const ALLOWED: Record<string, string> = {
   "modules/apps/workers/executor.ts": "the remote executor (loader, sandbox service)",
   "modules/apps/contract/quickjs-isolate.ts":
     "test support: the contract harness's QuickJS isolate",
-  "apps/mail/test-page-write-bridge.ts": "test support: mail page-write tests",
 }
 
 /** Test code: `*.test.ts`, fixtures, and the test trees. */

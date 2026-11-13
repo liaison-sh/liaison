@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * Adapter documents (`app_api_connector.adapters`, declared in the manifest
- * `schema`, created by the runtime DDL) and the connection's credentials
- * (`kernel.connected_accounts`, multiInstance, org-owned). Rows are written
- * only through the kernel route module's validated paths; reads are scoped
- * to the org explicitly on the privileged pool, like every org-owned
- * connection lookup.
+ * Adapter documents (`kernel.api_adapters`, kept versions in
+ * `kernel.api_adapter_versions`, migration 0300) and the connection's
+ * credentials (`kernel.connected_accounts`, multiInstance, org-owned), keyed by
+ * (org, app, connection, identifier): the app is whichever declares the API
+ * connection (declarations.ts). Rows are written only through the platform's
+ * validated paths; reads are scoped to the org, app and connection explicitly
+ * on the privileged pool, like every org-owned connection lookup.
  */
 import { createHash, createHmac } from "node:crypto"
 import {
@@ -26,18 +27,19 @@ import { canonicalJson } from "~/modules/apps/app-config"
 import { decryptAccountCredentials } from "~/modules/apps/connections/service"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { validateAdapterDocument, validateStoredAdapterDocument } from "./adapter-policy"
-
-export const API_CONNECTOR_APP = "api-connector"
-export const API_CONNECTOR_CONNECTION = "api"
+import type { ApiConn } from "./declarations"
 
 function adaptersTable() {
-  return drizzleSql.raw(`${quoteIdent(schemaRef("app_api_connector"))}.${quoteIdent("adapters")}`)
+  return drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.${quoteIdent("api_adapters")}`)
 }
 
 function versionsTable() {
-  return drizzleSql.raw(
-    `${quoteIdent(schemaRef("app_api_connector"))}.${quoteIdent("adapter_versions")}`,
-  )
+  return drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.${quoteIdent("api_adapter_versions")}`)
+}
+
+/** The WHERE of one connection's rows (no alias). */
+function connRows(conn: ApiConn) {
+  return drizzleSql`org_id = ${conn.orgId}::uuid AND app_name = ${conn.app} AND connection_name = ${conn.connection}`
 }
 
 /** How many previous documents each connection keeps. */
@@ -80,26 +82,42 @@ function toRow(raw: RawRow): AdapterRow | null {
   }
 }
 
-export async function listAdapterRows(orgId: string): Promise<AdapterRow[]> {
-  const rows = await withPrivilegedDb(orgId, "api-connector-list-adapters", async (tx) =>
+export async function listAdapterRows(conn: ApiConn): Promise<AdapterRow[]> {
+  const rows = await withPrivilegedDb(conn.orgId, "api-connection-list-adapters", async (tx) =>
     extractRows<RawRow>(
       await tx.execute(drizzleSql`
         SELECT identifier, adapter, updated_at FROM ${adaptersTable()}
-        WHERE org_id = ${orgId}::uuid ORDER BY identifier`),
+        WHERE ${connRows(conn)} ORDER BY identifier`),
     ),
   )
   return rows.map(toRow).filter((r): r is AdapterRow => r !== null)
 }
 
-export async function getAdapterRow(orgId: string, identifier: string): Promise<AdapterRow | null> {
-  const [raw] = await withPrivilegedDb(orgId, "api-connector-get-adapter", async (tx) =>
+export async function getAdapterRow(conn: ApiConn, identifier: string): Promise<AdapterRow | null> {
+  const [raw] = await withPrivilegedDb(conn.orgId, "api-connection-get-adapter", async (tx) =>
     extractRows<RawRow>(
       await tx.execute(drizzleSql`
         SELECT identifier, adapter, updated_at FROM ${adaptersTable()}
-        WHERE org_id = ${orgId}::uuid AND identifier = ${identifier} LIMIT 1`),
+        WHERE ${connRows(conn)} AND identifier = ${identifier} LIMIT 1`),
     ),
   )
   return raw ? toRow(raw) : null
+}
+
+/** The (app, connection) pairs of the org holding an adapter named `identifier`. */
+export async function findAdapterConnections(
+  orgId: string,
+  identifier: string,
+): Promise<ApiConn[]> {
+  const rows = await withPrivilegedDb(orgId, "api-connection-find-adapter", async (tx) =>
+    extractRows<{ app_name: string; connection_name: string }>(
+      await tx.execute(drizzleSql`
+        SELECT app_name, connection_name FROM ${adaptersTable()}
+        WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}
+        ORDER BY app_name, connection_name`),
+    ),
+  )
+  return rows.map((r) => ({ orgId, app: r.app_name, connection: r.connection_name }))
 }
 
 /**
@@ -121,11 +139,11 @@ export function credentialTarget(adapter: Adapter): string {
   })
 }
 
-function credentialAccountsOf(orgId: string, identifier: string) {
+function credentialAccountsOf(conn: ApiConn, identifier: string) {
   return and(
-    eq(connectedAccounts.orgId, orgId),
-    eq(connectedAccounts.appName, API_CONNECTOR_APP),
-    eq(connectedAccounts.connectionName, API_CONNECTOR_CONNECTION),
+    eq(connectedAccounts.orgId, conn.orgId),
+    eq(connectedAccounts.appName, conn.app),
+    eq(connectedAccounts.connectionName, conn.connection),
     eq(connectedAccounts.identifier, identifier),
   )
 }
@@ -165,7 +183,7 @@ export type AdapterSavePlanResult = AdapterSavePlan | { ok: false; issues: Adapt
  * `upsertAdapterRow` applies (no readable prior, or a different target).
  */
 export async function planAdapterSave(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   input: unknown,
 ): Promise<AdapterSavePlanResult> {
@@ -173,18 +191,18 @@ export async function planAdapterSave(
   if (!parsed.ok) return { ok: false, issues: parsed.issues }
   const adapter = parsed.adapter
   const { prior, credentialCount } = await withPrivilegedDb(
-    orgId,
-    "api-connector-plan-adapter",
+    conn.orgId,
+    "api-connection-plan-adapter",
     async (tx) => {
       const [row] = extractRows<{ adapter: unknown }>(
         await tx.execute(drizzleSql`
           SELECT adapter FROM ${adaptersTable()}
-          WHERE org_id = ${orgId}::uuid AND identifier = ${identifier} LIMIT 1`),
+          WHERE ${connRows(conn)} AND identifier = ${identifier} LIMIT 1`),
       )
       const accounts = await tx
         .select({ id: connectedAccounts.id })
         .from(connectedAccounts)
-        .where(credentialAccountsOf(orgId, identifier))
+        .where(credentialAccountsOf(conn, identifier))
       return { prior: row ?? null, credentialCount: accounts.length }
     },
   )
@@ -262,14 +280,15 @@ export interface UpsertAdapterOptions {
  * never a secret someone else entered.
  */
 export async function upsertAdapterRow(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   adapter: Adapter,
   /** Who saved it; null when no person did (a config apply with no admin). */
   userId: string | null,
   options: UpsertAdapterOptions = {},
 ): Promise<UpsertAdapterResult> {
-  return withPrivilegedDb(orgId, "api-connector-put-adapter", async (tx) => {
+  const orgId = conn.orgId
+  return withPrivilegedDb(orgId, "api-connection-put-adapter", async (tx) => {
     const [prior] = extractRows<{
       adapter: unknown
       adapter_version: string
@@ -278,7 +297,7 @@ export async function upsertAdapterRow(
     }>(
       await tx.execute(drizzleSql`
         SELECT adapter, adapter_version, updated_by, updated_at FROM ${adaptersTable()}
-        WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}
+        WHERE ${connRows(conn)} AND identifier = ${identifier}
         FOR UPDATE`),
     )
     if (options.expectPriorHash !== undefined) {
@@ -293,7 +312,7 @@ export async function upsertAdapterRow(
       const accounts = await tx
         .select({ id: connectedAccounts.id })
         .from(connectedAccounts)
-        .where(credentialAccountsOf(orgId, identifier))
+        .where(credentialAccountsOf(conn, identifier))
         .for("update")
       if (accounts.length > 0 !== options.expectCredentialsPresent) {
         throw new CredentialsChangedError(identifier)
@@ -301,22 +320,22 @@ export async function upsertAdapterRow(
     }
     if (prior) {
       await tx.execute(drizzleSql`
-        INSERT INTO ${versionsTable()} (org_id, identifier, adapter, adapter_version, saved_by, saved_at)
-        VALUES (${orgId}::uuid, ${identifier}, ${JSON.stringify(prior.adapter)}::jsonb,
+        INSERT INTO ${versionsTable()} (org_id, app_name, connection_name, identifier, adapter, adapter_version, saved_by, saved_at)
+        VALUES (${orgId}::uuid, ${conn.app}, ${conn.connection}, ${identifier}, ${JSON.stringify(prior.adapter)}::jsonb,
                 ${prior.adapter_version}, ${prior.updated_by}::uuid, ${new Date(prior.updated_at).toISOString()}::timestamptz)`)
       await tx.execute(drizzleSql`
         DELETE FROM ${versionsTable()}
-        WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}
+        WHERE ${connRows(conn)} AND identifier = ${identifier}
           AND id NOT IN (
             SELECT id FROM ${versionsTable()}
-            WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}
+            WHERE ${connRows(conn)} AND identifier = ${identifier}
             ORDER BY created_at DESC, saved_at DESC
             LIMIT ${ADAPTER_HISTORY_LIMIT})`)
     }
     await tx.execute(drizzleSql`
-      INSERT INTO ${adaptersTable()} (org_id, identifier, adapter, adapter_version, updated_by)
-      VALUES (${orgId}::uuid, ${identifier}, ${JSON.stringify(adapter)}::jsonb, ${adapter.version}, ${userId}::uuid)
-      ON CONFLICT (org_id, identifier) DO UPDATE SET
+      INSERT INTO ${adaptersTable()} (org_id, app_name, connection_name, identifier, adapter, adapter_version, updated_by)
+      VALUES (${orgId}::uuid, ${conn.app}, ${conn.connection}, ${identifier}, ${JSON.stringify(adapter)}::jsonb, ${adapter.version}, ${userId}::uuid)
+      ON CONFLICT (org_id, app_name, connection_name, identifier) DO UPDATE SET
         adapter = EXCLUDED.adapter,
         adapter_version = EXCLUDED.adapter_version,
         updated_by = EXCLUDED.updated_by,
@@ -324,7 +343,7 @@ export async function upsertAdapterRow(
     if (sameTarget) return { credentialsCleared: false }
     const removed = await tx
       .delete(connectedAccounts)
-      .where(credentialAccountsOf(orgId, identifier))
+      .where(credentialAccountsOf(conn, identifier))
       .returning({ id: connectedAccounts.id })
     return { credentialsCleared: removed.length > 0 }
   })
@@ -365,18 +384,19 @@ function toVersionSummary(raw: RawVersionRow): AdapterVersionSummary {
 }
 
 async function selectVersions(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   versionId: string | null,
 ): Promise<RawVersionRow[]> {
   const usersTable = drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.${quoteIdent("users")}`)
-  return withPrivilegedDb(orgId, "api-connector-adapter-versions", async (tx) =>
+  return withPrivilegedDb(conn.orgId, "api-connection-adapter-versions", async (tx) =>
     extractRows<RawVersionRow>(
       await tx.execute(drizzleSql`
         SELECT v.id, v.adapter, v.adapter_version, v.saved_by, u.name AS saved_by_name, v.saved_at
         FROM ${versionsTable()} v
         LEFT JOIN ${usersTable} u ON u.id = v.saved_by AND u.org_id = v.org_id
-        WHERE v.org_id = ${orgId}::uuid AND v.identifier = ${identifier}
+        WHERE v.org_id = ${conn.orgId}::uuid AND v.app_name = ${conn.app}
+          AND v.connection_name = ${conn.connection} AND v.identifier = ${identifier}
           ${versionId === null ? drizzleSql`` : drizzleSql`AND v.id = ${versionId}::uuid`}
         ORDER BY v.created_at DESC, v.saved_at DESC`),
     ),
@@ -385,20 +405,20 @@ async function selectVersions(
 
 /** The kept previous documents of one connection, newest first. */
 export async function listAdapterVersions(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
 ): Promise<AdapterVersionSummary[]> {
-  return (await selectVersions(orgId, identifier, null)).map(toVersionSummary)
+  return (await selectVersions(conn, identifier, null)).map(toVersionSummary)
 }
 
 /** One kept document of `identifier` (validated), or null when absent or no longer valid. */
 export async function getAdapterVersion(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   versionId: string,
 ): Promise<(AdapterVersionSummary & { adapter: Adapter }) | null> {
   if (!UUID_RE.test(versionId)) return null
-  const [raw] = await selectVersions(orgId, identifier, versionId)
+  const [raw] = await selectVersions(conn, identifier, versionId)
   if (!raw) return null
   // A kept version may predate a save rule; restoring it is a save, which
   // refuses it with that rule's issue (planAdapterSave).
@@ -408,39 +428,39 @@ export async function getAdapterVersion(
 }
 
 /** Remove the adapter row, its kept versions and every credential account of this identifier. */
-export async function deleteConnection(orgId: string, identifier: string): Promise<boolean> {
-  return withPrivilegedDb(orgId, "api-connector-delete-connection", async (tx) => {
+export async function deleteConnection(conn: ApiConn, identifier: string): Promise<boolean> {
+  return withPrivilegedDb(conn.orgId, "api-connection-delete-connection", async (tx) => {
     await tx.execute(drizzleSql`
       DELETE FROM ${versionsTable()}
-      WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}`)
+      WHERE ${connRows(conn)} AND identifier = ${identifier}`)
     const removed = extractRows<{ identifier: string }>(
       await tx.execute(drizzleSql`
         DELETE FROM ${adaptersTable()}
-        WHERE org_id = ${orgId}::uuid AND identifier = ${identifier}
+        WHERE ${connRows(conn)} AND identifier = ${identifier}
         RETURNING identifier`),
     )
     const accounts = await tx
       .delete(connectedAccounts)
-      .where(credentialAccountsOf(orgId, identifier))
+      .where(credentialAccountsOf(conn, identifier))
       .returning({ id: connectedAccounts.id })
     return removed.length > 0 || accounts.length > 0
   })
 }
 
 /** Status of each identifier's credential account. */
-export async function credentialStatuses(orgId: string): Promise<Map<string, ConnectionStatus>> {
+export async function credentialStatuses(conn: ApiConn): Promise<Map<string, ConnectionStatus>> {
   const rows = await withPrivilegedDb(
-    orgId,
-    "api-connector-credential-status",
+    conn.orgId,
+    "api-connection-credential-status",
     (tx: PrivilegedDb) =>
       tx
         .select({ identifier: connectedAccounts.identifier, status: connectedAccounts.status })
         .from(connectedAccounts)
         .where(
           and(
-            eq(connectedAccounts.orgId, orgId),
-            eq(connectedAccounts.appName, API_CONNECTOR_APP),
-            eq(connectedAccounts.connectionName, API_CONNECTOR_CONNECTION),
+            eq(connectedAccounts.orgId, conn.orgId),
+            eq(connectedAccounts.appName, conn.app),
+            eq(connectedAccounts.connectionName, conn.connection),
             eq(connectedAccounts.ownerType, "org"),
           ),
         ),
@@ -474,11 +494,10 @@ export function credentialVersionOf(accountId: string, updatedAt: Date): string 
 
 /** The org-owned credentials of one connection, or null when none are stored. */
 export async function resolveConnectionCredentials(
-  orgId: string,
-  _userId: string,
+  conn: ApiConn,
   identifier: string,
 ): Promise<ConnectionCredentials | null> {
-  return (await resolveConnectionsCredentials(orgId, [identifier])).get(identifier) ?? null
+  return (await resolveConnectionsCredentials(conn, [identifier])).get(identifier) ?? null
 }
 
 /**
@@ -494,7 +513,7 @@ export async function resolveConnectionCredentials(
  * second until the pool's acquire timeout.
  */
 export async function resolveConnectionsCredentials(
-  orgId: string,
+  conn: ApiConn,
   identifiers: readonly string[],
 ): Promise<Map<string, ConnectionCredentials>> {
   const out = new Map<string, ConnectionCredentials>()
@@ -507,7 +526,7 @@ export async function resolveConnectionsCredentials(
     credentialsEncrypted: string | null
   }[]
   try {
-    rows = await withPrivilegedDb(orgId, "api-connector-credentials", (tx) =>
+    rows = await withPrivilegedDb(conn.orgId, "api-connection-credentials", (tx) =>
       tx
         .select({
           identifier: connectedAccounts.identifier,
@@ -518,9 +537,9 @@ export async function resolveConnectionsCredentials(
         .from(connectedAccounts)
         .where(
           and(
-            eq(connectedAccounts.orgId, orgId),
-            eq(connectedAccounts.appName, API_CONNECTOR_APP),
-            eq(connectedAccounts.connectionName, API_CONNECTOR_CONNECTION),
+            eq(connectedAccounts.orgId, conn.orgId),
+            eq(connectedAccounts.appName, conn.app),
+            eq(connectedAccounts.connectionName, conn.connection),
             inArray(connectedAccounts.identifier, wanted),
             eq(connectedAccounts.ownerType, "org"),
             eq(connectedAccounts.status, "active"),
@@ -551,7 +570,7 @@ export async function resolveConnectionsCredentials(
 
 /** The effective scopes of one user of the org, re-loaded from the database (an approver's re-check). */
 export async function loadUserScopes(orgId: string, userId: string): Promise<string[]> {
-  const perms = await withPrivilegedDb(orgId, "api-connector-approver-perms", (tx) =>
+  const perms = await withPrivilegedDb(orgId, "api-connection-approver-perms", (tx) =>
     loadEffectivePermissions(tx, userId, orgId),
   )
   return perms.scopes

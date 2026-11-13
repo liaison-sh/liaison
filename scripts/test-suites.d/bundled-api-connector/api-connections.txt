@@ -1,0 +1,2 @@
+# The customer card logic of the api-connector app (lookup, refresh events, record formatting).
+src/ui/customer-card.test.ts

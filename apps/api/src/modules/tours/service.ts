@@ -14,7 +14,6 @@
  * functions here, which take whichever client the caller holds.
  */
 
-import { API_CONNECTOR_APP } from "@liaison/api-connector-core/contract"
 import {
   beatArrived,
   beatArrives,
@@ -45,6 +44,7 @@ import type { AppEvent } from "~/infra/events/event-bus"
 import { env } from "~/lib/env"
 import { listInstalledAppNames } from "~/modules/apps/app-registries"
 import { customerLookupConfigured } from "~/modules/apps/connections/api/customer"
+import { apiConnectionsOf } from "~/modules/apps/connections/api/declarations"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isDemoEgressRestricted } from "~/modules/demo/demo-egress"
 import { demoWorldOf, isVisitorDemoOrgId, loadDemoMarker } from "~/modules/demo/demo-org"
@@ -75,7 +75,8 @@ export function findServerTour(tourId: string): Tour | undefined {
 export async function loadTourOrgContext(orgId: string): Promise<TourOrgContext> {
   await ensureAppsForOrg(orgId)
   const installedApps = listInstalledAppNames(orgId)
-  const connector = installedApps.includes(API_CONNECTOR_APP)
+  // An app that declares an API connection (declarations.ts), whatever its name.
+  const connector = apiConnectionsOf(orgId).length > 0
   const [marker, customerCard, connectorReadOnly] = await Promise.all([
     loadDemoMarker(orgId),
     connector ? customerLookupConfigured(orgId) : false,

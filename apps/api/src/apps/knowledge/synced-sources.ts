@@ -86,6 +86,8 @@ export interface CreateSyncedSourceInput {
    */
   sourceKind?: string
   sourceConfig?: Record<string, unknown>
+  /** The connected account the source reads through, when the app names one. */
+  sourceAccount?: string | null
   displayName: string
   syncIntervalSeconds: number
   scope: SyncedSourceScope
@@ -107,6 +109,11 @@ export interface CreateSyncedSourceOptions {
    * thinks it needs to, fix the upstream registration instead.
    */
   skipPrecheck?: boolean
+  /**
+   * An app source without a `ref`: reuse the one with the same config instead
+   * of adding another (a source with a `ref` is always reused, `findAppSource`).
+   */
+  reuseSameConfig?: boolean
 }
 
 export const MIN_INTERVAL_SECONDS = 60
@@ -388,8 +395,47 @@ export async function createSyncedSource(
   // `knowledge:collections:manage` (collections RLS would otherwise reject
   // the INSERT for ordinary readers).
   return withPrivilegedDb(actor.orgId, "knowledge-create-synced-source", async (tx) => {
-    return doCreateSyncedSource(tx, checkedInput, actor, ownerUserId)
+    return doCreateSyncedSource(tx, checkedInput, actor, ownerUserId, opts.reuseSameConfig === true)
   })
+}
+
+/**
+ * An app source's identity: the app, the kind and the owner, then
+ * - for a source added with a `ref` (config `{ ref }`, stored as `folder_ref`):
+ *   that reference, plus the account when the caller names one. Config keys
+ *   beside it (an `account` an adoption copied in, a default the kind's schema
+ *   filled) are not part of it, so adding the same folder again finds the
+ *   source whichever path created it;
+ * - for a source without one: its whole config.
+ */
+export async function findAppSource(
+  tx: RlsClient | PrivilegedDb,
+  key: {
+    orgId: string
+    appName: string
+    sourceKind: string
+    ownerUserId: string | null
+    folderRef: string
+    sourceAccount?: string | null
+    /** The source's config; compared whole only when it carries no `ref`. */
+    config: Record<string, unknown>
+  },
+): Promise<SyncedSourceRow | null> {
+  const account = key.sourceAccount ?? null
+  const byRef = typeof key.config.ref === "string"
+  const rows = extractRows<SyncedSourceDbRow>(
+    await tx.execute(drizzleSql`
+      SELECT * FROM ${knowledgeRel("synced_sources")}
+      WHERE org_id = ${key.orgId}::uuid AND app_name = ${key.appName}
+        AND source_kind = ${key.sourceKind} AND folder_ref = ${key.folderRef}
+        AND owner_user_id IS NOT DISTINCT FROM ${key.ownerUserId}::uuid
+        AND (${account}::text IS NULL OR lower(source_account) = lower(${account}))
+        ${byRef ? drizzleSql`` : drizzleSql`AND COALESCE(source_config, '{}'::jsonb) = ${JSON.stringify(key.config)}::jsonb`}
+      ORDER BY archived_at IS NULL DESC, created_at DESC
+      LIMIT 1
+    `),
+  )
+  return rows[0] ? rowFromDb(rows[0]) : null
 }
 
 async function doCreateSyncedSource(
@@ -397,7 +443,37 @@ async function doCreateSyncedSource(
   input: CreateSyncedSourceInput,
   actor: KnowledgeActor,
   ownerUserId: string | null,
+  reuseSameConfig: boolean,
 ): Promise<SyncedSourceRow> {
+  if (input.sourceKind && (typeof input.sourceConfig?.ref === "string" || reuseSameConfig)) {
+    // One source per identity (findAppSource): concurrent adds of the same one
+    // wait on each other here, then the second finds the first.
+    const key = {
+      orgId: actor.orgId,
+      appName: input.appName,
+      sourceKind: input.sourceKind,
+      ownerUserId,
+      folderRef: input.folderRef,
+      sourceAccount: input.sourceAccount ?? null,
+      config: input.sourceConfig ?? {},
+    }
+    await tx.execute(drizzleSql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`knowledge-app-source:${actor.orgId}:${input.appName}:${input.sourceKind}:${ownerUserId ?? ""}:${input.folderRef}`}, 0))
+    `)
+    const existing = await findAppSource(tx, key)
+    if (existing) {
+      if (!existing.archivedAt) return existing
+      const revived = extractRows<SyncedSourceDbRow>(
+        await tx.execute(drizzleSql`
+          UPDATE ${knowledgeRel("synced_sources")}
+          SET archived_at = NULL, last_sync_status = 'idle', updated_at = now()
+          WHERE id = ${existing.id}::uuid AND org_id = ${actor.orgId}::uuid
+          RETURNING *
+        `),
+      )
+      if (revived[0]) return rowFromDb(revived[0])
+    }
+  }
   const collectionId = randomUUID()
   await tx.execute(drizzleSql`
     INSERT INTO ${knowledgeRel("collections")}
@@ -432,7 +508,7 @@ async function doCreateSyncedSource(
         ${input.defaultSensitivity ?? null},
         ${input.syncIntervalSeconds},
         ${actor.userId}::uuid,
-        NULL,
+        ${input.sourceAccount ?? null},
         ${input.sourceKind ?? null},
         ${input.sourceKind ? JSON.stringify(input.sourceConfig ?? {}) : null}::jsonb
       )

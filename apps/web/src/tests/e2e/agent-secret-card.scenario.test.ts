@@ -88,12 +88,15 @@ test("the agent asks for a secret through a card and never sees it", async ({
         toolCalls: [
           {
             name: "kernel__request_secret",
-            args: { kind: "api_connector_credentials", target: { identifier } },
+            args: {
+              kind: "connection_credentials",
+              target: { app: "api-connector", connection: "api", identifier },
+            },
           },
         ],
       },
       { text: ASKED_CRM },
-      { echo: 'API connector credentials saved by [^\\]"]*' },
+      { echo: 'api-connector api credentials [^\\]"]*saved by [^\\]"]*' },
     ],
   })
 
@@ -150,7 +153,7 @@ test("the agent asks for a secret through a card and never sees it", async ({
   await waitForTurnEnd(env, {
     threadId,
     token,
-    contains: "API connector credentials saved by",
+    contains: "api-connector api credentials",
   })
   await page.screenshot({ path: path.join(SHOT_DIR, "p2-connector-saved.png") })
 

@@ -8,6 +8,7 @@
  */
 import { readFileSync } from "node:fs"
 import type { Adapter, AdapterVersionList } from "@liaison/api-connector-core"
+import type { ApiConn } from "./declarations"
 import { credentialStatuses, credentialTarget, getAdapterRow, listAdapterVersions } from "./store"
 
 /** The most a reference section or a returned document may hold, in characters. */
@@ -166,11 +167,11 @@ export type StoredAdapterAnswer =
  * operation the connection keeps.
  */
 export async function readStoredAdapter(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   operationsPage = 1,
 ): Promise<StoredAdapterAnswer> {
-  const row = await getAdapterRow(orgId, identifier)
+  const row = await getAdapterRow(conn, identifier)
   if (!row) {
     return {
       error: {
@@ -180,7 +181,7 @@ export async function readStoredAdapter(
       },
     }
   }
-  const status = (await credentialStatuses(orgId)).get(identifier) ?? "needs_credentials"
+  const status = (await credentialStatuses(conn)).get(identifier) ?? "needs_credentials"
   const text = JSON.stringify(row.adapter)
   const common = {
     identifier,
@@ -230,12 +231,12 @@ export function describeTarget(target: string | null | undefined): string {
 
 /** The kept versions of `identifier`, each compared with the current credential target. */
 export async function listVersionsWithTargets(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
 ): Promise<AdapterVersionList> {
   const [row, versions] = await Promise.all([
-    getAdapterRow(orgId, identifier),
-    listAdapterVersions(orgId, identifier),
+    getAdapterRow(conn, identifier),
+    listAdapterVersions(conn, identifier),
   ])
   const currentTarget = row ? credentialTarget(row.adapter) : null
   return {

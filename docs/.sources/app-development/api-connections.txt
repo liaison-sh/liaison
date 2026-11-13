@@ -1,0 +1,2 @@
+ctx.api for any app's one api-block connection; adapters keyed by app and connection; save/restore tools under the app; customerContext/importSource/provisionKey -> apps/api/src/modules/apps/connections/api/declarations.ts:1 ; apps/api/src/modules/apps/connections/api/bridge.ts:283 ; apps/api/src/modules/apps/runtime.ts:4509 ; apps/api/src/modules/apps/contract.ts:1077
+ctx.kernel.caller: system only for system ids; other non-person callers refused -> apps/api/src/modules/apps/sandbox/bridge/directory.ts:52

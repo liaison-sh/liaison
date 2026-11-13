@@ -14,10 +14,18 @@
 //      documents and identities they hold.
 //   2. `adoptMovedApps` then runs the app's data steps, for what the in-tree
 //      app kept where the catalog app does not read it (a key of the org's
-//      settings, a knowledge source synced by in-tree kernel code). Each step
-//      is generic, idempotent, never deletes its source (an older image that
-//      still carries the in-tree app keeps working after a rollback) and is
-//      recorded once done in `kernel.app_adoptions` (migration 0294).
+//      settings, a knowledge source synced by in-tree kernel code, an app's
+//      adapter tables the platform now holds). Each step is generic,
+//      idempotent and never deletes its source: the previous release, still
+//      running during a rolling deploy, keeps reading what it read. A step is
+//      recorded once done in `kernel.app_adoptions` (migration 0294), except a
+//      step that copies rows the previous release may still write: that one
+//      runs at every boot.
+//
+//      This is not a rollback path: an older image is refused by the schema
+//      guard (db/schema-guard.ts) once these migrations ran, and what the steps
+//      changed is read only by the new code. Rolling back means the release
+//      switch (the previous release's executor) or a restore from backup.
 //
 // Release ordering: an image that no longer carries an in-tree app must carry
 // its catalog app. When it does not, the reconcile reports the app as failed,
@@ -73,7 +81,30 @@ export interface SyncedSourcesToKindStep {
   configFromColumns?: Readonly<Record<string, "folder_ref" | "source_account">>
 }
 
-export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
+/**
+ * Copy an app's API connection adapters (and their kept versions) from the
+ * app's own tables into the platform's (`kernel.api_adapters`, migration 0300),
+ * keyed by the app and its API connection. Runs at every boot (never recorded):
+ * the previous release writes the app's tables until it drains, so a row it
+ * saved after the first copy is copied at the next boot, a newer one replacing
+ * the platform's only when it is newer. The source rows are never deleted.
+ */
+export interface ApiAdaptersToPlatformStep {
+  id: string
+  kind: "api-adapters-to-platform"
+  /** The app's API connection (the one with an `api` block). */
+  connection: string
+  /** The app's tables, `<schema>` without a prefix: `adapters` and `adapter_versions`. */
+  schema: string
+}
+
+export type AdoptionStep =
+  | OrgSettingToStoreStep
+  | SyncedSourcesToKindStep
+  | ApiAdaptersToPlatformStep
+
+/** Steps that run at every boot rather than once. */
+const REPEATED_STEPS: ReadonlySet<AdoptionStep["kind"]> = new Set(["api-adapters-to-platform"])
 
 export interface MovedApp {
   name: string
@@ -126,6 +157,14 @@ function parseStep(raw: unknown, where: string): AdoptionStep {
       step.configFromColumns = cols as Record<string, "folder_ref" | "source_account">
     }
     return step
+  }
+  if (s.kind === "api-adapters-to-platform") {
+    return {
+      id: text("id"),
+      kind: "api-adapters-to-platform",
+      connection: text("connection"),
+      schema: text("schema"),
+    }
   }
   return fail(`unknown step kind ${JSON.stringify(s.kind)}`)
 }
@@ -318,8 +357,79 @@ async function runSyncedSourcesToKind(
   return { state: "done", report: { sources: rows.length } }
 }
 
+async function tableExists(db: PrivilegedDb, schema: string, table: string): Promise<boolean> {
+  const rows = extractRows(
+    await db.execute(drizzleSql`
+      SELECT 1 FROM information_schema.tables WHERE table_schema = ${schema} AND table_name = ${table}
+    `),
+  )
+  return rows.length > 0
+}
+
+async function runApiAdaptersToPlatform(
+  db: PrivilegedDb,
+  app: string,
+  step: ApiAdaptersToPlatformStep,
+): Promise<StepOutcome> {
+  const schema = schemaRef(step.schema)
+  if (!(await tableExists(db, schema, "adapters"))) {
+    return { state: "done", report: { adapters: 0, versions: 0 } }
+  }
+  const S = drizzleSql.raw(schema)
+  const adapters = extractRows<{ id: string }>(
+    await db.execute(drizzleSql`
+      INSERT INTO ${K}.api_adapters
+        (org_id, app_name, connection_name, identifier, adapter, adapter_version, updated_by,
+         created_at, updated_at)
+      SELECT org_id, ${app}, ${step.connection}, identifier, adapter, adapter_version, updated_by,
+             created_at, updated_at
+      FROM ${S}.adapters
+      ON CONFLICT (org_id, app_name, connection_name, identifier) DO UPDATE SET
+        adapter = EXCLUDED.adapter,
+        adapter_version = EXCLUDED.adapter_version,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = EXCLUDED.updated_at
+      WHERE ${K}.api_adapters.updated_at < EXCLUDED.updated_at
+      RETURNING id
+    `),
+  )
+  let versions = 0
+  if (await tableExists(db, schema, "adapter_versions")) {
+    versions = extractRows(
+      await db.execute(drizzleSql`
+        INSERT INTO ${K}.api_adapter_versions
+          (id, org_id, app_name, connection_name, identifier, adapter, adapter_version, saved_by,
+           saved_at, created_at)
+        SELECT id, org_id, ${app}, ${step.connection}, identifier, adapter, adapter_version,
+               saved_by, saved_at, created_at
+        FROM ${S}.adapter_versions
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+      `),
+    ).length
+    // The platform keeps the newest ADAPTER_HISTORY_LIMIT per connection, as a save does.
+    await db.execute(drizzleSql`
+      DELETE FROM ${K}.api_adapter_versions v
+      WHERE v.app_name = ${app} AND v.connection_name = ${step.connection}
+        AND v.id IN (
+          SELECT id FROM (
+            SELECT id, row_number() OVER (
+              PARTITION BY org_id, identifier ORDER BY created_at DESC, saved_at DESC) AS n
+            FROM ${K}.api_adapter_versions
+            WHERE app_name = ${app} AND connection_name = ${step.connection}
+          ) ranked WHERE n > ${ADAPTER_HISTORY_LIMIT})
+    `)
+  }
+  return { state: "done", report: { adapters: adapters.length, versions } }
+}
+
+/** Kept previous adapter documents per connection (connections/api/store.ts). */
+const ADAPTER_HISTORY_LIMIT = 20
+
 async function runStep(db: PrivilegedDb, app: string, step: AdoptionStep): Promise<StepOutcome> {
   switch (step.kind) {
+    case "api-adapters-to-platform":
+      return runApiAdaptersToPlatform(db, app, step)
     case "org-setting-to-store":
       return { state: "done", report: await runOrgSettingToStore(db, app, step) }
     case "synced-sources-to-kind":
@@ -343,13 +453,16 @@ export async function adoptMovedApps(db: PrivilegedDb): Promise<AdoptionResult[]
     const done = await completedSteps(db, app.name)
     const result: AdoptionResult = { app: app.name, steps: [] }
     for (const step of app.steps) {
-      if (done.has(step.id)) {
+      const repeated = REPEATED_STEPS.has(step.kind)
+      if (!repeated && done.has(step.id)) {
         result.steps.push({ id: step.id, state: "already" })
         continue
       }
       try {
         const outcome = await runStep(db, app.name, step)
-        if (outcome.state === "done") await recordStep(db, app.name, step.id, outcome.report)
+        if (outcome.state === "done" && !repeated) {
+          await recordStep(db, app.name, step.id, outcome.report)
+        }
         result.steps.push({ id: step.id, ...outcome })
         log.info({ app: app.name, step: step.id, outcome }, "Moved app: data step")
       } catch (err) {

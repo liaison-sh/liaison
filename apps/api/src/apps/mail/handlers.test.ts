@@ -1,30 +1,38 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import path from "node:path"
 import { markdownToEmail } from "@liaison/shared"
 import { simpleParser } from "mailparser"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
+import {
+  encodeAddressString as mailEncodeAddressString,
+  encodeDisplayName as mailEncodeDisplayName,
+  encodeHeaderValue as mailEncodeHeaderValue,
+  formatMailbox as mailFormatMailbox,
+  normalizeGmailMessage,
+} from "~/apps/mail/handlers"
+import { mailPageRunner } from "~/apps/mail/test-page-write-bridge"
 import {
   encodeAddressString,
   encodeDisplayName,
   encodeHeaderValue,
   formatMailbox,
 } from "~/lib/email/header-encoding"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+
+const runMail = mailPageRunner({
+  __test_normalizeGmailMessage: (params) => normalizeGmailMessage(params.message),
+  __test_headerEncoding: (params) =>
+    params.values.map((v: string) => [
+      mailEncodeHeaderValue(v),
+      mailEncodeDisplayName(v),
+      mailFormatMailbox(v, "a@x.test"),
+      mailEncodeAddressString(v),
+    ]),
+})
 
 describe("mail handler helpers", () => {
-  let bundleSource: string
-
   function base64UrlUtf8(value: string): string {
     return Buffer.from(value, "utf8").toString("base64url")
   }
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    const source = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-    bundleSource = `${source}\nfunction __test_normalizeGmailMessage(params, ctx) { return normalizeGmailMessage(params.message) }\nfunction __test_headerEncoding(params, ctx) { return params.values.map((v) => [encodeHeaderValue(v), encodeDisplayName(v), formatMailbox(v, "a@x.test"), encodeAddressString(v)]) }`
-  })
 
   // The bundle cannot import, so it carries an inlined copy of
   // lib/email/header-encoding.ts. Both copies must give identical output.
@@ -39,9 +47,7 @@ describe("mail handler helpers", () => {
       "accès\r\nBcc: evil@x.test",
       '"Élodie" <e@x.test>',
     ]
-    const result = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = await runMail({
       exportName: "__test_headerEncoding",
       params: { values },
       bridge: {},
@@ -57,9 +63,7 @@ describe("mail handler helpers", () => {
   })
 
   it("normalizes multipart Gmail payloads and threading metadata", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "__test_normalizeGmailMessage",
       params: {
         message: {
@@ -101,9 +105,7 @@ describe("mail handler helpers", () => {
 
   it("falls back when Gmail headers are missing and truncates snippets", async () => {
     const longSnippet = "A".repeat(250)
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "__test_normalizeGmailMessage",
       params: {
         message: {
@@ -128,9 +130,7 @@ describe("mail handler helpers", () => {
   })
 
   it("decodes Gmail body bytes as UTF-8 instead of mojibake", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "__test_normalizeGmailMessage",
       params: {
         message: {
@@ -158,13 +158,6 @@ describe("mail handler helpers", () => {
 })
 
 describe("mail send handlers", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function makeBridge(overrides: Record<string, any> = {}) {
     return {
       getUserId: () => "user-1",
@@ -214,9 +207,7 @@ describe("mail send handlers", () => {
       },
     })
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "sendReply",
       params: {
         provider: "gmail",
@@ -262,9 +253,7 @@ describe("mail send handlers", () => {
       },
     })
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "sendCompose",
       params: {
         provider: "gmail",
@@ -303,9 +292,7 @@ describe("mail send handlers", () => {
       },
     })
     const subject = "Liaison : accès aux stats Instagram de @shop"
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "sendCompose",
       params: {
         provider: "gmail",
@@ -343,9 +330,7 @@ describe("mail send handlers", () => {
       },
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "sendCompose",
       params: {
         provider: "gmail",
@@ -374,9 +359,7 @@ describe("mail send handlers", () => {
       },
     })
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "sendReply",
       params: {
         provider: "imap",
@@ -407,9 +390,7 @@ describe("mail send handlers", () => {
       },
     })
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "sendCompose",
       params: {
         provider: "imap",
@@ -446,9 +427,7 @@ describe("mail send handlers", () => {
         calls.push(`update:${id}:${JSON.parse(dataJson).syncStatus}`)
       },
     })
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "onAccountDisconnected",
       params: { data: { id: "ca-1", appName: "mail", identifier: "box@example.com" } },
       bridge,
@@ -466,9 +445,7 @@ describe("mail send handlers", () => {
         calls.push(`update:${id}`)
       },
     })
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "onAccountDisconnected",
       params: { data: { id: "ca-1", appName: "mail", identifier: "box@example.com" } },
       bridge,
@@ -478,13 +455,6 @@ describe("mail send handlers", () => {
 })
 
 describe("mail agent handlers", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function makeAgentBridge(overrides: Record<string, any> = {}) {
     const calls: any = { db_findMany: [], db_findOne: [], kernel_findOne: [] }
     const accounts: Record<string, any> = {
@@ -636,9 +606,7 @@ describe("mail agent handlers", () => {
   }
 
   const runSearch = async (params: Record<string, unknown>, bridge: any) =>
-    (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    (await runMail({
       exportName: "agentMailSearch",
       params,
       bridge,
@@ -665,9 +633,7 @@ describe("mail agent handlers", () => {
           : "[]",
       connections_getAccounts: async () => "[]",
     })
-    const listed = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const listed = (await runMail({
       exportName: "listAccounts",
       params: {},
       bridge,
@@ -685,9 +651,7 @@ describe("mail agent handlers", () => {
       db_findMany: async () => "[]",
       connections_getAccounts: async () => "[]",
     })
-    const listed = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const listed = (await runMail({
       exportName: "listAccounts",
       params: {},
       bridge,
@@ -699,9 +663,7 @@ describe("mail agent handlers", () => {
   it("agentMailSearch returns conversations with documented projection", async () => {
     const bridge = makeSearchRpcBridge()
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailSearch",
       params: { query: "Pricing", limit: 20 },
       bridge,
@@ -718,9 +680,7 @@ describe("mail agent handlers", () => {
   it("agentMailSearch caps limit at 50", async () => {
     const bridge = makeSearchRpcBridge()
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "agentMailSearch",
       params: { limit: 200 },
       bridge,
@@ -732,9 +692,7 @@ describe("mail agent handlers", () => {
   it("agentMailSearch passes query/from/since/until/body/cursor through to mail_search", async () => {
     const bridge = makeSearchRpcBridge()
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "agentMailSearch",
       params: {
         query: "Pricing",
@@ -798,9 +756,7 @@ describe("mail agent handlers", () => {
   })
 
   it("agentMailRead returns conversation and snippets by default", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1" },
       bridge: makeAgentBridge(),
@@ -845,9 +801,7 @@ describe("mail agent handlers", () => {
       },
     })
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1" },
       bridge,
@@ -881,9 +835,7 @@ describe("mail agent handlers", () => {
   })
 
   it("agentMailRead returns truncated text bodies when requested", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1", includeBody: true },
       bridge: makeAgentBridge(),
@@ -896,9 +848,7 @@ describe("mail agent handlers", () => {
 
   it("agentMailRead fences inbound message body + snippet as untrusted, leaves outbound unwrapped (taint defense)", async () => {
     const FENCE_OPEN = '<external-content source="untrusted">'
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1", includeBody: true },
       bridge: makeAgentBridge(),
@@ -918,9 +868,7 @@ describe("mail agent handlers", () => {
 
   it("agentMailSearch fences the conversation snippet as untrusted external content", async () => {
     const FENCE_OPEN = '<external-content source="untrusted">'
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailSearch",
       params: { query: "Pricing", limit: 20 },
       bridge: makeSearchRpcBridge(),
@@ -933,9 +881,7 @@ describe("mail agent handlers", () => {
   })
 
   it("agentMailRead returns one message with a larger cap", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1", messageId: "msg-2" },
       bridge: makeAgentBridge(),
@@ -955,9 +901,7 @@ describe("mail agent handlers", () => {
 
   it("agentMailRead lists the reply drafts waiting on this conversation, oldest first", async () => {
     const pendingForCalls: Array<[string, string | undefined]> = []
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1" },
       bridge: makeAgentBridge({
@@ -1011,9 +955,7 @@ describe("mail agent handlers", () => {
   })
 
   it("agentMailRead returns an empty pendingReplyDrafts when none is waiting", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "conv-1" },
       bridge: makeAgentBridge({ approvals_pendingFor: async () => "[]" }),
@@ -1022,9 +964,7 @@ describe("mail agent handlers", () => {
   })
 
   it("agentMailRead returns NOT_FOUND for missing conversations", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailRead",
       params: { conversationId: "missing" },
       bridge: makeAgentBridge(),
@@ -1114,9 +1054,7 @@ describe("mail agent handlers", () => {
       log_debug: () => {},
     }
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Reply body" },
       bridge,
@@ -1154,9 +1092,7 @@ describe("mail agent handlers", () => {
     const bridge = makeReplyBridge({
       onSmtp: (message: any) => smtpCalls.push(message),
     })
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Reply body" },
       bridge,
@@ -1243,9 +1179,7 @@ describe("mail agent handlers", () => {
         return '{"entries":[]}'
       },
     }
-    const err = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const err = await runMail({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Reply body" },
       bridge,
@@ -1265,9 +1199,7 @@ describe("mail agent handlers", () => {
       codec_markdownToEmail: async (markdown: string) => JSON.stringify(markdownToEmail(markdown)),
     }
     const send = (textBody: string) =>
-      executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      runMail({
         exportName: "agentMailReply",
         params: { conversationId: "conv-1", textBody },
         bridge,
@@ -1286,9 +1218,7 @@ describe("mail agent handlers", () => {
     const bridge = makeReplyBridge({
       onSmtp: (message: any) => smtpCalls.push(message),
     })
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: {
         conversationId: "conv-1",
@@ -1394,9 +1324,7 @@ describe("mail agent handlers", () => {
       log_debug: () => {},
     }
 
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: {
         conversationId: "conv-1",
@@ -1422,13 +1350,6 @@ describe("mail agent handlers", () => {
 })
 
 describe("mail:forward — faithful forward carrying the original body + attachments", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   // A mail world: priya's mailbox holds a Westcoast quote-request conversation with
   // an inbound message carrying a requirements PDF attachment, plus a prior outbound
   // reply (so "forward the email" must pick the INBOUND customer message, not ours).
@@ -1549,9 +1470,7 @@ describe("mail:forward — faithful forward carrying the original body + attachm
   }
 
   const runForward = async (params: Record<string, unknown>, bridge: any) =>
-    (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    (await runMail({
       exportName: "agentMailForward",
       params,
       bridge,
@@ -1692,18 +1611,14 @@ describe("mail:forward — faithful forward carrying the original body + attachm
   })
 
   it("agentMailForwardPreflight resolves the source, NOT_FOUND when absent", async () => {
-    const ok = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const ok = (await runMail({
       exportName: "agentMailForwardPreflight",
       params: { conversationId: "conv-wc" },
       bridge: makeForwardBridge(),
     })) as any
     expect(ok).toEqual({ ok: true })
 
-    const missing = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const missing = (await runMail({
       exportName: "agentMailForwardPreflight",
       params: { conversationId: "missing" },
       bridge: makeForwardBridge(),
@@ -1713,13 +1628,6 @@ describe("mail:forward — faithful forward carrying the original body + attachm
 })
 
 describe("mail:composeForApp (B8) — internal companion tool", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function makeComposeBridge(overrides: Record<string, any> = {}) {
     const account = {
       id: "account-1",
@@ -1808,9 +1716,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
 
   it("sends and records audit under the mail:composeForApp tool name", async () => {
     const bridge = makeComposeBridge()
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailComposeForApp",
       params: {
         accountId: "account-1",
@@ -1847,9 +1753,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
         return '{"entries":[]}'
       },
     })
-    const err = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const err = await runMail({
       exportName: "agentMailComposeForApp",
       params: {
         accountId: "account-1",
@@ -1879,9 +1783,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
 
   it("materializes cross-app PDF attachments via files_attachToParent (review M2)", async () => {
     const bridge = makeComposeBridge()
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "agentMailComposeForApp",
       params: {
         accountId: "account-1",
@@ -1957,9 +1859,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
     })
 
   it("preflight refuses an OMITTED accountId even when an org mailbox exists (no shared-box fallback)", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailComposePreflight",
       params: { to: ["dealer@example.com"], subject: "Overdue reminder", textBody: "Please pay." },
       bridge: orgMailboxBridge(),
@@ -1969,9 +1869,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   })
 
   it("preflight refuses a non-uuid placeholder accountId with NOT_FOUND (db_findOne throws, never crashes)", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailComposePreflight",
       params: {
         accountId: "default-account-id",
@@ -1985,9 +1883,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   })
 
   it("preflight accepts a real accountId", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailComposePreflight",
       params: { accountId: "account-1", to: ["dealer@example.com"], subject: "R", textBody: "b" },
       bridge: orgMailboxBridge(),
@@ -2030,9 +1926,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   }
 
   it("reply preflight: an OUTBOUND-only conversation (no inbound message) is rejected with no_inbound at propose", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReplyPreflight",
       params: { conversationId: "conv-1" },
       bridge: makeReplyPreflightBridge([]), // no inbound message to reply to
@@ -2042,9 +1936,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   })
 
   it("reply preflight: a conversation WITH an inbound message passes (ok) — a real reply is not blocked", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReplyPreflight",
       params: { conversationId: "conv-1" },
       bridge: makeReplyPreflightBridge([
@@ -2060,13 +1952,6 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
 })
 
 describe("mail:export_conversations — scoped correspondence → kernel.files artifact (BL-264)", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   // A bridge that honors the equality `where` (contactId/accountId/status) the
   // way the live conversations table does, resolves contacts via kernel_findOne,
   // and CAPTURES files_importAttachment so the test can decode the written bytes
@@ -2169,9 +2054,7 @@ describe("mail:export_conversations — scoped correspondence → kernel.files a
   }
 
   const runExport = async (params: Record<string, unknown>, bridge: any) =>
-    (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    (await runMail({
       exportName: "exportConversations",
       params,
       bridge,

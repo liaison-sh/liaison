@@ -29,6 +29,7 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import {
   approvalRequests,
   dashboards,
+  dashboardTables,
   resourceGrants,
   roles,
   userRoles,
@@ -43,6 +44,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
+  type CardTable,
   cardLineCount,
   describeOperations,
   diffDashboards,
@@ -50,6 +52,7 @@ import {
   editOperationSchema,
   MAX_CARD_CHANGES,
   revertTargets,
+  tableIdsIn,
   tooManyChangesMessage,
 } from "~/modules/dashboards/edit"
 import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
@@ -206,6 +209,42 @@ async function cardRow(tx: Parameters<ApprovalSummarizer>[1]["tx"], id: unknown)
     .where(eq(dashboards.id, id))
     .limit(1)
   return row
+}
+
+/**
+ * The dashboard tables a card's lines read, by id, with their names and column labels, read in
+ * the summarizer's own transaction (the requester's RLS): a table they cannot see stays an id.
+ */
+async function cardTables(
+  tx: Parameters<ApprovalSummarizer>[1]["tx"],
+  ...values: unknown[]
+): Promise<Map<string, CardTable>> {
+  const ids = [...new Set(values.flatMap((v) => tableIdsIn(v)))].filter((id) =>
+    /^[0-9a-f-]{36}$/i.test(id),
+  )
+  if (ids.length === 0) return new Map()
+  const rows = await tx
+    .select({
+      id: dashboardTables.id,
+      name: dashboardTables.name,
+      columns: dashboardTables.columns,
+    })
+    .from(dashboardTables)
+    .where(inArray(dashboardTables.id, ids.slice(0, 50)))
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      {
+        name: r.name,
+        labels: Object.fromEntries(
+          ((r.columns ?? []) as unknown as { key: string; label: string }[]).map((c) => [
+            c.key,
+            c.label,
+          ]),
+        ),
+      },
+    ]),
+  )
 }
 
 /** Who sees a saved dashboard, read for the gate and the routing (which run before the handler). */
@@ -457,6 +496,7 @@ const summarizeCreate: ApprovalSummarizer = async (raw, ctx) => {
     ? describeOperations(EMPTY_DASHBOARD, ops, {
         timeZone: await cardTimezone(p.spec, ctx.orgId),
         now: new Date(),
+        tables: await cardTables(ctx.tx, ops),
       })
     : ["No blocks."]
   if (p.visibility !== "org") {
@@ -508,6 +548,7 @@ const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
     ? describeOperations(stored, ops, {
         timeZone: await dashboardTimezone(ctx.orgId),
         now: new Date(),
+        tables: await cardTables(ctx.tx, ops, stored.spec),
       })
     : ["No change: the dashboard stays as it is."]
   const n = ops.length
@@ -551,7 +592,12 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
       spec: current.spec as unknown as DashboardSpec,
     },
     ops.data,
-    { timeZone: await dashboardTimezone(ctx.orgId), now: new Date(), versions },
+    {
+      timeZone: await dashboardTimezone(ctx.orgId),
+      now: new Date(),
+      versions,
+      tables: await cardTables(ctx.tx, ops.data, current.spec),
+    },
   )
   const n = ops.data.length
   // A personal dashboard's edit with a setVisibility org: it is being shared with everyone.

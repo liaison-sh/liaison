@@ -296,3 +296,5 @@ Settings: add, rename, edit choices, remove a column -> apps/web/src/modules/das
 Removed column name cannot be reused -> apps/web/src/modules/dashboards/blocks/table-cells.ts:194
 Who can see and edit opens the sharing dialog -> apps/web/src/modules/dashboards/TableSettings.tsx:373 ; packages/shared/src/i18n/locales/en/kernel.json:6677
 Agent row writes need approval switch -> apps/web/src/modules/dashboards/TableSettings.tsx:346 ; packages/shared/src/i18n/locales/en/kernel.json:6639
+A block over a dashboard table that names no date shows no own-period label -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:158
+The card names a dashboard table by its name, its columns by their labels, and an editable table block as such -> apps/api/src/modules/dashboards/edit.ts:514 ; apps/api/src/modules/dashboards/edit.ts:504

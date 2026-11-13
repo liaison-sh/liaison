@@ -56,6 +56,8 @@ interface HandlerCtx {
   db: RlsClient
   scopes?: string[]
   dimensionGrants?: Record<string, string[]>
+  /** Set on an approved re-entry: the approval the change is recorded under. */
+  approvalRequestId?: string
 }
 
 type Handler = (params: unknown, ctx: any) => Promise<unknown>
@@ -103,6 +105,7 @@ function compactRow(r: Row) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface StoredTable {
+  name: string
   orgAccess: "none" | "viewer" | "editor"
   ownerUserId: string | null
   agentWritesNeedApproval: boolean
@@ -114,6 +117,7 @@ async function storedTable(orgId: string, id: unknown): Promise<StoredTable | nu
   return withPrivilegedDb(orgId, "dashboard-table-gate", async (tx) => {
     const [row] = await tx
       .select({
+        name: dashboardTables.name,
         orgAccess: dashboardTables.orgAccess,
         ownerUserId: dashboardTables.ownerUserId,
         agentWritesNeedApproval: dashboardTables.agentWritesNeedApproval,
@@ -239,16 +243,28 @@ const COLUMN_TYPE_WORDS: Record<string, string> = {
   link: "link to a record",
 }
 
+/** An app's name as people read it: "shopify" is "Shopify". */
+function appWords(app: string): string {
+  const words = app.replace(/[-_]+/g, " ").trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** A link column in words: "link to a Shopify product", "link to an Invoicing record". */
+export function linkWords(linkTo: { app: string; entityType?: string } | undefined): string {
+  if (!linkTo) return "link to a record"
+  const what = `${appWords(linkTo.app)} ${linkTo.entityType ? linkTo.entityType.replace(/[-_]+/g, " ") : "record"}`
+  return `link to ${/^[aeiou]/i.test(what) ? "an" : "a"} ${what}`
+}
+
 function columnWords(c: Partial<Column>): string {
-  const type = COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type)
+  const type =
+    c.type === "link" ? linkWords(c.linkTo) : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
   const extra =
     c.type === "amount" && c.currency
       ? ` in ${c.currency}`
       : (c.type === "choice" || c.type === "choices") && c.choices
         ? ` (${c.choices.join(", ")})`
-        : c.type === "link" && c.linkTo
-          ? ` to ${c.linkTo.app}${c.linkTo.entityType ? ` ${c.linkTo.entityType}` : ""}`
-          : ""
+        : ""
   return `"${String(c.label ?? c.key)}" (${String(c.key)}): ${type}${extra}${c.required ? ", required" : ""}`
 }
 
@@ -562,7 +578,10 @@ export function registerTableTools(orgId: string): void {
     handler: (async (params: unknown, ctx: HandlerCtx) =>
       guarded(async () => {
         const p = params as { tableId: string; ops: RowOp[] }
-        const rows = await writeRows(await viewerOf(ctx), p.tableId, p.ops, { tx: ctx.db })
+        const rows = await writeRows(await viewerOf(ctx), p.tableId, p.ops, {
+          tx: ctx.db,
+          ...(ctx.approvalRequestId ? { via: { approvalId: ctx.approvalRequestId } } : {}),
+        })
         return {
           rows: rows.map((r) =>
             "deleted" in r ? r : { id: r.id, version: r.version, cells: r.cells },
@@ -571,6 +590,10 @@ export function registerTableTools(orgId: string): void {
       })) as Handler,
     writesToTable: ROWS_SINK,
     sinkReadersResource: { type: TABLE_RESOURCE, idParam: "tableId" },
+    taintCardPlace: async (params: unknown, { orgId: o }: { orgId: string }) => {
+      const t = await storedTable(o, (params as { tableId?: unknown } | null)?.tableId)
+      return t ? `the table "${t.name}"`.slice(0, 120) : null
+    },
     approveScope: ADMIN_SCOPE,
     approvalImpact: "internal",
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) =>

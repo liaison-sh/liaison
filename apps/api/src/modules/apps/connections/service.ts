@@ -1357,11 +1357,36 @@ export function registerMultiInstanceCredentialCheck(
   else multiInstanceChecks.delete(key)
 }
 
+/**
+ * A check chosen by what an app's manifest declares rather than by its name
+ * (the platform-held API connections: any app's connection with an `api` block).
+ */
+export type MultiInstanceCredentialResolver = (
+  orgId: string,
+  appName: string,
+  connectionName: string,
+) => MultiInstanceCredentialCheck | undefined
+
+const multiInstanceResolvers: MultiInstanceCredentialResolver[] = []
+
+export function registerMultiInstanceCredentialResolver(
+  resolver: MultiInstanceCredentialResolver,
+): void {
+  if (!multiInstanceResolvers.includes(resolver)) multiInstanceResolvers.push(resolver)
+}
+
 export function getMultiInstanceCredentialCheck(
+  orgId: string,
   appName: string,
   connectionName: string,
 ): MultiInstanceCredentialCheck | undefined {
-  return multiInstanceChecks.get(`${appName}\0${connectionName}`)
+  const named = multiInstanceChecks.get(`${appName}\0${connectionName}`)
+  if (named) return named
+  for (const resolve of multiInstanceResolvers) {
+    const check = resolve(orgId, appName, connectionName)
+    if (check) return check
+  }
+  return undefined
 }
 
 export async function createCredentialConnection(

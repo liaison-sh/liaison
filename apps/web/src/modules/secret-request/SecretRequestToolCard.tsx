@@ -122,17 +122,6 @@ async function storeSecret(
       )
       return 0
     }
-    case "api_connector_credentials":
-      await api.post(
-        "/connections/api-connector/api/credentials",
-        {
-          mode: "org",
-          ...(takeOver ? { takeOver: true } : {}),
-          credentials: { ...row.fixed, ...values, identifier: text(t.identifier) },
-        },
-        QUIET,
-      )
-      return 0
     case "oauth_client": {
       const app = encodeURIComponent(text(t.app))
       const connection = encodeURIComponent(text(t.connection))

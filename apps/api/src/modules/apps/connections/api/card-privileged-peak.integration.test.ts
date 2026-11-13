@@ -22,7 +22,10 @@ import {
 } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
@@ -123,8 +126,8 @@ async function openConversation(v: View): Promise<number[]> {
 }
 
 async function forgetLookups(): Promise<void> {
-  await invalidateConnectionCaches(plain.orgId, "crm")
-  await invalidateConnectionCaches(demo.orgId, DEMO_API_CONNECTOR_IDENTIFIER)
+  await invalidateConnectionCaches(testApiConn(plain.orgId), "crm")
+  await invalidateConnectionCaches(testApiConn(demo.orgId), DEMO_API_CONNECTOR_IDENTIFIER)
 }
 
 function summarize(acq: PrivilegedAcquisition[]) {
@@ -150,7 +153,7 @@ beforeAll(async () => {
   const p = await viewer("plain")
   plain = { ...p.view, email: "jane@acme.test" }
   await registerApiConnectorApp(p.orgId)
-  await upsertAdapterRow(p.orgId, "crm", CRM, p.userId)
+  await upsertAdapterRow(testApiConn(p.orgId), "crm", CRM, p.userId)
   await withPrivilegedDb(p.orgId, "card-peak-test", (tx) =>
     createCredentialConnection(tx, p.orgId, p.userId, "api-connector", "api", {
       identifier: "crm",

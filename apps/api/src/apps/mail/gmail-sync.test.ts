@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 
 /**
  * A synthetic stand-in for the host's `mailbox_sealAndInsert`, for the sync
@@ -48,13 +45,6 @@ async function stubSealAndInsert(bridge: Record<string, any>, paramsJson: string
 }
 
 describe("gmailInitialSync handler", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function createMockBridge(overrides: Record<string, any> = {}) {
     const updates: any[] = []
     const inserts: any[] = []
@@ -178,9 +168,7 @@ describe("gmailInitialSync handler", () => {
   it("syncs messages and updates sync status to active", async () => {
     const mock = createMockBridge()
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -297,9 +285,7 @@ describe("gmailInitialSync handler", () => {
       },
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -394,9 +380,7 @@ describe("gmailInitialSync handler", () => {
           return JSON.stringify({ status: 404, headers: {}, body: "" })
         },
       })
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "gmailInitialSync",
         params: { orgId: "org-1", accountId: "acc-1" },
         bridge: mock.bridge,
@@ -611,9 +595,7 @@ describe("gmailInitialSync handler", () => {
       },
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailAttachmentBackfill",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -676,9 +658,7 @@ describe("gmailInitialSync handler", () => {
       },
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -754,9 +734,7 @@ describe("gmailInitialSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1" },
       bridge,
@@ -800,9 +778,7 @@ describe("gmailInitialSync handler", () => {
           })
         },
       })
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "gmailIncrementalSync",
         params: { orgId: "org-1", accountId: "acc-1", ...params },
         bridge: mock.bridge,
@@ -839,9 +815,7 @@ describe("gmailInitialSync handler", () => {
       return baseFetch(url, optsJson)
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -864,9 +838,7 @@ describe("gmailInitialSync handler", () => {
       return baseFetch(url, optsJson)
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -903,9 +875,7 @@ describe("gmailInitialSync handler", () => {
       return baseFetch(url, optsJson)
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -927,9 +897,7 @@ describe("gmailInitialSync handler", () => {
         }),
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -1021,9 +989,7 @@ describe("gmailInitialSync handler", () => {
       return JSON.stringify({ status: 404, headers: {}, body: "" })
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -1116,9 +1082,7 @@ describe("gmailInitialSync handler", () => {
       return JSON.stringify({ status: 404, headers: {}, body: "" })
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -1153,9 +1117,7 @@ describe("gmailInitialSync handler", () => {
         }),
     })
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -1229,9 +1191,7 @@ describe("gmailInitialSync handler", () => {
       return JSON.stringify({ status: 404, headers: {}, body: "" })
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge: mock.bridge,
@@ -1265,13 +1225,6 @@ describe("gmailInitialSync handler", () => {
 })
 
 describe("gmailIncrementalSync handler", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("enqueues initial sync when active account has no historyId", async () => {
     const jobs: any[] = []
     const bridge: Record<string, any> = {
@@ -1320,9 +1273,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1" },
       bridge,
@@ -1380,9 +1331,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -1510,9 +1459,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -1649,9 +1596,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -1779,9 +1724,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -1879,9 +1822,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -1998,9 +1939,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2082,9 +2021,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2165,9 +2102,7 @@ describe("gmailIncrementalSync handler", () => {
     }
 
     for (let hop = 0; hop < 2; hop++) {
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "gmailIncrementalSync",
         params: { orgId: "org-1", accountId: "acc-1" },
         bridge,
@@ -2293,9 +2228,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2435,9 +2368,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2591,9 +2522,7 @@ describe("gmailIncrementalSync handler", () => {
       },
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2728,9 +2657,7 @@ describe("gmailIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1" },
       bridge,
@@ -2752,13 +2679,6 @@ describe("gmailIncrementalSync handler", () => {
 })
 
 describe("conversation roll-up on a freshly enrolled mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("a label change on a thread whose latest message predates enrollment never writes the plaintext snippet back", async () => {
     // Prod 2026-09-14: the owner finished the encryption setup the banner asked
     // for, and the very next incremental tick died with
@@ -2857,9 +2777,7 @@ describe("conversation roll-up on a freshly enrolled mailbox", () => {
       },
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -2960,9 +2878,7 @@ describe("conversation roll-up on a freshly enrolled mailbox", () => {
       },
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-org" },
       bridge,
@@ -2975,13 +2891,6 @@ describe("conversation roll-up on a freshly enrolled mailbox", () => {
 })
 
 describe("onAccountConnected: reconnecting an existing mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function connectEvent(
     connectionName: "gmail" | "imap" = "gmail",
     owner: { ownerType: "user" | "org"; ownerId: string | null } = {
@@ -3049,9 +2958,7 @@ describe("onAccountConnected: reconnecting an existing mailbox", () => {
       },
       hasScope: async () => true,
     }
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "onAccountConnected",
       params: event,
       bridge,
@@ -3192,13 +3099,6 @@ describe("onAccountConnected: reconnecting an existing mailbox", () => {
 // kept its unread dot (prod: 44 conversations whose latest message was read
 // while an older one was not, which a thread read in Gmail never leaves).
 describe("Gmail read state reaches Liaison (inbound UNREAD sync)", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("a thread read in Gmail (one record, several messages) is read here, message by message, and live", async () => {
     const updates: any[] = []
     const emitted: any[] = []
@@ -3315,9 +3215,7 @@ describe("Gmail read state reaches Liaison (inbound UNREAD sync)", () => {
       },
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-org" },
       bridge,
@@ -3411,9 +3309,7 @@ describe("Gmail read state reaches Liaison (inbound UNREAD sync)", () => {
       },
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-org" },
       bridge,

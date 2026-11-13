@@ -559,7 +559,7 @@ describe("seedDemoOrg against a real database", () => {
         return {
           adapters: listOf(
             await tx.execute(
-              sql`select identifier from app_api_connector.adapters where org_id = ${first.orgId}`,
+              sql`select identifier from kernel.api_adapters where org_id = ${first.orgId}`,
             ),
           ),
           accounts: listOf(

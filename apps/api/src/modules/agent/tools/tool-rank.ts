@@ -12,9 +12,6 @@ import { meaningPoints, type ToolMeaning } from "./tool-meaning"
 /** Meaning points a tool no word matched needs to join the list: past the floor, not the tie trace. */
 const MEANING_JOIN_POINTS = 0.01
 
-/** The app whose tools connect any outside system (see creditOutsideSystemNames). */
-export const CONNECTOR_APP = "api-connector"
-
 /** Lower case with accents gone, so "réclamation" and "reclamation" are one word. */
 function foldSearchText(text: string): string {
   return text
@@ -732,8 +729,8 @@ function loadingTerms(
 
 /**
  * A word no tool answers to is the name of a system Liaison has no app for
- * ("connect HubSpot"), and the API connector is the app that connects any such
- * system: its tools answer to that name as a keyword, exactly as they answer
+ * ("connect HubSpot"), and an app that declares an API connection
+ * (`connectorApps`) is what connects any such system: its tools answer to that name as a keyword, exactly as they answer
  * to the name of a system already connected (withConnectorHints). So a
  * connector tool is scored on the kept words plus that name, every other tool
  * on the kept words alone. Without it, dropping the name left "connect", and
@@ -744,15 +741,16 @@ function creditOutsideSystemNames<T extends ScorableDeferredTool>(
   scored: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>,
   loading: { query: string; outside: string[] },
   appNames: Iterable<string>,
+  connectorApps: ReadonlySet<string>,
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
-  if (loading.outside.length === 0) return scored
+  if (loading.outside.length === 0 || connectorApps.size === 0) return scored
   const query = [loading.query, ...loading.outside].join(" ")
   // The whole catalog is scored again, so each word is weighed by how many
   // tools answer to it there (RARE_WORD_FLOOR), the credited ones included.
   // Only a connector tool the rest of the query already asks for ("connect"):
   // in "book a call with Lumen", the name is a person's or a customer's, not a
   // system to connect.
-  const credit = (s: (typeof scored)[number]) => s.tool.appName === CONNECTOR_APP && s.score > 0
+  const credit = (s: (typeof scored)[number]) => connectorApps.has(s.tool.appName) && s.score > 0
   if (!scored.some(credit)) return scored
   const credited = scored.map((s) =>
     credit(s) ? { ...s.tool, keywords: [...(s.tool.keywords ?? []), ...loading.outside] } : s.tool,
@@ -806,7 +804,13 @@ export function rankDeferredTools<
 >(
   catalog: readonly T[],
   query: string,
-  opts: { cap: number; appNames: Iterable<string>; meaning?: ToolMeaning | null },
+  opts: {
+    cap: number
+    appNames: Iterable<string>
+    /** The apps that declare an API connection: they connect systems no app covers. */
+    connectorApps?: ReadonlySet<string>
+    meaning?: ToolMeaning | null
+  },
 ): RankedTools<T> {
   const byWords = rankByKeywords(catalog, query, opts)
   return opts.meaning ? addMeaning(catalog, byWords, opts.cap, opts.meaning) : byWords
@@ -870,7 +874,12 @@ function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?:
 function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; locked?: boolean }>(
   catalog: readonly T[],
   query: string,
-  opts: { cap: number; appNames: Iterable<string> },
+  opts: {
+    cap: number
+    appNames: Iterable<string>
+    /** The apps that declare an API connection: they connect systems no app covers. */
+    connectorApps?: ReadonlySet<string>
+  },
 ): {
   ranked: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>
   /** Every tool that scored, best first: `ranked` is its head. */
@@ -905,6 +914,7 @@ function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; lock
         scoreDeferredTools(catalog, loading.query, { appNames: opts.appNames }),
         loading,
         opts.appNames,
+        opts.connectorApps ?? new Set(),
       )
     : scoreDeferredTools(catalog, query, { appNames: opts.appNames })
 

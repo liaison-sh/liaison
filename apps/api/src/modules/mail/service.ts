@@ -14,6 +14,7 @@ import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
+import { CORE_APP_MODULES } from "~/modules/apps/core/registry"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { type MailCategory, mailCategoryCondition } from "~/modules/mail/category"
 import {
@@ -868,20 +869,18 @@ export async function listAssignableUsersForAccount(
   )
 }
 
-async function executeMailSandbox(
-  _db: RlsClient,
-  orgId: string,
-  _userId: string,
-  exportName: string,
-  params: unknown,
-) {
+/**
+ * Runs one of the mail module's send entries (`sendReply`, `sendCompose`) through
+ * the one door: `runApp` calls the core module's export in this process
+ * (modules/apps/core/registry.ts), on a session bridge.
+ */
+async function runMailSend(orgId: string, exportName: string, params: unknown) {
   const [{ runApp }, { createRlsSession }] = await Promise.all([
     import("~/modules/apps/sandbox/run-app"),
     import("~/db/rls"),
   ])
-  const bundlePath = new URL("../../apps/mail/handlers.ts", import.meta.url).pathname
   // The external provider send (Gmail/SMTP) must NOT run inside the caller's
-  // request transaction — and must not pin ANY pool connection for the
+  // request transaction, and must not pin ANY pool connection for the
   // roundtrip-long SMTP/Gmail call. The session bridge opens a short RLS
   // transaction per bridge db call, so the provider I/O itself holds no
   // connection at all. The bridge's credential lookup uses `withPrivilegedDb`
@@ -893,18 +892,17 @@ async function executeMailSandbox(
   // System actor: the credential lookup resolves the account by
   // org + connection + identifier (the account email) via privileged db,
   // mirroring the background sync jobs. Sender attribution (sent_by_user_id)
-  // is persisted by the caller in `service.ts`, not by the sandbox, so the
+  // is persisted by the caller in `service.ts`, not by the handler, so the
   // real `userId` is preserved on the stored message row regardless.
   const session = createRlsSession({ actorType: "system", orgId, purpose: "job" })
   const bridge = createSessionRpcBridge("mail", "system", orgId, session, mailManifest as any)
   try {
-    // Core code through the one door: in process, on the session bridge.
     return await runApp({
       trusted: true,
       appName: "mail",
       orgId,
       installed: null,
-      bundlePath,
+      bundlePath: CORE_APP_MODULES.mail!.modulePath,
       exportName,
       entry: `tool:${exportName}`,
       params,
@@ -912,9 +910,9 @@ async function executeMailSandbox(
       holdsTx: false,
     })
   } catch (err) {
-    // Only the message crosses the sandbox: a mailbox without stored
-    // credentials, or whose connected account is gone, comes back typed (a 422
-    // that names the mailbox and says to reconnect it), not a 500.
+    // A mailbox without stored credentials, or whose connected account is
+    // gone, comes back typed (a 422 that names the mailbox and says to
+    // reconnect it), not a 500.
     const message = err instanceof Error ? err.message : String(err)
     throw (
       ConnectionCredentialsMissingError.fromMessage(message) ??
@@ -924,7 +922,7 @@ async function executeMailSandbox(
   }
 }
 
-/** MIME part shape the mail handler bundle's `buildSendMessage` consumes. */
+/** MIME part shape the mail handlers' `buildSendMessage` consumes. */
 export interface OutboundMimeAttachment {
   filename: string
   mimeType: string
@@ -933,7 +931,7 @@ export interface OutboundMimeAttachment {
   contentId?: string
 }
 
-// Mirror the sandbox attachment-bytes bridge caps so human sends and agent
+// Mirror the attachment-bytes bridge caps so human sends and agent
 // sends obey the same outbound size budget.
 const ATTACHMENT_PER_FILE_MAX = 25 * 1024 * 1024
 const ATTACHMENT_PER_SEND_MAX = 35 * 1024 * 1024
@@ -1080,7 +1078,7 @@ export async function sendReply(
     ? conversation.subject
     : `Re: ${conversation.subject ?? ""}`.trim()
 
-  const sendResult = (await executeMailSandbox(db, params.orgId, params.userId, "sendReply", {
+  const sendResult = (await runMailSend(params.orgId, "sendReply", {
     provider: account.provider,
     accountEmail: account.email_address,
     externalThreadId: conversation.external_thread_id,
@@ -1265,7 +1263,7 @@ export async function sendCompose(
   const sealing = mailboxRequiresSealing(accountCrypto)
   if (sealing) assertSealRecipient(accountCrypto, params.userId)
 
-  const sendResult = (await executeMailSandbox(db, params.orgId, params.userId, "sendCompose", {
+  const sendResult = (await runMailSend(params.orgId, "sendCompose", {
     provider: account.provider,
     accountEmail: account.email_address,
     to: params.to,

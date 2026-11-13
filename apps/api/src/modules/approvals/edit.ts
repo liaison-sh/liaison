@@ -726,7 +726,10 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
             )
           : taintDisclosureLine(
               mustHold,
-              taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
+              (await tool
+                ?.taintCardPlace?.(publicResult.currentPayload, { orgId: args.orgId })
+                .catch(() => null)) ??
+                taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
             )
         : null
     // The app's own summary was written with the payload (one event); only a card that must also

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { UserContext } from "~/db/rls"
 import {
+  connectorApps,
   connectorSearchHints,
   loadConnectedSystems,
 } from "~/modules/agent/context/connected-systems"
@@ -9,7 +10,6 @@ import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { listDeferredTools } from "~/modules/agent/tools/tool-bridge"
 import { toolMeaningIndex } from "~/modules/agent/tools/tool-meaning"
 import {
-  CONNECTOR_APP,
   rankDeferredTools,
   type ScorableDeferredTool,
   scoreDeferredTools,
@@ -351,13 +351,13 @@ function orgAppNames(orgId: string): Set<string> {
  * names and system as keywords, and a summary leading the description, given
  * enough synopsis room to survive the cut.
  */
-function withConnectorHints<T extends ScorableDeferredTool>(
+function withConnectorHints<T extends ScorableDeferredTool & { sdkName: string }>(
   tools: T[],
   hints: Map<string, { keywords: string[]; summary: string }>,
 ): Array<T & { synopsisChars?: number }> {
   if (hints.size === 0) return tools
   return tools.map((t) => {
-    const hint = t.appName === CONNECTOR_APP ? hints.get(t.toolName) : undefined
+    const hint = hints.get(t.sdkName)
     if (!hint) return t
     return {
       ...t,
@@ -564,6 +564,7 @@ export async function handleToolSearch(
     appNames: orgAppNames(ctx.orgId),
     // Meaning ranks over the same reachable catalog: a hidden tool has no place in it.
     meaning: await toolMeaningIndex()?.meaningFor(query, allDeferred),
+    connectorApps: connectorApps(ctx.orgId),
   })
   const matches = ranked.map((s) => toMatch(s.tool))
   const strongHits = matches.filter((m) => strong.has(m.name))

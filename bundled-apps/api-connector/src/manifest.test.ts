@@ -11,11 +11,19 @@ describe("api-connector manifest", () => {
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
-  it("declares the connection as a platform-held API connection with the app's own scopes", () => {
+  it("declares the connection as a platform-held API connection with the app's own scopes and its contract", () => {
     expect(manifest.connections.api.api).toEqual({
       readScope: "api-connector:read",
       writeScope: "api-connector:write",
       adminScope: "api-connector:admin",
+      // What the platform reads through it (never by this app's name).
+      customerContext: {
+        listTool: "connector_list_operations",
+        readTool: "connector_read",
+        writeTool: "connector_write",
+      },
+      importSource: true,
+      provisionKey: "connectors",
     })
   })
 

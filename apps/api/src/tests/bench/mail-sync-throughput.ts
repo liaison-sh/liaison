@@ -29,6 +29,12 @@ import { createRlsSession } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
+/** The mail handlers, run as `runApp` runs a core app. */
+async function mailTestRunner() {
+  const { runMailHandler } = await import("~/apps/mail/test-mail-runner")
+  return runMailHandler
+}
+
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
 const TOTAL = Number(process.argv[2] ?? 10_000)
@@ -162,14 +168,7 @@ async function main(): Promise<void> {
   const { ensureAppsForOrg } = await import("~/modules/apps/init")
   await ensureAppsForOrg(orgId as string)
 
-  const { initSandboxPool, getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-  const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-  const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-  await initSandboxPool()
-  const nodePath = await import("node:path")
-  const bundleSource = await loadBundle(
-    nodePath.resolve(import.meta.dir, "../../apps/mail/handlers.ts"),
-  )
+  const runMailHandler = await mailTestRunner()
 
   const session = createRlsSession({
     actorType: "system",
@@ -240,9 +239,7 @@ async function main(): Promise<void> {
     do {
       enqueued.length = 0
       invocations++
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMailHandler({
         exportName,
         params: payload,
         bridge,

@@ -1307,6 +1307,24 @@ export interface TableInfo {
   updatedAt: string
   /** Keys of dropped columns: retired, never re-added. */
   droppedKeys: string[]
+  /** A table backed by an app's records (a project's tasks): its rows are those records. */
+  backing?: TableBackingInfo
+}
+
+/** What a table is backed by: one parent record's records (e.g. a project's tasks). */
+export interface TableBacking {
+  app: string
+  entity: string
+  parentId: string
+  /** The record values shown, read through (for tasks: title, status, assignee, ...). */
+  fields: string[]
+}
+
+export interface TableBackingInfo extends TableBacking {
+  /** The read-through column keys (first in `columns`): editing one changes the record. */
+  readThrough: string[]
+  /** The table's own column keys, kept per record in the table. */
+  own: string[]
 }
 
 /** Keys the row itself uses: no column may take them. */
@@ -1464,7 +1482,7 @@ export async function listTables(api: Pick<TablesApi, "get">): Promise<TableInfo
 /** A new table (the caller owns it). A name already taken answers `conflict`. */
 export async function createTable(
   api: Pick<TablesApi, "post">,
-  input: { name: string; description?: string; columns?: TableColumn[] },
+  input: { name: string; description?: string; columns?: TableColumn[]; backing?: TableBacking },
 ): Promise<TableInfo> {
   return (await api.post<unknown>(tablesPath(), { columns: [], ...input }, QUIET)) as TableInfo
 }

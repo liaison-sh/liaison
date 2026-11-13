@@ -6735,7 +6735,30 @@
       "newTableName": "Table name",
       "nameTaken": "A table named {{name}} exists already.",
       "createForbidden": "You cannot create tables.",
-      "createFailed": "The table could not be created. Try again."
+      "createFailed": "The table could not be created. Try again.",
+      "fromProject": "From a project",
+      "fromProjectHint": "Its rows are the project's tasks. Changing a task value here changes the task.",
+      "project": "Project",
+      "projectValues": "Task values to show",
+      "builtin": {
+        "title": "Title",
+        "status": "Status",
+        "assignee": "Assignee",
+        "due": "Due",
+        "priority": "Priority"
+      },
+      "create": "Create",
+      "pickProject": "Pick a project.",
+      "pickValue": "Pick at least one value.",
+      "projectUnreadable": "That project could not be read.",
+      "theProject": "the project",
+      "fromProjectColumn": "From {{name}}: changing it changes the task.",
+      "ownColumn": "Kept in this table only.",
+      "fromProjectShort": "From the project",
+      "projectForbidden": "You can't change the tasks of {{name}}. Ask an admin for permission to edit tasks.",
+      "deleteRowBacked": "Each row is a task of {{name}}. To remove one, archive the task in Projects.",
+      "openLink": "Open {{label}}",
+      "addTask": "Add a task"
     }
   },
   "appBuilder": {

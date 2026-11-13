@@ -54,6 +54,8 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
   const [newCurrency, setNewCurrency] = createSignal("EUR")
 
   const canEdit = () => props.table.myRole === "editor" || props.table.myRole === "owner"
+  /** A backed table's column read from its record: renamed and dropped in the record's app. */
+  const readThrough = (key: string) => props.table.backing?.readThrough.includes(key) === true
   const typeLabel = (t: TableColumnType) => i18n.t(`kernel.dashboards.tables.type.${t}`)
 
   function describe(c: TableColumn): string {
@@ -174,7 +176,15 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                 >
                   {describe(c)}
                 </span>
-                <Show when={canEdit() && renaming() !== c.key}>
+                <Show when={readThrough(c.key)}>
+                  <span
+                    data-testid={`table-settings-column-from-record-${c.key}`}
+                    class="text-[12px] text-text-tertiary"
+                  >
+                    {i18n.t("kernel.dashboards.tables.fromProjectShort")}
+                  </span>
+                </Show>
+                <Show when={canEdit() && renaming() !== c.key && !readThrough(c.key)}>
                   <div class="flex items-center gap-1">
                     <Button
                       variant="ghost"

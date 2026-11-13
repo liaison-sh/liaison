@@ -17,3 +17,8 @@ Colleagues see only the task total -> apps/api/src/apps/projects/service/time-pl
 Dated hours: lead and finance see entries from that day; correction shows who -> apps/api/src/apps/projects/service/time-plan.ts (setTimePlan, correctTaskTime)
 Everyone with entries told once on Home -> apps/api/src/apps/projects/service/time-rows.ts (tellEntrantsDatedOn)
 Move keeps time, stops counting; merge adds -> apps/api/src/apps/projects/service/time-rows.ts (followTaskProject, mergeTaskTime)
+One line, retainer and day-rate periods, over-timebox wording -> apps/api/src/apps/projects/service/budget.ts (getBudget)
+Planned time precedence and coverage rules -> apps/api/src/apps/projects/service/coverage.ts (plannedByTask)
+Coverage counts started or done leaf tasks, never a person -> apps/api/src/apps/projects/service/coverage.ts (coverageOf)
+Price only with the money scope -> apps/api/src/apps/projects/service/budget.ts (MONEY_READ_SCOPE)
+Earlier-tasks sentence and archived time note -> apps/api/src/apps/projects/service/budget.ts (getBudget)

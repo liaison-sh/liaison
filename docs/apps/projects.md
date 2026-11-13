@@ -175,6 +175,17 @@ On a project that uses time and budgets, a task takes a timebox ("3 days", "20 h
 - **Dated hours** are turned on in the project's plan. From that day the project's lead and finance see each person's dated entries and can correct one; the author then sees who changed it. Entries made before stay private to their authors, and everyone with entries is told once on Home.
 - A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target.
 
+## Read a project's budget
+
+On a project that uses time and budgets, ask the agent for its budget ("how are we doing on the portal project"). It answers in one line, planned time against real time, and a card with the milestones and the totals.
+
+- **One line.** Real time against the planned time, in hours (days on a project billed by the day). A retainer or a day-rate project reads the month or period it is in ("November so far 18 of 40 h"). A fixed-price project over its timebox says how far over, and that the price does not change. A project with no timebox says there is nothing to compare.
+- **Which planned time counts.** A timebox set on the whole project wins the line. Without one, the line is the sum of the top tasks' timeboxes; a task's own timebox counts and the timeboxes under it do not add to it. Milestones always show their own.
+- **Coverage.** Real time is entered by people afterwards, and not on every task. The line says on how many tasks it was entered, out of the tasks that have started or are done, and any figure built on real time reads "partial" until every one has some. Coverage is about the project, never about a person.
+- **Money.** The price shows only to people with `projects:money:read`; others read the hours alone.
+- **Before the project used it.** If tasks closed before the project started using time and budgets, the answer says so with the date. No figure changes because of it.
+- **Archived tasks.** Their time is not counted, and the answer says how much is left out.
+
 ## Roles and scopes
 
 | Role | Scopes |

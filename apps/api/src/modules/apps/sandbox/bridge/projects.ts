@@ -2046,6 +2046,16 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         )
       })
     },
+    /** A project's planned time against its real time, with the coverage that makes it honest. */
+    projects_budgetGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { projectId?: string; projectName?: string }
+      return typedCall(async () => {
+        const { getBudget } = await import("~/apps/projects/service/budget")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        return getBudget({ tx: txDb, orgId, scopes: callerScopes ?? [], projectId })
+      })
+    },
     projects_attentionItems: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_attentionItems is only available to the projects app")

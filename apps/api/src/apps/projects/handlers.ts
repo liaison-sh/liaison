@@ -43,6 +43,7 @@ export interface ProjectsMethods {
   projects_timePlanSet: (paramsJson: string) => Promise<string>
   projects_billingTermsSet: (paramsJson: string) => Promise<string>
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
+  projects_budgetGet: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -1177,4 +1178,8 @@ export async function billingTermsSet(params: unknown, ctx: ProjectsCtx): Promis
 
 export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_periodTimeboxSet(JSON.stringify(params ?? {})))
+}
+
+export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {})))
 }

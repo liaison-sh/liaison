@@ -102,7 +102,7 @@ export async function hoursPerDayMinutes(tx: Tx, orgId: string): Promise<number>
   return rows[0]?.m ?? DEFAULT_HOURS_PER_DAY_MINUTES
 }
 
-async function orgTimezone(tx: Tx, orgId: string): Promise<string> {
+export async function orgTimezone(tx: Tx, orgId: string): Promise<string> {
   const rows = extractRows<{ tz: string | null }>(
     await tx.execute(drizzleSql`
       SELECT timezone AS tz FROM ${kernelRel("organizations")} WHERE id = ${orgId}::uuid LIMIT 1`),
@@ -110,7 +110,7 @@ async function orgTimezone(tx: Tx, orgId: string): Promise<string> {
   return rows[0]?.tz || "UTC"
 }
 
-async function datedHoursOn(tx: Tx, orgId: string, projectId: string): Promise<boolean> {
+export async function datedHoursOn(tx: Tx, orgId: string, projectId: string): Promise<boolean> {
   const rows = extractRows<{ d: boolean }>(
     await tx.execute(drizzleSql`
       SELECT dated_hours AS d FROM ${projectsRel("project_time_plan")}

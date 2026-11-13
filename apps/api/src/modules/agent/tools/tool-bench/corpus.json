@@ -3263,5 +3263,14 @@
     "typed": ["period timebox", "forfait mensuel", "heures du mois", "retainer hours"],
     "any": ["projects__period_timebox_set"],
     "modelRun": true
+  },
+  {
+    "id": "C10",
+    "set": "seed",
+    "lang": "en",
+    "say": "how much time went on the portal project this month",
+    "typed": ["time spent project", "project budget", "hours project"],
+    "any": ["projects__budget_get"],
+    "modelRun": true
   }
 ]

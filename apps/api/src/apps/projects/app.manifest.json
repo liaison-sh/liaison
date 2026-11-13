@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1773,6 +1773,124 @@
           "taskId"
         ],
         "additionalProperties": false
+      }
+    },
+    "budget_get": {
+      "description": "A project's planned time against its real time, in one line, with how many tasks have real time entered. Price only with the money scope.",
+      "searchKeywords": [
+        "budget",
+        "budgets",
+        "coverage",
+        "planned",
+        "real",
+        "left",
+        "milestones",
+        "temps"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "budgetGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "projectId": "string",
+          "projectName": "string",
+          "line": "string",
+          "real": "number",
+          "partial": "boolean",
+          "coverage": "object",
+          "milestones": "object",
+          "notInNumbers": "object",
+          "datedHours": "boolean",
+          "groups": "object",
+          "totals": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "groups",
+        "pill": {
+          "label": "Budget",
+          "labelKey": "projects.card.budget"
+        },
+        "title": "{{result.line}}",
+        "cover": "Real time entered on {{result.coverage.withEntries}} of {{result.coverage.total}} tasks",
+        "status": {
+          "path": "result.partial",
+          "map": {
+            "true": {
+              "label": {
+                "label": "partial",
+                "labelKey": "projects.card.partial"
+              },
+              "tone": "muted"
+            }
+          }
+        },
+        "columns": [
+          {
+            "key": "planned",
+            "label": {
+              "label": "Planned",
+              "labelKey": "projects.card.planned"
+            },
+            "format": "hours"
+          },
+          {
+            "key": "real",
+            "label": {
+              "label": "Real",
+              "labelKey": "projects.card.real"
+            },
+            "format": "hours"
+          }
+        ],
+        "groups": {
+          "path": "result.groups",
+          "label": "{{group.label}}",
+          "rows": {
+            "path": "group.rows",
+            "id": "row.id",
+            "name": "{{row.name}}",
+            "tag": "{{row.state}}",
+            "cells": {
+              "planned": "row.plannedMinutes",
+              "real": "row.realMinutes"
+            }
+          }
+        },
+        "tot": {
+          "path": "result.totals",
+          "k": "{{item.k}}",
+          "v": "{{item.text}}"
+        },
+        "notes": {
+          "path": "result.notInNumbers",
+          "text": "{{item.text}}"
+        }
       }
     },
     "task_time_correct": {

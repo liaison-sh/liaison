@@ -4,6 +4,7 @@
 // agent's tools, the MCP gateway and the app reach, on the real database.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
@@ -16,6 +17,8 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
+import { seedContext } from "~/seed/context"
+import { seedThreadHistory } from "~/seed/factories/threads/history"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -83,9 +86,9 @@ async function newTask(projectId: string, title: string): Promise<string> {
 
 async function said(userId: string, text: string): Promise<string> {
   const threadId = await minimal.thread(orgId, userId)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.messages (thread_id, org_id, author_id, author_type, content, required_scopes)
-    VALUES (${threadId}::uuid, ${orgId}::uuid, ${userId}::uuid, 'user', ${text}, '{}')`)
+  await seedThreadHistory(seedContext({ orgId, now: new Date() }), [
+    { key: `said-${randomUUID()}`, threadId, actor: actorOf(userId), body: text, at: new Date() },
+  ])
   return threadId
 }
 

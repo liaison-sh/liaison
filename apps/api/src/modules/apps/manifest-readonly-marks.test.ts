@@ -57,6 +57,7 @@ const READ_ONLY: Record<string, string[]> = {
     "get",
     "comments",
     "task_time_get",
+    "budget_get",
     "tasks_byAssignee",
     "attentionItems",
     "tasks_byProject",

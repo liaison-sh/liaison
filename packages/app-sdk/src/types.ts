@@ -1000,16 +1000,12 @@ export interface AppContext {
      * its payload describes changed. `fields` maps payload paths to new values. Recorded sign-offs
      * reset and the approval's thread gets one note (`note`, or one naming the app and the fields).
      * Another app's approval answers `forbidden`; a decided, expired or withdrawn one `not_pending`.
+     * The card is rebuilt from the new payload by the tool's own summarizer.
      */
     restagePayload(
       approvalId: string,
       fields: Record<string, unknown>,
       note?: string,
-      /**
-       * What the card reads after the change (headline, subtitle, lines), written with the
-       * payload so the card follows in the same update instead of after a summary rebuild.
-       */
-      summary?: { title?: string; subtitle?: string; lines?: string[] },
     ): Promise<RestagePayloadResult>
   }
   /**

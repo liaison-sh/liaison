@@ -10,7 +10,7 @@
 import { mintRunSendGrants } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
-import { runCardLines, runCardSummary } from "../summarizers"
+import { runCardLines } from "../summarizers"
 import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import { addDays, weekdayOf } from "./schedule"
@@ -26,7 +26,6 @@ export interface RunApprovals {
     approvalId: string,
     fields: Record<string, unknown>,
     note?: string,
-    summary?: { title?: string; subtitle?: string; lines?: string[] },
   ): Promise<unknown>
   statusOf?(approvalRequestId: string): Promise<unknown>
 }
@@ -265,7 +264,6 @@ export async function stageRunCard(
       existing,
       { items, period },
       "The month-end run's rows changed.",
-      runCardSummary(items, period),
     )) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
   }

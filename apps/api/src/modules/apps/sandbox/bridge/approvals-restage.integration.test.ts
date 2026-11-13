@@ -11,7 +11,7 @@ import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { approvalSummarizerRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -229,46 +229,58 @@ describe("an app restages its own approval", () => {
     expect(String(note?.content)).toContain("Row a changed to 2.50")
   })
 
-  it("the summary an app gives with its restage is on the row when the restage returns, with its kind kept", async () => {
-    const id = await stageRow()
-    const res = JSON.parse(
-      await methods(APP).approvals_restagePayload!(
-        id,
-        JSON.stringify({ items: [{ item: "a", total: 250 }] }),
-        "Row a changed",
-        JSON.stringify({
-          title: "Issue 1 invoice for March",
-          lines: ["Total: 2.50 EUR incl. VAT"],
-        }),
-      ),
-    ) as { ok: boolean }
-    expect(res.ok).toBe(true)
-    const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
-    expect(row?.summary).toEqual({
-      kind: "run_issue",
-      title: "Issue 1 invoice for March",
-      lines: ["Total: 2.50 EUR incl. VAT"],
+  it("after an app restages its approval the card is rebuilt from the new payload, never from the app's own text", async () => {
+    approvalSummarizerRegistry.set([ORG, APP, "run_issue"], async (params) => {
+      const items = (params as { items?: Array<{ total: number }> }).items ?? []
+      return {
+        kind: "run_issue",
+        title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"}`,
+        lines: items.map((i) => `Total ${i.total}`),
+      }
     })
+    try {
+      const id = await stageRow()
+      const res = JSON.parse(
+        await methods(APP).approvals_restagePayload!(
+          id,
+          JSON.stringify({ items: [{ item: "a", total: 250 }] }),
+          "Row a changed",
+          JSON.stringify({
+            title: "Refund everything",
+            lines: ["Card 4242 4242 4242 4242, refund 50 EUR"],
+          }),
+        ),
+      ) as { ok: boolean }
+      expect(res.ok).toBe(true)
+      const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row?.summary).toEqual({
+        kind: "run_issue",
+        title: "Issue 1 invoice",
+        lines: ["Total 250"],
+      })
+    } finally {
+      approvalSummarizerRegistry.delete([ORG, APP, "run_issue"])
+    }
   })
 
-  it("a summary that is not valid is dropped and the restage still stores the payload", async () => {
-    const id = await stageRow()
-    const res = JSON.parse(
-      await methods(APP).approvals_restagePayload!(
-        id,
-        JSON.stringify({ items: [{ item: "a", total: 7 }] }),
-        "Row a changed",
-        JSON.stringify({ title: "x".repeat(500), lines: [] }),
-      ),
-    ) as { ok: boolean }
-    expect(res.ok).toBe(true)
-    expect((await readRow(id)).current_payload).toEqual({
-      run_id: "run-1",
-      items: [{ item: "a", total: 7 }],
-    })
-    const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
-    const title = (row?.summary as { title: string } | undefined)?.title ?? ""
-    expect(title.length).toBeLessThanOrEqual(200)
+  it("a card rebuilt after a restage masks a card number its summarizer wrote", async () => {
+    approvalSummarizerRegistry.set([ORG, APP, "run_issue"], async () => ({
+      kind: "run_issue",
+      title: "Refund",
+      lines: ["Card 4242 4242 4242 4242, refund 50 EUR"],
+    }))
+    try {
+      const id = await stageRow()
+      const res = await restage(APP, id, { items: [{ item: "a", total: 9 }] })
+      expect(res.ok).toBe(true)
+      const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+      const text = JSON.stringify(row?.summary)
+      expect(text).toContain("refund 50 EUR")
+      expect(text).not.toContain("4242 4242 4242 4242")
+      expect(text.replace(/\D/g, "")).not.toContain("4242424242424242")
+    } finally {
+      approvalSummarizerRegistry.delete([ORG, APP, "run_issue"])
+    }
   })
 
   it("a deferred approval is restaged as a pending one is", async () => {

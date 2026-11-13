@@ -1,0 +1,1 @@
+Share app performance switch, needs registration, See what is sent -> apps/web/src/modules/settings/LiaisonTeamSection.tsx (LiaisonTeamSection, showPreview) ; packages/shared/src/i18n/locales/en/kernel.json (liaisonTeam.performanceHelp)

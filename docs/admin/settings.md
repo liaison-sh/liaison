@@ -185,11 +185,12 @@ A value that is missing never prints a default: it prints as a grey placeholder.
 
 ### Share with the Liaison team
 
-The **Liaison team** section of **Settings › System** has three switches, all off until an admin turns them on. Nothing is sent before that.
+The **Liaison team** section of **Settings › System** has four switches, all off until an admin turns them on. Nothing is sent before that.
 
 - **Register this server with the Liaison team** sends the Liaison version, the edition, the number of active users and a random server id, once and then once a day. It sends no domain, email address or name.
 - **Allow sending bug reports to the Liaison team** can be turned on only while registration is on.
 - **Send bug reports only to the Liaison team** can be turned on only while bug report forwarding is on. Reports from the organization that runs the server are then not filed in a local inbox; each one still shows exactly what is sent, with the reporter's email.
+- **Share app performance with the Liaison team** can be turned on only while registration is on. It sends app run numbers once an hour (run counts, times, timeouts and errors per app and lane, how busy the sandbox was), with no names of organizations or people, no content and no custom app names. **See what is sent** shows the report exactly as it would be sent now.
 
 Below the switches, **State** reads Off, Registering, Registered, Leaving or Error; on an error it shows the last error. The admins of the organization that runs the server also see the server id and, when messages are waiting, failed or expired, how many. On a shared server (demo or managed), other organizations' admins see the switches but cannot change them. If the server is set up without a Liaison team endpoint, the section says sharing is not available. The full list of what is sent, how it is delivered and how to turn it off is in [Share with the Liaison team](../self-hosting/liaison-team.md).
 

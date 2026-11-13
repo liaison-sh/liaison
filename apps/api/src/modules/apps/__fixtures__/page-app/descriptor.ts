@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// `pagefx`: a test-only SANDBOXED app (trusted: false) with a page and the route
+// `pagefx`: a test-only sandboxed (non-core) app with a page and the route
 // it calls, a tool that mints a link to the page (`ctx.pages.link`), declarative
 // provisioning, and two oauth2 connections sharing one client key. Registered
 // per test org with `registerApps`.
@@ -9,7 +9,6 @@ export const PAGE_FX_APP = "pagefx"
 export const pageFixtureManifest = {
   name: PAGE_FX_APP,
   version: "1.0.0",
-  trusted: false,
   kind: "app",
   description: "App pages, routes and provisioning fixture",
   displayName: "Page fixture",

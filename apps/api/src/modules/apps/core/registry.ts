@@ -40,6 +40,10 @@ export const CORE_APP_MODULES: Readonly<Record<string, CoreAppModule>> = {
     modulePath: appsDir("tickets/handlers.ts"),
     load: () => import("~/apps/tickets/handlers"),
   },
+  knowledge: {
+    modulePath: appsDir("knowledge/handlers.ts"),
+    load: () => import("~/apps/knowledge/handlers"),
+  },
   "mcp-manager": {
     modulePath: appsDir("mcp-manager/handlers.ts"),
     load: () => import("~/apps/mcp-manager/handlers"),

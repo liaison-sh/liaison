@@ -1,25 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Knowledge sandbox handlers — each handler dispatches to a Node-side bridge
-// method exposed via knowledge_*. The bridge lives in the kernel app-runtime
-// and is responsible for `withRlsContext` setup + calling the appropriate
-// service-layer function.
-// biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
+// Knowledge handlers: a core app's server module (modules/apps/core/registry.ts).
+// Every handler the manifest names is a named export `(params, ctx)`, imported
+// and called in the API process with a typed host ctx (modules/apps/core/ctx.ts):
+// the run's bridge methods, called directly. Each handler dispatches to a
+// `knowledge_*` host method, which sets up the RLS context and calls the
+// service layer.
 
-// Type-only import forces TypeScript to treat this file as a module (so its
-// top-level function names don't collide with another app's handlers in the
-// shared global type scope). Bun's transpiler strips the import at bundle
-// time, so the QuickJS runtime still sees pure script-mode source where the
-// function declarations auto-promote to global as expected.
-import type {} from "node:buffer"
+import { csvCell } from "@liaison/shared"
+import type { CoreCtx } from "~/modules/apps/core/ctx"
 
-interface KnowledgeSandboxActor {
-  orgId: string
-  userId: string
-  scopes: string[]
-  dimensionGrants: Record<string, string[]>
-}
-
-interface KnowledgeSandboxCtx {
+export interface KnowledgeMethods {
   knowledge_search: (paramsJson: string) => Promise<string>
   knowledge_get: (paramsJson: string) => Promise<string>
   knowledge_find_by_title: (paramsJson: string) => Promise<string>
@@ -45,12 +35,12 @@ interface KnowledgeSandboxCtx {
    *  ingestion path (the caller declares it in cross_app_calls and the pair is a kernel
    *  ingestion); "" for everything else, a direct call included. */
   getIngestionCallerApp?: () => string | Promise<string>
-  actor?: KnowledgeSandboxActor
   /** K6 handler-conditional gating: park this call behind a human approval. */
   requestApproval?: (inputJson: string) => Promise<string>
-  /** K6 post-approval re-entry signal (populated on the kernel's re-invocation). */
-  approval?: { approvalRequestId: string; approvalDeciderId: string; toolName: string } | null
 }
+
+/** `ctx.approval` is the K6 post-approval re-entry signal (null on a first entry). */
+type KnowledgeCtx = CoreCtx<KnowledgeMethods>
 
 // ── Org-wide write gating (handler-conditional, tighten-only) ─────────────────
 //
@@ -72,7 +62,7 @@ function truncateForCard(v: unknown, max = 140): string {
  *  readable not_found — gating an unreadable target would only stage a
  *  doomed approval). */
 async function documentScopeOf(
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
   id: unknown,
 ): Promise<"personal" | "organization" | null> {
   if (typeof id !== "string" || id === "") return null
@@ -95,7 +85,7 @@ async function documentScopeOf(
  * caller carries on and writes.
  */
 async function parkForApproval(
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
   input: {
     tool_name: string
     summary: string
@@ -140,18 +130,7 @@ const KNOWLEDGE_EXPORT_COLUMNS: Array<[string, string]> = [
   ["createdAt", "created_at"],
 ]
 
-function knowledgeCsvCell(value: unknown): string {
-  let s = value === null || value === undefined ? "" : String(value)
-  // Spreadsheet formula injection: a leading = + - @ tab or CR makes the cell a formula, so prefix a
-  // single quote (plain numbers like "-5000" stay numeric). Verbatim copy of @liaison/shared csvCell.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`
-  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
-async function exportKnowledge(params: unknown, ctx: KnowledgeSandboxCtx): Promise<unknown> {
+export async function exportKnowledge(params: unknown, ctx: KnowledgeCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const format = p.format ?? "json"
   const dateRange = p.dateRange as { from?: string; to?: string } | undefined
@@ -186,41 +165,40 @@ async function exportKnowledge(params: unknown, ctx: KnowledgeSandboxCtx): Promi
   if (format === "csv") {
     const header = KNOWLEDGE_EXPORT_COLUMNS.map(([k]) => k).join(",")
     const body = projected
-      .map((r) => KNOWLEDGE_EXPORT_COLUMNS.map(([k]) => knowledgeCsvCell(r[k])).join(","))
+      .map((r) => KNOWLEDGE_EXPORT_COLUMNS.map(([k]) => csvCell(r[k])).join(","))
       .join("\n")
     return body ? `${header}\n${body}\n` : `${header}\n`
   }
   return projected
 }
 
-async function search(
+export async function search(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_search(JSON.stringify(params ?? {})))
 }
 
-async function get(
+export async function get(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_get(JSON.stringify(params ?? {})))
 }
 
 // find_by_title (U5.8) — DB-backed exact-title lookup, no search index. See
 // agent-tools.ts's handleKnowledgeFindByTitle for the read-authorization contract.
-async function find_by_title(
+export async function find_by_title(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_find_by_title(JSON.stringify(params ?? {})))
 }
 
 /** The caller app when the KERNEL recognises this dispatch as an ingestion path, "" otherwise.
- *  Awaited because the out-of-process sandbox reaches the bridge over IPC; in process the same
- *  call answers synchronously. Fails closed: a bridge that does not answer it gates the create
+ *  Awaited: the bridge may answer it synchronously or not. Fails closed: a bridge that does not answer it gates the create
  *  exactly as an agent-initiated one. */
-async function ingestionCallerOf(ctx: KnowledgeSandboxCtx): Promise<string> {
+async function ingestionCallerOf(ctx: KnowledgeCtx): Promise<string> {
   if (typeof ctx.getIngestionCallerApp !== "function") return ""
   try {
     const v = await ctx.getIngestionCallerApp()
@@ -230,9 +208,9 @@ async function ingestionCallerOf(ctx: KnowledgeSandboxCtx): Promise<string> {
   }
 }
 
-async function create(
+export async function create(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   const p = params ?? {}
   // Org-scoped create (documentScope omitted defaults to organization in the
@@ -284,9 +262,9 @@ async function create(
   return JSON.parse(await ctx.knowledge_create(JSON.stringify(p)))
 }
 
-async function update(
+export async function update(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   const p = params ?? {}
   if (!ctx.approval) {
@@ -324,9 +302,9 @@ async function update(
 // knowledge:documents:archive (enforced in the bridge + archiveKnowledgeDocument).
 // Lets the agent cleanly retire a wrong/superseded/duplicate doc instead of
 // fabricating an '[ARCHIVED]' stub.
-async function archive(
+export async function archive(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   const p = params ?? {}
   if (!ctx.approval) {
@@ -348,75 +326,71 @@ async function archive(
 }
 
 // restore — un-archive a previously-archived document. No-op if already active.
-async function restore(
+export async function restore(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_restore(JSON.stringify(params ?? {})))
 }
 
-async function collection_create(
+export async function collection_create(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_collection_create(JSON.stringify(params ?? {})))
 }
 
-async function collection_update(
+export async function collection_update(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_collection_update(JSON.stringify(params ?? {})))
 }
 
-async function collection_delete(
+export async function collection_delete(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_collection_delete(JSON.stringify(params ?? {})))
 }
 
-async function add_to_collection(
+export async function add_to_collection(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_add_to_collection(JSON.stringify(params ?? {})))
 }
 
-async function remove_from_collection(
+export async function remove_from_collection(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_remove_from_collection(JSON.stringify(params ?? {})))
 }
 
-async function computeAttentionItems(
+export async function computeAttentionItems(
   _params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
-  return JSON.parse(
-    await ctx.knowledge_attentionItems(JSON.stringify({ actor: ctx.actor ?? null })),
-  )
+  return JSON.parse(await ctx.knowledge_attentionItems("{}"))
 }
 
 // review_queue — read-only surfacing of needs_review/stale/owner-missing/expired
 // knowledge items. Returns `{ items }` so callers (and the I1 test) can read a
 // stable shape; reuses the already-wired attention substrate.
-async function reviewQueue(
+export async function reviewQueue(
   _params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
-  const items = JSON.parse(
-    await ctx.knowledge_attentionItems(JSON.stringify({ actor: ctx.actor ?? null })),
-  )
+  const items = JSON.parse(await ctx.knowledge_attentionItems("{}"))
   return { items }
 }
 
 // verify — flips a document (or source link) to reviewStatus 'verified'. Gated
 // behind knowledge:documents:update (enforced in the bridge + verifySourceLink).
-async function verify(
+export async function verify(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_verify(JSON.stringify(params ?? {})))
 }
@@ -425,9 +399,9 @@ async function verify(
 // oneShot:true harvests once then archives the source (one-time bulk import);
 // otherwise it stays connected for recurring sync. Gated behind
 // knowledge:sources:manage for organization scope (enforced in createSyncedSource).
-async function addFolderSource(
+export async function addFolderSource(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_addFolderSource(JSON.stringify(params ?? {})))
 }
@@ -439,46 +413,21 @@ async function addFolderSource(
 // freezes a local document copy. Gated behind knowledge:links:create (enforced in
 // the bridge + linkRemoteDocument). The remote is re-probed before the write, so
 // a link can only be registered for a doc that actually exists/is visible.
-async function source_link_create(
+export async function source_link_create(
   params: Record<string, unknown> | undefined,
-  ctx: KnowledgeSandboxCtx,
+  ctx: KnowledgeCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_source_link_create(JSON.stringify(params ?? {})))
 }
 
-// Handlers are resolved by name at sandbox runtime (no module exports needed).
-// QuickJS evaluates the bundle in script mode, so top-level `export {…}` is
-// rejected by the parser and breaks the whole bundle. Named function
-// declarations at top level auto-promote to the global scope, so the manifest
-// resolver can find them without explicit `globalThis.X = …` binding.
-void [
-  search,
-  get,
-  create,
-  update,
-  archive,
-  restore,
-  collection_create,
-  collection_update,
-  collection_delete,
-  add_to_collection,
-  remove_from_collection,
-  computeAttentionItems,
-  reviewQueue,
-  verify,
-  addFolderSource,
-  source_link_create,
-  exportKnowledge,
-]
-
 // The settings page's synced sources list (tools synced_sources.list /
 // archive / run_now), the same data and checks as /api/knowledge/synced-sources.
-async function syncedSourcesList(_params: unknown, ctx: KnowledgeSandboxCtx): Promise<unknown> {
+export async function syncedSourcesList(_params: unknown, ctx: KnowledgeCtx): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_syncedSources("list", "{}"))
 }
-async function syncedSourcesArchive(params: unknown, ctx: KnowledgeSandboxCtx): Promise<unknown> {
+export async function syncedSourcesArchive(params: unknown, ctx: KnowledgeCtx): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_syncedSources("archive", JSON.stringify(params ?? {})))
 }
-async function syncedSourcesRunNow(params: unknown, ctx: KnowledgeSandboxCtx): Promise<unknown> {
+export async function syncedSourcesRunNow(params: unknown, ctx: KnowledgeCtx): Promise<unknown> {
   return JSON.parse(await ctx.knowledge_syncedSources("run_now", JSON.stringify(params ?? {})))
 }

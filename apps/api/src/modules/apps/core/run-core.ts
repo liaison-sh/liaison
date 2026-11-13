@@ -45,16 +45,24 @@ export interface RunFence {
 /** The bridge, with each method refusing once the fence is down. */
 function fencedBridge(bridge: Bridge, fence: RunFence | undefined): Bridge {
   if (!fence) return bridge
-  return new Proxy(bridge, {
-    get(target, key) {
-      const value = Reflect.get(target, key, target)
-      if (typeof value !== "function") return value
-      return (...args: unknown[]) => {
-        if (fence.stopped) throw fence.stopped
-        return value.apply(target, args)
-      }
-    },
-  })
+  const fenced: Bridge = {}
+  for (let o: object | null = bridge; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const key of Reflect.ownKeys(o)) {
+      if (key === "constructor" || Object.hasOwn(fenced, key)) continue
+      const value = (bridge as Record<PropertyKey, unknown>)[key]
+      Object.defineProperty(fenced, key, {
+        enumerable: typeof key === "string",
+        value:
+          typeof value === "function"
+            ? (...args: unknown[]) => {
+                if (fence.stopped) throw fence.stopped
+                return (value as (...a: unknown[]) => unknown)(...args)
+              }
+            : value,
+      })
+    }
+  }
+  return fenced
 }
 
 /** The ctx of a run: the bridge's methods, `approval`, and `transaction`. */

@@ -67,6 +67,14 @@ export interface SearchParams {
 
 export interface MentionSearchParams extends SearchParams {
   type?: MentionType
+  /**
+   * Restrict to one app's entities (and optionally one entity type), in the
+   * engine query. A picker for one kind of record passes it rather than
+   * filtering a mixed top-N afterwards, which a common word fills with
+   * other records.
+   */
+  app?: string
+  entityType?: string
 }
 
 export interface PageSearchParams {
@@ -1057,17 +1065,23 @@ export async function globalSearch(params: SearchParams): Promise<GlobalSearchRe
     externalCursors: {},
   }
 
-  const result = await executeSearch(
-    {
-      orgId: params.orgId,
-      userId: params.userId,
-      scopes: params.scopes,
-      dimensionGrants: params.dimensionGrants,
-      roleIds: params.roleIds,
-    },
-    {
+  const actor = {
+    orgId: params.orgId,
+    userId: params.userId,
+    scopes: params.scopes,
+    dimensionGrants: params.dimensionGrants,
+    roleIds: params.roleIds,
+  }
+  // Two windows, read in parallel: the people and threads buckets, and every
+  // other record. One shared top 50 let a word common in mail or tickets (a
+  // company's own product name) fill the window and empty the contacts,
+  // people and threads buckets although they had matches.
+  const bucketTypes = quoteList(["thread", "user", "contact"])
+  const [result, bucketResult] = await Promise.all([
+    executeSearch(actor, {
       q: params.q,
       limit: 50,
+      typeClause: `entity_type NOT IN ${bucketTypes}`,
       includeExternal: true,
       externalArgs: {
         externalCursors: params.externalCursors,
@@ -1076,10 +1090,18 @@ export async function globalSearch(params: SearchParams): Promise<GlobalSearchRe
       },
       projection: "hits",
       dedupe: true,
-    },
-  )
+    }),
+    executeSearch(actor, {
+      q: params.q,
+      limit: 50,
+      typeClause: `entity_type IN ${bucketTypes}`,
+      includeExternal: false,
+      projection: "hits",
+      dedupe: true,
+    }),
+  ])
 
-  const internalHits: SearchHit[] = result.hits.map((h) => ({
+  const internalHits: SearchHit[] = [...bucketResult.hits, ...result.hits].map((h) => ({
     ...h,
     id: (h.entity_id ?? h.id) as string,
     source: h.source ?? "internal",
@@ -1087,7 +1109,12 @@ export async function globalSearch(params: SearchParams): Promise<GlobalSearchRe
 
   const grouped: GlobalSearchResponse = { ...empty }
   const limit = Math.min(Math.max(params.limit, 1), 20)
+  // A fragment answers as its parent, so one record can reach both windows.
+  const bucketed = new Set<string>()
   for (const hit of internalHits) {
+    const bucketKey = `${hit.entity_type}\0${hit.id}`
+    if (bucketed.has(bucketKey)) continue
+    bucketed.add(bucketKey)
     if (hit.entity_type === "thread") {
       if (grouped.threads.length < limit) {
         grouped.threads.push({
@@ -1164,6 +1191,70 @@ export async function globalSearch(params: SearchParams): Promise<GlobalSearchRe
   }
   grouped.externalCursors = result.externalCursors
   return grouped
+}
+
+// ---------------------------------------------------------------------------
+// scopedEntitySearch — one app's own entities, filtered IN the engine.
+// ---------------------------------------------------------------------------
+
+export interface ScopedEntitySearchParams {
+  orgId: string
+  userId: string
+  scopes: string[]
+  dimensionGrants?: Record<string, string[]>
+  /** See {@link SearchParams.roleIds}. */
+  roleIds?: string[]
+  q: string
+  app: string[]
+  entityType: string[]
+  limit: number
+  offset?: number
+}
+
+/**
+ * The ranked internal hits of the given app(s) and entity type(s), through the
+ * same permission filter and post-filters as every other surface.
+ *
+ * A surface that searches ONE kind of record must narrow the query to it in
+ * the engine, never take the top N of the whole index and filter afterwards:
+ * a term common in mail or contacts (a company's own product name) fills that
+ * window with other records, and the surface reports nothing although
+ * hundreds of its records match. Internal only (no external fan-out).
+ */
+export async function scopedEntitySearch(
+  params: ScopedEntitySearchParams,
+): Promise<SearchResponseEntity[]> {
+  if (params.app.length === 0 || params.entityType.length === 0) return []
+  const result = await executeSearch(
+    {
+      orgId: params.orgId,
+      userId: params.userId,
+      scopes: params.scopes,
+      dimensionGrants: params.dimensionGrants,
+      roleIds: params.roleIds,
+    },
+    {
+      q: params.q,
+      limit: params.limit,
+      offset: params.offset,
+      entityScope: { app: params.app, entityType: params.entityType },
+      includeExternal: false,
+      projection: "hits",
+      dedupe: true,
+    },
+  )
+  return result.hits.map((h) => {
+    const id = (h.entity_id ?? h.id) as string
+    return {
+      id,
+      app: h.app,
+      entityType: h.entity_type,
+      label: (h.title as string | null) ?? (h.handle as string | null) ?? id,
+      title: (h.title as string | null) ?? null,
+      handle: (h.handle as string | null) ?? null,
+      source: h.source ?? "internal",
+    }
+  })
 }
 
 export interface MentionHit {
@@ -1357,6 +1448,10 @@ export async function mentionSearch(input: MentionSearchParams): Promise<Mention
       limit,
       mentionableOnly: true,
       typeClause,
+      entityScope: {
+        app: params.app ? [params.app] : undefined,
+        entityType: params.entityType ? [params.entityType] : undefined,
+      },
       includeExternal: false,
       projection: "hits",
       dedupe: true,
@@ -1383,6 +1478,8 @@ export async function mentionSearch(input: MentionSearchParams): Promise<Mention
       orderRegistrationsForMentionType(params.type, regs.entities),
       limit - hits.length,
     )) {
+      if (params.app && hit.app !== params.app) continue
+      if (params.entityType && (hit.entityType ?? hit.type) !== params.entityType) continue
       const key = `${hit.app}:${hit.entityType}:${hit.id}`
       if (!seen.has(key)) hits.push(hit)
     }
@@ -1545,6 +1642,8 @@ export async function resolveMailConversationMatches(
 
 /** Past this many rooms the thread clause is dropped (the DB re-read still gates). */
 const MAX_THREAD_CLAUSE_IDS = 2000
+/** Pages of 200 read at most when the rooms are narrowed after the engine. */
+const THREAD_MESSAGE_MAX_PAGES = 5
 
 export interface ThreadMessageMatchArgs {
   orgId: string
@@ -1590,17 +1689,29 @@ export async function resolveThreadMessageMatches(args: ThreadMessageMatchArgs):
         await disclosedThreadIdsFor(args.orgId, args.userId),
       )
   if (scopeClause) clauses.push(scopeClause)
-  const res = await callMeili(clauses.join(" AND "), q, {
-    limit: Math.min(Math.max(args.limit, 1), 200),
-    attributesToRetrieve: ["entity_id"],
-    // Every word must appear, the closest a token index gets to the substring
-    // match this replaces.
-    matchingStrategy: "all",
-  })
+  const limit = Math.min(Math.max(args.limit, 1), 200)
+  // Past the clause cap the engine cannot narrow to the caller's rooms, so the
+  // window is read in pages and narrowed here: a top-N of every room's
+  // messages would otherwise be filled by rooms the caller is not in.
+  const inRooms = args.threadIds.length > MAX_THREAD_CLAUSE_IDS ? new Set(args.threadIds) : null
+  const pageSize = inRooms ? 200 : limit
   const ids: string[] = []
-  for (const h of res.hits) {
-    const id = h.entity_id
-    if (typeof id === "string" && MESSAGE_ID_RE.test(id) && !ids.includes(id)) ids.push(id)
+  for (let page = 0; page < (inRooms ? THREAD_MESSAGE_MAX_PAGES : 1); page++) {
+    const res = await callMeili(clauses.join(" AND "), q, {
+      limit: pageSize,
+      offset: page * pageSize,
+      attributesToRetrieve: inRooms ? ["entity_id", "thread_id"] : ["entity_id"],
+      // Every word must appear, the closest a token index gets to the substring
+      // match this replaces.
+      matchingStrategy: "all",
+    })
+    for (const h of res.hits) {
+      const id = h.entity_id
+      if (inRooms && !(typeof h.thread_id === "string" && inRooms.has(h.thread_id))) continue
+      if (typeof id === "string" && MESSAGE_ID_RE.test(id) && !ids.includes(id)) ids.push(id)
+      if (ids.length >= limit) return ids
+    }
+    if (res.hits.length < pageSize) break
   }
   return ids
 }

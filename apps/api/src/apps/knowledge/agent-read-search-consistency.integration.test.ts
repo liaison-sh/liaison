@@ -152,28 +152,22 @@ afterAll(releaseTestLock)
 
 /** The index answers with both documents, whatever the reader may open. */
 function indexReturnsBoth(): void {
-  searchSpy = spyOn(searchService, "globalSearch").mockResolvedValue({
-    threads: [],
-    users: [],
-    contacts: [],
-    externalCursors: {},
-    entities: [
-      {
-        id: sharedId,
-        app: "knowledge",
-        entityType: "document",
-        label: sharedTitle,
-        title: sharedTitle,
-      },
-      {
-        id: hiddenId,
-        app: "knowledge",
-        entityType: "document",
-        label: hiddenTitle,
-        title: hiddenTitle,
-      },
-    ],
-  })
+  searchSpy = spyOn(searchService, "scopedEntitySearch").mockResolvedValue([
+    {
+      id: sharedId,
+      app: "knowledge",
+      entityType: "document",
+      label: sharedTitle,
+      title: sharedTitle,
+    },
+    {
+      id: hiddenId,
+      app: "knowledge",
+      entityType: "document",
+      label: hiddenTitle,
+      title: hiddenTitle,
+    },
+  ])
 }
 
 describe("knowledge agent tools: search and read agree", () => {
@@ -234,13 +228,7 @@ describe("knowledge agent tools: search and read agree", () => {
 
   it("a search that finds nothing tells the agent to retry in the documents' language", async () => {
     // Keyword search: the French words are in no English document.
-    searchSpy = spyOn(searchService, "globalSearch").mockResolvedValue({
-      threads: [],
-      users: [],
-      contacts: [],
-      externalCursors: {},
-      entities: [],
-    })
+    searchSpy = spyOn(searchService, "scopedEntitySearch").mockResolvedValue([])
     const miss = await asReaderAgent<{ hits: unknown[]; note?: string }>((b) =>
       b.knowledge_search!(JSON.stringify({ query: "marge brute T3", filters: { sources: [] } })),
     )

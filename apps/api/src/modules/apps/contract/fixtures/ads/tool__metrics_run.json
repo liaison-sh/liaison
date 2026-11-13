@@ -13,7 +13,7 @@
         "shopify:orders_search",
         "{\"created_at_min\":\"2025-12-01\",\"created_at_max\":\"2025-12-31\",\"limit\":50}"
       ],
-      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[{\"id\":\"gid://shopify/Order/5800000000001\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"378.00\",\"totalAmountShop\":\"378.00\",\"shopCurrency\":\"EUR\",\"tags\":[],\"b2bOrder\":{\"b2b\":false},\"lineItems\":[{\"sku\":\"BT-120-ANT\",\"quantity\":2}]}},{\"id\":\"gid://shopify/Order/5800000000002\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"1240.00\",\"totalAmountShop\":\"1240.00\",\"shopCurrency\":\"EUR\",\"tags\":[\"b2b\"],\"b2bOrder\":{\"b2b\":true},\"lineItems\":[{\"sku\":\"BT-120-ANT-B2B\",\"quantity\":8}]}}],\"nextCursor\":null,\"totalCount\":2}}"
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[{\"id\":\"gid://shopify/Order/5800000000001\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"378.00\",\"totalAmountShop\":\"378.00\",\"shopCurrency\":\"EUR\",\"tags\":[],\"b2bOrder\":{\"b2b\":false},\"lineItems\":[{\"sku\":\"SKU-C43C97D8\",\"quantity\":2}]}},{\"id\":\"gid://shopify/Order/5800000000002\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"1240.00\",\"totalAmountShop\":\"1240.00\",\"shopCurrency\":\"EUR\",\"tags\":[\"b2b\"],\"b2bOrder\":{\"b2b\":true},\"lineItems\":[{\"sku\":\"SKU-E6332743\",\"quantity\":8}]}}],\"nextCursor\":null,\"totalCount\":2}}"
     },
     {
       "method": "executeTool",
@@ -26,7 +26,7 @@
     {
       "method": "db_findMany",
       "args": ["manual_spend", "{}"],
-      "reply": "[{\"id\":\"40412677-1515-4d32-9a46-4f2783e3f03b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.213559+00\",\"updated_at\":\"2026-11-12 10:16:46.213559+00\",\"channel\":\"print\",\"site\":\"Studio magazine\",\"period_start\":\"2025-12-01 00:00:00+00\",\"period_end\":\"2025-12-31 00:00:00+00\",\"amount\":450,\"currency\":\"EUR\",\"notes\":\"Half-page ad, January issue\",\"created_by\":\"agent\"}]"
+      "reply": "[{\"id\":\"37318e4d-27a9-4f8c-9a02-983ea244b9c7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.078142+00\",\"updated_at\":\"2026-11-13 01:32:41.078142+00\",\"channel\":\"print\",\"site\":\"Studio magazine\",\"period_start\":\"2025-12-01 00:00:00+00\",\"period_end\":\"2025-12-31 00:00:00+00\",\"amount\":450,\"currency\":\"EUR\",\"notes\":\"Half-page ad, January issue\",\"created_by\":\"agent\"}]"
     },
     {
       "method": "executeTool",
@@ -42,7 +42,7 @@
         "ads:google_insights_query",
         "{\"query\":\"SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '2025-12-01' AND '2025-12-31'\"}"
       ],
-      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"google_not_connected\",\"message\":\"Google not connected: connect the Google account (adwords + content scopes) in app settings\",\"retryable\":false}}"
+      "reply": "{\"status\":\"completed\",\"result\":{\"rows\":[{\"campaign\":{\"resourceName\":\"customers/1234567890/campaigns/21000000001\",\"id\":\"21000000001\",\"name\":\"Search – acoustic panels FR\",\"status\":\"ENABLED\",\"advertisingChannelType\":\"SEARCH\"},\"campaignBudget\":{\"resourceName\":\"customers/1234567890/campaignBudgets/13000000001\",\"amountMicros\":\"25000000\"},\"metrics\":{\"clicks\":318,\"impressions\":9120,\"costMicros\":\"214350000\",\"conversions\":11,\"cost\":214.35},\"segments\":{\"date\":\"2025-12-31\"},\"cost\":214.35}],\"count\":1,\"currency\":null}}"
     }
   ]
 }

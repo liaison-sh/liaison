@@ -15,9 +15,8 @@
 // capture is rejected too). A payload with no parseable signed `ts` is
 // REJECTED. TTL override: apps.config key `callsWebhookTtlSeconds`.
 //
-// The bundle runs inside QuickJS (no `node:crypto`): digest and compare go
-// through the host `crypto_hmacSha256Base64` / `crypto_timingSafeEqual`
-// bridges. This file MUST NOT import `node:*`; the pure-node test helper lives
+// The bundle runs in the sandbox (no `node:crypto`) and never holds the
+// secret: the host checks the signature with it (`crypto_verifyHmacForConfig`). This file MUST NOT import `node:*`; the pure-node test helper lives
 // in @liaison/test-helpers/webhook-hmac.
 
 import {
@@ -66,7 +65,7 @@ export const HANDLER_SCOPES = [
  * serialized request descriptor and expects `{ ok, replayKey, replayTtlSeconds }`
  * (apps/api/src/modules/webhooks/verification.ts). The signing secret is the
  * kernel-minted `callsWebhookSecret` (minted when the `transcript-source`
- * connection is established), read via the sandbox `config_get` bridge.
+ * connection is established), used host-side only (the verifier names its key).
  */
 export async function callsWebhookVerifier(
   params: {

@@ -100,3 +100,4 @@ large insights read = daily series below account level or no date range -> bundl
 first call answers not ready and starts the report -> bundled-apps/ads/src/reads.ts:153
 same question resumes the stored report run, rows once finished -> bundled-apps/ads/src/insights-report.ts:142
 report older than an hour dropped and started again -> bundled-apps/ads/src/insights-report.ts:30
+Tokens added host-side to Meta and Google requests, ids read as readable settings -> bundled-apps/ads/src/lib/get-client.ts (getMetaClient) ; bundled-apps/ads/src/lib/google-config.ts (getGoogleConfig, getGoogleAuth) ; bundled-apps/ads/src/lib/meta-client.ts (META_AUTH)

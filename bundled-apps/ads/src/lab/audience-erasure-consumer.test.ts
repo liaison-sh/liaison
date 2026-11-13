@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { hashIdentifier } from "../lib/hash-identifier"
+import { oneAccount, settingsFor } from "../test-connections.testutil"
 import { createMockDb } from "../test-db"
 import { audience_erasure_sweep } from "./audience-erasure-consumer"
 
@@ -63,7 +65,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -85,7 +89,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -127,7 +133,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -183,15 +191,18 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
-      google: { getToken: async () => "oauth_tok" },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
+      google: { getAccounts: async () => oneAccount() },
       "google-config": {
-        getCredentials: async () => ({
-          developerToken: "dev_tok",
-          loginCustomerId: "1112223333",
-          customerId: "1234567890",
-          merchantId: "mc_1",
-        }),
+        getSettings: async () =>
+          settingsFor("google-config", {
+            developerToken: "dev_tok",
+            loginCustomerId: "1112223333",
+            customerId: "1234567890",
+            merchantId: "mc_1",
+          }),
       },
     }
     const result = (await audience_erasure_sweep(
@@ -212,7 +223,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -230,7 +243,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: [] },
@@ -270,7 +285,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: EMAIL_SHA256, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_good", "aud_bad"] },
@@ -311,7 +328,9 @@ describe("audience_erasure_sweep", () => {
       { emailSha256: email2, reason: "gdpr_erasure", erasedAt: "2026-07-01T00:00:00Z" },
     ])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -329,7 +348,9 @@ describe("audience_erasure_sweep", () => {
     const { fetch, calls } = makeFetch([])
     const executeTool = makeExecuteTool([])
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -363,7 +384,9 @@ describe("audience_erasure_sweep", () => {
       return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
     }
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -391,7 +414,9 @@ describe("audience_erasure_sweep", () => {
       return { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
     }
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },
@@ -410,7 +435,9 @@ describe("audience_erasure_sweep", () => {
       error: { code: "connect_error", message: `${target} not connected` },
     })
     const connections = {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     }
     const result = (await audience_erasure_sweep(
       { managed_meta_audience_ids: ["aud_1"] },

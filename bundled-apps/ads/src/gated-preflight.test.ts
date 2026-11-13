@@ -30,6 +30,7 @@ import * as handlers from "./handlers"
 import { dealer_profile_upsert_preflight } from "./lab/dealer-profiles"
 import type { AppCtx } from "./lib/ctx-types"
 import { pause_preflight } from "./pause"
+import { oneAccount, settingsFor } from "./test-connections.testutil"
 import { createMockDb } from "./test-db"
 import {
   add_users_to_audience,
@@ -67,11 +68,12 @@ function makeMetaCtx(opts: { executeTool?: boolean } = {}): {
     },
     connections: {
       meta: {
-        getCredentials: async () => ({
-          accessToken: "test_token",
-          adAccountId: "act_123456",
-          defaultPageId: "page_1",
-        }),
+        getSettings: async () =>
+          settingsFor("meta", {
+            accessToken: "test_token",
+            adAccountId: "act_123456",
+            defaultPageId: "page_1",
+          }),
       },
     },
     ...(opts.executeTool
@@ -427,13 +429,14 @@ function makeGoogleCtx(): { ctx: AppCtx; calls: string[] } {
       return { status: 200, headers: {}, body: JSON.stringify([{ results: [] }]) }
     },
     connections: {
-      google: { getToken: async () => "oauth_tok_abc" },
+      google: { getAccounts: async () => oneAccount() },
       "google-config": {
-        getCredentials: async () => ({
-          developerToken: "dev_tok_123",
-          loginCustomerId: "9998887777",
-          customerId: "1234567890",
-        }),
+        getSettings: async () =>
+          settingsFor("google-config", {
+            developerToken: "dev_tok_123",
+            loginCustomerId: "9998887777",
+            customerId: "1234567890",
+          }),
       },
     },
     db: createMockDb(),

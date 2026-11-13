@@ -23,11 +23,15 @@ function bridgeFetch(mock: typeof fetch) {
       method?: string
       headers?: Record<string, string>
       body?: string | { multipart: unknown[] }
+      auth?: unknown
     },
   ) => {
+    // The host's part: `auth` names the connection's token, added as the bridge adds it.
     const res = await mock(url, {
       method: opts?.method ?? "GET",
-      headers: opts?.headers,
+      headers: opts?.auth
+        ? { ...opts?.headers, Authorization: "Bearer mock-token" }
+        : opts?.headers,
       body: typeof opts?.body === "string" ? opts.body : undefined,
     })
     const headers: Record<string, string> = {}
@@ -40,7 +44,7 @@ function bridgeFetch(mock: typeof fetch) {
 
 describe("pennylane connector ↔ deep mock (integration)", () => {
   const mock = makePennylaneMockFetch()
-  const client = new PennylaneClient({ fetch: bridgeFetch(mock), apiToken: "mock-token" })
+  const client = new PennylaneClient({ fetch: bridgeFetch(mock) })
   beforeAll(() => resetPennylaneMockMode())
 
   it("full mode: connect probe → full scope, cash live", async () => {

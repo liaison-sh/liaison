@@ -12,9 +12,11 @@
 // Run manually with:
 //   META_TEST_TOKEN=<token> META_TEST_AD_ACCOUNT_ID=act_<id> META_TEST_PAGE_ID=<id> \
 //   bun test bundled-apps/ads/src/ads-meta-live.test.ts
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { pause } from "./pause"
 import { account_info, adsets_list, campaigns_list } from "./reads"
+import { settingsFor } from "./test-connections.testutil"
 import { create_ad, create_adset, create_campaign, create_creative, upload_image } from "./writes"
 
 const TOKEN = process.env.META_TEST_TOKEN
@@ -48,11 +50,12 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
     },
     connections: {
       meta: {
-        getCredentials: async () => ({
-          accessToken: TOKEN ?? "",
-          adAccountId: AD_ACCOUNT_ID,
-          defaultPageId: PAGE_ID,
-        }),
+        getSettings: async () =>
+          settingsFor("meta", {
+            accessToken: TOKEN ?? "",
+            adAccountId: AD_ACCOUNT_ID,
+            defaultPageId: PAGE_ID,
+          }),
       },
     },
     db: undefined,

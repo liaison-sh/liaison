@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import {
   google_account_info,
@@ -10,6 +11,7 @@ import {
   google_search_terms,
 } from "./google-reads"
 import { GoogleConfigError } from "./lib/google-config"
+import { oneAccount, settingsFor } from "./test-connections.testutil"
 
 // ─── makeCtx helper ───────────────────────────────────────────────────────────
 
@@ -41,15 +43,16 @@ function makeCtx(fetchResponses: MockResponse[]) {
   }
   const connections = {
     google: {
-      getToken: async () => "oauth_tok_abc",
+      getAccounts: async () => oneAccount(),
     },
     "google-config": {
-      getCredentials: async () => ({
-        developerToken: "dev_tok_123",
-        loginCustomerId: "9998887777",
-        customerId: "1234567890",
-        merchantId: "mc_1",
-      }),
+      getSettings: async () =>
+        settingsFor("google-config", {
+          developerToken: "dev_tok_123",
+          loginCustomerId: "9998887777",
+          customerId: "1234567890",
+          merchantId: "mc_1",
+        }),
     },
   }
   return { ctx: { fetch, connections }, calls }

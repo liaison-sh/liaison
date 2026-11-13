@@ -303,8 +303,9 @@ export async function fetchReceivedFile(
           targetEntityId: t.entity_id,
           url,
           filename: name,
-          // The token is the API host's; a URL already pointing at the storage host needs none.
-          headers: host === API_HOST ? { Authorization: c.downloadAuthorization() } : {},
+          // The token is the API host's (added host-side); a URL already pointing at the storage
+          // host needs none.
+          ...(host === API_HOST ? { auth: c.downloadAuth() } : {}),
           credentials: "first-hop-only",
           timeoutMs: 50_000,
         }),

@@ -325,7 +325,13 @@ export function makeCtx(overrides?: { config?: Record<string, unknown>; scopes?:
       }
       spy.emits.push(event)
     },
-    config: { get: async (key: string) => spy.config[key] ?? null },
+    config: {
+      get: async (key: string) => spy.config[key] ?? null,
+      has: async (key: string) => {
+        const v = spy.config[key]
+        return v !== undefined && v !== null && v !== ""
+      },
+    },
     // Mirrors the sandbox bridge's `hasScope` (exact grant, a parent grant, or
     // a trailing-`*` wildcard) over the caller's scopes.
     hasScope: async (scope: string) =>

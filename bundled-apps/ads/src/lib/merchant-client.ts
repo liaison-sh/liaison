@@ -18,6 +18,7 @@
 // Grounded in research-corpus §11: Merchant API (NOT the legacy Content API,
 // dies 2026-08-18).
 
+import type { GoogleAuth } from "./google-config"
 import { parseGoogleAdsError } from "./google-error"
 
 export const MERCHANT_API_BASE = "https://merchantapi.googleapis.com"
@@ -39,7 +40,8 @@ export interface MerchantFetchOptions {
   subApi?: string
   version?: string
   method?: "GET" | "POST"
-  token: string
+  /** The host adds the connection's OAuth token (`ctx.fetch` auth). */
+  auth: GoogleAuth
 }
 
 /** Single outbound HTTP path to the Merchant API. Bearer token only — no Ads headers. */
@@ -52,9 +54,9 @@ export async function merchantFetch(
   const result = (await fetch(url, {
     method: opts.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${opts.token}`,
       "Content-Type": "application/json",
     },
+    auth: opts.auth,
   })) as FetchResult
 
   if (result.status < 200 || result.status >= 300) {

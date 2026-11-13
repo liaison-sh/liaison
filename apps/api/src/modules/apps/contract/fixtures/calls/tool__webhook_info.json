@@ -4,9 +4,9 @@
   "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
+      "method": "config_has",
       "args": ["callsWebhookSecret"],
-      "reply": "calls-webhook-secret-stand-in"
+      "reply": true
     }
   ]
 }

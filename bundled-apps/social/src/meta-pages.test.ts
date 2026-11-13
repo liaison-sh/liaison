@@ -8,6 +8,7 @@
 // (no routed ids) is untouched.
 
 import { describe, expect, test } from "bun:test"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import { onConnectionDisconnected } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { parseWebhookJob } from "./ingest"
@@ -31,7 +32,7 @@ function harness(reply: () => Reply) {
       calls.push(url)
       return reply()
     },
-    connections: { getToken: async () => "user-token" },
+    connections: { getAccounts: async () => connectedAccountList() },
     config: { get: async () => null },
     async emit() {},
     logger: { warn() {}, info() {}, error() {}, debug() {} },

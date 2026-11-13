@@ -237,11 +237,20 @@ type _AssertSdkFetchAssignable = AppContext["fetch"] extends MetaFetch ? true : 
 const _sdkFetchAssignable: _AssertSdkFetchAssignable = true
 void _sdkFetchAssignable
 
+/** `ctx.fetch` auth: the host sends the `meta` connection's `accessToken` field as a bearer. */
+export interface MetaAuth {
+  connection: "meta"
+  scheme: "bearer"
+  fields: ["accessToken"]
+}
+
+export const META_AUTH: MetaAuth = { connection: "meta", scheme: "bearer", fields: ["accessToken"] }
+
 export interface MetaFetchOptions {
   path: string
   method?: "GET" | "POST" | "DELETE"
   params?: Record<string, unknown>
-  accessToken: string
+  auth: MetaAuth
 }
 
 interface FetchResult {
@@ -252,13 +261,13 @@ interface FetchResult {
 
 /**
  * Single outbound HTTP path to the Meta Graph API.
- * - Sets Authorization: Bearer
+ * - Names the `meta` connection: the host adds its token as Authorization: Bearer
  * - Form-encodes params (object/array values → JSON.stringify'd strings)
  * - Parses non-2xx → typed errors
  * - Checks throttle headers
  */
 export async function metaFetch(fetch: MetaFetch, opts: MetaFetchOptions): Promise<unknown> {
-  const { path, method = "GET", params, accessToken } = opts
+  const { path, method = "GET", params, auth } = opts
   const url = `${GRAPH}${path}`
 
   // Form-encode params: object/array values → JSON.stringify'd strings
@@ -281,9 +290,9 @@ export async function metaFetch(fetch: MetaFetch, opts: MetaFetchOptions): Promi
   const result = (await fetch(url + queryString, {
     method,
     headers: {
-      Authorization: `Bearer ${accessToken}`,
       ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
     },
+    auth,
     ...(body ? { body } : {}),
   })) as FetchResult
 
@@ -448,13 +457,13 @@ export function isInsightsPending(v: unknown): v is InsightsPending {
 /** Start an async insights report run (POST to the /insights edge); its run id. */
 export async function createInsightsReport(
   fetch: MetaFetch,
-  opts: { path: string; params: Record<string, unknown>; accessToken: string },
+  opts: { path: string; params: Record<string, unknown>; auth: MetaAuth },
 ): Promise<string> {
   const jobResult = (await metaFetch(fetch, {
     path: opts.path,
     method: "POST",
     params: { ...opts.params, async: "true" },
-    accessToken: opts.accessToken,
+    auth: opts.auth,
   })) as { report_run_id?: string }
   const reportRunId = jobResult.report_run_id
   if (!reportRunId) {
@@ -472,9 +481,9 @@ export async function createInsightsReport(
  */
 export async function checkInsightsReport(
   fetch: MetaFetch,
-  opts: { reportRunId: string; accessToken: string },
+  opts: { reportRunId: string; auth: MetaAuth },
 ): Promise<unknown[] | InsightsPending> {
-  const { reportRunId, accessToken } = opts
+  const { reportRunId, auth } = opts
   const pending = (reason: InsightsPending["reason"]): InsightsPending => ({
     _pending: true,
     report_run_id: reportRunId,
@@ -485,7 +494,7 @@ export async function checkInsightsReport(
     status = (await metaFetch(fetch, {
       path: `/${reportRunId}`,
       method: "GET",
-      accessToken,
+      auth,
     })) as InsightsJobStatus
   } catch (err) {
     if (err instanceof RateLimitError) return pending("rate_limited")
@@ -502,7 +511,7 @@ export async function checkInsightsReport(
     return await metaFetchPaged(fetch, {
       path: `/${reportRunId}/insights`,
       method: "GET",
-      accessToken,
+      auth,
     })
   } catch (err) {
     if (isInsightsNotReady(err)) return pending("not_ready")

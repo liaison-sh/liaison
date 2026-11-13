@@ -34,8 +34,8 @@
 // lists the probe as stale instead of reading an unreachable Page as a quiet one.
 import type { UpstreamProbeResult } from "@liaison/app-sdk"
 import { FB_BASE } from "./adapters/facebook"
-import { resolveAccessToken } from "./connection"
-import type { SocialToolCtx } from "./ctx"
+import { resolveAccountAuth } from "./connection"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
 
 export type { UpstreamProbeResult }
 
@@ -50,8 +50,16 @@ interface FbFrom {
   id?: string
 }
 
-async function graphGet<T>(ctx: SocialToolCtx, url: string, token: string): Promise<T> {
-  const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+/** A Graph read with a Page token the app holds, or the account's credential added host-side. */
+async function graphGet<T>(
+  ctx: SocialToolCtx,
+  url: string,
+  token: string | SocialAuth,
+): Promise<T> {
+  const res = await ctx.fetch(
+    url,
+    typeof token === "string" ? { headers: { Authorization: `Bearer ${token}` } } : { auth: token },
+  )
   let body: unknown = {}
   try {
     body = res.body ? JSON.parse(res.body) : {}
@@ -114,7 +122,7 @@ async function newestForeignComment(
 }
 
 async function probeAccount(ctx: SocialToolCtx, accountExternalId: string): Promise<string | null> {
-  const userToken = await resolveAccessToken(ctx, "facebook", accountExternalId)
+  const userToken = await resolveAccountAuth(ctx, "facebook", accountExternalId)
   // An account we are meant to watch but cannot authenticate is a probe that could not look,
   // not a missing sender: the kernel must see the probe go stale.
   if (!userToken) throw new GraphError(`no usable token for facebook account ${accountExternalId}`)

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import {
   fetchInsightsReport,
@@ -8,6 +9,8 @@ import {
   insightsReportKey,
   REPORT_MAX_AGE_MS,
 } from "./insights-report"
+import { META_AUTH } from "./lib/meta-client"
+import { settingsFor } from "./test-connections.testutil"
 import { createMemoryStore, createRecordingTimers } from "./test-store"
 
 type Resp = { status: number; body: string }
@@ -24,7 +27,9 @@ function makeCtx(responses: Resp[]) {
   const store = createMemoryStore()
   const timers = createRecordingTimers()
   const connections = {
-    meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+    meta: {
+      getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+    },
   }
   return { ctx: { fetch, store, timers, connections }, urls, store, timers }
 }
@@ -32,7 +37,7 @@ function makeCtx(responses: Resp[]) {
 const REQ = {
   path: "/act_1/insights",
   params: { level: "ad", time_increment: 1 },
-  accessToken: "t",
+  auth: META_AUTH,
 }
 const status = (s: string) => ({
   status: 200,

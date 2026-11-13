@@ -1,21 +1,31 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Meta credentials connection resolver. Normalizes BOTH `ctx.connections` shapes
-// (flat sandbox bridge + record SDK type) and string-or-object raw values.
-// Modeled on bundled-apps/boxtal/src/lib/get-client.ts (lines 41-67).
+// Meta credentials connection resolver. Reads the NON-SECRET settings of the
+// `meta` connection (`adAccountId`, `defaultPageId`; both `ctx.connections`
+// shapes) and checks that an access token is stored without reading it: the host
+// adds the token to every Graph call (`ctx.fetch` auth, META_AUTH), so it never
+// enters the app.
 //
 // IMPORTANT: all ads handlers are authored natively as (params, ctx) —
 // do NOT mirror boxtal/invoicing's internal (ctx, input) arg order.
 
 import { ToolError } from "@liaison/app-sdk"
-import { readConnectionCredentials } from "@liaison/app-sdk/connection-credentials"
-import { AuthError, MetaApiError, ParamError, PermissionError, RateLimitError } from "./meta-client"
+import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
+import {
+  AuthError,
+  META_AUTH,
+  MetaApiError,
+  type MetaAuth,
+  ParamError,
+  PermissionError,
+  RateLimitError,
+} from "./meta-client"
 
 const CONNECTION = "meta"
 const REQUIRED_KEYS = ["accessToken", "adAccountId"] as const
 
 export interface MetaCredentials {
-  accessToken: string
+  auth: MetaAuth
   adAccountId: string // always in act_<id> form
   defaultPageId?: string
 }
@@ -51,7 +61,7 @@ function normalizeAdAccountId(raw: string): string {
 
 /** Resolve the Meta credentials from ctx.connections. */
 export async function getMetaClient(ctx: MetaCtx): Promise<MetaCredentials> {
-  const read = await readConnectionCredentials(ctx.connections, CONNECTION, REQUIRED_KEYS)
+  const read = await readConnectionSettings(ctx.connections, CONNECTION, REQUIRED_KEYS)
   if (!read.ok) {
     switch (read.reason) {
       case "not_connected":
@@ -71,10 +81,10 @@ export async function getMetaClient(ctx: MetaCtx): Promise<MetaCredentials> {
         )
     }
   }
-  const map = read.credentials
+  const map = read.values
 
   return {
-    accessToken: map.accessToken!,
+    auth: META_AUTH,
     adAccountId: normalizeAdAccountId(map.adAccountId!),
     defaultPageId: map.defaultPageId,
   }

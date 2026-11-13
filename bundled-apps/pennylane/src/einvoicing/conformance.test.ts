@@ -30,7 +30,7 @@ function harness(): EinvoicingPaHarness {
     db: createMockDb({}, { bridgeWhereOperators: true, ids: "uuid", stampCreatedAt: true }),
     fetch: fake.sandboxFetch,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   } as unknown as PennylaneToolCtx
   let n = 0
@@ -131,7 +131,7 @@ function receptionHarness(): ReceptionHarness {
     fetch: fake.sandboxFetch,
     files_importFromUrl: fake.importFromUrl,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   } as unknown as PennylaneToolCtx
   const handlers: Record<string, (p: never, c: PennylaneToolCtx) => Promise<unknown>> = {

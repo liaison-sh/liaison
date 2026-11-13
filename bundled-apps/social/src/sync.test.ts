@@ -5,6 +5,7 @@
 // watermark only advances after all upserts in the batch succeed).
 
 import { describe, expect, test } from "bun:test"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import type { AdapterContext, DiscoverResult, PlatformAdapter } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 import { readYoutubeQuotaStatus, runDiscoverySync, runWatchPoller } from "./sync"
@@ -27,10 +28,8 @@ function ctxWith(db: MockDb, opts: { token?: string | null } = {}): SocialToolCt
       text: async () => "",
     })) as never,
     connections: {
-      getToken: async (_name: string, _identifier?: string) => {
-        if (!token) throw new Error("No access token stored")
-        return token
-      },
+      // The host lists the active accounts; their token is added to a fetch host-side.
+      getAccounts: async () => (token ? connectedAccountList() : []),
     },
     config: { get: async () => null },
     async emit() {},
@@ -694,13 +693,13 @@ describe("runDiscoverySync auth token threading", () => {
     })
   }
 
-  test("passes the resolved access token into the adapter context", async () => {
+  test("passes the account's host-side credential into the adapter context (never a token)", async () => {
     const db = createMockDb()
     await seedDisc(db)
-    let seenToken: string | undefined = "UNSET"
+    let seenAuth: unknown = "UNSET"
     const adapter = fakeAdapter({
       async discover(ctx: AdapterContext): Promise<DiscoverResult> {
-        seenToken = ctx.accessToken
+        seenAuth = ctx.auth
         return { findings: [], nextCursor: "c1", unitsConsumed: 0 }
       },
     })
@@ -708,8 +707,7 @@ describe("runDiscoverySync auth token threading", () => {
       adapter,
       accountExternalId: "chan-1",
     })
-    expect(seenToken).toBe("tok-live")
-    expect((seenToken ?? "").length).toBeGreaterThan(0)
+    expect(seenAuth).toEqual({ connection: "google", identifier: "chan-1", scheme: "bearer" })
     // The watermark advanced (the authenticated page succeeded).
     const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as {
       cursor: string
@@ -790,14 +788,14 @@ describe("runWatchPoller auth token threading", () => {
     })
   }
 
-  test("passes the resolved access token into pollObject", async () => {
+  test("passes the account's host-side credential into pollObject (never a token)", async () => {
     const db = createMockDb()
     await seedYtAccount(db)
     await seedWatch(db)
-    let seenToken: string | undefined = "UNSET"
+    let seenAuth: unknown = "UNSET"
     const adapter = fakeAdapter({
       async pollObject(ctx: AdapterContext): Promise<DiscoverResult> {
-        seenToken = ctx.accessToken
+        seenAuth = ctx.auth
         return { findings: [], nextCursor: null, unitsConsumed: 1 }
       },
     })
@@ -805,7 +803,7 @@ describe("runWatchPoller auth token threading", () => {
       adapters: { youtube: adapter },
       now: new Date(ISO),
     })
-    expect(seenToken).toBe("tok-live")
+    expect(seenAuth).toMatchObject({ connection: "google", scheme: "bearer" })
     expect(res.polled).toBe(1)
   })
 

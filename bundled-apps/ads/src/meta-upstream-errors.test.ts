@@ -5,16 +5,20 @@
 // sandbox as a ToolError (safe message, stable code, retryable flag, 4xx status)
 // so the kernel logs them at warn and the caller sees Meta's reason. A bare
 // Error is logged at error level and pages the watchdog.
+
 import { describe, expect, it } from "bun:test"
 import * as handlers from "./handlers"
 import { MetaApiError } from "./lib/meta-client"
+import { settingsFor } from "./test-connections.testutil"
 
 type Handler = (params: Record<string, unknown>, ctx: unknown) => Promise<unknown>
 
 function ctxAnswering(status: number, body: unknown) {
   return {
     connections: {
-      meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+      meta: {
+        getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+      },
     },
     fetch: async () => ({ status, headers: {}, body: JSON.stringify(body) }),
   }

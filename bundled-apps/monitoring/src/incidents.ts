@@ -4,7 +4,7 @@
 // works incidents with: list → get → ack → resolve. Mutations stamp who/when
 // and emit lifecycle events (no attention translations — triage actions are
 // the operator's own doing, not news).
-import type { AppContext } from "@liaison/app-sdk"
+import { type AppContext, type ConfigSecretReveal, configSecretReveal } from "@liaison/app-sdk"
 import {
   addComment,
   type CommentView,
@@ -288,16 +288,19 @@ export async function webhookInfoHandler(
 ): Promise<{
   data: {
     configured: boolean
-    secret: string | null
+    /** The secret, written in by the host (the app answers its marker). */
+    secret: ConfigSecretReveal | null
     signatureHeader: string
     algorithm: string
   }
 }> {
-  const secret = (await ctx.config.get(WEBHOOK_SECRET_KEY)) as string | null
+  // The secret itself never enters the app: the host writes it in where the marker stands
+  // (the manifest lets this tool reveal WEBHOOK_SECRET_KEY, `revealsSecrets`).
+  const configured = await ctx.config.has(WEBHOOK_SECRET_KEY)
   return {
     data: {
-      configured: Boolean(secret),
-      secret: secret ?? null,
+      configured,
+      secret: configured ? configSecretReveal(WEBHOOK_SECRET_KEY) : null,
       signatureHeader: SIGNATURE_HEADER,
       algorithm: "HMAC-SHA256, base64-encoded digest of the raw request body",
     },

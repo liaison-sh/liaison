@@ -8,18 +8,18 @@
     {
       "method": "db_findMany",
       "args": ["app_config", "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"],
-      "reply": "[{\"id\":\"0dbb367f-d426-4586-9a73-8887a7afd0e6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.87561+00\",\"updated_at\":\"2026-11-12 08:31:33.217332+00\",\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}]"
+      "reply": "[]"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["pennylane"],
-      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+      "reply": "{\"values\":{\"scope\":\"company\"},\"missing\":[\"companyId\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://app.pennylane.com/api/external/v2/webhook_subscriptions?limit=100",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+        "{\"method\":\"GET\",\"headers\":{\"Accept\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
     },
@@ -27,9 +27,9 @@
       "method": "fetch",
       "args": [
         "https://app.pennylane.com/api/external/v2/webhook_subscriptions",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"enabled\\\":true}\"}"
+        "{\"method\":\"POST\",\"headers\":{\"Accept\":\"application/json\",\"Content-Type\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]},\"body\":\"{\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"enabled\\\":true}\"}"
       ],
-      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":5683,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"enabled\\\":true,\\\"secret\\\":\\\"redacted\\\",\\\"created_at\\\":\\\"2026-11-12T08:37:39.313509Z\\\",\\\"updated_at\\\":\\\"2026-11-12T08:37:39.313397Z\\\"}\"}"
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":5693,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"enabled\\\":true,\\\"secret\\\":\\\"redacted\\\",\\\"created_at\\\":\\\"2026-11-13T01:10:21.816868Z\\\",\\\"updated_at\\\":\\\"2026-11-13T01:10:21.816743Z\\\"}\"}"
     },
     {
       "method": "config_setSecret",
@@ -41,28 +41,28 @@
         "app_config",
         "{\"where\":{\"key\":\"einvoicing_webhook_subscription\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"f10e92bf-0252-4dda-a59e-c34a86da0e8e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.864882+00\",\"updated_at\":\"2026-11-12 08:31:33.209056+00\",\"key\":\"einvoicing_webhook_subscription\",\"value\":\"{\\\"id\\\":5682,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"at\\\":\\\"2026-01-01T00:00:00.000Z\\\"}\"}]"
+      "reply": "[]"
     },
     {
-      "method": "db_update",
+      "method": "db_insert",
       "args": [
         "app_config",
-        "f10e92bf-0252-4dda-a59e-c34a86da0e8e",
-        "{\"value\":\"{\\\"id\\\":5683,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"at\\\":\\\"2026-01-01T00:00:00.000Z\\\"}\"}"
-      ]
+        "{\"key\":\"einvoicing_webhook_subscription\",\"value\":\"{\\\"id\\\":5693,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"at\\\":\\\"2026-01-01T00:00:00.000Z\\\"}\"}"
+      ],
+      "reply": "{\"id\":\"716d1e93-f3ed-455d-a274-8b1be78f6acf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:10:21.855242+00\",\"updated_at\":\"2026-11-13 01:10:21.855242+00\",\"key\":\"einvoicing_webhook_subscription\",\"value\":\"{\\\"id\\\":5693,\\\"callback_url\\\":\\\"https://liaison.example.com/webhooks/00000000-0000-4000-8000-00000000c0de/pennylane/einvoicing\\\",\\\"events\\\":[\\\"customer_invoice.e_invoicing_status_updated\\\",\\\"supplier_invoice.e_invoicing_received\\\"],\\\"at\\\":\\\"2026-01-01T00:00:00.000Z\\\"}\"}"
     },
     {
       "method": "db_findMany",
       "args": ["app_config", "{\"where\":{\"key\":\"kernel_public_base_url\"},\"limit\":1}"],
-      "reply": "[{\"id\":\"0dbb367f-d426-4586-9a73-8887a7afd0e6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:19:31.87561+00\",\"updated_at\":\"2026-11-12 08:31:33.217332+00\",\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}]"
+      "reply": "[]"
     },
     {
-      "method": "db_update",
+      "method": "db_insert",
       "args": [
         "app_config",
-        "0dbb367f-d426-4586-9a73-8887a7afd0e6",
-        "{\"value\":\"\\\"https://liaison.example.com\\\"\"}"
-      ]
+        "{\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}"
+      ],
+      "reply": "{\"id\":\"c28c8be8-a550-4b54-9596-64be7b4ea12a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:10:21.863981+00\",\"updated_at\":\"2026-11-13 01:10:21.863981+00\",\"key\":\"kernel_public_base_url\",\"value\":\"\\\"https://liaison.example.com\\\"\"}"
     }
   ]
 }

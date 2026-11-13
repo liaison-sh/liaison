@@ -86,9 +86,8 @@ ctx.emit({ entity, action })    → validate against manifest.events.emits
                                 → tx.queueEvent(...)        → outbox table
 
 ctx.fetch(url, opts)            → validate domain against allowlist
-                                → native fetch(url)         → external HTTP
-
-ctx.connections.getToken(conn)  → look up encrypted token   → decrypt + return
+                                → opts.auth: add the connection's credential (host-side)
+                                → native fetch(url)         → external HTTP, credential redacted from the answer
 ```
 
 **Available bridge methods (non-exhaustive; see `rpc-bridge.ts` for the authoritative list):**
@@ -102,9 +101,9 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Events | `emit(event)` — declared emits only |
 | Jobs | `jobs_enqueue(name, payload, opts)` (`ctx.jobs.enqueue`; `enqueueJob` is its flat name), `timers_wakeIn(seconds, name, payload, opts)` (`ctx.timers.wakeIn`), `steps_get`, `steps_reset` and the hidden `_steps_begin` / `_steps_save` behind `ctx.steps.run` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`; on a read-only run it only looks a contact up, returning it unchanged or null, and `clear` is refused) |
-| Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, account?, scheme: "header:<Name>" \| "bearer" \| "basic", fields?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret exactly where the manifest's `secrets` places it (see below), else `secret_placement_refused` |
+| Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, account?, scheme: "header:<Name>" \| "query:<param>" \| "bearer" \| "basic", fields?, grant?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret exactly where the manifest's `secrets` places it (see below), else `secret_placement_refused` |
 | Data store | `store_get`, `store_set`, `store_update`, `store_delete`, `store_query`, `store_count` (`ctx.store.*`, the calling app's collections; the writes are refused on a read-only run) |
-| Connections | `connections_getToken(connName, identifier?)`, `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
+| Connections | `connections_getToken(connName, identifier?)` (QuickJS only; refused on Workers and workerd), `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
 | SQL connections | `sql_query(connName, request)`, `sql_reads(connName)`, `sql_schema(connName, request)`, `sql_probe(connName, request)` (`ctx.sql.*`: a database the platform holds the connection to, see "Query a database"; read-only, no secrets) |
 | API connections | `api_listOperations`, `api_read`, `api_write`, `api_writeValidate`, `api_adapterGet`, `api_adapterVersions`, `api_adapterReference`, `api_adapterTest`, `api_connections`, `api_validate`, `api_adapterPlan`, `api_adapterPut`, `api_adapterRestore`, `api_adapterDelete`, `api_customer`, `api_verify` (`ctx.api.*`: the HTTP APIs the platform holds the connection to, each account an adapter document, for an app whose credentials connection declares an `api` block with its read, write and admin scopes; every call is checked against them and returns answers, never a credential; the writes are refused on a read-only run) |
 | Accounts | `accounts_list(connName, opts)`, `accounts_setMetadata(accountId, patch)` (`ctx.accounts.*`: the app's own accounts, the organization's and the caller's own; `setMetadata` is refused on a read-only run) |
@@ -138,7 +137,7 @@ The breaker is per process: 5 loader faults within 60 seconds open it, and for 6
 
 **Usage and daily limits.** Every app run is counted per organization, app, UTC day and executor in `kernel.app_usage_daily`: runs, calls back to the server (Workers runs only), wall time, and CPU time: on Workers the loader's measure, pulled from its `GET /usage?day=` every hour; on the server's sandbox service (`workerd`) the CPU time the service measured for each run, added as the run ends; empty on the local sandbox. A retried Workers run counts once. Whoever runs the server can cap an organization's app runs, app calls and app CPU per UTC day (`appRunsPerDay`, `appBridgeCallsPerDay`, `appCpuMsPerDay`; see [Limit an organization](provisioning-cli.md#limit-an-organization)). The calls cap counts Workers runs only: a run on the local sandbox, including one moved back to it after loader failures, is limited by the runs cap, not the calls cap. Past a limit a tool answers `APP_RUNS_LIMIT_REACHED` (or the calls or CPU code) with 429 and the limit and the count reached in `error.details` (`{limit, used}`); webhooks, events and the app's jobs run after midnight UTC, nothing is dropped; a run started from inside another run is counted but never refused. On a managed server the cell sends each organization's daily totals to the control plane in an `apps.usage` message.
 
-An app that runs on the Workers executor never receives a secret: there `connections_getToken`, `connections_getCredentials` and `config_get` of a declared secret key fail with `secret_not_available_on_workers`. The same holds for every run of an organization's custom app on any executor, the local sandbox included (its webhook verifier too). Use `fetch` auth, `configSecrets` and the by-key crypto calls, which work on every executor.
+An app that runs on the Workers or workerd executor never receives a secret: there `connections_getToken`, `connections_getCredentials` and `config_get` of a declared secret key fail with `secret_not_available_on_workers`. The same holds for every run of an organization's custom app on any executor, the local sandbox included (its webhook verifier too). Use `fetch` auth (bearer, basic, a named header, a query parameter, a token exchange, an OAuth account's token refreshed host-side, or the connection's own OAuth client by `grant: "client_credentials"`), `configSecrets`, `connections_getSettings` for the readable fields, the by-key crypto calls, and a tool's `revealsSecrets` for a minted webhook secret an operator must copy; all work on every executor. Every bundled app is held to this by `contract/secret-free.contract.test.ts`.
 
 **Where a config secret may go (`secrets`).** `configSecrets` writes a secret only where the manifest's `secrets` map declares it: `{"<configKey>": {"hosts": [...], "in": "header:<Name>" | "query:<param>" | "body:<json.path>"}}`. The key must be a secret one of the app's connections declares, each host one of that connection's `allowedDomains`. At the call the host checks, for every entry and before reading any secret: the URL's host is in `hosts` (every redirect hop too), and the placeholder is the whole value of that header, query parameter or JSON body path (the body must parse as JSON) and appears nowhere else, in no other header, field, key or the URL. Anything else, and any key with no entry, fails with `secret_placement_refused` (403) and nothing is sent. Connection credentials (`fetch` auth) need no entry: they go only in a request header to a host of their own connection, and a custom app's connection must name its `allowedDomains`.
 | Files | `files_importAttachment`, `files_listAttachments`, `files_getAttachmentBytes`, `files_attachToParent`, `files_reparent`, `files_analyzeDocument` (capability `files.analyzeDocument`: reads one of the app's own PDFs or images with the workspace's media analysis model, answering the app's prompt; credits apply, and an admin can turn the `apps` media surface off) |
@@ -237,7 +236,7 @@ Every target must be public and use HTTPS: a hostname that resolves to a private
 
 ### Token Security
 
-OAuth access/refresh tokens and credential secrets are encrypted at rest with `ENCRYPTION_KEY`. The bridge returns decrypted tokens to sandbox code on demand (`connections_getToken`). Tokens never appear in API responses — the client-facing DTO (`ConnectedAccountDto`) explicitly excludes all encrypted fields.
+OAuth access/refresh tokens and credential secrets are encrypted at rest with `ENCRYPTION_KEY`. The host decrypts them only to add them to a request (`fetch` auth); the Workers and workerd executors refuse every call that would return one to app code (`connections_getToken`, `connections_getCredentials`), and only the legacy QuickJS executor still answers it. Tokens never appear in API responses — the client-facing DTO (`ConnectedAccountDto`) explicitly excludes all encrypted fields.
 
 ---
 
@@ -276,7 +275,7 @@ POST /connections/:app/:conn/credentials
 
 ### Token Lifecycle
 
-- Tokens checked for expiry on each `getToken()` call
+- Tokens checked for expiry each time the host reads one (a `fetch` that names the connection)
 - Refresh window: 2 minutes before expiry by default; connections may configure a wider `refreshWindowMs` (for example, long-lived tokens like Instagram's 60-day tokens)
 - On refresh: exchange refresh token, update encrypted storage
 - Failed refresh: mark account status `"error"` with message
@@ -437,7 +436,7 @@ export const { listItems, createItem } = defineHandlers({
 | `timers.wakeIn(seconds, name, payload?, { jobId? })` | `Promise<void>` | Run a declared job in `seconds` (up to 30 days) |
 | `steps.run(name, { budgetMs? }, chunk)` | `Promise<StepRunResult>` | Resumable work in bounded chunks across runs (below) |
 | `resolveContact(params)` | `Promise<unknown>` | Contact lookup |
-| `connections` | `Record<string, ConnectionClient>` | `getToken()`, `getAccounts()` |
+| `connections` | `Record<string, ConnectionClient>` | `getAccounts()`, `getSettings()` (readable fields); the token goes through `fetch` auth |
 | `fetch(url, opts?)` | `Promise<Response>` | Domain-restricted HTTP |
 | `logger` | `Logger` | Structured logging (`info`, `warn`, `error`, `debug`) |
 

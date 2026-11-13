@@ -4,6 +4,7 @@
 // Ads arm of the ads app. All Google Ads read handlers compose calls through
 // `gaqlSearch`. Never import node:* or npm SDKs.
 
+import type { GoogleAuth } from "./google-config"
 import { parseGoogleAdsError } from "./google-error"
 
 // ─── Version pin ────────────────────────────────────────────────────────────
@@ -50,9 +51,8 @@ function stripDashes(raw: string): string {
 }
 
 /** The request headers. Never `developer-token` (see gaqlSearch). */
-function adsHeaders(token: string, loginCustomerId: string): Record<string, string> {
+function adsHeaders(loginCustomerId: string): Record<string, string> {
   return {
-    Authorization: `Bearer ${token}`,
     "login-customer-id": loginCustomerId,
     "Content-Type": "application/json",
   }
@@ -67,7 +67,8 @@ interface SearchStreamBatch {
 export interface GaqlSearchOptions {
   customerId: string
   query: string
-  token: string
+  /** The host adds the connection's OAuth token (`ctx.fetch` auth). */
+  auth: GoogleAuth
   loginCustomerId: string
 }
 
@@ -75,7 +76,7 @@ export interface GaqlSearchOptions {
  * GAQL search via `googleAds:searchStream` — the pinned default read path
  * (per P4 blueprint §5). Returns the full result set flattened across
  * batches. Every call carries:
- *   Authorization: Bearer <token>
+ *   Authorization: Bearer <token> (added host-side: the request names the connection)
  *   login-customer-id: <loginCustomerId> (digits only, no dashes)
  *   Content-Type: application/json
  * and NEVER a developer-token header. Developer tokens were retired on
@@ -93,7 +94,8 @@ export async function gaqlSearch(fetch: GoogleFetch, opts: GaqlSearchOptions): P
 
   const result = (await fetch(url, {
     method: "POST",
-    headers: adsHeaders(opts.token, loginCustomerId),
+    headers: adsHeaders(loginCustomerId),
+    auth: opts.auth,
     body: JSON.stringify({ query: opts.query }),
   })) as FetchResult
 
@@ -115,7 +117,8 @@ export interface GoogleMutateOptions {
   customerId: string
   path: string // e.g. "campaigns:mutate", "adGroups:mutate", "adGroupAds:mutate"
   operations: unknown[]
-  token: string
+  /** The host adds the connection's OAuth token (`ctx.fetch` auth). */
+  auth: GoogleAuth
   loginCustomerId: string
 }
 
@@ -130,7 +133,8 @@ export async function googleAdsMutate(
 
   const result = (await fetch(url, {
     method: "POST",
-    headers: adsHeaders(opts.token, loginCustomerId),
+    headers: adsHeaders(loginCustomerId),
+    auth: opts.auth,
     body: JSON.stringify({ operations: opts.operations }),
   })) as FetchResult
 

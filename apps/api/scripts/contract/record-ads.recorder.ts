@@ -34,6 +34,7 @@ import {
 } from "./fake-providers"
 import {
   connectCredentials,
+  connectOAuthAccount,
   installForRecording,
   type RecordingState,
   type RecordingStep,
@@ -673,18 +674,11 @@ function crossApp(target: string, args: Record<string, unknown>): unknown {
   }
 }
 
-const TOKENS: Record<string, string> = { google: GOOGLE_TOKEN, merchant: MERCHANT_TOKEN }
-
-/** OAuth tokens and other apps' tools answered by stand-ins; the rest is the live bridge. */
+/** Other apps' tools answered by stand-ins; the rest is the live bridge. */
 function withStandIns(bridge: AppBridge, _entry: ContractEntry): AppBridge {
   const realExecute = bridge.executeTool
   return {
     ...bridge,
-    connections_getToken: async (connection: unknown) => {
-      const token = TOKENS[String(connection)]
-      if (!token) throw new Error(`no stand-in token for ${String(connection)}`)
-      return token
-    },
     executeTool: async (target: unknown, argsJson: unknown) => {
       const args = JSON.parse(typeof argsJson === "string" ? argsJson : "{}") as Record<
         string,
@@ -1168,6 +1162,9 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record ads contract fixtur
       VALUES (${CONTRACT_ORG_ID}, ${APP}, 'google-config', 'org', 'credentials', ${CUSTOMER}, ${CUSTOMER},
        ${encryptSecret(JSON.stringify(googleConfig), env.ENCRYPTION_KEY, CryptoContext.connectedAccountCredentials)},
        'active', ${CONTRACT_USER_ID})`
+    // The OAuth accounts whose (stand-in) tokens the host adds to Google calls (`ctx.fetch` auth).
+    await connectOAuthAccount(APP, "google", "google-ads-user", GOOGLE_TOKEN)
+    await connectOAuthAccount(APP, "merchant", "merchant-user", MERCHANT_TOKEN)
     fakes = installFakeProviders(
       ["graph.facebook.com", "googleads.googleapis.com", "merchantapi.googleapis.com"],
       [...metaRoutes(), ...googleRoutes(), ...merchantRoutes()],

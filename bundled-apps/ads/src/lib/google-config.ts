@@ -6,9 +6,11 @@
 // Google Ads REST API needs on every call but the paired `google` OAuth2
 // connection cannot hold (see docs/sdk-gaps.md).
 //
-// Normalizes BOTH `ctx.connections` shapes (flat sandbox bridge + record SDK
-// type) and string-or-object raw values — same dual-shape contract as
-// get-client.ts's resolveMetaConnection.
+// Reads the connection's READABLE settings only (`getSettings`, both
+// `ctx.connections` shapes): the ids are not secrets, and the OAuth token goes
+// to Google host-side (`ctx.fetch` auth), never through this app.
+
+import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
 
 const CONNECTION = "google-config"
 // merchantId is OPTIONAL: Google Ads works without a Merchant Center account
@@ -50,162 +52,128 @@ function stripDashes(raw: string): string {
   return raw.replace(/-/g, "")
 }
 
-/** Normalize dual ctx.connections shapes to a single getCredentials fn. */
-function resolveGoogleConfigConnection(
-  ctx: GoogleCtx,
-): (() => Promise<Record<string, string>>) | null {
-  const conns = ctx.connections as unknown
-  // FLAT shape: { getCredentials(name, id?) } — the sandbox bridge group
-  const flat = conns as {
-    getCredentials?: (name: string, identifier?: string) => Promise<unknown>
-  }
-  if (typeof flat.getCredentials === "function") {
-    return async () => {
-      const raw = await flat.getCredentials!(CONNECTION)
-      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
-    }
-  }
-  // RECORD shape: { "google-config": { getCredentials() } } — the SDK type / unit-test mock
-  const record = conns as Record<
-    string,
-    { getCredentials?: (identifier?: string) => Promise<unknown> } | undefined
-  >
-  const cfg = record?.[CONNECTION]
-  if (cfg && typeof cfg.getCredentials === "function") {
-    return async () => {
-      const raw = await cfg.getCredentials!()
-      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
-    }
-  }
-  return null
-}
-
-/** Resolve the Google Ads / Merchant Center config from ctx.connections. */
+/** Resolve the Google Ads / Merchant Center config from ctx.connections (its readable settings). */
 export async function getGoogleConfig(ctx: GoogleCtx): Promise<GoogleConfig> {
-  const accessor = resolveGoogleConfigConnection(ctx)
-  if (!accessor) {
-    throw new GoogleConfigError(
-      "Google not configured: enter the manager (login) customer id, the ad account's customer id and, optionally, the Merchant Center id in the Google Ads API settings connection",
-    )
+  const read = await readConnectionSettings(ctx.connections, CONNECTION, REQUIRED_KEYS)
+  if (!read.ok) {
+    switch (read.reason) {
+      case "not_connected":
+        throw new GoogleConfigError(
+          "Google not configured: enter the manager (login) customer id, the ad account's customer id and, optionally, the Merchant Center id in the Google Ads API settings connection",
+        )
+      case "unreadable":
+        throw new GoogleConfigError(
+          "Google Ads config could not be read: reconnect it in app settings",
+        )
+      case "empty":
+        throw new GoogleConfigError("Google not configured: the Google Ads config is empty")
+      case "incomplete":
+        throw new GoogleConfigError(
+          `Google Ads config incomplete, missing: ${read.missing.join(", ")}`,
+        )
+    }
   }
-
-  let map: Record<string, string>
-  try {
-    map = await accessor()
-  } catch (e) {
-    throw new GoogleConfigError(
-      `Google Ads config could not be read: ${e instanceof Error ? e.message : String(e)}`,
-    )
-  }
-
-  if (!map || Object.keys(map).length === 0) {
-    throw new GoogleConfigError("Google not configured: the Google Ads config is empty")
-  }
-
-  const missing = REQUIRED_KEYS.filter((k) => !map[k])
-  if (missing.length > 0) {
-    throw new GoogleConfigError(`Google Ads config incomplete, missing: ${missing.join(", ")}`)
-  }
-
+  const map = read.values
   return {
-    loginCustomerId: stripDashes(map.loginCustomerId!),
-    customerId: stripDashes(map.customerId!),
+    loginCustomerId: stripDashes(map.loginCustomerId ?? ""),
+    customerId: stripDashes(map.customerId ?? ""),
     merchantId: map.merchantId ?? "",
   }
 }
 
-// ─── google OAuth2 token resolver ──────────────────────────────────────────────
+// ─── google OAuth2 credential ─────────────────────────────────────────────────
 
 const OAUTH_CONNECTION = "google"
 
 /**
- * Resolve the `google` OAuth2 connection's access token. Mirrors
- * bundled-apps/social/src/connection.ts's resolveAccessToken — same dual
- * shape (FLAT `{ getToken(name, identifier?) }` sandbox bridge vs RECORD
- * `{ google: { getToken(identifier?) } }` SDK/unit-test mock).
- *
- * Returns `null` when no live token can be obtained (never connected, or the
- * host throws "No connected account" / "No access token stored") — callers
- * turn that into an actionable GoogleConfigError rather than an
- * unauthenticated call.
+ * `ctx.fetch` auth for an OAuth2 connection: the host adds its access token
+ * (refreshed host-side) as `Authorization: Bearer`, so the token never enters
+ * the app.
  */
-export async function getGoogleToken(ctx: GoogleCtx): Promise<string | null> {
-  return getOauthToken(ctx, OAUTH_CONNECTION)
+export interface GoogleAuth {
+  connection: string
+  scheme: "bearer"
 }
 
-async function getOauthToken(ctx: GoogleCtx, connectionName: string): Promise<string | null> {
+/**
+ * The credential of the `google` OAuth2 connection, or `null` when it has no
+ * active account (`getAccounts`, both `ctx.connections` shapes) — callers turn
+ * that into an actionable GoogleConfigError rather than an unauthenticated
+ * call. A token Google refuses later answers that call with its own 401.
+ */
+export async function getGoogleAuth(ctx: GoogleCtx): Promise<GoogleAuth | null> {
+  return connectedAuth(ctx, OAUTH_CONNECTION)
+}
+
+async function connectedAuth(ctx: GoogleCtx, connectionName: string): Promise<GoogleAuth | null> {
   const conns = ctx.connections as unknown
-  const flat = conns as {
-    getToken?: (name: string, identifier?: string) => Promise<string>
-  }
-  let token: string | undefined
+  const flat = conns as { getAccounts?: (name: string) => Promise<unknown> }
+  let raw: unknown
   try {
-    if (typeof flat.getToken === "function") {
-      token = await flat.getToken(connectionName)
+    if (typeof flat.getAccounts === "function") {
+      raw = await flat.getAccounts(connectionName)
     } else {
-      const record = conns as Record<
-        string,
-        { getToken?: (identifier?: string) => Promise<string> } | undefined
-      >
-      const entry = record?.[connectionName]
-      if (entry && typeof entry.getToken === "function") {
-        token = await entry.getToken()
-      }
+      const entry = (
+        conns as Record<string, { getAccounts?: () => Promise<unknown> } | undefined>
+      )?.[connectionName]
+      if (!entry || typeof entry.getAccounts !== "function") return null
+      raw = await entry.getAccounts()
     }
   } catch {
     return null
   }
-  return token && token.length > 0 ? token : null
+  const accounts = (typeof raw === "string" ? JSON.parse(raw) : raw) as unknown[] | null
+  return Array.isArray(accounts) && accounts.length > 0
+    ? { connection: connectionName, scheme: "bearer" }
+    : null
 }
 
 /**
- * Resolve the token for MERCHANT CENTER calls. Prefers the dedicated,
- * OPTIONAL `merchant` OAuth2 connection (for orgs whose Merchant Center
- * lives on a DIFFERENT Google account than Google Ads — e.g. while a
- * People-and-access invitation is stuck), and falls back to the main
- * `google` connection so single-account orgs consent exactly once.
+ * The credential for MERCHANT CENTER calls. Prefers the dedicated, OPTIONAL
+ * `merchant` OAuth2 connection (for orgs whose Merchant Center lives on a
+ * DIFFERENT Google account than Google Ads — e.g. while a People-and-access
+ * invitation is stuck), and falls back to the main `google` connection so
+ * single-account orgs consent exactly once.
  */
-export async function getMerchantToken(ctx: GoogleCtx): Promise<string | null> {
-  const dedicated = await getOauthToken(ctx, "merchant")
-  if (dedicated) return dedicated
-  return getOauthToken(ctx, OAUTH_CONNECTION)
+export async function getMerchantAuth(ctx: GoogleCtx): Promise<GoogleAuth | null> {
+  return (await connectedAuth(ctx, "merchant")) ?? connectedAuth(ctx, OAUTH_CONNECTION)
 }
 
 /**
- * Resolve the merchant-call token + google-config credentials. Same throw
- * contract as getGoogleClient; the token may come from the dedicated
- * `merchant` connection (see getMerchantToken).
+ * Resolve the merchant-call credential + google-config settings. Same throw
+ * contract as getGoogleClient; the credential may be the dedicated `merchant`
+ * connection's (see getMerchantAuth).
  */
 export async function getMerchantClient(
   ctx: GoogleCtx,
-): Promise<{ token: string; config: GoogleConfig }> {
-  const token = await getMerchantToken(ctx)
-  if (!token) {
+): Promise<{ auth: GoogleAuth; config: GoogleConfig }> {
+  const auth = await getMerchantAuth(ctx)
+  if (!auth) {
     throw new GoogleConfigError(
       "Google not connected: connect the Google account (adwords + content scopes) in app settings",
     )
   }
   const config = await getGoogleConfig(ctx)
-  return { token, config }
+  return { auth, config }
 }
 
 /**
- * Resolve BOTH the google OAuth2 token AND the google-config credentials in
+ * Resolve BOTH the google OAuth2 credential AND the google-config settings in
  * one call — the shape every Google Ads / Merchant handler needs. Throws the
- * SAME GoogleConfigError for either a missing token or missing config, since
+ * SAME GoogleConfigError for either a missing account or missing config, since
  * from the agent's perspective both mean "Google is not usable yet."
  */
 export async function getGoogleClient(
   ctx: GoogleCtx,
-): Promise<{ token: string; config: GoogleConfig }> {
-  const token = await getGoogleToken(ctx)
-  if (!token) {
+): Promise<{ auth: GoogleAuth; config: GoogleConfig }> {
+  const auth = await getGoogleAuth(ctx)
+  if (!auth) {
     throw new GoogleConfigError(
       "Google not connected: connect the Google account (adwords + content scopes) in app settings",
     )
   }
   const config = await getGoogleConfig(ctx)
-  return { token, config }
+  return { auth, config }
 }
 
 /**

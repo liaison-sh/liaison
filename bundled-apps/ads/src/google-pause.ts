@@ -130,7 +130,7 @@ export async function google_pause(params: GooglePauseParams, ctx: AppCtx): Prom
 
   const reason = typeof params.reason === "string" ? params.reason : "agent-paused"
 
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   const cfg = OBJECT_CONFIG[objectType]
 
   // GAQL WHERE clause: campaign/ad_group filter by their own numeric id;
@@ -147,7 +147,7 @@ export async function google_pause(params: GooglePauseParams, ctx: AppCtx): Prom
   const preRows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: `SELECT ${cfg.resourceField === "campaign" ? "campaign.id, campaign.name, campaign.status" : cfg.resourceField === "adGroup" ? "ad_group.id, ad_group.name, ad_group.status" : "ad_group_ad.ad.id, ad_group_ad.status"} FROM ${cfg.gaqlResource} WHERE ${gaqlWhere}`,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
   const preRow = preRows[0] ?? {}
@@ -176,7 +176,7 @@ export async function google_pause(params: GooglePauseParams, ctx: AppCtx): Prom
         updateMask: "status",
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })
 
@@ -184,7 +184,7 @@ export async function google_pause(params: GooglePauseParams, ctx: AppCtx): Prom
   const postRows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: `SELECT ${cfg.resourceField === "campaign" ? "campaign.id, campaign.status" : cfg.resourceField === "adGroup" ? "ad_group.id, ad_group.status" : "ad_group_ad.status"} FROM ${cfg.gaqlResource} WHERE ${gaqlWhere}`,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
   const postRow = postRows[0] ?? {}

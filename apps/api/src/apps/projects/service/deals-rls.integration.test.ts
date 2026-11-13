@@ -351,12 +351,14 @@ describe("existing projects", () => {
     }))
     // Recorded when the pipeline columns arrived, with no change to how a
     // project or a task is answered: any later change to the answer of a work
-    // project fails here. Ids, names and times are fixed.
+    // project fails here. Ids, names and times are fixed, save when a task entered its status
+    // (the column's default, the time the fixture was written).
     const stable = JSON.parse(
       JSON.stringify(answer)
         .replaceAll(ORG_ID, "<org>")
         .replaceAll(OWNER, "<owner>")
-        .replaceAll(`owner-${OWNER.slice(0, 8)}`, "<owner-email>"),
+        .replaceAll(`owner-${OWNER.slice(0, 8)}`, "<owner-email>")
+        .replace(/"statusEnteredAt":"[^"]*"/g, '"statusEnteredAt":"<entered>"'),
     )
     expect(JSON.stringify(stable)).toMatchSnapshot()
   })

@@ -979,7 +979,7 @@ describe("TaskDetail copy link", () => {
         </ApiContext.Provider>
       ))
       await waitFor(() => expect(screen.getByTestId("task-detail.status-since")).toBeTruthy())
-      expect(screen.getByTestId("task-detail.status-since").textContent).toMatch(/^In Todo · 3/)
+      expect(screen.getByTestId("task-detail.status-since").textContent).toMatch(/^for 3/)
       expect(screen.queryByTestId("task-status-history.item")).toBeNull()
       fireEvent.click(screen.getByTestId("task-status-history.toggle"))
       const items = screen.getAllByTestId("task-status-history.item")

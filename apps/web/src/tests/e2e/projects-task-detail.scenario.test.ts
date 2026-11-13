@@ -159,8 +159,8 @@ test("projects.task-detail-full-page", async ({ page, env, qa, world }) => {
     .toEqual({ serial: "LC-4-0193", unit_kind: "Field" })
   await expect(page.getByTestId("task-fields.value-serial")).toHaveText("LC-4-0193")
 
-  // 5c. Time in status and the status history, collapsed until asked for.
-  await expect(page.getByTestId("task-detail.status-since")).toContainText("In ")
+  // 5c. Time in status, where the time went, and the status history (collapsed until asked for).
+  await expect(page.getByTestId("task-detail.status-since")).toContainText("for ")
   await page.getByTestId("task-status-history.toggle").click()
   await expect(page.getByTestId("task-status-history.item").first()).toBeVisible()
 

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// How long a task has been in its status ("In Review · 3d ago") and its status history (newest
-// first, collapsed until asked for): each change as "From → To", who made it and when. One quiet
-// line under the task's meta row, plain tertiary text: the history is a record, not an alarm.
+// A task's status history (newest first, collapsed until asked for): each change as
+// "From → To", who made it and when. One quiet line under the task's meta row, plain tertiary text: the history is a record, not an alarm.
 import { ChevronDown, ChevronRight } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { formatDateTime, relativeTime } from "~/lib/relative-time"
@@ -23,29 +22,8 @@ export interface TaskTransition {
   at: string
 }
 
-export const StatusSince: Component<{ status: string; since: string | null | undefined }> = (
-  props,
-) => {
-  const i18n = useI18n()
-  const time = () => (props.since ? relativeTime(props.since, i18n.locale()) : "")
-  return (
-    <Show when={time()}>
-      <span
-        data-testid="task-detail.status-since"
-        class="text-[11.5px] text-text-tertiary"
-        title={formatDateTime(props.since, i18n.locale())}
-      >
-        {i18n.t("projects.statusHistory.since", { status: props.status, time: time() })}
-      </span>
-    </Show>
-  )
-}
-
 export const TaskStatusHistory: Component<{
   transitions: TaskTransition[] | undefined
-  /** The current status's label and when the task entered it (the "In … · …" line). */
-  status?: string | null
-  since?: string | null
 }> = (props) => {
   const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
@@ -59,9 +37,6 @@ export const TaskStatusHistory: Component<{
   return (
     <section data-testid="task-status-history" class="flex flex-col gap-1">
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Show when={props.status}>
-          {(status) => <StatusSince status={status()} since={props.since} />}
-        </Show>
         <button
           type="button"
           data-testid="task-status-history.toggle"

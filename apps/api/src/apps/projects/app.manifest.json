@@ -2505,6 +2505,7 @@
       },
       "automations": {
         "component": "ProjectAutomations",
+        "entity": "project",
         "sidebar": "ProjectsSidebar",
         "label": "Automations",
         "icon": "ProjectsIcon",

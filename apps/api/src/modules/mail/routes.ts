@@ -76,6 +76,9 @@ export const sendDraftBody = z.object({
   subject: z.string().optional(),
   htmlBody: z.string(),
   textBody: z.string(),
+  // Send again a draft whose earlier send may already have been delivered
+  // (it answered 409 mail_send_outcome_unknown): the person said so.
+  confirmResend: z.boolean().optional(),
 })
 
 const CONVERSATION_STATUSES = ["open", "archived", "trashed", "escalated"] as const

@@ -28,7 +28,9 @@ vi.mock("~/modules/mail/mail-account-store", () => ({
 vi.mock("~/modules/mail/mail-message-store", () => ({
   getMessages: () => [],
 }))
-vi.mock("~/modules/mail/mail-draft-store", () => ({
+vi.mock("~/modules/mail/mail-draft-store", async (orig) => ({
+  mailSendErrorKey: (await orig<typeof import("~/modules/mail/mail-draft-store")>())
+    .mailSendErrorKey,
   // A fresh draft per render: uploads a presign never answers stay in flight
   // for the whole file, and must not show up in the next test's composer.
   createDraft: vi.fn(async () => ({ id: `draft-${Math.random().toString(36).slice(2)}` })),
@@ -181,6 +183,30 @@ describe("MailReplyBar — dictation", () => {
 })
 
 describe("MailReplyBar — send errors", () => {
+  test("a send the provider never confirmed says it may have left; the next Send confirms a resend", async () => {
+    const { sendDraft } = await import("~/modules/mail/mail-draft-store")
+    const { ApiError } = await import("~/lib/api-error")
+    vi.mocked(sendDraft).mockReset()
+    vi.mocked(sendDraft).mockRejectedValueOnce(
+      new ApiError(
+        "The mail provider did not confirm this message",
+        409,
+        "mail_send_outcome_unknown",
+      ),
+    )
+    vi.mocked(sendDraft).mockResolvedValueOnce({ conversationId: "conv-1", messageId: "m-1" })
+    render(() => <MailReplyBar conversationId="conv-1" startExpanded />)
+    await writeReply("It ships tomorrow.")
+    fireEvent.click(screen.getByTestId("mail-reply-send"))
+    await waitFor(() =>
+      expect(screen.getByTestId("mail-reply-error").textContent).toContain("Check Sent first."),
+    )
+    expect(vi.mocked(sendDraft).mock.calls[0]?.[2]).not.toHaveProperty("confirmResend")
+    fireEvent.click(screen.getByTestId("mail-reply-send"))
+    await waitFor(() => expect(vi.mocked(sendDraft)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(sendDraft).mock.calls[1]?.[2]).toMatchObject({ confirmResend: true })
+  })
+
   test("a mailbox with no stored credentials says to reconnect it", async () => {
     const { sendDraft } = await import("~/modules/mail/mail-draft-store")
     const { ApiError } = await import("~/lib/api-error")

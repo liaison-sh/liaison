@@ -2502,6 +2502,14 @@
         "icon": "ProjectsIcon",
         "urlPattern": "/projects/tasks/:entityId",
         "referenceable": true
+      },
+      "automations": {
+        "component": "ProjectAutomations",
+        "sidebar": "ProjectsSidebar",
+        "label": "Automations",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/automations/:entityId",
+        "referenceable": false
       }
     },
     "activityBar": {

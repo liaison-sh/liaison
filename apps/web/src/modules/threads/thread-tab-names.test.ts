@@ -7,12 +7,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { dispatchWsEventMessage, resetRegistry, tabDisplayLabel } from "~/framework/app-registry"
 import { bootstrapKernelApps, resetBootstrap } from "~/framework/bootstrap"
+import { ApiError } from "~/lib/api-error"
 import { openTab, resetTabStore, tabStore } from "~/modules/shell/tab-store"
 import { addThread, removeThread, resetThreadStore } from "~/modules/threads/thread-store"
 import {
   resetThreadTabNames,
   startThreadTabNames,
+  threadForDock,
   threadForTab,
+  threadIsGone,
 } from "~/modules/threads/thread-tab-names"
 
 vi.stubGlobal("localStorage", {
@@ -161,5 +164,37 @@ describe("the open conversation after it leaves the list", () => {
     await flush()
     expect(threadForTab(ID)?.title).toBe("after-archive")
     expect(label()).toBe("after-archive")
+  })
+
+  // The dock outlives the list as tabs do: its items read by id the same way.
+  it("a dock item whose conversation is not in the list reads it by id", async () => {
+    const other = "22222222-2222-4222-8222-222222222222"
+    api.get.mockImplementation(async (path: string) => ({
+      data: path.endsWith(other) ? { ...channel("battery-passport"), id: other } : current,
+    }))
+    startThreadTabNames(api)
+    expect(threadForDock(other)).toBeUndefined()
+    await flush()
+    expect(api.get).toHaveBeenCalledWith(`/threads/${other}`)
+    expect(threadForDock(other)?.title).toBe("battery-passport")
+    expect(threadIsGone(other)).toBe(false)
+    api.get.mockImplementation(async () => ({ data: current }))
+  })
+
+  it("a conversation the server no longer has is gone; a network error is not", async () => {
+    const deleted = "33333333-3333-4333-8333-333333333333"
+    const flaky = "44444444-4444-4444-8444-444444444444"
+    api.get.mockImplementation(async (path: string) => {
+      if (path.endsWith(deleted)) throw new ApiError("Not found", 404)
+      if (path.endsWith(flaky)) throw new Error("network")
+      return { data: current }
+    })
+    startThreadTabNames(api)
+    threadForDock(deleted)
+    threadForDock(flaky)
+    await flush()
+    expect(threadIsGone(deleted)).toBe(true)
+    expect(threadIsGone(flaky)).toBe(false)
+    api.get.mockImplementation(async () => ({ data: current }))
   })
 })

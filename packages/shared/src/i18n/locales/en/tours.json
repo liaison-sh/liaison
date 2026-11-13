@@ -543,7 +543,7 @@
       },
       "askAgent": {
         "title": "Hand it to your agent",
-        "body": "Open Chats at the bottom of the screen, beside the task, pick your conversation with {{agent}}, write the request below and press Send.",
+        "body": "Write {{agent}} the request below, in your conversation with it, and press Send.",
         "text": "Tobias needs help on PREAMP-11 \"Prepare the trade-show demo\". Break it into subtasks for next week and create them now as its subtasks, then reply to Tobias in the task's discussion. No need to check with me first.",
         "role": "You don't have time to plan the demo units yourself. You ask {{agent}}, the way you'd ask an assistant: it splits the task and answers Tobias for you.",
         "way1": "Open Chats at the bottom of the screen, beside the task",
@@ -602,7 +602,7 @@
       },
       "askAgent": {
         "title": "Ask your agent to research it",
-        "body": "Open Chats at the bottom of the screen, beside the channel, pick your conversation with {{agent}} and send the battery passport question below with Send. It searches the web live and cites its sources.",
+        "body": "Write {{agent}} the battery passport question below, in your conversation with it, and press Send. It searches the web live and cites its sources.",
         "text": "Tobias is asking which EU battery passport rules apply to us from 2027 and what we need to change. Can you look it up on the web and give me the answer with links to your sources?",
         "role": "You don't know the answer, but {{agent}} can search the web and cite its sources.",
         "say": "Ask {{agent}}:",
@@ -751,7 +751,7 @@
       },
       "askAgent": {
         "title": "Ask the Operations Desk",
-        "body": "Open Chats at the bottom of the screen, beside the orders, pick the Operations Desk under Agents and send the request below with Send. It holds the shipping and invoicing tools: it checks the order and prepares the shipment for your approval.",
+        "body": "Write the Operations Desk the request below and press Send. It holds the shipping and invoicing tools: it checks the order and prepares the shipment for your approval.",
         "text": "Where does order #1097 stand, and is it invoiced? Book its shipment now from its row in the shipping prep list, as it is: buy the label at the cheapest carrier offer, as one approval for me to review, and make no other change. No need to check with me first.",
         "role": "The customer wants the parcel fast; the Operations Desk, the agent that runs shipping, can check the order and book the shipment for you.",
         "say": "Ask the Operations Desk:",
@@ -791,7 +791,7 @@
       },
       "askBugs": {
         "title": "Ask your agent for the recent bugs",
-        "body": "Open Chats at the bottom of the screen, pick your conversation with {{agent}} and send the question below with Send. It reads the team's Firmware bugs channel.",
+        "body": "Write {{agent}} the question below, in your conversation with it, and press Send. It reads the team's Firmware bugs channel.",
         "text": "Read the Firmware bugs channel and list the bugs reported there, newest first, one line each.",
         "role": "Support and the test bench report bugs in a team channel. {{agent}} can read it for you.",
         "say": "Ask {{agent}}:",
@@ -874,7 +874,7 @@
       },
       "askAgent": {
         "title": "Ask your agent across all three sources",
-        "body": "Open Chats at the bottom of the screen, beside the P&L, pick your conversation with {{agent}} and send the question below with Send. It answers from the P&L, the manual and the playbook, and cites them.",
+        "body": "Write {{agent}} the question below, in your conversation with it, and press Send. It answers from the P&L, the manual and the playbook, and cites them.",
         "role": "Your agent sees what you see, so it can combine the P&L, the manual and the playbook in one answer for tomorrow's board meeting.",
         "text": "What was our gross margin in Q3, and which product drove it? Cite the documents you used.",
         "say": "Ask {{agent}}:",

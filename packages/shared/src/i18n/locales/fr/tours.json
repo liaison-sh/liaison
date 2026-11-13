@@ -543,7 +543,7 @@
       },
       "askAgent": {
         "title": "Confiez-la à votre agent",
-        "body": "Ouvrez Discussions en bas de l'écran, à côté de la tâche, choisissez votre discussion avec {{agent}}, écrivez la demande ci-dessous et appuyez sur Envoyer.",
+        "body": "Écrivez à {{agent}} la demande ci-dessous, dans votre discussion avec lui, et appuyez sur Envoyer.",
         "text": "Tobias a besoin d'aide sur PREAMP-11 « Prepare the trade-show demo ». Découpez-la en sous-tâches pour la semaine prochaine et créez-les maintenant comme ses sous-tâches, puis répondez à Tobias dans la discussion de la tâche. Inutile de me demander confirmation.",
         "role": "Vous n'avez pas le temps de planifier vous-même les unités de démo. Vous le demandez à {{agent}}, comme à un assistant : il découpe la tâche et répond à Tobias pour vous.",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté de la tâche",
@@ -602,7 +602,7 @@
       },
       "askAgent": {
         "title": "Demandez à votre agent de chercher",
-        "body": "Ouvrez Discussions en bas de l'écran, à côté du canal, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous sur le passeport batterie avec Envoyer. Il cherche sur le web en direct et cite ses sources.",
+        "body": "Écrivez à {{agent}} la question ci-dessous sur le passeport batterie, dans votre discussion avec lui, et appuyez sur Envoyer. Il cherche sur le web en direct et cite ses sources.",
         "text": "Tobias demande quelles règles européennes sur le passeport batterie s'appliquent à nous dès 2027 et ce qu'il faut changer. Pouvez-vous chercher sur le web et me donner la réponse avec les liens vers vos sources ?",
         "role": "Vous ne connaissez pas la réponse, mais {{agent}} peut chercher sur le web et citer ses sources.",
         "say": "Demandez à {{agent}} :",
@@ -751,7 +751,7 @@
       },
       "askAgent": {
         "title": "Demandez à l'Operations Desk",
-        "body": "Ouvrez Discussions en bas de l'écran, à côté des commandes, choisissez l'Operations Desk sous Agents et envoyez la demande ci-dessous avec Envoyer. Il dispose des outils d'expédition et de facturation : il vérifie la commande et prépare l'expédition pour votre approbation.",
+        "body": "Écrivez à l'Operations Desk la demande ci-dessous et appuyez sur Envoyer. Il dispose des outils d'expédition et de facturation : il vérifie la commande et prépare l'expédition pour votre approbation.",
         "text": "Où en est la commande n° 1097, et est-elle facturée ? Réservez maintenant son expédition à partir de sa ligne dans la liste des expéditions à préparer, telle quelle : achetez l'étiquette à l'offre de transporteur la moins chère, en une seule demande en attente de mon accord, sans autre modification. Inutile de me demander confirmation.",
         "role": "Le client veut son colis vite ; l'Operations Desk, l'agent qui gère les expéditions, peut vérifier la commande et réserver l'expédition pour vous.",
         "say": "Demandez à l'Operations Desk :",
@@ -791,7 +791,7 @@
       },
       "askBugs": {
         "title": "Demandez les bugs récents à votre agent",
-        "body": "Ouvrez Discussions en bas de l'écran, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il lit le canal Firmware bugs de l'équipe.",
+        "body": "Écrivez à {{agent}} la question ci-dessous, dans votre discussion avec lui, et appuyez sur Envoyer. Il lit le canal Firmware bugs de l'équipe.",
         "text": "Lisez le canal Firmware bugs et listez les bugs qui y sont signalés, du plus récent au plus ancien, une ligne chacun.",
         "role": "Le support et le banc de test signalent les bugs dans un canal d'équipe. {{agent}} peut le lire pour vous.",
         "say": "Demandez à {{agent}} :",
@@ -874,7 +874,7 @@
       },
       "askAgent": {
         "title": "Interrogez votre agent sur les trois sources à la fois",
-        "body": "Ouvrez Discussions en bas de l'écran, à côté du compte de résultat, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il répond à partir du compte de résultat, du manuel et du playbook, et les cite.",
+        "body": "Écrivez à {{agent}} la question ci-dessous, dans votre discussion avec lui, et appuyez sur Envoyer. Il répond à partir du compte de résultat, du manuel et du playbook, et les cite.",
         "role": "Votre agent voit ce que vous voyez : il peut combiner le compte de résultat, le manuel et le playbook en une seule réponse pour le conseil d'administration de demain.",
         "text": "Quelle a été notre marge brute au T3, et quel produit l'a portée ? Citez les documents que vous avez utilisés.",
         "say": "Demandez à {{agent}} :",

@@ -462,6 +462,23 @@ describe("queueEvent stamps the message the emitting turn answers", () => {
     expect((await queuedMetadata(outside))?.turnMessageId).toBeUndefined()
   })
 
+  // A call a person approved runs after its turn ended: its frame carries the
+  // ask the proposing turn answered, and no message of its own.
+  it("in an approved call's re-entry: the ask the proposing turn answered", async () => {
+    const approved = crypto.randomUUID()
+    const askId = crypto.randomUUID()
+    await runContextStore.run({ ...turnFrame({ agentId }), askId }, () => queueTestEvent(approved))
+    expect((await queuedMetadata(approved))?.turnMessageId).toBe(askId)
+
+    // A turn with a message of its own names that message, whatever ask it continues.
+    const own = crypto.randomUUID()
+    const turnMessageId = crypto.randomUUID()
+    await runContextStore.run({ ...turnFrame({ agentId }), turnMessageId, askId }, () =>
+      queueTestEvent(own),
+    )
+    expect((await queuedMetadata(own))?.turnMessageId).toBe(turnMessageId)
+  })
+
   it("across the hop that loses the frame, from the handle the turn declared", async () => {
     const entityId = crypto.randomUUID()
     const turnMessageId = crypto.randomUUID()

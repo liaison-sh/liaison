@@ -157,6 +157,14 @@ export interface RunApprovedToolHandlerArgs {
    * instead of restarting at depth 0. Absent for anything a sub-run did not propose.
    */
   originRun?: { runId: string; rootRunId: string; nestingDepth: number }
+  /**
+   * The person's message the proposing turn answered (`metadata.askId`, recorded
+   * when the call was gated). The re-entry carries it as its frame's `askId`, so
+   * the events the approved call queues still say which request caused them
+   * (`metadata.turnMessageId`, queue-event.ts): without it, whatever waits on
+   * "the work this request caused" never saw a write a person stopped to approve.
+   */
+  askId?: string
 }
 
 export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): Promise<unknown> {
@@ -238,6 +246,7 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
     nestingDepth: args.originRun?.nestingDepth ?? 0,
     turnScopeAccumulator: reentryScopeAccumulator,
     ...(args.agentId ? { agentId: args.agentId } : {}),
+    ...(args.askId ? { askId: args.askId } : {}),
   }
 
   // EXECUTE under the app-aliased actor — the SAME RLS context the direct tool path uses

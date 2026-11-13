@@ -30,7 +30,8 @@ platform trusts them, and how they get installed:
   install through the same route as a third-party package.
 - **Installed apps** are `.liaisonapp` packages installed at runtime onto a
   deployed instance, whether from the baked-in catalog or from an external URL.
-  They are **always** process-isolated (sandboxed worker), never trusted, and
+  They **always** run sandboxed (only the platform's core apps run as server
+  code, and no manifest field changes that: a `trusted` field is refused), and
   can only call kernel-mediated APIs with the scopes an admin explicitly
   grants.
 

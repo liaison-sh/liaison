@@ -75,8 +75,8 @@ function firstPartyApps(): FirstPartyApp[] {
 describe("first-party listings", () => {
   const apps = firstPartyApps()
 
-  it("finds all 20 first-party apps (the checks below are not vacuous)", () => {
-    expect(apps).toHaveLength(20)
+  it("finds all 21 first-party apps (the checks below are not vacuous)", () => {
+    expect(apps).toHaveLength(21)
   })
 
   for (const { dir, manifest: m } of apps) {

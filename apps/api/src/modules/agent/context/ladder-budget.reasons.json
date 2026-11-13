@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "key": "all-apps:github",
+    "capability": "the GitHub connector: thirteen read-only tools over repositories, commits, pull requests, issues, milestones, labels, releases, tags, the tree, files and search, the same reads the GitLab connector gives"
+  },
+  {
+    "key": "all-apps:visibleTools",
+    "capability": "the GitHub connector's thirteen read-only tools, for an org with every app on"
+  },
+  {
+    "key": "phone:visibleTools",
+    "capability": "the GitHub connector's thirteen read-only tools, for an org with every app on"
+  }
+]

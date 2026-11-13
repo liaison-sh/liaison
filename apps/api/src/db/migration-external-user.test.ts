@@ -25,6 +25,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
 const FIRST_NEW_TAG = "0302_mail_inbound_sender_index"
@@ -89,14 +90,16 @@ beforeAll(async () => {
   await admin.unsafe(`CREATE DATABASE "${dbName}"`)
   const before = folderUpTo(FIRST_NEW_TAG, -1)
   folders.push(before)
-  await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
-  // The replay took this back, cluster wide. Everything else on this cluster needs it now.
-  await admin.unsafe(`DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_portal') THEN
-      CREATE ROLE liaison_portal NOLOGIN NOBYPASSRLS;
-    END IF;
-  END $$`)
-  await admin.unsafe(`GRANT liaison_portal TO liaison_request`)
+  await withRoleCatalogLock(adminUrl, async () => {
+    await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
+    // The replay took this back, cluster wide. Everything else on this cluster needs it now.
+    await admin.unsafe(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_portal') THEN
+        CREATE ROLE liaison_portal NOLOGIN NOBYPASSRLS;
+      END IF;
+    END $$`)
+    await admin.unsafe(`GRANT liaison_portal TO liaison_request`)
+  })
 
   fresh = postgres(freshAsSuperuser.toString(), { max: 1, onnotice: () => {} })
   // People who are already there when the migrations run.
@@ -170,7 +173,9 @@ describe("the external-user migrations on a live database, by a non-superuser lo
 
     const all = folderUpTo(LAST_NEW_TAG, 0)
     folders.push(all)
-    await runMigrations(freshAsLogin.toString(), { migrationsFolder: all })
+    await withRoleCatalogLock(adminUrl, () =>
+      runMigrations(freshAsLogin.toString(), { migrationsFolder: all }),
+    )
 
     const owners = await fresh<{ name: string; owner: string }[]>`
       SELECT p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner

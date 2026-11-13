@@ -21,6 +21,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 import { keepClusterRoleMemberships } from "../../../test-support/role-memberships"
 
 const MIGRATIONS = import.meta.dir
@@ -82,7 +83,9 @@ beforeAll(async () => {
   await admin.unsafe(`CREATE DATABASE "${dbName}"`)
   const before = folderUpTo(FIRST_LOGIN_TAG, -1)
   folders.push(before)
-  await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
+  await withRoleCatalogLock(adminUrl, () =>
+    runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before }),
+  )
 
   fresh = postgres(freshAsSuperuser.toString(), { max: 1, onnotice: () => {} })
   const rows: [string, Record<string, RowValue> | Record<string, RowValue>[]][] = [
@@ -177,13 +180,17 @@ beforeAll(async () => {
   // 0254 by the login, as a database owner would have run it.
   const with0254 = folderUpTo(FIRST_LOGIN_TAG, 0)
   folders.push(with0254)
-  await runMigrations(freshAsLogin.toString(), { migrationsFolder: with0254 })
+  await withRoleCatalogLock(adminUrl, () =>
+    runMigrations(freshAsLogin.toString(), { migrationsFolder: with0254 }),
+  )
   // What lies between is not under test, and 0277 cannot run as this login at
   // all (ALTER FUNCTION ... OWNER TO liaison_admin needs CREATE on the schema),
   // so the superuser applies it.
   const upToFix = folderUpTo(FIX_TAG, -1)
   folders.push(upToFix)
-  await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: upToFix })
+  await withRoleCatalogLock(adminUrl, () =>
+    runMigrations(freshAsSuperuser.toString(), { migrationsFolder: upToFix }),
+  )
   // A later migration hands the portal role to the request login. Roles are cluster wide and
   // the replay above took the request login's extra memberships back, so the login needs the
   // ADMIN option on the portal role to give it again, as the owner of a role has; the role
@@ -210,13 +217,17 @@ beforeAll(async () => {
   // 0283 itself, by the login again.
   const withFix = folderUpTo(FIX_TAG, 0)
   folders.push(withFix)
-  await runMigrations(freshAsLogin.toString(), { migrationsFolder: withFix })
+  await withRoleCatalogLock(adminUrl, () =>
+    runMigrations(freshAsLogin.toString(), { migrationsFolder: withFix }),
+  )
   // What follows is not under test either, and a migration that hands a SECURITY DEFINER
   // function to a runtime role (ALTER FUNCTION ... OWNER TO liaison_admin, as 0277 does) cannot
   // run as this login, so the superuser applies the rest.
   const all = folderUpTo(FIX_TAG, Number.MAX_SAFE_INTEGER)
   folders.push(all)
-  await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: all })
+  await withRoleCatalogLock(adminUrl, () =>
+    runMigrations(freshAsSuperuser.toString(), { migrationsFolder: all }),
+  )
 }, 300_000)
 
 afterAll(async () => {

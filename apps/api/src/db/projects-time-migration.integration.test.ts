@@ -18,6 +18,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
 const FIRST_NEW_TAG = "0316_projects_time_plan"
@@ -108,9 +109,11 @@ beforeAll(async () => {
   await admin.unsafe(`CREATE DATABASE "${dbName}"`)
   const before = folderUpTo(FIRST_NEW_TAG, -1)
   folders.push(before)
-  await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
-  // The replay took this back, cluster wide. Everything else on this cluster needs it now.
-  await admin.unsafe(`GRANT liaison_portal TO liaison_request`)
+  await withRoleCatalogLock(adminUrl, async () => {
+    await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: before })
+    // The replay took this back, cluster wide. Everything else on this cluster needs it now.
+    await admin.unsafe(`GRANT liaison_portal TO liaison_request`)
+  })
 
   fresh = postgres(freshAsSuperuser.toString(), { max: 1, onnotice: () => {} })
   // What is already there when the migrations run: an org with a work project
@@ -244,7 +247,9 @@ describe("the time and budgets migrations on a live database", () => {
 
     const all = folderUpTo(LAST_NEW_TAG, 0)
     folders.push(all)
-    await runMigrations(freshAsLogin.toString(), { migrationsFolder: all })
+    await withRoleCatalogLock(adminUrl, () =>
+      runMigrations(freshAsLogin.toString(), { migrationsFolder: all }),
+    )
 
     // Every project is off, nobody turned anything, and no task has a timebox.
     const projects = await fresh<

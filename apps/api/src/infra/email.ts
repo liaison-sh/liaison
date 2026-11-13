@@ -195,7 +195,10 @@ function tagsToText(html: string): string {
     out += html.slice(at, open)
     const close = html.indexOf(">", open)
     if (close < 0) return out
-    const tag = html.slice(open + 1, close).trim().toLowerCase()
+    const tag = html
+      .slice(open + 1, close)
+      .trim()
+      .toLowerCase()
     if (LINE_ENDING_TAG.test(tag)) out += "\n"
     at = close + 1
   }

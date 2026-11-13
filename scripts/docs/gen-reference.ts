@@ -1224,6 +1224,8 @@ export interface KernelToolSearchFields {
   /** As declared; absent when the tool states none (a kernel tool is then hot). */
   deferLoading?: boolean
   agentVisible: boolean
+  /** The visible tool a hidden one sends an agent to, as declared. */
+  useInstead?: string
   routineOnly: boolean
   /** Characters of the `params` expression's source, a stand-in for its schema size. */
   paramsChars: number
@@ -1489,6 +1491,7 @@ export function collectKernelTools(root: string = ROOT): KernelTools {
           return undefined
         }
         const keywordsExpr = bound(defProps.get("searchKeywords"))
+        const useInsteadExpr = bound(defProps.get("useInstead"))
         const paramsExpr = bound(defProps.get("params"))
 
         let availability: string | undefined
@@ -1502,6 +1505,8 @@ export function collectKernelTools(root: string = ROOT): KernelTools {
         }
 
         const prev = byName.get(name)
+        const useInstead =
+          (useInsteadExpr ? resolveString(useInsteadExpr, ctx) : undefined) ?? prev?.useInstead
         const deferLoading = flag("deferLoading") ?? prev?.deferLoading
         byName.set(name, {
           name,
@@ -1514,6 +1519,7 @@ export function collectKernelTools(root: string = ROOT): KernelTools {
             : (prev?.searchKeywords ?? []),
           ...(deferLoading !== undefined ? { deferLoading } : {}),
           agentVisible: flag("agentVisible") !== false && prev?.agentVisible !== false,
+          ...(useInstead ? { useInstead } : {}),
           routineOnly: flag("routineOnly") === true || prev?.routineOnly === true,
           readOnly: flag("readOnly") === true || prev?.readOnly === true,
           registeredAt: prev?.registeredAt ?? where(n),

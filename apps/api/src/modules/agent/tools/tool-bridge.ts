@@ -36,6 +36,7 @@ import { watchTaintMarks } from "~/modules/agent/scopes/taint"
 import { isHostOnlyParam, stripHostOnlyParams } from "~/modules/agent/tools/host-only-params"
 import { toJsonValue, toolFailureModelOutput } from "~/modules/agent/tools/tool-failure-output"
 import { rememberHeldToolSet } from "~/modules/agent/tools/tool-name-resolve"
+import { hiddenToolAliases } from "~/modules/agent/tools/tool-rank"
 import { repeatFetchResult } from "~/modules/agent/tools/web-fetch-repeat"
 import {
   approvalActionRequiredClause,
@@ -1543,6 +1544,7 @@ function listCatalogTools(
   toolName: string
   description: string
   keywords?: readonly string[]
+  aliases?: readonly string[]
   locked?: boolean
   requiredScope?: string
   routineOnly?: boolean
@@ -1553,11 +1555,23 @@ function listCatalogTools(
     toolName: string
     description: string
     keywords?: readonly string[]
+    aliases?: readonly string[]
     locked?: boolean
     requiredScope?: string
     routineOnly?: boolean
   }> = []
   const actorScopes = actor?.scopes ?? []
+  // A hidden tool's name still finds the visible tool it sends an agent to.
+  const aliases = hiddenToolAliases(
+    [...toolRegistry.entriesOf(orgId)]
+      .filter(([key]) => key[0] === orgId)
+      .map(([key, def]) => ({
+        appName: key[1],
+        toolName: key[2],
+        agentVisible: def.agentVisible,
+        useInstead: def.useInstead,
+      })),
+  )
 
   for (const [key, toolDef] of toolRegistry.entriesOf(orgId)) {
     if (key[0] !== orgId) continue
@@ -1601,12 +1615,15 @@ function listCatalogTools(
       if (locked) continue
     }
 
+    const sdkName = `${key[1]}__${key[2].replace(/[^a-zA-Z0-9_-]/g, "_")}`
+    const aliasNames = aliases.get(sdkName)
     results.push({
-      sdkName: `${key[1]}__${key[2].replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+      sdkName,
       appName: key[1],
       toolName: key[2],
       description: toolDef.description,
       ...(toolDef.searchKeywords?.length ? { keywords: toolDef.searchKeywords } : {}),
+      ...(aliasNames ? { aliases: aliasNames } : {}),
       ...(locked ? { locked: true, requiredScope: scopeCheck.missing.join(", ") } : {}),
       ...(toolDef.routineOnly ? { routineOnly: true } : {}),
     })

@@ -283,6 +283,20 @@ describe("known bad answers stay fixed", () => {
   })
 })
 
+describe("hidden tools in the catalog read from source", () => {
+  it("a visible tool carries the names of the hidden tools that send an agent to it", () => {
+    const byName = new Map(catalog.map((t) => [t.sdkName, t]))
+    const hidden = catalog.filter((t) => !t.agentVisible && t.useInstead)
+    expect(hidden.length).toBeGreaterThan(0)
+    for (const h of hidden) {
+      const target = h.useInstead?.includes("__") ? h.useInstead : `${h.appName}__${h.useInstead}`
+      expect(byName.get(target)?.aliases, h.sdkName).toContain(h.toolName)
+    }
+    // A kernel tool's redirect is read from its registration too.
+    expect(byName.get("kernel__memory_delete")?.aliases).toEqual(["user_memory_delete"])
+  })
+})
+
 describe("tools that arrive from main", () => {
   it("a tool arriving by merge is listed by --update --from-main, a tool written on the branch is not", () => {
     const old = tool("shop__orders_get")

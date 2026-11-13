@@ -124,7 +124,12 @@ export async function executeApprovedStep(args: {
       thread_id: string
       tool_name: string
       requested_by: string
-      metadata: { origin?: ToolOrigin; originRoutineId?: string; originRun?: unknown } | null
+      metadata: {
+        origin?: ToolOrigin
+        originRoutineId?: string
+        originRun?: unknown
+        askId?: unknown
+      } | null
       /** FX4: the proposing turn's accumulated scopes, or null when the row
        *  predates migration 0067 (or its turn's taint was unknowable). */
       proposing_turn_scopes: string[] | null
@@ -211,6 +216,10 @@ export async function executeApprovedStep(args: {
         // the call was proposed and is read back here, never re-resolved, so
         // the re-entry's writes name the agent whose turn actually proposed it.
         agentId: claimed.agent_id ?? null,
+        // The ask the proposing turn answered: the approved call's events name it.
+        ...(typeof claimed.metadata?.askId === "string" && claimed.metadata.askId.length > 0
+          ? { askId: claimed.metadata.askId }
+          : {}),
         // And the proposing sub-run's depth, the same journey (MAX_NESTING_DEPTH).
         ...(() => {
           const originRun = parseOriginRun(claimed.metadata?.originRun)

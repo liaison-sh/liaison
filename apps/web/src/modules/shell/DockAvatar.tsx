@@ -20,7 +20,8 @@ import {
 } from "~/modules/threads/conversation-display"
 import { getChannelAgentStream } from "~/modules/threads/message-store"
 import { presenceStore } from "~/modules/threads/presence-store"
-import { agentTypingInThread, getThread } from "~/modules/threads/thread-store"
+import { agentTypingInThread } from "~/modules/threads/thread-store"
+import { threadForDock } from "~/modules/threads/thread-tab-names"
 import { Avatar } from "~/ui/AvatarStack"
 
 export type DockPresence = "online" | "working" | null
@@ -28,7 +29,7 @@ export type DockPresence = "online" | "working" | null
 /** The dot a dock conversation wears: a person online, an agent at work, or
  *  nothing. Exported for the window header's status line. */
 export function dockPresence(threadId: string): DockPresence {
-  const thread = getThread(threadId)
+  const thread = threadForDock(threadId)
   if (!thread) return null
   const me = userFromToken()?.userId ?? ""
   const kind = conversationKind(thread, me)
@@ -50,7 +51,7 @@ interface DockAvatarProps {
 
 export const DockAvatar: Component<DockAvatarProps> = (props) => {
   const me = () => userFromToken()?.userId ?? ""
-  const thread = () => getThread(props.threadId)
+  const thread = () => threadForDock(props.threadId)
   const kind = () => {
     const t = thread()
     return t ? conversationKind(t, me()) : null

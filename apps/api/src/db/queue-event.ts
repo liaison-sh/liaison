@@ -109,7 +109,7 @@ export function setEventAgentDefault(
   handleAgentDefaults.set(tx, {
     agentId,
     turnKey: frame?.rootRunId ?? captured?.run?.rootRunId ?? null,
-    turnMessageId: frame?.turnMessageId ?? captured?.turnMessageId ?? null,
+    turnMessageId: frame?.turnMessageId ?? frame?.askId ?? captured?.turnMessageId ?? null,
   })
 }
 
@@ -141,10 +141,16 @@ function handleAgentDefaultFor(handle: object): string | null {
  * another turn of the same agent did meanwhile. Same sources, same precedence
  * and same refusal to cross turns as the acting agent below; outside a turn it
  * stays absent. Merged, never overwriting a value the emitter set.
+ *
+ * A call a person approved runs after its turn ended, in a frame that has no
+ * message of its own but carries the ask the proposing turn answered
+ * (`RunContext.askId`, run-approved-handler.ts): its events name that ask, so
+ * a write that was held for approval still belongs to the request behind it.
  */
 function stampTurnMessageId(event: AppEvent, handle: object): AppEvent {
+  const frame = currentRunContext()
   const turnMessageId =
-    currentRunContext()?.turnMessageId ?? handleDefaultFor(handle)?.turnMessageId ?? null
+    frame?.turnMessageId ?? frame?.askId ?? handleDefaultFor(handle)?.turnMessageId ?? null
   if (!turnMessageId) return event
   const existing =
     event.metadata && typeof event.metadata === "object"

@@ -28,7 +28,7 @@ import { conversationDisplayName, isChannel } from "~/modules/threads/conversati
 import OutsideTextMark from "~/modules/threads/OutsideTextMark"
 import ThreadRuntimeSlot, { dmAgentSeat } from "~/modules/threads/ThreadRuntimeSlot"
 import ThreadView from "~/modules/threads/ThreadView"
-import { getThread } from "~/modules/threads/thread-store"
+import { threadForDock } from "~/modules/threads/thread-tab-names"
 import { Button } from "~/ui/Button"
 import { Tooltip } from "~/ui/Tooltip"
 
@@ -52,7 +52,7 @@ const ICON_BUTTON_CLASS =
 const ConversationTab: Component<ConversationTabProps> = (props) => {
   const i18n = useI18n()
   const currentUserId = () => userFromToken()?.userId ?? ""
-  const thread = () => getThread(props.tab.threadId)
+  const thread = () => threadForDock(props.tab.threadId)
 
   const name = () => {
     const t = thread()

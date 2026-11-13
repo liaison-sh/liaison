@@ -85,6 +85,8 @@ export interface FlowResumePayload {
   routineId: string
   runId: string
   stepId: string
+  /** How many times the job found the record's lock held (runFlowResumeJob). */
+  lockRetries?: number
 }
 
 export interface FlowToolCall {
@@ -1208,4 +1210,59 @@ export async function resumeFlowOnDecision(
   setState(state, "done", "Approved and done.")
   await saveSteps(run)
   return continueFlow(run, index + 1)
+}
+
+/**
+ * The `kernel:routine-flow-resume` job: takes the routine+record lock a flow's event tick takes,
+ * then `resumeFlowWait`. A busy lock brings the job back in a minute (an hour at most).
+ */
+export async function runFlowResumeJob(
+  payload: Partial<FlowResumePayload>,
+  deps: FlowDeps & { loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]> } = {},
+): Promise<RoutineTickResult> {
+  const { orgId, routineId, runId, stepId } = payload
+  if (!orgId || !routineId || !runId || !stepId) {
+    log.warn({ payload }, "routine-flow-resume: missing ids")
+    return { status: "no_run" }
+  }
+  const [run] = await withPrivilegedDb(orgId, "routine-flow-resume-entity", (tx) =>
+    tx
+      .select({ entityId: routineRuns.eventEntityId })
+      .from(routineRuns)
+      .where(and(eq(routineRuns.id, runId), eq(routineRuns.orgId, orgId)))
+      .limit(1),
+  )
+  if (!run) return { status: "no_run" }
+  const { redis } = await import("~/lib/redis")
+  const lockKey = `routine-lock:${routineId}${run.entityId ? `:${run.entityId}` : ""}`
+  const token = crypto.randomUUID()
+  const got = await redis.set(lockKey, token, "EX", 600, "NX")
+  if (got !== "OK") {
+    const retries = (payload.lockRetries ?? 0) + 1
+    if (retries > 60) {
+      log.error(
+        { routineId, runId },
+        "routine-flow-resume: the record stayed busy; the wait is dropped",
+      )
+      return { status: "no_run", runId }
+    }
+    const enqueue = deps.enqueueResume ?? defaultEnqueueResume
+    await enqueue(
+      { orgId, routineId, runId, stepId, lockRetries: retries },
+      { jobId: `flowwait-retry:${runId}:${stepId}:${retries}`, delayMs: 60_000 },
+    )
+    return { status: "lock_busy", runId }
+  }
+  try {
+    return await resumeFlowWait({ orgId, routineId, runId, stepId }, deps)
+  } finally {
+    await redis
+      .eval(
+        `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
+        1,
+        lockKey,
+        token,
+      )
+      .catch(() => undefined)
+  }
 }

@@ -1416,6 +1416,17 @@ export async function registerKernelJobs(): Promise<void> {
     }
   })
 
+  // A routine flow's wait came due (0303, flow-runner.ts): the run re-checks its condition and
+  // goes on, under the routine+record lock a flow's event tick takes. A busy lock comes back later.
+  registerJobWorker("kernel", "routine-flow-resume", async (payload: any) => {
+    const { runFlowResumeJob } = await import("~/modules/agent/routines/flow-runner")
+    const deps = productionRoutineTickDeps(String(payload?.routineId ?? ""))
+    await runFlowResumeJob(payload ?? {}, {
+      ...(deps.agentInvoker ? { agentInvoker: deps.agentInvoker } : {}),
+      ...(deps.loadOwnerScopes ? { loadOwnerScopes: deps.loadOwnerScopes } : {}),
+    })
+  })
+
   // Event-routine subscriptions are process-wide (every process's bus); the
   // schedulers and one-shot jobs are the leader's, on lease acquire.
   await subscribeEventRoutinesAtBoot()

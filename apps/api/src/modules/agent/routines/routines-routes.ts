@@ -93,6 +93,89 @@ async function withCanWrite<T extends { ownerAgentId: string | null }>(
   return rows.map((r) => ({ ...r, canWrite: authority.get(r.ownerAgentId ?? "") ?? false }))
 }
 
+/** A run's step as a list row carries it: what a progress strip draws, no notes or outputs. */
+interface StepSummary {
+  id: string
+  type?: string
+  state: string
+  startedAt?: string | null
+  endedAt?: string | null
+}
+
+function stepSummaries(steps: unknown): StepSummary[] | null {
+  if (!Array.isArray(steps)) return null
+  return steps.flatMap((s) => {
+    if (!s || typeof s !== "object") return []
+    const r = s as Record<string, unknown>
+    if (typeof r.id !== "string" || typeof r.state !== "string") return []
+    return [
+      {
+        id: r.id,
+        ...(typeof r.type === "string" ? { type: r.type } : {}),
+        state: r.state,
+        ...(typeof r.startedAt === "string" || r.startedAt === null
+          ? { startedAt: r.startedAt as string | null }
+          : {}),
+        ...(typeof r.endedAt === "string" || r.endedAt === null
+          ? { endedAt: r.endedAt as string | null }
+          : {}),
+      },
+    ]
+  })
+}
+
+/**
+ * `?includeLastRun=1` on the list: each listed routine's latest run (id, when, status, its steps'
+ * states), read in one query for the whole page, so a list that draws run progress makes one
+ * request instead of one per row. The rows are already the caller's readable routines.
+ */
+async function withLastRun<T extends { id: string }>(
+  c: Context<AppEnv>,
+  orgId: string,
+  rows: T[],
+): Promise<
+  Array<
+    T & {
+      lastRun?: { id: string; ranAt: Date; status: string; steps: StepSummary[] | null } | null
+    }
+  >
+> {
+  const flag = c.req.query("includeLastRun")
+  if (flag !== "1" && flag !== "true") return rows
+  if (rows.length === 0) return rows
+  const latest = await withPrivilegedDb(orgId, "routines-list-last-run", (tx) =>
+    tx
+      .selectDistinctOn([routineRuns.routineId], {
+        id: routineRuns.id,
+        routineId: routineRuns.routineId,
+        ranAt: routineRuns.ranAt,
+        status: routineRuns.status,
+        steps: routineRuns.steps,
+      })
+      .from(routineRuns)
+      .where(
+        and(
+          eq(routineRuns.orgId, orgId),
+          inArray(
+            routineRuns.routineId,
+            rows.map((r) => r.id),
+          ),
+        ),
+      )
+      .orderBy(routineRuns.routineId, desc(routineRuns.ranAt), desc(routineRuns.id)),
+  )
+  const byRoutine = new Map(latest.map((r) => [r.routineId, r]))
+  return rows.map((r) => {
+    const run = byRoutine.get(r.id)
+    return {
+      ...r,
+      lastRun: run
+        ? { id: run.id, ranAt: run.ranAt, status: run.status, steps: stepSummaries(run.steps) }
+        : null,
+    }
+  })
+}
+
 export const routinesRoutes = new Hono<AppEnv>()
 
 // ---- GET /api/agent/routines ---------------------------------------------
@@ -168,7 +251,7 @@ routinesRoutes.get("/", async (c) => {
       rows.push(r)
     }
     rows.sort((a, b) => a.name.localeCompare(b.name))
-    return c.json({ data: await withCanWrite(actor, rows) })
+    return c.json({ data: await withLastRun(c, actor.orgId, await withCanWrite(actor, rows)) })
   }
   // A project's automations (0303): the routines the caller sees (their own, or shared) whose
   // event filter names that project.
@@ -190,7 +273,7 @@ routinesRoutes.get("/", async (c) => {
         ),
     )
     rows.sort((a, b) => a.name.localeCompare(b.name))
-    return c.json({ data: await withCanWrite(actor, rows) })
+    return c.json({ data: await withLastRun(c, actor.orgId, await withCanWrite(actor, rows)) })
   }
   const visibility = c.req.query("visibility") === "shared" ? "shared" : "mine"
   const rows = await withPrivilegedDb(actor.orgId, "routines-list", (tx) =>
@@ -204,7 +287,7 @@ routinesRoutes.get("/", async (c) => {
       ),
   )
   rows.sort((a, b) => a.name.localeCompare(b.name))
-  return c.json({ data: await withCanWrite(actor, rows) })
+  return c.json({ data: await withLastRun(c, actor.orgId, await withCanWrite(actor, rows)) })
 })
 
 // ---- GET /api/agent/routines/scope-options (D20) ---------------------------

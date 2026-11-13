@@ -129,6 +129,39 @@ async function gatedConsume(params: { note: string; label: string }, ctx: TestAp
   return { consumed: params.note, label: params.label }
 }
 
+// Approval summarizers. The test app runs sandboxed (it is not a core app), so
+// the runtime resolves its summarizers from this bundle alone, on an empty bridge.
+interface TestApprovalSummary {
+  kind: string
+  title: string
+  lines: string[]
+}
+
+function summarizeGatedEcho(params: { message: string; lines?: string[] }): TestApprovalSummary {
+  return {
+    kind: "test.gated_echo",
+    title: `Echo: ${params.message}`,
+    // `lines`: a card test's own summary lines, rendered as a real summarizer's.
+    lines: params.lines && params.lines.length > 0 ? params.lines : [`Message: ${params.message}`],
+  }
+}
+
+function summarizeGatedProduce(params: { seed: string }): TestApprovalSummary {
+  return {
+    kind: "test.gated_produce",
+    title: `Produce value from "${params.seed}"`,
+    lines: [`Seed: ${params.seed}`],
+  }
+}
+
+function summarizeGatedConsume(params: { note: string; label: string }): TestApprovalSummary {
+  return {
+    kind: "test.gated_consume",
+    title: "Consume produced value",
+    lines: [`Note: ${params.note}`, `Label: ${params.label}`],
+  }
+}
+
 function mockExternalSearch(_params: unknown, _ctx: TestAppCtx) {
   return [
     { id: "1", name: "EU Alpha", market: "eu" },

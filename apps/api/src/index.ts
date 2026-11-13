@@ -69,6 +69,7 @@ import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usag
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { startBridgeListener } from "~/modules/apps/workers/bridge-listener"
+import { checkSandboxAtBoot } from "~/modules/apps/workers/sandbox-release"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { healthzRoutes } from "~/modules/healthz"
@@ -198,6 +199,9 @@ registerProcessShutdownPhases({ internalListener })
 if (env.LIAISON_APP_BRIDGE_PORT !== undefined) {
   startBridgeListener(app, { port: env.LIAISON_APP_BRIDGE_PORT })
 }
+// The release handshake with the sandbox service (when one is configured):
+// a service left on another release is logged here, and /healthz reports it.
+void checkSandboxAtBoot().catch(() => undefined)
 // The orchestrator's stop grace period must exceed hardDeadlineMs (+ 5 s), or
 // it kills the process mid-drain (docs/self-hosting/docker.md).
 rootLogger.info(shutdownBudgets(), "Shutdown budgets (ms from SIGTERM)")

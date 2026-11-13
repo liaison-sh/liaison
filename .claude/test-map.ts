@@ -274,6 +274,10 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The test runner and its helpers: the runner's own unit tests (root) and
   // the suite-routing guards that read scripts/test-run.ts (guards).
   { glob: "scripts/test-run*.ts", suites: ["root", "guards"] },
+  // A suite's extra test files (scripts/lib/suite-extras.ts): the routing guards read them; the
+  // test files they name are attributed by their own paths.
+  { glob: "scripts/test-suites.d/**", suites: ["guards"] },
+  { glob: "scripts/lib/suite-extras*", suites: ["root", "guards"] },
   { glob: "scripts/test-gate*.ts", suites: ["root"] },
   { glob: "scripts/test-unit-parallel.ts", suites: ["root"] },
   { glob: "scripts/test-e2e-parallel.ts", suites: ["root"] },

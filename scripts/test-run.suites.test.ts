@@ -17,6 +17,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "no
 import path from "node:path"
 import { apiE2eScenarioFiles, apiE2eTestFiles, CELL_DIR, isCellPath } from "./lib/api-e2e-files"
 import { PENDING_SUITES } from "./lib/pending-suites"
+import { readSuiteExtras, withExtraListings } from "./lib/suite-extras"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const SOURCE = readFileSync(path.join(ROOT, "scripts/test-run.ts"), "utf8")
@@ -113,6 +114,13 @@ function suiteBlocks(source: string = SOURCE): Record<string, string> {
     const from = (matches[i].index ?? 0) + matches[i][0].length
     const to = i + 1 < matches.length ? (matches[i + 1].index ?? body.length) : body.length
     blocks[matches[i][1]] = body.slice(from, to)
+  }
+  // A suite's extra files (scripts/test-suites.d) read as listings of that suite.
+  if (source === SOURCE) {
+    const extras = readSuiteExtras()
+    for (const name of Object.keys(blocks)) {
+      blocks[name] = withExtraListings(name, blocks[name], extras)
+    }
   }
   return blocks
 }

@@ -305,3 +305,5 @@ List-Unsubscribe and One-Click headers on a Gmail send and on an SMTP send -> ap
 Commercial identity must be set first -> apps/api/src/modules/mail/commercial-footer.ts:37 ; apps/web/src/modules/settings/AdminOrgSettings.tsx:157
 LIAISON_SANDBOX_URL names the server's own sandbox service for runs the loader cannot take, and for every run without a loader -> apps/api/src/lib/env.ts ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
 Sandbox service compose profile, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME -> deploy/docker-compose.yml sandbox ; apps/api/src/modules/apps/workers/bridge-listener.ts
+/healthz sandbox dependency when the sandbox service is configured -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox
+Rolling deploy recreates the sandbox service after the new processes are ready -> deploy/rolling-deploy.sh step 4b

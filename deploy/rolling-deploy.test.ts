@@ -165,7 +165,10 @@ describe("rolling-deploy.sh", () => {
     const { code, calls, stderr } = run(["--wait-drain"], { COMPOSE_FILE: composeFile })
     expect(stderr).toContain("deploy done")
     expect(code).toBe(0)
-    const compose = calls.filter((c) => c.startsWith("compose "))
+    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
+    const compose = calls.filter(
+      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
+    )
     for (const c of compose) expect(c.startsWith("compose --profile rolling --profile meaning ")).toBe(true)
     const embedder = indexOf(calls, (c) => c.endsWith(" up -d --no-recreate --no-deps embedder"))
     const migrate = indexOf(calls, (c) => c.includes(" run --rm --no-deps migrate"))
@@ -185,7 +188,10 @@ describe("rolling-deploy.sh", () => {
       COMPOSE_PROFILES: "rolling, meaning,extra",
     })
     expect(code).toBe(0)
-    const compose = calls.filter((c) => c.startsWith("compose "))
+    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
+    const compose = calls.filter(
+      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
+    )
     for (const c of compose) {
       expect(c.startsWith("compose --profile rolling --profile meaning --profile extra ")).toBe(true)
       expect(c).not.toContain("other")
@@ -198,6 +204,25 @@ describe("rolling-deploy.sh", () => {
     const { code, calls } = run()
     expect(code).toBe(0)
     expect(calls.some((c) => c.includes("embedder"))).toBe(false)
+  })
+
+  it("recreates a running sandbox service on the new image once the new processes are ready, before the old ones stop", () => {
+    standardWorld()
+    setPs("sandbox", ["sbx1"])
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    const ready = lastIndexOf(calls, (c) => c.startsWith("inspect") && c.includes("Health"))
+    const recreate = indexOf(calls, (c) => c === "compose --profile sandbox up -d --no-deps sandbox")
+    const firstStop = indexOf(calls, (c) => c.startsWith("stop"))
+    expect(recreate).toBeGreaterThan(ready)
+    expect(firstStop).toBeGreaterThan(recreate)
+  })
+
+  it("leaves the sandbox service alone when it is not in use", () => {
+    standardWorld()
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    expect(calls.some((c) => c.includes("up -d --no-deps sandbox"))).toBe(false)
   })
 
   it("the order is migrate → scale up → readyz wait on the new ids → stop old ids", () => {
@@ -234,7 +259,10 @@ describe("rolling-deploy.sh", () => {
     standardWorld()
     const { code, calls } = run()
     expect(code).toBe(0)
-    const compose = calls.filter((c) => c.startsWith("compose "))
+    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
+    const compose = calls.filter(
+      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
+    )
     for (const c of compose) {
       const words = c.split(" ")
       const verb = words[3]

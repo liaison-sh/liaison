@@ -241,7 +241,7 @@ For every variable, see the [environment reference](../reference/env.md).
 curl http://127.0.0.1:3000/healthz
 ```
 
-From the host itself, or with `Authorization: Bearer <MONITOR_TOKEN>`, the answer includes `version`, `migrationHead`, `schemaBaseline` and `dependencies` (`db`, `redis`, `meilisearch`, `objectStorage`), each `ok` when healthy. From anywhere else, it answers only `{"status":"ok"}`. The app container's own health check fails when any dependency is not `ok`. Admins see the same detail in **Settings › System**.
+From the host itself, or with `Authorization: Bearer <MONITOR_TOKEN>`, the answer includes `version`, `migrationHead`, `schemaBaseline` and `dependencies` (`db`, `redis`, `meilisearch`, `objectStorage`, and `sandbox` when the [app sandbox service](sandbox.md) is configured), each `ok` when healthy. From anywhere else, it answers only `{"status":"ok"}`. The app container's own health check fails when any dependency is not `ok`. Admins see the same detail in **Settings › System**.
 
 To know whether a process should receive traffic, ask `/readyz`:
 
@@ -430,7 +430,7 @@ The script:
 1. Refuses to start while another deploy is running (exit code 1), or while the old processes of the previous deploy are still draining (exit code 75). Try again once they are gone. If that drain was itself stopped (a dropped SSH session with `--wait-drain`, a reboot), it starts the drain again first. If a deploy was killed before its switch, the next run rolls that deploy's new processes back while its old ones still run, then deploys.
 2. Runs the migrations and the catalog apps once, in the `migrate` service of the new image. If a migration fails, or a first-party app does not install, it stops here: no process was started or stopped. An app fails to install when the image carries other files under a version that is already installed; raise the app's version and build again.
 3. Starts the new `api` and `worker` processes beside the old ones (`API_REPLICAS`, 2 by default, and `WORKER_REPLICAS`, 1, from the environment or `deploy/.env`; the processes budget their pools for the same numbers). It never recreates a running container and never touches Postgres, Redis, search or object storage. It refuses before migrating if old and new `api` processes do not fit in `API_PORT_RANGE`.
-4. Waits until every new process is healthy (`READY_TIMEOUT_S`, 300 s). If one exits or never gets ready, it rolls back: it stops and removes the new processes, the old ones keep serving, and it exits 1.
+4. Waits until every new process is healthy (`READY_TIMEOUT_S`, 300 s). If one exits or never gets ready, it rolls back: it stops and removes the new processes, the old ones keep serving, and it exits 1. When the [app sandbox service](sandbox.md) runs, it is then recreated on the new image (it refuses runs of another release).
 5. Waits 2 seconds for the edge to see the new processes, then stops the old ones with the full drain budget and removes them. This drain runs in the background and logs to `deploy/.rolling/drain.log`. Pass `--wait-drain` to wait for it.
 
 The first rolling deploy on a host that runs the single `app` container treats `app` as old: it is stopped only once the new processes are ready. From then on, deploy only with the script: a plain `docker compose up -d` starts `app` again on port 3000, with the default image and migrations on start. The next deploy drains it as an old process and says so.

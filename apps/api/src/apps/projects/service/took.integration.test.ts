@@ -83,7 +83,7 @@ async function newTask(projectId: string, title: string): Promise<string> {
 
 async function said(userId: string, text: string): Promise<string> {
   const threadId = await minimal.thread(orgId, userId)
-  await minimal.message(orgId, threadId, userId, text)
+  await minimal.personMessage(orgId, threadId, userId, text)
   return threadId
 }
 

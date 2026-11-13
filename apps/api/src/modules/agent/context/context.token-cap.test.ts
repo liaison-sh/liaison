@@ -172,8 +172,14 @@ describe("assembleContext - the fixed prompt parts with every app on", () => {
   it("the ladder guard's schema total per app is the registry's, kernel included", async () => {
     const perApp: Record<string, number> = {}
     for (const [key, def] of toolRegistry.entriesOf(FP_ORG)) {
-      const d = def as { description?: string; params?: unknown; agentVisible?: boolean }
-      if (d.agentVisible === false) continue
+      const d = def as {
+        description?: string
+        params?: unknown
+        agentVisible?: boolean
+        feature?: string
+      }
+      // This org has every app feature off, so a feature's tools never reach its wire.
+      if (d.agentVisible === false || d.feature) continue
       const name = `${key[1]}__${key[2]}`
       perApp[key[1]] =
         (perApp[key[1]] ?? 0) +

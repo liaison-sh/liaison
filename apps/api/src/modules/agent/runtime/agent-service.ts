@@ -4421,6 +4421,9 @@ async function runAgentChatTurn(
       askId,
       modelId: creditCheck.model.modelId,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      // A routine run's turn: its reply names the run, so a flow's `tool_called` outcome counts
+      // this run's calls only (flow-runner.ts).
+      ...(runFrame.routineRunId ? { routineRunId: runFrame.routineRunId } : {}),
       ...(discoveredThisTurn.length > 0 ? { [DISCOVERED_TOOLS_META_KEY]: discoveredThisTurn } : {}),
       ...(toolOrder.length > 0 ? { [TOOL_ORDER_META_KEY]: toolOrder } : {}),
       ...(guideNotes.length > 0 ? { [GUIDE_NOTES_META_KEY]: guideNotes } : {}),

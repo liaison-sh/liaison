@@ -24,6 +24,7 @@ import { hasScope } from "~/modules/permissions/permissions"
 import { isPlainThreadShape } from "~/modules/threads/dm-shape"
 import {
   agentAuthorDisplayName,
+  agentPostMetadata,
   assertExplicitRequiredScopes,
   resolveActingAgentIdForWrite,
   resolveAgentAuthorName,
@@ -412,10 +413,11 @@ export async function insertThreadWithParticipants(
         authorAgentId: initialAuthorType === "agent" ? initialAuthorAgentId : null,
         content: initialMessage.content,
         mentions: mentionsList.length > 0 ? mentionsList : null,
-        metadata:
-          initialAuthorType === "agent" && initialMessage.agentAuthorLabel
-            ? { ...initialMessage.metadata, agentAuthorLabel: initialMessage.agentAuthorLabel }
-            : (initialMessage.metadata ?? null),
+        metadata: agentPostMetadata(
+          initialAuthorType,
+          initialMessage.agentAuthorLabel,
+          initialMessage.metadata,
+        ),
         // Never a grant wildcard (scope-taint.ts, rule 10b), as sendMessage stamps.
         requiredScopes: expandWildcardStamp(initialMessage.requiredScopes, orgId),
         disclosureList: initialMessage.disclosureList ?? null,

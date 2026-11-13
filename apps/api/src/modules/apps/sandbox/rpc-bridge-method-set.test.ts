@@ -217,6 +217,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_saveTemplate", "async"],
   ["projects_search", "async"],
   ["projects_setFields", "async"],
+  ["projects_tasksAggregate", "async"],
   ["projects_tasksByAssignee", "async"],
   ["projects_tasksByProject", "async"],
   ["projects_updateProject", "async"],

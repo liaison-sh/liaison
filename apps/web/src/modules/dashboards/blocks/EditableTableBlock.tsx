@@ -9,7 +9,13 @@
 // a row from the form at the top (required columns first), deletes one after a confirm, and
 // opens a row's history (the "Last change" column) to undo a change. A cell saved over someone
 // else's newer change is refused by the server: the grid reloads the row and says who changed it.
-import { History, Plus, Trash2 } from "lucide-solid"
+//
+// A link cell opens its record (the app's own opener, BlockDrillPanel's openRecordLink); an
+// editor changes it from the pencil beside it. A table backed by a project shows its rows as the
+// project's tasks: a column read from the project carries a small link mark naming it, a change
+// to it changes the task (a refusal says so in plain words), Add creates a task, and a row is
+// never deleted here (archive the task in Projects).
+import { History, Link2, Pencil, Plus, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -27,6 +33,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
+import { openRecordLink } from "../BlockDrillPanel"
 import {
   getTable,
   getTableRows,
@@ -39,6 +46,7 @@ import {
   tableErrorFrom,
   writeTableRows,
 } from "../dashboards-client"
+import { backingName } from "../table-backing"
 import { tableRevision } from "../tables-store"
 import { CellEditor } from "./CellEditor"
 import { RowHistoryPanel } from "./RowHistoryPanel"
@@ -47,6 +55,7 @@ import {
   addFormColumns,
   cellText,
   isEmptyCell,
+  isLinkCell,
   isStale,
   parseCellInput,
   relativeTime,
@@ -80,7 +89,8 @@ interface Editing {
 
 export const EditableTableBlock: Component<EditableTableBlockProps> = (props) => {
   const i18n = useI18n()
-  const api = useApi() as unknown as TablesApi & Parameters<typeof loadPeople>[0]
+  const client = useApi()
+  const api = client as unknown as TablesApi & Parameters<typeof loadPeople>[0]
   const tid = () => props.testid ?? "table-block"
   const [table, setTable] = createSignal<TableInfo | null>(null)
   const [status, setStatus] = createSignal<Status>("loading")
@@ -116,6 +126,18 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     return role === "editor" || role === "owner"
   }
   const columns = (): TableColumn[] => shownColumns(table()?.columns ?? [], props.columns)
+  const backing = () => table()?.backing
+  const isReadThrough = (key: string) => backing()?.readThrough.includes(key) === true
+  /** The backing project's name, else "the project". */
+  const parentName = () =>
+    backingName(api, backing()) ?? i18n.t("kernel.dashboards.tables.theProject")
+  /** The add form: a backed table adds a task (its title) with the table's own columns. */
+  const addColumns = (): TableColumn[] => {
+    const all = table()?.columns ?? []
+    const b = backing()
+    if (!b) return all
+    return all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title")
+  }
   const textOpts = () => ({ locale: i18n.locale(), personName, t: i18n.t })
   const cursor = () => cursors()[cursors().length - 1] ?? null
 
@@ -234,7 +256,12 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       return label
         ? i18n.t("kernel.dashboards.tables.invalidCellIn", { column: label, reason: message ?? "" })
         : (message ?? i18n.t("kernel.dashboards.tables.saveFailed"))
-    if (code === "forbidden") return i18n.t("kernel.dashboards.tables.forbidden")
+    if (code === "forbidden") {
+      // A refused read-through change: the table may be editable while the tasks are not.
+      return backing() && (!column || isReadThrough(column))
+        ? i18n.t("kernel.dashboards.tables.projectForbidden", { name: parentName() })
+        : i18n.t("kernel.dashboards.tables.forbidden")
+    }
     if (code === "limit") return message ?? i18n.t("kernel.dashboards.tables.limit")
     if (code === "not_found") return i18n.t("kernel.dashboards.tables.rowGone")
     return i18n.t("kernel.dashboards.tables.saveFailed")
@@ -264,6 +291,11 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       ])
       if (out && !isDeletedRow(out)) replaceRow(out)
     } catch (err) {
+      const e = tableErrorFrom(err)
+      if (e.code === "forbidden" && !e.column) {
+        setRowNotice({ rowId: row.id, text: refusalText(e.code, column.key, e.message) })
+        return
+      }
       await refused(row.id, err)
     } finally {
       setSaving(false)
@@ -278,7 +310,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
 
   async function saveAdd(): Promise<void> {
     const cells: TableCells = {}
-    for (const c of table()?.columns ?? []) {
+    for (const c of addColumns()) {
       const raw = draft()[c.key]
       if (raw === undefined && !c.required) continue
       const parsed = parseCellInput(c, raw)
@@ -349,15 +381,40 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
           </span>
         </Match>
         <Match when={p.column.type === "link" && !isEmptyCell(value())}>
-          <span class="truncate underline decoration-dotted decoration-text-tertiary underline-offset-2">
-            {text()}
-          </span>
+          <span class="truncate">{text()}</span>
         </Match>
       </Switch>
     )
   }
 
   const numeric = (c: TableColumn) => c.type === "number" || c.type === "amount"
+
+  /** A link cell's label, opening its record through the app's own opener (Enter works too). */
+  const LinkOpen: Component<{ row: TableRow; column: TableColumn }> = (p) => {
+    const cell = () => p.row.cells[p.column.key]
+    const text = () => cellText(p.column, cell(), textOpts())
+    return (
+      <button
+        type="button"
+        data-testid={`${tid()}-open-${p.row.id}-${p.column.key}`}
+        aria-label={i18n.t("kernel.dashboards.tables.openLink", { label: text() })}
+        onClick={() => {
+          const v = cell()
+          if (isLinkCell(v)) {
+            openRecordLink(client, {
+              kind: "entity",
+              app: v.app,
+              entityType: v.entityType,
+              id: v.id,
+            })
+          }
+        }}
+        class="min-w-0 truncate rounded text-left text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+      >
+        {text()}
+      </button>
+    )
+  }
 
   return (
     <div
@@ -387,7 +444,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                 onClick={openAdd}
               >
                 <Plus size={13} />
-                {i18n.t("kernel.dashboards.tables.add")}
+                {backing()
+                  ? i18n.t("kernel.dashboards.tables.addTask")
+                  : i18n.t("kernel.dashboards.tables.add")}
               </Button>
             </Show>
           </div>
@@ -403,7 +462,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
             void saveAdd()
           }}
         >
-          <For each={addFormColumns(table()?.columns ?? [])}>
+          <For each={addFormColumns(addColumns())}>
             {(c) => (
               <div class="flex min-w-[7rem] flex-col gap-1 text-[11.5px] text-text-secondary">
                 <span>
@@ -481,7 +540,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
             <Show when={canEdit() && !adding()}>
               <Button variant="outline" size="sm" data-testid={`${tid()}-add`} onClick={openAdd}>
                 <Plus size={13} />
-                {i18n.t("kernel.dashboards.tables.add")}
+                {backing()
+                  ? i18n.t("kernel.dashboards.tables.addTask")
+                  : i18n.t("kernel.dashboards.tables.add")}
               </Button>
             </Show>
           </div>
@@ -510,9 +571,31 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                         <button
                           type="button"
                           data-testid={`${tid()}-sort-${c.key}`}
+                          data-source={
+                            backing() ? (isReadThrough(c.key) ? "record" : "own") : undefined
+                          }
+                          title={
+                            backing()
+                              ? isReadThrough(c.key)
+                                ? i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                    name: parentName(),
+                                  })
+                                : i18n.t("kernel.dashboards.tables.ownColumn")
+                              : undefined
+                          }
                           onClick={() => sortBy(c.key)}
-                          class="text-[11.5px] text-text-tertiary hover:text-text-secondary"
+                          class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary hover:text-text-secondary"
                         >
+                          <Show when={isReadThrough(c.key)}>
+                            <Link2
+                              size={11}
+                              data-testid={`${tid()}-from-record-${c.key}`}
+                              aria-label={i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                name: parentName(),
+                              })}
+                              class="shrink-0 opacity-70"
+                            />
+                          </Show>
                           {c.label}
                           <Show when={sort()?.key === c.key}>
                             {sort()?.dir === "asc" ? " ↑" : " ↓"}
@@ -568,6 +651,31 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                                     onCommit={(v) => void saveCell(row, c, v)}
                                     onCancel={() => setEditing(null)}
                                   />
+                                </Match>
+                                <Match when={isLinkCell(row.cells[c.key])}>
+                                  <span class="flex min-h-6 items-center gap-1 px-1">
+                                    <LinkOpen row={row} column={c} />
+                                    <Show when={canEdit()}>
+                                      <button
+                                        type="button"
+                                        data-testid={`${tid()}-edit-${row.id}-${c.key}`}
+                                        aria-label={i18n.t("kernel.dashboards.tables.editCell", {
+                                          column: c.label,
+                                        })}
+                                        title={i18n.t("kernel.dashboards.tables.editCell", {
+                                          column: c.label,
+                                        })}
+                                        disabled={saving()}
+                                        onClick={() => {
+                                          setRowNotice(null)
+                                          setEditing({ rowId: row.id, key: c.key })
+                                        }}
+                                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
+                                      >
+                                        <Pencil size={11} />
+                                      </button>
+                                    </Show>
+                                  </span>
                                 </Match>
                                 <Match when={canEdit()}>
                                   <button
@@ -626,7 +734,23 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                           </button>
                         </td>
                         <td class="px-1 py-1.5 text-right">
-                          <Show when={canEdit()}>
+                          <Show when={canEdit() && backing()}>
+                            <span
+                              data-testid={`${tid()}-delete-off-${row.id}`}
+                              title={i18n.t("kernel.dashboards.tables.deleteRowBacked", {
+                                name: parentName(),
+                              })}
+                              class="flex h-6 w-6 items-center justify-center text-text-tertiary opacity-40"
+                            >
+                              <Trash2
+                                size={13}
+                                aria-label={i18n.t("kernel.dashboards.tables.deleteRowBacked", {
+                                  name: parentName(),
+                                })}
+                              />
+                            </span>
+                          </Show>
+                          <Show when={canEdit() && !backing()}>
                             <button
                               type="button"
                               data-testid={`${tid()}-delete-${row.id}`}

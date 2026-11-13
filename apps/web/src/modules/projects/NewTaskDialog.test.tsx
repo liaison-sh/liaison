@@ -100,4 +100,51 @@ describe("NewTaskDialog merges the created row (LIF-12)", () => {
     await waitFor(() => expect(projectStore.tasksFor("p1").map((t) => t.key)).toEqual(["BUG-12"]))
     expect(projectStore.tasksFor("p1")).toHaveLength(1)
   })
+
+  it("asks for the project's required fields and sends them with the task", async () => {
+    const post = vi.fn().mockResolvedValue({ id: "t9" })
+    render(() => (
+      <ApiContext.Provider value={{} as ApiClient}>
+        <NewTaskDialog
+          open
+          onOpenChange={vi.fn()}
+          api={{ post } as unknown as ApiClient}
+          projectId="p1"
+          statuses={[]}
+          fields={[
+            { key: "serial", label: "Serial", type: "text", required: true },
+            { key: "kind", label: "Kind", type: "choice", choices: ["A", "B"], required: true },
+            { key: "note", label: "Note", type: "text" },
+          ]}
+        />
+      </ApiContext.Provider>
+    ))
+    // Only the required ones are asked for.
+    expect(screen.getByTestId("new-task-dialog.field-serial")).toBeTruthy()
+    expect(screen.getByTestId("new-task-dialog.field-kind")).toBeTruthy()
+    expect(screen.queryByTestId("new-task-dialog.field-note")).toBeNull()
+    fireEvent.input(screen.getByTestId("new-task-dialog.title"), {
+      target: { value: "Replace screen" },
+    })
+    fireEvent.click(screen.getByTestId("new-task-dialog.submit"))
+    expect(screen.getByTestId("new-task-dialog.error").textContent).toBe(
+      "Serial: This field is required.",
+    )
+    expect(post).not.toHaveBeenCalled()
+
+    fireEvent.input(screen.getByTestId("new-task-dialog.field-input-serial"), {
+      target: { value: "SN-42" },
+    })
+    fireEvent.click(screen.getByTestId("new-task-dialog.field-input-kind-choice-1"))
+    fireEvent.click(screen.getByTestId("new-task-dialog.submit"))
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/projects/p1/tasks", {
+        title: "Replace screen",
+        description: undefined,
+        statusId: undefined,
+        parentTaskId: undefined,
+        fields: { serial: "SN-42", kind: "B" },
+      }),
+    )
+  })
 })

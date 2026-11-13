@@ -7,6 +7,7 @@ import {
   resetRegistry,
   unregisterContributions,
 } from "~/framework/app-registry"
+import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { installAudioContext, installMic, removeMic } from "~/modules/assist/dictation-fakes"
 import { editorOf } from "~/modules/editor/test-helpers"
@@ -959,6 +960,105 @@ describe("TaskDetail copy link", () => {
     await waitFor(() =>
       expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ message: "Link copied" })),
     )
+  })
+
+  describe("fields and status history", () => {
+    const withFields = (): ProjectDetail => ({
+      ...project(),
+      fields: [
+        { key: "serial", label: "Serial", type: "text", required: true },
+        { key: "kind", label: "Kind", type: "choice", choices: ["A", "B"] },
+      ],
+    })
+    const apiWith = (row: Record<string, unknown>) =>
+      ({
+        post: vi.fn().mockResolvedValue(row),
+        get: vi.fn().mockResolvedValue({ id: "thread-1", hiddenFromList: true }),
+        patch: vi.fn().mockResolvedValue({ ...row, fields: { serial: "S-1", kind: "B" } }),
+        delete: vi.fn(),
+        getEnvelope: vi.fn().mockResolvedValue({ data: [] }),
+      }) as unknown as ApiClient & { patch: ReturnType<typeof vi.fn> }
+
+    it("no field declared: no Fields section", async () => {
+      const api = apiWith(task())
+      render(() => (
+        <ApiContext.Provider value={api}>
+          <TaskDetail entityId="t1" />
+        </ApiContext.Provider>
+      ))
+      await waitFor(() => expect(screen.getByTestId("task-detail.layout")).toBeTruthy())
+      expect(screen.queryByTestId("task-fields")).toBeNull()
+    })
+
+    it("shows the project's fields and saves an edit through the task PATCH `fields`", async () => {
+      projectStore._setForTest({ projectId: "p1", current: withFields(), tasks: [] })
+      const api = apiWith({ ...task(), fields: { serial: "S-1", kind: "A" } })
+      render(() => (
+        <ApiContext.Provider value={api}>
+          <TaskDetail entityId="t1" />
+        </ApiContext.Provider>
+      ))
+      await waitFor(() => expect(screen.getByTestId("task-fields")).toBeTruthy())
+      expect(screen.getByTestId("task-fields.value-serial").textContent).toBe("S-1")
+      fireEvent.click(screen.getByTestId("task-fields.value-kind"))
+      fireEvent.click(screen.getByTestId("task-fields.editor-kind-choice-1"))
+      await waitFor(() =>
+        expect(api.patch).toHaveBeenCalledWith("/projects/p1/tasks/t1", { fields: { kind: "B" } }),
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId("task-fields.value-kind").textContent).toBe("B"),
+      )
+    })
+
+    it("says how long the task is in its status, and lists its status changes on demand", async () => {
+      const api = apiWith({
+        ...task(),
+        statusEnteredAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+        transitions: [
+          {
+            id: "x2",
+            fromStatusId: "s0",
+            fromStatusLabel: "Backlog",
+            toStatusId: "s1",
+            toStatusLabel: "Todo",
+            actorType: "user",
+            actorId: "u1",
+            actorName: "Ada Fabrikam",
+            agentId: null,
+            routineId: null,
+            at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+          },
+          {
+            id: "x1",
+            fromStatusId: null,
+            fromStatusLabel: null,
+            toStatusId: "s0",
+            toStatusLabel: "Backlog",
+            actorType: "routine",
+            actorId: null,
+            actorName: null,
+            agentId: null,
+            routineId: "r1",
+            at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+          },
+        ],
+      })
+      render(() => (
+        <ApiContext.Provider value={api}>
+          <TaskDetail entityId="t1" />
+        </ApiContext.Provider>
+      ))
+      await waitFor(() => expect(screen.getByTestId("task-detail.status-since")).toBeTruthy())
+      expect(screen.getByTestId("task-detail.status-since").textContent).toMatch(/^In Todo · 3/)
+      expect(screen.queryByTestId("task-status-history.item")).toBeNull()
+      fireEvent.click(screen.getByTestId("task-status-history.toggle"))
+      const items = screen.getAllByTestId("task-status-history.item")
+      expect(items).toHaveLength(2)
+      expect(items[0]!.textContent).toContain("Backlog → Todo")
+      expect(items[0]!.textContent).toContain("Ada Fabrikam")
+      expect(items[1]!.textContent).toContain("Created in Backlog")
+      expect(items[1]!.textContent).toContain("a routine")
+    })
   })
 })
 

@@ -164,6 +164,83 @@ describe("projects.http", () => {
     ])
   })
 
+  it("projects.http.fields-get-put", async () => {
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    const created = await app.request("/api/projects", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: `Fields REST ${Date.now()}` }),
+    })
+    const project = ((await created.json()) as { data: { id: string } }).data
+    const url = `/api/projects/${project.id}/fields`
+    const empty = await app.request(url, { headers })
+    expect(empty.status).toBe(200)
+    expect(((await empty.json()) as { data: { fields: unknown[] } }).data.fields).toEqual([])
+
+    const put = (body: unknown) =>
+      app.request(url, { method: "PUT", headers, body: JSON.stringify(body) })
+    const kind = { key: "kind", label: "Kind", type: "choice", choices: ["A", "B"] }
+    const saved = await put({ fields: [kind, { key: "count", label: "Count", type: "number" }] })
+    expect(saved.status).toBe(200)
+    const savedBody = (await saved.json()) as { data: { fields: Array<{ key: string }> } }
+    expect(savedBody.data.fields.map((f) => f.key)).toEqual(["kind", "count"])
+
+    // An invalid list: the service's typed 422.
+    const invalid = await put({ fields: [{ key: "x", label: "X", type: "nope" }] })
+    expect(invalid.status).toBe(422)
+    expect(((await invalid.json()) as { error: { code: string } }).error.code).toBe(
+      "invalid_fields",
+    )
+
+    // A task uses "A": dropping it is refused, renaming it to a kept option rewrites the value.
+    const task = await app.request(`/api/projects/${project.id}/tasks`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "uses A", fields: { kind: "A", count: 3 } }),
+    })
+    expect(task.status).toBe(200)
+    const taskId = ((await task.json()) as { data: { id: string } }).data.id
+    const inUse = await put({ fields: [{ ...kind, choices: ["B"] }] })
+    expect(inUse.status).toBe(422)
+    const inUseErr = (
+      (await inUse.json()) as {
+        error: { code: string; details: { field: string; options: string[] } }
+      }
+    ).error
+    expect(inUseErr.code).toBe("choice_in_use")
+    expect(inUseErr.details).toEqual({ field: "kind", options: ["A"] })
+
+    const typeInUse = await put({
+      fields: [kind, { key: "count", label: "Count", type: "date" }],
+    })
+    expect(typeInUse.status).toBe(422)
+    expect(((await typeInUse.json()) as { error: { code: string } }).error.code).toBe(
+      "field_type_in_use",
+    )
+
+    const renamed = await put({
+      fields: [
+        { ...kind, choices: ["Alpha", "B"] },
+        { key: "count", label: "Count", type: "number" },
+      ],
+      renames: { kind: { A: "Alpha" } },
+    })
+    expect(renamed.status).toBe(200)
+    const got = await app.request(`/api/projects/${project.id}/tasks/${taskId}`, { headers })
+    const detail = ((await got.json()) as { data: { fields: Record<string, unknown> } }).data
+    expect(detail.fields).toEqual({ kind: "Alpha", count: 3 })
+    const after = await app.request(url, { headers })
+    const afterFields = (
+      (await after.json()) as { data: { fields: Array<{ choices?: string[] }> } }
+    ).data.fields
+    expect(afterFields[0]?.choices).toEqual(["Alpha", "B"])
+
+    const missing = await app.request("/api/projects/550e8400-e29b-41d4-a716-4466554411ff/fields", {
+      headers,
+    })
+    expect(missing.status).toBe(404)
+  })
+
   it("projects.http.crud-and-archive", async () => {
     const headers = {
       Authorization: `Bearer ${token}`,

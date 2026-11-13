@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Link,
   List as ListIcon,
+  ListPlus,
   Pencil,
   Tag,
   Trash2,
@@ -45,6 +46,7 @@ import { BudgetPanel } from "~/modules/projects/BudgetPanel"
 import { formatSums, loadDealBoard, openTotals } from "~/modules/projects/deal-api"
 import { computeDropPosition, dndState } from "~/modules/projects/dnd-state"
 import { dueBucket, dueChipColorClass } from "~/modules/projects/due-status"
+import { FieldsManager } from "~/modules/projects/FieldsManager"
 import { fetchInvolvedTasks, type Involvement, involvementLine } from "~/modules/projects/involved"
 import { LabelFilterChip, labelFilterHidden } from "~/modules/projects/LabelFilterChip"
 import { ensureLabelCatalog } from "~/modules/projects/label-catalog-store"
@@ -191,6 +193,7 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
   })
   const [newTaskOpen, setNewTaskOpen] = createSignal(false)
   const [statusManagerOpen, setStatusManagerOpen] = createSignal(false)
+  const [fieldsManagerOpen, setFieldsManagerOpen] = createSignal(false)
   // The bin. Archived is NOT a status column — a deleted task leaves the board
   // entirely — so it gets its own panel rather than another lane.
   const [trashOpen, setTrashOpen] = createSignal(false)
@@ -672,6 +675,16 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
                   {i18n.t("projects.statuses")}
                 </span>
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isArchived()}
+                onClick={() => setFieldsManagerOpen(true)}
+              >
+                <span data-testid="project-workspace.manage-fields">
+                  {i18n.t("projects.fields.manage")}
+                </span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={openTrash}>
                 <span data-testid="project-workspace.open-trash">{i18n.t("projects.trash")}</span>
               </Button>
@@ -712,6 +725,14 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
                   >
                     <Columns3 class="h-3.5 w-3.5" />
                     <span>{i18n.t("projects.statuses")}</span>
+                  </PopupMenu.Item>
+                  <PopupMenu.Item
+                    data-testid="project-workspace.menu-fields"
+                    disabled={isArchived()}
+                    onSelect={() => setFieldsManagerOpen(true)}
+                  >
+                    <ListPlus class="h-3.5 w-3.5" />
+                    <span>{i18n.t("projects.fields.manage")}</span>
                   </PopupMenu.Item>
                   <PopupMenu.Item
                     data-testid="project-workspace.menu-release"
@@ -1183,6 +1204,7 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
           api={api}
           projectId={props.entityId}
           statuses={project()?.statuses ?? []}
+          fields={project()?.fields ?? []}
         />
         <Dialog open={trashOpen()} onOpenChange={setTrashOpen}>
           <Dialog.Content class="max-w-lg">
@@ -1229,6 +1251,19 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
                 api={api}
                 projectId={props.entityId}
                 statuses={project()?.statuses ?? []}
+                archived={isArchived()}
+              />
+            </div>
+          </Dialog.Content>
+        </Dialog>
+        <Dialog open={fieldsManagerOpen()} onOpenChange={setFieldsManagerOpen}>
+          <Dialog.Content class="max-w-xl">
+            <Dialog.Title>{i18n.t("projects.fields.managerTitle")}</Dialog.Title>
+            <div class="mt-3">
+              <FieldsManager
+                api={api}
+                projectId={props.entityId}
+                fields={project()?.fields ?? []}
                 archived={isArchived()}
               />
             </div>

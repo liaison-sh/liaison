@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { subscribeResync } from "~/framework/resync"
 import type { ApiClient } from "~/lib/api-client"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
+import type { TableColumn } from "~/modules/dashboards/dashboards-client"
 import type { ChecklistStatus, ValidationLevel } from "~/modules/projects/checklist-types"
 import type { TaskLabel } from "~/modules/projects/task-labels"
 
@@ -44,6 +45,10 @@ export interface Task {
   timeboxMinutes?: number | null
   realTotalMinutes?: number
   isMilestone?: boolean
+  /** Values of the project's task fields, {fieldKey: value}; absent on optimistic rows. */
+  fields?: Record<string, unknown>
+  /** When the task entered its current status. */
+  statusEnteredAt?: string | null
   threadId: string
   createdBy: string
   createdAt: string
@@ -82,6 +87,8 @@ export interface ProjectDetail {
   /** When and by whom the switch was last turned; present once it was ever turned. */
   timeBudgetsChangedAt?: string
   timeBudgetsChangedBy?: { id: string; name: string }
+  /** The project's task fields (dashboard column shape), in order; absent or empty = none. */
+  fields?: TableColumn[]
 }
 
 type ProjectState = {

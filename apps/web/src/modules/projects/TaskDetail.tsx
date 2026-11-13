@@ -56,6 +56,8 @@ import { ensureLabelCatalog } from "~/modules/projects/label-catalog-store"
 import { projectStore, type Task } from "~/modules/projects/project-store"
 import { fetchReleases } from "~/modules/projects/release-filter"
 import { StatusPillPopover } from "~/modules/projects/StatusPillPopover"
+import { TaskFieldsSection } from "~/modules/projects/TaskFieldsSection"
+import { TaskStatusHistory, type TaskTransition } from "~/modules/projects/TaskStatusHistory"
 import { TimeboxChip } from "~/modules/projects/TimeboxChip"
 import { TookField } from "~/modules/projects/TookField"
 import type { TaskLabel } from "~/modules/projects/task-labels"
@@ -110,6 +112,12 @@ interface TaskWithProject {
   timeboxMinutes?: number | null
   realTotalMinutes?: number
   isMilestone?: boolean
+  /** Values of the project's task fields, {fieldKey: value}. */
+  fields?: Record<string, unknown>
+  /** When the task entered its current status. */
+  statusEnteredAt?: string | null
+  /** Status changes, newest first. */
+  transitions?: TaskTransition[]
 }
 
 interface ThreadShape {
@@ -294,8 +302,9 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
         `/projects/${t.projectId}/tasks/${t.id}`,
         input,
       )
-      // Without a task in the answer, echo the input, minus `labels`: the
-      // input is a map of ids, the stores hold the resolved entry array.
+      // Without a task in the answer, echo the input, minus `labels` (the
+      // input is a map of ids, the stores hold the resolved entry array) and
+      // `fields` (the input holds only the changed keys).
       const echo = result ?? withoutLabels(input)
       // Optimistically merge — the WS event will reconcile in projectStore.
       mutate({ ...t, ...echo } as TaskWithProject)
@@ -597,6 +606,8 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                         onChanged={(row) => {
                           const cur = task()
                           if (cur) mutate({ ...cur, ...row })
+                          // The new time in status and the history line come from the server.
+                          void refetch()
                         }}
                       />
                     </span>
@@ -687,6 +698,20 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                     onChanged={() => void refetch()}
                   />
                 </Show>
+                {/* Time in status + status history: one quiet line under the meta row. */}
+                <TaskStatusHistory
+                  transitions={t().transitions}
+                  status={currentStatus()?.label ?? null}
+                  since={t().statusEnteredAt}
+                />
+
+                {/* Fields: the project's typed task fields (hidden when it declares none). */}
+                <TaskFieldsSection
+                  fields={project()?.fields ?? []}
+                  values={t().fields ?? {}}
+                  disabled={isArchived()}
+                  onSave={(change) => patch({ fields: change })}
+                />
 
                 {/* Description — inline editable */}
                 <EditableDescription
@@ -806,7 +831,7 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
 }
 
 function withoutLabels(input: Record<string, unknown>): Record<string, unknown> {
-  const { labels: _labels, ...rest } = input
+  const { labels: _labels, fields: _fields, ...rest } = input
   return rest
 }
 

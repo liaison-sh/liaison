@@ -189,7 +189,9 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
     triggerEvent: ev,
     deps,
   }
-  return guardRun(bareRun(base), async () => {
+  const bare = bareRun(base)
+  // A throw anywhere past the row ends the run `failed`, never left `running`.
+  try {
     const run = await buildRun({ ...base, runScopes: input.runScopes })
     // A task event whose task the owner cannot read (now): nothing runs, and nothing it holds
     // leaks into a step's note. The run ends `skipped_condition`.
@@ -197,10 +199,12 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
       for (const s of run.steps) {
         setState(s, "skipped", "The routine's owner cannot read the task that triggered it.")
       }
-      return endFlowRun(run, "skipped_condition", null)
+      return await endFlowRun(run, "skipped_condition", null)
     }
-    return continueFlow(run, 0)
-  })
+    return await continueFlow(run, 0)
+  } catch (err) {
+    return failRun(bare, err)
+  }
 }
 
 /** Pure: a flow's hash, over its canonical JSON (key order never changes it). */
@@ -239,29 +243,22 @@ function bareRun(a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling">): FlowRu
 }
 
 /**
- * Runs `fn` on a run that holds its row (`running`): a throw anywhere ends the run `failed` with
- * the error, so no row is left `running` with nothing behind it (the sweep is the backstop).
+ * A run that holds its row (`running`) threw: it ends `failed` with the error, so no row is left
+ * `running` with nothing behind it (the sweep is the backstop).
  */
-async function guardRun(
-  run: FlowRun,
-  fn: () => Promise<RoutineTickResult>,
-): Promise<RoutineTickResult> {
+async function failRun(run: FlowRun, err: unknown): Promise<RoutineTickResult> {
+  const message = err instanceof Error ? err.message : String(err)
+  log.error({ err, routineId: run.routine.id, runId: run.runId }, "flow run failed")
+  for (const s of run.steps) {
+    if (s.state === "running" || s.state === "waiting" || s.state === "awaiting_approval") {
+      setState(s, "failed", `Failed: ${message}`)
+    }
+  }
   try {
-    return await fn()
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    log.error({ err, routineId: run.routine.id, runId: run.runId }, "flow run failed")
-    for (const s of run.steps) {
-      if (s.state === "running" || s.state === "waiting" || s.state === "awaiting_approval") {
-        setState(s, "failed", `Failed: ${message}`)
-      }
-    }
-    try {
-      return await endFlowRun(run, "failed", `The run failed: ${message}`)
-    } catch (endErr) {
-      log.error({ err: endErr, runId: run.runId }, "flow run: the failed end was not written")
-      return { status: "failed", runId: run.runId }
-    }
+    return await endFlowRun(run, "failed", `The run failed: ${message}`)
+  } catch (endErr) {
+    log.error({ err: endErr, runId: run.runId }, "flow run: the failed end was not written")
+    return { status: "failed", runId: run.runId }
   }
 }
 
@@ -904,7 +901,26 @@ export async function resumeFlowWait(
   }
   // Claim the run: only one resume goes on with it.
   if (!(await claimRun(orgId, runId, "waiting"))) return { status: "no_run", runId }
-  return withClaimedRun(orgId, routine, runRow, steps, index + 1, deps, async (run) => {
+  const bare = claimedRun(orgId, routine, runRow, steps, deps)
+  try {
+    const ready = await resumeChecks(bare, index + 1)
+    if ("refused" in ready) return ready.refused
+    const run = await buildRun({
+      orgId,
+      routine,
+      flow: routine.flow ?? bare.flow,
+      runId: bare.runId,
+      steps,
+      startedAt: bare.startedAt,
+      triggerAt: bare.triggerAt,
+      entityId: bare.entityId,
+      isTaskTrigger: bare.isTaskTrigger,
+      outputThreadId: ready.outputThreadId,
+      hop: bare.hop,
+      triggerEvent: bare.triggerEvent,
+      deps,
+      runScopes: ready.runScopes,
+    })
     const step = run.flow.steps[index]
     if (step?.type !== "wait" || step.id !== stepId) {
       throw new Error(`the flow has no wait step ${stepId} at position ${index + 1}`)
@@ -917,12 +933,14 @@ export async function resumeFlowWait(
           setState(later, "skipped", "The flow ended at an earlier wait.")
       }
       await saveSteps(run)
-      return endFlowRun(run, "skipped_condition", null)
+      return await endFlowRun(run, "skipped_condition", null)
     }
     setState(state, "done", "Its condition still held at the deadline.")
     await saveSteps(run)
-    return continueFlow(run, index + 1)
-  })
+    return await continueFlow(run, index + 1)
+  } catch (err) {
+    return failRun(bare, err)
+  }
 }
 
 /** An early-fired wait's nth re-arm: its own job id each time (`resumeFlowWait`). */
@@ -947,26 +965,16 @@ async function claimRun(
   return claimed.length > 0
 }
 
-/**
- * A claimed run that resumes (a wait came due, an approval was decided) goes on only when a
- * fresh tick would run: the flow is the one it started with (an edited flow ends it
- * `skipped_condition`, "flow changed"), and the tick's pre-run checks pass again
- * (`routineResumeGate`: switched on and active, owner active and holding its scopes, the owner
- * agent's ceiling, and the credit gate when a step left is an agent step). A refused check ends
- * the run with its skipped status. `fromIndex`: the first step the resume may run.
- */
-async function withClaimedRun(
+/** A claimed run as its row stored it, before any check: enough to end it. */
+function claimedRun(
   orgId: string,
   routine: RoutineRow,
   runRow: typeof routineRuns.$inferSelect,
   steps: RoutineRunStepState[],
-  fromIndex: number,
   deps: FlowDeps,
-  fn: (run: FlowRun) => Promise<RoutineTickResult>,
-): Promise<RoutineTickResult> {
-  const ctx: RoutineRunFlowContext | null = runRow.flowContext ?? null
-  const triggerEvent = (ctx?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined
-  const base = {
+): ClaimedRun {
+  const context: RoutineRunFlowContext | null = runRow.flowContext ?? null
+  return {
     orgId,
     routine,
     flow: routine.flow ?? { version: 1 as const, steps: [] },
@@ -977,39 +985,72 @@ async function withClaimedRun(
     entityId: runRow.eventEntityId,
     isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
     outputThreadId: routine.outputThreadId ?? "",
-    hop: ctx?.hop ?? 0,
-    triggerEvent,
+    hop: context?.hop ?? 0,
+    triggerEvent: (context?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined,
     deps,
+    // No scope resolved and no tool call possible: enough to end the run.
+    actor: {
+      actorType: "user",
+      userId: routine.ownerUserId,
+      orgId,
+      scopes: [],
+      dimensionGrants: {},
+    },
+    agentId: null,
+    agentCeiling: null,
+    context,
   }
-  const bare = bareRun(base)
-  return guardRun(bare, async () => {
-    const endParked = (status: RoutineRunStatus, reason: string) => {
-      for (const s of steps) {
-        if (s.state === "waiting" || s.state === "awaiting_approval") setState(s, "skipped", reason)
-      }
-      return endFlowRun(bare, status, reason, { touchRoutine: false })
-    }
-    if (!routine.flow || !ctx || ctx.flowHash !== flowHash(routine.flow)) {
-      return endParked(
-        "skipped_condition",
-        "Flow changed: the routine's flow was edited while this run waited, so it did not go on.",
-      )
-    }
-    const { routineResumeGate, routineRunScopes, ensureOutputThread } = await import(
-      "./routine-worker"
+}
+
+type ClaimedRun = FlowRun & { context: RoutineRunFlowContext | null }
+
+/** Ends a claimed run before it went on: its parked step skipped with the reason. */
+async function endParked(
+  bare: ClaimedRun,
+  status: RoutineRunStatus,
+  reason: string,
+): Promise<RoutineTickResult> {
+  for (const s of bare.steps) {
+    if (s.state === "waiting" || s.state === "awaiting_approval") setState(s, "skipped", reason)
+  }
+  return endFlowRun(bare, status, reason, { touchRoutine: false })
+}
+
+/**
+ * A claimed run that resumes (a wait came due, an approval was decided) goes on only when a
+ * fresh tick would run: the flow is the one it started with (an edited flow ends it
+ * `skipped_condition`, "flow changed"), and the tick's pre-run checks pass again
+ * (`routineResumeGate`: switched on and active, owner active and holding its scopes, the owner
+ * agent's ceiling, and the credit gate when a step left is an agent step). A refused check ends
+ * the run with its skipped status. `fromIndex`: the first step the resume may run.
+ */
+async function resumeChecks(
+  bare: ClaimedRun,
+  fromIndex: number,
+): Promise<{ refused: RoutineTickResult } | { runScopes: string[]; outputThreadId: string }> {
+  const { orgId, routine, context } = bare
+  if (!routine.flow || !context || context.flowHash !== flowHash(routine.flow)) {
+    const refused = await endParked(
+      bare,
+      "skipped_condition",
+      "Flow changed: the routine's flow was edited while this run waited, so it did not go on.",
     )
-    const needsCredits = routine.flow.steps.slice(fromIndex).some((s) => s.type === "agent")
-    const gate = await routineResumeGate(orgId, routine, deps, needsCredits)
-    if (!gate.ok) return endParked(gate.status, gate.reason)
-    const { threadId } = await ensureOutputThread(orgId, routine)
-    const run = await buildRun({
-      ...base,
-      flow: routine.flow,
-      outputThreadId: threadId,
-      runScopes: routineRunScopes(routine.scopes ?? [], gate.ownerScopes),
-    })
-    return fn(run)
-  })
+    return { refused }
+  }
+  const { routineResumeGate, routineRunScopes, ensureOutputThread } = await import(
+    "./routine-worker"
+  )
+  const needsCredits = routine.flow.steps.slice(fromIndex).some((s) => s.type === "agent")
+  const gate = await routineResumeGate(orgId, routine, bare.deps, needsCredits)
+  if (!gate.ok) {
+    const refused = await endParked(bare, gate.status, gate.reason)
+    return { refused }
+  }
+  const { threadId } = await ensureOutputThread(orgId, routine)
+  return {
+    runScopes: routineRunScopes(routine.scopes ?? [], gate.ownerScopes),
+    outputThreadId: threadId,
+  }
 }
 
 async function loadWaitingRun(orgId: string, routineId: string, runId: string) {
@@ -1434,18 +1475,43 @@ export async function resumeFlowOnDecision(
     (s) => s.state === "awaiting_approval" && s.output?.approvalId === approvalId,
   )
   const deps = typeof depsOf === "function" ? await depsOf(routine.id) : depsOf
-  return withClaimedRun(orgId, routine, runRow, steps, index + 1, deps, async (run) => {
+  const bare = claimedRun(orgId, routine, runRow, steps, deps)
+  try {
+    const ready = await resumeChecks(bare, index + 1)
+    if ("refused" in ready) return ready.refused
+    const run = await buildRun({
+      orgId,
+      routine,
+      flow: routine.flow ?? bare.flow,
+      runId: bare.runId,
+      steps,
+      startedAt: bare.startedAt,
+      triggerAt: bare.triggerAt,
+      entityId: bare.entityId,
+      isTaskTrigger: bare.isTaskTrigger,
+      outputThreadId: ready.outputThreadId,
+      hop: bare.hop,
+      triggerEvent: bare.triggerEvent,
+      deps,
+      runScopes: ready.runScopes,
+    })
     if (index < 0) throw new Error(`no step of the run waits on approval ${approvalId}`)
     const state = steps[index]!
     if (hit.approval_status !== "approved") {
       setState(state, "failed", `The approval was ${hit.approval_status}.`)
       await saveSteps(run)
-      return endFlowRun(run, "failed", `Step ${state.id}: the approval was ${hit.approval_status}`)
+      return await endFlowRun(
+        run,
+        "failed",
+        `Step ${state.id}: the approval was ${hit.approval_status}`,
+      )
     }
     setState(state, "done", "Approved and done.")
     await saveSteps(run)
-    return continueFlow(run, index + 1)
-  })
+    return await continueFlow(run, index + 1)
+  } catch (err) {
+    return failRun(bare, err)
+  }
 }
 
 /**

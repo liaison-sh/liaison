@@ -1,5 +1,8 @@
 {
   "reviewedOutsideRoutes": {
     "apps/api/src/modules/agent/routines/routine-event-reconciler.ts#taskStatusChangeStillCurrent": "reconciler predicate (RECONCILE_FAMILIES, routine-event-reconciler.ts): called with the routine row's own org, and the task read is pinned to that org_id"
+  },
+  "reviewedOrigins": {
+    "apps/api/src/modules/agent/routines/flow-runner.ts#sweepAllStuckFlowRuns": "the stuck flow run sweep's loop over the orgs that own running or waiting flow run rows (one system read of routine_runs.org_id, moving orgs skipped); each org's runs are claimed, read and ended only in that org (sweepStuckFlowRuns pins every query to it)"
   }
 }

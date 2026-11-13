@@ -40,4 +40,39 @@ describe("test map: the demo worlds", () => {
       "guards",
     ])
   })
+
+  it("the studio world pack maps to the world suites, whole directory", () => {
+    for (const file of [
+      "apps/api/src/seed/worlds/studio/plan.ts",
+      "apps/api/src/seed/worlds/studio/time-rows.test.ts",
+    ]) {
+      expect(suitesFor(file), file).toEqual(WORLD_SUITES)
+    }
+  })
+})
+
+describe("test map: the time and budgets screens", () => {
+  it("the projects web module runs web-unit and playwright", () => {
+    for (const file of [
+      "apps/web/src/modules/projects/time-budgets.ts",
+      "apps/web/src/modules/projects/ProjectBudgetRail.tsx",
+    ]) {
+      const suites = suitesFor(file)
+      expect(suites, file).toContain("web-unit")
+      expect(suites, file).toContain("playwright")
+    }
+  })
+
+  it("the shared web styles run web-unit and playwright", () => {
+    for (const file of ["apps/web/src/index.css", "apps/web/src/styles/touch-density.test.ts"]) {
+      const suites = suitesFor(file)
+      expect(suites, file).toContain("web-unit")
+      expect(suites, file).toContain("playwright")
+    }
+  })
+
+  it("the French string files run the table parity test, and the CI scope files run the guards", () => {
+    expect(suitesFor("scripts/i18n-fr/time-budgets.json")).toContain("shared")
+    expect(suitesFor("scripts/ci-scope.ts")).toContain("guards")
+  })
 })

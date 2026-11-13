@@ -4,17 +4,14 @@
 // ended early stopping that day.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { addCalendarDays } from "@liaison/shared"
 import { sql } from "~/db"
 import { awayDays, setAway } from "~/modules/users/away"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
+const addDays = addCalendarDays
 
 /** A Monday three weeks ahead, so every range lies in the future. */
 function futureMonday(): string {

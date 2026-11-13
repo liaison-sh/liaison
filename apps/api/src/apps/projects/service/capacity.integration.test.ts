@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { addCalendarDays } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
@@ -44,11 +45,7 @@ const MEMBER_SCOPES = ["projects:projects:read", "projects:tasks:read", "project
 let orgId = ""
 let owner: minimal.Session
 
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
+const addDays = addCalendarDays
 
 const today = () => todayIn("UTC")
 /** Next week, so every date the tests set lies ahead of today. */

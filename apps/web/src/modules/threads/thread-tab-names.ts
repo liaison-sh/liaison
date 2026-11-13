@@ -17,6 +17,7 @@
 
 import { createSignal } from "solid-js"
 import { createStore, reconcile, unwrap } from "solid-js/store"
+import { ApiError } from "~/lib/api-error"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { makeTabId, tabStore, updateTabLabel } from "~/modules/shell/tab-store"
@@ -35,6 +36,9 @@ type ThreadTabNamesApi = { get: (path: string) => Promise<any> }
 const [api, setApi] = createSignal<ThreadTabNamesApi | null>(null)
 const [fetched, setFetched] = createStore<Record<string, Thread>>({})
 const requested = new Set<string>()
+// Conversations the server answered "not there" for (deleted, another
+// workspace's, no longer the viewer's): what still points at one lets go of it.
+const [gone, setGone] = createStore<Record<string, true>>({})
 
 export function startThreadTabNames(client: ThreadTabNamesApi): void {
   setApi(() => client)
@@ -62,6 +66,24 @@ export function threadTabLabel(threadId: string, viewerId: string): string | und
   return undefined
 }
 
+/**
+ * The conversation a dock item shows. The dock outlives the list too: an item
+ * restored from an earlier visit, or one whose conversation fell out of the 50
+ * most recent, read "Conversation" with an empty face for good. A miss asks
+ * the server once; `threadIsGone` then says when there is nothing to show.
+ */
+export function threadForDock(threadId: string): Thread | undefined {
+  if (!threadId) return undefined
+  const thread = threadForTab(threadId)
+  if (!thread && api()) requestThreadTabName(threadId)
+  return thread
+}
+
+/** The server said this conversation is not there for the viewer (404 or 403). */
+export function threadIsGone(threadId: string): boolean {
+  return gone[threadId] === true
+}
+
 function requestThreadTabName(threadId: string): void {
   if (requested.has(threadId)) return
   requested.add(threadId)
@@ -82,9 +104,14 @@ async function readThreadForTab(threadId: string): Promise<void> {
     if (data?.id !== threadId) return
     setFetched(threadId, normalizeThread(data))
     syncStoredLabel(threadId)
-  } catch {
+  } catch (err) {
     // A refusal or a network error leaves the stored label; the tab's own view
     // decides whether the conversation is gone (ThreadView closes it on 404/403).
+    // A dock item has no view while it is collapsed: it reads the answer here.
+    if (client !== api()) return
+    if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+      setGone(threadId, true)
+    }
   }
 }
 
@@ -133,6 +160,7 @@ subscribeThreadRemoved((thread) => {
 export function resetThreadTabNames(): void {
   setApi(null)
   setFetched(reconcile({}))
+  setGone(reconcile({}))
   requested.clear()
 }
 onSessionTeardown(resetThreadTabNames)

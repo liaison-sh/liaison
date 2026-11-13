@@ -8,17 +8,27 @@
 // positioning, the bar, capacity and overflow; the Shell supplies the real
 // items through `chatsTab` and `renderTab`.
 import { ChevronsLeft, ChevronsRight } from "lucide-solid"
-import { type Component, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import { conversationDisplayName } from "~/modules/threads/conversation-display"
-import { getThread } from "~/modules/threads/thread-store"
+import { threadForDock, threadIsGone } from "~/modules/threads/thread-tab-names"
 import { PopupMenu } from "~/ui/PopupMenu"
 import { DockAvatar } from "./DockAvatar"
 import {
   allCollapsed,
   chatsOpen,
+  close,
   collapseAll,
   DOCK_EDGE_RESERVE,
   DOCK_FOLD_FADE_MS,
@@ -61,7 +71,7 @@ export interface ChatDockProps {
  * them can drift back to showing a raw thread id.
  */
 export function dockTabName(threadId: string, unnamed: string): string {
-  const thread = getThread(threadId)
+  const thread = threadForDock(threadId)
   if (!thread) return unnamed
   return conversationDisplayName(thread, userFromToken()?.userId ?? "")
 }
@@ -204,6 +214,15 @@ export const ChatDock: Component<ChatDockProps> = (props) => {
   let chatsRef: HTMLDivElement | undefined
   let toggleRef: HTMLDivElement | undefined
   const [overflowOpen, setOverflowOpen] = createSignal(false)
+
+  // An item whose conversation is not there any more (deleted, or kept by this
+  // browser from another workspace) leaves the bar: it had no name, no face
+  // and nothing to open.
+  createEffect(() => {
+    for (const tab of tabs()) {
+      if (threadIsGone(tab.threadId)) close(tab.threadId)
+    }
+  })
   const [folding, setFolding] = createSignal(false)
   const [status, setStatus] = createSignal("")
 

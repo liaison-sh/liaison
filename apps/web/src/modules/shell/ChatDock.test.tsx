@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { ApiError } from "~/lib/api-error"
 import { addThread, resetThreadStore } from "~/modules/threads/thread-store"
+import { resetThreadTabNames, startThreadTabNames } from "~/modules/threads/thread-tab-names"
 import { ChatDock, dockCapacity } from "./ChatDock"
 import { DockWindow, dockWindowShift } from "./DockWindow"
 import {
@@ -22,6 +24,7 @@ import {
   resetDockStore,
   setDockPanelSize,
   setVisibleCapacity,
+  tabs,
 } from "./dock-store"
 
 describe("ChatDock", () => {
@@ -32,6 +35,22 @@ describe("ChatDock", () => {
   afterEach(() => {
     cleanup()
     resetThreadStore()
+  })
+
+  // Two items this browser kept from another workspace read "Conversation",
+  // with no face and nothing to open, for as long as the dock lived.
+  it("an item whose conversation the server no longer has leaves the bar", async () => {
+    openConversation("t-gone")
+    openConversation("t-kept")
+    addThread({ id: "t-kept", title: "kept", type: "thread", participants: [] })
+    startThreadTabNames({
+      get: async () => {
+        throw new ApiError("Not found", 404)
+      },
+    })
+    render(() => <ChatDock />)
+    await waitFor(() => expect(tabs().map((t) => t.threadId)).toEqual(["t-kept"]))
+    resetThreadTabNames()
   })
 
   it("the dock renders the Chats pill and one pill per open conversation", () => {

@@ -98,11 +98,11 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.routines WHERE org_id = ${ORG}`
 })
 
-function createParams(name: string, flow: unknown) {
+function createParams(name: string, flow: RoutineFlow) {
   return {
     name,
     description: "Assign new tasks",
-    kind: "event",
+    kind: "event" as const,
     event: "projects:task:status_changed",
     eventFilter: { projectId, toStatusId: statusId("todo") },
     prompt: "Assigns each task that reaches To do",
@@ -141,7 +141,7 @@ describe("routine flow authoring", () => {
         orgId: ORG,
         actor: actor(),
         origin: "in-app-agent",
-        params: createParams("assign-bad", { version: 1, steps: [] }),
+        params: { ...createParams("assign-bad", FLOW()), flow: { version: 1, steps: [] } },
       }),
     ).rejects.toThrow()
     const after = await sql<{ n: number }[]>`

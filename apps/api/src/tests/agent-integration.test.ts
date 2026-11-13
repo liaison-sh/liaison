@@ -292,6 +292,8 @@ describe("agent integration", () => {
       metadata: Record<string, unknown> | null
     }) => {
       expect(row.metadata?.turnRefusal).toBe(true)
+      // Names the message it refused, so later turns leave it out of the replay.
+      expect(typeof row.metadata?.refusedMessageId).toBe("string")
       expect(row.metadata?.billingRefusal).toBeUndefined()
     }
 

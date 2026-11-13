@@ -28,7 +28,9 @@ import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
   ADMIN_SCOPE,
-  applyColumnOps,
+  type CreateTableInput,
+  checkCreateTable,
+  checkUpdateTable,
   createTable,
   deleteTable,
   getTable,
@@ -42,6 +44,7 @@ import {
   TABLE_ERROR_STATUS,
   TABLE_RESOURCE,
   TableError,
+  type UpdateTableInput,
   updateTable,
   WRITE_SCOPE,
   writeRows,
@@ -454,6 +457,37 @@ const editVariants = z.discriminatedUnion("action", [
     .strict(),
   z.object({ action: z.literal("delete"), tableId: z.string().uuid() }).strict(),
 ])
+type EditVariant = z.infer<typeof editVariants>
+
+/** A create call as the service takes it (the handler and the check before the gate alike). */
+function createInput(p: Extract<EditVariant, { action: "create" }>): CreateTableInput {
+  return {
+    name: p.name,
+    ...(p.description ? { description: p.description } : {}),
+    columns: p.columns,
+    ...(p.agentWritesNeedApproval !== undefined
+      ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
+      : {}),
+    ...(p.fromDashboardId ? { fromDashboardId: p.fromDashboardId } : {}),
+    ...(p.orgAccess ? { orgAccess: p.orgAccess } : {}),
+    ...(p.backing ? { backing: p.backing } : {}),
+  }
+}
+
+/** An alter call as the service takes it. */
+function updateInput(p: Extract<EditVariant, { action: "alter" }>): UpdateTableInput {
+  return {
+    ifVersion: p.ifVersion,
+    ...(p.name !== undefined ? { name: p.name } : {}),
+    ...(p.description !== undefined ? { description: p.description } : {}),
+    ...(p.agentWritesNeedApproval !== undefined
+      ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
+      : {}),
+    ...(p.columns ? { columns: p.columns } : {}),
+    ...(p.backing !== undefined ? { backing: p.backing } : {}),
+  }
+}
+
 /** The params a model sees: one object (a tool's params must be an object schema), each
  *  call checked against its action's variant above. */
 const editParams = z
@@ -500,7 +534,7 @@ interface EditParams {
 }
 
 const TABLES_EDIT_DESCRIPTION =
-  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are the table\'s own, kept per record. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
 
 /**
  * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
@@ -691,21 +725,7 @@ export function registerTableTools(orgId: string): void {
         const p = editVariants.parse(params)
         const viewer = await viewerOf(ctx)
         if (p.action === "create") {
-          const t = await createTable(
-            viewer,
-            {
-              name: p.name,
-              ...(p.description ? { description: p.description } : {}),
-              columns: p.columns,
-              ...(p.agentWritesNeedApproval !== undefined
-                ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
-                : {}),
-              ...(p.fromDashboardId ? { fromDashboardId: p.fromDashboardId } : {}),
-              ...(p.orgAccess ? { orgAccess: p.orgAccess } : {}),
-              ...(p.backing ? { backing: p.backing } : {}),
-            },
-            ctx.db,
-          )
+          const t = await createTable(viewer, createInput(p), ctx.db)
           return {
             id: t.id,
             name: t.name,
@@ -717,21 +737,7 @@ export function registerTableTools(orgId: string): void {
           await deleteTable(viewer, p.tableId, ctx.db)
           return { deleted: true }
         }
-        const t = await updateTable(
-          viewer,
-          p.tableId,
-          {
-            ifVersion: p.ifVersion,
-            ...(p.name !== undefined ? { name: p.name } : {}),
-            ...(p.description !== undefined ? { description: p.description } : {}),
-            ...(p.agentWritesNeedApproval !== undefined
-              ? { agentWritesNeedApproval: p.agentWritesNeedApproval }
-              : {}),
-            ...(p.columns ? { columns: p.columns } : {}),
-            ...(p.backing !== undefined ? { backing: p.backing } : {}),
-          },
-          ctx.db,
-        )
+        const t = await updateTable(viewer, p.tableId, updateInput(p), ctx.db)
         return {
           id: t.id,
           version: t.version,
@@ -757,7 +763,12 @@ export function registerTableTools(orgId: string): void {
       }
       const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
       return guarded(async () => {
-        if (p.action === "create") return null
+        // The very checks the handler makes before it writes (columns, backing, sharing, name),
+        // so a call the handler would refuse gets its reason now, not a failed approval.
+        if (p.action === "create") {
+          await checkCreateTable(viewer, createInput(p))
+          return null
+        }
         const t = await getTable(viewer, p.tableId)
         if (p.action === "delete") {
           if (
@@ -777,13 +788,7 @@ export function registerTableTools(orgId: string): void {
             `the table is at version ${t.version}, not ${p.ifVersion}`,
           )
         }
-        if (p.columns) {
-          applyColumnOps(
-            t.backing ? t.columns.filter((c) => t.backing?.own.includes(c.key)) : t.columns,
-            t.droppedKeys.map((key) => ({ key, label: key, type: "text" as const })),
-            p.columns,
-          )
-        }
+        await checkUpdateTable(viewer, p.tableId, updateInput(p))
         return null
       })
     },

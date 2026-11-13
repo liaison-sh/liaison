@@ -21,6 +21,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { dashboardTableChanges, pendingEvents } from "~/db/schema/kernel"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import { tableStamp } from "~/modules/dashboards/sources"
@@ -36,7 +37,9 @@ import {
   updateTable,
   writeRows,
 } from "~/modules/dashboards/tables/service"
+import { registerDashboardTools } from "~/modules/dashboards/tools"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const DASH = ["kernel:dashboards:read", "kernel:dashboards:write", "kernel:dashboards:share"]
@@ -182,6 +185,7 @@ beforeAll(async () => {
     scopes: [...DASH, "projects:projects:read"],
   }
   await ensureAppsForOrg(orgId, {})
+  registerDashboardTools(orgId)
 }, 60_000)
 
 afterAll(async () => {
@@ -443,6 +447,85 @@ describe("saving a backing", () => {
         columns: { add: [{ key: "problem", label: "Mine", type: "text" }] },
       }),
     ).rejects.toMatchObject({ code: "invalid_request" })
+  })
+})
+
+describe("an agent's backed table change is checked before its approval is staged", () => {
+  /** The call's outcome: staged (`blocked`), or refused (`text` holds the error, thrown or
+   *  returned as an error envelope). */
+  async function agentEdit(params: Record<string, unknown>) {
+    return executeTool({
+      toolName: "kernel:tables_edit",
+      orgId,
+      actor: owner,
+      params,
+      threadId: await minimal.thread(orgId, owner.userId, { title: "backed edit" }),
+      origin: "in-app-agent",
+    }).then(
+      (res) => ({ blocked: res.blocked, text: JSON.stringify(res) }),
+      (err: Error & { status?: number }) => ({
+        blocked: undefined,
+        text: `${err.status ?? ""} ${err.message}`,
+      }),
+    )
+  }
+  async function staged(marker: string): Promise<number> {
+    const rows = extractRows<{ n: number }>(
+      await db.execute(sql`
+        SELECT count(*)::int AS n FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND tool_name LIKE '%tables_edit%'
+           AND tool_params::text LIKE ${`%${marker}%`}`),
+    )
+    return rows[0]?.n ?? 0
+  }
+
+  it("refuses own columns that repeat backed fields, naming the column, and stages nothing", async () => {
+    const b = await board()
+    const name = `Desk ${randomUUID().slice(0, 6)}`
+    const res = await agentEdit({
+      action: "create",
+      name,
+      backing: { app: "projects", entity: "task", parentId: b.id, fields: ["title", "status"] },
+      columns: [
+        { key: "status", label: "Status", type: "text" },
+        { key: "courier", label: "Courier", type: "text" },
+      ],
+    })
+    expect(res.blocked).toBeUndefined()
+    expect(res.text).toContain("'status' is read through")
+    expect(await staged(name)).toBe(0)
+    // Own columns only: staged for a person, as before.
+    const ok = await agentEdit({
+      action: "create",
+      name,
+      backing: { app: "projects", entity: "task", parentId: b.id, fields: ["title", "status"] },
+      columns: [{ key: "courier", label: "Courier", type: "text" }],
+    })
+    expect(ok.blocked?.approvalRequestId).toBeDefined()
+  })
+
+  it("refuses a field the parent does not offer, and an alter adding a read-through key", async () => {
+    const b = await board()
+    const name = `Desk ${randomUUID().slice(0, 6)}`
+    const missing = await agentEdit({
+      action: "create",
+      name,
+      backing: { app: "projects", entity: "task", parentId: b.id, fields: ["title", "nope"] },
+      columns: [],
+    })
+    expect(missing.blocked).toBeUndefined()
+    expect(missing.text).toContain("'nope' is not offered")
+    const id = await backedTable(b)
+    const t = await getTable(owner, id)
+    const alter = await agentEdit({
+      action: "alter",
+      tableId: id,
+      ifVersion: t.version,
+      columns: { add: [{ key: "problem", label: "Mine", type: "text" }] },
+    })
+    expect(alter.blocked).toBeUndefined()
+    expect(alter.text).toContain("'problem' is read through")
+    expect(await staged(id)).toBe(0)
   })
 })
 

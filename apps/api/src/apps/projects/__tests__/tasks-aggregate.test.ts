@@ -88,10 +88,10 @@ interface Board {
   done: string
 }
 
-async function makeBoard(): Promise<Board> {
+async function makeBoard(fields: unknown[] = FIELDS): Promise<Board> {
   const project = await ok("createProject", {
     name: `agg-${randomUUID().slice(0, 8)}`,
-    fields: FIELDS,
+    fields,
     statuses: [{ label: "Todo" }, { label: "Doing" }, { label: "Done", terminal: true }],
   })
   const by = (label: string) =>
@@ -276,6 +276,33 @@ describe("tasks_aggregate: groups and measures", () => {
       ["open_ok", [openOk]],
       ["open_late", [openLate]],
     ])
+  })
+
+  it("sums amounts per currency: projects in EUR and USD are never added together", async () => {
+    const eur = await makeBoard()
+    const usd = await makeBoard(
+      FIELDS.map((f) => (f.key === "cost" ? { ...f, currency: "USD" } : f)),
+    )
+    await task(eur, { statusId: eur.todo, fields: { cost: 10 } })
+    await task(eur, { statusId: eur.todo, fields: { cost: 5 } })
+    await task(usd, { statusId: usd.todo, fields: { cost: 100 } })
+    const out = await ok("tasks_aggregate", {
+      projectIds: [eur.id, usd.id],
+      groupBy: "status",
+      measure: "sum:cost",
+    })
+    const todo = out.rows
+      .filter((r: Json) => r.groupLabel === "Todo")
+      .map((r: Json) => [r.currency, r.value, r.count])
+    expect(todo).toEqual([
+      ["EUR", 15, 2],
+      ["USD", 100, 1],
+    ])
+    expect(out.rows.every((r: Json) => typeof r.currency === "string")).toBe(true)
+    expect(out.currency).toBeUndefined()
+    // One currency across the projects read: the result says it.
+    const one = await ok("tasks_aggregate", { projectId: eur.id, measure: "sum:cost" })
+    expect(one.currency).toBe("EUR")
   })
 
   it("several projects at once: a status groups by its label", async () => {

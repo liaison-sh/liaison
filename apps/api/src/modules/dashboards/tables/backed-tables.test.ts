@@ -49,6 +49,8 @@ const PROJECTS = [
 
 let orgId = ""
 let owner: UserContext
+/** A second person who edits tasks. */
+let editor: UserContext
 let dashOnly: UserContext
 let reader: UserContext
 /** Reads projects (RLS lets them) but may not call the task read tool. */
@@ -170,6 +172,7 @@ beforeAll(async () => {
     })
   const base = { actorType: "user" as const, orgId, dimensionGrants: { "*": ["*"] } }
   owner = { ...base, userId: await mk("Owner"), scopes: [...DASH, ...PROJECTS] }
+  editor = { ...base, userId: await mk("Editor"), scopes: [...DASH, ...PROJECTS] }
   dashOnly = { ...base, userId: await mk("Dash Only"), scopes: [...DASH] }
   reader = {
     ...base,
@@ -276,6 +279,23 @@ describe("a finished task's deadline", () => {
     const by = rows.get(b.tasks[1]!)!.updatedBy
     expect(by).toMatchObject({ type: "user", id: owner.userId })
     expect(by.label).not.toBe("System")
+  })
+
+  it("a task whose last write was a field edit names the person who made it", async () => {
+    const b = await board()
+    const id = await backedTable(b)
+    // The owner created the task into its status a moment ago; another person edits a field.
+    await withRlsContext(editor, (tx) =>
+      updateTask({
+        tx,
+        orgId,
+        actor: editor,
+        taskId: b.tasks[0]!,
+        input: { fields: { cost: 55 } },
+      }),
+    )
+    const by = byId((await listRows(owner, id)).rows).get(b.tasks[0]!)!.updatedBy
+    expect(by).toMatchObject({ type: "user", id: editor.userId, label: "Editor" })
   })
 })
 

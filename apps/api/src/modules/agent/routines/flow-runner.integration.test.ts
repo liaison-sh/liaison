@@ -233,7 +233,7 @@ describe("routine flows: actions", () => {
     expect(notes[0]!.n).toBe(1)
   }, 60_000)
 
-  it("a routine with a title signs its messages with the title, not its identifier", async () => {
+  it("a routine with a title signs its messages and task comments with the title", async () => {
     const routineId = await flowRoutine("intake-titled-x7k2", {
       version: 1,
       steps: [
@@ -242,6 +242,12 @@ describe("routine flows: actions", () => {
           type: "action",
           action: "message",
           args: { to: BOB, text: "Titled hello {{task.title}}" },
+        },
+        {
+          id: "note",
+          type: "action",
+          action: "comment",
+          args: { text: "Titled note {{task.title}}" },
         },
       ],
     })
@@ -252,6 +258,12 @@ describe("routine flows: actions", () => {
       SELECT metadata->>'agentAuthorLabel' AS label FROM kernel.messages
        WHERE org_id = ${ORG}::uuid AND content = 'Titled hello Titled'`
     expect(dm!.label).toBe("Routine Ping Bob on intake")
+    // The task comment is the routine's too, not its owner's agent's.
+    const [note] = await sql<{ author_type: string; label: string }[]>`
+      SELECT author_type, metadata->>'agentAuthorLabel' AS label FROM kernel.messages
+       WHERE org_id = ${ORG}::uuid AND content = 'Titled note Titled'`
+    expect(note!.author_type).toBe("agent")
+    expect(note!.label).toBe("Routine Ping Bob on intake")
   }, 60_000)
 
   it("a step whose condition does not hold is skipped; the flow goes on", async () => {

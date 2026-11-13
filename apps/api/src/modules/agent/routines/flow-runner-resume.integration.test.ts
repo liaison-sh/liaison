@@ -399,6 +399,8 @@ describe("a resumed flow run makes a tick's checks", () => {
 describe("the stuck flow run sweep", () => {
   async function eventRun(name: string) {
     const routineId = await routine(name, COMMENT_FLOW)
+    // The routine predates its event: the reconciler never replays an event older than the routine.
+    await sql`UPDATE kernel.routines SET created_at = now() - interval '1 day' WHERE id = ${routineId}::uuid`
     const taskId = await task(name)
     const ev = event(taskId)
     await seedAuditEntry({

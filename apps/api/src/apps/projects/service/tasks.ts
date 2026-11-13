@@ -823,6 +823,20 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
     const release = normalizeRelease(input.release)
     if (release !== undefined) sets.push(drizzleSql`release = ${release}`)
     sets.push(drizzleSql`updated_at = now()`)
+    // Who made this edit, for a reader that names a task's last writer (table-backing.ts): a
+    // status change names its actor in task_transitions, any other edit only here.
+    const via = args.via ?? transitionActorFor(actor)
+    sets.push(drizzleSql`updated_by_type = ${via.type}, updated_by_at = now()`)
+    sets.push(
+      via.userId && UUID_RE.test(via.userId)
+        ? drizzleSql`updated_by = ${via.userId}::uuid`
+        : drizzleSql`updated_by = NULL`,
+    )
+    sets.push(
+      via.routineId && UUID_RE.test(via.routineId)
+        ? drizzleSql`updated_by_routine_id = ${via.routineId}::uuid`
+        : drizzleSql`updated_by_routine_id = NULL`,
+    )
 
     const setSql = sets.reduce<ReturnType<typeof drizzleSql> | null>(
       (acc, frag) => (acc === null ? frag : drizzleSql`${acc}, ${frag}`),
@@ -866,7 +880,7 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
             toStatusId: nextStatusId,
           },
         ],
-        args.via ?? transitionActorFor(actor),
+        via,
       )
       return loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
     }

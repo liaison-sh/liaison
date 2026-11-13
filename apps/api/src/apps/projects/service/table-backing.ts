@@ -102,7 +102,7 @@ interface TaskRow {
   fields: Record<string, unknown> | null
   updated_at: string | Date
   version: string
-  /** The latest status change, when it is the task's last write (who made it). */
+  /** Who made the task's last write: its latest status change or stamped edit (LAST_BY). */
   by_type: "user" | "agent" | "routine" | "system" | null
   by_id: string | null
   by_name: string | null
@@ -114,18 +114,25 @@ interface TaskRow {
 const TASK_VERSION = sql`md5(concat_ws('|', t.title, t.status_id, t.assignee_id, t.priority,
   t.due_date, t.fields::text, t.archived_at, (extract(epoch from t.updated_at) * 1000000)::bigint))`
 
-// Who made a task's last change, as far as the task knows: its latest status change, when that is
-// its last write (within a few seconds of updated_at); a later edit of another field names no one
-// here, and the table's own history says who made it there.
+// Who made a task's last change, as far as the task knows: the newer of its latest status change
+// and its last stamped edit (tasks.updated_by*, any property an update set), when that is its last
+// write (within a few seconds of updated_at). A later write by a path that stamps neither names no
+// one here, and the table's own history says who made it there.
 const LAST_BY = sql`lx.actor_type AS by_type, lx.actor_id::text AS by_id, lu.name AS by_name,
   COALESCE(NULLIF(lr.title, ''), lr.name) AS by_routine`
 const LAST_BY_JOIN = sql`
   LEFT JOIN LATERAL (
-    SELECT x.actor_type, x.actor_id, x.routine_id
-      FROM ${projectsRel("task_transitions")} x
-     WHERE x.task_id = t.id AND x.org_id = t.org_id
-       AND x."at" >= t.updated_at - interval '5 seconds'
-     ORDER BY x."at" DESC, x.seq DESC
+    SELECT c.actor_type, c.actor_id, c.routine_id FROM (
+      SELECT x.actor_type, x.actor_id, x.routine_id, x."at", x.seq
+        FROM ${projectsRel("task_transitions")} x
+       WHERE x.task_id = t.id AND x.org_id = t.org_id
+         AND x."at" >= t.updated_at - interval '5 seconds'
+      UNION ALL
+      SELECT t.updated_by_type, t.updated_by, t.updated_by_routine_id, t.updated_by_at, NULL::bigint
+       WHERE t.updated_by_type IS NOT NULL
+         AND t.updated_by_at >= t.updated_at - interval '5 seconds'
+    ) c
+     ORDER BY c."at" DESC, c.seq DESC NULLS LAST
      LIMIT 1
   ) lx ON true
   LEFT JOIN ${kernelRel("users")} lu ON lu.id = lx.actor_id AND lu.org_id = t.org_id

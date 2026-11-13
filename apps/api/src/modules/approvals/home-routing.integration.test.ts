@@ -864,13 +864,13 @@ describe("home routing: who a pending approval is for", () => {
       attentionItemsRegistry.set(declared, {
         handler: "passOnEchoA",
         bundlePath: fixture,
-        trusted: true,
+        core: true,
         passesOn: true,
       })
       attentionItemsRegistry.set(undeclared, {
         handler: "passOnEchoB",
         bundlePath: fixture,
-        trusted: true,
+        core: true,
       })
       const range = await away(people.sara as string, people.tom as string)
       try {

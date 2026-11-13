@@ -31,11 +31,8 @@ export function deltaTone(
 }
 
 const TONE_TEXT = { good: "text-success", bad: "text-error", neutral: "text-text-secondary" }
-const TONE_STROKE = {
-  good: "var(--color-success)",
-  bad: "var(--color-error)",
-  neutral: "var(--color-chart-1)",
-}
+/** The sparkline keeps the series colour: a good or bad change tints the delta's text only (D11). */
+const SPARK_STROKE = "var(--color-chart-1)"
 
 /** A change as it reads: "+12 %", "−3 %", "0 %". */
 export function formatDelta(delta: number, locale: string): string {
@@ -147,7 +144,7 @@ export const MetricBlock: Component<MetricBlockProps> = (props) => {
               points={sparklinePoints(values(), 200, 28)}
               transform="translate(0 2)"
               fill="none"
-              stroke={TONE_STROKE[tone()]}
+              stroke={SPARK_STROKE}
               stroke-width="2"
               vector-effect="non-scaling-stroke"
               stroke-linejoin="round"

@@ -19,7 +19,7 @@ import {
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { messagePreview, parseMentions } from "~/lib/mentions"
-import { captureActingAgentId } from "~/modules/agent/runtime/run-context"
+import { captureActingAgentId, currentRunContext } from "~/modules/agent/runtime/run-context"
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { projectMessageMetadataForViewer } from "~/modules/agent/scopes/withheld-capability"
 import { applyScopeCeiling } from "~/modules/auth/session-ceiling"
@@ -485,6 +485,28 @@ export async function resolveAgentAuthorName(
   })
 }
 
+/**
+ * The metadata a message is stored with. An agent post carries its attributed label, and a post
+ * a routine run makes carries the run's id (`routineRunId`, from the run frame): a flow's required
+ * outcome counts only its own run's messages (flow-runner.ts), never another run's in the same
+ * conversation. The caller's own keys win over the run's id.
+ */
+export function agentPostMetadata(
+  authorType: string,
+  agentAuthorLabel: string | null | undefined,
+  metadata: unknown,
+): Record<string, unknown> | null {
+  const base = (metadata as Record<string, unknown> | null | undefined) ?? null
+  if (authorType !== "agent") return base
+  const routineRunId = currentRunContext()?.routineRunId
+  if (!agentAuthorLabel && !routineRunId) return base
+  return {
+    ...(routineRunId ? { routineRunId } : {}),
+    ...(base ?? {}),
+    ...(agentAuthorLabel ? { agentAuthorLabel } : {}),
+  }
+}
+
 export async function sendMessage(db: RlsClient, params: SendMessageParams) {
   const {
     orgId,
@@ -528,10 +550,7 @@ export async function sendMessage(db: RlsClient, params: SendMessageParams) {
 
   // Agent posts carry an attributed label in metadata so the read path and the
   // event payload surface "{User}'s agent" / "Routine {name}" — never the human.
-  const effectiveMetadata =
-    authorType === "agent" && agentAuthorLabel
-      ? { ...((metadata as Record<string, unknown> | null | undefined) ?? {}), agentAuthorLabel }
-      : ((metadata as Record<string, unknown> | null | undefined) ?? null)
+  const effectiveMetadata = agentPostMetadata(authorType, agentAuthorLabel, metadata)
 
   // Verify user is participant
   const [participant] = await db

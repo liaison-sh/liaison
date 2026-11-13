@@ -944,7 +944,7 @@ async function resumeUnderLock(
  * its rows' `created_at` (the database's clock) with this, so it is read there:
  * the host's clock may run a few ms ahead, and the turn's reply would be dropped.
  */
-async function dbClockMs(orgId: string): Promise<number> {
+export async function dbClockMs(orgId: string): Promise<number> {
   const [row] = await withPrivilegedDb(orgId, "routine-run-segment-start", async (tx) =>
     extractRows<{ ms: string }>(
       await tx.execute(

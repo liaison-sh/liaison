@@ -6,7 +6,10 @@
 //     and the step is done, the run succeeded;
 //   - an outcome never met is bumped `maxBumps` times, then the step and the run are flagged and
 //     the owner gets an attention item naming the outcome;
-//   - the agent step runs with the step's prompt, after the flow's actions.
+//   - the agent step runs with the step's prompt, after the flow's actions;
+//   - `tool_called` and `message_posted` count this run's own calls and messages only (another
+//     run of the routine in the same thread at the same time never meets them), a tool reached
+//     through kernel__call_tool by its inner name, and `{{owner}}` as a direct message.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import type { RoutineFlow } from "@liaison/shared"
 import { createProject } from "~/apps/projects/service/create-project"
@@ -15,7 +18,10 @@ import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { describeOutcome, driveFlowBumps } from "~/modules/agent/routines/flow-runner"
 import { type RoutineTickOpts, runRoutineTick } from "~/modules/agent/routines/routine-worker"
+import { currentRunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { sendMessage } from "~/modules/threads/message"
+import { createThread } from "~/modules/threads/thread"
 import { seedContext } from "~/seed/context"
 import { seedRoutine } from "~/seed/factories/agent/routines"
 import * as minimal from "~/seed/tiers/minimal"
@@ -23,6 +29,7 @@ import { clearRedisPatterns } from "~/tests/route-test-setup"
 
 let ORG = ""
 let OWNER = ""
+let ALICE = ""
 const SCOPES = [
   "projects:projects:read",
   "projects:projects:write",
@@ -148,6 +155,7 @@ beforeAll(async () => {
   ORG = (await minimal.secondOrg({ name: "Flow Agent Org" })).orgId
   OWNER = (await minimal.person(ORG, { name: "Owner" })).id
   await minimal.grantScope(OWNER, "*")
+  ALICE = (await minimal.person(ORG, { name: "Alice" })).id
   await ensureAppsForOrg(ORG, {})
   const p = await withRlsContext(ctx(), (tx) =>
     createProject({ tx, orgId: ORG, actor: ctx(), input: { name: "Bench", fields: FIELDS } }),
@@ -227,4 +235,132 @@ describe("routine flow agent steps", () => {
     expect({ n, asked }).toEqual({ n: 0, asked: 1 })
     expect(await driveFlowBumps(undefined, async () => true)).toBe(0)
   })
+})
+
+describe("routine flow outcomes are this run's own", () => {
+  const withOutcome = (
+    outcome: RoutineFlow["steps"][number] extends infer S
+      ? S extends { type: "agent"; outcomes?: infer O }
+        ? NonNullable<O>[number]
+        : never
+      : never,
+  ): RoutineFlow => ({
+    version: 1,
+    steps: [{ id: "act", type: "agent", prompt: "Act", outcomes: [outcome], maxBumps: 0 }],
+  })
+
+  /** Runs `fn` as another run of the same routine would, in the same frame but its own run id. */
+  function asOtherRun<T>(fn: () => Promise<T>): Promise<T> {
+    const frame = currentRunContext()!
+    const other = crypto.randomUUID()
+    return runContextStore.run(
+      { ...frame, runId: other, rootRunId: other, routineRunId: other },
+      fn,
+    )
+  }
+
+  /** A reply the agent's turn writes in the output thread, with its tool calls. */
+  async function reply(threadId: string, toolCalls: unknown[]) {
+    await withRlsContext(ctx(), (tx) =>
+      sendMessage(tx, {
+        orgId: ORG,
+        userId: OWNER,
+        threadId,
+        content: "Done.",
+        authorType: "agent",
+        requiredScopes: [],
+        metadata: { toolCalls },
+      }),
+    )
+  }
+
+  /** A direct message the agent's turn posts (kernel threads_create). */
+  async function dm(to: string[], text: string) {
+    await withRlsContext(ctx(), (tx) =>
+      createThread(tx, {
+        orgId: ORG,
+        userId: OWNER,
+        participantIds: to,
+        initialMessage: {
+          content: text,
+          authorType: "agent",
+          agentAuthorLabel: "Routine x",
+          requiredScopes: [],
+        },
+      }),
+    )
+  }
+
+  const update = (name: string) => [{ toolCallId: crypto.randomUUID(), toolName: name, args: {} }]
+  const cases: Array<{
+    name: string
+    outcome: Parameters<typeof withOutcome>[0]
+    act: (threadId: string) => Promise<void>
+    status: string
+  }> = [
+    {
+      name: "tool_called: this run's call counts",
+      outcome: { kind: "tool_called", tool: "projects:update" },
+      act: (t) => reply(t, update("projects__update")),
+      status: "succeeded",
+    },
+    {
+      name: "tool_called: a call through kernel__call_tool counts by its inner name",
+      outcome: { kind: "tool_called", tool: "projects:update" },
+      act: (t) =>
+        reply(t, [
+          {
+            toolCallId: crypto.randomUUID(),
+            toolName: "kernel__call_tool",
+            args: { name: "projects__update", arguments: {} },
+          },
+        ]),
+      status: "succeeded",
+    },
+    {
+      name: "tool_called: another run's call in the same thread does not count",
+      outcome: { kind: "tool_called", tool: "projects:update" },
+      act: (t) => asOtherRun(() => reply(t, update("projects__update"))),
+      status: "flagged",
+    },
+    {
+      name: "message_posted: this run's message to a person counts",
+      outcome: { kind: "message_posted", to: "ALICE" },
+      act: () => dm([ALICE], "For Alice"),
+      status: "succeeded",
+    },
+    {
+      name: "message_posted: another run's message to that person does not count",
+      outcome: { kind: "message_posted", to: "ALICE" },
+      act: () => asOtherRun(() => dm([ALICE], "For Alice, from another run")),
+      status: "flagged",
+    },
+    {
+      name: "message_posted: {{owner}} is met by a direct message to the owner",
+      outcome: { kind: "message_posted", to: "{{owner}}" },
+      act: () => dm([], "For the owner"),
+      status: "succeeded",
+    },
+    {
+      name: "message_posted: {{owner}} is not met by a message to someone else",
+      outcome: { kind: "message_posted", to: "{{owner}}" },
+      act: () => dm([ALICE], "For Alice, not the owner"),
+      status: "flagged",
+    },
+  ]
+  for (const c of cases) {
+    it(c.name, async () => {
+      const outcome =
+        c.outcome.kind === "message_posted" && c.outcome.to === "ALICE"
+          ? { ...c.outcome, to: ALICE }
+          : c.outcome
+      const routineId = await routine(`outcome-${c.name}`, withOutcome(outcome))
+      const taskId = await task(c.name)
+      const res = await tick(routineId, taskId, async ({ threadId }) => {
+        await c.act(threadId)
+        return { turnsAdded: 1 }
+      })
+      expect((await run(res.runId!)).status).toBe(c.status)
+    }, 60_000)
+  }
 })

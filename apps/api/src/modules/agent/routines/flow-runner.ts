@@ -1043,7 +1043,10 @@ async function runAgentStep(
     setState(state, "failed", "No agent is available to run this step.")
     return { kind: "end", status: "failed", error: `Step ${step.id}: no agent invoker` }
   }
-  const stepStartedAt = new Date()
+  // The step's start on the database's clock: its outcomes compare it with rows' `created_at`,
+  // and the host's clock may run a few ms ahead of it.
+  const { dbClockMs } = await import("./routine-run-resume")
+  const stepStartedAt = new Date(await dbClockMs(run.orgId))
   const outcomes = step.outcomes ?? []
   const maxBumps = step.maxBumps ?? DEFAULT_MAX_BUMPS
   let bumps = 0
@@ -1154,11 +1157,24 @@ async function missingOutcomes(
   return missing
 }
 
-/** Did this run's agent call `tool` (app:name or app__name) since the step began? */
+/** The names a tool goes by in a turn's `toolCalls` (app:name or app__name). */
+function toolNames(tool: string): string[] {
+  return [...new Set([tool, tool.replace(":", "__"), tool.replace("__", ":")])]
+}
+
+/**
+ * Did THIS run's agent call `tool` since the step began? Read from the replies its turns wrote in
+ * the output thread, each stamped with the run's id (`metadata.routineRunId`): another run of the
+ * routine, in the same thread at the same time, never counts. A tool reached through
+ * `kernel__call_tool` counts by its inner name.
+ */
 async function toolCalledSince(run: FlowRun, tool: string, since: Date): Promise<boolean> {
   const { sql: drizzleSql } = await import("drizzle-orm")
   const { schemaRef } = await import("~/db/schema-ref")
-  const names = [tool, tool.replace(":", "__"), tool.replace("__", ":")]
+  const names = drizzleSql.join(
+    toolNames(tool).map((n) => drizzleSql`${n}`),
+    drizzleSql`, `,
+  )
   const rows = await withPrivilegedDb(run.orgId, "routine-flow-tool-called", async (tx) =>
     extractRows<{ n: number }>(
       await tx.execute(drizzleSql`
@@ -1168,11 +1184,13 @@ async function toolCalledSince(run: FlowRun, tool: string, since: Date): Promise
                       THEN m.metadata->'toolCalls' ELSE '[]'::jsonb END
                ) AS c
          WHERE m.org_id = ${run.orgId}::uuid AND m.thread_id = ${run.outputThreadId}::uuid
+           AND m.metadata->>'routineRunId' = ${run.runId}
            AND m.created_at >= ${since.toISOString()}::timestamptz
-           AND c->>'toolName' IN (${drizzleSql.join(
-             names.map((n) => drizzleSql`${n}`),
-             drizzleSql`, `,
-           )})
+           AND (
+             c->>'toolName' IN (${names})
+             OR (c->>'toolName' IN ('kernel__call_tool', 'kernel:call_tool')
+                 AND c->'args'->>'name' IN (${names}))
+           )
            AND COALESCE(c->>'status', '') <> 'error' AND c->'error' IS NULL`),
     ),
   )
@@ -1180,14 +1198,20 @@ async function toolCalledSince(run: FlowRun, tool: string, since: Date): Promise
 }
 
 /**
- * Was a message posted since the step began, by the routine's agent or under its owner, to `to`:
- * a thread id, or a person (a thread whose participants are the owner and that person)?
+ * Did THIS run post a message since the step began to `to`: a thread id, or a person? Its
+ * messages carry the run's id (`metadata.routineRunId`) and are written by the routine's agent
+ * identity, never the owner's own. A person means a conversation they take part in, other than
+ * the routine's output thread; the routine's owner means a conversation with the owner alone
+ * (the direct message a flow's `message` step to `{{owner}}` opens).
  */
 async function messagePostedSince(run: FlowRun, to: string | null, since: Date): Promise<boolean> {
   if (!to) return false
   const { sql: drizzleSql } = await import("drizzle-orm")
   const { schemaRef } = await import("~/db/schema-ref")
   const K = drizzleSql.raw(schemaRef("kernel"))
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(to)
+  if (!isUuid) return false
+  const toOwner = to === run.routine.ownerUserId
   const rows = await withPrivilegedDb(run.orgId, "routine-flow-message-posted", async (tx) =>
     extractRows<{ n: number }>(
       await tx.execute(drizzleSql`
@@ -1195,14 +1219,18 @@ async function messagePostedSince(run: FlowRun, to: string | null, since: Date):
          WHERE m.org_id = ${run.orgId}::uuid
            AND m.created_at >= ${since.toISOString()}::timestamptz
            AND m.thread_id <> ${run.outputThreadId}::uuid
-           AND m.author_id = ${run.routine.ownerUserId}::uuid
+           AND m.author_type = 'agent'
+           AND m.metadata->>'routineRunId' = ${run.runId}
            AND (
-             m.thread_id::text = ${to}
-             OR EXISTS (
+             m.thread_id = ${to}::uuid
+             OR (${toOwner} AND NOT EXISTS (
+               SELECT 1 FROM ${K}.thread_participants p
+                WHERE p.thread_id = m.thread_id AND p.user_id <> ${to}::uuid
+             ))
+             OR (NOT ${toOwner} AND EXISTS (
                SELECT 1 FROM ${K}.thread_participants p
                 WHERE p.thread_id = m.thread_id AND p.user_id = ${to}::uuid
-                  AND ${to} <> ${run.routine.ownerUserId}
-             )
+             ))
            )`),
     ),
   )

@@ -1,66 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import path from "node:path"
-import { markdownToEmail } from "@liaison/shared"
 import { simpleParser } from "mailparser"
-import {
-  encodeAddressString as mailEncodeAddressString,
-  encodeDisplayName as mailEncodeDisplayName,
-  encodeHeaderValue as mailEncodeHeaderValue,
-  formatMailbox as mailFormatMailbox,
-  normalizeGmailMessage,
-} from "~/apps/mail/handlers"
+import { normalizeGmailMessage } from "~/apps/mail/handlers"
 import { mailPageRunner } from "~/apps/mail/test-page-write-bridge"
-import {
-  encodeAddressString,
-  encodeDisplayName,
-  encodeHeaderValue,
-  formatMailbox,
-} from "~/lib/email/header-encoding"
 
 const runMail = mailPageRunner({
   __test_normalizeGmailMessage: (params) => normalizeGmailMessage(params.message),
-  __test_headerEncoding: (params) =>
-    params.values.map((v: string) => [
-      mailEncodeHeaderValue(v),
-      mailEncodeDisplayName(v),
-      mailFormatMailbox(v, "a@x.test"),
-      mailEncodeAddressString(v),
-    ]),
 })
 
 describe("mail handler helpers", () => {
   function base64UrlUtf8(value: string): string {
     return Buffer.from(value, "utf8").toString("base64url")
   }
-
-  // The bundle cannot import, so it carries an inlined copy of
-  // lib/email/header-encoding.ts. Both copies must give identical output.
-  it("inlined RFC 2047 header encoding matches the shared helper", async () => {
-    const values = [
-      "Hello",
-      "",
-      'Doe, "JD"',
-      "J. Doe",
-      "Liaison : accès aux stats Instagram",
-      `${"é".repeat(30)} ${"日本語".repeat(10)} 🎉 ${"x".repeat(50)}`,
-      "accès\r\nBcc: evil@x.test",
-      '"Élodie" <e@x.test>',
-    ]
-    const result = await runMail({
-      exportName: "__test_headerEncoding",
-      params: { values },
-      bridge: {},
-    })
-    expect(result).toEqual(
-      values.map((v) => [
-        encodeHeaderValue(v),
-        encodeDisplayName(v),
-        formatMailbox(v, "a@x.test"),
-        encodeAddressString(v),
-      ]),
-    )
-  })
 
   it("normalizes multipart Gmail payloads and threading metadata", async () => {
     const result = (await runMail({
@@ -1128,10 +1080,7 @@ describe("mail agent handlers", () => {
 
   it("agentMailReply sends a markdown body as formatted email, plain text as typed", async () => {
     const smtpCalls: any[] = []
-    const bridge = {
-      ...makeReplyBridge({ onSmtp: (message: any) => smtpCalls.push(message) }),
-      codec_markdownToEmail: async (markdown: string) => JSON.stringify(markdownToEmail(markdown)),
-    }
+    const bridge = makeReplyBridge({ onSmtp: (message: any) => smtpCalls.push(message) })
     const send = (textBody: string) =>
       runMail({
         exportName: "agentMailReply",

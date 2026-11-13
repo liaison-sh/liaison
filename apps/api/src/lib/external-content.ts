@@ -7,9 +7,8 @@
 // opening or closing `external-content` tag inside the content (any case, any
 // spacing, with or without the slash) is defanged by escaping its `<`.
 //
-// The mail handler bundle and the social bundled app run without imports, so
-// each carries a byte-identical copy of `neutraliseExternalContent`. Change one
-// copy, change all.
+// The social bundled app runs without imports, so it carries a byte-identical
+// copy of `neutraliseExternalContent`. Change one copy, change both.
 
 const FENCE_TAG = /<(\s*\/?\s*external-content)/gi
 

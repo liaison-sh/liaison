@@ -60,3 +60,6 @@ Backed reads need the app's read tool, taint as it, 2,000 cap -> apps/api/src/mo
 recordVersion / ifRecordVersion refusal -> apps/api/src/modules/dashboards/tables/service.ts:1282
 Read-through writes judged as the app's write tool -> apps/api/src/modules/dashboards/tables/tools.ts:143 ; apps/api/src/modules/apps/execute-tool.ts:3666
 Undo of a first own-column change keeps the row -> apps/api/src/modules/dashboards/tables/service.ts:1571
+Header bands From <project> / This table only -> apps/web/src/modules/dashboards/blocks/table-cells.ts:56 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:1
+Status pills, avatar discs, deadline tint and track -> apps/web/src/modules/dashboards/blocks/table-cells.ts:28 ; apps/web/src/modules/dashboards/blocks/table-cells.ts:44 ; apps/api/src/apps/projects/service/table-backing.ts:56
+A done or cancelled task's due date reads plain (the row's terminal flag) -> apps/api/src/apps/projects/service/table-backing.ts:165 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:401

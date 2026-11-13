@@ -91,6 +91,13 @@ export interface RoutineRow {
   lastRunAt: string | null
   lastRunStatus: string | null
   lastRunError: string | null
+  /** The latest run with its steps' states, when the list was read with `includeLastRun=1`. */
+  lastRun?: {
+    id: string
+    ranAt: string
+    status: string
+    steps: FlowRunStep[] | null
+  } | null
   createdAt: string
   updatedAt: string
   /** The server's A15 answer for THIS viewer (P4c-T32b). Never recomputed here. */
@@ -259,7 +266,7 @@ export async function loadProjectRoutines(
   projectId: string,
 ): Promise<RoutineRow[]> {
   const data = await api.get<RoutineRow[]>(
-    `/agent/routines?projectId=${encodeURIComponent(projectId)}`,
+    `/agent/routines?projectId=${encodeURIComponent(projectId)}&includeLastRun=1`,
   )
   return Array.isArray(data) ? data : []
 }

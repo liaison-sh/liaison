@@ -69,13 +69,13 @@ export const TaskFieldsSection: Component<TaskFieldsSectionProps> = (props) => {
         <h3 class="text-[11px] uppercase tracking-[0.04em] text-text-tertiary">
           {i18n.t("projects.fields.title")}
         </h3>
-        <dl class="grid grid-cols-[minmax(7rem,max-content)_1fr] items-start gap-x-4 gap-y-1 text-[12.5px]">
+        <dl class="grid grid-cols-[minmax(7rem,max-content)_minmax(0,1fr)] items-start gap-x-3 gap-y-1 text-[13px]">
           <For each={props.fields}>
             {(f) => (
               <>
                 <dt
                   data-testid={`task-fields.label-${f.key}`}
-                  class="flex min-h-7 items-center text-text-tertiary"
+                  class="flex min-h-7 items-center text-text-secondary"
                 >
                   {f.label}
                   <Show when={f.required}>

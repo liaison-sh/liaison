@@ -63,6 +63,18 @@ export interface ChartDisplay {
   curve?: "smooth"
   /** A layered chart: the series drawn against the right-hand axis. */
   rightAxis?: string[]
+  /** A bar of one segment per category (map.stackedSingle). */
+  stackedSingle?: true
+}
+
+/**
+ * A chart's colours and people from its rows (map.colorField, map.personField): index by index
+ * with its labels (categories) and its series. null: no colour (the chart palette), no person.
+ */
+export interface ChartPaint {
+  labels?: (string | null)[]
+  series?: (string | null)[]
+  people?: (string | null)[]
 }
 
 /** One headline figure: a period total (agg-consistent) and the comparison's. */
@@ -145,6 +157,8 @@ export type BlockData =
       inProgressLabel?: string
       /** A layered chart's layers, in spec order. */
       layers?: LayerInfo[]
+      /** Colours and people the rows carry (map.colorField, map.personField). */
+      paint?: ChartPaint
     }
   | { kind: "text"; markdown: string; meta: BlockMeta }
 
@@ -653,11 +667,14 @@ export function transformBlock(
   })
 
   const totals = new Map<string, number | null>(groups.map((g) => [g.key, totalOf(g)]))
-  let sorted = [...groups].sort((a, b) => {
-    const c =
-      by === "key" ? compare(a.key, b.key) : (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0)
-    return dir === "desc" ? -c : c
-  })
+  // map.keepOrder: the categories as the source listed them (its own order, a status order).
+  let sorted = map.keepOrder
+    ? [...groups]
+    : [...groups].sort((a, b) => {
+        const c =
+          by === "key" ? compare(a.key, b.key) : (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0)
+        return dir === "desc" ? -c : c
+      })
   if (type === "funnel" && map.order) {
     const byKey = new Map(groups.map((g) => [g.key, g]))
     sorted = map.order.map((label) => byKey.get(label) ?? { key: label, rows: [] })
@@ -707,12 +724,14 @@ export function transformBlock(
     bucket && today && opts.window && opts.window.from <= today && today <= opts.window.to
       ? bucketOfDay(today, bucket)
       : null
+  const paint = paintOf(map, kept, finished, rows, seriesField)
   return {
     kind: type,
     labels,
     series: finished,
     meta,
     ...(display ? { display } : {}),
+    ...(paint ? { paint } : {}),
     ...(headline ? { headline } : {}),
     ...(inProgress && labels.includes(inProgress) ? { inProgressLabel: inProgress } : {}),
   }
@@ -992,6 +1011,7 @@ function displayOf(
     d.curve = "smooth"
   }
   if (map.horizontal && type === "bar") d.horizontal = true
+  if (map.stackedSingle && type === "bar") d.stackedSingle = true
   if (type === "combo") {
     const names = new Set(series.map((s) => s.name))
     const asked = (map.lineSeries ?? []).filter((n) => names.has(n))
@@ -999,6 +1019,61 @@ function displayOf(
     if (map.secondaryAxis) d.secondaryAxis = true
   }
   return Object.keys(d).length ? d : null
+}
+
+/** A colour a row may carry: a hex colour only (#rgb, #rrggbb, with alpha), never other CSS. */
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+
+export function colorOf(v: unknown): string | null {
+  return typeof v === "string" && HEX_COLOR.test(v.trim()) ? v.trim() : null
+}
+
+function firstOf<T>(rows: Row[], field: string, read: (v: unknown) => T | null): T | null {
+  for (const r of rows) {
+    const v = read(readPath(r, field))
+    if (v !== null) return v
+  }
+  return null
+}
+
+/**
+ * The colours and people a chart's rows carry: map.colorField colours each series (with a series
+ * split) or else each category, from the first of its rows that holds a hex colour; map.personField
+ * names each category's person (a user id). null when the block asks for neither or no row says.
+ */
+function paintOf(
+  map: BlockMap,
+  kept: Group[],
+  series: { name: string }[],
+  rows: Row[],
+  seriesField: string | undefined,
+): ChartPaint | null {
+  const out: ChartPaint = {}
+  const colorField = map.colorField
+  if (colorField) {
+    if (seriesField) {
+      const bySeries = new Map<string, string>()
+      for (const r of rows) {
+        const name = keyOf(readPath(r, seriesField))
+        if (bySeries.has(name)) continue
+        const c = colorOf(readPath(r, colorField))
+        if (c) bySeries.set(name, c)
+      }
+      const colors = series.map((s) => bySeries.get(s.name) ?? null)
+      if (colors.some((c) => c !== null)) out.series = colors
+    } else {
+      const colors = kept.map((g) => firstOf(g.rows, colorField, colorOf))
+      if (colors.some((c) => c !== null)) out.labels = colors
+    }
+  }
+  const personField = map.personField
+  if (personField) {
+    const people = kept.map((g) =>
+      firstOf(g.rows, personField, (v) => (typeof v === "string" && v.length > 0 ? v : null)),
+    )
+    if (people.some((p) => p !== null)) out.people = people
+  }
+  return Object.keys(out).length ? out : null
 }
 
 /**

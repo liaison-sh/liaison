@@ -21,7 +21,7 @@ import { prettyStatus } from "~/modules/projects/status-label"
 export interface FlowProject {
   id: string
   name: string
-  statuses: ReadonlyArray<{ id: string; label: string }>
+  statuses: ReadonlyArray<{ id: string; label: string; color?: string | null }>
   fields: ReadonlyArray<FlowField>
 }
 
@@ -44,6 +44,8 @@ export interface FlowNames {
   t: Translate
   /** For plural forms; English when absent. */
   locale?: string
+  /** Wrap each status name the copy inserts in status marks (statusTextParts pills only those). */
+  markStatuses?: boolean
 }
 
 /** A run's state for one step (routine_runs.steps, 0303). */
@@ -62,6 +64,8 @@ export interface FlowRunStep {
   startedAt?: string | null
   endedAt?: string | null
   note?: string | null
+  /** What the step produced: a wait's `deadline` (ISO), an agent step's `bumps`... */
+  output?: Record<string, unknown> | null
 }
 
 /** The projects event filter keys (0303) next to the older filter keys. */
@@ -100,10 +104,21 @@ const ASSIGNEE = "{{task.assigneeId}}"
 
 // ── Names ─────────────────────────────────────────────────────────────────────
 
+/** The marks around a status reference in flow copy: Unicode isolates, invisible as text. */
+const STATUS_OPEN = "\u2068"
+const STATUS_CLOSE = "\u2069"
+
 export function statusName(names: FlowNames, id: string | null | undefined): string {
   if (!id) return names.t("kernel.routineFlow.unknownStatus")
   const s = names.project?.statuses.find((x) => x.id === id)
-  return s ? prettyStatus(s.label) : names.t("kernel.routineFlow.unknownStatus")
+  if (!s) return names.t("kernel.routineFlow.unknownStatus")
+  const label = prettyStatus(s.label)
+  return names.markStatuses ? `${STATUS_OPEN}${label}${STATUS_CLOSE}` : label
+}
+
+/** The names, set to mark each status reference the copy inserts (for StatusText). */
+export function markedNames(names: FlowNames): FlowNames {
+  return { ...names, markStatuses: true }
 }
 
 export function personName(names: FlowNames, ref: string): string {
@@ -562,4 +577,170 @@ export function flowProblem(
     if (!g.success) return g.error.issues[0]?.message ?? t("kernel.routineFlow.problemGeneric")
   }
   return null
+}
+
+// ── Visual helpers (the spine, the lanes, the run timeline) ──────────────────
+
+export type StatusTextPart =
+  | { kind: "text"; text: string }
+  | { kind: "status"; text: string; color: string | null }
+
+/**
+ * Copy cut around the status references its template marked (statusName with `markStatuses`),
+ * so each renders as a status pill ("a task in Repairs moves to [Received]"). Only marked
+ * references pill: a status name typed in free text (a description) stays text. A marked name
+ * that is not one of the project's statuses reads as text.
+ */
+export function statusTextParts(names: FlowNames, text: string): StatusTextPart[] {
+  if (!text) return []
+  const statuses = new Map(
+    (names.project?.statuses ?? []).map((s) => [prettyStatus(s.label), s.color ?? null]),
+  )
+  const parts: StatusTextPart[] = []
+  const push = (t: string) => {
+    if (!t) return
+    const prev = parts.at(-1)
+    if (prev?.kind === "text") prev.text += t
+    else parts.push({ kind: "text", text: t })
+  }
+  const re = new RegExp(`${STATUS_OPEN}([^${STATUS_OPEN}${STATUS_CLOSE}]*)${STATUS_CLOSE}`, "g")
+  let last = 0
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    push(text.slice(last, m.index).replaceAll(STATUS_OPEN, "").replaceAll(STATUS_CLOSE, ""))
+    const label = m[1] ?? ""
+    if (statuses.has(label))
+      parts.push({ kind: "status", text: label, color: statuses.get(label)! })
+    else push(label)
+    last = m.index + m[0].length
+  }
+  push(text.slice(last).replaceAll(STATUS_OPEN, "").replaceAll(STATUS_CLOSE, ""))
+  return parts
+}
+
+/** The people an assign step names (one person, or the least-loaded pool), as refs. */
+export function stepPeople(step: RoutineFlowStep): string[] {
+  if (step.type !== "action" || step.action !== "assign") return []
+  const to = step.args.to
+  return typeof to === "string" ? [to] : to.leastLoaded
+}
+
+/** A step's icon kind: the action itself, or the step type. */
+export type StepIconKind = ActionKind | "wait" | "agent"
+
+export function stepIconKind(step: RoutineFlowStep): StepIconKind {
+  if (step.type === "action") return step.action
+  return step.type
+}
+
+type LeafCondition = Extract<RoutineFlowCondition, { field: string }>
+
+function leafOf(c: RoutineFlowCondition | undefined): LeafCondition | null {
+  if (!c || !("field" in c)) return null
+  return c
+}
+
+function leafValues(c: LeafCondition): string[] | null {
+  if (c.op === "eq") return [String(c.value)]
+  if (c.op === "in" && Array.isArray(c.value)) return c.value.map(String)
+  return null
+}
+
+/** One lane of a split: its label ("is Technical", "otherwise") and its steps. */
+export interface FlowLane {
+  label: string
+  indices: number[]
+}
+
+/** The flow cut into segments: plain runs of steps, and splits drawn as lanes. */
+export type FlowSegment =
+  | { kind: "steps"; indices: number[] }
+  | { kind: "split"; field: string; lanes: [FlowLane, FlowLane] }
+
+/**
+ * Two consecutive "if" groups that test the same field with complementary values
+ * (disjoint values, or empty against not empty) form one split drawn as two lanes;
+ * every other group stays a plain run (its `if` drawn as the indented line).
+ */
+export function flowSegments(names: FlowNames, steps: readonly RoutineFlowStep[]): FlowSegment[] {
+  const groups = groupSteps(steps)
+  const out: FlowSegment[] = []
+  for (let g = 0; g < groups.length; g++) {
+    const a = groups[g]
+    const b = groups[g + 1]
+    const split = a && b ? splitOf(names, a.condition, b.condition) : null
+    if (a && b && split) {
+      out.push({
+        kind: "split",
+        field: split.field,
+        lanes: [
+          { label: split.labels[0], indices: a.indices },
+          { label: split.labels[1], indices: b.indices },
+        ],
+      })
+      g++
+      continue
+    }
+    if (a) out.push({ kind: "steps", indices: a.indices })
+  }
+  return out
+}
+
+function splitOf(
+  names: FlowNames,
+  ca: RoutineFlowCondition | null,
+  cb: RoutineFlowCondition | null,
+): { field: string; labels: [string, string] } | null {
+  const a = leafOf(ca ?? undefined)
+  const b = leafOf(cb ?? undefined)
+  if (!a || !b || a.field !== b.field) return null
+  const field = conditionFieldName(names, a.field)
+  const otherwise = names.t("kernel.routineFlow.laneOtherwise")
+  const isWords = (c: LeafCondition, vals: string[]) =>
+    names.t("kernel.routineFlow.laneIs", {
+      values: joinList(
+        names,
+        vals.map((v) => valueWords(names, c.field, v)),
+        "or",
+      ),
+    })
+  if ((a.op === "empty" && b.op === "not_empty") || (a.op === "not_empty" && b.op === "empty")) {
+    const first =
+      a.op === "empty"
+        ? names.t("kernel.routineFlow.laneEmpty")
+        : names.t("kernel.routineFlow.laneNotEmpty")
+    return { field, labels: [first, otherwise] }
+  }
+  const va = leafValues(a)
+  const vb = leafValues(b)
+  if (!va || !vb) return null
+  if (va.some((v) => vb.includes(v))) return null
+  const choices = names.project?.fields.find((f) => `fields.${f.key}` === a.field)?.choices
+  const covers =
+    !!choices && choices.length > 0 && choices.every((c) => va.includes(c) || vb.includes(c))
+  return { field, labels: [isWords(a, va), covers ? otherwise : isWords(b, vb)] }
+}
+
+/** A run's overall state, for its header chip. */
+export type FlowRunSummary =
+  | { kind: "waiting"; resumesAt: string | null }
+  | { kind: "failed" | "flagged" | "running" | "done" | "pending" }
+
+export function runSummary(
+  flow: RoutineFlow,
+  runSteps: readonly FlowRunStep[] | null | undefined,
+): FlowRunSummary {
+  const states = flow.steps.map((s) => runStateFor(runSteps, s.id))
+  const waiting = states.find((s) => s?.state === "waiting")
+  if (waiting) {
+    const at = waiting.output?.deadline
+    return { kind: "waiting", resumesAt: typeof at === "string" ? at : null }
+  }
+  if (states.some((s) => s?.state === "failed")) return { kind: "failed" }
+  if (states.some((s) => s?.state === "flagged")) return { kind: "flagged" }
+  if (states.some((s) => s?.state === "running" || s?.state === "awaiting_approval")) {
+    return { kind: "running" }
+  }
+  if (states.every((s) => !s)) return { kind: "pending" }
+  if (states.every((s) => s?.state === "done" || s?.state === "skipped")) return { kind: "done" }
+  return { kind: "running" }
 }

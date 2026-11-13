@@ -117,7 +117,7 @@ On a task's page, the **Fields** section lists the project's fields under the st
 
 ## Status history
 
-Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. On the task's page, the line under the status reads how long the task has been in its status (**In Review · 3d ago**); click **Status history** to list its changes, newest first. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
+Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. On the task's page, the status pill is followed by how long the task has been in it (**for 6 d**). When an automation keeps a deadline on the task in this status (a wait step of a routine fired on it), the line adds it: **SLA in 20 hours** while it runs, **SLA passed yesterday** in red once the deadline passed with the status unchanged (as soon as its time comes, even before the automation runs again); with no such automation it says nothing about an SLA. **Where the time went** draws one segment per status the task has been in, in the status's colour, with the time spent below. **Automations on this task** lists the recent routine runs fired on it, a coloured dot for each run's state. Click **Status history** to list its changes, newest first. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
 
 ## Chart a project on a dashboard
 
@@ -129,7 +129,7 @@ Every status change of a task is recorded: the status it left, the one it entere
 
 ### A project overview dashboard
 
-Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, bars by status, by handler and by time in status, a metric of missed SLAs, and a table of overdue tasks that opens each task. Example spec, with your project and status ids:
+Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, the pipeline (one bar split by status, in the board's order and colours, its legend giving each count), who has what (one row per handler with their avatar and a bar split by status), time in status (split by status), a metric of missed SLAs, and a table of overdue tasks that opens each task. A click on a segment lists its tasks. Example spec, with your project and status ids:
 
 ```json
 {
@@ -138,15 +138,18 @@ Ask an agent for "a project overview of Repairs" and it creates one dashboard in
     { "id": "open", "type": "metric", "title": "Open tasks",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
       "map": { "value": "value", "agg": "sum" } },
-    { "id": "status", "type": "bar", "title": "By status",
+    { "id": "status", "type": "bar", "title": "Pipeline", "width": 2,
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
-    { "id": "handler", "type": "bar", "title": "By handler",
-      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+      "map": { "x": "groupLabel", "y": "value", "colorField": "color", "keepOrder": true, "stackedSingle": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+    { "id": "handler", "type": "bar", "title": "Who has what",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee", "series": "status" } },
+      "map": { "x": "groupLabel", "y": "value", "series": "seriesLabel", "colorField": "seriesColor", "personField": "userId", "keepOrder": true, "horizontal": true, "stacked": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "aging", "type": "bar", "title": "Time in status",
-      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status", "series": "status" } },
+      "map": { "x": "groupLabel", "y": "value", "series": "seriesLabel", "colorField": "seriesColor", "keepOrder": true, "stacked": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "sla", "type": "metric", "title": "SLA missed",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate",
         "params": { "projectId": "<project id>", "groupBy": "sla", "sla": { "toStatusIds": ["<status id>"], "withinWorkingDays": 2 } } },
@@ -167,7 +170,7 @@ A [dashboard table](../agents/dashboard-tables.md) can show a project's tasks as
 
 A routine can react to a project's status changes and act on its tasks without an agent: assign the task, set a field or the status, comment, message a person or notify them, wait some working days and check again. The Projects app ships four routine templates for one project: `assign-on-status` (assign a task that reaches a status and tell the assignee), `remind-if-still` (remind the assignee when a task stays in a status two working days), `sla-to-reach` (tell the routine's owner when a new task is not done after three working days) and `notify-on-status` (tell the owner when a task reaches a status). See [Schedule routines](../agents/routines.md) for flows and filters.
 
-To set one up from the project, open **Automations** in the project's top bar (on a phone, in the project menu). The tab lists the project's automations with an on/off switch, the trigger in words and the last run; click a name to open the routine. **New automation** shows the four templates. Pick one and the flow editor opens filled in for this project, its statuses already chosen (if the project has no status of that name, pick one). Its name starts as the template and the project ("When a status is reached, assign · Website"), and that name is what lists and the routine's page show. Adjust the steps, the name and the description, then **Create the automation**.
+To set one up from the project, open **Automations** in the project's top bar (on a phone, in the project menu). The tab lists the project's automations with an on/off switch, the trigger in words (its statuses as coloured pills), the last run's state as a dot with how long ago it ran, and a small strip with one segment per step of that run; click a name to open the routine. **New automation** shows the four templates. Pick one and the flow editor opens filled in for this project, its statuses already chosen (if the project has no status of that name, pick one). Its name starts as the template and the project ("When a status is reached, assign · Website"), and that name is what lists and the routine's page show. Adjust the steps, the name and the description, then **Create the automation**.
 
 ## Project templates
 

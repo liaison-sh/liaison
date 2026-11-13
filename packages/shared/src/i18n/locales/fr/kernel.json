@@ -6752,6 +6752,10 @@
       "pickProject": "Choisissez un projet.",
       "pickValue": "Choisissez au moins une valeur.",
       "projectUnreadable": "Ce projet n'a pas pu être lu.",
+      "bandFrom": "Depuis {{name}}",
+      "bandOwn": "Cette table seulement",
+      "pastDue": "En retard",
+      "dueSoon": "Échéance proche",
       "theProject": "le projet",
       "fromProjectColumn": "Vient de {{name}} : la changer change la tâche.",
       "ownColumn": "Gardée dans cette table seulement.",
@@ -6972,6 +6976,19 @@
     "remove": "Retirer",
     "problemToStatus": "Choisissez le statut qui déclenche l'automatisation.",
     "problemStep": "Étape {{n}} : ",
-    "problemGeneric": "Quelque chose dans le déroulé n'est pas encore complet."
+    "problemGeneric": "Quelque chose dans le déroulé n'est pas encore complet.",
+    "laneOtherwise": "sinon",
+    "laneIs": "vaut {{values}}",
+    "laneEmpty": "est vide",
+    "laneNotEmpty": "est rempli",
+    "splitOn": "Selon",
+    "runWaitingResumes": "en attente · reprend {{when}}",
+    "resumesAt": "reprend {{when}}",
+    "run_failed": "en échec",
+    "run_flagged": "signalé",
+    "run_running": "en cours",
+    "run_done": "terminé",
+    "run_pending": "pas commencé",
+    "agentNoteHeading": "Ce qu'a rapporté l'étape agent"
   }
 }

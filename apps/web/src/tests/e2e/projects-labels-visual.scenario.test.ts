@@ -136,7 +136,11 @@ test.describe("projects task labels visual", () => {
     await page.mouse.move(0, 0)
     await page.evaluate(() => document.fonts?.ready)
     if (PIXEL_BASELINES) {
-      await expect(meta).toHaveScreenshot("task-meta-labels-light.png", SHOT)
+      await expect(meta).toHaveScreenshot("task-meta-labels-light.png", {
+        ...SHOT,
+        // The time in status ("for 1 min") grows with the run.
+        mask: [meta.getByTestId("task-detail.status-since")],
+      })
     }
   })
 })

@@ -16,6 +16,7 @@ import {
   describeStep,
   type FlowNames,
   type FlowRunStep,
+  markedNames,
   runStateFor,
   runSummary,
 } from "./flow-model"
@@ -182,7 +183,10 @@ export const FlowRunTimeline: Component<Props> = (props) => {
                     class="break-words text-[13px]"
                     classList={{ "text-text": !muted(), "text-text-secondary": muted() }}
                   >
-                    <StatusText names={props.names} text={describeStep(props.names, step)} />
+                    <StatusText
+                      names={props.names}
+                      text={describeStep(markedNames(props.names), step)}
+                    />
                   </span>
                   <span
                     class="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px]"

@@ -44,6 +44,8 @@ export interface FlowNames {
   t: Translate
   /** For plural forms; English when absent. */
   locale?: string
+  /** Wrap each status name the copy inserts in status marks (statusTextParts pills only those). */
+  markStatuses?: boolean
 }
 
 /** A run's state for one step (routine_runs.steps, 0303). */
@@ -102,10 +104,21 @@ const ASSIGNEE = "{{task.assigneeId}}"
 
 // ── Names ─────────────────────────────────────────────────────────────────────
 
+/** The marks around a status reference in flow copy: Unicode isolates, invisible as text. */
+const STATUS_OPEN = "\u2068"
+const STATUS_CLOSE = "\u2069"
+
 export function statusName(names: FlowNames, id: string | null | undefined): string {
   if (!id) return names.t("kernel.routineFlow.unknownStatus")
   const s = names.project?.statuses.find((x) => x.id === id)
-  return s ? prettyStatus(s.label) : names.t("kernel.routineFlow.unknownStatus")
+  if (!s) return names.t("kernel.routineFlow.unknownStatus")
+  const label = prettyStatus(s.label)
+  return names.markStatuses ? `${STATUS_OPEN}${label}${STATUS_CLOSE}` : label
+}
+
+/** The names, set to mark each status reference the copy inserts (for StatusText). */
+export function markedNames(names: FlowNames): FlowNames {
+  return { ...names, markStatuses: true }
 }
 
 export function personName(names: FlowNames, ref: string): string {
@@ -573,32 +586,34 @@ export type StatusTextPart =
   | { kind: "status"; text: string; color: string | null }
 
 /**
- * Copy cut around the project's status names, so each one renders as a status pill
- * ("a task in Repairs moves to [Received]"). The longest names match first; a name
- * only matches as a whole word. Without a project the copy is one text part.
+ * Copy cut around the status references its template marked (statusName with `markStatuses`),
+ * so each renders as a status pill ("a task in Repairs moves to [Received]"). Only marked
+ * references pill: a status name typed in free text (a description) stays text. A marked name
+ * that is not one of the project's statuses reads as text.
  */
 export function statusTextParts(names: FlowNames, text: string): StatusTextPart[] {
-  const statuses = (names.project?.statuses ?? [])
-    .map((s) => ({ label: prettyStatus(s.label), color: s.color ?? null }))
-    .filter((s) => s.label.trim().length > 0)
-    .sort((a, b) => b.label.length - a.label.length)
-  if (statuses.length === 0 || !text) return text ? [{ kind: "text", text }] : []
-  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  const re = new RegExp(
-    `(^|[^\\p{L}\\p{N}])(${statuses.map((s) => esc(s.label)).join("|")})(?=$|[^\\p{L}\\p{N}])`,
-    "gu",
+  if (!text) return []
+  const statuses = new Map(
+    (names.project?.statuses ?? []).map((s) => [prettyStatus(s.label), s.color ?? null]),
   )
   const parts: StatusTextPart[] = []
+  const push = (t: string) => {
+    if (!t) return
+    const prev = parts.at(-1)
+    if (prev?.kind === "text") prev.text += t
+    else parts.push({ kind: "text", text: t })
+  }
+  const re = new RegExp(`${STATUS_OPEN}([^${STATUS_OPEN}${STATUS_CLOSE}]*)${STATUS_CLOSE}`, "g")
   let last = 0
   for (let m = re.exec(text); m; m = re.exec(text)) {
-    const start = m.index + (m[1]?.length ?? 0)
-    const label = m[2] ?? ""
-    if (start > last) parts.push({ kind: "text", text: text.slice(last, start) })
-    const hit = statuses.find((s) => s.label === label)
-    parts.push({ kind: "status", text: label, color: hit?.color ?? null })
-    last = start + label.length
+    push(text.slice(last, m.index).replaceAll(STATUS_OPEN, "").replaceAll(STATUS_CLOSE, ""))
+    const label = m[1] ?? ""
+    if (statuses.has(label))
+      parts.push({ kind: "status", text: label, color: statuses.get(label)! })
+    else push(label)
+    last = m.index + m[0].length
   }
-  if (last < text.length) parts.push({ kind: "text", text: text.slice(last) })
+  push(text.slice(last).replaceAll(STATUS_OPEN, "").replaceAll(STATUS_CLOSE, ""))
   return parts
 }
 

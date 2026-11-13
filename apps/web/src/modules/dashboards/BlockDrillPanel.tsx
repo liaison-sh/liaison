@@ -145,6 +145,8 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
           role: i === 0 ? "anchor" : i >= 4 ? "fold" : numeric ? "meta" : "secondary",
           align: numeric ? "right" : undefined,
           numeric: numeric || undefined,
+          // A date holds its width; text columns wrap, so the columns fit the panel's width.
+          ...(c.format === "date" ? { fit: true } : {}),
         }
       },
     )
@@ -153,21 +155,25 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
         key: "__open",
         header: "",
         role: "meta",
+        fit: true,
         cell: (r: KeyedRow) => {
           const link = page()?.links?.[r.index] ?? null
+          // The open action is its icon (named for readers and on hover): a word in every row
+          // took the room a column needed in the panel.
           return link ? (
             <button
               type="button"
               data-testid={`dashboard-drill-open-${r.index}`}
               data-link-kind={link.kind}
+              aria-label={i18n.t("kernel.dashboards.drillOpen")}
+              title={i18n.t("kernel.dashboards.drillOpen")}
               onClick={(e) => {
                 e.stopPropagation()
                 props.open(link)
               }}
-              class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-accent hover:bg-surface-hover"
+              class="inline-flex h-6 w-6 items-center justify-center rounded text-accent hover:bg-surface-hover"
             >
-              <ExternalLink size={12} aria-hidden="true" />
-              {i18n.t("kernel.dashboards.drillOpen")}
+              <ExternalLink size={13} aria-hidden="true" />
             </button>
           ) : (
             ""
@@ -186,7 +192,7 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
       data-block-id={props.blockId}
       aria-label={i18n.t("kernel.dashboards.drillTitle", { title: props.blockTitle })}
       style={{ "padding-bottom": DISCUSSION_RAIL_BOTTOM_PAD }}
-      class="absolute inset-0 z-10 flex min-h-0 flex-col bg-bg @2xl:static @2xl:inset-auto @2xl:z-auto @2xl:w-[420px] @2xl:shrink-0 @2xl:border-l @2xl:border-border-subtle"
+      class="absolute inset-0 z-10 flex min-h-0 flex-col bg-bg @2xl:static @2xl:inset-auto @2xl:z-auto @2xl:w-[420px] @5xl:w-[480px] @2xl:shrink-0 @2xl:border-l @2xl:border-border-subtle"
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation()

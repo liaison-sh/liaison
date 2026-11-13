@@ -21,6 +21,8 @@ Never sent: your domain or any URL, org names, people's names or email addresses
 
 A forwarded bug report carries only what [Forward a bug report](#forward-a-bug-report) lists.
 
+An app performance report carries only what [Share app performance](#share-app-performance) lists.
+
 ## Register this server
 
 When an admin turns registration on, the server picks its random id and sends one registration. The Liaison team answers with a key, which the server stores encrypted with `ENCRYPTION_KEY`. Every later message is signed with that key, so the Liaison team knows it comes from the same server.
@@ -34,6 +36,7 @@ An admin finds the switches in the **Liaison team** section of **Settings > Syst
 - **Register this server** is the switch described above. The section shows the state (off, registering, registered, leaving, error) and the last error.
 - **Allow sending bug reports** can only be turned on while registration is on. Turning it on without registration is refused with `REGISTRATION_REQUIRED`. Turning registration off turns it off as well, and turning registration on while the server is still leaving is refused with `RETIRING`.
 - **Send bug reports only to the Liaison team** can only be turned on while bug report forwarding is on. Turning it on without forwarding is refused with `FORWARDING_REQUIRED`. Turning forwarding or registration off turns it off as well. See [Send bug reports only to the Liaison team](#send-bug-reports-only-to-the-liaison-team).
+- **Share app performance with the Liaison team** can only be turned on while registration is on (`REGISTRATION_REQUIRED` otherwise). Turning registration off turns it off as well. **See what is sent** shows the report exactly as it would be sent now, to the operator only. See [Share app performance](#share-app-performance).
 - The server id and the outbox counts (waiting, failed, expired, last delivery) are shown to the operator only.
 - If `LIAISON_TEAM_ENDPOINT` is empty, the section says sharing is not available and changing a switch is refused.
 
@@ -92,6 +95,22 @@ liaisonTeam:
 
 A registered server sends one heartbeat a day, with the same fields as the registration (without the nonce). The minute of the UTC day is derived from the server id, so servers do not all call at once; the same server always uses the same minute. It also sends one at start-up when `LIAISON_VERSION` differs from the version of the last heartbeat it queued, so a new release shows up the same day. Nothing is sent while registration is off, still pending, or being turned off. If the user count cannot be read, that day's heartbeat is skipped and tried again at the next check (every 10 minutes).
 
+## Share app performance
+
+When **Share app performance with the Liaison team** is on (off by default; always on in the managed edition), a registered server sends one `performance` message an hour, so the Liaison team can see slow apps, timeouts and a full sandbox before people report them. It carries the numbers `/diag` shows under `appRuns` ([Watch app runs](docker.md#watch-app-runs)), for the whole server, over the last 15 minutes and the last 24 hours, and nothing else:
+
+| Field | What it is |
+|---|---|
+| `version`, `edition` | As in the heartbeat. |
+| `windows.15m`, `windows.24h` | One window each: `windowS` (900 or 86400), `total`, `lanes` (`interactive`, `background`, `nested`) and `apps`. |
+| Each total, lane and app row | `runs`, `errors`, `timeouts`, `errorRate`, `timeoutRate`, `errorKinds` (failures per kind, such as `timeout`, `queue_timeout`, `handler`), `p50Ms`, `p95Ms`, `p99Ms`, `meanMs`, `queuedRuns`, `queueP95Ms` (the wait for a sandbox slot), `bridgeShare` (the share of time in bridge calls), `bridgeCalls`. |
+| `apps[].app`, `apps[].lane` | The app's name when it comes from the release's app catalog (`tickets`, `shopify`, ...); any other app, such as an org's custom app or an app the operator uploaded, is `(custom)`. At most 50 rows, the busiest first. |
+| `slowest` | Up to 10 of the slowest runs: `app` (as above), `entryKind` (`tool`, `job`, `event`, `webhook`, ...), `lane`, `ms`, `queueMs`, `ok`, `errorKind`. |
+| `pools` | Per sandbox pool: `saturatedSec` (seconds every slot was busy with a run waiting) and `occupancy` (mean share of busy slots). |
+| `alerts` | The app-run checks failing at that moment: `check`, `severity`, `value`, `threshold`. |
+
+Never sent: org ids or names, people, content of any kind, a tool's or job's name or arguments, a custom app's name. The message is posted to `LIAISON_TEAM_ENDPOINT/performance` with envelope `v` 2; a control plane that does not know it refuses it, which the server logs as a warning and does not retry.
+
 ## How messages are delivered
 
 Each message waits in the server's outbox until it is delivered. A job runs every minute, sends what is due and retries what failed:
@@ -131,7 +150,7 @@ Later changes go as updates to the same lead: the address was confirmed, the vis
 
 A server started with `LIAISON_EDITION=managed` hosts many orgs and answers to its control plane, so sharing works differently there:
 
-- Registration and bug report forwarding are always on. Nobody changes them: Settings > System and the `liaisonTeam` config section refuse a change with 403 (`MANAGED_EDITION`).
+- Registration, bug report forwarding and the app performance report are always on. Nobody changes them: Settings > System and the `liaisonTeam` config section refuse a change with 403 (`MANAGED_EDITION`).
 - The server never registers itself. Its identity is provisioned in two steps. `liaison team identity mint` picks a new server id (state `pending`) and prints it, so the operator can pin it on the control plane. `liaison team identity install --key-file <path>` stores the key the control plane derived for that id, read from a file only its owner can read (mode 0600), and prints the id and the key fingerprint (the first 16 hex characters of its SHA-256). `mint --force` replaces an existing identity to re-key.
 - If the control plane stops accepting the server's key, or the key no longer decrypts, the server logs an error and keeps its identity. It never registers again under a new id: provision a new identity instead.
 - The server refuses to start without `LIAISON_OPERATOR_ORG_ID`, `LIAISON_ORG_HOST_TEMPLATE` (with a `{slug}` placeholder), an explicit `LIAISON_TEAM_ENDPOINT` (the built-in default only with `LIAISON_TEAM_ENDPOINT_ALLOW_DEFAULT=1`), `LIAISON_PAY_FRAME_ORIGIN` (the https origin of the Billing page's payment frame, with no path), `LIAISON_MANAGED_DEFAULT_MODELS` (the OpenRouter model ids a new org gets switched on, comma-separated, the first one as Auto), a mail transport (`RESEND_API_KEY` or `SMTP_HOST`), `OPENROUTER_API_KEY` and an installed identity. The error names each missing setting.
@@ -161,4 +180,4 @@ A new org can be signed in to on its address as soon as it is created. Deleting 
 
 ## Endpoints
 
-Messages are JSON posts to `LIAISON_TEAM_ENDPOINT/<type>`, one path segment per message type (`register`, `heartbeat`, `deregister`, `bug-report` and `bug-report-attachment` for forwarded bug reports, and for demo leads `lead` and `lead-update`). Each carries `v`, `type`, `messageId`, the server id, a timestamp and the fields above. Every message except the registration carries an `x-liaison-signature` header: a base64 HMAC-SHA256 of the body, keyed with the server's key.
+Messages are JSON posts to `LIAISON_TEAM_ENDPOINT/<type>`, one path segment per message type (`register`, `heartbeat`, `deregister`, `bug-report` and `bug-report-attachment` for forwarded bug reports, `performance` for the app performance report, and for demo leads `lead` and `lead-update`). Each carries `v`, `type`, `messageId`, the server id, a timestamp and the fields above. Every message except the registration carries an `x-liaison-signature` header: a base64 HMAC-SHA256 of the body, keyed with the server's key.

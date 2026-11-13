@@ -25,6 +25,12 @@ export const CONTRACT_VERSION = 2 as const
  */
 export const INSTANCE_ENVELOPE_VERSION = 1 as const
 
+/**
+ * Instance→control message types introduced in version 2: their envelope `v`
+ * is 2 (a control plane that predates them refuses the type either way).
+ */
+export const INSTANCE_V2_MESSAGE_TYPES: ReadonlySet<string> = new Set(["performance"])
+
 /** Versions a receiver accepts in an envelope's `v` and a registration reply's `contract`. */
 export const SUPPORTED_CONTRACT_VERSIONS = [1, CONTRACT_VERSION] as const
 
@@ -50,6 +56,7 @@ export const ENDPOINTS = {
   lead: "lead",
   leadUpdate: "lead-update",
   deregister: "deregister",
+  performance: "performance",
 } as const
 
 export type MessageType = (typeof ENDPOINTS)[keyof typeof ENDPOINTS]
@@ -203,6 +210,103 @@ export const leadUpdateDataSchema = z
 
 export const deregisterDataSchema = z.object({}).strict()
 
+// ── Performance (app-run health, aggregate only) ─────────────────────────────
+
+/** An app name as reported: a catalog app's own name, or `(custom)` for an org's custom app. */
+const perfAppSchema = z.string().regex(/^(?:[a-z0-9][a-z0-9_-]{0,62}|\(custom\)|\(other\))$/)
+const perfKindSchema = z.string().regex(/^[a-z0-9_]{1,40}$/)
+const msSchema = z.number().int().nonnegative().max(86_400_000)
+const countSchema = z.number().int().nonnegative()
+const rateSchema = z.number().min(0).max(1)
+export const PERFORMANCE_LANES = ["interactive", "background", "nested"] as const
+const laneSchema = z.enum(PERFORMANCE_LANES)
+
+/** One (app, lane) series, a lane or the total, over one window. */
+export const performanceSummarySchema = z
+  .object({
+    runs: countSchema,
+    errors: countSchema,
+    timeouts: countSchema,
+    errorRate: rateSchema,
+    timeoutRate: rateSchema,
+    /** Failures per error kind (`timeout`, `queue_timeout`, `handler`, ...). */
+    errorKinds: z.record(perfKindSchema, countSchema),
+    p50Ms: msSchema.nullable(),
+    p95Ms: msSchema.nullable(),
+    p99Ms: msSchema.nullable(),
+    meanMs: msSchema.nullable(),
+    queuedRuns: countSchema,
+    queueP95Ms: msSchema.nullable(),
+    bridgeShare: rateSchema.nullable(),
+    bridgeCalls: countSchema,
+  })
+  .strict()
+
+export const performanceWindowSchema = z
+  .object({
+    windowS: z.union([z.literal(900), z.literal(86_400)]),
+    total: performanceSummarySchema,
+    lanes: z
+      .object({
+        interactive: performanceSummarySchema,
+        background: performanceSummarySchema,
+        nested: performanceSummarySchema,
+      })
+      .strict(),
+    apps: z
+      .array(performanceSummarySchema.extend({ app: perfAppSchema, lane: laneSchema }).strict())
+      .max(50),
+    /** The slowest runs: app, entry kind (`tool`, `job`, ...), lane, time. Never the entry's arguments. */
+    slowest: z
+      .array(
+        z
+          .object({
+            app: perfAppSchema,
+            entryKind: perfKindSchema,
+            lane: laneSchema,
+            ms: msSchema,
+            queueMs: msSchema.optional(),
+            ok: z.boolean(),
+            errorKind: perfKindSchema.optional(),
+          })
+          .strict(),
+      )
+      .max(10),
+    /** Per sandbox pool: seconds saturated (summed over processes) and mean occupancy. */
+    pools: z.record(
+      perfKindSchema,
+      z.object({ saturatedSec: countSchema, occupancy: rateSchema.nullable() }).strict(),
+    ),
+  })
+  .strict()
+
+/**
+ * The `performance` data: app-run health as numbers per catalog app name and
+ * lane, nothing else. No org, user, content, entry argument or custom app
+ * name: an org's custom app is reported as `(custom)`. Sent hourly by a
+ * server that opted in (self-hosted) and by every managed cell.
+ */
+export const performanceDataSchema = z
+  .object({
+    version: versionSchema,
+    edition: editionSchema,
+    windows: z.object({ "15m": performanceWindowSchema, "24h": performanceWindowSchema }).strict(),
+    /** The app-run checks failing when it was built (no subjects). */
+    alerts: z
+      .array(
+        z
+          .object({
+            check: perfKindSchema,
+            severity: z.enum(["warning", "critical"]),
+            value: z.number().nonnegative(),
+            threshold: z.number().nonnegative(),
+          })
+          .strict(),
+      )
+      .max(10),
+  })
+  .strict()
+
 /** The `data` schema of each message type. */
 export const messageDataSchemas = {
   register: registerDataSchema,
@@ -212,6 +316,7 @@ export const messageDataSchemas = {
   lead: leadDataSchema,
   "lead-update": leadUpdateDataSchema,
   deregister: deregisterDataSchema,
+  performance: performanceDataSchema,
 } as const satisfies Record<MessageType, z.ZodType>
 
 export type MessageData<T extends MessageType> = z.infer<(typeof messageDataSchemas)[T]>
@@ -241,6 +346,7 @@ export const messageSchemas = {
   lead: envelopeSchema("lead", leadDataSchema),
   "lead-update": envelopeSchema("lead-update", leadUpdateDataSchema),
   deregister: envelopeSchema("deregister", deregisterDataSchema),
+  performance: envelopeSchema("performance", performanceDataSchema),
 } as const satisfies Record<MessageType, z.ZodType>
 
 export type Message<T extends MessageType = MessageType> = {

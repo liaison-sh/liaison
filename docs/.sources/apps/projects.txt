@@ -256,3 +256,8 @@ Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/s
 Amount sums per currency -> apps/api/src/apps/projects/service/tasks-aggregate.ts:674
 Backed edit refused when the task changed since -> apps/api/src/modules/dashboards/tables/service.ts:1282
 Backed rows need the app's read tool scopes -> apps/api/src/modules/dashboards/tables/backing.ts:149
+Time in status beside the status pill (for 6 d) -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:22
+SLA words only when an automation's wait keeps a deadline on the task -> apps/web/src/modules/projects/task-time.ts:76
+Where the time went, one segment per status in its colour -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:74
+Automations on this task, the recent runs fired on it -> apps/web/src/modules/projects/TaskTimeInStatus.tsx:119
+Automations list row: last run dot, time since and step strip -> apps/web/src/modules/projects/ProjectAutomations.tsx:330

@@ -155,7 +155,9 @@ describe("scope taint: one audience rule, judged by who can read what the write 
     await ensureAppsForOrg(ORG)
 
     // The bundled boxtal app's draft table and draft tool exactly as its manifest declares
-    // them, registered through the real app runtime; only the handler is a stub.
+    // them, registered through the real app runtime; only the handler is a stub. Boxtal is a
+    // catalog app: a sandboxed app's write-target readers are derived only when the platform
+    // vouches for its declarations, which a catalog install does (`_firstParty`, init.ts).
     bundleDir = mkdtempSync(join(tmpdir(), "taint-audience-boxtal-"))
     const bundlePath = join(bundleDir, "handler-bundle.js")
     // A sandboxed bundle: the handler is a global function the runtime calls by name.
@@ -171,6 +173,7 @@ describe("scope taint: one audience rule, judged by who can read what the write 
           scopes: BOXTAL_MANIFEST.scopes,
           schema: BOXTAL_MANIFEST.schema,
           tools: { [DRAFT_TOOL]: BOXTAL_MANIFEST.tools[DRAFT_TOOL] },
+          _firstParty: true,
           _format: "manifest",
           _bundlePath: bundlePath,
         } as never,

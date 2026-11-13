@@ -6,11 +6,17 @@
 // writes, so the manifest READ tools must keep running for the rest of the turn while the
 // manifest writes stay refused.
 //
-// The apps are the real in-tree registrations (ensureAppsForOrg reads the real manifests
-// through the real trust rule); only each handler is swapped for a spy, so the test asserts
-// what actually ran without touching tickets, knowledge or Drive data.
+// The core apps are the real in-tree registrations (ensureAppsForOrg reads the real manifests
+// through the real trust rule). Google Drive is a catalog app, which a test org does not have
+// installed: its tool is registered from its real manifest through the real app runtime with
+// the voucher a catalog install carries (`_firstParty`, init.ts). Only each handler is swapped
+// for a spy, so the test asserts what actually ran without touching tickets, knowledge or
+// Drive data.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 import { sql } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
@@ -24,6 +30,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { registerApps } from "~/modules/apps/runtime"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 /** The refusal shape, whatever scopes the turn happened to carry (the message names them). */
@@ -49,6 +56,29 @@ const actor: UserContext = {
 }
 
 const ran: string[] = []
+let bundleDir = ""
+
+const DRIVE_MANIFEST = JSON.parse(
+  readFileSync(
+    join(
+      import.meta.dir,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "bundled-apps",
+      "google-drive",
+      "app.manifest.json",
+    ),
+    "utf8",
+  ),
+) as {
+  name: string
+  version: string
+  scopes: string[]
+  tools: Record<string, Record<string, unknown>>
+}
 
 /** The one table every per-ticket tickets write declares (A46). */
 
@@ -100,6 +130,25 @@ describe("chat turn: manifest reads survive scope taint, manifest writes do not"
     await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
       VALUES (${USER}, ${ORG}, 'tickets:tickets:read') ON CONFLICT DO NOTHING`
     await ensureAppsForOrg(ORG)
+    // The catalog's Drive read, as its first-party install registers it (sandboxed, vouched).
+    bundleDir = mkdtempSync(join(tmpdir(), "readonly-taint-drive-"))
+    const bundlePath = join(bundleDir, "handler-bundle.js")
+    const driveTool = DRIVE_MANIFEST.tools.shared_drives
+    writeFileSync(bundlePath, `async function ${String(driveTool?.handler)}() { return {} }\n`)
+    await registerApps(
+      [
+        {
+          name: DRIVE_MANIFEST.name,
+          version: DRIVE_MANIFEST.version,
+          scopes: DRIVE_MANIFEST.scopes,
+          tools: { shared_drives: driveTool },
+          _firstParty: true,
+          _format: "manifest",
+          _bundlePath: bundlePath,
+        } as never,
+      ],
+      ORG,
+    )
     spyOn("tickets", "search")
     spyOn("tickets", "setStatus")
     spyOn("tickets", "markRead")
@@ -131,6 +180,7 @@ describe("chat turn: manifest reads survive scope taint, manifest writes do not"
     await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
+    if (bundleDir) rmSync(bundleDir, { recursive: true, force: true })
     await releaseTestLock()
   })
 

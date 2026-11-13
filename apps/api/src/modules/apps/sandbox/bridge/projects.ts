@@ -63,6 +63,22 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
    */
   const commentingAgentId: string | null = actorKind === "agent" ? bridgeActingAgentId : null
   /**
+   * The routine whose run made this call signs the comments it posts ("Routine <title>"), as it
+   * signs its messages and Home items: its owner's agent did not write them. Null when no routine
+   * acted. Resolved once per bridge.
+   */
+  let routineCommentLabelMemo: Promise<string | null> | undefined
+  const routineCommentLabel = (): Promise<string | null> => {
+    routineCommentLabelMemo ??= (async () => {
+      if (actorKind !== "agent") return null
+      const routineId = bridgeRoutineId ?? approvalContext?.originRoutineId
+      if (!routineId) return null
+      const { routineAuthorLabel } = await import("~/modules/agent/routines/routine-report")
+      return routineAuthorLabel(orgId, routineId)
+    })()
+    return routineCommentLabelMemo
+  }
+  /**
    * Who created a task when an agent did, as the task header shows it: the
    * routine whose tick acted ("Routine <name>"), else a named agent's display
    * name, else "<person>'s agent" (attributed, never the person alone). Null
@@ -509,13 +525,20 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       // read, so it is tagged with that turn's taint by the same ladder every
       // other sandboxed write uses: never posted untagged, and refused
       // outright when the taint is unknowable.
+      const routineLabel = await routineCommentLabel()
       const posted = await postTaskComment(txDb as never, {
         orgId,
         userId,
         taskId,
         body,
         requiredScopes: knowledgeWriteRequiredScopes("projects_addComment"),
-        ...(commentingAgentId ? { authorType: "agent" as const, agentId: commentingAgentId } : {}),
+        ...(commentingAgentId || routineLabel
+          ? {
+              authorType: "agent" as const,
+              ...(commentingAgentId ? { agentId: commentingAgentId } : {}),
+              ...(routineLabel ? { agentAuthorLabel: routineLabel } : {}),
+            }
+          : {}),
       })
       return JSON.stringify(posted)
     },
@@ -2035,6 +2058,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           userId,
           actorKind,
           agentId: commentingAgentId,
+          agentAuthorLabel: await routineCommentLabel(),
           entries,
           // A note becomes a task comment that may quote what this turn read:
           // tagged with the turn's taint, like projects_addComment.

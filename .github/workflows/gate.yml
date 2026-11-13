@@ -172,6 +172,21 @@ jobs:
           for app in shopify boxtal invoicing social pennylane monitoring stripe; do
             bash scripts/build-bundled-app.sh "$app" --skip-sign --skip-typecheck
           done
+      - name: Install the bundled app's own dependencies
+        # bundled-apps/* sit outside the workspace globs, so a bundled-<app> or
+        # bundled-<app>-ui suite resolves its file: packages (api-connector-core,
+        # say) only from the app's own install. The build step above covers six
+        # apps; this covers the app of the suite being run, whichever it is.
+        if: startsWith(matrix.suite, 'bundled-') && matrix.suite != 'bundled-freeze'
+        run: |
+          set -euo pipefail
+          app="${SUITE#bundled-}"
+          app="${app%-ui}"
+          if [ ! -d "bundled-apps/$app" ]; then
+            echo "no bundled-apps/$app for suite $SUITE" >&2
+            exit 1
+          fi
+          (cd "bundled-apps/$app" && bun install)
       - name: Install Chromium
         if: matrix.suite == 'playwright'
         working-directory: apps/web

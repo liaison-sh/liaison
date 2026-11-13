@@ -1,45 +1,35 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Real-database proof for the `invoicing:order_reissue_apply` tool's
-// `atomic: true` manifest declaration.
+// Real-database proof that `invoicing:order_reissue_apply` issues its credit
+// note and replacement invoice together or not at all.
 //
 // The bundled invoicing app cannot host this test itself: it is sandboxed
 // (bundled-apps/invoicing/src/test-db.ts is an in-memory mock with no real
 // transactions), and scripts/check-bundled-app-purity.ts refuses any
-// bundled-app source that imports host modules. mutations.test.ts already
-// proves, against that mock, that the handler THROWS instead of returning a
-// partial result when the replacement invoice step fails after the credit
-// note issued -- but its own comment says the quiet part: "This mock has no
-// real transactions ... in production the throw is what makes the whole call
-// roll back." That production claim is what this file proves, against real
+// bundled-app source that imports host modules. mutations.test.ts proves the
+// shared-commit rollback against that mock; this file proves it against real
 // Postgres, through the full approval -> executeApprovedToolHandlerInternal
-// -> executeToolHandler path that execute-tool-atomic.test.ts already pins
-// generically for the atomic mechanism itself.
+// -> executeToolHandler path.
 //
-// order_reissue_apply is BOTH gated and atomic, so exercising it for real
-// means going through the actual approval lifecycle (executeTool -> blocked
-// -> decideApproval), not a bare executeTool() call.
+// order_reissue_apply is gated, so exercising it for real means going through
+// the actual approval lifecycle (executeTool -> blocked -> decideApproval),
+// not a bare executeTool() call.
 //
-// What this test proves: on real Postgres, a failure in the replacement
-// invoice half rolls back the credit note issued just before it, so an order
-// edit reissue never leaves a customer credited with no replacement
-// document. Verified falsifiable by transiently changing the explicit throw
-// in the handler to a plain return (backed up and restored, not committed):
-// the row set for the order went from two invoices only to a credit note
-// plus two invoices, meaning the credit note persisted alone with the
-// replacement never created, exactly the failure mode this test guards.
+// What this test proves: the handler prepares both documents (every check, no
+// write) and then issues the credit note and the replacement invoice in ONE
+// ctx.db.batch. On real Postgres, a failure at the replacement's insert, after
+// the credit note row is already written in that same transaction (a test
+// trigger raises only once the credit note is visible), undoes the credit note
+// too, leaves the original's log untouched and uses no number, so an order
+// edit reissue never leaves a customer credited with no replacement document.
+// Splitting the two documents into separate commits would leave the credit
+// note behind and fail it. A replacement the order cannot take at all (a
+// second live invoice for the order) is refused before the batch runs, with
+// nothing written; the companion test proves the happy path writes both.
 //
-// What this test does NOT prove: that the manifest atomic flag on this tool
-// does anything. It was also transiently removed and restored, and made no
-// difference to either test. Tracing the dispatch confirmed why: this tool
-// is unconditionally gated (no conditionalGate), so its only execution path
-// is the approved re entry in run-approved-handler.ts, which always wraps
-// the call in one ambient transaction built from a plain RLS transaction,
-// never the bridge owned session that the atomic flag actually branches on
-// in execute-tool.ts. The rollback proven above comes from the explicit
-// throw in the handler plus that always ambient re entry path, not from the
-// atomic flag. Do not read this green test as evidence the flag is load
-// bearing here.
+// What this test does NOT prove: anything about the manifest atomic flag.
+// Sandboxed tools no longer declare it; consistency comes from the single
+// batch, not from a transaction held across the run.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -207,26 +197,85 @@ describe("invoicing:order_reissue_apply -- atomic rollback against real Postgres
   it("replacement invoice failure rolls back the credit note too: neither document persists", async () => {
     const shopifyOrderId = "reissue-atomic-order-fail"
     const original = await issueOriginalInvoice(issuerProfileId, shopifyOrderId)
+    const [originalRow] = await sql<Array<{ number_int: number; lifecycle_log: unknown }>>`
+      SELECT number_int, lifecycle_log FROM app_invoicing.documents WHERE id = ${original.id}`
+    if (!originalRow) throw new Error("original invoice row vanished")
 
-    // Honest production failure: a SECOND live (uncredited) invoice already
-    // exists for this Shopify order -- the same decoy pattern
-    // mutations.test.ts uses against its mock. When order_reissue_apply tries
-    // to create the replacement, invoiceCreateAndIssue's
-    // assertNoLiveInvoiceForOrder guard refuses it with "already_invoiced",
-    // a real guard a duplicate webhook delivery would actually trip -- not a
-    // monkey-patched transaction.
+    // A real Postgres failure INSIDE the shared commit, at the replacement's own insert: a
+    // trigger refuses an invoice that references this original, but only once the credit note
+    // against it is already visible in the same transaction. Every pre-commit check passes, both
+    // documents reach the one batch, and if the credit note were not written first (or were
+    // written in a commit of its own) the trigger would let the replacement through and this
+    // test would fail on `caught` below. The trigger is dropped before any assertion.
+    await sql.unsafe(`CREATE FUNCTION app_invoicing.reissue_atomic_test_fail() RETURNS trigger
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $fn$
+      BEGIN
+        IF NEW.type = 'invoice'
+          AND NEW.external_refs::jsonb ->> 'original_document_id' = '${original.id}'
+          AND EXISTS (SELECT 1 FROM app_invoicing.documents d
+            WHERE d.type = 'credit_note'
+              AND d.external_refs::jsonb ->> 'original_document_id' = '${original.id}')
+        THEN
+          RAISE EXCEPTION 'replacement invoice failed (injected after the credit note insert)';
+        END IF;
+        RETURN NEW;
+      END
+      $fn$`)
+    await sql.unsafe(`CREATE TRIGGER reissue_atomic_test_fail BEFORE INSERT
+      ON app_invoicing.documents FOR EACH ROW
+      EXECUTE FUNCTION app_invoicing.reissue_atomic_test_fail()`)
+
+    let caught: unknown
+    try {
+      await requestAndApprove("invoicing:order_reissue_apply", {
+        original_document_id: original.id,
+        shopify_order_id: shopifyOrderId,
+        shopify_order_number: "#1001",
+        billing_signature: "sig-2",
+        dedupe_key: `${shopifyOrderId}:sig-2`,
+        items: [{ description: "Widget", quantity: "3", unit_price_minor: 6000 }],
+      })
+    } catch (err) {
+      caught = err
+    } finally {
+      await sql`DROP TRIGGER IF EXISTS reissue_atomic_test_fail ON app_invoicing.documents`
+      await sql`DROP FUNCTION IF EXISTS app_invoicing.reissue_atomic_test_fail()`
+    }
+    expect(caught).toBeInstanceOf(Error)
+    expect(JSON.stringify(caught)).toMatch(/replacement invoice failed/)
+
+    // SQL, not the tool's return value: the original invoice is the only document for this
+    // order and no credit note exists anywhere in the org (the credit note row the batch wrote
+    // before the failing insert was undone with it). The original's log carries no credit
+    // entry either: that append commits in the same batch.
+    expect(await documentTypesForOrder(shopifyOrderId)).toEqual(["invoice"])
+    const creditNotes = await sql<Array<{ id: string }>>`
+      SELECT id FROM app_invoicing.documents WHERE org_id = ${ORG} AND type = 'credit_note'`
+    expect(creditNotes).toHaveLength(0)
+    const [after] = await sql<Array<{ lifecycle_log: unknown }>>`
+      SELECT lifecycle_log FROM app_invoicing.documents WHERE id = ${original.id}`
+    expect(after?.lifecycle_log).toEqual(originalRow.lifecycle_log)
+
+    // No number was used: the next invoice takes the number the failed replacement was given.
+    const next = await issueOriginalInvoice(issuerProfileId, "reissue-atomic-order-next")
+    const [nextRow] = await sql<Array<{ number_int: number }>>`
+      SELECT number_int FROM app_invoicing.documents WHERE id = ${next.id}`
+    expect(nextRow?.number_int).toBe(originalRow.number_int + 1)
+  })
+
+  it("a replacement the order cannot take is refused before anything is written", async () => {
+    const shopifyOrderId = "reissue-atomic-order-refused"
+    const original = await issueOriginalInvoice(issuerProfileId, shopifyOrderId)
+
+    // A SECOND live (uncredited) invoice already exists for this Shopify order, as a duplicate
+    // webhook delivery could leave: the replacement's one-invoice-per-order check refuses it
+    // while both documents are still being prepared, so the shared commit never runs.
     await sql`INSERT INTO app_invoicing.documents
       (org_id, type, status, currency, issuer_profile_id, shopify_order_id, number,
        grand_total_minor, lifecycle_log, counterparty_name, counterparty_country)
       VALUES (${ORG}, 'invoice', 'issued', 'EUR', ${issuerProfileId}, ${shopifyOrderId},
        'INV-2026-DECOY', 5000, '[]'::jsonb, 'Buyer SARL', 'FR')`
 
-    // The sandboxed handler throws (no protocol row recorded for an ambient-
-    // transaction abort), so the approvals kernel classifies the outcome as
-    // "ambiguous" rather than replaying the bare Error -- that reclassification
-    // is itself real production behaviour (run-approved-handler.ts /
-    // decide.ts), not a test artifact. The underlying handler message survives
-    // in the thrown error's JSON payload either way.
     let caught: unknown
     try {
       await requestAndApprove("invoicing:order_reissue_apply", {
@@ -241,12 +290,7 @@ describe("invoicing:order_reissue_apply -- atomic rollback against real Postgres
       caught = err
     }
     expect(caught).toBeInstanceOf(Error)
-    expect(JSON.stringify(caught)).toMatch(/replacement invoice failed/)
-
-    // SQL, not the tool's return value: the original invoice and the decoy
-    // are the only two documents for this order. No credit note (would be a
-    // customer credited with no replacement) and no replacement invoice
-    // persisted.
+    expect(JSON.stringify(caught)).toMatch(/already_invoiced/)
     expect(await documentTypesForOrder(shopifyOrderId)).toEqual(["invoice", "invoice"])
   })
 

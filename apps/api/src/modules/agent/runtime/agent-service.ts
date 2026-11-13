@@ -1987,6 +1987,8 @@ async function runAgentChatTurn(
           // other refusal shows its own reason: paying would not cure it.
           metadata: {
             turnRefusal: true,
+            // The message refused: a later turn's replay leaves it out (context.ts).
+            refusedMessageId: userMsgId,
             ...(creditCheck.code
               ? { demoRefusal: creditCheck.code }
               : creditCheck.billingCode === PAYMENT_REQUIRED_CODE ||

@@ -15,7 +15,9 @@
 //                  app, entity and action are the routine's event, inside the
 //                  lookback window and at least `minAgeMs` old (its first run
 //                  had time to finish), not fired by the routine itself and
-//                  not a seed's own write (notifications/seeded.ts).
+//                  not a seed's own write (notifications/seeded.ts), and never
+//                  older than the routine itself: a routine created after an
+//                  event was never meant to handle it.
 //   Served         a run of the routine for that event (by event id, or by the
 //                  event's entity id: the subscriber coalesces events of one
 //                  entity) ended succeeded, output_thread_recreated or
@@ -245,6 +247,7 @@ interface RoutineRow {
   name: string
   event: string
   eventFilter: RoutineEventFilter
+  createdAt: Date
 }
 
 interface RunRow {
@@ -309,9 +312,10 @@ export async function reconcileEventRoutines(
         name: string
         event: string
         event_filter: unknown
+        created_at: Date
       }>(
         await db.execute(drizzleSql`
-        SELECT id, org_id, name, event, event_filter FROM ${kernelRel("routines")}
+        SELECT id, org_id, name, event, event_filter, created_at FROM ${kernelRel("routines")}
         WHERE kind = 'event' AND enabled AND status = 'active'
           AND ${notMoving(drizzleSql.raw("org_id"))}
           AND event IN (${drizzleSql.join(
@@ -327,6 +331,7 @@ export async function reconcileEventRoutines(
           name: r.name,
           event: r.event,
           eventFilter: (r.event_filter as RoutineEventFilter) ?? null,
+          createdAt: new Date(r.created_at),
         }),
       ),
     ),
@@ -373,6 +378,9 @@ async function reconcileRoutine(
   const [app, entity, action] = routine.event.split(":")
   const family = RECONCILE_FAMILIES[routine.event]
   if (!app || !entity || !action || !family) return
+  // An event from before the routine existed was never this routine's to handle: the subscriber
+  // gave it to the routines that existed then, and a retry here would act on a stale record.
+  const since = routine.createdAt > ctx.since ? routine.createdAt : ctx.since
 
   const events = await withPrivilegedDb(routine.orgId, "routine-reconcile-events", async (tx) =>
     extractRows<{
@@ -388,7 +396,7 @@ async function reconcileRoutine(
         FROM ${kernelRel("audit_log")}
         WHERE org_id = ${routine.orgId}::uuid AND app = ${app} AND entity_type = ${entity}
           AND action = ${`${entity}.${action}`} AND event_id IS NOT NULL
-          AND "timestamp" >= ${ctx.since.toISOString()}::timestamptz
+          AND "timestamp" >= ${since.toISOString()}::timestamptz
           AND "timestamp" <= ${ctx.until.toISOString()}::timestamptz
           AND COALESCE(metadata->>'firedByRoutineId', '') <> ${routine.id}
           AND COALESCE(metadata->>'seeded', '') <> 'true'

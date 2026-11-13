@@ -513,7 +513,7 @@ describe("currencies", () => {
        WHERE org_id = ${orgId}::uuid AND user_id = ${someone.userId}::uuid`)
     // The forward migration's own statements, run again over these rows.
     const file = readFileSync(
-      join(REPO_ROOT, "apps/api/src/db/migrations/0326_projects_currency_labels.sql"),
+      join(REPO_ROOT, "apps/api/src/db/migrations/0327_projects_currency_labels.sql"),
       "utf8",
     )
     const updates = file

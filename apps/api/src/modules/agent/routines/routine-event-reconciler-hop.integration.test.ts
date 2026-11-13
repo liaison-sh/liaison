@@ -116,6 +116,8 @@ beforeAll(async () => {
   review = statuses[1]!.id
   A = await flowRoutine("A to review", moveTo(review))
   B = await flowRoutine("B to open", moveTo(open))
+  // Both predate the events the cases seed: the reconciler skips events older than the routine.
+  await sql`UPDATE kernel.routines SET created_at = now() - interval '1 day' WHERE id IN (${A}::uuid, ${B}::uuid)`
 }, 120_000)
 
 afterAll(async () => {
@@ -177,5 +179,28 @@ describe("the routine chain guard through the reconciler", () => {
     const lost = await audit(t.id, review, { firedByRoutineId: A, hop: 2 })
     const { enqueued } = await reconcile(B)
     expect(enqueued.find((e) => e.triggerEvent.eventId === lost)?.triggerEvent.hop).toBe(2)
+  }, 60_000)
+
+  it("never replays an event from before the routine existed", async () => {
+    const t = await withRlsContext(ctx(), (tx) =>
+      createTask({
+        tx,
+        orgId: ORG,
+        actor: ctx(),
+        input: { projectId, statusId: open, title: "R" },
+      }),
+    )
+    await withRlsContext(ctx(), (tx) =>
+      updateTask({ tx, orgId: ORG, actor: ctx(), taskId: t.id, input: { statusId: review } }),
+    )
+    // An hour old event no run of A ever served: A predates it, so it is replayed for A.
+    const old = await audit(t.id, review, {})
+    // C is created after that event: the event was never C's to handle.
+    const C = await flowRoutine("C created later", moveTo(open))
+    const late = await reconcile(C)
+    expect(late.enqueued.map((e) => e.triggerEvent.eventId)).not.toContain(old)
+    expect(late.report.events.map((e) => e.eventId)).not.toContain(old)
+    const earlier = await reconcile(A)
+    expect(earlier.enqueued.map((e) => e.triggerEvent.eventId)).toContain(old)
   }, 60_000)
 })

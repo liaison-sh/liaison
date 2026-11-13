@@ -111,7 +111,8 @@ describe("projects.manifest", () => {
     // 1.33.1: merged with main: flow templates list the scopes their steps need (the project read),
     //   and the task tab resolves its label.
     // 1.34.0: cost_rate_set asks for the currency of a new rate.
-    expect(projectsManifest.version).toBe("1.34.0")
+    // 1.34.1: merged with main: tasks record who made their last edit.
+    expect(projectsManifest.version).toBe("1.34.1")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

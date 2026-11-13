@@ -23,6 +23,7 @@ import { templateFiles } from "~/modules/app-builder/templates"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { createCompany } from "~/modules/contacts/companies"
 import { createDashboard } from "~/modules/dashboards/service"
+import { createTable } from "~/modules/dashboards/tables/service"
 import { seedContext } from "~/seed/context"
 import { seedBaseAgent } from "~/seed/factories/agent/agents"
 import { seedRoutine } from "~/seed/factories/agent/routines"
@@ -112,6 +113,12 @@ async function seed(): Promise<void> {
   })
   put("kernel:dashboard", dashboard.id, "Weekly sales")
 
+  const table = await createTable(everything(viewer), {
+    name: "Inbound batches",
+    columns: [{ key: "note", label: "Note", type: "text" }],
+  })
+  put("kernel:dashboard-table", table.id, "Inbound batches")
+
   const draftBase = `tracker-${tag()}`
   const { draft } = await withRlsContext(everything(viewer), (tx) =>
     createDraft(
@@ -190,6 +197,8 @@ async function seed(): Promise<void> {
     externalRefOf: (taskKey) => `${key}-${taskKey}`,
   })
   put("projects:project", seededProject.projectId, "Spring launch")
+  // A project's automations page opens on the project it belongs to.
+  put("projects:automations", seededProject.projectId, "Spring launch")
   put("projects:task", seededProject.taskIds[0]!, "Fix the pump")
 
   const doc = await withRlsContext(everything(viewer), (tx) =>
@@ -296,12 +305,14 @@ describe("open_app under real row security", () => {
     "kernel:agent",
     "kernel:session",
     "kernel:dashboard",
+    "kernel:dashboard-table",
     "kernel:app-builder",
     "contacts:contact-detail",
     "contacts:company-detail",
     "tickets:ticket",
     "projects:project",
     "projects:task",
+    "projects:automations",
     "knowledge:document",
     "mail:conversation",
     "calendar:event",

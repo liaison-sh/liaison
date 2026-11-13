@@ -3271,8 +3271,32 @@ export function convertToCoreMessages(
       ? id
       : normalizeToolCallId(id, idMap)
 
+  // A person's message whose turn was refused before any model ran (its refusal row names it,
+  // agent-service.ts) is never replayed: nothing was done for it, and a later turn must not
+  // carry it out (walk D11). Its refusal row replays as one event line without the request.
+  const refusedIds = new Set<string>()
+  for (const m of msgs) {
+    const refused = (m.metadata as { turnRefusal?: unknown; refusedMessageId?: unknown } | null)
+      ?.refusedMessageId
+    if (m.authorType === "system" && typeof refused === "string") refusedIds.add(refused)
+  }
+  // The person's message pushed last, while it is still the last entry: a refusal row written
+  // before refusals named their message drops it (the refusal follows its message directly).
+  let lastUserPush: number | null = null
+
   const handles = options?.agentHandles
   for (const stored of msgs) {
+    if (stored.authorType === "user" && stored.id && refusedIds.has(stored.id)) continue
+    if (
+      stored.authorType === "system" &&
+      (stored.metadata as { turnRefusal?: unknown } | null)?.turnRefusal === true &&
+      typeof (stored.metadata as { refusedMessageId?: unknown }).refusedMessageId !== "string" &&
+      lastUserPush !== null &&
+      lastUserPush === result.length - 1
+    ) {
+      result.pop()
+    }
+    lastUserPush = null
     const msg =
       handles && handles.size > 0
         ? {
@@ -3322,6 +3346,7 @@ export function convertToCoreMessages(
       // A file sent with text: named after the text, unless the text already
       // names it (the agent stream route writes the same note into the message).
       const unnamed = atts.filter((a) => !msg.content.includes(a.id))
+      lastUserPush = result.length
       result.push({
         role: "user",
         content: unnamed.length > 0 ? `${msg.content}${attachedFilesNote(unnamed)}` : msg.content,

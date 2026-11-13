@@ -35,7 +35,30 @@ describe("the decision lifecycle reaches the agent's transcript", () => {
     ])
   })
 
-  it("a turn refused before any model ran closes the message it refused", () => {
+  const REFUSAL_LINE =
+    "[Event: a message the person sent here was refused before any model ran (Auto has no model to run: this workspace has no usable model key.). It was never answered and nothing was done for it; its text is not part of this conversation. If it still matters, the person will ask again.]"
+
+  it("a turn refused before any model ran leaves the message it refused out of the replay", () => {
+    const result = convertToCoreMessages([
+      { id: "m1", authorType: "user", content: "create a project called Website", metadata: null },
+      // Another person's message lands between the ask and its refusal row.
+      { id: "m2", authorType: "user", content: "hello all", metadata: null },
+      {
+        authorType: "system",
+        content: "Auto has no model to run: this workspace has no usable model key.",
+        metadata: { turnRefusal: true, refusedMessageId: "m1" },
+      },
+      { id: "m3", authorType: "user", content: "make me an overview dashboard", metadata: null },
+    ])
+    expect(result).toEqual([
+      { role: "user", content: "hello all" },
+      { role: "user", content: REFUSAL_LINE },
+      { role: "user", content: "make me an overview dashboard" },
+    ])
+    expect(JSON.stringify(result)).not.toContain("Website")
+  })
+
+  it("a refusal row that names no message drops the message right above it", () => {
     const result = convertToCoreMessages([
       { authorType: "user", content: "create a project called Website", metadata: null },
       {
@@ -46,12 +69,7 @@ describe("the decision lifecycle reaches the agent's transcript", () => {
       { authorType: "user", content: "make me an overview dashboard", metadata: null },
     ])
     expect(result).toEqual([
-      { role: "user", content: "create a project called Website" },
-      {
-        role: "user",
-        content:
-          "[Event: the message above was refused before any model ran (Auto has no model to run: this workspace has no usable model key.). Nothing was done for it and it is closed: do not act on it now; if it still matters, the person will ask again.]",
-      },
+      { role: "user", content: REFUSAL_LINE },
       { role: "user", content: "make me an overview dashboard" },
     ])
   })

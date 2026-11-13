@@ -245,3 +245,14 @@ Missing status left to pick -> apps/web/src/modules/projects/ProjectAutomations.
 Saved through the routines create path -> apps/web/src/modules/projects/ProjectAutomations.tsx:130
 Automations labels -> packages/shared/src/i18n/locales/en/projects.json:295
 Automation name prefilled as template and project, shown in lists -> apps/web/src/modules/projects/ProjectAutomations.tsx:116
+tasks_aggregate groups, measures, RLS -> apps/api/src/apps/projects/service/tasks-aggregate.ts:485
+tasks_aggregate tool params -> apps/api/src/apps/projects/app.manifest.json:1078
+SLA state from transitions and working time -> apps/api/src/apps/projects/service/tasks-aggregate.ts:432
+Row filter for tasks_byProject -> apps/api/src/apps/projects/service/tasks-aggregate.ts:386
+Read cap 5000 tasks -> apps/api/src/apps/projects/service/tasks-aggregate.ts:32
+Project overview spec runs -> apps/api/src/apps/projects/__tests__/tasks-aggregate.test.ts:404
+Backed table columns of a project -> apps/api/src/apps/projects/service/table-backing.ts:54
+Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/service.ts:1215
+Amount sums per currency -> apps/api/src/apps/projects/service/tasks-aggregate.ts:674
+Backed edit refused when the task changed since -> apps/api/src/modules/dashboards/tables/service.ts:1282
+Backed rows need the app's read tool scopes -> apps/api/src/modules/dashboards/tables/backing.ts:149

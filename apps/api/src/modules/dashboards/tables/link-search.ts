@@ -61,7 +61,7 @@ export function pickToolCall(
     toolName: `${app}:${pick.tool}`,
     orgId: viewer.orgId,
     actor: viewer,
-    params: q ? { [pick.queryParam]: q } : {},
+    params: { ...(pick.params ?? {}), ...(q ? { [pick.queryParam]: q } : {}) },
     origin: call.origin,
     ...(call.threadId ? { threadId: call.threadId } : {}),
     readOnlyRun: true,

@@ -394,6 +394,8 @@ export interface SearchInput {
   archived?: "include" | "only" | "exclude"
   limit?: number
   cursor?: string
+  /** Only projects, or only tasks (a link picker's exact list); both when omitted. */
+  kind?: "project" | "task"
 }
 
 export async function searchProjectsForTool(
@@ -402,6 +404,22 @@ export async function searchProjectsForTool(
   input: SearchInput,
 ): Promise<{ items: unknown[]; nextCursor: string | null; totalCount: number }> {
   const { listProjects, searchTasksByTitle } = await import("./create-project")
+  if (input.kind !== undefined && input.kind !== "project" && input.kind !== "task") {
+    throw new ProjectsServiceError(400, "invalid_params", "kind is project or task")
+  }
+  if (input.kind === "task") {
+    const q = (input.query ?? "").trim()
+    const tasks = q
+      ? await searchTasksByTitle(
+          tx as never,
+          orgId,
+          q,
+          input.limit ?? 25,
+          input.archived ?? "exclude",
+        )
+      : []
+    return { items: tasks, nextCursor: null, totalCount: tasks.length }
+  }
   const projectsResult = await listProjects({
     tx: tx as never,
     orgId,
@@ -415,15 +433,16 @@ export async function searchProjectsForTool(
   // (by title) so an agent can find a task by name and act on it (BL-108). Cursor paginates projects.
   const projectItems = projectsResult.items.map((p) => ({ type: "project" as const, ...p }))
   const q = (input.query ?? "").trim()
-  const taskItems = q
-    ? await searchTasksByTitle(
-        tx as never,
-        orgId,
-        q,
-        input.limit ?? 25,
-        input.archived ?? "exclude",
-      )
-    : []
+  const taskItems =
+    q && input.kind !== "project"
+      ? await searchTasksByTitle(
+          tx as never,
+          orgId,
+          q,
+          input.limit ?? 25,
+          input.archived ?? "exclude",
+        )
+      : []
   // `search` is a relevance FINDER (cursor-paginated by PROJECTS, with task-title
   // matches appended); totalCount is the count of matching PROJECTS — the
   // paginated axis — not the blended row count. For a task work-list sweep use

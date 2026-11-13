@@ -73,6 +73,18 @@ In a conversation, your agent reads a table shared with some people only when ev
 
 Your own changes in the app never wait for an approval.
 
+## Back a table by a project
+
+A table can show the tasks of one project as its rows, live: `backing: { app: "projects", entity: "task", parentId: "<project id>", fields: ["title", "status", "assignee", "problem"] }` when you create it (or change it). `fields` names the task values the table reads through, as columns typed from the project: title, status (a choice of the project's statuses), assignee, due, priority, and the project's task fields by key. The table's own columns are an overlay kept per task, with the same history and undo as any row.
+
+- Each reader sees the tasks they can read: someone who may not read the project's tasks in Projects sees no rows, and the table says why. A table lists at most 2,000 tasks and says when there were more.
+- Each row carries the task's `recordVersion`: an edit of a task value passes it as `ifRecordVersion`, and is refused when someone changed the task since. Undoing a row's first own-column change empties its own cells; the task stays.
+- For an agent, reading the table counts as reading the tasks in Projects, and editing a task value counts as editing the task there: the same approvals apply as when it calls Projects itself.
+- Editing a read-through cell changes the task through Projects, as the writer, and needs the right to edit tasks; the task's own history records it, not the table's.
+- Adding a row creates a task (a title is required). A row cannot be deleted: delete or archive the task in Projects.
+- An own column cannot use the key of a read-through one.
+- An app declares which of its records can back a table, on the entity in its manifest: `tableBacking: { parent, provider }`, a provider in its server code.
+
 ## Show a table on a dashboard
 
 A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A block reads at most 2,000 rows and says when there were more.
@@ -85,7 +97,7 @@ A [routine](routines.md) triggered by `kernel:dashboard_table_row:created`, `:up
 
 ## Link a record
 
-A link cell picks a record of a connected app (any app when the column names none). Records the search index holds are searched there; an app can let people pick other records through one of its own read tools, declared on the entity in its manifest: `pick: { tool, queryParam, idField, labelField, itemsPath? }`. Shopify declares it for orders, customers, products and returns, Boxtal for shipments. A reader who cannot open a linked record sees **Linked record** instead of its label.
+A link cell picks a record of a connected app (any app when the column names none). Records the search index holds are searched there; an app can let people pick other records through one of its own read tools, declared on the entity in its manifest: `pick: { tool, queryParam, idField, labelField, itemsPath? }`. Shopify declares it for orders, customers, products and returns, Boxtal for shipments, Projects for projects and tasks. `params` adds fixed parameters beside the query, such as Projects' `{ kind: "task" }`. A reader who cannot open a linked record sees **Linked record** instead of its label.
 
 ## The tables API
 

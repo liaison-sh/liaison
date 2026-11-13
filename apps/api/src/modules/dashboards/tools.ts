@@ -1151,7 +1151,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_create",
     deferLoading: true,
     description:
-      "Save a new dashboard. personal (only you) saves at once; org (everyone) waits for a person's approval. Every block's source must be a read you can make: preview each with kernel__dashboards_preview_block first. Then open it with kernel__open_app (app kernel, view dashboard, id).",
+      "Save a new dashboard. personal (only you) saves at once; org (everyone) waits for a person's approval. Every block's source must be a read you can make: preview each with kernel__dashboards_preview_block first. Then open it with kernel__open_app (app kernel, view dashboard, id). An app's instructions may describe a whole dashboard to build in this one call.",
     searchKeywords: ["dashboard", "tableau de bord", "créer"],
     requiredScopes: [WRITE],
     params: z.object({

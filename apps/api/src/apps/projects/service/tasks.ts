@@ -1040,7 +1040,13 @@ export interface ListProjectTasksArgs {
    * fields.ts fieldFilterConditions). A key that is not a field of the project refuses.
    */
   fields?: Record<string, unknown> | null
+  /** Only tasks assigned to this user; null = only unassigned tasks. */
+  assigneeId?: string | null
+  /** Only tasks of this priority. */
+  priority?: string
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** The bridge forwards tool params as given, so the type is checked here too. */
 function parseInstant(field: string, raw: unknown): string | null {
@@ -1093,6 +1099,17 @@ export async function listProjectTasks(
   if (args.fields !== undefined && args.fields !== null) {
     const defs = await readProjectFields(args.tx, args.orgId, args.projectId)
     conds.push(...fieldFilterConditions(defs, args.fields, "t"))
+  }
+  if (args.assigneeId === null) conds.push(drizzleSql`t.assignee_id IS NULL`)
+  else if (args.assigneeId !== undefined) {
+    if (typeof args.assigneeId !== "string" || !UUID_RE.test(args.assigneeId)) {
+      throw new ProjectsServiceError(400, "invalid_params", "assigneeId is a user id or null")
+    }
+    conds.push(drizzleSql`t.assignee_id = ${args.assigneeId}::uuid`)
+  }
+  if (args.priority !== undefined) {
+    assertTaskPriority(args.priority, "priority")
+    conds.push(drizzleSql`t.priority = ${args.priority}`)
   }
   const whereSql = conds.reduce<ReturnType<typeof drizzleSql>>(
     (acc, frag, idx) => (idx === 0 ? frag : drizzleSql`${acc} AND ${frag}`),

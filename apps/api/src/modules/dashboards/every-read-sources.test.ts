@@ -111,6 +111,8 @@ const KERNEL_CASES: Case[] = [
 const IN_TREE_CASES: Case[] = [
   { tool: "tickets:categories.tree" },
   { tool: "projects:labels.tree", expect: "reaches" },
+  // A project the viewer cannot read: no rows, a block still saves and runs on the read.
+  { tool: "projects:tasks_aggregate", params: { projectId: NO_SUCH_ID } },
   { tool: "knowledge:synced_sources.list", expect: "reaches" },
   { tool: "mail:providers.get", expect: "object" },
   { tool: "mail:getSyncStatus", params: { accountId: NO_SUCH_ID }, expect: "reaches" },

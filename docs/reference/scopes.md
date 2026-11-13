@@ -281,10 +281,10 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | --- | --- | --- |
 | `projects:approve` | approver scope | Decide (approve, edit, or deny) projects approvals raised by its gated tools |
 | `projects:labels:admin` | role admin; settings section labels; tools labels.archive, labels.create, labels.reorder, labels.update |  |
-| `projects:projects:read` | entities project, task; role member; tools get, labels.list, labels.tree, search |  |
-| `projects:projects:write` | role lead; tools createProject, instantiate_template, status_add, status_delete, status_update, update_project |  |
+| `projects:projects:read` | entities project, task; role member; tools get, labels.list, labels.tree, search, templates_list |  |
+| `projects:projects:write` | role lead; tools createProject, fields_set, instantiate_template, status_add, status_delete, status_update and 2 more |  |
 | `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
-| `projects:tasks:read` | role member; tools attentionItems, checklist_get, comments, portfolio_rollup, tasks_byAssignee, tasks_byProject |  |
+| `projects:tasks:read` | role member; tools attentionItems, checklist_get, comments, portfolio_rollup, tasks_aggregate, tasks_byAssignee and 1 more |  |
 | `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 5 more |  |
 
 ## shopify

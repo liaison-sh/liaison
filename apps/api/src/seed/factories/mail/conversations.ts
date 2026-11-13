@@ -23,6 +23,7 @@
 // way those handlers write them, with deterministic ids so a re-run is a no-op.
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import { seedClock } from "~/seed/clock"
 import type { SeedContext } from "~/seed/context"
 
@@ -84,7 +85,7 @@ export async function insertUnarmedMail(
       // carries no last sync. Only an org mailbox has fetched mail.
       const lastSyncAt = isOrg ? clock.hoursBefore(0.1).toISOString() : null
       await tx.execute(
-        sql`INSERT INTO app_mail.accounts (
+        sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.accounts (
               id, org_id, connected_account_id, owner_type, owner_id, provider,
               email_address, display_name, sync_status, last_sync_at, created_at, updated_at
             ) VALUES (
@@ -112,7 +113,7 @@ export async function insertUnarmedMail(
       const first = conv.messages[0] as MailMessageSpec
 
       await tx.execute(
-        sql`INSERT INTO app_mail.conversations (
+        sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.conversations (
               id, org_id, account_id, owner_type, owner_id, external_thread_id,
               subject, snippet, from_email, status, labels, is_read, is_starred,
               last_message_at, message_count, created_at, updated_at
@@ -134,7 +135,7 @@ export async function insertUnarmedMail(
         const m = conv.messages[i] as MailMessageSpec
         const sentAt = clock.hoursBefore(m.hoursAgo)
         await tx.execute(
-          sql`INSERT INTO app_mail.messages (
+          sql`INSERT INTO ${sql.raw(schemaRef("app_mail"))}.messages (
                 id, org_id, conversation_id, account_id, external_message_id,
                 message_references, from_address, to_addresses, cc_addresses, bcc_addresses,
                 subject, text_body, html_body, snippet,

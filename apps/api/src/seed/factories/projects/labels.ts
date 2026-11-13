@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm"
 import { createLabel, LABELS_ADMIN_SCOPE, loadLabelRows } from "~/apps/projects/service/labels"
 import { applyTaskLabels, resolveLabelInput } from "~/apps/projects/service/task-labels"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "~/seed/factories/people/actors"
@@ -83,7 +84,7 @@ export async function seedTaskLabels(
     for (const task of input.tasks) {
       const [row] = rowsOf<{ id: string }>(
         await tx.execute(
-          sql`SELECT id FROM app_projects.tasks
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.tasks
               WHERE org_id = ${orgId} AND external_ref = ${task.externalRef} LIMIT 1`,
         ),
       )
@@ -91,7 +92,7 @@ export async function seedTaskLabels(
       const held = new Set(
         rowsOf<{ group_id: string }>(
           await tx.execute(
-            sql`SELECT group_id FROM app_projects.task_labels
+            sql`SELECT group_id FROM ${sql.raw(schemaRef("app_projects"))}.task_labels
                 WHERE org_id = ${orgId}::uuid AND task_id = ${row.id}::uuid`,
           ),
         ).map((r) => r.group_id),

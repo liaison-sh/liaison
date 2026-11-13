@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm"
 import { runAdminOp } from "~/apps/tickets/admin"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import type { SeedContext } from "~/seed/context"
 import { rowsOf } from "~/seed/factories/people/actors"
 
@@ -40,7 +41,7 @@ export async function ensureTicketInboxes(
     for (const spec of specs) {
       const found = rowsOf<{ id: string }>(
         await tx.execute(
-          sql`SELECT id FROM app_tickets.inboxes
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_tickets"))}.inboxes
               WHERE org_id = ${orgId} AND name = ${spec.name} AND archived_at IS NULL
               LIMIT 1`,
         ),
@@ -95,7 +96,7 @@ export async function ensureTicketCategories(
       const name = names[i] as string
       const found = rowsOf<{ id: string }>(
         await tx.execute(
-          sql`SELECT id FROM app_tickets.categories
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_tickets"))}.categories
               WHERE org_id = ${orgId} AND name = ${name} AND archived_at IS NULL LIMIT 1`,
         ),
       )

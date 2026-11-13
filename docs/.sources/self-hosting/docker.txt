@@ -125,11 +125,11 @@ AGENT_MAX_CONCURRENT_STREAMS variable -> apps/api/src/lib/env.ts:813-815
 Delivery classes once and per-replica -> apps/api/src/infra/events/event-bus.ts:64
 A peer's copy reaches only per-replica handlers -> apps/api/src/infra/events/event-bus.ts:835
 App event handler runs once -> apps/api/src/modules/apps/runtime.ts:3314
-Event routine tick enqueued once -> apps/api/src/infra/jobs/event-routine-subscriber.ts:217
+Event routine tick enqueued once -> apps/api/src/infra/jobs/event-routine-subscriber.ts:218
 Thumbnail enqueue runs once -> apps/api/src/modules/files/thumbnail-job.ts:171
 Handlers serving the process's own connections run per replica -> apps/api/src/infra/events/event-subscribers.ts:605
 Routine change announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2671
-Announce channel, resync every 60 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
+Announce channel, resync every 60 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:266
 LIVE_INSTANCE_TTL_MS default 30000 -> apps/api/src/lib/env.ts:791
 LIVE_INSTANCE_HEARTBEAT_MS default 10000 -> apps/api/src/lib/env.ts:793
 LIVE_SWEEP_INTERVAL_MS default 10000 -> apps/api/src/lib/env.ts:795

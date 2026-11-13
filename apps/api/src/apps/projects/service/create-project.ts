@@ -6,7 +6,10 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { describeDbError } from "~/lib/transient-db-error"
+import { type Column, columnsSchema } from "~/modules/dashboards/tables/columns"
 import { parseStoredLevels, type ValidationLevel } from "./checklist-status"
+import { activeFields, parseStoredFields } from "./fields"
+import { ProjectsServiceError } from "./statuses"
 import {
   deriveProjectKey,
   formatTaskKey,
@@ -56,6 +59,8 @@ export interface ProjectDetail extends ProjectRow {
   validationLevels: ValidationLevel[]
   /** D16: show the checklist summary (per-level counters) on Kanban cards. */
   checklistOnCards: boolean
+  /** The project's active task field definitions, in order (fields.ts). */
+  fields: Column[]
   taskCount: number
   /** The key no longer changes: the project holds a task (live or in the
    *  trash), and every task key and link is built on it (update-project.ts). */
@@ -405,6 +410,7 @@ export async function loadProjectDetail(
       task_count: number | string
       has_tasks: boolean
       validation_levels: unknown
+      task_fields: unknown
       checklist_on_cards: boolean | null
       owner_name: string | null
       owner_avatar_url: string | null
@@ -413,7 +419,7 @@ export async function loadProjectDetail(
     await tx.execute(drizzleSql`
       SELECT p.id, p.org_id, p.name, p.description, p.color, p.icon, p.key, p."group", p.owner_id,
              p.archived_at, p.created_at, p.updated_at, p.validation_levels,
-             p.checklist_on_cards,
+             p.checklist_on_cards, p.task_fields,
              COALESCE((SELECT COUNT(*) FROM ${projectsRel("tasks")} t WHERE t.project_id = p.id AND t.archived_at IS NULL), 0) AS task_count,
              EXISTS (SELECT 1 FROM ${projectsRel("tasks")} t2 WHERE t2.project_id = p.id) AS has_tasks,
              u.name AS owner_name,
@@ -448,6 +454,7 @@ export async function loadProjectDetail(
     statuses: statusRows.map(statusFromRow),
     validationLevels: parseStoredLevels(r.validation_levels),
     checklistOnCards: r.checklist_on_cards ?? true,
+    fields: activeFields(parseStoredFields(r.task_fields)),
   }
 }
 
@@ -478,6 +485,24 @@ export interface CreateProjectInput {
   statuses?: ProjectStatusSeed[]
   /** D16: show the checklist summary on Kanban cards. Default true. */
   checklistOnCards?: boolean
+  /** Task field definitions (the dashboard column shape, fields.ts); checked before any write. */
+  fields?: unknown
+}
+
+/** A create's field definitions, checked (422 `invalid_fields`); none = []. */
+export function normalizeFieldDefs(raw: unknown): Column[] {
+  if (raw === undefined || raw === null) return []
+  const parsed = columnsSchema.safeParse(raw)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    const path = issue?.path.length ? ` (${issue.path.join(".")})` : ""
+    throw new ProjectsServiceError(
+      422,
+      "invalid_fields",
+      `${issue?.message ?? "invalid field list"}${path}`,
+    )
+  }
+  return parsed.data
 }
 
 export const MAX_PROJECT_GROUP_LENGTH = 60
@@ -596,7 +621,12 @@ export function normalizeExplicitProjectKey(key: string): string {
  *  unique index is violated (mirrors migration 0043's backfill collision handling). */
 async function insertProjectWithKey(
   tx: RlsClient,
-  args: { projectId: string; orgId: string; input: CreateProjectInput; ownerId: string },
+  args: {
+    projectId: string
+    orgId: string
+    input: CreateProjectInput & { fieldDefs?: Column[] }
+    ownerId: string
+  },
 ): Promise<string> {
   const baseKey = args.input.key
     ? normalizeExplicitProjectKey(args.input.key)
@@ -611,7 +641,8 @@ async function insertProjectWithKey(
       await tx.transaction(async (savepointTx) => {
         await savepointTx.execute(drizzleSql`
           INSERT INTO ${projectsRel("projects")}
-            (id, org_id, name, description, icon, color, key, "group", owner_id, checklist_on_cards)
+            (id, org_id, name, description, icon, color, key, "group", owner_id, checklist_on_cards,
+             task_fields)
           VALUES (
             ${args.projectId}::uuid,
             ${args.orgId}::uuid,
@@ -622,7 +653,8 @@ async function insertProjectWithKey(
             ${candidate},
             ${args.input.group ?? null},
             ${args.ownerId}::uuid,
-            ${args.input.checklistOnCards ?? true}
+            ${args.input.checklistOnCards ?? true},
+            ${JSON.stringify(args.input.fieldDefs ?? [])}::jsonb
           )
         `)
       })
@@ -648,10 +680,11 @@ export async function createProject(args: CreateProjectArgs): Promise<ProjectDet
     const projectId = randomUUID()
     // Checked before anything is written: a too-long group creates nothing.
     const group = normalizeProjectGroup(args.input.group) ?? null
+    const fieldDefs = normalizeFieldDefs(args.input.fields)
     await insertProjectWithKey(tx as RlsClient, {
       projectId,
       orgId: args.orgId,
-      input: { ...args.input, group },
+      input: { ...args.input, group, fieldDefs },
       ownerId: args.actor.userId,
     })
     // Inside the same transaction: an invalid column list rolls the project

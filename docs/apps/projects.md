@@ -100,6 +100,25 @@ The filter matches the value a task shows, including a value inherited from its 
 2. Click **Add status**, rename or delete a column, and tick **Counts as done** for terminal columns. A column must be empty before you can delete it.
 3. Under **Checklist validations**, add the levels a checklist item must pass, such as a review step. Without levels, each item is a simple checkbox. A project can have at most 8 levels.
 
+## Add fields to a project's tasks
+
+A project can declare up to 40 task fields: typed attributes every task of the project can carry, such as a "Problem type" choice, a serial number or an amount. A field has a key, a label and a type: text, number, amount (with its currency), date, choice, choices, checkbox, person or link. A field can be required.
+
+Ask an agent to set them (`fields_set`), or to create the project with them (`createProject` takes `fields`). Values are checked like the cells of a dashboard table: a value that does not fit its field, or a key the project does not declare, refuses the change and names the field. A required field must be filled when a person or an agent creates a task; imports, templates and moves never ask for it.
+
+- Taking a field off the project keeps the tasks' values, hidden. Putting the same key back shows them again.
+- A field's type cannot change while tasks hold values of it, and a choice option cannot be removed while tasks use it, unless you rename it to a kept option: the values are rewritten.
+- A link value shows its label only to people who may open the linked app. Others see **Linked record**. The same holds for a template copied from a project (its maker's view) and for the task an event routine receives (its owner's view).
+- Moving a task to another project keeps the values that fit the destination's fields and puts the others aside. They come back if the task returns.
+
+## Status history
+
+Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. The history is append-only: nobody, an administrator included, can change or remove an entry; it goes only with its task. An imported task with an earlier creation date entered its status at that date. A task created straight into a status counts as entering it. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
+
+## Project templates
+
+A template holds the status columns, the task fields and a task tree a new project starts with, each task with its priority, status and field values. Ask an agent to save one (`template_save`), from scratch or by copying a project's statuses, fields and open tasks, then to create a project from it (`instantiate_template`). A stored template that can no longer be read refuses to create a project rather than create one without its tasks; `templates_list` marks it `unreadable`.
+
 ## Manage labels
 
 You need `projects:labels:admin` (the `admin` role has it).
@@ -158,7 +177,9 @@ Each file is matched to its task by `externalRef`, backdated, and kept under its
 | `search`, `get` | Find and read projects and tasks. `search` with `involvedWithinDays` (1 to 90) returns only the tasks you were recently involved in, each with the reason. `search` leaves deleted tasks out unless you ask for them with `archived`, and marks them when they are included | No |
 | `createProject` | Create a project with up to 20 tasks | No |
 | `update_project` | Edit a project's name, description, group, icon, colour or key (the key only while the project has no task) | No |
-| `instantiate_template` | Create a project from a stored template | No |
+| `instantiate_template` | Create a project from a stored template: its statuses, fields and tasks | No |
+| `template_save`, `templates_list` | Save a project template (also from an existing project) and list them | No |
+| `fields_set` | Set a project's task fields | No |
 | `create` | Create a task in a project | No |
 | `update` | Update a task | No |
 | `move` | Move a task within or between projects | No |
@@ -176,6 +197,8 @@ Each file is matched to its task by `externalRef`, backdated, and kept under its
 | `webhook_info` | Read the CI webhook setup | No |
 
 To label a task, an agent passes `labels` to `create` or `update`: a map of group name to value name, such as `{"Nature": "bug"}`. `null` clears the task's own value, and groups left out are untouched. A name that does not exist, an archived value, or a value of another group refuses the whole call with `label_not_found` or `label_archived`, and the message lists the valid values. `bulkUpdate` with `operation: "setLabels"` does the same for many tasks. Every task an agent reads carries `labels`, with whether each value is inherited and from which task key.
+
+An agent sets field values with `fields` on `create` and `update` (`null` empties a field), and `tasks_byProject` filters on them with `fields`: a value, a list of values, or `null` for an empty field. Each task row carries its `fields` and `statusEnteredAt`.
 
 `tasks_byProject` takes a `labels` filter (one value per group, `__none__` for no value). With `terminal: true`, `completedAfter` (inclusive), `completedBefore` (exclusive) and `countOnly: true`, `totalCount` is the number of tasks of the project completed in that window with that label. Call it once per value and week for a weekly count.
 

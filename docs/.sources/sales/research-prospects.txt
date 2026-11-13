@@ -17,7 +17,7 @@ No deals/pipeline object (deal only an external CRM role) -> packages/api-connec
 Sender filter fromContactIds / fromGroupIds -> packages/shared/src/validation/agent/routines.ts:145-155
 Filter checked before the agent runs -> packages/shared/src/validation/agent/routines.ts:138-141
 Only from label and hint -> packages/shared/src/i18n/locales/en/kernel.json:55-56
-Event gate applies the filter -> apps/api/src/infra/jobs/event-routine-gate.ts:196-241
+Event gate applies the filter -> apps/api/src/infra/jobs/event-routine-gate.ts:225-270
 + New routine -> packages/shared/src/i18n/locales/en/kernel.json:315
 Type, When an event happens -> packages/shared/src/i18n/locales/en/kernel.json:76-92
 Trigger, Search events -> packages/shared/src/i18n/locales/en/kernel.json:93-95
@@ -31,7 +31,7 @@ Fetched pages are untrusted data -> apps/api/src/modules/agent/tools/skills-rout
 Customer card on the conversation -> packages/shared/src/tours/demo/sales.ts:193-205
 Approval card for the CRM record -> packages/shared/src/tours/demo/sales.ts:206-231
 Approval card for the gated reply -> packages/shared/src/tours/demo/sales.ts:232-254
-Event coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:33
+Event coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:34
 Routine approvals also show as cards where the routine posts, one request -> apps/api/src/modules/agent/routines/routine-report.ts:566
 Any other address waits -> apps/api/src/modules/apps/execute-tool.ts:4000,4708
 Order: CRM lookup (reads only) first -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2010-2011

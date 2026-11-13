@@ -55,6 +55,8 @@ const READ_ONLY: Record<string, string[]> = {
     "attentionItems",
     "tasks_byProject",
     "portfolio_rollup",
+    // Lists the org's project templates (names, sizes, readable flag): no write, no gate.
+    "templates_list",
     "webhook_info",
     // listChecklist in its own read: no write, no gate.
     "checklist_get",

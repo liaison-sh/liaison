@@ -28,9 +28,9 @@ Table block source {kind: table, table, where} -> apps/api/src/modules/dashboard
 map.editable and map.staleAfterDays -> apps/api/src/modules/dashboards/spec.ts:300
 A block reads at most 2,000 rows; link as label, person as name -> apps/api/src/modules/dashboards/execute.ts:244
 Kept figures keyed on the table's generation -> apps/api/src/modules/dashboards/service.ts:1521
-Routine filter {tableId, column, to} -> apps/api/src/infra/jobs/event-routine-gate.ts:410
-Filter evaluated before the coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:265
-A routine never wakes on its own change -> apps/api/src/infra/jobs/event-routine-subscriber.ts:237
+Routine filter {tableId, column, to} -> apps/api/src/infra/jobs/event-routine-gate.ts:439
+Filter evaluated before the coalescing window -> apps/api/src/infra/jobs/event-routine-subscriber.ts:266
+A routine never wakes on its own change -> apps/api/src/infra/jobs/event-routine-subscriber.ts:238
 The owner must read the table, the column must exist -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2774
 Link search: pick tool or search index -> apps/api/src/modules/dashboards/tables/link-search.ts:146
 Manifest entities.<e>.pick -> apps/api/src/modules/apps/manifest-schema.ts:1282

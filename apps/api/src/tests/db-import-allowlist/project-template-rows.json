@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "seed/factories/projects/templates.ts": "Bare project template rows for tests of the template reader (a stored legacy or unreadable structure the projects app's own writer no longer produces), written over the system connection, each bound to the org the test names."
+  }
+}

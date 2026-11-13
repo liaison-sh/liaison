@@ -154,7 +154,16 @@ beforeAll(async () => {
   me = await makeUser(orgId, "Morgan")
   mate = await makeUser(orgId, "Riley")
   const p = await withRlsContext(ctx(mate), (tx) =>
-    createProject({ tx, orgId, actor: ctx(mate), input: { name: "Involved board", key: "INV" } }),
+    createProject({
+      tx,
+      orgId,
+      actor: ctx(mate),
+      input: {
+        name: "Involved board",
+        key: "INV",
+        fields: [{ key: "serial", label: "Serial", type: "text" }],
+      },
+    }),
   )
   projectId = p.id
   openStatusId = p.statuses.find((s) => !s.terminal)!.id
@@ -177,6 +186,8 @@ beforeAll(async () => {
   await update(me, tasks.assignedOther.id, { assigneeId: mate })
   tasks.edited = await makeTask(mate, "I edited this")
   await update(me, tasks.edited.id, { title: "I edited this (renamed)" })
+  tasks.fieldSet = await makeTask(mate, "I set a field")
+  await update(me, tasks.fieldSet.id, { fields: { serial: "S-1" }, title: "I set a field" })
   tasks.created = await makeTask(me, "I created this")
   tasks.assignedBy = await makeTask(mate, "Riley gave me this", { assigneeId: me })
   tasks.elsewhere = await makeTask(mate, "Comment in another project", {
@@ -256,6 +267,9 @@ describe("recently involved", () => {
 
     expect(reason("edited")?.kind).toBe("edited")
     expect(reason("edited")?.fields).toEqual(["title"])
+    // changedFields is what differs: a field value as fields.<key>, an unchanged title not.
+    expect(reason("fieldSet")?.kind).toBe("edited")
+    expect(reason("fieldSet")?.fields).toEqual(["fields.serial"])
 
     expect(reason("created")?.kind).toBe("created")
     expect(reason("created")?.summary).toBe("you created it")

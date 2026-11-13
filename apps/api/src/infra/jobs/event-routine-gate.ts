@@ -86,6 +86,12 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
     idDataKey: "tableId",
   },
   "kernel:dashboard_table": { schema: "kernel", table: "dashboard_tables", idDataKey: "tableId" },
+  // A project task (its field values ride in the event): the owner must read the task.
+  "projects:task": {
+    schema: "app_projects",
+    table: "tasks",
+    parents: [{ dataKey: "projectId", schema: "app_projects", table: "projects" }],
+  },
 }
 
 function asUuid(v: unknown): string | null {
@@ -187,6 +193,35 @@ export async function ownerCanSeeEventEntity(owner: UserContext, evt: GateEvent)
     )
   }
   return false
+}
+
+/** The label a reader sees on a link to an app they may not open (dashboard tables, projects). */
+const HIDDEN_LINK_LABEL = "Linked record"
+
+/**
+ * The event data a routine is handed, as its owner may read it. A project task event carries the
+ * task's field values as its WRITER may read them; a link value to an app the owner may not open
+ * gets the hidden label here, as a read by the owner would show it. Other families pass as is.
+ */
+export function eventDataForOwner(owner: UserContext | null, evt: GateEvent): unknown {
+  if (`${evt.app}:${evt.entity}` !== "projects:task" || !owner) return evt.data
+  const data = dataOf(evt)
+  const fields = data.fields
+  if (typeof fields !== "object" || fields === null || Array.isArray(fields)) return evt.data
+  const sees = (app: string) =>
+    app === "kernel" || owner.scopes.some((s) => s === "*" || s === app || s.startsWith(`${app}:`))
+  const masked: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+    const app =
+      typeof v === "object" && v !== null && !Array.isArray(v)
+        ? (v as { app?: unknown }).app
+        : undefined
+    masked[k] =
+      typeof app === "string" && !sees(app)
+        ? { ...(v as Record<string, unknown>), label: HIDDEN_LINK_LABEL }
+        : v
+  }
+  return { ...data, fields: masked }
 }
 
 // ── Mail sender filter (S26) ────────────────────────────────────────────────

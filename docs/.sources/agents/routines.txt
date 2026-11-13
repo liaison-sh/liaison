@@ -72,7 +72,7 @@ Sender filter only for mail:message:create -> packages/shared/src/validation/age
 Only from field -> packages/shared/src/i18n/locales/en/kernel.json:55
 Only from hint -> packages/shared/src/i18n/locales/en/kernel.json:56
 Sender filter checked before the agent runs -> packages/shared/src/validation/agent/routines.ts:140
-Event coalesce window 30 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:33
+Event coalesce window 30 s -> apps/api/src/infra/jobs/event-routine-subscriber.ts:34
 Create routine button -> packages/shared/src/i18n/locales/en/kernel.json:86
 create_routine tool gated, kernel:routines:write -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5372
 Approval card lists next three fire times -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:4938
@@ -128,8 +128,8 @@ kernel:routines:run -> apps/api/src/modules/permissions/scope-catalog.ts:180
 kernel:routines:delegate -> apps/api/src/modules/permissions/scope-catalog.ts:185
 ROUTINE_OVERLAP_DEFER_DELAY_MS default 60000 -> apps/api/src/infra/jobs/kernel-jobs.ts:45
 ROUTINE_OVERLAP_MAX_DEFERRALS default 60 -> apps/api/src/infra/jobs/kernel-jobs.ts:49
-ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS default 14 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:60
-ROUTINE_EVENT_RECONCILE_MAX_RETRIES default 3 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:63
+ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS default 14 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:61
+ROUTINE_EVENT_RECONCILE_MAX_RETRIES default 3 -> apps/api/src/modules/agent/routines/routine-event-reconciler.ts:64
 routines reconcile usage and dry run -> apps/api/src/cli/commands.ts:518
 scheduled job looks back 14 days; one-shot backfill -> apps/api/src/cli/commands.ts:522
 --max-per-routine default 5 -> apps/api/src/cli/commands.ts:531
@@ -166,7 +166,7 @@ Owner lost a scope while waiting: run ends, routine pauses -> apps/api/src/modul
 Unpicked runs resumed by the sweep, expired approvals end the run -> apps/api/src/modules/agent/routines/routine-run-resume.ts:856
 A scheduled run is skipped while one waits; event runs go on -> apps/api/src/modules/agent/routines/routine-worker.ts:1087
 A mail-started run searches and fetches without waiting, within the web-read limits -> apps/api/src/modules/apps/execute-tool.ts:4019,4029,4679 ; apps/api/src/modules/agent/tools/web-read-guardrails.ts:166,194
-Event routine tick enqueued once, by the publishing process -> apps/api/src/infra/jobs/event-routine-subscriber.ts:217
+Event routine tick enqueued once, by the publishing process -> apps/api/src/infra/jobs/event-routine-subscriber.ts:218
 Routine change announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2671
 Routine pause or delete announced to every process -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2712
 App routines paused or resumed announced to every process -> apps/api/src/modules/apps/reconcile-assets.ts:181

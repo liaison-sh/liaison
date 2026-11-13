@@ -384,6 +384,7 @@ const rowOp = z.discriminatedUnion("op", [
       id: z.string().min(1).max(200),
       // 0: a backed table's row whose own cells were never written (tables/backing.ts).
       ifVersion: z.number().int().min(0).describe("The row's version from kernel__tables_query"),
+      cells,
       ifRecordVersion: z
         .string()
         .min(1)
@@ -392,7 +393,6 @@ const rowOp = z.discriminatedUnion("op", [
         .describe(
           "A backed table: the row's recordVersion from kernel__tables_query, needed to change a read-through cell",
         ),
-      cells,
     })
     .strict(),
   z

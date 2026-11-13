@@ -41,6 +41,9 @@ import type { DemoWorldLayerInput } from "../index"
 import { STUDIO_CLIENTS } from "./fiction"
 import { type StudioPlan, type StudioProjectPlan, studioPlan } from "./plan"
 
+/** Midday UTC, so a past work day keeps its civil date in any zone near UTC. */
+const NOON_MS = 12 * 60 * 60 * 1000
+
 type ExecTx = { execute: (q: unknown) => Promise<unknown> }
 
 /** The pipeline's project key. */
@@ -363,7 +366,7 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
         scopes: person.scopes,
         place: { origin: "human-ui", frame: undefined, actingAgentId: null },
         input: { taskId, time: `${r.minutes}m`, ...(dated ? { date: r.workDate } : {}) },
-        now: dated ? ctx.now : new Date(`${r.workDate}T12:00:00.000Z`),
+        now: dated ? ctx.now : new Date(Date.parse(r.workDate) + NOON_MS),
       }),
     )
   }

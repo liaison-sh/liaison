@@ -321,7 +321,11 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                           : i18n.t("projects.automations.neverRan")}
                       </span>
                     </span>
-                    <Show when={r.flow && (lastRuns()?.[r.id]?.steps ?? []).length > 0 && lastRuns()?.[r.id]}>
+                    <Show
+                      when={
+                        r.flow && (lastRuns()?.[r.id]?.steps ?? []).length > 0 && lastRuns()?.[r.id]
+                      }
+                    >
                       {(run) => (
                         <RunStrip
                           flow={r.flow as RoutineFlow}

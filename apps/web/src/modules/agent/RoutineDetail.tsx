@@ -865,7 +865,7 @@ const RoutineDetail: Component<Props> = (props) => {
                               runSteps={run.steps ?? []}
                               testid={`run-flow-list-${run.id}`}
                               triggerFallback={triggerWords(r())}
-                          agentId={r().ownerAgentId}
+                              agentId={r().ownerAgentId}
                             />
                             <Show when={run.hasTranscript}>
                               <button

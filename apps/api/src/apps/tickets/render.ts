@@ -7,6 +7,7 @@ import {
   stripTicketHandleTags,
 } from "@liaison/shared"
 import { SELF_SEND_HEADER, selfSendMarkerFor } from "~/apps/tickets/self-send-marker"
+import { applyTeamPlaceholder } from "~/apps/tickets/team-placeholder"
 import { sanitizeAgentHtml, sanitizeCustomerHtml } from "~/lib/email/sanitize"
 import type { StructuredEmail } from "~/lib/email/types"
 import { serverT } from "~/modules/i18n/server-i18n"
@@ -21,6 +22,9 @@ export type RenderTicketRow = {
   /** The ticket's tagged language (ISO code, or a display name like
    *  "French" an agent's setLanguage wrote). Decides the email's own copy. */
   language?: string | null
+  /** The ticket's team: fills `{{team}}` in the inbox's
+   *  sender name and signature. */
+  team?: string | null
 }
 
 export type RenderInboxRow = {
@@ -210,22 +214,28 @@ export async function renderTicketEmail(
   // inbox's configured signature here.
   const signatureSource =
     opts.kind === "ack"
-      ? inbox.signature_html?.trim() ||
-        (inbox.signature_text ? plainTextToHtml(inbox.signature_text) : "")
+      ? applyTeamPlaceholder(inbox.signature_html?.trim() ?? "", ticket.team, "html") ||
+        (inbox.signature_text
+          ? plainTextToHtml(applyTeamPlaceholder(inbox.signature_text, ticket.team))
+          : "")
       : ""
   const signature = signatureSource ? sanitizeAgentHtml(signatureSource) : ""
   // The From display name is the mailbox's configured identity, never the
   // individual agent's personal name: a support@ send must not out the human
   // behind it (customers reply "Hi <first name>" off the From header).
   // Fallback is the org's email-template header name, then the org name.
-  const fromName = inbox.from_display_name ?? headerName
+  const namedFrom = applyTeamPlaceholder(inbox.from_display_name, ticket.team)
+  // A name that was only the placeholder, on a ticket with no team, is empty:
+  // fall back like an unset name rather than send a blank From name.
+  const fromName =
+    namedFrom === "" && inbox.from_display_name ? headerName : (namedFrom ?? headerName)
   // Footer default: an unset org footer never renders blank. It falls back to
   // the mailbox's own signature (plain text, since the footer is a
   // plain-text-styled strip), else the same sender identity as the From name,
   // so every outbound email carries this org's own identity in its footer.
   const footerText =
     orgSettings.tickets?.emailTemplate?.footerText?.trim() ||
-    inbox.signature_text?.trim() ||
+    applyTeamPlaceholder(inbox.signature_text?.trim(), ticket.team) ||
     fromName
 
   const subjectPrefix = opts.kind === "reply" ? "Re: " : opts.kind === "close" ? "" : ""

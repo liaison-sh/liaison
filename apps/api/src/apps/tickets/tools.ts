@@ -13,6 +13,7 @@ import { resolveTicketRef } from "~/apps/tickets/resolve-ticket-ref"
 import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { OutboundError, type OutboundProvider, sendOutbound } from "~/apps/tickets/send"
 import { validateAndApply } from "~/apps/tickets/state-machine"
+import { applyTeamPlaceholder } from "~/apps/tickets/team-placeholder"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { emailBody } from "~/lib/email/email-body"
@@ -644,6 +645,9 @@ async function loadActor(db: PrivilegedDb, orgId: string, userId: string) {
  * (ticket 10309). Pass the routine's own name so a routine-drafted reply
  * signs as the routine, not the human who happens to have created it. A
  * human-composed reply never passes this and keeps signing as that human.
+ *
+ * `team` is the ticket's team: it fills `{{team}}` in the
+ * inbox signature.
  */
 export async function loadEffectiveSignature(
   db: PrivilegedDb,
@@ -651,6 +655,7 @@ export async function loadEffectiveSignature(
   inboxId: string | null,
   userId: string,
   routineNameOverride?: string | null,
+  team?: string | null,
 ): Promise<{ text: string; html: string } | null> {
   let inboxText: string | null = null
   if (inboxId) {
@@ -661,7 +666,7 @@ export async function loadEffectiveSignature(
     `)
     inboxText = extractRows<{ signature_text: string | null }>(r)[0]?.signature_text ?? null
   }
-  let text = inboxText?.trim() ?? ""
+  let text = applyTeamPlaceholder(inboxText?.trim() ?? "", team)
   if (!text && routineNameOverride?.trim()) {
     text = routineNameOverride.trim()
   }
@@ -692,6 +697,7 @@ async function resolveNonPersonalFallbackSignature(
   db: PrivilegedDb,
   orgId: string,
   inboxId: string | null,
+  team?: string | null,
 ): Promise<string | null> {
   if (inboxId) {
     const r = await db.execute(drizzleSql`
@@ -699,7 +705,10 @@ async function resolveNonPersonalFallbackSignature(
       WHERE id = ${inboxId} AND org_id = ${orgId}
       LIMIT 1
     `)
-    const name = extractRows<{ from_display_name: string | null }>(r)[0]?.from_display_name?.trim()
+    const name = applyTeamPlaceholder(
+      extractRows<{ from_display_name: string | null }>(r)[0]?.from_display_name?.trim(),
+      team,
+    )
     if (name) return name
   }
   const r = await db.execute(drizzleSql`
@@ -724,14 +733,15 @@ export async function ticketsDraftSignature(
 ): Promise<{ signatureText: string | null; signatureHtml: string | null }> {
   if (ctx.actor.actorType === "user") return { signatureText: null, signatureHtml: null }
   return withCtxPrivileged(ctx, async (db) => {
-    const rows = extractRows<{ source_inbox_id: string | null }>(
+    const rows = extractRows<{ source_inbox_id: string | null; team: string | null }>(
       await db.execute(drizzleSql`
-        SELECT source_inbox_id FROM ${ticketsRel("tickets")}
+        SELECT source_inbox_id, team FROM ${ticketsRel("tickets")}
         WHERE id = ${params.ticketId} AND org_id = ${ctx.orgId}
         LIMIT 1
       `),
     )
     const sourceInboxId = rows[0]?.source_inbox_id ?? null
+    const team = rows[0]?.team ?? null
     // Routine-drafted replies must sign with the ROUTINE's own name, never
     // the human who happens to own the routine (see loadEffectiveSignature).
     // `ctx.originRoutineId` on the live reply-drafting path comes from the
@@ -754,6 +764,7 @@ export async function ticketsDraftSignature(
       sourceInboxId,
       ctx.actor.userId,
       routineNameOverride,
+      team,
     )
     if (sig) return { signatureText: sig.text, signatureHtml: sig.html }
     // Routine context (routineNameOverride !== undefined) with NOTHING to
@@ -761,7 +772,7 @@ export async function ticketsDraftSignature(
     // never ship an unsigned email: fall back to the inbox's own display name,
     // then the org name (never the routine owner's personal identity).
     if (routineNameOverride !== undefined) {
-      const fallback = await resolveNonPersonalFallbackSignature(db, ctx.orgId, sourceInboxId)
+      const fallback = await resolveNonPersonalFallbackSignature(db, ctx.orgId, sourceInboxId, team)
       if (fallback) return { signatureText: fallback, signatureHtml: plainTextToHtml(fallback) }
     }
     return { signatureText: null, signatureHtml: null }
@@ -1119,6 +1130,7 @@ async function renderAndSend(
       subject: ticket.subject,
       reply_token: ticket.reply_token,
       language: ticket.language ?? null,
+      team: ticket.team,
     },
     { htmlBody: html, textBody: text },
     orgSettings,
@@ -1326,10 +1338,11 @@ export async function sendTicketAcknowledgement(
       ack_sent_at: Date | null
       merged_into_ticket_id: string | null
       language: string | null
+      team: string | null
     }>(
       await db.execute(drizzleSql`
         SELECT id, handle, subject, reply_token, source_inbox_id, ack_sent_at,
-               merged_into_ticket_id, language
+               merged_into_ticket_id, language, team
         FROM ${ticketsRel("tickets")}
         WHERE id = ${ticketId} AND org_id = ${orgId}
         LIMIT 1
@@ -1465,8 +1478,9 @@ export async function sendTicketAcknowledgement(
           configuredSla && configuredSla !== DEFAULT_SLA_PROMISE_EN
             ? configuredSla
             : serverT(locale, "tickets.email.defaultSlaPromise")
+        // `{{team}}` in a configured ack body is the ticket's team.
         const ackBody =
-          inbox.ack_body_text?.trim() ||
+          applyTeamPlaceholder(inbox.ack_body_text?.trim() ?? "", ticket.team) ||
           serverT(locale, "tickets.email.ackBody", { sla: slaPromise })
 
         const { html: ackHtml, text: ackText } = emailBody({ textBody: ackBody })
@@ -1481,6 +1495,7 @@ export async function sendTicketAcknowledgement(
             subject: ticket.subject,
             reply_token: ticket.reply_token,
             language: ticket.language,
+            team: ticket.team,
           },
           { htmlBody: ackHtml, textBody: ackText },
           orgSettings,

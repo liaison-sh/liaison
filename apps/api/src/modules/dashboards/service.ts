@@ -1428,7 +1428,17 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
       : []
   for (const b of blocks) {
     const m = b.map
-    for (const f of [m.x, m.y, m.series, m.value, m.label, m.groupBy?.field, m.sparkline?.field])
+    for (const f of [
+      m.x,
+      m.y,
+      m.series,
+      m.value,
+      m.label,
+      m.groupBy?.field,
+      m.sparkline?.field,
+      m.colorField,
+      m.personField,
+    ])
       add(f)
     if (m.sort) add(m.sort.field)
     for (const c of [...(m.columns ?? []), ...(m.drillColumns ?? [])]) add(c.field)

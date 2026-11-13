@@ -1335,6 +1335,20 @@ export const appManifestJsonSchema = {
             required: ["tool", "queryParam", "idField", "labelField"],
             additionalProperties: false,
           },
+          // The entity's records can be a dashboard table's rows, one `parent` record's worth
+          // (another entity of this app, e.g. a project's tasks): `provider` names an export of
+          // the app's server module (a core app only) implementing TableBackingProvider
+          // (modules/dashboards/tables/backing.ts). Cross-field rules: contract.ts
+          // tableBackingDeclarationErrors.
+          tableBacking: {
+            type: "object",
+            properties: {
+              parent: { type: "string", pattern: "^[a-z][a-zA-Z0-9_-]{0,62}$" },
+              provider: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+            },
+            required: ["parent", "provider"],
+            additionalProperties: false,
+          },
           print: {
             type: "object",
             properties: {

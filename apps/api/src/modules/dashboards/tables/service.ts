@@ -40,21 +40,18 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import {
-  BackedCellError,
   backingProblem,
+  backingProvider,
   backingSchema,
+  MAX_BACKED_ROWS,
   matchesText,
   matchesWhere,
   mergeOverlay,
   parseBacking,
-  readProject,
-  readTaskCells,
   readThroughColumns,
   sortDocs,
-  TASK_WRITE_SCOPE,
   type TableBacking,
-  taskReadable,
-  writeTask,
+  type TableBackingProvider,
 } from "~/modules/dashboards/tables/backing"
 import {
   applyCells,
@@ -237,10 +234,13 @@ interface LoadedTable {
   canEdit: boolean
   /** The table's own columns (a backed table's overlay). */
   columns: Column[]
-  /** A backed table's project and read-through columns. */
+  /** A backed table's provider, its parent's columns and the read-through ones. */
   backing?: {
     def: TableBacking
-    project: Awaited<ReturnType<typeof readProject>>
+    /** Null when the app no longer declares it (the table then reads no rows). */
+    provider: TableBackingProvider | null
+    /** Null when the reader cannot read the parent record. */
+    shape: { columns: Column[] } | null
     readThrough: Column[]
   }
 }
@@ -253,8 +253,12 @@ export function allColumns(loaded: LoadedTable): Column[] {
 async function withBacking(t: RlsClient, orgId: string, loaded: LoadedTable): Promise<LoadedTable> {
   const def = parseBacking(loaded.row.backing)
   if (!def) return loaded
-  const project = await readProject(t, orgId, def.projectId)
-  return { ...loaded, backing: { def, project, readThrough: readThroughColumns(def, project) } }
+  const provider = await backingProvider(orgId, def)
+  const shape = provider ? await provider.describe(t, orgId, def.parentId) : null
+  return {
+    ...loaded,
+    backing: { def, provider, shape, readThrough: readThroughColumns(def, shape) },
+  }
 }
 
 /** The table under the viewer's RLS, with its edit right; NOT_FOUND when they cannot see it. */
@@ -808,7 +812,14 @@ async function backedDocs(
   loaded: LoadedTable,
 ): Promise<StoreDocument[]> {
   const b = loaded.backing!
-  const tasks = await readTaskCells(t, viewer.orgId, b.def, b.project)
+  if (!b.provider || !b.shape) return []
+  const tasks = await b.provider.rows(
+    t,
+    viewer.orgId,
+    b.def.parentId,
+    b.readThrough.map((c) => c.key),
+    { max: MAX_BACKED_ROWS },
+  )
   if (tasks.length === 0) return []
   const own = await readOwnDocs(t, viewer, loaded, { max: 10_000 })
   return mergeOverlay(tasks, own.docs, loaded.columns)
@@ -1096,8 +1107,13 @@ async function writeBackedRows(
 ): Promise<RowResult[]> {
   const b = loaded.backing!
   const tableId = loaded.row.id
-  const project = b.project
-  if (!project) throw new TableError("not_found", "the table's project is not one you can read")
+  const provider = b.provider
+  if (!provider || !b.shape) {
+    throw new TableError("not_found", `the table's ${b.def.app} record is not one you can read`)
+  }
+  const keys = b.readThrough.map((c) => c.key)
+  const recordOf = async (id: string) =>
+    (await provider.rows(t, viewer.orgId, b.def.parentId, keys, { id, max: 1 }))[0] ?? null
   const readThrough = new Set(b.readThrough.map((c) => c.key))
   const audience = await tableAudience(viewer.orgId, loaded.row)
   const caller = storeCaller(viewer)
@@ -1112,7 +1128,7 @@ async function writeBackedRows(
     if (op.op === "delete") {
       throw new TableError(
         "invalid_request",
-        `${at}: a row of this table is a task of its project: delete or archive the task in Projects`,
+        `${at}: a row of this table is a ${b.def.app} record: delete it in ${b.def.app}`,
         { rowId: op.id },
       )
     }
@@ -1129,10 +1145,10 @@ async function writeBackedRows(
       if (readThrough.has(k)) taskCells[k] = v
       else ownCells[k] = v
     }
-    if (Object.keys(taskCells).length > 0 && !hasScope(TASK_WRITE_SCOPE, viewer.scopes)) {
+    if (Object.keys(taskCells).length > 0 && !hasScope(provider.writeScope, viewer.scopes)) {
       throw new TableError(
         "forbidden",
-        `${at}: changing the project's tasks needs ${TASK_WRITE_SCOPE}`,
+        `${at}: changing the ${b.def.app} records needs ${provider.writeScope}`,
         op.op === "update" ? { rowId: op.id } : {},
       )
     }
@@ -1143,10 +1159,10 @@ async function writeBackedRows(
           : {}
       let rowId: string
       if (op.op === "add") {
-        rowId = await writeTask(t, viewer, b.def, project, taskCells, null)
+        rowId = await provider.write(t, viewer, b.def.parentId, taskCells, null)
       } else {
         rowId = op.id
-        if (!(await taskReadable(t, viewer.orgId, b.def, rowId))) {
+        if (!(await recordOf(rowId))) {
           throw new TableError("not_found", `${at}: no row '${rowId}'`, { rowId })
         }
       }
@@ -1156,7 +1172,7 @@ async function writeBackedRows(
         throw await conflict(t, viewer, loaded, rowId)
       }
       if (op.op === "update" && Object.keys(taskCells).length > 0) {
-        await writeTask(t, viewer, b.def, project, taskCells, rowId)
+        await provider.write(t, viewer, b.def.parentId, taskCells, rowId)
       }
       const next = applyCells(doc?.data ?? {}, own)
       const keys = changedKeys(doc?.data ?? {}, next)
@@ -1180,8 +1196,9 @@ async function writeBackedRows(
           audience,
         })
       }
+      const record = await recordOf(rowId)
       const [merged] = mergeOverlay(
-        await readTaskCells(t, viewer.orgId, b.def, project, { taskId: rowId }),
+        record ? [record] : [],
         [await getDocument(t, caller, collection, rowId)].filter(
           (d): d is StoreDocument => d !== null,
         ),
@@ -1192,15 +1209,15 @@ async function writeBackedRows(
       results.push(keys.length > 0 ? { ...row!, updatedBy: actorNow(viewer, writer) } : row!)
     } catch (err) {
       const rowRef = op.op === "update" ? { rowId: op.id } : {}
-      if (err instanceof CellError || err instanceof BackedCellError) {
+      if (err instanceof CellError) {
         throw new TableError("invalid_cell", `${at}: ${err.message}`, {
           column: err.column,
           ...rowRef,
         })
       }
-      const { ProjectsServiceError } = await import("~/apps/projects/service/statuses")
-      if (err instanceof ProjectsServiceError) {
-        const pe = err
+      // The app's own refusal, carrying its HTTP status (and the field it names, if any).
+      const pe = err as { status?: unknown; message?: string; details?: unknown }
+      if (err instanceof Error && typeof pe.status === "number" && !(err instanceof TableError)) {
         const field = (pe.details as { field?: string } | undefined)?.field
         if (pe.status === 403) throw new TableError("forbidden", `${at}: ${pe.message}`, rowRef)
         if (pe.status === 404) throw new TableError("not_found", `${at}: ${pe.message}`, rowRef)
@@ -1210,7 +1227,11 @@ async function writeBackedRows(
         })
       }
       if (pgCode(err) === "42501") {
-        throw new TableError("forbidden", `${at}: changing the project's tasks was refused`, rowRef)
+        throw new TableError(
+          "forbidden",
+          `${at}: changing the ${b.def.app} records was refused`,
+          rowRef,
+        )
       }
       if (err instanceof DataStoreError && err.code === "version_conflict" && op.op === "update") {
         throw await conflict(t, viewer, loaded, op.id)
@@ -1587,11 +1608,15 @@ async function checkBacking(
   backing: TableBacking,
   own: Column[],
 ): Promise<void> {
-  const problem = backingProblem(
-    backing,
-    await readProject(t, viewer.orgId, backing.projectId),
-    own,
-  )
+  const provider = await backingProvider(viewer.orgId, backing)
+  if (!provider) {
+    throw new TableError(
+      "invalid_request",
+      `backing: ${backing.app} records of type '${backing.entity}' cannot back a table`,
+    )
+  }
+  const shape = await provider.describe(t, viewer.orgId, backing.parentId)
+  const problem = backingProblem(backing, shape, own)
   if (problem) throw new TableError("invalid_request", `backing: ${problem}`)
 }
 

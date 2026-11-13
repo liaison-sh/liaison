@@ -96,7 +96,12 @@ async function backedTable(b: Board): Promise<string> {
   const t = await createTable(owner, {
     name: `Repairs ${n}-${randomUUID().slice(0, 4)}`,
     columns: [{ key: "note", label: "Note", type: "text" }],
-    backing: { kind: "project_tasks", projectId: b.id, fields: ["title", "status", "problem"] },
+    backing: {
+      app: "projects",
+      entity: "task",
+      parentId: b.id,
+      fields: ["title", "status", "problem"],
+    },
     orgAccess: "editor",
   })
   return t.id
@@ -175,8 +180,9 @@ describe("a backed table reads the project's tasks", () => {
     ])
     expect(t.columns[1]!.choices).toEqual(["Todo", "Doing", "Done"])
     expect(t.backing).toMatchObject({
-      kind: "project_tasks",
-      projectId: b.id,
+      app: "projects",
+      entity: "task",
+      parentId: b.id,
       readThrough: ["title", "status", "problem"],
       own: ["note"],
     })
@@ -332,7 +338,7 @@ describe("saving a backing", () => {
       createTable(owner, {
         name: `Refused ${randomUUID().slice(0, 6)}`,
         columns,
-        backing: { kind: "project_tasks", projectId, fields },
+        backing: { app: "projects", entity: "task", parentId: projectId, fields },
       })
     await expect(make(["title", "nope"])).rejects.toMatchObject({ code: "invalid_request" })
     await expect(
@@ -341,6 +347,14 @@ describe("saving a backing", () => {
     await expect(make(["title"], [], randomUUID())).rejects.toMatchObject({
       code: "invalid_request",
     })
+    // Only an entity its app declares as a table backing.
+    await expect(
+      createTable(owner, {
+        name: `Refused ${randomUUID().slice(0, 6)}`,
+        columns: [],
+        backing: { app: "projects", entity: "project", parentId: b.id, fields: ["title"] },
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" })
     // An added own column may not take a read-through key either.
     const id = await backedTable(b)
     const t = await getTable(owner, id)

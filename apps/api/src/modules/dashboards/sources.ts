@@ -34,7 +34,7 @@ import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import type { BlockSource } from "~/modules/dashboards/spec"
-import { parseBacking, taskStamp } from "~/modules/dashboards/tables/backing"
+import { backingProvider, parseBacking } from "~/modules/dashboards/tables/backing"
 import { type DeclaredCollection, getDeclaredCollection } from "~/modules/data-store/declared"
 import { AGENT_STORE_APP } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -393,9 +393,12 @@ export async function tableStamp(
       .limit(1)
     if (!row) return null
     const stamp = { generation: Number(row.generation), version: row.version }
-    // A backed table's rows move with its project's tasks too (tables/backing.ts).
+    // A backed table's rows move with its parent's records too (tables/backing.ts).
     const backing = parseBacking(row.backing)
-    return backing ? { ...stamp, tasks: await taskStamp(tx, viewer.orgId, backing) } : stamp
+    const provider = backing ? await backingProvider(viewer.orgId, backing) : null
+    return backing && provider
+      ? { ...stamp, tasks: await provider.stamp(tx, viewer.orgId, backing.parentId) }
+      : stamp
   })
 }
 

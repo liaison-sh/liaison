@@ -211,10 +211,35 @@ export async function savePicks(
       error: { code: "invalid_body", message: "add: 1 to 500 picked items {id, name, mimeType}" },
     }
   try {
-    return await savePickChange(ctx, p.params.account, { add, remove: [] })
+    const saved = await savePickChange(ctx, p.params.account, { add, remove: [] })
+    // Told to the conversation the picker was opened from (the platform's page
+    // result): a line naming what was picked, with the ids, and the agent's turn.
+    return { ...saved, pageResult: pickResult(add) }
   } catch (err) {
     if (err instanceof PickError) return { error: { code: err.code, message: err.message } }
     throw err
+  }
+}
+
+/** The most picked items a page result names; the rest are counted. */
+const RESULT_ITEMS_MAX = 20
+
+/** What a pick tells its conversation: the names in words, the ids as data. */
+export function pickResult(items: readonly PickedItem[]): {
+  summary: string
+  data: Record<string, unknown>
+} {
+  const listed = items.slice(0, RESULT_ITEMS_MAX)
+  const more = items.length > listed.length ? ` and ${items.length - listed.length} more` : ""
+  const what = items.length === 1 ? "1 item" : `${items.length} items`
+  const names = listed.map((i) => i.name).join(", ")
+  return {
+    summary: `Picked ${what} in Google Drive: ${names}${more}.`.slice(0, 500),
+    data: {
+      count: items.length,
+      items: listed.map((i) => ({ driveFileId: i.id, name: i.name, mimeType: i.mimeType })),
+      next: "Read a picked file with google-drive__read and its driveFileId; find a picked folder's files with google-drive__search.",
+    },
   }
 }
 

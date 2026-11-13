@@ -1,6 +1,6 @@
 {
   "name": "api-connector",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "kind": "connector",
   "description": "Generic connector for an ERP, CRM or any HTTP API described by an adapter document: named operations, projected fields, customer card and agent tools.",
   "iconName": "plug",
@@ -101,7 +101,14 @@
       "api": {
         "readScope": "api-connector:read",
         "writeScope": "api-connector:write",
-        "adminScope": "api-connector:admin"
+        "adminScope": "api-connector:admin",
+        "customerContext": {
+          "listTool": "connector_list_operations",
+          "readTool": "connector_read",
+          "writeTool": "connector_write"
+        },
+        "importSource": true,
+        "provisionKey": "connectors"
       }
     }
   },

@@ -440,20 +440,32 @@ function transformToSave(p: z.infer<typeof saveParams>): TransformToSave | Refus
   return { code: p.code, kinds: p.kinds, sourceType: p.sourceType }
 }
 
-/** The adapter save tool an API connection is created with (api-connector, approved by a person). */
-const ADAPTER_SAVE_TOOL = "api-connector__connector_adapter_save"
+/** The adapter save tool of the app an import's API connection is saved in (approved by a person). */
+const adapterSaveTool = (app: string) => `${app}__connector_adapter_save`
 const REQUEST_SECRET_TOOL = "kernel__request_secret"
 
-/** Whether an api-connector connection exists, and whether its credentials are saved. */
+/**
+ * Whether an import-source API connection (declarations.ts, `importSource`)
+ * exists, and whether its credentials are saved; the app it is (or would be)
+ * saved in. Null app: no app of the org offers an import source.
+ */
 async function connectionState(
   orgId: string,
   identifier: string,
-): Promise<{ state: "missing" | "needs_credentials" | "ready"; baseUrl?: string }> {
-  const { getAdapterRow, credentialStatuses } = await import("~/modules/apps/connections/api/store")
-  const row = await getAdapterRow(orgId, identifier)
-  if (!row) return { state: "missing" }
-  const ready = (await credentialStatuses(orgId)).get(identifier) === "ok"
-  return { state: ready ? "ready" : "needs_credentials", baseUrl: row.adapter.baseUrl }
+): Promise<{
+  state: "missing" | "needs_credentials" | "ready"
+  baseUrl?: string
+  api: { app: string; connection: string } | null
+}> {
+  const [{ importSourceConnection }, { credentialStatuses }] = await Promise.all([
+    import("~/modules/apps/connections/api/declarations"),
+    import("~/modules/apps/connections/api/store"),
+  ])
+  const found = await importSourceConnection(orgId, identifier)
+  const api = found ? { app: found.conn.app, connection: found.conn.connection } : null
+  if (!found?.row) return { state: "missing", api }
+  const ready = (await credentialStatuses(found.conn)).get(identifier) === "ok"
+  return { state: ready ? "ready" : "needs_credentials", baseUrl: found.row.adapter.baseUrl, api }
 }
 
 function hostOf(url: string): string {
@@ -464,10 +476,13 @@ function hostOf(url: string): string {
   }
 }
 
-function credentialsCall(identifier: string) {
+function credentialsCall(api: { app: string; connection: string }, identifier: string) {
   return {
     tool: REQUEST_SECRET_TOOL,
-    params: { kind: "api_connector_credentials", target: { identifier } },
+    params: {
+      kind: "connection_credentials",
+      target: { app: api.app, connection: api.connection, identifier },
+    },
   }
 }
 
@@ -486,10 +501,17 @@ async function connectionStep(
   if (!identifier) {
     return refused(
       "invalid_request",
-      `An API transform needs connection: the identifier of the api-connector connection it pulls from (kernel__config_export lists them under apiConnectors). None yet? Create one with ${ADAPTER_SAVE_TOOL} (a person approves it), then ask for its credentials with ${REQUEST_SECRET_TOOL}. Nothing was saved.`,
+      `An API transform needs connection: the identifier of the API connection it pulls from (kernel__config_export lists them under apiConnectors). None yet? Create one with the API connection app's connector_adapter_save (a person approves it), then ask for its credentials with ${REQUEST_SECRET_TOOL}. Nothing was saved.`,
     )
   }
-  const { state, baseUrl } = await connectionState(ctx.orgId, identifier)
+  const { state, baseUrl, api } = await connectionState(ctx.orgId, identifier)
+  if (!api) {
+    return refused(
+      "invalid_request",
+      "No app of this workspace offers API connections as an import source: install one (the API connector), then save the connection. Nothing was saved.",
+    )
+  }
+  const ADAPTER_SAVE_TOOL = adapterSaveTool(api.app)
   // A site the person named must be the one the connection already reads:
   // never import from one site while they think it is another.
   const named = conn ? p.params?.[conn.siteParam] : undefined
@@ -518,7 +540,7 @@ async function connectionStep(
     return {
       identifier,
       result: {
-        needsCredentials: { identifier, askWith: credentialsCall(identifier) },
+        needsCredentials: { identifier, askWith: credentialsCall(api, identifier) },
         next: `The connection ${identifier} has no credentials yet: call needsCredentials.askWith (a card where the person enters them; you never see them). When it says saved, preview with kernel__import_preview.`,
       },
     }
@@ -526,7 +548,7 @@ async function connectionStep(
   if (!conn || !t.ref || identifier !== conn.identifier) {
     return refused(
       "invalid_request",
-      `There is no API connection named ${identifier}. Create it first with ${ADAPTER_SAVE_TOOL} (read api-connector__connector_adapter_reference for the format; a person approves the save), then ask for its credentials with ${REQUEST_SECRET_TOOL}, and save this transform again. Nothing was saved.`,
+      `There is no API connection named ${identifier}. Create it first with ${ADAPTER_SAVE_TOOL} (read ${api.app}__connector_adapter_reference for the format; a person approves the save), then ask for its credentials with ${REQUEST_SECRET_TOOL}, and save this transform again. Nothing was saved.`,
     )
   }
   const site = p.params?.[conn.siteParam]
@@ -550,7 +572,7 @@ async function connectionStep(
       needsConnection: {
         identifier,
         createWith: { tool: ADAPTER_SAVE_TOOL, params: adapter },
-        thenCredentials: credentialsCall(identifier),
+        thenCredentials: credentialsCall(api, identifier),
       },
       next: `The transform is saved; its connection ${identifier} does not exist yet. 1. Call ${ADAPTER_SAVE_TOOL} with exactly needsConnection.createWith.params: it shows the person an approval card. 2. When it is approved, call needsConnection.thenCredentials (a card for the email and API token; you never see them). 3. Then preview with kernel__import_preview. Do not say the import is ready before that.${loaded ? ` ${loaded}` : ""}`,
     },

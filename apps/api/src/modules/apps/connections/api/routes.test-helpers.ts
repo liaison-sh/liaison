@@ -9,8 +9,11 @@
 import { Hono } from "hono"
 import type { AppEnv } from "~/app"
 import type { UserContext } from "~/db/rls"
+import {
+  TEST_API_APP as API_CONNECTOR_APP,
+  TEST_API_CONNECTION as API_CONNECTOR_CONNECTION,
+} from "./app.test-helpers"
 import { createApiConnectionMethods } from "./bridge"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "./store"
 
 export const API_DECLARATION = {
   readScope: "api-connector:read",

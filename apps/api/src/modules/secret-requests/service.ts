@@ -236,7 +236,7 @@ export async function completeSecretRequest(
   return withPrivilegedDb(args.orgId, "secret-request-complete", async (tx) => {
     const row = await lockRow(tx, args.orgId, args.id)
     if (!row) throw new HTTPException(404, { message: "Secret request not found" })
-    const target = targetFromRow(row.kind, row.target)
+    const target = targetFromRow(row.kind, row.target, row.orgId)
     if (!target)
       throw new HTTPException(409, { message: "This request's target is no longer valid." })
     if (!canSubmitRequest(args.orgId, target, args.scopes, args.userId, row.requestedBy)) {
@@ -317,7 +317,7 @@ export async function cancelSecretRequest(args: CancelSecretRequestArgs): Promis
   return withPrivilegedDb(args.orgId, "secret-request-cancel", async (tx) => {
     const row = await lockRow(tx, args.orgId, args.id)
     if (!row) throw new HTTPException(404, { message: "Secret request not found" })
-    const target = targetFromRow(row.kind, row.target)
+    const target = targetFromRow(row.kind, row.target, row.orgId)
     const mayCancel =
       row.requestedBy === args.userId ||
       (target !== null &&

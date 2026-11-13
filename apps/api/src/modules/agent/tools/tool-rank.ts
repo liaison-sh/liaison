@@ -6,9 +6,6 @@
  * no server.
  */
 
-/** The app whose tools connect any outside system (see creditOutsideSystemNames). */
-export const CONNECTOR_APP = "api-connector"
-
 /** Lower case with accents gone, so "réclamation" and "reclamation" are one word. */
 function foldSearchText(text: string): string {
   return text
@@ -154,8 +151,8 @@ function loadingTerms(
 
 /**
  * A word no tool answers to is the name of a system Liaison has no app for
- * ("connect HubSpot"), and the API connector is the app that connects any such
- * system: its tools answer to that name as a keyword, exactly as they answer
+ * ("connect HubSpot"), and an app that declares an API connection
+ * (`connectorApps`) is what connects any such system: its tools answer to that name as a keyword, exactly as they answer
  * to the name of a system already connected (withConnectorHints). So a
  * connector tool is scored on the kept words plus that name, every other tool
  * on the kept words alone. Without it, dropping the name left "connect", and
@@ -166,11 +163,12 @@ function creditOutsideSystemNames<T extends ScorableDeferredTool>(
   scored: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>,
   loading: { query: string; outside: string[] },
   appNames: Iterable<string>,
+  connectorApps: ReadonlySet<string>,
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
-  if (loading.outside.length === 0) return scored
+  if (loading.outside.length === 0 || connectorApps.size === 0) return scored
   const query = [loading.query, ...loading.outside].join(" ")
   return scored.map((s) => {
-    if (s.tool.appName !== CONNECTOR_APP) return s
+    if (!connectorApps.has(s.tool.appName)) return s
     const credited = { ...s.tool, keywords: [...(s.tool.keywords ?? []), ...loading.outside] }
     const [rescored] = scoreDeferredTools([credited], query, { appNames })
     return { ...rescored, tool: s.tool }
@@ -187,7 +185,12 @@ export function rankDeferredTools<
 >(
   catalog: readonly T[],
   query: string,
-  opts: { cap: number; appNames: Iterable<string> },
+  opts: {
+    cap: number
+    appNames: Iterable<string>
+    /** The apps that declare an API connection: they connect systems no app covers. */
+    connectorApps?: ReadonlySet<string>
+  },
 ): {
   ranked: Array<{ tool: T; score: number; termsMatched: number; termCount: number }>
   /** Every tool that scored, best first: `ranked` is its head. */
@@ -217,6 +220,7 @@ export function rankDeferredTools<
         scoreDeferredTools(catalog, loading.query, { appNames: opts.appNames }),
         loading,
         opts.appNames,
+        opts.connectorApps ?? new Set(),
       )
     : scoreDeferredTools(catalog, query, { appNames: opts.appNames })
 

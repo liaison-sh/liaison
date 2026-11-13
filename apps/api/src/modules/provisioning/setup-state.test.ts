@@ -23,7 +23,11 @@ import {
   connectionConfigRegistry,
   oauthClientResolverRegistry,
 } from "~/modules/apps/app-registries"
-import { API_CONNECTOR_CONNECTION, upsertAdapterRow } from "~/modules/apps/connections/api/store"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { ConnectionTurnedOffError } from "~/modules/apps/connections/oauth-client-config"
 import { upsertConnectionOAuthClient } from "~/modules/apps/connections/oauth-client-provisioning"
 import { enableApp } from "~/modules/apps/enabled-apps"
@@ -310,13 +314,15 @@ describe("computeSetupState", () => {
       ],
     })
     if (!doc.ok) throw new Error(JSON.stringify(doc.issues))
-    await upsertAdapterRow(orgId, "crm", doc.adapter, adminId)
+    // The connector counts through the app that declares the API connection.
+    await registerApiConnectorApp(orgId)
+    await upsertAdapterRow(testApiConn(orgId), "crm", doc.adapter, adminId)
     expect(await done("connector")).toBe(false)
     await withSystemDb("test-connector-creds", (db) =>
       db.insert(connectedAccounts).values({
         orgId,
         appName: "api-connector",
-        connectionName: API_CONNECTOR_CONNECTION,
+        connectionName: "api",
         ownerType: "org",
         providerType: "credentials",
         createdBy: adminId,

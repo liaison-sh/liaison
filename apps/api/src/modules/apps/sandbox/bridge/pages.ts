@@ -5,7 +5,8 @@
  * e.g. a tool that answers with "choose your files here". A handle, not a URL:
  * only that person's signed-in app opens it, so the app's code cannot use it as
  * the person. Refused in a run that acts for no person (a job, a webhook): a
- * page always belongs to one person.
+ * page always belongs to one person. Minted in a conversation, the handle carries
+ * it: a route answering `pageResult` posts there (modules/apps/page-result.ts).
  */
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { typedError } from "~/modules/apps/sandbox/bridge/secret-free"
@@ -40,6 +41,16 @@ export function createPagesMethods(ctx: BridgeContext) {
           app: ctx.appName,
           page,
           params: decoded,
+          // A run in a conversation (an agent's tool call) binds that
+          // conversation and agent: a route's `pageResult` is posted there.
+          ...(ctx.bridgeOptions?.threadId
+            ? {
+                origin: {
+                  threadId: ctx.bridgeOptions.threadId,
+                  agentId: ctx.bridgeActingAgentId ?? null,
+                },
+              }
+            : {}),
         })
       } catch (err) {
         if (err instanceof AppPageError) throw typedError(err.status, err.code, err.message)

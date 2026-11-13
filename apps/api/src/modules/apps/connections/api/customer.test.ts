@@ -16,7 +16,10 @@ import { PrivilegedDbTestAccess, withPrivilegedDb } from "~/db/privileged"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { errorHandler } from "~/middleware/error-handler"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
@@ -258,7 +261,7 @@ async function newOrg(label: string): Promise<string> {
 }
 
 async function connect(identifier: string, a: Adapter, orgId = ORG): Promise<void> {
-  await upsertAdapterRow(orgId, identifier, a, USER)
+  await upsertAdapterRow(testApiConn(orgId), identifier, a, USER)
   await withPrivilegedDb(orgId, "customer-test", (tx) =>
     createCredentialConnection(tx, orgId, USER, "api-connector", "api", {
       identifier,
@@ -296,14 +299,14 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  for (const id of ["crm", "erp", "broken"]) await invalidateConnectionCaches(ORG, id)
+  for (const id of ["crm", "erp", "broken"]) await invalidateConnectionCaches(testApiConn(ORG), id)
   resetAppRegistries()
   await releaseTestLock()
 })
 
 beforeEach(async () => {
   seen = []
-  for (const id of ["crm", "erp", "broken"]) await invalidateConnectionCaches(ORG, id)
+  for (const id of ["crm", "erp", "broken"]) await invalidateConnectionCaches(testApiConn(ORG), id)
   lookupSpy = spyOn(dnsPromises, "lookup").mockImplementation((async () => [
     { address: "93.184.216.34", family: 4 },
   ]) as never)
@@ -517,12 +520,12 @@ describe("GET /api/api-connector/customer: privileged pool use", () => {
 
   afterAll(async () => {
     PrivilegedDbTestAccess.usePool(null)
-    await invalidateConnectionCaches(WIDE_ORG, "wide")
+    await invalidateConnectionCaches(testApiConn(WIDE_ORG), "wide")
     await small.client.end()
   })
 
   it("loads a card with 12 parallel role calls on 2 privileged slots, one held at a time", async () => {
-    await invalidateConnectionCaches(WIDE_ORG, "wide")
+    await invalidateConnectionCaches(testApiConn(WIDE_ORG), "wide")
     OutboundFetchTestAccess.setFetch((async (input: string | URL | Request) => {
       const url = new URL(String(input))
       seen.push(`${url.host}${url.pathname}`)

@@ -1126,6 +1126,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   for (const [name, conn] of Object.entries((manifest.connections ?? {}) as Record<string, any>)) {
     for (const e of connectionLimitsErrors(conn?.limits)) errors.push(`connections.${name}.${e}`)
   }
+  errors.push(...apiConnectionErrors(manifest))
   errors.push(...dimensionReferenceErrors(manifest))
   errors.push(...appSurfaceErrors(manifest))
   errors.push(...oauthManifestKnobErrors(manifest))
@@ -1517,4 +1518,32 @@ export function validateAppManifest(manifest: any): ValidationResult {
   }
 
   return { success: true, data: manifest }
+}
+
+/**
+ * An app declares at most one API connection (a credentials connection with an
+ * `api` block), and its `customerContext` names tools the app itself declares.
+ */
+function apiConnectionErrors(manifest: Record<string, any>): string[] {
+  const errors: string[] = []
+  const apiConns = Object.entries((manifest.connections ?? {}) as Record<string, any>).filter(
+    ([, c]) => c?.api,
+  )
+  if (apiConns.length > 1) {
+    errors.push(
+      `connections: at most one connection may carry an api block (${apiConns.map(([n]) => n).join(", ")})`,
+    )
+  }
+  const tools = (manifest.tools ?? {}) as Record<string, unknown>
+  for (const [name, conn] of apiConns) {
+    const cc = conn.api?.customerContext as Record<string, unknown> | undefined
+    for (const [key, tool] of Object.entries(cc ?? {})) {
+      if (typeof tool === "string" && !tools[tool]) {
+        errors.push(
+          `connections.${name}.api.customerContext.${key}: "${tool}" is not a tool of the app`,
+        )
+      }
+    }
+  }
+  return errors
 }

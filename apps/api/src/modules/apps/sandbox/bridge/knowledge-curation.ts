@@ -14,8 +14,8 @@ import { bridgeKnowledgeActorInput } from "~/modules/apps/sandbox/bridge/shared"
  * `add_folder_source` on an app that declares a knowledge source kind: the
  * app's own handler syncs it (app-sources.ts). With a `ref` (a folder of the
  * app's provider) the source is that folder (config `{ ref }`); the same app,
- * kind, owner and ref reuse their source (reactivated when archived), so its
- * documents keep their identities. The first pass runs on the sync schedule,
+ * kind, owner and ref reuse their source (reactivated when archived, found by
+ * `findAppSource`), so its documents keep their identities. The first pass runs on the sync schedule,
  * not inside this call.
  */
 async function addAppSource(input: {
@@ -33,7 +33,7 @@ async function addAppSource(input: {
     oneShot?: boolean
   }
 }): Promise<Record<string, unknown>> {
-  const { txDb, orgId, actor, source, kinds, scope, params: p } = input
+  const { txDb, actor, source, kinds, scope, params: p } = input
   const folderRef = p.ref ?? null
   if (p.oneShot && !folderRef) {
     throw new Error(
@@ -51,33 +51,9 @@ async function addAppSource(input: {
   if (!chosen) {
     throw new Error(`invalid_params: kind required, one of ${kinds.map((k) => k.kind).join(", ")}`)
   }
-  const { knowledgeRel } = await import("~/apps/knowledge/schema-refs")
-  const owner = scope === "organization" ? null : actor.userId
+  // The same app, kind, owner and ref find their source again (reactivated when
+  // archived), whatever config it was stored with (createSyncedSource).
   const config: Record<string, unknown> = folderRef ? { ref: folderRef } : {}
-  const [existing] = extractRows<{ id: string; last_sync_status: string | null }>(
-    await (txDb as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
-      SELECT id, last_sync_status FROM ${knowledgeRel("synced_sources")}
-      WHERE org_id = ${orgId}::uuid AND app_name = ${source} AND source_kind = ${chosen.kind}
-        AND COALESCE(source_config, '{}'::jsonb) = ${JSON.stringify(config)}::jsonb
-        AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
-        AND (${folderRef}::text IS NULL OR folder_ref = ${folderRef})
-      ORDER BY archived_at IS NULL DESC, created_at DESC
-      LIMIT 1
-    `),
-  )
-  if (existing) {
-    const { reactivateSyncedSource } = await import("~/apps/knowledge/synced-sources")
-    await reactivateSyncedSource(orgId, existing.id)
-    return {
-      sourceId: existing.id,
-      syncedSourceId: existing.id,
-      source,
-      kind: chosen.kind,
-      lastSyncStatus: existing.last_sync_status ?? "idle",
-      oneShot: false,
-      documentsCreated: 0,
-    }
-  }
   const { createSyncedSource } = await import("~/apps/knowledge/synced-sources")
   const created = await createSyncedSource(
     txDb as never,
@@ -93,6 +69,7 @@ async function addAppSource(input: {
         scope === "organization" ? ((p.defaultSensitivity as never) ?? "internal") : null,
     },
     actor,
+    { reuseSameConfig: true },
   )
   return {
     sourceId: created.id,

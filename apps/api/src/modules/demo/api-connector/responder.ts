@@ -25,6 +25,7 @@ import type { DemoApiConnectorRequest } from "~/modules/apps/connections/api/tra
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { loadDemoOrg } from "~/modules/demo/demo-org"
 import {
+  DEMO_API_CONNECTION,
   DEMO_API_CONNECTOR_IDENTIFIER,
   DEMO_API_CONNECTOR_SENTINEL_KEY,
   isDemoApiConnectorOrigin,
@@ -180,7 +181,7 @@ export async function forgetDemoFixtureCrm(orgId: string): Promise<void> {
       .exec(),
   )
   // A lookup cached before the reset would still find what the reset removed.
-  await forgetCustomerLookups(orgId, DEMO_API_CONNECTOR_IDENTIFIER)
+  await forgetCustomerLookups({ orgId, ...DEMO_API_CONNECTION }, DEMO_API_CONNECTOR_IDENTIFIER)
 }
 
 function writeCount(handler: FixtureHandler): number {

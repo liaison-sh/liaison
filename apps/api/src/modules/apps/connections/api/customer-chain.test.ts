@@ -19,7 +19,10 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { errorHandler } from "~/middleware/error-handler"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { resolveCustomer } from "~/modules/apps/connections/api/customer"
 import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"
@@ -260,7 +263,7 @@ beforeAll(async () => {
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
   await registerApiConnectorApp(ORG)
-  await upsertAdapterRow(ORG, ID, NESTED, USER)
+  await upsertAdapterRow(testApiConn(ORG), ID, NESTED, USER)
   await withPrivilegedDb(ORG, "customer-chain-test", (tx) =>
     createCredentialConnection(tx, ORG, USER, "api-connector", "api", {
       identifier: ID,
@@ -271,7 +274,7 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await invalidateConnectionCaches(ORG, ID)
+  await invalidateConnectionCaches(testApiConn(ORG), ID)
   resetAppRegistries()
   await releaseTestLock()
 })
@@ -279,7 +282,7 @@ afterAll(async () => {
 beforeEach(async () => {
   seen = []
   created = []
-  await invalidateConnectionCaches(ORG, ID)
+  await invalidateConnectionCaches(testApiConn(ORG), ID)
   lookupSpy = spyOn(dnsPromises, "lookup").mockImplementation((async () => [
     { address: "93.184.216.34", family: 4 },
   ]) as never)
@@ -337,14 +340,19 @@ describe("customer card through a chained, field-mapped lookup", () => {
 
   it("finds a contact written through the connection at once, past a miss cached before", async () => {
     const actor = { orgId: ORG, userId: USER, actorType: "user" as const }
-    const before = await resolveCustomer({ actor, email: "ines@studio.test" })
+    const before = await resolveCustomer({
+      actor,
+      conn: testApiConn(ORG),
+      email: "ines@studio.test",
+    })
     expect(before.matches).toHaveLength(0)
     // Pinned at staging against the stored adapter, as an approval is.
-    const stored = (await getAdapterRow(ORG, ID))?.adapter
+    const stored = (await getAdapterRow(testApiConn(ORG), ID))?.adapter
     const op = stored?.operations.find((o) => o.name === "create_contact")
     if (!stored || !op) throw new Error("no create_contact")
     const params = { email: "ines@studio.test" }
     await runConnectorOperation({
+      conn: testApiConn(ORG),
       actor: { ...actor, actorType: "agent" },
       identifier: ID,
       operation: "create_contact",
@@ -352,12 +360,17 @@ describe("customer card through a chained, field-mapped lookup", () => {
       mode: "write",
       approvedTarget: writeTarget(stored, op, params),
     })
-    const after = await resolveCustomer({ actor, email: "ines@studio.test" })
+    const after = await resolveCustomer({
+      actor,
+      conn: testApiConn(ORG),
+      email: "ines@studio.test",
+    })
     expect(after.matches.map((m) => m.summary.name)).toEqual(["Northwind Music Retail"])
   })
 
   it("gives the agent's context (email only, first connection) the company's summary", async () => {
     const resolution = await resolveCustomer({
+      conn: testApiConn(ORG),
       actor: { orgId: ORG, userId: USER, actorType: "agent" },
       email: "anna@northwind.test",
       emailOnly: true,
@@ -369,15 +382,17 @@ describe("customer card through a chained, field-mapped lookup", () => {
 
   it("follows the domain filter when no email matches, and drops a contact without a company", async () => {
     const byDomain = await resolveCustomer({
+      conn: testApiConn(ORG),
       actor: { orgId: ORG, userId: USER, actorType: "user" },
       domain: "northwind.test",
     })
     expect(byDomain.matches.map((m) => [m.matchedBy, m.summary.name])).toEqual([
       ["domain", "Northwind Music Retail"],
     ])
-    await invalidateConnectionCaches(ORG, ID)
+    await invalidateConnectionCaches(testApiConn(ORG), ID)
     seen = []
     const loner = await resolveCustomer({
+      conn: testApiConn(ORG),
       actor: { orgId: ORG, userId: USER, actorType: "user" },
       email: "loner@nowhere.test",
       emailOnly: true,
@@ -388,6 +403,7 @@ describe("customer card through a chained, field-mapped lookup", () => {
 
   it("runs the chain for a direct read (the agent tool and CLI test path) as one call", async () => {
     const r = await runConnectorOperation({
+      conn: testApiConn(ORG),
       actor: { orgId: ORG, userId: USER, actorType: "system" },
       identifier: ID,
       operation: "find_customer",
@@ -408,6 +424,7 @@ describe("customer card through a chained, field-mapped lookup", () => {
   it("refuses a lookup called with none of its filter params, before any request", async () => {
     await expect(
       runConnectorOperation({
+        conn: testApiConn(ORG),
         actor: { orgId: ORG, userId: USER, actorType: "system" },
         identifier: ID,
         operation: "find_customer",
@@ -420,6 +437,7 @@ describe("customer card through a chained, field-mapped lookup", () => {
 
   it("caps a resolution's upstream requests per connection, leaving out what the budget cannot cover", async () => {
     const r = await resolveCustomer({
+      conn: testApiConn(ORG),
       actor: { orgId: ORG, userId: USER, actorType: "user" },
       email: "anna@northwind.test",
       requestBudget: 3,

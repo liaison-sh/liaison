@@ -11,7 +11,8 @@
 //   connection_credentials     POST  /api/connections/:app/:conn/credentials (mode org)
 //   oauth_client               PUT   /api/connections/:app/:conn/oauth-client
 //   google_integration_client  PATCH /api/settings/integrations/google
-//   api_connector_credentials  POST  /api/connections/api-connector/api/credentials
+//   (legacy) api_connector_credentials: read as connection_credentials of the
+//                              org's API connection (connections/api/declarations.ts)
 //   api_key                    tickets:apiKeys.create, run by the person
 //   oauth_connect              no secret typed: the card starts the provider's
 //                              consent (POST /api/secret-requests/:id/authorize)
@@ -24,7 +25,7 @@
 import { z } from "zod"
 import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { connectionAdminScope } from "~/modules/apps/connections/admin-scope"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/modules/apps/connections/api/store"
+import { apiConnectionsOf, apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { MULTI_INSTANCE_IDENTIFIER_RE } from "~/modules/apps/connections/service"
 import { hasScope } from "~/modules/permissions/permissions"
 import { BYOK_PROVIDER_NAMES, BYOK_PROVIDERS, type ByokProvider } from "~/modules/settings/byok"
@@ -35,6 +36,11 @@ export const SECRET_REQUEST_KIND_VALUES = [
   "oauth_client",
   "google_integration_client",
   "oauth_connect",
+  /**
+   * Legacy name of `connection_credentials` for an API connection (a request
+   * filed before it was generic, or a call that still uses it): parsed into a
+   * `connection_credentials` target of the org's API connection, never kept.
+   */
   "api_connector_credentials",
   "api_key",
 ] as const
@@ -59,10 +65,10 @@ export type SecretTarget =
       /** The address being connected, when known (Google Drive: decides its mode). */
       identifier?: string
     }
-  | { kind: "api_connector_credentials"; identifier: string }
   | { kind: "api_key"; label: string; allowedOrigins?: string[] }
 
 export type SecretKind = SecretTarget["kind"]
+type RequestKind = (typeof SECRET_REQUEST_KIND_VALUES)[number]
 
 /** Whose account an `oauth_connect` card connects: the person's own, or the organization's. */
 export const CONNECT_MODES = ["personal", "org"] as const
@@ -106,7 +112,7 @@ export const requestSecretParams = z
     kind: z
       .enum(SECRET_REQUEST_KIND_VALUES)
       .describe(
-        "byok: a model provider key. connection_credentials: an app connection's login. oauth_client: an app connection's OAuth client. google_integration_client: the Google OAuth client Gmail and Google Calendar connect with. oauth_connect: the person signs in at the provider (Google, Shopify) to connect an OAuth connection. api_connector_credentials: an API connector's credentials. api_key: a new Liaison API key the person creates and copies.",
+        "byok: a model provider key. connection_credentials: an app connection's login (an API connection's too: its app, connection and the adapter's identifier). oauth_client: an app connection's OAuth client. google_integration_client: the Google OAuth client Gmail and Google Calendar connect with. oauth_connect: the person signs in at the provider (Google, Shopify) to connect an OAuth connection. api_connector_credentials: the old name of connection_credentials for an API connection (identifier only). api_key: a new Liaison API key the person creates and copies.",
       ),
     target: z
       .object({
@@ -138,7 +144,7 @@ export const requestSecretParams = z
           )
           .optional()
           .describe(
-            "api_connector_credentials: the adapter's identifier. connection_credentials: which account (a mailbox address, or the slug of a multi-account connection), as a config tool's pending item names it. oauth_connect: the address being connected, when known (Google Drive: the email you passed kernel__google_setup).",
+            "connection_credentials: which account (a mailbox address, the slug of a multi-account connection, or an API connection's adapter identifier), as a config tool's pending item names it. oauth_connect: the address being connected, when known (Google Drive: the email you passed kernel__google_setup).",
           ),
         label: z
           .string()
@@ -174,7 +180,7 @@ export const requestSecretParams = z
 export type RequestSecretParams = z.infer<typeof requestSecretParams>
 
 /** Which target fields each kind takes, and which of them it requires. */
-const KIND_FIELDS: Record<SecretKind, { required: string[]; optional: string[] }> = {
+const KIND_FIELDS: Record<RequestKind, { required: string[]; optional: string[] }> = {
   byok: { required: ["provider"], optional: [] },
   connection_credentials: { required: ["app", "connection"], optional: ["identifier", "mode"] },
   oauth_client: { required: ["app", "connection"], optional: [] },
@@ -238,9 +244,12 @@ export function secretRequestForPending(
   item: PendingSecretItem,
 ): RequestSecretParams | null {
   if (item.kind !== "credentials" || !item.connection) return null
-  if (item.app === API_CONNECTOR_APP) {
+  if (apiConnFor(orgId, item.app)?.connection === item.connection) {
     return item.identifier
-      ? { kind: "api_connector_credentials", target: { identifier: item.identifier } }
+      ? {
+          kind: "connection_credentials",
+          target: { app: item.app, connection: item.connection, identifier: item.identifier },
+        }
       : null
   }
   if (
@@ -272,8 +281,25 @@ function oauthClientStep(app: string, connection: string): string {
     : " (when the connection has no OAuth client yet, ask for it first with kind oauth_client)"
 }
 
-/** The tool's params as one kind's target, or what is wrong with them, in words. */
-export function parseSecretTarget(params: RequestSecretParams): ParsedTarget {
+/**
+ * The org's API connection a legacy `api_connector_credentials` request is
+ * for: the only app of the org that declares one. Null when there is none, or
+ * several (the request must then name its app with connection_credentials).
+ */
+function legacyApiConnection(
+  orgId: string | undefined,
+): { app: string; connection: string } | null {
+  if (!orgId) return null
+  const all = apiConnectionsOf(orgId)
+  const only = all.length === 1 ? all[0] : undefined
+  return only ? { app: only.app, connection: only.connection } : null
+}
+
+/**
+ * The tool's params as one kind's target, or what is wrong with them, in words.
+ * `orgId` resolves the legacy API kind to the org's API connection.
+ */
+export function parseSecretTarget(params: RequestSecretParams, orgId?: string): ParsedTarget {
   const t = params.target
   const fields = KIND_FIELDS[params.kind]
   const given = Object.entries(t)
@@ -319,11 +345,20 @@ export function parseSecretTarget(params: RequestSecretParams): ParsedTarget {
           ...(t.identifier ? { identifier: t.identifier } : {}),
         },
       }
-    case "api_connector_credentials":
+    case "api_connector_credentials": {
+      const api = legacyApiConnection(orgId)
+      if (!api) {
+        return {
+          ok: false,
+          error:
+            "Ask with kind connection_credentials and the API connection's app, connection and identifier.",
+        }
+      }
       return {
         ok: true,
-        target: { kind: "api_connector_credentials", identifier: t.identifier as string },
+        target: { kind: "connection_credentials", ...api, identifier: t.identifier as string },
       }
+    }
     case "api_key":
       return {
         ok: true,
@@ -345,10 +380,10 @@ export function targetFields(target: SecretTarget): Record<string, unknown> {
 }
 
 /** The row back as a target. Null for a row whose stored target no longer parses. */
-export function targetFromRow(kind: string, stored: unknown): SecretTarget | null {
+export function targetFromRow(kind: string, stored: unknown, orgId: string): SecretTarget | null {
   const parsed = requestSecretParams.safeParse({ kind, target: stored ?? {} })
   if (!parsed.success) return null
-  const target = parseSecretTarget(parsed.data)
+  const target = parseSecretTarget(parsed.data, orgId)
   return target.ok ? target.target : null
 }
 
@@ -400,8 +435,6 @@ export function targetScope(orgId: string, target: SecretTarget): string {
       return target.mode === "personal"
         ? "kernel:threads:read"
         : connectionAdminScope(orgId, target.app, target.connection)
-    case "api_connector_credentials":
-      return connectionAdminScope(orgId, API_CONNECTOR_APP, API_CONNECTOR_CONNECTION)
     case "api_key":
       return API_KEY_ADMIN_SCOPE
   }
@@ -452,8 +485,6 @@ export function describeTarget(
       return "Google integration client"
     case "oauth_connect":
       return `${target.app} ${target.connection} connection (${target.mode === "org" ? "shared with the organization" : "personal"})`
-    case "api_connector_credentials":
-      return `${fence(target.identifier)} API connector credentials`
     case "api_key":
       return `API key ${fence(target.label)}`
   }
@@ -472,7 +503,9 @@ export function declaredConnections(
   const wanted = kind === "connection_credentials" ? "credentials" : "oauth2"
   const out: string[] = []
   for (const [[org, app, connection], config] of connectionConfigRegistry.entriesOf(orgId)) {
-    if (org !== orgId || app === API_CONNECTOR_APP || config.type !== wanted) continue
+    if (org !== orgId || config.type !== wanted) continue
+    // An API connection's accounts are named by its adapters (the caller lists them).
+    if (apiConnFor(orgId, app)?.connection === connection) continue
     if (!canSeeApp(app)) continue
     // A Google connection's client is the integration client, never its own.
     if (kind === "oauth_client" && usesGoogleIntegrationClient(app, connection)) continue
@@ -490,8 +523,8 @@ export function declaredConnections(
 /**
  * Whether the target exists and takes this kind of secret, checked against
  * the org's live registries. An error names the problem in words the agent can
- * act on. Adapter existence (api_connector_credentials) is checked by the
- * caller, which owns that read.
+ * act on. Adapter existence (an API connection's identifier) is checked by
+ * the caller, which owns that read.
  */
 export function checkTargetRegistered(
   orgId: string,
@@ -502,13 +535,18 @@ export function checkTargetRegistered(
   switch (target.kind) {
     case "byok":
     case "google_integration_client":
-    case "api_connector_credentials":
       return null
     case "connection_credentials":
     case "oauth_client":
     case "oauth_connect": {
-      if (target.app === API_CONNECTOR_APP) {
-        return "API connector credentials are asked with kind api_connector_credentials and the adapter's identifier."
+      const api = apiConnFor(orgId, target.app)
+      if (api && api.connection === target.connection) {
+        if (target.kind !== "connection_credentials") {
+          return `The "${target.connection}" connection of "${target.app}" is an API connection: ask for its credentials with kind connection_credentials and the adapter's identifier.`
+        }
+        return target.identifier
+          ? null
+          : `The "${target.connection}" connection of "${target.app}" is an API connection: pass identifier, the adapter's slug.`
       }
       const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
       if (!config) {

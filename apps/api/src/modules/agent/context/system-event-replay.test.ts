@@ -195,6 +195,18 @@ describe("a saved credential is not a working connection", () => {
     const line = saved("api_connector_credentials", { identifier: "jira" })
     expect(line).toContain("connector_adapter_test")
     expect(line).toContain("never call it connected or live")
+    // The generic kind: the saved event says it is an API connection's (announce.ts).
+    const generic = systemEventLine({
+      content: "jira credentials saved",
+      metadata: {
+        type: "secret-request-result",
+        kind: "connection_credentials",
+        target: { app: "api-connector", connection: "api", identifier: "jira" },
+        apiConnection: true,
+        saved: true,
+      },
+    })
+    expect(generic).toContain("connector_adapter_test")
   })
 
   it("a model key needs no such warning", () => {
@@ -227,6 +239,31 @@ describe("a Drive pick made from the agent's picker card", () => {
   it("a line without items stays out", () => {
     expect(
       systemEventLine({ content: "x", metadata: { type: "drive-picker-result", items: [] } }),
+    ).toBeNull()
+  })
+})
+
+describe("a page result posted in the conversation the page came from", () => {
+  it("reaches the agent as an event, the app's words and data fenced", () => {
+    const line = systemEventLine({
+      content: "Picked 2 items in Google Drive: Plan, Leads.",
+      metadata: {
+        type: "app-page-result",
+        app: "google-drive",
+        page: "picker",
+        summary: "Picked 2 items in Google Drive: Plan, Leads.",
+        data: { items: [{ id: "doc00001", name: "Plan" }] },
+      },
+    })
+    expect(line).toContain(`google-drive app's "picker" page`)
+    expect(line).toContain("<external-content")
+    expect(line).toContain('"id":"doc00001"')
+    expect(line).toContain("carry on with it now")
+  })
+
+  it("a line without its app or summary stays out", () => {
+    expect(
+      systemEventLine({ content: "x", metadata: { type: "app-page-result", app: "a" } }),
     ).toBeNull()
   })
 })

@@ -23,7 +23,10 @@ import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { errorHandler } from "~/middleware/error-handler"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { apiConnectorRoutes } from "~/modules/apps/connections/api/routes.test-helpers"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
@@ -117,8 +120,8 @@ beforeEach(async () => {
       headers: { "content-type": "application/json" },
     })
   }) as typeof fetch)
-  await invalidateConnectionCaches(DEMO_ORG, DEMO_API_CONNECTOR_IDENTIFIER)
-  await invalidateConnectionCaches(NORMAL_ORG, DEMO_API_CONNECTOR_IDENTIFIER)
+  await invalidateConnectionCaches(testApiConn(DEMO_ORG), DEMO_API_CONNECTOR_IDENTIFIER)
+  await invalidateConnectionCaches(testApiConn(NORMAL_ORG), DEMO_API_CONNECTOR_IDENTIFIER)
 })
 
 afterEach(() => {
@@ -134,7 +137,7 @@ describe("demo org: the seeded API connection", () => {
       extractRows<{ adapters: number; accounts: number }>(
         await tx.execute(drizzleSql`
           SELECT
-            (SELECT count(*)::int FROM app_api_connector.adapters WHERE org_id = ${DEMO_ORG}::uuid) AS adapters,
+            (SELECT count(*)::int FROM kernel.api_adapters WHERE org_id = ${DEMO_ORG}::uuid) AS adapters,
             (SELECT count(*)::int FROM kernel.connected_accounts
                WHERE org_id = ${DEMO_ORG}::uuid AND app_name = 'api-connector') AS accounts`),
       ),
@@ -211,7 +214,7 @@ describe("demo org: the fixture CRM keeps what the agent writes", () => {
     const operation = adapter.operations.find((o) => o.name === "create_contact")
     if (!operation) throw new Error("fixture adapter has no create_contact")
     const res = await maybeDemoApiConnectorResponse({
-      orgId,
+      ...testApiConn(orgId),
       identifier: DEMO_API_CONNECTOR_IDENTIFIER,
       adapter,
       operation,
@@ -300,7 +303,7 @@ describe("demo org: the fixture CRM keeps what the agent writes", () => {
 describe("normal org: never intercepted", () => {
   it("sends the same adapter's request out, not to the fixture", async () => {
     const adapter = loadFixtureCrmAdapter({ baseUrl: DEMO_API_CONNECTOR_BASE_URL })
-    await upsertAdapterRow(NORMAL_ORG, DEMO_API_CONNECTOR_IDENTIFIER, adapter, USER)
+    await upsertAdapterRow(testApiConn(NORMAL_ORG), DEMO_API_CONNECTOR_IDENTIFIER, adapter, USER)
     await withPrivilegedDb(NORMAL_ORG, "test-normal-org-credentials", (tx) =>
       createCredentialConnection(tx, NORMAL_ORG, USER, "api-connector", "api", {
         identifier: DEMO_API_CONNECTOR_IDENTIFIER,
@@ -343,9 +346,10 @@ describe("demo org: an oauth2 connection written around the routes (P2-SK4)", ()
     })
     if (!r.ok) throw new Error(JSON.stringify(r.issues))
     await db.execute(drizzleSql`
-      INSERT INTO app_api_connector.adapters (org_id, identifier, adapter, adapter_version)
-      VALUES (${DEMO_ORG}::uuid, 'erp', ${JSON.stringify(r.adapter)}::jsonb, '1')
-      ON CONFLICT (org_id, identifier) DO UPDATE SET adapter = EXCLUDED.adapter`)
+      INSERT INTO kernel.api_adapters
+        (org_id, app_name, connection_name, identifier, adapter, adapter_version)
+      VALUES (${DEMO_ORG}::uuid, 'api-connector', 'api', 'erp', ${JSON.stringify(r.adapter)}::jsonb, '1')
+      ON CONFLICT (org_id, app_name, connection_name, identifier) DO UPDATE SET adapter = EXCLUDED.adapter`)
     await withPrivilegedDb(DEMO_ORG, "test-demo-oauth-credentials", (tx) =>
       tx.insert(connectedAccounts).values({
         orgId: DEMO_ORG,
@@ -365,7 +369,7 @@ describe("demo org: an oauth2 connection written around the routes (P2-SK4)", ()
         ),
       }),
     )
-    await invalidateConnectionCaches(DEMO_ORG, "erp")
+    await invalidateConnectionCaches(testApiConn(DEMO_ORG), "erp")
     const res = await makeApp(DEMO_ORG).request("/api/api-connector/adapters/erp/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -384,7 +388,7 @@ describe("demo org: connector changes refused (C8)", () => {
     const count = async () =>
       extractRows<{ adapters: number; accounts: number }>(
         await db.execute(drizzleSql`SELECT
-          (SELECT count(*)::int FROM app_api_connector.adapters WHERE org_id = ${DEMO_ORG}::uuid) AS adapters,
+          (SELECT count(*)::int FROM kernel.api_adapters WHERE org_id = ${DEMO_ORG}::uuid) AS adapters,
           (SELECT count(*)::int FROM kernel.connected_accounts WHERE org_id = ${DEMO_ORG}::uuid) AS accounts`),
       )[0]
     const before = await count()

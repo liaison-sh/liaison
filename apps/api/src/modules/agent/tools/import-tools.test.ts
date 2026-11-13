@@ -19,7 +19,10 @@ import { registerImportTools } from "~/modules/agent/tools/import-tools"
 import { decideApproval } from "~/modules/approvals/decide"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import * as catalogSources from "~/modules/apps/catalog-sources"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -143,6 +146,9 @@ beforeAll(async () => {
   adminId = a.userId
   admin = a.actor
   threadId = await minimal.thread(orgId, adminId)
+  // API transforms pull through an app that declares an import source.
+  await ensureAppsForOrg(orgId, {})
+  await registerApiConnectorApp(orgId)
   registerImportTools(orgId)
   registerImportJobWorker()
   // This file's own files_select policy (thread parents), whatever ran before.
@@ -510,7 +516,12 @@ describe("import tools: what an API import's approval binds", () => {
       if (!r.ok) throw new Error(JSON.stringify(r.issues))
       return r.adapter
     }
-    await upsertAdapterRow(orgId, identifier, adapterOf("https://jira.example.com"), adminId)
+    await upsertAdapterRow(
+      testApiConn(orgId),
+      identifier,
+      adapterOf("https://jira.example.com"),
+      adminId,
+    )
     const saveCreds = (token: string) =>
       withPrivilegedDb(orgId, "t", (tx) =>
         createCredentialConnection(tx, orgId, adminId, "api-connector", "api", {
@@ -528,7 +539,12 @@ describe("import tools: what an API import's approval binds", () => {
     const first = await sourceBindingOf(orgId, adminId, source)
     expect(await sourceBindingOf(orgId, adminId, source)).toBe(first)
     // The adapter now points somewhere else.
-    await upsertAdapterRow(orgId, identifier, adapterOf("https://jira-other.example.com"), adminId)
+    await upsertAdapterRow(
+      testApiConn(orgId),
+      identifier,
+      adapterOf("https://jira-other.example.com"),
+      adminId,
+    )
     const second = await sourceBindingOf(orgId, adminId, source)
     expect(second).not.toBe(first)
     // New credentials are saved.
@@ -839,7 +855,7 @@ describe("import tools: the site a Jira save names is the connection's", () => {
       id: identifier,
     })
     if (!r.ok) throw new Error(JSON.stringify(r.issues))
-    await upsertAdapterRow(orgId, identifier, r.adapter, adminId)
+    await upsertAdapterRow(testApiConn(orgId), identifier, r.adapter, adminId)
 
     const other = await call("import_transform_save", {
       name: `jira-${crypto.randomUUID().slice(0, 6)}`,

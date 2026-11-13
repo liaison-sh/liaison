@@ -90,7 +90,7 @@ import {
 import { projectBulkToolSchemas } from "~/modules/apps/bulk-field-schemas"
 import { manifestFileParentOf } from "~/modules/apps/catalog-derivations"
 import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/authoring-tools"
-import { apiDeclarationOf } from "~/modules/apps/connections/api/bridge"
+import { apiConnectionOf } from "~/modules/apps/connections/api/declarations"
 import { validateAppDescriptor, validateAppManifest } from "~/modules/apps/contract"
 import { CORE_EXPORT_HANDLERS } from "~/modules/apps/core/exports"
 // --- DDL helpers ---
@@ -4534,8 +4534,9 @@ async function registerSingleApp(
       if (typeof registerHostTools === "function") registerHostTools(orgId)
       // An app that declares a platform-held API connection gets the platform's
       // adapter save and restore (decided by the connection's admin scope).
-      if (apiDeclarationOf(desc as AppManifestForBridge, desc.name)) {
-        registerAdapterAuthoringTools(orgId)
+      const apiConnection = apiConnectionOf(desc as AppManifestForBridge)
+      if (apiConnection) {
+        registerAdapterAuthoringTools({ orgId, app: desc.name, ...apiConnection })
       }
 
       registeredApps.add(registrationKey)

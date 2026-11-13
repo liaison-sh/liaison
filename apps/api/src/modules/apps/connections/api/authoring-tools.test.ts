@@ -19,7 +19,10 @@ import {
   resetAppRegistries,
   toolRegistry,
 } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -161,7 +164,7 @@ async function approve(id: string, userId = APPROVER): Promise<void> {
 
 async function updatedBy(identifier: string): Promise<string | null> {
   const [row] = await sql<Array<{ updated_by: string | null }>>`
-    SELECT updated_by FROM app_api_connector.adapters
+    SELECT updated_by FROM kernel.api_adapters
     WHERE org_id = ${ORG} AND identifier = ${identifier}`
   return row?.updated_by ?? null
 }
@@ -180,8 +183,8 @@ async function seed(identifier: string, doc = crm()): Promise<void> {
   const { validateAdapterDocument } = await import("./adapter-policy")
   const parsed = validateAdapterDocument(doc)
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues))
-  await upsertAdapterRow(ORG, identifier, parsed.adapter, REQUESTER)
-  await invalidateConnectionCaches(ORG, identifier)
+  await upsertAdapterRow(testApiConn(ORG), identifier, parsed.adapter, REQUESTER)
+  await invalidateConnectionCaches(testApiConn(ORG), identifier)
 }
 
 beforeAll(async () => {
@@ -312,21 +315,21 @@ describe("connector_adapter_save", () => {
     expect(res.error?.message).toContain("baseUrl")
     expect(res.blocked).toBeUndefined()
     expect(await pendingCount()).toBe(before)
-    expect(await getAdapterRow(ORG, "broken")).toBeNull()
+    expect(await getAdapterRow(testApiConn(ORG), "broken")).toBeNull()
   })
 
   it("an agent's save parks an approval naming what is saved; the approver is recorded as saver", async () => {
     const res = await run("connector_adapter_save", { identifier: "agent-crm", adapter: crm() })
     const id = res.blocked?.approvalRequestId ?? ""
     expect(id).toMatch(/^[0-9a-f-]{36}$/)
-    expect(await getAdapterRow(ORG, "agent-crm")).toBeNull()
+    expect(await getAdapterRow(testApiConn(ORG), "agent-crm")).toBeNull()
     const text = await card(id)
     expect(text).toContain("agent-crm")
     expect(text).toContain("https://crm.example.com")
     expect(text).toContain("bearer")
     expect(text).toContain("list_companies")
     await approve(id)
-    expect((await getAdapterRow(ORG, "agent-crm"))?.adapter.name).toBe("Example CRM")
+    expect((await getAdapterRow(testApiConn(ORG), "agent-crm"))?.adapter.name).toBe("Example CRM")
     expect(await updatedBy("agent-crm")).toBe(APPROVER)
   })
 
@@ -348,7 +351,7 @@ describe("connector_adapter_save", () => {
       { direct: true },
     )
     expect(res.error).toBeUndefined()
-    expect((await getAdapterRow(ORG, "text-crm"))?.adapter.id).toBe("example-crm")
+    expect((await getAdapterRow(testApiConn(ORG), "text-crm"))?.adapter.id).toBe("example-crm")
   })
 
   it("a holder of api-connector:approve alone cannot decide a save", async () => {
@@ -360,7 +363,7 @@ describe("connector_adapter_save", () => {
     const [row] = await sql<Array<{ status: string }>>`
       SELECT status FROM kernel.approval_requests WHERE id = ${id}`
     expect(row?.status).toBe("pending")
-    expect(await getAdapterRow(ORG, "decider-crm")).toBeNull()
+    expect(await getAdapterRow(testApiConn(ORG), "decider-crm")).toBeNull()
   })
 
   it("the handler itself refuses an approval decided without api-connector:admin", async () => {
@@ -372,7 +375,7 @@ describe("connector_adapter_save", () => {
       { orgId: ORG, userId: REQUESTER, approverUserId: DECIDER_ONLY },
     )) as Envelope
     expect(out.error?.code).toBe("forbidden")
-    expect(await getAdapterRow(ORG, "rechecked")).toBeNull()
+    expect(await getAdapterRow(testApiConn(ORG), "rechecked")).toBeNull()
   })
 
   it("a target change with stored credentials is refused without the confirmation, naming both targets", async () => {
@@ -387,7 +390,7 @@ describe("connector_adapter_save", () => {
     expect(res.error?.message).toContain("https://crm.example.com")
     expect(res.error?.message).toContain("https://other.example.com")
     expect(await pendingCount()).toBe(before)
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "moving")).not.toBeNull()
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "moving")).not.toBeNull()
   })
 
   it("re-point, confirm, approve: the credentials are gone (A4)", async () => {
@@ -402,8 +405,10 @@ describe("connector_adapter_save", () => {
     expect(id).not.toBe("")
     expect(await card(id)).toContain("credentials")
     await approve(id)
-    expect((await getAdapterRow(ORG, "repoint"))?.adapter.baseUrl).toBe("https://other.example.com")
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "repoint")).toBeNull()
+    expect((await getAdapterRow(testApiConn(ORG), "repoint"))?.adapter.baseUrl).toBe(
+      "https://other.example.com",
+    )
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "repoint")).toBeNull()
   })
 
   it("an unchanged target keeps the credentials and needs no confirmation", async () => {
@@ -415,7 +420,7 @@ describe("connector_adapter_save", () => {
       { direct: true },
     )
     expect(res.error).toBeUndefined()
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "same")).not.toBeNull()
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "same")).not.toBeNull()
   })
 
   it("refuses at execute when the stored document changed after the approval was asked", async () => {
@@ -428,7 +433,7 @@ describe("connector_adapter_save", () => {
     expect(id).not.toBe("")
     await seed("raced", crm({ version: "1b" }))
     await approve(id).catch(() => undefined)
-    expect((await getAdapterRow(ORG, "raced"))?.adapter.version).toBe("1b")
+    expect((await getAdapterRow(testApiConn(ORG), "raced"))?.adapter.version).toBe("1b")
   })
 
   it("refuses dropping existing operations unless allowRemovingOperations names them", async () => {
@@ -447,7 +452,7 @@ describe("connector_adapter_save", () => {
       { direct: true },
     )
     expect(allowed.error).toBeUndefined()
-    expect((await getAdapterRow(ORG, "shrinking"))?.adapter.operations).toHaveLength(1)
+    expect((await getAdapterRow(testApiConn(ORG), "shrinking"))?.adapter.operations).toHaveLength(1)
   })
 
   it("a demo org is refused", async () => {
@@ -465,7 +470,7 @@ describe("connector_adapter_save", () => {
       )
       expect(JSON.stringify(res)).toContain("demo")
       const [row] = await sql<Array<{ n: number }>>`
-        SELECT count(*)::int AS n FROM app_api_connector.adapters WHERE org_id = ${demoOrg}`
+        SELECT count(*)::int AS n FROM kernel.api_adapters WHERE org_id = ${demoOrg}`
       expect(Number(row?.n ?? 0)).toBe(0)
     } finally {
       DemoModeTestAccess.set(null)
@@ -590,8 +595,8 @@ describe("versions and restore", () => {
     expect(id).not.toBe("")
     expect(await card(id)).toContain("Restore")
     await approve(id)
-    expect((await getAdapterRow(ORG, "history"))?.adapter.version).toBe("1")
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "history")).toBeNull()
+    expect((await getAdapterRow(testApiConn(ORG), "history"))?.adapter.version).toBe("1")
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "history")).toBeNull()
   })
 
   it("refuses an unknown version", async () => {
@@ -650,15 +655,17 @@ describe("fail-closed pins and an honest card (skeptic round 1)", () => {
       { orgId: ORG, userId: REQUESTER, approverUserId: APPROVER },
     )) as Envelope
     expect(out.error?.code).toBe("not_pinned")
-    expect((await getAdapterRow(ORG, "ref-step"))?.adapter.baseUrl).toBe("https://crm.example.com")
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "ref-step")).not.toBeNull()
+    expect((await getAdapterRow(testApiConn(ORG), "ref-step"))?.adapter.baseUrl).toBe(
+      "https://crm.example.com",
+    )
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "ref-step")).not.toBeNull()
   })
 
   it("pins that disagree with a fresh plan refuse the save, credentials kept", async () => {
     await seed("spoofed")
     await storeToken("spoofed")
     const moved = crm({ version: "2", baseUrl: "https://other.example.com" })
-    const plan = await planAdapterSave(ORG, "spoofed", moved)
+    const plan = await planAdapterSave(testApiConn(ORG), "spoofed", moved)
     if (!plan.ok) throw new Error("plan failed")
     const handler = await hostHandler("connector_adapter_save")
     const out = (await handler(
@@ -674,7 +681,7 @@ describe("fail-closed pins and an honest card (skeptic round 1)", () => {
       { orgId: ORG, userId: REQUESTER, approverUserId: APPROVER },
     )) as Envelope
     expect(out.error?.code).toBe("adapter_changed")
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "spoofed")).not.toBeNull()
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "spoofed")).not.toBeNull()
   })
 
   it("credentials entered after the save was staged are never wiped by it", async () => {
@@ -689,10 +696,10 @@ describe("fail-closed pins and an honest card (skeptic round 1)", () => {
     expect(await card(id)).not.toContain("Deletes the stored credentials")
     await storeToken("late-creds")
     await approve(id).catch(() => undefined)
-    expect((await getAdapterRow(ORG, "late-creds"))?.adapter.baseUrl).toBe(
+    expect((await getAdapterRow(testApiConn(ORG), "late-creds"))?.adapter.baseUrl).toBe(
       "https://crm.example.com",
     )
-    expect(await resolveConnectionCredentials(ORG, REQUESTER, "late-creds")).not.toBeNull()
+    expect(await resolveConnectionCredentials(testApiConn(ORG), "late-creds")).not.toBeNull()
   })
 
   it("the card shows each operation's method and path, and every read-only POST on its own line", async () => {

@@ -1,0 +1,5 @@
+Any app with one api-block connection gets the platform's API connection; adapters keyed by app, connection, slug in kernel.api_adapters -> apps/api/src/modules/apps/connections/api/declarations.ts:1 ; apps/api/src/modules/apps/connections/api/store.ts:30 ; apps/api/src/db/migrations/0300_api_adapters.sql:1
+customerContext / importSource / provisionKey contract -> apps/api/src/modules/apps/manifest-schema.ts:393 ; apps/api/src/modules/agent/context/customer-context.ts:60 ; apps/api/src/modules/agent/tools/import-tools.ts:443 ; apps/api/src/modules/provisioning/config-export.ts:136
+Credentials card kind connection_credentials; api_connector_credentials still read -> apps/api/src/modules/secret-requests/targets.ts:285
+Former app tables copied at every boot -> apps/api/src/modules/apps/moved-apps.ts:1
+CLI test --app when two apps hold the slug -> apps/api/src/cli/api-connector/run.ts:99

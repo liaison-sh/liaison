@@ -31,6 +31,7 @@ import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { isAppOriginRequest, success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { type ApiConn, apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import { ConnectionTurnedOffError } from "~/modules/apps/connections/oauth-client-config"
 import {
@@ -141,6 +142,48 @@ function connectFields(authorizationUrl: string | undefined): SecretFormField[] 
 /** Secret-bearing auth fields of an API connector adapter; the rest are typed in plain. */
 const API_CONNECTOR_PLAIN_FIELDS = new Set(["username", "clientId"])
 
+/** The card form of an API connection's credentials: the fields its adapter's auth needs. */
+async function apiCredentialsForm(
+  api: ApiConn,
+  app: string,
+  connection: string,
+  identifier: string,
+): Promise<{
+  fields: SecretFormField[]
+  destination: SecretDestination[]
+  fixed?: Record<string, string>
+}> {
+  const where = [
+    { name: "app", value: app },
+    { name: "connection", value: connection },
+    { name: "identifier", value: identifier },
+  ]
+  const row = await getAdapterRow(api, identifier)
+  if (!row) return { fields: [], destination: where }
+  const auth = row.adapter.auth
+  // The stored adapter was validated on save; an unparsable URL still
+  // shows the card, naming the destination as stored, never a 500.
+  let origin = row.adapter.baseUrl
+  try {
+    origin = new URL(row.adapter.baseUrl).origin
+  } catch {
+    // keep the raw value
+  }
+  return {
+    fields: AUTH_CREDENTIAL_FIELDS[auth.type].map((name) => ({
+      name,
+      secret: !API_CONNECTOR_PLAIN_FIELDS.has(name),
+      required: true,
+    })),
+    destination: [
+      ...where,
+      { name: "baseUrl", value: origin },
+      { name: "authType", value: auth.type },
+    ],
+    fixed: { identifier },
+  }
+}
+
 async function formFor(
   orgId: string,
   target: SecretTarget,
@@ -175,6 +218,12 @@ async function formFor(
       }
     case "connection_credentials": {
       await ensureAppsForOrg(orgId)
+      // An API connection (any app's, declarations.ts): the fields its
+      // adapter's auth type needs, and where they go.
+      const api = apiConnFor(orgId, target.app)
+      if (api && api.connection === target.connection && target.identifier) {
+        return apiCredentialsForm(api, target.app, target.connection, target.identifier)
+      }
       const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
       // The account the request names is sent as it is: a multi-account
       // connection's slug, or the field a single-account one keys on.
@@ -221,33 +270,6 @@ async function formFor(
         ...(Object.keys(fixed).length > 0 ? { fixed } : {}),
       }
     }
-    case "api_connector_credentials": {
-      const row = await getAdapterRow(orgId, target.identifier)
-      if (!row)
-        return { fields: [], destination: [{ name: "identifier", value: target.identifier }] }
-      const auth = row.adapter.auth
-      // The stored adapter was validated on save; an unparsable URL still
-      // shows the card, naming the destination as stored, never a 500.
-      let origin = row.adapter.baseUrl
-      try {
-        origin = new URL(row.adapter.baseUrl).origin
-      } catch {
-        // keep the raw value
-      }
-      return {
-        fields: AUTH_CREDENTIAL_FIELDS[auth.type].map((name) => ({
-          name,
-          secret: !API_CONNECTOR_PLAIN_FIELDS.has(name),
-          required: true,
-        })),
-        destination: [
-          { name: "identifier", value: target.identifier },
-          { name: "baseUrl", value: origin },
-          { name: "authType", value: auth.type },
-        ],
-        fixed: { identifier: target.identifier },
-      }
-    }
     case "oauth_connect": {
       await ensureAppsForOrg(orgId)
       const config = connectionConfigRegistry.get([orgId, target.app, target.connection])
@@ -278,7 +300,7 @@ async function viewOf(c: Context<AppEnv>, row: SecretRequest): Promise<SecretReq
   const orgId = c.get("orgId")
   const userId = c.get("userId")
   const scopes = (c.get("scopes") as string[] | undefined) ?? []
-  const target = targetFromRow(row.kind, row.target)
+  const target = targetFromRow(row.kind, row.target, row.orgId)
   if (!target)
     throw new HTTPException(409, { message: "This request's target is no longer valid." })
   const status = effectiveStatus(row)
@@ -378,7 +400,7 @@ export const secretRequestRoutes = new Hono<AppEnv>()
       const body = c.req.valid("json")
       const orgId = c.get("orgId")
       const userId = c.get("userId")
-      const target = targetFromRow(row.kind, row.target)
+      const target = targetFromRow(row.kind, row.target, row.orgId)
       if (target?.kind !== "oauth_connect") {
         throw new HTTPException(400, { message: "This request is not a connect card." })
       }

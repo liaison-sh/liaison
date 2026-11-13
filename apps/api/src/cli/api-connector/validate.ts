@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs"
 import { parseAdapterDocument } from "~/modules/apps/connections/api/adapter-policy"
 
 export const API_CONNECTOR_USAGE = `usage: liaison api-connector validate <adapter file>
-       liaison api-connector test <identifier> <operation> [--param name=value ...] [--pages N | --all-pages] [--dry-run] [--org <slug>]`
+       liaison api-connector test <identifier> <operation> [--param name=value ...] [--pages N | --all-pages] [--dry-run] [--org <slug>] [--app <name>]`
 
 export interface CliRunResult {
   exitCode: number

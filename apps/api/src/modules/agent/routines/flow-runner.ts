@@ -91,6 +91,8 @@ export interface FlowResumePayload {
   stepId: string
   /** How many times the job found the record's lock held (runFlowResumeJob). */
   lockRetries?: number
+  /** How many times the wait fired early and re-armed (`resumeFlowWait`). */
+  rearms?: number
 }
 
 export interface FlowToolCall {
@@ -890,11 +892,12 @@ export async function resumeFlowWait(
     // Fired early: re-armed under its own id. The job running now holds the wait's id, and a
     // queue ignores an add whose id belongs to an active job, so reusing it would drop the arm.
     const enqueue = deps.enqueueResume ?? defaultEnqueueResume
+    const rearms = (payload.rearms ?? 0) + 1
     await enqueue(
-      { orgId, routineId, runId, stepId },
+      { orgId, routineId, runId, stepId, rearms },
       {
         delayMs: deadline.getTime() - now.getTime(),
-        jobId: flowWaitRearmJobId(runId, stepId, deadline),
+        jobId: flowWaitRearmJobId(runId, stepId, rearms),
       },
     )
     return { status: "waiting", runId }
@@ -922,9 +925,9 @@ export async function resumeFlowWait(
   })
 }
 
-/** An early-fired wait's re-arm: its own job id per deadline (`resumeFlowWait`). */
-export function flowWaitRearmJobId(runId: string, stepId: string, deadline: Date): string {
-  return `flowwait-rearm:${runId}:${stepId}:${deadline.getTime()}`
+/** An early-fired wait's nth re-arm: its own job id each time (`resumeFlowWait`). */
+export function flowWaitRearmJobId(runId: string, stepId: string, n: number): string {
+  return `flowwait-rearm:${runId}:${stepId}:${n}`
 }
 
 /** Takes a parked run (`from` → `running`); false when another resume or the sweep took it. */
@@ -1421,7 +1424,7 @@ export async function runFlowResumeJob(
   payload: Partial<FlowResumePayload>,
   deps: FlowDeps = {},
 ): Promise<RoutineTickResult> {
-  const { orgId, routineId, runId, stepId } = payload
+  const { orgId, routineId, runId, stepId, rearms } = payload
   if (!orgId || !routineId || !runId || !stepId) {
     log.warn({ payload }, "routine-flow-resume: missing ids")
     return { status: "no_run" }
@@ -1450,7 +1453,7 @@ export async function runFlowResumeJob(
     }
     const enqueue = deps.enqueueResume ?? defaultEnqueueResume
     await enqueue(
-      { orgId, routineId, runId, stepId, lockRetries: retries },
+      { orgId, routineId, runId, stepId, lockRetries: retries, ...(rearms ? { rearms } : {}) },
       { jobId: `flowwait-retry:${runId}:${stepId}:${retries}`, delayMs: 60_000 },
     )
     return { status: "lock_busy", runId }
@@ -1458,7 +1461,10 @@ export async function runFlowResumeJob(
   // A long agent step after the wait keeps the record's lock, as a tick keeps it.
   const stopHeartbeat = startRoutineLockHeartbeat(routineId, lockKey)
   try {
-    return await resumeFlowWait({ orgId, routineId, runId, stepId }, deps)
+    return await resumeFlowWait(
+      { orgId, routineId, runId, stepId, ...(rearms ? { rearms } : {}) },
+      deps,
+    )
   } finally {
     stopHeartbeat()
     await redis

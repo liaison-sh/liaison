@@ -14,11 +14,14 @@ import { createProject } from "~/apps/projects/service/create-project"
 import { createTask, updateTask } from "~/apps/projects/service/tasks"
 import { sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { enqueueAppJob, getJobQueue, registerJobWorker } from "~/infra/jobs/jobs"
 import { redis } from "~/lib/redis"
 import {
+  FLOW_RESUME_JOB,
   type FlowDeps,
   type FlowResumePayload,
   flowWaitJobId,
+  flowWaitRearmJobId,
   resumeFlowWait,
   runFlowResumeJob,
 } from "~/modules/agent/routines/flow-runner"
@@ -27,6 +30,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { seedContext } from "~/seed/context"
 import { seedRoutine } from "~/seed/factories/agent/routines"
 import * as minimal from "~/seed/tiers/minimal"
+import { waitFor } from "~/tests/helpers/wait-for"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 
 let ORG = ""
@@ -230,6 +234,35 @@ describe("routine flow waits", () => {
     expect(armed.map((a) => a.delayMs)).toEqual([3600_000])
     expect((await run(res.runId!)).status).toBe("waiting")
   })
+
+  it("on the real queue, an early job re-arms while it is itself the running job", async () => {
+    const taskId = await task("Early on the queue")
+    const res = await tick(taskId, T0)
+    const early = new Date("2026-11-13T09:00:00Z")
+    const handled: string[] = []
+    registerJobWorker("kernel", FLOW_RESUME_JOB, async (payload: FlowResumePayload) => {
+      // The default enqueue: the real kernel queue, while this job is active under the wait's id.
+      const out = await runFlowResumeJob(payload, { now: () => early })
+      handled.push(out.status)
+    })
+    const queue = getJobQueue("kernel", FLOW_RESUME_JOB)
+    await enqueueAppJob(
+      "kernel",
+      FLOW_RESUME_JOB,
+      { orgId: ORG, routineId, runId: res.runId!, stepId: "wait" },
+      { jobId: flowWaitJobId(routineId, taskId, "wait"), delay: 0 },
+    )
+    await waitFor(() => handled.length === 1, { label: "the early job ran", timeoutMs: 15_000 })
+    expect(handled).toEqual(["waiting"])
+    const delayed = (await queue.getJobs(["delayed"])).filter(
+      (j) => (j.data as FlowResumePayload).runId === res.runId,
+    )
+    expect(delayed.map((j) => j.opts.deduplication?.id)).toEqual([
+      flowWaitRearmJobId(res.runId!, "wait", 1),
+    ])
+    expect((delayed[0]!.data as FlowResumePayload).rearms).toBe(1)
+    for (const j of delayed) await j.remove()
+  }, 30_000)
 
   it("a second run for the same task supersedes the first", async () => {
     const taskId = await task("Twice")

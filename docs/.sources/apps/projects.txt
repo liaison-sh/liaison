@@ -230,3 +230,11 @@ remind-if-still waits two working days -> apps/api/src/apps/projects/app.manifes
 sla-to-reach three working days -> apps/api/src/apps/projects/app.manifest.json:2733
 notify-on-status -> apps/api/src/apps/projects/app.manifest.json:2782
 Flow actions run without an agent -> apps/api/src/modules/agent/routines/flow-runner.ts:148
+tasks_aggregate groups, measures, RLS -> apps/api/src/apps/projects/service/tasks-aggregate.ts:485
+tasks_aggregate tool params -> apps/api/src/apps/projects/app.manifest.json:1078
+SLA state from transitions and working time -> apps/api/src/apps/projects/service/tasks-aggregate.ts:432
+Row filter for tasks_byProject -> apps/api/src/apps/projects/service/tasks-aggregate.ts:386
+Read cap 5000 tasks -> apps/api/src/apps/projects/service/tasks-aggregate.ts:32
+Project overview spec runs -> apps/api/src/apps/projects/__tests__/tasks-aggregate.test.ts:404
+Backed table columns of a project -> apps/api/src/apps/projects/service/table-backing.ts:54
+Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/service.ts:1101

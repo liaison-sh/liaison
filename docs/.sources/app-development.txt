@@ -139,3 +139,6 @@ entities.<e>.routineFlow: filterEvents, uncoalescedEvents, updateTool/commentToo
 filter events and uncoalesced events read from the declaration -> apps/api/src/infra/jobs/event-routine-gate.ts:604 ; apps/api/src/infra/jobs/event-routine-subscriber.ts:427
 assign/set_status/set_field call updateTool, comment calls commentTool; notify others needs notifyScope; link tabType; {{task.url}} from urlPath -> apps/api/src/modules/agent/routines/flow-runner.ts:760-774 ; apps/api/src/modules/agent/routines/flow-runner.ts:560 ; apps/api/src/modules/agent/routines/flow-runner.ts:714 ; apps/api/src/modules/agent/routines/flow-runner.ts:494
 only a core app's declaration registers; no declaration = no flow record -> apps/api/src/modules/apps/runtime.ts:4119-4132 ; apps/api/src/modules/agent/routines/flow-records.ts:117
+pick params and tableBacking declaration -> apps/api/src/modules/apps/manifest-schema.ts:1343
+tableBacking parent is another entity -> apps/api/src/modules/apps/contract.ts:708
+tableBacking registered for core apps only -> apps/api/src/modules/apps/runtime.ts:4121

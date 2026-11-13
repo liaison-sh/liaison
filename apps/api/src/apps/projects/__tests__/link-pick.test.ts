@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto"
 import projectsManifest from "~/apps/projects/app.manifest.json"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
-import { pickDeclarationErrors } from "~/modules/apps/contract"
+import { pickDeclarationErrors, tableBackingDeclarationErrors } from "~/modules/apps/contract"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { searchLinkTargets } from "~/modules/dashboards/tables/link-search"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
@@ -159,6 +159,25 @@ describe("pick declarations", () => {
     expect(pickDeclarationErrors(app)).toEqual([
       'pick_tool_invalid: entities.a.pick.params: tool "find" takes no parameter "nope"',
       'pick_tool_invalid: entities.b.pick.params: "q" is the query parameter',
+    ])
+  })
+})
+
+describe("table backing declarations", () => {
+  it("the projects manifest's task backing names its parent entity", () => {
+    expect(tableBackingDeclarationErrors(projectsManifest)).toEqual([])
+  })
+
+  it("refuses a parent that is not another entity of the app", () => {
+    const app = {
+      entities: {
+        item: { tableBacking: { parent: "nope", provider: "p" } },
+        self: { tableBacking: { parent: "self", provider: "p" } },
+      },
+    }
+    expect(tableBackingDeclarationErrors(app)).toEqual([
+      'table_backing_invalid: entities.item.tableBacking.parent: "nope" is not another entity of this app',
+      'table_backing_invalid: entities.self.tableBacking.parent: "self" is not another entity of this app',
     ])
   })
 })

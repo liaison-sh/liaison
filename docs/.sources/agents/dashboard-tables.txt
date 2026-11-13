@@ -52,3 +52,7 @@ In a conversation, a restricted table is read only when everyone there can read 
 A later answer leaves out an earlier read of it once someone who cannot read it has joined -> apps/api/src/modules/agent/context/context.ts:2324 ; apps/api/src/modules/agent/scopes/room-resource-history.ts:27
 A tainted agent row write waits on a card naming the table and only the scopes some readers lack, decided by the table's deciders -> apps/api/src/modules/apps/execute-tool.ts:4245 ; apps/api/src/modules/apps/execute-tool.ts:5110 ; apps/api/src/modules/dashboards/tables/tools.ts:593
 A change applied after an approval records it -> apps/api/src/modules/dashboards/tables/tools.ts:583
+Backed table rows, overlay, writes, refusals -> apps/api/src/modules/dashboards/tables/service.ts:1101
+Table backing provider contract -> apps/api/src/modules/dashboards/tables/backing.ts:40
+Projects declares task table backing -> apps/api/src/apps/projects/app.manifest.json:448
+Projects pick with fixed kind -> apps/api/src/apps/projects/app.manifest.json:455

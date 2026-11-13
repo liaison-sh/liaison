@@ -1905,8 +1905,8 @@
       "schema": 189
     },
     "knowledge__source_link_create": {
-      "desc": 1134,
-      "schema": 222
+      "desc": 1351,
+      "schema": 238
     },
     "knowledge__synced_sources_archive": {
       "desc": 219,

@@ -5,6 +5,9 @@ import type { ApiClient } from "~/lib/api-client"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
 import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
 import { useDictation } from "~/modules/assist/useDictation"
+import { CellEditor } from "~/modules/dashboards/blocks/CellEditor"
+import { parseCellInput } from "~/modules/dashboards/blocks/table-cells"
+import type { TableColumn } from "~/modules/dashboards/dashboards-client"
 import { RichEditor, type RichEditorHandle } from "~/modules/editor"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { handleTaskEvent, type ProjectStatus, type Task } from "~/modules/projects/project-store"
@@ -19,6 +22,8 @@ interface NewTaskDialogProps {
   projectId: string
   statuses: ProjectStatus[]
   parentTaskId?: string | null
+  /** The project's task fields: the required ones are asked for here (the server requires them). */
+  fields?: TableColumn[]
 }
 
 export const NewTaskDialog: Component<NewTaskDialogProps> = (props) => {
@@ -30,12 +35,36 @@ export const NewTaskDialog: Component<NewTaskDialogProps> = (props) => {
   const [statusId, setStatusId] = createSignal<string | null>(null)
   const [submitting, setSubmitting] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  // The required fields' inputs, as their editors hold them (parsed on submit).
+  const [fieldInputs, setFieldInputs] = createSignal<Record<string, unknown>>({})
+  const requiredFields = () => (props.fields ?? []).filter((f) => f.required)
 
   const reset = () => {
     setTitle("")
     setDescription("")
     setStatusId(null)
     setError(null)
+    setFieldInputs({})
+  }
+
+  /** The required fields' values, or the first one missing or malformed (named in the error). */
+  const fieldValues = (): { ok: true; values: Record<string, unknown> } | { ok: false } => {
+    const values: Record<string, unknown> = {}
+    for (const f of requiredFields()) {
+      const parsed = parseCellInput(f, fieldInputs()[f.key])
+      if (!parsed.ok) {
+        setError(
+          `${f.label}: ${i18n.t(
+            parsed.reason === "number"
+              ? "projects.fields.numberError"
+              : "projects.fields.requiredError",
+          )}`,
+        )
+        return { ok: false }
+      }
+      values[f.key] = parsed.value
+    }
+    return { ok: true, values }
   }
 
   // Reset form state whenever the dialog transitions from closed → open so that
@@ -50,14 +79,17 @@ export const NewTaskDialog: Component<NewTaskDialogProps> = (props) => {
       setError("Title is required")
       return
     }
-    setSubmitting(true)
     setError(null)
+    const fields = fieldValues()
+    if (!fields.ok) return
+    setSubmitting(true)
     try {
       const created = await props.api.post<Task>(`/projects/${props.projectId}/tasks`, {
         title: t,
         description: description() || undefined,
         statusId: statusId() ?? undefined,
         parentTaskId: props.parentTaskId ?? undefined,
+        ...(requiredFields().length > 0 ? { fields: fields.values } : {}),
       })
       // Merge the created row (with its key) at once; the WS echo, before or
       // after, merges by id and never duplicates it.
@@ -127,6 +159,26 @@ export const NewTaskDialog: Component<NewTaskDialogProps> = (props) => {
               </select>
             </label>
           </Show>
+          <For each={requiredFields()}>
+            {(f) => (
+              <div
+                data-testid={`new-task-dialog.field-${f.key}`}
+                class="flex flex-col gap-1 text-[12px] text-text-secondary"
+              >
+                <span>
+                  {f.label}
+                  <span aria-hidden="true"> *</span>
+                </span>
+                <CellEditor
+                  column={f}
+                  value={fieldInputs()[f.key] ?? null}
+                  inline
+                  testid={`new-task-dialog.field-input-${f.key}`}
+                  onCommit={(v) => setFieldInputs((prev) => ({ ...prev, [f.key]: v }))}
+                />
+              </div>
+            )}
+          </For>
           <Show when={error()}>
             <p data-testid="new-task-dialog.error" class="text-[12px] text-warning">
               {error()}

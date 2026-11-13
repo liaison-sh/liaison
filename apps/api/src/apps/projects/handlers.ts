@@ -37,6 +37,12 @@ export interface ProjectsMethods {
   projects_instantiateTemplate: (paramsJson: string) => Promise<string>
   projects_addDependency: (paramsJson: string) => Promise<string>
   projects_attentionItems: (paramsJson: string) => Promise<string>
+  projects_taskTimeSet: (paramsJson: string) => Promise<string>
+  projects_taskTimeGet: (paramsJson: string) => Promise<string>
+  projects_taskTimeCorrect: (paramsJson: string) => Promise<string>
+  projects_timePlanSet: (paramsJson: string) => Promise<string>
+  projects_billingTermsSet: (paramsJson: string) => Promise<string>
+  projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -1146,4 +1152,29 @@ export async function webhookInfoHandler(
 /** Timeline rows for the kernel's activity read (activitySources), host-side. */
 export async function activityRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_activityRead(JSON.stringify(params ?? {})))
+}
+
+// Time and budgets: Took, the plan, billing terms and period timeboxes.
+export async function taskTimeSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeSet(JSON.stringify(params ?? {})))
+}
+
+export async function taskTimeGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeGet(JSON.stringify(params ?? {})))
+}
+
+export async function taskTimeCorrect(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeCorrect(JSON.stringify(params ?? {})))
+}
+
+export async function timePlanSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timePlanSet(JSON.stringify(params ?? {})))
+}
+
+export async function billingTermsSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_billingTermsSet(JSON.stringify(params ?? {})))
+}
+
+export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_periodTimeboxSet(JSON.stringify(params ?? {})))
 }

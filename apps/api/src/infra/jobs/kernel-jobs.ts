@@ -1117,6 +1117,12 @@ export async function registerKernelJobs(): Promise<void> {
     const { pruneAwayRanges } = await import("~/modules/users/away")
     log.info(await pruneAwayRanges(), "away_ranges_retention")
   })
+  // Projects: once a day the time and budgets org row is recomputed from the projects'
+  // switches, and time rows follow their task's project (apps/projects/service/reconcile-sweep.ts).
+  await registerScheduledJob("kernel", "reconcile-sweep", "13 * * * *", async () => {
+    const { runReconcileSweep } = await import("~/apps/projects/service/reconcile-sweep")
+    await runReconcileSweep()
+  })
   // Away days from each person's own calendar: recurring series kept to 60 days ahead, and
   // leave-looking events that waited behind the open questions asked about.
   await registerScheduledJob("kernel", "calendar-away-refresh", "47 4 * * *", async () => {

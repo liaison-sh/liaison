@@ -155,13 +155,34 @@ liaison projects attach-files --file <ndjson> --files-dir <dir> [--org <slug>] [
 
 Each file is matched to its task by `externalRef`, backdated, and kept under its original uploader. Nobody is notified. Every file path in the NDJSON is relative to `--files-dir` and may not leave it. A re-run skips files already attached. Add `--dry-run` to check the batch first. An unknown uploader email fails the batch unless you pass `--placeholder-unknown-users`, which creates a deactivated user for it. See the [CLI reference](../reference/cli.md#projects-attach-files).
 
+## Turn on time and budgets for a project
+
+Time and budgets is off on every project until you turn it on, one project at a time. Ask the agent ("turn on time and budgets for Atlas"), or pass `timeBudgets` when you create or edit a project through the API (`POST /api/projects`, `PATCH /api/projects/:projectId`). You need `projects:projects:write`, which the `lead` and `admin` roles hold. A sales pipeline cannot use it.
+
+- **What it adds.** A project that uses it can hold planned time (a timebox on a task, a period or the whole project), the time people say they spent (Took), a billing basis and its rate or fixed price, and dated hours.
+- **The time tools follow the projects.** While no project uses it, the time tools are not in any agent's tool list or a coding agent's MCP list. The first project turned on adds them from the next message; the last one turned off removes them again. Nobody turns this on for the whole organisation.
+- **Turning it off keeps everything.** Its rows stay, and nothing counts them until it is turned on again.
+- **Only a person turns it.** A routine, a sub-run or a job is refused.
+- **Tell your team first.** When the first project is turned on, the person who turned it and every admin read a notice: tell the team what is recorded and why before anyone records time. With 50 or more people, consult your staff representatives first.
+
+## Record time on a task
+
+On a project that uses time and budgets, a task takes a timebox ("3 days", "20 h") and a Took entry, the time you say you spent ("2 h", "1h30", "half a day", "2 days", or in French "2 j", "demi-journée"). A day is the organisation's hours in a day, 7 h unless changed.
+
+- You record only your own time, and only from your own words. An agent records it only with what you said, and never proposes or rounds a figure. From your coding agent (MCP), your own connection records it, marked as said through the coding agent.
+- Without dated hours you have one entry per task: editing replaces it, clearing removes it. With dated hours, each entry has a day, today by default, never a future day.
+- Nothing reminds anyone to enter time, and colleagues see only the task's total, never your part.
+- **Dated hours** are turned on in the project's plan. From that day the project's lead and finance see each person's dated entries and can correct one; the author then sees who changed it. Entries made before stay private to their authors, and everyone with entries is told once on Home.
+- A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target.
+
 ## Roles and scopes
 
 | Role | Scopes |
 |---|---|
 | `member` | `projects:projects:read`, `projects:tasks:read`, `projects:tasks:write` |
 | `sales` | `member` plus `projects:deals:read` and `projects:deals:write` (deal amounts) |
-| `lead` | `member` plus `projects:projects:write`, `projects:deals:read` and `projects:deals:write` |
+| `lead` | `member` plus `projects:projects:write`, the deal scopes, `projects:money:*`, `projects:reconcile:*` and `projects:capacity:*` |
+| `finance` | `member` plus `projects:money:*`, `projects:reconcile:*`, `projects:margin:read`, `projects:cost_rates:write`, `projects:timesheet:read` and `projects:capacity:read` |
 | `admin` | `lead` plus `projects:settings:admin` and `projects:labels:admin` |
 
 `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).

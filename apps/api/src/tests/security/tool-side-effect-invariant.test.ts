@@ -168,6 +168,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_portfolioRollup: "read",
   projects_resolveAssignee: "read",
   projects_search: "read",
+  projects_taskTimeGet: "read",
   projects_tasksByAssignee: "read",
   projects_tasksByProject: "read",
   pubsub_verifyGoogleOidcJwt: "read",
@@ -635,6 +636,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "mail:export_conversations": "file for the requester from rows they can read; nothing sent",
   "mail:suppression_add":
     "externalEffect: parks after outside text, so outside text cannot silence an address; it only stops commercial mail and sends nothing",
+  "projects:time_plan_set":
+    "a project's own plan row; externalEffect only so a tainted turn parks turning dated hours on, which shows the lead and finance dated entries from that day; nothing leaves Liaison",
   "shopify:webhooks_repair":
     "re-registers the org's own Shopify webhooks; admin identity-map scope",
   "stripe:customer_link":

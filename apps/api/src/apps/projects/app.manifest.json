@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -820,6 +820,16 @@
             },
             "description": "Call `labels.list` for the valid groups and values."
           },
+          "timebox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Planned size, e.g. \"3 days\"; null clears."
+          },
+          "isMilestone": {
+            "type": "boolean"
+          },
           "release": {
             "type": ["string", "null"],
             "maxLength": 40,
@@ -943,6 +953,16 @@
               ]
             },
             "description": "Call `labels.list` for the valid groups and values."
+          },
+          "timebox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Planned size, e.g. \"3 days\"; null clears."
+          },
+          "isMilestone": {
+            "type": "boolean"
           },
           "release": {
             "type": ["string", "null"],
@@ -1673,6 +1693,326 @@
       "params": {
         "type": "object",
         "properties": {}
+      }
+    },
+    "task_time_set": {
+      "description": "Record the CALLER's own real time on a task (Took), exactly as they said it: time \"2 h\", \"1h30\", \"half a day\" or \"2 days\"; null clears it. Only the person's own statement: an agent passes quote, the person's words, and never proposes, estimates or rounds a figure. With dated hours, date (YYYY-MM-DD) defaults to today.",
+      "searchKeywords": [
+        "took",
+        "temps",
+        "saisir",
+        "heures",
+        "hours",
+        "logged"
+      ],
+      "writesToTable": "app_projects.task_time",
+      "humanTurnOnly": true,
+      "contentParams": [],
+      "sinkReadersSelf": true,
+      "requiredScopes": [
+        "projects:tasks:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "taskTimeSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task id or key (e.g. ATLAS-12)."
+          },
+          "time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Duration as said; null clears your entry."
+          },
+          "date": {
+            "type": "string",
+            "description": "Day worked, YYYY-MM-DD (dated hours only)."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The person's own words stating the time."
+          }
+        },
+        "required": [
+          "taskId",
+          "time"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "task_time_get": {
+      "description": "Your own Took entries on a task (date, minutes, how entered) and the task's total. Never anyone else's part.",
+      "searchKeywords": [
+        "took",
+        "temps",
+        "heures",
+        "hours"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "taskTimeGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task id or key."
+          }
+        },
+        "required": [
+          "taskId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "task_time_correct": {
+      "description": "Change one Took entry of another person on a project with dated hours: only its lead or finance. The person then sees who changed it.",
+      "searchKeywords": [
+        "corriger",
+        "correct",
+        "timesheet"
+      ],
+      "writesToTable": "app_projects.task_time",
+      "requiredScopes": [
+        "projects:tasks:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "taskTimeCorrect",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "description": "Entry id from the timesheet."
+          },
+          "time": {
+            "type": "string",
+            "description": "Corrected duration, e.g. \"3 h\"."
+          },
+          "date": {
+            "type": "string",
+            "description": "Corrected day, YYYY-MM-DD."
+          }
+        },
+        "required": [
+          "entryId",
+          "time"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "time_plan_set": {
+      "description": "Set a project's plan: basis (none, hourly, daily, fixed, retainer), whole-project timebox (\"40 days\"; null clears), biller, source repositories, and datedHours (on: its lead and finance see dated entries made from now on).",
+      "searchKeywords": [
+        "budget",
+        "plan",
+        "forfait",
+        "régie",
+        "timebox",
+        "dated"
+      ],
+      "writesToTable": "app_projects.project_time_plan",
+      "externalEffect": true,
+      "requiredScopes": [
+        "projects:projects:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "timePlanSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "none",
+              "hourly",
+              "daily",
+              "fixed",
+              "retainer"
+            ]
+          },
+          "timebox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Planned size of the whole project."
+          },
+          "billerId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User id of who bills it."
+          },
+          "sourceRepos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "github",
+                    "gitlab"
+                  ]
+                },
+                "repo": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "repo"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "datedHours": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "billing_terms_set": {
+      "description": "Set how a project is billed: rate (per hour or day, per its basis) or fixedPrice, never both; amounts in major units, currency ISO code.",
+      "searchKeywords": [
+        "tarif",
+        "taux",
+        "rate",
+        "prix",
+        "TJM"
+      ],
+      "writesToTable": "app_projects.project_billing_terms",
+      "requiredScopes": [
+        "projects:money:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "billingTermsSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "fixedPrice": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "period_timebox_set": {
+      "description": "Set a project's timebox for one month (YYYY-MM) or a from-to period, e.g. a retainer month; timebox null removes it.",
+      "searchKeywords": [
+        "mois",
+        "period",
+        "timebox",
+        "retainer"
+      ],
+      "writesToTable": "app_projects.project_timeboxes",
+      "requiredScopes": [
+        "projects:projects:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "periodTimeboxSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "timebox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Planned size for the period; null removes it."
+          }
+        },
+        "required": [
+          "timebox"
+        ],
+        "additionalProperties": false
       }
     },
     "update_project": {
@@ -3120,7 +3460,8 @@
       ],
       "agentTool": "bulkUpdate",
       "itemResultFields": [
-        "checklistWarning"
+        "checklistWarning",
+        "timeBudgetsNote"
       ]
     },
     "assign": {

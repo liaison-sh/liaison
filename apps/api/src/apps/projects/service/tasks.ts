@@ -20,6 +20,7 @@ import {
   MAX_TASK_DEPTH,
   statusIsTerminal,
 } from "./move-task"
+import { orgUsesTimeBudgets } from "./planning"
 import { normalizeRelease, releaseFilterSql } from "./release-filter"
 import { assertTaskPriority, resolveAssignee, resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
@@ -1106,6 +1107,8 @@ export interface PortfolioAtRiskTask {
 export interface PortfolioProjectRollup {
   projectId: string
   projectName: string
+  /** Time and budgets on this project: present only while the org uses it. */
+  timeBudgets?: boolean
   /** Total non-archived tasks in the project. */
   totalTasks: number
   /** Tasks in a terminal/done status. */
@@ -1183,10 +1186,11 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     risk_days_overdue: number | null
     risk_assignee_name: string | null
     risk_status_label: string | null
+    time_budgets_on: boolean
   }>(
     await args.tx.execute(drizzleSql`
       WITH candidate_projects AS (
-        SELECT p.id, p.name, p.updated_at
+        SELECT p.id, p.name, p.updated_at, p.time_budgets_on
         FROM ${projectsRel("projects")} p
         WHERE p.org_id = ${args.orgId}::uuid ${archivedClause}
         ORDER BY p.updated_at DESC, p.id DESC
@@ -1209,6 +1213,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
       SELECT
         cp.id AS project_id,
         cp.name AS project_name,
+        cp.time_budgets_on,
         COALESCE(agg.total_tasks, 0)::int AS total_tasks,
         COALESCE(agg.done_tasks, 0)::int AS done_tasks,
         COALESCE(agg.overdue_tasks, 0)::int AS overdue_tasks,
@@ -1251,6 +1256,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     `),
   )
 
+  const inUse = orgUsesTimeBudgets(args.orgId)
   const projects: PortfolioProjectRollup[] = rows.map((r) => {
     const total = r.total_tasks
     const done = r.done_tasks
@@ -1258,6 +1264,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     return {
       projectId: r.project_id,
       projectName: r.project_name,
+      ...(inUse ? { timeBudgets: r.time_budgets_on === true } : {}),
       totalTasks: total,
       doneTasks: done,
       remainingTasks: remaining,

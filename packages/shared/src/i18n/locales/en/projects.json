@@ -348,5 +348,10 @@
     "empty": "No project for this company yet.",
     "error": "Could not read this company's projects.",
     "openTasks": "Open: {{count}}"
+  },
+  "timeBudgets": {
+    "label": "Time and budgets",
+    "offMessage": "No project in this workspace uses time and budgets, so this tool did not run and nothing changed.",
+    "offNext": "Say that no project uses time and budgets. If the person wants it on a project, offer update_project with timeBudgets:true."
   }
 }

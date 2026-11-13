@@ -2130,7 +2130,7 @@
     },
     "projects__createProject": {
       "desc": 523,
-      "schema": 815
+      "schema": 844
     },
     "projects__delete": {
       "desc": 164,
@@ -2142,7 +2142,7 @@
     },
     "projects__instantiate_template": {
       "desc": 153,
-      "schema": 59
+      "schema": 88
     },
     "projects__labels_archive": {
       "desc": 292,
@@ -2210,7 +2210,7 @@
     },
     "projects__update_project": {
       "desc": 638,
-      "schema": 270
+      "schema": 298
     },
     "projects__webhook_info": {
       "desc": 285,

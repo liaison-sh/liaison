@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.15.0",
+  "version": "1.16.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -716,6 +716,10 @@
               ],
               "additionalProperties": false
             }
+          },
+          "timeBudgets": {
+            "type": "boolean",
+            "description": "Time and budgets on or off for this project (work projects only)."
           },
           "companyId": {
             "type": [
@@ -1614,6 +1618,10 @@
           "projectName": {
             "type": "string",
             "description": "Name for the new project."
+          },
+          "timeBudgets": {
+            "type": "boolean",
+            "description": "Time and budgets on or off for this project (work projects only)."
           }
         },
         "required": [
@@ -1685,6 +1693,10 @@
               "null"
             ],
             "description": "Project id. Optional when projectName is given."
+          },
+          "timeBudgets": {
+            "type": "boolean",
+            "description": "Time and budgets on or off for this project (work projects only)."
           },
           "companyId": {
             "type": [
@@ -2913,7 +2925,8 @@
       "label:restored",
       "label:reordered",
       "deal:closed",
-      "deal:reopened"
+      "deal:reopened",
+      "time_feature:changed"
     ]
   },
   "kind": "app",
@@ -3132,6 +3145,14 @@
       "customForm": "SetTaskLabelsForm"
     }
   },
+  "features": {
+    "time_budgets": {
+      "adminScope": "projects:projects:write",
+      "labelKey": "projects.timeBudgets.label",
+      "offMessageKey": "projects.timeBudgets.offMessage",
+      "offNextKey": "projects.timeBudgets.offNext"
+    }
+  },
   "roles": {
     "member": {
       "description": "Project contributor: read projects, read and write tasks",
@@ -3150,12 +3171,32 @@
       ]
     },
     "lead": {
-      "description": "Project lead: create and edit projects and deal amounts in addition to member rights",
+      "description": "Project lead: create and edit projects, deal amounts, project money, reconciling and capacity, in addition to member rights",
       "extends": "member",
       "scopes": [
         "projects:projects:write",
         "projects:deals:read",
-        "projects:deals:write"
+        "projects:deals:write",
+        "projects:money:read",
+        "projects:money:write",
+        "projects:reconcile:read",
+        "projects:reconcile:write",
+        "projects:capacity:read",
+        "projects:capacity:write"
+      ]
+    },
+    "finance": {
+      "description": "Finance: member rights plus project money, reconciling, margin, cost rates, the dated timesheet and capacity",
+      "extends": "member",
+      "scopes": [
+        "projects:money:read",
+        "projects:money:write",
+        "projects:reconcile:read",
+        "projects:reconcile:write",
+        "projects:margin:read",
+        "projects:cost_rates:write",
+        "projects:timesheet:read",
+        "projects:capacity:read"
       ]
     },
     "admin": {

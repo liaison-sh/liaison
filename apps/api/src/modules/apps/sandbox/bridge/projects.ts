@@ -185,6 +185,73 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     }
   }
   /**
+   * Turning time and budgets on or off is a person's own act: from a routine tick, a
+   * sub-run or a job it is refused `human_turn_only`, before anything is written. Only
+   * the `timeBudgets` argument is held to it; the rest of the call is not.
+   */
+  const timeBudgetsPlaceRefusal = async (timeBudgets: unknown): Promise<string | null> => {
+    if (timeBudgets === undefined) return null
+    const { HUMAN_TURN_ONLY_CODE, humanTurnOnlyAllows } = await import(
+      "~/modules/apps/execute-tool"
+    )
+    const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
+    const origin = (bridgeOptions?.origin ?? "system") as Parameters<typeof humanTurnOnlyAllows>[0]
+    const fromRoutine = Boolean(bridgeRoutineId ?? approvalContext?.originRoutineId)
+    if (!fromRoutine && humanTurnOnlyAllows(origin, currentRunContext())) return null
+    return JSON.stringify({
+      error: {
+        code: HUMAN_TURN_ONLY_CODE,
+        message:
+          "Time and budgets was not turned on or off and nothing changed: only a person turns it, in their own chat, in the app or from their own coding agent, never a routine, a sub-run or a job.",
+        status: 409,
+        retryable: false,
+        details: {
+          next: "Tell the person: they ask for it themselves, in their chat with the agent or on the project's edit form.",
+        },
+      },
+    })
+  }
+  /**
+   * The switch's keys on a project result: `timeBudgets` and `timeBudgetsNote` when the call
+   * passed `timeBudgets` or the org uses it, otherwise neither. The first project of the org
+   * turned on adds the notice for the team and when the tools arrive.
+   */
+  const withTimeBudgetsNote = async (
+    detail: { id: string; name: string; timeBudgets?: boolean } & Record<string, unknown>,
+    passed: boolean,
+    flipped: "on" | "off" | undefined,
+  ): Promise<Record<string, unknown>> => {
+    const { orgUsesTimeBudgets } = await import("~/apps/projects/service/planning")
+    if (!passed && !orgUsesTimeBudgets(orgId)) {
+      const {
+        timeBudgets: _t,
+        timeBudgetsChangedAt: _a,
+        timeBudgetsChangedBy: _b,
+        ...rest
+      } = detail
+      return rest
+    }
+    const on = detail.timeBudgets === true
+    let note: string
+    if (flipped === "on") {
+      note = `Time and budgets is now on for ${detail.name}: planned time, time spent and its budget can be recorded on it.`
+      const { activeMemberCount, anotherProjectUsesTime, firstOnNotice, NEXT_MESSAGE_LINE } =
+        await import("~/apps/projects/service/time-feature")
+      if (!(await anotherProjectUsesTime(orgId, detail.id))) {
+        note = `${note} ${firstOnNotice(await activeMemberCount(orgId))} ${NEXT_MESSAGE_LINE}`
+      }
+    } else if (flipped === "off") {
+      note = `Time and budgets is now off for ${detail.name}: its time and budget rows are kept, and nothing counts them until it is turned on again.`
+    } else if (passed) {
+      note = `Time and budgets was already ${on ? "on" : "off"} for ${detail.name}; nothing changed.`
+    } else {
+      note = on
+        ? `${detail.name} uses time and budgets.`
+        : `${detail.name} does not use time and budgets.`
+    }
+    return { ...detail, timeBudgets: on, timeBudgetsNote: note }
+  }
+  /**
    * The user actor of a write: the inherited user, else the bridge user (the
    * webhook fallback user for a system run) with the caller's scopes.
    */
@@ -415,13 +482,16 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         checklistOnCards?: boolean
         tasks?: unknown
         companyId?: string | null
+        timeBudgets?: boolean
       }
+      const placeRefusal = await timeBudgetsPlaceRefusal(params.timeBudgets)
+      if (placeRefusal) return placeRefusal
       const { createProject, normalizeInitialTasks } = await import(
         "~/apps/projects/service/create-project"
       )
       const { setValidationLevels } = await import("~/apps/projects/service/checklist")
       const actor = await writeActor()
-      const { validationLevels, tasks: rawTasks, companyId, ...input } = params
+      const { validationLevels, tasks: rawTasks, companyId, timeBudgets, ...input } = params
       const levels = Array.isArray(validationLevels) ? validationLevels : []
       // Checked before anything is written: a bad list creates no project.
       const initialTasks = normalizeInitialTasks(rawTasks)
@@ -467,23 +537,43 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             tasks.push({ id: row.id, key: row.key ?? null, title: row.title })
           }
         }
-        if (companyId) {
-          const { updateProject } = await import("~/apps/projects/service/update-project")
-          await updateProject({
+        let timeBudgetsFlipped: "on" | "off" | undefined
+        let switchKeys: Record<string, unknown> = {}
+        if (companyId || timeBudgets !== undefined) {
+          const { updateProjectWithOutcome } = await import(
+            "~/apps/projects/service/update-project"
+          )
+          const outcome = await updateProjectWithOutcome({
             tx: stepTx as never,
             orgId,
             projectId: project.id,
             actor,
             actorType: actorKind === "agent" ? "agent" : "user",
-            patch: { companyId },
+            patch: {
+              ...(companyId ? { companyId } : {}),
+              ...(timeBudgets !== undefined ? { timeBudgets } : {}),
+            },
           })
+          timeBudgetsFlipped = outcome.timeBudgetsFlipped
+          const d = outcome.detail
+          if (d.timeBudgets !== undefined) {
+            switchKeys = {
+              timeBudgets: d.timeBudgets,
+              ...(d.timeBudgetsChangedAt ? { timeBudgetsChangedAt: d.timeBudgetsChangedAt } : {}),
+              ...(d.timeBudgetsChangedBy ? { timeBudgetsChangedBy: d.timeBudgetsChangedBy } : {}),
+            }
+          }
         }
-        return {
-          ...project,
+        return withTimeBudgetsNote(
+          { ...project, ...switchKeys } as never,
+          timeBudgets !== undefined,
+          timeBudgetsFlipped,
+        ).then((withNote) => ({
+          ...withNote,
           ...(companyId ? { companyId } : {}),
           validationLevels: saved,
           ...(initialTasks.length > 0 ? { tasks, taskCount: tasks.length } : {}),
-        }
+        }))
       })
       return JSON.stringify(created)
     },
@@ -826,33 +916,42 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         key?: string
         group?: string | null
         companyId?: string | null
+        timeBudgets?: boolean
       }
+      const placeRefusal = await timeBudgetsPlaceRefusal(params.timeBudgets)
+      if (placeRefusal) return placeRefusal
       return typedServiceCall(async () => {
-        const { updateProject } = await import("~/apps/projects/service/update-project")
+        const { updateProjectWithOutcome } = await import("~/apps/projects/service/update-project")
         const { assertProjectExists, resolveProjectId } = await import(
           "~/apps/projects/service/resolve"
         )
         const actor = await writeActor()
         const projectId = await resolveProjectId(txDb as never, orgId, params)
         await assertProjectExists(txDb as never, orgId, projectId)
+        const outcome = await updateProjectWithOutcome({
+          tx: txDb as never,
+          orgId,
+          projectId,
+          actor,
+          actorType: actorKind === "agent" ? "agent" : "user",
+          patch: {
+            name: params.name,
+            description: params.description,
+            icon: params.icon,
+            color: params.color,
+            key: params.key,
+            group: params.group,
+            ...(params.companyId !== undefined ? { companyId: params.companyId } : {}),
+            ...(params.timeBudgets !== undefined ? { timeBudgets: params.timeBudgets } : {}),
+          },
+        })
+        const detail =
+          params.companyId === null ? { ...outcome.detail, companyId: null } : outcome.detail
         return JSON.stringify(
-          await updateProject({
-            tx: txDb as never,
-            orgId,
-            projectId,
-            actor,
-            actorType: actorKind === "agent" ? "agent" : "user",
-            patch: {
-              name: params.name,
-              description: params.description,
-              icon: params.icon,
-              color: params.color,
-              key: params.key,
-              group: params.group,
-              ...(params.companyId !== undefined ? { companyId: params.companyId } : {}),
-            },
-          }).then((detail) =>
-            params.companyId === null ? { ...detail, companyId: null } : detail,
+          await withTimeBudgetsNote(
+            detail as never,
+            params.timeBudgets !== undefined,
+            outcome.timeBudgetsFlipped,
           ),
         )
       })
@@ -1440,10 +1539,16 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       if (appName !== "projects") {
         throw new Error("projects_instantiateTemplate is only available to the projects app")
       }
-      const params = JSON.parse(paramsJson || "{}") as { templateId?: string; projectName?: string }
+      const params = JSON.parse(paramsJson || "{}") as {
+        templateId?: string
+        projectName?: string
+        timeBudgets?: boolean
+      }
       if (!params.templateId || !params.projectName) {
         throw new Error("invalid_params: templateId and projectName required")
       }
+      const placeRefusal = await timeBudgetsPlaceRefusal(params.timeBudgets)
+      if (placeRefusal) return placeRefusal
       const { instantiateTemplate } = await import("~/apps/projects/service/tasks")
       const actor =
         inheritedActor.actorType === "user"
@@ -1455,15 +1560,40 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               scopes: callerScopes ?? [],
               dimensionGrants: {},
             }
-      return JSON.stringify(
-        await instantiateTemplate({
+      const templateId = params.templateId
+      const projectName = params.projectName
+      return typedServiceCall(async () => {
+        const made = await instantiateTemplate({
           tx: txDb as never,
           orgId,
           actor,
-          templateId: params.templateId,
-          projectName: params.projectName,
-        }),
-      )
+          templateId,
+          projectName,
+        })
+        const { orgUsesTimeBudgets } = await import("~/apps/projects/service/planning")
+        if (params.timeBudgets === undefined && !orgUsesTimeBudgets(orgId)) {
+          return JSON.stringify(made)
+        }
+        const { updateProjectWithOutcome } = await import("~/apps/projects/service/update-project")
+        const outcome = await updateProjectWithOutcome({
+          tx: txDb as never,
+          orgId,
+          projectId: made.projectId,
+          actor,
+          actorType: actorKind === "agent" ? "agent" : "user",
+          patch: params.timeBudgets !== undefined ? { timeBudgets: params.timeBudgets } : {},
+        })
+        const noted = await withTimeBudgetsNote(
+          outcome.detail as never,
+          params.timeBudgets !== undefined,
+          outcome.timeBudgetsFlipped,
+        )
+        return JSON.stringify({
+          ...made,
+          timeBudgets: noted.timeBudgets,
+          timeBudgetsNote: noted.timeBudgetsNote,
+        })
+      })
     },
     projects_addDependency: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {

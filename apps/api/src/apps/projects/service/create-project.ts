@@ -8,6 +8,7 @@ import type { UserContext } from "~/db/rls"
 import { describeDbError } from "~/lib/transient-db-error"
 import { parseStoredLevels, type ValidationLevel } from "./checklist-status"
 import { PIPELINE_CLOSING_STAGES, PIPELINE_OPEN_STAGES } from "./deals"
+import { orgUsesTimeBudgets } from "./planning"
 import {
   deriveProjectKey,
   formatTaskKey,
@@ -56,6 +57,11 @@ export interface ProjectDetail extends ProjectRow {
   kind?: "pipeline"
   /** The project's client company, present only when one is set. */
   companyId?: string
+  /** Time and budgets on this project: present only while the org uses it (or the call set it). */
+  timeBudgets?: boolean
+  /** When and by whom it was last turned, present with `timeBudgets` once it was ever turned. */
+  timeBudgetsChangedAt?: string
+  timeBudgetsChangedBy?: { id: string; name: string }
   statuses: ProjectStatusRow[]
   /** S2 levels in order; [] is plain mode (a checkbox per item). */
   validationLevels: ValidationLevel[]
@@ -404,6 +410,7 @@ export async function loadProjectDetail(
   tx: RlsClient,
   orgId: string,
   projectId: string,
+  opts: { withTimeBudgets?: boolean } = {},
 ): Promise<ProjectDetail> {
   const projectRows = extractRows<
     DbRowProject & {
@@ -415,18 +422,25 @@ export async function loadProjectDetail(
       owner_avatar_url: string | null
       kind: "work" | "pipeline"
       company_id: string | null
+      time_budgets_on: boolean
+      time_budgets_changed_at: Date | string | null
+      time_budgets_changed_by: string | null
+      changer_name: string | null
     }
   >(
     await tx.execute(drizzleSql`
       SELECT p.id, p.org_id, p.name, p.description, p.color, p.icon, p.key, p."group", p.owner_id,
              p.archived_at, p.created_at, p.updated_at, p.validation_levels,
              p.checklist_on_cards, p.kind, p.company_id::text AS company_id,
+             p.time_budgets_on, p.time_budgets_changed_at, p.time_budgets_changed_by::text AS time_budgets_changed_by,
+             cu.name AS changer_name,
              COALESCE((SELECT COUNT(*) FROM ${projectsRel("tasks")} t WHERE t.project_id = p.id AND t.archived_at IS NULL), 0) AS task_count,
              EXISTS (SELECT 1 FROM ${projectsRel("tasks")} t2 WHERE t2.project_id = p.id) AS has_tasks,
              u.name AS owner_name,
              u.avatar_url AS owner_avatar_url
       FROM ${projectsRel("projects")} p
       LEFT JOIN ${kernelRel("users")} u ON u.id = p.owner_id AND u.org_id = p.org_id
+      LEFT JOIN ${kernelRel("users")} cu ON cu.id = p.time_budgets_changed_by AND cu.org_id = p.org_id
       WHERE p.id = ${projectId}::uuid AND p.org_id = ${orgId}::uuid
       LIMIT 1
     `),
@@ -447,6 +461,7 @@ export async function loadProjectDetail(
     ...projectFromRow(r),
     ...(r.kind === "pipeline" ? { kind: "pipeline" as const } : {}),
     ...(r.company_id ? { companyId: r.company_id } : {}),
+    ...(opts.withTimeBudgets || orgUsesTimeBudgets(orgId) ? timeBudgetsKeys(r) : {}),
     taskCount: typeof r.task_count === "string" ? Number(r.task_count) : r.task_count,
     keyLocked: r.has_tasks === true,
     owner: {
@@ -457,6 +472,23 @@ export async function loadProjectDetail(
     statuses: statusRows.map(statusFromRow),
     validationLevels: parseStoredLevels(r.validation_levels),
     checklistOnCards: r.checklist_on_cards ?? true,
+  }
+}
+
+/** The switch's keys on a project payload: only when the org uses it, or the call set it. */
+function timeBudgetsKeys(r: {
+  time_budgets_on: boolean
+  time_budgets_changed_at: Date | string | null
+  time_budgets_changed_by: string | null
+  changer_name: string | null
+}): Pick<ProjectDetail, "timeBudgets" | "timeBudgetsChangedAt" | "timeBudgetsChangedBy"> {
+  const at = r.time_budgets_changed_at
+  return {
+    timeBudgets: r.time_budgets_on === true,
+    ...(at ? { timeBudgetsChangedAt: at instanceof Date ? at.toISOString() : String(at) } : {}),
+    ...(r.time_budgets_changed_by
+      ? { timeBudgetsChangedBy: { id: r.time_budgets_changed_by, name: r.changer_name ?? "" } }
+      : {}),
   }
 }
 

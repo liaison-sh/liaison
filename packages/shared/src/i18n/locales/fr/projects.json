@@ -348,5 +348,10 @@
     "empty": "Aucun projet pour cette entreprise pour l'instant.",
     "error": "Impossible de lire les projets de cette entreprise.",
     "openTasks": "Ouvertes : {{count}}"
+  },
+  "timeBudgets": {
+    "label": "Temps et budgets",
+    "offMessage": "Aucun projet de cet espace n'utilise le temps et les budgets : cet outil n'a pas été exécuté et rien n'a changé.",
+    "offNext": "Dites qu'aucun projet n'utilise le temps et les budgets. Si la personne le veut sur un projet, proposez update_project avec timeBudgets:true."
   }
 }

@@ -43,6 +43,7 @@ import {
   restoreTask,
   updateTask,
 } from "~/apps/projects/service/tasks"
+import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
@@ -238,6 +239,8 @@ const createProjectSchema = z.object({
     .optional(),
   // Show the checklist summary on Kanban cards; default true.
   checklistOnCards: z.boolean().optional(),
+  // Time and budgets on the new project; off by default.
+  timeBudgets: z.boolean().optional(),
 })
 
 const patchProjectSchema = z.object({
@@ -252,6 +255,8 @@ const patchProjectSchema = z.object({
   checklistOnCards: z.boolean().optional(),
   // The project's client: a company the caller can read, or null to clear.
   companyId: z.string().uuid().nullable().optional(),
+  // Time and budgets on this project (work projects only); the org's tools follow.
+  timeBudgets: z.boolean().optional(),
 })
 
 // Every `:projectId` / `:taskId` / `:statusId` below is interpolated with a
@@ -357,24 +362,23 @@ export const projectsRoutes = new Hono<AppEnv>()
     return success(c, result)
   })
   .post("/", scopeProjectsWrite, zValidator("json", createProjectSchema), async (c) => {
-    const input = c.req.valid("json")
+    const { timeBudgets, ...input } = c.req.valid("json")
     const orgId = c.get("orgId")
     const userId = c.get("userId")
     try {
-      const result = await withRequestRls(c, (tx) =>
-        createProject({
-          tx,
-          orgId,
-          actor: {
-            actorType: "user",
-            userId,
-            orgId,
-            scopes: c.get("scopes"),
-            dimensionGrants: c.get("dimensionGrants"),
-          } as never,
-          input,
-        }),
-      )
+      const actor = {
+        actorType: "user",
+        userId,
+        orgId,
+        scopes: c.get("scopes"),
+        dimensionGrants: c.get("dimensionGrants"),
+      } as never
+      const result = await withRequestRls(c, async (tx) => {
+        const created = await createProject({ tx, orgId, actor, input })
+        if (timeBudgets === undefined) return created
+        return updateProject({ tx, orgId, projectId: created.id, actor, patch: { timeBudgets } })
+      })
+      if (timeBudgets !== undefined) await awaitTimeFeatureSync(orgId)
       return success(c, result)
     } catch (err) {
       const message = String((err as Error)?.message ?? err)
@@ -423,6 +427,8 @@ export const projectsRoutes = new Hono<AppEnv>()
     const result = await withRequestRls(c, (tx) =>
       updateProject({ tx, orgId, projectId, actor, patch }),
     )
+    // The org's tools follow the projects once this commit is read (time-feature.ts).
+    if (patch.timeBudgets !== undefined) await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })
   .post("/:projectId/archive", scopeProjectsWrite, async (c) => {

@@ -36,7 +36,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { routineRuns, routines } from "~/db/schema/kernel"
-import type { RoutineRunStepState } from "~/db/schema/kernel/routine-runs"
+import type { RoutineRunFlowContext, RoutineRunStepState } from "~/db/schema/kernel/routine-runs"
 import { taskCellMatches } from "~/infra/jobs/event-routine-gate"
 import { rootLogger } from "~/lib/logger"
 import { addWorkingTime, resolveWorkingCalendar, type WorkingCalendar } from "~/lib/working-time"
@@ -70,6 +70,10 @@ export interface FlowRunInput {
 /** Seams tests replace. */
 export interface FlowDeps {
   agentInvoker?: RoutineTickOpts["agentInvoker"]
+  /** A resume's credit gate, before a remaining agent step (default: the tick's default). */
+  checkCredits?: RoutineTickOpts["checkCredits"]
+  /** A resume's owner scopes (default: the owner's effective permissions). */
+  loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]>
   /** Arms the wait's resume job (default: the kernel job, delayed, jobId per routine+record+step). */
   enqueueResume?: (
     payload: FlowResumePayload,
@@ -162,8 +166,13 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
     tick: input.tick,
     startedAt: now,
     steps,
+    flowContext: {
+      flowHash: flowHash(flow),
+      hop: ev?.hop ?? 0,
+      triggerEvent: ev ?? null,
+    },
   })
-  const run = await buildRun({
+  const base = {
     orgId,
     routine,
     flow,
@@ -174,38 +183,89 @@ export async function runFlow(input: FlowRunInput): Promise<RoutineTickResult> {
     entityId,
     isTaskTrigger: ev?.app === "projects" && ev.entity === "task",
     outputThreadId: input.outputThreadId,
-    runScopes: input.runScopes,
     hop: ev?.hop ?? 0,
     triggerEvent: ev,
     deps,
-  })
-  // A task event whose task the owner cannot read (now): nothing runs, and nothing it holds leaks
-  // into a step's note. The run ends `skipped_condition`.
-  if (run.isTaskTrigger && run.entityId && !(await readTriggerTask(run))) {
-    for (const s of run.steps) {
-      setState(s, "skipped", "The routine's owner cannot read the task that triggered it.")
-    }
-    return endFlowRun(run, "skipped_condition", null)
   }
-  return continueFlow(run, 0)
+  return guardRun(bareRun(base), async () => {
+    const run = await buildRun({ ...base, runScopes: input.runScopes })
+    // A task event whose task the owner cannot read (now): nothing runs, and nothing it holds
+    // leaks into a step's note. The run ends `skipped_condition`.
+    if (run.isTaskTrigger && run.entityId && !(await readTriggerTask(run))) {
+      for (const s of run.steps) {
+        setState(s, "skipped", "The routine's owner cannot read the task that triggered it.")
+      }
+      return endFlowRun(run, "skipped_condition", null)
+    }
+    return continueFlow(run, 0)
+  })
 }
 
-async function buildRun(a: {
-  orgId: string
-  routine: RoutineRow
-  flow: RoutineFlow
-  runId: string
-  steps: RoutineRunStepState[]
-  startedAt: number
-  triggerAt: Date
-  entityId: string | null
-  isTaskTrigger: boolean
-  outputThreadId: string
-  runScopes: string[]
-  hop: number
-  triggerEvent?: RoutineTriggerEvent
-  deps: FlowDeps
-}): Promise<FlowRun> {
+/** Pure: a flow's hash, over its canonical JSON (key order never changes it). */
+export function flowHash(flow: RoutineFlow): string {
+  const canon = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(canon)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.entries(v as Record<string, unknown>)
+              .filter(([, x]) => x !== undefined)
+              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+              .map(([k, x]) => [k, canon(x)]),
+          )
+        : v
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(canon(flow)))
+    .digest("hex")
+}
+
+/** A run as far as ending it goes: no scope resolved, no tool call possible. */
+function bareRun(a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling">): FlowRun {
+  return {
+    ...a,
+    actor: {
+      actorType: "user",
+      userId: a.routine.ownerUserId,
+      orgId: a.orgId,
+      scopes: [],
+      dimensionGrants: {},
+    },
+    agentId: null,
+    agentCeiling: null,
+  }
+}
+
+/**
+ * Runs `fn` on a run that holds its row (`running`): a throw anywhere ends the run `failed` with
+ * the error, so no row is left `running` with nothing behind it (the sweep is the backstop).
+ */
+async function guardRun(
+  run: FlowRun,
+  fn: () => Promise<RoutineTickResult>,
+): Promise<RoutineTickResult> {
+  try {
+    return await fn()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error({ err, routineId: run.routine.id, runId: run.runId }, "flow run failed")
+    for (const s of run.steps) {
+      if (s.state === "running" || s.state === "waiting" || s.state === "awaiting_approval") {
+        setState(s, "failed", `Failed: ${message}`)
+      }
+    }
+    try {
+      return await endFlowRun(run, "failed", `The run failed: ${message}`)
+    } catch (endErr) {
+      log.error({ err: endErr, runId: run.runId }, "flow run: the failed end was not written")
+      return { status: "failed", runId: run.runId }
+    }
+  }
+}
+
+async function buildRun(
+  a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling"> & { runScopes: string[] },
+): Promise<FlowRun> {
   // The scope the run's tool calls hold: resolved as a tick's turn resolves it (the routine's
   // owner agent, its ceiling on the routine thread, bounded by the routine's scopes).
   const { resolveTurnScope } = await import("~/modules/agent/runtime/agent-service")
@@ -220,8 +280,9 @@ async function buildRun(a: {
   )
   const { resolveRoutineOwnerDimensionGrants } = await import("~/infra/jobs/kernel-jobs")
   const dimensionGrants = await resolveRoutineOwnerDimensionGrants(a.orgId, a.routine.ownerUserId)
+  const { runScopes: _runScopes, ...rest } = a
   return {
-    ...a,
+    ...rest,
     actor: {
       actorType: "user",
       userId: a.routine.ownerUserId,
@@ -733,73 +794,141 @@ async function supersedeWaitingRuns(
  */
 export async function resumeFlowWait(
   payload: FlowResumePayload,
-  deps: FlowDeps & {
-    loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]>
-  } = {},
+  deps: FlowDeps = {},
 ): Promise<RoutineTickResult> {
   const { orgId, routineId, runId, stepId } = payload
   const loaded = await loadWaitingRun(orgId, routineId, runId)
   if (!loaded) return { status: "no_run" }
   const { routine, runRow } = loaded
-  const flow = routine.flow
   const steps = runRow.steps ?? []
-  const index = flow?.steps.findIndex((s) => s.id === stepId) ?? -1
-  const step = flow?.steps[index]
+  // The step's state by its id (never by position: the flow may have been edited meanwhile).
+  const index = steps.findIndex((s) => s.id === stepId)
   const state = steps[index]
-  if (!flow || !step || step.type !== "wait" || !state || state.state !== "waiting") {
+  if (!state || state.type !== "wait" || state.state !== "waiting") {
     return { status: "no_run", runId }
   }
   const deadline = new Date(String(state.output?.deadline ?? ""))
   const now = deps.now?.() ?? new Date()
   if (Number.isFinite(deadline.getTime()) && deadline.getTime() > now.getTime() + 1000) {
+    // Fired early: re-armed under its own id. The job running now holds the wait's id, and a
+    // queue ignores an add whose id belongs to an active job, so reusing it would drop the arm.
     const enqueue = deps.enqueueResume ?? defaultEnqueueResume
-    await enqueue(payload, {
-      delayMs: deadline.getTime() - now.getTime(),
-      jobId: flowWaitJobId(routineId, runRow.eventEntityId, stepId),
-    })
+    await enqueue(
+      { orgId, routineId, runId, stepId },
+      {
+        delayMs: deadline.getTime() - now.getTime(),
+        jobId: flowWaitRearmJobId(runId, stepId, deadline),
+      },
+    )
     return { status: "waiting", runId }
   }
   // Claim the run: only one resume goes on with it.
+  if (!(await claimRun(orgId, runId, "waiting"))) return { status: "no_run", runId }
+  return withClaimedRun(orgId, routine, runRow, steps, index + 1, deps, async (run) => {
+    const step = run.flow.steps[index]
+    if (!step || step.type !== "wait" || step.id !== stepId) {
+      throw new Error(`the flow has no wait step ${stepId} at position ${index + 1}`)
+    }
+    const task = await readTriggerTask(run)
+    if (!evaluateCondition(step.until, task, run.triggerAt)) {
+      setState(state, "skipped", "Its condition no longer held at the deadline.")
+      for (const later of steps.slice(index + 1)) {
+        if (later.state === "pending")
+          setState(later, "skipped", "The flow ended at an earlier wait.")
+      }
+      await saveSteps(run)
+      return endFlowRun(run, "skipped_condition", null)
+    }
+    setState(state, "done", "Its condition still held at the deadline.")
+    await saveSteps(run)
+    return continueFlow(run, index + 1)
+  })
+}
+
+/** An early-fired wait's re-arm: its own job id per deadline (`resumeFlowWait`). */
+export function flowWaitRearmJobId(runId: string, stepId: string, deadline: Date): string {
+  return `flowwait-rearm:${runId}:${stepId}:${deadline.getTime()}`
+}
+
+/** Takes a parked run (`from` → `running`); false when another resume or the sweep took it. */
+async function claimRun(
+  orgId: string,
+  runId: string,
+  from: "waiting" | "waiting_approval",
+): Promise<boolean> {
   const claimed = await withPrivilegedDb(orgId, "routine-flow-claim", (tx) =>
     tx
       .update(routineRuns)
       .set({ status: "running" })
-      .where(and(eq(routineRuns.id, runId), eq(routineRuns.status, "waiting")))
+      .where(and(eq(routineRuns.id, runId), eq(routineRuns.status, from)))
       .returning({ id: routineRuns.id }),
   )
-  if (claimed.length === 0) return { status: "no_run", runId }
+  return claimed.length > 0
+}
 
-  const loadScopes = deps.loadOwnerScopes ?? defaultLoadOwnerScopes
-  const ownerScopes = await loadScopes(orgId, routine.ownerUserId)
-  const { routineRunScopes } = await import("./routine-worker")
-  const run = await buildRun({
+/**
+ * A claimed run that resumes (a wait came due, an approval was decided) goes on only when a
+ * fresh tick would run: the flow is the one it started with (an edited flow ends it
+ * `skipped_condition`, "flow changed"), and the tick's pre-run checks pass again
+ * (`routineResumeGate`: switched on and active, owner active and holding its scopes, the owner
+ * agent's ceiling, and the credit gate when a step left is an agent step). A refused check ends
+ * the run with its skipped status. `fromIndex`: the first step the resume may run.
+ */
+async function withClaimedRun(
+  orgId: string,
+  routine: RoutineRow,
+  runRow: typeof routineRuns.$inferSelect,
+  steps: RoutineRunStepState[],
+  fromIndex: number,
+  deps: FlowDeps,
+  fn: (run: FlowRun) => Promise<RoutineTickResult>,
+): Promise<RoutineTickResult> {
+  const ctx: RoutineRunFlowContext | null = runRow.flowContext ?? null
+  const triggerEvent = (ctx?.triggerEvent ?? undefined) as RoutineTriggerEvent | undefined
+  const base = {
     orgId,
     routine,
-    flow,
-    runId,
+    flow: routine.flow ?? { version: 1 as const, steps: [] },
+    runId: runRow.id,
     steps,
     startedAt: runRow.startedAt?.getTime() ?? Date.now(),
     triggerAt: runRow.startedAt ?? new Date(),
     entityId: runRow.eventEntityId,
     isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
     outputThreadId: routine.outputThreadId ?? "",
-    runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
-    hop: typeof state.output?.hop === "number" ? state.output.hop : 0,
+    hop: ctx?.hop ?? 0,
+    triggerEvent,
     deps,
-  })
-  const task = await readTriggerTask(run)
-  if (!evaluateCondition(step.until, task, run.triggerAt)) {
-    setState(state, "skipped", "Its condition no longer held at the deadline.")
-    for (const later of steps.slice(index + 1)) {
-      if (later.state === "pending")
-        setState(later, "skipped", "The flow ended at an earlier wait.")
-    }
-    await saveSteps(run)
-    return endFlowRun(run, "skipped_condition", null)
   }
-  setState(state, "done", "Its condition still held at the deadline.")
-  await saveSteps(run)
-  return continueFlow(run, index + 1)
+  const bare = bareRun(base)
+  return guardRun(bare, async () => {
+    const endParked = (status: RoutineRunStatus, reason: string) => {
+      for (const s of steps) {
+        if (s.state === "waiting" || s.state === "awaiting_approval") setState(s, "skipped", reason)
+      }
+      return endFlowRun(bare, status, reason, { touchRoutine: false })
+    }
+    if (!routine.flow || !ctx || ctx.flowHash !== flowHash(routine.flow)) {
+      return endParked(
+        "skipped_condition",
+        "Flow changed: the routine's flow was edited while this run waited, so it did not go on.",
+      )
+    }
+    const { routineResumeGate, routineRunScopes, ensureOutputThread } = await import(
+      "./routine-worker"
+    )
+    const needsCredits = routine.flow.steps.slice(fromIndex).some((s) => s.type === "agent")
+    const gate = await routineResumeGate(orgId, routine, deps, needsCredits)
+    if (!gate.ok) return endParked(gate.status, gate.reason)
+    const { threadId } = await ensureOutputThread(orgId, routine)
+    const run = await buildRun({
+      ...base,
+      flow: routine.flow,
+      outputThreadId: threadId,
+      runScopes: routineRunScopes(routine.scopes ?? [], gate.ownerScopes),
+    })
+    return fn(run)
+  })
 }
 
 async function loadWaitingRun(orgId: string, routineId: string, runId: string) {
@@ -816,14 +945,6 @@ async function loadWaitingRun(orgId: string, routineId: string, runId: string) {
       .limit(1)
     if (!routine || !runRow || runRow.status !== "waiting") return null
     return { routine, runRow }
-  })
-}
-
-async function defaultLoadOwnerScopes(orgId: string, userId: string): Promise<string[]> {
-  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
-  return withPrivilegedDb(orgId, "routine-flow-perms", async (tx) => {
-    const perms = await loadEffectivePermissions(tx, userId, orgId)
-    return perms.scopes
   })
 }
 
@@ -1065,6 +1186,8 @@ async function endFlowRun(
   run: FlowRun,
   status: RoutineRunStatus,
   error: string | null,
+  /** false: a pre-run check refused the run, and already wrote the routine's state. */
+  opts: { touchRoutine?: boolean } = {},
 ): Promise<RoutineTickResult> {
   const durationMs = Date.now() - run.startedAt
   for (const s of run.steps) {
@@ -1085,18 +1208,19 @@ async function endFlowRun(
   )
   await clearInFlight(run)
   const failed = status === "failed"
-  await withPrivilegedDb(run.orgId, "routine-flow-last-run", (tx) =>
-    tx
-      .update(routines)
-      .set({
-        lastRunAt: new Date(),
-        lastRunStatus: failed ? "failed" : "succeeded",
-        lastRunError: failed ? error : null,
-        ...(run.routine.kind === "scheduled" && !failed ? { status: "completed" as const } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(routines.id, run.routine.id)),
-  )
+  if (opts.touchRoutine !== false)
+    await withPrivilegedDb(run.orgId, "routine-flow-last-run", (tx) =>
+      tx
+        .update(routines)
+        .set({
+          lastRunAt: new Date(),
+          lastRunStatus: failed ? "failed" : "succeeded",
+          lastRunError: failed ? error : null,
+          ...(run.routine.kind === "scheduled" && !failed ? { status: "completed" as const } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(routines.id, run.routine.id)),
+    )
   const { emitRoutineEvent } = await import("./routine-worker")
   const ranAt = new Date().toISOString()
   await emitRoutineEvent(
@@ -1155,7 +1279,8 @@ const UNDECIDED_APPROVAL = new Set(["pending", "deferred", "approving"])
 export async function resumeFlowOnDecision(
   orgId: string,
   approvalId: string,
-  deps: FlowDeps & { loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]> } = {},
+  /** The seams, or how to get them for the run's routine (the production tick's, per routine). */
+  depsOf: FlowDeps | ((routineId: string) => Promise<FlowDeps>) = {},
 ): Promise<RoutineTickResult | null> {
   const { sql: drizzleSql } = await import("drizzle-orm")
   const { schemaRef } = await import("~/db/schema-ref")
@@ -1174,14 +1299,9 @@ export async function resumeFlowOnDecision(
   )
   if (!hit) return null
   if (UNDECIDED_APPROVAL.has(hit.approval_status)) return { status: "no_run", runId: hit.run_id }
-  const claimed = await withPrivilegedDb(orgId, "routine-flow-approval-claim", (tx) =>
-    tx
-      .update(routineRuns)
-      .set({ status: "running" })
-      .where(and(eq(routineRuns.id, hit.run_id), eq(routineRuns.status, "waiting_approval")))
-      .returning({ id: routineRuns.id }),
-  )
-  if (claimed.length === 0) return { status: "no_run", runId: hit.run_id }
+  if (!(await claimRun(orgId, hit.run_id, "waiting_approval"))) {
+    return { status: "no_run", runId: hit.run_id }
+  }
   const loaded = await withPrivilegedDb(orgId, "routine-flow-approval-load", async (tx) => {
     const [routine] = await tx
       .select()
@@ -1195,41 +1315,25 @@ export async function resumeFlowOnDecision(
       .limit(1)
     return routine && runRow ? { routine, runRow } : null
   })
-  const flow = loaded?.routine.flow
-  if (!loaded || !flow) return { status: "no_run", runId: hit.run_id }
+  if (!loaded) return { status: "no_run", runId: hit.run_id }
   const { routine, runRow } = loaded
   const steps = runRow.steps ?? []
   const index = steps.findIndex(
     (s) => s.state === "awaiting_approval" && s.output?.approvalId === approvalId,
   )
-  if (index < 0) return { status: "no_run", runId: hit.run_id }
-  const loadScopes = deps.loadOwnerScopes ?? defaultLoadOwnerScopes
-  const ownerScopes = await loadScopes(orgId, routine.ownerUserId)
-  const { routineRunScopes } = await import("./routine-worker")
-  const run = await buildRun({
-    orgId,
-    routine,
-    flow,
-    runId: runRow.id,
-    steps,
-    startedAt: runRow.startedAt?.getTime() ?? Date.now(),
-    triggerAt: runRow.startedAt ?? new Date(),
-    entityId: runRow.eventEntityId,
-    isTaskTrigger: (runRow.triggerLabel ?? "").startsWith("projects.task."),
-    outputThreadId: routine.outputThreadId ?? "",
-    runScopes: routineRunScopes(routine.scopes ?? [], ownerScopes),
-    hop: 0,
-    deps,
-  })
-  const state = steps[index]!
-  if (hit.approval_status !== "approved") {
-    setState(state, "failed", `The approval was ${hit.approval_status}.`)
+  const deps = typeof depsOf === "function" ? await depsOf(routine.id) : depsOf
+  return withClaimedRun(orgId, routine, runRow, steps, index + 1, deps, async (run) => {
+    if (index < 0) throw new Error(`no step of the run waits on approval ${approvalId}`)
+    const state = steps[index]!
+    if (hit.approval_status !== "approved") {
+      setState(state, "failed", `The approval was ${hit.approval_status}.`)
+      await saveSteps(run)
+      return endFlowRun(run, "failed", `Step ${state.id}: the approval was ${hit.approval_status}`)
+    }
+    setState(state, "done", "Approved and done.")
     await saveSteps(run)
-    return endFlowRun(run, "failed", `Step ${state.id}: the approval was ${hit.approval_status}`)
-  }
-  setState(state, "done", "Approved and done.")
-  await saveSteps(run)
-  return continueFlow(run, index + 1)
+    return continueFlow(run, index + 1)
+  })
 }
 
 /**
@@ -1238,7 +1342,7 @@ export async function resumeFlowOnDecision(
  */
 export async function runFlowResumeJob(
   payload: Partial<FlowResumePayload>,
-  deps: FlowDeps & { loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]> } = {},
+  deps: FlowDeps = {},
 ): Promise<RoutineTickResult> {
   const { orgId, routineId, runId, stepId } = payload
   if (!orgId || !routineId || !runId || !stepId) {
@@ -1254,9 +1358,10 @@ export async function runFlowResumeJob(
   )
   if (!run) return { status: "no_run" }
   const { redis } = await import("~/lib/redis")
+  const { ROUTINE_LOCK_TTL_SECONDS, startRoutineLockHeartbeat } = await import("./routine-worker")
   const lockKey = `routine-lock:${routineId}${run.entityId ? `:${run.entityId}` : ""}`
   const token = crypto.randomUUID()
-  const got = await redis.set(lockKey, token, "EX", 600, "NX")
+  const got = await redis.set(lockKey, token, "EX", ROUTINE_LOCK_TTL_SECONDS, "NX")
   if (got !== "OK") {
     const retries = (payload.lockRetries ?? 0) + 1
     if (retries > 60) {
@@ -1273,9 +1378,12 @@ export async function runFlowResumeJob(
     )
     return { status: "lock_busy", runId }
   }
+  // A long agent step after the wait keeps the record's lock, as a tick keeps it.
+  const stopHeartbeat = startRoutineLockHeartbeat(routineId, lockKey)
   try {
     return await resumeFlowWait({ orgId, routineId, runId, stepId }, deps)
   } finally {
+    stopHeartbeat()
     await redis
       .eval(
         `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,

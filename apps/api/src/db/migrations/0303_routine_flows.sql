@@ -4,6 +4,8 @@
 --   routines.flow          the flow ({version: 1, steps: [...]}); NULL = a legacy routine whose
 --                          one agent step is its prompt (unchanged behaviour)
 --   routine_runs.steps     a flow run's per-step state, updated after each step
+--   routine_runs.flow_context  what a flow run's resume needs: the flow's hash at the start (an
+--                          edited flow ends a parked run), its chain hop and its trigger event
 --   routine_runs.status    gains 'running' (a flow run in progress), 'waiting' (a flow run parked
 --                          on a wait step until its deadline), 'flagged' (an agent step missed a
 --                          required outcome after its bumps) and 'skipped_condition' (a wait's
@@ -17,6 +19,8 @@ SET LOCAL lock_timeout = '5s';
 ALTER TABLE kernel.routines ADD COLUMN IF NOT EXISTS flow jsonb;
 --> statement-breakpoint
 ALTER TABLE kernel.routine_runs ADD COLUMN IF NOT EXISTS steps jsonb;
+--> statement-breakpoint
+ALTER TABLE kernel.routine_runs ADD COLUMN IF NOT EXISTS flow_context jsonb;
 --> statement-breakpoint
 
 -- expand-safe: a new check on a new column the previous release never writes.

@@ -297,8 +297,8 @@ liaison erase-user <userId>
   a demo org is refused. With no `--variant` it seeds the `reserved` review org
   and clears its seeded content first (`--no-reset` keeps what is there);
   `--variant visitor` seeds an org with no owner. `--passwords` gives the
-  seeded people a password so a tester can sign in as them (refused in demo
-  mode). Exit `0` when every layer landed, `1` when one failed. A seed that
+  seeded people a password so a tester can sign in as them (refused on a public
+  demo instance; see `LIAISON_PRIVATE_DEMO_BOX`). Exit `0` when every layer landed, `1` when one failed. A seed that
   stopped half way (the process was killed) is picked up by the next run.
 - **`seed --tier lively --slug <slug>`**: the same company with ten people
   and two weeks of work up to now: team channels and each person's chats with
@@ -308,7 +308,7 @@ liaison erase-user <userId>
   `--passwords-env <VAR>`, which reads it from that environment variable)
   lets you sign in as any of the ten. Run again, it adds nothing; `--replace`
   deletes the earlier org under the slug first so the two weeks end now
-  (refused in demo mode, and for an org that is not a demo org). The
+  (refused on a public demo instance, and for an org that is not a demo org). The
   analytics warehouse is seeded only with `--warehouse`.
 - **Seeding from a source checkout.** `demo`, `lively` and `load` install the
   catalog apps. The runtime image has their catalog built in; outside it, an

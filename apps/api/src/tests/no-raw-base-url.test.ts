@@ -48,6 +48,10 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
   },
   "modules/demo/demo-verification.ts": { reads: 1, reason: DEMO_DOOR },
   "modules/demo/demo-leads.ts": { reads: 1, reason: DEMO_DOOR },
+  "modules/demo/demo-mode.ts": {
+    reads: 1,
+    reason: "is BASE_URL loopback: a private demo box is reached only through a tunnel, builds no link",
+  },
   "modules/apps/instance-config-defaults.ts": {
     reads: 1,
     reason: "the server's own Meta callback: one subscription URL for the shared Meta app",

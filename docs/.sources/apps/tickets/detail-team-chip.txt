@@ -1,0 +1,2 @@
+Ticket header shows the team chip when the ticket has one -> apps/web/src/modules/tickets/TicketDetail.tsx (tickets-detail-team)
+Team label -> packages/shared/src/i18n/locales/en/tickets.json (team)

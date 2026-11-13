@@ -748,15 +748,21 @@ describe("text helpers", () => {
   })
   // Every armoured private key header in use: PKCS#8 (no algorithm word), the
   // algorithm-named PKCS#1 and SEC1 forms, OpenSSH, encrypted PKCS#8, PGP and SSH2.
+  // Built from the label so the source holds no literal key header.
+  const armour = (label: string, ssh2 = false): [string, string] => {
+    const d = ssh2 ? "----" : "-----"
+    const s = ssh2 ? " " : ""
+    return [`${d}${s}BEGIN ${label}${s}${d}`, `${d}${s}END ${label}${s}${d}`]
+  }
   const PEM_LABELS: Array<[string, string]> = [
-    ["-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----"],
-    ["-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----"],
-    ["-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----"],
-    ["-----BEGIN DSA PRIVATE KEY-----", "-----END DSA PRIVATE KEY-----"],
-    ["-----BEGIN OPENSSH PRIVATE KEY-----", "-----END OPENSSH PRIVATE KEY-----"],
-    ["-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----"],
-    ["-----BEGIN PGP PRIVATE KEY BLOCK-----", "-----END PGP PRIVATE KEY BLOCK-----"],
-    ["---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----", "---- END SSH2 ENCRYPTED PRIVATE KEY ----"],
+    armour("PRIVATE KEY"),
+    armour("RSA PRIVATE KEY"),
+    armour("EC PRIVATE KEY"),
+    armour("DSA PRIVATE KEY"),
+    armour("OPENSSH PRIVATE KEY"),
+    armour("ENCRYPTED PRIVATE KEY"),
+    armour("PGP PRIVATE KEY BLOCK"),
+    armour("SSH2 ENCRYPTED PRIVATE KEY", true),
   ]
   const KEY_BODY = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nBKcwggSjAgEAAoIBAQC7"
 

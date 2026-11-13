@@ -37,3 +37,5 @@ src/ui/RecurringList.test.tsx
 src/ui/RecurringStates.test.tsx
 src/ui/RunDetail.test.tsx
 src/ui/ScheduleEditor.test.tsx
+# A project's invoiced amount, net of credit notes, for the projects app's margin (pure store).
+src/tools/project-invoiced-get.test.ts

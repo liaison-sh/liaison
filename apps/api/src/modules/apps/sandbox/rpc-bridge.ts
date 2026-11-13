@@ -396,6 +396,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "projects_taskTimeCorrect",
   "projects_timePlanSet",
   "projects_billingTermsSet",
+  "projects_costRateSet",
   "projects_periodTimeboxSet",
   "projects_daysOffSet",
   "projects_daysOffRemove",

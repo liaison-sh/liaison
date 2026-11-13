@@ -38,6 +38,7 @@ describe("time tool results and cards", () => {
     expect(offending).toEqual([])
     // The guard sees the budget read, the one coverage-carrying tool built so far.
     expect(tools.some(([name]) => name === "budget_get")).toBe(true)
+    expect(tools.some(([name]) => name === "margin_get")).toBe(true)
   })
 
   it("no time tool is a chase: none lists who has not entered, nudges or reminds", () => {

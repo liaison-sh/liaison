@@ -2188,6 +2188,47 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return getBudget({ tx: txDb, orgId, scopes: callerScopes ?? [], projectId })
       })
     },
+    /** Margin's cost side for one project (finance only); the handler adds the invoices. */
+    projects_marginCost: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        month?: string
+      }
+      return typedCall(async () => {
+        const { getMarginCost } = await import("~/apps/projects/service/margin")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        return getMarginCost({
+          tx: txDb,
+          orgId,
+          scopes: callerScopes ?? [],
+          projectId,
+          ...(params.month ? { month: params.month } : {}),
+        })
+      })
+    },
+    /** The org's cost rates, per person and date: finance only. */
+    projects_costRatesList: async (_paramsJson: string): Promise<string> =>
+      typedCall(async () => {
+        const { listCostRates } = await import("~/apps/projects/service/margin")
+        return listCostRates({ tx: txDb, orgId, scopes: callerScopes ?? [] })
+      }),
+    /** A person's cost rate from a date on: the exact cost-rates write scope. */
+    projects_costRateSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        userId?: string
+        rate?: number
+        from?: string
+        currency?: string
+      }
+      return typedServiceCall(async () => {
+        const { setCostRate } = await import("~/apps/projects/service/margin")
+        return JSON.stringify(
+          await setCostRate({ tx: txDb, orgId, scopes: callerScopes ?? [], input: params }),
+        )
+      })
+    },
     /** One project's dated sheet for a month: lead and finance only. */
     projects_timesheetGet: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as {

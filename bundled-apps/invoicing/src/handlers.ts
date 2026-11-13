@@ -131,6 +131,7 @@ import {
   issuerStreamSetPreflight,
   onStripeConnectionChanged,
 } from "./streams"
+import { projectInvoicedGet } from "./tools/project-invoiced-get"
 import { vatLookup } from "./vat-lookup"
 
 /** Wire params of an issuing call: a SIREN's registry confirmation is never taken from the
@@ -228,6 +229,10 @@ export const documentsSearchHandler = (
   params: Parameters<typeof documentsSearchTool>[1],
   ctx: Parameters<typeof documentsSearchTool>[0],
 ) => documentsSearchTool(ctx, params)
+export const projectInvoicedGetHandler = (
+  params: Parameters<typeof projectInvoicedGet>[1],
+  ctx: Parameters<typeof projectInvoicedGet>[0],
+) => projectInvoicedGet(ctx, params)
 export const customerHistoryHandler = (
   params: Parameters<typeof customerHistory>[1],
   ctx: Parameters<typeof customerHistory>[0],

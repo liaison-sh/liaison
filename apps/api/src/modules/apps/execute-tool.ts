@@ -3753,6 +3753,10 @@ export function statusForToolError(code: string): number {
     // (contacts/service.ts): the workspace's state, not a fault.
     case "contact_has_schedules":
       return 409
+    // A project's documents in more than one currency (invoicing project_invoiced_get): they are
+    // not summed into one amount, the data's state, not a fault.
+    case "mixed_currencies":
+      return 409
     // A connection with no stored credentials: the person reconnects it.
     case CONNECTION_CREDENTIALS_MISSING:
       return 422

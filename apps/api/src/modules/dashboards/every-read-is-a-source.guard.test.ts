@@ -124,6 +124,31 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "human turn",
     why: "a reconcile starts only on a person's own turn in their DM or coding agent; a dashboard would read the period's work on a schedule, which no surface does",
   },
+  ...["timesheet_get", "timesheet_export"].map((name) => ({
+    tool: `projects:${name}`,
+    reason: "DM only" as const,
+    why: "the dated sheet holds each person's hours by day; it is read only by the project's owner, lead or finance, on their own turn in a DM",
+  })),
+  {
+    tool: "projects:reconcile_get",
+    reason: "DM only",
+    why: "a reconcile card is read in the DM it was proposed in, by its creator or a holder of the reconcile scope",
+  },
+  {
+    tool: "projects:margin_get",
+    reason: "spec rule",
+    why: "margin is finance's figure and stays in chat, in a DM: the spec counts any page or dashboard showing it as a finding",
+  },
+  {
+    tool: "projects:cost_rates_list",
+    reason: "DM only",
+    why: "each person's cost rate, for finance in a DM only; never shown on a board, a page or a task",
+  },
+  {
+    tool: "invoicing:project_invoiced_get",
+    reason: "trust boundary",
+    why: "an internal read the projects app reaches through its declared cross-app call; people read invoices through documents_search",
+  },
   // ── Kernel reads ──
   {
     tool: "kernel:contacts_identity",

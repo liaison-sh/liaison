@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.26.0",
+  "version": "1.27.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -599,6 +599,12 @@
   "approvalRoute": { "task": "approval_route_read" },
   "activitySources": [{"tool": "activity_read", "scope": "projects:tasks:read", "label": "Deals and projects", "filterKey": "projects"}],
   "contextProviders": [{"on": ["kernel:company", "contacts:company-detail"], "tool": "company_context", "scope": "projects:projects:read"}],
+  "cross_app_calls": [
+    {
+      "target": "invoicing:project_invoiced_get",
+      "reason": "margin and money left to invoice read a project's invoiced amount, excluding VAT and net of credit notes"
+    }
+  ],
   "tools": {
     "activity_read": {"description": "A company's deals opened and closed, their subtasks, and the tasks of its projects, newest first, for its timeline. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["projects:tasks:read"], "trustBoundary": "user", "handler": "activityRead", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "company_context": {"description": "The open deals of the company in view, by stage, with amounts only under deal access, for the agent's context. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["projects:projects:read"], "trustBoundary": "user", "handler": "companyContext", "readsFromTable": "app_projects.deals", "params": {"type": "object", "properties": {"subject": {"type": "object", "properties": {"app": {"type": "string"}, "entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["app", "entityType", "entityId"]}}, "required": ["subject"]}},
@@ -2053,6 +2059,152 @@
         },
         "required": [
           "format"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "margin_get": {
+      "description": "One project's margin: what is invoiced (excl. VAT, net of credit notes) minus its time at cost, one figure, with coverage and what it leaves out. Finance only, in a DM; never per person.",
+      "searchKeywords": [
+        "margin",
+        "marge",
+        "profit",
+        "rentabilité",
+        "cost"
+      ],
+      "readOnly": true,
+      "dmOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:margin:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "marginGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "month": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One month, YYYY-MM: that month's invoices and hours only. Omit for the whole project."
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "projectId": "string",
+          "projectName": "string",
+          "margin": "number",
+          "invoiced": "number",
+          "cost": "number",
+          "currency": "string",
+          "partial": "boolean",
+          "coverage": "object",
+          "line": "string",
+          "how": "string",
+          "leftOut": "object",
+          "title": "string",
+          "sub": "string",
+          "marginText": "string",
+          "delta": "string"
+        }
+      },
+      "resultCard": {
+        "kind": "number",
+        "pill": {
+          "label": "Margin",
+          "labelKey": "projects.card.margin"
+        },
+        "title": "{{result.title}}",
+        "value": "{{result.marginText}}",
+        "delta": "{{result.delta}}",
+        "sub": "{{result.sub}}",
+        "how": {
+          "label": "Invoices linked to the project, excl. VAT and net of credit notes, minus each hour taken at the cost rate on that day",
+          "labelKey": "projects.card.marginHow"
+        },
+        "source": "Invoicing and time spent on tasks"
+      }
+    },
+    "cost_rates_list": {
+      "description": "The org's cost rates: each person's cost per hour and the day it applies from. Finance only.",
+      "searchKeywords": [
+        "cost",
+        "rates",
+        "taux",
+        "coût"
+      ],
+      "readOnly": true,
+      "dmOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:margin:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "costRatesList",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "cost_rate_set": {
+      "description": "Set a person's cost per hour from a date on; hours before that date keep their old cost. Finance only.",
+      "searchKeywords": [
+        "cost",
+        "taux",
+        "coût"
+      ],
+      "writesToTable": "app_projects.cost_rates",
+      "requiredScopes": [
+        "projects:cost_rates:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "costRateSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "The person's user id."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Cost per hour, in major units (60 for 60.00)."
+          },
+          "from": {
+            "type": "string",
+            "description": "The day it applies from, YYYY-MM-DD."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO currency code; omit to keep the org's."
+          }
+        },
+        "required": [
+          "userId",
+          "rate",
+          "from"
         ],
         "additionalProperties": false
       }

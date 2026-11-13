@@ -7,6 +7,8 @@ tools: kernel__create_routine, kernel__update_routine
 
 The rules for each argument of kernel__create_routine and kernel__update_routine, learnt from routines that failed: read the one for each argument you fill in.
 
+Never create a routine that asks people for their hours or lists who has not answered. Say no, say why, offer that a person can ask their own agent to reconcile.
+
 ### Choosing the trigger (`kind`)
 
 PICK IT FROM THE USER'S PHRASING FIRST: this is the most common authoring mistake.

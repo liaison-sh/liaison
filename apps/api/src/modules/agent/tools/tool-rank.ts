@@ -47,6 +47,8 @@ function substringOk(term: string): boolean {
 
 /** What a word found only in a tool's description scores. */
 const DESCRIPTION_SCORE = 2
+/** What an app word adds for a tool whose description also uses it. */
+const APP_WORD_DESCRIBED_SCORE = 1
 
 interface ScoringWords {
   /** The name parts, single-word keywords and description words by stem (see wordStem). */
@@ -539,7 +541,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
         nameJoined === term ||
         nameJoined === plural
       )
-        score += 10
+        score += otherKindOf(t, terms, termStems, i, tools) ? QUALIFIED_HEAD_SCORE : 10
       // A keyword the tool declares for this org (singular or plural either way)
       else if (
         keywordSet.has(term) ||
@@ -568,9 +570,10 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
           (term.length > nameParts[0].length && nameJoined.startsWith(term)))
       )
         score += 5
-      // App name match
+      // App name match. Every tool of the app answers to it alike, so one whose
+      // description also uses the word ("how a project is billed") is about it.
       else if (appLower === term || (substringOk(term) && appParts.some((p) => p.startsWith(term))))
-        score += 6
+        score += 6 + (sortedStartsWith(descSorted, term) ? APP_WORD_DESCRIBED_SCORE : 0)
       // A translation or plain synonym of a keyword.
       else if (termSynonyms[i].some((x) => keywordSet.has(x))) score += SYNONYM_KEYWORD_SCORE
       // A misspelt name part, keyword or app name, for a word the catalog does not hold.
@@ -636,22 +639,58 @@ function recordStems(t: ScorableDeferredTool, actions: ReadonlySet<string>): str
 }
 
 /**
+ * A record named by two words (`cost_rate`) is one kind of its last word. A query
+ * that puts another word in front of that last word ("project rate", "day rate")
+ * asks for another kind, so the word matches the tool like a keyword, not like
+ * its name: a project's rate is not a person's cost rate. Only a word some tool
+ * or app names as its record counts: an action in front ("set rate") changes
+ * nothing, nor does a query that names the record's own words anywhere ("cost
+ * rate", "reconcile card line").
+ */
+const QUALIFIED_HEAD_SCORE = 8
+function otherKindOf(
+  t: ScorableDeferredTool,
+  terms: readonly string[],
+  termStems: readonly string[],
+  i: number,
+  tools: readonly ScorableDeferredTool[],
+): boolean {
+  if (i === 0) return false
+  // The words before the action, as written: `cost_rate_set` names a cost rate.
+  const record = scoringWords(t).nameParts.slice(0, -1).map(wordStem)
+  if (record.length < 2 || record.at(-1) !== termStems[i]) return false
+  // The query names the tool's kind anywhere ("reconcile card line"): same kind.
+  if (termStems.some((stem, j) => j !== i && record.slice(0, -1).includes(stem))) return false
+  const before = termStems[i - 1]
+  return recordsOf(tools).nouns.has(before) && !FILLER_WORDS.has(terms[i - 1])
+}
+
+/**
  * Every tool's record stems, worked out once per catalog rather than once per
  * query: the actions and the stems depend on the catalog alone.
  */
 const recordStemsCache = new WeakMap<
   readonly ScorableDeferredTool[],
-  Map<ScorableDeferredTool, string[]>
+  { records: Map<ScorableDeferredTool, string[]>; nouns: Set<string> }
 >()
-function recordStemsOf(
-  tools: readonly ScorableDeferredTool[],
-): Map<ScorableDeferredTool, string[]> {
+/** Each tool's record stems, and every stem some tool or app names as a record. */
+function recordsOf(tools: readonly ScorableDeferredTool[]): {
+  records: Map<ScorableDeferredTool, string[]>
+  nouns: Set<string>
+} {
   const cached = recordStemsCache.get(tools)
   if (cached) return cached
   const actions = new Set(tools.map((t) => wordStem(scoringWords(t).nameParts.at(-1) ?? "")))
-  const out = new Map(tools.map((t) => [t, recordStems(t, actions)]))
+  const records = new Map(tools.map((t) => [t, recordStems(t, actions)]))
+  const apps = tools.flatMap((t) => scoringWords(t).appParts.map(wordStem))
+  const out = { records, nouns: new Set([...records.values()].flat().concat(apps)) }
   recordStemsCache.set(tools, out)
   return out
+}
+function recordStemsOf(
+  tools: readonly ScorableDeferredTool[],
+): Map<ScorableDeferredTool, string[]> {
+  return recordsOf(tools).records
 }
 
 /**

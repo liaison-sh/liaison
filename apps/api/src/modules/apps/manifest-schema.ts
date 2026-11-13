@@ -1798,6 +1798,9 @@ export const appManifestJsonSchema = {
           },
           kind: { type: "string", enum: ["playbook", "guide"] },
           enabledByDefault: { type: "boolean" },
+          // A feature the app declares under top-level `features`: an org with it off
+          // is shown no listing of the skill and cannot read it.
+          feature: { type: "string", minLength: 1 },
           // Author-declared trigger vocabulary, same shape + normalization as
           // `kernel.skills.auto_attach` (DB skills). Optional: a skill that
           // declares nothing behaves exactly as before. See

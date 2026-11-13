@@ -662,6 +662,8 @@ export const skillRegistry = createTypedRegistry<
     // enabledByDefault→true when absent.
     kind?: "playbook" | "guide"
     enabledByDefault?: boolean
+    /** The app feature the skill belongs to; absent for a skill of the whole app. */
+    feature?: string
     // Manifest-declared trigger vocabulary (`skills.<name>.autoAttach` in the
     // app manifest). Same shape as `kernel.skills.auto_attach` (DB skills):
     // parsed with parseAutoAttachKeywords/parseAutoAttachApps at resolve time

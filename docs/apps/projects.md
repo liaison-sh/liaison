@@ -182,6 +182,16 @@ liaison projects attach-files --file <ndjson> --files-dir <dir> [--org <slug>] [
 
 Each file is matched to its task by `externalRef`, backdated, and kept under its original uploader. Nobody is notified. Every file path in the NDJSON is relative to `--files-dir` and may not leave it. A re-run skips files already attached. Add `--dry-run` to check the batch first. An unknown uploader email fails the batch unless you pass `--placeholder-unknown-users`, which creates a deactivated user for it. See the [CLI reference](../reference/cli.md#projects-attach-files).
 
+## What time and budgets is for
+
+Time and budgets is for two things: billing a project's clients and planning a project's capacity. It is not for evaluating anyone's work or performance, and nothing in it is built to do that.
+
+- **Nothing is captured.** There is no timer, no keystroke or idle detection, no screenshot and no activity tracking. Time spent is only what a person says they spent.
+- **No figure judges a person.** There is no productivity score, no utilisation figure and no ranking or comparison of people. Capacity lists planned time in name order, and a day off shows only as a smaller number.
+- **A gap means nothing.** A missing entry, or a day with no commit or meeting, never lowers, flags or questions anything, and nothing reminds anyone to enter time.
+- **Private events stay private.** On a reconcile card, a meeting or a mail cited as proof reads only "Meeting" or "Mail" and its date, written by Liaison, never its title: a health appointment or a staff representative meeting is never named. A colleague's personal calendar event is dropped.
+- **Not the legal working-time record.** A project's dated sheet is billing support. It says so on the sheet, and it does not replace the record of working hours your country may require.
+
 ## Turn on time and budgets for a project
 
 Time and budgets is off on every project until you turn it on, one project at a time. Ask the agent ("turn on time and budgets for Atlas"), or pass `timeBudgets` when you create or edit a project through the API (`POST /api/projects`, `PATCH /api/projects/:projectId`). You need `projects:projects:write`, which the `lead` and `admin` roles hold. A sales pipeline cannot use it.
@@ -192,6 +202,46 @@ Time and budgets is off on every project until you turn it on, one project at a 
 - **Only a person turns it.** A routine, a sub-run or a job is refused.
 - **Tell your team first.** When the first project of the organisation is turned on, the person who turned it and every admin read a notice, once: tell the team what is recorded and why before anyone records time. With 50 or more people, consult your staff representatives first. Tell them too what an admin's organisation export holds: only the entries on a project's dated sheet, never a person's own private time or cost rate.
 - **An archived project no longer counts.** While the only projects that use it are archived, the time tools leave the tool lists; restoring one brings them back.
+
+## Telling your team
+
+Before anyone records time, tell the people concerned what is recorded and why. In France, an employer must tell employees beforehand about any system that collects information about them (Labour Code, article L1222-4), and with 50 or more employees consult the staff representatives (CSE) first (article L2312-38). The notice the first project shows points here. Copy the template below, fill in the brackets, and adapt it with your own advisers: it is a starting point, not legal advice.
+
+**English**
+
+> **Time and budgets in Liaison**
+>
+> From [date], [company] uses Time and budgets in Liaison on these projects: [projects]. It is used to bill our clients and to plan our projects' capacity. It is not used to evaluate anyone's work or performance.
+>
+> **What is recorded.** Only the time you say you spent on a task, in your own words, entered by you or by your agent when you ask it. Nothing is recorded automatically: no timer, keystrokes, idle time, screenshots or activity tracking.
+>
+> **Who sees it.** Colleagues see only a task's total, never your part. On a project with dated hours, its lead and finance see each entry with its day, to bill the client, and can correct one; you then see who changed it.
+>
+> **What is never done.** No ranking or comparison of people, no reminder to enter time, and a missing entry never counts against anyone.
+>
+> **How long it is kept.** Each entry keeps your name for 36 months after the day worked; after that only its hours and cost remain.
+>
+> **Your rights.** You can read your own entries at any time and receive them in your data export. Questions: [contact]. [With 50 or more employees: the staff representatives were consulted on [date].]
+>
+> This is not the legal record of working time.
+
+**Français**
+
+> **Temps et budgets dans Liaison**
+>
+> À partir du [date], [entreprise] utilise Temps et budgets dans Liaison sur ces projets : [projets]. Il sert à facturer nos clients et à planifier la charge de nos projets. Il ne sert pas à évaluer le travail ou la performance de quiconque.
+>
+> **Ce qui est enregistré.** Uniquement le temps que vous dites avoir passé sur une tâche, avec vos propres mots, saisi par vous ou par votre agent quand vous le lui demandez. Rien n'est enregistré automatiquement : ni chronomètre, ni frappe au clavier, ni temps d'inactivité, ni capture d'écran, ni suivi d'activité.
+>
+> **Qui le voit.** Vos collègues ne voient que le total d'une tâche, jamais votre part. Sur un projet en heures datées, son responsable et la finance voient chaque saisie avec son jour, pour facturer le client, et peuvent en corriger une ; vous voyez alors qui l'a modifiée.
+>
+> **Ce qui n'est jamais fait.** Aucun classement ni comparaison des personnes, aucun rappel de saisie, et une saisie manquante ne compte jamais contre personne.
+>
+> **Durée de conservation.** Chaque saisie garde votre nom pendant 36 mois après le jour travaillé ; ensuite seuls ses heures et son coût restent.
+>
+> **Vos droits.** Vous pouvez consulter vos saisies à tout moment et les recevoir dans l'export de vos données. Questions : [contact]. [À partir de 50 salariés : le CSE a été consulté le [date].]
+>
+> Ce n'est pas le registre légal du temps de travail.
 
 ## Record time on a task
 
@@ -257,7 +307,14 @@ On a project that uses time and budgets with dated hours on, its lead (the proje
 
 ## How long time is kept
 
-An entry keeps its person for 36 months after the day it was worked. Then, once a month, its cost is fixed at the rate that applied that day and its person is removed: the project's totals and its cost stay the same. The job goes by the entry's date alone and reads nothing else. A person's own entries, away days and days per week are in their data subject export, without anyone else's.
+The periods are fixed; there is no setting to change them.
+
+- **Time entries.** An entry keeps its person for 36 months after the day it was worked. Then, once a month, its cost is fixed at the rate that applied that day and its person is removed: the project's totals and its cost stay the same. The job goes by the entry's date alone and reads nothing else.
+- **Reconcile proposals.** A proposed card nobody touched for 30 days is deleted, with the cards it drew.
+- **Away days.** A person's away range is deleted 90 days after its last day.
+- **Files you export.** A sheet exported as a PDF or CSV is a copy, apart from the entries. A copy sent with an invoice follows that invoice's legal retention, and removing a person from the entries later does not change it.
+
+A person's own entries, away days and days per week are in their data subject export, without anyone else's.
 
 ## Lines on Home
 

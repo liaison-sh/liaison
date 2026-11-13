@@ -400,3 +400,93 @@ describe("tasks_aggregate as a dashboard source", () => {
     expect(JSON.stringify(out.data)).toContain("Doing")
   })
 })
+
+describe("the Project overview dashboard (docs/apps/projects.md)", () => {
+  it("an agent creates it in one dashboards_create call; every block runs", async () => {
+    const b = await makeBoard()
+    await task(b, { statusId: b.todo, assigneeId: otherId, dueDate: "2020-01-01" })
+    await task(b, { statusId: b.doing })
+    const aggregate = (params: Record<string, unknown>) => ({
+      kind: "tool",
+      tool: "projects:tasks_aggregate",
+      params: { projectId: b.id, ...params },
+    })
+    const bar = { x: "groupLabel", y: "value" }
+    const spec = {
+      v: 1,
+      blocks: [
+        {
+          id: "open",
+          type: "metric",
+          title: "Open tasks",
+          source: aggregate({}),
+          map: { value: "value", agg: "sum" },
+        },
+        { id: "status", type: "bar", title: "By status", source: aggregate({}), map: bar },
+        {
+          id: "handler",
+          type: "bar",
+          title: "By handler",
+          source: aggregate({ groupBy: "assignee" }),
+          map: bar,
+        },
+        {
+          id: "aging",
+          type: "bar",
+          title: "Time in status",
+          source: aggregate({ groupBy: "age_in_status" }),
+          map: bar,
+        },
+        {
+          id: "sla",
+          type: "metric",
+          title: "SLA missed",
+          source: aggregate({
+            groupBy: "sla",
+            sla: { toStatusIds: [b.doing], withinWorkingDays: 2 },
+          }),
+          map: {
+            value: "value",
+            agg: "sum",
+            where: [{ field: "group", op: "in", value: ["missed", "open_late"] }],
+          },
+        },
+        {
+          id: "overdue",
+          type: "table",
+          title: "Overdue",
+          source: {
+            kind: "tool",
+            tool: "projects:tasks_byProject",
+            params: { projectId: b.id, due: "overdue" },
+          },
+          map: {
+            columns: [
+              { field: "title", label: "Task" },
+              { field: "assigneeName", label: "Handler" },
+              { field: "dueDate", label: "Due" },
+            ],
+            link: { entity: "task", idField: "id", app: "projects" },
+          },
+        },
+      ],
+    }
+    const created = (await executeTool({
+      toolName: "kernel:dashboards_create",
+      orgId,
+      actor: actor as ActorContext,
+      origin: "mcp",
+      params: { title: "Project overview", visibility: "personal", spec },
+    })) as { data?: Json }
+    const id = created.data?.id ?? created.data?.dashboard?.id
+    expect(typeof id).toBe("string")
+    const run = async (block: string) => (await getBlockData(actor, id, block)) as Json
+    expect(await run("open")).toMatchObject({ ok: true, data: { value: 2 } })
+    for (const block of ["status", "handler", "aging", "sla"]) {
+      expect({ block, ok: (await run(block)).ok }).toEqual({ block, ok: true })
+    }
+    const overdue = await run("overdue")
+    expect(overdue.ok).toBe(true)
+    expect(overdue.data.rows).toHaveLength(1)
+  })
+})

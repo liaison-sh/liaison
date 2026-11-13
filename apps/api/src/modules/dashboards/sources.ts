@@ -34,6 +34,7 @@ import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import type { BlockSource } from "~/modules/dashboards/spec"
+import { parseBacking, taskStamp } from "~/modules/dashboards/tables/backing"
 import { type DeclaredCollection, getDeclaredCollection } from "~/modules/data-store/declared"
 import { AGENT_STORE_APP } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -378,16 +379,24 @@ export async function checkTableSource(
 export async function tableStamp(
   viewer: UserContext,
   tableId: string,
-): Promise<{ generation: number; version: number } | null> {
+): Promise<{ generation: number; version: number; tasks?: string } | null> {
   if (!/^[0-9a-f-]{36}$/i.test(tableId)) return null
-  const [row] = await withRlsContext(viewer, (tx) =>
-    tx
-      .select({ generation: dashboardTables.rowsGeneration, version: dashboardTables.version })
+  return withRlsContext(viewer, async (tx) => {
+    const [row] = await tx
+      .select({
+        generation: dashboardTables.rowsGeneration,
+        version: dashboardTables.version,
+        backing: dashboardTables.backing,
+      })
       .from(dashboardTables)
       .where(and(eq(dashboardTables.id, tableId), eq(dashboardTables.orgId, viewer.orgId)))
-      .limit(1),
-  )
-  return row ? { generation: Number(row.generation), version: row.version } : null
+      .limit(1)
+    if (!row) return null
+    const stamp = { generation: Number(row.generation), version: row.version }
+    // A backed table's rows move with its project's tasks too (tables/backing.ts).
+    const backing = parseBacking(row.backing)
+    return backing ? { ...stamp, tasks: await taskStamp(tx, viewer.orgId, backing) } : stamp
+  })
 }
 
 /** Any source's eligibility for `viewer`: a tool, a store collection or a dashboard table. */

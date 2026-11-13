@@ -13,6 +13,7 @@ import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
+import { backingSchema } from "~/modules/dashboards/tables/backing"
 import { searchLinkTargets } from "~/modules/dashboards/tables/link-search"
 import {
   createTable,
@@ -45,6 +46,7 @@ const createBody = z
     columns: z.array(z.unknown()).max(40),
     agentWritesNeedApproval: z.boolean().optional(),
     fromDashboardId: z.string().uuid().optional(),
+    backing: backingSchema.optional(),
   })
   .strict()
 
@@ -69,6 +71,7 @@ const updateBody = z
       })
       .strict()
       .optional(),
+    backing: backingSchema.nullable().optional(),
   })
   .strict()
 

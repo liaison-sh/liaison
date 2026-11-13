@@ -1,0 +1,2 @@
+every run counted when it ends, per app and lane, error kinds -> apps/api/src/modules/apps/workers/run-settled.ts (runErrorKindOf, emitRunSettled) ; apps/api/src/modules/apps/sandbox/run-app.ts (runApp) ; apps/api/src/modules/apps/usage/run-health.ts (recordRunHealth, runHealthLaneOf)
+timings record carries the error kind -> apps/api/src/modules/apps/workers/timings.ts (runTimingOf)

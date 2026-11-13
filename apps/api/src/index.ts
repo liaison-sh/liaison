@@ -66,6 +66,8 @@ import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
 import { awaitOrgApps, getDefaultApps, loadOrgSetupModules } from "~/modules/apps/init"
 import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
+import { startRunHealth, stopRunHealth } from "~/modules/apps/usage/run-health"
+import { registerRunPoolGauges } from "~/modules/apps/usage/run-pool-gauges"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
 import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { startBridgeListener } from "~/modules/apps/workers/bridge-listener"
@@ -270,6 +272,16 @@ registerShutdownPhase({
   at: "after-drain",
   deadlineMs: 3_000,
   run: () => stopAppUsageRecorder(),
+})
+// App-run health (modules/apps/usage/run-health.ts): per app and lane, rolling
+// windows in memory and in Redis, read by /diag and the admin read.
+registerRunPoolGauges()
+startRunHealth()
+registerShutdownPhase({
+  name: "app-run-health-flush",
+  at: "after-drain",
+  deadlineMs: 2_000,
+  run: () => stopRunHealth(),
 })
 // The load harness's synthetic job, only on a box with the harness key.
 if (loadHarnessEnabled()) registerLoadSyntheticWorker()

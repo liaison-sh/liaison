@@ -169,6 +169,8 @@ Individual apps can also register their own bridge methods through the bridge ex
 
 Real-world tool calls are dominated by bridge operations (DB queries, HTTP), not sandbox overhead. A DB-backed tool typically takes 2-10ms total, of which ~0.4ms is sandbox framing.
 
+Every run, on whichever executor ran it, is counted when it ends: per app and lane (`interactive`, `background`, `nested`), its time, its wait for a sandbox slot, its bridge time and, for a failed run, its error kind (`timeout`, `queue_timeout`, `cancelled`, `tenant_busy`, `memory`, `sandbox`, `handler`, or the loader's kind on Workers). An operator reads these numbers in `/diag` `appRuns` ([Watch app runs](self-hosting/docker.md#watch-app-runs)), so a slow or failing app shows up there before its users report it.
+
 ---
 
 ## Security Model

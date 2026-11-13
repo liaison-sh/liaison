@@ -114,6 +114,13 @@ describe("GET /diag", () => {
     const body = (await res.json()) as {
       diagVersion: number
       appVersion: string
+      appRuns: {
+        judgedOn: string
+        alerts: unknown[]
+        thresholds: Record<string, number>
+        process: Record<string, { windowS: number; lanes: Record<string, unknown> }>
+        cell: Record<string, { windowS: number }> | null
+      }
       uptimeSec: number
       errorSignatures: unknown[]
       outbox: { oldestPendingAgeSec: number | null; deadLetterCount: number }
@@ -138,7 +145,18 @@ describe("GET /diag", () => {
         }>
       }
     }
-    expect(body.diagVersion).toBe(1)
+    expect(body.diagVersion).toBe(2)
+    expect(body.appRuns.process["15m"]?.windowS).toBe(900)
+    expect(body.appRuns.process["24h"]?.windowS).toBe(86_400)
+    expect(Object.keys(body.appRuns.process["15m"]?.lanes ?? {}).sort()).toEqual([
+      "background",
+      "interactive",
+      "nested",
+    ])
+    expect(body.appRuns.judgedOn).toBe("cell")
+    expect(body.appRuns.cell?.["15m"]?.windowS).toBe(900)
+    expect(Array.isArray(body.appRuns.alerts)).toBe(true)
+    expect(body.appRuns.thresholds.timeoutsMin).toBe(10)
     expect(typeof body.appVersion).toBe("string")
     expect(typeof body.uptimeSec).toBe("number")
     expect(Array.isArray(body.errorSignatures)).toBe(true)

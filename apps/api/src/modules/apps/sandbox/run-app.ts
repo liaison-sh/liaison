@@ -88,7 +88,11 @@ import {
   fallbackTargetRunState,
   loaderBreaker,
 } from "~/modules/apps/workers/fallback"
-import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import {
+  emitRunSettled,
+  runErrorKindOf,
+  type WorkersFallback,
+} from "~/modules/apps/workers/run-settled"
 import { appSandboxRelease } from "~/modules/apps/workers/sandbox-release"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
 import { AppWorkerModuleMissingError } from "~/modules/apps/workers/worker-module-missing"
@@ -346,6 +350,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     inProcess: opts.quickjs?.inProcess === true,
   })
   let fallback: WorkersFallback | undefined
+  let failure: unknown
   try {
     // A core app's handler is server code: called here, whatever the site asked.
     const core = coreModuleFor(opts.appName, opts.bundlePath)
@@ -420,6 +425,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     }
     ok = true
     return result
+  } catch (err) {
+    failure = err
+    throw err
   } finally {
     if (opts.executionToken) runningExecutions.delete(opts.executionToken)
     if (info.logs || info.logsDropped) {
@@ -460,7 +468,11 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
       ...(fallback ? { fallback } : {}),
       ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
-      ...(info.fault ? { errorKind: info.fault.kind, faultClass: info.fault.class } : {}),
+      ...(info.fault
+        ? { errorKind: info.fault.kind, faultClass: info.fault.class }
+        : !ok
+          ? { errorKind: runErrorKindOf(failure) }
+          : {}),
     })
   }
 }

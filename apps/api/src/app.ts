@@ -44,6 +44,7 @@ import { orgRateLimiter, rateLimiter, userRateLimiter } from "~/middleware/rate-
 import { requestTimeout } from "~/middleware/request-timeout"
 import { requireScope } from "~/middleware/require-scope"
 import { securityHeaders } from "~/middleware/security-headers"
+import { appHealthRoutes } from "~/modules/admin/app-health"
 import { versionCheckRoutes } from "~/modules/admin/version-check"
 import { creditRoutes } from "~/modules/agent/credits/credit-routes"
 import { definitionRoutes } from "~/modules/agent/directory/definition-routes"
@@ -913,6 +914,10 @@ app.route("/api/admin/liaison-team", liaisonTeamRoutes)
 // callers, behind an admin session (public /healthz is liveness only).
 app.use("/api/admin/system-health", requireScope("kernel:org:admin"))
 app.route("/api/admin/system-health", systemHealthRoutes)
+// App-run health per app and lane: the instance operator sees every app of
+// the cell, any other org admin their org's own (modules/admin/app-health.ts).
+app.use("/api/admin/app-health", requireScope("kernel:org:admin"))
+app.route("/api/admin/app-health", appHealthRoutes)
 
 // Contact routes (authenticated, scope-checked)
 app.use("/api/contacts", authMw, orgLimiter)

@@ -85,7 +85,8 @@ A table can show the tasks of one project as its rows, live: `backing: { app: "p
 - Editing a read-through cell changes the task through Projects, as the writer, and needs the right to edit tasks; the task's own history records it, not the table's.
 - Adding a row creates a task (a title is required). A row cannot be deleted: delete or archive the task in Projects.
 - An own column cannot use the key of a read-through one.
-- On the grid, a column read from the project has a small link mark; hover its header for "From <project>: changing it changes the task." The table's own columns say "Kept in this table only." On **Settings**, read-through columns say **From the project** and cannot be renamed or dropped there.
+- On the grid, the header groups the columns under **From <project>** and **This table only**. A column read from the project has a small link mark; hover its header for "From <project>: changing it changes the task." The table's own columns say "Kept in this table only."
+- The status shows as a pill in the status's colour from the project's board, the assignee with their avatar, and a due date that has passed reads red with a full thin track under it (one due in the next three days reads amber, the track filling as it nears). On **Settings**, read-through columns say **From the project** and cannot be renamed or dropped there.
 - A change you may not make to a task says so under its row: "You can't change the tasks of <project>. Ask an admin for permission to edit tasks."
 - **Add a task** asks for the task's title and the table's own columns. The delete mark of a row is greyed out; hover it for why.
 - An app declares which of its records can back a table, on the entity in its manifest: `tableBacking: { parent, provider }`, a provider in its server code.

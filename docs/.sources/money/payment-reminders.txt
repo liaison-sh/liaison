@@ -1,9 +1,0 @@
-send guard on Stripe invoices: paid, void, uncollectible -> bundled-apps/stripe/src/tools/send-state.ts:19
-send guard unavailable waits -> bundled-apps/stripe/src/tools/send-state.ts:7
-serviceMessage send guard provider -> bundled-apps/stripe/app.manifest.json:1556
-failed-payments routine drafts reminders -> bundled-apps/stripe/app.manifest.json:1566
-card_update_link tool -> bundled-apps/stripe/app.manifest.json:931
-overdue-scan job daily at 06:00 -> bundled-apps/invoicing/app.manifest.json:6740
-overdue attention item text -> bundled-apps/invoicing/app.manifest.json:6568
-invoicing send guard stops on paid, credited or voided -> bundled-apps/invoicing/app.manifest.json:2127
-invoicing send guard is a service message -> bundled-apps/invoicing/app.manifest.json:1783

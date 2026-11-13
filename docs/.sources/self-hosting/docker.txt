@@ -284,25 +284,6 @@ quickstart --channel -> deploy/quickstart.sh:20
 The three loader variables run every installed sandboxed app on the loader, as the worker.js its package carried; the loader fetches it from /api/app-bridge/bundles/<sha256>, signed -> apps/api/src/lib/env.ts:1176 ; apps/api/src/modules/apps/workers/config.ts:1-21 ; apps/api/src/modules/apps/workers/bundle-route.ts:1-24
 LIAISON_CUSTOM_APPS on: org custom apps and the app builder; unset off when self-hosted, on when managed; instance installs and installed apps unaffected -> apps/api/src/lib/env.ts:1061 ; apps/api/src/lib/edition.ts:53 ; apps/api/src/modules/apps/install-routes.ts:265
 LIAISON_APP_FRAME_ORIGIN_TEMPLATE frames outside apps (and LIAISON_FRAMED_APPS first-party apps) on <app>--<org> of their own domain; empty = opaque frame; passed by compose -> apps/api/src/lib/env.ts:175 ; apps/api/src/lib/env.ts:188 ; deploy/docker-compose.yml:655 ; deploy/docker-compose.yml:657
-Tool search adds a meaning score to its word ranking -> apps/api/src/modules/agent/tools/tool-rank.ts:523
-No meaning until tool vectors are ready, or when the model fails or is slow -> apps/api/src/modules/agent/tools/tool-meaning.ts:165
-Model arctic-embed-m-v2.0 pinned revision and per-file sha256 -> apps/api/src/modules/agent/tools/local-embedder.ts:23
-Files fetched at the revision, checked, renamed into the cache dir; read locally only -> apps/api/src/modules/agent/tools/local-embedder.ts:56-92
-One embedding process per host, asked over a Unix socket, no port, socket mode 0600 -> apps/api/src/modules/agent/tools/embedder-socket.ts:137 ; apps/api/src/modules/agent/tools/embedder-socket.ts:225 ; apps/api/src/modules/agent/tools/tool-meaning.ts:246
-Socket opens once the model is loaded (warm-up query first) -> apps/api/src/modules/agent/tools/embedder-main.ts:27-33
-A second embedding process on a live socket refuses to start -> apps/api/src/modules/agent/tools/embedder-socket.ts:149
-Down, loading or slower than the deadline: words only; one log line per outage and one when back -> apps/api/src/modules/agent/tools/embedder-socket.ts:258 ; apps/api/src/modules/agent/tools/embedder-socket.ts:301-335 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167
-About 1.1 GB for the embedding process (1.4 GB while loading), other processes about 0 -> measured on 2026-11-09 with a client process and the embedding process (bench catalog, 640 tools, 120 searches)
-About 330 MB of files, 15-45 s to embed the tools -> measured with apps/api/src/modules/agent/tools/tool-bench/meaning.ts:1
-LIAISON_TOOL_MEANING, LIAISON_MODEL_CACHE_DIR, LIAISON_EMBEDDER_SOCKET, LIAISON_EMBEDDER_DEADLINE_MS -> apps/api/src/lib/env.ts:1290-1315
-Socket default under XDG_RUNTIME_DIR or the temporary folder -> apps/api/src/modules/agent/tools/embedder-socket.ts:51
-LIAISON_TOOL_MEANING unset: on when managed, off when self-hosted; off asks no embedding process -> apps/api/src/lib/edition.ts:67 ; apps/api/src/modules/agent/tools/tool-meaning.ts:236-244
-Compose: embedder service, profile meaning, cap 2g, socket and model files on the data volume -> deploy/docker-compose.yml:811-819 ; deploy/docker-compose.yml:499-502
-Image command embedder; bun run embedder from apps/api -> apps/api/scripts/entrypoint.sh:85 ; apps/api/package.json:8
-Rolling deploy adds COMPOSE_PROFILES' profiles to rolling; with meaning starts the embedder if not running, never recreates it -> deploy/rolling-deploy.sh:116-129 ; deploy/rolling-deploy.sh:408-411 ; deploy/rolling-deploy.test.ts
-Opt-out link is built on BASE_URL -> apps/api/src/lib/org-public-url.ts:44-45 ; apps/api/src/modules/mail/commercial-footer.ts:92-100
-List-Unsubscribe and One-Click headers on a Gmail send and on an SMTP send -> apps/api/src/modules/mail/commercial-footer.ts:192-196 ; apps/api/src/apps/mail/handlers.ts:630 ; apps/api/src/modules/apps/sandbox/smtp-bridge.ts:61
-Commercial identity must be set first -> apps/api/src/modules/mail/commercial-footer.ts:37 ; apps/web/src/modules/settings/AdminOrgSettings.tsx:157
 LIAISON_SANDBOX_URL names the server's own sandbox service for runs the loader cannot take, and for every run without a loader -> apps/api/src/lib/env.ts ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
 Sandbox service compose profile, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME -> deploy/docker-compose.yml sandbox ; apps/api/src/modules/apps/workers/bridge-listener.ts
 /healthz sandbox dependency when the sandbox service is configured -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox

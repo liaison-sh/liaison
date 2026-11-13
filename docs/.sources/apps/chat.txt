@@ -91,13 +91,8 @@ Open task -> packages/shared/src/i18n/locales/en/kernel.json:6280
 AI service stops answering mid-turn: the step is tried again, then the reply says it stopped responding, say "continue" -> apps/api/src/modules/agent/runtime/agent-service.ts:3748 ; packages/shared/src/threads/agent-notice.ts:64
 Notify me of every message switch in the channel menu -> apps/web/src/modules/threads/ThreadHeader.tsx:600
 Notify me of every message label -> packages/shared/src/i18n/locales/en/kernel.json:2124
-Next-step buttons under the newest reply, gone once anything follows -> apps/web/src/modules/threads/message-store.ts:817 ; apps/web/src/modules/agent/SuggestionChips.tsx:67
-Any app record can hold a discussion; seen by who can see the record; opening seats you; prune on narrowed sharing; Retry on failure -> apps/api/src/modules/threads/entity-discussion.ts:89-122 ; apps/api/src/modules/threads/entity-discussion.ts:239 ; apps/web/src/modules/threads/EntityDiscussionPanel.tsx:70-95 ; packages/shared/src/i18n/locales/en/kernel.json (entityDiscussion)
 A linked dashboard shows as a chip with its title -> apps/api/src/modules/threads/reference-display.ts:342
 Dashboards in the bar on the left -> apps/web/src/framework/bootstrap.ts:1271
-The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:5017, apps/web/src/modules/threads/message-store.ts:2637
-A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2758
-A message holding a key is not sent, and the box says why -> apps/web/src/modules/threads/ComposeBar.tsx:243, packages/shared/src/i18n/locales/en/kernel.json:875
-Key shapes: rk_/sk_ with live_/test_, whsec_, 10 or more characters -> packages/shared/src/pan-scan.ts:250
-A key or card number reaching the server is stored masked with a note -> apps/api/src/modules/threads/message.ts:506, packages/shared/src/pan-scan.ts:290
+The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:4967, apps/web/src/modules/threads/message-store.ts:2540
+A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2661
 Group post waits for approval once per conversation; DM always posted; never hidden -> apps/api/src/modules/apps/execute-tool.ts:4131 ; apps/api/src/modules/agent/scopes/post-disclosure.ts:167 ; apps/api/src/modules/agent/tools/chat-tools.ts:160

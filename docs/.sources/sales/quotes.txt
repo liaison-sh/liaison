@@ -1,7 +1,7 @@
 + New quote CTA with New proforma / New purchase order -> bundled-apps/invoicing/src/ui/sidebar.tsx:204-240
 Editor fields Issuer, Issue date, Due date -> bundled-apps/invoicing/src/ui/Editor.tsx:1367-1406
 Customer name, email, VAT ID, country, address, shipping address -> bundled-apps/invoicing/src/ui/Editor.tsx:1448-1527
-Country drives the tax classification -> bundled-apps/invoicing/app.manifest.json:2936
+Country drives the tax classification -> bundled-apps/invoicing/app.manifest.json:2935
 + Add line -> bundled-apps/invoicing/src/ui/Editor.tsx:1888
 Preview PDF -> bundled-apps/invoicing/src/ui/Editor.tsx:1294
 Create quote / Create quote + email; Issue proforma; Issue purchase order -> bundled-apps/invoicing/src/ui/Editor.tsx:70-84
@@ -10,25 +10,25 @@ Prices include tax setting, match the shop -> bundled-apps/invoicing/README.md:1
 Documents > Quotes in the sidebar -> bundled-apps/invoicing/src/ui/sidebar.tsx:153
 Send to customer button -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:199-203
 Sent to the customer / Sent for approval -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:287-297
-documents_send_to_customer gated -> bundled-apps/invoicing/app.manifest.json:3511-3515
+documents_send_to_customer gated -> bundled-apps/invoicing/app.manifest.json:3510-3514
 Quote = Shopify draft order, both creation routes -> bundled-apps/invoicing/README.md:69-78
 Editing in Shopify refreshes a sent quote; settled quotes left alone -> bundled-apps/invoicing/README.md:79-83
 Deleting the draft order rejects the quote; standalone without mapping -> bundled-apps/invoicing/README.md:90-92
-Never create both -> bundled-apps/invoicing/app.manifest.json:2923
+Never create both -> bundled-apps/invoicing/app.manifest.json:2922
 Convert allowed from sent or accepted -> bundled-apps/invoicing/src/state.ts:39-43
 Convert to invoice button with confirmation (the human confirm is the approval) -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:204-223
 Convert completes the draft order, quote becomes invoiced, invoice follows -> bundled-apps/invoicing/README.md:84-89
-documents_convert_to_invoice gated for agents, UI needs no approval, po_number carried -> bundled-apps/invoicing/app.manifest.json:3629-3634
+documents_convert_to_invoice gated for agents, UI needs no approval, po_number carried -> bundled-apps/invoicing/app.manifest.json:3628-3633
 Quote statuses sent, accepted, invoiced, rejected, expired -> bundled-apps/invoicing/src/state.ts:37-45
 Only quotes, proformas and POs are started by hand; credit notes from refunds -> bundled-apps/invoicing/README.md:106-108
 CN- credit note series -> bundled-apps/invoicing/src/mutations/credit-notes.ts:85
-quote_create_and_issue threshold-gated when local -> bundled-apps/invoicing/app.manifest.json:2923
-quote_issue gated -> bundled-apps/invoicing/app.manifest.json:2894-2898
-shopify__draft_orders_create equivalent -> bundled-apps/invoicing/app.manifest.json:2923
-line discount_minor is the whole line's total discount in minor units -> bundled-apps/invoicing/app.manifest.json:3006
+quote_create_and_issue threshold-gated when local -> bundled-apps/invoicing/app.manifest.json:2922
+quote_issue gated -> bundled-apps/invoicing/app.manifest.json:2893-2897
+shopify__draft_orders_create equivalent -> bundled-apps/invoicing/app.manifest.json:2922
+line discount_minor is the whole line's total discount in minor units -> bundled-apps/invoicing/app.manifest.json:3005
 Customer ref printed on the PDF -> bundled-apps/invoicing/templates/shared.ts:943
-customer_reference param -> bundled-apps/invoicing/app.manifest.json:3097
-quote outputs number and pdf_file_id for a later step -> bundled-apps/invoicing/app.manifest.json:3116
+customer_reference param -> bundled-apps/invoicing/app.manifest.json:3096
+quote outputs number and pdf_file_id for a later step -> bundled-apps/invoicing/app.manifest.json:3115
 Contact search and pick, linked contact shown by name, Unlink -> bundled-apps/invoicing/src/ui/ContactPicker.tsx:25-60
 Contact field in the editor -> bundled-apps/invoicing/src/ui/Editor.tsx:1420-1427
 convert refused when the order would not be invoiced (draft order complete preflight) -> bundled-apps/shopify/src/mutations/draft-orders.ts:137 ; bundled-apps/invoicing/src/order-invoiceability.ts:110

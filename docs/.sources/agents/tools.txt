@@ -327,10 +327,6 @@ shopify_app_toml: managed installation, file posted again after full order histo
 A message from a device sign-in is not a typed turn -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938
 ai_models_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2857
 ai_models_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2876
-tool_search: no match names the apps and loads nothing -> apps/api/src/modules/agent/tools/tool-search.ts:597
-tool_search: select: of a bare name two apps share loads neither -> apps/api/src/modules/agent/tools/tool-search.ts:493
-set_away tool: scope, conditional park, other person's scopes -> apps/api/src/modules/agent/tools/kernel-tools.ts:3651 ; apps/api/src/modules/users/away.ts:749
-threads_create createdFrom: posts into the discussion as the agent, drops and names participants who cannot see it, created_from_not_visible -> apps/api/src/modules/agent/tools/chat-tools.ts:494-575 ; apps/api/src/modules/agent/tools/kernel-tools.ts (threads_create createdFrom)
 data_collections_list tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:328
 data_query tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:341
 data_get tool: scope and approval flag -> apps/api/src/modules/data-store/tools.ts:355
@@ -351,15 +347,8 @@ dashboards_update tool: gated for an org dashboard or a switch to org -> apps/ap
 dashboards_edit tool: gated for an org dashboard or a switch to org, one approval per call -> apps/api/src/modules/dashboards/tools.ts:527
 dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashboards/tools.ts:356
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
-The search reads other forms of a word, misspellings of 5+ letters, French words and plain synonyms of name words; a rare word counts more in a query of several words -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15
-Search ranks by meaning as well as words -> apps/api/src/modules/agent/tools/tool-rank.ts:523
-Meaning on by default when managed, off when self-hosted -> apps/api/src/lib/edition.ts:67
-Meaning ranks only the reachable catalog -> apps/api/src/modules/agent/tools/tool-search.ts:565
-One embedding process per server; not running or slow means words alone -> apps/api/src/modules/agent/tools/tool-meaning.ts:246 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167 ; apps/api/src/modules/agent/tools/embedder-socket.ts:258
 report_bug attachments param (up to 5 readable file ids) -> apps/api/src/modules/bug-reports/tool.ts:88-96
 Document tools: rules by attribute, writes wait for approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:2580
-card shows the storing route's own refusal; app by name; agent told the field labels -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:384 ; apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:370 ; apps/api/src/modules/agent/tools/secret-request-tools.ts:270
-contacts_read names one line per other app holding records for the contact, read as the caller through its timeline source -> apps/api/src/modules/agent/tools/contact-tools.ts:332 ; apps/api/src/modules/contacts/activity.ts:616
 open_app opens the kernel Dashboards page -> apps/api/src/modules/agent/tools/open-targets.ts:114
 dashboards_history tool: read scope, no approval -> apps/api/src/modules/dashboards/tools.ts:595
 dashboards_snapshot tool: read scope, recipients -> apps/api/src/modules/dashboards/tools.ts:650

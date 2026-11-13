@@ -42,7 +42,3 @@ Run pauses on a held call and resumes with its result -> packages/shared/src/tou
 Record approved first, then the reply (tour order) -> packages/shared/src/tours/demo/sales.ts:170-215
 Website read only when neither sender nor company is in the CRM, at https://<domain>/ -> apps/api/src/seed/tiers/demo/seed-agent-native.ts:2012-2016
 Reading the web never waits for an approval -> apps/api/src/modules/apps/execute-tool.ts:4019,4029
-Native lookup tools contacts_search, companies_search (name or domain) -> apps/api/src/modules/agent/tools/kernel-tools.ts:1775 ; docs/reference/agent-tools.md:companies_search
-Native proposals contacts_write and companies_write are gated -> apps/api/src/modules/agent/tools/kernel-tools.ts:1860-1880 ; apps/api/src/modules/agent/tools/company-tools.ts:912
-The company page shows the open deal -> apps/web/src/modules/contacts/CompanyDetail.tsx:660-689
-Scopes kernel:companies:read and kernel:companies:write -> apps/api/src/modules/permissions/scope-catalog.ts:34-35

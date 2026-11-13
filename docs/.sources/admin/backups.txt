@@ -51,7 +51,6 @@ files/<file id>/<name> entries -> apps/api/src/modules/export/org-archive/writer
 Encoding base64 / string / ISO UTC -> apps/api/src/modules/export/org-archive/writer.ts:479
 Tables incl. empty ones, catalog-driven -> apps/api/src/modules/export/org-archive/catalog.ts:150
 Left out (null) secrets list -> apps/api/src/modules/export/org-archive/redaction.ts:29
-Left out (null) payment card details mirrored from Stripe -> apps/api/src/modules/export/org-archive/redaction.ts:67
 Encrypted content exported as stored, counted -> apps/api/src/modules/export/org-archive/writer.ts:489
 Not a snapshot -> apps/api/src/modules/export/org-archive/writer.ts:475
 4 GB / 65,000 entries limit -> apps/api/src/modules/export/org-archive/zip-stream.ts:25
@@ -83,15 +82,11 @@ Daily deletion past retention -> apps/api/src/modules/org/delete/legal-archive.t
 Org export link: presigned only with OBJECT_STORAGE_BROWSER_DIRECT, else the server streams it -> apps/api/src/modules/export/org-archive/routes.ts:147 ; apps/api/src/infra/storage/delivery.ts:36
 Compose passes LEGAL_ARCHIVE_RECIPIENT and LEGAL_ARCHIVE_RETENTION_YEARS to app and worker -> deploy/docker-compose.yml:642 ; deploy/docker-compose.yml:779
 Export download link bound to the org address -> apps/api/src/modules/export/org-archive/routes.ts:188
-data_subject_export member bundle: sections and what they hold -> apps/api/src/modules/export/member-data-subject-bundle.ts:99 ; apps/api/src/modules/export/data-subject-export-tool.ts:619
-member export never selects tokens or credentials, drops secret-named keys -> apps/api/src/modules/export/member-data-subject-bundle.ts:61
-member export lists dashboards owned or made and store documents written, without their contents -> apps/api/src/modules/export/member-data-subject-bundle.ts:225 ; apps/api/src/modules/export/member-data-subject-bundle.ts:246
+data_subject_export member bundle: sections and what they hold -> apps/api/src/modules/export/member-data-subject-bundle.ts:97 ; apps/api/src/modules/export/data-subject-export-tool.ts:619
+member export never selects tokens or credentials, drops secret-named keys -> apps/api/src/modules/export/member-data-subject-bundle.ts:59
+member export lists dashboards owned or made and store documents written, without their contents -> apps/api/src/modules/export/member-data-subject-bundle.ts:223 ; apps/api/src/modules/export/member-data-subject-bundle.ts:244
 every member may export themself, another member needs kernel:data_subject:export -> apps/api/src/modules/export/data-subject-export-tool.ts:125
 data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:705
 data_subject_export file: only the requester can open it, never the subject, another member or an admin -> apps/api/src/modules/files/rls-builder.ts:108 ; apps/api/src/modules/export/data-subject-export-tool.ts:739
-Contact export says when and how they opted out -> apps/api/src/modules/export/data-subject-export-tool.ts:581
-Member export lists the opt-outs they recorded, never an address -> apps/api/src/modules/export/member-data-subject-bundle.ts:402
-member export lists app drafts made and the runs their actions logged, whatever the member's current permissions, without code or log text -> apps/api/src/modules/export/member-data-subject-bundle.ts:414 ; apps/api/src/modules/export/member-data-subject-bundle.ts:440
-Contact export carries the schedules billing them and their linked Stripe customers with subscriptions; a card is brand, last 4 and expiry only -> apps/api/src/modules/export/data-subject-export-tool.ts:830 ; apps/api/src/modules/export/data-subject-export-tool.ts:304
 Member export: dashboard tables owned, made or changed (names and counts) -> apps/api/src/modules/export/member-data-subject-bundle.ts:244
 Export manifest names each app's version, a catalog app's active version -> apps/api/src/modules/export/orchestrator.ts:22

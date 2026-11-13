@@ -1,0 +1,5 @@
+emails line text when unchecked -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx (StreamView)
+emails line text when checked -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx (streamRow)
+button I checked, they are off -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx (InvoicingIssuerStreams)
+cannot be read through Stripe's API, Liaison asks, keeps who and when -> bundled-apps/invoicing/src/streams.ts (Row)
+issuer_emails_confirm tool -> bundled-apps/invoicing/app.manifest.json (received_einvoices_list.einvoice_standing_off)

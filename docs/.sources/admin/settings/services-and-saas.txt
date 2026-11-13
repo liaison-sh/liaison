@@ -1,0 +1,5 @@
+Profile Away section: dates, next in line, Set away, Undo, End early, next in line by default, saved on pick -> apps/web/src/modules/settings/ProfileSettings.tsx (SELECT_CLASS) ; apps/api/src/modules/users/away.ts (setAway)
+Profile Away: what the next in line gets, no new rights, private mail and conversations -> packages/shared/src/i18n/locales/en/kernel.json (settings.profile.away.standInGets) ; apps/web/src/modules/settings/ProfileSettings.tsx
+Next in line's Home says who is away and until when -> apps/web/src/modules/shell/route-line.tsx ; apps/api/src/modules/users/away.ts (standingInForNames)
+Profile Away: From your calendar, Yes and No questions -> apps/web/src/modules/settings/ProfileSettings.tsx ; apps/api/src/modules/users/away.ts
+Users: deactivation asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx (AdminUsers)

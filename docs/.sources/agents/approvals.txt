@@ -159,7 +159,7 @@ Refusal tells the agent today's date and to write the value or say it will confi
 Mail reply forward compose declare outbound text -> apps/api/src/apps/mail/app.manifest.json:812
 Ticket reply nudge close declare outbound text -> apps/api/src/apps/tickets/app.manifest.json:2439
 Social reply and direct message declare outbound text -> bundled-apps/social/app.manifest.json:371
-Invoicing send to customer declares outbound text -> bundled-apps/invoicing/app.manifest.json:3515
+Invoicing send to customer declares outbound text -> bundled-apps/invoicing/app.manifest.json:3514
 Agent edit of a pending request checked; a person's edit is not -> apps/api/src/modules/approvals/edit.ts:262
 Approved by you for the viewer's own decision -> apps/web/src/modules/approvals/ApprovalCard.tsx:1464
 A required step is stated by Liaison after the untrusted result -> apps/api/src/modules/agent/context/system-event-replay.ts:131
@@ -186,7 +186,7 @@ A failed sequence step cancels the steps after it; the proposer is told the real
 Bundled request named after its last step with the step count -> apps/api/src/modules/approvals/attention.ts:504
 Home row lists a sequence's steps in order -> apps/api/src/modules/approvals/attention.ts:659 ; apps/web/src/modules/shell/AttentionRow.tsx:819
 Each step shows its message in full, its lines, links and exact payload -> apps/web/src/modules/approvals/ApprovalCard.tsx:443,624,682
-Quote step: customer, lines, total, validity, customer reference -> bundled-apps/invoicing/src/approval-cards.ts:278,281 ; bundled-apps/invoicing/app.manifest.json:3110
+Quote step: customer, lines, total, validity, customer reference -> bundled-apps/invoicing/src/approval-cards.ts:278,281 ; bundled-apps/invoicing/app.manifest.json:3109
 Tokens read as the step they come from -> packages/shared/src/refs.ts:162,178 ; apps/api/src/modules/apps/execute-tool.ts:5268 ; apps/api/src/modules/approvals/edit.ts:572
 File from an earlier step attached once that step has run -> apps/api/src/modules/files/attach.ts:624
 Agent invite card: 'X wants to add Y to this discussion', Add / Don't add, never auto-approved -> apps/web/src/modules/approvals/ApprovalCard.tsx:1173-1185 ; apps/web/src/modules/approvals/approval-copy.ts:179 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1500-1502
@@ -229,25 +229,6 @@ Closed approval notice carries the handler's own reason -> apps/api/src/modules/
 Request raised in the conversation you are reading does not notify you -> apps/api/src/modules/attention/state-materializer.ts:342
 Decisions on your requests group, feed and digest only by default -> packages/shared/src/i18n/locales/en/kernel.json:4393
 Approver eligibility counts every-member scopes, with the app restriction -> apps/api/src/modules/permissions/eligible-approvers.ts:36
-Undo window is eight seconds -> apps/web/src/modules/approvals/decision-queue.ts:43
-Home approvals fold over five rows, three shown -> apps/web/src/modules/shell/Home.tsx:109-111
-A decided row leaves the count at once -> apps/web/src/modules/shell/home-action-count.ts:157
-Provider pill names the row over the tool's -> apps/api/src/modules/approvals/attention.ts:121
-Held draft is not on Home and not counted -> apps/api/src/modules/approvals/attention.ts:635
-Stopped draft is not counted -> apps/api/src/modules/approvals/attention.ts:711
-Send check line on a clear draft -> packages/shared/src/i18n/locales/en/kernel.json:6481
-Not now only on stored items -> apps/web/src/modules/shell/AttentionRowExtras.tsx:40
-Not now lasts until next Monday 00:00 in the person's zone -> apps/api/src/modules/attention/set-aside.ts:76-79
-A set-aside item comes back when the moment passes -> apps/api/src/modules/attention/event-provider.ts:48
-Ask agent to draft posts to the Personal agent conversation -> apps/web/src/modules/shell/AttentionRowExtras.tsx:145
-A failed source is named with Retry -> packages/shared/src/i18n/locales/en/kernel.json:6482
-Decision older than 15 minutes is dropped at the next start, row says not sent -> apps/web/src/modules/approvals/decision-queue.ts:51 ; packages/shared/src/i18n/locales/en/kernel.json:5737
-A request about a company records the company (company or contact link, deal via its task); several companies record none -> apps/api/src/modules/approvals/route-world.ts:591 ; apps/api/src/apps/projects/handlers.ts:110
-The manager is read at each feed read, after asked and on-item -> apps/api/src/modules/approvals/route-world.ts:302 ; apps/api/src/modules/approvals/route-world.ts:406 ; packages/shared/src/approvals/authority.ts:367-371
-A manager without the deciding scope is skipped, usual approvers -> packages/shared/src/approvals/authority.ts:373
-mail draft about a closed record is cancelled -> apps/api/src/modules/approvals/withdraw-on-events.ts:130-200
-mail draft about a record of a switched-off app is cancelled -> apps/api/src/modules/approvals/cancel.ts:262-290
-Agent mail card lists each contact recipient's basis, consumer or business, opt-out, as the composer -> apps/web/src/modules/approvals/ApprovalCard.tsx:2341 ; apps/api/src/modules/approvals/list.ts:516 ; apps/api/src/modules/mail/send-guard.ts:1610 ; packages/shared/src/i18n/locales/en/mail.json:264
 A step reference reads as its step, request and "filled in when that step runs" -> packages/shared/src/refs.ts:175-215 ; apps/api/src/modules/approvals/ref-provenance.ts:52-110
 Once the earlier step ran, the step's summary shows the returned value -> apps/api/src/modules/approvals/cascade.ts:463-480 ; apps/api/src/modules/approvals/ref-provenance.ts:118-155
 Home approval rows: chevron or click folds; a click ending a text selection does not -> apps/web/src/modules/shell/AttentionRow.tsx:292-302,658
@@ -259,11 +240,7 @@ Link to connect your own account is routed to you -> apps/api/src/modules/agent/
 Disconnecting your own personal connection is routed to you -> apps/api/src/modules/agent/tools/connection-tools.ts:407
 Owner routing resolved per call -> apps/api/src/modules/approvals/resource-owner.ts:66
 Requester approves a request routed privately to them -> apps/api/src/modules/approvals/decide.ts:235
-Identity parameters keep their value in a request; other card numbers and keys are masked -> apps/api/src/modules/approvals/payload-mask.ts:59
 A tool that can ask the provider is reconciled about a minute after the outcome became unknown -> apps/api/src/modules/approvals/approving-reaper.ts:28 ; apps/api/src/modules/approvals/approving-reaper.ts:282
 happened: approved; did not: back to pending; cannot tell: waits for a person -> apps/api/src/modules/approvals/reconcile-outcome.ts:60
-An app can draw a panel inside its own tool's approval cards -> apps/web/src/modules/approvals/ApprovalCard.tsx:2400 ; apps/api/src/modules/slots/registry.ts:108
-an app's scheduled job is named as such and never routed as the member's own request -> apps/api/src/modules/approvals/requester.ts:59 ; packages/shared/src/approvals/authority.ts:303 ; apps/api/src/modules/approvals/route-world.ts:412
 Summary built once at request and on edit, stored; card reads stored summary -> apps/api/src/modules/approvals/served-summary.ts:1-15 ; apps/api/src/modules/approvals/edit.ts:641
 Card lists 8 lines; a pooled dashboard card up to 50, scrolling -> packages/shared/src/types/approvals.ts:48 ; apps/web/src/modules/approvals/ApprovalCard.tsx:2014
-An approver edits a request waiting in a conversation they never joined; the note is skipped, a non-approver outside it is refused -> apps/api/src/modules/approvals/edit.ts:619-648 ; apps/api/src/modules/approvals/decider.ts:35-62

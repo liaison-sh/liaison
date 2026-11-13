@@ -13,7 +13,7 @@ Group path or ID field label -> bundled-apps/gitlab/app.manifest.json:41
 Allowed domains gitlab.com and subdomains -> bundled-apps/gitlab/app.manifest.json:30
 Start with gitlab_list_projects -> bundled-apps/gitlab/app.manifest.json:98
 Release vs milestone bug question pattern -> bundled-apps/gitlab/app.manifest.json:621
-Every text body secret-redacted -> bundled-apps/gitlab/src/tools.ts:23-31 ; bundled-apps/gitlab/src/client.ts:300-316
+File content secret-redacted -> bundled-apps/gitlab/src/tools.ts:415
 GitLab is a Knowledge source (kind folder) -> bundled-apps/gitlab/app.manifest.json:587
 Reference <project>:<branch>:<path>, empty path whole branch -> bundled-apps/gitlab/src/knowledge.ts:1-6
 Text types become documents, folders become collections -> bundled-apps/gitlab/src/knowledge.ts:174

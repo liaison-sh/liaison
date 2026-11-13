@@ -14,7 +14,7 @@ Model field with Auto -> packages/shared/src/i18n/locales/en/kernel.json:307
 Capabilities field (ceiling grid) -> packages/shared/src/i18n/locales/en/kernel.json:263
 Save button -> packages/shared/src/i18n/locales/en/kernel.json:293
 Ceiling cannot exceed what the creator may grant -> apps/api/src/modules/agent/directory/definition-routes.ts:1311
-Admin scopes list for role agents -> apps/api/src/modules/auth/admin-scopes.ts:9, apps/api/src/modules/auth/admin-scopes.ts:32
+Admin scopes list for role agents -> apps/api/src/modules/auth/admin-scopes.ts:9, apps/api/src/modules/auth/admin-scopes.ts:30
 config apply refuses admin scopes in a role agent ceiling -> apps/api/src/cli/provisioners/agents.ts:102
 Approving an access request never adds an admin scope to a role agent -> apps/api/src/modules/scope-requests/service.ts:539
 Saved agent opens on its Settings tab -> apps/web/src/modules/agent/AgentSettingsTab.tsx:249

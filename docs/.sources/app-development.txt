@@ -53,26 +53,12 @@ Predicate operators for when -> apps/api/src/modules/attention/predicates.ts:2
 resolveWhen ends an item -> apps/api/src/modules/apps/manifest-schema.ts:1238
 searchKeywords on a tool, single words -> apps/api/src/modules/apps/manifest-schema.ts:517
 Keywords are read only by the search, folded for accents -> apps/api/src/modules/agent/tools/tool-rank.ts:72
-Other forms (stems), misspellings of 5+ letters and French words of name parts are found without a keyword -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15
-searchKeywords on a bulk action reach its agent tool, grouped tools take every action's words -> apps/api/src/modules/apps/manifest-schema.ts:1874-1880 ; apps/api/src/modules/apps/bulk-agent-tools.ts:20-30
 A page tells the host which record is open with app.trackOpenRecord -> packages/host-sdk/src/index.ts:438
 A turn sent from the tab names that record -> apps/web/src/modules/threads/thread-send.ts:42
 An external entity is named by the id the page reported -> apps/api/src/modules/threads/reference-display.ts:142
 A tab type declares the entity its id belongs to -> apps/api/src/modules/apps/manifest-schema.ts:1564
 A field named *_minor holds a whole number; readMinorAmount and minorAmountRefusal -> packages/app-sdk/src/minor-amount.ts:15
 The server refuses a decimal in a declared *_minor parameter -> apps/api/src/modules/apps/execute-tool-params.ts:298
-entities.<type>.discussion: needs labelField and a page; opened by POST /api/threads/entity-discussion; host.mountEntityDiscussion; threads_deleteEntityDiscussion -> apps/api/src/modules/threads/entity-discussion.ts:58-72 ; apps/api/src/modules/threads/entity-discussion-routes.ts:25-55 ; packages/host-sdk/src/index.ts ; apps/web/src/framework/host-services.ts:326 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:115
-contextProviders: on kinds, readOnly tool, scope in requiredScopes, subject param, {lines, source} result, runs as the person under its scope and the record's visibility, read-only run, 1.5 s and 2 KB shared, 10 lines, loadTools loaded, CONTEXT_PROVIDERS_DISABLED -> apps/api/src/modules/agent/context/context-providers.ts:39-41 ; apps/api/src/modules/agent/context/context-providers.ts:187 ; apps/api/src/modules/agent/context/context-providers.ts:264 ; apps/api/src/modules/apps/contract.ts:937
-sinkReadersSelf and contentParams are first-party only; any other app declaring either is not loaded -> apps/api/src/modules/apps/contract.ts:943 ; apps/api/src/modules/apps/runtime.ts:623,3179
-sinkReadersSelf: a tainted turn may write when the writer holds what it read -> apps/api/src/modules/apps/execute-tool.ts:3845
-contentParams: a call with them all blank is not judged; each must be in params.properties -> apps/api/src/modules/agent/scopes/scope-taint.ts:849 ; apps/api/src/modules/apps/contract.ts:1047
-Not now route on a stored attention item -> apps/api/src/modules/apps/attention-routes.ts:190
-A provider pill names Home's row for a mail about that kind of record -> apps/api/src/modules/mail/send-guard.ts:395
-slots a page offers and the entityId each passes -> apps/web/src/modules/projects/TaskDetail.tsx:605,653 ; apps/web/src/modules/projects/ProjectWorkspace.tsx:741 ; apps/web/src/modules/contacts/ContactDetail.tsx:455 ; apps/web/src/modules/tickets/TicketDetail.tsx:244,707,1079
-GET /api/v1/slots/<key> is the one list: visibility_scope, app off, feature off; contributions by component name; order then app name -> apps/api/src/modules/slots/registry.ts:60,82-93 ; apps/api/src/modules/slots/routes.ts:17-24
-a throwing panel shows Panel unavailable; a framed app draws in its frame -> apps/web/src/modules/shell/SlotPanels.tsx:124-140 ; apps/web/src/framework/isolated-app.tsx:740-765
-taintSourceWhen: one matching row marks the turn, other values leave it clean, no row carrying the field marks it -> apps/api/src/modules/agent/scopes/taint.ts:477-520 ; apps/api/src/modules/apps/execute-tool.ts:5536-5545
-outsideTextFields: a read whose returns names one declares a taint source -> apps/api/src/modules/apps/outside-fields.guard.test.ts:58-110
 secrets: where configSecrets may write each secret config key (hosts, header/query/body path), refused otherwise with secret_placement_refused -> packages/app-sdk/src/secret-placement.ts:67 ; packages/app-sdk/src/secret-placement.ts:145 ; apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:589 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:442
 Custom apps get no secret-returning call on any executor -> apps/api/src/modules/apps/sandbox/rpc-bridge.ts:148 ; apps/api/src/modules/apps/sandbox/run-app.ts:241
 Credentials (auth) only in a header, to the connection's own hosts; a custom app's connection names its domains -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:189 ; apps/api/src/modules/apps/app-org-scope.ts:273
@@ -85,18 +71,8 @@ The logs route answers an admin while the app is off -> apps/api/src/middleware/
 On a server with a loader a builder app runs there as the Worker module its publish built; the package carries it as worker.js and the install checks it against the approved sha256 -> apps/api/src/modules/apps/workers/config.ts:48 ; apps/api/src/modules/apps/sandbox/run-app.ts:169 ; apps/api/src/modules/app-builder/publish.ts:365 ; apps/api/src/modules/apps/install-service.ts:1050 ; apps/api/src/modules/app-builder/build/build-worker.ts
 The loader fetches the module from the server with a signed request -> apps/api/src/modules/apps/workers/bundle-route.ts:1-24 ; apps/api/src/db/migrations/0296_apps_installed_worker_module_any_app.sql
 Framed apps: host calls getContext, openFile, print, approvals, openExternal, openRecord; linkHosts/imageHosts -> packages/host-sdk/src/index.ts:482 ; packages/host-sdk/src/index.ts:549 ; apps/api/src/modules/apps/manifest-schema.ts:1608
-activitySources: tool, scope, label, labelKey, filterKey; readOnly ungated tool writing no table, scope in requiredScopes, filterKey unique within the app -> apps/api/src/modules/apps/manifest-schema.ts:779-793 ; apps/api/src/modules/apps/contract.ts:1030-1054
 ctx.db.insertNow / updateNow commit at once -> packages/app-sdk/src/types.ts:26 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:382
-ctx.turn.get: agentId and hasPerson from the captured frame -> packages/app-sdk/src/types.ts:516 ; apps/api/src/modules/apps/sandbox/bridge/approvals.ts:22
-ctx.approvals.restagePayload: own app only, pending or deferred, sign-offs reset, one note, forbidden / not_pending -> packages/app-sdk/src/types.ts:527 ; apps/api/src/modules/apps/sandbox/bridge/approvals.ts:36 ; apps/api/src/modules/approvals/edit.ts:114
-requestApproval expiry_hours 1 to 720 wins over approvalExpiryHours and 168 h, else expiry_hours_invalid -> apps/api/src/modules/apps/execute-tool.ts:1533 ; apps/api/src/modules/apps/execute-tool.ts:2732
-editWith names the tools an edit refused on the approval points to -> apps/api/src/modules/apps/manifest-schema.ts:614 ; apps/api/src/modules/approvals/edit.ts:306
-An app table no declared scope reaches is refused at registration: outside production it throws naming the table; in production the app is not loaded and is marked in error with the tables named -> apps/api/src/modules/apps/runtime.ts:567-606 ; apps/api/src/modules/apps/runtime.ts:711-715 ; apps/api/src/modules/apps/runtime.ts:2406 ; apps/api/src/modules/permissions/rls-generator.ts:160-166
-trustBoundary internal: the app's own code or a declared cross-app caller, never a person, agent or MCP client -> apps/api/src/modules/apps/execute-tool.ts:4386
 ctx.fetch timeoutMs: shortens the 10 s default, a write may ask for up to 30 s -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:75 ; packages/app-sdk/src/types.ts:244
-approval:detail:panel: a contribution's for_tool shows it only on that tool's approval card; the card asks with ?for_tool= and passes approvalId, toolName, status, payload, payloadHash, threadId, canDecide, viewerScopes -> apps/api/src/modules/slots/registry.ts:108 ; apps/api/src/modules/slots/routes.ts:23 ; apps/web/src/modules/approvals/ApprovalDetailPanels.tsx:34-42
-mountEntityDiscussion prefill puts text in the box, never sent -> packages/host-sdk/src/index.ts:151 ; apps/web/src/modules/threads/EntityDiscussionPanel.tsx:107
-app.tabLabel names the tab after the record; null keeps the view's label -> packages/host-sdk/src/index.ts:717 ; apps/web/src/modules/shell/open-record.ts:75
 ctx.jobs.enqueue / ctx.timers.wakeIn / ctx.steps.run -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185
 ctx.sql / ctx.accounts in the SDK -> packages/app-sdk/src/types.ts:249 ; packages/app-sdk/src/types.ts:299
 An atomic job may not call outside (atomic_run_egress_refused) -> apps/api/src/modules/apps/atomic-egress.ts:1 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:149
@@ -148,9 +124,6 @@ knowledge sync input scope; ctx.knowledge_appSource / knowledge_appSourceWrite o
 App metadata kept across a reconnect by the same owner -> apps/api/src/modules/apps/connections/service.ts:3385 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.fetch convert xlsx-text; multipart related and base64 parts -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:107 ; apps/api/src/modules/apps/sandbox/bridge/multipart.ts:195
 ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPreconditionFailure reads it -> packages/app-sdk/src/types.ts (DbBatchExpect, DbClient.batch) ; packages/app-sdk/src/db-batch.ts ; apps/api/src/modules/apps/sandbox/bridge/batch.ts (BatchPreconditionError)
-humanTurnOnly and dmOnly are first-party only; any other app declaring either is not loaded -> apps/api/src/modules/apps/contract.ts:1058 ; apps/api/src/modules/apps/runtime.ts:3398
-humanTurnOnly: refused human_turn_only from a routine, a sub-run or a job; app and MCP pass -> apps/api/src/modules/apps/execute-tool.ts:3634,4691
-dmOnly: refused dm_only outside a DM for an agent, next step Continue in a DM; both 409 -> apps/api/src/modules/apps/execute-tool.ts:3659,3685,4695
 
 Page widget: a page declares widget {kind, connection, route, tokenScopes}; the platform serves its script, the app gets only the picks; grant must be inside tokenScopes; org origin only; audited -> apps/api/src/modules/apps/page-widgets.ts:1 ; apps/api/src/modules/apps/app-pages.ts:378 ; apps/api/src/modules/apps/app-surface.ts:120
 Install screen lists widget pages -> apps/web/src/modules/settings/InstallAppDialog.tsx:105

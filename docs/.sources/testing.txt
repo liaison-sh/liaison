@@ -28,8 +28,7 @@ seed outside the image: catalog default app-catalog/, apps default .liaison-apps
 macOS memory gate: kernel pressure warn/critical holds a new job; swap counts only under it; 1024 MB free backstop -> scripts/lib/machine-slots.ts:270-292 ; scripts/lib/machine-slots.ts:425-442
 targeted --file runs keep the 2 GiB reserve; mem-guard on macOS counts low memory only under pressure -> scripts/test-run.ts:133-144 ; scripts/lib/mem-guard.ts:95-101
 ci workflow: pull_request, merge_group and push to main; static always, unit/web-unit per the test map, everything on a merge group, static only on a push -> .github/workflows/ci.yml:1-45 ; scripts/ci-scope.ts:131-204
-checks is the required job: fails when a job that had to run did not pass -> .github/workflows/ci.yml:350-385
-relation cells: a step of the first unit job when the test map attributes a change to relations, and on every merge group -> .github/workflows/ci.yml:300-312 ; scripts/ci-scope.ts:213
+checks is the required job: fails when a job that had to run did not pass -> .github/workflows/ci.yml:335-370
 pr:land checks the PR, then adds it to the merge queue pinned to the checked head; --wait follows it to merge or removal -> scripts/pr-land.ts:1-28 ; scripts/pr-land.ts:140-182
 macOS load gate 1.5x cores; anti-starvation after LIAISON_SLOT_STARVE_SEC (600) with a free slot, never over memory -> scripts/lib/machine-slots.ts:122-126 ; scripts/lib/machine-slots.ts:171-176 ; scripts/lib/machine-slots.ts:211-223 ; scripts/lib/machine-slots.ts:498-510
 light lane: LIAISON_LIGHT_SLOTS (2), own queue, memory gate, no load gate; --slot-only tsgo/Biome and --light go there -> scripts/lib/machine-slots.ts:158-161 ; scripts/lib/machine-slots.ts:186-192 ; scripts/with-test-lock.ts:49-74

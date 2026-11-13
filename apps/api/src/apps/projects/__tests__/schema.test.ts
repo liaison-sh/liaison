@@ -4,7 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { getTableConfig } from "drizzle-orm/pg-core"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { projects, taskChecklistItems, tasks } from "~/db/schema/app_projects"
+import { projects, taskChecklistItems, taskTransitions, tasks } from "~/db/schema/app_projects"
 import manifest from "../app.manifest.json"
 
 const snake = (s: string) => s.replace(/([A-Z])/g, "_$1").toLowerCase()
@@ -46,6 +46,7 @@ describe("projects.schema", () => {
       "task_checklist_items",
       "task_dependencies",
       "task_labels",
+      "task_transitions",
       "tasks",
     ])
   })
@@ -67,10 +68,10 @@ describe("projects.schema", () => {
         SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'app_projects' AND c.relname IN ('projects', 'project_statuses', 'tasks', 'task_checklist_items', 'labels', 'task_labels')
+        WHERE n.nspname = 'app_projects' AND c.relname IN ('projects', 'project_statuses', 'tasks', 'task_checklist_items', 'labels', 'task_labels', 'task_transitions')
       `),
     )
-    expect(rows).toHaveLength(6)
+    expect(rows).toHaveLength(7)
     for (const r of rows) {
       expect(r.relrowsecurity).toBe(true)
       expect(r.relforcerowsecurity).toBe(true)
@@ -83,6 +84,7 @@ describe("projects.schema", () => {
       { table: "task_checklist_items", drizzle: taskChecklistItems },
       { table: "projects", drizzle: projects },
       { table: "tasks", drizzle: tasks },
+      { table: "task_transitions", drizzle: taskTransitions },
     ] as const
     const added: Record<string, string[]> = {
       task_checklist_items: [
@@ -94,8 +96,9 @@ describe("projects.schema", () => {
         "validations",
         "created_by",
       ],
-      projects: ["validation_levels", "checklist_on_cards"],
-      tasks: ["release"],
+      projects: ["validation_levels", "checklist_on_cards", "task_fields"],
+      tasks: ["release", "fields"],
+      task_transitions: ["task_id", "from_status_id", "to_status_id", "actor_type", "at"],
     }
     for (const { table, drizzle } of pairs) {
       const entity = schema[table]

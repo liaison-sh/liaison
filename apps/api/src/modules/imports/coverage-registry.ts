@@ -174,6 +174,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "deferred",
     reason: "no import kind maps task labels yet; set by hand or by the agent",
   },
+  "app_projects.task_transitions": {
+    exempt: "derived",
+    reason:
+      "status history every status change appends (an imported task's create included); follows the task",
+  },
   "app_shopify.backfill_progress": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.install_metadata": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.staff_mirror": { exempt: "sync", reason: "shop mirror and install state" },

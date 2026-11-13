@@ -2122,6 +2122,13 @@
       "when": 1900003393001,
       "tag": "0301_dashboard_table_actor_label",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1900003394001,
+      "tag": "0302_project_task_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   text,
   timestamp,
   uniqueIndex,
@@ -55,6 +56,10 @@ export const tasks = appProjects.table(
     // The agent that created the task, as its attribution label (0248); null
     // when a person did.
     createdByAgentLabel: text("created_by_agent_label"),
+    // The task's field values {key: cell} (0302), checked against the project's task_fields.
+    fields: jsonb("fields").$type<Record<string, unknown>>().notNull().default({}),
+    // When the task entered its current status (0302).
+    statusEnteredAt: timestamp("status_entered_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

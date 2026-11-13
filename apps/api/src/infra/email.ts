@@ -179,12 +179,31 @@ function withoutStyleAndScript(html: string): string {
   }
 }
 
+/** A tag that ends a line of text: a line break or the close of a block. */
+const LINE_ENDING_TAG = /^(br\b|\/(p|div|tr|h[1-6]|li)\b)/
+
+/**
+ * The text between the tags, every tag dropped by position: a line-ending tag becomes a newline,
+ * and an unclosed `<` takes the rest.
+ */
+function tagsToText(html: string): string {
+  let out = ""
+  let at = 0
+  for (;;) {
+    const open = html.indexOf("<", at)
+    if (open < 0) return out + html.slice(at)
+    out += html.slice(at, open)
+    const close = html.indexOf(">", open)
+    if (close < 0) return out
+    const tag = html.slice(open + 1, close).trim().toLowerCase()
+    if (LINE_ENDING_TAG.test(tag)) out += "\n"
+    at = close + 1
+  }
+}
+
 export function consoleEmailBody(message: EmailMessage): string {
   if (message.text) return message.text
-  return withoutStyleAndScript(message.html)
-    .replace(/<br\s*\/?>|<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
-    .replace(/<[^>]*>?/g, "")
-    .replace(/</g, "")
+  return tagsToText(withoutStyleAndScript(message.html))
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n+/g, "\n")
     .trim()

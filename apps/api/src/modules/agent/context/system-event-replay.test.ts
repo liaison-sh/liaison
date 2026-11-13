@@ -35,6 +35,27 @@ describe("the decision lifecycle reaches the agent's transcript", () => {
     ])
   })
 
+  it("a turn refused before any model ran closes the message it refused", () => {
+    const result = convertToCoreMessages([
+      { authorType: "user", content: "create a project called Website", metadata: null },
+      {
+        authorType: "system",
+        content: "Auto has no model to run: this workspace has no usable model key.",
+        metadata: { turnRefusal: true },
+      },
+      { authorType: "user", content: "make me an overview dashboard", metadata: null },
+    ])
+    expect(result).toEqual([
+      { role: "user", content: "create a project called Website" },
+      {
+        role: "user",
+        content:
+          "[Event: the message above was refused before any model ran (Auto has no model to run: this workspace has no usable model key.). Nothing was done for it and it is closed: do not act on it now; if it still matters, the person will ask again.]",
+      },
+      { role: "user", content: "make me an overview dashboard" },
+    ])
+  })
+
   it("replays an opened approval with its handle and tool", () => {
     expect(
       systemEventLine({

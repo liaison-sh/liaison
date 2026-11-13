@@ -1,0 +1,4 @@
+map.drillRows: a field listing the records behind each row; the drill shows them -> apps/api/src/modules/dashboards/spec.ts (drillRows), apps/api/src/modules/dashboards/service.ts (getBlockRows, drillRecordsOf)
+Default drill columns of listed records -> apps/api/src/modules/dashboards/service.ts (drillColumnsOf)
+Each drill row opens its record through map.link -> apps/api/src/modules/dashboards/service.ts (getBlockRows), apps/web/src/modules/dashboards/BlockDrillPanel.tsx (openRecordLink)
+Tasks of a bar opened from a project overview -> apps/api/src/apps/projects/__tests__/tasks-aggregate.test.ts (the Project overview dashboard)

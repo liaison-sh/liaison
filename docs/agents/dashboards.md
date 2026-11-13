@@ -143,6 +143,7 @@ A block that keeps its own dates says them in a small label next to its title, s
 - A chart draws the compared period's values lighter (dashed for a line), named **Same period last year** or **Previous period**.
 - Under each block, "Updated 4 min. ago" says when its figures were read. A block built with its own refresh interval reads again on that interval, but only while its tab is on screen.
 - A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
+- A bar of a chart over a project's tasks opens the tasks behind it, each opening the task in Projects, when the block lists them (`map.drillRows: "tasks"` with `map.link`, as in the [project overview](../apps/projects.md#a-project-overview-dashboard)). Any block can do the same: `map.drillRows` names a field of each row that lists the records behind it.
 - "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
 ## Chart types and notes

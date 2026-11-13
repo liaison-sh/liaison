@@ -9,7 +9,8 @@
 //   - several projects at once;
 //   - a caller without the read scope is refused, one of another org counts nothing, and the
 //     service under a context with no scopes reads no task;
-//   - a dashboard bar block on it saves and runs for the viewer.
+//   - a dashboard bar block on it saves and runs for the viewer, and its drill (map.drillRows
+//     "tasks") lists the bar's tasks, each opening the task.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -18,7 +19,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import type { ActorContext, UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { ensureAppsForOrg } from "~/modules/apps/init"
-import { createDashboard, getBlockData } from "~/modules/dashboards/service"
+import { createDashboard, getBlockData, getBlockRows } from "~/modules/dashboards/service"
 import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -431,14 +432,25 @@ describe("tasks_aggregate as a dashboard source", () => {
 describe("the Project overview dashboard (docs/apps/projects.md)", () => {
   it("an agent creates it in one dashboards_create call; every block runs", async () => {
     const b = await makeBoard()
-    await task(b, { statusId: b.todo, assigneeId: otherId, dueDate: "2020-01-01" })
+    const todoTitle = `overview-${randomUUID().slice(0, 6)}`
+    const todoId = await task(b, {
+      statusId: b.todo,
+      assigneeId: otherId,
+      dueDate: "2020-01-01",
+      title: todoTitle,
+    })
     await task(b, { statusId: b.doing })
     const aggregate = (params: Record<string, unknown>) => ({
       kind: "tool",
       tool: "projects:tasks_aggregate",
       params: { projectId: b.id, ...params },
     })
-    const bar = { x: "groupLabel", y: "value" }
+    const bar = {
+      x: "groupLabel",
+      y: "value",
+      drillRows: "tasks",
+      link: { entity: "task", idField: "id", app: "projects" },
+    }
     const spec = {
       v: 1,
       blocks: [
@@ -515,5 +527,18 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
     const overdue = await run("overdue")
     expect(overdue.ok).toBe(true)
     expect(overdue.data.rows).toHaveLength(1)
+    // A bar's drill lists its tasks (not the group row), each opening the task.
+    const drill = (await getBlockRows(actor, id, "status", { category: "Todo" })) as Json
+    expect(drill.ok).toBe(true)
+    expect(drill.total).toBe(1)
+    expect(drill.rows[0].title).toBe(todoTitle)
+    expect(drill.columns.map((c: { field: string }) => c.field)).toEqual([
+      "title",
+      "status",
+      "assigneeName",
+    ])
+    expect(drill.links).toEqual([
+      { kind: "entity", app: "projects", entityType: "task", id: todoId },
+    ])
   })
 })

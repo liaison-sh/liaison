@@ -70,4 +70,6 @@ All tools are read-only and need `gitlab:repo:read`.
 | `gitlab_list_tree` | List files and folders at a path |
 | `gitlab_search` | Search file contents, commits, issues or merge requests |
 
+A list or search reads at most 10 pages of results from GitLab, one after another, and says `truncated` when more were left. These tools may run for up to 30 seconds, so a large group or project still answers instead of timing out.
+
 See the [agent tool reference](../reference/agent-tools.md).

@@ -781,14 +781,15 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
   }
 
   // With a series, a group that can hold tasks but holds none still shows (a chart keeps its
-  // columns): one empty row under the first series seen, so the split adds a 0 there.
+  // columns): a 0 row under each series the result has, so no series is credited with it and
+  // each row stays true ("Done / Alice: 0"). With no task at all there is no series, so no row.
   if (series) {
-    const first = [...accs.values()][0]
-    const held = new Set([...accs.values()].map((a) => a.group))
-    if (first) {
-      for (const k of fixedKeys(group, ctx, includeTerminal)) {
-        if (!held.has(k)) accFor(k, first.series, first.currency)
-      }
+    const present = [...accs.values()]
+    const held = new Set(present.map((a) => a.group))
+    const seriesSeen = new Map(present.map((a) => [JSON.stringify([a.series, a.currency]), a]))
+    for (const k of fixedKeys(group, ctx, includeTerminal)) {
+      if (held.has(k)) continue
+      for (const a of seriesSeen.values()) accFor(k, a.series, a.currency)
     }
   }
 

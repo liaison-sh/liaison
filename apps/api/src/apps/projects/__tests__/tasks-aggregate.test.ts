@@ -186,6 +186,20 @@ describe("tasks_aggregate: groups and measures", () => {
       ["High", 1],
       ["Low", 1],
     ])
+
+    // An empty status group is a 0 under every series, never booked to one of them.
+    const byStatus = await ok("tasks_aggregate", {
+      projectId: b.id,
+      groupBy: "status",
+      series: "priority",
+    })
+    const doing = byStatus.rows.filter((r: Json) => r.groupLabel === "Doing")
+    expect(doing.map((r: Json) => [r.seriesLabel, r.value]).sort()).toEqual(
+      [...new Set(byStatus.rows.map((r: Json) => r.seriesLabel as string))]
+        .sort()
+        .map((l) => [l, 0]),
+    )
+    expect(doing.length).toBeGreaterThan(1)
   })
 
   it("status groups carry their status colour, person groups their user id", async () => {

@@ -155,20 +155,27 @@ describe("assembleContext - the fixed prompt parts with every app on", () => {
     expect(Math.abs(composed - fixed.total)).toBeLessThanOrEqual(FIXED_PARTS_STATIC_TOLERANCE)
   })
 
-  it("create_routine and update_routine are metered within 5% of their projected schema on the wire", () => {
-    for (const tool of ["create_routine", "update_routine"]) {
-      const def = toolRegistry.get([FP_ORG, "kernel", tool]) as
-        | { description: string; params?: unknown }
-        | undefined
-      expect(def).toBeDefined()
-      const inputSchema = providerInputSchemaOf(def?.params)
-      const name = `kernel__${tool}`
-      const projected = JSON.stringify(asSchema(inputSchema as never).jsonSchema)
-      const wire = Math.ceil(`${name}\n${def?.description ?? ""}\n${projected}`.length / 4)
-      const metered = estimateToolSchemaTokens(name, { description: def?.description, inputSchema })
-      console.log(`${tool} on the wire: ${wire} tokens, metered ${metered}`)
-      expect(Math.abs(metered - wire)).toBeLessThanOrEqual(wire * 0.05)
-    }
+  /** A routine tool's metered schema size against what the provider is sent. */
+  function expectMeteredLikeTheWire(tool: string): void {
+    const def = toolRegistry.get([FP_ORG, "kernel", tool]) as
+      | { description: string; params?: unknown }
+      | undefined
+    expect(def).toBeDefined()
+    const inputSchema = providerInputSchemaOf(def?.params)
+    const name = `kernel__${tool}`
+    const projected = JSON.stringify(asSchema(inputSchema as never).jsonSchema)
+    const wire = Math.ceil(`${name}\n${def?.description ?? ""}\n${projected}`.length / 4)
+    const metered = estimateToolSchemaTokens(name, { description: def?.description, inputSchema })
+    console.log(`${tool} on the wire: ${wire} tokens, metered ${metered}`)
+    expect(Math.abs(metered - wire)).toBeLessThanOrEqual(wire * 0.05)
+  }
+
+  it("create_routine is metered within 5% of its projected schema on the wire", () => {
+    expectMeteredLikeTheWire("create_routine")
+  })
+
+  it("update_routine is metered within 5% of its projected schema on the wire", () => {
+    expectMeteredLikeTheWire("update_routine")
   })
 
   it("the ladder guard's schema total per app is the registry's, kernel included", async () => {

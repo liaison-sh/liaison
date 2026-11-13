@@ -393,6 +393,8 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_drafts: "clear",
   app_draft_versions: "clear",
   app_build_artifacts: "clear",
+  // Worker modules built from a visitor's drafts and transforms (0299).
+  app_code_modules: "clear",
   app_logs: "clear",
   contact_segments: "clear",
   contacts: "clear",

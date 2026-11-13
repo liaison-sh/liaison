@@ -59,6 +59,11 @@ const PRIVILEGED_GLOBAL_TABLES = new Set<string>([
   // Server-held mailbox keys (migration 0229): FORCE RLS with no policy, read
   // and written only by the mailbox-crypto modules through the privileged pool.
   "kernel.mailbox_server_keys",
+  // Worker modules the platform builds for code with no installed version
+  // (migration 0299): FORCE RLS with no policy, REVOKE ALL from liaison_rls,
+  // read and written only by modules/apps/workers/adhoc-module.ts through the
+  // privileged pool.
+  "kernel.app_code_modules",
 ])
 
 /**
@@ -114,7 +119,7 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // reconcile (modules/apps/moved-apps.ts) through the privileged pool only.
   "kernel.app_adoptions",
   // The adapter documents of the platform-held API connections (migration
-  // 0299): read and written by connections/api/store.ts through the
+  // 0300): read and written by connections/api/store.ts through the
   // privileged pool only, scoped to the org explicitly.
   "kernel.api_adapters",
   "kernel.api_adapter_versions",

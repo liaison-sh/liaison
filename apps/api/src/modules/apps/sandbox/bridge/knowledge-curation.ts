@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { recordAgentKnowledgePointers } from "~/modules/agent/knowledge/knowledge-pointers"
 import { readOnlyRunBlockedError } from "~/modules/agent/runtime/read-only-run"
@@ -112,6 +112,11 @@ async function addAppSource(input: {
 
 export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<string, any> {
   const { appName, bridgeActingAgentId, bridgeOptions, callerScopes, orgId, txDb, userId } = ctx
+  // A short transaction of its own for one DB step. knowledge_verify and
+  // knowledge_source_link_create are tx-less on a session bridge (rpc-bridge.ts):
+  // they wake the source's app to resolve the item, never inside a transaction.
+  const dbStep = <T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> =>
+    bridgeOptions?.withShortTx ? bridgeOptions.withShortTx(fn) : fn(txDb)
   return {
     knowledge_collection_create: async (paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {
@@ -235,67 +240,69 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
         const { verifySourceLink } = await import("~/apps/knowledge/source-links")
         const registry =
           bridgeOptions?.knowledgeRegistryOverride ??
-          (await import("~/apps/knowledge/source-registry")).registerDefaultKnowledgeSources({
-            tx: txDb as never,
+          (await (
+            await import("~/apps/knowledge/source-registry")
+          ).registerDefaultKnowledgeSources({
             orgId,
             userId,
             scopes: callerScopes ?? [],
-          })
-        return JSON.stringify(
-          await verifySourceLink(txDb as never, p.sourceLinkId, registry, actor),
-        )
+          }))
+        return JSON.stringify(await verifySourceLink(dbStep, p.sourceLinkId, registry, actor))
       }
       // Branch 2 — document: applyReviewTransition is PURE SYNC (no persistence),
       // so load → transform → UPDATE.
       if (!p.documentId) throw new Error("invalid_params: documentId or sourceLinkId required")
+      const documentId = p.documentId
       const { applyReviewTransition } = await import("~/apps/knowledge/review")
-      const row = extractRows<{
-        id: string
-        review_status: string | null
-        review_reason: string | null
-        verified_by: string | null
-        verified_at: string | null
-      }>(
-        await txDb.execute(drizzleSql`
+      return dbStep(async (txDb) => {
+        const row = extractRows<{
+          id: string
+          review_status: string | null
+          review_reason: string | null
+          verified_by: string | null
+          verified_at: string | null
+        }>(
+          await txDb.execute(drizzleSql`
           SELECT id, review_status, review_reason, verified_by, verified_at
           FROM ${drizzleSql.raw(schemaRef("app_knowledge"))}.documents
-          WHERE id = ${p.documentId}::uuid AND org_id = ${orgId}::uuid AND archived_at IS NULL
+          WHERE id = ${documentId}::uuid AND org_id = ${orgId}::uuid AND archived_at IS NULL
         `),
-      )[0]
-      if (!row) throw new Error("document not found")
-      const next = applyReviewTransition(
-        {
-          reviewStatus: row.review_status,
-          reviewReason: row.review_reason,
-          verifiedBy: row.verified_by,
-          verifiedAt: row.verified_at,
-        },
-        { kind: "verify", actorId: userId },
-      )
-      await txDb.execute(drizzleSql`
+        )[0]
+        if (!row) throw new Error("document not found")
+        const next = applyReviewTransition(
+          {
+            reviewStatus: row.review_status,
+            reviewReason: row.review_reason,
+            verifiedBy: row.verified_by,
+            verifiedAt: row.verified_at,
+          },
+          { kind: "verify", actorId: userId },
+        )
+        await txDb.execute(drizzleSql`
         UPDATE ${drizzleSql.raw(schemaRef("app_knowledge"))}.documents
         SET review_status = ${next.reviewStatus},
             review_reason = NULL,
             verified_at = ${next.verifiedAt as string},
             verified_by = ${(next.verifiedBy ?? userId) as string}::uuid,
             updated_at = now()
-        WHERE id = ${p.documentId}::uuid AND org_id = ${orgId}::uuid
+        WHERE id = ${documentId}::uuid AND org_id = ${orgId}::uuid
       `)
-      await txDb.queueEvent({
-        app: "knowledge",
-        entity: "document",
-        action: "update",
-        entityId: p.documentId,
-        data: { reviewStatus: next.reviewStatus },
-        actorId: userId,
-        actorType: "user",
-        agentId: bridgeActingAgentId,
-        orgId,
-      })
-      return JSON.stringify({
-        documentId: p.documentId,
-        reviewStatus: next.reviewStatus,
-        verifiedAt: next.verifiedAt,
+        await txDb.queueEvent({
+          app: "knowledge",
+          entity: "document",
+          action: "update",
+          entityId: documentId,
+          data: { reviewStatus: next.reviewStatus },
+          actorId: userId,
+          actorType: "user",
+          agentId: bridgeActingAgentId,
+          orgId,
+        })
+        return JSON.stringify({
+          documentId,
+          reviewStatus: next.reviewStatus,
+          verifiedAt: next.verifiedAt,
+        })
       })
     },
     // knowledge_addFolderSource — GENERIC folder-source harvest, unified across
@@ -416,13 +423,17 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       // inject a stub folder adapter via knowledgeRegistryOverride.
       const registry =
         bridgeOptions?.knowledgeRegistryOverride ??
-        (await import("~/apps/knowledge/source-registry")).registerDefaultKnowledgeSources({
-          tx: txDb as never,
+        (await (
+          await import("~/apps/knowledge/source-registry")
+        ).registerDefaultKnowledgeSources({
           orgId,
           userId,
           scopes: callerScopes ?? [],
-        })
-      const adapter = registry.listEnabled(actor).find((a) => a.source === source)
+        }))
+      const { isFolderSourceCapable } = await import("~/apps/knowledge/source-protocol")
+      const adapter = registry
+        .listEnabled(actor)
+        .find((a) => a.source === source && isFolderSourceCapable(a))
       const scope = p.scope ?? "personal"
       if (!adapter) {
         const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
@@ -550,15 +561,16 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       // source-link branch + knowledge_addFolderSource).
       const registry =
         bridgeOptions?.knowledgeRegistryOverride ??
-        (await import("~/apps/knowledge/source-registry")).registerDefaultKnowledgeSources({
-          tx: txDb as never,
+        (await (
+          await import("~/apps/knowledge/source-registry")
+        ).registerDefaultKnowledgeSources({
           orgId,
           userId,
           scopes: callerScopes ?? [],
-        })
+        }))
       const { linkRemoteDocument } = await import("~/apps/knowledge/source-links")
       const created = await linkRemoteDocument(
-        txDb as never,
+        dbStep,
         {
           source: p.source,
           externalId: p.externalId,

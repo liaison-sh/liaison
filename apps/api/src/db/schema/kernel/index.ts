@@ -55,6 +55,7 @@ export {
   appDraftVersions,
   appLogs,
 } from "./app-builder"
+export { type AppCodeModuleOrigin, type AppCodeModuleRow, appCodeModules } from "./app-code-modules"
 export {
   type AppDocumentRow,
   type AppDocumentUsageRow,

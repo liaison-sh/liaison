@@ -30,8 +30,12 @@
 //                                else QuickJS
 //   sandbox service + module     workerd
 //   no module, or neither set    QuickJS (a version without a Worker module
-//                                warns per run; code with no installed
-//                                version, `installed: null`, stays silent)
+//                                warns per run)
+//
+// Code with no installed version (`installed: null`: a draft preview, an
+// import transform, a PDF template) gets its module from its site
+// (`workerModule`, built by workers/adhoc-module.ts with the builder of every
+// package's worker.js) and runs like an installed app, with the same limits.
 //
 // A run is decided, then its bridge is built for that executor, then it
 // runs: a remote run gets a secret-free bridge (the site's `workersBridge`, or a marked copy of
@@ -69,6 +73,7 @@ import {
   type SandboxWorkerPool,
   type WorkerExecOptions,
 } from "~/modules/apps/sandbox/worker-pool"
+import { type AdhocModuleRef, readAdhocModule } from "~/modules/apps/workers/adhoc-module"
 import {
   quickjsForced,
   readFallbackTarget,
@@ -84,6 +89,7 @@ import {
   loaderBreaker,
 } from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import { appSandboxRelease } from "~/modules/apps/workers/sandbox-release"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
 // The run timing records subscribe to the run-settled event (timings.ts).
 import "~/modules/apps/workers/timings"
@@ -113,6 +119,14 @@ export interface RunAppOptions {
    * app is not a runtime install (an in-tree app).
    */
   installed?: InstalledIdentity | null
+  /**
+   * The Worker module of code that has no installed version (`installed:
+   * null`): a draft's preview, an import transform, a PDF template
+   * (workers/adhoc-module.ts). Called only once the run is decided for a
+   * remote executor; null: no module (the run stays on QuickJS, with a
+   * warning). Throws when the code does not build: the run fails.
+   */
+  workerModule?: () => Promise<AdhocModuleRef | null>
   /** Where the bundle lives. Required when `bundleSource` is not given. */
   bundlePath?: string
   /** The bundle text, when the site has loaded (or reshaped) it already. */
@@ -215,16 +229,32 @@ export interface WorkersTarget {
  * configured, else the instance's sandbox service, on the Worker module the
  * run's installed version recorded (the package's worker.js, recorded at
  * install). A version whose package had none warns (every run) and runs on
- * QuickJS; code with no installed version (`installed: null`: a draft
- * preview, an import transform, a PDF template) runs there silently.
+ * QuickJS. Code with no installed version (`installed: null`: a draft
+ * preview, an import transform, a PDF template) runs on the module its site
+ * builds (`workerModule`, workers/adhoc-module.ts); without one it stays on
+ * QuickJS.
  */
 export async function resolveWorkersTarget(
-  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
+  opts: Pick<
+    RunAppOptions,
+    "trusted" | "appName" | "orgId" | "installed" | "bundlePath" | "workerModule"
+  >,
 ): Promise<WorkersTarget | null> {
   if (opts.trusted || quickjsForced()) return null
   const config = readWorkersConfig() ?? readSandboxConfig(null)
   if (!config) return null
-  if (opts.installed === null) return null
+  if (opts.installed === null) {
+    if (!opts.workerModule) return null
+    const module = await opts.workerModule()
+    if (!module) {
+      log.warn(
+        { app: opts.appName, orgId: opts.orgId },
+        "Code without an installed version has no Worker module; running on QuickJS",
+      )
+      return null
+    }
+    return { config, version: module.version, sha256: module.sha256 }
+  }
   let identity =
     opts.installed !== undefined
       ? opts.installed
@@ -267,7 +297,10 @@ export function sandboxTargetOf(target: WorkersTarget): WorkersTarget | undefine
 }
 
 export async function planWorkersRun(
-  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
+  opts: Pick<
+    RunAppOptions,
+    "trusted" | "appName" | "orgId" | "installed" | "bundlePath" | "workerModule"
+  >,
 ): Promise<WorkersPlan> {
   const target = await resolveWorkersTarget(opts)
   if (!target) return { target: null }
@@ -419,6 +452,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       ...(info.bridgeCalls !== undefined ? { bridgeCalls: info.bridgeCalls } : {}),
       ...(info.loader ? { loader: info.loader } : {}),
       ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+      ...(info.cpuMs !== undefined ? { cpuMs: info.cpuMs } : {}),
       ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
       ...(fallback ? { fallback } : {}),
       ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
@@ -507,8 +541,9 @@ async function runOnExecutor(
         ...(executor === "workerd"
           ? {
               ...fallbackTargetRunState(),
+              sandboxRelease: appSandboxRelease(),
               pushModule: async () =>
-                (await readInstalledWorkerModule(workersTarget.sha256))?.bytes ?? null,
+                (await readRunnableWorkerModule(workersTarget.sha256))?.bytes ?? null,
             }
           : {}),
       },
@@ -669,12 +704,26 @@ async function readActiveIdentity(
 }
 
 /**
+ * The bytes of any Worker module a run may name: an installed version's
+ * (`readInstalledWorkerModule`), else a module the platform built for code
+ * with no installed version (workers/adhoc-module.ts). Read by the cell's
+ * bundle route for the app loader and pushed to the sandbox service.
+ */
+export async function readRunnableWorkerModule(
+  sha256: string,
+): Promise<{ bytes: Uint8Array } | null> {
+  const installed = await readInstalledWorkerModule(sha256)
+  if (installed) return installed
+  const adhoc = await readAdhocModule(sha256)
+  return adhoc ? { bytes: adhoc } : null
+}
+
+/**
  * The Worker module bytes an installed app version recorded for `sha256` (its
  * package's worker.js, 0278), re-hashed on read, or null: no installed, not
  * disabled version of any app (an instance app or an org's custom app, any org
  * of this cell) names that sha, or its bytes no longer hash to it. Never a
- * draft's bytes: the column is written only by an install. Read by the cell's
- * bundle route for the app loader (workers/bundle-route.ts).
+ * draft's bytes: the column is written only by an install.
  */
 export async function readInstalledWorkerModule(
   sha256: string,

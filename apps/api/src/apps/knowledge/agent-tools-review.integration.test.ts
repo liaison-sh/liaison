@@ -153,7 +153,7 @@ async function seedSourceLink(): Promise<string> {
   const a = fullActor()
   const id = await withRlsContext({ ...rlsCtx(a.scopes), scopes: a.scopes }, async (tx) => {
     const { id } = await linkRemoteDocument(
-      tx as unknown as RlsClient,
+      (fn) => fn(tx as unknown as RlsClient),
       { source: "google-drive", externalId: "ext-sl-1", title: "Linked Doc" },
       visibleRegistry(),
       a,

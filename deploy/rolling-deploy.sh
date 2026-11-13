@@ -17,6 +17,8 @@
 #   4. Wait until every new container's healthcheck (`/readyz`) is healthy. One
 #      that never gets there rolls the deploy back: the new containers are
 #      stopped and removed, the old ones keep serving, exit 1.
+#   4b. When the sandbox service runs (profile `sandbox`), recreate it on the
+#      new image: it refuses runs of another release.
 #   5. Give the edge two probe intervals to see the new upstreams, then stop the
 #      old containers by id with the full drain budget (`docker stop -t`), and
 #      remove them once they exit. Their /readyz answers 503 at once, so the edge
@@ -426,6 +428,18 @@ while :; do
   sleep 1
 done
 log "new processes ready: $new_ids"
+
+# --- 4b. the sandbox service follows the new release ----------------------------
+# The sandbox service (profile `sandbox`) runs the same image as the app and
+# refuses runs of another release (docs/self-hosting/sandbox.md, Upgrades).
+# When it is in use it is recreated on the new image now, as the new processes
+# take over: from here the old ones' remaining sandbox runs are refused while
+# they drain, which the new processes retry.
+if [ -n "$("$DOCKER" compose --profile sandbox ps -a -q sandbox 2>/dev/null)" ]; then
+  log "recreating the sandbox service on the new image"
+  "$DOCKER" compose --profile sandbox up -d --no-deps sandbox ||
+    log "WARNING: the sandbox service was not recreated; app runs on it are refused until it runs this release: docker compose --profile sandbox up -d sandbox"
+fi
 
 # --- 5. the edge moves; the old processes drain ----------------------------------
 if [ -z "$old_ids" ]; then

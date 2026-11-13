@@ -119,6 +119,20 @@ describe("recording settled runs", () => {
     await sql`DELETE FROM kernel.app_usage_daily WHERE org_id = ${ORG}`
   })
 
+  it("adds the sandbox service's measured CPU of each workerd run to its row", async () => {
+    recordSettledRun(settled({ executor: "workerd", cpuMs: 40 }))
+    recordSettledRun(settled({ executor: "workerd", cpuMs: 2.6 }))
+    await flushAppUsage()
+    // A batch without a measure keeps the CPU already there; the next adds to it.
+    recordSettledRun(settled({ executor: "workerd" }))
+    await flushAppUsage()
+    recordSettledRun(settled({ executor: "workerd", cpuMs: 8 }))
+    await flushAppUsage()
+    const row = (await rowsOf(ORG)).find((r) => r.executor === "workerd")
+    expect(row).toMatchObject({ runs: 4, cpuMs: 50 })
+    await sql`DELETE FROM kernel.app_usage_daily WHERE org_id = ${ORG}`
+  })
+
   it("counts a capped org's runs and bridge calls in Redis at once; never in-process ones", async () => {
     caps[ORG] = { ...NO_CAPS, appRunsPerDay: 100 }
     recordSettledRun(settled({ bridgeCalls: 4 }))

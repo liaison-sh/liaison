@@ -66,7 +66,7 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 0,
-    fetch: (r) => sup.fetch(r),
+    fetch: (r, srv) => sup.fetch(r, srv),
   })
   const url = `http://127.0.0.1:${server.port}`
   const put = await fetch(`${url}/modules/${PROBE_SHA}`, { method: "PUT", body: PROBE_APP })

@@ -83,7 +83,7 @@ export interface SyncedSourcesToKindStep {
 
 /**
  * Copy an app's API connection adapters (and their kept versions) from the
- * app's own tables into the platform's (`kernel.api_adapters`, migration 0299),
+ * app's own tables into the platform's (`kernel.api_adapters`, migration 0300),
  * keyed by the app and its API connection. Runs at every boot (never recorded):
  * the previous release writes the app's tables until it drains, so a row it
  * saved after the first copy is copied at the next boot, a newer one replacing

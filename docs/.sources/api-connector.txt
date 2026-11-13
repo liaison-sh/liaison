@@ -57,7 +57,7 @@ connector_write declares referenceableOutputs record_id -> apps/api/src/modules/
 connector_write approval title: operation in words, connection, subject -> apps/api/src/modules/apps/connections/api/handlers.ts:156
 config apply without an admin section acts as the earliest active admin; no admin: credentials refused -> apps/api/src/cli/provisioners/admin.ts:62-92, apps/api/src/cli/provisioners/api-connectors.ts:217
 woocommerce example adapter section (orders, one order, products, best sellers) -> apps/api/src/modules/apps/connections/api/reference/authoring.md:475
-Any app with one api-block connection gets the platform's API connection; adapters keyed by app, connection, slug in kernel.api_adapters -> apps/api/src/modules/apps/connections/api/declarations.ts:1 ; apps/api/src/modules/apps/connections/api/store.ts:30 ; apps/api/src/db/migrations/0299_api_adapters.sql:1
+Any app with one api-block connection gets the platform's API connection; adapters keyed by app, connection, slug in kernel.api_adapters -> apps/api/src/modules/apps/connections/api/declarations.ts:1 ; apps/api/src/modules/apps/connections/api/store.ts:30 ; apps/api/src/db/migrations/0300_api_adapters.sql:1
 customerContext / importSource / provisionKey contract -> apps/api/src/modules/apps/manifest-schema.ts:393 ; apps/api/src/modules/agent/context/customer-context.ts:60 ; apps/api/src/modules/agent/tools/import-tools.ts:443 ; apps/api/src/modules/provisioning/config-export.ts:136
 Credentials card kind connection_credentials; api_connector_credentials still read -> apps/api/src/modules/secret-requests/targets.ts:285
 Former app tables copied at every boot -> apps/api/src/modules/apps/moved-apps.ts:1

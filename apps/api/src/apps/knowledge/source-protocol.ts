@@ -95,7 +95,8 @@ export interface KnowledgePickedFolder {
 
 export interface KnowledgeSourceAdapter {
   source: string
-  searchRemote(
+  /** Federated search; absent: the source is not searched (links and reads only). */
+  searchRemote?(
     input: KnowledgeSearchInput,
     actor: KnowledgeActor,
   ): Promise<KnowledgeSourceSearchResult>

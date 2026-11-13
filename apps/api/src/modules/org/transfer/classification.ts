@@ -66,6 +66,7 @@ export const NOT_OBJECT_KEY_COLUMNS: Record<string, string> = {
   "kernel.agent_local_claims.holder_key": "a lease holder id",
   "kernel.agent_memory.path": "a memory note's name",
   "kernel.app_sequences.key": "a sequence name",
+  "kernel.app_code_modules.source_key": "a hash of the code a Worker module was built from",
   "kernel.attention_events.source_key": "an event's dedupe key",
   "kernel.config_applied_fields.path": "a config field path",
   "kernel.contacts.audience_key": "an audience id",

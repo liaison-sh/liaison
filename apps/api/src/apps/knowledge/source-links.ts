@@ -41,14 +41,30 @@ interface SourceLinkDbRow {
 // Remote visibility probe (uses registry adapters)
 // ---------------------------------------------------------------------------
 
+/**
+ * Opens a short transaction for one DB step. Source-link operations take a
+ * runner rather than a transaction: the remote probe wakes the source's app
+ * (a sandboxed run), which never runs while the host holds a transaction.
+ */
+export type TxRunner = <T>(fn: (tx: RlsClient) => Promise<T>) => Promise<T>
+
+/**
+ * Ask the source's adapter whether the item is visible to the actor now.
+ * - no adapter for the source (app not installed, unavailable to the actor, or
+ *   its read scope not held): SOURCE_NOT_ENABLED, nothing is written;
+ * - the adapter failed (timeout, provider error, broken answer):
+ *   SOURCE_UNAVAILABLE, nothing is written (a link never goes stale on an outage);
+ * - null: the provider says the item is gone or not visible to the actor.
+ */
 async function probeRemoteVisible(
   registry: KnowledgeSourceRegistry,
   input: { source: string; externalId: string; title?: string },
   actor: KnowledgeActor,
 ): Promise<{ url?: string; title?: string; modifiedAt?: string } | null> {
   const adapter = registry.listEnabled(actor).find((a) => a.source === input.source)
-  if (!adapter) return null
-
+  if (!adapter || (!adapter.getRemoteMetadata && !adapter.searchRemote)) {
+    throw new KnowledgeError("SOURCE_NOT_ENABLED", `Source '${input.source}' is not enabled`)
+  }
   try {
     if (adapter.getRemoteMetadata) {
       const meta = (await adapter.getRemoteMetadata({ sourceEntityId: input.externalId }, actor)) as
@@ -59,14 +75,17 @@ async function probeRemoteVisible(
       return meta
     }
     // Fallback: confirm visibility via searchRemote hit-match
-    const probe = await adapter.searchRemote(
+    const probe = await adapter.searchRemote!(
       { query: input.title ?? input.externalId, limit: 5 },
       actor,
     )
     const hit = probe.hits.find((h) => h.sourceEntityId === input.externalId)
     return hit ? { url: hit.url, title: hit.title, modifiedAt: hit.modifiedAt } : null
-  } catch {
-    return null
+  } catch (err) {
+    throw new KnowledgeError(
+      "SOURCE_UNAVAILABLE",
+      `Source '${input.source}' could not be reached: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }
 
@@ -82,7 +101,7 @@ async function probeRemoteVisible(
  * - Verifies adapter-level remote visibility before any write.
  */
 export async function linkRemoteDocument(
-  tx: RlsClient,
+  run: TxRunner,
   input: LinkRemoteInput,
   registry: KnowledgeSourceRegistry,
   actor: KnowledgeActor,
@@ -106,6 +125,17 @@ export async function linkRemoteDocument(
   const safeRemoteUrl = remote.url && /^https?:\/\//i.test(remote.url) ? remote.url : null
   const persistedUrl = input.url ?? safeRemoteUrl
 
+  return run((tx) => writeLink(tx, input, remote, safeRemoteUrl, persistedUrl, actor))
+}
+
+async function writeLink(
+  tx: RlsClient,
+  input: LinkRemoteInput,
+  remote: { modifiedAt?: string },
+  safeRemoteUrl: string | null,
+  persistedUrl: string | null,
+  actor: KnowledgeActor,
+): Promise<{ id: string }> {
   await tx.execute(drizzleSql`
     INSERT INTO ${knowledgeRel("source_identities")} (id, org_id, source, external_id, url, modified_at)
     VALUES (
@@ -247,7 +277,7 @@ function toResult(row: SourceLinkDbRow): SourceLinkResult {
  * Requires only `knowledge:documents:update` (IS-10: drops `:source-links:write`).
  */
 export async function verifySourceLink(
-  tx: RlsClient,
+  run: TxRunner,
   id: string,
   registry: KnowledgeSourceRegistry,
   actor: KnowledgeActor,
@@ -255,7 +285,7 @@ export async function verifySourceLink(
   if (!hasScope("knowledge:documents:update", actor.scopes)) {
     throw new KnowledgeError("FORBIDDEN", "Missing knowledge:documents:update scope")
   }
-  const link = await loadLink(tx, id, actor)
+  const link = await run((tx) => loadLink(tx, id, actor))
   if (!link) throw new KnowledgeError("NOT_FOUND", "Source link not found")
   if (link.archived_at) {
     throw new KnowledgeError("FORBIDDEN", "Cannot verify an archived source link")
@@ -267,28 +297,29 @@ export async function verifySourceLink(
     actor,
   )
 
-  if (!visible) {
-    await tx.execute(drizzleSql`
+  return run(async (tx) => {
+    if (!visible) {
+      await tx.execute(drizzleSql`
       UPDATE ${knowledgeRel("source_links")}
       SET review_status = 'stale', visibility_status = 'unavailable', updated_at = now()
       WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
     `)
-    await tx.queueEvent({
-      app: "knowledge",
-      entity: "source_link",
-      action: "verify",
-      entityId: id,
-      data: { status: "stale" },
-      actorId: actor.userId,
-      actorType: "user",
-      orgId: actor.orgId,
-    })
-    const after = await loadLink(tx, id, actor)
-    if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after update")
-    return toResult(after)
-  }
+      await tx.queueEvent({
+        app: "knowledge",
+        entity: "source_link",
+        action: "verify",
+        entityId: id,
+        data: { status: "stale" },
+        actorId: actor.userId,
+        actorType: "user",
+        orgId: actor.orgId,
+      })
+      const after = await loadLink(tx, id, actor)
+      if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after update")
+      return toResult(after)
+    }
 
-  await tx.execute(drizzleSql`
+    await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("source_links")}
     SET review_status = 'verified',
         verified_at = now(),
@@ -297,19 +328,20 @@ export async function verifySourceLink(
         updated_at = now()
     WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
   `)
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "source_link",
-    action: "verify",
-    entityId: id,
-    data: { status: "verified" },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
+    await tx.queueEvent({
+      app: "knowledge",
+      entity: "source_link",
+      action: "verify",
+      entityId: id,
+      data: { status: "verified" },
+      actorId: actor.userId,
+      actorType: "user",
+      orgId: actor.orgId,
+    })
+    const after = await loadLink(tx, id, actor)
+    if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after update")
+    return toResult(after)
   })
-  const after = await loadLink(tx, id, actor)
-  if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after update")
-  return toResult(after)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +349,7 @@ export async function verifySourceLink(
 // ---------------------------------------------------------------------------
 
 export async function refreshSourceLinkMetadata(
-  tx: RlsClient,
+  run: TxRunner,
   id: string,
   registry: KnowledgeSourceRegistry,
   actor: KnowledgeActor,
@@ -325,7 +357,7 @@ export async function refreshSourceLinkMetadata(
   if (!hasScope("knowledge:documents:update", actor.scopes)) {
     throw new KnowledgeError("FORBIDDEN", "Missing knowledge:documents:update scope")
   }
-  const link = await loadLink(tx, id, actor)
+  const link = await run((tx) => loadLink(tx, id, actor))
   if (!link) throw new KnowledgeError("NOT_FOUND", "Source link not found")
   if (link.archived_at) {
     throw new KnowledgeError("FORBIDDEN", "Cannot refresh an archived source link")
@@ -335,35 +367,37 @@ export async function refreshSourceLinkMetadata(
     { source: link.source, externalId: link.external_id, title: link.title },
     actor,
   )
-  if (!remote) {
-    await tx.execute(drizzleSql`
+  return run(async (tx) => {
+    if (!remote) {
+      await tx.execute(drizzleSql`
       UPDATE ${knowledgeRel("source_links")}
       SET visibility_status = 'unavailable', review_status = 'stale', updated_at = now()
       WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
     `)
-  } else {
-    await tx.execute(drizzleSql`
+    } else {
+      await tx.execute(drizzleSql`
       UPDATE ${knowledgeRel("source_links")}
       SET title = COALESCE(${remote.title ?? null}, title),
-          url = COALESCE(${remote.url ?? null}, url),
+          url = COALESCE(${remote.url && /^https?:\/\//i.test(remote.url) ? remote.url : null}, url),
           visibility_status = 'available',
           updated_at = now()
       WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
     `)
-  }
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "source_link",
-    action: "refresh",
-    entityId: id,
-    data: { visible: remote !== null },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
+    }
+    await tx.queueEvent({
+      app: "knowledge",
+      entity: "source_link",
+      action: "refresh",
+      entityId: id,
+      data: { visible: remote !== null },
+      actorId: actor.userId,
+      actorType: "user",
+      orgId: actor.orgId,
+    })
+    const after = await loadLink(tx, id, actor)
+    if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after refresh")
+    return toResult(after)
   })
-  const after = await loadLink(tx, id, actor)
-  if (!after) throw new KnowledgeError("NOT_FOUND", "Source link missing after refresh")
-  return toResult(after)
 }
 
 // ---------------------------------------------------------------------------

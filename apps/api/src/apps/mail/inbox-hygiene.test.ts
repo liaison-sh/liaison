@@ -5,24 +5,13 @@
 // they issue the right db_update mutations (status=archived; merged/replaced labels) and
 // validate their params — the agent capability behind label-hygiene-archive-newsletters.
 
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { runMailHandler } from "~/apps/mail/test-mail-runner"
 
 describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("agentMailArchive sets status=archived for each conversation id", async () => {
     const updates: Array<{ entity: string; id: string; data: any }> = []
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMailHandler({
       exportName: "agentMailArchive",
       params: { conversationIds: ["c1", "c2", "c3"] },
       bridge: {
@@ -43,9 +32,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
   it("agentMailArchive hands each mailbox's archived conversations to one Gmail write-back job", async () => {
     const jobs: Array<{ name: string; payload: any; opts: any }> = []
     const accountOf: Record<string, string> = { c1: "acc-a", c2: "acc-b", c3: "acc-a" }
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMailHandler({
       exportName: "agentMailArchive",
       params: { conversationIds: ["c1", "c2", "c3"] },
       bridge: {
@@ -71,9 +58,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
   })
 
   it("agentMailArchive rejects an empty/missing conversationIds", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMailHandler({
       exportName: "agentMailArchive",
       params: {},
       bridge: { db_update: async () => {}, emit: async () => {} },
@@ -83,9 +68,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
 
   it("agentMailSetLabels merges with existing labels in add mode", async () => {
     const updates: any[] = []
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMailHandler({
       exportName: "agentMailSetLabels",
       params: { conversationIds: ["c1"], labels: ["Spam/Noise"] },
       bridge: {
@@ -102,9 +85,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
 
   it("agentMailSetLabels replaces labels in replace mode", async () => {
     const updates: any[] = []
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMailHandler({
       exportName: "agentMailSetLabels",
       params: { conversationIds: ["c1"], labels: ["Spam/Noise"], mode: "replace" },
       bridge: {
@@ -121,9 +102,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
 
   it("agentMailSetLabels replace keeps Gmail's own label ids, so the Gmail label state is not lost", async () => {
     const updates: any[] = []
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMailHandler({
       exportName: "agentMailSetLabels",
       params: { conversationIds: ["c1"], labels: ["Spam/Noise"], mode: "replace" },
       bridge: {
@@ -139,9 +118,7 @@ describe("mail inbox-hygiene handlers (BL-169 #12)", () => {
   })
 
   it("agentMailSetLabels requires a non-empty labels array", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMailHandler({
       exportName: "agentMailSetLabels",
       params: { conversationIds: ["c1"] },
       bridge: { db_update: async () => {}, emit: async () => {} },

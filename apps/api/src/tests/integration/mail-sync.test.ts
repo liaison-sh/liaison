@@ -167,28 +167,13 @@ function createSyncProbe(account: Record<string, unknown>, provider = "gmail"): 
 }
 
 describe("T-INT-7 -- sync is suspended for an unenrolled personal mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-    const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-    await initSandboxPool()
-    const path = await import("node:path")
-    const source = await loadBundle(path.resolve(import.meta.dir, "../../apps/mail/handlers.ts"))
-    bundleSource = `${source}
-async function __test_isSyncableAccount(params, _ctx) { return isSyncableAccount(params.account) }`
-  }, 60_000)
-
   async function run(
     exportName: string,
     probe: SyncProbe,
     payload: Record<string, unknown>,
   ): Promise<unknown> {
-    const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-    const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-    return executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const runMailHandler = await mailTestRunner()
+    return runMailHandler({
       exportName,
       params: payload,
       bridge: probe.bridge,
@@ -339,10 +324,22 @@ import * as minimal from "~/seed/tiers/minimal"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 import { createTestOrg } from "~/tests/helpers/org"
 
+/** The mail handlers, with this file's test-only entries beside them. */
+async function mailTestRunner() {
+  const [{ mailRunner }, mail] = await Promise.all([
+    import("~/apps/mail/test-mail-runner"),
+    import("~/apps/mail/handlers"),
+  ])
+  return mailRunner({
+    __test_isSyncableAccount: (params) => mail.isSyncableAccount(params.account),
+    __test_processMessages: (params, ctx) =>
+      mail.processMessages(params.messages, params.account, ctx),
+  })
+}
+
 const MAIL_SCHEMA = schemaRef("app_mail")
 
 describeEnc("T-INT-1: ingest into a ready mailbox writes ciphertext only", () => {
-  let bundle: string
   let encOrgId: string
   let encUserId: string
   let keys: CryptoKeyPair
@@ -372,16 +369,6 @@ describeEnc("T-INT-1: ingest into a ready mailbox writes ciphertext only", () =>
         VALUES (${encOrgId}::uuid, ${encUserId}::uuid, ${KEY_ID}, ${ecdhSpki}, ${signSpki},
                 ${Buffer.from("attestation")}, 'active')`),
     )
-
-    const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-    const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-    await initSandboxPool()
-    const nodePath = await import("node:path")
-    const source = await loadBundle(
-      nodePath.resolve(import.meta.dir, "../../apps/mail/handlers.ts"),
-    )
-    bundle = `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx) }`
   }, 120_000)
 
   afterAllEnc(async () => {
@@ -467,13 +454,10 @@ async function __test_processMessages(params, ctx) { await processMessages(param
           log_error: (m: string) => logs.push(String(m)),
           log_debug: (m: string) => logs.push(String(m)),
         }
-        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+        const runMailHandler = await mailTestRunner()
         let error: unknown = null
         try {
-          await executeInSandbox({
-            pool: getSandboxPool(),
-            bundleSource: bundle,
+          await runMailHandler({
             exportName: "__test_processMessages",
             params: {
               messages,
@@ -691,13 +675,10 @@ async function __test_processMessages(params, ctx) { await processMessages(param
             log_error: () => {},
             log_debug: () => {},
           }
-          const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-          const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+          const runMailHandler = await mailTestRunner()
           let error: unknown = null
           try {
-            await executeInSandbox({
-              pool: getSandboxPool(),
-              bundleSource: bundle,
+            await runMailHandler({
               exportName: "__test_processMessages",
               params: {
                 messages: fixtureMessages(1),

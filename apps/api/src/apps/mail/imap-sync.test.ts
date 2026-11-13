@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 import { fakeImapServer } from "~/modules/apps/sandbox/__test-helpers__/fake-imap-server"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { ImapBridgeTestAccess } from "~/modules/apps/sandbox/imap-bridge"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
 
 /**
  * A synthetic stand-in for the host's `mailbox_sealAndInsert`, for the sync
@@ -52,13 +49,6 @@ async function stubSealAndInsert(bridge: Record<string, any>, paramsJson: string
 }
 
 describe("imapInitialSync handler", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("syncs messages via imap_fetch and sets status to active", async () => {
     const updates: any[] = []
     const inserts: any[] = []
@@ -144,9 +134,7 @@ describe("imapInitialSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "imapInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -160,13 +148,6 @@ describe("imapInitialSync handler", () => {
 })
 
 describe("imapIncrementalSync handler", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("detects uidValidity change and triggers full re-sync", async () => {
     const jobs: any[] = []
     const updates: any[] = []
@@ -219,9 +200,7 @@ describe("imapIncrementalSync handler", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "imapIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -243,13 +222,6 @@ describe("imapIncrementalSync handler", () => {
 // validation: the point is that the call gets PAST the option parsing, and
 // that a failed sync leaves an error the Mail settings show.
 describe("imapInitialSync through the real bridge", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("starts without a cursor and records a failed first sync on the account", async () => {
     const previous = process.env.ALLOW_PRIVATE_MAIL_HOSTS
     process.env.ALLOW_PRIVATE_MAIL_HOSTS = "false"
@@ -303,9 +275,7 @@ describe("imapInitialSync through the real bridge", () => {
     }
     let thrown: unknown = null
     try {
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "imapInitialSync",
         params: { orgId: "org-1", accountId: "acc-new" },
         bridge,
@@ -495,13 +465,12 @@ const SENT_CAPS = {
 }
 
 /**
- * A mailbox over fake folders, run through the bundle: `imported` lists the
+ * A mailbox over fake folders, run through the handlers: `imported` lists the
  * provider ids of the messages stored, in the order they were stored.
  */
 function mailWorld(
   account: Record<string, any>,
   folders: { inbox: number[]; sent?: number[]; caps?: unknown; failSent?: () => boolean },
-  bundle: () => string,
 ) {
   const box = mailboxRecord(account)
   const imported: string[] = []
@@ -523,9 +492,7 @@ function mailWorld(
     },
   }
   const run = (exportName: string, params: Record<string, unknown>) =>
-    executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource: bundle(),
+    runMail({
       exportName,
       params,
       bridge,
@@ -552,18 +519,12 @@ const desc = (from: number, to: number) => {
 }
 
 describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-  const bundle = () => bundleSource
   const range = (from: number, to: number) =>
     Array.from({ length: to - from + 1 }, (_, i) => from + i)
 
   it("first import: newest page first, new mail caught up first on each later run, finalized in one write", async () => {
     const inbox = range(1, 60)
-    const w = mailWorld(ORG_MAILBOX, { inbox }, bundle)
+    const w = mailWorld(ORG_MAILBOX, { inbox })
 
     await w.initial()
     expect(w.fetches).toEqual([{ mode: "full", before: null }])
@@ -614,7 +575,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "100", uidValidity: 7, inboxDone: true },
       },
       { inbox },
-      bundle,
     )
     // Downtime: 60 messages arrived.
     inbox.push(...range(101, 160))
@@ -648,7 +608,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "5", uidValidity: 7, inboxDone: true },
       },
       { inbox: range(1, 5), sent, caps: SENT_CAPS },
-      bundle,
     )
     await w.tick()
     expect(w.fetches).toEqual([
@@ -687,7 +646,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "5", uidValidity: 7, inboxDone: true },
       },
       { inbox, sent: [1], caps: SENT_CAPS, failSent: () => sentFails },
-      bundle,
     )
     await w.tick()
     expect(w.account.sync_state.sent.failedAttempts).toBe(1)
@@ -716,7 +674,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "60", inboxWalk: { before: "36" }, uidValidity: 6 },
       },
       { inbox: range(1, 60) },
-      bundle,
     )
     await w.initial()
     expect(w.imported).toEqual([])
@@ -736,7 +693,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "17", uidValidity: 7, messagesSynced: 17 },
       },
       { inbox: range(1, 60) },
-      bundle,
     )
     await midway.tick()
     await midway.syncNow()
@@ -755,7 +711,6 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
         sync_state: { cursor: "10", uidValidity: 7, messagesSynced: 10 },
       },
       { inbox },
-      bundle,
     )
     await imported.tick()
     // Never forward from the old cursor: the newest 25 above it first.
@@ -766,7 +721,7 @@ describe("IMAP mail syncs MOST RECENT FIRST, on every path", () => {
   })
 
   it("a fresh mailbox: 'Sync now' before the import starts the import, not an oldest-first read", async () => {
-    const w = mailWorld(ORG_MAILBOX, { inbox: range(14_019, 14_100) }, bundle)
+    const w = mailWorld(ORG_MAILBOX, { inbox: range(14_019, 14_100) })
     await w.syncNow()
     expect(w.fetches).toEqual([])
     expect(w.jobs).toEqual([
@@ -787,15 +742,9 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
     sync_status: "active",
     sync_state: { cursor: "10", uidValidity: 7, inboxDone: true },
   }
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-  const bundle = () => bundleSource
 
   it("waits 2, then 4 minutes; 'Sync now' tries at once; a success clears it", async () => {
-    const w = mailWorld(ACTIVE, { inbox: [10, 11] }, bundle)
+    const w = mailWorld(ACTIVE, { inbox: [10, 11] })
     w.setDown(new Error("IMAP connection refused: ECONNREFUSED"))
 
     await w.tick()
@@ -829,7 +778,7 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
   })
 
   it("a refused login retries on the six-hour cap, never 'never'", async () => {
-    const w = mailWorld(ACTIVE, { inbox: [10] }, bundle)
+    const w = mailWorld(ACTIVE, { inbox: [10] })
     w.setDown(new Error("IMAP authentication failed: wrong_password"))
     await w.tick()
     const wait = Date.parse(w.account.sync_state.nextRetryAt) - Date.now()
@@ -841,7 +790,6 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
     const w = mailWorld(
       { ...ACTIVE, sync_state: { ...ACTIVE.sync_state, failedAttempts: 3, nextRetryAt: null } },
       { inbox: [10, 11] },
-      bundle,
     )
     await w.tick()
     expect(w.fetches).toHaveLength(1)
@@ -851,15 +799,13 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
 
   describe("a scheduled poll while nobody is online", () => {
     const tickAlone = async (account: any, others: any[] = []) => {
-      const w = mailWorld(account, { inbox: [10, 11] }, bundle)
+      const w = mailWorld(account, { inbox: [10, 11] })
       const findMany = async (entity: string, optsJson: string) => {
         const where = JSON.parse(optsJson).where ?? {}
         if (entity !== "accounts" || where.syncStatus !== "active") return "[]"
         return JSON.stringify([w.account, ...others])
       }
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "imapIncrementalSync",
         params: { orgId: "org-1" },
         bridge: {
@@ -898,16 +844,14 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
   })
 
   it("a tick with several mailboxes runs each in a job of its own", async () => {
-    const w = mailWorld(ACTIVE, { inbox: [10] }, bundle)
+    const w = mailWorld(ACTIVE, { inbox: [10] })
     const second = { ...ACTIVE, id: "acc-s", email_address: "sales@northwind.test" }
     const findMany = async (entity: string, optsJson: string) => {
       const where = JSON.parse(optsJson).where ?? {}
       if (entity !== "accounts" || where.syncStatus !== "active") return "[]"
       return JSON.stringify([w.account, second])
     }
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "imapIncrementalSync",
       params: { orgId: "org-1" },
       bridge: { ...w.bridge(async (opts) => fakeImapBridge([10], opts)), db_findMany: findMany },
@@ -941,7 +885,6 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
         },
       },
       { inbox: [10, 20, 35, 60] },
-      bundle,
     )
     w.setDown(new Error("IMAP timeout"))
     await w.initial()
@@ -975,12 +918,6 @@ describe("a failing incremental sync backs off; the schedule never hammers a slo
 // The whole path: the bundle, the REAL bridge `imap_fetch` (its option
 // parsing included), `imapFetch` and the page, down to a fake IMAP server.
 describe("IMAP sync through the real bridge to a fake server", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("imports newest first, catches up new mail first, then walks Sent newest first", async () => {
     const inbox = Array.from({ length: 60 }, (_, i) => 14_019 + i * 3)
     const top = inbox[inbox.length - 1]
@@ -1015,9 +952,7 @@ describe("IMAP sync through the real bridge to a fake server", () => {
       },
     }
     const run = (exportName: string, params: Record<string, unknown>) =>
-      executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      runMail({
         exportName,
         params,
         bridge,

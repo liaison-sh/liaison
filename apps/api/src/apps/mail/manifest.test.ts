@@ -330,22 +330,6 @@ describe("mail app manifest validation", () => {
   })
 })
 
-describe("mail handler bundle transpilation", () => {
-  it("loads and transpiles the TypeScript handler bundle", async () => {
-    const { loadBundle, clearBundleCache } = await import("~/modules/apps/sandbox/bundle-loader")
-    clearBundleCache()
-    const bundlePath = new URL("./handlers.ts", import.meta.url).pathname
-    const source = await loadBundle(bundlePath)
-    // Transpiled output should be JS (no type annotations)
-    expect(source).not.toContain(": MailCtx")
-    expect(source).not.toContain("interface MailCtx")
-    // Should contain the handler functions
-    expect(source).toContain("onAccountConnected")
-    expect(source).toContain("listAccounts")
-    expect(source).toContain("disconnectAccount")
-  })
-})
-
 describe("mail manifest: sync state and conversation entity additions", () => {
   it("declares syncState field on accounts", () => {
     expect(mailManifest.schema.accounts.fields.syncState).toBe("json?")

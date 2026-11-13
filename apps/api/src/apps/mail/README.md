@@ -122,7 +122,7 @@ send, Liaison APPENDs a copy to Sent unless the host files it itself (Gmail,
 Microsoft, Yahoo, AOL: `hostFilesSentItself`) or a search by Message-ID finds
 it there.
 
-New mail is polled every 2 minutes. IMAP IDLE is not used: sandbox jobs are
+New mail is polled every 2 minutes. IMAP IDLE is not used: mail jobs are
 short-lived, and IDLE needs one long-lived connection per mailbox held by the
 host with leader election across API replicas. That is a separate piece of
 work; polling stays the delivery path until then.

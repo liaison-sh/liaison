@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Test helper: the mail unit tests drive the bundle with hand-written mock
+// Test helper: the mail unit tests drive the handlers with hand-written mock
 // bridges. Production writes a sync page host side, in one transaction, through
 // `mail_writePage` (modules/mail/page-write.ts), which the mocks predate. This
 // adapter gives a mock that surface, derived from the mock's OWN single-row
@@ -26,7 +26,7 @@
 // apps/mail/page-write.test.ts and modules/mail/sender-contacts.test.ts.
 // Test-only: nothing in the app imports this file.
 
-import { executeInSandbox as realExecuteInSandbox } from "~/modules/apps/sandbox/executor"
+import { type MailRunOptions, type MailTestEntry, mailRunner } from "~/apps/mail/test-mail-runner"
 import {
   conversationCreateEvent,
   conversationUpdateEvent,
@@ -225,12 +225,23 @@ export function withPageWriteMethods(
   return out
 }
 
-/** `executeInSandbox`, with the mock bridge given the page-write surface. */
-export const executeInSandbox: typeof realExecuteInSandbox = (opts) =>
-  realExecuteInSandbox({
-    ...opts,
-    bridge: withPageWriteMethods(
-      opts.bridge as Bridge,
-      (opts.params as { account?: Record<string, unknown> } | undefined)?.account,
-    ),
-  })
+/**
+ * A mail runner (test-mail-runner.ts) whose mock bridge is given the page-write
+ * surface. `entries`: test-only entries beside the module's exports.
+ */
+export function mailPageRunner(
+  entries: Record<string, MailTestEntry> = {},
+): (opts: MailRunOptions) => Promise<unknown> {
+  const run = mailRunner(entries)
+  return (opts) =>
+    run({
+      ...opts,
+      bridge: withPageWriteMethods(
+        opts.bridge,
+        (opts.params as { account?: Record<string, unknown> } | undefined)?.account,
+      ),
+    })
+}
+
+/** Runs a mail module export, the mock bridge given the page-write surface. */
+export const runMail = mailPageRunner()

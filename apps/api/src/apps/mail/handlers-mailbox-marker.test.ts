@@ -5,12 +5,9 @@
 // never blocks, never waits, and never calls out to a browser, because the
 // sandbox budget is 5 s in production and a timeout kills the worker.
 
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 import { readMailboxMarker } from "~/modules/agent/mailbox-plaintext/mailbox-plaintext-broker"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
 
 const CONVERSATION_ID = "conv-1"
 const ACCOUNT_ID = "acct-1"
@@ -79,21 +76,12 @@ function bridgeFor(account: Record<string, unknown>, overrides: Record<string, u
 }
 
 describe("mail read and search under a sealed personal mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   async function run(
     exportName: string,
     params: unknown,
     bridge: Record<string, (...args: any[]) => any>,
   ) {
-    return (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    return (await runMail({
       exportName,
       params,
       bridge,
@@ -345,13 +333,6 @@ describe("mail read and search under a sealed personal mailbox", () => {
 
 // ── Task 9.8: a forward or reply never sends an empty quote ──────────────────
 describe("forwarding and replying from a sealed personal mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   function sendBridge(account: Record<string, unknown>, sends: unknown[]) {
     return bridgeFor(account, {
       db_findMany: async (entity: string) =>
@@ -381,9 +362,7 @@ describe("forwarding and replying from a sealed personal mailbox", () => {
     params: unknown,
     bridge: Record<string, (...args: any[]) => any>,
   ) {
-    return (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    return (await runMail({
       exportName,
       params,
       bridge,
@@ -517,13 +496,6 @@ describe("forwarding and replying from a sealed personal mailbox", () => {
 
 // ── Task 9.9: outbound re-attachment of a sealed file ───────────────────────
 describe("re-attaching a stored attachment from a sealed personal mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   const FILE_ID = "file-1"
   const STAGED_ID = "staged-1"
   const PLAINTEXT_BYTES = Buffer.from("REAL ATTACHMENT BYTES").toString("base64")
@@ -572,9 +544,7 @@ describe("re-attaching a stored attachment from a sealed personal mailbox", () =
     params: unknown,
     bridge: Record<string, (...args: any[]) => any>,
   ) {
-    return (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    return (await runMail({
       exportName,
       params,
       bridge,
@@ -706,13 +676,6 @@ describe("re-attaching a stored attachment from a sealed personal mailbox", () =
 
 // ── Task 9.7: ticket conversion is client-fulfilled and explicitly consented ──
 describe("converting a sealed personal mail conversation into a team ticket", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   const INBOX_ID = "inbox-1"
 
   function conversionBridge(account: Record<string, unknown>, created: unknown[]) {
@@ -764,9 +727,7 @@ describe("converting a sealed personal mail conversation into a team ticket", ()
     params: unknown,
     bridge: Record<string, (...args: any[]) => any>,
   ) {
-    return (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    return (await runMail({
       exportName,
       params,
       bridge,

@@ -16,24 +16,30 @@
 //       rule through the generic `resolveContact`.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
+import { processMessages, storedProviderIds } from "~/apps/mail/handlers"
 import { mailAppManifest } from "~/apps/mail/manifest-descriptor"
+import { mailRunner } from "~/apps/mail/test-mail-runner"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { createRlsSession } from "~/db/rls"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { applyConversationLabelDelta } from "~/modules/mail/gmail-write-back"
+
+const runMailHandler = mailRunner({
+  __test_processMessages: (params, ctx) =>
+    processMessages(params.messages, params.account, ctx, params.origin ?? "incremental"),
+  __test_resolveContact: (params, ctx) => ctx.resolveContact(JSON.stringify(params)),
+  __test_storedProviderIds: async (params, ctx) => [
+    ...(await storedProviderIds(params.accountId, params.ids, ctx)),
+  ],
+})
 
 let orgId: string
 let ownerId: string
 let sharedAccountId: string
 let personalAccountId: string
 let knownContactId: string
-let bundleSource: string
 const suffix = crypto.randomUUID().slice(0, 8)
 
 /** Bridge methods that never reach the database. */
@@ -88,9 +94,7 @@ async function ingest(
         FROM app_mail.accounts WHERE id = ${accountId}::uuid`),
   )
   const counter = { db: 0, byMethod: {} as Record<string, number> }
-  await executeInSandbox({
-    pool: getSandboxPool(),
-    bundleSource,
+  await runMailHandler({
     exportName: "__test_processMessages",
     params: { messages, account, origin },
     bridge: bridgeFor(counter, overrides),
@@ -208,13 +212,6 @@ beforeAll(async () => {
       RETURNING id`),
   )
   knownContactId = known.id
-
-  await initSandboxPool()
-  const source = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  bundleSource = `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx, params.origin ?? "incremental") }
-async function __test_resolveContact(params, ctx) { return await ctx.resolveContact(JSON.stringify(params)) }
-async function __test_storedProviderIds(params, ctx) { return [...(await storedProviderIds(params.accountId, params.ids, ctx))] }`
 }, 120_000)
 
 afterAll(async () => {
@@ -367,9 +364,7 @@ describe("a page is never half written (review of #3)", () => {
     expect(pending.ingest_pending).toBe(true)
     // The Gmail loops ask which listed messages are done before fetching: an
     // unfinished one is not, so the retry re-fetches it instead of skipping it.
-    const done = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const done = await runMailHandler({
       exportName: "__test_storedProviderIds",
       params: { accountId: sharedAccountId, ids: [withAttachment.externalProviderId] },
       bridge: bridgeFor({ db: 0, byMethod: {} }),
@@ -388,9 +383,7 @@ describe("a page is never half written (review of #3)", () => {
     )
     expect(after.ingest_pending).toBeNull()
     expect(
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMailHandler({
         exportName: "__test_storedProviderIds",
         params: { accountId: sharedAccountId, ids: [withAttachment.externalProviderId] },
         bridge: bridgeFor({ db: 0, byMethod: {} }),
@@ -708,9 +701,7 @@ describe("mail senders and contacts (#6): automated discovery never adds to the 
   it("the mail app cannot create a contact through the generic resolveContact", async () => {
     const counter = { db: 0, byMethod: {} as Record<string, number> }
     await expect(
-      executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      runMailHandler({
         exportName: "__test_resolveContact",
         params: { email: `bypass-${suffix}@private.example` },
         bridge: bridgeFor(counter),

@@ -12,7 +12,7 @@ import {
   coreModuleFor,
   isCoreModulePath,
 } from "~/modules/apps/core/registry"
-import { coreCtxOf } from "~/modules/apps/core/run-core"
+import { coreCtxOf, runCoreHandler } from "~/modules/apps/core/run-core"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { exportOnlyBundle } from "~/modules/apps/sandbox/bundle-shake"
 import * as executor from "~/modules/apps/sandbox/executor"
@@ -212,5 +212,94 @@ describe("ctx.transaction", () => {
       ).catch(() => {})
       expect({ name, inTx, seen }).toEqual({ name, inTx: true, seen: [true] })
     }
+  })
+})
+
+describe("a run's deadline", () => {
+  /** A module of one handler, `run`, as the registry hands one over. */
+  const moduleOf = (run: (p: unknown, ctx: any) => Promise<unknown>) => ({
+    modulePath: "/test/core-module.ts",
+    load: async () => ({ run }),
+  })
+
+  it("past its timeout the handler reaches the host no more, as a sandboxed run stops", async () => {
+    const calls: number[] = []
+    let lateError: unknown
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const bridge = { step: async (n: number) => calls.push(n) }
+    const run = runCoreHandler({
+      module: moduleOf(async (_p, ctx) => {
+        await ctx.step(1)
+        await gate
+        try {
+          await ctx.step(2)
+        } catch (err) {
+          lateError = err
+          throw err
+        }
+      }),
+      appName: "test",
+      exportName: "run",
+      params: {},
+      bridge,
+      holdsTx: false,
+      timeoutMs: 20,
+    })
+    await expect(run).rejects.toThrow("App execution timed out")
+    release()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(calls).toEqual([1])
+    expect(String(lateError)).toContain("interrupted")
+  })
+
+  it("a cancelled run stops the same way, mid-run", async () => {
+    const calls: number[] = []
+    const abort = new AbortController()
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const run = runCoreHandler({
+      module: moduleOf(async (_p, ctx) => {
+        await ctx.step(1)
+        await gate
+        await ctx.step(2)
+      }),
+      appName: "test",
+      exportName: "run",
+      params: {},
+      bridge: { step: async (n: number) => calls.push(n) },
+      holdsTx: false,
+      signal: abort.signal,
+    })
+    await new Promise((r) => setTimeout(r, 5))
+    abort.abort()
+    await expect(run).rejects.toThrow()
+    release()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(calls).toEqual([1])
+  })
+
+  it("work a handler left running after it returned is refused too", async () => {
+    const calls: number[] = []
+    let later!: Promise<unknown>
+    const out = await runCoreHandler({
+      module: moduleOf(async (_p, ctx) => {
+        await ctx.step(1)
+        later = new Promise((r) => setTimeout(r, 5)).then(() => ctx.step(2))
+        return "done"
+      }),
+      appName: "test",
+      exportName: "run",
+      params: {},
+      bridge: { step: async (n: number) => calls.push(n) },
+      holdsTx: false,
+    })
+    expect(out).toBe("done")
+    await expect(later).rejects.toThrow("interrupted")
+    expect(calls).toEqual([1])
   })
 })

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 
 // Archive, read state, star and trash done in Liaison are written back to
 // Gmail by the `gmail-write-back` job, and the history echo of that write does
@@ -156,17 +153,8 @@ function createBridge(
 const ok = () => ({ status: 200, body: "{}" })
 
 describe("gmail-write-back job", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   async function run(exportName: string, params: unknown, bridge: Record<string, any>) {
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName,
       params,
       bridge,
@@ -519,13 +507,6 @@ describe("gmail-write-back job", () => {
 })
 
 describe("incremental sync after a write-back (no loop, no flip)", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   async function sync(world: World, history: any[]) {
     const { bridge, captured } = createBridge(world, (url) => {
       if (url.includes("/history")) {
@@ -533,9 +514,7 @@ describe("incremental sync after a write-back (no loop, no flip)", () => {
       }
       throw new Error(`unexpected fetch ${url}`)
     })
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailIncrementalSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -612,13 +591,6 @@ describe("incremental sync after a write-back (no loop, no flip)", () => {
 // messages are named by Message-ID, the stored labels are mirrored like
 // Gmail's, failures retry or land on the mailbox as `imap_write_back:<kind>`.
 describe("gmail-write-back job, IMAP mailbox", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   const imapAccount = (overrides: Partial<Row> = {}) =>
     gmailAccount({ provider: "imap", sync_state: { cursor: "9" }, ...overrides })
 
@@ -657,9 +629,7 @@ describe("gmail-write-back job, IMAP mailbox", () => {
       for (const item of input.items) results.push(await writeBack(item))
       return JSON.stringify({ results })
     }
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailWriteBack",
       params: { orgId: "org-1", accountId: "acc-1", conversationIds: ["conv-1"], fields, ...extra },
       bridge,

@@ -5,18 +5,8 @@
 // kernel's new-email producer decides on (labels, isRead, Gmail internalDate).
 // Only an `incremental` Gmail message may notify, so a wrong origin on the
 // initial import is a 500-banner flood.
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
-
-let bundleSource: string
-
-beforeAll(async () => {
-  await initSandboxPool()
-  bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-})
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 
 const INTERNAL_DATE = "1737025200000"
 
@@ -144,9 +134,7 @@ function messageCreates(emits: any[]) {
 describe("message:create carries its sync origin (S16)", () => {
   it("the Gmail initial import emits origin initial", async () => {
     const { bridge, emits } = makeBridge(personalGmail("pre-sync", null))
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "gmailInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,
@@ -166,9 +154,7 @@ describe("message:create carries its sync origin (S16)", () => {
           pageSavedAt: new Date().toISOString(),
         }),
       )
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMail({
         exportName: "gmailIncrementalSync",
         params: { orgId: "org-1", accountId: "acc-1" },
         bridge,
@@ -218,9 +204,7 @@ describe("message:create carries its sync origin (S16)", () => {
         },
       },
     )
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "imapInitialSync",
       params: { orgId: "org-1", accountId: "acc-1" },
       bridge,

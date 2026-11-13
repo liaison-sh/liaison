@@ -28,6 +28,10 @@ export const CORE_APP_MODULES: Readonly<Record<string, CoreAppModule>> = {
     modulePath: appsDir("calendar/handlers.ts"),
     load: () => import("~/apps/calendar/handlers"),
   },
+  mail: {
+    modulePath: appsDir("mail/handlers.ts"),
+    load: () => import("~/apps/mail/handlers"),
+  },
   projects: {
     modulePath: appsDir("projects/handlers.ts"),
     load: () => import("~/apps/projects/handlers"),

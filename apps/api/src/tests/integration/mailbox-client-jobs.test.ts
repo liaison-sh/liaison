@@ -11,7 +11,7 @@
 // either side of the queue.
 //
 // The bridge here is the REAL one, and the trigger is evaluated by the REAL
-// sandboxed mail handler bundle: a stub bridge would prove nothing about the
+// mail handlers: a stub bridge would prove nothing about the
 // only property that matters, which is what lands in the table.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
@@ -32,6 +32,18 @@ import * as minimal from "~/seed/tiers/minimal"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 import { createTestOrg } from "~/tests/helpers/org"
 
+/** The mail handlers, with this file's test-only entries beside them. */
+async function mailTestRunner() {
+  const [{ mailRunner }, mail] = await Promise.all([
+    import("~/apps/mail/test-mail-runner"),
+    import("~/apps/mail/handlers"),
+  ])
+  return mailRunner({
+    __test_processMessages: (params, ctx) =>
+      mail.processMessages(params.messages, params.account, ctx),
+  })
+}
+
 const MAIL_SCHEMA = schemaRef("app_mail")
 const KEY_ID = 51
 
@@ -42,7 +54,6 @@ const FIXTURE_BODY = "The pangolin numbers are attached and they are bad."
 const FIXTURE_SNIPPET = "The pangolin numbers are attached"
 
 describe("T-INT-5: the mailbox client job queue", () => {
-  let bundle: string
   let orgId: string
   let userId: string
   let keys: CryptoKeyPair
@@ -71,16 +82,6 @@ describe("T-INT-5: the mailbox client job queue", () => {
         VALUES (${orgId}::uuid, ${userId}::uuid, ${KEY_ID}, ${ecdhSpki}, ${signSpki},
                 ${Buffer.from("attestation")}, 'active')`),
     )
-
-    const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-    const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-    await initSandboxPool()
-    const nodePath = await import("node:path")
-    const source = await loadBundle(
-      nodePath.resolve(import.meta.dir, "../../apps/mail/handlers.ts"),
-    )
-    bundle = `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx) }`
   }, 120_000)
 
   afterAll(async () => {
@@ -140,11 +141,8 @@ async function __test_processMessages(params, ctx) { await processMessages(param
           log_error: () => {},
           log_debug: () => {},
         }
-        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-        await executeInSandbox({
-          pool: getSandboxPool(),
-          bundleSource: bundle,
+        const runMailHandler = await mailTestRunner()
+        await runMailHandler({
           exportName: "__test_processMessages",
           params: { messages: [message], account },
           bridge,

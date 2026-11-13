@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Mail app handler bundle — TypeScript source, transpiled at load time for QuickJS
-// Each export is an async function that receives (params/event, ctx)
-// No imports allowed — bridge methods are injected via ctx at runtime
-// biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
+// Mail handlers: a core app's server module (modules/apps/core/registry.ts).
+// Every handler the manifest names (tools, preflights, jobs, event handlers,
+// the Gmail push webhook and its verifier, the export), and the human send
+// entries `sendReply` / `sendCompose` (modules/mail/service.ts), is a named
+// export `(params, ctx, ...extra)`, imported and called in the API process
+// with a typed host ctx (modules/apps/core/ctx.ts): the run's bridge methods,
+// called directly. Host-side writes (a sync page, the seal, purges) live in
+// modules/mail behind the `mail_*` and `mailbox_*` methods.
 
-interface MailCtx {
+import type { CoreCtx } from "~/modules/apps/core/ctx"
+
+export interface MailMethods {
   getUserId(): string
   getOrgId(): string
   db_findMany(entity: string, optsJson: string): Promise<string>
@@ -90,6 +96,8 @@ interface MailCtx {
   codec_base64EncodeUtf8?(text: string): Promise<string>
   codec_markdownToEmail?(markdown: string): Promise<string>
 }
+
+type MailCtx = CoreCtx<MailMethods>
 
 interface MailAttachmentSummary {
   id: string
@@ -484,7 +492,7 @@ function toEncodedWords(value: string): string {
  * An unstructured header value (Subject): CR/LF stripped, then RFC 2047
  * encoded only when it holds non-ASCII. ASCII values are returned as-is.
  */
-function encodeHeaderValue(value: unknown): string {
+export function encodeHeaderValue(value: unknown): string {
   const sanitized = sanitizeHeaderValue(value)
   if (isAsciiHeaderText(sanitized)) return sanitized
   return toEncodedWords(sanitized)
@@ -494,7 +502,7 @@ function encodeHeaderValue(value: unknown): string {
  * A mailbox display name: RFC 2047 when non-ASCII, a quoted-string when it
  * holds RFC 5322 specials (a period is allowed bare, as obs-phrase permits), otherwise the bare name.
  */
-function encodeDisplayName(name: unknown): string {
+export function encodeDisplayName(name: unknown): string {
   const sanitized = sanitizeHeaderValue(name)
   if (!isAsciiHeaderText(sanitized)) return toEncodedWords(sanitized)
   if (/[()<>[\]:;@\\,"]/.test(sanitized)) {
@@ -504,7 +512,7 @@ function encodeDisplayName(name: unknown): string {
 }
 
 /** `Name <addr>` (or the bare addr-spec when there is no name). The addr-spec is never encoded. */
-function formatMailbox(name: unknown, email: unknown): string {
+export function formatMailbox(name: unknown, email: unknown): string {
   const address = sanitizeHeaderValue(email)
   const display = sanitizeHeaderValue(name)
   if (!display) return address
@@ -517,7 +525,7 @@ function formatMailbox(name: unknown, email: unknown): string {
  * re-encoded. Anything else is returned sanitized (a non-ASCII addr-spec needs
  * SMTPUTF8 and cannot be fixed by header encoding).
  */
-function encodeAddressString(value: unknown): string {
+export function encodeAddressString(value: unknown): string {
   const sanitized = sanitizeHeaderValue(value)
   if (isAsciiHeaderText(sanitized)) return sanitized
   const match = /^(.*?)\s*<([^<>\s]+)>$/.exec(sanitized)
@@ -853,7 +861,7 @@ function extractAttachments(part: any, out: any[]) {
   }
 }
 
-function normalizeGmailMessage(msg: any) {
+export function normalizeGmailMessage(msg: any) {
   const headers: Record<string, string> = {}
   for (const header of msg.payload?.headers ?? []) {
     headers[String(header.name).toLowerCase()] = header.value
@@ -968,7 +976,7 @@ function rolledUpConversationStatus(
   return status
 }
 
-async function recomputeConversationState(
+export async function recomputeConversationState(
   conversationId: string,
   account: { owner_type: string; encryption_state?: string },
   ctx: MailCtx,
@@ -1515,7 +1523,7 @@ function attachmentSourceFor(
  * `ingest_pending` is not "stored": it is fetched again so its unfinished
  * post-commit work (attachments) can be completed.
  */
-async function storedProviderIds(
+export async function storedProviderIds(
   accountId: string,
   providerIds: string[],
   ctx: MailCtx,
@@ -1608,7 +1616,7 @@ function createPageWriter(
   }
 }
 
-async function processMessages(
+export async function processMessages(
   messages: any[],
   account: {
     id: string
@@ -1619,7 +1627,7 @@ async function processMessages(
     email_address?: string
   },
   ctx: MailCtx,
-  origin: MailSyncOrigin,
+  origin?: MailSyncOrigin,
 ) {
   assertMailWritable(account, "processMessages")
   // A caller that names no origin gets the one that never raises a new-mail
@@ -1822,7 +1830,7 @@ function sameMailboxOwner(row: AccountRow, ownerType: string, ownerId: string | 
   return ownerType === "org" || (row.owner_id ?? null) === (ownerId ?? null)
 }
 
-async function onAccountConnected(event: MailKernelConnectionEvent, ctx: MailCtx) {
+export async function onAccountConnected(event: MailKernelConnectionEvent, ctx: MailCtx) {
   if (event.data?.appName !== "mail") return
   const { id, ownerType, ownerId, identifier, connectionName } = event.data
   const provider = connectionName === "gmail" ? "gmail" : "imap"
@@ -1957,7 +1965,7 @@ async function onAccountConnected(event: MailKernelConnectionEvent, ctx: MailCtx
   ctx.log_info("Mail account connected", JSON.stringify({ extensionRowId, provider }))
 }
 
-async function onAccountDisconnected(event: MailKernelDisconnectEvent, ctx: MailCtx) {
+export async function onAccountDisconnected(event: MailKernelDisconnectEvent, ctx: MailCtx) {
   if (event.data?.appName !== "mail") return
   const connectedAccountId = event.data.id
   const rows: AccountRow[] = JSON.parse(
@@ -1995,7 +2003,7 @@ async function onAccountDisconnected(event: MailKernelDisconnectEvent, ctx: Mail
 
 // --- Tool handlers ---
 
-async function convertToTicket(params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function convertToTicket(params: unknown, ctx: MailCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const conversationId = ensureMailString(p.conversationId, "conversationId")
   const inboxId = ensureMailString(p.inboxId, "inboxId")
@@ -2218,18 +2226,18 @@ async function convertToTicket(params: unknown, ctx: MailCtx): Promise<unknown> 
 }
 
 // The settings page's mailbox providers (tools providers.get / providers.set).
-async function providersGet(_params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function providersGet(_params: unknown, ctx: MailCtx): Promise<unknown> {
   return JSON.parse(await ctx.mail_providersGet())
 }
-async function providersSet(params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function providersSet(params: unknown, ctx: MailCtx): Promise<unknown> {
   return JSON.parse(await ctx.mail_providersSet(JSON.stringify(params ?? {})))
 }
 
-async function createFromTicket(params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function createFromTicket(params: unknown, ctx: MailCtx): Promise<unknown> {
   return JSON.parse(await ctx.mail_createFromTicket(JSON.stringify(params ?? {})))
 }
 
-async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unknown> {
   const p = (params ?? {}) as {
     conversationId?: string
     message?: unknown
@@ -2247,7 +2255,7 @@ async function appendInboundMessage(params: unknown, ctx: MailCtx): Promise<unkn
 
 const LIST_ACCOUNTS_NOTE = "Only what this person can use: the organization may have others."
 
-async function listAccounts(params: { includeDisconnected?: boolean }, ctx: MailCtx) {
+export async function listAccounts(params: { includeDisconnected?: boolean }, ctx: MailCtx) {
   const allRows: AccountRow[] = JSON.parse(await ctx.db_findMany("accounts", JSON.stringify({})))
   const rows = params.includeDisconnected
     ? allRows
@@ -2312,7 +2320,7 @@ function imapServerSync(capabilities: any, syncState?: any): Record<string, unkn
   }
 }
 
-async function getAccount(params: { accountId: string }, ctx: MailCtx) {
+export async function getAccount(params: { accountId: string }, ctx: MailCtx) {
   const row: AccountRow | null = JSON.parse(await ctx.db_findOne("accounts", params.accountId))
   if (!row) throw new Error("Account not found")
   let kernelStatus: string | undefined
@@ -2341,7 +2349,7 @@ async function getAccount(params: { accountId: string }, ctx: MailCtx) {
   }
 }
 
-async function disconnectAccount(params: { accountId: string }, ctx: MailCtx) {
+export async function disconnectAccount(params: { accountId: string }, ctx: MailCtx) {
   const row: AccountRow | null = JSON.parse(await ctx.db_findOne("accounts", params.accountId))
   if (!row) throw new Error("Account not found")
   if (row.owner_type === "org") {
@@ -2352,7 +2360,7 @@ async function disconnectAccount(params: { accountId: string }, ctx: MailCtx) {
   return { success: true }
 }
 
-async function getSyncStatus(params: { accountId: string }, ctx: MailCtx) {
+export async function getSyncStatus(params: { accountId: string }, ctx: MailCtx) {
   const row: AccountRow | null = JSON.parse(await ctx.db_findOne("accounts", params.accountId))
   if (!row) throw new Error("Account not found")
   return {
@@ -2377,7 +2385,7 @@ async function getSyncStatus(params: { accountId: string }, ctx: MailCtx) {
  * happen is the deploy that introduces the feature, and pausing a mailbox for a
  * few seconds is recoverable while writing plaintext into it is not.
  */
-function isSyncableAccount(account: AccountRow | null | undefined): boolean {
+export function isSyncableAccount(account: AccountRow | null | undefined): boolean {
   if (!account) return false
   if (account.owner_type !== "user") return true
   // `managed` is sealed by the server under the mailbox's own key: it syncs.
@@ -2742,7 +2750,10 @@ async function reenqueueStrandedInitialSyncs(
   }
 }
 
-async function gmailInitialSync(payload: { orgId: string; accountId: string }, ctx: MailCtx) {
+export async function gmailInitialSync(
+  payload: { orgId: string; accountId: string },
+  ctx: MailCtx,
+) {
   const account: AccountRow | null = JSON.parse(await ctx.db_findOne("accounts", payload.accountId))
   if (!account) {
     ctx.log_error("Account not found")
@@ -2982,7 +2993,7 @@ async function gmailInitialSync(payload: { orgId: string; accountId: string }, c
     }),
   )
 }
-async function gmailIncrementalSync(
+export async function gmailIncrementalSync(
   payload: { orgId: string; accountId?: string; push?: boolean },
   ctx: MailCtx,
 ) {
@@ -3536,7 +3547,7 @@ async function setGmailWriteBackError(
  * Write user changes on Gmail-backed conversations back to Gmail.
  * Payload: `{ orgId, accountId, conversationIds, fields, attempt? }`.
  */
-async function gmailWriteBack(
+export async function gmailWriteBack(
   payload: {
     orgId: string
     accountId: string
@@ -3690,7 +3701,6 @@ async function gmailWriteBack(
     ctx,
   )
 }
-void gmailWriteBack
 
 /**
  * Prefix of the account error code a failed IMAP write-back leaves
@@ -3975,7 +3985,7 @@ function mayCarryAttachments(row: any): boolean {
  * sync uses (resumed, so ordinals already stored are never duplicated).
  * Idempotent: re-running it imports nothing twice.
  */
-async function gmailAttachmentBackfill(
+export async function gmailAttachmentBackfill(
   payload: { orgId: string; accountId?: string; days?: number; offset?: number },
   ctx: MailCtx,
 ) {
@@ -4059,7 +4069,7 @@ async function gmailAttachmentBackfill(
   return { accountId: account.id, offset, scanned: rows.length, checked, imported }
 }
 
-async function gmailWatchRenewal(_payload: unknown, ctx: MailCtx) {
+export async function gmailWatchRenewal(_payload: unknown, ctx: MailCtx) {
   const accounts = JSON.parse(
     await ctx.db_findMany(
       "accounts",
@@ -4572,7 +4582,7 @@ function imapReconcileInput(syncState: Record<string, any>): Record<string, unkn
  * is retried by the stranded-sync rescue after a growing delay
  * (`nextRetryAt`), resuming from the page it saved.
  */
-async function imapInitialSync(payload: { orgId: string; accountId: string }, ctx: MailCtx) {
+export async function imapInitialSync(payload: { orgId: string; accountId: string }, ctx: MailCtx) {
   const startedAt = Date.now()
   const account = JSON.parse(await ctx.db_findOne("accounts", payload.accountId))
   if (!account) {
@@ -4834,7 +4844,7 @@ async function recordImapIncrementalFailure(
   )
 }
 
-async function imapIncrementalSync(
+export async function imapIncrementalSync(
   payload: { orgId: string; accountId?: string; tick?: boolean; chain?: boolean },
   ctx: MailCtx,
 ) {
@@ -5010,7 +5020,7 @@ async function imapIncrementalSync(
 
 // --- Webhook handlers ---
 
-async function onGmailPush(payload: unknown, ctx: MailCtx) {
+export async function onGmailPush(payload: unknown, ctx: MailCtx) {
   try {
     const message = (payload as { message?: { data?: string; messageId?: string } })?.message
     if (!message?.data) {
@@ -5059,7 +5069,7 @@ async function onGmailPush(payload: unknown, ctx: MailCtx) {
   }
 }
 
-async function onContactMerge(
+export async function onContactMerge(
   event: { data: { sourceId: string; targetId: string } },
   ctx: MailCtx,
 ) {
@@ -5373,7 +5383,7 @@ async function withEmailBody<T extends { htmlBody?: string; textBody?: string }>
   return { ...params, htmlBody: body.html, textBody: body.text }
 }
 
-async function sendReply(params: any, ctx: MailCtx, opts?: { onDispatch?: () => void }) {
+export async function sendReply(params: any, ctx: MailCtx, opts?: { onDispatch?: () => void }) {
   const references = combineReferences(params.references, params.inReplyTo)
   const msg = buildSendMessage(params, { inReplyTo: params.inReplyTo, references })
   const rfc2822 = buildRfc2822Message(msg)
@@ -5396,7 +5406,7 @@ async function sendReply(params: any, ctx: MailCtx, opts?: { onDispatch?: () => 
   return { messageId: result.messageId, externalThreadId: params.externalThreadId }
 }
 
-async function sendCompose(params: any, ctx: MailCtx, opts?: { onDispatch?: () => void }) {
+export async function sendCompose(params: any, ctx: MailCtx, opts?: { onDispatch?: () => void }) {
   const msg = buildSendMessage(params)
   const rfc2822 = buildRfc2822Message(msg)
 
@@ -5523,7 +5533,7 @@ async function conversationAccountId(conversationId: string, ctx: MailCtx): Prom
   }
 }
 
-async function agentMailArchive(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailArchive(params: any, ctx: MailCtx): Promise<any> {
   const ids = asStringIds(params?.conversationIds)
   if (ids.length === 0) {
     return {
@@ -5582,7 +5592,7 @@ function isGmailLabelId(label: string): boolean {
   )
 }
 
-async function agentMailSetLabels(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailSetLabels(params: any, ctx: MailCtx): Promise<any> {
   const ids = asStringIds(params?.conversationIds)
   const labels = asStringIds(params?.labels)
   if (ids.length === 0) {
@@ -5776,7 +5786,7 @@ async function scanMatchedConversations(
   return { matched, truncated, exhausted }
 }
 
-async function agentMailSearch(
+export async function agentMailSearch(
   params: {
     query?: string
     accountId?: string
@@ -6080,7 +6090,7 @@ function buildExportMarkdown(rows: ExportConvRow[], scopeLine: string): string {
   return lines.join("\n")
 }
 
-async function exportConversations(
+export async function exportConversations(
   params: {
     query?: string
     accountId?: string
@@ -6360,7 +6370,7 @@ function projectMessageEnvelope(message: any, attachments: any[]): any {
   }
 }
 
-async function agentMailRead(
+export async function agentMailRead(
   params: {
     conversationId: string
     messagesLimit?: number
@@ -6528,7 +6538,7 @@ async function agentMailRead(
   }
 }
 
-async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
   await ctx.approval_recordStarted("mail:reply")
   let dispatched = false
   let classified = false
@@ -6759,7 +6769,7 @@ function isProviderRejection(err: any): boolean {
   )
 }
 
-async function agentMailReplyPreflight(
+export async function agentMailReplyPreflight(
   params: { conversationId: string },
   ctx: MailCtx,
 ): Promise<any> {
@@ -6975,7 +6985,7 @@ async function _doCompose(
   }
 }
 
-async function agentMailCompose(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailCompose(params: any, ctx: MailCtx): Promise<any> {
   // Public agent-facing compose. The kernel's executeTool has already enforced
   // the gated-approval flow before we reach this handler (see
   // execute-tool.ts:1561). All real work lives in the shared `_doCompose`
@@ -6998,7 +7008,7 @@ async function agentMailCompose(params: any, ctx: MailCtx): Promise<any> {
  * existing `files_attachToParent` bridge inside `stageAndLoadAttachments`
  * (resolves review M2). No additional materialization step is needed.
  */
-async function agentMailComposeForApp(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailComposeForApp(params: any, ctx: MailCtx): Promise<any> {
   return _doCompose("mail:composeForApp", params, ctx, {
     originating_approval_id: params?.originating_approval_id ?? null,
   })
@@ -7119,7 +7129,7 @@ function forwardAttachmentIds(originalIds: string[], extra: unknown): string[] {
   return [...new Set([...originalIds, ...extras])]
 }
 
-async function agentMailForward(params: any, ctx: MailCtx): Promise<any> {
+export async function agentMailForward(params: any, ctx: MailCtx): Promise<any> {
   let resolved: Awaited<ReturnType<typeof resolveForwardSource>>
   try {
     resolved = await resolveForwardSource(params, ctx)
@@ -7233,7 +7243,7 @@ async function agentMailForward(params: any, ctx: MailCtx): Promise<any> {
   }
 }
 
-async function agentMailForwardPreflight(
+export async function agentMailForwardPreflight(
   params: { conversationId: string; messageId?: string },
   ctx: MailCtx,
 ): Promise<any> {
@@ -7242,7 +7252,7 @@ async function agentMailForwardPreflight(
   return { ok: true }
 }
 
-async function agentMailComposePreflight(
+export async function agentMailComposePreflight(
   params: { accountId?: string },
   ctx: MailCtx,
 ): Promise<any> {
@@ -7266,7 +7276,7 @@ async function agentMailComposePreflight(
   return { ok: true }
 }
 
-async function verifyGmailPush(
+export async function verifyGmailPush(
   requestData: { body?: string; query?: Record<string, string>; headers?: Record<string, string> },
   ctx: {
     config_get: (key: string) => Promise<unknown>
@@ -7385,7 +7395,7 @@ function mailCsvCell(value: unknown): string {
   return s
 }
 
-async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown> {
+export async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown> {
   const p = (params ?? {}) as Record<string, unknown>
   const format = p.format ?? "json"
   const dateRange = p.dateRange as { from?: string; to?: string } | undefined
@@ -7476,4 +7486,3 @@ async function exportMail(params: unknown, ctx: MailCtx): Promise<unknown> {
   }
   return projected
 }
-void exportMail

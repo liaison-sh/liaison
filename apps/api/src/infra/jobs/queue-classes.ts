@@ -119,6 +119,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "subrun-stuck-sweep": { queueClass: "cron" },
   "local-claim-lapse-sweep": { queueClass: "cron" },
   "routine-mailbox-wait-expiry": { queueClass: "cron" },
+  "routine-flow-sweep": { queueClass: "cron" },
   "node-lease-sweep": { queueClass: "cron" },
   "control-plane-outbox": { queueClass: "cron" },
   "attention-digest-urgent": { queueClass: "cron" },

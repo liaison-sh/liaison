@@ -246,7 +246,7 @@
     },
     "api-connector__connector_write": {
       "desc": 1285,
-      "schema": 147
+      "schema": 190
     },
     "api-connector__customer_lookup": {
       "desc": 139,

@@ -30,6 +30,7 @@ export interface Sandbox {
       cpuMs?: number
       token?: string
       lane?: "interactive" | "background"
+      queueMs?: number
     },
   ): Promise<{ status: number; body: Record<string, any>; headers: Headers }>
   stop(): Promise<void>
@@ -118,6 +119,7 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
           deadlineMs: o.deadlineMs ?? 10_000,
           ...(o.cpuMs ? { limits: { cpuMs: o.cpuMs } } : {}),
           ...(o.lane ? { lane: o.lane } : {}),
+          ...(o.queueMs !== undefined ? { queueMs: o.queueMs } : {}),
         }),
       })
       tokens.delete(`${runId} ${runToken}`)

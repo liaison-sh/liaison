@@ -16,6 +16,7 @@ import {
   enqueueAppJob,
   enqueueAppJobForServer,
   JobsTestAccess,
+  jobsDeferredSandboxQueueCount,
   jobsDroppedOrgMissingCount,
   jobsHeldAppDayCapCount,
   jobWorkerCount,
@@ -29,7 +30,7 @@ import {
   startDeferredJobWorkers,
   upsertJobScheduler,
 } from "~/infra/jobs/jobs"
-import { JobRetryLaterError } from "~/lib/failure-severity"
+import { JobRetryLaterError, SandboxQueueTimeoutError } from "~/lib/failure-severity"
 import { jobsLogger } from "~/lib/logger"
 import { armOrgMaintenance, disarmOrgMaintenance } from "~/middleware/org-maintenance"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
@@ -226,6 +227,42 @@ describe("job held by an app day cap", () => {
       expect((job?.timestamp ?? 0) + (job?.delay ?? 0)).toBeGreaterThan(Date.now() + 500_000)
       expect(runs).toBe(1)
     } finally {
+      await job?.remove()
+    }
+  })
+})
+
+// A job whose sandboxed run found no free process before its queue bound
+// (SandboxQueueTimeoutError): the run never started, so the job goes back as
+// delayed, its data kept and no attempt spent, and nothing logs an app failure.
+describe("job whose sandboxed run found no free process", () => {
+  it("is moved to delayed with its data, no attempt spent, logged at warn", async () => {
+    let runs = 0
+    registerJobWorker("jobtest-sbqueue", "queued-out", async () => {
+      runs++
+      throw new SandboxQueueTimeoutError()
+    })
+    const warn = spyOn(jobsLogger, "warn")
+    const error = spyOn(jobsLogger, "error")
+    const before = jobsDeferredSandboxQueueCount()
+    const jobId = await enqueueAppJob("jobtest-sbqueue", "queued-out", { marker: "q-1" })
+    await waitFor(() => runs > 0 && jobsDeferredSandboxQueueCount() > before, {
+      label: "the job to be deferred",
+    })
+    const job = await JobsTestAccess.findJob("jobtest-sbqueue", "queued-out", jobId)
+    try {
+      expect(await job?.getState()).toBe("delayed")
+      expect(job?.data).toMatchObject({ marker: "q-1" })
+      expect(job?.attemptsMade ?? -1).toBe(0)
+      expect((job?.timestamp ?? 0) + (job?.delay ?? 0)).toBeGreaterThan(Date.now() + 30_000)
+      expect(runs).toBe(1)
+      expect(
+        warn.mock.calls.some((c) => c[1] === "Job deferred: no sandbox process was free in time"),
+      ).toBe(true)
+      expect(error.mock.calls.some((c) => c[1] === "Job handler error")).toBe(false)
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
       await job?.remove()
     }
   })

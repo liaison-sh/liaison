@@ -14,6 +14,8 @@ const handlers = {
     for (;;) {}
   },
   // A wait far past any deadline (workerd cancels a promise that can never settle by itself).
+  // Busy for `ms` without CPU (a run waiting on bridge calls), then answers it.
+  sleep: async (ms) => new Promise((r) => setTimeout(() => r(ms), ms)),
   hang: async () => new Promise((r) => setTimeout(r, 600_000)),
   bomb: async () => {
     const keep = []

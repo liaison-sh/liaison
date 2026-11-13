@@ -10,6 +10,8 @@ export const COMPATIBILITY_DATE = "2026-10-01"
 export const DEFAULT_LIMITS = { cpuMs: 30_000, subRequests: 10_000 }
 /** Upper bound on a run's wall clock, whatever the cell asks for. */
 export const MAX_DEADLINE_MS = 15 * 60_000
+/** The longest a background run may wait for a process before it starts (RunBody.queueMs). */
+export const MAX_QUEUE_MS = 60 * 60_000
 /** Cap on a module fetched from a cell (the cell's own build output cap is 4 MiB). */
 export const MAX_FETCHED_BUNDLE_BYTES = 8 * 1024 * 1024
 /** A method no module implements: calling it only shows whether the module starts. */
@@ -67,6 +69,15 @@ export interface RunBody {
    * Absent: interactive. Part of the signed body like every other field.
    */
   lane?: RunLane
+  /**
+   * A background run's own queue bound, in ms. Set: a host with a bounded pool
+   * lets the run wait this long for a process, and its deadline (`deadlineMs`)
+   * counts from its start, so a run queued behind long ones still gets its
+   * whole budget; past it the run answers `timeout` with code `queue_timeout`
+   * and never started. Absent (and always for an interactive run): the
+   * deadline counts the wait. Capped at MAX_QUEUE_MS. Signed like every field.
+   */
+  queueMs?: number
 }
 
 export const RUN_LANES = ["interactive", "background"] as const
@@ -115,6 +126,12 @@ export function validateRunBody(b: unknown): string | null {
   if (r.lane !== undefined && !(RUN_LANES as readonly unknown[]).includes(r.lane)) {
     return "invalid lane"
   }
+  if (
+    r.queueMs !== undefined &&
+    (typeof r.queueMs !== "number" || !Number.isFinite(r.queueMs) || r.queueMs <= 0)
+  ) {
+    return "invalid queueMs"
+  }
   return null
 }
 
@@ -122,6 +139,16 @@ export function validateRunBody(b: unknown): string | null {
 export function deadlineDuration(deadlineMs: number, now: number): number {
   const d = deadlineMs > 1e12 ? deadlineMs - now : deadlineMs
   return Math.max(0, Math.min(d, MAX_DEADLINE_MS))
+}
+
+/**
+ * How long a run may wait for a process, from when it arrived: its own queue
+ * bound for a background run that states one (RunBody.queueMs, capped), else
+ * null (its deadline bounds the wait: the run's clock started on arrival).
+ */
+export function queueBound(body: Pick<RunBody, "lane" | "queueMs">): number | null {
+  if (body.lane !== "background" || body.queueMs === undefined) return null
+  return Math.max(0, Math.min(body.queueMs, MAX_QUEUE_MS))
 }
 
 /** One dynamic worker per cell, org, app version and module bytes. */

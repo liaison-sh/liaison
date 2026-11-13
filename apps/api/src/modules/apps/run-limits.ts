@@ -22,7 +22,10 @@
 // The values are the ones each site used before the table existed (see each
 // row). Env overrides kept: LIAISON_SANDBOX_TIMEOUT_MS (outside production),
 // LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS, SANDBOX_MEMORY_LIMIT_MB,
-// LIAISON_TRANSFORM_CALL_BUDGET_MS, LIAISON_SANDBOX_FETCH_TIMEOUT_MS.
+// LIAISON_TRANSFORM_CALL_BUDGET_MS, LIAISON_SANDBOX_FETCH_TIMEOUT_MS,
+// LIAISON_SANDBOX_BACKGROUND_QUEUE_MS (runQueueBoundMs).
+
+import { MAX_QUEUE_MS } from "@liaison/app-loader"
 
 /** Every kind of entry point app code runs as. */
 export const RUN_ENTRY_KINDS = [
@@ -194,6 +197,64 @@ export function runLaneOf(run: {
 }
 
 type Env = NodeJS.ProcessEnv
+
+// -- Background queue bound --------------------------------------------------------
+
+/**
+ * The kinds whose background run waits for capacity on its own clock: run from
+ * a queued job (BullMQ renews the job's lock while it runs), nobody waits on
+ * the answer, and no transaction is held across the run. Their deadline then
+ * counts from the moment the run starts, not from the moment it asked, so a
+ * burst of them (a dozen jobs scheduled at :00) runs in turn, each with its
+ * whole budget, instead of every run past the pool's background share timing
+ * out in the queue. Not here: webhooks (their first delivery runs inside the
+ * provider's request), events (the bus's own handler timeout), polls and
+ * imports (a caller may wait), and every interactive kind.
+ */
+export const OWN_QUEUE_KINDS: ReadonlySet<RunEntryKind> = new Set(["job", "knowledge-sync"])
+
+/**
+ * The default background queue bound: 10 minutes. A burst of twelve 60 s jobs
+ * on the smallest sandbox service (2 background processes) drains in about 6;
+ * 10 leaves room for that and stays inside the shortest schedule a scheduled
+ * job usually has (15 minutes), so a run never queues into its next tick.
+ */
+export const DEFAULT_BACKGROUND_QUEUE_MS = 10 * 60_000
+/** The longest a background run may wait (the loader protocol's own cap). */
+export const MAX_BACKGROUND_QUEUE_MS = MAX_QUEUE_MS
+
+/** LIAISON_SANDBOX_BACKGROUND_QUEUE_MS, between 1 s and 60 minutes; else the default. */
+export function resolveBackgroundQueueMs(env: Env = process.env): number {
+  const v = Number(env.LIAISON_SANDBOX_BACKGROUND_QUEUE_MS)
+  if (!Number.isFinite(v) || v <= 0) return DEFAULT_BACKGROUND_QUEUE_MS
+  return Math.min(Math.max(Math.floor(v), 1_000), MAX_BACKGROUND_QUEUE_MS)
+}
+
+/**
+ * How long a run may wait for a process or an admission slot before it
+ * starts, when that wait is bounded apart from its wall clock: a top-level
+ * background run of an OWN_QUEUE_KINDS kind that holds no transaction. Its
+ * wall clock then counts from its start. Undefined for every other run: its
+ * wall clock counts the wait (a person or an agent waits on it, or a request
+ * or a held transaction bounds it). The one rule for every executor: the
+ * sandbox service (RunBody.queueMs), the Workers admission and the QuickJS
+ * worker pool.
+ */
+export function runQueueBoundMs(
+  run: {
+    entry?: string | undefined
+    priority?: RunLane | undefined
+    holdsTx?: boolean | undefined
+    nested?: boolean | undefined
+  },
+  env: Env = process.env,
+): number | undefined {
+  if (run.nested === true || run.holdsTx === true) return undefined
+  if (runLaneOf(run) !== "background") return undefined
+  const kind = run.entry ? entryKindOf(run.entry) : null
+  if (kind === null || !OWN_QUEUE_KINDS.has(kind)) return undefined
+  return resolveBackgroundQueueMs(env)
+}
 
 /**
  * The sandbox default wall clock. Production pins a tight 5 s and IGNORES the

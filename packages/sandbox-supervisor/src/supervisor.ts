@@ -50,7 +50,10 @@
 // waited for a process (`x-liaison-sandbox-queue-ms`), for its timing record.
 //
 // Per-run limits, each by its own mechanism (workerd enforces none itself):
-//   wall      the run's deadline + SANDBOX_KILL_GRACE_MS, then SIGKILL
+//   wall      the run's deadline + SANDBOX_KILL_GRACE_MS, then SIGKILL. The
+//             deadline counts from the run's arrival (its wait for a process
+//             included), or, for a background run with its own queue bound
+//             (RunBody.queueMs), from its start.
 //   CPU       the process's CPU time since the run started (proc-meter.ts),
 //             over the run's cpuMs (the loader protocol's limits, capped)
 //   memory    V8 --max-old-space-size per process + its RSS over the cap
@@ -67,6 +70,8 @@ import {
   type ErrorKind,
   fail,
   MAX_FETCHED_BUNDLE_BYTES,
+  MAX_QUEUE_MS,
+  queueBound,
   type RunBody,
   type RunLane,
   runLimits,
@@ -113,6 +118,14 @@ export interface RunRecord {
   depth: number
   lane: RunLane
   queueMs: number
+  /**
+   * How long it could wait for a process: its own queue bound (a background
+   * run's RunBody.queueMs; its deadline then counted from its start), or its
+   * deadline (null queue bound: the wait counted toward it).
+   */
+  queueLimitMs: number
+  /** Whether its deadline counted from its start (a separate queue bound) or its arrival. */
+  deadlineFrom: "start" | "arrival"
   wallMs: number
   cpuMs: number
   rssMaxMb: number
@@ -340,16 +353,23 @@ export async function createSupervisor(
     module: Uint8Array,
   ): Promise<Response> {
     const tq = Date.now()
-    const deadlineAt = tq + deadlineDuration(body.deadlineMs, tq)
+    const runMs = deadlineDuration(body.deadlineMs, tq)
     const key = dynamicWorkerId(SANDBOX_CELL_ID, body)
     const lane: RunLane = body.lane ?? "interactive"
+    // One rule (the Workers admission applies the same, workers/admission.ts):
+    // a background run that states its own queue bound waits up to that for a
+    // process and then gets its whole deadline; any other run's deadline
+    // counts from its arrival, the wait included (a person waits on it).
+    const ownQueue = depth === 0 ? queueBound(body) : null
+    const queueLimitMs = ownQueue ?? runMs
+    const deadlineFrom = ownQueue === null ? "arrival" : "start"
     let acquired: Awaited<ReturnType<WorkerdPool["acquire"]>>
     try {
-      acquired = await pool.acquire(key, depth, deadlineAt, lane)
+      acquired = await pool.acquire(key, depth, tq + queueLimitMs, lane)
     } catch (e) {
       if (!(e instanceof PoolError)) throw e
       if (e.code === "queue_timeout") {
-        // It never started: the whole deadline went waiting for a process.
+        // It never started: its queue bound went waiting for a process.
         const queueMs = Date.now() - tq
         recent.push({
           executor: "workerd",
@@ -359,6 +379,8 @@ export async function createSupervisor(
           depth,
           lane,
           queueMs,
+          queueLimitMs,
+          deadlineFrom,
           wallMs: 0,
           cpuMs: 0,
           rssMaxMb: 0,
@@ -367,7 +389,11 @@ export async function createSupervisor(
         if (recent.length > 200) recent.splice(0, recent.length - 200)
         const r = Response.json({
           ok: false,
-          error: { message: "App execution timed out", kind: "timeout", code: "queue_timeout" },
+          error: {
+            message: "Queued sandbox request timed out waiting for a free worker",
+            kind: "timeout",
+            code: "queue_timeout",
+          },
         })
         r.headers.set(QUEUE_HEADER, String(queueMs))
         return r
@@ -377,6 +403,7 @@ export async function createSupervisor(
     }
     const { proc: p, how } = acquired
     const queueMs = Date.now() - tq
+    const deadlineAt = (ownQueue === null ? tq : Date.now()) + runMs
     const rec: RunRecord = {
       executor: "workerd",
       runId: body.runId,
@@ -385,6 +412,8 @@ export async function createSupervisor(
       depth,
       lane,
       queueMs,
+      queueLimitMs,
+      deadlineFrom,
       wallMs: 0,
       cpuMs: 0,
       rssMaxMb: 0,
@@ -602,6 +631,11 @@ export async function createSupervisor(
           overflow: cfg.overflow,
           rssCapMb: cfg.rssCapMb,
           laneCaps: pool.caps,
+          // How long a top-level run of each lane may wait for a process.
+          queueLimits: {
+            interactive: "deadline",
+            background: { withQueueMs: "queueMs", maxMs: MAX_QUEUE_MS, withoutQueueMs: "deadline" },
+          },
           sizing: cfg.sizing ?? null,
         },
         pool: pool.stats(),

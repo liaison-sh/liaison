@@ -16,6 +16,7 @@
  *                             private mailbox, from the owner's own browser (routine-mailbox-wait.ts)
  *   POST /:id/mailbox-waits/:runId/dismiss → dismiss it instead (the owner only)
  *   GET  /:id/runs          → routine_runs ORDER BY ran_at DESC LIMIT 50
+ *   GET  /entity-runs       → the recent runs fired on one record, across the readable routines
  *   GET  /scope-options     → the scopes the caller may put on a routine (D20 picker)
  *   PUT  /:id/node-placement → the folder, repo and model of the routine's node runs (P2-D6)
  */
@@ -306,6 +307,67 @@ routinesRoutes.get("/events", async (c) => {
     data: events.map((e) => {
       const [, entityPart = "", actionPart = ""] = e.event.split(":")
       return { event: e.event, app: e.app, entity: entityPart, action: actionPart }
+    }),
+  })
+})
+
+// ---- GET /api/agent/routines/entity-runs ----------------------------------
+// The recent runs fired on one record (`routine_runs.event_entity_id`), across
+// every routine the caller may read, newest first: a record's detail view shows
+// what the automations did with it. Visibility is the run history's
+// (`readableRoutine`): a routine under the caller's select policy, or one the
+// caller owns. A run carries neither its pause state nor its flow context (the
+// trigger event's data, which the record's reader may not be entitled to).
+// Registered BEFORE `/:id/...` so `entity-runs` is never read as a routine id.
+const ENTITY_RUNS_DEFAULT = 10
+const ENTITY_RUNS_MAX = 50
+
+routinesRoutes.get("/entity-runs", async (c) => {
+  const actor = extractRlsContext(c)
+  const entityId = c.req.query("entityId") ?? ""
+  if (!entityId || entityId.length > 200) {
+    throw new HTTPException(400, { message: "entityId is required (at most 200 characters)" })
+  }
+  const limit = Math.min(
+    Math.max(Number(c.req.query("limit") ?? ENTITY_RUNS_DEFAULT) || ENTITY_RUNS_DEFAULT, 1),
+    ENTITY_RUNS_MAX,
+  )
+  const columns = { id: routinesTbl.id, name: routinesTbl.name, title: routinesTbl.title }
+  const visible = await withRlsContext(actor, (tx) =>
+    tx.select(columns).from(routinesTbl).where(eq(routinesTbl.orgId, actor.orgId)),
+  )
+  const own = await withPrivilegedDb(actor.orgId, "routines-entity-runs-own", (tx) =>
+    tx
+      .select(columns)
+      .from(routinesTbl)
+      .where(and(eq(routinesTbl.orgId, actor.orgId), eq(routinesTbl.ownerUserId, actor.userId))),
+  )
+  const readable = new Map([...visible, ...own].map((r) => [r.id, r]))
+  if (readable.size === 0) return c.json({ data: [] })
+
+  const rows = await withPrivilegedDb(actor.orgId, "routines-entity-runs", (tx) =>
+    tx
+      .select()
+      .from(routineRuns)
+      .where(
+        and(
+          eq(routineRuns.orgId, actor.orgId),
+          inArray(routineRuns.routineId, [...readable.keys()]),
+          eq(routineRuns.eventEntityId, entityId),
+        ),
+      )
+      .orderBy(desc(routineRuns.ranAt), desc(routineRuns.id))
+      .limit(limit),
+  )
+  return c.json({
+    data: rows.map((r) => {
+      const { flowContext: _flowContext, ...run } = publicRun(r)
+      const routine = readable.get(r.routineId)
+      return {
+        ...run,
+        routineName: routine?.name ?? "",
+        routineTitle: routine?.title ?? routine?.name ?? "",
+      }
     }),
   })
 })

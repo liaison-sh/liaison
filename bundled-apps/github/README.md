@@ -14,8 +14,8 @@ connector's tools name for name, plus `github_list`.
 | Tool | What it does |
 |------|--------------|
 | `github_list_repos` | List the owner's repositories (call this first). |
-| `github_list` | The one listing agents see: issues, pull requests, milestones, labels, releases, tags or tree, by `kind`, answered by that kind's own read. |
-| `github_list_commits` / `github_get_commit` | List/get commits (optionally with diff). |
+| `github_list` | The one listing agents see: issues, pull requests, milestones, labels, releases, tags, commits or tree, by `kind`, answered by that kind's own read. |
+| `github_list_commits` / `github_get_commit` | List/get commits (optionally with diff); agents list them through `github_list`. |
 | `github_list_pull_requests` / `github_get_pull_request` | List/get pull requests (optionally with changed files). |
 | `github_list_issues` | List issues, pull requests left out (state, labels, milestone, last update). |
 | `github_list_milestones` / `github_list_labels` | List milestones / labels. |

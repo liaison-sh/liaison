@@ -84,18 +84,17 @@ const issue = (n: number, extra: Record<string, unknown> = {}) => ({
 })
 
 describe("manifest", () => {
-  it("is version 1.0.2", () => {
-    expect(MANIFEST.version).toBe("1.0.2")
+  it("is version 1.0.3", () => {
+    expect(MANIFEST.version).toBe("1.0.3")
   })
 
-  it("shows the agent seven reads; each one kept off its catalog names the visible read to use", () => {
+  it("shows the agent six reads; each one kept off its catalog names the visible read to use", () => {
     const tools = MANIFEST.tools as Record<string, { agentVisible?: boolean; useInstead?: string }>
     const visible = Object.keys(tools).filter((n) => tools[n]?.agentVisible !== false)
     expect(visible.sort()).toEqual([
       "github_get_commit",
       "github_get_pull_request",
       "github_list",
-      "github_list_commits",
       "github_list_repos",
       "github_read_file",
       "github_search",
@@ -412,6 +411,7 @@ describe("tools", () => {
       [`${R}/labels?per_page=100`]: json([{ name: "bug", color: "red", description: null }]),
       [`${R}/releases?per_page=100`]: json([]),
       [`${R}/tags?per_page=100`]: json([{ name: "v1", commit: { sha: "c1" } }]),
+      [`${R}/commits?per_page=100&sha=main&author=ana`]: json([]),
       [`${R}/contents`]: json([{ type: "dir", name: "docs", path: "docs", sha: "s", size: 0 }]),
     }
     const ctx = asCtx(fakeCtx({ routes }))
@@ -425,6 +425,11 @@ describe("tools", () => {
       ["labels", {}, () => githubListLabels({ repo: REPO }, ctx)],
       ["releases", {}, () => githubListReleases({ repo: REPO }, ctx)],
       ["tags", {}, () => githubListTags({ repo: REPO }, ctx)],
+      [
+        "commits",
+        { ref: "main", author: "ana" },
+        () => githubListCommits({ repo: REPO, ref: "main", author: "ana" }, ctx),
+      ],
       ["tree", {}, () => githubListTree({ repo: REPO }, ctx)],
     ]
     for (const [kind, extra, own] of kinds) {

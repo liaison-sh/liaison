@@ -1,6 +1,6 @@
 {
   "name": "github",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "kind": "connector",
   "iconName": "folder",
   "description": "GitHub connector: read-only access to an organization's or a user's repositories, commits, pull requests, issues, releases and code.",
@@ -131,7 +131,7 @@
     },
     "github_list": {
       "taintSource": true,
-      "description": "List a GitHub repository's issues (pull requests left out), pull requests, milestones, labels, releases, tags, or tree (files and folders at a path).",
+      "description": "List a GitHub repository's issues (pull requests left out), pull requests, milestones, labels, releases, tags, commits, or tree (files and folders at a path).",
       "searchKeywords": [
         "mr",
         "pr",
@@ -145,7 +145,8 @@
         "versions",
         "balises",
         "dossier",
-        "arborescence"
+        "arborescence",
+        "révisions"
       ],
       "readOnly": true,
       "requiredScopes": [
@@ -165,6 +166,7 @@
               "labels",
               "releases",
               "tags",
+              "commits",
               "tree"
             ]
           },
@@ -183,7 +185,7 @@
           },
           "since": {
             "type": "string",
-            "description": "issues, pull_requests: ISO 8601, updated after"
+            "description": "issues, pull_requests: ISO 8601, updated after; commits: after"
           },
           "labels": {
             "type": "string",
@@ -199,11 +201,19 @@
           },
           "path": {
             "type": "string",
-            "description": "tree: directory (default: root)"
+            "description": "tree: directory (default: root); commits: touching it"
           },
           "ref": {
             "type": "string",
-            "description": "tree: branch, tag or SHA (default: default branch)"
+            "description": "tree, commits: branch, tag or SHA (default: default branch)"
+          },
+          "until": {
+            "type": "string",
+            "description": "commits: ISO 8601, before"
+          },
+          "author": {
+            "type": "string",
+            "description": "commits: login or email"
           }
         },
         "required": [
@@ -215,6 +225,8 @@
     "github_list_commits": {
       "taintSource": true,
       "description": "List a GitHub repository's commits, by ref, file path, author or dates.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "révisions"
       ],

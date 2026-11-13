@@ -3111,7 +3111,7 @@
     "lang": "fr",
     "say": "qu'est-ce qui a été poussé sur le dépôt GitHub du site cette semaine",
     "typed": ["commits github", "historique github"],
-    "any": ["github__github_list_commits"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH03",

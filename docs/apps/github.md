@@ -50,13 +50,12 @@ All tools are read-only and need `github:repo:read`.
 | Tool | What it does |
 |---|---|
 | `github_list_repos` | List the owner's repositories |
-| `github_list` | List one repository's issues, pull requests, milestones, labels, releases, tags or tree, with that kind's filters (state, label, milestone, base branch, last update, path) |
-| `github_list_commits` | List commits, filtered by branch, path, author or date |
+| `github_list` | List one repository's issues, pull requests, milestones, labels, releases, tags, commits or tree, with that kind's filters (state, label, milestone, base branch, last update, path, author, dates) |
 | `github_get_commit` | Get one commit, optionally with its diff |
 | `github_get_pull_request` | Get one pull request, optionally with its changed files |
 | `github_read_file` | Read a file at a branch, tag or commit |
 | `github_search` | Search code, commits, issues or pull requests |
 
-Each kind `github_list` answers also has a read of its own (`github_list_issues`, `github_list_pull_requests`, `github_list_milestones`, `github_list_labels`, `github_list_releases`, `github_list_tags`, `github_list_tree`) that dashboards use. Agents do not see those: they use `github_list`.
+Each kind `github_list` answers also has a read of its own (`github_list_issues`, `github_list_pull_requests`, `github_list_milestones`, `github_list_labels`, `github_list_releases`, `github_list_tags`, `github_list_commits`, `github_list_tree`) that dashboards use. Agents do not see those: they use `github_list`.
 
 Every read but `github_read_file` can feed a dashboard block. See the [agent tool reference](../reference/agent-tools.md).

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The read-only tools, name for name with GitLab's, plus `github_list`: the one listing the
-// agent sees for a repository's issues, pull requests, milestones, labels, releases, tags and
-// tree (each kind's own read stays a dashboard source, off the agent's catalog). Each answers a
+// agent sees for a repository's issues, pull requests, milestones, labels, releases, tags,
+// commits and tree (each kind's own read stays a dashboard source, off the agent's catalog). Each answers a
 // compact shape or `{ error: { code, message } }` (never a throw: a sandboxed
 // throw reaches the agent redacted). `not_connected` when the caller has no
 // usable `github` connection, before any call; a repository outside the
@@ -625,6 +625,7 @@ const LIST_KINDS = {
   labels: githubListLabels,
   releases: githubListReleases,
   tags: githubListTags,
+  commits: githubListCommits,
   tree: githubListTree,
 } as const
 
@@ -642,6 +643,8 @@ export async function githubList(
     base?: string
     path?: string
     ref?: string
+    until?: string
+    author?: string
   },
   ctx: GithubCtx,
 ) {

@@ -246,7 +246,7 @@ describe("GitHub reads as dashboard sources", () => {
   }
 
   it("the reads kept off the agent's catalog are listed as sources, and an agent's call is refused", async () => {
-    expect(HIDDEN.length).toBe(7)
+    expect(HIDDEN.length).toBe(8)
     const listed = (
       await listEligibleSources(
         orgId,

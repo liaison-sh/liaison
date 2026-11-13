@@ -1305,7 +1305,7 @@
       "schema": 763
     },
     "kernel__dashboards_create": {
-      "desc": 279,
+      "desc": 359,
       "schema": 36
     },
     "kernel__dashboards_delete": {
@@ -1757,7 +1757,7 @@
       "schema": 11
     },
     "kernel__tables_edit": {
-      "desc": 799,
+      "desc": 1144,
       "schema": 3
     },
     "kernel__tables_get": {
@@ -1769,11 +1769,11 @@
       "schema": 3
     },
     "kernel__tables_query": {
-      "desc": 309,
+      "desc": 401,
       "schema": 98
     },
     "kernel__tables_rows_write": {
-      "desc": 511,
+      "desc": 663,
       "schema": 27
     },
     "kernel__thread_mute_set": {
@@ -2186,7 +2186,7 @@
     },
     "projects__search": {
       "desc": 643,
-      "schema": 294
+      "schema": 330
     },
     "projects__status_add": {
       "desc": 432,
@@ -2200,13 +2200,17 @@
       "desc": 277,
       "schema": 192
     },
+    "projects__tasks_aggregate": {
+      "desc": 996,
+      "schema": 488
+    },
     "projects__tasks_byAssignee": {
       "desc": 782,
       "schema": 262
     },
     "projects__tasks_byProject": {
       "desc": 540,
-      "schema": 701
+      "schema": 766
     },
     "projects__template_save": {
       "desc": 643,

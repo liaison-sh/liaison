@@ -710,6 +710,9 @@ function mapWords(
       `its rows open with the columns ${map.drillColumns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
     )
   }
+  if (typeof map.drillRows === "string") {
+    parts.push(`a figure opens the records its rows list in ${map.drillRows}`)
+  }
   let out = parts.join(", ")
   if (Array.isArray(map.where) && map.where.length) {
     out += `; keeps only rows where ${whereWords(map.where, spec)}`

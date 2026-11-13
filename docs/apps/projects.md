@@ -125,7 +125,7 @@ Every status change of a task is recorded: the status it left, the one it entere
 
 - **Time in status** groups tasks by how long they have been in their current status: less than 1 day, 1 to 3 days, 3 to 7, 7 to 14, 14 to 30, 30 days or more (or your own bounds).
 - **SLA state** checks whether each task reached one of the statuses you name within a number of working days of its creation (the organisation's working hours, Monday to Friday 09:00 to 18:00 by default): met, missed, open and on time, open and late.
-- Each group lists its tasks when there are at most 50, and the `tasks_byProject` filter that lists exactly them, so a chart opens the tasks behind a bar.
+- Each group lists its tasks when there are at most 50 (`taskIds`, and `tasks` with each task's title, status and handler), and the `tasks_byProject` filter that lists exactly them. A bar with `"drillRows": "tasks"` and a task `link` opens the tasks behind it, each opening the task.
 
 ### A project overview dashboard
 
@@ -140,13 +140,13 @@ Ask an agent for "a project overview of Repairs" and it creates one dashboard in
       "map": { "value": "value", "agg": "sum" } },
     { "id": "status", "type": "bar", "title": "By status",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
-      "map": { "x": "groupLabel", "y": "value" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "handler", "type": "bar", "title": "By handler",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee" } },
-      "map": { "x": "groupLabel", "y": "value" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "aging", "type": "bar", "title": "Time in status",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status" } },
-      "map": { "x": "groupLabel", "y": "value" } },
+      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "sla", "type": "metric", "title": "SLA missed",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate",
         "params": { "projectId": "<project id>", "groupBy": "sla", "sla": { "toStatusIds": ["<status id>"], "withinWorkingDays": 2 } } },

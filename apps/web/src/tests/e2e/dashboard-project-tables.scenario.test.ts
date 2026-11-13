@@ -3,7 +3,10 @@
 // Dashboards sidebar, edits a task's status in its grid (the task's status changes in Projects),
 // and clicks a link cell, which opens the linked task. A Project overview dashboard (the docs
 // recipe, docs/apps/projects.md) draws a bar of the tasks by status, and its drill opens a task.
-// P3_SHOTS names a folder for the screenshots (else the test output).
+// The overview draws the recipe's visual forms: the pipeline (one bar by status, in the
+// statuses' colours, its legend carrying the counts), who has what (a row per person with their
+// avatar) and time in status split by status. P3_SHOTS names a folder for the screenshots (else
+// the test output); `themed` shoots dark and light.
 import { join } from "node:path"
 import { api } from "@liaison/test-helpers"
 import type { Page, TestInfo } from "@playwright/test"
@@ -17,6 +20,19 @@ const shot = (page: Page, info: TestInfo, name: string) =>
       : info.outputPath(`${name}.png`),
     fullPage: false,
   })
+
+/** The same view in both themes: the stored theme, then a reload so the charts repaint. */
+async function themed(page: Page, info: TestInfo, name: string, ready: () => Promise<void>) {
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate((t) => localStorage.setItem("liaison:theme", t), theme)
+    await page.reload()
+    if (theme === "light") await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+    else await expect(page.locator("html")).not.toHaveAttribute("data-theme", "light")
+    await ready()
+    await shot(page, info, `${name}-${theme}`)
+  }
+  await page.evaluate(() => localStorage.setItem("liaison:theme", "dark"))
+}
 
 interface Project {
   id: string
@@ -32,7 +48,11 @@ async function seedProject(serverUrl: string, token: string, titles: string[]) {
     body: {
       params: {
         name: `E2E Returns ${Date.now()}`,
-        statuses: [{ label: "Todo" }, { label: "Doing" }, { label: "Done", terminal: true }],
+        statuses: [
+          { label: "Todo", color: "#3b82f6" },
+          { label: "Doing", color: "#8b5cf6" },
+          { label: "Done", color: "#22c55e", terminal: true },
+        ],
       },
     },
   })
@@ -148,6 +168,12 @@ test("a table from a project: edit a task's status in the grid, open a linked ta
   await expect(page.getByTestId(`${grid}-from-record-related`)).toHaveCount(0)
   await expect(page.getByTestId(`${grid}-delete-off-${rma1}`)).toBeVisible()
   await shot(page, info, "p3-03-link-cell")
+  // The backed grid in both themes: the header bands, the status pills in their colours.
+  await expect(page.getByTestId(`${grid}-band-record`)).toContainText(project.name)
+  await expect(page.getByTestId(`${grid}-pill-${rma1}-status`)).toHaveText("Doing")
+  await themed(page, info, "p4a-backed-table", async () => {
+    await expect(page.getByTestId(`${grid}-pill-${rma1}-status`)).toBeVisible({ timeout: 15_000 })
+  })
   await open.focus()
   await page.keyboard.press("Enter")
   await expect(page.getByTestId("task-detail")).toBeVisible({ timeout: 15_000 })
@@ -165,6 +191,13 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
   await loginAs(page, env, "admin@test.com", "12345678")
   const token = qa.admin.token
   const { project, status, tasks } = await seedProject(env.serverUrl, token, ["RMA-7", "RMA-8"])
+  // RMA-7 has a handler: who has what shows them with their avatar.
+  const assigned = await api(env.serverUrl, `/api/projects/${project.id}/tasks/${tasks["RMA-7"]}`, {
+    method: "PATCH",
+    token,
+    body: { assigneeId: qa.admin.id },
+  })
+  expect(assigned.status, JSON.stringify(assigned.body)).toBe(200)
   // One task past its due date (overdue) still in Doing; Todo then holds RMA-7 and RMA-8.
   const late = await api(env.serverUrl, `/api/projects/${project.id}/tasks`, {
     token,
@@ -204,20 +237,41 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
             source: aggregate(),
             map: { value: "value", agg: "sum" },
           },
-          { id: "status", type: "bar", title: "By status", source: aggregate(), map: bar },
+          {
+            id: "status",
+            type: "bar",
+            title: "Pipeline",
+            width: 2,
+            source: aggregate(),
+            map: { ...bar, colorField: "color", keepOrder: true, stackedSingle: true },
+          },
           {
             id: "handler",
             type: "bar",
-            title: "By handler",
-            source: aggregate({ groupBy: "assignee" }),
-            map: bar,
+            title: "Who has what",
+            source: aggregate({ groupBy: "assignee", series: "status" }),
+            map: {
+              ...bar,
+              series: "seriesLabel",
+              colorField: "seriesColor",
+              personField: "userId",
+              keepOrder: true,
+              horizontal: true,
+              stacked: true,
+            },
           },
           {
             id: "aging",
             type: "bar",
             title: "Time in status",
-            source: aggregate({ groupBy: "age_in_status" }),
-            map: bar,
+            source: aggregate({ groupBy: "age_in_status", series: "status" }),
+            map: {
+              ...bar,
+              series: "seriesLabel",
+              colorField: "seriesColor",
+              keepOrder: true,
+              stacked: true,
+            },
           },
           {
             id: "sla",
@@ -271,11 +325,38 @@ test("the Project overview dashboard draws tasks by status and its drill opens a
   }
   await expect(page.getByTestId("dashboard-block-overdue")).toContainText("RMA-9")
   await shot(page, info, "p3-05-overview")
+  // The pipeline: Todo (2) then Doing (1), in the board's order and colours, counts in the legend.
+  await expect(block.getByTestId("dashboard-pipeline-legend-0")).toHaveText("Todo2")
+  await expect(block.getByTestId("dashboard-pipeline-legend-1")).toHaveText("Doing1")
+  await expect(block.getByTestId("dashboard-pipeline-segment-0")).toHaveCSS(
+    "background-color",
+    "rgb(59, 130, 246)",
+  )
+  // Who has what: the admin's row with their avatar disc, the unassigned row last.
+  const who = page.getByTestId("dashboard-block-handler")
+  await expect(who.getByTestId("dashboard-people-row-0")).toContainText("Elodie")
+  await themed(page, info, "p4a-overview", async () => {
+    await expect(page.getByTestId("dashboard-block-status")).toHaveAttribute(
+      "data-state",
+      "ready",
+      {
+        timeout: 20_000,
+      },
+    )
+    for (const id of ["open", "handler", "aging", "sla", "overdue"]) {
+      await expect(page.getByTestId(`dashboard-block-${id}`)).toHaveAttribute(
+        "data-state",
+        "ready",
+        { timeout: 20_000 },
+      )
+    }
+  })
 
-  // The Todo bar opens its two tasks; the first opens in Projects.
-  // The chart's picks are its keyboard path (one per bar): focus Todo's and press Enter.
-  await block.locator('[data-testid^="dashboard-chart-pick-"]', { hasText: "Todo" }).focus()
-  await page.keyboard.press("Enter")
+  // The Todo segment opens its two tasks; the first opens in Projects.
+  await page
+    .getByTestId("dashboard-block-status")
+    .getByTestId("dashboard-pipeline-legend-0")
+    .click()
   const drill = page.getByTestId("dashboard-drill-panel")
   await expect(drill).toBeVisible()
   await expect(drill).toContainText("RMA-7")

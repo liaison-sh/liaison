@@ -47,6 +47,10 @@ describe("agent memory, taint and context integration", () => {
       VALUES (${USER_A}, ${ORG_ID}, 'ia@test.com', 'Integ A', 'x', 'active') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status)
       VALUES (${USER_B}, ${ORG_ID}, 'ib@test.com', 'Integ B', 'x', 'active') ON CONFLICT DO NOTHING`
+    // The actor below acts with every scope; a post's poster is judged on the grants stored for
+    // them (scope taint rule 14), so the stored grants say the same.
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${USER_A}, ${ORG_ID}, '*') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
       VALUES (${THREAD_ID}, ${ORG_ID}, 'integ-thread', 'agent_chat', ${USER_A}, false) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
@@ -64,6 +68,7 @@ describe("agent memory, taint and context integration", () => {
     await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.threads WHERE org_id = ${ORG_ID}`
+    await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG_ID}`
     await releaseTestLock()

@@ -680,8 +680,11 @@ export async function handleToolCall(
         // Its own declared scopes, projected like the snapshot. A nested read
         // of a scope already in the set leaves no trace in the accumulator (a
         // set), so only the call's own declaration is counted here.
-        readByThisCall = new Set(projectTaintScopesForOrg(own, ctx.orgId))
-        await touchConnectionTaintScopes(ctx.orgId, taintWindowId, own)
+        // Plus what its result carried (`resultTaintWhen`), so that scope also ages out a
+        // window after its last read instead of staying unstamped, which the loader keeps.
+        const carried = accumulator.takeResultScopes()
+        readByThisCall = new Set(projectTaintScopesForOrg([...own, ...carried], ctx.orgId))
+        await touchConnectionTaintScopes(ctx.orgId, taintWindowId, [...own, ...carried])
         // A NODE JOB running on this connection keeps what its calls touched
         // for its whole life (A18, A50/F6): this call's scopes and whatever it
         // read nested, never the agent window's older scopes. No-op for a

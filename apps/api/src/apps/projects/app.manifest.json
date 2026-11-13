@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.33.0",
+  "version": "1.34.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2308,7 +2308,7 @@
           },
           "currency": {
             "type": "string",
-            "description": "ISO currency code; omit to keep the org's."
+            "description": "ISO currency code, like EUR."
           }
         },
         "required": [

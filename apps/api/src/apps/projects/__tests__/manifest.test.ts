@@ -108,7 +108,8 @@ describe("projects.manifest", () => {
     // wording of the dated-sheet and metrics lines.
     // 1.33.0: a money-bearing result taints the turn with the money scope, cost_rate_set runs only
     //   in a person's DM, no instruction ranks people, and capacity_move can leave a task unassigned.
-    expect(projectsManifest.version).toBe("1.33.0")
+    // 1.34.0: cost_rate_set asks for the currency of a new rate.
+    expect(projectsManifest.version).toBe("1.34.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

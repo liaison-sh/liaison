@@ -49,9 +49,5 @@
   {
     "query": "export the report",
     "notFirst": "kernel__contacts_export"
-  },
-  {
-    "query": "corriger mon temps",
-    "notFirst": "projects__time_settings_set"
   }
 ]

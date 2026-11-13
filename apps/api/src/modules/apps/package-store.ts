@@ -256,6 +256,45 @@ async function materialise(name: string, version: string): Promise<"present" | "
   }
 }
 
+/**
+ * An installed version's own package, verified and unpacked into a staging dir
+ * the caller removes: the stored package, else this image's baked catalog
+ * tarball, either one only when its sha256 is `sha256` (the row's). Null when
+ * neither holds it. Nothing of it is built or run here.
+ */
+export async function readInstalledPackage(
+  name: string,
+  version: string,
+  sha256: string,
+): Promise<{ stagingDir: string } | null> {
+  assertSafe(name, version)
+  let bytes: Buffer | null = null
+  try {
+    bytes = await getObjectBuffer(packageKey(name, version), undefined, {
+      maxBytes: MAX_PACKAGE_BYTES,
+    })
+  } catch (err) {
+    if (!isNotFound(err)) throw err
+  }
+  if (!bytes || createHash("sha256").update(bytes).digest("hex") !== sha256) {
+    bytes = await bakedPackage(name, version, sha256)
+  }
+  if (!bytes || createHash("sha256").update(bytes).digest("hex") !== sha256) return null
+  const work = mkdtempSync(join(tmpdir(), "liaison-app-read-"))
+  try {
+    const tarballPath = join(work, "package.liaisonapp")
+    writeFileSync(tarballPath, bytes)
+    const verified = await verifyAppPackage(tarballPath)
+    if (verified.manifest.name !== name || verified.manifest.version !== version) {
+      rmSync(verified.stagingDir, { recursive: true, force: true })
+      return null
+    }
+    return { stagingDir: verified.stagingDir }
+  } finally {
+    rmSync(work, { recursive: true, force: true })
+  }
+}
+
 function isNotFound(err: unknown): boolean {
   const e = err as { name?: string; $metadata?: { httpStatusCode?: number } } | null
   return e?.name === "NoSuchKey" || e?.name === "NotFound" || e?.$metadata?.httpStatusCode === 404

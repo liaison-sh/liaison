@@ -211,6 +211,8 @@ curl http://127.0.0.1:3000/healthz
 
 From the host itself, or with `Authorization: Bearer <MONITOR_TOKEN>`, the answer includes `version`, `migrationHead`, `schemaBaseline` and `dependencies` (`db`, `redis`, `meilisearch`, `objectStorage`, and `sandbox` when the [app sandbox service](sandbox.md) is configured), each `ok` when healthy. From anywhere else, it answers only `{"status":"ok"}`. The app container's own health check fails when any dependency is not `ok`, except `sandbox: network_open`: the sandbox service can reach more than the app's bridge port (the host firewall step is not installed), so it refuses every app run until the step is in ([The service checks it too](sandbox.md#the-service-checks-it-too)); the stack still starts, so the step can be installed. Admins see the same detail in **Settings › System**.
 
+When apps run on the [app sandbox service](sandbox.md) or a loader, the detail also counts `appsWithoutWorkerModule`: active app versions installed from a package with no Worker module, whose runs are refused (`app_worker_module_missing`) until you reinstall them. It is not a dependency: the process stays healthy.
+
 To know whether a process should receive traffic, ask `/readyz`:
 
 ```bash

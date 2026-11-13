@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/apps/workers/worker-module-backfill.ts": "Instance-wide apps_installed rows (no org): the boot back-fill records an installed version's own Worker module, and /healthz counts the active versions still without one."
+  }
+}

@@ -1396,7 +1396,7 @@ function executorParitySuite(target: ParityTarget): void {
       expect(await countTitled("replay-1")).toBe(1)
     }, 30_000)
 
-    it("a version installed without a Worker module runs on QuickJS, tagged", async () => {
+    it("a version installed without a Worker module is refused, never run on QuickJS", async () => {
       const [row] =
         await sql`SELECT version, worker_sha256, worker_module FROM kernel.apps_installed
         WHERE name = 'wparity' AND worker_sha256 IS NOT NULL`
@@ -1406,8 +1406,9 @@ function executorParitySuite(target: ParityTarget): void {
       try {
         workersOn()
         const r = await callTool("list")
-        expect(r.status).toBe(200)
-        expect(lastRun("tool:list")?.executor).toBe("quickjs")
+        // A typed refusal the tool route answers as a client error, naming the fix.
+        expect(r.status).toBe(422)
+        expect(JSON.stringify(r.body)).toContain("app_worker_module_missing")
       } finally {
         await sql`UPDATE kernel.apps_installed
           SET worker_sha256 = ${row!.worker_sha256}, worker_module = ${row!.worker_module}

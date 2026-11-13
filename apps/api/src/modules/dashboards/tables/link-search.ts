@@ -11,7 +11,7 @@ import type { UserContext } from "~/db/rls"
 import { rootLogger } from "~/lib/logger"
 import { entityRegistry, type PickDeclaration } from "~/modules/apps/app-registries"
 import type { RestToolCall } from "~/modules/apps/rest-tool-call"
-import { TableError } from "~/modules/dashboards/tables/service"
+import { assertRead, TableError } from "~/modules/dashboards/tables/service"
 
 const log = rootLogger.child({ module: "dashboards/tables/link-search" })
 
@@ -152,6 +152,8 @@ export async function searchLinkTargets(
   input: { app?: string; entityType?: string; q: string },
   call: RestToolCall,
 ): Promise<LinkTarget[]> {
+  // Picking a link serves a table, so it needs what reading a table needs, like every other table route.
+  assertRead(viewer)
   if (!input.app) return viaIndex(viewer, undefined, input.entityType, input.q)
   const app = input.app
   const { awaitOrgApps } = await import("~/modules/apps/init")

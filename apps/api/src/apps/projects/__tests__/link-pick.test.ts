@@ -40,6 +40,8 @@ beforeAll(async () => {
     userId,
     orgId,
     scopes: [
+      // Every member's: picking a link serves a table (tables/link-search.ts).
+      "kernel:dashboards:read",
       "projects:projects:read",
       "projects:projects:write",
       "projects:tasks:read",

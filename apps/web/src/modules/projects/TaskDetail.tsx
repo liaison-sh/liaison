@@ -225,7 +225,7 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
   const loadEntityRuns = async (taskId: string) => {
     try {
       const rows = await api.get<EntityRun[]>(
-        `/agent/routines/entity-runs?entityId=${encodeURIComponent(taskId)}&limit=5`,
+        `/agent/routines/entity-runs?app=projects&entity=task&entityId=${encodeURIComponent(taskId)}&limit=5`,
       )
       if (props.entityId === taskId) setEntityRuns(Array.isArray(rows) ? rows : [])
     } catch {

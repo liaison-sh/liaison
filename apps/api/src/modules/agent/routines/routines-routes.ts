@@ -58,6 +58,7 @@ import {
 import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
 import { listMessages } from "~/modules/threads/message"
+import { flowRecordSource, readFlowRecords } from "./flow-records"
 import { isAppRunRoutine, MORNING_BRIEF_TEMPLATE_KEY } from "./kernel-routine-templates"
 import { firstMessageAfter, readRunSlices, runWindow } from "./routine-run-window"
 
@@ -397,13 +398,32 @@ routinesRoutes.get("/events", async (c) => {
 // ---- GET /api/agent/routines/entity-runs ----------------------------------
 // The recent runs fired on one record (`routine_runs.event_entity_id`), across
 // every routine the caller may read, newest first: a record's detail view shows
-// what the automations did with it. Visibility is the run history's
-// (`readableRoutine`): a routine under the caller's select policy, or one the
-// caller owns. A run carries neither its pause state nor its flow context (the
-// trigger event's data, which the record's reader may not be entitled to).
+// what the automations did with it. `app` and `entity` name the record's family,
+// which must declare a flow record (`entities.<e>.routineFlow`): the caller must
+// read the record through that declared reader, under their own RLS, or the list
+// is empty. Only runs that family's events fired count. Visibility of a routine is
+// the run history's (`readableRoutine`): under the caller's select policy, or
+// owned. A run is served as the view draws it: the routine's name and title, the
+// run's status and times, and each step's state with a wait step's deadline; never
+// its error, notes, outputs, pause state or flow context.
 // Registered BEFORE `/:id/...` so `entity-runs` is never read as a routine id.
 const ENTITY_RUNS_DEFAULT = 10
 const ENTITY_RUNS_MAX = 50
+
+/** A run's step as a record's view draws it: its state, times and a wait step's deadline. */
+function entityRunSteps(steps: unknown): Array<StepSummary & { output?: { deadline: string } }> {
+  if (!Array.isArray(steps)) return []
+  const summaries = stepSummaries(steps) ?? []
+  return summaries.map((st) => {
+    const raw = steps.find(
+      (x) => x && typeof x === "object" && (x as Record<string, unknown>).id === st.id,
+    ) as { output?: unknown } | undefined
+    const out = raw?.output
+    const deadline =
+      out && typeof out === "object" ? (out as Record<string, unknown>).deadline : undefined
+    return typeof deadline === "string" ? { ...st, output: { deadline } } : st
+  })
+}
 
 routinesRoutes.get("/entity-runs", async (c) => {
   const actor = extractRlsContext(c)
@@ -411,10 +431,22 @@ routinesRoutes.get("/entity-runs", async (c) => {
   if (!entityId || entityId.length > 200) {
     throw new HTTPException(400, { message: "entityId is required (at most 200 characters)" })
   }
+  const app = c.req.query("app") ?? ""
+  const entity = c.req.query("entity") ?? ""
+  const src = flowRecordSource(actor.orgId, app, entity)
+  if (!src) {
+    throw new HTTPException(400, {
+      message: "app and entity must name a record family that declares a flow record",
+    })
+  }
   const limit = Math.min(
     Math.max(Number(c.req.query("limit") ?? ENTITY_RUNS_DEFAULT) || ENTITY_RUNS_DEFAULT, 1),
     ENTITY_RUNS_MAX,
   )
+  // The record itself, read as the caller through its app's declared reader: no read, no runs.
+  const records = await readFlowRecords(src, actor, [entityId], { includeArchived: true })
+  if (!records.some((r) => r.id === entityId)) return c.json({ data: [] })
+
   const columns = { id: routinesTbl.id, name: routinesTbl.name, title: routinesTbl.title }
   const visible = await withRlsContext(actor, (tx) =>
     tx.select(columns).from(routinesTbl).where(eq(routinesTbl.orgId, actor.orgId)),
@@ -428,15 +460,24 @@ routinesRoutes.get("/entity-runs", async (c) => {
   const readable = new Map([...visible, ...own].map((r) => [r.id, r]))
   if (readable.size === 0) return c.json({ data: [] })
 
+  const familyPrefix = `${src.app}.${src.entity}.`
   const rows = await withPrivilegedDb(actor.orgId, "routines-entity-runs", (tx) =>
     tx
-      .select()
+      .select({
+        id: routineRuns.id,
+        routineId: routineRuns.routineId,
+        ranAt: routineRuns.ranAt,
+        startedAt: routineRuns.startedAt,
+        status: routineRuns.status,
+        steps: routineRuns.steps,
+      })
       .from(routineRuns)
       .where(
         and(
           eq(routineRuns.orgId, actor.orgId),
           inArray(routineRuns.routineId, [...readable.keys()]),
           eq(routineRuns.eventEntityId, entityId),
+          sql`left(${routineRuns.triggerLabel}, ${familyPrefix.length}) = ${familyPrefix}`,
         ),
       )
       .orderBy(desc(routineRuns.ranAt), desc(routineRuns.id))
@@ -444,12 +485,16 @@ routinesRoutes.get("/entity-runs", async (c) => {
   )
   return c.json({
     data: rows.map((r) => {
-      const { flowContext: _flowContext, ...run } = publicRun(r)
       const routine = readable.get(r.routineId)
       return {
-        ...run,
+        id: r.id,
+        routineId: r.routineId,
         routineName: routine?.name ?? "",
         routineTitle: routine?.title ?? routine?.name ?? "",
+        ranAt: r.ranAt,
+        startedAt: r.startedAt,
+        status: r.status,
+        steps: entityRunSteps(r.steps),
       }
     }),
   })

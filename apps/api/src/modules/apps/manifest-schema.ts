@@ -1316,6 +1316,45 @@ export const appManifestJsonSchema = {
           // its result (at `itemsPath`, else the result or its only list) gives `idField` and
           // `labelField`. For an entity the search index does not hold. Cross-field rules:
           // contract.ts pickDeclarationErrors.
+          // The entity is a routine flow's trigger record (modules/agent/routines/flow-records.ts):
+          // which of its events take an event filter and which fire a run per occurrence, the
+          // app's tools implementing the flow's record actions (`updateTool`: assign, set_status,
+          // set_field; `commentTool`: comment), both taking `recordParam`, the scope notifying a
+          // teammate takes, the tab and web path of a record, and the server-module exports
+          // reading it. Core apps only. Cross-field rules: contract.ts routineFlowDeclarationErrors.
+          routineFlow: {
+            type: "object",
+            properties: {
+              filterEvents: {
+                type: "array",
+                items: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+              },
+              uncoalescedEvents: {
+                type: "array",
+                items: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+              },
+              recordParam: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+              updateTool: { type: "string", minLength: 1 },
+              commentTool: { type: "string", minLength: 1 },
+              notifyScope: { type: "string", minLength: 1 },
+              tabType: { type: "string", minLength: 1 },
+              urlPath: { type: "string", pattern: "^/.*\\{id\\}" },
+              readRecords: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+              leastLoaded: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+            },
+            required: [
+              "filterEvents",
+              "recordParam",
+              "updateTool",
+              "commentTool",
+              "notifyScope",
+              "tabType",
+              "urlPath",
+              "readRecords",
+              "leastLoaded",
+            ],
+            additionalProperties: false,
+          },
           pick: {
             type: "object",
             properties: {
@@ -1641,6 +1680,10 @@ export const appManifestJsonSchema = {
           promptTemplate: { type: "string", minLength: 1 },
           scopes: { type: "array", items: { type: "string" } },
           enabledByDefault: { type: "boolean" },
+          // A flow template and its event filter (0303), with `{{projectId}}` and
+          // `{{status:<label>}}` placeholders; checked against the flow schema once filled.
+          flow: { type: "object" },
+          eventFilter: { type: "object" },
         },
         required: ["description", "kind", "promptTemplate", "scopes", "enabledByDefault"],
         additionalProperties: false,

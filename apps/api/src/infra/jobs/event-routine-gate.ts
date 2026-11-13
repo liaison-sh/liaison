@@ -27,6 +27,11 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
+import {
+  flowRecordSource,
+  readFlowRecords,
+  takesRecordFilter,
+} from "~/modules/agent/routines/flow-records"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -413,7 +418,9 @@ export interface TableRowFilter {
 }
 
 /** A routine's stored filter: a mail sender filter or a table row filter. */
-export type RoutineEventFilter = (MailSenderFilter & Partial<TableRowFilter>) | null
+export type RoutineEventFilter =
+  | (MailSenderFilter & Partial<TableRowFilter> & ProjectTaskFilter)
+  | null
 
 export const TABLE_ROW_EVENTS = [
   "kernel:dashboard_table_row:created",
@@ -491,4 +498,127 @@ export async function ownerTableRowFilterMatches(
   )
   if (!change) return false
   return tableRowFilterMatches(filter, evt, change)
+}
+
+// ── Record filter (0303) ────────────────────────────────────────────────────
+
+/**
+ * The filter of a routine on a flow record's event (an entity declaring `routineFlow`, e.g. a
+ * project task's `status_changed|updated|created`): one container (`projectId`), a status change
+ * (from, to; `fromStatusId: null` = a record created directly in `toStatusId`), and field values
+ * (a value, or a list of accepted values; null = the field is empty).
+ */
+export interface ProjectTaskFilter {
+  projectId?: string
+  fromStatusId?: string | null
+  toStatusId?: string
+  fields?: Record<string, unknown>
+}
+
+/** Whether the event's entity declares a flow record whose filter applies to this action. */
+export function isProjectTaskFilterEvent(
+  evt: Pick<GateEvent, "orgId" | "app" | "entity" | "action">,
+): boolean {
+  return takesRecordFilter(flowRecordSource(evt.orgId, evt.app, evt.entity), evt.action)
+}
+
+/** Whether the filter names anything a record filter matches on. */
+export function isProjectTaskFilter(filter: unknown): filter is ProjectTaskFilter {
+  if (!filter || typeof filter !== "object") return false
+  const f = filter as ProjectTaskFilter
+  return (
+    f.projectId !== undefined ||
+    f.fromStatusId !== undefined ||
+    f.toStatusId !== undefined ||
+    f.fields !== undefined
+  )
+}
+
+/**
+ * Pure: does a task cell hold this filter value? Mirrors the projects field filter
+ * (fields.ts `fieldFilterConditions`): null matches an empty cell, a choices cell holds the value,
+ * a link cell's record id equals it, a person cell compares without case.
+ */
+export function taskCellMatches(cell: unknown, value: unknown): boolean {
+  const empty =
+    cell === undefined || cell === null || cell === "" || (Array.isArray(cell) && cell.length === 0)
+  if (value === null) return empty
+  if (empty) return false
+  if (Array.isArray(cell)) return cell.some((c) => sameValue(c, value))
+  if (typeof cell === "object" && cell !== null && "id" in cell) {
+    return String((cell as { id?: unknown }).id) === String(value)
+  }
+  if (typeof cell === "string" && typeof value === "string") {
+    return cell === value || cell.toLowerCase() === value.toLowerCase()
+  }
+  return sameValue(cell, value)
+}
+
+/**
+ * Pure: does this projects task event pass the filter? `data` is the event's data; `task` is the
+ * task as the owner reads it now (its project and fields), null when the owner cannot read it
+ * (nothing matches then). From/to status come from the event itself (each transition matters,
+ * not the task's current status).
+ */
+export function projectTaskFilterMatches(
+  filter: ProjectTaskFilter,
+  evt: Pick<GateEvent, "action" | "data">,
+  task: { projectId: string; fields: Record<string, unknown> } | null,
+): boolean {
+  if (!task) return false
+  const data = dataOf({ app: "", entity: "", action: "", orgId: "", data: evt.data })
+  if (filter.projectId !== undefined && task.projectId !== filter.projectId) return false
+  if (filter.fromStatusId !== undefined || filter.toStatusId !== undefined) {
+    if (evt.action !== "status_changed") return false
+    if (filter.toStatusId !== undefined && data.toStatusId !== filter.toStatusId) return false
+    if (filter.fromStatusId !== undefined && (data.fromStatusId ?? null) !== filter.fromStatusId) {
+      return false
+    }
+  }
+  for (const [key, want] of Object.entries(filter.fields ?? {})) {
+    const cell = task.fields[key]
+    const ok = Array.isArray(want)
+      ? want.some((w) => taskCellMatches(cell, w))
+      : taskCellMatches(cell, want)
+    if (!ok) return false
+  }
+  return true
+}
+
+/**
+ * Evaluates a record filter as the routine owner: the record is read fresh under the owner's RLS
+ * through its app's declared reader (its container and fields), so a record the owner cannot
+ * read never matches, and neither does an event whose entity declares no flow record. Fails
+ * closed.
+ */
+export async function ownerProjectTaskFilterMatches(
+  owner: UserContext,
+  filter: ProjectTaskFilter,
+  evt: GateEvent,
+): Promise<boolean> {
+  const recordId = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
+  if (!recordId) return false
+  const { awaitOrgApps } = await import("~/modules/apps/init")
+  await awaitOrgApps(owner.orgId)
+  const src = flowRecordSource(owner.orgId, evt.app, evt.entity)
+  if (!takesRecordFilter(src, evt.action) || !src) return false
+  const [record] = await readFlowRecords(src, owner, [recordId], { includeArchived: true })
+  return projectTaskFilterMatches(
+    filter,
+    evt,
+    record ? { projectId: record.containerId, fields: record.fields } : null,
+  )
+}
+
+/**
+ * A routine chain this deep is dropped (0303): routines triggering one another (a routine's write
+ * firing another routine, whose write fires a third...) stop here. The subscriber drops the event,
+ * and the reconciler never replays it (routine-event-reconciler.ts).
+ */
+export const ROUTINE_EVENT_MAX_HOP = 5
+
+/** How many routine runs led to an event, from its metadata (`hop`, stamped by queue-event.ts). */
+export function eventHopOf(metadata: unknown): number {
+  const hop = (metadata as { hop?: unknown } | null | undefined)?.hop
+  return typeof hop === "number" && Number.isFinite(hop) && hop > 0 ? hop : 0
 }

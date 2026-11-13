@@ -499,7 +499,15 @@ export function productionRoutineTickDeps(
       })
     },
     checkCredits: routineTickCreditGate,
-    agentInvoker: async ({ orgId, ownerUserId, threadId, prompt, scopes, triggerEvent }) => {
+    agentInvoker: async ({
+      orgId,
+      ownerUserId,
+      threadId,
+      prompt,
+      scopes,
+      triggerEvent,
+      nextSteer,
+    }) => {
       // Anchor for the draft-claim guard: only approvals created DURING this
       // tick count as "the draft this tick claims to have made".
       const tickStartedAt = new Date()
@@ -801,6 +809,14 @@ export function productionRoutineTickDeps(
           { err: guardErr, routineId },
           "routine completeness guard failed (tick post stands)",
         )
+      }
+
+      // A flow agent step's required outcomes (0303, flow-runner.ts): each one still missing after
+      // the turn is named back to the agent with the same re-prompt, up to the step's maxBumps.
+      // Absent on a legacy tick.
+      if (nextSteer) {
+        const { driveFlowBumps } = await import("~/modules/agent/routines/flow-runner")
+        await driveFlowBumps(nextSteer, repromptTickOnce)
       }
 
       // Did the tick do its job? A tool it called that was unavailable, or an
@@ -1232,6 +1248,14 @@ export async function registerKernelJobs(): Promise<void> {
     await sweepExpiredMailboxWaits()
   })
 
+  // Routine flow runs nothing will carry on (0303, flow-runner.ts): a run left `running` by a
+  // process that died, or `waiting` on a resume job that was lost, ends failed every 15 minutes,
+  // so the run history says so and the event reconciler fires the routine again.
+  await registerScheduledJob("kernel", "routine-flow-sweep", "*/15 * * * *", async () => {
+    const { sweepAllStuckFlowRuns } = await import("~/modules/agent/routines/flow-runner")
+    await sweepAllStuckFlowRuns()
+  })
+
   // Lapsed local claim sweep — every minute. While a desktop holds a
   // conversation the server does not answer in it; if that machine dies
   // mid turn the lease lapses and the question it took with it would otherwise
@@ -1414,6 +1438,18 @@ export async function registerKernelJobs(): Promise<void> {
         },
       )
     }
+  })
+
+  // A routine flow's wait came due (0303, flow-runner.ts): the run re-checks its condition and
+  // goes on, under the routine+record lock a flow's event tick takes. A busy lock comes back later.
+  registerJobWorker("kernel", "routine-flow-resume", async (payload: any) => {
+    const { runFlowResumeJob } = await import("~/modules/agent/routines/flow-runner")
+    const deps = productionRoutineTickDeps(String(payload?.routineId ?? ""))
+    await runFlowResumeJob(payload ?? {}, {
+      ...(deps.agentInvoker ? { agentInvoker: deps.agentInvoker } : {}),
+      ...(deps.loadOwnerScopes ? { loadOwnerScopes: deps.loadOwnerScopes } : {}),
+      ...(deps.checkCredits ? { checkCredits: deps.checkCredits } : {}),
+    })
   })
 
   // Event-routine subscriptions are process-wide (every process's bus); the

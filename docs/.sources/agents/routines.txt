@@ -188,3 +188,27 @@ An unheld scope is left out and filed as a scope request -> apps/api/src/modules
 Delegate who built a routine for someone may edit it -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3479
 Delegate or apps admin may edit a routine run by a role agent -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3481
 Scope added by a non-owner is capped at the owner's scopes -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3688
+Flow steps after the trigger, at most 20 -> packages/shared/src/validation/agent/routines.ts:146
+Flow set through create_routine / update_routine -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3382
+Actions run as the owner through the tool path, signed by the routine -> apps/api/src/modules/agent/routines/flow-runner.ts:599
+Gated action step waits for its approval -> apps/api/src/modules/agent/routines/flow-runner.ts:764
+Notify goes to Home (attention pipeline) -> apps/api/src/modules/agent/routines/flow-runner.ts:689
+Working time default Mon-Fri 09:00-18:00 -> apps/api/src/lib/working-time.ts:26
+Waits at most 60 days -> packages/shared/src/validation/agent/routines.ts:148
+Wait condition, status unchanged -> packages/shared/src/validation/agent/routines.ts:173
+Newer run for the same task replaces a waiting one -> apps/api/src/modules/agent/routines/flow-runner.ts:822
+Missing outcomes named back to the agent -> apps/api/src/modules/agent/routines/flow-runner.ts:1112
+Bumps default 2, max 3 -> packages/shared/src/validation/agent/routines.ts:322
+Flagged run notifies the owner -> apps/api/src/modules/agent/routines/flow-runner.ts:1282
+Owner cannot read the task: nothing runs -> apps/api/src/modules/agent/routines/flow-runner.ts:200
+Projects task event filter keys -> packages/shared/src/validation/agent/routines.ts:393
+Status changes are not grouped -> apps/api/src/infra/jobs/event-routine-subscriber.ts:275
+Routine chains stop at 5 -> apps/api/src/infra/jobs/event-routine-subscriber.ts:387
+Projects flow templates -> apps/api/src/apps/projects/app.manifest.json:2654
+Template placeholders filled from the project's statuses -> packages/shared/src/validation/agent/routines.ts:701
+Routines of a project listed by projectId -> apps/api/src/modules/agent/routines/routines-routes.ts:174
+A notify to others needs projects:tasks:write, active members who can read the task -> apps/api/src/modules/agent/routines/flow-runner.ts:518
+A resumed run makes a new run's checks, ends skipped otherwise -> apps/api/src/modules/agent/routines/flow-runner.ts:1044
+An edited flow ends its waiting runs -> apps/api/src/modules/agent/routines/flow-runner.ts:1036
+The sweep ends runs that stopped or lost their wait -> apps/api/src/modules/agent/routines/flow-runner.ts:1595
+The sweep runs every 15 minutes -> apps/api/src/infra/jobs/kernel-jobs.ts:1254

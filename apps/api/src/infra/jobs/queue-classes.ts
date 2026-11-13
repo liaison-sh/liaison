@@ -119,6 +119,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "subrun-stuck-sweep": { queueClass: "cron" },
   "local-claim-lapse-sweep": { queueClass: "cron" },
   "routine-mailbox-wait-expiry": { queueClass: "cron" },
+  "routine-flow-sweep": { queueClass: "cron" },
   "node-lease-sweep": { queueClass: "cron" },
   "control-plane-outbox": { queueClass: "cron" },
   "attention-digest-urgent": { queueClass: "cron" },
@@ -178,6 +179,8 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "approval-result-turn": { queueClass: "agent" },
   "approval-reminder-turn": { queueClass: "agent" },
   "routine-tick": { queueClass: "agent", priority: 5 },
+  // A routine flow's wait came due (0303): it may go on to an agent step.
+  "routine-flow-resume": { queueClass: "agent", priority: 5 },
   "agent-memory-consolidation": { queueClass: "agent", priority: YIELD },
   // Due just before a prompt cache expires: late is the same as not at all.
   "agent-warm-compaction": { queueClass: "agent" },

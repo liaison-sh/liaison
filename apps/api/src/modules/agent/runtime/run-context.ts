@@ -407,6 +407,13 @@ export interface RunContext {
    * Inherited like `tokenAccount`. Absent for every run that is not a routine's.
    */
   routineRunId?: string
+  /**
+   * On a routine run fired by an event: how many routine runs led to that event (its
+   * `metadata.hop`, 0 for an event a person or the system caused). Events the run queues carry
+   * hop + 1 (queue-event.ts), and the event routine subscriber drops a chain at depth 5.
+   * Inherited like `routineRunId`.
+   */
+  eventHop?: number
 }
 
 export const runContextStore = new AsyncLocalStorage<RunContext>()
@@ -417,10 +424,11 @@ export const runContextStore = new AsyncLocalStorage<RunContext>()
  */
 export function inheritedRunFields(
   frame: RunContext | undefined,
-): Pick<RunContext, "tokenAccount" | "routineRunId"> {
+): Pick<RunContext, "tokenAccount" | "routineRunId" | "eventHop"> {
   return {
     ...(frame?.tokenAccount ? { tokenAccount: frame.tokenAccount } : {}),
     ...(frame?.routineRunId ? { routineRunId: frame.routineRunId } : {}),
+    ...(frame?.eventHop !== undefined ? { eventHop: frame.eventHop } : {}),
   }
 }
 

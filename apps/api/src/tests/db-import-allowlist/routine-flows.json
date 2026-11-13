@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/agent/routines/flow-runner.ts": "Routine flow runs (0303): routines and routine_runs are privileged-access only (as in routine-worker.ts); the run row, its steps and the routine's last run are written there, the resolved scope and owner grants read there. The steps' own reads and writes run under the owner's RLS or through executeTool."
+  }
+}

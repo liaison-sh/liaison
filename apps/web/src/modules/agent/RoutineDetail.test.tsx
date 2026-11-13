@@ -1045,3 +1045,129 @@ describe("RoutineDetail runs and settings tabs", () => {
     expect(screen.getByTestId("routine-edit-form")).toBeInTheDocument()
   })
 })
+
+describe("RoutineDetail flow (0303)", () => {
+  const P = "44444444-4444-4444-8444-444444444444"
+  const DONE = "33333333-3333-4333-8333-333333333333"
+  const FLOW_ROUTINE = {
+    ...FIXTURE,
+    kind: "event" as const,
+    cron: null,
+    timezone: null,
+    event: "projects:task:status_changed",
+    eventFilter: { projectId: P, toStatusId: DONE },
+    flow: {
+      version: 1 as const,
+      steps: [
+        {
+          id: "tell",
+          type: "action" as const,
+          action: "notify" as const,
+          args: { to: ["{{owner}}"], text: "Done: {{task.title}}" },
+        },
+      ],
+    },
+  }
+
+  function setupFlow(runs: unknown[] = []) {
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path.includes("/runs")) return runs
+        if (path === `/projects/${P}`) {
+          return { id: P, name: "Website", statuses: [{ id: DONE, label: "Done" }], fields: [] }
+        }
+        return [FLOW_ROUTINE]
+      }),
+      getEnvelope: vi.fn(async () => ({ data: [] })),
+      post: vi.fn(),
+      put: vi.fn(async (_p: string, body: Record<string, unknown>) => ({
+        ...FLOW_ROUTINE,
+        ...body,
+      })),
+      patch: vi.fn(),
+      delete: vi.fn(),
+    }
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <RoutineDetail entityId="rid-1" />
+      </ApiContext.Provider>
+    ))
+    return api
+  }
+
+  it("opens on a Flow tab, first, that shows the trigger and steps", async () => {
+    setupFlow()
+    await waitFor(() => expect(screen.getByTestId("routine-tab-flow")).toBeInTheDocument())
+    expect(screen.getByTestId("routine-tab-flow")).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByTestId("routine-flow-panel")).not.toHaveAttribute("hidden")
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-flow-trigger-text").textContent).toBe(
+        "When a task in Website moves to Done",
+      ),
+    )
+    expect(screen.getByTestId("routine-flow-step-tell-title").textContent).toBe(
+      "Notify the routine's owner",
+    )
+  })
+
+  it("a prompt routine has no Flow tab", async () => {
+    setup([FIXTURE])
+    await waitFor(() => expect(screen.getByTestId("routine-tab-runs")).toBeInTheDocument())
+    expect(screen.queryByTestId("routine-tab-flow")).toBeNull()
+  })
+
+  it("editing the flow saves through the routine update", async () => {
+    const api = setupFlow()
+    await waitFor(() => expect(screen.getByTestId("routine-flow-edit")).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId("routine-flow-edit"))
+    fireEvent.click(screen.getByTestId("routine-flow-step-tell-edit"))
+    fireEvent.input(screen.getByTestId("flow-step-tell-text"), { target: { value: "Finished" } })
+    fireEvent.click(screen.getByTestId("routine-flow-save"))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const [path, body] = api.put.mock.calls[0] as [string, Record<string, unknown>]
+    expect(path).toBe("/agent/routines/rid-1")
+    expect(body).toEqual({
+      flow: {
+        version: 1,
+        steps: [
+          {
+            id: "tell",
+            type: "action",
+            action: "notify",
+            args: { to: ["{{owner}}"], text: "Finished" },
+          },
+        ],
+      },
+    })
+  })
+
+  it("a flow run row expands to the step overlay", async () => {
+    setupFlow([
+      {
+        id: "run-1",
+        routineId: "rid-1",
+        ranAt: "2026-11-13T09:00:00Z",
+        status: "succeeded",
+        durationMs: 10,
+        errorMessage: null,
+        steps: [
+          {
+            id: "tell",
+            type: "action",
+            state: "done",
+            startedAt: null,
+            endedAt: null,
+            note: "Sent",
+          },
+        ],
+      },
+    ])
+    await waitFor(() => expect(screen.getByTestId("routine-tab-runs")).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId("routine-tab-runs"))
+    await waitFor(() => expect(screen.getByTestId("run-history-row-run-1")).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId("run-history-row-run-1"))
+    await waitFor(() => expect(screen.getByTestId("run-flow-run-1")).toBeInTheDocument())
+    expect(screen.getByTestId("run-flow-list-run-1-step-tell-state").textContent).toBe("Done")
+    expect(screen.getByTestId("run-flow-list-run-1-step-tell-note").textContent).toBe("Sent")
+  })
+})

@@ -177,7 +177,8 @@ const RoutineDetail: Component<Props> = (props) => {
   function startFlowEdit() {
     const r = routine()
     if (!r?.flow) return
-    setFlowDraft(structuredClone(r.flow))
+    // A plain copy: the row is a store proxy, which structuredClone refuses.
+    setFlowDraft(JSON.parse(JSON.stringify(r.flow)) as RoutineFlow)
     setFilterDraft(r.eventFilter ? { ...r.eventFilter } : null)
     setFlowError(null)
   }

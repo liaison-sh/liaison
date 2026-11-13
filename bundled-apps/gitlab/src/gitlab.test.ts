@@ -61,7 +61,7 @@ describe("tools", () => {
   it("lists the connected group's projects, the token added by the host", async () => {
     const ctx = fakeCtx({
       routes: {
-        "/groups/acme/projects?per_page=100&include_subgroups=true&simple=true": json([
+        "/groups/acme/projects?per_page=50&include_subgroups=true&simple=true": json([
           {
             id: 7,
             path_with_namespace: "acme/manuals",

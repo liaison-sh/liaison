@@ -26,6 +26,11 @@
  * - `headers` (optional) are literal headers sent on the first hop with every
  *   request; never auth, cookie, hop, proxy or forwarding headers, never a
  *   placeholder.
+ * - A write may declare `approval`: what its approval card shows besides the
+ *   request (a link to the target record, https on the baseUrl host or a
+ *   declared `linkHosts` host; a read of the same adapter whose items are
+ *   quoted as the record's current content). Nothing in it reaches a request
+ *   the write sends.
  */
 import { parse as parseDomain } from "tldts"
 import { z } from "zod"
@@ -399,6 +404,40 @@ export const PaginationSchema = z.discriminatedUnion("type", [
 // Operations and adapter
 // ---------------------------------------------------------------------------
 
+/** Items of the approval context read an approval card quotes, by default and at most. */
+export const APPROVAL_CONTEXT_ITEMS_DEFAULT = 8
+export const APPROVAL_CONTEXT_ITEMS_MAX = 20
+
+/**
+ * What the approval card of a write shows besides the request it sends: a
+ * link to the record it writes to, and the record's current content, read at
+ * staging with a read operation of the same adapter (a thread's posts before
+ * a reply). Display only: nothing here reaches the write's own request.
+ */
+const ApprovalSchema = z
+  .object({
+    /** An https URL template; `{param}` placeholders name the write's declared params. */
+    link: z.string().max(2048).optional(),
+    linkLabel: z.string().min(1).max(60).optional(),
+    context: z
+      .object({
+        /** A read operation of this adapter. */
+        read: z.string().regex(OPERATION_NAME_RE, "an operation name"),
+        /** The read's params: a literal, or a template of the write's `{param}`s. */
+        params: z
+          .record(
+            z.string().regex(PARAM_NAME_RE, "param names are identifiers"),
+            z.union([z.string().max(2000), z.number(), z.boolean()]),
+          )
+          .default({}),
+        label: z.string().min(1).max(80).optional(),
+        maxItems: z.number().int().min(1).max(APPROVAL_CONTEXT_ITEMS_MAX).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+
 export const OperationSchema = z
   .object({
     name: z
@@ -417,10 +456,12 @@ export const OperationSchema = z
     role: z.enum(ROLE_NAMES).optional(),
     pagination: PaginationSchema.optional(),
     chain: z.array(ChainStepSchema).min(1).max(MAX_CHAIN_STEPS).optional(),
+    approval: ApprovalSchema.optional(),
   })
   .strict()
 
 export type ChainStep = z.infer<typeof ChainStepSchema>
+export type OperationApproval = z.infer<typeof ApprovalSchema>
 export type FieldsSpec = z.infer<typeof FieldsSchema>
 
 /** One allow-listed field: the name it is returned under and the path it is read from. */
@@ -442,6 +483,7 @@ export function fieldOutputs(op: { fields: FieldsSpec }): string[] {
 }
 
 export const MAX_REDIRECT_HOSTS = 10
+export const MAX_LINK_HOSTS = 10
 /** Literal headers an adapter may send with every request. */
 export const MAX_STATIC_HEADERS = 10
 /** Static headers never set what the transport owns: auth, cookies, hops, proxies, forwarding. */
@@ -486,6 +528,15 @@ export const AdapterSchema = z
     redirectHosts: z
       .array(z.string().max(253).regex(HOSTNAME_RE, "a lowercase hostname"))
       .max(MAX_REDIRECT_HOSTS)
+      .optional(),
+    /**
+     * Other hosts an operation's approval link may point to (the web app of
+     * the API's product, when the API has a host of its own); never an IP
+     * address or a public suffix. Nothing is requested from them.
+     */
+    linkHosts: z
+      .array(z.string().max(253).regex(HOSTNAME_RE, "a lowercase hostname"))
+      .max(MAX_LINK_HOSTS)
       .optional(),
     auth: AuthSchema,
     /**
@@ -635,6 +686,14 @@ function checkAdapter(a: Adapter, ctx: Ctx): void {
     seenRedirectHosts.add(host)
   })
 
+  const seenLinkHosts = new Set<string>()
+  a.linkHosts?.forEach((host, i) => {
+    const problem = redirectHostProblem(host)
+    if (problem) issue(ctx, ["linkHosts", i], `link host ${problem}`)
+    if (seenLinkHosts.has(host)) issue(ctx, ["linkHosts", i], "duplicate link host")
+    seenLinkHosts.add(host)
+  })
+
   const authHeader =
     a.auth.type === "apiKey" && a.auth.in === "header" ? a.auth.name.toLowerCase() : null
   const seenHeaders = new Set<string>()
@@ -695,6 +754,7 @@ function checkAdapter(a: Adapter, ctx: Ctx): void {
     else seenNames.set(op.name, i)
     checkOperation(op, ctx, at)
     checkChain(a, op, ctx, at)
+    checkApproval(a, base, op, ctx, at)
     if (op.role) {
       if (op.kind !== "read") issue(ctx, at("role"), "a role is filled by a read operation")
       const returned = new Set(finalOutputs(a, op))
@@ -799,6 +859,156 @@ function checkChain(a: Adapter, op: Operation, ctx: Ctx, at: (...rest: Path) => 
     }
     previous = target
   })
+}
+
+/** A placeholder-free stand-in for a link template, to check its shape as a URL. */
+const LINK_SAMPLE_VALUE = "x"
+
+function checkApproval(
+  a: Adapter,
+  base: URL | null,
+  op: Operation,
+  ctx: Ctx,
+  at: (...rest: Path) => Path,
+): void {
+  const approval = op.approval
+  if (!approval) return
+  if (op.kind !== "write") {
+    issue(
+      ctx,
+      at("approval"),
+      "approval belongs to a write operation (it shapes its approval card)",
+    )
+    return
+  }
+  const declared = new Set(Object.keys(op.params.properties))
+  if (approval.linkLabel !== undefined && approval.link === undefined)
+    issue(ctx, at("approval", "linkLabel"), "linkLabel names a link: add approval.link")
+  if (approval.link !== undefined) {
+    const link = approval.link
+    const linkAt = at("approval", "link")
+    const authority = writtenAuthority(link)
+    if (strayBraces(link)) issue(ctx, linkAt, "stray brace; placeholders are {param}")
+    else if (/[{}]/.test(authority) || !link.startsWith("https://"))
+      issue(ctx, linkAt, "the link is https, with placeholders only after the host")
+    else {
+      for (const name of placeholders(link)) {
+        if (!declared.has(name))
+          issue(ctx, linkAt, `placeholder {${name}} is not a declared param of ${op.name}`)
+      }
+      const sample = link.replace(PLACEHOLDER_RE, LINK_SAMPLE_VALUE)
+      const url = parseUrl(sample)
+      const form = urlFormProblem(sample)
+      if (!url || form) issue(ctx, linkAt, `the link ${form ?? "is not a URL"}`)
+      else if (url.port !== "" || url.hash !== "" || /\s/.test(link))
+        issue(ctx, linkAt, "the link carries no port, fragment or whitespace")
+      else if (base) {
+        const allowed = new Set([base.hostname, ...(a.linkHosts ?? [])])
+        if (!allowed.has(url.hostname))
+          issue(
+            ctx,
+            linkAt,
+            `the link's host must be the baseUrl host (${base.hostname}) or one of linkHosts`,
+          )
+      }
+    }
+  }
+  const context = approval.context
+  if (!context) return
+  const contextAt = (...rest: Path): Path => at("approval", "context", ...rest)
+  const target = a.operations.find((o) => o.name === context.read)
+  if (!target) {
+    issue(ctx, contextAt("read"), `no operation "${context.read}" in this adapter`)
+    return
+  }
+  if (target.kind !== "read") issue(ctx, contextAt("read"), "the approval context runs a read")
+  const readParams = target.params.properties
+  for (const [name, value] of Object.entries(context.params)) {
+    if (!Object.hasOwn(readParams, name)) {
+      issue(ctx, contextAt("params", name), `"${name}" is not a param of ${target.name}`)
+      continue
+    }
+    if (typeof value !== "string") continue
+    if (strayBraces(value)) {
+      issue(ctx, contextAt("params", name), "stray brace; placeholders are {param}")
+      continue
+    }
+    for (const ref of placeholders(value)) {
+      if (!declared.has(ref))
+        issue(
+          ctx,
+          contextAt("params", name),
+          `placeholder {${ref}} is not a declared param of ${op.name}`,
+        )
+    }
+  }
+  for (const name of target.params.required ?? []) {
+    if (!Object.hasOwn(context.params, name))
+      issue(ctx, contextAt("params"), `required param "${name}" of ${target.name} is not given`)
+  }
+}
+
+function isSet(v: unknown): boolean {
+  return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0)
+}
+
+/** A param's value as one piece of text (an array joined with commas), or null when unset. */
+function paramText(v: unknown): string | null {
+  if (!isSet(v)) return null
+  if (Array.isArray(v)) return v.map((x) => String(x)).join(",")
+  return typeof v === "object" ? null : String(v)
+}
+
+/**
+ * The approval link of a write for these params: each placeholder's value
+ * URL-encoded. Null when the write declares no link, or a placeholder's param
+ * is unset (a link to the wrong record is worse than none).
+ */
+export function renderApprovalLink(op: Operation, params: Record<string, unknown>): string | null {
+  const link = op.approval?.link
+  if (!link) return null
+  let missing = false
+  const url = link.replace(PLACEHOLDER_RE, (_m, name: string) => {
+    const text = paramText(params[name])
+    if (text === null) {
+      missing = true
+      return ""
+    }
+    return encodeURIComponent(text)
+  })
+  return missing ? null : url
+}
+
+/**
+ * The params of a write's approval context read: a template that is exactly
+ * `{param}` takes the write param's typed value, other templates interpolate,
+ * literals pass through; a template whose param is unset drops its key.
+ */
+export function renderApprovalContextParams(
+  op: Operation,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(op.approval?.context?.params ?? {})) {
+    if (typeof value !== "string") {
+      out[name] = value
+      continue
+    }
+    const exact = /^\{([A-Za-z_][A-Za-z0-9_]{0,63})\}$/.exec(value)
+    if (exact) {
+      const v = params[exact[1] ?? ""]
+      if (isSet(v)) out[name] = v
+      continue
+    }
+    let missing = false
+    const text = value.replace(PLACEHOLDER_RE, (_m, ref: string) => {
+      const t = paramText(params[ref])
+      if (t === null) missing = true
+      return t ?? ""
+    })
+    if (!missing) out[name] = text
+  }
+  return out
 }
 
 function checkOperation(op: Operation, ctx: Ctx, at: (...rest: Path) => Path): void {

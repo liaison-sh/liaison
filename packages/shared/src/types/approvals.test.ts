@@ -77,6 +77,25 @@ describe("approvalSummarySchema", () => {
       approvalSummarySchema.safeParse({ kind: "x", title: "x", lines: ["a".repeat(501)] }).success,
     ).toBe(false)
   })
+
+  it("a full-text card holds a drafted text whole, up to 8000 characters and 16 lines", () => {
+    const kind = "api-connector.write.full"
+    const draft = "a".repeat(8000)
+    expect(approvalSummarySchema.safeParse({ kind, title: "x", lines: [draft] }).success).toBe(true)
+    expect(
+      approvalSummarySchema.safeParse({ kind, title: "x", lines: [`${draft}a`] }).success,
+    ).toBe(false)
+    expect(truncateApprovalSummary({ kind, title: "x", lines: [draft] }).lines[0]).toBe(draft)
+    const cut = truncateApprovalSummary({ kind, title: "x", lines: [`${draft}bc`] }).lines[0]
+    expect(cut).toHaveLength(8000)
+    expect(cut?.endsWith("…")).toBe(true)
+    const many = Array.from({ length: 20 }, (_, i) => `line ${i}`)
+    expect(truncateApprovalSummary({ kind, title: "x", lines: many }).lines).toHaveLength(16)
+    // Any other kind keeps its 500-character line.
+    expect(
+      truncateApprovalSummary({ kind: "api-connector.write", title: "x", lines: [draft] }).lines[0],
+    ).toHaveLength(500)
+  })
 })
 
 describe("ApprovalRequestSummary shape", () => {

@@ -415,6 +415,156 @@ describe("api-connector tools: connector_write is pinned to the adapter it was a
   })
 })
 
+describe("api-connector tools: a write whose adapter declares its approval card", () => {
+  const THREAD = "0b1c2d3e-4f50-4617-8899-aabbccddeeff"
+  const DRAFT = `Thanks for the report.\n\n${"The fix ships in the next update. ".repeat(30)}Bye.`
+  const FORUM = (() => {
+    const r = validateAdapter({
+      id: "forum",
+      name: "Fixture forum",
+      version: "1",
+      baseUrl: "https://api.forum.example.com/api",
+      linkHosts: ["forum.example.com"],
+      auth: { type: "bearer" },
+      operations: [
+        {
+          name: "get_thread",
+          description: "One thread and its posts.",
+          kind: "read",
+          method: "GET",
+          path: "/threads/{threadId}",
+          params: {
+            type: "object",
+            properties: { threadId: { type: "string", format: "uuid" } },
+            required: ["threadId"],
+          },
+          items: "/data/posts",
+          fields: ["id", "body", "authorName", "createdAt"],
+        },
+        {
+          name: "reply",
+          description: "Reply in a forum thread as the brand. Read the thread first.",
+          kind: "write",
+          method: "POST",
+          path: "/threads/{threadId}/posts",
+          params: {
+            type: "object",
+            properties: {
+              threadId: { type: "string", format: "uuid" },
+              text: { type: "string", minLength: 1, maxLength: 8000 },
+            },
+            required: ["threadId", "text"],
+          },
+          body: { body: "{text}" },
+          items: "/data",
+          fields: ["id"],
+          approval: {
+            link: "https://forum.example.com/community?thread={threadId}",
+            linkLabel: "Open the thread",
+            context: {
+              read: "get_thread",
+              params: { threadId: "{threadId}" },
+              label: "Thread so far",
+              maxItems: 2,
+            },
+          },
+        },
+      ],
+    })
+    if (!r.ok) throw new Error(JSON.stringify(r.issues))
+    return r.adapter
+  })()
+  let threadAnswer: () => Response
+
+  beforeAll(async () => {
+    await upsertAdapterRow(testApiConn(ORG), "forum", FORUM, USER)
+    await withPrivilegedDb(ORG, "connector-tools-test", (tx) =>
+      createCredentialConnection(tx, ORG, USER, "api-connector", "api", {
+        identifier: "forum",
+        credentials: { token: TOKEN },
+        ownerType: "org",
+      }),
+    )
+  })
+  afterAll(async () => {
+    await invalidateConnectionCaches(testApiConn(ORG), "forum")
+  })
+  beforeEach(() => {
+    threadAnswer = () =>
+      Response.json({
+        data: {
+          posts: [
+            { id: "p1", body: "First post", authorName: "Ana", createdAt: "2026-11-01" },
+            {
+              id: "p2",
+              body: "My pads stopped working",
+              authorName: "Ben",
+              createdAt: "2026-11-02",
+            },
+            { id: "p3", body: "Same here", authorName: "Cleo", createdAt: "2026-11-03" },
+          ],
+        },
+      })
+    OutboundFetchTestAccess.setFetch((async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      seen.push({
+        method: init?.method ?? "GET",
+        url: String(input),
+        body: typeof init?.body === "string" ? init.body : null,
+      })
+      return (init?.method ?? "GET") === "GET"
+        ? threadAnswer()
+        : Response.json({ data: { id: "r1" } })
+    }) as typeof fetch)
+  })
+
+  async function staged(): Promise<{ id: string; summary: Record<string, unknown> }> {
+    const res = await run("connector_write", {
+      connection: "forum",
+      operation: "reply",
+      params: { threadId: THREAD, text: DRAFT },
+    })
+    const id = (res as { blocked?: { approvalRequestId?: string } }).blocked?.approvalRequestId
+    if (!id) throw new Error(`not staged: ${JSON.stringify(res)}`)
+    const [row] = await sql<Array<{ summary: Record<string, unknown>; status: string }>>`
+      SELECT summary, status FROM kernel.approval_requests WHERE id = ${id}`
+    expect(row?.status).toBe("pending")
+    return { id, summary: row?.summary ?? {} }
+  }
+
+  it("the card quotes the thread read at staging, shows the draft whole and links the thread; nothing is posted", async () => {
+    const { summary } = await staged()
+    // Only the context read ran: a GET of the thread, never the write.
+    expect(seen.map((s) => [s.method, s.url])).toEqual([
+      ["GET", `https://api.forum.example.com/api/threads/${THREAD}`],
+    ])
+    expect(summary.kind).toBe("api-connector.write.full")
+    expect(summary.title).toBe("Reply in a forum thread as the brand")
+    const lines = summary.lines as string[]
+    expect(lines[0]).toBe(`POST api.forum.example.com/api/threads/${THREAD}/posts`)
+    expect(lines[1]).toBe("Thread so far (the last 2 of 3):")
+    expect(lines[2]).toContain("Ben (2026-11-02): My pads stopped working")
+    expect(lines[2]).toStartWith('<external-content source="untrusted">')
+    expect(lines[3]).toContain("Cleo (2026-11-03): Same here")
+    expect(lines).toContain(`text: ${DRAFT}`)
+    expect(summary.links).toEqual([
+      { label: "Open the thread", url: `https://forum.example.com/community?thread=${THREAD}` },
+    ])
+  })
+
+  it("a context read that fails still stages the write, and the card says the preview could not be loaded", async () => {
+    threadAnswer = () => new Response("boom", { status: 500 })
+    const { summary } = await staged()
+    expect(seen.every((s) => s.method === "GET")).toBe(true)
+    const lines = summary.lines as string[]
+    expect(lines).toContain("Thread so far: the preview could not be loaded.")
+    expect(lines).toContain(`text: ${DRAFT}`)
+    expect((summary.links as { url: string }[])[0]?.url).toContain(THREAD)
+  })
+})
+
 describe("api-connector: a write's record_id", () => {
   it("is the first item's id when it is a plain id, else null with the reason", () => {
     expect(writeRecordId([{ id: "con_42", name: "x" }])).toEqual({ record_id: "con_42" })

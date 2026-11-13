@@ -27,9 +27,12 @@
 import {
   type Adapter,
   type AdapterIssue,
+  APPROVAL_CONTEXT_ITEMS_DEFAULT,
   type Operation,
   operationSummaries,
   ROLE_REGISTRY,
+  renderApprovalContextParams,
+  renderApprovalLink,
 } from "@liaison/api-connector-core"
 import type { ConnectionStatus, ConnectionSummary } from "@liaison/api-connector-core/contract"
 import { wrapExternalContent } from "~/lib/external-content"
@@ -230,6 +233,49 @@ type ApiBridgeContext = Pick<
 >
 
 /** The public summary of one connection (no credential, ever). */
+/**
+ * What a write's approval card shows besides its request, pinned at staging
+ * from the operation's `approval` block (null when it declares none): its
+ * description, the link to the target record, rendered from the params, and
+ * the read the kernel runs before the summary (the manifest's
+ * `summarizerContext` maps `approval.context` onto `connector_read`), so the
+ * card quotes the record's current content. Display only: the write's own
+ * request is the `target` pinned next to it.
+ */
+export interface WriteApprovalPin {
+  description: string
+  link?: { label: string; url: string }
+  context?: {
+    operation: string
+    params: Record<string, unknown>
+    label: string
+    maxItems: number
+  }
+}
+
+export function writeApprovalPin(
+  operation: Operation,
+  params: Record<string, unknown>,
+): WriteApprovalPin | null {
+  const approval = operation.approval
+  if (!approval) return null
+  const url = renderApprovalLink(operation, params)
+  return {
+    description: operation.description,
+    ...(url ? { link: { label: approval.linkLabel ?? "Open the record", url } } : {}),
+    ...(approval.context
+      ? {
+          context: {
+            operation: approval.context.read,
+            params: renderApprovalContextParams(operation, params),
+            label: approval.context.label ?? "Current content",
+            maxItems: approval.context.maxItems ?? APPROVAL_CONTEXT_ITEMS_DEFAULT,
+          },
+        }
+      : {}),
+  }
+}
+
 export function summarizeConnection(
   identifier: string,
   adapter: Adapter,
@@ -447,6 +493,7 @@ export function createApiConnectionMethods(
         )
       }
       let target: ReturnType<typeof writeTarget>
+      let approval: WriteApprovalPin | null
       try {
         const { row, operation } = await resolveConnectorOperation(
           conn,
@@ -454,7 +501,9 @@ export function createApiConnectionMethods(
           p.operation,
           "write",
         )
-        target = writeTarget(row.adapter, operation, isRecord(p.params) ? p.params : {})
+        const params = isRecord(p.params) ? p.params : {}
+        target = writeTarget(row.adapter, operation, params)
+        approval = writeApprovalPin(operation, params)
       } catch (err) {
         if (err instanceof ApiConnectorError) {
           const shaped = withParamsShape(err, p.connection, p.operation, p.params)
@@ -466,7 +515,10 @@ export function createApiConnectionMethods(
       if (!credentials) {
         return refuse("not_configured", `The connection "${p.connection}" has no credentials yet.`)
       }
-      return JSON.stringify({ ok: true, pinnedParams: { target } })
+      return JSON.stringify({
+        ok: true,
+        pinnedParams: { target, ...(approval ? { approval } : {}) },
+      })
     },
     api_read: async (paramsJson?: unknown): Promise<string> => call(paramsJson, "read"),
     api_write: async (paramsJson?: unknown): Promise<string> => call(paramsJson, "write"),

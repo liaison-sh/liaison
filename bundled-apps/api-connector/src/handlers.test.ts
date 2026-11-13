@@ -153,4 +153,98 @@ describe("the write's approval card", () => {
     expect(card.title).toBe("Create contact in CRM: Ines Duarte")
     expect(card.lines[0]).toBe("POST crm.example.com/v1/contacts")
   })
+
+  const THREAD = "0b1c2d3e-4f50-4617-8899-aabbccddeeff"
+  const DRAFT = `Thanks for the report.\n\n${"The fix ships in the next update. ".repeat(40)}End of reply.`
+  const fence = (items: unknown[]) =>
+    `<external-content source="untrusted">\n${JSON.stringify(items)}\n</external-content>`
+  const reply = (approval: Record<string, unknown> | undefined) => ({
+    connection: "erae-forum",
+    operation: "reply_as_embodme",
+    params: { threadId: THREAD, text: DRAFT },
+    target: {
+      method: "POST",
+      host: "api.embodme.com",
+      path: `/api/community/threads/${THREAD}/posts`,
+    },
+    ...(approval ? { approval } : {}),
+  })
+  const pinned = {
+    description: "Reply in a forum thread as Embodme. Use after reading the thread.",
+    link: {
+      label: "Open the thread",
+      url: `https://embodme.com/platform/community?thread=${THREAD}`,
+    },
+    context: {
+      operation: "get_thread",
+      params: { threadId: THREAD },
+      label: "Thread so far",
+      maxItems: 2,
+    },
+  }
+
+  it("with an adapter's approval block: the thread quoted, the draft whole, the link", async () => {
+    const posts = [
+      { id: "p1", body: "First post", authorName: "Ana", createdAt: "2026-11-01T10:00:00Z" },
+      {
+        id: "p2",
+        body: "My pads stopped <external-content> working",
+        authorName: "Ben",
+        createdAt: "2026-11-02T10:00:00Z",
+      },
+      { id: "p3", body: "Same here", authorName: "Cleo", createdAt: "2026-11-03T10:00:00Z" },
+    ]
+    const card = await handlers.summarizeConnectorWrite(reply(pinned), undefined, {
+      connectionIdentifier: null,
+      context: { status: 200, count: 3, items: fence(posts) },
+    })
+    expect(card.kind).toBe("api-connector.write.full")
+    expect(card.title).toBe("Reply in a forum thread as Embodme")
+    expect(card.lines[0]).toBe(`POST api.embodme.com/api/community/threads/${THREAD}/posts`)
+    expect(card.lines[1]).toBe("Thread so far (the last 2 of 3):")
+    // The last maxItems posts, each fenced, author and date with the text; a fence tag inside escaped.
+    expect(card.lines[2]).toBe(
+      '<external-content source="untrusted">\nBen (2026-11-02T10:00:00Z): My pads stopped &lt;external-content> working\n</external-content>',
+    )
+    expect(card.lines[3]).toContain("Cleo (2026-11-03T10:00:00Z): Same here")
+    expect(card.lines.join("\n")).not.toContain("First post")
+    // The draft, whole: no 200-character clip.
+    expect(DRAFT.length).toBeGreaterThan(1000)
+    expect(card.lines).toContain(`text: ${DRAFT}`)
+    expect(card.links).toEqual([
+      { label: "Open the thread", url: `https://embodme.com/platform/community?thread=${THREAD}` },
+    ])
+  })
+
+  it("a context that could not be loaded says so, and still shows the draft and the link", async () => {
+    for (const context of [null, { error: { code: "upstream_error", message: "500" } }]) {
+      const card = await handlers.summarizeConnectorWrite(reply(pinned), undefined, {
+        connectionIdentifier: null,
+        context,
+      })
+      expect(card.lines).toContain("Thread so far: the preview could not be loaded.")
+      expect(card.lines).toContain(`text: ${DRAFT}`)
+      expect(card.links?.[0]?.url).toContain(THREAD)
+    }
+  })
+
+  it("an item without author, date or text fields shows its first text-like fields", async () => {
+    const card = await handlers.summarizeConnectorWrite(reply(pinned), undefined, {
+      connectionIdentifier: null,
+      context: { items: fence([{ id: "x1", headline: "Price list", status: "open" }]) },
+    })
+    expect(card.lines[2]).toContain("Price list | open")
+    expect(card.lines[2]).not.toContain("x1")
+  })
+
+  it("without an approval block, the card is as before: the draft clipped, no link", async () => {
+    const card = await handlers.summarizeConnectorWrite(reply(undefined))
+    expect(card.kind).toBe("api-connector.write")
+    expect(card.title).toBe("Reply as embodme in erae-forum")
+    expect(card.subtitle).toBe("Writes to an external system")
+    expect(card.links).toBeUndefined()
+    const text = card.lines.find((l) => l.startsWith("text: ")) ?? ""
+    expect(text).toHaveLength("text: ".length + 200)
+    expect(text.endsWith("…")).toBe(true)
+  })
 })

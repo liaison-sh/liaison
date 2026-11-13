@@ -224,7 +224,14 @@ Once a project uses time and budgets, ask the agent who is free ("who has room n
 - **Company days off** (a day, a range or an ISO week, optionally every year) are set in **Settings > Projects > Time and budgets**, or by asking the agent, with `projects:settings:admin`. The answer states the exact dates. One person's own days are away days, set from their profile or with the agent.
 - **Days per week.** A person working part time sets their days per week (1 to 5) by asking the agent; a lead with `projects:capacity:write` or an admin with `kernel:users:admin` can set it for them, and the person gets a line on Home saying who did. No weekday or reason is stored.
 - **Hours in a day** (7 by default) are set in the same settings section.
-- **Read a shared calendar** (none by default) turns the whole-day events of the chosen calendar into company days off. The section's settings keys are `hoursPerDay` and `daysOffCalendarId`, and a day off's **Every year** switch is `yearly`; the `time_settings_set` and `days_off_set` tools take the same names.
+- **Read a shared calendar** (none by default) turns the whole-day events of the chosen calendar into company days off, once a day, for the next twelve months. Part-day events, out of office, focus time and birthdays make no day off, a day you typed on the same date wins, and an event removed from the calendar removes its day. Nothing else is read: no one's own calendar and no country's holidays. If the calendar can no longer be read (disconnected, unticked, or its owner left), its days stay as typed days, the setting clears, and settings admins get one line on Home asking for a new calendar. The section's settings keys are `hoursPerDay` and `daysOffCalendarId`, and a day off's **Every year** switch is `yearly`; the `time_settings_set` and `days_off_set` tools take the same names.
+
+## Lines on Home
+
+The time and budgets lines sit together on Home under **Time and budgets**, quietly: no count and no urgent colour. Nothing ever reminds anyone to enter time, and a missing entry never raises anything.
+
+- **More planned than fits.** When someone has more than 3 h more planned than fits in the current week, the leads of the projects holding that work (the project's owner and the people working on it who hold `projects:capacity:read`) get one line, never the person. It comes once per person and week; **Not now** hides it for the rest of the week, and the week's end retires it.
+- **Month close.** On the last working day before a month's last day, the person who bills a project (its biller, else its owner) gets one line for each daily, hourly or retainer project with nothing reconciled for that month yet. It shows that day only and does not come back if missed.
 
 ## Reconcile a project's month
 

@@ -15,13 +15,14 @@ import {
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
-import { extractRows, type RlsClient } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { awayDays } from "~/modules/users/away"
 import { ProjectsServiceError } from "./statuses"
 import { hoursPerDayMinutes, orgTimezone } from "./time-plan"
 import { todayIn } from "./took"
 
-type Tx = RlsClient
+/** The person's request transaction, or the Home lines' privileged one. */
+type Tx = RlsClient | PrivilegedDb
 
 const WEEK_RE = /^(\d{4})-W(\d{2})$/
 const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true })
@@ -30,6 +31,8 @@ export interface CapacityTask {
   key: string | null
   title: string
   minutes: number
+  /** Only when asked for (`withProjects`): the Home lines find the project's leads with it. */
+  projectId?: string
 }
 
 export interface CapacityPerson {
@@ -152,6 +155,8 @@ export async function getCapacity(args: {
   week?: string
   taskId?: string
   now?: Date
+  /** Internal callers only: each task also names its project. Never set from a tool. */
+  withProjects?: boolean
 }): Promise<CapacityResult> {
   const { tx, orgId } = args
   const tz = await orgTimezone(tx, orgId)
@@ -258,7 +263,12 @@ export async function getCapacity(args: {
     if (!mine.some(ahead)) continue
     const tasks = live
       .filter((r) => r.assignee_id === userId)
-      .map((r) => ({ key: r.key, title: r.title, minutes: inWeek(r) }))
+      .map((r) => ({
+        key: r.key,
+        title: r.title,
+        minutes: inWeek(r),
+        ...(args.withProjects ? { projectId: r.project_id } : {}),
+      }))
       .filter((t) => t.minutes > 0)
     const planned = Math.round(tasks.reduce((s, t) => s + t.minutes, 0))
     const available = availableOf(userId)

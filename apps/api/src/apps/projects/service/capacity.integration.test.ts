@@ -59,7 +59,7 @@ function actorOf(userId: string, scopes: string[] = ["*"]): UserContext {
 async function call<T = Record<string, any>>(
   method: string,
   input: unknown,
-  opts: { userId?: string; scopes?: string[] } = {},
+  opts: { userId?: string; scopes?: string[]; origin?: "human-ui" | "in-app-agent" } = {},
 ): Promise<T> {
   const a = actorOf(opts.userId ?? owner.userId, opts.scopes)
   const out = await withRlsContext(a, async (tx) => {
@@ -72,7 +72,7 @@ async function call<T = Record<string, any>>(
       a.scopes,
       "user",
       undefined,
-      { origin: "human-ui" } as never,
+      { origin: opts.origin ?? "human-ui" } as never,
     )
     return JSON.parse(await bridge[method](JSON.stringify(input))) as T
   })
@@ -501,6 +501,65 @@ describe("days per week", () => {
     expect(rows.map((r) => r.summary)).toEqual([
       "Paul Lead set your days per week to 2. Back to 5 days: ask your agent, or set it in your Projects time settings",
     ])
+  })
+})
+
+describe("an agent acting for someone", () => {
+  it("an agent may set days off and days per week exactly as far as the person it acts for", async () => {
+    const asAgent = { origin: "in-app-agent" as const }
+    const member = await newPerson("Mina Member")
+    const colleague = await newPerson("Cole Colleague")
+    const lead = await newPerson("Leo Lead")
+    // Company days: only for a settings admin.
+    const memberDay = await call(
+      "projects_daysOffSet",
+      { on: day(4) },
+      { ...asAgent, userId: member, scopes: MEMBER_SCOPES },
+    )
+    expect(memberDay.error?.code).toBe("not_allowed")
+    const adminDay = await call(
+      "projects_daysOffSet",
+      { on: day(4) },
+      { ...asAgent, scopes: ["projects:settings:admin", "projects:projects:read"] },
+    )
+    expect(adminDay.created).toBe(true)
+    const [{ via } = { via: "" }] = extractRows<{ via: string }>(
+      await db.execute(drizzleSql`
+        SELECT created_via AS via FROM app_projects.days_off WHERE id = ${adminDay.id}::uuid`),
+    )
+    expect(via).toBe("agent")
+    await call("projects_daysOffRemove", { on: day(4) })
+    // One person's days per week: their own, or a holder of capacity write or user admin.
+    const own = await call(
+      "projects_timeSettingsSet",
+      { daysPerWeek: 4 },
+      { ...asAgent, userId: member, scopes: MEMBER_SCOPES },
+    )
+    expect(own.person).toEqual({ userId: member, daysPerWeek: 4 })
+    const forOther = await call(
+      "projects_timeSettingsSet",
+      { userId: colleague, daysPerWeek: 3 },
+      { ...asAgent, userId: member, scopes: MEMBER_SCOPES },
+    )
+    expect(forOther.error?.code).toBe("not_allowed")
+    const byLead = await call(
+      "projects_timeSettingsSet",
+      { userId: colleague, daysPerWeek: 3 },
+      { ...asAgent, userId: lead, scopes: LEAD_SCOPES },
+    )
+    expect(byLead.person).toEqual({ userId: colleague, daysPerWeek: 3 })
+    const byAdmin = await call(
+      "projects_timeSettingsSet",
+      { userId: colleague, daysPerWeek: 5 },
+      { ...asAgent, scopes: ["kernel:users:admin", "projects:projects:read"] },
+    )
+    expect(byAdmin.person).toEqual({ userId: colleague, daysPerWeek: 5 })
+    const hours = await call(
+      "projects_timeSettingsSet",
+      { hoursPerDay: 8 },
+      { ...asAgent, userId: lead, scopes: LEAD_SCOPES },
+    )
+    expect(hours.error?.code).toBe("not_allowed")
   })
 })
 

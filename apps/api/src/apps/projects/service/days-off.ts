@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { daysOff } from "~/db/schema/app_projects"
 import { hasScope } from "~/modules/permissions/permissions"
+import { scheduleCapacityLines } from "./home-lines"
 import { ProjectsServiceError } from "./statuses"
 import { orgTimezone } from "./time-plan"
 import { todayIn } from "./took"
@@ -144,6 +145,8 @@ export async function setDaysOff(args: {
     id = row.id
     created = true
   }
+  // A day off this week can put someone over: the leads' line follows after the commit.
+  if (created) scheduleCapacityLines(orgId)
   const span = form.from === form.to ? form.days[0] : `${form.days[0]} to ${form.days.at(-1)}`
   return {
     id,

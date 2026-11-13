@@ -8,7 +8,7 @@
 import { formatDuration, parseDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
-import { extractRows, type RlsClient } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { hasScope } from "~/modules/permissions/permissions"
 import { assertPlanningOn, orgUsesTimeBudgets, type PlanningProject } from "./planning"
 import { ProjectsServiceError } from "./statuses"
@@ -107,7 +107,7 @@ export function requirePlanning(
 }
 
 /** The org's hours in a day, in minutes, at this moment (default 7 h). */
-export async function hoursPerDayMinutes(tx: Tx, orgId: string): Promise<number> {
+export async function hoursPerDayMinutes(tx: Tx | PrivilegedDb, orgId: string): Promise<number> {
   const rows = extractRows<{ m: number }>(
     await tx.execute(drizzleSql`
       SELECT hours_per_day_minutes AS m FROM ${projectsRel("time_settings")}
@@ -121,7 +121,7 @@ export async function hoursPerDayMinutes(tx: Tx, orgId: string): Promise<number>
  * not read `kernel.organizations`, so the zone comes from the one org-zone reader (cached a
  * minute); a privileged caller's own read still answers first.
  */
-export async function orgTimezone(tx: Tx, orgId: string): Promise<string> {
+export async function orgTimezone(tx: Tx | PrivilegedDb, orgId: string): Promise<string> {
   const rows = extractRows<{ tz: string | null }>(
     await tx.execute(drizzleSql`
       SELECT timezone AS tz FROM ${kernelRel("organizations")} WHERE id = ${orgId}::uuid LIMIT 1`),

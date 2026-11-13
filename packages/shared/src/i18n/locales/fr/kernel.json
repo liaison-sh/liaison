@@ -1450,6 +1450,7 @@
   "homeGroupOrders": "Commandes",
   "homeGroupSupport": "Assistance",
   "homeGroupTasks": "Tâches",
+  "homeGroupTime": "Temps et budgets",
   "homeGroupTeam": "Équipe",
   "homeKind": {
     "issuer_switched": {
@@ -1755,6 +1756,18 @@
     "dated_on": {
       "one": "projet qui utilise désormais les heures datées",
       "other": "projets qui utilisent désormais les heures datées"
+    },
+    "capacity_over": {
+      "one": "personne avec plus de travail prévu que de temps",
+      "other": "personnes avec plus de travail prévu que de temps"
+    },
+    "month_close": {
+      "one": "projet à rapprocher ce mois-ci",
+      "other": "projets à rapprocher ce mois-ci"
+    },
+    "calendar_ended": {
+      "one": "calendrier partagé des jours non travaillés à choisir de nouveau",
+      "other": "calendriers partagés des jours non travaillés à choisir de nouveau"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",

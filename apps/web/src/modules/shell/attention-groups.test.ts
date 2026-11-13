@@ -527,3 +527,31 @@ describe("the time and budgets Home lines", () => {
     )
   })
 })
+
+describe("the time and budgets section", () => {
+  it("time lines gather in their own quiet section, apart from tasks, and read their kinds in both languages", () => {
+    const feed = splitFeed([
+      item({ id: "a", app: "projects", kind: "task_overdue", urgency: 60 }),
+      item({
+        id: "b",
+        app: "projects",
+        kind: "projects:time_budgets.capacity_over" as AttentionItem["kind"],
+        urgency: 20,
+      }),
+      item({
+        id: "c",
+        app: "projects",
+        kind: "projects:time_budgets.month_close" as AttentionItem["kind"],
+        urgency: 20,
+      }),
+    ])
+    const time = feed.groups.find((g) => g.key === "projects::time")
+    expect(time?.app).toBe("projects")
+    expect(time?.items.map((i) => i.id)).toEqual(["b", "c"])
+    expect(time?.labelKey).toBe("kernel.homeGroupTime")
+    expect(feed.groups.find((g) => g.key === "projects")?.items.map((i) => i.id)).toEqual(["a"])
+    expect(feed.now).toEqual([])
+    expect((enKernel as Record<string, unknown>).homeGroupTime).toBe("Time and budgets")
+    expect((frKernel as Record<string, unknown>).homeGroupTime).toBe("Temps et budgets")
+  })
+})

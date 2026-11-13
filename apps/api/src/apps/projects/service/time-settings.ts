@@ -4,10 +4,10 @@
 // the rule of `set_away`: the person themselves, or a holder of `kernel:users:admin` or
 // `projects:capacity:write`; someone else's change gives the person a Home line naming who.
 import { formatDuration, parseDuration } from "@liaison/shared"
-import { and, sql as drizzleSql, eq } from "drizzle-orm"
+import { and, sql as drizzleSql, eq, isNotNull } from "drizzle-orm"
 import { kernelRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
-import { personCapacity, timeSettings } from "~/db/schema/app_projects"
+import { daysOff, personCapacity, timeSettings } from "~/db/schema/app_projects"
 import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
 import { mayActForOthers } from "~/modules/users/away"
@@ -164,6 +164,11 @@ export async function setTimeSettings(args: {
       .onConflictDoUpdate({ target: timeSettings.orgId, set: values })
     if (hpdChanges) changed.push(`hours in a day are ${formatDuration(nextHpd, "h")}`)
     if (calendarChanges) {
+      // The days read from the calendar left behind stay, as ordinary typed days.
+      await tx
+        .update(daysOff)
+        .set({ sourceEventId: null, updatedAt: new Date() })
+        .where(and(eq(daysOff.orgId, orgId), isNotNull(daysOff.sourceEventId)))
       changed.push(
         input.daysOffCalendarId
           ? "company days off will also be read from the chosen calendar, within a day"

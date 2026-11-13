@@ -104,6 +104,16 @@ export interface SplitFeed {
   total: number
 }
 
+/** The time and budgets lines (month close, capacity, first project on, ...) get their own
+ *  quiet section under Projects instead of mixing with tasks. */
+export const TIME_GROUP_KEY = "projects::time"
+const TIME_GROUP_LABEL_KEY = "kernel.homeGroupTime"
+const TIME_KIND_PREFIX = "projects:time_budgets."
+
+function isTimeLine(item: AttentionItem): boolean {
+  return item.app === "projects" && item.kind.startsWith(TIME_KIND_PREFIX)
+}
+
 export function isNowItem(item: AttentionItem): boolean {
   return NOW_KINDS.has(item.kind) || item.urgency >= NOW_URGENCY
 }
@@ -228,7 +238,12 @@ export function splitFeed(items: AttentionItem[], opts: SplitFeedOptions = {}): 
     if (isCardedElsewhereInActivity(item)) continue
     // Informational agent notifications get their own section instead of
     // blending into the app's work queue — they are FYIs, not work items.
-    const key = item.kind === "agent_notification" ? `${item.app}::notifications` : item.app
+    const key =
+      item.kind === "agent_notification"
+        ? `${item.app}::notifications`
+        : isTimeLine(item)
+          ? TIME_GROUP_KEY
+          : item.app
     const bucket = byKey.get(key)
     if (bucket) bucket.push(item)
     else byKey.set(key, [item])
@@ -237,7 +252,8 @@ export function splitFeed(items: AttentionItem[], opts: SplitFeedOptions = {}): 
   const groups: AttentionGroup[] = []
   for (const [key, groupItems] of byKey.entries()) {
     const isNotifications = key.endsWith("::notifications")
-    const app = isNotifications ? key.slice(0, key.indexOf("::")) : key
+    const isTime = key === TIME_GROUP_KEY
+    const app = isNotifications || isTime ? key.slice(0, key.indexOf("::")) : key
     const counts = new Map<string, number>()
     let maxUrgency = 0
     let markable = true
@@ -256,8 +272,16 @@ export function splitFeed(items: AttentionItem[], opts: SplitFeedOptions = {}): 
       // labelKey where the group renders. Reading the reader's language here
       // made every memo built on these groups (Home's sections) rebuild them
       // as new objects on a language switch, and `For` mounted each one again.
-      label: isNotifications ? englishT("kernel.shellUi.notifications") : groupLabelForApp(app),
-      labelKey: isNotifications ? "kernel.homeGroupNotifications" : groupLabelKeyForApp(app),
+      label: isNotifications
+        ? englishT("kernel.shellUi.notifications")
+        : isTime
+          ? englishT(TIME_GROUP_LABEL_KEY)
+          : groupLabelForApp(app),
+      labelKey: isNotifications
+        ? "kernel.homeGroupNotifications"
+        : isTime
+          ? TIME_GROUP_LABEL_KEY
+          : groupLabelKeyForApp(app),
       items: groupItems,
       kindCounts,
       maxUrgency,

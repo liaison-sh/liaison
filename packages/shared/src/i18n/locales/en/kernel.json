@@ -1453,6 +1453,7 @@
   "homeGroupOrders": "Orders",
   "homeGroupSupport": "Support",
   "homeGroupTasks": "Tasks",
+  "homeGroupTime": "Time and budgets",
   "homeGroupTeam": "Team",
   "homeKind": {
     "issuer_switched": {
@@ -1758,6 +1759,18 @@
     "dated_on": {
       "one": "project now using dated hours",
       "other": "projects now using dated hours"
+    },
+    "capacity_over": {
+      "one": "person with more planned than fits",
+      "other": "people with more planned than fits"
+    },
+    "month_close": {
+      "one": "project to reconcile this month",
+      "other": "projects to reconcile this month"
+    },
+    "calendar_ended": {
+      "one": "shared days-off calendar to choose again",
+      "other": "shared days-off calendars to choose again"
     }
   },
   "homeMarkAllRead": "Mark all read",

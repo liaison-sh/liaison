@@ -6755,7 +6755,9 @@
       "projectForbidden": "Vous ne pouvez pas modifier les tâches de {{name}}. Demandez à un admin le droit de modifier les tâches.",
       "deleteRowBacked": "Chaque ligne est une tâche de {{name}}. Pour en retirer une, archivez la tâche dans Projets.",
       "openLink": "Ouvrir {{label}}",
-      "addTask": "Ajouter une tâche"
+      "addTask": "Ajouter une tâche",
+      "recordChanged": "Cette tâche a changé entre-temps. Rechargez et réessayez.",
+      "recordLastChange": "Tâche modifiée {{when}}"
     }
   },
   "appBuilder": {

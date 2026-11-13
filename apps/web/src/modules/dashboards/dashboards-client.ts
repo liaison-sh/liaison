@@ -1341,6 +1341,9 @@ export interface TableRow {
   id: string
   cells: TableCells
   version: number
+  /** A backed table's row: its record's version, sent back as `ifRecordVersion` to change a
+   *  read-through cell (the server refuses the change when the record moved since). */
+  recordVersion?: string
   updatedAt: string
   updatedBy: TableActor
 }
@@ -1358,7 +1361,14 @@ export interface TableChange {
 
 export type TableRowOp =
   | { op: "add"; cells: TableCells }
-  | { op: "update"; id: string; ifVersion: number; cells: TableCells }
+  | {
+      op: "update"
+      id: string
+      ifVersion: number
+      cells: TableCells
+      /** A backed table: the row's `recordVersion` (needed to change a read-through cell). */
+      ifRecordVersion?: string
+    }
   | { op: "delete"; id: string; ifVersion: number }
 
 export type TableRowResult = TableRow | { id: string; deleted: true }

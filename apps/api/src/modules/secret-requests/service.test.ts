@@ -243,7 +243,7 @@ describe("secret requests: completion is derived from the store", () => {
     expect(done.hint).toBe("...abcdefg")
   })
 
-  it("api_connector_credentials: saved after the adapter's credentials were stored", async () => {
+  it("an API connection's credentials (connection_credentials): saved after they were stored", async () => {
     const adapter = {
       id: "crm",
       name: "Example CRM",
@@ -267,7 +267,12 @@ describe("secret requests: completion is derived from the store", () => {
     }
     const put = await seedAdapter(orgId, "crm", adapter)
     expect(put.status).toBeLessThan(300)
-    const row = await ask({ kind: "api_connector_credentials", identifier: "crm" })
+    const row = await ask({
+      kind: "connection_credentials",
+      app: "api-connector",
+      connection: "api",
+      identifier: "crm",
+    })
     await expectNothingStored(row.id)
     const creds = await req("/api/connections/api-connector/api/credentials", {
       method: "POST",
@@ -310,7 +315,12 @@ describe("secret requests: completion is derived from the store", () => {
 
   it("API connector credentials already stored when asked are not a completion", async () => {
     // The connector "crm" got its credentials in an earlier test.
-    const row = await ask({ kind: "api_connector_credentials", identifier: "crm" })
+    const row = await ask({
+      kind: "connection_credentials",
+      app: "api-connector",
+      connection: "api",
+      identifier: "crm",
+    })
     await expectNothingStored(row.id)
     await req("/api/connections/api-connector/api/credentials", {
       method: "POST",

@@ -51,7 +51,7 @@ liaison config apply --config <path> [--format json|env] [--dry-run] [--only <pa
 liaison config pull --config <path> [--out <path>] [--only <path>]...
 liaison config verify --config <path> [--app <name>]
 liaison api-connector validate <adapter file>
-liaison api-connector test <identifier> <operation> [--param name=value ...] [--org <slug>]
+liaison api-connector test <identifier> <operation> [--param name=value ...] [--org <slug>] [--app <name>]
 liaison app status [name]
 liaison app rollback <name>
 liaison app run-job <app> <job> [--org <slug|id>] [--params-json <json>] [--wait] [--timeout <seconds>]
@@ -111,7 +111,7 @@ liaison erase-user <userId>
 - **`api-connector test`**: runs one page of a READ operation of a stored
   connection and prints `{ok, status, items, truncated, ms}` (the operation's
   fields only), or `{ok: false, code, message}` with exit `1` on a connector
-  error. `--org <slug>` picks the org when there are several. A write operation is refused before any request (`write_not_testable`,
+  error. `--org <slug>` picks the org when there are several; `--app <name>` picks the app when two apps hold a connection of that slug. A write operation is refused before any request (`write_not_testable`,
   exit `1`): writes only ever run through the approval-gated agent tool.
   `--param name=value` repeats; values are typed by the operation's params
   schema (numbers, booleans, comma-separated arrays).

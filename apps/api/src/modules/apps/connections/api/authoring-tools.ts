@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * The agent's adapter writes: `connector_adapter_save` and
- * `connector_adapter_restore`, registered HOST-side for the api-connector app
- * (manifest-descriptor `_registerHostTools`). A manifest tool cannot name the
- * scope that decides its approvals, and the app default (`api-connector:approve`)
- * belongs to the people who decide CRM writes; changing what a connection
- * points at is an administrator's decision, so these declare
- * `approveScope: "api-connector:admin"` and re-check it at execution.
+ * `connector_adapter_restore`, registered HOST-side for every app that declares
+ * an API connection (declarations.ts), under that app's name. A manifest tool
+ * cannot name the scope that decides its approvals, and the app default
+ * (`<app>:approve`) belongs to the people who decide CRM writes; changing what
+ * a connection points at is an administrator's decision, so these declare the
+ * connection's `adminScope` as their `approveScope` and re-check it at execution.
  *
  * Binding (what the person approves is what runs): the preflight validates
  * the document with the server parser, compares it with the stored one and
@@ -28,10 +28,10 @@ import { hasScope } from "~/modules/permissions/permissions"
 import { parseAdapterDocument } from "./adapter-policy"
 import { describeTarget } from "./authoring"
 import { invalidateConnectionCaches } from "./cache"
+import type { ApiConn, ApiConnDecl } from "./declarations"
 import {
   AdapterChangedError,
   type AdapterSavePlan,
-  API_CONNECTOR_APP,
   CredentialsChangedError,
   getAdapterVersion,
   loadUserScopes,
@@ -40,7 +40,18 @@ import {
 } from "./store"
 import { apiConnectorLog } from "./transport"
 
-export const API_CONNECTOR_ADMIN = "api-connector:admin"
+/** The app and API connection a registration of these tools serves, and its admin scope. */
+interface Bound {
+  app: string
+  connection: string
+  adminScope: string
+}
+
+const connOf = (ctx: { orgId: string }, b: Bound): ApiConn => ({
+  orgId: ctx.orgId,
+  app: b.app,
+  connection: b.connection,
+})
 
 const identifierParam = z
   .string()
@@ -184,14 +195,14 @@ function pinsOf(plan: AdapterSavePlan) {
   }
 }
 
-/** Execution-time re-check: the person who approved holds api-connector:admin. */
-async function approverRefusal(ctx: AuthoringCtx): Promise<ToolError | null> {
+/** Execution-time re-check: the person who approved holds the connection's admin scope. */
+async function approverRefusal(ctx: AuthoringCtx, b: Bound): Promise<ToolError | null> {
   const approver = ctx.approverUserId
   if (!approver) return null
-  if (hasScope(API_CONNECTOR_ADMIN, await loadUserScopes(ctx.orgId, approver))) return null
+  if (hasScope(b.adminScope, await loadUserScopes(ctx.orgId, approver))) return null
   return refuse(
     "forbidden",
-    `Saving an API connection's adapter is approved by an API connector admin (${API_CONNECTOR_ADMIN}); the approver does not hold it. Nothing was saved.`,
+    `Saving an API connection's adapter is approved by an admin of the connection (${b.adminScope}); the approver does not hold it. Nothing was saved.`,
     403,
   )
 }
@@ -199,14 +210,16 @@ async function approverRefusal(ctx: AuthoringCtx): Promise<ToolError | null> {
 /** Plan again at execution, refuse what drifted from the approved plan, then write. */
 async function executeSave(
   ctx: AuthoringCtx,
+  b: Bound,
   identifier: string,
   doc: unknown,
   params: SaveParams | RestoreParams,
   extra: Record<string, unknown> = {},
 ): Promise<unknown> {
-  const denied = (await approverRefusal(ctx)) ?? (await demoRefusal(ctx.orgId))
+  const denied = (await approverRefusal(ctx, b)) ?? (await demoRefusal(ctx.orgId))
   if (denied) return denied
-  const plan = await planAdapterSave(ctx.orgId, identifier, doc)
+  const conn = connOf(ctx, b)
+  const plan = await planAdapterSave(conn, identifier, doc)
   const refused = planRefusal(plan, params)
   if (refused) return refused
   if (!plan.ok) return refuse("invalid_adapter", "The adapter is invalid.")
@@ -241,14 +254,11 @@ async function executeSave(
   const warnings = adapterWarnings(plan.adapter)
   const saver = ctx.approverUserId ?? ctx.userId
   try {
-    const { credentialsCleared } = await upsertAdapterRow(
-      ctx.orgId,
-      identifier,
-      plan.adapter,
-      saver,
-      { expectPriorHash: plan.priorHash, expectCredentialsPresent: plan.credentialsPresent },
-    )
-    await invalidateConnectionCaches(ctx.orgId, identifier)
+    const { credentialsCleared } = await upsertAdapterRow(conn, identifier, plan.adapter, saver, {
+      expectPriorHash: plan.priorHash,
+      expectCredentialsPresent: plan.credentialsPresent,
+    })
+    await invalidateConnectionCaches(conn, identifier)
     return {
       saved: true,
       identifier,
@@ -257,7 +267,7 @@ async function executeSave(
       operations: plan.adapter.operations.map((o) => `${o.name} (${o.kind})`),
       credentialsCleared,
       ...extra,
-      ...saveFollowUp(identifier, credentialsCleared || !plan.credentialsPresent, warnings),
+      ...saveFollowUp(b, identifier, credentialsCleared || !plan.credentialsPresent, warnings),
     }
   } catch (err) {
     if (err instanceof AdapterChangedError || err instanceof CredentialsChangedError) {
@@ -277,6 +287,7 @@ async function executeSave(
  * the fence (approvals/required-step.ts); the text fields stay inside it.
  */
 export function saveFollowUp(
+  api: { app: string; connection: string },
   identifier: string,
   needsCredentials: boolean,
   warnings: AdapterIssue[] = [],
@@ -299,35 +310,44 @@ export function saveFollowUp(
   }
   return {
     ...warned,
-    requiredStep: { code: "request_credentials", identifier },
+    requiredStep: {
+      code: "request_credentials",
+      identifier,
+      app: api.app,
+      connection: api.connection,
+    },
     askWith: {
       tool: "kernel__request_secret",
-      params: { kind: "api_connector_credentials", target: { identifier } },
+      params: {
+        kind: "connection_credentials",
+        target: { app: api.app, connection: api.connection, identifier },
+      },
     },
     next: `NOT WORKING YET: the connection has no credentials. Required now: call kernel__request_secret with askWith.params (a card where the person enters them; you never see them). No card exists until that call returns. Once they are saved, test a read operation with connector_adapter_test before saying it works, then carry on (an import's preview, for one).${testFirst}`,
   }
 }
 
-async function savePreflight(params: unknown, ctx: AuthoringCtx): Promise<unknown> {
+async function savePreflight(params: unknown, ctx: AuthoringCtx, b: Bound): Promise<unknown> {
   const p = saveAdapterParams.parse(params)
   const demo = await demoRefusal(ctx.orgId)
   if (demo) return demo
-  const plan = await planAdapterSave(ctx.orgId, p.identifier, documentOf(p.adapter))
+  const plan = await planAdapterSave(connOf(ctx, b), p.identifier, documentOf(p.adapter))
   const refused = planRefusal(plan, p)
   if (refused || !plan.ok) return refused
   return { ok: true, pinnedParams: pinsOf(plan) }
 }
 
-async function saveHandler(params: unknown, ctx: AuthoringCtx): Promise<unknown> {
+async function saveHandler(params: unknown, ctx: AuthoringCtx, b: Bound): Promise<unknown> {
   const p = saveAdapterParams.parse(params)
-  return executeSave(ctx, p.identifier, documentOf(p.adapter), p)
+  return executeSave(ctx, b, p.identifier, documentOf(p.adapter), p)
 }
 
-async function restorePreflight(params: unknown, ctx: AuthoringCtx): Promise<unknown> {
+async function restorePreflight(params: unknown, ctx: AuthoringCtx, b: Bound): Promise<unknown> {
   const p = restoreAdapterParams.parse(params)
   const demo = await demoRefusal(ctx.orgId)
   if (demo) return demo
-  const version = await getAdapterVersion(ctx.orgId, p.identifier, p.versionId)
+  const conn = connOf(ctx, b)
+  const version = await getAdapterVersion(conn, p.identifier, p.versionId)
   if (!version) {
     return refuse(
       "unknown_version",
@@ -335,19 +355,19 @@ async function restorePreflight(params: unknown, ctx: AuthoringCtx): Promise<unk
       404,
     )
   }
-  const plan = await planAdapterSave(ctx.orgId, p.identifier, version.adapter)
+  const plan = await planAdapterSave(conn, p.identifier, version.adapter)
   const refused = planRefusal(plan, p)
   if (refused || !plan.ok) return refused
   return { ok: true, pinnedParams: pinsOf(plan) }
 }
 
-async function restoreHandler(params: unknown, ctx: AuthoringCtx): Promise<unknown> {
+async function restoreHandler(params: unknown, ctx: AuthoringCtx, b: Bound): Promise<unknown> {
   const p = restoreAdapterParams.parse(params)
-  const version = await getAdapterVersion(ctx.orgId, p.identifier, p.versionId)
+  const version = await getAdapterVersion(connOf(ctx, b), p.identifier, p.versionId)
   if (!version) {
     return refuse("unknown_version", `No kept version ${p.versionId} of "${p.identifier}".`, 404)
   }
-  return executeSave(ctx, p.identifier, version.adapter, p, {
+  return executeSave(ctx, b, p.identifier, version.adapter, p, {
     restoredVersionId: p.versionId,
   })
 }
@@ -411,12 +431,12 @@ function operationLines(ops: CardOperation[], room: number): string[] {
 }
 
 async function adapterCard(
-  orgId: string,
+  conn: ApiConn,
   identifier: string,
   doc: unknown,
   head: string[],
 ): Promise<{ lines: string[]; adapter: Adapter | null }> {
-  const plan = await planAdapterSave(orgId, identifier, doc)
+  const plan = await planAdapterSave(conn, identifier, doc)
   if (!plan.ok) {
     return {
       lines: [...head, "The document does not validate: the save will be refused"],
@@ -440,15 +460,19 @@ async function adapterCard(
   return { lines: lines.slice(0, CARD_LINES), adapter: plan.adapter }
 }
 
-async function summarizeSave(params: unknown, ctx: { orgId: string }): Promise<ApprovalSummary> {
+async function summarizeSave(
+  params: unknown,
+  ctx: { orgId: string },
+  b: Bound,
+): Promise<ApprovalSummary> {
   const parsed = saveAdapterParams.safeParse(params)
   const p = parsed.success ? parsed.data : null
   const identifier = p?.identifier ?? "(no identifier)"
   const card = p
-    ? await adapterCard(ctx.orgId, identifier, documentOf(p.adapter), [])
+    ? await adapterCard(connOf(ctx, b), identifier, documentOf(p.adapter), [])
     : { lines: ["The request does not parse: the save will be refused"], adapter: null }
   return {
-    kind: "api-connector.adapter_save",
+    kind: "api-connection.adapter_save",
     title: `Save the API connection ${identifier}`,
     subtitle: short(
       card.adapter ? `${card.adapter.name}, version ${card.adapter.version}` : "Adapter",
@@ -458,20 +482,25 @@ async function summarizeSave(params: unknown, ctx: { orgId: string }): Promise<A
   }
 }
 
-async function summarizeRestore(params: unknown, ctx: { orgId: string }): Promise<ApprovalSummary> {
+async function summarizeRestore(
+  params: unknown,
+  ctx: { orgId: string },
+  b: Bound,
+): Promise<ApprovalSummary> {
   const parsed = restoreAdapterParams.safeParse(params)
   const p = parsed.success ? parsed.data : null
   const identifier = p?.identifier ?? "(no identifier)"
-  const version = p ? await getAdapterVersion(ctx.orgId, p.identifier, p.versionId) : null
+  const conn = connOf(ctx, b)
+  const version = p ? await getAdapterVersion(conn, p.identifier, p.versionId) : null
   const card = version
-    ? await adapterCard(ctx.orgId, identifier, version.adapter, [
+    ? await adapterCard(conn, identifier, version.adapter, [
         short(
           `Version ${version.adapterVersion}, saved ${version.savedAt}${version.savedByName ? ` by ${version.savedByName}` : ""}`,
         ),
       ])
     : { lines: ["No such kept version: the restore will be refused"], adapter: null }
   return {
-    kind: "api-connector.adapter_restore",
+    kind: "api-connection.adapter_restore",
     title: `Restore an earlier adapter of ${identifier}`,
     subtitle: short(card.adapter?.name ?? "Adapter"),
     impact: "internal",
@@ -479,18 +508,23 @@ async function summarizeRestore(params: unknown, ctx: { orgId: string }): Promis
   }
 }
 
-/** Register the two host tools and their cards for `orgId` (called at app registration). */
-export function registerAdapterAuthoringTools(orgId: string): void {
+/**
+ * Register the two host tools and their cards under the app that declares the
+ * API connection (called at that app's registration for the org).
+ */
+export function registerAdapterAuthoringTools(target: ApiConnDecl): void {
+  const { orgId, app } = target
+  const b: Bound = { app, connection: target.connection, adminScope: target.decl.adminScope }
   const common = {
-    appName: API_CONNECTOR_APP,
+    appName: app,
     deferLoading: true,
-    requiredScopes: [API_CONNECTOR_ADMIN],
+    requiredScopes: [b.adminScope],
     trustBoundary: "user" as const,
     gated: true,
     approvalImpact: "internal" as const,
     noAutoApprove: true,
-    approveScope: API_CONNECTOR_ADMIN,
-    writesToTable: "app_api_connector.adapters",
+    approveScope: b.adminScope,
+    writesToTable: "kernel.api_adapters",
     // Set only by the preflight: a caller's own values are dropped and a call
     // carrying an @ref to an earlier step is refused at staging (execute-tool.ts).
     pinnedParams: ["priorHash", "priorTarget", "newTarget", "credentialsPresent"],
@@ -504,8 +538,8 @@ export function registerAdapterAuthoringTools(orgId: string): void {
     description:
       "Create or replace an API connection's adapter (CRM, ERP, any HTTP API). Validated first; a person approves. New baseUrl or auth wipes credentials: set confirmCredentialWipe only after telling the user. Guide: connector_adapter_reference.",
     params: saveAdapterParams,
-    preflight: savePreflight,
-    handler: saveHandler,
+    preflight: (params: unknown, ctx: AuthoringCtx) => savePreflight(params, ctx, b),
+    handler: (params: unknown, ctx: AuthoringCtx) => saveHandler(params, ctx, b),
   }
   const restore = {
     ...common,
@@ -513,20 +547,19 @@ export function registerAdapterAuthoringTools(orgId: string): void {
     description:
       "Restore a kept version of an API connection's adapter (an id from connector_adapter_versions). Checked and approved like connector_adapter_save, credential wipe confirmation included.",
     params: restoreAdapterParams,
-    preflight: restorePreflight,
-    handler: restoreHandler,
+    preflight: (params: unknown, ctx: AuthoringCtx) => restorePreflight(params, ctx, b),
+    handler: (params: unknown, ctx: AuthoringCtx) => restoreHandler(params, ctx, b),
   }
-  toolRegistry.set([orgId, API_CONNECTOR_APP, "connector_adapter_save"], save)
-  toolRegistry.set([orgId, API_CONNECTOR_APP, "connector_adapter_restore"], restore)
+  toolRegistry.set([orgId, app, "connector_adapter_save"], save)
+  toolRegistry.set([orgId, app, "connector_adapter_restore"], restore)
   // A save or restore that leaves the connection without credentials names
   // the secret card as a required step; only these host registrations may.
   registerRequiredStepEmitter(save, ["request_credentials"])
   registerRequiredStepEmitter(restore, ["request_credentials"])
-  registerApprovalSummarizer(orgId, API_CONNECTOR_APP, "connector_adapter_save", summarizeSave)
-  registerApprovalSummarizer(
-    orgId,
-    API_CONNECTOR_APP,
-    "connector_adapter_restore",
-    summarizeRestore,
+  registerApprovalSummarizer(orgId, app, "connector_adapter_save", (params, ctx) =>
+    summarizeSave(params, ctx, b),
+  )
+  registerApprovalSummarizer(orgId, app, "connector_adapter_restore", (params, ctx) =>
+    summarizeRestore(params, ctx, b),
   )
 }

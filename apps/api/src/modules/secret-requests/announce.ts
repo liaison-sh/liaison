@@ -27,6 +27,7 @@ import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { wrapExternalContent } from "~/lib/external-content"
 import { rootLogger } from "~/lib/logger"
 import { loadUserName } from "~/modules/approvals/event-data"
+import { apiConnFor } from "~/modules/apps/connections/api/declarations"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import {
   claimSecretRequestTurn,
@@ -72,12 +73,19 @@ function hintPhrase(target: SecretTarget, hint: string | null): string {
   }
 }
 
+/** The row's target is an API connection's credentials (declarations.ts). */
+function isApiConnectionTarget(row: SecretRequest): boolean {
+  const target = targetFromRow(row.kind, row.target, row.orgId)
+  if (target?.kind !== "connection_credentials") return false
+  return apiConnFor(row.orgId, target.app)?.connection === target.connection
+}
+
 /** The line, in plain words, from the row alone. */
 export function secretRequestResultContent(
-  row: Pick<SecretRequest, "kind" | "target" | "status" | "hint">,
+  row: Pick<SecretRequest, "orgId" | "kind" | "target" | "status" | "hint">,
   byName: string,
 ): string {
-  const target = targetFromRow(row.kind, row.target)
+  const target = targetFromRow(row.kind, row.target, row.orgId)
   const what = target ? describeTarget(target, wrapExternalContent) : "The requested secret"
   if (row.status === "saved") {
     const verb = row.kind === "oauth_connect" ? "connected" : "saved"
@@ -119,6 +127,8 @@ export async function announceSecretRequestResult(
           secretRequestId: row.id,
           kind: row.kind,
           target: row.target,
+          // An API connection's credentials (any app's): the replay says to test it.
+          ...(isApiConnectionTarget(row) ? { apiConnection: true } : {}),
           saved: row.status === "saved",
           hint: row.hint,
           agentId: row.agentId,

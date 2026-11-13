@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from "bu
 import * as dnsPromises from "node:dns/promises"
 import { type Adapter, validateAdapter } from "@liaison/api-connector-core"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
+import { testApiConn } from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "./cache"
 import {
   API_CONNECTOR_REQUEST_TIMEOUT_MS,
@@ -116,7 +117,7 @@ function call(
   const operation = adapter.operations[0]
   if (!operation) throw new Error("no op")
   return callOperation({
-    orgId: ORG,
+    ...testApiConn(ORG),
     identifier: "crm",
     adapter,
     credentials,
@@ -145,19 +146,21 @@ describe("api-connector transport: the shared per-connection limiter", () => {
     const org = `00000000-0000-4000-8000-${String(Date.now()).slice(-12).padStart(12, "0")}`
     const id = `limiter-${Date.now()}`
     const first = await Promise.all(
-      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () => acquireConnectionSlot(org, id)),
+      Array.from({ length: MAX_IN_FLIGHT_PER_CONNECTION }, () =>
+        acquireConnectionSlot(testApiConn(org), id),
+      ),
     )
     let granted = false
-    const waiting = acquireConnectionSlot(org, id).then((release) => {
+    const waiting = acquireConnectionSlot(testApiConn(org), id).then((release) => {
       granted = true
       return release
     })
     const aborted = new AbortController()
-    const cancelled = acquireConnectionSlot(org, id, aborted.signal)
+    const cancelled = acquireConnectionSlot(testApiConn(org), id, aborted.signal)
     await Bun.sleep(50)
     expect(granted).toBe(false)
     // Another connection is not held up.
-    await (await acquireConnectionSlot(org, `${id}-other`))()
+    await (await acquireConnectionSlot(testApiConn(org), `${id}-other`))()
     aborted.abort(new Error("gone"))
     await expect(cancelled).rejects.toThrow("gone")
     await first[0]?.()
@@ -324,7 +327,7 @@ describe("api-connector transport: bounds", () => {
     const operation = a.operations[0]
     if (!operation) throw new Error("no op")
     const p = callOperation({
-      orgId: ORG,
+      ...testApiConn(ORG),
       identifier: "crm",
       adapter: a,
       credentials: { apiKey: KEY },
@@ -428,11 +431,11 @@ describe("api-connector transport: no credential leaks", () => {
 
 describe("api-connector transport: oauth2 client credentials", () => {
   afterAll(async () => {
-    await invalidateConnectionCaches(ORG, "crm")
+    await invalidateConnectionCaches(testApiConn(ORG), "crm")
   })
 
   it("fetches a token from the adapter's token URL once and reuses it", async () => {
-    await invalidateConnectionCaches(ORG, "crm")
+    await invalidateConnectionCaches(testApiConn(ORG), "crm")
     answerWith((req) =>
       req.url.endsWith("/oauth/token")
         ? json({ access_token: "tok_from_server", expires_in: 3600 })

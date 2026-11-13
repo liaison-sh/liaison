@@ -11,7 +11,6 @@
 //   oauth_client               sha256 of the oauth_providers row's encrypted secret
 //   google_integration_client  sha256 of integrations.google.oauthClient's encrypted secret
 //   connection_credentials,    sha256 of (account id, credentials ciphertext) of each
-//   api_connector_credentials  active org-owned account of the connection
 //   api_key                    sha256 of each live key id with the request's label
 //   oauth_connect              sha256 of each active OAuth account of the connection
 //                              held by the request's owner (the person who asked,
@@ -36,7 +35,6 @@ import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, oauthProviders, organizations } from "~/db/schema/kernel"
-import { API_CONNECTOR_APP, API_CONNECTOR_CONNECTION } from "~/modules/apps/connections/api/store"
 import { oauthClientKey } from "~/modules/apps/connections/oauth-client"
 import { oauthClientIdHint } from "~/modules/apps/connections/oauth-client-provisioning"
 import type { SecretTarget } from "~/modules/secret-requests/targets"
@@ -137,11 +135,8 @@ async function readState(
       for (const row of rows) add(sha256(row.secret), oauthClientIdHint(row.clientId))
       break
     }
-    case "connection_credentials":
-    case "api_connector_credentials": {
-      const app = target.kind === "connection_credentials" ? target.app : API_CONNECTOR_APP
-      const connection =
-        target.kind === "connection_credentials" ? target.connection : API_CONNECTOR_CONNECTION
+    case "connection_credentials": {
+      const { app, connection } = target
       const rows = await tx
         .select({
           id: connectedAccounts.id,
@@ -154,7 +149,7 @@ async function readState(
             eq(connectedAccounts.orgId, orgId),
             eq(connectedAccounts.appName, app),
             eq(connectedAccounts.connectionName, connection),
-            target.kind === "connection_credentials" && target.mode === "personal"
+            target.mode === "personal"
               ? and(
                   eq(connectedAccounts.ownerType, "user"),
                   eq(connectedAccounts.ownerId, requester),

@@ -10,7 +10,16 @@ import { registerAdapterAuthoringTools } from "./authoring-tools"
 const ORG = "00000000-0000-0000-0000-0000000ad5a1"
 
 describe("the adapter authoring tools' descriptions", () => {
-  registerAdapterAuthoringTools(ORG)
+  registerAdapterAuthoringTools({
+    orgId: ORG,
+    app: "api-connector",
+    connection: "api",
+    decl: {
+      readScope: "api-connector:read",
+      writeScope: "api-connector:write",
+      adminScope: "api-connector:admin",
+    },
+  })
 
   it("fit in 240 characters", () => {
     for (const name of ["connector_adapter_save", "connector_adapter_restore"]) {

@@ -5,6 +5,15 @@
 import { apiConnectorSourceDescriptor } from "~/db/apply-app-schemas"
 import { registerApps } from "~/modules/apps/runtime"
 
+/** The app the tests' API connections belong to, and its API connection. */
+export const TEST_API_APP = "api-connector"
+export const TEST_API_CONNECTION = "api"
+
+/** The test org's API connection key (store, caches, limiter). */
+export function testApiConn(orgId: string): { orgId: string; app: string; connection: string } {
+  return { orgId, app: TEST_API_APP, connection: TEST_API_CONNECTION }
+}
+
 export async function registerApiConnectorApp(orgId: string): Promise<void> {
   const { failedApps } = await registerApps([apiConnectorSourceDescriptor()], orgId)
   if (failedApps.length > 0) throw new Error("api-connector did not register")
@@ -24,6 +33,6 @@ export async function seedAdapter(
   const { upsertAdapterRow } = await import("./store")
   const parsed = validateAdapterDocument(document)
   if (!parsed.ok) return { status: 422 }
-  await upsertAdapterRow(orgId, identifier, parsed.adapter, null)
+  await upsertAdapterRow(testApiConn(orgId), identifier, parsed.adapter, null)
   return { status: 200 }
 }

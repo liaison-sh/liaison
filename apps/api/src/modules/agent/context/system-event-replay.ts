@@ -64,6 +64,8 @@ interface SystemEventMetadata {
   result?: unknown
   saved?: unknown
   kind?: unknown
+  /** The saved credentials are an API connection's (announce.ts). */
+  apiConnection?: unknown
   target?: unknown
   requiredStep?: unknown
   secretRequestId?: unknown
@@ -175,7 +177,7 @@ function savedCredentialState(meta: SystemEventMetadata): string {
   const target = (meta.target ?? {}) as { app?: unknown; connection?: unknown }
   const unverified =
     " Nothing has used these credentials yet, so never call it connected or live until a status read shows it working."
-  if (meta.kind === "api_connector_credentials") {
+  if (meta.kind === "api_connector_credentials" || meta.apiConnection === true) {
     return `${unverified} Run a read operation with connector_adapter_test first, then carry on with what the connection was for (an import's preview, for one).`
   }
   if (meta.kind !== "connection_credentials" && meta.kind !== "oauth_client") return ""

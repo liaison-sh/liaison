@@ -29,7 +29,10 @@ import { assembleContext } from "~/modules/agent/context/context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { handleToolSearch } from "~/modules/agent/tools/tool-search"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -111,7 +114,7 @@ beforeAll(async () => {
   await db.execute(drizzleSql`
     INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
     VALUES (${THREAD}::uuid, ${USER}::uuid, ${ORG}::uuid)`)
-  await upsertAdapterRow(ORG, "crm", CRM, USER)
+  await upsertAdapterRow(testApiConn(ORG), "crm", CRM, USER)
 }, 180_000)
 
 afterAll(async () => {
@@ -183,7 +186,7 @@ describe("the prompt names the connected systems outside a ticket view", () => {
     const text = await prompt(FULL)
     expect(text).toContain("## Connected business systems")
     expect(text).toContain(
-      '- Fixture CRM (connection \\"crm\\") is connected: reads find_companies; writes add_company_note (connector_write, approval required).',
+      '- Fixture CRM (connection \\"crm\\", read with api-connector__connector_read) is connected: reads find_companies; writes add_company_note (api-connector__connector_write, approval required).',
     )
     // The deferred catalog's api-connector line names the write operations.
     expect(text).toMatch(
@@ -194,7 +197,7 @@ describe("the prompt names the connected systems outside a ticket view", () => {
   it("read-only scopes name the reads and no write", async () => {
     const text = await prompt(READ_ONLY)
     expect(text).toContain(
-      '- Fixture CRM (connection \\"crm\\") is connected: reads find_companies.',
+      '- Fixture CRM (connection \\"crm\\", read with api-connector__connector_read) is connected: reads find_companies.',
     )
     expect(text).not.toContain("writes add_company_note")
   })
@@ -225,13 +228,16 @@ describe("the note tools say which side they write to", () => {
 describe("connectedSystemLine", () => {
   it("lists at most six operations, then a count", () => {
     const s: ConnectedSystem = {
+      app: "erp-app",
+      readTool: "erp-app__read",
+      writeTool: "erp-app__write",
       connection: "erp",
       system: "ERP",
       reads: ["a", "b", "c", "d", "e", "f", "g", "h"],
       writes: [],
     }
     expect(connectedSystemLine(s)).toBe(
-      '- ERP (connection "erp") is connected: reads a, b, c, d, e, f and 2 more.',
+      '- ERP (connection "erp", read with erp-app__read) is connected: reads a, b, c, d, e, f and 2 more.',
     )
   })
 })

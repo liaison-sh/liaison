@@ -447,6 +447,7 @@ async function apiConnectorTest(argv: string[]): Promise<number> {
           operation: argv[3],
           argv: argv.slice(4),
           ...(arg("--org", argv) !== undefined ? { orgSlug: arg("--org", argv) } : {}),
+          ...(arg("--app", argv) !== undefined ? { app: arg("--app", argv) } : {}),
         })
       : null
   if (!res) {

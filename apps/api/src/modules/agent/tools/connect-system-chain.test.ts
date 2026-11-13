@@ -41,7 +41,10 @@ import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { buildToolSet, isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import {
+  registerApiConnectorApp,
+  testApiConn,
+} from "~/modules/apps/connections/api/app.test-helpers"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -267,8 +270,8 @@ beforeEach(() => {
 afterEach(async () => {
   OutboundFetchTestAccess.setFetch(null)
   lookupSpy.mockRestore()
-  await invalidateConnectionCaches(ORG, "jira")
-  await invalidateConnectionCaches(ORG, "hubspot")
+  await invalidateConnectionCaches(testApiConn(ORG), "jira")
+  await invalidateConnectionCaches(testApiConn(ORG), "hubspot")
 })
 
 function actor(): ActorContext {

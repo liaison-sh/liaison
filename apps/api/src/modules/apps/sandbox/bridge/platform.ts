@@ -502,6 +502,10 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
           ...(parent ? { parent } : {}),
           // The host's own actor, for the storage quota (never an app-supplied value).
           actor: { actorType: auditActorType, actingAgentId: bridgeActingAgentId },
+          // The render runs nested under this run (pdf/sandbox-render.ts).
+          ...(ctx.bridgeOptions?.parentExecutionToken
+            ? { nestedParentKey: ctx.bridgeOptions.parentExecutionToken }
+            : {}),
         })
         // Parent row committed WITH the file (the BL-191 problem for a parent that is a row of its
         // own, joined on `id`): when a cross-app reader must see the file before this handler's tx

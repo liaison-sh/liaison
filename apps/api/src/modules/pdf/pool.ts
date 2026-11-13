@@ -58,6 +58,8 @@ export interface EnqueueArgs {
   deadlineMs?: number
   /** Forwarded to `replayDrawCommands` — resolves `embedImage` file ids. */
   replay?: ReplayDrawCommandsOptions
+  /** The asking app run's execution token (sandbox-render.ts). */
+  nestedParentKey?: string
 }
 
 /**
@@ -87,6 +89,7 @@ export async function enqueue(args: EnqueueArgs): Promise<Uint8Array> {
       bundleSource: source,
       data,
       replay: args.replay,
+      ...(args.nestedParentKey ? { nestedParentKey: args.nestedParentKey } : {}),
     })
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => {

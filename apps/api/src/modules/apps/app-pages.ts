@@ -40,7 +40,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { existsSync, readFileSync, statSync } from "node:fs"
-import { resolve, sep } from "node:path"
+import { join, resolve, sep } from "node:path"
 import { eq } from "drizzle-orm"
 import { type Context, Hono } from "hono"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
@@ -54,6 +54,7 @@ import { orgPublicBaseUrl, orgSlugById } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { appBridgeManifest } from "~/modules/apps/app-registries"
 import { type AppPageDecl, type AppSurface, appSurfaceRegistry } from "~/modules/apps/app-surface"
+import { getInstallRoot } from "~/modules/apps/discover-apps"
 import { grantedSubset } from "~/modules/apps/egress-grants"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { getInstallTrust } from "~/modules/apps/install-trust"
@@ -576,6 +577,21 @@ async function sessionBinding(session: string, host: PageHost): Promise<AppPageB
 
 const builtPages = new Map<string, { mtimeMs: number; code: string }>()
 
+// app-pages.ts -> the repo root (apps/api/src/modules/apps -> up 5).
+const REPO_ROOT = resolve(join(import.meta.dir, "..", "..", "..", "..", ".."))
+
+/**
+ * Whether a page may be built from its `.ts` source here: only the repo's own
+ * apps (in-tree source, tests), never an installed package. Bun runs a macro
+ * import while it parses, in this process, so a package's code is never handed
+ * to it: an installed package ships its built `pages/<name>.js`.
+ */
+function mayBuildFromSource(root: string): boolean {
+  const install = resolve(getInstallRoot())
+  const inside = (dir: string) => root === dir || root.startsWith(dir + sep)
+  return inside(REPO_ROOT) && !inside(install)
+}
+
 /** `pages/<name>.js` from the package, or (in-tree source, tests) built from its `.ts`. */
 async function pageScript(surface: AppSurface, page: string, decl: AppPageDecl): Promise<string> {
   if (!decl.source) throw new AppPageError(404, "page_not_found", "No page script")
@@ -588,6 +604,10 @@ async function pageScript(surface: AppSurface, page: string, decl: AppPageDecl):
   }
   if (existsSync(built)) return readFileSync(built, "utf8")
   if (!existsSync(source)) throw new AppPageError(404, "page_not_found", "No page script")
+  if (!mayBuildFromSource(root)) {
+    log.warn({ app: surface.appName, page }, "Installed package has no built page script")
+    throw new AppPageError(404, "page_not_found", "No page script")
+  }
   const mtimeMs = statSync(source).mtimeMs
   const hit = builtPages.get(source)
   if (hit && hit.mtimeMs === mtimeMs) return hit.code

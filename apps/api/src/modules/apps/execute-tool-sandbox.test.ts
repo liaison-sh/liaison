@@ -1402,7 +1402,7 @@ describe("executeTool — sandbox path", () => {
       toolRegistry.set([TEST_ORG, "dp-a", "x"], {
         appName: "dp-a",
         name: "x",
-        description: "untrusted: cross-calls dp-b:y",
+        description: "cross-calls dp-b:y",
         requiredScopes: ["dp-a:items:read"],
         gated: false,
         handler: { bundlePath: aPath, exportName: "x", core: false },
@@ -1411,13 +1411,12 @@ describe("executeTool — sandbox path", () => {
       toolRegistry.set([TEST_ORG, "dp-b", "y"], {
         appName: "dp-b",
         name: "y",
-        description: "trusted: spawns a sub-agent",
+        description: "declares agent.spawn: spawns a sub-agent",
         requiredScopes: ["dp-b:items:read"],
         gated: false,
         handler: { bundlePath: bPath, exportName: "y", core: true },
         _manifest: {
           name: "dp-b",
-          trusted: true,
           capabilities: ["agent.spawn"],
           schema: {},
           events: {},
@@ -1438,13 +1437,12 @@ describe("executeTool — sandbox path", () => {
       toolRegistry.set([TEST_ORG, "dp-g", "z"], {
         appName: "dp-g",
         name: "z",
-        description: "gated, trusted: spawns a sub-agent once approved",
+        description: "gated, declares agent.spawn: spawns a sub-agent once approved",
         requiredScopes: ["dp-g:items:read"],
         gated: true,
         handler: { bundlePath: zPath, exportName: "z", core: true },
         _manifest: {
           name: "dp-g",
-          trusted: true,
           capabilities: ["agent.spawn"],
           schema: {},
           events: {},
@@ -1512,7 +1510,7 @@ describe("executeTool — sandbox path", () => {
       expect(JSON.stringify(replay)).toContain("E_DEPTH_EXCEEDED")
     })
 
-    it("a depth-2 run -> untrusted A -> trusted B -> agent.spawn is refused E_DEPTH_EXCEEDED", async () => {
+    it("a depth-2 run -> A -> B (declares agent.spawn) -> agent.spawn is refused E_DEPTH_EXCEEDED", async () => {
       const rootRunId = crypto.randomUUID()
       const out = await runContextStore.run(
         {

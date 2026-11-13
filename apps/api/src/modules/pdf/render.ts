@@ -83,6 +83,8 @@ export interface RenderPdfInput {
    * the quota like a person's render.
    */
   actor?: { actorType: "user" | "agent" | "system" | "mcp"; actingAgentId: string | null }
+  /** The execution token of the app run that asked for the render (its bridge's). */
+  nestedParentKey?: string
 }
 
 /** The org is at its storage quota and the render is not exempt: nothing was stored. */
@@ -192,6 +194,7 @@ export async function renderPdf(
     appId: callingAppId,
     source,
     data,
+    ...(input.nestedParentKey ? { nestedParentKey: input.nestedParentKey } : {}),
     replay: {
       resolveImage: makeResolveImage(orgId, callingAppId, getObjectBuffer),
       ...(nativePdfA

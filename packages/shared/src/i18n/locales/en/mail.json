@@ -197,6 +197,8 @@
   "cc2": "Cc:",
   "ccBcc": "Cc/Bcc",
   "sending": "Sending...",
+  "sendInProgress": "This message is still being sent. Wait a moment, then check Sent.",
+  "sendOutcomeUnknown": "Your mail provider did not confirm this message, so it may already have been delivered. Check Sent first. To send it again anyway, press Send.",
   "connecting": "Connecting...",
   "providerEnabled": "{{provider}} enabled",
   "providerDisabled": "{{provider}} disabled",

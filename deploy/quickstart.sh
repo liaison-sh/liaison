@@ -9,6 +9,8 @@
 #   - check for docker, docker compose v2, and openssl;
 #   - create deploy/.env from deploy/.env.example on first run only, filling
 #     in every required secret and the local URLs the app needs to boot;
+#   - on a Docker host without gVisor, run the app sandbox on runc (a local
+#     trial; a server follows docs/self-hosting/sandbox.md);
 #   - pull the published image of the chosen channel (ghcr.io/liaison-sh/liaison:latest
 #     or :nightly) if it is reachable, otherwise build it locally from
 #     apps/api/Dockerfile;
@@ -218,6 +220,26 @@ set_var() {
   mv "${tmp}" "${ENV_FILE}"
 }
 
+# The app sandbox service runs under gVisor (`runtime: runsc`), which a laptop's
+# Docker (Docker Desktop, OrbStack, a plain Linux install) usually lacks. For a
+# local trial on such a host, run it on runc and accept the open network of a
+# stack with no firewall step, and say so. A server install follows
+# docs/self-hosting/sandbox.md instead. Never overrides a runtime deploy/.env
+# already names.
+sandbox_runtime() {
+  if grep -q '^LIAISON_SANDBOX_RUNTIME=' "${ENV_FILE}"; then
+    return
+  fi
+  if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"runsc"'; then
+    return
+  fi
+  log "No gVisor runtime (runsc) on this Docker host: the app sandbox runs on runc for this local trial."
+  log "  On a server, install gVisor and the firewall step instead: docs/self-hosting/sandbox.md"
+  set_var LIAISON_SANDBOX_RUNTIME "runc"
+  set_var LIAISON_SANDBOX_ALLOW_NO_GVISOR "1"
+  set_var LIAISON_SANDBOX_ALLOW_OPEN_NETWORK "1"
+}
+
 # ---------------------------------------------------------------------------
 # Image selection
 # ---------------------------------------------------------------------------
@@ -386,6 +408,7 @@ do_up() {
   # knowledge files). Create it as the current user before compose would
   # create it as root.
   mkdir -p "${DEPLOY_DIR}/setup"
+  sandbox_runtime
   resolve_channel
   select_image
   set_var LIAISON_RELEASE_CHANNEL "${CHANNEL}"

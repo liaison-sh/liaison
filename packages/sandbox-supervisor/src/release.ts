@@ -62,6 +62,6 @@ export function releaseMismatchMessage(service: string, caller: string): string 
   return (
     `The sandbox service runs release ${service} but the app runs release ${caller}: ` +
     "recreate the sandbox service with the app's image " +
-    "(docker compose --profile sandbox up -d sandbox), see docs/self-hosting/sandbox.md"
+    "(docker compose up -d sandbox), see docs/self-hosting/sandbox.md"
   )
 }

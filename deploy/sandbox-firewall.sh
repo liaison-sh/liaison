@@ -29,7 +29,9 @@
 #        deploy/sandbox-firewall.sh check      probe from inside the running
 #                                               sandbox container: only the
 #                                               bridge port of each running app
-#                                               process answers
+#                                               process answers, and each
+#                                               workerd process runs as its own
+#                                               uid, unreadable by another
 #
 # Compose options go before the command, as for `docker compose`, and must be
 # the ones the stack runs with: -p/--project-name, --env-file (repeatable),
@@ -289,7 +291,7 @@ app_ips() {
 check() {
   same_network
   gateway="${PREFIX}1"
-  sid="$(eval "$DC --profile sandbox ps -q sandbox" 2>/dev/null | head -n 1 || :)"
+  sid="$(eval "$DC ps -q sandbox" 2>/dev/null | head -n 1 || :)"
   [ -n "$sid" ] || die "no running sandbox service in this compose project ($DC); pass the -p/--env-file/-f the stack runs with"
   sip="$(ip_on_net "$sid" | head -n 1)"
   [ "$sip" = "$SANDBOX_IP" ] || die "the sandbox service is at '${sip}', the rules name $SANDBOX_IP: set LIAISON_SANDBOX_IP and LIAISON_SANDBOX_SUBNET to what the stack runs with"
@@ -338,6 +340,36 @@ for (const ip of apps) {
   const health = typeof r === 'string' ? r : r.status
   if (health !== 404) bad++
   console.log((health === 404 ? 'ok    ' : 'FAIL  ') + ip + ':$BRIDGE_PORT/healthz -> ' + health)
+}
+process.exit(bad ? 1 : 0)
+"
+  # Each workerd process runs as its own uid, and another uid can read neither
+  # its environment (its key) nor its memory.
+  "$@" exec -T sandbox bun --eval "
+const { readdirSync, readFileSync } = require('node:fs')
+const procs = []
+for (const pid of readdirSync('/proc').filter((d) => /^\\d+\$/.test(d))) {
+  try {
+    const status = readFileSync('/proc/' + pid + '/status', 'utf8')
+    if (!/^Name:\\s+workerd/m.test(status)) continue
+    procs.push({ pid, uid: Number(/^Uid:\\s+(\\d+)/m.exec(status)[1]) })
+  } catch {}
+}
+let bad = procs.length === 0 ? 1 : 0
+if (!procs.length) console.log('FAIL  no workerd process is running in the sandbox')
+const uids = new Set(procs.map((p) => p.uid))
+const shared = uids.size !== procs.length || uids.has(0) || uids.has(process.getuid())
+if (shared) bad++
+console.log((shared ? 'FAIL  ' : 'ok    ') + 'workerd processes and their uids: ' + JSON.stringify(procs))
+for (const p of procs) {
+  const other = 39999
+  for (const what of ['environ', 'mem']) {
+    // Opening is the test (reading /proc/<pid>/mem at offset 0 fails anyway).
+    const r = Bun.spawnSync(['sh', '-c', 'exec 3< /proc/' + p.pid + '/' + what + ' && echo opened'], { uid: other, gid: other, stdout: 'pipe', stderr: 'ignore' })
+    const denied = !r.stdout.toString().includes('opened')
+    if (!denied) bad++
+    console.log((denied ? 'ok    ' : 'FAIL  ') + 'uid ' + other + ' reads /proc/' + p.pid + '/' + what + ' -> ' + (denied ? 'denied' : 'READ'))
+  }
 }
 process.exit(bad ? 1 : 0)
 "

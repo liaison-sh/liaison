@@ -15,6 +15,7 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { CORE_APP_MODULES } from "~/modules/apps/core/registry"
+import { resolveSandboxMaxToolTimeoutMs } from "~/modules/apps/run-limits"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { type MailCategory, mailCategoryCondition } from "~/modules/mail/category"
 import {
@@ -874,7 +875,12 @@ export async function listAssignableUsersForAccount(
  * the one door: `runApp` calls the core module's export in this process
  * (modules/apps/core/registry.ts), on a session bridge.
  */
-async function runMailSend(orgId: string, exportName: string, params: unknown) {
+async function runMailSend(
+  orgId: string,
+  exportName: string,
+  params: unknown,
+  opts: { onDispatch?: () => void } = {},
+) {
   const [{ runApp }, { createRlsSession }] = await Promise.all([
     import("~/modules/apps/sandbox/run-app"),
     import("~/db/rls"),
@@ -905,8 +911,15 @@ async function runMailSend(orgId: string, exportName: string, params: unknown) {
       exportName,
       entry: `tool:${exportName}`,
       params,
+      // The handler's third argument: it calls onDispatch just before the
+      // message goes to the provider, so a failure after it is "maybe sent".
+      extraArgs: [{ onDispatch: opts.onDispatch }],
       bridge,
       holdsTx: false,
+      // The provider round trip (Gmail upload with attachments, a slow SMTP
+      // relay) gets the tool ceiling, not the 5 s default of a sandboxed run:
+      // a send cut short here is usually delivered all the same.
+      timeoutMs: mailSendTimeoutMs(),
     })
   } catch (err) {
     // A mailbox without stored credentials, or whose connected account is
@@ -919,6 +932,182 @@ async function runMailSend(orgId: string, exportName: string, params: unknown) {
       err
     )
   }
+}
+
+/** How long a person's send waits for the provider: the tool ceiling (120 s by default). */
+export function mailSendTimeoutMs(): number {
+  return resolveSandboxMaxToolTimeoutMs()
+}
+
+export const MAIL_SEND_IN_PROGRESS = "mail_send_in_progress"
+export const MAIL_SEND_OUTCOME_UNKNOWN = "mail_send_outcome_unknown"
+
+/** The draft is being sent by another request right now: nothing was sent twice. */
+export class MailSendInProgressError extends Error {
+  readonly status = 409
+  readonly code = MAIL_SEND_IN_PROGRESS
+  constructor() {
+    super("This message is being sent. Wait a moment, then check Sent before sending it again.")
+    this.name = "MailSendInProgressError"
+  }
+}
+
+/**
+ * The provider did not confirm a send that had already left: it may have been
+ * delivered. The draft is kept, and sending it again needs `confirmResend`.
+ */
+export class MailSendOutcomeUnknownError extends Error {
+  readonly status = 409
+  readonly code = MAIL_SEND_OUTCOME_UNKNOWN
+  constructor() {
+    super(
+      "The mail provider did not confirm this message, so it may already have been delivered. Check Sent before sending it again.",
+    )
+    this.name = "MailSendOutcomeUnknownError"
+  }
+}
+
+/** A provider answer that says nothing left (a 4xx), or a send stopped before dispatch. */
+function sendHadNoEffect(err: unknown, dispatched: boolean): boolean {
+  if (!dispatched) return true
+  const e = err as { providerRejected?: unknown; deliveryState?: unknown } | null
+  if (e?.providerRejected === true) return true
+  if (e?.deliveryState === "rejected" || e?.deliveryState === "not_delivered") return true
+  return err instanceof ConnectionCredentialsMissingError || err instanceof NoConnectedAccountError
+}
+
+/** The draft a person sends: the send's idempotency key (one compose or reply, one send). */
+export interface DraftSendKey {
+  draftId: string
+  /** Who owns the draft (`created_by`): the person sending it. */
+  createdBy: string
+  /** The person confirmed sending again a draft whose earlier send may have been delivered. */
+  confirmResend?: boolean
+}
+
+interface SendResult {
+  messageId: string
+  externalThreadId?: string
+}
+
+/**
+ * A send that is still "sending" after this long ended without a word (the
+ * process died mid-send): it counts as maybe delivered.
+ */
+function staleSendingMs(): number {
+  return mailSendTimeoutMs() + 60_000
+}
+
+/**
+ * Sends a draft at most once. The draft row is the idempotency key: before the
+ * provider call it is claimed (`send_state = 'sending'`, committed on its own so
+ * a concurrent request or a retry sees it); once the provider accepts it, the
+ * provider's ids are recorded (`'sent'`), so a retry after a later failure
+ * (persisting, a lost answer) records the same message instead of sending it
+ * again. A failure before dispatch, or one the provider says left nothing,
+ * releases the claim; any other failure after dispatch is "maybe sent"
+ * (`'unknown'`), refused until the person confirms a resend.
+ */
+async function sendDraftOnce(
+  orgId: string,
+  key: DraftSendKey,
+  send: (onDispatch: () => void) => Promise<SendResult>,
+): Promise<SendResult> {
+  const stale = `${staleSendingMs()} milliseconds`
+  const claimed = await withPrivilegedDb(orgId, "mail-claim-draft-send", async (tx) =>
+    extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${draftTable()}
+           SET send_state = 'sending', send_started_at = now()
+         WHERE id = ${key.draftId} AND org_id = ${orgId} AND created_by = ${key.createdBy}
+           AND (
+             send_state IS NULL
+             OR (${key.confirmResend === true} AND (
+               send_state = 'unknown'
+               OR (send_state = 'sending' AND send_started_at < now() - ${stale}::interval)
+             ))
+           )
+        RETURNING id
+      `),
+    ),
+  )
+  if (claimed.length === 0) {
+    const [row] = await withPrivilegedDb(orgId, "mail-read-draft-send", async (tx) =>
+      extractRows<{
+        send_state: string | null
+        stale: boolean
+        sent_message_id: string | null
+        sent_thread_id: string | null
+      }>(
+        await tx.execute(drizzleSql`
+          SELECT send_state, sent_message_id, sent_thread_id,
+                 COALESCE(send_started_at < now() - ${stale}::interval, false) AS stale
+            FROM ${draftTable()}
+           WHERE id = ${key.draftId} AND org_id = ${orgId} AND created_by = ${key.createdBy}
+        `),
+      ),
+    )
+    if (!row) throw new HTTPException(404, { message: "Draft not found" })
+    // Accepted by the provider already: record that message, send nothing.
+    if (row.send_state === "sent" && row.sent_message_id) {
+      return {
+        messageId: row.sent_message_id,
+        ...(row.sent_thread_id ? { externalThreadId: row.sent_thread_id } : {}),
+      }
+    }
+    if (row.send_state === "sending" && !row.stale) throw new MailSendInProgressError()
+    throw new MailSendOutcomeUnknownError()
+  }
+
+  let dispatched = false
+  let result: SendResult
+  try {
+    result = await send(() => {
+      dispatched = true
+    })
+  } catch (err) {
+    const noEffect = sendHadNoEffect(err, dispatched)
+    await withPrivilegedDb(orgId, "mail-settle-draft-send", (tx) =>
+      tx.execute(drizzleSql`
+        UPDATE ${draftTable()}
+           SET send_state = ${noEffect ? null : "unknown"}
+         WHERE id = ${key.draftId} AND org_id = ${orgId}
+      `),
+    ).catch((settleErr) =>
+      rootLogger.warn({ err: settleErr, orgId, draftId: key.draftId }, "mail send: settle failed"),
+    )
+    if (noEffect) throw err
+    rootLogger.warn({ err, orgId, draftId: key.draftId }, "mail send: outcome unknown")
+    throw new MailSendOutcomeUnknownError()
+  }
+  // Recorded before anything else can fail: from here on a retry sends nothing.
+  await withPrivilegedDb(orgId, "mail-record-draft-send", (tx) =>
+    tx.execute(drizzleSql`
+      UPDATE ${draftTable()}
+         SET send_state = 'sent', sent_message_id = ${result.messageId},
+             sent_thread_id = ${result.externalThreadId ?? null}
+       WHERE id = ${key.draftId} AND org_id = ${orgId}
+    `),
+  ).catch((err) =>
+    rootLogger.warn({ err, orgId, draftId: key.draftId }, "mail send: recording the send failed"),
+  )
+  return result
+}
+
+/**
+ * The provider call of one send: once per draft when the send is a draft's
+ * (`draftSend`), else a plain call (an agent's approved send has its own
+ * ledger, the approval).
+ */
+function providerSend(
+  orgId: string,
+  draftSend: DraftSendKey | undefined,
+  exportName: string,
+  params: unknown,
+): Promise<SendResult> {
+  const call = (onDispatch?: () => void) =>
+    runMailSend(orgId, exportName, params, { onDispatch }) as Promise<SendResult>
+  return draftSend ? sendDraftOnce(orgId, draftSend, call) : call()
 }
 
 /** MIME part shape the mail handlers' `buildSendMessage` consumes. */
@@ -1011,6 +1200,8 @@ export async function sendReply(
     cc?: string[]
     bcc?: string[]
     attachments?: OutboundMimeAttachment[]
+    /** The draft being sent: the send happens at most once per draft. */
+    draftSend?: DraftSendKey
   },
 ) {
   const convRows = extractRows<any>(
@@ -1077,7 +1268,7 @@ export async function sendReply(
     ? conversation.subject
     : `Re: ${conversation.subject ?? ""}`.trim()
 
-  const sendResult = (await runMailSend(params.orgId, "sendReply", {
+  const sendResult = await providerSend(params.orgId, params.draftSend, "sendReply", {
     provider: account.provider,
     accountEmail: account.email_address,
     externalThreadId: conversation.external_thread_id,
@@ -1090,7 +1281,7 @@ export async function sendReply(
     inReplyTo: latest?.external_message_id ?? null,
     references,
     attachments: params.attachments ?? [],
-  })) as { messageId: string; externalThreadId?: string }
+  })
 
   // The email is now delivered. Persist locally in a SEPARATE committed
   // transaction so a failure here (or a rollback of any enclosing request tx)
@@ -1244,6 +1435,8 @@ export async function sendCompose(
     /** Extra headers (a commercial mail's unsubscribe headers). */
     headers?: Record<string, string>
     attachments?: OutboundMimeAttachment[]
+    /** The draft being sent: the send happens at most once per draft. */
+    draftSend?: DraftSendKey
   },
 ) {
   const accountRows = extractRows<any>(
@@ -1262,7 +1455,7 @@ export async function sendCompose(
   const sealing = mailboxRequiresSealing(accountCrypto)
   if (sealing) assertSealRecipient(accountCrypto, params.userId)
 
-  const sendResult = (await runMailSend(params.orgId, "sendCompose", {
+  const sendResult = await providerSend(params.orgId, params.draftSend, "sendCompose", {
     provider: account.provider,
     accountEmail: account.email_address,
     to: params.to,
@@ -1273,7 +1466,7 @@ export async function sendCompose(
     textBody: params.textBody,
     ...(params.headers ? { headers: params.headers } : {}),
     attachments: params.attachments ?? [],
-  })) as { messageId: string; externalThreadId?: string }
+  })
 
   const externalThreadId = sendResult.externalThreadId ?? sendResult.messageId
 
@@ -1841,6 +2034,8 @@ export async function sendDraft(
     subject?: string
     htmlBody: string
     textBody: string
+    /** The person confirmed sending again a draft whose earlier send may have been delivered. */
+    confirmResend?: boolean
   },
 ) {
   const draftRows = extractRows<any>(
@@ -1871,6 +2066,12 @@ export async function sendDraft(
   // this the sent message row would show chips (reparent below) while the
   // customer's actual email arrives attachment-less.
   const attachments = await loadDraftAttachmentParts(db, params.orgId, params.draftId)
+  // One draft, one send: a retry (a lost answer, a second click) never sends twice.
+  const draftSend: DraftSendKey = {
+    draftId: params.draftId,
+    createdBy: params.userId,
+    ...(params.confirmResend === true ? { confirmResend: true } : {}),
+  }
 
   // A new message's bodies as they leave: a prospect's mail gains its footer here.
   const outgoing: Awaited<ReturnType<typeof personComposeBodies>> = draft.conversation_id
@@ -1896,6 +2097,7 @@ export async function sendDraft(
             cc: ccAddresses.map((a: any) => a.email),
             bcc: bccAddresses.map((a: any) => a.email),
             attachments,
+            draftSend,
           })
         ).messageId,
       }
@@ -1911,6 +2113,7 @@ export async function sendDraft(
         textBody: outgoing.textBody,
         headers: outgoing.headers,
         attachments,
+        draftSend,
       })
   // Only once it left: a send that failed writes no record and leaves the notice owed.
   if (outgoing.record) await recordCommercialSendAfterSend(outgoing.record)

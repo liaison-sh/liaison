@@ -17,8 +17,9 @@
 #   4. Wait until every new container's healthcheck (`/readyz`) is healthy. One
 #      that never gets there rolls the deploy back: the new containers are
 #      stopped and removed, the old ones keep serving, exit 1.
-#   4b. When the sandbox service runs (profile `sandbox`), recreate it on the
-#      new image: it refuses runs of another release.
+#   4b. Recreate the sandbox service on the new image (it refuses runs of
+#      another release), or start it when the compose file defines it and none
+#      runs yet.
 #   5. Give the edge two probe intervals to see the new upstreams, then stop the
 #      old containers by id with the full drain budget (`docker stop -t`), and
 #      remove them once they exit. Their /readyz answers 503 at once, so the edge
@@ -453,15 +454,26 @@ done
 log "new processes ready: $new_ids"
 
 # --- 4b. the sandbox service follows the new release ----------------------------
-# The sandbox service (profile `sandbox`) runs the same image as the app and
+# The sandbox service runs the same image as the app and
 # refuses runs of another release (docs/self-hosting/sandbox.md, Upgrades).
-# When it is in use it is recreated on the new image now, as the new processes
-# take over: from here the old ones' remaining sandbox runs are refused while
-# they drain, which the new processes retry.
-if [ -n "$("$DOCKER" compose --profile sandbox ps -a -q sandbox 2>/dev/null)" ]; then
+# It is recreated on the new image now, as the new processes take over: from
+# here the old ones' remaining sandbox runs are refused while they drain, which
+# the new processes retry. A stack whose compose file defines it but where none
+# runs yet (the first rolling deploy of a release that starts it with the
+# stack) gets it started here, unless LIAISON_APP_RUNTIME=quickjs keeps every
+# app off it (a host left without the service, `--scale sandbox=0`).
+sandbox_wanted() {
+  "$DOCKER" compose config --services 2>/dev/null | grep -qx sandbox || return 1
+  ! "$DOCKER" compose config 2>/dev/null | grep -Eq "LIAISON_APP_RUNTIME: [\"']?quickjs[\"']?\$"
+}
+if [ -n "$("$DOCKER" compose ps -a -q sandbox 2>/dev/null)" ]; then
   log "recreating the sandbox service on the new image"
-  "$DOCKER" compose --profile sandbox up -d --no-deps sandbox ||
-    log "WARNING: the sandbox service was not recreated; app runs on it are refused until it runs this release: docker compose --profile sandbox up -d sandbox"
+  "$DOCKER" compose up -d --no-deps sandbox ||
+    log "WARNING: the sandbox service was not recreated; app runs on it are refused until it runs this release: docker compose up -d sandbox"
+elif sandbox_wanted; then
+  log "starting the sandbox service on the new image"
+  "$DOCKER" compose up -d --no-deps sandbox ||
+    log "WARNING: the sandbox service did not start; app runs on it fail until it does: docker compose up -d sandbox (docs/self-hosting/sandbox.md)"
 fi
 
 # --- 5. the edge moves; the old processes drain ----------------------------------

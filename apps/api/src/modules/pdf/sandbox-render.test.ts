@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { PDFDocument } from "pdf-lib"
 import { createSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
+import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
 import { runTemplateToPdf } from "./sandbox-render"
 
 // A minimal template bundle: sets globalThis.renderTemplate = (data) => DrawCommand[].
@@ -26,6 +27,30 @@ describe("runTemplateToPdf", () => {
   afterAll(async () => {
     if (pool) await pool.shutdown()
   }, 60_000)
+
+  // A render is always asked for by a running app (ctx.pdf.render), which holds
+  // its own process while it waits: the render must be a nested run, so the
+  // sandbox service gives it a process kept for nested runs instead of queueing
+  // it behind its own caller.
+  it("runs as a nested run, under the execution of the app that asked for it", async () => {
+    const settled: RunSettledInfo[] = []
+    const off = onRunSettled((info) => {
+      if (info.entry === "pdf-template:renderTemplate") settled.push(info)
+    })
+    try {
+      await runTemplateToPdf({
+        ...owner,
+        bundleSource: bundle,
+        data: { name: "Acme" },
+        pool,
+        nestedParentKey: "parent-execution-token",
+      })
+      await runTemplateToPdf({ ...owner, bundleSource: bundle, data: { name: "Acme" }, pool })
+    } finally {
+      off()
+    }
+    expect(settled.map((s) => s.nested)).toEqual([true, true])
+  })
 
   it("executes a template bundle in the sandbox and replays its commands to a PDF", async () => {
     const bytes = await runTemplateToPdf({

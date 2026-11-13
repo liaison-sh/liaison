@@ -31,6 +31,7 @@ if [ "$1" = compose ]; then
       while read -r id; do [ -n "$id" ] && [ ! -f "$S/gone_$id" ] && echo "$id"; done < "$f"
       exit 0 ;;
     run) exit "$(cat "$S/migrate_exit" 2>/dev/null || echo 0)" ;;
+    config) case " $* " in *" --services "*) cat "$S/config_services" 2>/dev/null ;; *) cat "$S/config_full" 2>/dev/null ;; esac; exit 0 ;;
     up) case "$*" in *--scale*) touch "$S/up_done" ;; *--wait*) exit "$(cat "$S/up_wait_exit" 2>/dev/null || echo 0)" ;; esac; exit 0 ;;
     *) exit 0 ;;
   esac
@@ -212,14 +213,35 @@ describe("rolling-deploy.sh", () => {
     const { code, calls } = run()
     expect(code).toBe(0)
     const ready = lastIndexOf(calls, (c) => c.startsWith("inspect") && c.includes("Health"))
-    const recreate = indexOf(calls, (c) => c === "compose --profile sandbox up -d --no-deps sandbox")
+    const recreate = indexOf(calls, (c) => c === "compose up -d --no-deps sandbox")
     const firstStop = indexOf(calls, (c) => c.startsWith("stop"))
     expect(recreate).toBeGreaterThan(ready)
     expect(firstStop).toBeGreaterThan(recreate)
   })
 
-  it("leaves the sandbox service alone when it is not in use", () => {
+  it("leaves the sandbox service alone when the compose file has none", () => {
     standardWorld()
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    expect(calls.some((c) => c.includes("up -d --no-deps sandbox"))).toBe(false)
+  })
+
+  it("starts the sandbox service the compose file defines when none runs yet (a first rolling deploy)", () => {
+    standardWorld()
+    writeFileSync(path.join(state, "config_services"), "app\nsandbox\npostgres\n")
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    const ready = lastIndexOf(calls, (c) => c.startsWith("inspect") && c.includes("Health"))
+    const start = indexOf(calls, (c) => c === "compose up -d --no-deps sandbox")
+    const firstStop = indexOf(calls, (c) => c.startsWith("stop"))
+    expect(start).toBeGreaterThan(ready)
+    expect(firstStop).toBeGreaterThan(start)
+  })
+
+  it("does not start a missing sandbox service while LIAISON_APP_RUNTIME=quickjs", () => {
+    standardWorld()
+    writeFileSync(path.join(state, "config_services"), "app\nsandbox\n")
+    writeFileSync(path.join(state, "config_full"), "services:\n  api:\n    environment:\n      LIAISON_APP_RUNTIME: quickjs\n")
     const { code, calls } = run()
     expect(code).toBe(0)
     expect(calls.some((c) => c.includes("up -d --no-deps sandbox"))).toBe(false)

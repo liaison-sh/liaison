@@ -1,0 +1,6 @@
+{
+  "file": "apps/api/src/modules/app-builder/build/sandbox-resolve.ts",
+  "sites": { "Bun.Transpiler@scanDraftSource": 1 },
+  "input": "subprocess",
+  "reason": "The draft pre-scan's second reader (scanImports), run only inside the draft build subprocess after the TypeScript-AST pass refused any import attribute; the API process imports this module as types only."
+}

@@ -40,7 +40,9 @@ vi.mock("~/modules/mail/mail-account-store", () => ({
   allAccounts: () => [{ id: "acc-1" }],
   personalAccounts: () => [{ id: "acc-1" }],
 }))
-vi.mock("~/modules/mail/mail-draft-store", () => ({
+vi.mock("~/modules/mail/mail-draft-store", async (orig) => ({
+  mailSendErrorKey: (await orig<typeof import("~/modules/mail/mail-draft-store")>())
+    .mailSendErrorKey,
   // A fresh draft per render: uploads a presign never answers stay in flight
   // for the whole file, and must not show up in the next test's composer.
   createDraft: vi.fn(async () => ({ id: `draft-${Math.random().toString(36).slice(2)}` })),

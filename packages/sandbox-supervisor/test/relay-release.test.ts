@@ -135,7 +135,8 @@ describe("one sandbox service, several app processes", () => {
     const ok = await fetch(`http://127.0.0.1:${front.port}/health?bridge=1`, {
       headers: { [RELEASE_HEADER]: RELEASE },
     })
-    expect(await ok.json()).toEqual({ ok: true, release: RELEASE, bridge: "ok" })
+    // No firewall self-check for a supervisor run directly (no container runtime).
+    expect(await ok.json()).toEqual({ ok: true, release: RELEASE, bridge: "ok", network: "off" })
   })
 
   test("every answer carries the run's CPU as the supervisor measured it", async () => {

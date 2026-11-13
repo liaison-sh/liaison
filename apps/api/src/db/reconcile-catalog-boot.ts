@@ -52,6 +52,7 @@ import {
 } from "~/modules/apps/catalog-derivations"
 import { materialiseActiveVersions } from "~/modules/apps/package-store"
 import type { AppDescriptor } from "~/modules/apps/runtime"
+import { backfillWorkerModules } from "~/modules/apps/workers/worker-module-backfill"
 import { checkCatalogSearchDrift, registerReindexWorker } from "~/modules/search/drift"
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
@@ -121,6 +122,19 @@ export async function runReconcileCatalogBoot(): Promise<boolean> {
         log.error({ failed: stored.failed }, "Boot: app versions missing from the package store")
       }
       const result = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+      // Every enabled version with no Worker module gets its own package's
+      // worker.js when it has one; the rest are listed (their runs are refused
+      // on Workers and the sandbox service until reinstalled).
+      const modules = await backfillWorkerModules().catch((err) => {
+        log.error({ err }, "Boot: the Worker module back-fill failed")
+        return null
+      })
+      if (modules) {
+        log.info(
+          { backfilled: modules.backfilled.length, withoutWorkerModule: modules.missing.length },
+          "Boot: app versions and their Worker modules",
+        )
+      }
       return { result, derivationsOk: await applyCatalogDerivations() }
     })
     if (!derivationsOk) return false

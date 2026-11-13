@@ -2,6 +2,7 @@
 //
 // @liaison/sandbox-supervisor: the self-hosted sandbox service (workerd).
 export * from "./config"
+export * from "./network-check"
 export * from "./pool"
 export * from "./release"
 export * from "./runtime-check"

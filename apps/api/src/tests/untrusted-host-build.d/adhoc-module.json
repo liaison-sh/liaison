@@ -1,0 +1,6 @@
+{
+  "file": "apps/api/src/modules/apps/workers/adhoc-module.ts",
+  "sites": { "buildWorkerModule@buildFromHandlers": 1 },
+  "input": "repo",
+  "reason": "Builds only the platform runtime plus export wrappers generated from checked export names (runtimeHandlersSource); the org's script is a CheckedScript joined to the built runtime as text afterwards and never reaches the bundler."
+}

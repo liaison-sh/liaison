@@ -6,30 +6,35 @@
 // loader or the instance's sandbox service, with the same limits, once it has
 // a module. This file gives it one.
 //
-//   ensureScriptModule  a plain script (a transform, a template bundle): built
-//                       with the builder of every package's worker.js
-//                       (app-builder/build/freeze-core.ts buildWorkerModule),
-//                       its named functions exported as the module's handlers
+//   ensureScriptModule  a plain script (a transform, a template bundle): the
+//                       script, in a function scope of its own, placed before
+//                       the platform's Worker runtime (built from repo code with
+//                       the builder of every package's worker.js,
+//                       app-builder/build/freeze-core.ts buildWorkerModule), its
+//                       named functions exported as the module's handlers
 //   ensureBuiltModule   a module built already (a draft's worker.js, built with
 //                       the draft by app-builder/build/build-worker.ts)
 //   readAdhocModule     the bytes for a sha, re-hashed (the loader's bundle
 //                       route and the sandbox service's module push)
 //
 // Every module is stored in kernel.app_code_modules (migration 0299) by the
-// org and a source key: the sha256 of the script, its export list and the
-// platform's Worker runtime (an empty module built with the same builder), so
-// the same code is built once per release and per org, and a new release
-// builds anew. Sites build when the code is saved or installed (a transform's
-// save, a template's install) and look up on every run that goes to a remote
-// executor (a process cache in front of the table); nothing is built for a run
-// that stays on QuickJS.
+// org and a source key: the sha256 of the module's text (the script and the
+// runtime), so the same code is built once per release and per org, and a new
+// release builds anew. Sites build when the code is saved or installed (a
+// transform's save, a template's install) and look up on every run that goes to
+// a remote executor (a process cache in front of the table); nothing is built
+// for a run that stays on QuickJS.
 //
-// A script is bundled from a virtual module: it may import nothing (any import
-// fails the build, a Bun macro included, so no code of it runs at build time),
-// and its export wrappers look the function up when called: a top-level
-// function of the script (a transform's `transform`), else a property the
-// script set on globalThis (a template's `renderTemplate`). The module is an
-// ES module, so the script runs in strict mode, as on the loader.
+// The script itself never reaches a bundler or Bun's transpiler: Bun runs a
+// macro import (`with { type: "macro" }`) while it parses, in this process, and
+// no plugin hook sees it first. So the script is read only by the TypeScript
+// parser (sandbox/import-attributes.ts checkPlainScript: no import, export,
+// `import(...)` or `import.meta`), then joined to the runtime as text. Bun builds
+// only the runtime and the export wrappers, all of them platform code. Each
+// wrapper looks its function up when called: a top-level function of the script
+// (a transform's `transform`), else a property the script set on globalThis (a
+// template's `renderTemplate`). The module is an ES module, so the script runs
+// in strict mode, as on the loader.
 
 import { createHash } from "node:crypto"
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm"
@@ -38,6 +43,11 @@ import { withSystemDb } from "~/db/privileged"
 import { type AppCodeModuleOrigin, appCodeModules } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { buildWorkerModule } from "~/modules/app-builder/build/freeze-core"
+import {
+  type CheckedScript,
+  checkPlainScript,
+  topLevelStatementCount,
+} from "~/modules/apps/sandbox/import-attributes"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "apps-adhoc-module" })
@@ -73,7 +83,9 @@ const sha256Hex = (bytes: string | Uint8Array) => createHash("sha256").update(by
 /** org|source key -> {sha, last touch}. */
 const cache = new Map<string, { sha256: string; touchedAt: number }>()
 const inflight = new Map<string, Promise<string>>()
-let runtime: Promise<string> | null = null
+const runtimes = new Map<string, Promise<string>>()
+/** sha of origin|exports|script -> source key, so a run's lookup does not re-read the script. */
+const sourceKeys = new Map<string, string>()
 let builds = 0
 
 function cacheKey(orgId: string | null, sourceKey: string): string {
@@ -89,17 +101,29 @@ function remember(key: string, sha256: string, touchedAt: number): void {
   }
 }
 
-/** The handlers module of a script: the script, then one wrapper per export. */
-export function scriptHandlersSource(script: string, exports: readonly string[]): string {
-  const lines = [script, ""]
+/** The binding the script's slot defines and the export wrappers call. */
+const SCRIPT_LOOKUP = "__liaison_adhoc_script"
+
+function checkExports(exports: readonly string[]): void {
   for (const name of exports) {
-    if (!EXPORT_NAME.test(name) || name.startsWith("__liaison_export_")) {
+    if (!EXPORT_NAME.test(name) || name.startsWith("__liaison_")) {
       throw new AdhocModuleError(`invalid export name ${JSON.stringify(name)}`)
     }
+  }
+}
+
+/**
+ * The handlers module the runtime is built with: platform code only, one
+ * wrapper per export, each calling the lookup the script's slot defines.
+ */
+export function runtimeHandlersSource(exports: readonly string[]): string {
+  checkExports(exports)
+  const lines: string[] = []
+  for (const name of exports) {
     const local = `__liaison_export_${name}`
     lines.push(
       `const ${local} = function (...args) {`,
-      `  const fn = typeof ${name} === "function" ? ${name} : globalThis[${JSON.stringify(name)}]`,
+      `  const fn = ${SCRIPT_LOOKUP}(${JSON.stringify(name)})`,
       `  if (typeof fn !== "function") throw new Error(${JSON.stringify(`${name} is not defined`)})`,
       "  return fn.apply(this, args)",
       "}",
@@ -107,6 +131,31 @@ export function scriptHandlersSource(script: string, exports: readonly string[])
     )
   }
   return `${lines.join("\n")}\n`
+}
+
+/**
+ * The script's slot: the script in a function scope of its own (its top-level
+ * names never meet the runtime's), returning the lookup of its exports.
+ */
+export function scriptSlotSource(script: CheckedScript, exports: readonly string[]): string {
+  checkExports(exports)
+  const cases = exports.map(
+    (name) =>
+      `    case ${JSON.stringify(name)}: return typeof ${name} === "function" ? ${name} : globalThis[${JSON.stringify(name)}]`,
+  )
+  return [
+    `const ${SCRIPT_LOOKUP} = (function () {`,
+    script.text,
+    ";",
+    "  return function (name) {",
+    "    switch (name) {",
+    ...cases,
+    "    }",
+    "    return undefined",
+    "  }",
+    "})();",
+    "",
+  ].join("\n")
 }
 
 /** Build a module from a handlers source held in memory; nothing else may be imported. */
@@ -122,7 +171,7 @@ async function buildFromHandlers(handlers: string): Promise<string> {
         contents: handlers,
         loader: "js",
       }))
-      // The script's own imports: none resolves.
+      // The wrappers import nothing.
       build.onResolve({ filter: /.*/ }, (args) => {
         if (args.namespace === VIRTUAL_NS || args.importer === "handlers.js") {
           throw new Error(`import is not available here (${JSON.stringify(args.path)})`)
@@ -136,16 +185,45 @@ async function buildFromHandlers(handlers: string): Promise<string> {
   return built.text
 }
 
+/** The runtime with the wrappers of `exports` (sorted), built once per process. */
+function runtimeModule(exports: readonly string[]): Promise<string> {
+  const key = exports.join(",")
+  let p = runtimes.get(key)
+  if (!p) {
+    p = buildFromHandlers(runtimeHandlersSource(exports))
+    runtimes.set(key, p)
+    p.catch(() => runtimes.delete(key))
+  }
+  return p
+}
+
 /**
- * sha256 of an empty module built with the builder: the platform's Worker
- * runtime as this release bundles it. Part of every source key.
+ * The Worker module of a plain script, as text: the script's slot, then the
+ * runtime. The script is read by the TypeScript parser only, never by Bun.
  */
-function runtimeFingerprint(): Promise<string> {
-  runtime ??= buildFromHandlers("export {}\n").then(sha256Hex)
-  runtime.catch(() => {
-    runtime = null
-  })
-  return runtime
+export async function scriptModuleText(
+  script: string,
+  exports: readonly string[],
+): Promise<string> {
+  const checked = await checkPlainScript(script)
+  if (!checked.ok) {
+    throw new AdhocModuleError(`the code does not build as a Worker module: ${checked.issue}`)
+  }
+  const slot = scriptSlotSource(checked.source, exports)
+  // The script stays inside its function scope: text that closes it is refused.
+  if ((await topLevelStatementCount(slot)) !== 1) {
+    throw new AdhocModuleError(
+      "the code does not build as a Worker module: it does not stay inside its own scope",
+    )
+  }
+  let runtime: string
+  try {
+    runtime = await runtimeModule(exports)
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new AdhocModuleError(`the Worker runtime does not build: ${detail}`)
+  }
+  return `${slot}\n${runtime}`
 }
 
 /** The caller's transaction when it holds one (a save), else a system connection of its own. */
@@ -254,31 +332,43 @@ export async function ensureScriptModule(input: {
   tx?: PrivilegedDb
 }): Promise<string> {
   const exports = [...new Set(input.exports)].sort()
-  const handlers = scriptHandlersSource(input.script, exports)
-  const fingerprint = await runtimeFingerprint()
-  const sourceKey = sha256Hex(`${input.origin}\0${fingerprint}\0${handlers}`)
+  // The source key of a script seen before in this process (the runtime does
+  // not change within one), so a run's lookup does not read the script again.
+  const inputKey = sha256Hex(`${input.origin}\0${exports.join(",")}\0${input.script}`)
+  const moduleText = async (): Promise<string> => {
+    try {
+      return await scriptModuleText(input.script, exports)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      log.warn(
+        { origin: input.origin, orgId: input.orgId, err: detail },
+        "Worker module build failed",
+      )
+      throw err instanceof AdhocModuleError ? err : new AdhocModuleError(detail)
+    }
+  }
+  let sourceKey = sourceKeys.get(inputKey)
+  let text: string | null = null
+  if (!sourceKey) {
+    text = await moduleText()
+    sourceKey = sha256Hex(`${input.origin}\0${text}`)
+    sourceKeys.set(inputKey, sourceKey)
+    if (sourceKeys.size > CACHE_MAX) {
+      const oldest = sourceKeys.keys().next().value
+      if (oldest !== undefined) sourceKeys.delete(oldest)
+    }
+  }
+  const key = sourceKey
   return ensure(
     input.orgId,
-    sourceKey,
-    async (use) => {
-      let text: string
-      try {
-        text = await buildFromHandlers(handlers)
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err)
-        log.warn(
-          { origin: input.origin, orgId: input.orgId, err: detail },
-          "Worker module build failed",
-        )
-        throw new AdhocModuleError(`the code does not build as a Worker module: ${detail}`)
-      }
-      return store(use, {
+    key,
+    async (use) =>
+      store(use, {
         orgId: input.orgId,
         origin: input.origin,
-        sourceKey,
-        bytes: new TextEncoder().encode(text),
-      })
-    },
+        sourceKey: key,
+        bytes: new TextEncoder().encode(text ?? (await moduleText())),
+      }),
     input.tx,
   )
 }
@@ -351,5 +441,6 @@ export const AdhocModuleTestAccess = {
   builds: () => builds,
   clearCache(): void {
     cache.clear()
+    sourceKeys.clear()
   },
 }

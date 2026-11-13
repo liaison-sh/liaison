@@ -1,0 +1,10 @@
+{
+  "file": "apps/api/src/modules/apps/sandbox/bundle-loader.ts",
+  "sites": { "Bun.build@loadBundleUnwrapped": 1, "Bun.Transpiler@transpileRepoSource": 1 },
+  "input": "repo",
+  "gate": {
+    "Bun.build@loadBundleUnwrapped": "bundledAppSource",
+    "Bun.Transpiler@transpileRepoSource": "inRepoSource"
+  },
+  "reason": "The dev/test source channel builds bundled-apps/<name>/handlers.ts from the repo (bundledAppSource names only repo paths); the TypeScript transform runs only on a path inside the repo and outside the install root. An installed package's bundle is plain JS and is never handed to Bun."
+}

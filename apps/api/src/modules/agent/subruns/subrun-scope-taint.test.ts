@@ -129,7 +129,7 @@ function registerTools(): void {
     })
   tool("scoped_read", { requiredScopes: [READ], readOnly: true })
   tool("other_write", { requiredScopes: [WRITE], writesToTable: OTHER_TABLE })
-  // A read-only tool that dispatches a sub-run, as a trusted app does through ctx.agent.spawn.
+  // A read-only tool that dispatches a sub-run, as an app declaring agent.spawn does through ctx.agent.spawn.
   // Read-only, so a tainted parent passes its own taint check and reaches spawnAgent.
   toolRegistry.set([orgId, "x4t", "spawner"], {
     appName: "x4t",

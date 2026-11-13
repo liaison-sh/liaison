@@ -1,0 +1,7 @@
+{
+  "file": "apps/api/src/modules/apps/app-pages.ts",
+  "sites": { "Bun.build@pageScript": 1 },
+  "input": "repo",
+  "gate": { "Bun.build@pageScript": "mayBuildFromSource" },
+  "reason": "Builds an app page from its .ts source only for the repo's own apps (in-tree source, tests); an installed package must ship its built pages/<name>.js, and mayBuildFromSource refuses anything under the install root."
+}

@@ -19,6 +19,22 @@ if (runtime.kind === "warn") {
   setInterval(warn, 60 * 60 * 1000)
 }
 const cfg = readSupervisorConfig()
+// In a container, every workerd process should run as its own uid (pool.ts):
+// without it a process that escaped V8 could read its neighbours' run tokens.
+if (process.env.SANDBOX_RUNTIME && !cfg.processUids) {
+  const warn = () =>
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        msg:
+          "The workerd processes share one uid: a process that escaped V8 could read the " +
+          "others' memory. Run the service as root with the SETUID, SETGID, CHOWN, KILL and " +
+          "DAC_OVERRIDE capabilities (deploy/docker-compose.yml), or remove SANDBOX_PROCESS_UIDS=off.",
+      }),
+    )
+  warn()
+  setInterval(warn, 60 * 60 * 1000)
+}
 const sup = await createSupervisor(cfg)
 const server = Bun.serve({
   hostname: cfg.host,
@@ -41,6 +57,8 @@ console.log(
     idleMs: cfg.idleMs,
     heapMb: cfg.heapMb,
     rssCapMb: cfg.rssCapMb,
+    processUids: cfg.processUids,
+    networkCheck: cfg.networkCheck,
   }),
 )
 for (const sig of ["SIGINT", "SIGTERM"] as const) {

@@ -4,6 +4,100 @@
 
 Most recent first.
 
+## Two kinds of app, a sandbox on every server, and dashboards people write
+
+This release changes how apps run. Liaison now has exactly two kinds of app. The core
+apps (tickets, mail, contacts, calendar, knowledge, projects and the MCP manager) are part
+of the server and run as its own code. Every other app, whoever wrote it, runs sandboxed:
+it wakes up for one bounded run, holds no secret, and talks to the server only through
+the calls its manifest declares. On a self-hosted server that sandbox is now a separate
+service, `workerd` under gVisor, started with the stack. Read the notes for operators
+before you upgrade: the host needs gVisor.
+
+### Apps run in their own sandbox service
+
+- A new `sandbox` service in the compose file runs every sandboxed app on a supervised
+  pool of `workerd` processes (the runtime behind Cloudflare Workers), in its own
+  container under gVisor, on a network that reaches nothing but one port of the app.
+- One process serves one organization's app at one version, runs as its own user, and
+  is never reused for another organization. A run past its time, its CPU time or its
+  memory is killed alone; other organizations' runs go on.
+- A run carries a token for that run only. Every `ctx.*` call comes back to the server,
+  which checks the token, so an app never sees a key, a password or an OAuth token:
+  the server adds credentials to the app's outbound calls itself.
+- The service checks its own network at start and every hour, and refuses every run
+  while it can reach more than the app's bridge port.
+- In the managed cloud, apps run on Cloudflare Workers, and a run the loader cannot take
+  runs on the server's own sandbox service.
+
+How it works, how to size it and the risks it does not remove:
+[The app sandbox service](self-hosting/sandbox.md).
+
+### Apps wake up, do their work and stop
+
+- Every way an app runs (tools, webhooks, jobs, timers, events, exports, approval
+  summaries, import transforms, PDF templates, previews) is one bounded run through one
+  door, with one table of limits.
+- Apps get typed job queues, timers and resumable steps: a long sync works in pages and
+  picks up where it stopped, instead of holding a run open.
+- Webhook deliveries are stored before the app's handler runs and replayed if it fails.
+- Approval summaries and app attention items are written when they change, so opening a
+  card or the Home feed runs no app code.
+
+### Google Drive, GitLab, the database connector and the API connector are catalog apps
+
+They install, upgrade and run like any other app. An existing install keeps its
+connections, credentials, synced folders, adapters and cursors: the server moves them
+over at its first start on this release.
+
+### Dashboards people and agents write
+
+- Dashboard tables that people and agents fill in, shared like knowledge documents, with
+  history, undo and routine triggers.
+- Charts over time, stacked and blended layers, filters people add, drill-down, targets
+  and comparison deltas, and a dashboard sidebar of its own.
+
+### Mail and search
+
+- Sending a message waits for the mail provider and happens once per draft: a send that
+  was slow is never sent twice. If the outcome is unknown, the next Send asks before it
+  sends again.
+- Knowledge search narrows to knowledge documents in the search engine itself, so a
+  frequent word no longer crowds every document out.
+
+### Notes for operators
+
+- **Install gVisor before you upgrade.** The `sandbox` service declares `runtime: runsc`;
+  on a host without it `docker compose up -d` stops at that service and the app is not
+  recreated. [Install gVisor](self-hosting/sandbox.md#install-gvisor), upgrade, then install
+  the firewall step (`sudo deploy/sandbox-firewall.sh install`, then `check`): until it is
+  in place the service refuses runs with `sandbox_network_open`. The full list:
+  [Upgrading to the release that turns it on](self-hosting/sandbox.md#upgrading-to-the-release-that-turns-it-on).
+- **Size it.** The service takes up to 2 GiB and 2 CPUs by default (6 processes, 2 kept for
+  nested runs, plus 2 overflow); lower the app's own memory limit by as much on a host
+  that sets one. A larger pool: [Size it](self-hosting/sandbox.md#size-it).
+- **Check `/healthz`.** `dependencies.sandbox` must say `ok`, and `appsWithoutWorkerModule`
+  must be `0`: an app version still counted there was installed from a package with no
+  Worker module and must be reinstalled, or republished from a package built by this
+  release; its runs are refused with `app_worker_module_missing` until then.
+- **The way back, this release only.** `LIAISON_APP_RUNTIME=quickjs` runs every app on the
+  former built-in QuickJS sandbox again. The next release removes QuickJS and this switch:
+  run your apps on the sandbox service before you take it.
+- `COMPOSE_PROFILES=sandbox` and `LIAISON_SANDBOX_URL` are no longer needed; existing values
+  keep working. The service always runs the app's own image (`LIAISON_IMAGE`) and is
+  recreated with the app, by `docker compose up -d` and by `deploy/rolling-deploy.sh`.
+- **Config files.** The top-level `apiConnectors` section moved to the `api-connector`
+  app's `provision.connectors` (credentials in the app entry's `connections`); Google
+  Drive's `connection.sharedDrives` moved to `provision.sharedDrives`; the database app's
+  `domainAccess` moved to its `provision` block. `config apply` refuses the old shapes
+  with where each moved. See [the provisioning CLI](provisioning-cli.md).
+- **App SDK.** `readConnectionCredentials` is removed: an app no longer reads a secret.
+  Use `fetch` auth (bearer, basic, a named header or query parameter, an OAuth account
+  refreshed by the server, or the connection's client credentials) instead; see
+  [The app sandbox](app-sandbox.md). Sandboxed tools, events and jobs no longer hold a
+  database transaction: write with `ctx.db.batch`.
+- Migrations 0287 to 0301 run when the container starts.
+
 ## Apps your agent builds, dashboards for everyone, and approvals that answer to you
 
 This release lets an organization grow Liaison itself. Your agent can now write an app for

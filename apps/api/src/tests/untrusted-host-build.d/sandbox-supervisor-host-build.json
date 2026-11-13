@@ -1,0 +1,6 @@
+{
+  "file": "packages/sandbox-supervisor/src/host-build.ts",
+  "sites": { "Bun.build@hostWorkerSource": 1 },
+  "input": "repo",
+  "reason": "Builds the supervisor's own host Worker (host-worker.ts plus the app loader package) from a fixed repo path, once per supervisor start; it takes no input."
+}

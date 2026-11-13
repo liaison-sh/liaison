@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { markdownToEmail } from "@liaison/shared"
 import { createSignal } from "solid-js"
+import { ApiError } from "~/lib/api-error"
 import { onSessionTeardown } from "~/lib/session-lifecycle"
 
 interface MailApi {
@@ -149,6 +150,24 @@ function withBody(
     : { ...changes, htmlBody: toHtml(markdown), textBody: markdown }
 }
 
+export const MAIL_SEND_IN_PROGRESS = "mail_send_in_progress"
+export const MAIL_SEND_OUTCOME_UNKNOWN = "mail_send_outcome_unknown"
+
+/**
+ * What a person reads when a draft's send did not settle: still being sent
+ * (409 `mail_send_in_progress`), or maybe delivered (409
+ * `mail_send_outcome_unknown`; the next Send on that draft confirms a resend).
+ * Null for any other failure.
+ */
+export function mailSendErrorKey(
+  err: unknown,
+): "mail.sendInProgress" | "mail.sendOutcomeUnknown" | null {
+  if (!(err instanceof ApiError)) return null
+  if (err.code === MAIL_SEND_IN_PROGRESS) return "mail.sendInProgress"
+  if (err.code === MAIL_SEND_OUTCOME_UNKNOWN) return "mail.sendOutcomeUnknown"
+  return null
+}
+
 export async function sendDraft(
   api: MailApi,
   draftId: string,
@@ -159,6 +178,8 @@ export async function sendDraft(
     subject?: string
     htmlBody: string
     textBody: string
+    /** Send again a draft whose earlier send may already have been delivered. */
+    confirmResend?: boolean
   },
 ): Promise<{ conversationId: string; messageId: string }> {
   const result = await api.post!<{ conversationId: string; messageId: string }>(

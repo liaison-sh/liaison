@@ -22,6 +22,7 @@ export interface ProjectsMethods {
   projects_tasksByAssignee: (paramsJson: string) => Promise<string>
   projects_tasksByProject: (paramsJson: string) => Promise<string>
   projects_portfolioRollup: (paramsJson: string) => Promise<string>
+  projects_tasksAggregate: (paramsJson: string) => Promise<string>
   projects_deleteTask: (paramsJson: string) => Promise<string>
   projects_addComment: (paramsJson: string) => Promise<string>
   projects_listComments: (paramsJson: string) => Promise<string>
@@ -628,6 +629,15 @@ export async function portfolioRollup(
   ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_portfolioRollup(JSON.stringify(params ?? {})))
+}
+
+// tasks_aggregate — tasks grouped by status / assignee / priority / due / age in status / SLA
+// state / a field, counted or summed (a manager's dashboard chart).
+export async function tasksAggregate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_tasksAggregate(JSON.stringify(params ?? {})))
 }
 
 // comment / comments — the task's own discussion thread. There was no comment

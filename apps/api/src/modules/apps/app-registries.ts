@@ -985,6 +985,8 @@ export interface PickDeclaration {
   idField: string
   labelField: string
   itemsPath?: string
+  /** Fixed params passed beside the query (e.g. `{ kind: "task" }`). */
+  params?: Record<string, string | number | boolean>
 }
 
 export const entityRegistry = createTypedRegistry<

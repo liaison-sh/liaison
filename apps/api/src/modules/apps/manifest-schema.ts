@@ -1314,7 +1314,8 @@ export const appManifestJsonSchema = {
           // A person picks one record (a dashboard table's link cell) through this app's own
           // readOnly, ungated `tool`, run as them with `{ [queryParam]: <text> }`; each item of
           // its result (at `itemsPath`, else the result or its only list) gives `idField` and
-          // `labelField`. For an entity the search index does not hold. Cross-field rules:
+          // `labelField`; `params` are fixed params passed beside the query (a search's record
+          // kind). For an entity the search index does not hold, or one it holds mixed with others. Cross-field rules:
           // contract.ts pickDeclarationErrors.
           pick: {
             type: "object",
@@ -1324,6 +1325,12 @@ export const appManifestJsonSchema = {
               idField: { type: "string", pattern: "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$" },
               labelField: { type: "string", pattern: "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$" },
               itemsPath: { type: "string", pattern: "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$" },
+              // Fixed params passed beside the query (e.g. a search's record kind).
+              params: {
+                type: "object",
+                maxProperties: 5,
+                additionalProperties: { type: ["string", "number", "boolean"] },
+              },
             },
             required: ["tool", "queryParam", "idField", "labelField"],
             additionalProperties: false,

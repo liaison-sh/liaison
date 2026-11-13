@@ -176,7 +176,7 @@ export const ProjectEditForm: Component<{
   // Time and budgets: a work project's own switch (never an organisation switch).
   const hasSwitch = () => props.project.kind !== "pipeline"
   const [timeOnNow, setTimeOnNow] = createSignal(props.project.timeBudgets === true)
-  const plan = createTimePlanDraft(props.project)
+  const plan = createTimePlanDraft(props.project, props.api)
 
   const save = async (): Promise<void> => {
     if (saving()) return

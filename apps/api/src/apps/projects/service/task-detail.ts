@@ -48,6 +48,10 @@ export interface Task {
   /** Effective label per group (own or inherited). Every read site
    *  fills it from one batched query; `taskFromRow` starts it empty. */
   labels: TaskLabel[]
+  /** Time keys, only on a task of a project using time and budgets (task-time-keys.ts). */
+  timeboxMinutes?: number | null
+  realTotalMinutes?: number
+  isMilestone?: boolean
 }
 
 export interface DbTaskRow {

@@ -45,6 +45,18 @@
     "projects.time.basisOption.none": "Non facturé",
     "projects.time.rate": "Taux horaire",
     "projects.time.rateInvalid": "Le taux doit être un nombre.",
-    "projects.time.biller": "Qui facture"
+    "projects.time.biller": "Qui facture",
+    "projects.time.billerNone": "Personne pour l'instant",
+    "kernel.homeKind.first_on.one": "projet qui utilise désormais le temps et les budgets",
+    "kernel.homeKind.first_on.other": "projets qui utilisent désormais le temps et les budgets",
+    "kernel.homeKind.dated_on.one": "projet qui utilise désormais les heures datées",
+    "kernel.homeKind.dated_on.other": "projets qui utilisent désormais les heures datées",
+    "projects.time.rowPlanned": "Prévu {{time}}",
+    "projects.time.askLabel": "Demander à l'agent à propos de ce budget",
+    "projects.time.askPlaceholder": "Demander à l'agent à propos de ce projet",
+    "projects.time.askButton": "Demander",
+    "projects.time.askFits": "Le reste tient-il encore ?",
+    "projects.time.askCheck": "Comparer le prévu et le réel",
+    "projects.time.askAbout": "{{project}} : {{question}}"
   }
 }

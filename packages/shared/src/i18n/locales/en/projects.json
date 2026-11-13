@@ -402,6 +402,14 @@
     },
     "rate": "Rate per hour",
     "rateInvalid": "The rate must be a number.",
-    "biller": "Who bills it"
+    "biller": "Who bills it",
+    "billerNone": "No one yet",
+    "rowPlanned": "Planned {{time}}",
+    "askLabel": "Ask the agent about this budget",
+    "askPlaceholder": "Ask the agent about this project",
+    "askButton": "Ask",
+    "askFits": "Does the rest still fit?",
+    "askCheck": "Check planned against real",
+    "askAbout": "{{project}}: {{question}}"
   }
 }

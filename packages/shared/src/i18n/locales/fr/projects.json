@@ -402,6 +402,14 @@
     },
     "rate": "Taux horaire",
     "rateInvalid": "Le taux doit être un nombre.",
-    "biller": "Qui facture"
+    "biller": "Qui facture",
+    "billerNone": "Personne pour l'instant",
+    "rowPlanned": "Prévu {{time}}",
+    "askLabel": "Demander à l'agent à propos de ce budget",
+    "askPlaceholder": "Demander à l'agent à propos de ce projet",
+    "askButton": "Demander",
+    "askFits": "Le reste tient-il encore ?",
+    "askCheck": "Comparer le prévu et le réel",
+    "askAbout": "{{project}} : {{question}}"
   }
 }

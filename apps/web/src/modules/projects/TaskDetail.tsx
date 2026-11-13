@@ -59,7 +59,7 @@ import { StatusPillPopover } from "~/modules/projects/StatusPillPopover"
 import { TimeboxChip } from "~/modules/projects/TimeboxChip"
 import { TookField } from "~/modules/projects/TookField"
 import type { TaskLabel } from "~/modules/projects/task-labels"
-import { budgetFor, loadBudget, readTimebox, timeOn } from "~/modules/projects/time-budgets"
+import { budgetFor, loadBudget, timeOn } from "~/modules/projects/time-budgets"
 import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
 import { MarkdownContent } from "~/modules/shell/markdown-content"
@@ -106,6 +106,10 @@ interface TaskWithProject {
   createdAt: string
   updatedAt: string
   childCount: number
+  /** Time keys: only on a task of a project using time and budgets. */
+  timeboxMinutes?: number | null
+  realTotalMinutes?: number
+  isMilestone?: boolean
 }
 
 interface ThreadShape {
@@ -225,17 +229,22 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
     const projectId = liveTask()?.projectId
     if (projectId) void projectStore.refresh(api, projectId)
   }
-  const [timebox, { mutate: setTimebox }] = createResource(
-    () => (timeActive() && liveTask() ? liveTask()!.id : false),
-    async (taskId) => {
-      const out = await readTimebox(api, taskId)
-      if (out.kind === "off") {
-        timeTurnedOff()
-        return null
-      }
-      return out.kind === "ok" ? out.data.timeboxMinutes : null
-    },
-  )
+  // The task's time keys come with the task itself; a save holds its answer until the task is
+  // read again.
+  const [savedTimebox, setSavedTimebox] = createSignal<{ taskId: string; minutes: number | null }>()
+  const [savedTotal, setSavedTotal] = createSignal<{ taskId: string; minutes: number }>()
+  const timebox = (): number | null => {
+    const t = liveTask()
+    if (!t) return null
+    const saved = savedTimebox()
+    return saved?.taskId === t.id ? saved.minutes : (t.timeboxMinutes ?? null)
+  }
+  const totalMinutes = (): number => {
+    const t = liveTask()
+    if (!t) return 0
+    const saved = savedTotal()
+    return saved?.taskId === t.id ? saved.minutes : (t.realTotalMinutes ?? 0)
+  }
   createEffect(() => {
     const projectId = liveTask()?.projectId
     if (projectId && timeActive() && !budgetFor(projectId)) {
@@ -625,10 +634,10 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                     <TimeboxChip
                       api={api}
                       taskId={t().id}
-                      minutes={timebox() ?? null}
+                      minutes={timebox()}
                       disabled={!canWriteTime()}
                       onSaved={(m) => {
-                        setTimebox(m)
+                        setSavedTimebox({ taskId: t().id, minutes: m })
                         const projectId = t().projectId
                         void loadBudget(api, projectId, { onOff: timeTurnedOff })
                       }}
@@ -640,10 +649,12 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                       taskId={t().id}
                       datedHours={datedHours()}
                       editable={canWriteTime()}
+                      totalMinutes={totalMinutes()}
                       onOff={timeTurnedOff}
-                      onChanged={() =>
+                      onChanged={(total) => {
+                        setSavedTotal({ taskId: t().id, minutes: total })
                         void loadBudget(api, t().projectId, { onOff: timeTurnedOff })
-                      }
+                      }}
                     />
                   </Show>
                   <MetaSeparator />

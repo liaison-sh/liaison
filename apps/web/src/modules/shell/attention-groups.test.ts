@@ -502,3 +502,28 @@ describe("attention-groups.seven-apps", () => {
     }
   })
 })
+
+describe("the time and budgets Home lines", () => {
+  const nested =
+    (catalog: Record<string, unknown>) =>
+    (key: string): string => {
+      let node: unknown = catalog
+      for (const part of key.replace(/^kernel\./, "").split(".")) {
+        node = (node as Record<string, unknown> | undefined)?.[part]
+      }
+      return typeof node === "string" ? node : key
+    }
+  it("the first project turned on reads its own words in both languages", () => {
+    const kind = "projects:time_budgets.first_on"
+    const en = { t: nested(enKernel), locale: "en" }
+    const fr = { t: nested(frKernel), locale: "fr" }
+    expect(kindCountLabel(kind, 1, en)).toBe("1 project now using time and budgets")
+    expect(kindCountLabel(kind, 2, en)).toBe("2 projects now using time and budgets")
+    expect(kindCountLabel(kind, 1, fr)).toBe(
+      "1 projet qui utilise désormais le temps et les budgets",
+    )
+    expect(kindShortLabel("projects:time_budgets.dated_on", en)).toBe(
+      "projects now using dated hours",
+    )
+  })
+})

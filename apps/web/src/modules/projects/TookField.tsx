@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Took: what the person spent on a task, in their own words, in the meta row. Enter or leaving
 // the field saves; unreadable text stays in the field and saves nothing; no dialog, no timer.
-// The field holds only the viewer's own entry. "N h so far" is the task's total, with no one's
-// part named. On a project with dated hours a date says which day the entry is for.
+// The field holds only the viewer's own entry, read through `task_time_get`. "N h so far" is the
+// task's total from the task itself, with no one's part named. On a project with dated hours a date says which day the entry is for.
 import { parseDuration } from "@liaison/shared"
 import { type Component, createEffect, createResource, createSignal, on, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
@@ -15,9 +15,11 @@ export const TookField: Component<{
   datedHours: boolean
   /** Without the task-write scope (or on an archived project) the field only reads. */
   editable: boolean
+  /** The task's total (everyone's, with no one's part named), from the task itself. */
+  totalMinutes: number
   onOff: () => void
-  /** The task's total changed: the budget reads it again. */
-  onChanged?: () => void
+  /** The task's total changed (the new total): the budget reads it again. */
+  onChanged?: (totalMinutes: number) => void
 }> = (props) => {
   const i18n = useI18n()
   const [day, setDay] = createSignal("")
@@ -80,7 +82,7 @@ export const TookField: Component<{
     if (out.kind === "ok") {
       setError(null)
       await refetch()
-      props.onChanged?.()
+      props.onChanged?.(out.data.totalMinutes)
     } else if (out.kind === "off") props.onOff()
     else setError(out.message)
   }
@@ -129,9 +131,9 @@ export const TookField: Component<{
           class="rounded-sm border border-border bg-bg px-1.5 py-0.5 text-[12px] text-text-secondary outline-none focus:border-accent-muted"
         />
       </Show>
-      <Show when={(time()?.totalMinutes ?? 0) > 0}>
+      <Show when={props.totalMinutes > 0}>
         <span data-testid="task-took-total" class="text-[12px] text-text-tertiary">
-          {i18n.t("projects.time.tookSoFar", { time: formatMinutes(time()!.totalMinutes) })}
+          {i18n.t("projects.time.tookSoFar", { time: formatMinutes(props.totalMinutes) })}
         </span>
       </Show>
       <Show when={entry()?.enteredVia === "mcp"}>

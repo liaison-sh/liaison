@@ -136,4 +136,52 @@ test.describe("time and budgets are per project", () => {
     await took.press("Enter")
     await expect(page.getByTestId("task-took-total")).toHaveText("1 h 30 so far", SEE)
   })
+
+  test("a timebox comes back with the task, and the task list shows Planned only on that project's rows", async ({
+    page,
+    env,
+    qa,
+    world,
+  }) => {
+    await grantProjectScopes(env, world.org.id, qa.admin.id)
+    await clearAllProjects(env, qa.admin.token)
+    const house = await seedProjectWithTasks(env, qa.admin.token, {
+      name: "Studio internal",
+      key: "SHELF",
+      tasks: [{ title: "Sort the shelves" }],
+    })
+    const atlas = await seedProjectWithTasks(env, qa.admin.token, {
+      name: "Partner portal",
+      key: "ATLAS",
+      tasks: [{ title: "Sort the import" }],
+    })
+    await api(env.serverUrl, `/api/projects/${atlas.id}`, {
+      token: qa.admin.token,
+      method: "PATCH",
+      body: { timeBudgets: true },
+    })
+    await loginAs(page, env, "admin@test.com", "12345678")
+    const base = `http://localhost:${env.ports[1]}`
+    await page.goto(`${base}/projects/tasks/${atlas.tasks[0]!.id}`)
+    await page.getByTestId("task-timebox-chip").click()
+    const box = page.getByTestId("task-timebox-input")
+    await box.fill("2 days")
+    await box.press("Enter")
+    await expect(page.getByTestId("task-timebox-chip")).toHaveAttribute("data-state", "set", SEE)
+    await page.reload()
+    await expect(page.getByTestId("task-timebox-chip")).toHaveAttribute("data-state", "set", SEE)
+
+    await page.goto(`${base}/projects`)
+    await page.getByTestId("projects-sidebar.search").fill("Sort the")
+    await expect(
+      page.getByTestId(`projects-home.cross-project-row-${atlas.tasks[0]!.id}`),
+    ).toBeVisible(SEE)
+    await expect(
+      page.getByTestId(`projects-home.cross-project-row-${house.tasks[0]!.id}`),
+    ).toBeVisible(SEE)
+    await expect(page.getByTestId(`projects-home.row-planned-${atlas.tasks[0]!.id}`)).toHaveText(
+      /^Planned /,
+    )
+    await expect(page.getByTestId(`projects-home.row-planned-${house.tasks[0]!.id}`)).toHaveCount(0)
+  })
 })

@@ -11,6 +11,9 @@ vi.mock("~/modules/auth/auth-store", async (importOriginal) => ({
   hasScope: (s: string) => scopes.granted.has(s),
 }))
 
+const dockMock = vi.hoisted(() => ({ prefill: vi.fn(async (_text: string) => "dm-1") }))
+vi.mock("~/modules/shell/dock-prefill", () => ({ dock: dockMock }))
+
 const data = (over: Partial<BudgetData> = {}): BudgetData => ({
   projectId: "p1",
   projectName: "Maison Delorme",
@@ -166,5 +169,21 @@ describe("BudgetLine", () => {
     expect(screen.getByTestId("budget-line.error").textContent).toContain("Could not work out")
     fireEvent.click(screen.getByTestId("budget-line.retry"))
     expect(retry).toHaveBeenCalled()
+  })
+
+  it("the ask box fills the chat's composer with the question and sends nothing", async () => {
+    dockMock.prefill.mockClear()
+    const post = vi.fn(async () => ({}))
+    panel(ready(data()), { api: { post } as never })
+    fireEvent.click(screen.getByTestId("budget-ask.suggest-0"))
+    expect(dockMock.prefill).toHaveBeenCalledWith("Maison Delorme: Does the rest still fit?")
+    const input = screen.getByTestId("budget-ask.input") as HTMLInputElement
+    fireEvent.input(input, { target: { value: "  Is design over?  " } })
+    fireEvent.click(screen.getByTestId("budget-ask.submit"))
+    await waitFor(() =>
+      expect(dockMock.prefill).toHaveBeenLastCalledWith("Maison Delorme: Is design over?"),
+    )
+    await waitFor(() => expect(input.value).toBe(""))
+    expect(post).not.toHaveBeenCalled()
   })
 })

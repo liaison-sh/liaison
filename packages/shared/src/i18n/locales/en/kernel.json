@@ -1750,6 +1750,14 @@
     "collection_manual": {
       "one": "collection to enter at your e-invoicing platform",
       "other": "collections to enter at your e-invoicing platform"
+    },
+    "first_on": {
+      "one": "project now using time and budgets",
+      "other": "projects now using time and budgets"
+    },
+    "dated_on": {
+      "one": "project now using dated hours",
+      "other": "projects now using dated hours"
     }
   },
   "homeMarkAllRead": "Mark all read",

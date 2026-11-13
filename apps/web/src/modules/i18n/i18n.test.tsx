@@ -337,6 +337,20 @@ describe("every key the web asks for exists in the catalog", () => {
         manifestKinds.add(tail.includes(".") ? tail.slice(tail.lastIndexOf(".") + 1) : tail)
       }
     }
+    // A core app writes its kinds from its own service code, under a `*_KIND` constant.
+    const coreSources = import.meta.glob("../../../../api/src/apps/*/service/*.ts", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>
+    for (const [file, src] of Object.entries(coreSources)) {
+      if (file.includes(".test.")) continue
+      for (const hit of src.matchAll(/_KIND = "([a-z_]+:[a-z_.]+)"/g)) {
+        const tail = hit[1]!.slice(hit[1]!.indexOf(":") + 1)
+        manifestKinds.add(tail.includes(".") ? tail.slice(tail.lastIndexOf(".") + 1) : tail)
+      }
+    }
+    expect(manifestKinds.has("first_on")).toBe(true)
     const kernelKinds = [
       "awaiting_agent",
       "unassigned",

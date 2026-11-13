@@ -159,21 +159,21 @@ describe("the write's approval card", () => {
   const fence = (items: unknown[]) =>
     `<external-content source="untrusted">\n${JSON.stringify(items)}\n</external-content>`
   const reply = (approval: Record<string, unknown> | undefined) => ({
-    connection: "erae-forum",
-    operation: "reply_as_embodme",
+    connection: "maker-forum",
+    operation: "reply_as_vendor",
     params: { threadId: THREAD, text: DRAFT },
     target: {
       method: "POST",
-      host: "api.embodme.com",
+      host: "api.example.com",
       path: `/api/community/threads/${THREAD}/posts`,
     },
     ...(approval ? { approval } : {}),
   })
   const pinned = {
-    description: "Reply in a forum thread as Embodme. Use after reading the thread.",
+    description: "Reply in a forum thread as the vendor. Use after reading the thread.",
     link: {
       label: "Open the thread",
-      url: `https://embodme.com/platform/community?thread=${THREAD}`,
+      url: `https://example.com/platform/community?thread=${THREAD}`,
     },
     context: {
       operation: "get_thread",
@@ -199,8 +199,8 @@ describe("the write's approval card", () => {
       context: { status: 200, count: 3, items: fence(posts) },
     })
     expect(card.kind).toBe("api-connector.write.full")
-    expect(card.title).toBe("Reply in a forum thread as Embodme")
-    expect(card.lines[0]).toBe(`POST api.embodme.com/api/community/threads/${THREAD}/posts`)
+    expect(card.title).toBe("Reply in a forum thread as the vendor")
+    expect(card.lines[0]).toBe(`POST api.example.com/api/community/threads/${THREAD}/posts`)
     expect(card.lines[1]).toBe("Thread so far (the last 2 of 3):")
     // The last maxItems posts, each fenced, author and date with the text; a fence tag inside escaped.
     expect(card.lines[2]).toBe(
@@ -212,7 +212,7 @@ describe("the write's approval card", () => {
     expect(DRAFT.length).toBeGreaterThan(1000)
     expect(card.lines).toContain(`text: ${DRAFT}`)
     expect(card.links).toEqual([
-      { label: "Open the thread", url: `https://embodme.com/platform/community?thread=${THREAD}` },
+      { label: "Open the thread", url: `https://example.com/platform/community?thread=${THREAD}` },
     ])
   })
 
@@ -240,7 +240,7 @@ describe("the write's approval card", () => {
   it("without an approval block, the card is as before: the draft clipped, no link", async () => {
     const card = await handlers.summarizeConnectorWrite(reply(undefined))
     expect(card.kind).toBe("api-connector.write")
-    expect(card.title).toBe("Reply as embodme in erae-forum")
+    expect(card.title).toBe("Reply as vendor in maker-forum")
     expect(card.subtitle).toBe("Writes to an external system")
     expect(card.links).toBeUndefined()
     const text = card.lines.find((l) => l.startsWith("text: ")) ?? ""

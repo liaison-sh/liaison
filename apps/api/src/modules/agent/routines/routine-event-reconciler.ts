@@ -464,13 +464,14 @@ async function reconcileRoutine(
     }
     const filterApplies =
       isMailSenderFilterActive(routine.eventFilter) && isMailSenderFilterEvent(gateEvent)
-    let owner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
+    let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
     if (isOwnerScopedEvent(gateEvent) || filterApplies) {
-      owner = await loadRoutineOwnerContext(routine.orgId, routine.id)
+      const owner = await loadRoutineOwnerContext(routine.orgId, routine.id)
       if (!owner || !(await ownerCanSeeEventEntity(owner, gateEvent))) {
         push(ev, "skipped:owner_cannot_see")
         continue
       }
+      gatedOwner = owner
       if (
         filterApplies &&
         !(await ownerMailSenderFilterMatches(owner, routine.eventFilter, gateEvent))
@@ -507,7 +508,7 @@ async function reconcileRoutine(
       entity,
       action,
       entityId: ev.entityId,
-      data: eventDataForOwner(owner, gateEvent) ?? null,
+      data: eventDataForOwner(gatedOwner, gateEvent) ?? null,
       origin: await triggerEventOrigin({ ...gateEvent }),
       eventId: ev.eventId,
       retryAttempt: attempt,

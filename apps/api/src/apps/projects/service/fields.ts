@@ -500,7 +500,7 @@ export function fieldFilterConditions(
     throw new ProjectsServiceError(422, "invalid_field", "fields filter is {fieldKey: value}")
   }
   const byKey = new Map(activeFields(defs).map((c) => [c.key, c]))
-  const t = drizzleSql.raw(alias)
+  const t = drizzleSql.identifier(alias)
   const out: SQL[] = []
   for (const [key, raw] of Object.entries(filter as Record<string, unknown>)) {
     const col = byKey.get(key)

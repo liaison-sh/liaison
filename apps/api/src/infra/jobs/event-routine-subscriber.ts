@@ -265,11 +265,12 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // the change as the owner, before the window opens (a non-matching edit absorbs nothing).
   const tableFilter = isTableRowEvent(evt) && isTableRowFilter(sub.filter) ? sub.filter : null
   // The owner, once the gate loaded it: the data the routine is handed is masked for them.
-  let owner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
+  let gatedOwner: Awaited<ReturnType<typeof loadRoutineOwnerContext>> = null
   if (isOwnerScopedEvent(evt) || filterApplies || tableFilter) {
     try {
-      owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
+      const owner = await loadRoutineOwnerContext(sub.orgId, sub.routineId)
       if (!owner) return
+      gatedOwner = owner
       if (!(await ownerCanSeeEventEntity(owner, evt))) {
         log.debug(
           { routineId: sub.routineId, event: sub.event, entityId: evt.entityId },
@@ -313,7 +314,7 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
       entity,
       action,
       entityId: typeof evt.entityId === "string" ? evt.entityId : null,
-      data: eventDataForOwner(owner, evt) ?? null,
+      data: eventDataForOwner(gatedOwner, evt) ?? null,
       origin: await triggerEventOrigin(evt),
       // The outbox id the audit log keeps for this event: the run row records it, and
       // the reconciler matches runs to events by it (routine-event-reconciler.ts).

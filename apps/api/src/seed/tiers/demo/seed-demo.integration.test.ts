@@ -58,6 +58,9 @@ const CATALOG_DEMO_APPS = [
   "shopify",
   "monitoring",
   "stripe",
+  // The oracle layer's headless app: a catalog app on a demo box like the others, so a
+  // database with no catalog holding it would enable it for the org without registering it.
+  "database",
 ]
 
 /**

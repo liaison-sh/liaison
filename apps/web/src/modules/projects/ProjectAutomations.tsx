@@ -9,7 +9,6 @@
  */
 import type { RoutineFlow } from "@liaison/shared"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
-import { namespaceRegistryKey } from "~/framework/app-registry"
 import { formatDateTime } from "~/lib/relative-time"
 import FlowList from "~/modules/agent/flow/FlowList"
 import { loadFlowPeople, loadFlowProject } from "~/modules/agent/flow/flow-data"
@@ -26,11 +25,11 @@ import {
   type RoutineRow,
   type RoutineTemplateRow,
   updateRoutine,
-  upsertRoutineRow,
 } from "~/modules/agent/routines-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openTab } from "~/modules/shell/tab-store"
+import { AGENT_PAGE_TAB_TYPE, canonicalAgentPageEntityId } from "~/modules/threads/agent-directory"
 import { Button } from "~/ui/Button"
 import { Switch } from "~/ui/Switch"
 
@@ -157,9 +156,15 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
     }
   }
 
+  /** A routine lives on its owner agent's page, Routines tab, opened on it. */
   function open(r: RoutineRow) {
-    upsertRoutineRow(r)
-    openTab({ type: namespaceRegistryKey("agents", "routine"), entityId: r.id, label: r.name })
+    const agent = canonicalAgentPageEntityId(r.ownerAgentId ?? "self")
+    openTab({
+      type: AGENT_PAGE_TAB_TYPE,
+      entityId: agent,
+      label: r.name,
+      routePath: `/agents/${agent}/routines?selected=${encodeURIComponent(r.id)}`,
+    })
   }
 
   return (

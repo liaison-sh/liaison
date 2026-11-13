@@ -96,7 +96,11 @@ async function capacityLines(userId: string) {
        ORDER BY created_at`),
   )
 }
-const noon = (date: string) => new Date(`${date}T12:00:00Z`)
+/** Midday UTC on a civil date. */
+const noon = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d, 12))
+}
 
 beforeAll(async () => {
   await acquireTestLock()

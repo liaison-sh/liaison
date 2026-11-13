@@ -138,7 +138,7 @@ export async function monthCloseItems(
     kind: MONTH_CLOSE_KIND as AttentionKind,
     summary: `${r.name}: ${monthName} ends soon. Reconcile it when you are ready.`,
     urgency: CALM_URGENCY,
-    occurredAt: new Date(`${today}T08:00:00Z`).toISOString(),
+    occurredAt: now.toISOString(),
     action: { type: "open_entity", tabType: "projects:project", entityId: r.id },
     metadata: {
       projectId: r.id,

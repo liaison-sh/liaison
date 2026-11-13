@@ -56,6 +56,8 @@
   --color-error-glow: rgba(232, 100, 100, 0.06);
   --color-error-border: rgba(232, 100, 100, 0.14);
   --color-warning: #d4a020;
+  /* Warning words on small text, checked at 4.5:1 (theme-warning-text-contrast.test.ts). */
+  --color-warning-text: #d4a020;
   --color-warning-glow: rgba(212, 160, 32, 0.06);
   --color-warning-border: rgba(212, 160, 32, 0.16);
   /* Chart series without a colour of their own (a status's, a person's): categorical hues,
@@ -208,6 +210,8 @@
   --color-error-glow: rgba(201, 50, 54, 0.07);
   --color-error-border: rgba(201, 50, 54, 0.2);
   --color-warning: #a87900;
+  /* Warning words on small text: the warning tone fails 4.5:1 here (theme-warning-text-contrast.test.ts). */
+  --color-warning-text: #7a5600;
   --color-warning-glow: rgba(168, 121, 0, 0.08);
   --color-warning-border: rgba(168, 121, 0, 0.2);
   --color-chart-1: #3567c9;

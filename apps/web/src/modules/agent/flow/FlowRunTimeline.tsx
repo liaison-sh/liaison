@@ -76,7 +76,7 @@ export const FlowRunTimeline: Component<Props> = (props) => {
   const chipClass = () => {
     switch (summary().kind) {
       case "waiting":
-        return "bg-warning/15 text-warning"
+        return "bg-warning/15 text-warning-text"
       case "failed":
       case "flagged":
         return "bg-error/15 text-error"
@@ -187,7 +187,7 @@ export const FlowRunTimeline: Component<Props> = (props) => {
                   <span
                     class="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px]"
                     classList={{
-                      "text-warning": state() === "waiting",
+                      "text-warning-text": state() === "waiting",
                       "text-error": state() === "failed" || state() === "flagged",
                       "text-text-secondary": !["waiting", "failed", "flagged"].includes(state()),
                     }}

@@ -168,6 +168,8 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   commande: ["order", "orders"],
   client: ["customer", "customers", "contact", "contacts"],
   clientele: ["customers"],
+  societe: ["company", "companies"],
+  entreprise: ["company", "companies"],
   fournisseur: ["supplier"],
   produit: ["product", "products"],
   article: ["product", "item"],

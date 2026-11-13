@@ -23,12 +23,31 @@
 //                            (20 on Linux, 100 elsewhere: no /proc there)
 //   SANDBOX_KILL_GRACE_MS    past a run's deadline before its process is killed (1000)
 //   WORKERD_BIN              the workerd binary (default: the pinned npm package's)
+//   SANDBOX_ALLOW_OPEN_NETWORK=1  run although the service reaches more than the
+//                            bridge port (no firewall step; network-check.ts)
+//   SANDBOX_PROBE_APP_PORTS  app ports that must not answer (3000)
+//   SANDBOX_PROBE_GATEWAY_PORTS  host ports that must not answer
+//                            (22,80,443,2375,3000,5432,6379)
+//   SANDBOX_PROCESS_UID_BASE / _COUNT  each workerd process runs as its own
+//                            uid from this range (40000, 64), with a private
+//                            directory, when the service runs as root on Linux
+//                            (the compose file: root with SETUID, SETGID, KILL,
+//                            CHOWN, DAC_OVERRIDE only). SANDBOX_PROCESS_UIDS=off
+//                            turns it off (every process then shares one uid).
 //
 // Box sizes (worst case = processes x RSS cap; the measured charge is far below):
 //   2 GB box (e.g. a 4 vCPU / 8 GB host sharing it): POOL_SIZE 6 (2 reserved)
 //     + 2 overflow = 8 x 256 MiB = 2 GiB.
 //   3 GB box (e.g. 4 vCPU / 16 GB): POOL_SIZE 10 (2 reserved) + 2 overflow
 //     = 12 x 256 MiB = 3 GiB.
+
+import {
+  DEFAULT_APP_PORTS,
+  DEFAULT_GATEWAY_PORTS,
+  type NetworkCheckMode,
+  networkCheckMode,
+  parsePorts,
+} from "./network-check"
 
 /** Nested runs deeper than this are refused (a cross-app call chain). */
 export const MAX_NESTING_DEPTH = 4
@@ -55,6 +74,12 @@ export interface SupervisorConfig {
   workDir?: string
   /** Off only in a probe that shows what a limit prevents. */
   killEnabled: boolean
+  /** The firewall self-check (network-check.ts). */
+  networkCheck: NetworkCheckMode
+  probeAppPorts: number[]
+  probeGatewayPorts: number[]
+  /** One uid per workerd process, from this range; null: all share the service's uid. */
+  processUids: { base: number; count: number } | null
 }
 
 export const DEFAULTS: Omit<SupervisorConfig, "bridgeOrigin"> = {
@@ -72,6 +97,31 @@ export const DEFAULTS: Omit<SupervisorConfig, "bridgeOrigin"> = {
   killGraceMs: 1_000,
   maxDepth: MAX_NESTING_DEPTH,
   killEnabled: true,
+  networkCheck: "off",
+  probeAppPorts: DEFAULT_APP_PORTS,
+  probeGatewayPorts: DEFAULT_GATEWAY_PORTS,
+  processUids: null,
+}
+
+/**
+ * One uid per process when the service may switch to it: root on Linux (the
+ * compose file), unless SANDBOX_PROCESS_UIDS=off. The range must hold every
+ * process the pool may run at once.
+ */
+export function readProcessUids(
+  env: NodeJS.ProcessEnv,
+  maxProcs: number,
+  isRoot: boolean = process.platform === "linux" && process.getuid?.() === 0,
+): SupervisorConfig["processUids"] {
+  if (env.SANDBOX_PROCESS_UIDS === "off" || !isRoot) return null
+  const base = int(env, "SANDBOX_PROCESS_UID_BASE", 40_000, 1_000)
+  const count = int(env, "SANDBOX_PROCESS_UID_COUNT", 64, 1)
+  if (count < maxProcs) {
+    throw new Error(
+      `SANDBOX_PROCESS_UID_COUNT (${count}) must cover every process the pool may run at once (${maxProcs})`,
+    )
+  }
+  return { base, count }
 }
 
 function int(env: NodeJS.ProcessEnv, key: string, fallback: number, min = 0): number {
@@ -111,7 +161,19 @@ export function readSupervisorConfig(env: NodeJS.ProcessEnv = process.env): Supe
     rssCapMb: int(env, "SANDBOX_RSS_CAP_MB", DEFAULTS.rssCapMb, 32),
     pollMs: int(env, "SANDBOX_POLL_MS", DEFAULTS.pollMs, 5),
     killGraceMs: int(env, "SANDBOX_KILL_GRACE_MS", DEFAULTS.killGraceMs),
+    networkCheck: networkCheckMode(env),
+    probeAppPorts: parsePorts(
+      env.SANDBOX_PROBE_APP_PORTS,
+      DEFAULT_APP_PORTS,
+      "SANDBOX_PROBE_APP_PORTS",
+    ),
+    probeGatewayPorts: parsePorts(
+      env.SANDBOX_PROBE_GATEWAY_PORTS,
+      DEFAULT_GATEWAY_PORTS,
+      "SANDBOX_PROBE_GATEWAY_PORTS",
+    ),
   }
+  cfg.processUids = readProcessUids(env, cfg.poolSize + cfg.overflow)
   if (env.WORKERD_BIN) cfg.workerdBin = env.WORKERD_BIN
   if (env.SANDBOX_BRIDGE_ADDRESS) {
     if (!/^[A-Za-z0-9.-]+:\d{1,5}$/.test(env.SANDBOX_BRIDGE_ADDRESS)) {

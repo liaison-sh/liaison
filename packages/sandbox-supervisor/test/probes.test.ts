@@ -174,6 +174,38 @@ describe("isolation", () => {
     expect(recs[1]?.proc).not.toBe(recs[0]?.proc)
     expect(PROBE_SHA).toMatch(/^[0-9a-f]{64}$/)
   }, 30_000)
+
+  // As root on Linux (the service's container): each process is its own uid,
+  // and one org's process can open neither another's environment (its key)
+  // nor its memory. Elsewhere (a developer's Mac, CI as a user) there are no uids to test.
+  const uidIsolation = process.platform === "linux" && process.getuid?.() === 0
+  test.skipIf(!uidIsolation)(
+    "each process runs as its own uid; another process's memory and key are unreadable",
+    async () => {
+      await sb.run("count", null, { orgId: "org-c" })
+      await sb.run("count", null, { orgId: "org-d" })
+      const procs = sb.sup.pool.procs.filter((p) => !p.dead)
+      expect(procs.length).toBeGreaterThanOrEqual(2)
+      const uids = procs.map((p) => p.uid)
+      expect(uids.every((u) => typeof u === "number" && u >= 40_000)).toBe(true)
+      expect(new Set(uids).size).toBe(uids.length)
+      const [a, b] = procs as [(typeof procs)[0], (typeof procs)[0]]
+      for (const what of ["environ", "mem"]) {
+        const opened = (uid: number) =>
+          Bun.spawnSync(["sh", "-c", `exec 3< /proc/${b.pid}/${what} && echo opened`], {
+            uid,
+            gid: uid,
+            stdout: "pipe",
+            stderr: "ignore",
+          })
+            .stdout.toString()
+            .includes("opened")
+        expect({ what, byOther: opened(a.uid as number) }).toEqual({ what, byOther: false })
+        expect({ what, byOwner: opened(b.uid as number) }).toEqual({ what, byOwner: true })
+      }
+    },
+    30_000,
+  )
 })
 
 describe("recycling", () => {

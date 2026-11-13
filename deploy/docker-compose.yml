@@ -799,7 +799,10 @@ services:
       # /healthz always returns HTTP 200 (even with dead deps), so we parse the
       # body and fail unless every dependency reports "ok" — otherwise a
       # container with a dead Postgres/Redis would stay "healthy" and in
-      # rotation behind a load balancer.
+      # rotation behind a load balancer. One exception: `sandbox:
+      # network_open` (the host firewall step is not installed yet, so the
+      # sandbox service refuses every run) is the host's to fix, and the stack
+      # must come up before that step can run; /healthz still reports it.
       test:
         - CMD
         - bun
@@ -809,7 +812,7 @@ services:
             .then(r => r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)))
             .then(b => {
               const deps = b.dependencies || {}
-              const bad = Object.entries(deps).filter(([, v]) => v !== 'ok')
+              const bad = Object.entries(deps).filter(([k, v]) => v !== 'ok' && !(k === 'sandbox' && v === 'network_open'))
               if (bad.length) { console.error('unhealthy deps: ' + JSON.stringify(bad)); process.exit(1) }
             })
             .catch(e => { console.error(String(e)); process.exit(1) })
@@ -830,7 +833,14 @@ services:
   # It holds no secret and no key, its filesystem is read-only, and it sits on
   # the sandbox network only: no database, Redis, search, object store or DNS
   # name but the app's. The host firewall step (deploy/sandbox-firewall.sh)
-  # narrows that to the app's bridge-only port and cuts it off from the host.
+  # narrows that to the app's bridge-only port and cuts it off from the host;
+  # the service checks that itself, at start and every hour, and refuses runs
+  # while it can reach more (LIAISON_SANDBOX_ALLOW_OPEN_NETWORK=1 accepts an
+  # open network, for a development stack only).
+  # The supervisor runs as root with five capabilities only, to start each
+  # workerd process as its own uid (40000 and up) in a private directory: a
+  # process that escaped V8 cannot read another's memory, key or run tokens.
+  # The workerd processes themselves run with no capability.
   #
   # Sizes (worst case = processes x SANDBOX_RSS_CAP_MB; the measured charge is
   # far below): 2 GiB for the sandbox (the defaults): SANDBOX_POOL_SIZE 6 (2
@@ -853,6 +863,7 @@ services:
     environment:
       SANDBOX_RUNTIME: ${LIAISON_SANDBOX_RUNTIME:-runsc}
       SANDBOX_ALLOW_NO_GVISOR: ${LIAISON_SANDBOX_ALLOW_NO_GVISOR:-}
+      SANDBOX_ALLOW_OPEN_NETWORK: ${LIAISON_SANDBOX_ALLOW_OPEN_NETWORK:-}
       SANDBOX_HOST: 0.0.0.0
       SANDBOX_PORT: "8790"
       # The bridge origin runs name (its port is the app's bridge-only listener).
@@ -871,12 +882,17 @@ services:
       sandbox:
         ipv4_address: ${LIAISON_SANDBOX_IP:-10.73.250.10}
     # No secret, no volume: configs and sockets of the workerd processes live
-    # in /tmp (memory). No capability, no privilege escalation.
+    # in /tmp (memory). No privilege escalation. Root inside the container,
+    # with only what starting each workerd process as its own uid takes:
+    # switch to it (SETUID, SETGID), hand it its directory (CHOWN), reach its
+    # socket (DAC_OVERRIDE) and stop it (KILL).
+    user: "0:0"
     read_only: true
     tmpfs:
       - /tmp:size=64m
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "KILL"]
     mem_limit: ${LIAISON_SANDBOX_MEM_LIMIT:-2g}
     cpus: ${LIAISON_SANDBOX_CPUS:-2.0}
     pids_limit: 512

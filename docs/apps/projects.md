@@ -196,6 +196,8 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 | `finance` | `member` plus `projects:money:*`, `projects:reconcile:*`, `projects:margin:read`, `projects:cost_rates:write`, `projects:timesheet:read` and `projects:capacity:read` |
 | `admin` | `lead` plus `projects:settings:admin` and `projects:labels:admin` |
 
+`projects:money:read` shows a project's price and billing terms; `projects:money:write` sets them (rate or fixed price, and currency). `projects:reconcile:read` and `projects:reconcile:write` read and settle the reconciliation of planned and real time once a period closes.
+
 `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
 
 ## What agents can do

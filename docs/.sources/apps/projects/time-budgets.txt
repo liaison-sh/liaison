@@ -22,3 +22,5 @@ Planned time precedence and coverage rules -> apps/api/src/apps/projects/service
 Coverage counts started or done leaf tasks, never a person -> apps/api/src/apps/projects/service/coverage.ts (coverageOf)
 Price only with the money scope -> apps/api/src/apps/projects/service/budget.ts (MONEY_READ_SCOPE)
 Earlier-tasks sentence and archived time note -> apps/api/src/apps/projects/service/budget.ts (getBudget)
+projects:money:write sets billing terms (rate or fixed price, currency) -> apps/api/src/apps/projects/service/time-plan.ts (setBillingTerms)
+Lead and finance hold the reconcile scopes -> apps/api/src/apps/projects/app.manifest.json (roles)

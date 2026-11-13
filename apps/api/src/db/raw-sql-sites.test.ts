@@ -122,6 +122,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/apps/projects/schema-refs.ts#kernelRel": {
     name: "rel helper; name is a literal at every caller",
   },
+  "apps/api/src/apps/projects/service/time-plan.ts#keep": {
+    col: "a column name typed as a literal union of the table's own columns; every caller passes a literal",
+  },
   "apps/api/src/apps/projects/service/due-status.ts#dueBucketSql": {
     taskAlias: IDENT_FROM_CODE,
     statusAlias: IDENT_FROM_CODE,

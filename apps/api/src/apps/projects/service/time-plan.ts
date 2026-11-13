@@ -543,7 +543,16 @@ export async function setTimePlan(args: {
   )[0]
   const wasDated = before?.dated_hours === true
   const flip = input.datedHours !== undefined && input.datedHours !== wasDated
-  const keep = (col: string) => drizzleSql.raw(`project_time_plan.${col}`)
+  const keep = (
+    col:
+      | "basis"
+      | "timebox_minutes"
+      | "biller_id"
+      | "dated_hours"
+      | "dated_hours_changed_by"
+      | "dated_hours_changed_at"
+      | "source_repos",
+  ) => drizzleSql.raw(`project_time_plan.${col}`)
   const repos = input.sourceRepos === undefined ? null : JSON.stringify(input.sourceRepos)
   await tx.execute(drizzleSql`
     INSERT INTO ${projectsRel("project_time_plan")}
@@ -643,7 +652,8 @@ export async function setBillingTerms(args: {
     rate !== undefined ? rate : fixed !== undefined && fixed !== null ? null : undefined
   const fixedValue =
     fixed !== undefined ? fixed : rate !== undefined && rate !== null ? null : undefined
-  const keep = (col: string) => drizzleSql.raw(`project_billing_terms.${col}`)
+  const keep = (col: "rate_minor" | "fixed_price_minor" | "currency") =>
+    drizzleSql.raw(`project_billing_terms.${col}`)
   await tx.execute(drizzleSql`
     INSERT INTO ${projectsRel("project_billing_terms")}
       (project_id, org_id, rate_minor, fixed_price_minor, currency)

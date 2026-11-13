@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   createRoutineRequestSchema,
+  resolveRoutineTemplatePlaceholders,
   routineEventFilterFitsEvent,
   routineFlowSchema,
   updateRoutineRequestSchema,
@@ -295,5 +296,35 @@ describe("projects event filter", () => {
         eventFilter: { projectId: U1 },
       }).success,
     ).toBe(false)
+  })
+})
+
+describe("template placeholders", () => {
+  const project = {
+    id: U1,
+    statuses: [
+      { id: S1, label: "In progress" },
+      { id: U2, label: "Done" },
+    ],
+  }
+  test("fills the project and status ids, deep", () => {
+    const r = resolveRoutineTemplatePlaceholders(
+      {
+        filter: { projectId: "{{projectId}}", toStatusId: "{{status:in_progress}}" },
+        steps: [{ until: { field: "status", op: "in", value: ["{{status:DONE}}"] } }],
+      },
+      project,
+    )
+    expect(r).toEqual({
+      value: {
+        filter: { projectId: U1, toStatusId: S1 },
+        steps: [{ until: { field: "status", op: "in", value: [U2] } }],
+      },
+    })
+  })
+  test("names a status the project lacks", () => {
+    expect(resolveRoutineTemplatePlaceholders({ s: "{{status:review}}" }, project)).toEqual({
+      error: 'the project has no status "review"',
+    })
   })
 })

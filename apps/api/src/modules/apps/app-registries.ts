@@ -647,6 +647,9 @@ export const routineTemplateRegistry = createTypedRegistry<
      * kernel-routine-templates.ts; its routines carry no app_name).
      */
     sourceKind?: "app" | "kernel"
+    /** A flow template and its event filter (0303), placeholders unfilled. */
+    flow?: Record<string, unknown>
+    eventFilter?: Record<string, unknown>
   }
 >()
 

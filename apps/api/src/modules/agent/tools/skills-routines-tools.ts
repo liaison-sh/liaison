@@ -16,6 +16,10 @@ import {
   createRoutineRequestSchema,
   createSkillRequestSchema,
   cronExpressionSchema,
+  type RoutineFlow,
+  resolveRoutineTemplatePlaceholders,
+  routineEventFilterFitsEvent,
+  routineFlowSchema,
   routineKindSchema,
   routineVisibilitySchema,
   scopeDisplayLabel,
@@ -30,7 +34,7 @@ import { CronExpressionParser } from "cron-parser"
 import { and, sql as drizzleSqlRaw, eq, inArray, isNull, or } from "drizzle-orm"
 import { z } from "zod"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
-import type { PrivilegedDb, RlsClient, RlsTx } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
@@ -1525,6 +1529,8 @@ export interface RoutineListItem {
   eventFilter: StoredEventFilter | null
   /** Who decides the routine's gated drafts (S29): the default audience or its owner. */
   approver: "default" | "owner"
+  /** Its flow (0303): the steps after the trigger. Null = a legacy routine (its prompt). */
+  flow: unknown
 }
 
 /**
@@ -1615,6 +1621,7 @@ export async function handleListRoutines(
       runsOn: r.runsOn ?? "cloud",
       eventFilter: r.eventFilter ?? null,
       approver: r.approver ?? "default",
+      flow: r.flow ?? null,
     })),
     notes: listRoutinesNotes(),
   }
@@ -2692,7 +2699,18 @@ type StoredEventFilter = {
   tableId?: string
   column?: string
   to?: string | number | boolean | null
+  // Projects task events (0303).
+  projectId?: string
+  fromStatusId?: string | null
+  toStatusId?: string
+  fields?: Record<string, unknown>
 }
+
+const hasProjectTaskKeys = (f: StoredEventFilter) =>
+  f.projectId !== undefined ||
+  f.fromStatusId !== undefined ||
+  f.toStatusId !== undefined ||
+  f.fields !== undefined
 
 /** Whether a trigger keeps a stored filter of this shape. */
 function filterFitsEvent(
@@ -2701,6 +2719,7 @@ function filterFitsEvent(
 ): boolean {
   if (!filter) return true
   if (filter.tableId) return event !== null && TABLE_ROW_FILTER_EVENTS.includes(event)
+  if (hasProjectTaskKeys(filter)) return routineEventFilterFitsEvent(event, filter)
   return event === MAIL_SENDER_FILTER_EVENT
 }
 
@@ -2716,6 +2735,43 @@ function resolveRoutineEventFilter(
   filter: StoredEventFilter | null | undefined,
 ): { filter: StoredEventFilter | null } | { error: { code: string; message: string } } {
   if (!filter) return { filter: null }
+  // A projects task filter (0303): {projectId?, fromStatusId?, toStatusId?, fields?} on
+  // projects:task:status_changed (from/to status) or :updated / :created (project, fields).
+  if (hasProjectTaskKeys(filter)) {
+    if (kind !== "event" || !routineEventFilterFitsEvent(event, filter)) {
+      return {
+        error: {
+          code: "invalid_event_filter",
+          message:
+            "eventFilter {projectId, fromStatusId, toStatusId, fields} only applies to kind:'event' routines on 'projects:task:status_changed' (from/to status) or 'projects:task:updated|created' (projectId, fields).",
+        },
+      }
+    }
+    if (
+      filter.tableId !== undefined ||
+      filter.fromContactIds?.length ||
+      filter.fromGroupIds?.length
+    ) {
+      return {
+        error: {
+          code: "invalid_event_filter",
+          message: "a projects task filter takes no tableId / fromContactIds / fromGroupIds",
+        },
+      }
+    }
+    return {
+      filter: {
+        ...(filter.projectId ? { projectId: filter.projectId.toLowerCase() } : {}),
+        ...(filter.fromStatusId !== undefined
+          ? { fromStatusId: filter.fromStatusId?.toLowerCase() ?? null }
+          : {}),
+        ...(filter.toStatusId ? { toStatusId: filter.toStatusId.toLowerCase() } : {}),
+        ...(filter.fields && Object.keys(filter.fields).length > 0
+          ? { fields: filter.fields }
+          : {}),
+      },
+    }
+  }
   if (filter.tableId !== undefined) {
     if (kind !== "event" || event === null || !TABLE_ROW_FILTER_EVENTS.includes(event)) {
       return {
@@ -3095,6 +3151,8 @@ export async function handleCreateRoutine(
   if ("error" in filterCheck) return filterCheck
   const tableFilterError = await checkTableRowFilter(ctx.db, ctx.orgId, filterCheck.filter)
   if (tableFilterError) return tableFilterError
+  const flowCheck = parseRoutineFlow(params.flow)
+  if ("error" in flowCheck) return flowCheck
   // UPSTREAM COVERAGE GATE: the prepare-shipments coverage validation runs in the PRE-GATE
   // `createRoutinePreflight` (registered on the create_routine tool), NOT here — a rejection at this
   // EXECUTION layer (post-approval) would be a gated-action execution error that the chaos runner's
@@ -3320,6 +3378,8 @@ export async function handleCreateRoutine(
           hardTokenLimit: params.hardTokenLimit ?? null,
           runsOn: params.runsOn ?? "cloud",
           eventFilter: filterCheck.filter,
+          // The flow (0303): its steps after the trigger; null = a legacy routine.
+          flow: flowCheck.flow,
           approver: params.approver ?? "default",
           enabled: params.enabled ?? true,
           status: "active",
@@ -3884,6 +3944,12 @@ export async function handleUpdateRoutine(
     if (approverError) return approverError
   }
   if (params.approver !== undefined) updates.approver = params.approver
+  // The flow (0303): replaced whole; null turns the routine back into a legacy one.
+  if (params.flow !== undefined) {
+    const flowCheck = parseRoutineFlow(params.flow)
+    if ("error" in flowCheck) return flowCheck
+    updates.flow = flowCheck.flow
+  }
   if (params.enabled !== undefined) updates.enabled = params.enabled
   if (params.kind !== undefined) updates.kind = params.kind
   // Schedule columns — keep them consistent with the (possibly new) kind.
@@ -3927,7 +3993,8 @@ export async function handleUpdateRoutine(
     updates.reportThreadId !== undefined ||
     updates.kind !== undefined ||
     updates.event !== undefined ||
-    updates.eventFilter !== undefined
+    updates.eventFilter !== undefined ||
+    updates.flow !== undefined
   ) {
     updates.editedByUserId = routineDefinitionEditor(ctx, prior.ownerUserId)
     updates.editedAt = new Date()
@@ -4445,6 +4512,78 @@ interface EnableRoutineTemplateParams {
   timezone?: string
   /** "HH:MM": when a recurring template fires, in the routine's timezone. */
   time?: string
+  /** A flow template (0303): the project its placeholders are filled for. */
+  projectId?: string
+}
+
+/**
+ * A flow template's flow and filter filled for one project (0303): the project's statuses read
+ * under the enabling person's RLS (a project they cannot read is not found), the placeholders
+ * filled, the flow and filter checked like a create's.
+ */
+async function resolveFlowTemplate(
+  tpl: NonNullable<ReturnType<typeof routineTemplateRegistry.get>>,
+  projectId: string | undefined,
+  ctx: AppContext,
+): Promise<
+  | { flow: RoutineFlow; eventFilter: StoredEventFilter | null; projectId: string }
+  | { error: { code: string; message: string } }
+> {
+  if (!projectId || !z.string().uuid().safeParse(projectId).success) {
+    return {
+      error: {
+        code: "project_required",
+        message: "This template needs `projectId`: the project it runs for.",
+      },
+    }
+  }
+  const { projectsRel } = await import("~/apps/projects/schema-refs")
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  // Read as the person the routine runs as, under their RLS: a project they cannot read is absent.
+  const ownerUserId = ctx.approverUserId ?? ctx.userId
+  const perms = await withPrivilegedDb(ctx.orgId, "routine-template-project-perms", (tx) =>
+    loadEffectivePermissions(tx, ownerUserId, ctx.orgId),
+  )
+  const statuses = await withRlsContext(
+    {
+      actorType: "user",
+      userId: ownerUserId,
+      orgId: ctx.orgId,
+      scopes: perms.scopes,
+      dimensionGrants: perms.dimensionGrants,
+    },
+    async (tx) =>
+      extractRows<{ id: string; label: string }>(
+        await tx.execute(drizzleSqlRaw`
+          SELECT s.id::text AS id, s.label FROM ${projectsRel("project_statuses")} s
+           WHERE s.org_id = ${ctx.orgId}::uuid AND s.project_id = ${projectId}::uuid`),
+      ),
+  )
+  if (statuses.length === 0) {
+    return {
+      error: { code: "project_not_found", message: `No project ${projectId} you can read.` },
+    }
+  }
+  const filled = resolveRoutineTemplatePlaceholders(
+    { flow: tpl.flow ?? null, eventFilter: tpl.eventFilter ?? null },
+    { id: projectId.toLowerCase(), statuses },
+  )
+  if ("error" in filled) return { error: { code: "invalid_template", message: filled.error } }
+  const flowCheck = parseRoutineFlow(filled.value.flow)
+  if ("error" in flowCheck) return flowCheck
+  if (!flowCheck.flow)
+    return { error: { code: "invalid_template", message: "the template has no flow" } }
+  const filterCheck = resolveRoutineEventFilter(
+    tpl.kind,
+    tpl.event ?? null,
+    (filled.value.eventFilter as StoredEventFilter | null) ?? null,
+  )
+  if ("error" in filterCheck) return filterCheck
+  return {
+    flow: flowCheck.flow,
+    eventFilter: filterCheck.filter,
+    projectId: projectId.toLowerCase(),
+  }
 }
 
 /** Shared template lookup for enable_routine_template: called by BOTH the stage-time
@@ -4538,7 +4677,11 @@ export async function handleEnableRoutineTemplate(
   const ownerTz =
     params.timezone || tpl.timezone ? null : await loadUserTimezone(ctx.orgId, ownerUserId)
   const tz = params.timezone ?? tpl.timezone ?? ownerTz ?? "UTC"
-  const name = isKernel ? params.templateKey : `${params.appName}-${params.templateKey}`
+  // A flow template (0303) is enabled for one project: its own routine per project.
+  const flowTpl = tpl.flow ? await resolveFlowTemplate(tpl, params.projectId, ctx) : null
+  if (flowTpl && "error" in flowTpl) return flowTpl
+  const baseName = isKernel ? params.templateKey : `${params.appName}-${params.templateKey}`
+  const name = flowTpl ? `${baseName}-${flowTpl.projectId.slice(0, 8)}`.slice(0, 60) : baseName
   const row = await withPrivilegedDb(ctx.orgId, "routine-template-enable", async (tx) => {
     // D9/A15: every routine is owned by a named agent (mirrors handleCreateRoutine).
     const ownerAgentId = await getOrCreatePersonalAgentId(tx, {
@@ -4561,6 +4704,7 @@ export async function handleEnableRoutineTemplate(
         prompt: tpl.promptTemplate,
         scopes: templateScopes,
         visibility: tpl.visibility ?? "personal",
+        ...(flowTpl ? { flow: flowTpl.flow, eventFilter: flowTpl.eventFilter } : {}),
         enabled: true,
         status: "active",
         // A kernel template's routine has no app (S28, F5).
@@ -5029,6 +5173,21 @@ export async function summarizeToggleAppSkill(params: unknown): Promise<unknown>
 
 /** The approval-card line of a sender filter (S26), or null for none. */
 function describeEventFilter(filter: StoredEventFilter | null | undefined): string | null {
+  if (filter && hasProjectTaskKeys(filter)) {
+    const parts = [
+      ...(filter.projectId ? [`tasks of project ${filter.projectId}`] : ["tasks"]),
+      ...(filter.fromStatusId !== undefined
+        ? [
+            filter.fromStatusId === null
+              ? "created directly in the status"
+              : `leaving status ${filter.fromStatusId}`,
+          ]
+        : []),
+      ...(filter.toStatusId ? [`moving to status ${filter.toStatusId}`] : []),
+      ...Object.entries(filter.fields ?? {}).map(([k, v]) => `${k} = ${JSON.stringify(v)}`),
+    ]
+    return `Only for ${parts.join(", ")}`
+  }
   if (filter?.tableId) {
     const col = filter.column
       ? filter.to !== undefined
@@ -5045,6 +5204,38 @@ function describeEventFilter(filter: StoredEventFilter | null | undefined): stri
     ...(groups > 0 ? [`members of ${groups} group${groups > 1 ? "s" : ""}`] : []),
   ]
   return `Only for inbound mail from ${parts.join(" or ")}`
+}
+
+/** A routine's flow (0303), checked: null (a legacy routine) or a valid flow. */
+function parseRoutineFlow(
+  raw: unknown,
+): { flow: RoutineFlow | null } | { error: { code: string; message: string } } {
+  if (raw === undefined || raw === null) return { flow: null }
+  const parsed = routineFlowSchema.safeParse(raw)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      error: {
+        code: "invalid_flow",
+        message: `flow${issue?.path.length ? `.${issue.path.join(".")}` : ""}: ${issue?.message ?? "invalid"}`,
+      },
+    }
+  }
+  return { flow: parsed.data }
+}
+
+/** A flow (0303) in one line for the approval card: its steps in order. */
+function describeFlow(flow: unknown): string | null {
+  const parsed = routineFlowSchema.safeParse(flow)
+  if (!parsed.success) return null
+  const steps = parsed.data.steps.map((step) => {
+    const cond = "if" in step && step.if ? " (if ...)" : ""
+    if (step.type === "action") return `${step.action}${cond}`
+    if (step.type === "wait") return `wait ${step.for.amount} ${step.for.unit.replace("_", " ")}`
+    const n = step.outcomes?.length ?? 0
+    return `agent step${n > 0 ? ` with ${n} required outcome${n > 1 ? "s" : ""}` : ""}${cond}`
+  })
+  return `Flow, ${steps.length} step${steps.length > 1 ? "s" : ""}: ${steps.join(" -> ")}`
 }
 
 /** Scope actions that only look at data; every other action changes something. */
@@ -5168,6 +5359,8 @@ export async function summarizeCreateRoutine(
     lines.push(`Run when ${p.event ?? ""} occurs`)
     const filterLine = describeEventFilter(p.eventFilter)
     if (filterLine) lines.push(filterLine)
+    const flowLine = describeFlow(p.flow)
+    if (flowLine) lines.push(flowLine)
     // EVENT-COALESCE HONESTY — surface the trigger string AND the ~30s coalesce window on the
     // propose-time result the agent reads back BEFORE composing its reply (the BL-05 lesson: a
     // disclosure that lives only in the tool description is unreliably relayed; putting it on the
@@ -5181,11 +5374,16 @@ export async function summarizeCreateRoutine(
     const coalesceSeconds = Math.round(
       Number(process.env.EVENT_ROUTINE_COALESCE_MS ?? 30_000) / 1000,
     )
-    lines.push(
-      "EVENT-COALESCE HONESTY — your reply MUST state (so the user is not misled about real-time behavior):",
-      `• The exact in-tree event it subscribes to: ${p.event ?? ""} (the real trigger, not an invented webhook).`,
-      `• Events are COALESCED on a ~${coalesceSeconds}s window: a burst of matching events arriving within the window collapses into a SINGLE routine tick (so a flurry of VIP mail processes in one run, with up to ~${coalesceSeconds}s latency) — it does NOT fire a separate tick per event.`,
-    )
+    if (p.event === "projects:task:status_changed") {
+      lines.push(
+        `• It subscribes to ${p.event ?? ""}: every status change of a matching task starts its own run (no coalescing).`,
+      )
+    } else
+      lines.push(
+        "EVENT-COALESCE HONESTY — your reply MUST state (so the user is not misled about real-time behavior):",
+        `• The exact in-tree event it subscribes to: ${p.event ?? ""} (the real trigger, not an invented webhook).`,
+        `• Events are COALESCED on a ~${coalesceSeconds}s window: a burst of matching events arriving within the window collapses into a SINGLE routine tick (so a flurry of VIP mail processes in one run, with up to ~${coalesceSeconds}s latency) — it does NOT fire a separate tick per event.`,
+      )
   } else if (kind === "scheduled") {
     lines.push(`Runs once at: ${p.runAt ?? ""}`)
   } else {
@@ -5306,6 +5504,13 @@ export async function summarizeUpdateRoutine(
   if (p.timezone !== undefined) lines.push(`timezone → ${p.timezone}`)
   if (p.runAt !== undefined) lines.push(`runAt → ${p.runAt}`)
   if (p.event !== undefined) lines.push(`event → ${p.event}`)
+  if (p.flow !== undefined) {
+    lines.push(
+      p.flow === null
+        ? "flow → none (back to its prompt only)"
+        : (describeFlow(p.flow) ?? "flow → changed"),
+    )
+  }
   if (p.eventFilter !== undefined) {
     lines.push(describeEventFilter(p.eventFilter) ?? "sender filter → none (every new mail)")
   }
@@ -5875,6 +6080,13 @@ function registerAuthoringTools(orgId: string): void {
         .regex(TEMPLATE_TIME_PATTERN, "HH:MM, 24-hour clock")
         .optional()
         .describe("Recurring templates only: the time it fires, HH:MM in that timezone."),
+      projectId: z
+        .string()
+        .uuid()
+        .optional()
+        .describe(
+          "Flow templates of the projects app (assign-on-status, remind-if-still, sla-to-reach, notify-on-status): the project it runs for. Its statuses fill the template.",
+        ),
     }),
     handler: handleEnableRoutineTemplate as unknown as (p: unknown, c: any) => Promise<unknown>,
     // STAGE-TIME: a gated call must not be parked for a human when the data it needs is

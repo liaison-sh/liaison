@@ -2649,5 +2649,165 @@
       "kind": "playbook",
       "enabledByDefault": false
     }
+  },
+  "routines": {
+    "assign-on-status": {
+      "description": "When a task reaches a status, assign it and tell the assignee.",
+      "kind": "event",
+      "event": "projects:task:status_changed",
+      "promptTemplate": "When a task of this project moves to the chosen status, assign it and send the assignee a direct message with the task's link.",
+      "scopes": [
+        "projects:tasks:read",
+        "projects:tasks:write",
+        "kernel:threads:write"
+      ],
+      "enabledByDefault": false,
+      "eventFilter": {
+        "projectId": "{{projectId}}",
+        "toStatusId": "{{status:todo}}"
+      },
+      "flow": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "assign",
+            "type": "action",
+            "action": "assign",
+            "args": {
+              "to": "{{owner}}"
+            }
+          },
+          {
+            "id": "tell",
+            "type": "action",
+            "action": "message",
+            "args": {
+              "to": "{{task.assigneeId}}",
+              "text": "A task was assigned to you: {{task.title}} {{task.url}}"
+            }
+          }
+        ]
+      }
+    },
+    "remind-if-still": {
+      "description": "Remind the assignee when a task stays in a status too long.",
+      "kind": "event",
+      "event": "projects:task:status_changed",
+      "promptTemplate": "When a task of this project enters the chosen status and is still there after two working days, remind its assignee.",
+      "scopes": [
+        "projects:tasks:read"
+      ],
+      "enabledByDefault": false,
+      "eventFilter": {
+        "projectId": "{{projectId}}",
+        "toStatusId": "{{status:in_progress}}"
+      },
+      "flow": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "wait",
+            "type": "wait",
+            "for": {
+              "amount": 2,
+              "unit": "working_days"
+            },
+            "until": {
+              "op": "status_unchanged_since_trigger"
+            }
+          },
+          {
+            "id": "remind",
+            "type": "action",
+            "action": "notify",
+            "args": {
+              "to": [
+                "{{task.assigneeId}}"
+              ],
+              "text": "Still in the same status after 2 working days: {{task.title}}"
+            }
+          }
+        ]
+      }
+    },
+    "sla-to-reach": {
+      "description": "Tell the owner when a new task has not reached a status in time.",
+      "kind": "event",
+      "event": "projects:task:status_changed",
+      "promptTemplate": "When a task is created in this project and has not reached the target status after three working days, tell the routine's owner.",
+      "scopes": [
+        "projects:tasks:read"
+      ],
+      "enabledByDefault": false,
+      "eventFilter": {
+        "projectId": "{{projectId}}",
+        "fromStatusId": null,
+        "toStatusId": "{{status:backlog}}"
+      },
+      "flow": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "wait",
+            "type": "wait",
+            "for": {
+              "amount": 3,
+              "unit": "working_days"
+            },
+            "until": {
+              "field": "status",
+              "op": "in",
+              "value": [
+                "{{status:backlog}}",
+                "{{status:todo}}",
+                "{{status:in_progress}}"
+              ]
+            }
+          },
+          {
+            "id": "late",
+            "type": "action",
+            "action": "notify",
+            "args": {
+              "to": [
+                "{{owner}}"
+              ],
+              "text": "Not done after 3 working days: {{task.title}}",
+              "urgency": 70
+            }
+          }
+        ]
+      }
+    },
+    "notify-on-status": {
+      "description": "Tell people when a task reaches a status.",
+      "kind": "event",
+      "event": "projects:task:status_changed",
+      "promptTemplate": "When a task of this project reaches the chosen status, tell the routine's owner.",
+      "scopes": [
+        "projects:tasks:read"
+      ],
+      "enabledByDefault": false,
+      "eventFilter": {
+        "projectId": "{{projectId}}",
+        "toStatusId": "{{status:done}}"
+      },
+      "flow": {
+        "version": 1,
+        "steps": [
+          {
+            "id": "tell",
+            "type": "action",
+            "action": "notify",
+            "args": {
+              "to": [
+                "{{owner}}"
+              ],
+              "text": "Reached the status: {{task.title}}"
+            }
+          }
+        ]
+      }
+    }
   }
 }

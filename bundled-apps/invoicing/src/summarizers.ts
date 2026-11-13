@@ -1292,8 +1292,8 @@ export function runCardLines(rawItems: unknown): string[] {
 }
 
 /**
- * What the run card reads for these rows: the one source for the summarizer and for the restage
- * that follows a row edit, so the card says the same thing either way.
+ * What the run card reads for these rows. The kernel rebuilds the card with it after a restage,
+ * so the card says the same thing either way.
  */
 export function runCardSummary(
   rawItems: unknown,

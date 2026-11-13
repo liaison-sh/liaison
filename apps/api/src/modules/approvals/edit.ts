@@ -3,12 +3,11 @@
 import {
   type ApprovalSummary,
   approvalSummaryLinesMax,
-  approvalSummarySchema,
   sharedSurfaceDraftReadScope,
 } from "@liaison/shared"
 import type { SchemaObject, ValidateFunction } from "ajv"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows, type PrivilegedDb } from "~/db"
+import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -95,18 +94,6 @@ export class UpdatePayloadError extends Error {
   }
 }
 
-/**
- * What an app says its own approval's card reads after it restaged the payload: the headline and
- * lines the summarizer would build from the new payload. Written in the same transaction as the
- * payload, so the card and everything that follows the payload change in one event, with no
- * summarizer round trip after the commit.
- */
-export interface AppRestageSummary {
-  title?: string
-  subtitle?: string
-  lines?: string[]
-}
-
 export interface UpdatePayloadArgs {
   orgId: string
   requestId: string
@@ -140,9 +127,10 @@ export interface UpdatePayloadArgs {
    * `appName` (else 403 `forbidden`) and the row is pending or deferred. It skips the person check
    * and the editable-field allowlist, nothing else: the row lock, schema validation, sign-off
    * reset, taint narrowing and the thread note stay. `actor` is ignored for authority; the note is
-   * posted for the requester and names the app.
+   * posted for the requester and names the app. The card is rebuilt from the new payload by the
+   * tool's summarizer, as after any edit: the app gives no text of its own for it.
    */
-  appRestage?: { appName: string; note?: string; summary?: AppRestageSummary }
+  appRestage?: { appName: string; note?: string }
   /**
    * The calling turn's effective scopes (an agent's ceiling intersected with its person's
    * grants, or an MCP token's), passed by the agent tool. The tool asks only
@@ -444,7 +432,6 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         editableFields,
       })
     : null
-  let appSummaryWritten = false
   const result = await withPrivilegedDb(args.orgId, "approval-edit", async (tx) => {
     const locked = extractRows<
       {
@@ -582,8 +569,6 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         currentStatus: "decided_during_edit",
       })
     }
-    if (restage?.summary)
-      appSummaryWritten = await writeAppRestageSummary(tx, args.orgId, locked.id, restage.summary)
 
     const fieldList = diff.map((d) => d.field).join(", ")
     const editMetadata = {
@@ -732,16 +717,13 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
                 taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
             )
         : null
-    // The app's own summary was written with the payload (one event); only a card that must also
-    // carry a disclosure line is rebuilt after the commit.
-    if (!(appSummaryWritten && disclosureLine === null))
-      await refreshSummaryAfterEdit(
-        args,
-        row,
-        publicResult.currentPayload,
-        publicResult.lastEdit,
-        disclosureLine,
-      )
+    await refreshSummaryAfterEdit(
+      args,
+      row,
+      publicResult.currentPayload,
+      publicResult.lastEdit,
+      disclosureLine,
+    )
   }
   return publicResult
 }
@@ -790,40 +772,6 @@ export function withDisclosureLine(
 }
 
 /**
- * Writes the summary an app gave with its restage onto the row, inside the edit's transaction.
- * The row's kind, links and impact stay; title, subtitle and lines are replaced. Returns false (the
- * summary is then rebuilt after the commit, as for any edit) when the result is not a valid summary.
- */
-async function writeAppRestageSummary(
-  tx: PrivilegedDb,
-  orgId: string,
-  requestId: string,
-  given: AppRestageSummary,
-): Promise<boolean> {
-  const current = extractRows<{ summary: unknown }>(
-    await tx.execute(drizzleSql`
-      SELECT summary FROM ${K}.approval_requests WHERE id = ${requestId} AND org_id = ${orgId}::uuid
-    `),
-  )[0]?.summary
-  if (!current || typeof current !== "object" || Array.isArray(current)) return false
-  const next = {
-    ...(current as Record<string, unknown>),
-    ...(typeof given.title === "string" && given.title ? { title: given.title } : {}),
-    ...(typeof given.subtitle === "string" ? { subtitle: given.subtitle } : {}),
-    ...(Array.isArray(given.lines)
-      ? { lines: given.lines.filter((l) => typeof l === "string") }
-      : {}),
-  }
-  const valid = approvalSummarySchema.safeParse(next)
-  if (!valid.success) return false
-  await tx.execute(drizzleSql`
-    UPDATE ${K}.approval_requests SET summary = ${JSON.stringify(valid.data)}::jsonb
-    WHERE id = ${requestId} AND org_id = ${orgId}::uuid
-  `)
-  return true
-}
-
-/**
  * The card's headline lines (recipient, amount, subject) come from the summary written when the
  * request was made. After an edit they would describe the old payload while the new one runs, so
  * the summary is rebuilt from the edited payload, under the requester's own access exactly as at
@@ -858,7 +806,8 @@ async function refreshSummaryAfterEdit(
     // A sequenced step's payload still cites earlier steps with @ref tokens:
     // the rebuilt summary reads them as those steps, as at propose time.
     const readable = await humanizeStepSummary(args.orgId, row.requested_by, payload, generated)
-    const summary = withDisclosureLine(readable, disclosureLine)
+    // Masked like the card written at propose time: a summarizer may read text the payload lacks.
+    const summary = maskApprovalPayload(withDisclosureLine(readable, disclosureLine))
     await withPrivilegedDb(args.orgId, "approval-edit-summary", async (tx) => {
       const refreshed = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`

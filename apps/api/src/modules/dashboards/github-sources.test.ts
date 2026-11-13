@@ -18,6 +18,7 @@ import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import { checkToolSource, listEligibleSources } from "~/modules/dashboards/sources"
+import { handleToolCall } from "~/modules/mcp/tool-call"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import type { GithubCtx } from "../../../../../bundled-apps/github/src/client"
@@ -265,6 +266,27 @@ describe("GitHub reads as dashboard sources", () => {
       })
       expect("error" in env && env.error.code).toBe("forbidden")
     }
+  })
+
+  it("a coding agent over MCP cannot call the reads kept off the agent's catalog, by name or through liaison_call_tool", async () => {
+    const mcpCtx = { orgId, actor: viewer, connectionId: crypto.randomUUID() } as never
+    for (const name of HIDDEN) {
+      const direct = (await handleToolCall(mcpCtx, `github__${name}`, { repo: "site" })) as {
+        isError?: boolean
+        structuredContent?: { error?: { code?: string } }
+      }
+      expect(direct.isError).toBe(true)
+      const proxied = (await handleToolCall(mcpCtx, "liaison_call_tool", {
+        name: `github__${name}`,
+        arguments: { repo: "site" },
+      })) as { isError?: boolean }
+      expect(proxied.isError).toBe(true)
+    }
+    // A visible read still answers over MCP.
+    const visible = (await handleToolCall(mcpCtx, "github__github_list_repos", {})) as {
+      isError?: boolean
+    }
+    expect(visible.isError ?? false).toBe(false)
   })
 
   it("a dashboard block on github_read_file is refused: one file's text, no rows", async () => {

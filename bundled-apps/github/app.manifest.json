@@ -1,6 +1,6 @@
 {
   "name": "github",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "connector",
   "iconName": "folder",
   "description": "GitHub connector: read-only access to an organization's or a user's repositories, commits, pull requests, issues, releases and code.",

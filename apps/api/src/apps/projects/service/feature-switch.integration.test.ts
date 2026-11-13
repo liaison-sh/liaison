@@ -11,7 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -36,6 +36,7 @@ import {
   registerActiveServer,
   unregisterActiveServer,
 } from "~/modules/mcp/catalog-notifier"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -539,6 +540,109 @@ describe("the switch on a project", () => {
     }
     for (const [i, r] of reads.entries()) walk(r, `read${i}`)
     expect(isFeatureOffForTool(orgId, { appName: "projects", feature: "time_budgets" })).toBe(false)
+    await allOff()
+  })
+})
+
+describe("an approved call keeps the place it was asked from", () => {
+  /** A held approval of update_project, as a turn with or without a person left it. */
+  async function heldApproval(originHasPerson: boolean | undefined): Promise<string> {
+    const id = crypto.randomUUID()
+    const threadId = await minimal.thread(orgId, owner.userId)
+    const metadata = JSON.stringify(originHasPerson === undefined ? {} : { originHasPerson })
+    await sql.unsafe(
+      insertSql("kernel.approval_requests", {
+        id,
+        org_id: orgId,
+        handle: `ap-${id.slice(0, 8)}`,
+        thread_id: threadId,
+        originating_thread_id: threadId,
+        tool_name: "projects:update_project",
+        tool_params: { raw: `'{}'::jsonb` },
+        current_payload: { raw: `'{}'::jsonb` },
+        expires_at: { raw: "now() + interval '1 day'" },
+        requested_by: owner.userId,
+        status: "approved",
+        reason: "gated",
+        summary: { raw: `'{"kind":"update_project","title":"Update project","lines":[]}'::jsonb` },
+        metadata: { raw: `'${metadata}'::jsonb` },
+      }),
+    )
+    return id
+  }
+
+  /** The projects bridge as an approved re-entry builds it: an approval context, no routine. */
+  async function approvedCall<T = Record<string, any>>(
+    approvalRequestId: string,
+    method: string,
+    input: unknown,
+  ): Promise<T> {
+    const a = actor()
+    return runContextStore.run(
+      { runId: approvalRequestId, rootRunId: approvalRequestId, nestingDepth: 0 } as never,
+      () =>
+        withRlsContext(a, async (tx) => {
+          const bridge = createRpcBridge(
+            "projects",
+            a.userId,
+            orgId,
+            tx,
+            { name: "projects" },
+            a.scopes,
+            "user",
+            {
+              approvalRequestId,
+              approvalDeciderId: owner.userId,
+              toolName: "projects:update_project",
+            },
+            { origin: "in-app-agent" } as never,
+          )
+          return JSON.parse(await bridge[method](JSON.stringify(input))) as T
+        }),
+    )
+  }
+
+  it("a switch a sub-run asked for is refused human_turn_only when approved, and one a person asked for turns", async () => {
+    await allOff()
+    const p = await newProject("Approved switch")
+    const fromSubRun = await heldApproval(false)
+    const refused = await approvedCall(fromSubRun, "projects_updateProject", {
+      projectId: p,
+      timeBudgets: true,
+    })
+    expect(refused.error?.code).toBe("human_turn_only")
+    await awaitTimeFeatureSync(orgId)
+    expect(await orgRow()).toBe(false)
+    for (const person of [true, undefined]) {
+      const held = await heldApproval(person)
+      const turned = await approvedCall(held, "projects_updateProject", {
+        projectId: p,
+        timeBudgets: true,
+      })
+      expect(turned.timeBudgets).toBe(true)
+      await awaitTimeFeatureSync(orgId)
+      await allOff()
+    }
+  })
+
+  it("time a sub-run asked to record is refused when approved", async () => {
+    await allOff()
+    const p = await newProject("Approved took")
+    await turn(p, true)
+    const task = await call<{ id: string }>("projects_createTask", { projectId: p, title: "T" })
+    const fromSubRun = await heldApproval(false)
+    const out = await approvedCall(fromSubRun, "projects_taskTimeSet", {
+      taskId: task.id,
+      time: "2 h",
+      quote: "took 2 h",
+    })
+    expect(out.error?.code).toBe("needs_person_statement")
+    expect(String(out.error?.message)).toContain("sub-run")
+    const written = extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM app_projects.task_time WHERE task_id = ${task.id}::uuid`),
+    )[0]
+    expect(written?.n).toBe(0)
     await allOff()
   })
 })

@@ -49,6 +49,12 @@ export interface LadderTool {
   wireTokens: number
   /** The app's one-line agent guide, for the summary line. */
   guide?: string
+  /**
+   * The app feature the tool belongs to. An org has every feature off until it
+   * turns one on, and the turn, tool search and MCP leave such a tool out
+   * (`isFeatureOffForTool`), so a world counts it only when it turns it on.
+   */
+  feature?: string
 }
 
 interface ManifestTool {
@@ -59,6 +65,7 @@ interface ManifestTool {
   routineOnly?: boolean
   requiredScopes?: string[]
   params?: unknown
+  feature?: string
 }
 
 const sdkNameOf = (app: string, tool: string) => `${app}__${tool.replace(/[^a-zA-Z0-9_-]/g, "_")}`
@@ -73,6 +80,7 @@ interface RegistryTool {
   deferLoading?: boolean
   agentVisible?: boolean
   routineOnly?: boolean
+  feature?: string
 }
 
 /** One tool as the provider is sent it, measured by the product's meter. */
@@ -92,6 +100,7 @@ function ladderTool(app: string, name: string, def: RegistryTool, guide?: string
       inputSchema: providerInputSchemaOf(def.params),
     }),
     ...(guide ? { guide } : {}),
+    ...(def.feature ? { feature: def.feature } : {}),
   }
 }
 
@@ -169,6 +178,8 @@ export interface LadderWorld {
   /** Scopes the turn holds. */
   scopes: readonly string[]
   surface?: "web" | "mobile" | "desktop"
+  /** App features turned on, as `app:feature`; absent means none, as in a new org. */
+  features?: readonly string[]
 }
 
 export interface LadderMeasure {
@@ -197,9 +208,11 @@ export interface LadderTargets {
 /** Every measure of one world, through the real announcement builder and meter. */
 export function measureLadder(tools: readonly LadderTool[], world: LadderWorld): LadderMeasure {
   const on = world.apps ? new Set(world.apps) : null
+  const featuresOn = new Set(world.features ?? [])
   const usable = tools.filter(
     (t) =>
       t.agentVisible &&
+      (!t.feature || featuresOn.has(`${t.app}:${t.feature}`)) &&
       (!on || on.has(t.app) || t.app === "kernel") &&
       checkToolScopes({ requiredScopes: t.requiredScopes }, [...world.scopes]).authorized,
   )

@@ -310,7 +310,7 @@ describe("the month-end run card", () => {
     }
   })
 
-  test("an edit restages the card with its text, and the total reads the same figure as the new rows", async () => {
+  test("an edit restages the card's payload, and the card rebuilt from it reads the same total as the new rows", async () => {
     const { h, runId } = await drafted()
     const item = h.db.__all("recurring_run_items")[0]
     const line = h.db.__all("document_lines").find((l) => l.document_id === item?.document_id)
@@ -319,7 +319,7 @@ describe("the month-end run card", () => {
       subtotal_minor: "200000",
     })
     await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
-    const summary = h.restagedSummaries.at(-1)
+    const summary = await summarizeRecurringRunIssue(h.restaged.at(-1) as Record<string, unknown>)
     const { items } = await cardItems(h.ctx, runId)
     const total = items.reduce((sum, i) => sum + BigInt(String(i.total_minor)), 0n)
     expect(total > 360000n).toBe(true)

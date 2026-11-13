@@ -11,7 +11,7 @@ import crypto from "node:crypto"
 import { app } from "~/app"
 import type { UserContext } from "~/db/rls"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { appCrossAppCallsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import {
   executeToolCore,
   HUMAN_TURN_ONLY_CODE,
@@ -101,6 +101,29 @@ describe("humanTurnOnly", () => {
     expect(mcp.structuredContent?.code).toBeUndefined()
     expect(typeof mcp.structuredContent?.count).toBe("number")
   }, 60_000)
+
+  it("another app's call to it is refused, even a declared one inside an approved action on a person's turn", async () => {
+    appCrossAppCallsRegistry.set([orgId, "caller_app"], { targets: [TOOL] })
+    try {
+      const nested = await runContextStore.run(frame({ humanTurn: true }), () =>
+        executeToolCore({
+          toolName: TOOL,
+          orgId,
+          actor: actor(),
+          params: {},
+          origin: "in-app-agent",
+          internalCall: {
+            callerApp: "caller_app",
+            humanAuthorized: true,
+            humanAuthorizedVia: "approval",
+          },
+        } as never),
+      )
+      expect(codeOf(nested)).toBe(HUMAN_TURN_ONLY_CODE)
+    } finally {
+      appCrossAppCallsRegistry.delete([orgId, "caller_app"])
+    }
+  })
 
   it("an agent's question to another agent is not a person's turn", async () => {
     const asked = await call("in-app-agent", frame({ coordinated: true }))

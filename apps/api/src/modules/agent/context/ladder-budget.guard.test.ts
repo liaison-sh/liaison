@@ -17,7 +17,13 @@ process.env.ENCRYPTION_KEY ||= "0123456789abcdef".repeat(4)
 
 import { beforeAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
-import type { LadderMeasure, LadderReason, LadderTargets, LadderWorld } from "./ladder-budget"
+import type {
+  LadderMeasure,
+  LadderReason,
+  LadderTargets,
+  LadderTool,
+  LadderWorld,
+} from "./ladder-budget"
 
 const { DEMO_WORLD_APPS } = await import("~/seed/tiers/demo/demo-apps")
 const { estimateTokens } = await import("./compaction")
@@ -36,6 +42,13 @@ const WORLDS: LadderWorld[] = [
   { name: "phone", scopes: ["*"], surface: "mobile" },
   // The software demo world: the apps its pack installs, read from the pack's own list.
   { name: "software-demo", apps: DEMO_WORLD_APPS.saas, scopes: ["*"], surface: "web" },
+  // An org that turned time and budgets on: the one app feature shipped today.
+  {
+    name: "time-and-budgets",
+    scopes: ["*"],
+    surface: "web",
+    features: ["projects:time_budgets"],
+  },
 ]
 
 /** Targets, not caps. Moving one needs a decision on record. */
@@ -60,6 +73,12 @@ const TARGETS: Record<string, LadderTargets> = {
     visibleTools: EVERY_APP.visibleTools,
     announcementTokens: 3_500,
     appSchemaTokens: {},
+  },
+  // The tools an org gets by turning a feature on are its own choice: the
+  // prompt and the app's schema keep their targets, the count is printed.
+  "time-and-budgets": {
+    announcementTokens: EVERY_APP.announcementTokens,
+    appSchemaTokens: { projects: EVERY_APP.appSchemaTokens.projects },
   },
 }
 
@@ -105,6 +124,32 @@ describe("the ladder budget report", () => {
     expect(failures.join("\n")).toContain("w:app")
   })
 
+  it("a tool of an app feature counts only in a world that turns that feature on", () => {
+    const tool = (name: string, feature?: string): LadderTool => ({
+      app: "app",
+      name,
+      sdkName: `app__${name}`,
+      description: "",
+      requiredScopes: ["app:things:read"],
+      deferred: true,
+      agentVisible: true,
+      routineOnly: false,
+      wireTokens: 10,
+      ...(feature ? { feature } : {}),
+    })
+    const tools = [tool("plain"), tool("gated", "switch"), tool("other", "elsewhere")]
+    const off = measureLadder(tools, { name: "off", scopes: ["*"] })
+    expect(off.visibleTools).toBe(1)
+    expect(off.appSchemaTokens.app).toBe(10)
+    const on = measureLadder(tools, { name: "on", scopes: ["*"], features: ["app:switch"] })
+    expect(on.visibleTools).toBe(2)
+    expect(on.announcedTools).toBe(2)
+    expect(on.appSchemaTokens.app).toBe(20)
+    // A feature of the same name on another app turns nothing on here.
+    const wrongApp = measureLadder(tools, { name: "x", scopes: ["*"], features: ["other:switch"] })
+    expect(wrongApp.visibleTools).toBe(1)
+  })
+
   it("no number forbids a tool: a reason always clears it", async () => {
     const tools = await loadLadderTools()
     const before = measureLadder(tools, { name: "all", scopes: ["*"] })
@@ -128,9 +173,22 @@ describe("the ladder budget report", () => {
 
 describe("the neutral worlds", () => {
   let measures: LadderMeasure[] = []
+  let featured: LadderTool[] = []
   beforeAll(async () => {
     const tools = await loadLadderTools()
     measures = WORLDS.map((w) => measureLadder(tools, w))
+    featured = tools.filter((t) => t.feature && t.agentVisible)
+  })
+
+  it("an org with no feature switched on is measured without the feature's tools", () => {
+    const all = measures.find((m) => m.world === "all-apps")
+    const time = measures.find((m) => m.world === "time-and-budgets")
+    if (!all || !time) throw new Error("both worlds are measured")
+    // The shipped catalog has feature tools, and they come from the manifests.
+    expect(featured.length).toBeGreaterThan(0)
+    expect(featured.every((t) => t.app === "projects" && t.feature === "time_budgets")).toBe(true)
+    expect(time.visibleTools - all.visibleTools).toBe(featured.length)
+    expect(time.appSchemaTokens.projects).toBeGreaterThan(all.appSchemaTokens.projects)
   })
 
   it("every number is under its target or has a reason, and every number is printed", () => {

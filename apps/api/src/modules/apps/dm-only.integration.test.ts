@@ -12,7 +12,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { threadParticipants, threads } from "~/db/schema/kernel"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { appCrossAppCallsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { DM_ONLY_CODE, executeToolCore, statusForToolError } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { primeOrgApps } from "~/modules/apps/org-apps"
@@ -136,5 +136,59 @@ describe("dmOnly", () => {
     const routine = await agentCall(await seedThread("routine", [owner.userId]))
     const missing = await agentCall(crypto.randomUUID())
     expect([codeOf(routine), codeOf(missing)]).toEqual([DM_ONLY_CODE, DM_ONLY_CODE])
+  })
+
+  it("an in-app agent's call with no thread is not a DM", async () => {
+    const noThread = await runContextStore.run(
+      {
+        runId: crypto.randomUUID(),
+        parentRunId: null,
+        rootRunId: crypto.randomUUID(),
+        nestingDepth: 0,
+        humanTurn: true,
+      } as RunContext,
+      () =>
+        executeToolCore({
+          toolName: TOOL,
+          orgId,
+          actor: actor(),
+          params: {},
+          origin: "in-app-agent",
+        } as never),
+    )
+    expect(codeOf(noThread)).toBe(DM_ONLY_CODE)
+  })
+
+  it("another app's call to it is refused, even a declared one inside an approved action in a DM", async () => {
+    const dm = await seedThread("agent_chat", [owner.userId])
+    appCrossAppCallsRegistry.set([orgId, "caller_app"], { targets: [TOOL] })
+    try {
+      const nested = await runContextStore.run(
+        {
+          runId: crypto.randomUUID(),
+          parentRunId: null,
+          rootRunId: crypto.randomUUID(),
+          nestingDepth: 0,
+          humanTurn: true,
+        } as RunContext,
+        () =>
+          executeToolCore({
+            toolName: TOOL,
+            orgId,
+            actor: actor(),
+            params: {},
+            threadId: dm,
+            origin: "in-app-agent",
+            internalCall: {
+              callerApp: "caller_app",
+              humanAuthorized: true,
+              humanAuthorizedVia: "approval",
+            },
+          } as never),
+      )
+      expect(codeOf(nested)).toBe(DM_ONLY_CODE)
+    } finally {
+      appCrossAppCallsRegistry.delete([orgId, "caller_app"])
+    }
   })
 })

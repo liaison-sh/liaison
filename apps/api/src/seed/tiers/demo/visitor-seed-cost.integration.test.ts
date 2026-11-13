@@ -98,14 +98,20 @@ const CATALOG_DEMO_APPS = [
  * outbox events. The lists alone cost 583 round trips in 101 transactions for
  * the world's 8 people (each person's permissions read once for every app),
  * the work the first minute tick would otherwise do; they queue no event.
+ * Re-measured 2026-11-14 after main's typed task fields and status transitions
+ * and the move of four apps (database, GitLab, Google Drive, the API
+ * connector) to the catalog: 6 592 round trips in 639 transactions locally,
+ * 6 615 in 644 on a Linux runner, 359 outbox events: one status change event
+ * per seeded task (+36), less the role events of the apps that left the
+ * in-tree set (-11). The pin is the runner's figure.
  */
 const PRODUCTS_BASELINE = {
-  outboxEvents: 334,
+  outboxEvents: 359,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_537,
-  transactions: 656,
+  statements: 6_615,
+  transactions: 644,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
@@ -126,12 +132,15 @@ const SAAS_BASELINE = {
   // Re-measured the same day at 8 172 in 863, 484 outbox events: 6 892 in 644
   // before the attention lists (the Support handover channel and the merges
   // since the last figure), and the lists of the world's 14 people 1 280 in 219.
-  outboxEvents: 484,
+  // Re-measured 2026-11-14 at 8 049 in 817 locally, 8 102 in 828 on a Linux
+  // runner, 507 outbox events: a status change event per seeded task (+35), less
+  // the role events of the four apps that moved to the catalog (-12).
+  outboxEvents: 507,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_177,
-  transactions: 863,
+  statements: 8_102,
+  transactions: 828,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
@@ -144,14 +153,19 @@ const SAAS_BASELINE = {
  * support and agent layers for its 24 people. That is 1.64 times the products
  * world in round trips and 1.62 in transactions, so the products ratio below
  * is not asserted for this world.
+ * Re-measured 2026-11-14 once each person enters their own time through the
+ * time writer, and finance each cost rate through the rate writer, one entry
+ * per transaction, as the product does: 11 540 round trips in 1 106
+ * transactions locally, 11 648 in 1 128 on a Linux runner (the pin), 351
+ * outbox events.
  */
 const STUDIO_BASELINE = {
   outboxEvents: 351,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 10_875,
-  transactions: 1_048,
+  statements: 11_648,
+  transactions: 1_128,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

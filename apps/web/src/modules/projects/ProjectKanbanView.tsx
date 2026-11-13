@@ -21,6 +21,7 @@ import { KanbanLabelChips } from "~/modules/projects/KanbanLabelChips"
 import { LinkedDocuments } from "~/modules/projects/LinkedDocuments"
 import { type ProjectStatus, projectStore, type Task } from "~/modules/projects/project-store"
 import { StatusGroupedView } from "~/modules/projects/StatusGroupedView"
+import { StatusPill } from "~/modules/projects/StatusPill"
 import { prettyStatus } from "~/modules/projects/status-label"
 import { addToast } from "~/modules/shell/toast-store"
 
@@ -228,12 +229,12 @@ export const ProjectKanbanView: Component<ProjectKanbanViewProps> = (props) => {
                   <Show
                     when={renamingId() === status.id}
                     fallback={
-                      <span
+                      <StatusPill
                         data-testid="project-kanban-column-header"
-                        class="truncate text-[12px] font-medium uppercase tracking-wide text-text-secondary"
-                      >
-                        {prettyStatus(status.label)}
-                      </span>
+                        label={prettyStatus(status.label)}
+                        color={status.color}
+                        class="font-medium"
+                      />
                     }
                   >
                     <input

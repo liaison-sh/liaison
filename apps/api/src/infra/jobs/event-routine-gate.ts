@@ -86,6 +86,12 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
     idDataKey: "tableId",
   },
   "kernel:dashboard_table": { schema: "kernel", table: "dashboard_tables", idDataKey: "tableId" },
+  // A project task (its field values ride in the event): the owner must read the task.
+  "projects:task": {
+    schema: "app_projects",
+    table: "tasks",
+    parents: [{ dataKey: "projectId", schema: "app_projects", table: "projects" }],
+  },
 }
 
 function asUuid(v: unknown): string | null {

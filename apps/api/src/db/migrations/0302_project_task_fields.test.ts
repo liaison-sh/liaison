@@ -61,7 +61,13 @@ beforeAll(async () => {
       RETURNING id
     `),
   )
-  actor = { actorType: "user", userId: u!.id, orgId, scopes: SCOPES, dimensionGrants: { "*": ["*"] } }
+  actor = {
+    actorType: "user",
+    userId: u!.id,
+    orgId,
+    scopes: SCOPES,
+    dimensionGrants: { "*": ["*"] },
+  }
   const project = await withRlsContext(actor, (tx) =>
     createProject({ tx, orgId, actor, input: { name: `m0302-${Date.now()}` } }),
   )
@@ -80,7 +86,9 @@ async function legacyTask(title: string, createdAt: string): Promise<string> {
     createTask({ tx, orgId, actor, input: { projectId, statusId: statusA, title } }),
   )
   await withSystemDb("0302-test-legacy", async (tx) => {
-    await tx.execute(drizzleSql`DELETE FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid`)
+    await tx.execute(
+      drizzleSql`DELETE FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid`,
+    )
     await tx.execute(drizzleSql`
       UPDATE app_projects.tasks
       SET status_id = ${statusB}::uuid, created_at = ${createdAt}::timestamptz,
@@ -176,12 +184,14 @@ describe("0302 project task fields", () => {
     })
     expect(touched).toBe(0)
     const visible = (scopes: string[]) =>
-      withRlsContext({ ...actor, scopes }, async (tx) =>
-        extractRows(
-          await tx.execute(drizzleSql`
+      withRlsContext(
+        { ...actor, scopes },
+        async (tx) =>
+          extractRows(
+            await tx.execute(drizzleSql`
             SELECT id FROM app_projects.task_transitions WHERE task_id = ${task.id}::uuid
           `),
-        ).length,
+          ).length,
       )
     expect(await visible(SCOPES)).toBe(1)
     expect(await visible(["kernel:threads:read"])).toBe(0)

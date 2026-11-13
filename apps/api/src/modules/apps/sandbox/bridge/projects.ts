@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { sql as drizzleSql } from "drizzle-orm"
+import type { TransitionActor } from "~/apps/projects/service/transitions"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -198,6 +199,23 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           scopes: callerScopes ?? [],
           dimensionGrants: {},
         }
+  /**
+   * Who changes a task's status through this bridge, for its transition: the routine whose tick
+   * acted, else the agent, else the person in the app. The run frame is gone in a bridge call,
+   * so the service cannot read it itself.
+   */
+  const transitionVia = async (): Promise<TransitionActor> => {
+    const person = await writeActor()
+    const routineId =
+      actorKind === "agent" ? (bridgeRoutineId ?? approvalContext?.originRoutineId ?? null) : null
+    const agentId = actorKind === "agent" ? (bridgeActingAgentId ?? null) : null
+    return {
+      type: routineId ? "routine" : actorKind === "agent" ? "agent" : "user",
+      userId: person.userId,
+      agentId,
+      routineId,
+    }
+  }
   /** A checklist write in its own savepoint, so a refusal rolls back every row it touched. */
   const checklistWrite = async (run: (stepTx: never) => Promise<unknown>): Promise<string> => {
     const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
@@ -285,7 +303,10 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         const task = await getTask({ tx: txDb as never, orgId, taskId, viewerId: userId })
         // Checklist summary beside the task, the same shape the REST detail carries.
         const checklist = await getChecklistStatus({ tx: txDb as never, orgId, taskId })
-        return JSON.stringify({ ...task, checklist })
+        // The latest status changes (time in status is `statusEnteredAt`).
+        const { listTaskTransitions } = await import("~/apps/projects/service/transitions")
+        const transitions = await listTaskTransitions(txDb as never, orgId, taskId)
+        return JSON.stringify({ ...task, checklist, transitions })
       }
       // Explicit projectId / taskId take precedence (back-compat); else resolve the single `id`.
       if (params.taskId && !params.projectId) return getTaskById(params.taskId)
@@ -396,6 +417,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         statuses?: Array<{ label: string; color?: string | null; terminal?: boolean }>
         validationLevels?: Array<{ name: string }> | null
         checklistOnCards?: boolean
+        /** Task field definitions (the dashboard column shape). */
+        fields?: unknown
         tasks?: unknown
       }
       const { createProject, normalizeInitialTasks } = await import(
@@ -432,6 +455,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               tx: stepTx as never,
               orgId,
               actor,
+              via: await transitionVia(),
               input: {
                 projectId: project.id,
                 title: task.title,
@@ -475,6 +499,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         afterTaskId?: string | null
         /** Own label values: group name/id to value name/id. */
         labels?: Record<string, string | null>
+        /** Values of the project's fields {key: value}. */
+        fields?: Record<string, unknown> | null
       }
       return typedServiceCall(async () => {
         const { createTask, appendSourceCitation } = await import("~/apps/projects/service/tasks")
@@ -543,20 +569,25 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           completedAt: _completedAt,
           allowInactiveAssignee: _allowInactiveAssignee,
           createdByAgentLabel: _createdByAgentLabel,
+          requireFields: _requireFields,
           ...appParams
         } = params as typeof params & {
           createdBy?: unknown
           completedAt?: unknown
           allowInactiveAssignee?: unknown
           createdByAgentLabel?: unknown
+          requireFields?: unknown
         }
         return JSON.stringify(
           await createTask({
             tx: txDb as never,
             orgId,
             actor,
+            via: await transitionVia(),
             input: {
               ...appParams,
+              // An agent's (or a person's) create: the project's required fields apply.
+              requireFields: true,
               description,
               projectId,
               assigneeId,
@@ -589,6 +620,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         parentTaskId?: string | null
         /** Own label values: group name/id to value name/id, null clears. */
         labels?: Record<string, string | null>
+        /** Field values to set {key: value}; null empties one, keys left out are untouched. */
+        fields?: Record<string, unknown> | null
       }
       return typedServiceCall(async () => {
         const { updateTask, getTask } = await import("~/apps/projects/service/tasks")
@@ -599,6 +632,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           ? await resolveTaskRef(txDb as never, orgId, params.parentTaskId)
           : params.parentTaskId
         const actor = await writeActor()
+        const via = await transitionVia()
         const { assigneeName, ...rest } = params
         const taskId = resolvedTaskId
         const parentTaskId = resolvedParentTaskId
@@ -615,13 +649,21 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               tx: txDb as never,
               orgId,
               actor,
+              via,
               taskId,
               parentTaskId: parentTaskId ?? null,
             })
           }
           const hasOtherUpdates = Object.keys(input).length > 0
           if (hasOtherUpdates) {
-            return updateTask({ tx: txDb as never, orgId, actor, taskId, input: input as never })
+            return updateTask({
+              tx: txDb as never,
+              orgId,
+              actor,
+              via,
+              taskId,
+              input: input as never,
+            })
           }
           return getTask({ tx: txDb as never, orgId, taskId })
         })
@@ -661,11 +703,13 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               scopes: callerScopes ?? [],
               dimensionGrants: {},
             }
+      const via = await transitionVia()
       return withChecklistWarning(resolvedTaskId, () =>
         moveTask({
           tx: txDb as never,
           orgId,
           actor,
+          via,
           taskId: resolvedTaskId,
           // The agent tool's `projectId` is a DESTINATION (move this task to project
           // X) — map it to the service's `targetProjectId`. The boundary-assertion
@@ -858,6 +902,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         /** Completion window: inclusive start, exclusive end (ISO-8601). */
         completedAfter?: string
         completedBefore?: string
+        /** Field filter {key: value | value[] | null}. */
+        fields?: Record<string, unknown> | null
       }
       if (!params.projectId) throw new Error("invalid_params: projectId required")
       const projectId = params.projectId
@@ -878,6 +924,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           labels: params.labels,
           completedAfter: params.completedAfter,
           completedBefore: params.completedBefore,
+          fields: params.fields,
         }),
       )
     },
@@ -1064,6 +1111,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       if (!params.templateId || !params.projectName) {
         throw new Error("invalid_params: templateId and projectName required")
       }
+      const { templateId, projectName } = params
       const { instantiateTemplate } = await import("~/apps/projects/service/tasks")
       const actor =
         inheritedActor.actorType === "user"
@@ -1075,15 +1123,88 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
               scopes: callerScopes ?? [],
               dimensionGrants: {},
             }
-      return JSON.stringify(
-        await instantiateTemplate({
+      // One savepoint: a template that cannot be built leaves no half-made project.
+      return typedServiceCall(async () =>
+        JSON.stringify(
+          await instantiateTemplate({
+            tx: txDb as never,
+            orgId,
+            actor,
+            via: await transitionVia(),
+            templateId,
+            projectName,
+          }),
+        ),
+      )
+    },
+    // Field definitions and templates (direct writes, projects:projects:write by the tool).
+    projects_setFields: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_setFields is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        fields?: unknown
+        renames?: Record<string, Record<string, string>> | null
+      }
+      return typedServiceCall(async () => {
+        const { setFields } = await import("~/apps/projects/service/fields")
+        const { assertProjectExists, resolveProjectId } = await import(
+          "~/apps/projects/service/resolve"
+        )
+        const actor = await writeActor()
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        await assertProjectExists(txDb as never, orgId, projectId)
+        const fields = await setFields({
           tx: txDb as never,
           orgId,
           actor,
-          templateId: params.templateId,
-          projectName: params.projectName,
-        }),
-      )
+          projectId,
+          fields: params.fields ?? [],
+          renames: params.renames ?? null,
+        })
+        return JSON.stringify({ projectId, fields })
+      })
+    },
+    projects_saveTemplate: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_saveTemplate is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as {
+        templateId?: string | null
+        name?: string
+        statuses?: unknown
+        fields?: unknown
+        tasks?: unknown
+        fromProjectId?: string | null
+      }
+      return typedServiceCall(async () => {
+        const { saveTemplate } = await import("~/apps/projects/service/templates")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await saveTemplate({
+            tx: txDb as never,
+            orgId,
+            actor,
+            input: {
+              templateId: params.templateId ?? null,
+              name: params.name ?? "",
+              statuses: params.statuses,
+              fields: params.fields,
+              tasks: params.tasks,
+              fromProjectId: params.fromProjectId ?? null,
+            },
+          }),
+        )
+      })
+    },
+    projects_listTemplates: async (_paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_listTemplates is only available to the projects app")
+      }
+      const { listTemplates } = await import("~/apps/projects/service/templates")
+      return typedCall(async () => ({ items: await listTemplates(txDb as never, orgId) }))
     },
     projects_addDependency: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {

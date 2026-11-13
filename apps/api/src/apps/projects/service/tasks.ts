@@ -8,9 +8,11 @@ import {
   cancelApprovalsForDeletedTasks,
   reopenApprovalsForRestoredTasks,
 } from "~/modules/approvals/cancel"
+import { applyCells, changedKeys } from "~/modules/dashboards/tables/columns"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
 import { type ChecklistStatus, checklistStatus } from "./checklist-status"
 import { dueBucketSql } from "./due-status"
+import { fieldFilterConditions, readProjectFields, validateTaskFields } from "./fields"
 import {
   computeNextCompletedAt,
   computePosition,
@@ -25,6 +27,7 @@ import {
   type AssigneeRef,
   type DbTaskRow,
   loadTaskDetails,
+  maskLinkFields,
   type Task,
   type TaskListDbRow,
   type TaskSummary,
@@ -40,6 +43,7 @@ import {
   labelFilterCondition,
   resolveLabelInput,
 } from "./task-labels"
+import { recordTransitions, type TransitionActor, transitionActorFor } from "./transitions"
 
 export type { AssigneeRef, Task, TaskSummary } from "./task-detail"
 
@@ -119,6 +123,17 @@ export interface CreateTaskInput {
    * `label_archived`). See `task-labels.ts`.
    */
   labels?: LabelInput
+  /**
+   * Values of the project's fields {key: value} (fields.ts): each checked by its type, an unknown
+   * key refused (422 `unknown_field` / `invalid_field`, naming the field).
+   */
+  fields?: Record<string, unknown> | null
+  /**
+   * Refuse the create when a required field has no value. Set by the interactive and agent
+   * creates (tool, REST) only: an import, a template or a project's initial task tree never
+   * enforce it.
+   */
+  requireFields?: boolean
 }
 
 export interface CreateTaskArgs {
@@ -126,6 +141,8 @@ export interface CreateTaskArgs {
   orgId: string
   actor: UserContext
   input: CreateTaskInput
+  /** Who made the change, for the transition (default: from the run, else the person). */
+  via?: TransitionActor
 }
 
 async function resolveStatusId(
@@ -182,6 +199,16 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
     const statusId = await resolveStatusId(innerTx as RlsClient, orgId, input.projectId, input)
     assertTaskPriority(input.priority)
     const labelAssignments = await resolveLabelInput(innerTx as RlsClient, orgId, input.labels)
+    const fieldDefs = await readProjectFields(innerTx, orgId, input.projectId)
+    const fieldValues =
+      (input.fields !== undefined && input.fields !== null) || input.requireFields === true
+        ? applyCells(
+            {},
+            await validateTaskFields(innerTx, orgId, fieldDefs, input.fields ?? {}, {
+              full: input.requireFields === true,
+            }),
+          )
+        : {}
 
     const assigneeId = input.assigneeId
       ? await resolveAssignee(
@@ -352,7 +379,7 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
       INSERT INTO ${projectsRel("tasks")}
         (id, org_id, project_id, parent_task_id, status_id, number, title, description,
          assignee_id, priority, due_date, start_date, position, blocked, thread_id, created_by,
-         external_ref, release, created_at, completed_at, created_by_agent_label)
+         external_ref, release, created_at, completed_at, created_by_agent_label, fields)
       VALUES (
         ${taskId}::uuid,
         ${orgId}::uuid,
@@ -374,7 +401,8 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
         ${release},
         ${createdAtIso ? drizzleSql`${createdAtIso}::timestamptz` : drizzleSql`now()`},
         ${completedAtIso ? drizzleSql`${completedAtIso}::timestamptz` : drizzleSql`NULL`},
-        ${agentLabel}
+        ${agentLabel},
+        ${JSON.stringify(fieldValues)}::jsonb
       )
     `)
 
@@ -393,6 +421,14 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
       actorType: "user",
       orgId,
     })
+    // Created straight into a status: a transition from nothing, so a routine waiting for a
+    // task to reach that status starts on a create too.
+    await recordTransitions(
+      innerTx,
+      orgId,
+      [{ taskId, projectId: input.projectId, fromStatusId: null, toStatusId: statusId }],
+      args.via ?? transitionActorFor(actor),
+    )
 
     return detail
   })
@@ -601,6 +637,7 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
         t.description, t.assignee_id, t.priority, t.due_date, t.start_date,
         t.position, t.blocked, t.completed_at, t.thread_id, t.created_by,
         t.created_at, t.updated_at, t.release, t.created_by_agent_label,
+        t.fields, t.status_entered_at, p.task_fields,
         u.id AS assignee_user_id, u.name AS assignee_name, u.avatar_url AS assignee_avatar_url,
         cu.name AS created_by_name,
         p.key AS project_key,
@@ -631,6 +668,7 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
     task.checklist = taskItems && taskItems.length > 0 ? checklistStatus(levels, taskItems) : null
   }
   await attachTaskLabels(args.tx, args.orgId, items)
+  await maskLinkFields(args.tx, items)
   if (view === "tree") {
     items.sort((a, b) => a.depth - b.depth || a.position - b.position)
   }
@@ -656,6 +694,11 @@ export interface UpdateTaskInput {
    * untouched. Any refusal rejects the whole update. See `task-labels.ts`.
    */
   labels?: LabelInput
+  /**
+   * Field values to set {key: value}: keys left out are untouched, null empties one. Checked
+   * like a create's (fields.ts); a required field cannot be emptied.
+   */
+  fields?: Record<string, unknown> | null
 }
 
 export interface UpdateTaskArgs {
@@ -665,6 +708,30 @@ export interface UpdateTaskArgs {
   projectId?: string
   taskId: string
   input: UpdateTaskInput
+  /** Who made the change, for the transition (default: from the run, else the person). */
+  via?: TransitionActor
+}
+
+/** The task properties an update's `changedFields` names (camelCase, the input vocabulary). */
+const DIFFED_TASK_PROPS = [
+  "title",
+  "description",
+  "statusId",
+  "assigneeId",
+  "priority",
+  "dueDate",
+  "startDate",
+  "blocked",
+  "release",
+  "labels",
+] as const
+
+/** The names of what an update changed: properties that differ, then `fields.<key>`. */
+function taskDiff(before: TaskDetail, after: TaskDetail): string[] {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+  const out: string[] = DIFFED_TASK_PROPS.filter((k) => !same(before[k], after[k]))
+  for (const key of changedKeys(before.fields, after.fields)) out.push(`fields.${key}`)
+  return out
 }
 
 export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
@@ -675,9 +742,10 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
       project_id: string
       status_id: string
       completed_at: Date | string | null
+      fields: Record<string, unknown> | null
     }>(
       await innerTx.execute(drizzleSql`
-        SELECT project_id, status_id, completed_at
+        SELECT project_id, status_id, completed_at, fields
         FROM ${projectsRel("tasks")}
         WHERE id = ${taskId}::uuid AND org_id = ${orgId}::uuid ${projectClause} LIMIT 1
       `),
@@ -686,20 +754,24 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
     if (!existing) throw new ProjectsServiceError(404, "not_found", "task not found")
     await ensureProjectMutableForTasks(innerTx, orgId, existing.project_id)
     const labelAssignments = await resolveLabelInput(innerTx as RlsClient, orgId, input.labels)
+    const before = await loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
 
     const sets: ReturnType<typeof drizzleSql>[] = []
+    if (input.fields !== undefined && input.fields !== null) {
+      const defs = await readProjectFields(innerTx, orgId, existing.project_id)
+      const values = await validateTaskFields(innerTx, orgId, defs, input.fields, { full: false })
+      // Applied onto the STORED values, so values of a field taken off the project stay.
+      const next = applyCells(existing.fields ?? {}, values)
+      sets.push(drizzleSql`fields = ${JSON.stringify(next)}::jsonb`)
+    }
+    let nextStatusId: string | null = null
     if (input.title !== undefined) sets.push(drizzleSql`title = ${input.title}`)
     if (input.description !== undefined) sets.push(drizzleSql`description = ${input.description}`)
     if (
       input.statusId !== undefined ||
       (input.statusLabel !== undefined && input.statusLabel !== null)
     ) {
-      const nextStatusId = await resolveStatusRef(
-        innerTx as RlsClient,
-        orgId,
-        existing.project_id,
-        input,
-      )
+      nextStatusId = await resolveStatusRef(innerTx as RlsClient, orgId, existing.project_id, input)
       sets.push(drizzleSql`status_id = ${nextStatusId}::uuid`)
       const completedAt = await computeNextCompletedAt(innerTx, orgId, {
         previousStatusId: existing.status_id,
@@ -745,25 +817,41 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
     `)
     await applyTaskLabels(innerTx as RlsClient, orgId, taskId, labelAssignments)
 
-    // The event carries the full row AFTER the write (a `statusLabel` input
-    // yields the resolved `statusId`, the key, completedAt...), plus the names
-    // of the fields the caller set, so a routine can still tell what changed.
+    // The event carries what changed first (the names of the properties and
+    // `fields.<key>` whose value differs, and the status left and entered),
+    // then the full row AFTER the write, so a fenced copy keeps the change.
     const detail = await loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
+    const statusChanged = nextStatusId !== null && nextStatusId !== existing.status_id
     await innerTx.queueEvent({
       app: "projects",
       entity: "task",
       action: "updated",
       entityId: taskId,
       data: {
+        changedFields: taskDiff(before, detail),
+        ...(statusChanged ? { fromStatusId: existing.status_id, toStatusId: nextStatusId } : {}),
         ...detail,
-        changedFields: Object.keys(input).filter(
-          (k) => input[k as keyof UpdateTaskInput] !== undefined,
-        ),
       },
       actorId: actor.userId,
       actorType: "user",
       orgId,
     })
+    if (statusChanged && nextStatusId) {
+      await recordTransitions(
+        innerTx,
+        orgId,
+        [
+          {
+            taskId,
+            projectId: existing.project_id,
+            fromStatusId: existing.status_id,
+            toStatusId: nextStatusId,
+          },
+        ],
+        args.via ?? transitionActorFor(actor),
+      )
+      return loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
+    }
 
     return detail
   })
@@ -869,6 +957,7 @@ export async function listTasksAcrossProjects(
         t.description, t.assignee_id, t.priority, t.due_date, t.start_date,
         t.position, t.blocked, t.completed_at, t.thread_id, t.created_by,
         t.created_at, t.updated_at, t.release,
+        t.fields, t.status_entered_at, p.task_fields,
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
@@ -892,6 +981,7 @@ export async function listTasksAcrossProjects(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await maskLinkFields(args.tx, items)
   // Unpaginated (no LIMIT) — the result IS the full matching set, so the sweep
   // count is exactly items.length. Returned as `totalCount` for the uniform
   // contacts/users/mail/tickets/projects convention so a sweep over "my overdue
@@ -927,6 +1017,11 @@ export interface ListProjectTasksArgs {
   completedAfter?: string
   /** Completion window end, exclusive (ISO-8601, offsets honoured). */
   completedBefore?: string
+  /**
+   * Field filter {key: value | value[] | null}: equal, any of, or empty (AND across keys;
+   * fields.ts fieldFilterConditions). A key that is not a field of the project refuses.
+   */
+  fields?: Record<string, unknown> | null
 }
 
 /** The bridge forwards tool params as given, so the type is checked here too. */
@@ -977,6 +1072,10 @@ export async function listProjectTasks(
   const completedBefore = parseInstant("completedBefore", args.completedBefore)
   if (completedAfter) conds.push(drizzleSql`t.completed_at >= ${completedAfter}::timestamptz`)
   if (completedBefore) conds.push(drizzleSql`t.completed_at < ${completedBefore}::timestamptz`)
+  if (args.fields !== undefined && args.fields !== null) {
+    const defs = await readProjectFields(args.tx, args.orgId, args.projectId)
+    conds.push(...fieldFilterConditions(defs, args.fields, "t"))
+  }
   const whereSql = conds.reduce<ReturnType<typeof drizzleSql>>(
     (acc, frag, idx) => (idx === 0 ? frag : drizzleSql`${acc} AND ${frag}`),
     drizzleSql``,
@@ -1014,6 +1113,7 @@ export async function listProjectTasks(
         t.description, t.assignee_id, t.priority, t.due_date, t.start_date,
         t.position, t.blocked, t.completed_at, t.thread_id, t.created_by,
         t.created_at, t.updated_at, t.release,
+        t.fields, t.status_entered_at, p.task_fields,
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
@@ -1038,6 +1138,7 @@ export async function listProjectTasks(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await maskLinkFields(args.tx, items)
   return { items, totalCount }
 }
 
@@ -1461,65 +1562,68 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   })
 }
 
-interface TemplateNode {
-  title: string
-  description?: string | null
-  children?: TemplateNode[]
-}
-
 export interface InstantiateTemplateArgs {
   tx: RlsClient
   orgId: string
   actor: UserContext
   templateId: string
   projectName: string
+  /** Who acts, for the tasks' transitions (default: from the run, else the person). */
+  via?: TransitionActor
 }
 
 /**
- * Materialize a stored project template into a brand-new project. Recursively
- * calls `createTask`, which enforces `MAX_TASK_DEPTH` — so an over-deep
- * template fails through the same guard a manual deep-nest would hit.
+ * Materialize a stored project template into a brand-new project: its statuses (default columns
+ * when it has none), its task fields, then its task tree with each node's priority, status and
+ * field values (templates.ts). Recursively calls `createTask`, which enforces `MAX_TASK_DEPTH`,
+ * so an over-deep template fails through the same guard a manual deep-nest would hit. Required
+ * fields are not enforced on a template's tasks.
  */
 export async function instantiateTemplate(
   args: InstantiateTemplateArgs,
 ): Promise<{ projectId: string }> {
   const { tx, orgId, actor, templateId, projectName } = args
-  const tplRows = extractRows<{ structure: unknown }>(
-    await tx.execute(drizzleSql`
-      SELECT structure FROM ${projectsRel("project_templates")}
-      WHERE id = ${templateId}::uuid AND org_id = ${orgId}::uuid
-      LIMIT 1
-    `),
-  )
-  if (tplRows.length === 0) {
-    throw new ProjectsServiceError(404, "template_not_found", "project template not found")
-  }
-  const raw = tplRows[0]!.structure
-  const nodes: TemplateNode[] = Array.isArray(raw) ? (raw as TemplateNode[]) : []
+  const { loadTemplate } = await import("./templates")
+  const structure = await loadTemplate(tx, orgId, templateId)
 
   const { createProject } = await import("./create-project")
-  const project = await createProject({ tx, orgId, actor, input: { name: projectName } })
+  const project = await createProject({
+    tx,
+    orgId,
+    actor,
+    input: {
+      name: projectName,
+      ...(structure.statuses ? { statuses: structure.statuses } : {}),
+      ...(structure.fields ? { fields: structure.fields } : {}),
+    },
+  })
   const statusId = project.statuses.find((s) => !s.terminal)?.id ?? project.statuses[0]?.id
   if (!statusId) throw new ProjectsServiceError(409, "no_statuses", "new project has no statuses")
+  const statusByLabel = new Map(project.statuses.map((s) => [s.label.toLowerCase(), s.id]))
 
-  const createNode = async (node: TemplateNode, parentTaskId: string | null): Promise<void> => {
+  type Node = (typeof structure.tasks)[number]
+  const createNode = async (node: Node, parentTaskId: string | null): Promise<void> => {
     const created = await createTask({
       tx,
       orgId,
       actor,
+      via: args.via,
       input: {
         projectId: project.id,
-        statusId,
+        statusId:
+          (node.statusLabel && statusByLabel.get(node.statusLabel.toLowerCase())) || statusId,
         parentTaskId,
         title: node.title,
         description: node.description ?? null,
+        ...(node.priority ? { priority: node.priority } : {}),
+        ...(node.fields ? { fields: node.fields } : {}),
       },
     })
     for (const child of node.children ?? []) {
       await createNode(child, created.id)
     }
   }
-  for (const node of nodes) await createNode(node, null)
+  for (const node of structure.tasks) await createNode(node, null)
   return { projectId: project.id }
 }
 

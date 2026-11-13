@@ -5,6 +5,7 @@ import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { loadTaskDetails } from "./task-detail"
+import { recordTransitions, type TransitionActor, transitionActorFor } from "./transitions"
 
 export class ProjectsServiceError extends Error {
   status: number
@@ -305,6 +306,8 @@ export interface MigrateStatusArgs {
   sourceStatusId: string
   targetStatusId: string
   actor: UserContext
+  /** Who made the change, for the transitions (default: from the run, else the person). */
+  via?: TransitionActor
 }
 
 export async function migrateStatusTasks(
@@ -360,12 +363,30 @@ export async function migrateStatusTasks(
         entity: "task",
         action: "moved",
         entityId: id,
-        data: { ...movedDetails.get(id), id, projectId, statusId: targetStatusId },
+        data: {
+          fromStatusId: sourceStatusId,
+          ...movedDetails.get(id),
+          id,
+          projectId,
+          statusId: targetStatusId,
+        },
         actorId: actor.userId,
         actorType: "user",
         orgId,
       })
     }
+    // One statement for every moved task's transition.
+    await recordTransitions(
+      innerTx,
+      orgId,
+      movedTaskIds.map((taskId) => ({
+        taskId,
+        projectId,
+        fromStatusId: sourceStatusId,
+        toStatusId: targetStatusId,
+      })),
+      args.via ?? transitionActorFor(actor),
+    )
     await innerTx.queueEvent({
       app: "projects",
       entity: "project_status",

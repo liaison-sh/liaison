@@ -2,8 +2,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
+import { setFields } from "~/apps/projects/service/fields"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import { withRlsContext } from "~/db/rls"
 import { env } from "~/lib/env"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -84,6 +86,82 @@ describe("projects.http", () => {
 
   afterAll(async () => {
     await releaseTestLock()
+  })
+
+  it("projects.http.task-fields-and-transitions", async () => {
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    const created = await app.request("/api/projects", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: `Fields ${Date.now()}` }),
+    })
+    const project = (
+      (await created.json()) as { data: { id: string; statuses: Array<{ id: string }> } }
+    ).data
+    const actor = {
+      actorType: "user" as const,
+      userId: USER,
+      orgId: ORG,
+      scopes: ["projects:projects:read", "projects:projects:write", "projects:tasks:write"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    await withRlsContext(actor, (tx) =>
+      setFields({
+        tx,
+        orgId: ORG,
+        actor,
+        projectId: project.id,
+        fields: [
+          { key: "serial", label: "Serial", type: "text", required: true },
+          { key: "kind", label: "Kind", type: "choice", choices: ["A", "B"] },
+        ],
+      }),
+    )
+    const base = `/api/projects/${project.id}/tasks`
+    // A person's create: the required field applies.
+    const missing = await app.request(base, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "no serial" }),
+    })
+    expect(missing.status).toBe(422)
+    const ok = await app.request(base, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "with", fields: { serial: "S-1" } }),
+    })
+    expect(ok.status).toBe(200)
+    const task = ((await ok.json()) as { data: { id: string; fields: Record<string, unknown> } })
+      .data
+    expect(task.fields).toEqual({ serial: "S-1" })
+    const bad = await app.request(`${base}/${task.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ fields: { kind: "C" } }),
+    })
+    expect(bad.status).toBe(422)
+    const patched = await app.request(`${base}/${task.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ fields: { kind: "B" }, statusId: project.statuses[1]!.id }),
+    })
+    expect(patched.status).toBe(200)
+    const got = await app.request(`${base}/${task.id}`, { headers })
+    const detail = (
+      (await got.json()) as {
+        data: {
+          fields: Record<string, unknown>
+          statusEnteredAt: string
+          transitions: Array<{ fromStatusId: string | null; toStatusId: string }>
+        }
+      }
+    ).data
+    expect(detail.fields).toEqual({ serial: "S-1", kind: "B" })
+    expect(typeof detail.statusEnteredAt).toBe("string")
+    expect(detail.transitions.map((t) => t.toStatusId)).toEqual([
+      project.statuses[1]!.id,
+      project.statuses[0]!.id,
+    ])
   })
 
   it("projects.http.crud-and-archive", async () => {

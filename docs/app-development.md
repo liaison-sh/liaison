@@ -823,6 +823,18 @@ the person with `{ [queryParam]: <what they typed> }`. Each item of its result
 (at `itemsPath`, else the result itself or its only list) gives the record's id
 (`idField`) and label (`labelField`). Registration refuses a pick tool that is
 not yours, not read-only, gated, or takes no `queryParam`.
+`params` (up to 5) are fixed parameters passed beside the query, for a read
+that answers several kinds of records (`{ "kind": "task" }`); each must be a
+parameter of the tool, never the `queryParam`.
+
+**Back a dashboard table with your records.** A core app (its handlers are
+server code) can let a dashboard table's rows be the records of one parent
+record, such as a project's tasks: declare `tableBacking: { "parent",
+"provider" }` on the entity, where `parent` is another entity of your app and
+`provider` an export of your handler module implementing `TableBackingProvider`
+(`apps/api/src/modules/dashboards/tables/backing.ts`): the columns a parent
+offers, its records the reader can read, a write as the writer, and a stamp
+that moves when they change. Each call runs on the reader's own transaction.
 
 **What the search index holds for an entity.** A searchable entity's
 `indexFields` names the columns its search document is built from: `title`,

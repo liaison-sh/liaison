@@ -31,6 +31,14 @@ export interface TaskSpec {
   parent?: string
   /** Task keys this one is blocked by. */
   dependsOn?: string[]
+  /** Days from the base time to the task's start date. */
+  startInDays?: number
+  /** When a done task was closed; the product's own close time otherwise. */
+  completedAt?: Date
+  /** The task's own timebox, in minutes. */
+  timeboxMinutes?: number
+  /** A milestone: usually the parent of work tasks, its timebox counting for theirs. */
+  isMilestone?: boolean
 }
 
 export interface ProjectSpec {
@@ -110,6 +118,8 @@ export async function seedProject(
         continue
       }
       const dueDate = task.dueInDays === undefined ? undefined : clock.daysAfter(task.dueInDays)
+      const startDate =
+        task.startInDays === undefined ? undefined : clock.daysAfter(task.startInDays)
       const created = await createTask({
         tx: tx as never,
         orgId,
@@ -122,6 +132,8 @@ export async function seedProject(
           ...(task.assignee ? { assigneeId: people[task.assignee]?.userId } : {}),
           priority: task.priority ?? "normal",
           ...(dueDate ? { dueDate: dueDate.toISOString() } : {}),
+          ...(startDate ? { startDate: startDate.toISOString().slice(0, 10) } : {}),
+          ...(task.completedAt ? { completedAt: task.completedAt.toISOString() } : {}),
           ...(task.parent && taskIdByKey[task.parent]
             ? { parentTaskId: taskIdByKey[task.parent] }
             : {}),
@@ -130,6 +142,16 @@ export async function seedProject(
       })
       taskIdByKey[task.key] = created.id
       taskIds.push(created.id)
+      if (task.timeboxMinutes !== undefined || task.isMilestone) {
+        // The task's planning fields, in the owner's own transaction under
+        // RLS, as the task writer stores them.
+        await (tx as ExecTx).execute(
+          sql`UPDATE app_projects.tasks
+                 SET timebox_minutes = ${task.timeboxMinutes ?? null},
+                     is_milestone = ${task.isMilestone ?? false}
+               WHERE id = ${created.id}::uuid AND org_id = ${orgId}::uuid`,
+        )
+      }
     }
 
     for (const task of spec.tasks) {

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db/connection"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { awaitOrgApps } from "~/modules/apps/init"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { getWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
@@ -71,6 +72,9 @@ describe("manifest job handlers execute in the sandbox worker pool", () => {
       _bundlePath: new URL("./__fixtures__/event-spin/handler-bundle.ts", import.meta.url).pathname,
     }
     await registerApps([manifest as any], ORG)
+    // The org is set up before the job, as for an org the process already serves: a job is
+    // the first touch of an org otherwise, and that setup's own host work is not the job's.
+    await awaitOrgApps(ORG)
   })
 
   afterAll(async () => {

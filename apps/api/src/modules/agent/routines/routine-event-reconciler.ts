@@ -41,6 +41,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
   eventDataForOwner,
+  eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
@@ -50,6 +51,7 @@ import {
   ownerCanSeeEventEntity,
   ownerMailSenderFilterMatches,
   ownerProjectTaskFilterMatches,
+  ROUTINE_EVENT_MAX_HOP,
   type RoutineEventFilter,
   triggerEventOrigin,
 } from "~/infra/jobs/event-routine-gate"
@@ -390,6 +392,10 @@ async function reconcileRoutine(
           AND "timestamp" <= ${ctx.until.toISOString()}::timestamptz
           AND COALESCE(metadata->>'firedByRoutineId', '') <> ${routine.id}
           AND COALESCE(metadata->>'seeded', '') <> 'true'
+          -- A routine chain this deep was dropped by the subscriber, on purpose: replaying it
+          -- would carry the loop on (0303).
+          AND CASE WHEN metadata->>'hop' ~ '^[0-9]{1,6}$' THEN (metadata->>'hop')::int ELSE 0 END
+              < ${ROUTINE_EVENT_MAX_HOP}
         ORDER BY "timestamp" ASC
         LIMIT 2000`),
     ).map(
@@ -563,6 +569,8 @@ async function reconcileRoutine(
       origin: await triggerEventOrigin({ ...gateEvent }),
       eventId: ev.eventId,
       retryAttempt: attempt,
+      // The chain depth the event had: the retry's writes carry it on, as the first tick's would.
+      ...(eventHopOf(ev.metadata) > 0 ? { hop: eventHopOf(ev.metadata) } : {}),
     }
     try {
       await ctx.enqueue({

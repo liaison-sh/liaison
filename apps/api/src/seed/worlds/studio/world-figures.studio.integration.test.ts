@@ -151,6 +151,8 @@ describe("the services world's figures at the board date", () => {
     ])
     expect(out.partial).toBe(true)
     expect(out.coverage.withEntries).toBe(41)
+    // 50 rows: 4 milestones with children and 46 leaves, 43 of them started or closed.
+    expect(out.coverage.total).toBe(43)
     // The project used time and budgets from its start: no note says otherwise.
     expect(out.offUntil).toBeUndefined()
     const milestones = Object.fromEntries(

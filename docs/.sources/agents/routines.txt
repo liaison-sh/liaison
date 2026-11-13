@@ -206,7 +206,11 @@ Status changes are not grouped -> apps/api/src/infra/jobs/event-routine-subscrib
 Routine chains stop at 5 -> apps/api/src/infra/jobs/event-routine-subscriber.ts:387
 Projects flow templates -> apps/api/src/apps/projects/app.manifest.json:2662
 Template placeholders filled from the project's statuses -> packages/shared/src/validation/agent/routines.ts:701
-Routines of a project listed by projectId -> apps/api/src/modules/agent/routines/routines-routes.ts:174
+Routines of a project listed by projectId -> apps/api/src/modules/agent/routines/routines-routes.ts:259
+includeLastRun adds each routine's latest run with its steps' states -> apps/api/src/modules/agent/routines/routines-routes.ts:144
+Runs on one record: app, entity and entityId, 10 by default, at most 50 -> apps/api/src/modules/agent/routines/routines-routes.ts:428
+The caller must read the record itself -> apps/api/src/modules/agent/routines/routines-routes.ts:447
+A run carries name, title, status, times, step states and a wait's deadline -> apps/api/src/modules/agent/routines/routines-routes.ts:414
 A notify to others needs projects:tasks:write, active members who can read the task -> apps/api/src/modules/agent/routines/flow-runner.ts:518
 A resumed run makes a new run's checks, ends skipped otherwise -> apps/api/src/modules/agent/routines/flow-runner.ts:1044
 An edited flow ends its waiting runs -> apps/api/src/modules/agent/routines/flow-runner.ts:1036

@@ -218,6 +218,17 @@ kernel.contacts.owner_user_id
 kernel.control_plane_outbox.message_id
 kernel.credit_transactions.cycle_id
 kernel.credit_transactions.user_id
+kernel.dashboard_table_changes.actor_id
+kernel.dashboard_table_changes.agent_id
+kernel.dashboard_table_changes.approval_id
+kernel.dashboard_table_changes.routine_id
+kernel.dashboard_table_changes.row_id
+kernel.dashboard_table_changes.table_id
+kernel.dashboard_tables.acl_role_ids
+kernel.dashboard_tables.acl_user_ids
+kernel.dashboard_tables.created_by
+kernel.dashboard_tables.owner_user_id
+kernel.dashboard_tables.updated_by
 kernel.dashboard_versions.dashboard_id
 kernel.dashboard_versions.saved_by
 kernel.dashboard_viewer_states.dashboard_id

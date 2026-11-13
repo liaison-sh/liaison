@@ -359,10 +359,10 @@ services:
       objectstore-init: { condition: service_completed_successfully }
       # Block app start until the data dir is writable by the app user.
       data-init: { condition: service_completed_successfully }
-      # The sandbox service (profile `sandbox`), when it is in use: `docker
-      # compose up -d app` then recreates it too when its image moved, so it
-      # never stays on the previous release. Not required: without the profile
-      # nothing waits for it.
+      # The sandbox service: `docker compose up -d app` then recreates it too
+      # when its image moved, so it never stays on the previous release. Not
+      # required, so `--scale sandbox=0` still starts the app (with
+      # LIAISON_APP_RUNTIME=quickjs, this release only).
       sandbox: { condition: service_started, required: false }
     environment: &liaison-env
       NODE_ENV: production
@@ -382,15 +382,16 @@ services:
       LIAISON_APP_LOADER_URL: ${LIAISON_APP_LOADER_URL:-}
       LIAISON_APP_LOADER_CELL_ID: ${LIAISON_APP_LOADER_CELL_ID:-}
       LIAISON_APP_LOADER_KEY: ${LIAISON_APP_LOADER_KEY:-}
-      # The sandbox service (workerd under gVisor, profile `sandbox` below,
-      # docs/self-hosting/sandbox.md): set LIAISON_SANDBOX_URL=http://sandbox:8790
-      # with COMPOSE_PROFILES=sandbox and every sandboxed app runs there. Its
-      # runs call back on the bridge-only listener (LIAISON_APP_BRIDGE_PORT),
-      # which is all the sandbox network can reach of the app (once the host
-      # firewall step, deploy/sandbox-firewall.sh, is installed). Empty: every
-      # app runs on the local sandbox. LIAISON_APP_RUNTIME=quickjs puts every
-      # app back there whatever is set (this release only).
-      LIAISON_SANDBOX_URL: ${LIAISON_SANDBOX_URL:-}
+      # The sandbox service (workerd under gVisor, the `sandbox` service below,
+      # docs/self-hosting/sandbox.md): every sandboxed app runs there, by
+      # default. Its runs call back on the bridge-only listener
+      # (LIAISON_APP_BRIDGE_PORT), which is all the sandbox network can reach
+      # of the app (once the host firewall step, deploy/sandbox-firewall.sh, is
+      # installed). With the app loader set (a Cloud cell), it is where the
+      # loader's fallbacks run. LIAISON_APP_RUNTIME=quickjs puts every app back
+      # on the local QuickJS sandbox whatever is set: the way back for this
+      # release only; the next release removes QuickJS and the switch.
+      LIAISON_SANDBOX_URL: ${LIAISON_SANDBOX_URL:-http://sandbox:8790}
       LIAISON_SANDBOX_BRIDGE_URL: ${LIAISON_SANDBOX_BRIDGE_URL:-http://app-bridge:${LIAISON_APP_BRIDGE_PORT:-3100}}
       LIAISON_APP_BRIDGE_PORT: ${LIAISON_APP_BRIDGE_PORT:-3100}
       LIAISON_APP_RUNTIME: ${LIAISON_APP_RUNTIME:-}
@@ -822,7 +823,7 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # The sandbox service (profile `sandbox`, docs/self-hosting/sandbox.md): a
+  # The sandbox service (docs/self-hosting/sandbox.md), part of every stack: a
   # supervised pool of workerd processes (packages/sandbox-supervisor) running
   # the apps' Worker modules, one org's app@version per process. The same image
   # as `app` (the supervisor and the app's loader code come from one commit),
@@ -850,7 +851,6 @@ services:
     # Exactly the app's image (the anchor above, LIAISON_IMAGE): a service of
     # another release refuses every run (sandbox_release_mismatch).
     image: *liaison-image
-    profiles: ["sandbox"]
     command: ["sandbox"]
     runtime: ${LIAISON_SANDBOX_RUNTIME:-runsc}
     restart: unless-stopped
@@ -898,9 +898,8 @@ services:
     pids_limit: 512
     # Unhealthy also when, lately, only app processes of another release reach
     # it: the container was left on an older image after an upgrade. Recreate
-    # it with the app (`docker compose up -d` with COMPOSE_PROFILES=sandbox
-    # recreates both; deploy/rolling-deploy.sh recreates it after the new
-    # processes are ready). Until then every run it is sent is refused with
+    # it with the app (`docker compose up -d` recreates both;
+    # deploy/rolling-deploy.sh recreates it after the new processes are ready). Until then every run it is sent is refused with
     # `sandbox_release_mismatch` (docs/self-hosting/sandbox.md, Upgrades).
     healthcheck:
       test:

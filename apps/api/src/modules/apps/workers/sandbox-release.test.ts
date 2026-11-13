@@ -38,4 +38,22 @@ describe("the sandbox dependency of /healthz", () => {
     })
     expect(r).toEqual({ status: "ok", release: "r1" })
   })
+
+  it("is no dependency while LIAISON_APP_RUNTIME=quickjs runs every app elsewhere", async () => {
+    const savedRuntime = mutable.LIAISON_APP_RUNTIME
+    mutable.LIAISON_APP_RUNTIME = "quickjs"
+    try {
+      let called = false
+      const r = await probeSandbox({
+        fetchImpl: (async () => {
+          called = true
+          return Response.json({}, { status: 503 })
+        }) as unknown as typeof fetch,
+      })
+      expect(r).toBeNull()
+      expect(called).toBe(false)
+    } finally {
+      mutable.LIAISON_APP_RUNTIME = savedRuntime
+    }
+  })
 })

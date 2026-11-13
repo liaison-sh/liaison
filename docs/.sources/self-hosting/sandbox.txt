@@ -3,7 +3,8 @@ Wall kill at deadline + 1 s, CPU from the process, RSS cap + heap flag -> packag
 Nested runs: reserved processes, depth cap 4 -> packages/sandbox-supervisor/src/config.ts MAX_NESTING_DEPTH
 Per-run token, no key in the service -> packages/sandbox-supervisor/src/config.ts header ; apps/api/src/modules/apps/workers/bridge-route.ts
 runtime: runsc, opt-out LIAISON_SANDBOX_RUNTIME + LIAISON_SANDBOX_ALLOW_NO_GVISOR -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/runtime-check.ts
-COMPOSE_PROFILES=sandbox, LIAISON_SANDBOX_URL -> deploy/docker-compose.yml ; deploy/.env.example ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
+Service in every stack (no profile), LIAISON_SANDBOX_URL default http://sandbox:8790 -> deploy/docker-compose.yml (sandbox) ; deploy/docker-compose.yml (LIAISON_SANDBOX_URL) ; apps/api/src/modules/apps/workers/config.ts (readSandboxConfig)
+Upgrade steps; --scale sandbox=0 with the switch; appsWithoutWorkerModule must be 0 -> deploy/docker-compose.yml (app depends_on) ; apps/api/src/modules/healthz/index.ts (computeDetail) ; apps/api/src/modules/apps/workers/worker-module-backfill.ts
 Bridge-only listener on 3100; every app process (app, api, worker) on the sandbox network -> apps/api/src/modules/apps/workers/bridge-listener.ts ; apps/api/src/index.ts ; deploy/docker-compose.yml app/api/worker networks
 Bridge calls back to the process that sent the run (relay, caller address) -> packages/sandbox-supervisor/src/supervisor.ts createSupervisor relay ; packages/sandbox-supervisor/test/relay-release.test.ts
 Per-run CPU in usage rows -> packages/sandbox-supervisor/src/supervisor.ts CPU_HEADER ; apps/api/src/modules/apps/workers/executor.ts SANDBOX_CPU_HEADER ; apps/api/src/modules/apps/usage/app-usage.ts
@@ -33,3 +34,4 @@ One uid per workerd process, private directory, range 40000 + 64 -> packages/san
 Root with SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL -> deploy/docker-compose.yml (sandbox cap_add)
 Warning when processes share one uid -> packages/sandbox-supervisor/src/main.ts (processUids)
 check probes each workerd uid -> deploy/sandbox-firewall.sh (check)
+/healthz omits the sandbox dependency while LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)

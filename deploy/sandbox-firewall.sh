@@ -291,7 +291,7 @@ app_ips() {
 check() {
   same_network
   gateway="${PREFIX}1"
-  sid="$(eval "$DC --profile sandbox ps -q sandbox" 2>/dev/null | head -n 1 || :)"
+  sid="$(eval "$DC ps -q sandbox" 2>/dev/null | head -n 1 || :)"
   [ -n "$sid" ] || die "no running sandbox service in this compose project ($DC); pass the -p/--env-file/-f the stack runs with"
   sip="$(ip_on_net "$sid" | head -n 1)"
   [ "$sip" = "$SANDBOX_IP" ] || die "the sandbox service is at '${sip}', the rules name $SANDBOX_IP: set LIAISON_SANDBOX_IP and LIAISON_SANDBOX_SUBNET to what the stack runs with"

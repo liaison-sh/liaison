@@ -136,7 +136,7 @@ describe("sandbox-firewall.sh check finds the stack the way compose does", () =>
     expect(r.code).toBe(1)
     expect(r.stderr).toContain("no running sandbox service")
     expect(r.stderr).toContain("-p/--env-file/-f")
-    expect(calls()).toContain(`compose -f ${path.join(deployDir, "docker-compose.yml")} --profile sandbox ps -q sandbox`)
+    expect(calls()).toContain(`compose -f ${path.join(deployDir, "docker-compose.yml")} ps -q sandbox`)
   })
 
   it("COMPOSE_PROJECT_NAME in the environment reaches compose", () => {

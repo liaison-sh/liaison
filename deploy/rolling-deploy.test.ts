@@ -163,7 +163,7 @@ describe("rolling-deploy.sh", () => {
     const { code, calls } = run()
     expect(code).toBe(0)
     const ready = lastIndexOf(calls, (c) => c.startsWith("inspect") && c.includes("Health"))
-    const recreate = indexOf(calls, (c) => c === "compose --profile sandbox up -d --no-deps sandbox")
+    const recreate = indexOf(calls, (c) => c === "compose up -d --no-deps sandbox")
     const firstStop = indexOf(calls, (c) => c.startsWith("stop"))
     expect(recreate).toBeGreaterThan(ready)
     expect(firstStop).toBeGreaterThan(recreate)

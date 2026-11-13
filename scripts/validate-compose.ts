@@ -127,6 +127,40 @@ function loadDeployEnv(envPath: string): void {
   }
 }
 
+/**
+ * The sandbox service declares `runtime: runsc` (gVisor), so on a Docker host
+ * without that runtime (a stock CI runner, a laptop) the stack would not start.
+ * There the drill runs the service on runc with the two settings an operator
+ * would set for such a host, plus the open-network allowance of a stack with
+ * no firewall step: it validates the compose file, not the host's isolation
+ * (operator-drills' sandbox-gvisor job proves that, under gVisor). Empty when
+ * the host has gVisor or the caller already chose a runtime.
+ */
+export function sandboxDrillEnv(
+  runtimes: string[],
+  env: Record<string, string | undefined>,
+): Record<string, string> {
+  if (env.LIAISON_SANDBOX_RUNTIME || runtimes.includes("runsc")) return {}
+  return {
+    LIAISON_SANDBOX_RUNTIME: "runc",
+    LIAISON_SANDBOX_ALLOW_NO_GVISOR: "1",
+    LIAISON_SANDBOX_ALLOW_OPEN_NETWORK: "1",
+  }
+}
+
+/** The runtimes the Docker daemon knows (`docker info`), [] when it cannot say. */
+function dockerRuntimes(): string[] {
+  const proc = Bun.spawnSync(["docker", "info", "--format", "{{json .Runtimes}}"], {
+    stdout: "pipe",
+  })
+  if (proc.exitCode !== 0) return []
+  try {
+    return Object.keys(JSON.parse(proc.stdout.toString()) as Record<string, unknown>)
+  } catch {
+    return []
+  }
+}
+
 interface Args {
   tag: string
   port: number
@@ -199,10 +233,17 @@ async function main() {
   const envFile = process.env.LIAISON_ENV_FILE ?? join(ROOT, "deploy/.env")
   console.log(`→ validating compose with image ${image} on port ${port} (env=${envFile})`)
   console.log(`  process.env BASE_URL=${process.env.BASE_URL} APP_PORT=${process.env.APP_PORT}`)
+  const sandboxEnv = sandboxDrillEnv(dockerRuntimes(), process.env)
+  if (sandboxEnv.LIAISON_SANDBOX_RUNTIME) {
+    console.log(
+      "  no gVisor runtime on this Docker host: the sandbox service runs on runc for this drill",
+    )
+  }
+  const composeEnv = { ...process.env, ...sandboxEnv, LIAISON_IMAGE: image }
   const upProc = Bun.spawnSync({
     cmd: ["docker", "compose", "--env-file", envFile, "-f", composePath, "up", "-d"],
     cwd: ROOT,
-    env: { ...process.env, LIAISON_IMAGE: image },
+    env: composeEnv,
     stdout: "inherit",
     stderr: "inherit",
   })
@@ -231,7 +272,7 @@ async function main() {
     Bun.spawnSync({
       cmd: ["docker", "compose", "--env-file", envFile, "-f", composePath, "down", "-v"],
       cwd: ROOT,
-      env: { ...process.env, LIAISON_IMAGE: image },
+      env: composeEnv,
       stdout: "inherit",
       stderr: "inherit",
     })

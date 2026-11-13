@@ -1,9 +1,9 @@
 ---
 title: The app sandbox service
-description: Run sandboxed apps on workerd under gVisor on your own server - install gVisor, turn the service on, install the firewall step, size it, and the risks it does not remove.
+description: Sandboxed apps run on workerd under gVisor on your own server - install gVisor, install the firewall step, upgrade to it, size it, and the risks it does not remove.
 ---
 
-Apps that are not part of Liaison's core (the bundled apps, apps you install, your organizations' own apps) run in a sandbox. On a self-hosted server that sandbox can be the **sandbox service**: a supervised pool of `workerd` processes (the runtime behind Cloudflare Workers) in its own container, under gVisor, on a network that reaches nothing but one port of the app. In this release it is optional; without it apps run on the local QuickJS sandbox, as before.
+Apps that are not part of Liaison's core (the bundled apps, apps you install, your organizations' own apps) run in a sandbox. On a self-hosted server that sandbox can be the **sandbox service**: a supervised pool of `workerd` processes (the runtime behind Cloudflare Workers) in its own container, under gVisor, on a network that reaches nothing but one port of the app. It is part of every stack: the compose file starts it and points the app at it, so a fresh or upgraded server runs every sandboxed app on workerd. Before you start or upgrade, install gVisor on the host (below); after the stack is up, install the firewall step.
 
 What the service does for each run:
 
@@ -27,28 +27,35 @@ sudo systemctl reload docker
 
 Check it: `docker run --rm --runtime=runsc busybox dmesg` prints gVisor's boot lines.
 
-## Turn it on
+## How it runs
 
-In `deploy/.env`:
-
-```sh
-COMPOSE_PROFILES=sandbox
-LIAISON_SANDBOX_URL=http://sandbox:8790
-```
-
-Then `docker compose up -d` from `deploy/`. Every app process gets a second listener on port 3100 (`LIAISON_APP_BRIDGE_PORT`) that answers `/api/app-bridge/<run>` and nothing else, and joins the sandbox network. The service sends each run's `ctx.*` calls back to the process that sent the run, at the address the run came from (under gVisor the sandbox cannot use Docker's name service, so no name or fixed address is involved). This works the same for the single `app` container and for the rolling `api` and `worker` processes of `deploy/rolling-deploy.sh`, old and new side by side. Each sandboxed app whose installed version carries a Worker module (`worker.js`, every bundled app does) runs on the service; its timing lines say `executor: "workerd"` and its usage rows count under `workerd`, with the CPU time the service measured for each run.
+`docker compose up -d` from `deploy/` starts the service with the rest of the stack; the app reaches it at `LIAISON_SANDBOX_URL`, `http://sandbox:8790` unless you set another. Every app process gets a second listener on port 3100 (`LIAISON_APP_BRIDGE_PORT`) that answers `/api/app-bridge/<run>` and nothing else, and joins the sandbox network. The service sends each run's `ctx.*` calls back to the process that sent the run, at the address the run came from (under gVisor the sandbox cannot use Docker's name service, so no name or fixed address is involved). This works the same for the single `app` container and for the rolling `api` and `worker` processes of `deploy/rolling-deploy.sh`, old and new side by side. Each sandboxed app whose installed version carries a Worker module (`worker.js`, every bundled app does) runs on the service; its timing lines say `executor: "workerd"` and its usage rows count under `workerd`, with the CPU time the service measured for each run.
 
 The app's `/healthz` shows the service as the `sandbox` dependency: `ok` when it answers with the app's release and can reach that process's bridge listener, `release_mismatch` or `bridge_unreachable` otherwise.
 
-To go back for a while, set `LIAISON_APP_RUNTIME=quickjs` and restart the app: every app runs on the local sandbox again, whatever else is set. This switch exists in this release only.
+### The way back, this release only
+
+`LIAISON_APP_RUNTIME=quickjs` in `deploy/.env`, then `docker compose up -d`: every app runs on the local QuickJS sandbox again, whatever else is set. It is the only way back while a server moves to the service, and it is temporary: the next release removes QuickJS and this switch, so a server must run its apps on the service before it takes that release. While the switch is on, `/healthz` does not list the service as a dependency. A host where the service cannot start at all (no gVisor yet) can leave it out meanwhile with `docker compose up -d --scale sandbox=0`, together with the switch.
+
+## Upgrading to the release that turns it on
+
+The service used to be optional (the `sandbox` compose profile and `LIAISON_SANDBOX_URL`). From this release it starts with the stack, so before you upgrade:
+
+1. **Install gVisor** on the host (below). Without it `docker compose up -d` stops at the `sandbox` service with Docker's `unknown or invalid runtime name: runsc`, and the app is not recreated.
+2. **Upgrade as usual** (`docker compose pull && docker compose up -d`, or `deploy/rolling-deploy.sh`). The service is created on the new image with the app, and recreated with it on every later upgrade (below). `COMPOSE_PROFILES=sandbox` and `LIAISON_SANDBOX_URL=http://sandbox:8790` in an existing `deploy/.env` still work; they are no longer needed.
+3. **Install the firewall step**: `sudo deploy/sandbox-firewall.sh install`, then `deploy/sandbox-firewall.sh check` (below). Until it is installed the service refuses every run with `sandbox_network_open` and `/healthz` says so: install it right after the upgrade, or set `LIAISON_APP_RUNTIME=quickjs` until you can.
+4. **Size it** for the host (below) and lower the app's own memory limit by what the service takes.
+5. **Check every installed app can run there**: `/healthz` (with the `MONITOR_TOKEN`) reports `appsWithoutWorkerModule`, the active app versions with no Worker module. It must be `0`. At start the server gives such a version the `worker.js` of its own stored package when that package has one; a version still counted has to be reinstalled, or republished from a package built by this release, before its runs work (they are refused with `app_worker_module_missing` meanwhile). `dependencies.sandbox` must say `ok`.
+
+If anything goes wrong, `LIAISON_APP_RUNTIME=quickjs` (above) puts every app back where it ran before, without a downgrade.
 
 ## Upgrades
 
 The service runs the same image as the app and must run the same release. Every request the app sends it names the app's release; a service of another release refuses the run (`sandbox_release_mismatch`, with the command to fix it), its container health check turns unhealthy, and the app's `/healthz` reports `release_mismatch`. So after an upgrade the service is recreated with the app:
 
-- Single `app` container: keep `COMPOSE_PROFILES=sandbox` in `deploy/.env` and run `docker compose up -d` (or `docker compose up -d app`: the app depends on the service, so it is recreated too when its image moved).
+- Single `app` container: `docker compose up -d` (or `docker compose up -d app`: the app depends on the service, so it is recreated too when its image moved).
 - Rolling deploys: `deploy/rolling-deploy.sh` recreates the service on the new image as soon as the new `api` and `worker` processes are ready, before the old ones drain. Sandboxed runs still started by the old processes are refused from then on.
-- By hand: `docker compose --profile sandbox up -d sandbox`.
+- By hand: `docker compose up -d sandbox`.
 
 The compose file gives the service exactly the app's image: both read `LIAISON_IMAGE`, through one definition. To pull from your own registry (Amazon ECR, a private registry), set `LIAISON_IMAGE` to that image, for example `LIAISON_IMAGE=<account>.dkr.ecr.<region>.amazonaws.com/liaison:v0.3.0`: the app, the service and the rolling `api`, `worker` and `migrate` processes all follow. Do not set `image:` on `app` alone in an override file; if you must, set the same value on `sandbox` too. `deploy/sandbox-firewall.sh check` fails when the service and an app process run different images.
 
@@ -105,6 +112,8 @@ To move to the new default (required on a host inside an AWS default VPC, where 
 ## Size it
 
 The worst case is every process at its memory cap: (`SANDBOX_POOL_SIZE` + `SANDBOX_POOL_OVERFLOW`) x `SANDBOX_RSS_CAP_MB`. Measured use is far below it (about 130 MiB for six loaded processes).
+
+Memory the service takes comes out of the host's budget: on a host whose app container has a memory limit, lower that limit by the service's. For a 16 GB host, for example, an app limit of 8 GiB becomes 6 GiB with the default 2 GiB service.
 
 | Memory for the sandbox | Settings |
 |---|---|

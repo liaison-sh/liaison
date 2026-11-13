@@ -8,7 +8,8 @@ Liaison ships as one app image plus PostgreSQL, Redis, MeiliSearch and a Seaweed
 ## What you need
 
 - Docker with Docker Compose v2, and `openssl`.
-- At least 2 vCPU and 4 GB of memory, plus swap. The service limits are sized for a 4 vCPU, 8 GB host.
+- gVisor (`runsc`) registered with Docker, for the app sandbox service: [Install gVisor](sandbox.md#install-gvisor). The quickstart runs the sandbox without it on a laptop for a local trial.
+- At least 2 vCPU and 4 GB of memory, plus swap. The service limits are sized for a 4 vCPU, 8 GB host; the sandbox service's cap is a ceiling its processes reach only when many apps run at once ([Size it](sandbox.md#size-it)).
 
 ## Start the stack
 
@@ -45,6 +46,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
+| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md) | 2 GB |
 
 All services share an internal network, and only the app publishes a port: `${APP_BIND}:${APP_PORT}`, which defaults to `127.0.0.1:3000`: it speaks plain HTTP and is meant to sit behind a TLS reverse proxy on the same host. Set `APP_BIND=0.0.0.0` only when the proxy runs on another host on a trusted network.
 
@@ -197,8 +199,8 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `CONTROL_PLANE_URL`, `CONTROL_PLANE_API_KEY` | Both or neither. They do not make the server managed: set without `LIAISON_EDITION`, the server runs self-hosted and logs a warning saying what to set |
 | `LIAISON_REQUIRE_APP_SIGNATURE`, `LIAISON_TRUSTED_APP_PUBLISHERS` | Runtime app installs: signatures are required by default, and the trusted publisher is one cosign certificate-identity regex matched against the whole identity. The image ships cosign; verifying needs outbound HTTPS to Sigstore (`tuf-repo-cdn.sigstore.dev`) |
 | `LIAISON_CUSTOM_APPS` | `on`: organisations may install their own app by URL and build one with the agent ([Build an app with your agent](../agents/build-an-app.md)). Unset: off on a self-hosted server (on in the managed edition). Apps you install for the whole server, and apps already installed, are not affected |
-| `LIAISON_APP_LOADER_URL`, `LIAISON_APP_LOADER_CELL_ID`, `LIAISON_APP_LOADER_KEY`, `LIAISON_APP_BRIDGE_BASE_URL`, `LIAISON_APP_BRIDGE_TIMINGS_FILE` | With the three loader variables set, run every installed sandboxed app on a remote V8 isolate loader instead of the local sandbox, as the Worker module (`worker.js`) its package carried; their `ctx.*` calls come back over HTTPS to `/api/app-bridge`, and the loader fetches a module from `/api/app-bridge/bundles/<sha256>` with a signed request. All empty by default: every app runs on the local sandbox. A run the loader cannot take goes to the server's own sandbox service when `LIAISON_SANDBOX_URL` is set |
-| `LIAISON_SANDBOX_URL`, `LIAISON_SANDBOX_BRIDGE_URL`, `LIAISON_APP_BRIDGE_PORT`, `LIAISON_APP_RUNTIME` | The app sandbox service (workerd under gVisor, the `sandbox` compose profile): every sandboxed app runs there once `LIAISON_SANDBOX_URL=http://sandbox:8790` is set. Install, firewall and sizing: [The app sandbox service](sandbox.md). `LIAISON_SANDBOX_ALLOW_OPEN_NETWORK=1` lets it run apps without the firewall step (a development stack only). `LIAISON_APP_RUNTIME=quickjs` puts every app back on the local sandbox (this release only) |
+| `LIAISON_APP_LOADER_URL`, `LIAISON_APP_LOADER_CELL_ID`, `LIAISON_APP_LOADER_KEY`, `LIAISON_APP_BRIDGE_BASE_URL`, `LIAISON_APP_BRIDGE_TIMINGS_FILE` | With the three loader variables set, run every installed sandboxed app on a remote V8 isolate loader instead of the server's sandbox service, as the Worker module (`worker.js`) its package carried; their `ctx.*` calls come back over HTTPS to `/api/app-bridge`, and the loader fetches a module from `/api/app-bridge/bundles/<sha256>` with a signed request. All empty by default: every app runs on the sandbox service. A run the loader cannot take goes to the sandbox service |
+| `LIAISON_SANDBOX_URL`, `LIAISON_SANDBOX_BRIDGE_URL`, `LIAISON_APP_BRIDGE_PORT`, `LIAISON_APP_RUNTIME` | The app sandbox service (workerd under gVisor, the `sandbox` compose service, started with the stack): every sandboxed app runs there; `LIAISON_SANDBOX_URL` defaults to `http://sandbox:8790`. Install gVisor before you start or upgrade; firewall, sizing and the upgrade steps: [The app sandbox service](sandbox.md). `LIAISON_SANDBOX_ALLOW_OPEN_NETWORK=1` lets it run apps without the firewall step (a development stack only). `LIAISON_APP_RUNTIME=quickjs` puts every app back on the local QuickJS sandbox (this release only; the next one removes it) |
 | `LIAISON_APP_FRAME_ORIGIN_TEMPLATE`, `LIAISON_FRAMED_APPS` | In a browser tab, frame each outside app's screens (and the first-party apps listed in `LIAISON_FRAMED_APPS`, for example `shopify,boxtal`) on an origin of their own, `https://{app}--{org}.<a domain of its own>`, instead of the opaque frame. Point a wildcard DNS name and certificate for that domain at the server. Empty by default: outside apps run in the opaque frame ([App screens on an origin of their own](../app-sandbox.md#app-screens-on-an-origin-of-their-own)) |
 
 For every variable, see the [environment reference](../reference/env.md).

@@ -11,7 +11,11 @@
 // once per subscriber and ignored). Anything slow (a database write) is the
 // subscriber's to batch or defer.
 
-import { CALLER_CANCELLED_ERROR_NAME, isTimeoutFailure } from "~/lib/failure-severity"
+import {
+  CALLER_CANCELLED_ERROR_NAME,
+  isTimeoutFailure,
+  SandboxQueueTimeoutError,
+} from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import type { RunLane } from "~/modules/apps/run-limits"
 import type { LoaderTimings } from "./timings"
@@ -127,6 +131,7 @@ export function runErrorKindOf(err: unknown): string {
   if (typeof err !== "object" || err === null) return isTimeoutFailure(err) ? "timeout" : "handler"
   const e = err as { name?: unknown; code?: unknown; message?: unknown }
   const message = typeof e.message === "string" ? e.message : ""
+  if (err instanceof SandboxQueueTimeoutError) return "queue_timeout"
   if (message.startsWith("Queued sandbox request timed out")) return "queue_timeout"
   if (message.startsWith("App execution timed out") || isTimeoutFailure(err)) return "timeout"
   if (e.name === CALLER_CANCELLED_ERROR_NAME) return "cancelled"

@@ -13,7 +13,13 @@ import {
   type WorkerCode,
   type WorkerIdentity,
 } from "../src/loader"
-import { bundleKey, deadlineDuration, dynamicWorkerId } from "../src/protocol"
+import {
+  bundleKey,
+  deadlineDuration,
+  dynamicWorkerId,
+  queueBound,
+  validateRunBody,
+} from "../src/protocol"
 import { sha256Hex, signCellRequestV2, verifyCellRequestV2 } from "../src/sign"
 
 interface R2Like {
@@ -635,6 +641,18 @@ describe("run", () => {
     expect(deadlineDuration(NOW + 7000, NOW)).toBe(7000)
     expect(deadlineDuration(NOW - 1, NOW)).toBe(0)
     expect(deadlineDuration(10 ** 9, NOW)).toBe(15 * 60_000)
+  })
+  test("queueMs: a background run's own queue bound, validated and capped", async () => {
+    const body = await runBody({})
+    expect(validateRunBody({ ...body, lane: "background", queueMs: 60_000 })).toBeNull()
+    expect(validateRunBody({ ...body, queueMs: 0 })).toBe("invalid queueMs")
+    expect(validateRunBody({ ...body, queueMs: "60000" })).toBe("invalid queueMs")
+    expect(queueBound({ lane: "background", queueMs: 60_000 })).toBe(60_000)
+    expect(queueBound({ lane: "background", queueMs: 10 ** 9 })).toBe(60 * 60_000)
+    // Only a background run waits on its own clock; absent, the deadline counts the wait.
+    expect(queueBound({ lane: "interactive", queueMs: 60_000 })).toBeNull()
+    expect(queueBound({ queueMs: 60_000 })).toBeNull()
+    expect(queueBound({ lane: "background" })).toBeNull()
   })
   test("bad JSON / missing fields -> 400; other paths 404; GET /run 405", async () => {
     const s = setup()

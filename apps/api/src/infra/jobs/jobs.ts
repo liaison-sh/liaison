@@ -26,7 +26,7 @@ import { poolPlan } from "~/db/process-pool-plan"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { dispatchAppJobWithContext, type JobTxMode } from "~/infra/jobs/job-context"
 import { env, isTestEnv } from "~/lib/env"
-import { JobRetryLaterError } from "~/lib/failure-severity"
+import { JobRetryLaterError, SandboxQueueTimeoutError } from "~/lib/failure-severity"
 import { jobsLogger as log } from "~/lib/logger"
 import { redis as appRedis, bullPrefix, redisBullMQ as redis } from "~/lib/redis"
 import {
@@ -153,6 +153,24 @@ let jobsHeldAppDayCap = 0
 /** Org jobs put back because their org reached an app day cap. */
 export function jobsHeldAppDayCapCount(): number {
   return jobsHeldAppDayCap
+}
+
+/**
+ * How long a job whose sandboxed run found no free process waits before it is
+ * offered again (SandboxQueueTimeoutError: the run never started).
+ */
+export const SANDBOX_QUEUE_DEFER_MS = 60_000
+/**
+ * A job is put back that way while it is younger than this (from when it was
+ * due); past it, such a failure counts as any other (the queue's retries and
+ * backoff), so a sandbox that never frees up still ends in a failed job.
+ */
+export const SANDBOX_QUEUE_DEFER_WINDOW_MS = 60 * 60_000
+
+let jobsDeferredSandboxQueue = 0
+/** Jobs put back because their sandboxed run found no free process in time. */
+export function jobsDeferredSandboxQueueCount(): number {
+  return jobsDeferredSandboxQueue
 }
 
 let jobsHeldOrgTransfer = 0
@@ -831,6 +849,19 @@ function ensureWorker(queueName: string): void {
           await uncountFanoutRun(job.id, job.attemptsMade)
           throw new DelayedError()
         }
+        // Its sandboxed run found no free process before its queue bound: the
+        // run never started, so nothing it does has happened. Back as delayed,
+        // its data kept and no attempt spent, while the job is young enough.
+        if (
+          err instanceof SandboxQueueTimeoutError &&
+          token &&
+          Date.now() - (job.timestamp + (job.opts.delay ?? 0)) < SANDBOX_QUEUE_DEFER_WINDOW_MS
+        ) {
+          jobsDeferredSandboxQueue++
+          await job.moveToDelayed(Date.now() + SANDBOX_QUEUE_DEFER_MS, token)
+          await uncountFanoutRun(job.id, job.attemptsMade)
+          throw new DelayedError()
+        }
         if (entry?.handedBack) {
           await uncountFanoutRun(job.id, job.attemptsMade)
           throw new DelayedError()
@@ -1484,6 +1515,22 @@ async function processJobInOrigin(
     // A handler that asked to run later (a lock held by another run) did nothing
     // wrong: warn, and still throw so the queue retries it. Its last attempt
     // failing logs at error ("Job exhausted all retries").
+    // Its sandboxed run never started (no free process in time): not the
+    // app's failure. The worker puts it back (or, past the window, the queue
+    // retries it); warn, never "Job handler error".
+    if (err instanceof SandboxQueueTimeoutError) {
+      log.warn(
+        {
+          worker: queueName,
+          jobId: job.id,
+          jobName: job.name,
+          attempt: job.attemptsMade,
+          reason: "sandbox_queue_timeout",
+        },
+        "Job deferred: no sandbox process was free in time",
+      )
+      throw err
+    }
     if (err instanceof JobRetryLaterError) {
       log.warn(
         {

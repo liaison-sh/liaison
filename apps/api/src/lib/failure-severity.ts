@@ -184,3 +184,20 @@ export function sandboxCancelledError(): Error {
   err.name = CALLER_CANCELLED_ERROR_NAME
   return err
 }
+
+/**
+ * A sandboxed run that never started: no process or slot became free before
+ * its queue bound (a background run's own, else its deadline). Thrown by the
+ * executors themselves (the QuickJS worker pool, the Workers admission, the
+ * sandbox service's `queue_timeout` answer), never by app code, so a caller
+ * may treat it as "nothing ran": a job is put back for later
+ * (infra/jobs/jobs.ts) instead of failing. The message keeps the worker
+ * pool's wording, which the error-kind readers match (run-settled.ts).
+ */
+export class SandboxQueueTimeoutError extends Error {
+  readonly code = "queue_timeout"
+  constructor(message = "Queued sandbox request timed out waiting for a free worker") {
+    super(message)
+    this.name = "SandboxQueueTimeoutError"
+  }
+}

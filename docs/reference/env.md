@@ -201,6 +201,11 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_OPERATOR_ORG_ID` | `string (UUID)` |  | no | Installed apps are instance-wide, but `kernel:apps:admin` is org-scoped. On a multi-tenant instance (demo mode, managed edition) runtime app management (install, upgrade, uninstall, interface approval) is confined to the instance operator's org: this id when set, otherwise the instance's first org (modules/apps/operator-org.ts). Unused on a single-org self-host. Org ids are compared as strings, so the id is kept in the database's own lowercase. |
 | `BYOK_ENCRYPTION_KEY` | `string` |  | no | BYOK encryption key — 32 bytes expressed as 64 hex chars |
 | `MONITOR_TOKEN` | `string` | `""` | no | Bearer token guarding GET /diag (monitoring watchdog, ops/monitor/ in the monorepo). Empty default allowed in non-production; the production guard below rejects empty. |
+| `LIAISON_APP_HEALTH_TIMEOUTS_MIN` | `number` | `10` | no | App-run health checks (modules/apps/usage/run-health-checks.ts), judged over the last 15 minutes and reported in /diag `appRuns.alerts`. Interactive timeouts: at least this many, and this share of the interactive runs (critical). |
+| `LIAISON_APP_HEALTH_TIMEOUT_RATE` | `number` | `0.02` | no |  |
+| `LIAISON_APP_HEALTH_QUEUE_P95_MS` | `number` | `2000` | no | Interactive queue wait p95 above this many ms, over 20 queued runs at least. |
+| `LIAISON_APP_HEALTH_SATURATED_S` | `number` | `60` | no | A pool saturated this long without a break (or twice this long in all). |
+| `LIAISON_APP_HEALTH_P95_REGRESSION` | `number` | `2` | no | Interactive p95 this many times its 24-hour p95 (and 1 s above it). |
 | `MEILISEARCH_HOST` | `string` | `"http://localhost:7700"` | no | Phase 10: MeiliSearch |
 | `MEILISEARCH_API_KEY` | `string` | `""` | no |  |
 | `MEILI_INDEX_PREFIX` | `string` | `""` | no |  |
@@ -267,8 +272,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:766` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:76` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:52`, `apps/api/src/modules/apps/workers/admission.ts:58` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:46` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:55`, `apps/api/src/modules/apps/workers/admission.ts:61` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:49` |
 | `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
 | `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
@@ -293,11 +298,11 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1686` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1698` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
-| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
+| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:307` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:105` |
 | `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:174`, `apps/api/src/middleware/maintenance.ts:23` |
 | `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:181`, `apps/api/src/middleware/maintenance.ts:27` |
@@ -318,18 +323,18 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:560`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:561`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:69` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:72` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:435` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:447` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:99` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:97` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1322`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1323`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1328`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1329`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |

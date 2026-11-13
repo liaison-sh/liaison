@@ -28,7 +28,7 @@
 // (forWorkersRun, sandbox/bridge/secret-free.ts, applied by runApp).
 
 import type { RunBody } from "@liaison/app-loader"
-import { sandboxCancelledError } from "~/lib/failure-severity"
+import { SandboxQueueTimeoutError, sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import {
   type RunEntryKind,
@@ -92,6 +92,14 @@ export interface WorkersRunOptions {
    * of the admission here and of the sandbox service's pool, sent in the body.
    */
   lane?: RunLane
+  /**
+   * A background run's own queue bound (run-limits.ts runQueueBoundMs): it may
+   * wait this long in all, for an admission slot here and for a process on the
+   * sandbox service (sent as RunBody.queueMs), and its `timeoutMs` counts from
+   * its start. Unset (and for an interactive or nested run): `timeoutMs`
+   * counts the waits.
+   */
+  queueMs?: number
   signal?: AbortSignal
   holdsTx: boolean
   nested?: boolean
@@ -187,6 +195,8 @@ function loaderTimings(t: Record<string, unknown> | undefined): LoaderTimings | 
 export function errorFromLoader(error: LoaderError | undefined, httpStatus: number): Error {
   const message = typeof error?.message === "string" ? error.message : "Unknown sandbox error"
   const kind = typeof error?.kind === "string" ? error.kind : `http_${httpStatus}`
+  // The sandbox service had no process free before the run's queue bound: it never started.
+  if (kind === "timeout" && error?.code === "queue_timeout") return new SandboxQueueTimeoutError()
   if (kind === "timeout") return new Error("App execution timed out")
   if (kind === "handler") {
     if (error?.safe === true) {
@@ -257,6 +267,8 @@ interface AttemptOutcome {
   fault?: WorkersFault
   bridgeCalls: number
   ms: number
+  /** How long the sandbox service said the attempt waited for a process. */
+  queuedMs?: number
 }
 
 /** Run one export on the loader. `onInfo` gets the run's id and timings, whatever the outcome. */
@@ -270,9 +282,15 @@ export async function executeOnWorkers(
   const now = opts.now ?? Date.now
   const limits = runLimits(opts.entryKind ?? "tool")
   const timeoutMs = opts.timeoutMs ?? limits.wallMs
-  const deadlineAt = now() + timeoutMs
+  let deadlineAt = now() + timeoutMs
   const info: WorkersRunInfo = { attempts: 0, bridgeCalls: 0 }
   const lane: RunLane = opts.lane ?? "interactive"
+  // The one rule (the sandbox service applies it too): a background run with
+  // its own queue bound waits up to that, then gets its whole timeout.
+  const queueBoundMs =
+    lane === "background" && opts.nested !== true && opts.queueMs !== undefined
+      ? Math.max(1, opts.queueMs)
+      : undefined
 
   // Bridge calls come back through the public address: this process must be a reachable owner.
   await ensureRunOwnerReachable()
@@ -285,15 +303,29 @@ export async function executeOnWorkers(
       holdsTx: opts.holdsTx,
       nested: opts.nested === true,
       ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
-      waitMs: timeoutMs,
+      waitMs: queueBoundMs ?? timeoutMs,
       ...(opts.signal ? { signal: opts.signal } : {}),
       appName: opts.appName,
     })
     info.admissionMs = Math.max(0, now() - admitFrom)
+    /** Time spent waiting so far (admission, then the sandbox service's queue). */
+    let queued = info.admissionMs
+    if (queueBoundMs !== undefined) deadlineAt = now() + timeoutMs
     let probe = opts.probe === true
     for (;;) {
       const attemptTimeout = Math.max(1, deadlineAt - now())
-      const outcome = await attemptOnWorkers(opts, attemptTimeout, info)
+      // Only the sandbox service (the target that states its release) has a
+      // queue of its own; the Workers loader starts a run at once.
+      const attemptQueue =
+        queueBoundMs === undefined || opts.sandboxRelease === undefined
+          ? undefined
+          : Math.max(1, queueBoundMs - queued)
+      const outcome = await attemptOnWorkers(opts, attemptTimeout, info, attemptQueue)
+      // The service's queue wait is not the run's own time: its clock starts at its start.
+      if (queueBoundMs !== undefined && outcome.queuedMs) {
+        queued += outcome.queuedMs
+        deadlineAt += outcome.queuedMs
+      }
       info.attempts = (info.attempts ?? 0) + 1
       info.bridgeCalls = (info.bridgeCalls ?? 0) + outcome.bridgeCalls
       const fault = outcome.fault
@@ -351,6 +383,8 @@ async function attemptOnWorkers(
   opts: WorkersRunOptions,
   timeoutMs: number,
   info: WorkersRunInfo,
+  /** The run's own queue bound left (a background run's), else undefined. */
+  queueMs?: number,
 ): Promise<AttemptOutcome> {
   const registry = opts.registry ?? runRegistry
   const fetchImpl = opts.fetchImpl ?? ((url: string, init: RequestInit) => fetch(url, init))
@@ -358,6 +392,7 @@ async function attemptOnWorkers(
   const started = now()
   let run: ReturnType<RunRegistry["registerRun"]> | undefined
   let bridgeCalls = 0
+  let queuedMs: number | undefined
   const done = (o: Omit<AttemptOutcome, "bridgeCalls" | "ms">): AttemptOutcome => {
     if (run) {
       // Settled before the count is read: no later call can land on this run.
@@ -369,7 +404,12 @@ async function attemptOnWorkers(
       info.loader.bridgeCalls ??= stats.bridgeCalls
       info.loader.bridgeMsTotal ??= stats.bridgeMsTotal
     }
-    return { ...o, bridgeCalls, ms: now() - started }
+    return {
+      ...o,
+      bridgeCalls,
+      ms: now() - started,
+      ...(queuedMs !== undefined ? { queuedMs } : {}),
+    }
   }
   try {
     // Exactly what the pool hands its subprocess: every key of the bridge.
@@ -380,7 +420,8 @@ async function attemptOnWorkers(
       orgId: opts.orgId,
       appName: opts.appName,
       version: opts.version,
-      timeoutMs,
+      // The token lives through the service's queue wait, then the run.
+      timeoutMs: timeoutMs + (queueMs ?? 0),
       maxBridgeCalls: runLimits(opts.entryKind ?? "tool").subrequests,
       ...(opts.signal ? { signal: opts.signal } : {}),
     })
@@ -407,6 +448,7 @@ async function attemptOnWorkers(
       deadlineMs: timeoutMs,
       limits: workersLoaderLimits(runLimits(opts.entryKind ?? "tool")),
       lane: opts.lane ?? "interactive",
+      ...(queueMs !== undefined ? { queueMs: Math.ceil(queueMs) } : {}),
     }
     const body = JSON.stringify(runBody)
     const runUrl = `${opts.config.loaderUrl}/run`
@@ -421,7 +463,8 @@ async function attemptOnWorkers(
         body,
       }),
     }
-    const fetchTimeout = AbortSignal.timeout(timeoutMs + LOADER_FETCH_GRACE_MS)
+    // The answer may come after the service's queue wait plus the run.
+    const fetchTimeout = AbortSignal.timeout(timeoutMs + (queueMs ?? 0) + LOADER_FETCH_GRACE_MS)
     const signal = opts.signal ? AbortSignal.any([opts.signal, fetchTimeout]) : fetchTimeout
 
     if (opts.runDepth && opts.runDepth > 0) {
@@ -497,6 +540,7 @@ async function attemptOnWorkers(
     const queued = Number(res.headers.get(SANDBOX_QUEUE_HEADER) ?? Number.NaN)
     if (Number.isFinite(queued) && queued >= 0) {
       info.loader = { ...info.loader, queueMs: Math.round(queued) }
+      queuedMs = Math.round(queued)
     }
     if (t && typeof t.sleepMs === "number") info.sleepMs = t.sleepMs
     if (t && typeof t.sleepExact === "boolean") info.sleepExact = t.sleepExact

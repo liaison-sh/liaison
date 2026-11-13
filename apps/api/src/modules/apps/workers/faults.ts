@@ -58,6 +58,10 @@ export function classifyLoaderAnswer(
   if (kind === "handler" && typeof code === "string" && MODULE_ERROR_CODES.has(code)) {
     return { class: "app", kind: "load" }
   }
+  // The sandbox service's queue bound passed before the run started (its
+  // `timeout` answer with code `queue_timeout`): final, under its own kind.
+  if (kind === "timeout" && code === "queue_timeout")
+    return { class: "final", kind: "queue_timeout" }
   if (FINAL_KIND_SET.has(kind)) return { class: "final", kind }
   if (APP_KINDS.has(kind)) return { class: "app", kind }
   if (LOADER_KINDS.has(kind)) return { class: "loader", kind }

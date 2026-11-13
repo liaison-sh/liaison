@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { type Component, Match, Show, Switch } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { avatarColors } from "~/ui/avatar-palette"
 import type {
   BlockData,
   ChartLayer,
@@ -11,6 +12,7 @@ import type {
   SeriesData,
 } from "../dashboards-client"
 import { formatWindow } from "../time-range"
+import { barRowsForm, PeopleRows, PipelineBar } from "./BarRows"
 import { Chart, type ChartDataset } from "./Chart"
 import { ChartHeadline } from "./ChartHeadline"
 import { FunnelBlock } from "./FunnelBlock"
@@ -127,9 +129,12 @@ export function seriesDatasets(
   const lone = d.series.length === 1 && !!names.current
   const shown = (name: string) =>
     right.has(name) && names.rightAxis ? names.rightAxis(name) : name
-  const current: ChartDataset[] = d.series.map((x) => ({
+  const placeColors = categoryColors(d.paint, d.x.length)
+  const current: ChartDataset[] = d.series.map((x, i) => ({
     label: lone ? (names.current as string) : shown(x.name),
     values: x.values,
+    ...(d.paint?.series?.[i] ? { color: d.paint.series[i] as string } : {}),
+    ...(placeColors && d.series.length === 1 ? { colors: placeColors } : {}),
     ...(lines.has(x.name) ? { asLine: true } : {}),
     ...(right.has(x.name) ? { axis: "right" as const } : {}),
     ...(lone ? { name: x.name } : {}),
@@ -158,6 +163,24 @@ export function seriesDatasets(
     }
   })
   return [...current, ...previous]
+}
+
+/**
+ * Each category's own colour, from the data: its colour (map.colorField), else its person's avatar
+ * colour (map.personField). null when the data gives none (the chart palette applies).
+ */
+export function categoryColors(
+  paint: SeriesData["paint"],
+  count: number,
+): Array<string | null> | null {
+  if (!paint?.labels && !paint?.people) return null
+  const out = Array.from({ length: count }, (_, i) => {
+    const own = paint.labels?.[i]
+    if (own) return own
+    const person = paint.people?.[i]
+    return person ? avatarColors(person).bg : null
+  })
+  return out.some((c) => c) ? out : null
 }
 
 /**
@@ -251,6 +274,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               locale={props.locale}
               compareMode={props.compareMode}
               emptyText={props.emptyText}
+              higherIsBetter={props.map?.higherIsBetter}
             />
           )
           // The figure opens the rows it adds up (a div as a button: the figure holds blocks).
@@ -319,37 +343,49 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
             const at = s().x.findIndex((x) => String(x) === l)
             return at >= 0 ? at : undefined
           }
-          const chart = () => (
-            <Chart
-              type={s().kind}
-              labels={s().x}
-              curve={s().display?.curve}
-              inProgressIndex={inProgress()}
-              datasets={seriesDatasets(s(), compareName(), {
-                current: range(props.window),
-                total: props.map?.y,
-                rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
-              })}
-              format={share() ? "percent" : (s().format ?? format())}
-              timeZone={props.timeZone}
-              tall={props.tall}
-              currency={s().currency ?? currency()}
-              locale={props.locale}
-              label={props.title}
-              stacked={s().display?.stacked}
-              horizontal={s().display?.horizontal}
-              secondaryAxis={s().display?.secondaryAxis}
-              onPick={
-                props.onDrill
-                  ? (index, datasetIndex) => {
-                      const target = seriesPick(s(), index, datasetIndex)
-                      if (target) props.onDrill?.(target)
-                    }
-                  : undefined
-              }
-              pickLabel={(label) => i18n.t("kernel.dashboards.drillShowFor", { label })}
-            />
-          )
+          const pick = (index: number, datasetIndex: number) => {
+            const target = seriesPick(s(), index, datasetIndex)
+            if (target) props.onDrill?.(target)
+          }
+          const rowsForm = () => barRowsForm(s())
+          const rowsProps = () => ({
+            data: s(),
+            format: share() ? ("percent" as const) : (s().format ?? format()),
+            currency: s().currency ?? currency(),
+            locale: locale(),
+            label: props.title,
+            onPick: props.onDrill ? pick : undefined,
+            pickLabel: (label: string) => i18n.t("kernel.dashboards.drillShowFor", { label }),
+          })
+          const chart = () =>
+            rowsForm() === "pipeline" ? (
+              <PipelineBar {...rowsProps()} />
+            ) : rowsForm() === "people" ? (
+              <PeopleRows {...rowsProps()} />
+            ) : (
+              <Chart
+                type={s().kind}
+                labels={s().x}
+                curve={s().display?.curve}
+                inProgressIndex={inProgress()}
+                datasets={seriesDatasets(s(), compareName(), {
+                  current: range(props.window),
+                  total: props.map?.y,
+                  rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
+                })}
+                format={share() ? "percent" : (s().format ?? format())}
+                timeZone={props.timeZone}
+                tall={props.tall}
+                currency={s().currency ?? currency()}
+                locale={props.locale}
+                label={props.title}
+                stacked={s().display?.stacked}
+                horizontal={s().display?.horizontal}
+                secondaryAxis={s().display?.secondaryAxis}
+                onPick={props.onDrill ? pick : undefined}
+                pickLabel={(label) => i18n.t("kernel.dashboards.drillShowFor", { label })}
+              />
+            )
           return (
             <>
               <Show when={s().headline}>
@@ -418,7 +454,13 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               type="pie"
               labels={p().labels}
               datasets={[
-                { label: props.title ?? "", values: share() ? sharesOf(p().values) : p().values },
+                {
+                  label: props.title ?? "",
+                  values: share() ? sharesOf(p().values) : p().values,
+                  ...(categoryColors(p().paint, p().labels.length)
+                    ? { colors: categoryColors(p().paint, p().labels.length) ?? undefined }
+                    : {}),
+                },
               ]}
               format={share() ? "percent" : (p().format ?? format())}
               timeZone={props.timeZone}

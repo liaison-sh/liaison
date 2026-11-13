@@ -207,3 +207,71 @@ describe("a read that took over hidden reads", () => {
     expect(first(catalog(aliases), "review releases")).toBe("review__list_releases")
   })
 })
+
+describe("words for correcting, time and a report", () => {
+  const catalog: Row[] = [
+    row("work", "task_time_set", "Record your own time on a task.", ["temps"]),
+    row("work", "task_time_correct", "Change another person's time entry.", ["corriger"]),
+    row("work", "task_time_get", "Your time on a task.", ["temps"]),
+    row("work", "timesheet_export", "A project's dated sheet as a file.", ["timesheet"]),
+    row("billing", "documents_update", "Change an invoice."),
+    row("billing", "documents_download_pdf", "A document as a PDF."),
+    row("billing", "documents_retry_pdf", "Render a PDF again."),
+    row("kernel", "dashboards_pdf", "A dashboard as a PDF."),
+    row("kernel", "files_merge_pdfs", "Join PDF files."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const listed = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked.map((s) => s.tool.sdkName)
+
+  it("corriger and correct reach both the time tools that change an entry", () => {
+    for (const query of ["corriger temps", "correct time entry", "correct my time"]) {
+      expect(listed(query).slice(0, 3)).toContain("work__task_time_correct")
+      expect(listed(query).slice(0, 4)).toContain("work__task_time_set")
+    }
+  })
+
+  it("a report as a PDF reaches the tool that exports one", () => {
+    expect(listed("hours report pdf")).toContain("work__timesheet_export")
+  })
+})
+
+describe("a rate of one kind and a rate of another", () => {
+  // The tools that should lose come first, so a tie would not pass for a lead.
+  const catalog: Row[] = [
+    row("projects", "cost_rate_set", "Set a person's cost per hour from a date on."),
+    row("projects", "cost_rates_list", "Each person's cost per hour."),
+    row("projects", "reconcile_card_get", "A saved card again."),
+    row("projects", "billing_terms_set", "Set how a project is billed: rate or fixed price.", [
+      "rate",
+    ]),
+    row("projects", "reconcile_line_update", "Change one line of a saved card."),
+    row("projects", "tasks_byProject", "List one project's tasks."),
+    row("shop", "repeat_rate", "How many customers order again."),
+    row("pay", "card_update_link", "A link to change a card."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const listed = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked.map((s) => s.tool.sdkName)
+
+  it("a project's rate leads over a person's cost rate", () => {
+    expect(listed("project rate")[0]).toBe("projects__billing_terms_set")
+  })
+
+  it("the cost rate still leads when the query says cost, or only sets a rate", () => {
+    expect(listed("cost rate").slice(0, 2).sort()).toEqual([
+      "projects__cost_rate_set",
+      "projects__cost_rates_list",
+    ])
+    expect(listed("set cost rate")[0]).toBe("projects__cost_rate_set")
+  })
+
+  it("a word between the record's own words keeps the record's kind", () => {
+    expect(listed("reconcile card line")[0]).toBe("projects__reconcile_line_update")
+    const score = (query: string) =>
+      scoreDeferredTools(catalog, query, { appNames: apps }).find(
+        (s) => s.tool.toolName === "reconcile_line_update",
+      )?.score
+    expect(score("reconcile card line")).toBe(score("line reconcile card"))
+  })
+})

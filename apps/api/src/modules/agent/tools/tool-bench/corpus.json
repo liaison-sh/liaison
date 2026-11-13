@@ -3225,7 +3225,7 @@
     "lang": "fr",
     "say": "la tâche a pris moins que prévu, corrige",
     "typed": ["corriger temps", "correct time entry"],
-    "any": ["projects__task_time_correct"],
+    "any": ["projects__task_time_correct", "projects__task_time_set"],
     "modelRun": true
   },
   {
@@ -3353,6 +3353,15 @@
     "modelRun": true
   },
   {
+    "id": "C33",
+    "set": "seed",
+    "lang": "fr",
+    "say": "on gagne de l'argent sur le projet portail ?",
+    "typed": ["margin", "marge", "rentabilité", "profit project"],
+    "any": ["projects__margin_get"],
+    "modelRun": true
+  },
+  {
     "id": "C75",
     "set": "seed",
     "lang": "en",
@@ -3365,6 +3374,15 @@
       "capacity person"
     ],
     "any": ["projects__time_settings_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C76",
+    "set": "seed",
+    "lang": "en",
+    "say": "every Friday ask everyone for their hours and tell me who did not answer",
+    "typed": ["create routine", "routine weekly", "relancer heures", "reminder hours"],
+    "any": ["kernel__create_routine"],
     "modelRun": true
   },
   {

@@ -104,7 +104,9 @@ describe("projects.manifest", () => {
     // 1.29.0: capacity_move for the board's Move to, and calendar days marked in the days-off list.
     // 1.30.0: the project Automations view from main joins the time and budgets views.
     // 1.31.0: main's task aggregates and project-backed tables join the time and budgets tools.
-    expect(projectsManifest.version).toBe("1.31.0")
+    // 1.32.0: the reconcile skill and its guide section, the per-project time line, and the
+    // wording of the dated-sheet and metrics lines.
+    expect(projectsManifest.version).toBe("1.32.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
@@ -781,5 +783,59 @@ describe("projects.manifest", () => {
     expect(tools.merge.gated).toBe(true)
     expect(tools.merge.summarizer).toBe("summarizeMergeTasks")
     expect(tools.merge.approvalCard).toBeUndefined()
+  })
+  describe("the time and budgets text the model reads", () => {
+    const guide = projectsManifest.agentInstructions as {
+      core: string
+      sections: Array<{ tools: string[]; text: string }>
+    }
+    const tools = projectsManifest.tools as unknown as Record<string, { description: string }>
+    const skills = projectsManifest.skills as unknown as Record<
+      string,
+      { kind?: string; feature?: string; description: string; body: string }
+    >
+
+    it("the core says planned time is per project and off by default, in every org", () => {
+      expect(guide.core).toContain("are per project and off by default")
+      expect(guide.core).toContain("`update_project` with `timeBudgets:true`")
+      expect(guide.core).toContain("only when the person asks in their own message")
+    })
+
+    it("the metrics line is true with time and budgets on or off", () => {
+      const metrics = guide.sections.find((s) => s.text.startsWith("METRICS / BURNDOWN"))
+      expect(metrics?.text).toContain("NO story-points field")
+      expect(metrics?.text).not.toContain("estimate field")
+      expect(guide.core).toContain("per project and off by default")
+    })
+
+    it("a guide section about reconciling shows only with the reconcile tools", () => {
+      const section = guide.sections.find((s) => s.text.startsWith("RECONCILING A PERIOD"))
+      expect(section?.tools).toEqual(["reconcile_facts", "reconcile_propose"])
+      for (const t of section?.tools ?? []) {
+        expect((projectsManifest.tools as Record<string, { feature?: string }>)[t]?.feature).toBe(
+          "time_budgets",
+        )
+      }
+    })
+
+    it("the reconcile skill is a playbook of the time feature with its seven rules", () => {
+      const skill = skills.reconcile
+      expect(skill.kind).toBe("playbook")
+      expect(skill.feature).toBe("time_budgets")
+      expect(skill.description.length).toBeLessThanOrEqual(100)
+      expect(skill.body.split("\n")).toHaveLength(7)
+      expect(skill.body).toContain("Never rank, count or compare people")
+      expect(skill.body).toContain("Absence of activity is never evidence of anything")
+      expect(skill.body).toContain("Say what you could not see")
+    })
+
+    it("task_time_set takes only the person's own words in their own message", () => {
+      const d = tools.task_time_set.description
+      expect(d).toContain("Only when the person states their own time in their own message")
+      expect(d).toContain("pass their exact words as `quote`")
+      expect(d).toContain(
+        "Never propose, estimate or round a figure, in chat or from a coding agent",
+      )
+    })
   })
 })

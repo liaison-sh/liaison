@@ -3687,6 +3687,7 @@ async function registerSingleApp(
             requiredScopes: skillDef.requiredScopes ?? [],
             kind: skillDef.kind ?? "playbook",
             enabledByDefault: skillDef.enabledByDefault ?? true,
+            ...(skillDef.feature ? { feature: skillDef.feature } : {}),
             autoAttach: skillDef.autoAttach ?? null,
           })
         }

@@ -97,6 +97,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import type { AppContext } from "~/modules/apps/context"
+import { isFeatureOffForTool } from "~/modules/apps/org-apps"
 import {
   gatedRoutineAgentNotes,
   nodeGuardrailDisclosure,
@@ -288,6 +289,8 @@ export async function resolveAllSkills(
     if (disabledSet.has(disabledKey(appName, skillName))) continue
     if (visited.has(skillName)) continue
     if (!subsetOfScopes(entry.requiredScopes ?? [], userScopes)) continue
+    // A skill of an app feature that is off leaves with the feature's tools.
+    if (isFeatureOffForTool(orgId, { appName, feature: entry.feature })) continue
     visited.add(skillName)
     results.push({
       name: entry.name,

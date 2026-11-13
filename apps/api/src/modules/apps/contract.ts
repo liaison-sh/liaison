@@ -235,6 +235,9 @@ const builtinSkillSchema = z.object({
   // reconcile overlay — false ⇒ seed a disabledBy:'seed' row at first install.
   kind: z.enum(["playbook", "guide"]).optional(),
   enabledByDefault: z.boolean().optional(),
+  // An app feature the skill belongs to: an org with the feature off is shown no
+  // listing of it and cannot read it, as with a tool of that feature.
+  feature: z.string().min(1).optional(),
 })
 
 const agentDeclSchema = z.object({

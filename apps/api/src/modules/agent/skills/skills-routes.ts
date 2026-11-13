@@ -47,6 +47,7 @@ import {
   subsetOfScopes,
 } from "~/modules/agent/tools/skills-routines-tools"
 import { skillRegistry } from "~/modules/apps/app-registries"
+import { isFeatureOffForTool } from "~/modules/apps/org-apps"
 
 const log = rootLogger.child({ module: "skills-routes" })
 
@@ -377,6 +378,7 @@ appSkillsRoutes.get("/", async (c) => {
   for (const [key, entry] of skillRegistry.entriesOf(actor.orgId)) {
     const [, appName, skillName] = key
     if (!subsetOfScopes(entry.requiredScopes ?? [], scopes)) continue
+    if (isFeatureOffForTool(actor.orgId, { appName, feature: entry.feature })) continue
     out.push({
       appName,
       name: skillName,

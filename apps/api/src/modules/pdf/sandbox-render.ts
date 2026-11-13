@@ -38,6 +38,12 @@ export interface RunTemplateToPdfArgs {
   timeoutMs?: number
   /** Forwarded to `replayDrawCommands` — resolves `embedImage` file ids. */
   replay?: ReplayDrawCommandsOptions
+  /**
+   * The execution token of the app run that asked for this render
+   * (ctx.pdf.render), when the bridge knows it: the render's depth is one below
+   * its.
+   */
+  nestedParentKey?: string
 }
 
 /**
@@ -69,6 +75,13 @@ export async function runTemplateToPdf(args: RunTemplateToPdfArgs): Promise<Uint
     bridge: {},
     timeoutMs: args.timeoutMs ?? runLimits("pdf-template").wallMs,
     holdsTx: false,
+    // A render is always asked for by a running app (ctx.pdf.render) that holds
+    // its own process while it waits, so it is a nested run: on the sandbox
+    // service it takes a process kept for nested runs, never one its caller's
+    // kind of run competes for (a render queued as a top-level run deadlocks
+    // once every top-level process holds a caller waiting on its render).
+    nested: true,
+    ...(args.nestedParentKey ? { nestedParentKey: args.nestedParentKey } : {}),
     quickjs: { inProcess: true, ...(args.pool ? { inProcessPool: args.pool } : {}) },
   })
   // `replayDrawCommands` zod-validates, so a non-array / garbage return fails

@@ -459,7 +459,16 @@ function subscriptionSignature(sub: EventRoutineSub): string {
         sub.filter.to === undefined ? "<any>" : sub.filter.to,
       ]
     : null
-  return JSON.stringify([sub.orgId, sub.event, contacts, groups, table])
+  // A projects task filter (0303): its keys sorted, so a jsonb round trip reads the same.
+  const task = isProjectTaskFilter(sub.filter)
+    ? [
+        sub.filter.projectId ?? null,
+        sub.filter.fromStatusId === undefined ? "<any>" : sub.filter.fromStatusId,
+        sub.filter.toStatusId ?? null,
+        Object.entries(sub.filter.fields ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+      ]
+    : null
+  return JSON.stringify([sub.orgId, sub.event, contacts, groups, table, task])
 }
 
 /** Register unless the same subscription is already in place here (decided in the routine's turn). */

@@ -258,6 +258,11 @@ const routineTemplateSchema = z.object({
   promptTemplate: z.string().min(1),
   scopes: z.array(z.string()),
   enabledByDefault: z.boolean(),
+  // A flow template (0303) and its event filter, with `{{projectId}}` / `{{status:<label>}}`
+  // placeholders filled for the chosen project when the template is enabled. Checked against the
+  // flow schema then (routineFlowSchema), placeholders filled.
+  flow: z.record(z.string(), z.unknown()).optional(),
+  eventFilter: z.record(z.string(), z.unknown()).optional(),
 })
 
 const appPromptSchema = z.object({ content: z.string().min(1) })

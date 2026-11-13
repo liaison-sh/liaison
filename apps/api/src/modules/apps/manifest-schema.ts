@@ -1641,6 +1641,10 @@ export const appManifestJsonSchema = {
           promptTemplate: { type: "string", minLength: 1 },
           scopes: { type: "array", items: { type: "string" } },
           enabledByDefault: { type: "boolean" },
+          // A flow template and its event filter (0303), with `{{projectId}}` and
+          // `{{status:<label>}}` placeholders; checked against the flow schema once filled.
+          flow: { type: "object" },
+          eventFilter: { type: "object" },
         },
         required: ["description", "kind", "promptTemplate", "scopes", "enabledByDefault"],
         additionalProperties: false,

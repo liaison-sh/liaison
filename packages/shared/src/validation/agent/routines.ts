@@ -551,7 +551,15 @@ const PROJECT_FILTER_KEYS = ["projectId", "fromStatusId", "toStatusId", "fields"
  */
 export function routineEventFilterFitsEvent(
   event: string | null | undefined,
-  filter: RoutineEventFilter | null | undefined,
+  filter:
+    | ({
+        projectId?: unknown
+        fromStatusId?: unknown
+        toStatusId?: unknown
+        fields?: unknown
+      } & Record<string, unknown>)
+    | null
+    | undefined,
 ): boolean {
   if (!filter) return true
   const projectKeys = PROJECT_FILTER_KEYS.filter((k) => filter[k] !== undefined)
@@ -681,3 +689,43 @@ export const routineResponseSchema = z.object({
   updatedAt: z.string(),
 })
 export type RoutineResponse = z.infer<typeof routineResponseSchema>
+
+// ── Routine flow templates (0303) ────────────────────────────────────────────
+
+/**
+ * Fills a routine template's placeholders for one project: `{{projectId}}` becomes the project's
+ * id and `{{status:<label>}}` the id of its status with that label (any case, spaces or
+ * underscores alike). Pure; runs on the flow and the event filter alike, in the editor's prefill
+ * and at enable time. A label the project has no status for is an error naming it.
+ */
+export function resolveRoutineTemplatePlaceholders<T>(
+  value: T,
+  project: { id: string; statuses: ReadonlyArray<{ id: string; label: string }> },
+): { value: T } | { error: string } {
+  const norm = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "_")
+  const byLabel = new Map(project.statuses.map((s) => [norm(s.label), s.id]))
+  let missing: string | null = null
+  const fill = (s: string): string =>
+    s
+      .replace(/\{\{\s*projectId\s*\}\}/g, project.id)
+      .replace(/\{\{\s*status:([^}]+)\}\}/g, (_, label: string) => {
+        const id = byLabel.get(norm(label))
+        if (!id) missing ??= label.trim()
+        return id ?? ""
+      })
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") return fill(v)
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+    }
+    return v
+  }
+  const out = walk(value) as T
+  if (missing) return { error: `the project has no status "${missing}"` }
+  return { value: out }
+}

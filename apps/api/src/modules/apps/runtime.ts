@@ -3546,6 +3546,8 @@ async function registerSingleApp(
             promptTemplate: t.promptTemplate,
             scopes: t.scopes,
             enabledByDefault: t.enabledByDefault,
+            ...(t.flow ? { flow: t.flow } : {}),
+            ...(t.eventFilter ? { eventFilter: t.eventFilter } : {}),
           })
         }
       }

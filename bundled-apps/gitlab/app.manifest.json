@@ -1,6 +1,6 @@
 {
   "name": "gitlab",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "kind": "connector",
   "iconName": "folder",
   "description": "GitLab connector: sync group manuals into the knowledge base and provide read-only access to projects, commits, MRs, issues, releases, and more.",

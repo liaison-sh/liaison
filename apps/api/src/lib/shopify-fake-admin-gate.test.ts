@@ -45,7 +45,7 @@ describe("the fake Shopify Admin API gate", () => {
 
   it("refuses a box whose BASE_URL is public, even when labelled private", () => {
     expect(gate({ baseUrl: "https://liaison.example.com" }).state).toBe("refused")
-    expect(gate({ baseUrl: "http://10.0.0.4:3000" }).state).toBe("refused")
+    expect(gate({ baseUrl: "http://198.51.100.4:3000" }).state).toBe("refused")
     expect(gate({ baseUrl: "not a url" }).state).toBe("refused")
   })
 
@@ -57,8 +57,8 @@ describe("the fake Shopify Admin API gate", () => {
     for (const value of [
       "https://evil.example.com",
       "https://a-real-store.myshopify.com",
-      "http://10.0.0.5:8080",
-      "http://192.168.1.10",
+      "http://198.51.100.5:8080",
+      "http://[fd12:3456::10]",
       "http://169.254.169.254",
       "http://[fe80::1]:80",
       "http://0.0.0.0:8899",

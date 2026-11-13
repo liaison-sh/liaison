@@ -73,7 +73,7 @@ describe("the fake Shopify Admin API target", () => {
     expect(policy.privateAllowedFor(new URL(`${FAKE}/admin/x`))).toBe(true)
     expect(policy.privateAllowedFor(new URL("http://127.0.0.1:8900/admin/x"))).toBe(false)
     expect(policy.refuseAddress("127.0.0.1", new URL(`${FAKE}/admin/x`))).toBeNull()
-    expect(policy.refuseAddress("10.1.2.3", new URL(`${FAKE}/admin/x`))).toBeNull()
+    expect(policy.refuseAddress("fd12:3456::1", new URL(`${FAKE}/admin/x`))).toBeNull()
     expect(policy.refuseAddress("93.184.216.34", new URL(`${FAKE}/admin/x`))).not.toBeNull()
     expect(policy.refuseAddress("127.0.0.1", new URL("https://example.com/"))).not.toBeNull()
   })

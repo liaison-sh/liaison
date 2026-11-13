@@ -33,6 +33,7 @@ import { formatMemGuard, killProcessTreeNow, startMemGuard } from "./lib/mem-gua
 import { namedTestFiles, pendingSuiteReason } from "./lib/pending-suites"
 import playwrightSeconds from "./lib/playwright-timings.json"
 import { installRunDeathLogging, shouldContinueFullRun } from "./lib/run-death"
+import { applySuiteExtras, readSuiteExtras } from "./lib/suite-extras"
 import { acquireNamespaceLock, acquireTestLock, leasePortBlock, slotCount } from "./lib/test-lock"
 import { sweepRedisPrefix } from "./lib/test-redis-flush"
 import {
@@ -2176,6 +2177,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     cwd: path.join(ROOT, "apps/db-gate"),
   },
 }
+
+// A suite's extra test files, one file per change (scripts/test-suites.d/<suite>/*.txt,
+// scripts/lib/suite-extras.ts): a new test file goes there rather than at the end of the
+// suite's list above, which every PR adding a test to the suite used to edit.
+applySuiteExtras(SUITES, readSuiteExtras(), fileArg.length > 0)
 
 // EVERY `bun test` suite carries an explicit --timeout. bun 1.3.11 does NOT
 // honour `[test] timeout` in bunfig.toml (both bunfig files set 60000 and bun

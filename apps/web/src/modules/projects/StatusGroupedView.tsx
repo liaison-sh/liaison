@@ -3,6 +3,7 @@
 import { type Component, createMemo, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type { ProjectStatus, Task } from "~/modules/projects/project-store"
+import { StatusPill } from "~/modules/projects/StatusPill"
 import { prettyStatus } from "~/modules/projects/status-label"
 
 interface StatusGroupedViewProps {
@@ -33,9 +34,11 @@ export const StatusGroupedView: Component<StatusGroupedViewProps> = (props) => {
               class="rounded-md border border-border-subtle bg-surface"
             >
               <header class="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
-                <span class="text-[12px] font-medium uppercase tracking-wide text-text-secondary">
-                  {prettyStatus(status.label)}
-                </span>
+                <StatusPill
+                  label={prettyStatus(status.label)}
+                  color={status.color}
+                  class="font-medium"
+                />
                 <span class="text-[11px] text-text-tertiary">{items().length}</span>
               </header>
               <Show

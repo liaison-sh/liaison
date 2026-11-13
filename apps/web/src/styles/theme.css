@@ -56,8 +56,20 @@
   --color-error-glow: rgba(232, 100, 100, 0.06);
   --color-error-border: rgba(232, 100, 100, 0.14);
   --color-warning: #d4a020;
+  /* Warning words on small text, checked at 4.5:1 (theme-warning-text-contrast.test.ts). */
+  --color-warning-text: #d4a020;
   --color-warning-glow: rgba(212, 160, 32, 0.06);
   --color-warning-border: rgba(212, 160, 32, 0.16);
+  /* Chart series without a colour of their own (a status's, a person's): categorical hues,
+   * told apart, none alarming; each clears 3:1 against the surface (theme-chart-palette.test). */
+  --color-chart-1: #6f97e8;
+  --color-chart-2: #3fb0a2;
+  --color-chart-3: #cf9f45;
+  --color-chart-4: #a487e0;
+  --color-chart-5: #d97f9c;
+  --color-chart-6: #6db374;
+  --color-chart-7: #d98c5a;
+  --color-chart-8: #8e9cb5;
   --color-overlay: rgba(17, 17, 19, 0.5);
   --color-overlay-heavy: rgba(17, 17, 19, 0.75);
   --color-glass-bg: rgba(18, 18, 22, 0.65);
@@ -198,8 +210,18 @@
   --color-error-glow: rgba(201, 50, 54, 0.07);
   --color-error-border: rgba(201, 50, 54, 0.2);
   --color-warning: #a87900;
+  /* Warning words on small text: the warning tone fails 4.5:1 here (theme-warning-text-contrast.test.ts). */
+  --color-warning-text: #7a5600;
   --color-warning-glow: rgba(168, 121, 0, 0.08);
   --color-warning-border: rgba(168, 121, 0, 0.2);
+  --color-chart-1: #3567c9;
+  --color-chart-2: #0f8174;
+  --color-chart-3: #9a6c00;
+  --color-chart-4: #7350c4;
+  --color-chart-5: #b8456d;
+  --color-chart-6: #2f7d3b;
+  --color-chart-7: #b45a1c;
+  --color-chart-8: #586680;
   --color-overlay: rgba(250, 250, 250, 0.55);
   --color-overlay-heavy: rgba(40, 40, 48, 0.3);
   --color-glass-bg: rgba(252, 252, 254, 0.75);

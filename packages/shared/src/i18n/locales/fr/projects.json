@@ -483,7 +483,6 @@
     "errorGeneric": "Impossible d'enregistrer les champs."
   },
   "statusHistory": {
-    "since": "En {{status}} · {{time}}",
     "title": "Historique des statuts",
     "empty": "Aucun changement de statut pour l'instant.",
     "created": "Créée en {{status}}",
@@ -543,5 +542,15 @@
     "missingStatuses": "Ce projet n'a pas de statut nommé {{labels}} : choisissez-en un ci-dessous.",
     "save": "Créer l'automatisation",
     "saveFailed": "L'automatisation n'a pas pu être créée."
+  },
+  "taskTime": {
+    "for": "depuis {{time}}",
+    "minutes": "{{n}} min",
+    "hours": "{{n}} h",
+    "days": "{{n}} j",
+    "slaPassed": "SLA dépassé {{when}}",
+    "slaAhead": "SLA {{when}}",
+    "whereTitle": "Où le temps est passé",
+    "automationsTitle": "Automatisations sur cette tâche"
   }
 }

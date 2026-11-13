@@ -58,9 +58,15 @@ import { fetchReleases } from "~/modules/projects/release-filter"
 import { StatusPillPopover } from "~/modules/projects/StatusPillPopover"
 import { TaskFieldsSection } from "~/modules/projects/TaskFieldsSection"
 import { TaskStatusHistory, type TaskTransition } from "~/modules/projects/TaskStatusHistory"
+import {
+  TaskAutomationRuns,
+  TaskStatusSince,
+  TaskTimeStrip,
+} from "~/modules/projects/TaskTimeInStatus"
 import { TimeboxChip } from "~/modules/projects/TimeboxChip"
 import { TookField } from "~/modules/projects/TookField"
 import type { TaskLabel } from "~/modules/projects/task-labels"
+import { type EntityRun, taskDeadline } from "~/modules/projects/task-time"
 import { budgetFor, loadBudget, timeOn } from "~/modules/projects/time-budgets"
 import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
@@ -220,6 +226,29 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
       childCount: stored.childCount ?? t.childCount,
     }
   })
+
+  /**
+   * The flow runs fired on this task (any routine the viewer may read), newest first. A plain
+   * signal, not a resource: a side box must never suspend the page while it loads.
+   */
+  const [entityRuns, setEntityRuns] = createSignal<EntityRun[]>([])
+  const loadEntityRuns = async (taskId: string) => {
+    try {
+      const rows = await api.get<EntityRun[]>(
+        `/agent/routines/entity-runs?app=projects&entity=task&entityId=${encodeURIComponent(taskId)}&limit=5`,
+      )
+      if (props.entityId === taskId) setEntityRuns(Array.isArray(rows) ? rows : [])
+    } catch {
+      if (props.entityId === taskId) setEntityRuns([])
+    }
+  }
+  const refetchEntityRuns = () => loadEntityRuns(props.entityId)
+  createEffect(
+    on(
+      () => props.entityId,
+      (id) => void loadEntityRuns(id),
+    ),
+  )
 
   const project = () => {
     const projectId = liveTask()?.projectId
@@ -608,9 +637,14 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                           if (cur) mutate({ ...cur, ...row })
                           // The new time in status and the history line come from the server.
                           void refetch()
+                          void refetchEntityRuns()
                         }}
                       />
                     </span>
+                    <TaskStatusSince
+                      since={t().statusEnteredAt}
+                      deadline={taskDeadline(entityRuns(), t().statusEnteredAt)}
+                    />
                   </Show>
                   <MetaSeparator />
                   <AssigneeChip
@@ -699,11 +733,11 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   />
                 </Show>
                 {/* Time in status + status history: one quiet line under the meta row. */}
-                <TaskStatusHistory
-                  transitions={t().transitions}
-                  status={currentStatus()?.label ?? null}
-                  since={t().statusEnteredAt}
-                />
+                {/* Where the time went: a segment per status, in the statuses' colours. */}
+                <TaskTimeStrip transitions={t().transitions} statuses={project()?.statuses ?? []} />
+
+                {/* The status history, collapsed until asked for. */}
+                <TaskStatusHistory transitions={t().transitions} />
 
                 {/* Fields: the project's typed task fields (hidden when it declares none). */}
                 <TaskFieldsSection
@@ -712,6 +746,9 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   disabled={isArchived()}
                   onSave={(change) => patch({ fields: change })}
                 />
+
+                {/* Automations on this task: the recent flow runs fired on it. */}
+                <TaskAutomationRuns runs={entityRuns()} />
 
                 {/* Description — inline editable */}
                 <EditableDescription

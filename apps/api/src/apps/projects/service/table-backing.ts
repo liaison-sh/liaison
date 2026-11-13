@@ -24,7 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const BUILTINS = ["title", "status", "assignee", "due", "priority"] as const
 
 interface ProjectShape {
-  statuses: Array<{ id: string; label: string }>
+  statuses: Array<{ id: string; label: string; color: string | null; terminal: boolean | null }>
   fields: Column[]
 }
 
@@ -41,14 +41,30 @@ async function readProject(
     `),
   )
   if (!p) return null
-  const statuses = extractRows<{ id: string; label: string }>(
+  const statuses = extractRows<{
+    id: string
+    label: string
+    color: string | null
+    terminal: boolean | null
+  }>(
     await t.execute(sql`
-      SELECT id, label FROM ${projectsRel("project_statuses")}
+      SELECT id, label, color, terminal FROM ${projectsRel("project_statuses")}
       WHERE project_id = ${projectId}::uuid AND org_id = ${orgId}::uuid
       ORDER BY "order" ASC
     `),
   )
   return { statuses, fields: activeFields(parseStoredFields(p.task_fields)) }
+}
+
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
+
+/** The status column's colours by label (the first status of a label that has one). */
+function statusColors(project: ProjectShape): { choiceColors?: Record<string, string> } {
+  const out: Record<string, string> = {}
+  for (const s of project.statuses) {
+    if (s.color && HEX.test(s.color) && !(s.label in out)) out[s.label] = s.color
+  }
+  return Object.keys(out).length ? { choiceColors: out } : {}
 }
 
 function columnsOf(project: ProjectShape): Column[] {
@@ -59,9 +75,10 @@ function columnsOf(project: ProjectShape): Column[] {
       label: "Status",
       type: "choice",
       choices: [...new Set(project.statuses.map((s) => s.label))],
+      ...statusColors(project),
     },
     { key: "assignee", label: "Assignee", type: "person" },
-    { key: "due", label: "Due", type: "date" },
+    { key: "due", label: "Due", type: "date", deadline: true },
     { key: "priority", label: "Priority", type: "choice", choices: [...TASK_PRIORITIES] },
   ]
   // A field whose key is a built-in's is shadowed by the built-in.
@@ -129,6 +146,9 @@ async function rows(
         `),
       )
   const statusLabel = new Map(project.statuses.map((s) => [s.id, s.label]))
+  const terminalStatus = new Set(
+    project.statuses.filter((s) => s.terminal === true).map((s) => s.id),
+  )
   return found.map((r) => {
     const cells: Record<string, unknown> = {}
     for (const key of keys) {
@@ -141,7 +161,15 @@ async function rows(
       else v = r.fields?.[key]
       if (v !== undefined && v !== null) cells[key] = v
     }
-    return { id: r.id, cells, updatedAt: iso(r.updated_at), version: r.version }
+    // A task in a terminal status (done, cancelled) is finished: its due date no longer reads late.
+    const terminal = r.status_id !== null && terminalStatus.has(r.status_id)
+    return {
+      id: r.id,
+      cells,
+      updatedAt: iso(r.updated_at),
+      version: r.version,
+      ...(terminal ? { terminal: true } : {}),
+    }
   })
 }
 

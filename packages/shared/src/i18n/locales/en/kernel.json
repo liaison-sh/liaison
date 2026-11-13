@@ -7117,6 +7117,10 @@
       "pickProject": "Pick a project.",
       "pickValue": "Pick at least one value.",
       "projectUnreadable": "That project could not be read.",
+      "bandFrom": "From {{name}}",
+      "bandOwn": "This table only",
+      "pastDue": "Past due",
+      "dueSoon": "Due soon",
       "theProject": "the project",
       "fromProjectColumn": "From {{name}}: changing it changes the task.",
       "ownColumn": "Kept in this table only.",
@@ -7337,6 +7341,19 @@
     "remove": "Remove",
     "problemToStatus": "Choose the status that starts the automation.",
     "problemStep": "Step {{n}}: ",
-    "problemGeneric": "Something in the flow is not complete yet."
+    "problemGeneric": "Something in the flow is not complete yet.",
+    "laneOtherwise": "otherwise",
+    "laneIs": "is {{values}}",
+    "laneEmpty": "is empty",
+    "laneNotEmpty": "is filled in",
+    "splitOn": "Split on",
+    "runWaitingResumes": "waiting · resumes {{when}}",
+    "resumesAt": "resumes {{when}}",
+    "run_failed": "failed",
+    "run_flagged": "flagged",
+    "run_running": "running",
+    "run_done": "done",
+    "run_pending": "not started",
+    "agentNoteHeading": "What the agent step reported"
   }
 }

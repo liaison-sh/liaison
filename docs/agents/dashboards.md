@@ -138,8 +138,9 @@ A block that keeps its own dates says them in a small label next to its title, s
 
 ## What the figures show
 
-- A metric that is compared shows the change under the figure, with an arrow and its sign, for example "+12% vs same period last year". It is never coloured red or green: up is not always good news.
-- A metric with a target shows "30 of 40" and a thin bar of the progress toward it, and a metric with a trend shows it as a small line beside the figure.
+- A metric shows its figure large. When it is compared, the change reads beside the figure, with an arrow and its sign, for example "+12% vs same period last year". It is neutral grey, because up is not always good news, unless the block says which way is better (`map.higherIsBetter`: true for sales, false for a backlog or a delay): then a change for the better reads green and one for the worse red, on the text only.
+- A metric with a target shows "30 of 40" and a thin bar of the progress toward it, and a metric with a trend shows it as a line under the figure, in the change's colour.
+- Colour comes from the data. A chart over a project's tasks by status draws each status in its own colour from the project's board, in the board's order (`map.colorField`, `map.keepOrder`). A chart by person shows each person's avatar colour (`map.personField`). Series that carry no colour of their own take the chart palette of the theme. A bar of 0 draws as a thin line on the baseline.
 - A chart draws the compared period's values lighter (dashed for a line), named **Same period last year** or **Previous period**.
 - Under each block, "Updated 4 min. ago" says when its figures were read. A block built with its own refresh interval reads again on that interval, but only while its tab is on screen.
 - A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
@@ -151,7 +152,8 @@ A block that keeps its own dates says them in a small label next to its title, s
 Besides metrics, tables, bars, lines and pies, your agent can build:
 
 - an **area** chart (a line filled), and **stacked** bars or areas (spend by platform, one colour per platform);
-- **horizontal** bars, for long names and rankings;
+- **horizontal** bars, for long names and rankings; with a person per bar (`map.personField`), one row per person with their avatar and name, the bar split by the series (who has what);
+- a **pipeline**: one bar split into a segment per category (`map.stackedSingle`), coloured by its data, its legend giving each count; click a segment or a legend entry to list its rows;
 - a **combo** chart: bars and lines over the same days or categories, the lines optionally on their own axis (revenue as bars, order count as a line);
 - a **funnel**: ordered stages, such as cart, paid, shipped, from one field per stage or from the values of one field;
 - a **text** note: a few lines of formatted text with no data behind it, for definitions ("B2B means orders tagged b2b"), targets and caveats.

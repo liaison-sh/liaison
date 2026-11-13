@@ -483,7 +483,6 @@
     "errorGeneric": "Could not save the fields."
   },
   "statusHistory": {
-    "since": "In {{status}} · {{time}}",
     "title": "Status history",
     "empty": "No status change yet.",
     "created": "Created in {{status}}",
@@ -543,5 +542,15 @@
     "missingStatuses": "This project has no status named {{labels}}: choose one below.",
     "save": "Create the automation",
     "saveFailed": "The automation could not be created."
+  },
+  "taskTime": {
+    "for": "for {{time}}",
+    "minutes": "{{n}} min",
+    "hours": "{{n}} h",
+    "days": "{{n}} d",
+    "slaPassed": "SLA passed {{when}}",
+    "slaAhead": "SLA {{when}}",
+    "whereTitle": "Where the time went",
+    "automationsTitle": "Automations on this task"
   }
 }

@@ -22,6 +22,51 @@ export interface CellTextOptions {
   t: T
 }
 
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
+
+/** A choice's own colour (a backed status column's), hex only; null: a neutral pill. */
+export function choiceColor(column: TableColumn, value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const c = column.choiceColors?.[value]
+  return typeof c === "string" && HEX.test(c) ? c : null
+}
+
+/** How near a deadline is, in whole days from `today` (both YYYY-MM-DD). */
+export interface DeadlineState {
+  tone: "late" | "soon" | null
+  /** The track's fill, 0-1: full once late, filling over the last DEADLINE_SOON_DAYS days. */
+  fill: number
+}
+
+/** Days before a deadline that it reads as near. */
+export const DEADLINE_SOON_DAYS = 3
+
+export function deadlineState(value: unknown, today: string): DeadlineState | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) return null
+  const day = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10))
+  const left = Math.round((day(value) - day(today)) / 86_400_000)
+  if (left < 0) return { tone: "late", fill: 1 }
+  if (left <= DEADLINE_SOON_DAYS) {
+    return { tone: "soon", fill: (DEADLINE_SOON_DAYS + 1 - left) / (DEADLINE_SOON_DAYS + 1) }
+  }
+  return { tone: null, fill: 0 }
+}
+
+/** Runs of consecutive columns from the same place (read through, or this table's own). */
+export function columnBands(
+  columns: TableColumn[],
+  readThrough: (key: string) => boolean,
+): Array<{ own: boolean; span: number }> {
+  const out: Array<{ own: boolean; span: number }> = []
+  for (const c of columns) {
+    const own = !readThrough(c.key)
+    const last = out[out.length - 1]
+    if (last && last.own === own) last.span++
+    else out.push({ own, span: 1 })
+  }
+  return out
+}
+
 export function isLinkCell(v: unknown): v is LinkCell {
   return typeof v === "object" && v !== null && typeof (v as LinkCell).id === "string"
 }

@@ -144,17 +144,24 @@ describe("a task's time keys and the plan read back on the REST routes", () => {
       UPDATE app_projects.tasks SET timebox_minutes = 720, is_milestone = true
        WHERE id = ${onTask.id}::uuid`)
     const member = await colleague()
-    // Two people's time on the task: the reader gets the total, never anyone's row.
-    for (const [userId, minutes] of [
-      [owner.userId, 90],
-      [member.userId, 30],
-    ] as const) {
-      await db.execute(drizzleSql`
-        INSERT INTO app_projects.task_time (org_id, task_id, project_id, user_id, work_date, minutes, entered_via)
-        VALUES (${orgId}::uuid, ${onTask.id}::uuid, ${on.id}::uuid, ${userId}::uuid, '2026-11-02', ${minutes}, 'field')`)
+    // Two people's time on the task, each said by its author through the tool route: the
+    // reader gets the total, never anyone's row.
+    const took = async (bearer: string, time: string) => {
+      const res = await app.request("/api/apps/run-tool", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolName: "projects:task_time_set",
+          params: { taskId: onTask.id, time },
+        }),
+      })
+      expect(res.status, await res.clone().text()).toBe(200)
     }
-
-    const read = (await as(member.bearer, "GET", `/${on.id}/tasks/${onTask.id}`)).body.data!
+    await took(owner.bearer, "1h30")
+    await minimal.grantScope(member.userId, "projects:tasks:write")
+    await took((await minimal.sessionOf({ id: member.userId, orgId })).bearer, "30 min")
+    const reader = await minimal.sessionOf({ id: member.userId, orgId })
+    const read = (await as(reader.bearer, "GET", `/${on.id}/tasks/${onTask.id}`)).body.data!
     expect(read.timeboxMinutes).toBe(720)
     expect(read.realTotalMinutes).toBe(120)
     expect(read.isMilestone).toBe(true)
@@ -162,12 +169,12 @@ describe("a task's time keys and the plan read back on the REST routes", () => {
     expect(text).not.toContain('"userId"')
     expect(text).not.toMatch(/"minutes":(90|30)\b/)
 
-    const listed = (await as(member.bearer, "GET", `/${on.id}/tasks`)).body.data!.items as any[]
+    const listed = (await as(reader.bearer, "GET", `/${on.id}/tasks`)).body.data!.items as any[]
     expect(listed.find((t) => t.id === onTask.id)?.realTotalMinutes).toBe(120)
 
-    const plain = (await as(member.bearer, "GET", `/${off.id}/tasks/${offTask.id}`)).body.data!
+    const plain = (await as(reader.bearer, "GET", `/${off.id}/tasks/${offTask.id}`)).body.data!
     for (const k of TIME_KEYS) expect(Object.hasOwn(plain, k)).toBe(false)
-    const plainList = (await as(member.bearer, "GET", `/${off.id}/tasks`)).body.data!.items as any[]
+    const plainList = (await as(reader.bearer, "GET", `/${off.id}/tasks`)).body.data!.items as any[]
     for (const k of TIME_KEYS) expect(Object.hasOwn(plainList[0], k)).toBe(false)
 
     // The edit answers with the keys too, so the open task keeps them.
@@ -212,12 +219,30 @@ describe("a task's time keys and the plan read back on the REST routes", () => {
 
   it("the plan reads back its basis, biller and dated hours, and its rate only with the money scope", async () => {
     const on = (await rest("POST", "", { name: "Plan read", timeBudgets: true })).body.data!
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_time_plan (project_id, org_id, basis, biller_id, dated_hours)
-      VALUES (${on.id}::uuid, ${orgId}::uuid, 'hourly', ${owner.userId}::uuid, true)`)
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_billing_terms (project_id, org_id, rate_minor, currency)
-      VALUES (${on.id}::uuid, ${orgId}::uuid, 9500, 'EUR')`)
+    const { setTimePlan, setBillingTerms } = await import("./time-plan")
+    const { withRlsContext } = await import("~/db/rls")
+    const actor = {
+      actorType: "user" as const,
+      userId: owner.userId,
+      orgId,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    await withRlsContext(actor, async (tx) => {
+      await setTimePlan({
+        tx: tx as never,
+        orgId,
+        actorId: owner.userId,
+        scopes: ["*"],
+        input: { projectId: on.id, basis: "hourly", billerId: owner.userId, datedHours: true },
+      })
+      await setBillingTerms({
+        tx: tx as never,
+        orgId,
+        scopes: ["*"],
+        input: { projectId: on.id, rate: 95, currency: "EUR" },
+      })
+    })
     const full = await rest("GET", `/${on.id}/time-plan`)
     expect(full.status).toBe(200)
     expect(full.body.data).toMatchObject({

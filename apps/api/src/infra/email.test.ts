@@ -42,6 +42,13 @@ describe("consoleEmailBody", () => {
       }),
     ).toBe("Code: 654321\nBye")
   })
+
+  it("drops a script element's contents, an unclosed one to the end, and leaves no tag behind", () => {
+    const body = (html: string) => consoleEmailBody({ to: "a@test.com", subject: "S", html })
+    expect(body("<p>Hi</p><SCRIPT type=x>steal()</SCRIPT><p>Bye</p>")).toBe("Hi\nBye")
+    expect(body("<p>Hi</p><script>steal()")).toBe("Hi")
+    expect(body("<scr<script></script>ipt>x()</script>")).not.toContain("<")
+  })
 })
 
 describe("ConsoleEmailProvider body logging and memory", () => {

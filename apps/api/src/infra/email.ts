@@ -155,12 +155,58 @@ export async function sendEmailOnce(
 // mail server, where that log line is the only way to receive a sign-in code;
 // the quickstart sets it), and then at warn so it stands out.
 
+/**
+ * The HTML without its style and script elements, read by position rather than by pattern: an
+ * opening tag up to its closing tag goes, contents and all; an unclosed one takes the rest.
+ */
+function withoutStyleAndScript(html: string): string {
+  const lower = html.toLowerCase()
+  let out = ""
+  let at = 0
+  for (;;) {
+    const starts = ["style", "script"]
+      .map((tag) => ({ tag, start: lower.indexOf(`<${tag}`, at) }))
+      .filter((m) => m.start >= 0)
+      .sort((a, b) => a.start - b.start)
+    const next = starts[0]
+    if (!next) return out + html.slice(at)
+    out += html.slice(at, next.start)
+    const close = lower.indexOf(`</${next.tag}`, next.start)
+    if (close < 0) return out
+    const end = lower.indexOf(">", close)
+    if (end < 0) return out
+    at = end + 1
+  }
+}
+
+/** A tag that ends a line of text: a line break or the close of a block. */
+const LINE_ENDING_TAG = /^(br\b|\/(p|div|tr|h[1-6]|li)\b)/
+
+/**
+ * The text between the tags, every tag dropped by position: a line-ending tag becomes a newline,
+ * and an unclosed `<` takes the rest.
+ */
+function tagsToText(html: string): string {
+  let out = ""
+  let at = 0
+  for (;;) {
+    const open = html.indexOf("<", at)
+    if (open < 0) return out + html.slice(at)
+    out += html.slice(at, open)
+    const close = html.indexOf(">", open)
+    if (close < 0) return out
+    const tag = html
+      .slice(open + 1, close)
+      .trim()
+      .toLowerCase()
+    if (LINE_ENDING_TAG.test(tag)) out += "\n"
+    at = close + 1
+  }
+}
+
 export function consoleEmailBody(message: EmailMessage): string {
   if (message.text) return message.text
-  return message.html
-    .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<br\s*\/?>|<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+  return tagsToText(withoutStyleAndScript(message.html))
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n+/g, "\n")
     .trim()

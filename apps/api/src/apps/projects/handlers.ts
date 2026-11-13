@@ -46,6 +46,8 @@ export interface ProjectsMethods {
   projects_budgetGet: (paramsJson: string) => Promise<string>
   projects_reconcileFacts: (paramsJson: string) => Promise<string>
   projects_reconcilePropose: (paramsJson: string) => Promise<string>
+  projects_reconcileLineUpdate: (paramsJson: string) => Promise<string>
+  projects_reconcileGet: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -1193,4 +1195,12 @@ export async function reconcileFacts(params: unknown, ctx: ProjectsCtx): Promise
 
 export async function reconcilePropose(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_reconcilePropose(JSON.stringify(params ?? {})))
+}
+
+export async function reconcileLineUpdate(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileLineUpdate(JSON.stringify(params ?? {})))
+}
+
+export async function reconcileGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileGet(JSON.stringify(params ?? {})))
 }

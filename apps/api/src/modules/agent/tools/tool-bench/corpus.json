@@ -3299,5 +3299,21 @@
     "typed": ["planned vs done", "planned done project", "month close"],
     "any": ["projects__reconcile_facts", "projects__reconcile_propose"],
     "modelRun": true
+  },
+  {
+    "id": "C90",
+    "set": "seed",
+    "lang": "en",
+    "say": "bill 3.5 days on the data export line instead",
+    "typed": ["change reconcile line", "bill line", "reconcile card line"],
+    "any": ["projects__reconcile_line_update"]
+  },
+  {
+    "id": "C91",
+    "set": "seed",
+    "lang": "fr",
+    "say": "remontre-moi la carte de rapprochement d'octobre",
+    "typed": ["carte rapprochement", "rapprochement enregistré"],
+    "any": ["projects__reconcile_get", "projects__reconcile_facts"]
   }
 ]

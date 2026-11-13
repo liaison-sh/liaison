@@ -8,17 +8,21 @@
 // Everything here runs under the asker's own row security. Nothing is read on anyone's behalf:
 // no other app is called and no privileged handle is opened, so the card holds only what the
 // asker could read. No user id, assignee or per-person figure appears in any result.
+import { parseDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { hasScope } from "~/modules/permissions/permissions"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
+import { reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
 import {
   amountMinor,
   type ComputedLine,
   type ComputedProof,
   computeLines,
+  defaultBill,
   keptProofUrl,
+  type LineKind,
   lateNote,
   NOT_EVERYTHING_SEEN,
   namedMember,
@@ -452,9 +456,44 @@ export interface ProposeInput {
 }
 
 interface StoredShape {
-  lines: Array<Omit<ComputedLine, "proofs"> & { proofs: ComputedProof[] }>
+  lines: Array<
+    Omit<ComputedLine, "proofs"> & {
+      proofs: ComputedProof[]
+      /** The stored line's id and the person's own changes, absent on a line not yet stored. */
+      id?: string
+      wording?: string | null
+      realNoteMinutes?: number | null
+    }
+  >
   notSeen: Array<{ source: string; why: string }>
   excludedCount: number
+}
+
+/** The trace sources a reconcile reads, and the scope that reads each one. */
+export const TRACE_SOURCES: ReadonlyArray<{ source: string; scope: string }> = [
+  { source: "GitHub", scope: "github:repo:read" },
+  { source: "GitLab", scope: "gitlab:repo:read" },
+  { source: "Calendar", scope: "calendar:events:read" },
+  { source: "Knowledge", scope: "knowledge:documents:read" },
+]
+export const NOT_YOURS_TO_READ = "you cannot read it here"
+
+/**
+ * What the agent said it did not see, plus every trace source the caller's scopes for this call
+ * cannot read (a person's own, or narrowed by the agent they talk to): the card says so even when
+ * the agent did not notice the tool was missing.
+ */
+function withUnreadable(
+  notSeen: Array<{ source: string; why: string }>,
+  scopes: readonly string[],
+): Array<{ source: string; why: string }> {
+  const out = [...notSeen]
+  for (const t of TRACE_SOURCES) {
+    if (hasScope(t.scope, [...scopes])) continue
+    if (out.some((n) => n.source.toLowerCase() === t.source.toLowerCase())) continue
+    out.push({ source: t.source, why: NOT_YOURS_TO_READ })
+  }
+  return out
 }
 
 function readNotSeen(raw: unknown): Array<{ source: string; why: string }> {
@@ -494,7 +533,7 @@ function sameShape(a: StoredShape, b: StoredShape): boolean {
   const canon = (s: StoredShape) =>
     JSON.stringify({
       ...s,
-      lines: s.lines.map(({ tag: _tag, ...l }) => ({
+      lines: s.lines.map(({ tag: _tag, id: _id, wording: _w, realNoteMinutes: _r, ...l }) => ({
         ...l,
         proofs: [...l.proofs].sort((x, y) =>
           `${x.kind}|${x.ref}|${x.label}`.localeCompare(`${y.kind}|${y.ref}|${y.label}`),
@@ -505,9 +544,13 @@ function sameShape(a: StoredShape, b: StoredShape): boolean {
 }
 
 async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShape> {
-  const head = extractRows<{ not_seen: StoredShape["notSeen"]; excluded_count: number }>(
+  const head = extractRows<{
+    not_seen: StoredShape["notSeen"]
+    excluded_count: number
+    basis: Basis
+  }>(
     await tx.execute(drizzleSql`
-      SELECT not_seen, excluded_count FROM ${projectsRel("reconciliations")}
+      SELECT not_seen, excluded_count, basis FROM ${projectsRel("reconciliations")}
        WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`),
   )[0]
   const lines = extractRows<{
@@ -522,10 +565,13 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
     real_minutes: number | null
     trace_estimate_minutes: number | null
     bill_minutes: number
+    wording: string | null
+    real_note_minutes: number | null
   }>(
     await tx.execute(drizzleSql`
       SELECT id::text AS id, position, name, why, kind, reason, task_ids::text[] AS task_ids,
-             planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes
+             planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes, wording,
+             real_note_minutes
         FROM ${projectsRel("reconciliation_lines")}
        WHERE reconciliation_id = ${id}::uuid AND org_id = ${orgId}::uuid
        ORDER BY position`),
@@ -548,11 +594,26 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
   )
   return {
     lines: lines.map((l) => ({
+      id: l.id,
+      ...(l.wording !== null ? { wording: l.wording } : {}),
+      ...(l.real_note_minutes !== null ? { realNoteMinutes: l.real_note_minutes } : {}),
       position: l.position,
       name: l.name,
       ...(l.why ? { why: l.why } : {}),
       kind: l.kind,
       ...(l.reason ? { reason: l.reason } : {}),
+      // The one tag a line carries is worked out from its figures, as when it was computed.
+      ...(head
+        ? (() => {
+            const { tag } = defaultBill(
+              head.basis,
+              l.kind as LineKind,
+              l.planned_minutes,
+              l.real_minutes ?? 0,
+            )
+            return tag && l.bill_minutes === 0 ? { tag } : {}
+          })()
+        : {}),
       taskIds: l.task_ids,
       plannedMinutes: l.planned_minutes,
       realMinutes: l.real_minutes ?? 0,
@@ -606,12 +667,14 @@ export async function reconcilePropose(args: {
   threadId?: string
   input: ProposeInput
   now?: Date
+  /** Where the call came from: a coding agent's call also gets the card as terminal text. */
+  origin?: string
 }) {
   const { tx, orgId, userId, input } = args
   // The shape first: a line carrying a figure is refused before anything is read.
   const proposed = readProposedLines(input.lines)
   const excluded = readExcluded(input.excluded)
-  const notSeen = readNotSeen(input.notSeen)
+  const notSeen = withUnreadable(readNotSeen(input.notSeen), args.scopes)
   const c = await loadContext({
     tx,
     orgId,
@@ -773,7 +836,14 @@ export async function reconcilePropose(args: {
     })
   }
 
-  return cardData({ c, id, revision, outcome, shape })
+  return cardData({
+    c,
+    id,
+    revision,
+    outcome,
+    shape: await readStored(tx, orgId, id),
+    ...(args.origin ? { origin: args.origin } : {}),
+  })
 }
 
 /** The card's data: what the `reconcile` card draws, worded in the project's unit. */
@@ -781,10 +851,14 @@ function cardData(args: {
   c: Context
   id: string
   revision: number
-  outcome: "created" | "unchanged" | "revised"
+  outcome: "created" | "unchanged" | "revised" | "edited"
   shape: StoredShape
+  state?: "proposed" | "drafted" | "invoiced" | "credited"
+  said?: string
+  origin?: string
 }) {
   const { c, id, revision, outcome, shape } = args
+  const state = args.state ?? "proposed"
   const q = (m: number) => worded(m, c.basis, c.hpd)
   const money =
     c.rateMinor !== null && (c.basis === "daily" || c.basis === "hourly" || c.basis === "retainer")
@@ -793,8 +867,9 @@ function cardData(args: {
     return a === null ? null : a / 100
   }
   const lines = shape.lines.map((l) => ({
+    ...(l.id ? { lineId: l.id } : {}),
     position: l.position,
-    name: l.name,
+    name: l.wording?.trim() ? l.wording : l.name,
     ...(l.why ? { why: l.why } : {}),
     kind: l.kind,
     ...(l.reason ? { reason: l.reason } : {}),
@@ -806,11 +881,13 @@ function cardData(args: {
     billMinutes: l.billMinutes,
     planned: l.plannedMinutes !== null ? q(l.plannedMinutes) : null,
     real:
-      l.realMinutes > 0
-        ? q(l.realMinutes)
-        : l.traceEstimateMinutes !== null
-          ? `~${q(l.traceEstimateMinutes)}`
-          : null,
+      l.realNoteMinutes !== null && l.realNoteMinutes !== undefined
+        ? q(l.realNoteMinutes)
+        : l.realMinutes > 0
+          ? q(l.realMinutes)
+          : l.traceEstimateMinutes !== null
+            ? `~${q(l.traceEstimateMinutes)}`
+            : null,
     bill: q(l.billMinutes),
     ...(money ? { amount: amount(l.billMinutes) } : {}),
     proofs: l.proofs.map((p) => ({
@@ -826,20 +903,53 @@ function cardData(args: {
     c.hasEntries,
   )
   const unplannedAtZero = shape.lines.filter((l) => l.kind === "unplanned" && l.billMinutes === 0)
+  const late = c.today > c.period.to ? lateNote(c.period) : null
   const notes: string[] = []
-  if (c.today > c.period.to) notes.push(lateNote(c.period))
+  if (late) notes.push(late)
   if (shape.notSeen.length > 0 || coverage.total === 0) notes.push(NOT_EVERYTHING_SEEN)
   const totalAmount = money ? amount(billMinutes) : null
   const said =
-    outcome === "unchanged"
+    args.said ??
+    (outcome === "unchanged"
       ? `Nothing changed since revision ${revision}; the same card is returned.`
       : outcome === "revised"
         ? `The card was updated to revision ${revision}.`
-        : "The card was saved; only you can see it."
+        : "The card was saved; only you can see it.")
+  const card = reconcileCardFields({
+    state,
+    basis: c.basis,
+    hoursPerDayMinutes: c.hpd,
+    projectName: c.project.name,
+    periodLabel: c.period.label,
+    lines: shape.lines.map((l, i) => ({
+      id: l.id ?? `line-${i}`,
+      position: l.position,
+      name: l.name,
+      ...(l.wording !== undefined ? { wording: l.wording } : {}),
+      ...(l.why ? { why: l.why } : {}),
+      kind: l.kind,
+      ...(l.tag ? { tag: l.tag } : {}),
+      plannedMinutes: l.plannedMinutes,
+      realMinutes: l.realMinutes,
+      ...(l.realNoteMinutes !== undefined ? { realNoteMinutes: l.realNoteMinutes } : {}),
+      traceEstimateMinutes: l.traceEstimateMinutes,
+      billMinutes: l.billMinutes,
+      proofs: l.proofs.map((p) => ({ label: p.label, ...(p.url ? { url: p.url } : {}) })),
+    })),
+    rateMinor: money ? c.rateMinor : null,
+    currency: c.currency,
+    coverage,
+    notSeen: shape.notSeen,
+    excludedCount: shape.excludedCount,
+    late,
+  })
+  const coverageText = `Real time entered on ${coverage.withEntries} of ${coverage.total} tasks`
+  const amountText =
+    totalAmount !== null ? `${totalAmount.toFixed(2)} ${c.currency ?? ""}`.trim() : null
   return {
     reconciliationId: id,
     revision,
-    state: "proposed" as const,
+    state,
     outcome,
     project: { id: c.project.id, key: c.project.key, name: c.project.name, basis: c.basis },
     period: { from: c.period.from, to: c.period.to, label: c.period.label },
@@ -851,11 +961,316 @@ function cardData(args: {
       ...(totalAmount !== null ? { amountExclVat: totalAmount, currency: c.currency } : {}),
     },
     coverage,
-    coverageText: `Real time entered on ${coverage.withEntries} of ${coverage.total} tasks`,
+    coverageText,
     notSeen: shape.notSeen,
     excludedCount: shape.excludedCount,
+    ...card,
+    // The card's notes are its own; the tool's notes list what the agent says.
     notes,
-    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${totalAmount !== null ? ` (${totalAmount.toFixed(2)} ${c.currency ?? ""} excluding VAT)`.replace(" )", ")") : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} No invoice was created.`,
+    cardNotes: card.notes,
+    ...(args.origin === "mcp"
+      ? {
+          text: reconcileCodingAgentText({
+            title: card.title,
+            lines: card.groups.flatMap((g) => g.rows),
+            billText: q(billMinutes),
+            amountText,
+            coverageText,
+            notSeen: shape.notSeen,
+            link: null,
+          }),
+        }
+      : {}),
+    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} No invoice was created.`,
     next: "Show the person the card. They change a line by telling you or on the card; nothing is billed until they act.",
   }
+}
+
+// ── reconcile_line_update and reconcile_get ─────────────────────────────────
+
+interface StoredHead {
+  id: string
+  project_id: string
+  period_start: string | null
+  period_end: string | null
+  revision: number
+  state: "proposed" | "drafted" | "invoiced" | "credited"
+  basis: Basis
+}
+
+async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> {
+  const uuid = /^[0-9a-f-]{36}$/i.test(id.trim()) ? id.trim() : null
+  const head = uuid
+    ? extractRows<StoredHead>(
+        await tx.execute(drizzleSql`
+          SELECT id::text AS id, project_id::text AS project_id,
+                 period_start::text AS period_start, period_end::text AS period_end,
+                 revision, state, basis
+            FROM ${projectsRel("reconciliations")}
+           WHERE id = ${uuid}::uuid AND org_id = ${orgId}::uuid`),
+      )[0]
+    : undefined
+  if (!head) {
+    throw new ProjectsServiceError(404, "reconciliation_not_found", `No reconcile card ${id}.`, {
+      next: "Use the reconciliationId the card returned, or reconcile the period again.",
+    })
+  }
+  return head
+}
+
+/** The period a stored card covers, as its first ask named it. */
+function periodInput(head: StoredHead): { month: string } | { from: string; to: string } {
+  const from = head.period_start ?? ""
+  const to = head.period_end ?? ""
+  const [y, m] = from.split("-").map(Number) as [number, number]
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  if (from.endsWith("-01") && to === `${from.slice(0, 8)}${String(last).padStart(2, "0")}`) {
+    return { month: from.slice(0, 7) }
+  }
+  return { from, to }
+}
+
+/** A quantity a person typed or said: a number in the card's unit, or a duration. */
+function quantityMinutes(raw: unknown, basis: Basis, hpd: number, field: string): number | null {
+  if (raw === null) return null
+  const per = basis === "daily" ? hpd : 60
+  const unit = basis === "daily" ? "days" : "hours"
+  let minutes: number | null = null
+  if (typeof raw === "number" && Number.isFinite(raw)) minutes = Math.round(raw * per)
+  else if (typeof raw === "string") {
+    const text = raw.trim().replace(",", ".")
+    minutes = /^\d+(\.\d+)?$/.test(text) ? Math.round(Number(text) * per) : parseDuration(text, hpd)
+  }
+  if (minutes === null || minutes < 0) {
+    throw new ProjectsServiceError(
+      400,
+      "invalid_quantity",
+      `${field} "${String(raw)}" is not a quantity. Give a number of ${unit}, or a duration such as 3.5 days or 4 h. Nothing was saved.`,
+      { field },
+    )
+  }
+  return minutes
+}
+
+export interface LineUpdateInput {
+  reconciliationId: string
+  revision: number
+  lineId: string
+  bill?: unknown
+  wording?: unknown
+  realNote?: unknown
+}
+
+export async function reconcileLineUpdate(args: {
+  tx: Tx
+  orgId: string
+  userId: string
+  scopes: readonly string[]
+  input: LineUpdateInput
+  now?: Date
+  origin?: string
+}) {
+  const { tx, orgId, input } = args
+  const head = await readHead(tx, orgId, String(input.reconciliationId ?? ""))
+  if (head.state !== "proposed") {
+    throw new ProjectsServiceError(
+      409,
+      "reconcile_locked",
+      "Billed lines lock with the invoice; this card is no longer a proposal. Nothing was changed.",
+      { state: head.state, next: "To change a billed line, offer a credit note." },
+    )
+  }
+  const c = await loadContext({
+    tx,
+    orgId,
+    scopes: args.scopes,
+    project: head.project_id,
+    ...periodInput(head),
+    ...(args.now ? { now: args.now } : {}),
+  })
+  const latest = () =>
+    readStored(tx, orgId, head.id).then((shape) =>
+      cardData({ c, id: head.id, revision: head.revision, outcome: "unchanged", shape }),
+    )
+  if (Number(input.revision) !== head.revision) {
+    throw new ProjectsServiceError(
+      409,
+      "card_changed",
+      `This card moved on to revision ${head.revision} since it was drawn. Nothing was changed.`,
+      { latest: await latest(), next: "Show the latest card and apply the change to it." },
+    )
+  }
+  const has = (k: "bill" | "wording" | "realNote") => Object.hasOwn(input, k)
+  if (!has("bill") && !has("wording") && !has("realNote")) {
+    throw new ProjectsServiceError(
+      400,
+      "invalid_params",
+      "Say what to change on the line: bill, wording or realNote. Nothing was changed.",
+    )
+  }
+  const shape = await readStored(tx, orgId, head.id)
+  const ref = String(input.lineId ?? "").trim()
+  const line =
+    shape.lines.find((l) => l.id === ref) ??
+    shape.lines.find((l) => (l.wording ?? l.name).toLowerCase() === ref.toLowerCase())
+  if (!line?.id) {
+    throw new ProjectsServiceError(404, "line_not_found", `No line ${ref} on this card.`, {
+      lines: shape.lines.map((l) => ({ lineId: l.id, name: l.wording ?? l.name })),
+      next: "Use a lineId from the card.",
+    })
+  }
+  const changes: string[] = []
+  let bill = line.billMinutes
+  if (has("bill")) {
+    if (c.basis === "fixed") {
+      throw new ProjectsServiceError(
+        400,
+        "fixed_price_no_bill",
+        `${c.project.name} has a fixed price, so its card bills nothing. Nothing was changed.`,
+        { next: "Milestones bill from the quote." },
+      )
+    }
+    bill = quantityMinutes(input.bill, c.basis, c.hpd, "bill") ?? 0
+    changes.push(`bills ${worded(bill, c.basis, c.hpd)}`)
+  }
+  let wording = line.wording ?? null
+  if (has("wording")) {
+    const text = typeof input.wording === "string" ? input.wording.trim().slice(0, 200) : ""
+    const members = extractRows<{ name: string | null; email: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT name, email FROM ${kernelRel("users")}
+         WHERE org_id = ${orgId}::uuid AND status = 'active'`),
+    )
+    if (text && namedMember(text, members)) {
+      throw new ProjectsServiceError(
+        400,
+        "names_a_person",
+        `"${text}" names someone on the team. A line says what was done, never who did it. Nothing was changed.`,
+        { next: "Word the line by the work alone. A client's own contact may be named." },
+      )
+    }
+    wording = text || null
+    changes.push(wording ? `reads "${wording}"` : "is back to its first wording")
+  }
+  let realNote = line.realNoteMinutes ?? null
+  if (has("realNote")) {
+    realNote = quantityMinutes(input.realNote, c.basis, c.hpd, "realNote")
+    changes.push(
+      realNote === null
+        ? "has no time-spent note"
+        : `notes ${worded(realNote, c.basis, c.hpd)} spent, for you only`,
+    )
+  }
+  const moved = extractRows<{ revision: number }>(
+    await tx.execute(drizzleSql`
+      UPDATE ${projectsRel("reconciliations")}
+         SET revision = revision + 1, updated_at = now()
+       WHERE id = ${head.id}::uuid AND org_id = ${orgId}::uuid AND revision = ${head.revision}
+         AND state = 'proposed'
+       RETURNING revision`),
+  )[0]
+  if (!moved) {
+    throw new ProjectsServiceError(
+      409,
+      "card_changed",
+      "This card moved on since it was drawn. Nothing was changed.",
+      { latest: await latest(), next: "Show the latest card and apply the change to it." },
+    )
+  }
+  await tx.execute(drizzleSql`
+    UPDATE ${projectsRel("reconciliation_lines")}
+       SET bill_minutes = ${bill}, wording = ${wording}, real_note_minutes = ${realNote},
+           updated_at = now()
+     WHERE id = ${line.id}::uuid AND reconciliation_id = ${head.id}::uuid
+       AND org_id = ${orgId}::uuid`)
+  return cardData({
+    c,
+    id: head.id,
+    revision: moved.revision,
+    outcome: "edited",
+    shape: await readStored(tx, orgId, head.id),
+    said: `"${wording ?? line.name}" now ${changes.join(" and ")}; the card is at revision ${moved.revision}.`,
+    ...(args.origin ? { origin: args.origin } : {}),
+  })
+}
+
+export async function reconcileGet(args: {
+  tx: Tx
+  orgId: string
+  userId: string
+  scopes: readonly string[]
+  input: { reconciliationId: string }
+  now?: Date
+}) {
+  const { tx, orgId } = args
+  const head = await readHead(tx, orgId, String(args.input.reconciliationId ?? ""))
+  let c: Context
+  try {
+    c = await loadContext({
+      tx,
+      orgId,
+      scopes: args.scopes,
+      project: head.project_id,
+      ...periodInput(head),
+      ...(args.now ? { now: args.now } : {}),
+    })
+  } catch (err) {
+    // A project that stopped using time and budgets: a proposal is refused like any new
+    // planning, and a card already on an invoice reads as what was billed, nothing more.
+    if (!(err instanceof ProjectsServiceError) || err.code !== "planning_off") throw err
+    if (head.state === "proposed") throw err
+    const hpd = await hoursPerDayMinutes(tx, orgId)
+    const shape = await readStored(tx, orgId, head.id)
+    const billed = shape.lines
+      .filter((l) => l.billMinutes > 0)
+      .map((l) => ({ name: l.wording ?? l.name, bill: worded(l.billMinutes, head.basis, hpd) }))
+    const project = extractRows<{ name: string }>(
+      await tx.execute(drizzleSql`
+        SELECT name FROM ${projectsRel("projects")}
+         WHERE id = ${head.project_id}::uuid AND org_id = ${orgId}::uuid`),
+    )[0]
+    return {
+      reconciliationId: head.id,
+      revision: head.revision,
+      state: head.state,
+      billedOnly: true,
+      // The card draws what was billed and nothing else: no planned, no time spent.
+      title: `${project?.name ?? "Project"}: billed`,
+      end: `${head.period_start} to ${head.period_end}`,
+      sub: "This project no longer uses time and budgets, so only what was billed is shown.",
+      fit: "billed",
+      cover: null,
+      notice: null,
+      connectGithub: null,
+      fixedPrice: null,
+      editable: null,
+      groups: [
+        {
+          label: "Billed",
+          rows: shape.lines
+            .filter((l) => l.billMinutes > 0)
+            .map((l) => ({
+              id: l.id,
+              name: l.wording ?? l.name,
+              bill: worded(l.billMinutes, head.basis, hpd),
+            })),
+        },
+      ],
+      tot: [],
+      cardNotes: [],
+      foot: null,
+      lines: billed,
+      message: `${billed.length} billed line${billed.length === 1 ? "" : "s"} of a card that is ${head.state}. The project no longer uses time and budgets, so planned and time spent are not shown.`,
+      next: "Answer from the billed lines; a correction goes through a credit note.",
+    }
+  }
+  return cardData({
+    c,
+    id: head.id,
+    revision: head.revision,
+    outcome: "unchanged",
+    state: head.state,
+    shape: await readStored(tx, orgId, head.id),
+    said: `The card as stored, revision ${head.revision}.`,
+  })
 }

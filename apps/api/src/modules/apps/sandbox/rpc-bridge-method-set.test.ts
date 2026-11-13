@@ -233,6 +233,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_periodTimeboxSet", "async"],
   ["projects_portfolioRollup", "async"],
   ["projects_reconcileFacts", "async"],
+  ["projects_reconcileGet", "async"],
+  ["projects_reconcileLineUpdate", "async"],
   ["projects_reconcilePropose", "async"],
   ["projects_resolveAssignee", "async"],
   ["projects_search", "async"],

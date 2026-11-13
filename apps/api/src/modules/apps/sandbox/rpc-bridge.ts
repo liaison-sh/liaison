@@ -396,6 +396,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "projects_billingTermsSet",
   "projects_periodTimeboxSet",
   "projects_reconcilePropose",
+  "projects_reconcileLineUpdate",
+  "projects_reconcileGet",
   // An app's own knowledge sources: ensure, sync now, purge an account's content.
   "knowledge_appSourceWrite",
 ])

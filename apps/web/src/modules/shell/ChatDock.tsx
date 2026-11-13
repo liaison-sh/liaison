@@ -14,6 +14,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { pluralFormFor } from "~/modules/projects/plural"
 import { conversationDisplayName } from "~/modules/threads/conversation-display"
 import { getThread } from "~/modules/threads/thread-store"
+import { setDockBarRect } from "~/primitives/dockLift"
 import { PopupMenu } from "~/ui/PopupMenu"
 import { DockAvatar } from "./DockAvatar"
 import {
@@ -281,10 +282,30 @@ export const ChatDock: Component<ChatDockProps> = (props) => {
     panelRo.observe(stripRef)
     if (panel) panelRo.observe(panel)
     measurePanel()
+    // The bar's place on screen, for a bottom-pinned composer that must rise
+    // above it once the bar grows far enough left to reach its controls
+    // (dock-lift.ts). The bar's width follows its items; its place follows
+    // the panel (the strip) and the window.
+    const measureBar = () => {
+      const r = barRef?.getBoundingClientRect()
+      setDockBarRect(
+        r && r.width > 0 && r.height > 0
+          ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+          : null,
+      )
+    }
+    const barRo = new ResizeObserver(measureBar)
+    if (barRef) barRo.observe(barRef)
+    barRo.observe(stripRef)
+    window.addEventListener("resize", measureBar)
+    measureBar()
     onCleanup(() => {
       ro.disconnect()
       panelRo.disconnect()
+      barRo.disconnect()
+      window.removeEventListener("resize", measureBar)
       setDockPanelSize(null)
+      setDockBarRect(null)
     })
   })
 

@@ -18,8 +18,14 @@
 // keeps its place in the page so nothing behind it jumps. Focus leaving it or
 // the keyboard going down puts it back in the page. In a browser the inset is
 // always 0, so it never docks: desktop and web layouts are unchanged.
+//
+// A `footer` composer also rises above the desktop dock's bar once the bar
+// grows far enough left to hide one of its controls (primitives/dockLift.ts),
+// and drops back when the bar shrinks. A bar that only grazes the Send corner
+// moves nothing.
 import { createSignal, type JSX, type ParentComponent, Show, splitProps } from "solid-js"
 import { cn } from "~/lib/cn"
+import { createDockLift } from "~/primitives/dockLift"
 import { keyboardOpen } from "~/primitives/keyboardInset"
 
 export type DockedComposerMode = "footer" | "inline"
@@ -44,18 +50,26 @@ export const DockedComposer: ParentComponent<DockedComposerProps> = (props) => {
   const mode = (): DockedComposerMode => local.mode ?? "footer"
   const [focused, setFocused] = createSignal(false)
   const [placeHeight, setPlaceHeight] = createSignal(0)
-  let root: HTMLDivElement | undefined
+  const [root, setRoot] = createSignal<HTMLDivElement>()
 
   const docked = () => mode() === "inline" && focused() && keyboardOpen()
+  // Only a footer sits at the panel's bottom, where the dock's bar lies.
+  const lift = createDockLift(root, () => mode() === "footer" && !keyboardOpen())
+  const style = (): JSX.CSSProperties | undefined => {
+    if (docked()) return { ...local.style, ...DOCKED_STYLE }
+    const l = lift()
+    return l > 0 ? { ...local.style, "margin-bottom": `${l}px` } : local.style
+  }
 
   const onFocusIn = (): void => {
     // Measured while still in the page: the spacer keeps exactly this place.
-    if (!focused() && root) setPlaceHeight(root.offsetHeight)
+    const el = root()
+    if (!focused() && el) setPlaceHeight(el.offsetHeight)
     setFocused(true)
   }
   const onFocusOut = (e: FocusEvent): void => {
     const next = e.relatedTarget as Node | null
-    if (next && root?.contains(next)) return
+    if (next && root()?.contains(next)) return
     setFocused(false)
   }
 
@@ -67,16 +81,17 @@ export const DockedComposer: ParentComponent<DockedComposerProps> = (props) => {
       <div
         {...rest}
         ref={(el) => {
-          root = el
+          setRoot(el)
           if (typeof local.ref === "function") local.ref(el)
         }}
         data-composer-dock={mode()}
         data-docked={docked() ? "" : undefined}
+        data-dock-lift={lift() > 0 ? String(lift()) : undefined}
         class={cn(
           local.class,
           docked() && "z-40 overflow-y-auto border-t border-border bg-bg px-3 py-2",
         )}
-        style={docked() ? { ...local.style, ...DOCKED_STYLE } : local.style}
+        style={style()}
         onFocusIn={onFocusIn}
         onFocusOut={onFocusOut}
       >

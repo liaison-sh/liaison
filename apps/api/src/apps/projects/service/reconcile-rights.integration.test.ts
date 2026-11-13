@@ -315,14 +315,24 @@ describe("changing a line from outside a person's turn", () => {
     ]) {
       const out = await viaTool(
         "reconcile_line_update",
-        { reconciliationId: card.reconciliationId, revision: card.revision, lineId: line?.lineId, bill: 9 },
+        {
+          reconciliationId: card.reconciliationId,
+          revision: card.revision,
+          lineId: line?.lineId,
+          bill: 9,
+        },
         { origin: "in-app-agent", threadId: dmThread, frame },
       )
       expect(out.error?.code).toBe("human_turn_only")
     }
     const onTurn = await viaTool(
       "reconcile_line_update",
-      { reconciliationId: card.reconciliationId, revision: card.revision, lineId: line?.lineId, bill: 1 },
+      {
+        reconciliationId: card.reconciliationId,
+        revision: card.revision,
+        lineId: line?.lineId,
+        bill: 1,
+      },
       { origin: "in-app-agent", threadId: dmThread, frame: { humanTurn: true } },
     )
     expect(((onTurn.data ?? onTurn) as Record<string, any>).error).toBeUndefined()

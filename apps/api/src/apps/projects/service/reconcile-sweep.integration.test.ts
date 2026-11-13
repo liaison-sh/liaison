@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import { orgTransferView } from "~/modules/org/transfer-state/state"
 import {
   seedBareProject,
   seedBillingClaim,
@@ -15,7 +16,6 @@ import {
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { orgTransferView } from "~/modules/org/transfer-state/state"
 import {
   IDLE_PROPOSAL_DAYS,
   idleCutoff,
@@ -44,7 +44,12 @@ async function card(
   })
 }
 
-async function storeCard(id: string, inThread = threadId, inOrg = orgId, by = owner.userId): Promise<void> {
+async function storeCard(
+  id: string,
+  inThread = threadId,
+  inOrg = orgId,
+  by = owner.userId,
+): Promise<void> {
   const call = {
     toolCallId: `call-${id.slice(0, 8)}`,
     toolName: "projects__reconcile_propose",

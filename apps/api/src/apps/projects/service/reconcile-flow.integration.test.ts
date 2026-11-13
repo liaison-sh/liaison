@@ -360,7 +360,9 @@ describe("the October card of a project billed by the day", () => {
     )
     const out = await call("projects_reconcilePropose", named)
     expect(out.error).toBeUndefined()
-    const labels = (out.groups as Array<{ rows: Array<{ name: string; proof: Array<{ label: string }> }> }>)
+    const labels = (
+      out.groups as Array<{ rows: Array<{ name: string; proof: Array<{ label: string }> }> }>
+    )
       .flatMap((g) => g.rows)
       .find((r) => r.name === "Monitoring")
       ?.proof.map((p) => p.label)

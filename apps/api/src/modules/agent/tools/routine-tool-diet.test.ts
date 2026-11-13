@@ -142,7 +142,12 @@ describe("create_routine diet", () => {
   it("update_routine takes flow and eventFilter as checked objects, the full shape only on a refusal", async () => {
     const { orgId } = await orgWithUser()
     const def = toolRegistry.get([orgId, "kernel", "update_routine"]) as {
-      params: { safeParse: (v: unknown) => { success: boolean; error?: { issues: Array<{ message: string }> } } }
+      params: {
+        safeParse: (v: unknown) => {
+          success: boolean
+          error?: { issues: Array<{ message: string }> }
+        }
+      }
     }
     const id = "00000000-0000-4000-8000-000000000001"
     const projected = JSON.stringify(

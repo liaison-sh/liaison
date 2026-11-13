@@ -1289,7 +1289,8 @@ export async function reconcileLineUpdate(args: {
   }
   let wording = line.wording ?? null
   if (has("wording")) {
-    const text = typeof input.wording === "string" ? cutText(input.wording.trim(), LINE_NAME_MAX) : ""
+    const text =
+      typeof input.wording === "string" ? cutText(input.wording.trim(), LINE_NAME_MAX) : ""
     const members = extractRows<{ name: string | null; email: string | null }>(
       await tx.execute(drizzleSql`
         SELECT name, email FROM ${kernelRel("users")}

@@ -40,7 +40,8 @@ export async function seedReconciliation(
     month: string
     idleDays: number
     basis?: string
-    now?: Date
+    /** The instant ages count back from. */
+    now: Date
   },
 ): Promise<string> {
   const id = crypto.randomUUID()
@@ -54,7 +55,7 @@ export async function seedReconciliation(
     state: input.state,
     created_by: input.createdBy,
     thread_id: input.threadId,
-    updated_at: ago(input.now ?? new Date(), input.idleDays * DAY_MS),
+    updated_at: ago(input.now, input.idleDays * DAY_MS),
   }
   await withPrivilegedDb(orgId, "seed-reconcile:reconciliation", (tx) =>
     upsertAppRow(tx, "projects", "reconciliations", row),
@@ -71,7 +72,8 @@ export async function seedBillingClaim(
     periodKey: string
     state: "reserved" | "billed" | "released"
     ageMinutes: number
-    now?: Date
+    /** The instant ages count back from. */
+    now: Date
   },
 ): Promise<string> {
   const id = crypto.randomUUID()
@@ -84,7 +86,7 @@ export async function seedBillingClaim(
       source_ref: input.sourceRef,
       period_key: input.periodKey,
       state: input.state,
-      created_at: ago(input.now ?? new Date(), input.ageMinutes * 60_000),
+      created_at: ago(input.now, input.ageMinutes * 60_000),
     }),
   )
   return id

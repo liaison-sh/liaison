@@ -12,6 +12,7 @@
 // writers on different projects, racing, always end with the row equal to the
 // projects. A crash between the commit and the recompute is healed by the
 // next recompute (`syncTimeBudgetsFeature` is idempotent).
+
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type PrivilegedDb } from "~/db"
@@ -20,6 +21,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { noteOrgFeatureChanged, writeOrgAppFeature } from "~/modules/apps/org-features"
+import { isSeeding } from "~/modules/notifications/seeded"
 import { scopeHoldersInTx } from "~/modules/permissions/scope-holders"
 
 const log = rootLogger.child({ module: "projects/time-feature" })
@@ -86,7 +88,8 @@ export async function syncTimeBudgetsFeature(
         enabled,
         actor: { userId: actorUserId, scopes: WRITER_SCOPES },
       })
-      if (changed && enabled) await tellAdminsFirstOn(tx, orgId, actorUserId)
+      // A seeded world has used time and budgets all along: no first-on line on its Home.
+      if (changed && enabled && !isSeeding()) await tellAdminsFirstOn(tx, orgId, actorUserId)
       return { enabled, changed }
     },
     opts.pool ? { pool: opts.pool } : undefined,

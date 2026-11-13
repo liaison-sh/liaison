@@ -45,6 +45,11 @@ export interface UpdateProjectArgs {
   patch: UpdateProjectPatch
   /** The event's actor type: "agent" when the agent tool made the edit. */
   actorType?: "user" | "agent"
+  /**
+   * When a time and budgets change is recorded. Only a seed laying a world's past passes it (the
+   * day the project started using it); every person's and agent's edit is recorded at now().
+   */
+  recordedAt?: Date
 }
 
 /** Does the project hold any task row, live or in the trash? */
@@ -234,7 +239,8 @@ async function writeFlip(tx: RlsClient, args: UpdateProjectArgs, on: boolean): P
   await tx.execute(drizzleSql`
     UPDATE ${projectsRel("projects")}
     SET time_budgets_on = ${on}, time_budgets_changed_by = ${actor.userId}::uuid,
-        time_budgets_changed_at = now(), updated_at = now()
+        time_budgets_changed_at = ${args.recordedAt ? drizzleSql`${args.recordedAt.toISOString()}::timestamptz` : drizzleSql`now()`},
+        updated_at = now()
     WHERE id = ${projectId}::uuid AND org_id = ${orgId}::uuid
   `)
   await tx.queueEvent({

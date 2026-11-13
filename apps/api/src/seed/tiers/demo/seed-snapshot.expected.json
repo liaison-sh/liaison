@@ -1,8 +1,4 @@
 {
-  "app_api_connector.adapters": {
-    "rows": 1,
-    "digest": "3c73adcbd0e3a486"
-  },
   "app_boxtal.app_config": {
     "rows": 1,
     "digest": "7af7efe955b0cc74"
@@ -69,7 +65,7 @@
   },
   "app_invoicing.documents": {
     "rows": 37,
-    "digest": "6b17e206f1c44021"
+    "digest": "8dbd7dba35a3ab1f"
   },
   "app_invoicing.hs_code_library": {
     "rows": 5,
@@ -125,7 +121,7 @@
   },
   "app_monitoring.incidents": {
     "rows": 15,
-    "digest": "b6c94744ff03570c"
+    "digest": "e15724a53be80018"
   },
   "app_pennylane.account_class_map": {
     "rows": 7,
@@ -153,15 +149,19 @@
   },
   "app_projects.projects": {
     "rows": 5,
-    "digest": "0ae0ebeb3b27721a"
+    "digest": "c925050e9024ef7a"
   },
   "app_projects.task_dependencies": {
     "rows": 10,
     "digest": "c62f734ea4ddbf71"
   },
+  "app_projects.task_transitions": {
+    "rows": 36,
+    "digest": "47788ff8805cd1aa"
+  },
   "app_projects.tasks": {
     "rows": 36,
-    "digest": "aa390abfc768c27f"
+    "digest": "6fab9bddae5d2676"
   },
   "app_social.dm_conversation": {
     "rows": 3,
@@ -227,6 +227,10 @@
     "rows": 12,
     "digest": "18c265740defb4dc"
   },
+  "kernel.api_adapters": {
+    "rows": 1,
+    "digest": "9704e1509ccb98d6"
+  },
   "kernel.app_seeded_assets": {
     "rows": 9,
     "digest": "524db101cc33e4a6"
@@ -240,8 +244,8 @@
     "digest": "9f916c3abef3049b"
   },
   "kernel.apps": {
-    "rows": 22,
-    "digest": "3e257e05d5e14865"
+    "rows": 18,
+    "digest": "238b18fdd3849a2e"
   },
   "kernel.audit_log": {
     "rows": 35,
@@ -276,20 +280,20 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 334,
-    "digest": "b476792e46d880f9"
+    "rows": 359,
+    "digest": "038bea9b76b12a25"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 37,
-    "digest": "37b1b32edd2f993f"
+    "rows": 30,
+    "digest": "c0f3f6681ddb50b2"
   },
   "kernel.routines": {
     "rows": 7,
-    "digest": "62b1def64fc06fb5"
+    "digest": "639c9bbe5e95fbeb"
   },
   "kernel.saved_views": {
     "rows": 8,

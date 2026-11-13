@@ -46,6 +46,10 @@ const CATALOG_DEMO_APPS = [
 ]
 /** The software world's file, beside the products world's (which keeps its old name). */
 const SAAS_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.saas.expected.json")
+/** The services world's file. */
+const STUDIO_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.studio.expected.json")
+/** The first of a month: the retainer's "this month" clamps to the day itself. */
+const MONTH_FIRST = new Date("2026-12-01T08:30:00.000Z")
 /** The software world's base time is the board date. */
 const BOARD_DATE = new Date("2026-11-09T08:30:00.000Z")
 
@@ -224,8 +228,9 @@ async function snapshotOrg(
 
 async function seedAndSnapshot(
   tag: string,
-  world: "products" | "saas" = "products",
+  world: "products" | "saas" | "studio" = "products",
   reuseSlug?: string,
+  anchor?: Date,
 ): Promise<Snapshot> {
   const slug = reuseSlug ?? `demo-snap-${crypto.randomUUID().slice(0, 8)}`
   // A re-seed's window starts with the org's first seed, whose write times it still holds.
@@ -239,7 +244,7 @@ async function seedAndSnapshot(
     owner: { email: `owner@${slug}.example`, name: "Snapshot Owner", password: "SnapOwner1!Seed" },
     worldId: world,
     needs: [...DEMO_WORLD_NEEDS[world]],
-    baseTime: world === "products" ? BASE_TIME : BOARD_DATE,
+    baseTime: anchor ?? (world === "products" ? BASE_TIME : BOARD_DATE),
   })
   expect(result.failures).toEqual([])
   expect(result.complete).toBe(true)
@@ -345,6 +350,45 @@ describe("the software world's output at the board date", () => {
       console.log(`[seed-snapshot] wrote ${SAAS_EXPECTED_FILE}`)
     }
     const expected = JSON.parse(readFileSync(SAAS_EXPECTED_FILE, "utf8")) as Snapshot
+    expect(diff(expected, first)).toEqual([])
+  })
+})
+
+describe("the services world's output at the board date and on a month's first day", () => {
+  let first: Snapshot
+  let second: Snapshot
+  let reseeded: Snapshot
+  let monthFirst: Snapshot
+  let monthFirstAgain: Snapshot
+
+  beforeAll(async () => {
+    first = await seedAndSnapshot("studio-first", "studio")
+    second = await seedAndSnapshot("studio-second", "studio")
+    reseeded = await seedAndSnapshot("studio-again", "studio", slugs.get(first))
+    monthFirst = await seedAndSnapshot("studio-dec", "studio", undefined, MONTH_FIRST)
+    monthFirstAgain = await seedAndSnapshot("studio-dec-2", "studio", undefined, MONTH_FIRST)
+  }, 2_400_000)
+
+  it("two seeds at one anchor give equal rows, table by table", () => {
+    expect(diff(first, second)).toEqual([])
+    expect(diff(monthFirst, monthFirstAgain)).toEqual([])
+  })
+
+  it("seeding the same org again changes no row count and no digest", () => {
+    expect(diff(first, reseeded)).toEqual([])
+  })
+
+  it("a month's first day seeds as many rows of time as the board date", () => {
+    expect(monthFirst["app_projects.task_time"]?.rows).toBe(first["app_projects.task_time"]?.rows)
+    expect(monthFirst["app_projects.tasks"]?.rows).toBe(first["app_projects.tasks"]?.rows)
+  })
+
+  it("the services world's digest is the pinned one, table by table", () => {
+    if (process.env.SEED_SNAPSHOT_WRITE === "1" || !existsSync(STUDIO_EXPECTED_FILE)) {
+      writeFileSync(STUDIO_EXPECTED_FILE, `${JSON.stringify(first, null, 2)}\n`)
+      console.log(`[seed-snapshot] wrote ${STUDIO_EXPECTED_FILE}`)
+    }
+    const expected = JSON.parse(readFileSync(STUDIO_EXPECTED_FILE, "utf8")) as Snapshot
     expect(diff(expected, first)).toEqual([])
   })
 })

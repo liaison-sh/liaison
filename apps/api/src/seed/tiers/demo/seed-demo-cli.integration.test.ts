@@ -199,6 +199,17 @@ describe("demo:seed, the CLI", () => {
     expect(asked?.owner).toBeUndefined()
   })
 
+  it("the services world seeds from the command line though the door never offers it", async () => {
+    const { exitCode } = await runSeedDemoCli(
+      ["--slug", ORG_SLUG, "--world", "studio", "--variant", "visitor", "--no-reset"],
+      { seedWorld: stubWorld },
+    )
+    expect(exitCode).toBe(0)
+    const asked = seen.at(-1)
+    expect(asked?.worldId).toBe("studio")
+    expect(asked?.variant).toBe("visitor")
+  })
+
   it("reads the persona password from the named environment variable", async () => {
     const name = "DEMO_SEED_CLI_TEST_PASSWORDS"
     process.env[name] = "from-the-environment-1"

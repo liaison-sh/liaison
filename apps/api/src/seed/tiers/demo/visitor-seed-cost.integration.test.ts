@@ -133,7 +133,31 @@ const SAAS_BASELINE = {
   statements: 8_177,
   transactions: 863,
 }
-const BASELINE = { products: PRODUCTS_BASELINE, saas: SAAS_BASELINE } as const
+/**
+ * The services world's visitor seed, measured on its own: its people and roles,
+ * clients, pipeline, seven projects with their tasks, time, plans, cost rates
+ * and who is away, every row through the product's writers.
+ *
+ * Measured 2026-11-13: 10 870 round trips in 1 048 transactions, 351 outbox
+ * events; set 5 above. The world's own layer is 3 838 of them in 75
+ * transactions (120 tasks through the task writer); the rest is the org,
+ * support and agent layers for its 24 people. That is 1.64 times the products
+ * world in round trips and 1.62 in transactions, so the products ratio below
+ * is not asserted for this world.
+ */
+const STUDIO_BASELINE = {
+  outboxEvents: 351,
+  queuedJobs: 0,
+  attentionEvents: 0,
+  notificationDeliveries: 0,
+  statements: 10_875,
+  transactions: 1_048,
+}
+const BASELINE = {
+  products: PRODUCTS_BASELINE,
+  saas: SAAS_BASELINE,
+  studio: STUDIO_BASELINE,
+} as const
 /** No world's seed costs more than this many times the products world's. */
 const WORLD_COST_RATIO = 1.5
 const STATEMENT_MARGIN = 1.005
@@ -319,5 +343,28 @@ describe("the software world's visitor seed cost", () => {
   it("costs at most one and a half times the products world in statements and transactions", () => {
     expect(saas.statements).toBeLessThanOrEqual(products.statements * WORLD_COST_RATIO)
     expect(saas.transactions).toBeLessThanOrEqual(products.transactions * WORLD_COST_RATIO)
+  })
+})
+
+describe("the services world's visitor seed cost", () => {
+  let studio: SeedCost
+
+  beforeAll(async () => {
+    for (const app of CATALOG_DEMO_APPS) await installFromDist(app, crypto.randomUUID())
+    // Warm, then measure.
+    await seedOnce("studio")
+    studio = (await seedOnce("studio")).cost
+    console.log(`[visitor-seed-cost] ${JSON.stringify({ studio })}`)
+  }, 2_400_000)
+
+  it("makes no more round trips than its baseline, and queues no job, attention row or delivery", () => {
+    expect(studio.statements).toBeLessThanOrEqual(STUDIO_BASELINE.statements * STATEMENT_MARGIN)
+    expect(studio.transactions).toBeLessThanOrEqual(
+      STUDIO_BASELINE.transactions + TRANSACTION_SLACK,
+    )
+    expect(studio.outboxEvents).toBeLessThanOrEqual(STUDIO_BASELINE.outboxEvents)
+    expect([studio.queuedJobs, studio.attentionEvents, studio.notificationDeliveries]).toEqual([
+      0, 0, 0,
+    ])
   })
 })

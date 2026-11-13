@@ -15,6 +15,7 @@ import { asCtx, base64, fakeCtx, json } from "./test-ctx"
 import {
   githubGetCommit,
   githubGetPullRequest,
+  githubList,
   githubListCommits,
   githubListIssues,
   githubListLabels,
@@ -83,13 +84,34 @@ const issue = (n: number, extra: Record<string, unknown> = {}) => ({
 })
 
 describe("manifest", () => {
-  it("is version 1.0.0", () => {
-    expect(MANIFEST.version).toBe("1.0.0")
+  it("is version 1.0.1", () => {
+    expect(MANIFEST.version).toBe("1.0.1")
   })
 
-  it("declares thirteen read tools on its scope, every one read-only and marking the turn", () => {
+  it("shows the agent seven reads; each one kept off its catalog names the visible read to use", () => {
+    const tools = MANIFEST.tools as Record<string, { agentVisible?: boolean; useInstead?: string }>
+    const visible = Object.keys(tools).filter((n) => tools[n]?.agentVisible !== false)
+    expect(visible.sort()).toEqual([
+      "github_get_commit",
+      "github_get_pull_request",
+      "github_list",
+      "github_list_commits",
+      "github_list_repos",
+      "github_read_file",
+      "github_search",
+    ])
+    for (const [name, t] of Object.entries(tools)) {
+      if (t.agentVisible !== false) continue
+      expect({ name, instead: visible.includes(t.useInstead ?? "") }).toEqual({
+        name,
+        instead: true,
+      })
+    }
+  })
+
+  it("declares fourteen read tools on its scope, every one read-only and marking the turn", () => {
     const tools = Object.entries(MANIFEST.tools as Record<string, Record<string, unknown>>)
-    expect(tools.length).toBe(13)
+    expect(tools.length).toBe(14)
     for (const [name, t] of tools) {
       expect({ name, readOnly: t.readOnly, taint: t.taintSource, trust: t.trustBoundary }).toEqual({
         name,
@@ -109,7 +131,7 @@ describe("manifest", () => {
       MANIFEST.provisioning.handler,
       MANIFEST.provisioning.verify,
     ]
-    expect(names.length).toBe(15)
+    expect(names.length).toBe(16)
     for (const name of names)
       expect(typeof (handlers as Record<string, unknown>)[name]).toBe("function")
   })
@@ -365,6 +387,44 @@ describe("tools", () => {
     expect(await githubListTags({ repo: "Maison-Example/site" }, asCtx(ok))).toEqual({ tags: [] })
   })
 
+  it("github_list answers each kind with that kind's own read, and an unknown kind reads nothing", async () => {
+    const routes = {
+      [`${R}/issues?state=all&labels=bug&per_page=100`]: json([
+        issue(1),
+        issue(2, { pull_request: {} }),
+      ]),
+      [`${R}/milestones?state=all&per_page=100`]: json([]),
+      [`${R}/labels?per_page=100`]: json([{ name: "bug", color: "red", description: null }]),
+      [`${R}/releases?per_page=100`]: json([]),
+      [`${R}/tags?per_page=100`]: json([{ name: "v1", commit: { sha: "c1" } }]),
+      [`${R}/contents`]: json([{ type: "dir", name: "docs", path: "docs", sha: "s", size: 0 }]),
+    }
+    const ctx = asCtx(fakeCtx({ routes }))
+    const kinds: Array<[string, Record<string, unknown>, () => Promise<unknown>]> = [
+      [
+        "issues",
+        { state: "all", labels: "bug" },
+        () => githubListIssues({ repo: REPO, state: "all", labels: "bug" }, ctx),
+      ],
+      ["milestones", {}, () => githubListMilestones({ repo: REPO }, ctx)],
+      ["labels", {}, () => githubListLabels({ repo: REPO }, ctx)],
+      ["releases", {}, () => githubListReleases({ repo: REPO }, ctx)],
+      ["tags", {}, () => githubListTags({ repo: REPO }, ctx)],
+      ["tree", {}, () => githubListTree({ repo: REPO }, ctx)],
+    ]
+    for (const [kind, extra, own] of kinds) {
+      const out: unknown = await githubList({ kind, repo: REPO, ...extra }, ctx)
+      const want: unknown = await own()
+      expect({ kind, out }).toEqual({ kind, out: want })
+      expect(out).not.toHaveProperty("error")
+    }
+    const calls = fakeCtx()
+    expect(await githubList({ kind: "wikis", repo: REPO }, asCtx(calls))).toMatchObject({
+      error: { code: "invalid_params", message: expect.stringContaining('not "wikis"') },
+    })
+    expect(calls.calls).toEqual([])
+  })
+
   it("a path with dot segments builds no other API path", async () => {
     const ctx = fakeCtx()
     for (const path of ["x/../../../user", "..", "docs/./a.md", "a/.../b"]) {
@@ -401,7 +461,7 @@ describe("tools", () => {
     ).toMatchObject({ content: "ok" })
   })
 
-  it("each of the thirteen tools answers its fixture and refuses another owner", async () => {
+  it("each of the fourteen tools answers its fixture and refuses another owner", async () => {
     const routes = {
       [`/orgs/${OWNER}/repos?per_page=100&type=all`]: json([
         {
@@ -551,6 +611,12 @@ describe("tools", () => {
         () => githubListTree({ repo: REPO, path: "docs", ref: "main" }, ctx),
         { entries: [{ path: "docs/a.md", type: "file" }] },
         () => githubListTree({ repo: "someone-else/site" }, ctx),
+      ],
+      [
+        "github_list",
+        () => githubList({ kind: "tree", repo: REPO, path: "docs", ref: "main" }, ctx),
+        { entries: [{ path: "docs/a.md", type: "file" }] },
+        () => githubList({ kind: "tags", repo: "someone-else/site" }, ctx),
       ],
       [
         "github_search",

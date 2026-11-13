@@ -99,6 +99,7 @@ const READ_ONLY: Record<string, string[]> = {
     "github_get_commit",
     "github_list_pull_requests",
     "github_get_pull_request",
+    "github_list",
     "github_list_issues",
     "github_list_milestones",
     "github_list_labels",

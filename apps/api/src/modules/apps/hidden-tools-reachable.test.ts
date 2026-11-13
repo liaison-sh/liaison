@@ -46,6 +46,13 @@ const HIDDEN_MANIFEST: Array<[dir: string, hidden: string, useInstead: string]> 
   ["bundled-apps/ads", "counts", "campaigns_list"],
   ["bundled-apps/ads", "pending_approvals_list", "kernel__approvals_list"],
   ["bundled-apps/invoicing", "pending_approvals_list", "kernel__approvals_list"],
+  ["bundled-apps/github", "github_list_issues", "github_list"],
+  ["bundled-apps/github", "github_list_pull_requests", "github_list"],
+  ["bundled-apps/github", "github_list_milestones", "github_list"],
+  ["bundled-apps/github", "github_list_labels", "github_list"],
+  ["bundled-apps/github", "github_list_releases", "github_list"],
+  ["bundled-apps/github", "github_list_tags", "github_list"],
+  ["bundled-apps/github", "github_list_tree", "github_list"],
 ]
 
 let panelReadRuns = 0

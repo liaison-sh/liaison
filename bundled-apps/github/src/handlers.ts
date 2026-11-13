@@ -5,6 +5,7 @@ import { provisionGithub, verifyGithub } from "./provisioning"
 import {
   githubGetCommit,
   githubGetPullRequest,
+  githubList,
   githubListCommits,
   githubListIssues,
   githubListLabels,
@@ -21,6 +22,7 @@ import {
 export {
   githubGetCommit,
   githubGetPullRequest,
+  githubList,
   githubListCommits,
   githubListIssues,
   githubListLabels,

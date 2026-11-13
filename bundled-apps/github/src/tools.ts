@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The 13 read-only agent tools, name for name with GitLab's. Each answers a
+// The read-only tools, name for name with GitLab's, plus `github_list`: the one listing the
+// agent sees for a repository's issues, pull requests, milestones, labels, releases, tags and
+// tree (each kind's own read stays a dashboard source, off the agent's catalog). Each answers a
 // compact shape or `{ error: { code, message } }` (never a throw: a sandboxed
 // throw reaches the agent redacted). `not_connected` when the caller has no
 // usable `github` connection, before any call; a repository outside the
@@ -369,7 +371,7 @@ export async function githubListIssues(
       if (!found) {
         throw new GithubParamError(
           "not_found",
-          `No milestone titled "${milestone}" in ${params.repo}; github_list_milestones lists them.`,
+          `No milestone titled "${milestone}" in ${params.repo}; github_list with kind milestones lists them.`,
         )
       }
       milestone = String(found.number)
@@ -509,7 +511,7 @@ export async function githubReadFile(
     if (Array.isArray(answer) || answer.type !== "file") {
       throw new GithubParamError(
         "not_a_file",
-        `${params.path} is not a file: github_list_tree lists a directory.`,
+        `${params.path} is not a file: github_list with kind tree lists a directory.`,
       )
     }
     if (answer.encoding !== "base64" || typeof answer.content !== "string") {
@@ -609,4 +611,44 @@ export async function githubSearch(params: { scope: string; query: string }, ctx
     })
     return withTruncation({ results }, truncated)
   })
+}
+
+/** The kinds `github_list` lists, each answered by that kind's own read. */
+const LIST_KINDS = {
+  issues: githubListIssues,
+  pull_requests: githubListPullRequests,
+  milestones: githubListMilestones,
+  labels: githubListLabels,
+  releases: githubListReleases,
+  tags: githubListTags,
+  tree: githubListTree,
+} as const
+
+export type GithubListKind = keyof typeof LIST_KINDS
+
+/** One repository listing of `kind`, with that kind's filters; the others are not sent. */
+export async function githubList(
+  params: {
+    kind: string
+    repo: string
+    state?: string
+    since?: string
+    labels?: string
+    milestone?: string
+    base?: string
+    path?: string
+    ref?: string
+  },
+  ctx: GithubCtx,
+) {
+  const { kind, ...rest } = params
+  if (!Object.hasOwn(LIST_KINDS, kind)) {
+    return toolError(
+      new GithubParamError(
+        "invalid_params",
+        `kind must be one of ${Object.keys(LIST_KINDS).join(", ")}, not "${kind}".`,
+      ),
+    )
+  }
+  return LIST_KINDS[kind as GithubListKind](rest as never, ctx)
 }

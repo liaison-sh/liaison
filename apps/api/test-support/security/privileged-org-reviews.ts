@@ -20,8 +20,6 @@ import type { OrgTraceReviews } from "./enumerate"
  * caller trace can stop at them: name → why.
  */
 export const TRUSTED_SOURCES: Record<string, string> = {
-  resolveOptOutToken:
-    "the opt-out link's own row: kernel.suppression_links matched on the sha256 of the 32-byte random token the link carries, which only the send path writes for that org and recipient (mail/commercial-footer.ts); the page acts for that org and that address fingerprint alone",
   claimForReplay:
     "a row of kernel.webhook_inbox (deny-all to the request roles), claimed by id AND org: written only by the inbound webhook route for an already verified delivery, under the org of the registration found under its URL key (webhooks/routes.ts dispatchVerifiedWebhook), or by the legacy drain from a retry job that route enqueued for the same org; the replay runs the handler for that org only (modules/webhooks/inbox.ts)",
   requireNodeCredential:
@@ -95,18 +93,6 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
-  "apps/api/src/modules/mail/commercial-send-record.ts#recordCommercialSend":
-    "the record of a commercial send after the provider accepted it: the org of the CommercialSend its two callers build themselves, the mail bridge from its own context org (commercialSendOf, kept in the bridge and never handed to the sandbox) and the composer send from the session org of the person sending (mail/service.ts); it writes one audit row and marks the notice for that org and that recipient only",
-  "apps/api/src/modules/mail/commercial-footer.ts#markArt14NoticeSent":
-    "marks the notice on the contacts of one recipient in the org it is given, inside recordCommercialSend's transaction for the org of its CommercialSend (the bridge's context org or the composer's session org); nothing of another org is read or written",
-  "apps/api/src/modules/contacts/prospect-retention.ts#runProspectRetention":
-    "the daily retention sweep: each org id comes from its own system read of the orgs that hold professional-interest contacts or an unread retention item (orgs being moved left out), and each org's row is refreshed in its own privileged transaction for that org only",
-  "apps/api/src/modules/contacts/companies.ts#companyIdsUnknownTo":
-    "stage-time check of a gated company call: requester is the staging actor, its org from that actor's own context; it reads only that org's companies and answers existence, nothing else",
-  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey":
-    "no product caller yet (an app's own retention will call it, tests only today): the org of the thread the caller names, matched again on every message row it reads and writes (messages.org_id = orgId)",
-  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
-    "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today): writes only the (orgId, app, feature) row it is given",
   "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
     "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":
@@ -283,8 +269,6 @@ export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
-  "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
-    "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today); what it hands on is the org id it was given, for that one org's cache and broadcast",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":
@@ -339,8 +323,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the demo tier's commerce layer: every write goes to opts.org.orgId, the org seedDemoOrg (a reviewed origin) returned after provisioning it and stamping its demo marker; the commerce factories receive it through the layer's SeedContext",
   "apps/api/src/seed/tiers/demo/seed-org.ts#seedDemoOrg":
     "the demo tier's org entry: an org already under the caller's slug is only read (its demo marker, fresh) to refuse it unless it is a demo org (demoMarkRefusal); every write uses the org the org factory's provisioning pass returns (provisionOrgShell), stamped with the demo marker before any account exists",
-  "apps/api/src/seed/tiers/demo/replace-demo-org.ts#replaceSeededDemoOrg":
-    "an operator's `liaison seed --tier lively --replace` or `seed --tier demo --variant visitor --reset` on a private box (refused in demo mode): the org under the slug the operator named is purged only when its row carries the demo marker, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/seed/tiers/lively/seed-lively.ts#seedLivelyLayers":
     "the lively tier's entry: every activity write goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the caller's slug and stamped with the demo marker",
   "apps/api/src/seed/tiers/standard/seed-standard.ts#seedStandardWorld":
@@ -397,8 +379,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "sweep: stale node rows; each closed in its own row's org and owner",
   "apps/api/src/modules/approvals/approving-reaper.ts#runApprovingReaper":
     "sweep: approval rows stuck in approving; each reaped in its own row's org",
-  "apps/api/src/modules/approvals/routed-reminders.ts#runRoutedReminderSweep":
-    "sweep: pending approval rows a day old; each org's rows are reminded in that org",
   "apps/api/src/modules/search/reindex.ts#runReindex":
     "reindex sweep: every org id (listOrgIds); each org's documents streamed in that org",
   "apps/api/src/modules/search/reindex.ts#setUpOrgsOf":
@@ -667,8 +647,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "index source registered by the tickets app: called by the indexer with each item's own org",
   "apps/api/src/lib/server.ts#message":
     "websocket frame handler: conn.orgId was set from the ticket verified at upgrade",
-  "apps/api/src/apps/mail/summarizers.ts#summarizeSuppressionRemove":
-    "approval summarizer registered by name: the approval pipeline calls it inside the approval's org",
   "apps/api/src/apps/tickets/summarizers.ts#summarizeTicketReply":
     "approval summarizer registered by name: the approval pipeline calls it inside the approval's org",
   "apps/api/src/modules/mcp/connection-service.ts#mintAccessToken":
@@ -697,10 +675,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "approval summarizer named in the tickets manifest (its summarizer field): registered per org and called for an approval of that org",
   "apps/api/src/modules/demo/routes.ts#GET /orgs/:orgId/status":
     "public demo status by design (demo/routes.ts:315-345): the URL org id is the v4 uuid the visitor was handed, a non-demo org is a 404, the body is a state word and timestamps",
-  "apps/api/src/modules/demo/worlds/saas/payments/deliver.ts#deliverDemoPaymentsEvent":
-    "the payments stand-in's event delivery: the org is either the one whose own sandbox call the stand-in just answered (provider.ts maybeDemoPaymentsResponse, past loadDemoOrg finding its demo marker, through standInDeps and scheduleDemoPaymentsEvent) or the visitor demo org a world beat runs for (payment-recovered.ts injectWorldEvent, ctx.orgId from runWorldBeatOnce); the bridge it builds runs inside withRlsContext for that same org",
-  "apps/api/src/modules/demo/worlds/saas/payments/harness-route.ts#demoPaymentsHarnessRoutes.POST /outside":
-    "the stand-in's QA write, mounted only when LIAISON_DEMO_PAYMENTS_FIXTURES is set (app.ts): the body's org id is read only after verifyHarnessContext accepts the box's harness signature, loadDemoOrg reads its demo marker, and nothing is written unless the org carries it",
 }
 
 /**

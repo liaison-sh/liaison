@@ -17,6 +17,8 @@ import { backfillWorkerModules, countInstallsWithoutWorkerModule } from "./worke
 
 const WITH = `wmbf-with-${Date.now().toString(36)}`
 const WITHOUT = `wmbf-without-${Date.now().toString(36)}`
+// Installed without a module but not the active version: listed, never an error.
+const SUPERSEDED = `wmbf-superseded-${Date.now().toString(36)}`
 const WORKER_JS = "export default { run() { return 1 } }\n"
 const work: string[] = []
 
@@ -45,9 +47,10 @@ const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex")
 
 describe("the Worker module back-fill", () => {
   beforeAll(async () => {
-    for (const [name, worker] of [
-      [WITH, true],
-      [WITHOUT, false],
+    for (const [name, worker, active] of [
+      [WITH, true, true],
+      [WITHOUT, false, true],
+      [SUPERSEDED, false, false],
     ] as const) {
       const bytes = pkg(name, worker)
       await putObject({
@@ -63,7 +66,7 @@ describe("the Worker module back-fill", () => {
           sha256: sha(bytes),
           installedBy: "00000000-0000-0000-0000-000000000000",
         })
-        await db.insert(appsActiveVersion).values({ name, version: "1.0.0" })
+        if (active) await db.insert(appsActiveVersion).values({ name, version: "1.0.0" })
       })
     }
   })
@@ -71,9 +74,9 @@ describe("the Worker module back-fill", () => {
   afterAll(async () => {
     await withSystemDb("wmbf-clean", async (db) => {
       await db.delete(appsActiveVersion).where(inArray(appsActiveVersion.name, [WITH, WITHOUT]))
-      await db.delete(appsInstalled).where(inArray(appsInstalled.name, [WITH, WITHOUT]))
+      await db.delete(appsInstalled).where(inArray(appsInstalled.name, [WITH, WITHOUT, SUPERSEDED]))
     })
-    for (const name of [WITH, WITHOUT])
+    for (const name of [WITH, WITHOUT, SUPERSEDED])
       await deleteObject(packageKey(name, "1.0.0")).catch(() => {})
     for (const d of work) rmSync(d, { recursive: true, force: true })
   })
@@ -84,6 +87,9 @@ describe("the Worker module back-fill", () => {
     expect(r.backfilled).toContain(`${WITH}@1.0.0`)
     expect(r.missing.map((m) => m.app)).toContain(`${WITHOUT}@1.0.0`)
     expect(r.missing.find((m) => m.app === `${WITHOUT}@1.0.0`)?.reason).toMatch(/no worker\.js/)
+    // Only the active version is one whose runs are refused.
+    expect(r.missing.find((m) => m.app === `${WITHOUT}@1.0.0`)?.active).toBe(true)
+    expect(r.missing.find((m) => m.app === `${SUPERSEDED}@1.0.0`)?.active).toBe(false)
     const rows = await withSystemDb("wmbf-read", (db) =>
       db
         .select({ name: appsInstalled.name, workerSha256: appsInstalled.workerSha256 })

@@ -13,7 +13,9 @@
 //                           tarball, either one only when its sha256 is the
 //                           row's. Nothing is built: a package that carried no
 //                           worker.js (built before Worker modules were
-//                           packaged) stays without, and is listed. Run at boot
+//                           packaged) stays without, and is listed: an error
+//                           for an active version (its runs are refused), info
+//                           for a superseded one (it never runs). Run at boot
 //                           (reconcile-catalog-boot.ts) and by every upkeep.
 //   countInstallsWithoutWorkerModule  the active versions still without one
 //                           (/healthz `appsWithoutWorkerModule`).
@@ -31,13 +33,14 @@ import { CORE_APP_NAMES } from "~/modules/apps/core/registry"
 export interface WorkerModuleBackfill {
   /** `<name>@<version>` given the worker.js of its own package. */
   backfilled: string[]
-  /** `<name>@<version>` whose package has none (or could not be read). */
-  missing: Array<{ app: string; reason: string }>
+  /** `<name>@<version>` whose package has none (or could not be read);
+   *  `active` when it is the app's active version, the one its runs use. */
+  missing: Array<{ app: string; reason: string; active: boolean }>
 }
 
 /** Enabled installed versions with no module, core apps aside. */
 async function rowsWithoutModule(): Promise<
-  Array<{ name: string; version: string; sha256: string }>
+  Array<{ name: string; version: string; sha256: string; active: boolean }>
 > {
   const rows = await withSystemDb("worker-module-backfill:rows", (db) =>
     db
@@ -45,8 +48,16 @@ async function rowsWithoutModule(): Promise<
         name: appsInstalled.name,
         version: appsInstalled.version,
         sha256: appsInstalled.sha256,
+        active: sql<boolean>`${appsActiveVersion.name} IS NOT NULL`,
       })
       .from(appsInstalled)
+      .leftJoin(
+        appsActiveVersion,
+        and(
+          eq(appsActiveVersion.name, appsInstalled.name),
+          eq(appsActiveVersion.version, appsInstalled.version),
+        ),
+      )
       .where(and(isNull(appsInstalled.workerSha256), isNull(appsInstalled.disabledAt))),
   )
   return rows.filter((r) => !CORE_APP_NAMES.has(r.name))
@@ -57,12 +68,13 @@ export async function backfillWorkerModules(): Promise<WorkerModuleBackfill> {
   const missing: WorkerModuleBackfill["missing"] = []
   for (const row of await rowsWithoutModule()) {
     const app = `${row.name}@${row.version}`
+    const { active } = row
     try {
       const { readInstalledPackage } = await import("~/modules/apps/package-store")
       const { packageWorkerModule } = await import("~/modules/apps/install-service")
       const pkg = await readInstalledPackage(row.name, row.version, row.sha256)
       if (!pkg) {
-        missing.push({ app, reason: "no stored package of this version" })
+        missing.push({ app, reason: "no stored package of this version", active })
         continue
       }
       let module: { workerSha256: string | null; workerModule: Uint8Array | null }
@@ -72,7 +84,7 @@ export async function backfillWorkerModules(): Promise<WorkerModuleBackfill> {
         rmSync(pkg.stagingDir, { recursive: true, force: true })
       }
       if (!module.workerSha256 || !module.workerModule) {
-        missing.push({ app, reason: "its package carries no worker.js" })
+        missing.push({ app, reason: "its package carries no worker.js", active })
         continue
       }
       const sha = createHash("sha256").update(module.workerModule).digest("hex")
@@ -91,16 +103,24 @@ export async function backfillWorkerModules(): Promise<WorkerModuleBackfill> {
       )
       backfilled.push(app)
     } catch (err) {
-      missing.push({ app, reason: (err as Error).message })
+      missing.push({ app, reason: (err as Error).message, active })
     }
   }
   if (backfilled.length > 0) {
     log.info({ backfilled }, "App versions given the Worker module of their own package")
   }
-  if (missing.length > 0) {
+  const refused = missing.filter((m) => m.active)
+  const superseded = missing.filter((m) => !m.active)
+  if (refused.length > 0) {
     log.error(
-      { missing, count: missing.length },
+      { missing: refused, count: refused.length },
       "App versions without a Worker module: on Workers or the sandbox service their runs are refused (app_worker_module_missing) until they are reinstalled from a package built by this release",
+    )
+  }
+  if (superseded.length > 0) {
+    log.info(
+      { superseded: superseded.map((m) => m.app) },
+      "Superseded app versions without a Worker module (never run; only a rollback to one would be refused)",
     )
   }
   return { backfilled, missing }

@@ -150,7 +150,6 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_listTemplates: "read",
   projects_portfolioRollup: "read",
   projects_tasksAggregate: "read",
-  projects_listTemplates: "read",
   projects_resolveAssignee: "read",
   projects_search: "read",
   projects_tasksByAssignee: "read",

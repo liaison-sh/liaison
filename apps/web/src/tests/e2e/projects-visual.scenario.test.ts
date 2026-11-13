@@ -734,6 +734,7 @@ test.describe("projects visual", () => {
       mask: [
         page.getByTestId("task-detail.provenance"),
         page.getByTestId("task-detail.created-by"),
+        page.getByTestId("task-detail.status-since"),
       ],
     })
   })

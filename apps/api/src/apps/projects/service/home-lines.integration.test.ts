@@ -182,6 +182,7 @@ describe("the month-close line", () => {
   it("a drafted reconcile for the month ends the line, a proposed one does not", async () => {
     const thread = await minimal.thread(orgId, biller)
     await seedReconciliation(orgId, {
+      now: new Date(),
       projectId: daily,
       createdBy: owner.userId,
       threadId: thread,
@@ -195,6 +196,7 @@ describe("the month-close line", () => {
       ),
     ).toHaveLength(1)
     await seedReconciliation(orgId, {
+      now: new Date(),
       projectId: daily,
       createdBy: owner.userId,
       threadId: thread,
@@ -235,6 +237,7 @@ describe("the month-close line across people", () => {
 
     const thread = await minimal.thread(orgId, drafter)
     await seedReconciliation(orgId, {
+      now: new Date(),
       projectId: project,
       createdBy: drafter,
       threadId: thread,

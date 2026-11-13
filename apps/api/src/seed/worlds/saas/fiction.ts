@@ -268,9 +268,9 @@ export const SAAS_CUSTOMERS: DemoCustomer[] = [
   }, // The colleagues at the named companies (3 at Arlon, 2 at Sauvan, Pont Neuf and Vauban, 4 at
   // Verrières), after each company's first contact, who stays the one the boards write to.
   {
-    key: "lea-arlon",
-    name: "Léa Fontaine",
-    email: "lea@maison-arlon.example",
+    key: "lise-arlon",
+    name: "Lise Morand",
+    email: "lise@maison-arlon.example",
     country: "FR",
     isVip: false,
   },
@@ -341,7 +341,7 @@ export const SAAS_CUSTOMER_COMPANIES: Readonly<Record<string, string>> = {
   "emma-ombre": "Café Ombre",
   "theo-saint-cyr": "Relais Saint-Cyr",
   "louise-verrieres": "Groupe Verrières",
-  "lea-arlon": "Maison Arlon",
+  "lise-arlon": "Maison Arlon",
   "herve-arlon": "Maison Arlon",
   "chloe-sauvan": "Hôtels Sauvan",
   "karim-pont-neuf": "Pont Neuf Bistrots",

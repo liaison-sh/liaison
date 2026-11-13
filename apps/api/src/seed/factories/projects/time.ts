@@ -54,7 +54,8 @@ export interface SeedTimePlanInput {
   timeboxMinutes?: number
   billerId?: string
   datedHours: boolean
-  sourceRepos: string[]
+  /** The repositories its reconcile reads, as the plan writer stores them. */
+  sourceRepos: Array<{ provider: string; repo: string }>
   /** Project timeboxes per period, civil dates. */
   periods: ReadonlyArray<{
     periodStart: string
@@ -162,21 +163,22 @@ export async function seedTaskTime(
   person: UserContext,
   rows: ReadonlyArray<{ taskId: string; projectId: string; workDate: string; minutes: number }>,
 ): Promise<void> {
+  if (rows.length === 0) return
   await asUser(person, async (tx) => {
-    for (const row of rows) {
-      await tx
-        .insert(taskTime)
-        .values({
+    await tx
+      .insert(taskTime)
+      .values(
+        rows.map((row) => ({
           orgId: ctx.orgId,
           taskId: row.taskId,
           projectId: row.projectId,
           userId: person.userId,
           workDate: row.workDate,
           minutes: row.minutes,
-          enteredVia: "field",
+          enteredVia: "field" as const,
           changedBy: person.userId,
-        })
-        .onConflictDoNothing()
-    }
+        })),
+      )
+      .onConflictDoNothing()
   })
 }

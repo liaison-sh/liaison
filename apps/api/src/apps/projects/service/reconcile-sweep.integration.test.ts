@@ -35,6 +35,7 @@ async function card(
   month: string,
 ): Promise<string> {
   return seedReconciliation(orgId, {
+    now: new Date(),
     projectId,
     createdBy: owner.userId,
     threadId,
@@ -158,6 +159,7 @@ describe("the hourly reconcile housekeeping", () => {
     const broken = await card("proposed", IDLE_PROPOSAL_DAYS + 1, "2026-04")
     await storeCard(broken)
     const fine = await seedReconciliation(otherOrg, {
+      now: new Date(),
       projectId: otherProject,
       createdBy: otherOwner.userId,
       threadId: otherThread,
@@ -182,6 +184,7 @@ describe("the hourly reconcile housekeeping", () => {
     expect(await sweepClaims()).toEqual(expect.objectContaining({ billed: 0 }))
     const claim = (sourceRef: string, ageMinutes: number) =>
       seedBillingClaim(orgId, {
+        now: new Date(),
         projectId,
         sourceRef,
         periodKey: "2026-10",

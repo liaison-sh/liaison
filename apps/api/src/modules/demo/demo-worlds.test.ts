@@ -10,6 +10,7 @@ import {
   DemoWorldsTestAccess,
   demoWorldOrgName,
   enabledDemoWorlds,
+  hasDoorTours,
 } from "~/modules/demo/demo-worlds"
 import { findDemoWorldPack, seedableDemoWorlds } from "~/seed/worlds"
 
@@ -21,11 +22,13 @@ afterEach(() => {
 })
 
 describe("enabled demo worlds", () => {
-  it("a studio entry in the env is dropped while no studio pack exists", () => {
-    expect(seedableDemoWorlds()).not.toContain("studio")
+  it("a studio entry in the env is dropped while the studio has a seed pack but no door tour", () => {
+    expect(seedableDemoWorlds()).toContain("studio")
+    expect(hasDoorTours("studio")).toBe(false)
+    expect(hasDoorTours("saas")).toBe(true)
     env.LIAISON_DEMO_WORLDS = "products,studio"
     expect(enabledDemoWorlds()).toEqual(["products"])
-    // Once its pack exists, the same env runs it.
+    // Once its door is there, the same env runs it.
     DemoWorldsTestAccess.setSeedable(["products", "saas", "studio"])
     expect(enabledDemoWorlds()).toEqual(["products", "studio"])
   })

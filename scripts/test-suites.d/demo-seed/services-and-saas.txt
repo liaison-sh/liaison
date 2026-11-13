@@ -54,3 +54,9 @@ src/seed/worlds/saas/stripe-world-reset.saas.integration.test.ts
 src/seed/tiers/demo/seed-personas-password.integration.test.ts
 src/seed/tiers/demo/seed-support-lock-wait.integration.test.ts
 src/seed/tiers/demo/visitor-turn-size.integration.test.ts
+# The services world's figures, read through the projects tools on a
+# freshly seeded workspace at the board date.
+src/seed/worlds/studio/world-figures.studio.integration.test.ts
+# The projects factory on the database: board numbers, timeboxes through
+# the task plan writer, time in one write, re-runs that adopt.
+src/seed/factories/projects/projects.integration.test.ts

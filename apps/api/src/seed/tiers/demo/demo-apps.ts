@@ -71,7 +71,7 @@ export const DEMO_BASELINE_APPS = ["mail", "knowledge", "contacts", "calendar"] 
 export const DEMO_WORLD_BASELINE_APPS: Readonly<Record<DemoWorldId, readonly string[]>> = {
   products: DEMO_BASELINE_APPS,
   saas: [...DEMO_BASELINE_APPS, "projects"],
-  studio: DEMO_BASELINE_APPS,
+  studio: [...DEMO_BASELINE_APPS, "projects"],
 }
 
 /**

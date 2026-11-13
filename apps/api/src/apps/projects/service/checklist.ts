@@ -652,6 +652,8 @@ export interface SetValidationsArgs extends ChecklistWriteBase {
    * leaves sendMessage to resolve one.
    */
   agentId?: string | null
+  /** Who signs an agent's note comment when a routine acted ("Routine <title>"). */
+  agentAuthorLabel?: string | null
 }
 
 function isHttpsUrl(value: string): boolean {
@@ -817,6 +819,9 @@ export async function setValidations(args: SetValidationsArgs): Promise<Checklis
         requiredScopes: args.commentRequiredScopes,
         authorType: actorKind === "agent" ? "agent" : "user",
         ...(actorKind === "agent" && args.agentId ? { agentId: args.agentId } : {}),
+        ...(actorKind === "agent" && args.agentAuthorLabel
+          ? { agentAuthorLabel: args.agentAuthorLabel }
+          : {}),
       })
       if (!posted.messageId) throw new Error("checklist_note_not_posted")
     }

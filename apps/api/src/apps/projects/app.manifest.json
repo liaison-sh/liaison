@@ -95,7 +95,7 @@
       }
     ]
   },
-  "version": "1.10.3",
+  "version": "1.10.4",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -251,6 +251,29 @@
           "type": "string",
           "required": false,
           "description": "Who created the task when an agent did: the routine (\"Routine <name>\"), the named agent, or \"<person>'s agent\". Null when a person created it. Column added by migration 0248."
+        },
+        "updatedByType": {
+          "type": "string",
+          "required": false,
+          "enum": ["user", "agent", "routine", "system"],
+          "description": "Who made the task's last edit through an update: a person, an agent for them, a routine. Null when not recorded. Column added by migration 0306."
+        },
+        "updatedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "The person the task's last edit ran as. Column added by migration 0306."
+        },
+        "updatedByRoutineId": {
+          "type": "uuid",
+          "required": false,
+          "description": "The routine that made the task's last edit, when one did. Column added by migration 0306."
+        },
+        "updatedByAt": {
+          "type": "date",
+          "required": false,
+          "description": "When the last edit named by updatedBy happened. Column added by migration 0306."
         },
         "release": {
           "type": "string",

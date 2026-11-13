@@ -60,7 +60,8 @@ describe("projects.manifest", () => {
     // 1.7.7: createProject takes the project's tasks (one approval for the whole plan).
     // 1.7.9: task labels
     // 1.10.3: flow templates list the scopes their steps need (the project read)
-    expect(projectsManifest.version).toBe("1.10.3")
+    // 1.10.4: tasks record who made their last edit (updatedBy*)
+    expect(projectsManifest.version).toBe("1.10.4")
   })
 
   it("projects.manifest.task-labels", () => {

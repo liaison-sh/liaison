@@ -68,6 +68,8 @@ async function makeEventRoutine(): Promise<typeof routinesTbl.$inferSelect> {
         visibility: "personal",
         createdByUserId: userId,
         createdByActorType: "user",
+        // Older than every message the cases seed: the reconciler skips events older than the routine.
+        createdAt: new Date(Date.now() - 60 * 24 * HOUR),
       })
       .returning(),
   )

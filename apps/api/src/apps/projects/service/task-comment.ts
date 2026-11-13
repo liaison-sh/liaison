@@ -21,6 +21,11 @@ export interface PostTaskCommentParams {
    * falls back to the person's own agent (sendMessage).
    */
   agentId?: string | null
+  /**
+   * Who signs an agent comment when the caller knows better than the acting agent: a routine's
+   * run signs as the routine ("Routine <title>"), like the messages it posts. Agent authorship only.
+   */
+  agentAuthorLabel?: string | null
 }
 
 export interface PostedTaskComment {
@@ -46,8 +51,9 @@ export async function postTaskComment(
   const authorType = params.authorType ?? "user"
   const task = await getTask({ tx, orgId, taskId, viewerId: userId })
   if (!task.threadId) throw new Error("task_has_no_thread")
-  let agentAuthorLabel: string | undefined
-  if (authorType === "agent" && params.agentId) {
+  let agentAuthorLabel: string | undefined =
+    authorType === "agent" ? params.agentAuthorLabel?.trim() || undefined : undefined
+  if (authorType === "agent" && !agentAuthorLabel && params.agentId) {
     // A named (role) agent speaks under its own name: "{User}'s agent" on a
     // Finance Desk post misnames the speaker. A personal agent is the person's.
     const [agent] = extractRows<{ kind: string; display_name: string | null }>(

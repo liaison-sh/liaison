@@ -253,6 +253,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_timePlanSet", "async"],
   ["projects_timeSettingsGet", "async"],
   ["projects_timeSettingsSet", "async"],
+  ["projects_timesheetExport", "async"],
+  ["projects_timesheetGet", "async"],
   ["projects_updateProject", "async"],
   ["projects_updateStatus", "async"],
   ["projects_updateTask", "async"],

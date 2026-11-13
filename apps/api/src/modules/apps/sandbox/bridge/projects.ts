@@ -2184,6 +2184,53 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return getBudget({ tx: txDb, orgId, scopes: callerScopes ?? [], projectId })
       })
     },
+    /** One project's dated sheet for a month: lead and finance only. */
+    projects_timesheetGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        month?: string
+      }
+      return typedCall(async () => {
+        const { getTimesheet } = await import("~/apps/projects/service/timesheet")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        const actor = await writeActor()
+        return getTimesheet({
+          tx: txDb,
+          orgId,
+          userId: actor.userId,
+          scopes: callerScopes ?? [],
+          projectId,
+          ...(params.month ? { month: params.month } : {}),
+        })
+      })
+    },
+    /** The dated sheet as a PDF or CSV file for its caller; a partial sheet asks once. */
+    projects_timesheetExport: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        projectId?: string
+        projectName?: string
+        month?: string
+        format?: string
+        acceptPartial?: boolean
+      }
+      return typedCall(async () => {
+        const { exportTimesheet } = await import("~/apps/projects/service/timesheet")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params)
+        const actor = await writeActor()
+        return exportTimesheet({
+          tx: txDb,
+          viewer: actor,
+          scopes: callerScopes ?? [],
+          projectId,
+          format: params.format,
+          acceptPartial: params.acceptPartial === true,
+          ...(params.month ? { month: params.month } : {}),
+        })
+      })
+    },
     /** The facts of one project's period, for a reconcile the person asked for. */
     projects_reconcileFacts: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as {

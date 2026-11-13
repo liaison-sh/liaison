@@ -3269,8 +3269,8 @@
     "set": "seed",
     "lang": "en",
     "say": "how much time went on the portal project this month",
-    "typed": ["time spent project", "project budget", "hours project"],
-    "any": ["projects__budget_get"],
+    "typed": ["time spent project", "project budget", "hours project", "timesheet"],
+    "any": ["projects__budget_get", "projects__timesheet_get"],
     "modelRun": true
   },
   {
@@ -3280,6 +3280,15 @@
     "say": "bill Atlas for October",
     "typed": ["reconcile", "month end billing", "invoice project month", "bill the month"],
     "any": ["projects__reconcile_propose", "projects__reconcile_facts"],
+    "modelRun": true
+  },
+  {
+    "id": "C34",
+    "set": "seed",
+    "lang": "en",
+    "say": "send the client the timesheet",
+    "typed": ["timesheet export", "feuille de temps", "hours report pdf"],
+    "any": ["projects__timesheet_export"],
     "modelRun": true
   },
   {

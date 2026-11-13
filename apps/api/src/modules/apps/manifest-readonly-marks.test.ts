@@ -59,6 +59,9 @@ const READ_ONLY: Record<string, string[]> = {
     "task_time_get",
     "budget_get",
     "capacity_get",
+    // The dated sheet, and its file staged for the caller only (no record is written).
+    "timesheet_get",
+    "timesheet_export",
     "days_off_list",
     "time_settings_get",
     // A reconcile's facts: the period's tasks under the asker's own rows, nothing stored.

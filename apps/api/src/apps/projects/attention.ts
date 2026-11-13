@@ -3,6 +3,7 @@ import type { AttentionItem } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { dueBucketSql } from "~/apps/projects/service/due-status"
+import { monthCloseItems } from "~/apps/projects/service/home-lines"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
@@ -31,6 +32,8 @@ export async function computeAttentionItems(
   callerUserId: string,
   /** People away today who name the caller next in line: their tasks come too, tagged. */
   forUserIds: readonly string[] = [],
+  /** Test seam for the month-close day; the feed passes nothing. */
+  now?: Date,
 ): Promise<AttentionItem[]> {
   const items: AttentionItem[] = []
   const people = [callerUserId, ...forUserIds.filter((id) => id !== callerUserId)]
@@ -152,6 +155,9 @@ export async function computeAttentionItems(
       metadata: { projectId: r.project_id, projectName: r.project_name, ...forUser(r) },
     })
   }
+
+  // The month-close line, on its one day of the month, to the biller.
+  items.push(...(await monthCloseItems(tx, orgId, callerUserId, forUserIds, now)))
 
   return items
 }

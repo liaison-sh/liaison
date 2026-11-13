@@ -172,6 +172,9 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_taskTimeGet: "read",
   projects_budgetGet: "read",
   projects_capacityGet: "read",
+  projects_timesheetGet: "read",
+  projects_timesheetExport:
+    "read (stages one file only the caller reads, like a dashboard PDF; writes no record)",
   projects_daysOffList: "read",
   projects_timeSettingsGet: "read",
   projects_reconcileFacts: "read",

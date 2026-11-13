@@ -1139,6 +1139,23 @@ export async function registerKernelJobs(): Promise<void> {
     const { runReconcileSweep } = await import("~/apps/projects/service/reconcile-sweep")
     await runReconcileSweep()
   })
+  // Company days off from the one shared calendar a settings admin chose, and this week's
+  // "more planned than fits" Home lines to leads (apps/projects/service/days-off-calendar.ts,
+  // home-lines.ts). Both read plans and the chosen calendar only, never time or activity.
+  await registerScheduledJob("kernel", "days-off-calendar", "23 3 * * *", async () => {
+    const { runDaysOffCalendarAll } = await import("~/apps/projects/service/days-off-calendar")
+    log.info(await runDaysOffCalendarAll(), "days_off_calendar")
+  })
+  // Time rows older than 36 months lose their person once a month, their cost frozen first, so
+  // totals and margin stay (apps/projects/service/task-time-anonymise.ts). By age alone.
+  await registerScheduledJob("kernel", "task-time-anonymise", "41 2 1 * *", async () => {
+    const { anonymiseOldTaskTime } = await import("~/apps/projects/service/task-time-anonymise")
+    log.info(await anonymiseOldTaskTime(), "task_time_anonymise")
+  })
+  await registerScheduledJob("kernel", "capacity-lines", "37 5 * * *", async () => {
+    const { raiseCapacityLinesAll } = await import("~/apps/projects/service/home-lines")
+    log.info(await raiseCapacityLinesAll(), "capacity_lines")
+  })
   // Away days from each person's own calendar: recurring series kept to 60 days ahead, and
   // leave-looking events that waited behind the open questions asked about.
   await registerScheduledJob("kernel", "calendar-away-refresh", "47 4 * * *", async () => {

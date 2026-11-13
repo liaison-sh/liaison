@@ -474,5 +474,25 @@
     "byAgent": "un agent",
     "byRoutine": "une routine",
     "bySystem": "Liaison"
+  },
+  "timesheet": {
+    "tab": "Heures datées",
+    "loading": "Chargement de la feuille datée",
+    "noAccess": "Seuls le responsable du projet et la finance voient cette feuille, sur un projet aux heures datées.",
+    "empty": "Aucune ligne sur la feuille datée ce mois-ci.",
+    "previous": "Mois précédent",
+    "next": "Mois suivant",
+    "exportPdf": "Exporter en PDF",
+    "exportCsv": "Exporter en CSV",
+    "partialAsk": "La feuille de ce mois est partielle. L'exporter avec sa ligne de couverture ?",
+    "exportAnyway": "Exporter telle quelle",
+    "saved": "Fichier prêt. Il s'ouvre dans un nouvel onglet.",
+    "date": "Date",
+    "person": "Personne",
+    "task": "Tâche",
+    "hours": "Heures",
+    "total": "Total",
+    "whoSees": "Qui la voit : le responsable du projet et la finance. Les saisies faites avant l'activation des heures datées restent à chaque personne.",
+    "not": "Ce n'est pas un registre légal du temps de travail, et elle ne rappelle rien à personne."
   }
 }

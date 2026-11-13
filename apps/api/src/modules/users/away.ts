@@ -699,6 +699,37 @@ export async function awayDays(
   return out
 }
 
+/**
+ * Who was next in line for `userId` on `date`: the active range covering that day names them,
+ * else the person's standing default, and only while that colleague is an active member of the
+ * org. Null when nobody was (or the person was not away that day). Ids only.
+ */
+export async function nextInLineOn(
+  orgId: string,
+  userId: string,
+  date: string,
+): Promise<string | null> {
+  return withPrivilegedDb(orgId, "away-next-in-line-on", async (tx) => {
+    const covering = extractRows<RangeRow>(
+      await tx.execute(drizzleSql`
+        SELECT ${RANGE_COLUMNS} FROM ${K}.away_ranges
+        WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_id = ${userId}::uuid
+          AND starts_on <= ${date}::date AND (ends_on IS NULL OR ends_on >= ${date}::date)`),
+    )
+      .filter((r) => isAwayOn(rangeDays(r), date))
+      .sort((a, b) => b.starts_on.localeCompare(a.starts_on))
+    if (covering.length === 0) return null
+    const next = covering[0]?.next_in_line_id ?? (await standingNextInLine(tx, userId))
+    if (next === null || next === userId) return null
+    const active = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM ${K}.users
+         WHERE id = ${next}::uuid AND org_id = ${orgId}::uuid AND status = 'active'`),
+    )
+    return active.length > 0 ? next : null
+  })
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------------------------

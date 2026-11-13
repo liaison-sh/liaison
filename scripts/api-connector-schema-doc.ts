@@ -56,6 +56,8 @@ export const FIELD_NOTES: Record<string, string> = {
     "https, written as its own normalized URL (no backslash, userinfo, `%2e`, query or fragment; an IPv4 host only as a dotted quad). http only for a loopback host, and only reachable when LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true. Changing its origin deletes the stored credentials.",
   redirectHosts:
     "Hosts a download from this API may be redirected to (a media or storage host), under a registrable domain: never an IP address or a public suffix. https only; credentials are never sent to them.",
+  linkHosts:
+    "Hosts an operation's approval link may point to besides the baseUrl host (the product's web app when its API has a host of its own), under a registrable domain: never an IP address or a public suffix. Nothing is requested from them.",
   headers:
     "Literal headers sent with every request, on the first hop only, like auth (an API's opt-in flag such as `X-ExperimentalApi: opt-in`). At most 10. Never a credential: auth, cookie, host, length, hop-by-hop, proxy and forwarding headers are refused, and a value is 1 to 256 characters with no line break, `{`, `}` or `$`.",
   "auth[type=apiKey].name": "Header or query parameter name the key is sent in.",
@@ -83,6 +85,20 @@ export const FIELD_NOTES: Record<string, string> = {
   "operations[].chain[].operation": "A read operation of this adapter that is not itself chained.",
   "operations[].chain[].params":
     "The step's params: a literal, or exactly `{field}`, an output field of the previous step.",
+  "operations[].approval":
+    "A write only: what its approval card shows besides the request, so the person approving sees the record it writes to. Display only, never part of the request.",
+  "operations[].approval.link":
+    "An https URL template to the target record, `{param}` placeholders (after the host) naming the write's params, each value URL-encoded. Its host is the baseUrl host or one of `linkHosts`. Left off the card when a placeholder's param is unset.",
+  "operations[].approval.linkLabel": "The link's label on the card (default: Open the record).",
+  "operations[].approval.context":
+    "A read of this adapter run at staging with the stored credentials, its last items quoted on the card as the record's current content (author, date and text fields when present). A failed read never blocks the write: the card says the preview could not be loaded.",
+  "operations[].approval.context.read": "A read operation of this adapter.",
+  "operations[].approval.context.params":
+    "The read's params: a literal, exactly `{param}` (the write param's typed value) or a template of the write's params, covering the read's required params.",
+  "operations[].approval.context.label":
+    "The heading of the quoted items (default: Current content).",
+  "operations[].approval.context.maxItems":
+    "How many of the read's last items the card quotes (default 8).",
   "operations[].role": "Fills a role of the fixed registry (see Roles).",
   "operations[].pagination[type=cursor].cursorPointer":
     "JSON pointer to the next cursor in the response; empty or missing stops.",

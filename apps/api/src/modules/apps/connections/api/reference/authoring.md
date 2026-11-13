@@ -335,6 +335,16 @@ The save checks these too, each with the path of the offending value:
   unless the deployment allows them.
 - **tokenUrl** (oauth2) is a URL on the `baseUrl` host or `tokenHost`, in the same
   normalized form, with no credentials or fragment.
+- **Approval** (a write only, optional). Declare it on a write that posts or
+  edits something a person must see in context (a forum reply, a comment, a
+  note on a record): `"approval": {"link": "https://app.example.com/t/{threadId}",
+  "linkLabel": "Open the thread", "context": {"read": "get_thread", "params":
+  {"threadId": "{threadId}"}, "label": "Thread so far", "maxItems": 8}}`. The
+  link is https, placeholders after the host naming the write's params, on the
+  `baseUrl` host or a host listed in the top-level `linkHosts`. The context
+  read is a read of this adapter, its params covering its required ones; at
+  staging its last `maxItems` items are quoted on the approval card, above the
+  full text of the draft. A failed context read never blocks the write.
 - **Param formats** (`format` on a string param: `email`, `date` as `YYYY-MM-DD`,
   `date-time` as RFC 3339 with an offset, `uri`, `uuid`) are enforced on every call,
   before any request (`invalid_params`).
@@ -389,6 +399,8 @@ marks the fields of one variant of a union.
 | `baseUrl` | string | yes | length ≤ 2048 | https, written as its own normalized URL (no backslash, userinfo, `%2e`, query or fragment; an IPv4 host only as a dotted quad). http only for a loopback host, and only reachable when LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS=true. Changing its origin deletes the stored credentials. |
 | `redirectHosts` | array | no | items ≤ 10 | Hosts a download from this API may be redirected to (a media or storage host), under a registrable domain: never an IP address or a public suffix. https only; credentials are never sent to them. |
 | `redirectHosts[]` | string | yes | pattern `^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`; length ≤ 253 |  |
+| `linkHosts` | array | no | items ≤ 10 | Hosts an operation's approval link may point to besides the baseUrl host (the product's web app when its API has a host of its own), under a registrable domain: never an IP address or a public suffix. Nothing is requested from them. |
+| `linkHosts[]` | string | yes | pattern `^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`; length ≤ 253 |  |
 | `auth` | object | yes | `type` one of `apiKey`, `bearer`, `basic`, `oauth2ClientCredentials` |  |
 | `auth[type=apiKey].in` | string | yes | one of `header`, `query` |  |
 | `auth[type=apiKey].name` | string | yes |  | Header or query parameter name the key is sent in. |
@@ -470,6 +482,15 @@ marks the fields of one variant of a union.
 | `operations[].chain[].operation` | string | yes | pattern `^[a-z][a-z0-9_]{0,63}$` | A read operation of this adapter that is not itself chained. |
 | `operations[].chain[].params` | object | yes | keys match `^[A-Za-z_][A-Za-z0-9_]{0,63}$` | The step's params: a literal, or exactly `{field}`, an output field of the previous step. |
 | `operations[].chain[].params.<key>` | string \| number \| boolean | no | string: length ≤ 2000 |  |
+| `operations[].approval` | object | no |  | A write only: what its approval card shows besides the request, so the person approving sees the record it writes to. Display only, never part of the request. |
+| `operations[].approval.link` | string | no | length ≤ 2048 | An https URL template to the target record, `{param}` placeholders (after the host) naming the write's params, each value URL-encoded. Its host is the baseUrl host or one of `linkHosts`. Left off the card when a placeholder's param is unset. |
+| `operations[].approval.linkLabel` | string | no | length 1..60 | The link's label on the card (default: Open the record). |
+| `operations[].approval.context` | object | no |  | A read of this adapter run at staging with the stored credentials, its last items quoted on the card as the record's current content (author, date and text fields when present). A failed read never blocks the write: the card says the preview could not be loaded. |
+| `operations[].approval.context.read` | string | yes | pattern `^[a-z][a-z0-9_]{0,63}$` | A read operation of this adapter. |
+| `operations[].approval.context.params` | object | no | default `{}`; keys match `^[A-Za-z_][A-Za-z0-9_]{0,63}$` | The read's params: a literal, exactly `{param}` (the write param's typed value) or a template of the write's params, covering the read's required params. |
+| `operations[].approval.context.params.<key>` | string \| number \| boolean | no | string: length ≤ 2000 |  |
+| `operations[].approval.context.label` | string | no | length 1..80 | The heading of the quoted items (default: Current content). |
+| `operations[].approval.context.maxItems` | integer | no | value 1..20 | How many of the read's last items the card quotes (default 8). |
 <!-- api-connector-schema:end -->
 
 ## Example: a WooCommerce shop [woocommerce]

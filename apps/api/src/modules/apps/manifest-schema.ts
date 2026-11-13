@@ -590,12 +590,15 @@ const toolSchema = {
     // to the summarizer as a `meta.context` extra arg. `params` maps the read
     // tool's params from the gated call's params by dot-path. This is how a
     // fulfillment approval shows the order number, customer, and line items
-    // without granting the summarizer any live bridge access.
+    // without granting the summarizer any live bridge access. `when` (a
+    // dot-path of the gated call's params) runs the read only when that path
+    // holds a value: a call that brings nothing to read skips it.
     summarizerContext: {
       type: "object",
       properties: {
         tool: { type: "string" },
         params: { type: "object", additionalProperties: { type: "string" } },
+        when: { type: "string", minLength: 1 },
       },
       required: ["tool", "params"],
       additionalProperties: false,

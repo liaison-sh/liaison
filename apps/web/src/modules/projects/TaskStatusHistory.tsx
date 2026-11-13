@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// How long a task has been in its status ("In Review · 3d ago", beside the status pill) and its
-// status history (newest first, collapsed until asked for): each change as "From → To", who made
-// it and when. Plain tertiary text: the history is a record, not an alarm.
+// How long a task has been in its status ("In Review · 3d ago") and its status history (newest
+// first, collapsed until asked for): each change as "From → To", who made it and when. One quiet
+// line under the task's meta row, plain tertiary text: the history is a record, not an alarm.
 import { ChevronDown, ChevronRight } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
 import { formatDateTime, relativeTime } from "~/lib/relative-time"
@@ -41,9 +41,12 @@ export const StatusSince: Component<{ status: string; since: string | null | und
   )
 }
 
-export const TaskStatusHistory: Component<{ transitions: TaskTransition[] | undefined }> = (
-  props,
-) => {
+export const TaskStatusHistory: Component<{
+  transitions: TaskTransition[] | undefined
+  /** The current status's label and when the task entered it (the "In … · …" line). */
+  status?: string | null
+  since?: string | null
+}> = (props) => {
   const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
   const label = (l: string | null) => l ?? i18n.t("projects.statusHistory.unknownStatus")
@@ -55,18 +58,23 @@ export const TaskStatusHistory: Component<{ transitions: TaskTransition[] | unde
   }
   return (
     <section data-testid="task-status-history" class="flex flex-col gap-1">
-      <button
-        type="button"
-        data-testid="task-status-history.toggle"
-        aria-expanded={open()}
-        onClick={() => setOpen((v) => !v)}
-        class="flex items-center gap-1 self-start text-[11px] uppercase tracking-[0.04em] text-text-tertiary hover:text-text-secondary"
-      >
-        <Show when={open()} fallback={<ChevronRight class="h-3 w-3" />}>
-          <ChevronDown class="h-3 w-3" />
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Show when={props.status}>
+          {(status) => <StatusSince status={status()} since={props.since} />}
         </Show>
-        {i18n.t("projects.statusHistory.title")}
-      </button>
+        <button
+          type="button"
+          data-testid="task-status-history.toggle"
+          aria-expanded={open()}
+          onClick={() => setOpen((v) => !v)}
+          class="flex items-center gap-1 self-start text-[11px] uppercase tracking-[0.04em] text-text-tertiary hover:text-text-secondary"
+        >
+          <Show when={open()} fallback={<ChevronRight class="h-3 w-3" />}>
+            <ChevronDown class="h-3 w-3" />
+          </Show>
+          {i18n.t("projects.statusHistory.title")}
+        </button>
+      </div>
       <Show when={open()}>
         <Show
           when={(props.transitions ?? []).length > 0}

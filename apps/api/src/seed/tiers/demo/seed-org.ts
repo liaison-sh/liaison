@@ -74,7 +74,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { organizations, roles, userRoles, users } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { personalAgentBaseHandle } from "~/modules/agent/directory/personal-agent"
-import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
+import { isDemoModeEnabled, isPublicDemoInstance } from "~/modules/demo/demo-mode"
 import {
   invalidateDemoMarker,
   loadDemoMarker,
@@ -228,9 +228,10 @@ export interface SeedDemoOrgOptions {
    * shape for a private QA box, where the reason the seeded world exists is
    * that a tester signs in AS the support agent and walks her desk.
    *
-   * So this is refused outright when demo mode is on, before a single row is
-   * written: a box that is the public demo never gets to hand out persona
-   * logins, whatever its operator passes. Everywhere else it is an explicit,
+   * So this is refused outright on a public demo box (`isPublicDemoInstance`:
+   * demo mode on, unless the box is declared private AND served on a loopback
+   * BASE_URL), before a single row is written: a box that is the public demo
+   * never gets to hand out persona logins, whatever its operator passes. Everywhere else it is an explicit,
    * per-run choice made on the command line (`--passwords <pw>`).
    *
    * It is applied as a straight `password_hash` rewrite rather than handed to
@@ -574,11 +575,12 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   // operator who asked for them on one has to be told so with the workspace
   // still exactly as it was.
   const personaPassword = opts.personaPassword?.trim() ?? ""
-  if (personaPassword !== "" && isDemoModeEnabled()) {
+  if (personaPassword !== "" && isPublicDemoInstance()) {
     throw new Error(
-      "seedDemoOrg: refusing to give the seeded people passwords on a box running in demo mode. " +
+      "seedDemoOrg: refusing to give the seeded people passwords on a public demo box. " +
         "Those seven accounts are public there, and a shared password on them is a front door. " +
-        "Seed without the passwords flag, or turn demo mode off on a private QA box.",
+        "Seed without the passwords flag, or declare a private QA box (LIAISON_PRIVATE_DEMO_BOX " +
+        "with a loopback BASE_URL), or turn demo mode off there.",
     )
   }
 

@@ -422,6 +422,14 @@ export const envSchema = z
     // deployment) and deliberately independent of NODE_ENV. Off by default, and
     // when it is off none of the above exists: the routes are not mounted.
     LIAISON_DEMO_MODE: envBoolean(false),
+    // LIAISON_PRIVATE_DEMO_BOX declares a demo-mode box PRIVATE: a throwaway
+    // QA box that runs the demo posture for a tester, reached only over an SSH
+    // tunnel, with no visitors. On such a box the seed may replace its own demo
+    // org and give the seeded people passwords, which the public demo refuses
+    // (`isPublicDemoInstance`). Declaring it is not enough: BASE_URL must also
+    // be a loopback origin, so a box with a public hostname stays public
+    // whatever this says. Off by default; never set it on a public instance.
+    LIAISON_PRIVATE_DEMO_BOX: envBoolean(false),
     // One-time secret the FIRST registration of a fresh instance must present
     // (see modules/auth/setup-token.ts). Unset: a value derived from JWT_SECRET
     // is printed in the app log at boot until the instance is bootstrapped.

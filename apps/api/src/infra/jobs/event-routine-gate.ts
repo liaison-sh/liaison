@@ -579,3 +579,16 @@ export async function ownerProjectTaskFilterMatches(
   )
   return projectTaskFilterMatches(filter, evt, task)
 }
+
+/**
+ * A routine chain this deep is dropped (0303): routines triggering one another (a routine's write
+ * firing another routine, whose write fires a third...) stop here. The subscriber drops the event,
+ * and the reconciler never replays it (routine-event-reconciler.ts).
+ */
+export const ROUTINE_EVENT_MAX_HOP = 5
+
+/** How many routine runs led to an event, from its metadata (`hop`, stamped by queue-event.ts). */
+export function eventHopOf(metadata: unknown): number {
+  const hop = (metadata as { hop?: unknown } | null | undefined)?.hop
+  return typeof hop === "number" && Number.isFinite(hop) && hop > 0 ? hop : 0
+}

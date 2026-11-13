@@ -11,6 +11,7 @@ import {
 } from "~/infra/events/event-bus"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import {
+  eventHopOf,
   isMailSenderFilterActive,
   isMailSenderFilterEvent,
   isOwnerScopedEvent,
@@ -23,6 +24,7 @@ import {
   ownerMailSenderFilterMatches,
   ownerProjectTaskFilterMatches,
   ownerTableRowFilterMatches,
+  ROUTINE_EVENT_MAX_HOP,
   type RoutineEventFilter,
   triggerEventOrigin,
 } from "~/infra/jobs/event-routine-gate"
@@ -242,7 +244,7 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   // routine, whose write fires a third...) stop at depth 5. queue-event stamps `metadata.hop`
   // (the firing run's hop + 1) on every event a routine run queues. The owner hears of it once an
   // hour per routine, on Home.
-  const hop = eventHopOf(evt)
+  const hop = eventHopOf(evt.metadata)
   if (hop >= ROUTINE_EVENT_MAX_HOP) {
     log.warn(
       { routineId: sub.routineId, event: sub.event, entityId: evt.entityId, hop },
@@ -383,18 +385,9 @@ async function handleRoutineEvent(sub: EventRoutineSub, evt: AppEvent): Promise<
   }
 }
 
-/** A routine chain deeper than this is dropped (0303). */
-export const ROUTINE_EVENT_MAX_HOP = 5
-
 /** Events whose every occurrence fires its own run: no coalesce window (0303). */
 function isUncoalescedEvent(evt: Pick<AppEvent, "app" | "entity" | "action">): boolean {
   return evt.app === "projects" && evt.entity === "task" && evt.action === "status_changed"
-}
-
-/** How many routine runs led to this event (`metadata.hop`, stamped by queue-event.ts). */
-function eventHopOf(evt: AppEvent): number {
-  const hop = (evt.metadata as { hop?: unknown } | null | undefined)?.hop
-  return typeof hop === "number" && Number.isFinite(hop) && hop > 0 ? hop : 0
 }
 
 /** Tells the routine's owner (attention pipeline) that a chain stopped at it, once an hour. */

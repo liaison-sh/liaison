@@ -5,6 +5,7 @@ import { Encrypter } from "age-encryption"
 import { z } from "zod"
 import { DEFAULT_APP_ORIGINS } from "~/lib/app-origins"
 import { envBoolean, parseEnvBoolean } from "~/lib/env-boolean"
+import { SHOPIFY_FAKE_ADMIN_ENV, shopifyFakeAdminGate } from "~/lib/shopify-fake-admin-gate"
 import { SHUTDOWN_BUDGET_DEFAULTS } from "~/lib/shutdown-budget"
 import {
   RESERVED_MODEL_DEFAULT,
@@ -490,6 +491,14 @@ export const envSchema = z
     // Off by default, and off on the public demo box too, where
     // LIAISON_DEMO_MODE already opens the same door.
     LIAISON_DEMO_SHOPIFY_FIXTURES: envBoolean(false),
+    // LIAISON_TEST_SHOPIFY_ADMIN_URL sends the Shopify app's Admin API requests
+    // (connect, disconnect cleanup, jobs, reads) to a FAKE at this one origin, with
+    // the store's token on them. Test box only: honoured only on a box labelled
+    // private (LIAISON_PRIVATE_DEMO_BOX) with a loopback BASE_URL, never in the
+    // managed edition, and the value must be a bare origin on the box's own network.
+    // Set anywhere else, the server refuses to start (lib/shopify-fake-admin-gate.ts,
+    // the boot check below). Unset by default; never set it on a real instance.
+    LIAISON_TEST_SHOPIFY_ADMIN_URL: z.preprocess(unsetIfEmpty, z.string().trim().optional()),
     // LIAISON_DEMO_PAYMENTS_FIXTURES turns on the card-payments stand-in's
     // signed QA route (modules/demo/worlds/saas/payments/), which writes an
     // outside object for a DEMO MARKED org on a box that is NOT the public demo
@@ -1603,6 +1612,32 @@ function loadEnv() {
 }
 
 export const env = loadEnv()
+
+// The fake Shopify Admin API (LIAISON_TEST_SHOPIFY_ADMIN_URL) sends a store's
+// token to another host, so it is refused at boot on anything but a labelled
+// private test box, whatever NODE_ENV says. Fail closed: a refused value stops
+// the process rather than being ignored. On, it says so once, here.
+{
+  const gate = shopifyFakeAdminGate({
+    value: env.LIAISON_TEST_SHOPIFY_ADMIN_URL,
+    declaredPrivate: env.LIAISON_PRIVATE_DEMO_BOX,
+    baseUrl: env.BASE_URL,
+    managed: env.LIAISON_EDITION === "managed",
+  })
+  if (gate.state === "refused") {
+    console.error(
+      `FATAL: ${SHOPIFY_FAKE_ADMIN_ENV} is set but refused: ${gate.reason}. ` +
+        "It is for a labelled private test box only (LIAISON_PRIVATE_DEMO_BOX and a loopback BASE_URL); unset it.",
+    )
+    process.exit(1)
+  }
+  if (gate.state === "on") {
+    console.warn(
+      `WARN: ${SHOPIFY_FAKE_ADMIN_ENV} is ON: the Shopify app's Admin API requests, with the store's token, ` +
+        `go to the fake at ${gate.origin} instead of Shopify. Test box only.`,
+    )
+  }
+}
 
 // Guard against misconfiguration: debug flags must not be enabled in production
 if (env.NODE_ENV === "production" && env.EXPOSE_REFRESH_TOKEN_IN_BODY) {

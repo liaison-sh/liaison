@@ -15,6 +15,7 @@ Monitoring inbox: keep out of the attention feed -> packages/shared/src/i18n/loc
 No SLA exempt inbox -> packages/shared/src/i18n/locales/en/tickets.json:171
 Save inbox -> apps/web/src/modules/tickets/TicketsInboxRouting.tsx:735
 Generate API key -> packages/shared/src/i18n/locales/en/tickets.json:160
+Key from an inbox Generate API key is scoped to that inbox (apiKeys.create inboxId) -> apps/api/src/apps/tickets/app.manifest.json:2527
 API key shown only once -> packages/shared/src/i18n/locales/en/tickets.json:152
 API keys section, public ingest endpoint -> apps/api/src/apps/tickets/app.manifest.json:3329
 Allowed origins, one https origin per line -> apps/api/src/apps/tickets/app.manifest.json:3381

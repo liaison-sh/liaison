@@ -23,7 +23,7 @@ Tickets arrive through inboxes. An inbox is a connected Gmail or IMAP mailbox, o
    - **No SLA: exempt this inbox's tickets from SLA**
 4. Click **Save**.
 
-For an API inbox, click **Generate API key**. The key is shown only once. The **API keys** section lists the keys that create tickets through the public ingest endpoint, with their **Allowed origins** (one https origin per line, empty means any origin).
+For an API inbox, click **Generate API key**. The key is scoped to that inbox: it can only create tickets there. The key is shown only once. The **API keys** section lists the keys that create tickets through the public ingest endpoint, with their **Allowed origins** (one https origin per line, empty means any origin).
 
 
 ## Hear about new tickets

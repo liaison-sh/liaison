@@ -1794,6 +1794,91 @@ function translateWriteError(err: unknown, name?: string): never {
   throw err
 }
 
+/** The create's own values, checked (its name, columns and backing), before any read. */
+function parseCreate(input: CreateTableInput) {
+  return {
+    name: cleanName(input.name),
+    columns: parseColumns(input.columns),
+    backing: parseBackingInput(input.backing),
+  }
+}
+
+/** Everything a create checks before it writes: the backing, the dashboard it is shared like,
+ *  the share scope that sharing needs. Its sharing. */
+async function prepareCreate(
+  t: RlsClient,
+  viewer: UserContext,
+  input: CreateTableInput,
+  columns: Column[],
+  backing: TableBacking | null,
+) {
+  if (backing) await checkBacking(t, viewer, backing, columns)
+  let orgAccess: OrgAccess = input.orgAccess ?? "none"
+  let grants: {
+    users: { userId: string; role: ShareRole }[]
+    roles: { roleId: string; role: ShareRole }[]
+  } = {
+    users: [],
+    roles: [],
+  }
+  if (input.fromDashboardId) {
+    const [dash] = await t
+      .select({ orgAccess: dashboards.orgAccess, ownerUserId: dashboards.ownerUserId })
+      .from(dashboards)
+      .where(and(eq(dashboards.id, input.fromDashboardId), eq(dashboards.orgId, viewer.orgId)))
+      .limit(1)
+    if (!dash) throw new TableError("not_found", "no such dashboard")
+    orgAccess = dash.orgAccess
+    const g = await listGrants(t, "kernel.dashboard", input.fromDashboardId)
+    grants = { users: g.users, roles: g.roles }
+    // The dashboard's owner keeps editing what they share (the creator owns the table).
+    if (dash.ownerUserId && dash.ownerUserId !== viewer.userId) {
+      grants.users = [
+        ...grants.users.filter((u) => u.userId !== dash.ownerUserId),
+        { userId: dash.ownerUserId, role: "editor" },
+      ]
+    }
+  }
+  const shared = orgAccess !== "none" || grants.users.length > 0 || grants.roles.length > 0
+  if (shared && !hasScope(SHARE_SCOPE, viewer.scopes) && !hasScope(ADMIN_SCOPE, viewer.scopes)) {
+    throw new TableError(
+      "forbidden",
+      `a table shared with others (as the dashboard is) needs ${SHARE_SCOPE}`,
+    )
+  }
+  return { orgAccess, grants }
+}
+
+/**
+ * Refuses a create that `createTable` would refuse, without writing anything: what an agent's
+ * call is checked against before its approval is staged, so nobody approves a change that would
+ * fail. A name another table the viewer can see already has is refused too (one the viewer
+ * cannot see is the write's own refusal).
+ */
+export async function checkCreateTable(
+  viewer: UserContext,
+  input: CreateTableInput,
+): Promise<void> {
+  if (!hasScope(WRITE_SCOPE, viewer.scopes)) {
+    throw new TableError("forbidden", `a table needs ${WRITE_SCOPE}`)
+  }
+  const { name, columns, backing } = parseCreate(input)
+  await withRlsContext(viewer, async (t) => {
+    await prepareCreate(t, viewer, input, columns, backing)
+    const [taken] = await t
+      .select({ id: dashboardTables.id })
+      .from(dashboardTables)
+      .where(
+        and(
+          eq(dashboardTables.orgId, viewer.orgId),
+          sql`lower(${dashboardTables.name}) = lower(${name})`,
+        ),
+      )
+      .limit(1)
+    if (taken) throw new TableError("conflict", `a table named '${name}' already exists`)
+  })
+}
+
 export async function createTable(
   viewer: UserContext,
   input: CreateTableInput,
@@ -1802,49 +1887,10 @@ export async function createTable(
   if (!hasScope(WRITE_SCOPE, viewer.scopes)) {
     throw new TableError("forbidden", `a table needs ${WRITE_SCOPE}`)
   }
-  const name = cleanName(input.name)
-  const columns = parseColumns(input.columns)
-  const backing = parseBackingInput(input.backing)
+  const { name, columns, backing } = parseCreate(input)
   return inTx(viewer, tx, (outer) =>
     inSavepoint(outer, async (t) => {
-      if (backing) await checkBacking(t, viewer, backing, columns)
-      let orgAccess: OrgAccess = input.orgAccess ?? "none"
-      let grants: {
-        users: { userId: string; role: ShareRole }[]
-        roles: { roleId: string; role: ShareRole }[]
-      } = {
-        users: [],
-        roles: [],
-      }
-      if (input.fromDashboardId) {
-        const [dash] = await t
-          .select({ orgAccess: dashboards.orgAccess, ownerUserId: dashboards.ownerUserId })
-          .from(dashboards)
-          .where(and(eq(dashboards.id, input.fromDashboardId), eq(dashboards.orgId, viewer.orgId)))
-          .limit(1)
-        if (!dash) throw new TableError("not_found", "no such dashboard")
-        orgAccess = dash.orgAccess
-        const g = await listGrants(t, "kernel.dashboard", input.fromDashboardId)
-        grants = { users: g.users, roles: g.roles }
-        // The dashboard's owner keeps editing what they share (the creator owns the table).
-        if (dash.ownerUserId && dash.ownerUserId !== viewer.userId) {
-          grants.users = [
-            ...grants.users.filter((u) => u.userId !== dash.ownerUserId),
-            { userId: dash.ownerUserId, role: "editor" },
-          ]
-        }
-      }
-      const shared = orgAccess !== "none" || grants.users.length > 0 || grants.roles.length > 0
-      if (
-        shared &&
-        !hasScope(SHARE_SCOPE, viewer.scopes) &&
-        !hasScope(ADMIN_SCOPE, viewer.scopes)
-      ) {
-        throw new TableError(
-          "forbidden",
-          `a table shared with others (as the dashboard is) needs ${SHARE_SCOPE}`,
-        )
-      }
+      const { orgAccess, grants } = await prepareCreate(t, viewer, input, columns, backing)
       let inserted: DashboardTableRow
       try {
         inserted = await t.transaction(async (sp) => {
@@ -1967,6 +2013,70 @@ export function applyColumnOps(
 }
 
 /** Changes a table's name, description, agent switch or columns (an editor's change applies at once). */
+/** Everything a change checks before it writes (access, version, name, columns, backing):
+ *  the table as loaded, the columns to set, the backing after the change. */
+async function prepareUpdate(
+  t: RlsClient,
+  viewer: UserContext,
+  id: string,
+  input: UpdateTableInput,
+) {
+  const loaded = await loadTable(t, viewer, id)
+  if (!loaded.canEdit) {
+    throw new TableError("forbidden", `changing this table needs editor access and ${WRITE_SCOPE}`)
+  }
+  if (loaded.row.version !== input.ifVersion) {
+    throw new TableError(
+      "version_conflict",
+      `the table is at version ${loaded.row.version}, not ${input.ifVersion}`,
+    )
+  }
+  const set: Partial<typeof dashboardTables.$inferInsert> = {}
+  if (input.name !== undefined) set.name = cleanName(input.name)
+  if (input.description !== undefined) {
+    if (input.description !== null && input.description.length > 2000) {
+      throw new TableError("invalid_request", "a description is at most 2,000 characters")
+    }
+    set.description = input.description
+  }
+  if (input.agentWritesNeedApproval !== undefined) {
+    set.agentWritesNeedApproval = input.agentWritesNeedApproval
+  }
+  if (input.columns) {
+    const next = applyColumnOps(
+      loaded.columns,
+      loaded.row.droppedColumns as unknown as Column[],
+      input.columns,
+    )
+    set.columns = next.columns as unknown as Record<string, unknown>[]
+    set.droppedColumns = next.dropped as unknown as Record<string, unknown>[]
+  }
+  const backing =
+    input.backing !== undefined
+      ? parseBackingInput(input.backing)
+      : parseBacking(loaded.row.backing)
+  if (input.backing !== undefined) set.backing = backing
+  const ownColumns = (set.columns as unknown as Column[] | undefined) ?? loaded.columns
+  if (backing && input.backing !== undefined) await checkBacking(t, viewer, backing, ownColumns)
+  else if (backing && input.columns) {
+    // A columns-only change checks only its own keys against the read-through ones: a field
+    // the parent retired since must not block every later column change.
+    const clash = overlayCollision(backing, ownColumns)
+    if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
+  }
+  return { loaded, set, backing }
+}
+
+/** Refuses a change that `updateTable` would refuse, without writing anything (checked before
+ *  an agent's approval is staged). */
+export async function checkUpdateTable(
+  viewer: UserContext,
+  id: string,
+  input: UpdateTableInput,
+): Promise<void> {
+  await withRlsContext(viewer, (t) => prepareUpdate(t, viewer, id, input))
+}
+
 export async function updateTable(
   viewer: UserContext,
   id: string,
@@ -1975,52 +2085,7 @@ export async function updateTable(
 ): Promise<TableInfo> {
   return inTx(viewer, tx, (outer) =>
     inSavepoint(outer, async (t) => {
-      const loaded = await loadTable(t, viewer, id)
-      if (!loaded.canEdit) {
-        throw new TableError(
-          "forbidden",
-          `changing this table needs editor access and ${WRITE_SCOPE}`,
-        )
-      }
-      if (loaded.row.version !== input.ifVersion) {
-        throw new TableError(
-          "version_conflict",
-          `the table is at version ${loaded.row.version}, not ${input.ifVersion}`,
-        )
-      }
-      const set: Partial<typeof dashboardTables.$inferInsert> = {}
-      if (input.name !== undefined) set.name = cleanName(input.name)
-      if (input.description !== undefined) {
-        if (input.description !== null && input.description.length > 2000) {
-          throw new TableError("invalid_request", "a description is at most 2,000 characters")
-        }
-        set.description = input.description
-      }
-      if (input.agentWritesNeedApproval !== undefined) {
-        set.agentWritesNeedApproval = input.agentWritesNeedApproval
-      }
-      if (input.columns) {
-        const next = applyColumnOps(
-          loaded.columns,
-          loaded.row.droppedColumns as unknown as Column[],
-          input.columns,
-        )
-        set.columns = next.columns as unknown as Record<string, unknown>[]
-        set.droppedColumns = next.dropped as unknown as Record<string, unknown>[]
-      }
-      const backing =
-        input.backing !== undefined
-          ? parseBackingInput(input.backing)
-          : parseBacking(loaded.row.backing)
-      if (input.backing !== undefined) set.backing = backing
-      const ownColumns = (set.columns as unknown as Column[] | undefined) ?? loaded.columns
-      if (backing && input.backing !== undefined) await checkBacking(t, viewer, backing, ownColumns)
-      else if (backing && input.columns) {
-        // A columns-only change checks only its own keys against the read-through ones: a field
-        // the parent retired since must not block every later column change.
-        const clash = overlayCollision(backing, ownColumns)
-        if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
-      }
+      const { loaded, set, backing } = await prepareUpdate(t, viewer, id, input)
       let saved: DashboardTableRow
       try {
         saved = await t.transaction(async (sp) => {

@@ -5,10 +5,17 @@ import { extractRows, type RlsClient, type RlsTx } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { readProjectLevels, remapChecklistValidations } from "./checklist"
 import { dealTargetStatusForMove, refuseDealAsSubtask, syncDealOutcome } from "./deals"
+import { fieldsForProject, lockProjectFields, readProjectFields, sameFields } from "./fields"
 import { resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import { MAX_TASK_DEPTH } from "./task-depth"
 import { loadTaskDetails } from "./task-detail"
+import {
+  recordTransitions,
+  type TransitionActor,
+  type TransitionInput,
+  transitionActorFor,
+} from "./transitions"
 
 export { MAX_TASK_DEPTH } from "./task-depth"
 
@@ -220,6 +227,8 @@ export interface MoveTaskArgs {
   afterTaskId?: string | null
   /** Stored as the deal's lost reason when this move closes a deal as lost. */
   lostReason?: string | null
+  /** Who made the change, for the transitions (default: from the run, else the person). */
+  via?: TransitionActor
 }
 
 export interface MoveTaskResult {
@@ -292,6 +301,11 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
     if (targetProjectId && task.project_id !== targetProjectId) {
       await ensureProjectMutableForTasks(innerTx, orgId, task.project_id)
       await ensureProjectMutableForTasks(innerTx, orgId, targetProjectId)
+      // The values move with the tasks: hold off a definition change on either side (in a fixed
+      // order) until they have.
+      for (const id of [task.project_id, targetProjectId].sort()) {
+        await lockProjectFields(innerTx, id, "write-values")
+      }
       // Only a ROOT task may cross projects — moving a child alone would split its
       // tree across projects. Move the whole subtree by re-rooting the task.
       if (task.parent_task_id !== null) {
@@ -302,7 +316,12 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
         )
       }
       // Collect the moving subtree (the task + all descendants) with each one's terminal-ness.
-      const subtree = extractRows<{ id: string; status_terminal: boolean }>(
+      const subtree = extractRows<{
+        id: string
+        status_id: string
+        status_terminal: boolean
+        fields: Record<string, unknown> | null
+      }>(
         await innerTx.execute(drizzleSql`
           WITH RECURSIVE moving AS (
             SELECT id, status_id FROM ${projectsRel("tasks")}
@@ -312,8 +331,9 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
             JOIN moving m ON t.parent_task_id = m.id
             WHERE t.org_id = ${orgId}::uuid
           )
-          SELECT m.id, COALESCE(s.terminal, false) AS status_terminal
+          SELECT m.id, m.status_id, COALESCE(s.terminal, false) AS status_terminal, t.fields
           FROM moving m
+          JOIN ${projectsRel("tasks")} t ON t.id = m.id
           LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = m.status_id
         `),
       )
@@ -334,6 +354,24 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
       // number collides with a destination task holding it, and leaves the
       // destination counter handing out numbers moved tasks already hold. The
       // display key therefore changes on a cross-project move (ERB-35 -> BUG-n).
+      // Field values: a value the destination declares a field it does not fit (another type,
+      // other choices) is put aside under HIDDEN_FIELDS_KEY, so it is never read as the
+      // destination's field; values of keys the destination does not declare stay (reads skip
+      // them). The destination's required fields are not enforced on a move.
+      // Tombstones included: a value a removed field would not fit is put aside too.
+      const targetFields = await readProjectFields(innerTx, orgId, targetProjectId)
+      const hiddenByTask = new Map<string, string[]>()
+      const transitions: TransitionInput[] = []
+      for (const node of subtree) {
+        const { fields: nextFields, hidden } = fieldsForProject(node.fields ?? {}, targetFields)
+        hiddenByTask.set(node.id, hidden)
+        if (!sameFields(nextFields, node.fields ?? {})) {
+          await innerTx.execute(drizzleSql`
+            UPDATE ${projectsRel("tasks")} SET fields = ${JSON.stringify(nextFields)}::jsonb
+            WHERE id = ${node.id}::uuid AND org_id = ${orgId}::uuid
+          `)
+        }
+      }
       for (const node of subtree) {
         const newStatusId = await pickTargetStatusId(
           innerTx,
@@ -357,6 +395,12 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
               updated_at = now()
           WHERE id = ${node.id}::uuid AND org_id = ${orgId}::uuid
         `)
+        transitions.push({
+          taskId: node.id,
+          projectId: targetProjectId,
+          fromStatusId: node.status_id,
+          toStatusId: newStatusId,
+        })
       }
       // A deal moved between pipelines keeps its rows; a task moved into a
       // pipeline becomes a deal. Its outcome follows the stage it landed on.
@@ -377,6 +421,9 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
         action: "moved",
         entityId: taskId,
         data: {
+          fromStatusId: task.status_id,
+          toStatusId: movedRow.status_id,
+          hiddenFields: hiddenByTask.get(taskId) ?? [],
           ...movedDetail,
           id: taskId,
           projectId: targetProjectId,
@@ -391,6 +438,9 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
         actorType: "user",
         orgId,
       })
+      // Every moved task's status was remapped into the destination: one transition each
+      // (the subtree's included), the destination's project id on them.
+      await recordTransitions(innerTx, orgId, transitions, args.via ?? transitionActorFor(actor))
       return {
         id: movedRow.id,
         number: movedRow.number,
@@ -577,6 +627,8 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
       action: "moved",
       entityId: taskId,
       data: {
+        fromStatusId: task.status_id,
+        toStatusId: nextStatusId,
         ...movedDetail,
         id: taskId,
         projectId: task.project_id,
@@ -588,6 +640,20 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
       actorType: "user",
       orgId,
     })
+
+    await recordTransitions(
+      innerTx,
+      orgId,
+      [
+        {
+          taskId,
+          projectId: task.project_id,
+          fromStatusId: task.status_id,
+          toStatusId: nextStatusId,
+        },
+      ],
+      args.via ?? transitionActorFor(actor),
+    )
 
     const row = updated[0]!
     return {

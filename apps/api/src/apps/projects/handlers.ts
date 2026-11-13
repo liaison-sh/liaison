@@ -35,6 +35,9 @@ export interface ProjectsMethods {
   projects_listComments: (paramsJson: string) => Promise<string>
   projects_mergeTasks: (paramsJson: string) => Promise<string>
   projects_instantiateTemplate: (paramsJson: string) => Promise<string>
+  projects_setFields: (paramsJson: string) => Promise<string>
+  projects_saveTemplate: (paramsJson: string) => Promise<string>
+  projects_listTemplates: (paramsJson: string) => Promise<string>
   projects_addDependency: (paramsJson: string) => Promise<string>
   projects_attentionItems: (paramsJson: string) => Promise<string>
   projects_taskTimeSet: (paramsJson: string) => Promise<string>
@@ -1234,4 +1237,26 @@ export async function reconcileLineUpdate(params: unknown, ctx: ProjectsCtx): Pr
 
 export async function reconcileGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_reconcileGet(JSON.stringify(params ?? {})))
+}
+
+// Task field definitions and project templates: pass-throughs to their bridge methods.
+export async function setFields(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_setFields(JSON.stringify(params ?? {})))
+}
+
+export async function saveTemplate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_saveTemplate(JSON.stringify(params ?? {})))
+}
+
+export async function listTemplates(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_listTemplates(JSON.stringify(params ?? {})))
 }

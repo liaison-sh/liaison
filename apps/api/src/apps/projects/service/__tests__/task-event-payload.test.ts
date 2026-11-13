@@ -123,7 +123,10 @@ describe("projects:task event payloads carry the full row", () => {
     expect(typeof data.completedAt).toBe("string")
     expect(data.priority).toBe("normal")
     expect(data.projectId).toBe(p.projectId)
-    expect(data.changedFields).toEqual(["statusLabel"])
+    // What changed, in the input vocabulary: the resolved status, with the one it left.
+    expect(data.changedFields).toEqual(["statusId"])
+    expect(data.fromStatusId).toBe(p.todo)
+    expect(data.toStatusId).toBe(p.done)
   })
 
   it("a same-project move carries the full row after the write", async () => {

@@ -6,6 +6,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient, type RlsTx } from "~/db"
 import type { ChecklistStatus } from "./checklist-status"
+import { HIDDEN_LINK_LABEL, parseStoredFields, readerScopes, visibleTaskFields } from "./fields"
 import { formatTaskKey } from "./task-key"
 import { loadTaskLabels, type TaskLabel } from "./task-labels"
 
@@ -52,6 +53,10 @@ export interface Task {
   timeboxMinutes?: number | null
   realTotalMinutes?: number
   isMilestone?: boolean
+  /** The task's values of the project's active fields, in definition order (fields.ts). */
+  fields: Record<string, unknown>
+  /** When the task entered its current status (time in status); null where not selected. */
+  statusEnteredAt: string | null
 }
 
 export interface DbTaskRow {
@@ -77,6 +82,10 @@ export interface DbTaskRow {
   created_by_agent_label?: string | null
   created_at: Date | string
   updated_at: Date | string
+  fields?: unknown
+  status_entered_at?: Date | string | null
+  /** The project's field definitions (projects.task_fields), joined by the reads that map fields. */
+  task_fields?: unknown
 }
 
 export interface TaskSummary extends Task {
@@ -136,6 +145,35 @@ export function taskFromRow(r: DbTaskRow): Task {
     createdAt: toIsoNonNull(r.created_at),
     updatedAt: toIsoNonNull(r.updated_at),
     labels: [],
+    fields: visibleTaskFields(parseStoredFields(r.task_fields), r.fields, null),
+    statusEnteredAt: toIso(r.status_entered_at ?? null),
+  }
+}
+
+/**
+ * Hides, in place, the label of every link value whose app the reader may not open (the
+ * dashboard tables' rule). Only link values are objects, so nothing else is touched; the reader's
+ * scopes are read once, and only when a link value is present.
+ */
+export async function maskLinkFields(
+  tx: RlsClient | RlsTx,
+  items: ReadonlyArray<{ fields: Record<string, unknown> }>,
+): Promise<void> {
+  const hasLink = items.some((t) =>
+    Object.values(t.fields).some((v) => typeof v === "object" && v !== null && !Array.isArray(v)),
+  )
+  if (!hasLink) return
+  const scopes = await readerScopes(tx)
+  const sees = (app: string) =>
+    app === "kernel" || scopes.some((s) => s === "*" || s === app || s.startsWith(`${app}:`))
+  for (const t of items) {
+    for (const [k, v] of Object.entries(t.fields)) {
+      if (typeof v !== "object" || v === null || Array.isArray(v)) continue
+      const app = (v as { app?: unknown }).app
+      if (typeof app === "string" && !sees(app)) {
+        t.fields[k] = { ...(v as Record<string, unknown>), label: HIDDEN_LINK_LABEL }
+      }
+    }
   }
 }
 
@@ -201,6 +239,7 @@ export async function loadTaskDetails(
         t.description, t.assignee_id, t.priority, t.due_date, t.start_date,
         t.position, t.blocked, t.completed_at, t.thread_id, t.created_by,
         t.created_at, t.updated_at, t.release, t.created_by_agent_label,
+        t.fields, t.status_entered_at, pr.task_fields,
         u.id AS assignee_user_id, u.name AS assignee_name, u.avatar_url AS assignee_avatar_url,
         cu.name AS created_by_name,
         pr.key AS project_key,
@@ -216,6 +255,7 @@ export async function loadTaskDetails(
   const byId = new Map(rows.map((r) => [r.id, taskSummaryFromRow(r)]))
   const labels = await loadTaskLabels(tx, orgId, [...byId.keys()])
   for (const [id, row] of byId) row.labels = labels.get(id) ?? []
+  await maskLinkFields(tx, [...byId.values()])
   const out: TaskSummary[] = []
   for (const id of taskIds) {
     const row = byId.get(id)

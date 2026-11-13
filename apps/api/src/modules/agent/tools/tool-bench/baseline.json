@@ -2126,22 +2126,26 @@
     },
     "projects__create": {
       "desc": 1277,
-      "schema": 724
+      "schema": 854
     },
     "projects__createProject": {
       "desc": 523,
-      "schema": 844
+      "schema": 956
     },
     "projects__delete": {
       "desc": 164,
       "schema": 51
     },
+    "projects__fields_set": {
+      "desc": 767,
+      "schema": 262
+    },
     "projects__get": {
-      "desc": 656,
+      "desc": 921,
       "schema": 86
     },
     "projects__instantiate_template": {
-      "desc": 153,
+      "desc": 296,
       "schema": 88
     },
     "projects__labels_archive": {
@@ -2202,11 +2206,19 @@
     },
     "projects__tasks_byProject": {
       "desc": 540,
-      "schema": 593
+      "schema": 701
+    },
+    "projects__template_save": {
+      "desc": 643,
+      "schema": 245
+    },
+    "projects__templates_list": {
+      "desc": 204,
+      "schema": 9
     },
     "projects__update": {
       "desc": 404,
-      "schema": 333
+      "schema": 413
     },
     "projects__update_project": {
       "desc": 638,

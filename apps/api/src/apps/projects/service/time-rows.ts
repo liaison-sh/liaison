@@ -3,7 +3,7 @@
 // they reach other people: turning dated hours on tells everyone with entries on
 // the project once on Home. It runs after the person's transaction commits (it
 // reads committed state), on the privileged handle. Moves and merges carry the
-// rows in the mover's own transaction, in the database (migration 0318: the
+// rows in the mover's own transaction, in the database (migration 0319: the
 // tasks trigger and app_projects.merge_task_time). Nothing here reads activity
 // on a schedule, and no row's minutes are ever shown to anyone but their author.
 import { sql as drizzleSql } from "drizzle-orm"

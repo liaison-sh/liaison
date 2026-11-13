@@ -116,6 +116,8 @@ describe("ProjectsHome live cross-project tasks", () => {
       })
     updated(["description"])
     updated(["priority", "startDate"])
+    // A task field value (`fields.<key>`): the cross-project list does not show fields.
+    updated(["fields.serial"])
     notifyEntityChange({
       key: "projects:task",
       app: "projects",

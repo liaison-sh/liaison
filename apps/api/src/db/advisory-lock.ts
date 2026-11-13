@@ -44,3 +44,11 @@ export function assertTransactionScoped(db: unknown, what: string): void {
 export function advisoryXactLock(name: string) {
   return drizzleSql`SELECT pg_advisory_xact_lock(${advisoryLockKey(name)})`
 }
+
+/**
+ * `SELECT pg_advisory_xact_lock_shared(...)` for `name`, in the same namespace: holders of the
+ * shared lock run together and wait for (or hold off) the one exclusive holder of `name`.
+ */
+export function advisoryXactLockShared(name: string) {
+  return drizzleSql`SELECT pg_advisory_xact_lock_shared(${advisoryLockKey(name)})`
+}

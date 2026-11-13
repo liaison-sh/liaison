@@ -148,22 +148,24 @@ describe("event-routine subscriber (A7)", () => {
     await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash, status)
       VALUES (${member}, ${org}, 'origin-71e2@test.com', 'Member', 'x', 'active') ON CONFLICT DO NOTHING`
     try {
+      // A family the owner gate does not cover (a project task is gated by its owner's
+      // read since task fields ride in the event): this test is about the origin only.
       await registerEventRoutineSubscription({
         routineId: "R-IN",
         orgId: org,
-        event: "projects:task:moved",
+        event: "tickets:ticket:updated",
       })
       await registerEventRoutineSubscription({
         routineId: "R-OUT",
         orgId: org,
         event: "shopify:inventory:low",
       })
-      setDeclaredEmits(org, "projects", new Set(["task:moved"]))
+      setDeclaredEmits(org, "tickets", new Set(["ticket:updated"]))
       setDeclaredEmits(org, "shopify", new Set(["inventory:low"]))
       await _publishEventInternal({
-        app: "projects",
-        entity: "task",
-        action: "moved",
+        app: "tickets",
+        entity: "ticket",
+        action: "updated",
         orgId: org,
         entityId: "t1",
         actorType: "user",

@@ -412,6 +412,72 @@ describe("moving and merging across the line", () => {
   })
 })
 
+describe("status changes and templates keep the time rules", () => {
+  it("a status change on a task with a timebox records its transition and keeps the time keys and rows", async () => {
+    const taskId = await newTask(on, "Ship the release")
+    await call("projects_updateTask", { taskId, timebox: "2 h" })
+    await call("projects_taskTimeSet", { taskId, time: "1 h" })
+    const done = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.project_statuses
+         WHERE project_id = ${on}::uuid AND terminal = true ORDER BY "order" LIMIT 1`),
+    )[0]?.id as string
+    const out = await call("projects_updateTask", { taskId, statusId: done })
+    expect(out.statusId).toBe(done)
+    expect(out.timeboxMinutes).toBe(120)
+    expect(out.realTotalMinutes).toBe(60)
+    const moves = extractRows<{ to_status_id: string }>(
+      await db.execute(drizzleSql`
+        SELECT to_status_id::text AS to_status_id FROM app_projects.task_transitions
+         WHERE task_id = ${taskId}::uuid ORDER BY "at", seq`),
+    )
+    expect(moves.at(-1)?.to_status_id).toBe(done)
+    expect(await rows(taskId)).toHaveLength(1)
+    const offTask = await newTask(off, "Plain status change")
+    const offDone = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.project_statuses
+         WHERE project_id = ${off}::uuid AND terminal = true ORDER BY "order" LIMIT 1`),
+    )[0]?.id as string
+    const plain = await call("projects_updateTask", { taskId: offTask, statusId: offDone })
+    expect(plain.statusId).toBe(offDone)
+    expect("timeboxMinutes" in plain).toBe(false)
+  })
+
+  it("a template instantiated with time and budgets turns the new project on, and its tasks take a timebox", async () => {
+    const saved = await call<{ id: string }>("projects_saveTemplate", {
+      name: "Sprint",
+      statuses: [{ label: "To do" }, { label: "Done", terminal: true }],
+      tasks: [{ title: "Kickoff", statusLabel: "To do" }],
+    })
+    const made = await call<{ projectId: string; timeBudgets?: boolean }>(
+      "projects_instantiateTemplate",
+      { templateId: saved.id, projectName: "Sprint one", timeBudgets: true },
+    )
+    expect(made.timeBudgets).toBe(true)
+    await awaitTimeFeatureSync(orgId)
+    const kickoff = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.tasks
+         WHERE project_id = ${made.projectId}::uuid AND title = 'Kickoff'`),
+    )[0]?.id as string
+    const planned = await call("projects_updateTask", { taskId: kickoff, timebox: "1 day" })
+    expect(planned.timeboxMinutes).toBe(420)
+    const plainMade = await call<{ projectId: string }>("projects_instantiateTemplate", {
+      templateId: saved.id,
+      projectName: "Sprint plain",
+      timeBudgets: false,
+    })
+    const plainTask = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_projects.tasks
+         WHERE project_id = ${plainMade.projectId}::uuid AND title = 'Kickoff'`),
+    )[0]?.id as string
+    const refused = await call("projects_updateTask", { taskId: plainTask, timebox: "1 day" })
+    expect(refused.error?.code).toBe("planning_off")
+  })
+})
+
 describe("plan, terms and period timeboxes", () => {
   it("fixed price and rate together are refused", async () => {
     const out = await call("projects_billingTermsSet", {

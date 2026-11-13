@@ -76,6 +76,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "app_projects.task_dependencies": "direct",
   "app_projects.task_labels": "direct",
   "app_projects.task_time": "direct",
+  "app_projects.task_transitions": "direct",
   "app_projects.tasks": "direct",
   "app_projects.time_settings": "direct",
   "app_tickets.api_keys": "direct",

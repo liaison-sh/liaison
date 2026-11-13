@@ -45,6 +45,7 @@ import {
 } from "~/apps/projects/service/tasks"
 import { awaitTimeFeatureSync, scheduleTimeBudgetsSync } from "~/apps/projects/service/time-feature"
 import { getTimePlan } from "~/apps/projects/service/time-plan"
+import { listTaskTransitions } from "~/apps/projects/service/transitions"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
@@ -108,6 +109,8 @@ const createTaskBodySchema = z.object({
   // Own label values: group name/id to value name/id, null clears.
   // Resolved in the service (label_not_found / label_archived list the valid values).
   labels: z.record(z.string(), z.string().nullable()).optional(),
+  // Values of the project's task fields; checked in the service (422 naming the field).
+  fields: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
 const updateTaskBodySchema = z.object({
@@ -121,6 +124,8 @@ const updateTaskBodySchema = z.object({
   blocked: z.boolean().optional(),
   release: z.string().nullable().optional(),
   labels: z.record(z.string(), z.string().nullable()).optional(),
+  // Field values to set; null empties one, keys left out are untouched.
+  fields: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
 /**
@@ -631,7 +636,8 @@ export const projectsRoutes = new Hono<AppEnv>()
           tx,
           orgId,
           actor,
-          input: { projectId, ...input },
+          // A person's create: the project's required fields apply.
+          input: { projectId, ...input, requireFields: true },
         }),
       )
       return success(c, result)
@@ -646,7 +652,8 @@ export const projectsRoutes = new Hono<AppEnv>()
       const taskId = await resolveTaskRef(tx, orgId, rawTaskId)
       const task = await getTask({ tx, orgId, projectId, taskId, viewerId })
       const checklist = await getChecklistStatus({ tx, orgId, taskId })
-      return { ...task, checklist }
+      const transitions = await listTaskTransitions(tx, orgId, taskId)
+      return { ...task, checklist, transitions }
     })
     return success(c, result)
   })

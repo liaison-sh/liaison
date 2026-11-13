@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "key": "all-apps:visibleTools",
+    "capability": "typed task fields and project templates: projects fields_set, template_save and templates_list"
+  },
+  {
+    "key": "phone:visibleTools",
+    "capability": "typed task fields and project templates: projects fields_set, template_save and templates_list"
+  }
+]

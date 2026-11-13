@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -169,6 +169,11 @@
           "default": true,
           "description": "Show the checklist summary (per-level counters) on Kanban cards."
         },
+        "taskFields": {
+          "type": "json",
+          "default": [],
+          "description": "The project's task field definitions, in order: [{ key, label, type, required?, choices?, currency?, linkTo? }] (the dashboard table column shape), plus `removed: true` tombstones of definitions taken off the project (their values stay, hidden). Column added by migration 0302."
+        },
         "group": {
           "type": "string",
           "required": false,
@@ -177,7 +182,7 @@
         "timeBudgetsOn": {
           "type": "boolean",
           "default": false,
-          "description": "Time and budgets on this project (migration 0312). Off by default; a pipeline never holds it."
+          "description": "Time and budgets on this project (migration 0317). Off by default; a pipeline never holds it."
         },
         "timeBudgetsChangedBy": "uuid?",
         "timeBudgetsChangedAt": "date?"
@@ -284,6 +289,7 @@
       "indexes": []
     },
     "tasks": {
+      "migrationOwnedColumns": ["statusEnteredAt"],
       "fields": {
         "projectId": {
           "type": "uuid",
@@ -363,17 +369,22 @@
         "timeboxMinutes": {
           "type": "integer",
           "required": false,
-          "description": "The task's timebox in minutes, above 0 (migration 0312)."
+          "description": "The task's timebox in minutes, above 0 (migration 0317)."
         },
         "isMilestone": {
           "type": "boolean",
           "default": false,
-          "description": "The task is a milestone (migration 0312)."
+          "description": "The task is a milestone (migration 0317)."
         },
         "externalRef": {
           "type": "string",
           "required": false,
           "description": "Bulk-import / webhook idempotency key (mirrors app_tickets.tickets.external_ref). Column added by migration 0009 (backfilled into the manifest here so db_findMany where-filtering and constraint declaration cover it); createTask does NOT dedup on it automatically — callers must pre-SELECT, same contract as tickets."
+        },
+        "fields": {
+          "type": "json",
+          "default": {},
+          "description": "The task's values of its project's task fields: { fieldKey: value }, each checked against the field's type. Column added by migration 0302."
         }
       },
       "constraints": {
@@ -386,6 +397,46 @@
           }
         ]
       }
+    },
+    "task_transitions": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "projectId": "uuid",
+        "taskId": {
+          "type": "uuid",
+          "references": {
+            "table": "tasks",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "fromStatusId": {
+          "type": "uuid",
+          "required": false,
+          "description": "The status left; null when the task was created into toStatusId."
+        },
+        "toStatusId": "uuid",
+        "actorType": {
+          "type": "string",
+          "enum": ["user", "agent", "routine", "system"]
+        },
+        "actorId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "agentId": {
+          "type": "uuid",
+          "required": false
+        },
+        "routineId": {
+          "type": "uuid",
+          "required": false
+        },
+        "at": "date"
+      },
+      "indexes": []
     },
     "task_checklist_items": {
       "rlsGovernedByMigration": true,
@@ -624,7 +675,7 @@
     "get": {
       "focusCore": true,
       "readOnly": true,
-      "description": "Get a project or task by id (id comes from a search result). Pass `id` (auto-resolved as project-or-task), or the explicit `taskId` / `projectId` when you know which kind it is. The task record carries a `threadId` for its discussion, but that id is participant-gated and is NOT usable on its own — read the conversation with `comments` and write to it with `comment`. A task also carries `checklist`: its checklist status (per-level counts and the blocking items); read the items with `checklist_get`. A task record carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`).",
+      "description": "Get a project or task by id (id comes from a search result). Pass `id` (auto-resolved as project-or-task), or the explicit `taskId` / `projectId` when you know which kind it is. The task record carries a `threadId` for its discussion, but that id is participant-gated and is NOT usable on its own — read the conversation with `comments` and write to it with `comment`. A task also carries `checklist`: its checklist status (per-level counts and the blocking items); read the items with `checklist_get`. A task record carries `labels`: its effective value per label group (own, or inherited from the nearest parent, with `inherited` and `inheritedFromKey`). A task also carries `fields` (its values of the project's task fields), `statusEnteredAt` (when it entered its current status) and `transitions` (its latest status changes, newest first: from, to, actor, at). A project carries `fields`: its task field definitions.",
       "searchKeywords": ["tâche", "task", "voir", "lire", "ouvrir", "read"],
       "requiredScopes": ["projects:projects:read"],
       "trustBoundary": "user",
@@ -681,6 +732,11 @@
           "checklistOnCards": {
             "type": "boolean",
             "description": "Optional: show the checklist summary on Kanban cards. Default true."
+          },
+          "fields": {
+            "type": ["array", "null"],
+            "items": { "type": "object" },
+            "description": "Optional task field definitions, in order (at most 40): each {key, label, type, required?, choices?, currency?, linkTo?}. key: a lowercase letter then up to 39 a-z, 0-9 or _. type: text, number, amount (needs currency, e.g. \"EUR\"), date, choice or choices (need choices), checkbox, person, link (optional linkTo {app, entityType}). Change them later with `fields_set`."
           },
           "tasks": {
             "type": "array",
@@ -810,6 +866,10 @@
       "params": {
         "type": "object",
         "properties": {
+          "fields": {
+            "type": ["object", "null"],
+            "description": "Optional values of the project's task fields (read them from get(projectId) `fields`): an object {fieldKey: value}. Value by field type: text a string, number/amount a number, date \"YYYY-MM-DD\", choice one of its choices, choices a list of them, checkbox true/false, person a user id, link {app, entityType, id, label}. A field marked required must be given here. An unknown key or a wrong value refuses the call with unknown_field / invalid_field naming the field."
+          },
           "labels": {
             "type": "object",
             "additionalProperties": {
@@ -944,6 +1004,10 @@
       "params": {
         "type": "object",
         "properties": {
+          "fields": {
+            "type": ["object", "null"],
+            "description": "Optional field values to set: {fieldKey: value} (types as for `create`); null empties a field; keys you leave out are untouched. A required field cannot be emptied. An unknown key or a wrong value refuses the call with unknown_field / invalid_field naming the field."
+          },
           "labels": {
             "type": "object",
             "additionalProperties": {
@@ -1149,6 +1213,10 @@
       "params": {
         "type": "object",
         "properties": {
+          "fields": {
+            "type": ["object", "null"],
+            "description": "Optional field filter: {fieldKey: value} keeps tasks whose field equals the value (a `choices` field: holds it; a link: its record id), {fieldKey: [v1, v2]} any of them, {fieldKey: null} an empty field. AND across keys. A key that is not a field of the project is refused with unknown_field. Each row carries `fields` (its values) and `statusEnteredAt` (when it entered its status)."
+          },
           "labels": {
             "type": "object",
             "additionalProperties": {
@@ -1621,7 +1689,7 @@
       }
     },
     "instantiate_template": {
-      "description": "Create a new project from a stored project template, materializing the template's full task tree. Provide the template id and a name for the new project.",
+      "description": "Create a new project from a stored project template: its status columns, its task fields and its full task tree (each task's priority, status and field values). Provide the template id (from `templates_list`) and a name for the new project. Required fields are not enforced on a template's tasks.",
       "searchKeywords": ["modèle", "gabarit", "template"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
@@ -1648,6 +1716,91 @@
           "templateId",
           "projectName"
         ]
+      }
+    },
+    "fields_set": {
+      "description": "Set a project's TASK FIELDS: the typed attributes every task of the project can carry (e.g. a 'Problem type' choice, a 'Serial number' text, an 'Amount' in EUR). Pass the FULL new list in order (replace-all): read the current one from get(projectId) `fields` first and send it back with your change. A field left out is taken off the project: the tasks keep their values, hidden, and putting the same key back restores them. Refused (nothing changes): an invalid list (invalid_fields), a new type or link target the values tasks hold do not fit (field_type_in_use: empty those values first), removing a choice option tasks still use (choice_in_use) unless `renames` maps it to a kept option, which rewrites those values. Not gated: the result is the project's fields.",
+      "searchKeywords": ["champ", "champs", "field", "fields", "attribut", "propriété", "custom"],
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "setFields",
+      "writesToTable": "app_projects.projects",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": ["string", "null"],
+            "description": "Project id. Optional when projectName is given (or the org has a single active project)."
+          },
+          "projectName": {
+            "type": ["string", "null"],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "fields": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "The full list of field definitions, in order (at most 40): each {key, label, type, required?, choices?, currency?, linkTo?}. key: a lowercase letter then up to 39 a-z, 0-9 or _ (stable: values are stored under it). type: text, number, amount (needs currency, e.g. \"EUR\"), date, choice or choices (need choices), checkbox, person, link (optional linkTo {app, entityType}). required: a task cannot be created or edited without it (imports, templates and moves are exempt)."
+          },
+          "renames": {
+            "type": ["object", "null"],
+            "description": "Optional choice options renamed: {fieldKey: {oldOption: newOption}}; the tasks' values are rewritten. newOption must be one of the field's new choices."
+          }
+        },
+        "required": ["fields"]
+      }
+    },
+    "template_save": {
+      "description": "Create or replace a PROJECT TEMPLATE: the status columns, task fields and task tree a new project starts with (`instantiate_template` builds a project from it). Either describe it (statuses, fields, tasks) or copy a project with `fromProjectId` (its statuses, fields and OPEN task tree; any of statuses / fields / tasks you also pass replaces the copied one). Pass `templateId` to replace an existing template. The whole template is checked first: a task's field value is checked against the template's fields (invalid_field / unknown_field), a status label against its statuses. Not gated: the result is the saved template with its structure.",
+      "searchKeywords": ["modèle", "gabarit", "template", "enregistrer", "save"],
+      "requiredScopes": ["projects:projects:write"],
+      "trustBoundary": "user",
+      "handler": "saveTemplate",
+      "writesToTable": "app_projects.project_templates",
+      "params": {
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": ["string", "null"],
+            "description": "Replace this template (from templates_list). Omit to create a new one."
+          },
+          "name": {
+            "type": "string",
+            "description": "The template's name (REQUIRED)."
+          },
+          "statuses": {
+            "type": ["array", "null"],
+            "items": { "type": "object" },
+            "description": "Status columns in board order: [{label, color?, terminal?}]. Omit for the default columns."
+          },
+          "fields": {
+            "type": ["array", "null"],
+            "items": { "type": "object" },
+            "description": "Task field definitions, as for `fields_set`."
+          },
+          "tasks": {
+            "type": ["array", "null"],
+            "items": { "type": "object" },
+            "description": "The task tree: [{title, description?, priority?, statusLabel?, fields?, children?}]. statusLabel names one of the template's statuses (default: the first open one); fields are values of the template's fields."
+          },
+          "fromProjectId": {
+            "type": ["string", "null"],
+            "description": "Copy this project's statuses, fields and open tasks (an archived project may be copied)."
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    "templates_list": {
+      "readOnly": true,
+      "description": "List the organisation's project templates: id, name and how many statuses, fields and tasks each carries. Use the id with `instantiate_template` (create a project from it) or `template_save` (replace it).",
+      "searchKeywords": ["modèle", "gabarit", "template", "templates", "liste"],
+      "requiredScopes": ["projects:projects:read"],
+      "trustBoundary": "user",
+      "handler": "listTemplates",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {}
       }
     },
     "add_dependency": {
@@ -2339,7 +2492,6 @@
         "line",
         "bill",
         "change",
-        "modifier",
         "ligne"
       ],
       "writesToTable": "app_projects.reconciliation_lines",
@@ -4621,6 +4773,7 @@
       "task:created",
       "task:updated",
       "task:moved",
+      "task:status_changed",
       "task:deleted",
       "task_checklist_item:created",
       "task_checklist_item:updated",

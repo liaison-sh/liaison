@@ -321,6 +321,15 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "withheld.keep()":
       "a predicate from the code constant WITHHELD_ROWS (withheld.ts): fixed SQL over alias t and schemaRef names, no value from a request or a row",
   },
+  "apps/api/src/apps/projects/service/reconcile-sweep.ts#sweepClaims": {
+    docs: 'schemaRef("app_invoicing") plus the literal table name documents, checked with to_regclass first',
+  },
+  "apps/api/src/apps/projects/service/reconcile.ts#readableProofRefs": {
+    rel: "schemaRef() and table name from the code constant OWNED_PROOFS, checked with to_regclass first",
+  },
+  "apps/api/src/apps/projects/service/time-settings.ts#selectedCalendars": {
+    rel: 'schemaRef("app_calendar") plus the literal table name calendars, checked with to_regclass first',
+  },
   "apps/api/src/apps/projects/service/time-plan.ts#keep": {
     col: 'a column name the calling code writes as a literal (keep("basis") and the like) to keep a plan or terms column unchanged in an upsert',
   },

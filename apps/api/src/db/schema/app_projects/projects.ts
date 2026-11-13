@@ -12,6 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core"
 import type { ValidationLevel } from "~/apps/projects/service/checklist-status"
+import type { ProjectField } from "~/apps/projects/service/fields"
 import { users } from "~/db/schema/kernel/users"
 
 export const appProjects = pgSchema("app_projects")
@@ -36,6 +37,8 @@ export const projects = appProjects.table(
     validationLevels: jsonb("validation_levels").$type<ValidationLevel[]>().notNull().default([]),
     // Show the checklist summary on Kanban cards (0106); on by default.
     checklistOnCards: boolean("checklist_on_cards").notNull().default(true),
+    // Per-project typed task field definitions (0302), removed ones kept as tombstones.
+    taskFields: jsonb("task_fields").$type<ProjectField[]>().notNull().default([]),
     // Sidebar group heading (0250): trimmed free text, NULL = ungrouped.
     group: text("group"),
     // A work project or a sales pipeline (0295). Migration-owned: written by

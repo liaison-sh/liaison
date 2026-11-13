@@ -21,8 +21,8 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
-const FIRST_NEW_TAG = "0316_projects_time_plan"
-const LAST_NEW_TAG = "0317_projects_reconcile"
+const FIRST_NEW_TAG = "0317_projects_time_plan"
+const LAST_NEW_TAG = "0318_projects_reconcile"
 
 const NEW_TABLES = [
   "billing_claims",

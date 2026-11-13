@@ -15,6 +15,7 @@ export {
 export { taskChecklistItems } from "./task-checklist-items"
 export { taskDependencies } from "./task-dependencies"
 export { taskLabels } from "./task-labels"
+export { taskTransitions } from "./task-transitions"
 export { tasks } from "./tasks"
 export {
   costRates,

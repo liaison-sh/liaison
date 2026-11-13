@@ -21,7 +21,7 @@ import { appProjects, projects } from "./projects"
 import { tasks } from "./tasks"
 
 /*
- * Time and budgets (migration 0312). The tables, their policies and the
+ * Time and budgets (migration 0317). The tables, their policies and the
  * definer functions app_projects.task_time_totals and
  * app_projects.project_time_cost are owned by the migration; these mirror it.
  * They are left out of the projects manifest's schema block on purpose: a

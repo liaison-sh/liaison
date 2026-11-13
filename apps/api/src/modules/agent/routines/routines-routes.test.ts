@@ -1243,6 +1243,68 @@ describe("routines-routes — /api/agent/routines", () => {
     })
   })
 
+  describe("GET /api/agent/routines?includeLastRun=1", () => {
+    it("adds each routine's latest run with its steps' states only, in one read; off by default", async () => {
+      const [ran, never] = await withPrivilegedDb(ORG_ID, "rt-last-run-seed", (tx) =>
+        tx
+          .insert(routinesTbl)
+          .values(
+            ["last-run-ran", "last-run-never"].map((name) => ({
+              orgId: ORG_ID,
+              ownerUserId: ALICE_ID,
+              name,
+              description: "x",
+              cron: "0 9 * * *",
+              timezone: "UTC",
+              prompt: "p",
+              scopes: [],
+              createdByUserId: ALICE_ID,
+              createdByActorType: "user" as const,
+            })),
+          )
+          .returning(),
+      )
+      await withPrivilegedDb(ORG_ID, "rt-last-run-rows", (tx) =>
+        tx.insert(routineRuns).values([
+          {
+            orgId: ORG_ID,
+            routineId: ran!.id,
+            ranAt: new Date(Date.now() - 5000),
+            status: "failed",
+            error: "older",
+          },
+          {
+            orgId: ORG_ID,
+            routineId: ran!.id,
+            ranAt: new Date(Date.now() - 1000),
+            status: "waiting",
+            error: "secret detail",
+            steps: [
+              { id: "a", type: "action", state: "done", note: "private note", output: { x: 1 } },
+              { id: "b", type: "wait", state: "waiting" },
+            ],
+          },
+        ]),
+      )
+      const headers = { Authorization: `Bearer ${aliceToken}` }
+      const plain: any = await (await app.request("/api/agent/routines", { headers })).json()
+      expect(plain.data.find((r: any) => r.id === ran!.id)).not.toHaveProperty("lastRun")
+
+      const res = await app.request("/api/agent/routines?includeLastRun=1", { headers })
+      expect(res.status).toBe(200)
+      const body: any = await res.json()
+      const row = body.data.find((r: any) => r.id === ran!.id)
+      expect(row.lastRun.status).toBe("waiting")
+      expect(row.lastRun.steps).toEqual([
+        { id: "a", type: "action", state: "done" },
+        { id: "b", type: "wait", state: "waiting" },
+      ])
+      expect(JSON.stringify(row.lastRun)).not.toContain("secret detail")
+      expect(JSON.stringify(row.lastRun)).not.toContain("private note")
+      expect(body.data.find((r: any) => r.id === never!.id).lastRun).toBeNull()
+    })
+  })
+
   // ----- PUT /:id/node-placement (P2-T04, L26) -------------------------------
   describe("PUT /api/agent/routines/:id/node-placement", () => {
     async function seedNodeRoutine(ownerUserId: string): Promise<string> {

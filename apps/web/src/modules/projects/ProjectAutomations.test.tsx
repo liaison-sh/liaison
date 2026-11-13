@@ -87,23 +87,7 @@ function setup(routines: unknown[]) {
   const api = {
     get: vi.fn(async (path: string) => {
       if (path === `/projects/${P_ID}`) return PROJECT
-      if (path === `/agent/routines?projectId=${P_ID}`) return routines
-      if (path === "/agent/routines/r-9/runs?limit=1") {
-        return [
-          {
-            id: "run-1",
-            routineId: "r-9",
-            ranAt: "2026-11-13T09:00:00Z",
-            status: "waiting",
-            durationMs: null,
-            errorMessage: null,
-            steps: (TEMPLATE.flow?.steps ?? []).map((st, i) => ({
-              id: st.id,
-              state: i === 0 ? "done" : "waiting",
-            })),
-          },
-        ]
-      }
+      if (path === `/agent/routines?projectId=${P_ID}&includeLastRun=1`) return routines
       if (path === "/agent/routines/templates") {
         return [
           TEMPLATE,
@@ -142,7 +126,7 @@ describe("ProjectAutomations", () => {
     await waitFor(() =>
       expect(screen.getByTestId("project-automations.row-r-1")).toBeInTheDocument(),
     )
-    expect(api.get).toHaveBeenCalledWith(`/agent/routines?projectId=${P_ID}`)
+    expect(api.get).toHaveBeenCalledWith(`/agent/routines?projectId=${P_ID}&includeLastRun=1`)
     expect(screen.getByTestId("project-automations.row-r-1").textContent).toContain(
       "When a task in Website moves to Done",
     )
@@ -284,12 +268,28 @@ describe("ProjectAutomations", () => {
 
   it("a row that ran shows its state dot, the time since, and its last run's progress strip", async () => {
     const api = setup([
-      { ...ROUTINE, id: "r-9", lastRunAt: new Date().toISOString(), lastRunStatus: "waiting" },
+      {
+        ...ROUTINE,
+        id: "r-9",
+        lastRunAt: new Date().toISOString(),
+        lastRunStatus: "waiting",
+        lastRun: {
+          id: "run-1",
+          ranAt: "2026-11-13T09:00:00Z",
+          status: "waiting",
+          steps: (TEMPLATE.flow?.steps ?? []).map((st, i) => ({
+            id: st.id,
+            state: i === 0 ? "done" : "waiting",
+          })),
+        },
+      },
     ])
     await waitFor(() =>
       expect(screen.getByTestId("project-automations.last-run-strip-r-9")).toBeInTheDocument(),
     )
-    expect(api.get).toHaveBeenCalledWith("/agent/routines/r-9/runs?limit=1")
+    // One request for the list and its last runs: no per-row run read.
+    expect(api.get).toHaveBeenCalledWith(`/agent/routines?projectId=${P_ID}&includeLastRun=1`)
+    expect(api.get.mock.calls.some(([p]) => String(p).includes("/runs"))).toBe(false)
     expect(screen.getByTestId("project-automations.last-run-dot-r-9").className).toContain(
       "var(--color-warning)",
     )

@@ -26,7 +26,6 @@ import {
   createRoutine,
   loadProjectRoutines,
   type RoutineRow,
-  type RoutineRunRow,
   type RoutineTemplateRow,
   routineLabel,
   updateRoutine,
@@ -81,27 +80,6 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
   const [routines, { refetch: refetchRoutines, mutate: setRoutines }] = createResource(
     projectId,
     (id) => loadProjectRoutines(api, id),
-  )
-  /** Each flow routine's last run, for its row's mini progress strip. */
-  const [lastRuns] = createResource(
-    () => (routines() ?? []).filter((r) => r.flow && r.lastRunAt),
-    async (rows) => {
-      const out: Record<string, RoutineRunRow> = {}
-      await Promise.all(
-        rows.map(async (r) => {
-          try {
-            const runs = await api.get<RoutineRunRow[]>(
-              `/agent/routines/${encodeURIComponent(r.id)}/runs?limit=1`,
-            )
-            const first = Array.isArray(runs) ? runs[0] : undefined
-            if (first) out[r.id] = first
-          } catch {
-            // The strip is a hint; the row stands without it.
-          }
-        }),
-      )
-      return out
-    },
   )
   const [templates] = createResource(async () => {
     try {
@@ -321,11 +299,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                           : i18n.t("projects.automations.neverRan")}
                       </span>
                     </span>
-                    <Show
-                      when={
-                        r.flow && (lastRuns()?.[r.id]?.steps ?? []).length > 0 && lastRuns()?.[r.id]
-                      }
-                    >
+                    <Show when={r.flow && (r.lastRun?.steps ?? []).length > 0 && r.lastRun}>
                       {(run) => (
                         <RunStrip
                           flow={r.flow as RoutineFlow}

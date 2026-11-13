@@ -69,6 +69,16 @@ describe("failedQueueRun", () => {
 })
 
 describe("judgePrChecks", () => {
+  const job = (name: string, conclusion: string, run: string, startedAt: string): CheckEntry => ({
+    __typename: "CheckRun",
+    name,
+    status: "COMPLETED",
+    conclusion,
+    detailsUrl: `https://github.com/o/r/actions/runs/${run}/job/1`,
+    startedAt,
+    workflowName: "ci",
+  })
+
   test("every required check green is green", () => {
     expect(judgePrChecks(GREEN).state).toBe("green")
   })
@@ -127,6 +137,40 @@ describe("judgePrChecks", () => {
     const red = { ...check("checks", "FAILURE"), startedAt: "2026-10-25T20:45:00Z" }
     const j = judgePrChecks([...GREEN.filter((c) => c.name !== "checks"), green, red])
     expect(j.state).toBe("red")
+  })
+
+  test("a workflow run superseded by a newer run drops out, matrix placeholders included", () => {
+    const others = GREEN.filter((c) => c.__typename === "CheckRun" && c.name !== "checks")
+    const cancelled = [
+      job("scope", "SUCCESS", "100", "2026-11-13T04:29:30Z"),
+      job(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub's literal unexpanded matrix name
+        "unit ${{ matrix.part }}/${{ needs.scope.outputs.of }}",
+        "CANCELLED",
+        "100",
+        "2026-11-13T04:29:40Z",
+      ),
+      job("checks", "FAILURE", "100", "2026-11-13T04:29:48Z"),
+    ]
+    const fresh = [
+      job("scope", "SUCCESS", "101", "2026-11-13T04:29:56Z"),
+      job("unit 1/2", "SUCCESS", "101", "2026-11-13T04:30:12Z"),
+      job("checks", "SUCCESS", "101", "2026-11-13T04:49:29Z"),
+    ]
+    expect(judgePrChecks([...others, ...cancelled, ...fresh]).state).toBe("green")
+    // While the newer run has not reached `checks` yet, the older run's result does not stand in.
+    expect(judgePrChecks([...others, ...cancelled, ...fresh.slice(0, 2)]).state).toBe("pending")
+  })
+
+  test("a failed job in the newest workflow run stays red", () => {
+    const j = judgePrChecks([
+      ...GREEN.filter((c) => c.__typename === "CheckRun" && c.name !== "checks"),
+      job("checks", "SUCCESS", "100", "2026-11-13T04:00:00Z"),
+      job("unit 1/2", "FAILURE", "101", "2026-11-13T04:10:00Z"),
+      job("checks", "FAILURE", "101", "2026-11-13T04:20:00Z"),
+    ])
+    expect(j.state).toBe("red")
+    expect(j.failing.map((c) => c.name)).toEqual(["unit 1/2", "checks"])
   })
 
   test("a failed commit status is red", () => {

@@ -41,6 +41,7 @@ export type CheckEntry =
       conclusion: string
       detailsUrl?: string
       startedAt?: string
+      workflowName?: string
     }
   | { __typename: "StatusContext"; context: string; state: string; targetUrl?: string }
 
@@ -59,24 +60,59 @@ export interface PrChecks {
   missing: string[]
 }
 
+type CheckRun = Extract<CheckEntry, { __typename: "CheckRun" }>
+
 /**
  * A check re-run on a new push (or after a cancelled run) reports again under
  * the same name; only its newest run speaks for the PR. Without this, a
  * superseded CANCELLED run kept a PR red after its re-run went green.
+ *
+ * A whole workflow run superseded by a newer run of the same workflow drops
+ * out first: a run cancelled before its matrix expanded reports jobs under
+ * names its successor never uses (`unit ${{ matrix.part }}/...`), so the
+ * per-name rule alone cannot retire them.
  */
 function newestCheckRuns(checks: CheckEntry[]): CheckEntry[] {
+  const runStart = new Map<string, string>()
+  const newestRun = new Map<string, string>()
+  const runKey = (c: CheckRun) => {
+    const run = runIdFromUrl(c.detailsUrl)
+    return c.workflowName && run ? { workflow: c.workflowName, run } : null
+  }
+  for (const c of checks) {
+    if (c.__typename !== "CheckRun") continue
+    const k = runKey(c)
+    if (!k) continue
+    const at = c.startedAt ?? ""
+    const prev = runStart.get(k.run)
+    if (prev === undefined || at > prev) runStart.set(k.run, at)
+  }
+  for (const c of checks) {
+    if (c.__typename !== "CheckRun") continue
+    const k = runKey(c)
+    if (!k) continue
+    const best = newestRun.get(k.workflow)
+    if (best === undefined || (runStart.get(k.run) ?? "") > (runStart.get(best) ?? ""))
+      newestRun.set(k.workflow, k.run)
+  }
+  const current = checks.filter((c) => {
+    if (c.__typename !== "CheckRun") return true
+    const k = runKey(c)
+    return !k || newestRun.get(k.workflow) === k.run
+  })
+
   const newest = new Map<string, number>()
-  checks.forEach((c, i) => {
+  current.forEach((c, i) => {
     if (c.__typename !== "CheckRun") return
     const prev = newest.get(c.name)
     if (prev === undefined) {
       newest.set(c.name, i)
       return
     }
-    const p = checks[prev] as Extract<CheckEntry, { __typename: "CheckRun" }>
+    const p = current[prev] as CheckRun
     if ((c.startedAt ?? "") >= (p.startedAt ?? "")) newest.set(c.name, i)
   })
-  return checks.filter((c, i) => c.__typename !== "CheckRun" || newest.get(c.name) === i)
+  return current.filter((c, i) => c.__typename !== "CheckRun" || newest.get(c.name) === i)
 }
 
 export function judgePrChecks(checks: CheckEntry[]): PrChecks {

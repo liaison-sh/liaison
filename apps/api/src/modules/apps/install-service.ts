@@ -68,7 +68,9 @@ import { reviewTriggerBody } from "~/modules/apps/trigger-review"
 import { type VerifyResult, verifyAppPackage } from "~/modules/apps/verify-package"
 import { isTransientDir, placeVersionDir, sweepTransientDirs } from "~/modules/apps/version-dir"
 import { versionsInUse } from "~/modules/apps/versions-in-use"
+import { remoteExecutorConfigured } from "~/modules/apps/workers/config"
 import { assertCustomAppRoom } from "~/modules/org/caps"
+import { templateModule } from "~/modules/pdf/sandbox-render"
 
 export interface InstallOptions {
   /** Local path to the `.liaisonapp` tarball to install. */
@@ -312,6 +314,21 @@ function readPdfTemplateBundles(
     }
     return { kind: tpl.kind, source: readFileSync(bundlePath, "utf8") }
   })
+}
+
+/**
+ * Build the Worker module of each template now (pdf/sandbox-render.ts
+ * templateModule), in the background, when renders may go to a remote
+ * executor: the first render then finds it. A failure is logged here and met
+ * again, loudly, by the first such render.
+ */
+function prebuildTemplateModules(app: string, templates: InstalledPdfTemplate[]): void {
+  if (!remoteExecutorConfigured()) return
+  for (const tpl of templates) {
+    void templateModule(tpl.source).catch((err) =>
+      log.error({ err, app, kind: tpl.kind }, "PDF template does not build as a Worker module"),
+    )
+  }
 }
 
 /** Every scope the manifest requests must appear in the admin's grant list. */
@@ -952,6 +969,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
       // bundle TEXT (not the manifest's .ts path) so registry-rehydrate can warm
       // the in-memory registry on boot.
       const pdfTemplates = readPdfTemplateBundles(manifest, versionDir)
+      prebuildTemplateModules(manifest.name, pdfTemplates)
 
       await withSystemDb("install-app", async (db) => {
         // A new custom app takes one of the org's `customApps`, under the org's
@@ -1281,6 +1299,7 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
       // Persist the new version's emitted sandbox PDF template bundles (sandboxed
       // execution → any app may ship them).
       const pdfTemplates = readPdfTemplateBundles(manifest, newVersionDir)
+      prebuildTemplateModules(manifest.name, pdfTemplates)
 
       // Record the new version's row (in place when this version was kept as the
       // previous one); the running version keeps its own.

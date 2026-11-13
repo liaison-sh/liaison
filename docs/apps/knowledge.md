@@ -69,6 +69,16 @@ An installed app can offer its own kind of synced source, for example a notes to
 
 Add one through the API: `GET /api/knowledge/synced-sources/kinds` lists the kinds you may add, and `POST /api/knowledge/synced-sources` with `appName`, `sourceKind` and `sourceConfig` adds a source. You need the app's read scope for that kind, and the config must match what the app asks for. Before every sync, Liaison checks again that the source's owner is still an active member and still holds that scope; if not, the sync stops and the source says why. The app can file the documents in folders of its own, shown as collections inside the source's collection; they follow renames and moves, and a folder that ends up empty is archived. To build such an app, see [Offer a knowledge source](../app-development.md#18-offer-a-knowledge-source).
 
+## Search and link files without syncing them
+
+Some apps let Knowledge reach their files without a copy. GitLab and Google Drive do.
+
+- **Search.** `search` also looks in GitLab (code and text files in the connected group) for people who hold `gitlab:repo:read`. Google Drive joins only once an admin turns it on with `PATCH /api/knowledge/sources/google-drive` and `{ "broadSearchEnabled": true }`; the same call with `false` turns a source off.
+- **Live links.** Ask your agent to "link the live pricing sheet, don't copy it". It finds the file, then stores a source link that always opens the current version (`source_link_create`). Verifying or refreshing a link asks the app again: a file that was deleted or is no longer shared with you turns the link **stale**. If the app cannot be reached, the link stays as it was and the agent says so.
+- **Reading.** An agent can read the text of a remote hit with `get`.
+
+Each search, link or read goes through your own connection to the app, so you only reach files you can open there.
+
 ## Keep documents verified
 
 1. On the Knowledge home, click **Needs review** to see documents that are flagged, stale, missing an owner or past their review date.

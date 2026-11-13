@@ -1,0 +1,25 @@
+{
+  "name": "google-drive",
+  "why": "The Drive folders and the picked files that in-tree kernel code synced go to the app's `folder` and `picked` source kinds (bundled-apps/google-drive/src/knowledge.ts), with the folder and the account they synced through in their config. Picked items and chosen shared drives stay where they are, on the connected accounts' metadata; imported files stay kernel files.",
+  "steps": [
+    {
+      "id": "picked-sources-to-kind",
+      "kind": "synced-sources-to-kind",
+      "sourceKind": "picked",
+      "folderRef": "liaison-picked-items",
+      "configFromColumns": {
+        "ref": "folder_ref",
+        "account": "source_account"
+      }
+    },
+    {
+      "id": "folder-sources-to-kind",
+      "kind": "synced-sources-to-kind",
+      "sourceKind": "folder",
+      "configFromColumns": {
+        "ref": "folder_ref",
+        "account": "source_account"
+      }
+    }
+  ]
+}

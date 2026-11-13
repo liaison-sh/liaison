@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test"
 import * as fs from "node:fs"
 import * as path from "node:path"
+import { mergeRegistryDir } from "../../test-support/registry-dir"
 
 const srcDir = path.resolve(__dirname, "..")
 
@@ -127,6 +128,11 @@ describe("db import enforcement", () => {
     // is for, read from the instance-wide install tables (apps_installed,
     // apps_active_version) for the run's org (its own install or the instance's).
     "modules/apps/sandbox/run-app.ts",
+    // The Worker modules the platform builds for code with no installed version
+    // (kernel.app_code_modules, system data): stored by org and source key when
+    // the code is saved or first runs remotely, read by sha for the loader's
+    // bundle route and the sandbox service's push, pruned by a kernel job.
+    "modules/apps/workers/adhoc-module.ts",
     "modules/apps/run-approved-handler.ts",
     // The sandbox rpc-bridge's per-capability factories (composed by rpc-bridge.ts).
     "modules/apps/sandbox/bridge/approvals.ts",
@@ -1561,6 +1567,17 @@ describe("db import enforcement", () => {
     // resource notifications) outside any per-request RLS context.
     "modules/mcp-client/index.ts",
   ])
+
+  // New entries go in a file of their own, `db-import-allowlist/<feature>.json`
+  // beside this test: `{ "privileged": { "<path under src/>": "<why>" } }` (sections
+  // connection, privileged, sql, publishEvent), so two PRs never add lines at the
+  // same end of one of the lists above (test-support/registry-dir.ts).
+  mergeRegistryDir(path.join(__dirname, "db-import-allowlist"), {
+    connection: connectionAllowlist,
+    privileged: privilegedAllowlist,
+    sql: sqlAllowlist,
+    publishEvent: publishEventAllowlist,
+  })
 
   const allFiles = findTsFiles(srcDir)
 

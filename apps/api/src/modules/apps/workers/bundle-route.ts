@@ -6,9 +6,11 @@
 //
 // The bytes are the ones an install recorded on the installed row from the
 // package's worker.js (0278, install-service.ts): a catalog app, an uploaded
-// one or an org's custom app, never a draft's bytes, never a module before an
-// install recorded it. Served while the loader is configured (config.ts), for
-// a sha some installed, not disabled app version names.
+// one or an org's custom app; else a module the platform built for code with
+// no installed version (a draft's preview, an import transform, a PDF
+// template: kernel.app_code_modules, workers/adhoc-module.ts), which nothing
+// but the platform's builder writes. Served while the loader is configured
+// (config.ts), for a sha one of those names.
 //
 // The module holds the app's handlers only (no name, no org): two apps with
 // the same code have one module and one sha, and either install serves it.
@@ -29,7 +31,7 @@
 
 import { Hono } from "hono"
 import { rootLogger } from "~/lib/logger"
-import { readInstalledWorkerModule } from "~/modules/apps/sandbox/run-app"
+import { readRunnableWorkerModule } from "~/modules/apps/sandbox/run-app"
 import { readWorkersConfig, type WorkersConfig } from "./config"
 import {
   CELL_ID_HEADER,
@@ -45,13 +47,13 @@ const SHA256_HEX = /^[0-9a-f]{64}$/
 
 export interface AppBridgeBundleRouteDeps {
   config?: () => WorkersConfig | null
-  lookup?: typeof readInstalledWorkerModule
+  lookup?: typeof readRunnableWorkerModule
   now?: () => number
 }
 
 export function createAppBridgeBundleRoutes(deps: AppBridgeBundleRouteDeps = {}) {
   const config = deps.config ?? readWorkersConfig
-  const lookup = deps.lookup ?? readInstalledWorkerModule
+  const lookup = deps.lookup ?? readRunnableWorkerModule
   const now = deps.now ?? Date.now
 
   return new Hono().get("/bundles/:sha256", async (c) => {
@@ -82,7 +84,10 @@ export function createAppBridgeBundleRoutes(deps: AppBridgeBundleRouteDeps = {})
     if (!SHA256_HEX.test(sha)) return c.json({ error: "Not found", reason: "not_found" }, 404)
     const found = await lookup(sha)
     if (!found) {
-      log.warn({ sha256: sha }, "App loader asked for a Worker module no installed app names")
+      log.warn(
+        { sha256: sha },
+        "App loader asked for a Worker module no installed app or platform build names",
+      )
       return c.json({ error: "Not found", reason: "not_found" }, 404)
     }
     return c.body(found.bytes as Uint8Array<ArrayBuffer>, 200, {

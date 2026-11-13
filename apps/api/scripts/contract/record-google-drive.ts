@@ -170,6 +170,8 @@ const pick = { id: "doc00001", name: "Onboarding plan", mimeType: DOC }
 const PLAN: Array<{ entry: string; params?: unknown; before?: () => Promise<void> }> = [
   { entry: "tool:search", params: { query: "plan" } },
   { entry: "tool:read", params: { driveFileId: "note0001" } },
+  { entry: "knowledge-items:search", params: { query: "plan", limit: 5, cursor: null } },
+  { entry: "knowledge-items:resolve", params: { ref: "note0001", content: true } },
   { entry: "tool:import", params: { driveFileId: "scan0001" } },
   {
     entry: "tool:upload",

@@ -802,6 +802,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   // On the raw input: the schema strips the retired keys this names.
   errors.push(...webhookHealthErrors(descriptor))
   errors.push(...knowledgeSourceErrors(descriptor))
+  errors.push(...knowledgeItemsErrors(descriptor))
   errors.push(...scheduledJobNameErrors(descriptor))
   errors.push(...runsForErrors(descriptor))
   errors.push(...settingsErrors(data as Record<string, any>))
@@ -1022,6 +1023,18 @@ export function knowledgeSourceErrors(manifest: any): string[] {
   return errors
 }
 
+/** The manifest's `knowledgeItems` (apps/knowledge/source-registry.ts): its `readScope` in the app's own namespace. */
+export function knowledgeItemsErrors(manifest: any): string[] {
+  const decl = manifest?.knowledgeItems
+  if (!decl || typeof decl !== "object" || typeof decl.readScope !== "string") return []
+  const appName = String(manifest.name ?? "")
+  return scopeMatchesApp(decl.readScope, appName)
+    ? []
+    : [
+        `knowledgeItems.readScope: must start with "${appScopePrefix(appName)}:" (got "${decl.readScope}")`,
+      ]
+}
+
 /** One error per `requiredScopes` entry outside the app's own namespace. */
 function toolScopeNamespaceErrors(
   toolName: string,
@@ -1102,6 +1115,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   validateProviderContracts(manifest, errors)
   errors.push(...webhookHealthErrors(manifest))
   errors.push(...knowledgeSourceErrors(manifest))
+  errors.push(...knowledgeItemsErrors(manifest))
   errors.push(...scheduledJobNameErrors(manifest))
   errors.push(...runsForErrors(manifest))
   errors.push(...configKeysDeclarationErrors(manifest.configKeys, manifest.connections))

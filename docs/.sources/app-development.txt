@@ -128,3 +128,8 @@ ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPr
 Page widget: a page declares widget {kind, connection, route, tokenScopes}; the platform serves its script, the app gets only the picks; grant must be inside tokenScopes; org origin only; audited -> apps/api/src/modules/apps/page-widgets.ts:1 ; apps/api/src/modules/apps/app-pages.ts:378 ; apps/api/src/modules/apps/app-surface.ts:120
 Install screen lists widget pages -> apps/web/src/modules/settings/InstallAppDialog.tsx:105
 The page script is deferred; a widget's script waits for DOMContentLoaded -> apps/api/src/modules/apps/app-pages.ts:551 ; apps/api/src/modules/apps/page-widgets.ts:150
+Knowledge items: manifest knowledgeItems (search, resolve, readScope, searchByDefault, timeoutMs) -> apps/api/src/modules/apps/manifest-schema.ts (knowledgeItems) ; apps/api/src/modules/apps/contract.ts (knowledgeItemsErrors) ; apps/api/src/modules/apps/knowledge-sync-dispatch.ts (makeKnowledgeItemsDispatch)
+search answer mapped to hits, resolve answer {found,title,url,modifiedAt,text}, readScope and availability gate, policy else searchByDefault -> apps/api/src/apps/knowledge/source-registry.ts (registerDefaultKnowledgeSources, parseResolved, parseSearchAnswer)
+resolve failure leaves a link as it was (SOURCE_UNAVAILABLE), not found marks it stale -> apps/api/src/apps/knowledge/source-links.ts (probeRemoteVisible, verifySourceLink)
+broadSearchEnabled per source via PATCH /knowledge/sources/:source -> apps/api/src/apps/knowledge/routes.ts (isRegisteredSource) ; apps/api/src/apps/knowledge/sources.ts (loadSearchPolicies)
+5 s default, 10 s at most -> apps/api/src/modules/apps/run-limits.ts (search) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeItems.timeoutMs)

@@ -375,7 +375,8 @@ function toInfo(viewer: UserContext, loaded: LoadedTable, count: number): TableI
   }
 }
 
-function assertRead(viewer: UserContext): void {
+/** Every table read, the link picker's included: refused without the dashboards read scope. */
+export function assertRead(viewer: UserContext): void {
   if (!hasScope(READ_SCOPE, viewer.scopes) && !hasScope(WRITE_SCOPE, viewer.scopes)) {
     throw new TableError("forbidden", `reading tables needs ${READ_SCOPE}`)
   }

@@ -150,6 +150,7 @@ Only read when `LIAISON_DEMO_MODE` is on.
 | `LIAISON_DEMO_STEP_OUTPUT_TOKENS` | `16000` | What one step of a visitor's agent may write on the instance's key. What a step reads is not capped |
 | `LIAISON_DEMO_WAREHOUSE` | `false` | `true` seeds the company's read-only warehouse into demo workspaces. Needs `LIAISON_DEMO_WAREHOUSE_DATABASE_URL`, the warehouse's own login; without it every seed fails |
 | `LIAISON_PRIVATE_DEMO_BOX` | `false` | `true` declares a demo-mode box private: a test box reached only through a tunnel, with no visitors. There `liaison seed` may replace its own demo org (`--replace`) and give the seeded people passwords (`--passwords`), which a public demo refuses. It counts only when `BASE_URL` is a loopback address (`localhost`, `127.x.x.x`, `::1`): a box with a public hostname stays public whatever this says. Never set it on a demo visitors use |
+| `LIAISON_TEST_SHOPIFY_ADMIN_URL` | unset | Test boxes only. Sends the Shopify app's Admin API requests (connecting, disconnecting, jobs, reads), with the store's token, to a fake Shopify at this address instead of the store. It must be one bare address on the box itself: a loopback address, a one-word service name or `host.docker.internal`. It works only on a box with `LIAISON_PRIVATE_DEMO_BOX=true` and a loopback `BASE_URL`, never on the managed edition; set anywhere else, the server refuses to start. Never set it on a real instance |
 
 ### Agent web reads
 

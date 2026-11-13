@@ -36,6 +36,11 @@ import {
   sandboxEgressPolicy,
   validateSandboxFetchUrl,
 } from "~/modules/apps/sandbox/bridge/shared"
+import {
+  FAKE_SHOP_DOMAIN_HEADER,
+  shopifyFakeAdminFetchPolicy,
+  shopifyFakeAdminTarget,
+} from "~/modules/apps/sandbox/bridge/shopify-fake-admin"
 import { maybeTestViesResponse } from "~/modules/apps/sandbox/bridge/test-vies"
 import {
   type ImapCredentials,
@@ -521,6 +526,16 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       const testVies =
         demoShopify || demoBoxtal || demoPayments ? null : maybeTestViesResponse(wireUrl)
 
+      // LABELLED PRIVATE TEST BOX ONLY (LIAISON_TEST_SHOPIFY_ADMIN_URL, gated in
+      // lib/shopify-fake-admin-gate.ts): the Shopify app's Admin API request goes
+      // to the box's fake instead of the store. Null on every real instance, where
+      // the request below goes to Shopify exactly as before.
+      const fakeShopify =
+        demoShopify || demoBoxtal || demoPayments || testVies
+          ? null
+          : shopifyFakeAdminTarget(appName, wireUrl)
+      if (fakeShopify) headersWithActor[FAKE_SHOP_DOMAIN_HEADER] = fakeShopify.shopDomain
+
       let response: Response
       let responseBody: string
       let limiterKey: ConnectionLimiterKey | null = null
@@ -567,7 +582,24 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           const idempotent = IDEMPOTENT_METHODS.has(String(method).toUpperCase())
           for (let attempt = 1; ; attempt++) {
             try {
-              if (
+              if (fakeShopify) {
+                // The fake's exact origin only, on a private address, no redirect followed.
+                response = await fetchWithPinnedHost(
+                  fakeShopify.url,
+                  {
+                    method,
+                    headers: headersWithActor,
+                    body,
+                    redirect: "manual",
+                    signal: AbortSignal.timeout(fetchTimeoutMs),
+                  },
+                  {
+                    maxRedirects: 0,
+                    fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
+                    ...shopifyFakeAdminFetchPolicy(fakeShopify.origin),
+                  },
+                )
+              } else if (
                 sandboxEgressOverrides.fetch &&
                 sandboxEgressOverrides.fetchInterceptsHost?.(new URL(url).hostname)
               ) {

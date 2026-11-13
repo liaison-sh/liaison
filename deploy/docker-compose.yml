@@ -443,6 +443,9 @@ services:
       # A private demo-mode QA box (tunnel only, loopback BASE_URL) may reseed its
       # own demo org with passwords; empty everywhere else (see lib/env.ts).
       LIAISON_PRIVATE_DEMO_BOX: ${LIAISON_PRIVATE_DEMO_BOX:-}
+      # A labelled private test box only: the Shopify app's Admin API requests go to
+      # this fake origin. Anywhere else the app refuses to start (see lib/env.ts).
+      LIAISON_TEST_SHOPIFY_ADMIN_URL: ${LIAISON_TEST_SHOPIFY_ADMIN_URL:-}
       # Demo signup ceilings (box-wide signups per hour, live visitor workspaces).
       # Empty keeps the built-in defaults (60 and 500).
       LIAISON_DEMO_SIGNUPS_PER_HOUR: ${LIAISON_DEMO_SIGNUPS_PER_HOUR:-}

@@ -29,26 +29,35 @@ export const TaskStatusSince: Component<{
     const ms = Date.now() - new Date(props.since).getTime()
     return Number.isFinite(ms) ? shortDuration(Math.max(0, ms), i18n.t, i18n.locale()) : ""
   }
+  /** The deadline as it stands now: one still "ahead" whose time is past has passed (the
+   *  automation's resume may not have run yet), so it reads as passed, in the error tone. */
+  const kind = () => {
+    const d = props.deadline
+    if (!d) return null
+    if (d.kind === "ahead" && new Date(d.at).getTime() <= Date.now()) return "passed"
+    return d.kind
+  }
   const deadlineWords = () => {
     const d = props.deadline
     if (!d) return ""
     const when = relativeTime(d.at, i18n.locale(), { style: "long" })
-    return d.kind === "passed"
+    return kind() === "passed"
       ? i18n.t("projects.taskTime.slaPassed", { when })
       : i18n.t("projects.taskTime.slaAhead", { when })
   }
+  // Near: the words stay in the text colour (the warning tone fails AA on small text) with a
+  // warning dot beside them.
   const soon = () =>
-    props.deadline?.kind === "ahead" &&
-    new Date(props.deadline.at).getTime() - Date.now() < 86_400_000
+    kind() === "ahead" && new Date(props.deadline?.at ?? 0).getTime() - Date.now() < 86_400_000
   return (
     <Show when={time()}>
       <span
         data-testid="task-detail.status-since"
         class="text-[12.5px]"
         classList={{
-          "text-error": props.deadline?.kind === "passed",
-          "text-warning": soon(),
-          "text-text-secondary": !props.deadline || (props.deadline.kind === "ahead" && !soon()),
+          "text-error": kind() === "passed",
+          "text-text-primary": soon(),
+          "text-text-secondary": kind() === null || (kind() === "ahead" && !soon()),
         }}
         title={formatDateTime(props.since, i18n.locale())}
       >
@@ -57,10 +66,17 @@ export const TaskStatusSince: Component<{
           {(w) => (
             <span
               data-testid="task-detail.sla"
-              data-sla={props.deadline?.kind}
+              data-sla={kind()}
               title={props.deadline?.routineTitle}
             >
               {" · "}
+              <Show when={soon()}>
+                <span
+                  aria-hidden="true"
+                  data-testid="task-detail.sla-soon"
+                  class="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-warning align-middle"
+                />
+              </Show>
               {w()}
             </span>
           )}

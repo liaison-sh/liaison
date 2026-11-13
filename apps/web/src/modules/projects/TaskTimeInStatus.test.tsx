@@ -92,6 +92,35 @@ describe("TaskTimeInStatus", () => {
     expect(screen.getByTestId("task-detail.sla").textContent).toMatch(/SLA passed/)
   })
 
+  it("an ahead deadline whose time is past reads as passed, in the error tone", () => {
+    render(() => (
+      <TaskStatusSince
+        since={ago(6 * DAY)}
+        deadline={{ kind: "ahead", at: ago(2 * 3_600_000), routineTitle: "Deadline" }}
+      />
+    ))
+    expect(screen.getByTestId("task-detail.status-since").className).toContain("text-error")
+    expect(screen.getByTestId("task-detail.sla").dataset.sla).toBe("passed")
+    expect(screen.getByTestId("task-detail.sla").textContent).toMatch(/SLA passed/)
+  })
+
+  it("a near deadline keeps its words in the text colour, with a warning dot", () => {
+    render(() => (
+      <TaskStatusSince
+        since={ago(6 * DAY)}
+        deadline={{
+          kind: "ahead",
+          at: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+          routineTitle: "Deadline",
+        }}
+      />
+    ))
+    const line = screen.getByTestId("task-detail.status-since")
+    expect(line.className).not.toContain("text-warning")
+    expect(line.className).toContain("text-text-primary")
+    expect(screen.getByTestId("task-detail.sla-soon")).toBeTruthy()
+  })
+
   it("draws where the time went in the statuses' colours", () => {
     render(() => (
       <TaskTimeStrip

@@ -227,7 +227,7 @@ It answers 200 once the process has finished booting and is not shutting down, a
 
 Every app run (a tool call, an attention compute, a job, an event, a webhook) is counted as it ends, always, in a fixed amount of memory. `GET /diag` (with `MONITOR_TOKEN`) shows it under `appRuns`, for the last 15 minutes and the last 24 hours, for this process (`process`) and for every process of the instance through Redis (`cell`, `null` when Redis did not answer in time):
 
-- per lane (`interactive`: someone waits on it, such as a tool call; `background`: jobs, events, webhooks, syncs; `nested`: a run another run started) and per app: runs, the p50, p95 and p99 time, the wait for a sandbox slot (`queueP95Ms`, when the sandbox reports it), the share of time spent in bridge calls, the error and timeout rates, and the errors by kind (`timeout`, `queue_timeout`, `cancelled`, `tenant_busy`, `handler`, ...);
+- per lane, the one the run ran in (`interactive`: someone waits on it, such as a tool call; `background`: jobs, events, webhooks, syncs; `nested`: a run another run started) and per app: runs, the p50, p95 and p99 time, the wait for a sandbox slot (`queueP95Ms`: the Workers admission's wait plus the sandbox service's lane queue, when the executor reports them), the share of time spent in bridge calls, the error and timeout rates, and the errors by kind (`timeout`, `queue_timeout`, `cancelled`, `tenant_busy`, `handler`, ...);
 - the slowest runs (app, entry, lane, time, error kind), never their arguments or data;
 - per sandbox pool held by the process, how many seconds it was saturated (every slot busy and a run waiting) and how full it was on average.
 

@@ -41,6 +41,63 @@ const bugReportData = {
   reporter: { email: "reporter@example.com" },
 }
 
+const emptySummary = {
+  runs: 0,
+  errors: 0,
+  timeouts: 0,
+  errorRate: 0,
+  timeoutRate: 0,
+  errorKinds: {},
+  p50Ms: null,
+  p95Ms: null,
+  p99Ms: null,
+  meanMs: null,
+  queuedRuns: 0,
+  queueP95Ms: null,
+  bridgeShare: null,
+  bridgeCalls: 0,
+}
+const ticketsSummary = {
+  runs: 640,
+  errors: 34,
+  timeouts: 31,
+  errorRate: 0.0531,
+  timeoutRate: 0.0484,
+  errorKinds: { queue_timeout: 31, handler: 3 },
+  p50Ms: 250,
+  p95Ms: 30_000,
+  p99Ms: 60_000,
+  meanMs: 2_210,
+  queuedRuns: 640,
+  queueP95Ms: 30_000,
+  bridgeShare: 0.41,
+  bridgeCalls: 1_920,
+}
+const perfWindow = (windowS: 900 | 86_400) => ({
+  windowS,
+  total: ticketsSummary,
+  lanes: { interactive: ticketsSummary, background: emptySummary, nested: emptySummary },
+  apps: [{ app: "tickets", lane: "interactive", ...ticketsSummary }],
+  slowest: [
+    {
+      app: "tickets",
+      entryKind: "attention",
+      lane: "interactive",
+      ms: 60_000,
+      ok: false,
+      errorKind: "queue_timeout",
+    },
+    { app: "(custom)", entryKind: "job", lane: "background", ms: 45_000, queueMs: 0, ok: true },
+  ],
+  pools: { quickjs: { saturatedSec: 420, occupancy: 0.93 } },
+})
+const performanceData = {
+  version: "1.4.0",
+  edition: "self_hosted",
+  windows: { "15m": perfWindow(900), "24h": perfWindow(86_400) },
+  alerts: [{ check: "interactive_timeouts", severity: "critical", value: 31, threshold: 10 }],
+}
+
 export const contractVectors = {
   /** One valid envelope per message type. */
   valid: {
@@ -73,6 +130,7 @@ export const contractVectors = {
     }),
     "lead-update": envelope("lead-update", { leadId: LEAD_ID, optedOut: true }),
     deregister: envelope("deregister", {}),
+    performance: { ...envelope("performance", performanceData), v: 2 },
   },
   /** One invalid envelope per message type, with the issue path it must fail on. */
   invalid: {
@@ -123,6 +181,23 @@ export const contractVectors = {
     deregister: {
       message: { ...envelope("deregister", {}), v: 3 },
       path: ["v"],
+    },
+    performance: {
+      // An org's custom app name never leaves the server: it is reported as `(custom)`.
+      message: {
+        ...envelope("performance", {
+          ...performanceData,
+          windows: {
+            ...performanceData.windows,
+            "15m": {
+              ...perfWindow(900),
+              apps: [{ app: "acme-crm:sync", lane: "background", ...ticketsSummary }],
+            },
+          },
+        }),
+        v: 2,
+      },
+      path: ["data", "windows", "15m", "apps", "0", "app"],
     },
   },
   /** Reply bodies (the object under `{data: ...}`) for the success shapes. */

@@ -20,6 +20,9 @@ src/seed/worlds/saas/plan-invariants.test.ts
 src/seed/worlds/saas/desk-prompts.test.ts
 # The owner's Morning brief, computed from the plan.
 src/seed/worlds/saas/brief.test.ts
+# The services world's plan for time and budgets, held to its
+# invariants at anchors across a year, with no database.
+src/seed/worlds/studio/plan-invariants.test.ts
 # No world's text holds another world's names.
 src/seed/worlds/literals.test.ts
 # Every door claim about a world maps to a criterion.

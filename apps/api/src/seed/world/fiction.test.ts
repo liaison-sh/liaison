@@ -172,6 +172,11 @@ describe("demo world: anonymized fictional source of truth", () => {
  */
 const PACK_FICTIONS = [
   { world: "saas", file: "../worlds/saas/fiction.ts", exports: ["SAAS_WORLD", "SAAS_ROLE_AGENTS"] },
+  {
+    world: "studio",
+    file: "../worlds/studio/fiction.ts",
+    exports: ["STUDIO_WORLD", "STUDIO_CLIENTS"],
+  },
 ] as const
 
 const RESERVED_HOST = /^(?:[a-z0-9-]+\.)*[a-z0-9-]+\.(example|test|invalid|localhost)$/

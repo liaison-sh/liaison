@@ -67,6 +67,8 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   sinkReadersResource: TABLE_TOOLS,
   // tables_rows_write: its card names the table, not the data store its rows live in.
   taintCardPlace: TABLE_TOOLS,
+  // tables_rows_write: a backed table's read-through write is judged as its app's write tool.
+  taintJudgedAs: TABLE_TOOLS,
   taintEditsPendingApproval: KERNEL_TOOLS,
   requiresHumanTurn: KERNEL_TOOLS,
   refuseBeforeGate: KERNEL_TOOLS,

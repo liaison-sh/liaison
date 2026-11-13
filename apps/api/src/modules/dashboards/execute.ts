@@ -295,7 +295,7 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
       return {
         result: flat,
         totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length,
-        fieldLabels: Object.fromEntries(loaded.columns.map((c) => [c.key, c.label])),
+        fieldLabels: Object.fromEntries(columns.map((c) => [c.key, c.label])),
       }
     })
   } catch (err) {

@@ -22,7 +22,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
-import { backingSchema } from "~/modules/dashboards/tables/backing"
+import { backingProvider, backingSchema, parseBacking } from "~/modules/dashboards/tables/backing"
 import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
@@ -97,6 +97,7 @@ function compactRow(r: Row) {
   return {
     id: r.id,
     version: r.version,
+    ...(r.recordVersion !== undefined ? { recordVersion: r.recordVersion } : {}),
     cells: r.cells,
     updatedAt: r.updatedAt,
     updatedBy: r.updatedBy.label,
@@ -110,6 +111,7 @@ interface StoredTable {
   orgAccess: "none" | "viewer" | "editor"
   ownerUserId: string | null
   agentWritesNeedApproval: boolean
+  backing: unknown
 }
 
 /** A table's sharing and switch, read for the gate and its routing (before the handler runs). */
@@ -122,12 +124,37 @@ async function storedTable(orgId: string, id: unknown): Promise<StoredTable | nu
         orgAccess: dashboardTables.orgAccess,
         ownerUserId: dashboardTables.ownerUserId,
         agentWritesNeedApproval: dashboardTables.agentWritesNeedApproval,
+        backing: dashboardTables.backing,
       })
       .from(dashboardTables)
       .where(and(eq(dashboardTables.id, id), eq(dashboardTables.orgId, orgId)))
       .limit(1)
     return row ?? null
   })
+}
+
+/**
+ * A row write that changes a backed table's read-through cells lands in the backing app's records,
+ * which every reader of those records reads, whoever the table is shared with: the scope taint
+ * judges it as the app's own write tool (`writeTool`), exactly as a direct call of it. A write of
+ * the table's own columns only (or of a plain table) is judged by the table's sharing.
+ */
+async function backedWriteJudgedAs(orgId: string, params: unknown): Promise<string | null> {
+  const p = (params ?? {}) as { tableId?: unknown; ops?: unknown }
+  const backing = parseBacking((await storedTable(orgId, p.tableId))?.backing)
+  if (!backing) return null
+  const ops = Array.isArray(p.ops) ? (p.ops as Array<{ op?: unknown; cells?: unknown }>) : []
+  const writesRecord = ops.some(
+    (op) =>
+      op?.op === "add" ||
+      (op?.cells !== null &&
+        typeof op?.cells === "object" &&
+        Object.keys(op.cells as object).some((k) => backing.fields.includes(k))),
+  )
+  if (!writesRecord) return null
+  const provider = await backingProvider(orgId, backing)
+  // No provider: an undeclared target, so a tainted write parks (fails closed).
+  return provider ? `${backing.app}:${provider.writeTool}` : "undeclared"
 }
 
 /**
@@ -354,7 +381,15 @@ const rowOp = z.discriminatedUnion("op", [
     .object({
       op: z.literal("update"),
       id: z.string().min(1).max(200),
-      ifVersion: z.number().int().min(1).describe("The row's version from kernel__tables_query"),
+      ifVersion: z.number().int().min(0).describe("The row's version from kernel__tables_query"),
+      ifRecordVersion: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          "A backed table: the row's recordVersion from kernel__tables_query, needed to change a read-through cell",
+        ),
       cells,
     })
     .strict(),
@@ -570,6 +605,7 @@ export function registerTableTools(orgId: string): void {
           tableId: p.tableId,
           rows: page.rows.map(compactRow),
           nextCursor: page.nextCursor,
+          ...(page.truncated ? { truncated: true } : {}),
         }
       })) as Handler,
   })
@@ -600,6 +636,8 @@ export function registerTableTools(orgId: string): void {
       })) as Handler,
     writesToTable: ROWS_SINK,
     sinkReadersResource: { type: TABLE_RESOURCE, idParam: "tableId" },
+    taintJudgedAs: (params: unknown, { orgId: o }: { orgId: string }) =>
+      backedWriteJudgedAs(o, params),
     taintCardPlace: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const t = await storedTable(o, (params as { tableId?: unknown } | null)?.tableId)
       return t ? `the table "${t.name}"`.slice(0, 120) : null

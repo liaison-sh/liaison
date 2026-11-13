@@ -45,6 +45,8 @@ export const routineRuns = kernel.table(
     mailboxWait: jsonb("mailbox_wait").$type<RoutineRunMailboxWait>(),
     /** A flow run's per-step state (0303, routine-flow.ts), updated after each step. NULL for a legacy run. */
     steps: jsonb("steps").$type<RoutineRunStepState[]>(),
+    /** What a flow run's resume needs (0303, flow-runner.ts). NULL for a legacy run. */
+    flowContext: jsonb("flow_context").$type<RoutineRunFlowContext>(),
   },
   (t) => [
     index("routine_runs_routine_ran_idx").on(t.routineId, sql`ran_at DESC`),
@@ -85,6 +87,26 @@ export interface RoutineRunStepState {
   note: string | null
   /** What the step produced (an approval id, a deadline, the assignee picked...). */
   output?: Record<string, unknown> | null
+}
+
+/** What a flow run keeps for its resume (0303). */
+export interface RoutineRunFlowContext {
+  /** The flow's hash when the run started: a run parked on an edited flow ends at its resume. */
+  flowHash: string
+  /** The routine chain depth the run carries on (`RoutineTriggerEvent.hop`). */
+  hop: number
+  /** The event the run was fired for, handed to an agent step after a wait or an approval. */
+  triggerEvent?: {
+    app: string
+    entity: string
+    action: string
+    entityId: string | null
+    data: unknown
+    origin?: unknown
+    eventId?: string | null
+    retryAttempt?: number
+    hop?: number
+  } | null
 }
 
 /** What a paused run keeps for its resume (routine-run-resume.ts). */

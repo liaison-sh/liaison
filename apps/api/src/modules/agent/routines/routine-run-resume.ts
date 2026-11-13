@@ -661,9 +661,26 @@ export type ResumeInvoker = (
 ) => Promise<{ turnsAdded: number; failure?: string | null }>
 
 export interface ResumeDeps {
+  /** A flow run's seams (flow-runner.ts); default: the production tick's. */
+  flowDeps?: import("~/modules/agent/routines/flow-runner").FlowDeps
   invoker?: ResumeInvoker
   checkCredits?: (orgId: string, userId: string) => Promise<{ reason: string } | null>
   loadOwnerScopes?: (orgId: string, userId: string) => Promise<string[]>
+}
+
+/** A flow run's resume seams: the test's, else the production tick's (kernel-jobs.ts). */
+async function flowResumeDeps(
+  deps: ResumeDeps,
+  routineId: string,
+): Promise<import("~/modules/agent/routines/flow-runner").FlowDeps> {
+  if (deps.flowDeps) return deps.flowDeps
+  const { productionRoutineTickDeps } = await import("~/infra/jobs/kernel-jobs")
+  const d = productionRoutineTickDeps(routineId)
+  return {
+    ...(d.agentInvoker ? { agentInvoker: d.agentInvoker } : {}),
+    ...(d.loadOwnerScopes ? { loadOwnerScopes: d.loadOwnerScopes } : {}),
+    ...(d.checkCredits ? { checkCredits: d.checkCredits } : {}),
+  }
 }
 
 /**
@@ -679,8 +696,12 @@ export async function resumeRoutineRunOnDecision(
   const { orgId, approvalId } = payload
   // A flow run's action (0303) waits on its own approvals: its resume goes on with the flow's
   // next step, not an agent turn (flow-runner.ts). Null for every legacy run.
+  // Its seams are a tick's (the agent for an agent step after the approval, the owner's scopes,
+  // the credit gate); a test hands its own.
   const { resumeFlowOnDecision } = await import("~/modules/agent/routines/flow-runner")
-  const flowResult = await resumeFlowOnDecision(orgId, approvalId)
+  const flowResult = await resumeFlowOnDecision(orgId, approvalId, (routineId) =>
+    flowResumeDeps(deps, routineId),
+  )
   if (flowResult) return flowResult
   const run = await waitingRunOf(orgId, approvalId)
   if (!run) return { status: "no_run" }

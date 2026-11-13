@@ -1440,6 +1440,7 @@ export async function registerKernelJobs(): Promise<void> {
     await runFlowResumeJob(payload ?? {}, {
       ...(deps.agentInvoker ? { agentInvoker: deps.agentInvoker } : {}),
       ...(deps.loadOwnerScopes ? { loadOwnerScopes: deps.loadOwnerScopes } : {}),
+      ...(deps.checkCredits ? { checkCredits: deps.checkCredits } : {}),
     })
   })
 

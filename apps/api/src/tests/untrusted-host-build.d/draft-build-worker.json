@@ -1,0 +1,6 @@
+{
+  "file": "apps/api/src/modules/app-builder/build/build-worker.ts",
+  "sites": { "Bun.build@buildHandlers": 1, "Bun.build@buildWorkerModule": 1 },
+  "input": "subprocess",
+  "reason": "The draft build's subprocess entry: build-draft.ts spawns it in an empty temp dir with a stripped environment, after the draft passed the TypeScript-AST pre-scan (scanDraftSource); the API process imports it as types only."
+}

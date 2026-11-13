@@ -1,0 +1,6 @@
+{
+  "file": "apps/api/src/modules/apps/contract/harness.ts",
+  "sites": { "Bun.build@buildScript": 1 },
+  "input": "repo",
+  "reason": "The app wake-up contract test harness builds the handler sources of the repo's bundled and in-tree apps; it runs under the test suites only and is never reached from a request."
+}

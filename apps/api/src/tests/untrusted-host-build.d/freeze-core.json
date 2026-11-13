@@ -1,0 +1,7 @@
+{
+  "file": "apps/api/src/modules/app-builder/build/freeze-core.ts",
+  "sites": { "Bun.build@buildWorkerModule": 1 },
+  "input": "repo",
+  "wraps": ["buildWorkerModule"],
+  "reason": "buildWorkerModule builds the platform's Worker runtime around a handlers entry its caller names; every caller in the API process is listed here too (wraps), and each must hand it repo or platform-generated code only. Draft builds use the subprocess's own copy."
+}

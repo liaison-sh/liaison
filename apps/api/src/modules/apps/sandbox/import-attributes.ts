@@ -117,3 +117,71 @@ export async function topLevelStatementCount(source: string): Promise<number | n
     (sf as unknown as { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ?? []
   return syntax.length > 0 ? null : sf.statements.length
 }
+
+// -- Checked sources ---------------------------------------------------------------
+//
+// The only door from text that is not the repo's own (a package's bundle, an org's
+// script) to Bun's parser in this process. A `CheckedSource` is made here and only
+// here, after one of the checks above passed; `transpileChecked` takes nothing
+// else. The brand is a private class field, so a string or an object literal does
+// not typecheck as one, and a cast does not pass the run-time test either. The
+// guard apps/api/src/tests/untrusted-host-build.test.ts holds every other
+// `Bun.build` / `Bun.Transpiler` / `Bun.plugin` call site to repo-own input.
+
+/** What a checked source passed: no import attribute at all, or a plain script. */
+export type CheckKind = "attribute-free" | "plain-script"
+
+class Checked<K extends CheckKind> {
+  readonly #kind: K
+  readonly text: string
+  constructor(text: string, kind: K) {
+    this.text = text
+    this.#kind = kind
+  }
+  get kind(): K {
+    return this.#kind
+  }
+  static holds(value: unknown): value is Checked<CheckKind> {
+    return typeof value === "object" && value !== null && #kind in value
+  }
+}
+
+/** Text with no import attribute and no import options, read by the TypeScript parser. */
+export type CheckedSource = Checked<CheckKind>
+/** A plain script (plainScriptIssue): it imports, exports and loads nothing. */
+export type CheckedScript = Checked<"plain-script">
+
+export type CheckResult<T> = { ok: true; source: T } | { ok: false; issue: string }
+
+/** `source` as a CheckedSource when it carries no import attribute (importAttributeIssue). */
+export async function checkAttributeFree(source: string): Promise<CheckResult<CheckedSource>> {
+  const issue = await importAttributeIssue(source)
+  return issue === null
+    ? { ok: true, source: new Checked(source, "attribute-free") }
+    : { ok: false, issue }
+}
+
+/**
+ * `source` as a CheckedScript when it is a plain script (plainScriptIssue). A plain
+ * script imports nothing, so it carries no attribute either.
+ */
+export async function checkPlainScript(source: string): Promise<CheckResult<CheckedScript>> {
+  const issue = await plainScriptIssue(source)
+  return issue === null
+    ? { ok: true, source: new Checked(source, "plain-script") }
+    : { ok: false, issue }
+}
+
+/** Whether `value` was made by one of the checks above (not a look-alike). */
+export function isCheckedSource(value: unknown): value is CheckedSource {
+  return Checked.holds(value)
+}
+
+/**
+ * Bun's transform of a checked source, read as JavaScript (as the check read it):
+ * the only Bun parse of non-repo text in this process.
+ */
+export function transpileChecked(source: CheckedSource): string {
+  if (!Checked.holds(source)) throw new TypeError("transpileChecked takes a checked source only")
+  return new Bun.Transpiler({ loader: "js" }).transformSync(source.text)
+}

@@ -21,7 +21,7 @@ import { basename, dirname, join, resolve, sep } from "node:path"
 import { CORE_MODULE_SOURCE, isCoreModulePath } from "~/modules/apps/core/registry"
 import { getInstallRoot } from "~/modules/apps/discover-apps"
 
-const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" })
+let repoTranspiler: Bun.Transpiler | null = null
 const cache = new Map<string, string>()
 
 /** Installed-bundle cache: one entry per path, revalidated on every load. */
@@ -54,6 +54,21 @@ function inRepoSource(path: string): boolean {
   const p = resolve(path)
   const inside = (dir: string) => p.startsWith(resolve(dir) + sep)
   return inside(REPO_ROOT) && !inside(getInstallRoot())
+}
+
+/**
+ * Bun's transform of the repo's own TypeScript (fixtures, in-tree apps), nothing
+ * else: Bun runs a macro import while it parses, in this process.
+ */
+function transpileRepoSource(path: string, source: string): string {
+  if (!inRepoSource(path)) {
+    throw new BundleLoadError(
+      path,
+      new Error("only a .js handler bundle loads from outside the repo"),
+    )
+  }
+  repoTranspiler ??= new Bun.Transpiler({ loader: "ts", target: "browser" })
+  return repoTranspiler.transformSync(source)
 }
 
 function sourceChannelEnabled(): boolean {
@@ -234,7 +249,7 @@ async function loadBundleUnwrapped(bundlePath: string): Promise<string> {
     )
   }
   const code = esmExportsToGlobalThis(
-    bundlePath.endsWith(".js") ? source : transpiler.transformSync(source),
+    bundlePath.endsWith(".js") ? source : transpileRepoSource(bundlePath, source),
   )
   if (stable) fileCache.set(bundlePath, { fingerprint, hash, code })
   return code

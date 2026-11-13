@@ -28,7 +28,7 @@
 // The script itself never reaches a bundler or Bun's transpiler: Bun runs a
 // macro import (`with { type: "macro" }`) while it parses, in this process, and
 // no plugin hook sees it first. So the script is read only by the TypeScript
-// parser (sandbox/import-attributes.ts plainScriptIssue: no import, export,
+// parser (sandbox/import-attributes.ts checkPlainScript: no import, export,
 // `import(...)` or `import.meta`), then joined to the runtime as text. Bun builds
 // only the runtime and the export wrappers, all of them platform code. Each
 // wrapper looks its function up when called: a top-level function of the script
@@ -43,7 +43,11 @@ import { withSystemDb } from "~/db/privileged"
 import { type AppCodeModuleOrigin, appCodeModules } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { buildWorkerModule } from "~/modules/app-builder/build/freeze-core"
-import { plainScriptIssue, topLevelStatementCount } from "~/modules/apps/sandbox/import-attributes"
+import {
+  type CheckedScript,
+  checkPlainScript,
+  topLevelStatementCount,
+} from "~/modules/apps/sandbox/import-attributes"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const log = rootLogger.child({ module: "apps-adhoc-module" })
@@ -133,7 +137,7 @@ export function runtimeHandlersSource(exports: readonly string[]): string {
  * The script's slot: the script in a function scope of its own (its top-level
  * names never meet the runtime's), returning the lookup of its exports.
  */
-export function scriptSlotSource(script: string, exports: readonly string[]): string {
+export function scriptSlotSource(script: CheckedScript, exports: readonly string[]): string {
   checkExports(exports)
   const cases = exports.map(
     (name) =>
@@ -141,7 +145,7 @@ export function scriptSlotSource(script: string, exports: readonly string[]): st
   )
   return [
     `const ${SCRIPT_LOOKUP} = (function () {`,
-    script,
+    script.text,
     ";",
     "  return function (name) {",
     "    switch (name) {",
@@ -201,9 +205,11 @@ export async function scriptModuleText(
   script: string,
   exports: readonly string[],
 ): Promise<string> {
-  const issue = await plainScriptIssue(script)
-  if (issue) throw new AdhocModuleError(`the code does not build as a Worker module: ${issue}`)
-  const slot = scriptSlotSource(script, exports)
+  const checked = await checkPlainScript(script)
+  if (!checked.ok) {
+    throw new AdhocModuleError(`the code does not build as a Worker module: ${checked.issue}`)
+  }
+  const slot = scriptSlotSource(checked.source, exports)
   // The script stays inside its function scope: text that closes it is refused.
   if ((await topLevelStatementCount(slot)) !== 1) {
     throw new AdhocModuleError(

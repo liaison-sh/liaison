@@ -2408,16 +2408,19 @@ describe("a new message is commercial by its recipient's data", () => {
       )[0]?.n,
     )
 
-  /** A person's own new message written in the composer and sent from its draft. */
+  /** A person's own new message written in the composer and sent from its draft. The draft is
+   *  saved first: a send claims its draft in a transaction of its own. */
   async function sendFromComposer(to: string) {
-    return withRlsContext(admin, async (tx) => {
-      const draft = await mailService.createDraft(tx as never, {
+    const draft = await withRlsContext(admin, (tx) =>
+      mailService.createDraft(tx as never, {
         orgId,
         userId,
         accountId: oldAccount,
         to: [{ email: to }],
         subject: "Our offer",
-      })
+      }),
+    )
+    return withRlsContext(admin, async (tx) => {
       return mailService.sendDraft(tx as never, {
         orgId,
         userId,

@@ -12,6 +12,8 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 const SCRIPT = path.join(import.meta.dir, "rolling-deploy.sh")
+/** Step 4b's plain compose calls to the sandbox service, outside the deploy's profiles. */
+const SANDBOX_STEP = /^compose (config --services|ps -a -q sandbox|up -d --no-deps sandbox)$/
 
 const SHIM = `#!/bin/sh
 S="$SHIM_STATE"
@@ -166,10 +168,8 @@ describe("rolling-deploy.sh", () => {
     const { code, calls, stderr } = run(["--wait-drain"], { COMPOSE_FILE: composeFile })
     expect(stderr).toContain("deploy done")
     expect(code).toBe(0)
-    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
-    const compose = calls.filter(
-      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
-    )
+    // The sandbox step (4b) reaches the service with a plain compose call; the rest go under the deploy's profiles.
+    const compose = calls.filter((c) => c.startsWith("compose ") && !SANDBOX_STEP.test(c))
     for (const c of compose) expect(c.startsWith("compose --profile rolling --profile meaning ")).toBe(true)
     const embedder = indexOf(calls, (c) => c.endsWith(" up -d --no-recreate --no-deps embedder"))
     const migrate = indexOf(calls, (c) => c.includes(" run --rm --no-deps migrate"))
@@ -189,10 +189,8 @@ describe("rolling-deploy.sh", () => {
       COMPOSE_PROFILES: "rolling, meaning,extra",
     })
     expect(code).toBe(0)
-    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
-    const compose = calls.filter(
-      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
-    )
+    // The sandbox step (4b) reaches the service with a plain compose call; the rest go under the deploy's profiles.
+    const compose = calls.filter((c) => c.startsWith("compose ") && !SANDBOX_STEP.test(c))
     for (const c of compose) {
       expect(c.startsWith("compose --profile rolling --profile meaning --profile extra ")).toBe(true)
       expect(c).not.toContain("other")
@@ -281,10 +279,7 @@ describe("rolling-deploy.sh", () => {
     standardWorld()
     const { code, calls } = run()
     expect(code).toBe(0)
-    // The sandbox service is reached under its own profile (step 4b), the rest under the deploy's.
-    const compose = calls.filter(
-      (c) => c.startsWith("compose ") && !c.startsWith("compose --profile sandbox "),
-    )
+    const compose = calls.filter((c) => c.startsWith("compose "))
     for (const c of compose) {
       const words = c.split(" ")
       const verb = words[3]

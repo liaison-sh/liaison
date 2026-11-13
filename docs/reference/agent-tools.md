@@ -199,7 +199,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `tables_edit` | Create a dashboard table, change it, or delete it; always waits for a person's approval. | yes | `kernel:dashboards:write` |
 | `tables_get` | Read one dashboard table: its columns (key, label, type, choices, required), version, row count, your access and who it is shared with. |  | `kernel:dashboards:read` |
 | `tables_list` | List the dashboard tables you can see (org data people and agents keep, such as inbound batches or repairs): id, name, columns, your access and row count. |  | `kernel:dashboards:read` |
-| `tables_query` | Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. |  | `kernel:dashboards:read` |
+| `tables_query` | Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. |  | `kernel:dashboards:read` |
 | `tables_rows_write` | Add, change or delete rows of a dashboard table, up to 50 operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. |  | `kernel:dashboards:write` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
 | `threads_create` | Message teammates (people in this organization) by posting into the conversation you already share with them, never by opening a new one. |  | `kernel:threads:write` |

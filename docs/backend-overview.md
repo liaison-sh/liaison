@@ -404,12 +404,7 @@ Moving another core app means: turn its `handlers.ts` into a module with named e
 
 ### Sandbox Execution (Manifest Apps)
 
-Manifest app handlers run inside **QuickJS** compiled to WebAssembly (`quickjs-emscripten`). Each handler is routed to one of two execution paths based on its trust level:
-
-| Trust | Path | Isolation | When |
-|-------|------|-----------|------|
-| `trusted: true` (default) | In-process QuickJS pool | WASM-level | Kernel & first-party apps |
-| `trusted: false` | Worker subprocess pool | OS process-level | Third-party / user-created apps |
+Every app that is not core (`modules/apps/core/registry.ts`) runs sandboxed through `runApp`, whoever published it: Workers in Cloud, the sandbox service (workerd) self-hosted, and QuickJS compiled to WebAssembly (`quickjs-emscripten`) while `LIAISON_APP_RUNTIME=quickjs`. No manifest field changes it: a manifest carrying `trusted` is refused. On QuickJS an app runs in the worker subprocess pool; the in-process pool takes only a site's own pure function on an empty bridge (an approval summarizer, a PDF template).
 
 **In-process pool:** each slot owns its own QuickJS WASM module instance rather than sharing one across the pool, so if a runtime abort ever occurs, it poisons only that one slot instead of hanging every execution in the process. The pool pre-warms 4 slots by default and grows to a hard ceiling of 12 (acquiring a slot waits up to 15s when saturated), 8MB memory limit per slot.
 

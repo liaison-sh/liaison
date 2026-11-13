@@ -240,8 +240,7 @@ describe("custom apps on Workers", () => {
       installed: { version: "0.1.0", sha256: "x" },
     })
     expect(supplied?.sha256).toBe(crudSha)
-    // Trusted code never goes there; another org does not see the app's row.
-    expect(await resolveWorkersTarget({ ...opts, trusted: true })).toBeNull()
+    // Another org does not see the app's row.
     expect(await resolveWorkersTarget({ ...opts, orgId: b.orgId })).toBeNull()
   })
 

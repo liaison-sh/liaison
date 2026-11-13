@@ -50,7 +50,7 @@ A verifier should not read the secret itself: `config_has(<key>)` says whether i
 The kernel runs, in strict order:
 
 1. Body-size check (default 1 MiB; override via `bodyLimitBytes` in the manifest, range 1 KiB to 10 MiB).
-2. `verify(request)` resolved against the built bundle's named export (sandboxed for installed apps; in-process for in-tree trusted apps).
+2. `verify(request)` resolved against the built bundle's named export (sandboxed for every app but a core app; a core app's verifier is server code).
 3. On an unrecognized return value or a thrown error: HTTP 401, no handler invoked.
 4. On accept: replay-protection lookup; if first delivery, it is stored in the webhook inbox, then the topic handler runs under the same bundle. On reject or drop, the verifier's own status (and, for reject, `retry-after`) is returned instead of running the handler.
 

@@ -84,13 +84,7 @@ import {
 import { revealDeclaredSecrets } from "~/modules/apps/reveal-secrets"
 import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
-import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import {
-  exportOnlyBundle,
-  holdingExportOnlyBuilds,
-  useFullBundle,
-  watchBridgeCalls,
-} from "~/modules/apps/sandbox/bundle-shake"
+import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import {
   createSandboxRpcBridge,
   createSessionRpcBridge,
@@ -3219,21 +3213,10 @@ export async function executeToolHandler(
     // hop of a run already admitted) is counted, never refused.
     await assertAppRunRoom({
       orgId,
-      trusted: handlerRef.trusted === true,
+      core: handlerRef.core === true,
       nested: bridgeOptions?.nested === true || (bridgeOptions?.callChain?.length ?? 0) > 1,
     })
-    const fullBundle = await loadBundle(handlerRef.bundlePath)
-    // A read-only tool runs the part of its bundle its handler needs (the whole
-    // bundle until that is built, bundle-shake.ts): every call compiles and
-    // runs what it is given in a fresh context, and for a large app that is
-    // most of the call (a timeline read, called on every page open).
-    // Only code the platform vouches for (trusted, in-tree or the image's own catalog
-    // tarball) is ever trimmed: the trim is a build on this host, never over a third-party
-    // or custom app's bundle, whatever its tool claims.
-    const bundleSource =
-      tool.readOnly === true
-        ? exportOnlyBundle(fullBundle, handlerRef.exportName, handlerRef)
-        : fullBundle
+    const bundleSource = await loadBundle(handlerRef.bundlePath)
     // This execution's own identity, handed to the bridge so every cross-app
     // hop it opens is keyed on THIS execution and not on the tool names that
     // led here.
@@ -3275,41 +3258,15 @@ export async function executeToolHandler(
     // from the stored payload and may predate the fill, and because a fill is idempotent:
     // a value that is present is never replaced.
     const handlerParams = withManifestDefaults(tool, validatedParams)
-    // No export-only build starts while a run is in flight (bundle-shake.ts): a page's burst
-    // of first calls is answered before any build takes the host's CPU.
     const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
-      holdingExportOnlyBuilds(() => runManifestOrFull(bridge, holdsTx))
-    const runManifestOrFull = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> => {
-      if (bundleSource === fullBundle) {
-        return runManifestOnce(bridge, holdsTx, fullBundle).catch((err: unknown) => {
-          attachUpstreamTrace(err, upstreamTrace)
-          throw err
-        })
-      }
-      const watched = watchBridgeCalls(bridge)
-      return runManifestOnce(watched.bridge, holdsTx, bundleSource)
-        .catch((err: unknown) => {
-          // The export-only bundle did not load: this read runs the full one, and so does
-          // every later call. Only a failure before the handler reached the host is one:
-          // after a bridge call the error is the handler's (a nested hop's included), and
-          // it surfaces as it is, never rerun.
-          if (watched.called() || !isBundleLoadError(err)) throw err
-          useFullBundle(fullBundle, handlerRef.exportName)
-          return runManifestOnce(bridge, holdsTx, fullBundle)
-        })
-        .catch((err: unknown) => {
-          attachUpstreamTrace(err, upstreamTrace)
-          throw err
-        })
-    }
+      runManifestOnce(bridge, holdsTx).catch((err: unknown) => {
+        attachUpstreamTrace(err, upstreamTrace)
+        throw err
+      })
     // A tool that hands an operator a platform-minted webhook secret answers a marker; the
     // host writes the value in here, after the run, from its own config read (reveal-secrets.ts).
-    const runManifestOnce = (
-      bridge: Record<string, any>,
-      holdsTx: boolean,
-      bundleSource: string,
-    ): Promise<unknown> =>
-      runManifestHandler(bridge, holdsTx, bundleSource).then((result) =>
+    const runManifestOnce = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
+      runManifestHandler(bridge, holdsTx).then((result) =>
         revealDeclaredSecrets(result, {
           appName: tool.appName,
           toolName: tool.name,
@@ -3318,13 +3275,8 @@ export async function executeToolHandler(
           readSecret: (key) => bridge.config_get(key),
         }),
       )
-    const runManifestHandler = (
-      bridge: Record<string, any>,
-      holdsTx: boolean,
-      bundleSource: string,
-    ): Promise<unknown> =>
+    const runManifestHandler = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
       runApp({
-        trusted: handlerRef.trusted === true,
         appName: tool.appName,
         orgId,
         bundlePath: handlerRef.bundlePath,
@@ -6418,7 +6370,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     // crash is debuggable instead of an opaque "Tool execution failed" — the drafts_create
     // export-payload crash class. Production + the sandbox-worker test (no CHAOS_DEBUG) stay opaque.
     const isUntrustedProd =
-      isManifestHandler(tool.handler) && tool.handler.trusted === false && !process.env.CHAOS_DEBUG
+      isManifestHandler(tool.handler) && tool.handler.core !== true && !process.env.CHAOS_DEBUG
     // DELIBERATE sandboxed-handler errors. Sandboxed apps communicate agent-actionable
     // failures by throwing `some_error_code: human guidance` (e.g. invoicing's
     // `no_issuer_profile: …`), but the sandbox IPC marshals only the message STRING —

@@ -31,9 +31,8 @@ export function apiConnectorSourceDescriptor(): Awaited<ReturnType<typeof getDef
   return {
     ...apiConnectionsManifest,
     _format: "manifest" as const,
-    // Sandboxed, as every installed app is.
-    trusted: false,
-    // As the image's own catalog tarball is: the platform vouches for its code.
+    // As the image's own catalog tarball is: the platform vouches for its
+    // declarations. It still runs sandboxed: it is not a core app.
     _firstParty: true,
     // An installed bundle's path shape (`<name>/<version>/bundle.js`): the
     // sandbox builds it from the app's source (bundle-loader.ts, outside production).

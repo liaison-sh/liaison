@@ -126,7 +126,7 @@ async function runClaimed(row: ClaimedDelivery, signal?: AbortSignal): Promise<v
   if (isManifestHandler(reg.handler)) {
     const holdMs = await appRunHoldMs({
       orgId,
-      trusted: (reg.handler as ManifestHandlerRef).trusted === true,
+      core: (reg.handler as ManifestHandlerRef).core === true,
     })
     if (holdMs !== null) {
       await wakeAfterSettle(row, await settleDelivery(row, { status: "held", holdMs }))

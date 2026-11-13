@@ -23,7 +23,7 @@
 //  - approval summarizers: exempt (they never go through runApp);
 //  - a nested run (a tool called from another app's run): counted, never
 //    refused, so a run already admitted completes;
-//  - trusted platform code running in-process: exempt.
+//  - a core app's server code: exempt.
 // Without any app cap the org costs one cached read (60 s), no Redis call.
 // Redis unreachable: open (an unreadable counter never holds work back).
 
@@ -122,16 +122,16 @@ export async function appDayCapReached(
   return null
 }
 
-/** Who is asking: trusted in-process code and nested runs are never held. */
+/** Who is asking: a core app's server code and nested runs are never held. */
 export interface AppRunGate {
   orgId: string
-  trusted: boolean
+  core: boolean
   nested?: boolean
 }
 
 /** Refuse a top-level tool run of an org at an app day cap (CapLimitError, 429). */
 export async function assertAppRunRoom(gate: AppRunGate): Promise<void> {
-  if (gate.trusted || gate.nested) return
+  if (gate.core || gate.nested) return
   const over = await appDayCapReached(gate.orgId)
   if (over) throw new CapLimitError(over.kind, over.limit, over.used)
 }
@@ -141,7 +141,7 @@ const HOLD_JITTER_MS = 5 * 60_000
 
 /** How long background work of the org waits (ms), or null to run now. */
 export async function appRunHoldMs(gate: AppRunGate, now = Date.now()): Promise<number | null> {
-  if (gate.trusted || gate.nested) return null
+  if (gate.core || gate.nested) return null
   const over = await appDayCapReached(gate.orgId, now)
   if (!over) return null
   return msUntilNextUtcDay(now) + Math.floor(Math.random() * HOLD_JITTER_MS)
@@ -165,7 +165,7 @@ export class AppDayCapHeldJobError extends Error {
 
 /** Hold an app job of an org at an app day cap (throws AppDayCapHeldJobError). */
 export async function holdAppJobIfCapped(gate: AppRunGate): Promise<void> {
-  if (gate.trusted || gate.nested) return
+  if (gate.core || gate.nested) return
   const now = Date.now()
   const over = await appDayCapReached(gate.orgId, now)
   if (!over) return

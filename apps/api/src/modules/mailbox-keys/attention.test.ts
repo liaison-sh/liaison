@@ -78,7 +78,7 @@ describe("mailbox enrollment attention item", () => {
   it("is registered as a kernel attention provider", () => {
     expect(attentionItemsRegistry.get(["*", "kernel.mailbox_enrollment"])).toMatchObject({
       handler: "computeMailboxEnrollmentAttentionItems",
-      trusted: true,
+      core: true,
     })
   })
 

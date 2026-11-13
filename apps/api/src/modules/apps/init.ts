@@ -116,17 +116,12 @@ function pickDescriptorExport(
 /**
  * Build an `AppDescriptor` for an installed (`.liaisonapp`) app directly from
  * its JSON manifest. Installed apps cannot carry TS-only descriptor metadata
- * (`_oauthClientResolvers`, `_bridgeExtension`, `orgSettings`) because the `.liaisonapp` tarball ships no descriptor module —
+ * (`_oauthClientResolvers`, `orgSettings`) because the `.liaisonapp` tarball ships no descriptor module —
  * only `app.manifest.json` + `bundle.js`. The install service and freeze tool
  * reject manifests that depend on those features; this loader asserts their
  * absence at registration time as a belt-and-suspenders guard.
  */
-const TS_ONLY_MANIFEST_FIELDS = [
-  "_oauthClientResolvers",
-  "_bridgeExtension",
-  "_registerHostTools",
-  "orgSettings",
-] as const
+const TS_ONLY_MANIFEST_FIELDS = ["_oauthClientResolvers", "orgSettings"] as const
 
 export function installedAppDescriptor(
   app: DiscoveredApp,
@@ -182,6 +177,10 @@ export function installedAppDescriptor(
           },
         }
       : {}
+  // An older package may still carry `trusted` (the package schema refuses it
+  // since): dropped, it decides nothing. Where an app runs is the platform's
+  // call (core/registry.ts), and an installed app is never core.
+  delete manifest.trusted
   return {
     ...manifest,
     ...(declaredCaps.length > 0 ? { capabilities: effectiveCaps } : {}),
@@ -191,16 +190,11 @@ export function installedAppDescriptor(
     // in-tree apps), so runtime.ts can hold it to the third-party rules (no
     // unvouched DB triggers). Set after the spread: a manifest cannot unset it.
     _installed: true,
-    // Installed apps are ALWAYS process-isolated (untrusted worker pool). The
-    // `.liaisonapp` manifest schema rejects `trusted: true` and the install
-    // service coerces it, but discovery re-reads the on-disk manifest at every
-    // boot — so the authoritative coercion must happen HERE, at the descriptor
-    // boundary that feeds runtime.ts's `desc.trusted !== false` tier check.
-    trusted: false,
     // First-party is the platform's voucher (getDefaultApps matches the installed
     // artifact against the image's own catalog tarball), never the manifest's: it
     // is always set here, after the spread, so a manifest cannot claim it. It only
-    // lets runtime.ts honour `readOnly`; the app stays sandboxed.
+    // lets runtime.ts honour the app's declarations (`readOnly` and its kin,
+    // triggers); the app stays sandboxed, on an RLS bridge, like any other.
     _firstParty: opts.firstParty === true,
     // The OPERATOR's own voucher, and like `_firstParty` set here, after the spread,
     // so a manifest can never claim it: this install's artifact carried a cosign
@@ -338,7 +332,8 @@ async function buildCatalogApps(): Promise<CatalogBuild> {
       )
     }
     // In-tree apps ship in the image source tree, so they are first-party by
-    // construction, the sandboxed (`trusted: false`) ones included.
+    // construction (core or not: being first-party vouches for declarations, it
+    // never makes an app core).
     apps.push({
       kind: "in-tree",
       json: readManifestJson(app.manifestPath),
@@ -411,7 +406,7 @@ export const GetDefaultAppsTestAccess = {
  * a publisher and these exact bytes carry that publisher's signature. An unsigned
  * install — every sideload the org did not vouch for, `requireSignature: false`
  * included — is never in the set, and neither voucher changes the app's tier: it
- * still runs sandboxed (`trusted: false`).
+ * still runs sandboxed.
  *
  * Each install dir is hashed once per discovery. Fails closed: on any error neither
  * set is populated, so `readOnly` stays ignored.

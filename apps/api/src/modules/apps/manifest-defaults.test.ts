@@ -54,7 +54,7 @@ function registerEchoTool(opts: { gated?: boolean } = {}) {
     writesToTable: "app_defaults_test.items",
     ...(opts.gated ? { gated: true } : {}),
     params: PARAMS_SCHEMA,
-    handler: { bundlePath: BUNDLE_PATH, exportName: "echo", trusted: true },
+    handler: { bundlePath: BUNDLE_PATH, exportName: "echo", core: true },
     _manifest: { name: "defaults-test", schema: {}, events: {}, connections: {}, network: {} },
   } as never)
   return toolRegistry.get([TEST_ORG, "defaults-test", "echo"])!

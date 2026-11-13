@@ -61,7 +61,7 @@ export interface DeferredEventJob {
  */
 export async function deferEventIfCapped(job: DeferredEventJob): Promise<boolean> {
   if (job.event && typeof job.event === "object" && runningDeferred.has(job.event)) return false
-  const holdMs = await appRunHoldMs({ orgId: job.orgId, trusted: false })
+  const holdMs = await appRunHoldMs({ orgId: job.orgId, core: false })
   if (holdMs === null) return false
   await enqueueAppJob("kernel", "app-deferred-event", job, { delay: holdMs })
   log.info(
@@ -89,7 +89,7 @@ export async function runDeferredAppEvent(data: unknown): Promise<void> {
     log.warn({ data }, "app-deferred-event: invalid job data; dropped")
     return
   }
-  await holdAppJobIfCapped({ orgId: d.orgId, trusted: false })
+  await holdAppJobIfCapped({ orgId: d.orgId, core: false })
   const key = keyOf(d.orgId, d.appName, d.eventType, d.exportName)
   // This process sets the org's apps up on first touch, which subscribes them.
   if (!handlers.has(key)) await orgSetup(d.orgId)

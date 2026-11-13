@@ -11,8 +11,8 @@
 // forbids a tool, and nothing here edits a description.
 //
 // The guard test and the wrapper's world runner both call `measureLadder`.
-import { existsSync, readFileSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
 import { isDeferredTool, providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import { loadManifests } from "../../../../../../scripts/docs/gen-reference"
@@ -97,12 +97,11 @@ function ladderTool(app: string, name: string, def: RegistryTool, guide?: string
 
 /**
  * The tools the host registers beyond the app manifests' own: the kernel's
- * tools and bulk tools, each app's bulk tools and its host tools. The host's
+ * tools and bulk tools, and each app's bulk tools. The host's
  * own registrations run under a measuring org, their entries are read as the
  * registry holds them, then removed again.
  */
 async function loadHostRegistryTools(
-  root: string,
   manifests: ReturnType<typeof loadManifests>,
   guides: ReadonlyMap<string, string>,
 ): Promise<LadderTool[]> {
@@ -127,12 +126,6 @@ async function loadHostRegistryTools(
           bulk,
           tools: tools as Parameters<typeof registerBulkAgentTools>[0]["tools"],
         })
-      const descriptor = join(root, dirname(m.path), "manifest-descriptor.ts")
-      if (!existsSync(descriptor)) continue
-      for (const value of Object.values(await import(descriptor))) {
-        const register = (value as { _registerHostTools?: unknown } | null)?._registerHostTools
-        if (typeof register === "function") register(MEASURE_ORG)
-      }
     }
     for (const [key, value] of toolRegistry.entriesOf(MEASURE_ORG)) {
       const app = String(key[1])
@@ -165,7 +158,7 @@ export async function loadLadderTools(root: string = LADDER_REPO_ROOT): Promise<
       out.push(ladderTool(m.name, name, def, guide))
     }
   }
-  out.push(...(await loadHostRegistryTools(root, manifests, guides)))
+  out.push(...(await loadHostRegistryTools(manifests, guides)))
   return out.sort((a, b) => a.sdkName.localeCompare(b.sdkName))
 }
 

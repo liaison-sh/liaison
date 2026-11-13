@@ -27,7 +27,7 @@ interface RegistryEntry {
   handler: string
   scope?: string
   bundlePath: string
-  trusted: boolean
+  core: boolean
   /** Declared `passesOn`: also returns the items of the people the viewer stands in for. */
   passesOn?: boolean
 }

@@ -13,7 +13,7 @@ describe("a manifest webhook's budget", () => {
       appName: "x",
       orgId: "00000000-0000-0000-0000-000000000001",
       holdsTx: false,
-      handlerRef: { bundlePath: "b", exportName: "h", trusted: false } as never,
+      handlerRef: { bundlePath: "b", exportName: "h", core: false } as never,
       bundleSource: "",
       params: {},
       bridge: {},

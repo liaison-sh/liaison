@@ -124,7 +124,6 @@
     "summary": "Track customer requests, returns and warranty cases to resolution.",
     "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/tickets"
   },
-  "trusted": true,
   "dependencies": {
     "optional": [
       "mail"

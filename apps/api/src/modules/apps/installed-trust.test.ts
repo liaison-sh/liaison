@@ -11,10 +11,11 @@ import { join } from "node:path"
 import { eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion } from "~/db/schema/kernel/apps-installed"
+import { isCoreApp } from "~/modules/apps/core/registry"
 import { bumpCatalogGeneration } from "./catalog-generation"
 import { getDefaultApps } from "./init"
 
-describe("installed apps are forced untrusted", () => {
+describe("installed apps are never core", () => {
   let root = ""
   const appsDirBefore = process.env.LIAISON_APPS_DIR
 
@@ -31,7 +32,7 @@ describe("installed apps are forced untrusted", () => {
     bumpCatalogGeneration()
   })
 
-  it("coerces an installed app's descriptor to trusted:false even if its manifest claims trusted:true", async () => {
+  it("drops a trusted claim from an installed app's on-disk manifest, and is never core, even under a claim", async () => {
     root = mkdtempSync(join(tmpdir(), "trust-root-"))
     process.env.LIAISON_APPS_DIR = root
     const verDir = join(root, "evil-app", "1.0.0")
@@ -60,8 +61,9 @@ describe("installed apps are forced untrusted", () => {
     const apps = await getDefaultApps()
     const evil = apps.find((a) => (a as { name?: string }).name === "evil-app")
     expect(evil).toBeDefined()
-    // runtime.ts gates the in-process tier on `desc.trusted !== false`; the
-    // descriptor MUST carry an explicit `false`, not `undefined`.
-    expect((evil as { trusted?: unknown }).trusted).toBe(false)
+    // The claim is dropped (it decides nothing), and the registry says the app
+    // is not core: it runs sandboxed like any installed app.
+    expect("trusted" in (evil as object)).toBe(false)
+    expect(isCoreApp(evil as never)).toBe(false)
   })
 })

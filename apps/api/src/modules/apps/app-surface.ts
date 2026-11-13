@@ -62,8 +62,6 @@ export interface AppSurface {
   version: string
   /** The handler bundle (in-tree: its source entry; installed: `bundle.js`). */
   bundlePath: string
-  /** Platform code: may run in-process. A sandboxed app (`trusted: false`) never does. */
-  trusted: boolean
   /** Where `pages/<name>.js` (or its `.ts` source) is read from. */
   packageDir: string
   pages: Record<string, AppPageDecl>
@@ -80,7 +78,6 @@ export const appSurfaceRegistry = createTypedRegistry<
 interface SurfaceManifest {
   name: string
   version: string
-  trusted?: boolean
   pages?: Record<string, AppPageDecl>
   pageRoutes?: Record<string, AppRouteDecl>
   provisioning?: AppProvisioningDecl
@@ -98,7 +95,6 @@ export function buildAppSurface(desc: SurfaceManifest, bundlePath: string): AppS
     appName: desc.name,
     version: desc.version,
     bundlePath,
-    trusted: desc.trusted !== false,
     packageDir: dirname(bundlePath),
     pages,
     routes,

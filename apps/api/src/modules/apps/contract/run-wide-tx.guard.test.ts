@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { isCoreApp } from "~/modules/apps/core/registry"
 import { handlerRunHoldsTx, type RunWideTxAllowance } from "~/modules/apps/run-wide-tx"
 
 const ALLOWLIST_PATH = join(import.meta.dir, "run-wide-tx.allowlist.json")
@@ -21,7 +22,7 @@ const read = (p: string) => JSON.parse(readFileSync(p, "utf8")) as RunWideTxAllo
 const keyOf = (r: RunWideTxAllowance) => `${r.app}:${r.entry}`
 
 interface Manifest {
-  trusted?: boolean
+  name: string
   events?: { subscribes?: Record<string, string | { handler?: string }> }
   webhooks?: Record<string, { handler?: string }>
 }
@@ -63,7 +64,7 @@ describe("handlers that hold a transaction for their whole run (shrink-only allo
       const m = manifestOf(row.app)
       expect({
         row: keyOf(row),
-        sandboxed: m.trusted !== true,
+        sandboxed: !isCoreApp({ name: m.name }),
         declared: entriesOf(m).has(row.entry),
       }).toEqual({ row: keyOf(row), sandboxed: true, declared: true })
       expect(row.reason.length).toBeGreaterThan(20)
@@ -73,17 +74,14 @@ describe("handlers that hold a transaction for their whole run (shrink-only allo
   it("a listed handler holds the transaction, an unlisted sandboxed one does not, a core one does", () => {
     // Any listed row (the list only shrinks: once it is empty no sandboxed handler holds one).
     const [row] = read(ALLOWLIST_PATH)
-    if (row)
-      expect(handlerRunHoldsTx({ trusted: false, app: row.app, entry: row.entry })).toBe(true)
+    if (row) expect(handlerRunHoldsTx({ core: false, app: row.app, entry: row.entry })).toBe(true)
     expect(
       handlerRunHoldsTx({
-        trusted: false,
+        core: false,
         app: "invoicing",
         entry: "event:onShopifyProductChanged",
       }),
     ).toBe(false)
-    expect(handlerRunHoldsTx({ trusted: true, app: "tickets", entry: "webhook:anything" })).toBe(
-      true,
-    )
+    expect(handlerRunHoldsTx({ core: true, app: "tickets", entry: "webhook:anything" })).toBe(true)
   })
 })

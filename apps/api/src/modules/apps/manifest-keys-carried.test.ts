@@ -173,7 +173,8 @@ describe("manifest keys carried onto the registry", () => {
     const judged = validateAppManifest(JSON.parse(JSON.stringify(declared)))
     expect(judged.success ? "" : judged.error).toBe("")
 
-    await registerApps([manifest], TEST_ORG)
+    // Some keys under test count only for an app the platform vouches for (contract.ts).
+    await registerApps([{ ...manifest, _firstParty: true }], TEST_ORG)
 
     const missing: string[] = []
     for (const c of CASES) {
@@ -244,16 +245,13 @@ describe("manifest keys carried onto the registry", () => {
   })
 
   it("a sink-reader declaration refuses an app nobody vouched for, so nothing is carried", async () => {
-    const manifest = appWith(
-      {
-        put: {
-          sinkReadersSelf: true,
-          contentParams: ["note"],
-          params: { type: "object", properties: { note: {} } },
-        },
+    const manifest = appWith({
+      put: {
+        sinkReadersSelf: true,
+        contentParams: ["note"],
+        params: { type: "object", properties: { note: {} } },
       },
-      { trusted: false },
-    )
+    })
     const { failedApps } = await registerApps([manifest], TEST_ORG)
     expect(failedApps).toEqual([APP])
     expect(toolRegistry.get([TEST_ORG, APP, "put"])).toBeUndefined()
@@ -261,7 +259,7 @@ describe("manifest keys carried onto the registry", () => {
 
   it("a call-place declaration refuses an app nobody vouched for, so nothing is carried", async () => {
     for (const key of ["humanTurnOnly", "dmOnly"]) {
-      const manifest = appWith({ put: { readOnly: true, [key]: true } }, { trusted: false })
+      const manifest = appWith({ put: { readOnly: true, [key]: true } })
       const { failedApps } = await registerApps([manifest], TEST_ORG)
       expect({ key, failedApps }).toEqual({ key, failedApps: [APP] })
       expect(toolRegistry.get([TEST_ORG, APP, "put"])).toBeUndefined()

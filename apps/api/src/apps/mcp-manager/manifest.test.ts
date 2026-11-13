@@ -26,8 +26,8 @@ describe("mcp-manager manifest", () => {
     }
   })
 
-  it("is marked trusted and has a stable name", () => {
-    expect(manifest.trusted).toBe(true)
+  it("is a core app with a stable name (the registry decides, not the manifest)", () => {
+    expect("trusted" in manifest).toBe(false)
     expect(manifest.name).toBe("mcp-manager")
   })
 

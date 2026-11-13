@@ -98,7 +98,7 @@ export async function processWebhookRetry(
   if (isManifestHandler(reg.handler)) {
     await holdAppJobIfCapped({
       orgId,
-      trusted: (reg.handler as ManifestHandlerRef).trusted === true,
+      core: (reg.handler as ManifestHandlerRef).core === true,
     })
   }
 

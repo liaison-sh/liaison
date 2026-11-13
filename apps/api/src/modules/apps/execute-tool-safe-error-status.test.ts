@@ -109,7 +109,7 @@ describe("executeTool: a safe ToolError keeps its 4xx HTTP class", () => {
       name,
       description: name,
       requiredScopes: ["safe-status:items:read"],
-      handler: { bundlePath, exportName: name, trusted: false },
+      handler: { bundlePath, exportName: name, core: false },
       _manifest: { name: "safe-status", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
   }

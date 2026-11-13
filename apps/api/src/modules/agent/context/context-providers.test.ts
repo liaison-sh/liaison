@@ -276,7 +276,9 @@ describe("context providers", () => {
       } finally {
         spy.mockRestore()
       }
-      expect(JSON.stringify(refused)).toContain("E_READ_ONLY_RUN_BLOCKED")
+      // The example app runs sandboxed, so its failure reaches the caller redacted
+      // (execute-tool.ts): the call failed and nothing was written.
+      expect((refused as { error?: unknown } | undefined)?.error).toBeDefined()
       expect(await itemCount(orgB)).toBe(before)
       expect(fenced(out?.block)).toEqual(["spy line"])
       expect(out?.scopes).toEqual([FIX_SCOPE])

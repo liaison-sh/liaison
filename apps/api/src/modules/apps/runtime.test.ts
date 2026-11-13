@@ -3,44 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { entityRegistry, resetAppRegistries } from "~/modules/apps/app-registries"
 import { computeSchemaHash, generateAlterTableDdl, generateTableDdl } from "~/modules/apps/ddl"
-import { isSummarizerTrustCarveOutAllowed, registerApps } from "~/modules/apps/runtime"
-
-// Summarizer trust carve-out: LIAISON_TRUSTED_SUMMARIZER_APPS defaults EMPTY
-// (fail-closed behaviour unchanged); an operator can allowlist an app name to
-// let its DECLARED summarizers run host-side despite trusted:false. The env var
-// is restored after the block so no sibling suite sees it.
-describe("isSummarizerTrustCarveOutAllowed", () => {
-  const ORIGINAL_ENV = process.env.LIAISON_TRUSTED_SUMMARIZER_APPS
-
-  afterAll(() => {
-    if (ORIGINAL_ENV === undefined) delete process.env.LIAISON_TRUSTED_SUMMARIZER_APPS
-    else process.env.LIAISON_TRUSTED_SUMMARIZER_APPS = ORIGINAL_ENV
-  })
-
-  it("returns false for every app when the env var is unset (default fail-closed, unchanged)", () => {
-    delete process.env.LIAISON_TRUSTED_SUMMARIZER_APPS
-    expect(isSummarizerTrustCarveOutAllowed("ledger")).toBe(false)
-    expect(isSummarizerTrustCarveOutAllowed("shopify")).toBe(false)
-  })
-
-  it("returns false for every app when the env var is empty string", () => {
-    process.env.LIAISON_TRUSTED_SUMMARIZER_APPS = ""
-    expect(isSummarizerTrustCarveOutAllowed("ledger")).toBe(false)
-  })
-
-  it("returns true only for an explicitly allowlisted app name", () => {
-    process.env.LIAISON_TRUSTED_SUMMARIZER_APPS = "ledger"
-    expect(isSummarizerTrustCarveOutAllowed("ledger")).toBe(true)
-    expect(isSummarizerTrustCarveOutAllowed("shopify")).toBe(false)
-  })
-
-  it("supports a comma-separated multi-app allowlist, trimming whitespace", () => {
-    process.env.LIAISON_TRUSTED_SUMMARIZER_APPS = " ledger , shopify "
-    expect(isSummarizerTrustCarveOutAllowed("ledger")).toBe(true)
-    expect(isSummarizerTrustCarveOutAllowed("shopify")).toBe(true)
-    expect(isSummarizerTrustCarveOutAllowed("boxtal")).toBe(false)
-  })
-})
+import { registerApps } from "~/modules/apps/runtime"
 
 describe("generateTableDdl", () => {
   it("generates correct DDL for known field types", () => {

@@ -898,7 +898,6 @@ async function runMailSend(orgId: string, exportName: string, params: unknown) {
   const bridge = createSessionRpcBridge("mail", "system", orgId, session, mailManifest as any)
   try {
     return await runApp({
-      trusted: true,
       appName: "mail",
       orgId,
       installed: null,

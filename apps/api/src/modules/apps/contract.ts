@@ -267,7 +267,6 @@ const appPromptSchema = z.object({ content: z.string().min(1) })
 const appDescriptorSchema = z.object({
   name: z.string().regex(NAME_REGEX, "Name must be lowercase alphanumeric + hyphens"),
   version: z.string().regex(SEMVER_REGEX, "Version must be valid semver"),
-  trusted: z.boolean().optional(),
   // Declarative settings page and app kind (app-sdk app-settings.ts). Shape
   // only here; settingsErrors (below) runs the cross-field rules.
   kind: z.enum(["app", "connector"]).optional(),
@@ -1099,8 +1098,8 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
 }
 
 /**
- * Tool keys only an app the platform vouches for may declare: an in-tree app or the
- * image's own catalog artifact (`hasPrivilegedBridge` in runtime.ts). A third-party
+ * Tool keys only an app the platform vouches for may declare: a core app or the
+ * image's own catalog artifact (`_firstParty`, a voucher for declarations only). A third-party
  * manifest declaring one is refused at registration, signed by a trusted publisher or not.
  * - `sinkReadersSelf` says the acting user alone reads what the tool writes, and
  *   `contentParams` names the only parameters through which a call carries the turn
@@ -1201,7 +1200,18 @@ function activitySourceErrors(manifest: any): string[] {
   return errors
 }
 
+/**
+ * The refusal of a manifest that carries `trusted`. No manifest decides where
+ * its app runs: the core apps (core/registry.ts) are server code, every other
+ * app runs sandboxed.
+ */
+export const TRUSTED_FIELD_REFUSAL =
+  "trusted is not a manifest field: the platform decides which apps are core (server code); every other app runs sandboxed. Remove it."
+
 export function validateAppManifest(manifest: any): ValidationResult {
+  if (manifest !== null && typeof manifest === "object" && "trusted" in manifest) {
+    return { success: false, error: TRUSTED_FIELD_REFUSAL }
+  }
   const retired = retiredToolScopeErrors(manifest?.tools)
   if (retired.length > 0) return { success: false, error: retired.join("; ") }
 

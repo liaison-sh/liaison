@@ -14,6 +14,30 @@
 //
 // This file is a leaf (no imports): the bundle loader reads it.
 
+/**
+ * The core apps: the only apps whose code runs in this process, as server code.
+ * Every other app (bundled, catalog, sideloaded or custom) runs sandboxed, and
+ * no manifest field changes that: this list decides, nothing else.
+ * `contacts` is core with no handler module (kernel-owned, nothing to run).
+ */
+export const CORE_APP_NAMES: ReadonlySet<string> = new Set([
+  "calendar",
+  "contacts",
+  "knowledge",
+  "mail",
+  "mcp-manager",
+  "projects",
+  "tickets",
+])
+
+/**
+ * Whether `desc` is a core app: one of CORE_APP_NAMES shipped in the image
+ * source tree. A runtime install is never core, whatever its name.
+ */
+export function isCoreApp(desc: { name?: unknown; _installed?: unknown }): boolean {
+  return typeof desc.name === "string" && CORE_APP_NAMES.has(desc.name) && desc._installed !== true
+}
+
 /** One core app's server module: where its descriptor points, and how to import it. */
 export interface CoreAppModule {
   /** The absolute path the app's descriptor declares as `_bundlePath`. */

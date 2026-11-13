@@ -85,6 +85,16 @@ export const sandboxEgressOverrides: {
 } = { fetch: null, smtpSend: null, fetchInterceptsHost: null }
 
 /**
+ * Test-only host methods added to one app's bridge (a method that writes then
+ * fails, say), keyed `<orgId>:<appName>`. Empty in production: no app has
+ * methods of its own on the bridge, every app gets the same generic surface.
+ */
+export type BridgeTestHostMethods = (ctx: {
+  txDb: import("~/db").RlsClient
+}) => Record<string, (paramsJson: string) => Promise<string>>
+export const bridgeTestHostMethods = new Map<string, BridgeTestHostMethods>()
+
+/**
  * Test access to the sandbox egress overrides, grouped in one object so the
  * production surface carries a single named door. Production code never calls it.
  */
@@ -98,6 +108,11 @@ export const SandboxBridgeTestAccess = {
   /** Hosts this predicate matches route to the stub fetch above, guards skipped. */
   setFetchInterceptsHost(fn: ((hostname: string) => boolean) | null): void {
     sandboxEgressOverrides.fetchInterceptsHost = fn
+  },
+  /** Add (or, with null, remove) test host methods on `appName`'s bridges in `orgId`. */
+  setHostMethods(orgId: string, appName: string, fn: BridgeTestHostMethods | null): void {
+    if (fn) bridgeTestHostMethods.set(`${orgId}:${appName}`, fn)
+    else bridgeTestHostMethods.delete(`${orgId}:${appName}`)
   },
 }
 

@@ -81,9 +81,7 @@ describe("registerApps — manifest format", () => {
     expect(tool!.handler).toEqual({
       bundlePath: "/apps/manifest-app/handlers.js",
       exportName: "listItems",
-      trusted: true,
-      // Not installed from the catalog: the server never trims or parses it on its own (bundle trust).
-      firstParty: false,
+      core: false,
     })
     expect(tool!.requiredScopes).toEqual(["manifest-app:items:read"])
 
@@ -92,12 +90,12 @@ describe("registerApps — manifest format", () => {
     expect(webhook!.handler).toEqual({
       bundlePath: "/apps/manifest-app/handlers.js",
       exportName: "handleInbound",
-      trusted: true,
+      core: false,
     })
     expect(webhook!.verify).toEqual({
       bundlePath: "/apps/manifest-app/handlers.js",
       exportName: "verifyInbound",
-      trusted: true,
+      core: false,
     })
 
     // Entity registered
@@ -239,13 +237,14 @@ describe("registerApps — manifest format", () => {
 
   it("copies a manifest tool's writesToTable and readOnly onto its registry entry", async () => {
     try {
-      await registerApps([taintDeclApp() as never], TEST_ORG)
+      // An in-tree app, as discovery registers it: first party (init.ts), not core.
+      await registerApps([taintDeclApp(undefined, { _firstParty: true }) as never], TEST_ORG)
       const get = (name: string) => toolRegistry.get([TEST_ORG, "taintdecl-app", name])
       expect(get("writeItems")?.writesToTable).toBe("app_taintdecl_app.items")
       expect(get("writeItems")?.readOnly).toBeUndefined()
       expect(get("readItems")?.readOnly).toBe(true)
       expect(get("readItems")?.writesToTable).toBeUndefined()
-      // An in-tree (trusted) app is first party: the platform vouches for its code, so it
+      // An in-tree app is first party: the platform vouches for its declarations, so it
       // may name a kernel ENFORCING sink it really writes through a kernel bridge.
       expect(get("claimsKernelSink")?.writesToTable).toBe("kernel.messages")
       // Any other table outside its own schema is dropped: a non-enforcing kernel table or
@@ -463,7 +462,7 @@ describe("registerApps — manifest format", () => {
     expect(toolRegistry.get([TEST_ORG, "BAD NAME", "anything"])).toBeUndefined()
   })
 
-  it("propagates trusted=false to manifest webhook handlers", async () => {
+  it("marks a non-core app's manifest webhook handlers core: false", async () => {
     const manifest = {
       name: "manifest-app-untrusted",
       version: "1.0.1",
@@ -492,12 +491,12 @@ describe("registerApps — manifest format", () => {
     expect(webhook!.handler).toEqual({
       bundlePath: "/apps/manifest-app-untrusted/handlers.js",
       exportName: "handleInbound",
-      trusted: false,
+      core: false,
     })
     expect(webhook!.verify).toEqual({
       bundlePath: "/apps/manifest-app-untrusted/handlers.js",
       exportName: "verifyInbound",
-      trusted: false,
+      core: false,
     })
   })
 

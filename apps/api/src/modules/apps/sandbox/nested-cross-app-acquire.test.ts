@@ -26,7 +26,7 @@ const TOOL = {
   appName: APP,
   name: `${APP}:read`,
   gated: false,
-  handler: { __manifestHandler: true, exportName: "read", bundlePath: BUNDLE_PATH, trusted: false },
+  handler: { __manifestHandler: true, exportName: "read", bundlePath: BUNDLE_PATH, core: false },
   _manifest: { name: APP, schema: {}, events: {}, connections: {}, network: {} },
 } as any
 

@@ -3477,38 +3477,6 @@ async function runtimeInventory(root: string): Promise<RuntimeResult> {
       independent: astBridge.size,
       method: "AST of sandbox/bridge/*.ts return objects",
     })
-    // Per-app bridge extensions
-    try {
-      const ext = (await import("~/modules/apps/sandbox/bridge-extensions")) as Record<string, any>
-      const registry = ext.appBridgeExtensionRegistry
-      if (registry?.entries) {
-        for (const [[orgId, appName], factory] of registry.entries()) {
-          if (orgId !== org.id && orgId !== "*") continue
-          let names: string[] = []
-          try {
-            names = Object.keys(
-              factory({ appName, orgId: org.id, userId: "system", txDb: {}, actorType: "system" }),
-            )
-          } catch {
-            names = ["<factory threw on probe>"]
-          }
-          for (const n of names) {
-            rows.push({
-              kind: "bridge",
-              id: `bridge:ext:${appName}:${n}`,
-              location: "runtime:appBridgeExtensionRegistry",
-              attrs: { method: n, origin: `extension:${appName}`, inAst: false },
-              source: "runtime",
-            })
-          }
-        }
-      }
-    } catch (err) {
-      notes.push({
-        kind: "bridge",
-        note: `bridge extensions not enumerable: ${String((err as Error).message).slice(0, 120)}`,
-      })
-    }
     void appBridgeManifestRegistry
     notes.push({
       kind: "job",

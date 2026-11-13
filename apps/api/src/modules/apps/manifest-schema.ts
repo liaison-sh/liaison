@@ -882,7 +882,6 @@ export const appManifestJsonSchema = {
   properties: {
     name: { type: "string", pattern: APP_NAME_PATTERN },
     version: { type: "string", pattern: SEMVER_PATTERN },
-    trusted: { type: "boolean" },
     rlsManagedBy: { type: "string", enum: ["migration"] },
     description: { type: "string" },
     // Tools that add a short block about the entity in view to the agent's context.

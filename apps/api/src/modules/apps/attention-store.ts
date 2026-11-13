@@ -68,12 +68,7 @@ import {
 } from "~/modules/apps/app-registries"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
-import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import {
-  exportOnlyBundle,
-  useFullBundle,
-  watchBridgeCalls,
-} from "~/modules/apps/sandbox/bundle-shake"
+import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
@@ -116,7 +111,7 @@ interface ProviderRegistration {
   handler: string
   scope?: string
   bundlePath: string
-  trusted: boolean
+  core: boolean
   /** Declared `passesOn`: also given the people away today who name the person next in line. */
   passesOn?: boolean
 }
@@ -166,36 +161,20 @@ export async function invokeAppProvider(
     undefined,
     { actor: aliasedActor },
   )
-  // A trusted provider runs the part of its bundle the provider needs (the
-  // whole bundle until that is built): QuickJS compiles all of a bundle on
-  // every evaluation. Still a fresh context per call; see bundle-shake.ts.
-  const trusted = reg.trusted === true
-  const bundleSource = trusted ? exportOnlyBundle(source, reg.handler, { trusted }) : source
-  const watched =
-    bundleSource !== source ? watchBridgeCalls(bridge) : { bridge, called: () => false }
-  try {
-    return (await runApp({
-      trusted,
-      appName,
-      orgId,
-      bundlePath: reg.bundlePath,
-      bundleSource,
-      exportName: reg.handler,
-      entry: `${ATTENTION_ENTRY_PREFIX}${reg.handler}`,
-      params: { actor: aliasedActor, ...passOn },
-      bridge: watched.bridge,
-      holdsTx: false,
-      appId: appName,
-      timeoutMs: PROVIDER_RUN_TIMEOUT_MS,
-    })) as AttentionItem[]
-  } catch (err) {
-    // The export-only bundle failed to load (before the provider reached the host): the next
-    // run uses the full one.
-    if (trusted && bundleSource !== source && !watched.called() && isBundleLoadError(err)) {
-      useFullBundle(source, reg.handler)
-    }
-    throw err
-  }
+  // runApp runs a core app's provider as server code, any other sandboxed.
+  return (await runApp({
+    appName,
+    orgId,
+    bundlePath: reg.bundlePath,
+    bundleSource: source,
+    exportName: reg.handler,
+    entry: `${ATTENTION_ENTRY_PREFIX}${reg.handler}`,
+    params: { actor: aliasedActor, ...passOn },
+    bridge,
+    holdsTx: false,
+    appId: appName,
+    timeoutMs: PROVIDER_RUN_TIMEOUT_MS,
+  })) as AttentionItem[]
 }
 
 /**

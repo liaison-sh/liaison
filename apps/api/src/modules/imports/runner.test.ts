@@ -227,7 +227,7 @@ async function registerFixtureKinds(orgId: string, hostDecl: ImportKindDecl = HO
       checkinsert: { ...BUNDLE_DECL, check: "checkWidgetsInsert" },
       checkeffect: { ...BUNDLE_DECL, check: "checkWidgetsEffect" },
     },
-    bundle: { bundlePath: FIXTURE_BUNDLE, trusted: false },
+    bundle: { bundlePath: FIXTURE_BUNDLE, core: false },
     _manifest: BUNDLE_MANIFEST,
   })
 }
@@ -1566,7 +1566,7 @@ describe("getImportKind: an installed app's kind from the CLI (no registration)"
     })
     const k = await getImportKind(orgA, `${APP}.widget`, { ensureApps: false })
     expect(k?.app).toBe(APP)
-    expect(k?.bundle).toEqual({ bundlePath: join(root, APP, "1.0.0", "bundle.js"), trusted: false })
+    expect(k?.bundle).toEqual({ bundlePath: join(root, APP, "1.0.0", "bundle.js"), core: false })
     expect((k?.manifest as { name?: string } | undefined)?.name).toBe(APP)
     expect(await getImportKind(orgA, `${APP}.people`, { ensureApps: false })).toBeNull()
     expect(await getImportKind(orgA, `${APP}.counted`, { ensureApps: false })).toBeNull()

@@ -65,7 +65,6 @@ describe("provisioning dry runs cannot write", () => {
     it("dry run and verify are read-only; apply is not", async () => {
       appSurfaceRegistry.set([ORG, APP], {
         appName: APP,
-        trusted: false,
         bundlePath: "/nonexistent",
         provisioning: { schema: { type: "object" }, handler: "provision", verify: "verify" },
       } as never)

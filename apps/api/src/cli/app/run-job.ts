@@ -58,10 +58,16 @@ export async function defaultAppRunJobDeps(): Promise<AppRunJobDeps> {
     enqueue: (appName, jobName, payload) =>
       jobs.enqueueAppJob(appName, jobName, payload, { attempts: 1 }),
     readJob: async (appName, jobName, jobId) => {
-      const job: Job | undefined = await jobs.getJobQueue(appName, jobName).getJob(jobId)
+      const queue = jobs.getJobQueue(appName, jobName)
+      // State first, fields second: BullMQ writes finishedOn in the same atomic step that
+      // moves a job to completed/failed, so a state read before the hash read can never
+      // pair "completed" with a snapshot that lacks its timestamps (the reverse order can).
+      const state = await queue.getJobState(jobId)
+      if (state === "unknown") return null
+      const job: Job | undefined = await queue.getJob(jobId)
       if (!job) return null
       return {
-        state: await job.getState(),
+        state,
         ...(job.processedOn !== undefined ? { processedOn: job.processedOn } : {}),
         ...(job.finishedOn !== undefined ? { finishedOn: job.finishedOn } : {}),
         ...(job.failedReason ? { failedReason: job.failedReason } : {}),

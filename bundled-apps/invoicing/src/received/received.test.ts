@@ -82,7 +82,7 @@ function world() {
     db: plDb,
     fetch: fake.sandboxFetch,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
     // The kernel's first-hop-only import, keeping the stored bytes so the caller can read them.
     files_importFromUrl: async (json: string) => {

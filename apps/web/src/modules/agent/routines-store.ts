@@ -246,15 +246,6 @@ function mapEveryRoutineList(fn: (rows: RoutineRow[]) => RoutineRow[]): void {
 }
 
 /** The row behind an id, wherever it is cached. */
-/** Put one routine row (read elsewhere, e.g. a project's automations) into the flat list. */
-export function upsertRoutineRow(row: RoutineRow): void {
-  setRoutinesStore("routines", (prev) =>
-    prev.some((r) => r.id === row.id)
-      ? prev.map((r) => (r.id === row.id ? { ...r, ...row } : r))
-      : [row, ...prev],
-  )
-}
-
 /** A project's automations (0303): the routines whose event filter names that project. */
 export async function loadProjectRoutines(
   api: ApiClient,

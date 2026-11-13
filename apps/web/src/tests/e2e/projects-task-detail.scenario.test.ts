@@ -13,11 +13,14 @@
 //      parent appears at top of subtask page
 //   8. Confirm the embedded thread is visible (DISCUSSION header) and posts
 //      a comment via the thread composer
+//   9. The project's task fields: the Fields section shows them, an inline
+//      edit saves through the task PATCH; the status history opens on demand
 import { api } from "@liaison/test-helpers"
 import { expect, loginAs, test } from "./fixtures/test"
 import { grantProjectScopes, seedProjectWithTasks } from "./helpers/projects-seed"
 
 interface TaskShape {
+  fields?: Record<string, unknown>
   id: string
   title: string
   description: string | null
@@ -59,6 +62,19 @@ test("projects.task-detail-full-page", async ({ page, env, qa, world }) => {
       body: { title: child.title, parentTaskId: parentId, statusId: status.id },
     })
   }
+
+  // Task fields declared on the project before the page loads it.
+  const fieldsRes = await api(env.serverUrl, `/api/projects/${seeded.id}/fields`, {
+    token: qa.admin.token,
+    method: "PUT",
+    body: {
+      fields: [
+        { key: "serial", label: "Serial", type: "text" },
+        { key: "unit_kind", label: "Unit kind", type: "choice", choices: ["Bench", "Field"] },
+      ],
+    },
+  })
+  expect(fieldsRes.status).toBe(200)
 
   await loginAs(page, env, "admin@test.com", "12345678")
   await page.goto(`http://localhost:${env.ports[1]}/projects/tasks/${parentId}`)
@@ -122,6 +138,31 @@ test("projects.task-detail-full-page", async ({ page, env, qa, world }) => {
 
   // 5. Assignee — already admin (seeded). Confirm the chip renders the name.
   await expect(page.getByTestId("task-detail.assignee")).toContainText("Elodie")
+
+  // 5b. Fields: shown in the project's order, edited inline, saved on the task.
+  await expect(page.getByTestId("task-fields")).toBeVisible()
+  await expect(page.getByTestId("task-fields.value-serial")).toHaveText("Not set")
+  await page.getByTestId("task-fields.value-serial").click()
+  const serialInput = page.getByTestId("task-fields.editor-serial")
+  await serialInput.fill("LC-4-0193")
+  await serialInput.press("Enter")
+  await page.getByTestId("task-fields.value-unit_kind").click()
+  await page.getByTestId("task-fields.editor-unit_kind-choice-1").click()
+  await expect
+    .poll(
+      async () => {
+        const tasks = await fetchTasks(env, qa.admin.token, seeded.id)
+        return tasks.find((t) => t.id === parentId)?.fields
+      },
+      { timeout: 5_000 },
+    )
+    .toEqual({ serial: "LC-4-0193", unit_kind: "Field" })
+  await expect(page.getByTestId("task-fields.value-serial")).toHaveText("LC-4-0193")
+
+  // 5c. Time in status and the status history, collapsed until asked for.
+  await expect(page.getByTestId("task-detail.status-since")).toContainText("In ")
+  await page.getByTestId("task-status-history.toggle").click()
+  await expect(page.getByTestId("task-status-history.item").first()).toBeVisible()
 
   // 6. Click a subtask → opens new tab, back-link to parent renders.
   const subtasks = await fetchTasks(env, qa.admin.token, seeded.id)

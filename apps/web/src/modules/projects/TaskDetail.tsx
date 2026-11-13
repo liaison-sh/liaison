@@ -41,7 +41,7 @@ import { formatDay, relativeTime } from "~/lib/relative-time"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
 import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
 import { useDictation } from "~/modules/assist/useDictation"
-import { userFromToken } from "~/modules/auth/auth-store"
+import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { RichEditor, type RichEditorHandle } from "~/modules/editor"
 import { pastedFiles } from "~/modules/files/composer-attachments"
 import { uploadFile } from "~/modules/files/file-service"
@@ -56,7 +56,10 @@ import { ensureLabelCatalog } from "~/modules/projects/label-catalog-store"
 import { projectStore, type Task } from "~/modules/projects/project-store"
 import { fetchReleases } from "~/modules/projects/release-filter"
 import { StatusPillPopover } from "~/modules/projects/StatusPillPopover"
+import { TimeboxChip } from "~/modules/projects/TimeboxChip"
+import { TookField } from "~/modules/projects/TookField"
 import type { TaskLabel } from "~/modules/projects/task-labels"
+import { budgetFor, loadBudget, readTimebox, timeOn } from "~/modules/projects/time-budgets"
 import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
 import { MarkdownContent } from "~/modules/shell/markdown-content"
@@ -215,6 +218,35 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
     return projectId ? projectStore.tasksFor(projectId) : []
   }
   const isArchived = () => !!project()?.archivedAt
+
+  // Time and budgets: the Timebox chip and the Took field exist only on a project using it.
+  const timeActive = () => timeOn(project())
+  const timeTurnedOff = () => {
+    const projectId = liveTask()?.projectId
+    if (projectId) void projectStore.refresh(api, projectId)
+  }
+  const [timebox, { mutate: setTimebox }] = createResource(
+    () => (timeActive() && liveTask() ? liveTask()!.id : false),
+    async (taskId) => {
+      const out = await readTimebox(api, taskId)
+      if (out.kind === "off") {
+        timeTurnedOff()
+        return null
+      }
+      return out.kind === "ok" ? out.data.timeboxMinutes : null
+    },
+  )
+  createEffect(() => {
+    const projectId = liveTask()?.projectId
+    if (projectId && timeActive() && !budgetFor(projectId)) {
+      void loadBudget(api, projectId, { onOff: timeTurnedOff })
+    }
+  })
+  const datedHours = () => {
+    const state = budgetFor(liveTask()?.projectId ?? "")
+    return state?.status === "ready" && state.data.datedHours
+  }
+  const canWriteTime = () => !isArchived() && hasScope("projects:tasks:write")
 
   const currentStatus = () => {
     const t = liveTask()
@@ -588,6 +620,32 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                     onChange={(v) => patch({ release: v })}
                     disabled={isArchived()}
                   />
+                  <Show when={timeActive()}>
+                    <MetaSeparator />
+                    <TimeboxChip
+                      api={api}
+                      taskId={t().id}
+                      minutes={timebox() ?? null}
+                      disabled={!canWriteTime()}
+                      onSaved={(m) => {
+                        setTimebox(m)
+                        const projectId = t().projectId
+                        void loadBudget(api, projectId, { onOff: timeTurnedOff })
+                      }}
+                      onOff={timeTurnedOff}
+                    />
+                    <MetaSeparator />
+                    <TookField
+                      api={api}
+                      taskId={t().id}
+                      datedHours={datedHours()}
+                      editable={canWriteTime()}
+                      onOff={timeTurnedOff}
+                      onChanged={() =>
+                        void loadBudget(api, t().projectId, { onOff: timeTurnedOff })
+                      }
+                    />
+                  </Show>
                   <MetaSeparator />
                   {/* No label group and no label: no chip, so no separator either. */}
                   <Show when={taskLabelGroupIds(t().labels).length > 0}>

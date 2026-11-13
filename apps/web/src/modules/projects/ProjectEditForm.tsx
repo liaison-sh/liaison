@@ -14,6 +14,8 @@ import { type ProjectEditPatch, updateProjectFields } from "~/modules/projects/p
 import { groupNames, MAX_PROJECT_GROUP_LENGTH } from "~/modules/projects/project-groups"
 import type { ProjectDetail } from "~/modules/projects/project-store"
 import { projectsStore } from "~/modules/projects/projects-store"
+import { createTimePlanDraft, TimeBudgetsSwitch } from "~/modules/projects/TimeBudgetsSwitch"
+import { forgetBudget } from "~/modules/projects/time-budgets"
 import { Button } from "~/ui/Button"
 import { Input } from "~/ui/Input"
 
@@ -171,6 +173,10 @@ export const ProjectEditForm: Component<{
   const [saving, setSaving] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
   const keyLocked = () => props.project.keyLocked === true
+  // Time and budgets: a work project's own switch (never an organisation switch).
+  const hasSwitch = () => props.project.kind !== "pipeline"
+  const [timeOnNow, setTimeOnNow] = createSignal(props.project.timeBudgets === true)
+  const plan = createTimePlanDraft(props.project)
 
   const save = async (): Promise<void> => {
     if (saving()) return
@@ -201,14 +207,28 @@ export const ProjectEditForm: Component<{
       patch.group = nextGroup
     }
     if (client() !== (props.project.companyId ?? null)) patch.companyId = client()
-    if (Object.keys(patch).length === 0) {
+    const flipped = hasSwitch() && timeOnNow() !== (props.project.timeBudgets === true)
+    if (flipped) patch.timeBudgets = timeOnNow()
+    const planning = hasSwitch() && timeOnNow() && props.project.timeBudgets === true
+    if (Object.keys(patch).length === 0 && !planning) {
       props.onDone()
       return
     }
     setSaving(true)
     setError(null)
     try {
-      await updateProjectFields(props.api, props.project.id, patch)
+      if (Object.keys(patch).length > 0) {
+        await updateProjectFields(props.api, props.project.id, patch)
+      }
+      if (flipped) forgetBudget(props.project.id)
+      if (planning) {
+        const failed = await plan.apply(props.api, props.project.id)
+        forgetBudget(props.project.id)
+        if (failed) {
+          setError(failed === "invalid-rate" ? i18n.t("projects.time.rateInvalid") : failed)
+          return
+        }
+      }
       props.onDone()
     } catch (err) {
       const code = err instanceof ApiError ? err.code : undefined
@@ -350,6 +370,16 @@ export const ProjectEditForm: Component<{
           </For>
         </div>
       </div>
+      <Show when={hasSwitch()}>
+        <TimeBudgetsSwitch
+          api={props.api}
+          project={props.project}
+          on={timeOnNow()}
+          onChange={setTimeOnNow}
+          plan={plan}
+          idPrefix="project-edit"
+        />
+      </Show>
       <Show when={error()}>
         <p data-testid="project-edit.error" class="text-[12px] text-warning">
           {error()}

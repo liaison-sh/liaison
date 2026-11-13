@@ -35,6 +35,7 @@ import { projectsFilterStore } from "~/modules/projects/projects-filter-store"
 import { type Project, projectsStore } from "~/modules/projects/projects-store"
 import { releaseParam } from "~/modules/projects/release-filter"
 import { prettyStatus } from "~/modules/projects/status-label"
+import { TimeBudgetsSwitch } from "~/modules/projects/TimeBudgetsSwitch"
 import { labelsQueryParam } from "~/modules/projects/task-labels"
 import { taskMatchesQuery } from "~/modules/projects/task-search"
 import { useApi } from "~/modules/shell/ApiContext"
@@ -90,6 +91,7 @@ export const ProjectsHome: Component<{ entityId: string }> = (_props) => {
   const [newColumns, setNewColumns] = createSignal("")
   const [newIcon, setNewIcon] = createSignal(ICON_OPTIONS[0]!.name)
   const [newColor, setNewColor] = createSignal(COLOR_OPTIONS[0]!)
+  const [newTimeOn, setNewTimeOn] = createSignal(false)
   const [creating, setCreating] = createSignal(false)
   const [createError, setCreateError] = createSignal<string | null>(null)
   const crossProjectTasks = crossProjectTasksStore.items
@@ -127,12 +129,14 @@ export const ProjectsHome: Component<{ entityId: string }> = (_props) => {
         icon: newIcon(),
         color: newColor(),
         ...(statuses.length > 0 ? { statuses } : {}),
+        ...(newTimeOn() ? { timeBudgets: true } : {}),
       })
       setNewName("")
       setNewDescription("")
       setNewColumns("")
       setNewIcon(ICON_OPTIONS[0]!.name)
       setNewColor(COLOR_OPTIONS[0]!)
+      setNewTimeOn(false)
       setNewOpen(false)
       await projectsStore.load(api)
       // Just created by the user — open as a permanent tab, not an ephemeral preview.
@@ -452,6 +456,12 @@ export const ProjectsHome: Component<{ entityId: string }> = (_props) => {
                 </For>
               </div>
             </div>
+            <TimeBudgetsSwitch
+              api={api}
+              on={newTimeOn()}
+              onChange={setNewTimeOn}
+              idPrefix="projects-home.new-project"
+            />
             <Show when={createError()}>
               <p class="text-[12px] text-warning">{createError()}</p>
             </Show>

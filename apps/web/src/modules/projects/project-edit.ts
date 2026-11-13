@@ -17,6 +17,8 @@ export interface ProjectEditPatch {
   group?: string | null
   /** The client company; null clears it. */
   companyId?: string | null
+  /** Time and budgets on this project. */
+  timeBudgets?: boolean
 }
 
 export async function updateProjectFields(

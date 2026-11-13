@@ -474,5 +474,25 @@
     "byAgent": "an agent",
     "byRoutine": "a routine",
     "bySystem": "Liaison"
+  },
+  "timesheet": {
+    "tab": "Dated hours",
+    "loading": "Loading the dated sheet",
+    "noAccess": "Only the project's lead and finance see this sheet, on a project with dated hours.",
+    "empty": "No line on the dated sheet this month.",
+    "previous": "Previous month",
+    "next": "Next month",
+    "exportPdf": "Export PDF",
+    "exportCsv": "Export CSV",
+    "partialAsk": "This month's sheet is partial. Export it with its coverage line?",
+    "exportAnyway": "Export as it is",
+    "saved": "File ready. It opens in a new tab.",
+    "date": "Date",
+    "person": "Person",
+    "task": "Task",
+    "hours": "Hours",
+    "total": "Total",
+    "whoSees": "Who sees it: the project's lead and finance. Entries made before dated hours were turned on stay with each person.",
+    "not": "Not a legal working-time record, and it reminds nobody of anything."
   }
 }

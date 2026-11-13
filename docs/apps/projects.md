@@ -226,6 +226,18 @@ Once a project uses time and budgets, ask the agent who is free ("who has room n
 - **Hours in a day** (7 by default) are set in the same settings section.
 - **Read a shared calendar** (none by default) turns the whole-day events of the chosen calendar into company days off, once a day, for the next twelve months. Part-day events, out of office, focus time and birthdays make no day off, a day you typed on the same date wins, and an event removed from the calendar removes its day. Nothing else is read: no one's own calendar and no country's holidays. If the calendar can no longer be read (disconnected, unticked, or its owner left), its days stay as typed days, the setting clears, and settings admins get one line on Home asking for a new calendar. The section's settings keys are `hoursPerDay` and `daysOffCalendarId`, and a day off's **Every year** switch is `yearly`; the `time_settings_set` and `days_off_set` tools take the same names.
 
+## Read a project's dated sheet
+
+On a project that uses time and budgets with dated hours on, its lead (the project's owner) and finance (`projects:timesheet:read`, held as such, not through `*`) can read its **Dated hours** sheet for one month: each line is a day, a person, a task and the time, with the month's total. Ask the agent ("the Atlas timesheet for October") or open the sheet's tab. Anyone else is refused, and a project without dated hours has no sheet. Only entries made after dated hours were turned on are on it.
+
+- **Read only.** The sheet has no input, sends no reminder and lists no one who has not entered time. It says "Not a legal working-time record, and it reminds nobody of anything."
+- **Coverage.** The sheet says on how many of the month's tasks (those closed in the month or with time on the sheet) real time is entered. Below all of them, the sheet is partial.
+- **Export PDF** and **Export CSV**, at the top of the sheet, make a file only you can open, with the same lines and total. A partial sheet asks once before it exports, and the file then carries the coverage line on the PDF's first page and in the CSV's first row.
+
+## How long time is kept
+
+An entry keeps its person for 36 months after the day it was worked. Then, once a month, its cost is fixed at the rate that applied that day and its person is removed: the project's totals and its cost stay the same. The job goes by the entry's date alone and reads nothing else. A person's own entries, away days and days per week are in their data subject export, without anyone else's.
+
 ## Lines on Home
 
 The time and budgets lines sit together on Home under **Time and budgets**, quietly: no count and no urgent colour. Nothing ever reminds anyone to enter time, and a missing entry never raises anything.

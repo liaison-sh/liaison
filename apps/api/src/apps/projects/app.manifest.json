@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.23.0",
+  "version": "1.24.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1925,6 +1925,118 @@
         },
         "required": [
           "taskId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "timesheet_get": {
+      "description": "A project's dated sheet for one month: each day's time by person and task, and the total. Only on a project with dated hours, for its lead and finance.",
+      "searchKeywords": [
+        "timesheet",
+        "dated",
+        "feuille"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "timesheetGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM. Default: this month."
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "projectId": "string",
+          "projectName": "string",
+          "month": "string",
+          "period": "object",
+          "lines": "object",
+          "totalMinutes": "number",
+          "total": "string",
+          "coverage": "object",
+          "partial": "boolean",
+          "coverageLine": "string",
+          "note": "string",
+          "message": "string"
+        }
+      }
+    },
+    "timesheet_export": {
+      "description": "The dated sheet of one project and month as a PDF or CSV file for you. A partial sheet answers needsConfirm until acceptPartial.",
+      "searchKeywords": [
+        "timesheet",
+        "export",
+        "pdf",
+        "csv",
+        "feuille"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "timesheetExport",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project id. Optional when projectName is given."
+          },
+          "projectName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project by name (alternative to projectId)."
+          },
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM. Default: this month."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "csv"
+            ]
+          },
+          "acceptPartial": {
+            "type": "boolean",
+            "description": "True once the person said to export a partial sheet as it is."
+          }
+        },
+        "required": [
+          "format"
         ],
         "additionalProperties": false
       }
@@ -4979,6 +5091,16 @@
         "icon": "ProjectsIcon",
         "urlPattern": "/projects/capacity",
         "singleton": true,
+        "referenceable": false,
+        "feature": "time_budgets"
+      },
+      "timesheet": {
+        "component": "TimesheetView",
+        "sidebar": "ProjectsSidebar",
+        "label": "Dated hours",
+        "labelKey": "projects.timesheet.tab",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/timesheet/:entityId",
         "referenceable": false,
         "feature": "time_budgets"
       }

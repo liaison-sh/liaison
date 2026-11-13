@@ -145,6 +145,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "reconcile-sweep": { queueClass: "cron", priority: YIELD },
   "days-off-calendar": { queueClass: "cron", priority: YIELD },
   "capacity-lines": { queueClass: "cron", priority: YIELD },
+  "task-time-anonymise": { queueClass: "cron", priority: YIELD },
   "attention-events-retention": { queueClass: "cron", priority: YIELD },
   "dashboard-table-changes-retention": { queueClass: "cron", priority: YIELD },
   "app-logs-retention": { queueClass: "cron", priority: YIELD },

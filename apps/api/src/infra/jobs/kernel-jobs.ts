@@ -1130,6 +1130,12 @@ export async function registerKernelJobs(): Promise<void> {
     const { runDaysOffCalendarAll } = await import("~/apps/projects/service/days-off-calendar")
     log.info(await runDaysOffCalendarAll(), "days_off_calendar")
   })
+  // Time rows older than 36 months lose their person once a month, their cost frozen first, so
+  // totals and margin stay (apps/projects/service/task-time-anonymise.ts). By age alone.
+  await registerScheduledJob("kernel", "task-time-anonymise", "41 2 1 * *", async () => {
+    const { anonymiseOldTaskTime } = await import("~/apps/projects/service/task-time-anonymise")
+    log.info(await anonymiseOldTaskTime(), "task_time_anonymise")
+  })
   await registerScheduledJob("kernel", "capacity-lines", "37 5 * * *", async () => {
     const { raiseCapacityLinesAll } = await import("~/apps/projects/service/home-lines")
     log.info(await raiseCapacityLinesAll(), "capacity_lines")

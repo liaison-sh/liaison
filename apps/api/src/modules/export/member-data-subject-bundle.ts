@@ -26,7 +26,7 @@ import { schemaRef } from "~/db/schema-ref"
  * encrypted credentials and key material are never selected, and free-form
  * JSON (settings, preferences, audit changes) goes through `withoutSecrets`.
  *
- * EXTENSION POINT: a new kind of per-person record (away ranges, for one) is
+ * EXTENSION POINT: a new kind of per-person record (a person's time rows, for one) is
  * one more entry in `MEMBER_SECTIONS`. It then appears in every member bundle
  * with its note, its rows and its count, and nothing else changes.
  */
@@ -95,6 +95,7 @@ async function rows(db: RlsClient | PrivilegedDb, query: SQL): Promise<Record<st
 }
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
+const P = () => drizzleSql.raw(schemaRef("app_projects"))
 
 export const MEMBER_SECTIONS: MemberSection[] = [
   {
@@ -461,6 +462,58 @@ export const MEMBER_SECTIONS: MemberSection[] = [
                              AND v.created_by = ${ctx.subjectUserId}::uuid))
         ORDER BY d.created_at, d.id
         LIMIT ${limit}`,
+      ),
+  },
+  {
+    key: "ownTaskTime",
+    note: "The time the member entered on tasks: the day, the minutes, how it was entered, the task and its project, and whether someone else changed the entry (not who). Nobody else's time is included.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT tt.work_date::text AS work_date, tt.minutes, tt.entered_via,
+               t.title AS task, p.name AS project,
+               COALESCE(tt.changed_by IS NOT NULL AND tt.changed_by <> tt.user_id, false)
+                 AS changed_by_someone_else,
+               tt.created_at, tt.updated_at
+        FROM ${P()}.task_time tt
+        JOIN ${P()}.tasks t ON t.id = tt.task_id AND t.org_id = tt.org_id
+        JOIN ${P()}.projects p ON p.id = tt.project_id AND p.org_id = tt.org_id
+        WHERE tt.org_id = ${ctx.orgId} AND tt.user_id = ${ctx.subjectUserId}::uuid
+        ORDER BY tt.work_date, tt.created_at
+        LIMIT ${limit}`,
+      ),
+  },
+  {
+    key: "awayRanges",
+    note: "The member's away days: from, to or the weekdays, where they came from, their state and an early end. Who is next in line and who set a range are not included.",
+    via: "subject",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, weekdays, source, status,
+               ended_early_on::text AS ended_early_on,
+               COALESCE(set_by IS NOT NULL AND set_by <> user_id, false) AS set_by_someone_else,
+               created_at, updated_at
+        FROM ${K()}.away_ranges
+        WHERE org_id = ${ctx.orgId} AND user_id = ${ctx.subjectUserId}::uuid
+        ORDER BY starts_on, created_at
+        LIMIT ${limit}`,
+      ),
+  },
+  {
+    key: "daysPerWeek",
+    note: "How many days a week the member works, when that was set.",
+    via: "subject",
+    read: (db, ctx) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT days_per_week, updated_at
+        FROM ${P()}.person_capacity
+        WHERE org_id = ${ctx.orgId} AND user_id = ${ctx.subjectUserId}::uuid`,
       ),
   },
   {

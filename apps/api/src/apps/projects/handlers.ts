@@ -48,6 +48,8 @@ export interface ProjectsMethods {
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
   projects_capacityGet: (paramsJson: string) => Promise<string>
+  projects_timesheetGet: (paramsJson: string) => Promise<string>
+  projects_timesheetExport: (paramsJson: string) => Promise<string>
   projects_daysOffSet: (paramsJson: string) => Promise<string>
   projects_daysOffList: (paramsJson: string) => Promise<string>
   projects_daysOffRemove: (paramsJson: string) => Promise<string>
@@ -1195,6 +1197,15 @@ export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promi
 
 export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {})))
+}
+
+// The dated sheet of one project and month, and its export.
+export async function timesheetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timesheetGet(JSON.stringify(params ?? {})))
+}
+
+export async function timesheetExport(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timesheetExport(JSON.stringify(params ?? {})))
 }
 
 // Capacity, company days off and time settings.

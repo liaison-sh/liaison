@@ -53,7 +53,8 @@ export function fakeCtx(opts: FakeOptions = {}) {
       init?: { method?: string; headers?: Record<string, string>; auth?: unknown },
     ) {
       calls.push({ url, method: init?.method, auth: init?.auth, headers: init?.headers })
-      const key = url.startsWith(API) ? url.slice(API.length) : url
+      const parsed = new URL(url)
+      const key = parsed.origin === API ? `${parsed.pathname}${parsed.search}` : url
       const route = routes[key] ?? routes[url]
       if (!route) return json({ message: `no fake route for ${key}` }, {}, 404)
       return typeof route === "function" ? route(url) : route

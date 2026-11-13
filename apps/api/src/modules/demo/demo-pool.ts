@@ -315,9 +315,14 @@ export interface DemoSourceTree {
 }
 
 function readRepoSource(rel: string): string | null {
-  const abs = path.join(REPO_ROOT, rel)
-  const stat = statSync(abs, { throwIfNoEntry: false })
-  return stat?.isFile() ? readFileSync(abs, "utf8") : null
+  // Read at once, no check first: the answer is the file as read, or null when no file is there.
+  try {
+    return readFileSync(path.join(REPO_ROOT, rel), "utf8")
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === "ENOENT" || code === "EISDIR" || code === "ENOTDIR") return null
+    throw err
+  }
 }
 
 const REPO_TREE: DemoSourceTree = { read: readRepoSource, list: listRepoFiles }

@@ -1010,11 +1010,18 @@ function setDotPath(obj: Record<string, unknown>, path: string, value: unknown):
   let cursor: Record<string, unknown> = obj
   for (let i = 0; i < segments.length - 1; i++) {
     const key = segments[i]
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      throw new Error(`unsafe field path '${path}'`)
+    }
     const next = Object.hasOwn(cursor, key) ? cursor[key] : undefined
     if (!next || typeof next !== "object" || Array.isArray(next)) {
       cursor[key] = {}
     }
     cursor = cursor[key] as Record<string, unknown>
   }
-  cursor[segments[segments.length - 1]] = value
+  const last = segments[segments.length - 1]
+  if (last === "__proto__" || last === "constructor" || last === "prototype") {
+    throw new Error(`unsafe field path '${path}'`)
+  }
+  cursor[last] = value
 }

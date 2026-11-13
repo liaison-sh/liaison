@@ -155,12 +155,22 @@ export async function sendEmailOnce(
 // mail server, where that log line is the only way to receive a sign-in code;
 // the quickstart sets it), and then at warn so it stands out.
 
+/** `step` applied until the text stops changing: a removal can join the pieces of another match. */
+function untilStable(text: string, step: (s: string) => string): string {
+  let prev = text
+  for (;;) {
+    const next = step(prev)
+    if (next === prev) return next
+    prev = next
+  }
+}
+
 export function consoleEmailBody(message: EmailMessage): string {
   if (message.text) return message.text
-  return message.html
-    .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, "")
+  return untilStable(message.html, (s) => s.replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, ""))
     .replace(/<br\s*\/?>|<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+    .replace(/<[^>]*>?/g, "")
+    .replace(/</g, "")
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n+/g, "\n")
     .trim()

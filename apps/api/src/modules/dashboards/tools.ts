@@ -1167,6 +1167,10 @@ export function registerDashboardTools(orgId: string): void {
       })
     }) as (params: unknown, ctx: any) => Promise<unknown>,
     writesToTable: SINK,
+    // A personal dashboard is read by its author alone: on a turn that read scoped data it is
+    // judged by them (scope taint rule 6d) and saves at once when they hold what the turn read.
+    sinkReadersSelfWhen: (params: unknown) =>
+      (params as { visibility?: string } | null)?.visibility !== "org",
     approveScope: ADMIN,
     approvalImpact: "internal",
     gatedWhen: async (params: unknown) =>

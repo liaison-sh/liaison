@@ -289,3 +289,5 @@ Sandbox service compose profile, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME ->
 /healthz sandbox dependency when the sandbox service is configured -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox
 Rolling deploy recreates the sandbox service after the new processes are ready -> deploy/rolling-deploy.sh step 4b
 LIAISON_IMAGE shared by app, sandbox (anchor *liaison-image) and rolling processes (<<: *liaison-app) -> deploy/docker-compose.yml app image ; deploy/docker-compose.yml sandbox image
+App container health check ignores sandbox: network_open -> deploy/docker-compose.yml (app healthcheck) ; apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)
+LIAISON_SANDBOX_ALLOW_OPEN_NETWORK runs apps without the firewall step -> deploy/docker-compose.yml (SANDBOX_ALLOW_OPEN_NETWORK) ; deploy/.env.example (LIAISON_SANDBOX_ALLOW_OPEN_NETWORK)

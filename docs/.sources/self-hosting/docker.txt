@@ -293,3 +293,4 @@ App container health check ignores sandbox: network_open -> deploy/docker-compos
 LIAISON_SANDBOX_ALLOW_OPEN_NETWORK runs apps without the firewall step -> deploy/docker-compose.yml (SANDBOX_ALLOW_OPEN_NETWORK) ; deploy/.env.example (LIAISON_SANDBOX_ALLOW_OPEN_NETWORK)
 gVisor for the sandbox service; quickstart runs it on runc without gVisor -> deploy/docker-compose.yml (sandbox runtime) ; deploy/quickstart.sh (sandbox_runtime)
 sandbox service row, 2 GB cap -> deploy/docker-compose.yml (sandbox mem_limit)
+Rolling deploy recreates or starts the sandbox service -> deploy/rolling-deploy.sh (step 4b)

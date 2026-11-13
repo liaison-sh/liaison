@@ -377,6 +377,8 @@ The compose file has a `rolling` profile with three services built on the same i
 - `worker`: `LIAISON_ROLE=worker`, jobs and singletons, no public port.
 - `migrate`: runs the migrations and the catalog apps once, then exits.
 
+The [sandbox service](sandbox.md) is not one of them: `deploy/rolling-deploy.sh` recreates it on the new image once the new processes are ready, and starts it when none runs yet.
+
 `api` and `worker` never migrate on start, and they give agent turns and jobs 10 minutes to finish when they stop (`SHUTDOWN_TURN_DRAIN_MS` and `SHUTDOWN_JOB_DRAIN_MS` at 600000, hard deadline 638 s, `stop_grace_period: 11m`). When they stop, `/readyz` answers 503 at once and the listener stays open 5 more seconds (`SHUTDOWN_EDGE_GRACE_MS` at 5000), so the edge has stopped choosing them before their connections close.
 
 During a deploy both releases run side by side for up to those 10 minutes. Size the host's memory for it: each Liaison container may use up to its `mem_limit` of 3 GB, so with the defaults the overlap holds six of them (2 old and 2 new `api`, 1 old and 1 new `worker`), up to 18 GB, seven on the first switch from `app`, on top of about 5 GB for Postgres, Redis, search and object storage. On a smaller host lower `API_REPLICAS`, `WORKER_REPLICAS` or `mem_limit`.

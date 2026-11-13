@@ -91,7 +91,7 @@ function world() {
     db: plDb,
     fetch: fake.sandboxFetch,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   }
   const calls: Array<{ op: string; params: Row; provider: string }> = []
@@ -110,7 +110,7 @@ function world() {
     ),
     fetch: otherFake.sandboxFetch,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   }
   const kernel = { bound: "pennylane", history: [] as string[] }

@@ -677,6 +677,11 @@ export async function resumeRoutineRunOnDecision(
   deps: ResumeDeps = {},
 ): Promise<RoutineTickResult | { status: "no_run" | "lock_busy" }> {
   const { orgId, approvalId } = payload
+  // A flow run's action (0303) waits on its own approvals: its resume goes on with the flow's
+  // next step, not an agent turn (flow-runner.ts). Null for every legacy run.
+  const { resumeFlowOnDecision } = await import("~/modules/agent/routines/flow-runner")
+  const flowResult = await resumeFlowOnDecision(orgId, approvalId)
+  if (flowResult) return flowResult
   const run = await waitingRunOf(orgId, approvalId)
   if (!run) return { status: "no_run" }
 

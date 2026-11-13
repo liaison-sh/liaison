@@ -151,13 +151,14 @@ describe("tables REST: a project backing", () => {
       name: "Backed by nothing",
       columns: [],
       backing: {
-        kind: "project_tasks",
-        projectId: "00000000-0000-4000-8000-000000000000",
+        app: "projects",
+        entity: "task",
+        parentId: "00000000-0000-4000-8000-000000000000",
         fields: ["title"],
       },
     })
     expect(res.status).toBe(400)
     expect(res.body.error).toMatchObject({ code: "invalid_request" })
-    expect(res.body.error.message).toContain("backing: no project you can read")
+    expect(res.body.error.message).toContain("backing: no projects record you can read")
   })
 })

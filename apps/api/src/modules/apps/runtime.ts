@@ -78,6 +78,7 @@ import {
   setDeclaredEmits,
   skillRegistry,
   slotRegistry,
+  tableBackingRegistry,
   timelineDeclarations,
   toolRegistry,
   viewRegistry,
@@ -94,7 +95,7 @@ import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/au
 import { apiConnectionOf } from "~/modules/apps/connections/api/declarations"
 import { validateAppDescriptor, validateAppManifest } from "~/modules/apps/contract"
 import { CORE_EXPORT_HANDLERS } from "~/modules/apps/core/exports"
-import { isCoreApp } from "~/modules/apps/core/registry"
+import { coreModuleFor, isCoreApp } from "~/modules/apps/core/registry"
 // --- DDL helpers ---
 import {
   computeSchemaHash,
@@ -4129,6 +4130,23 @@ async function registerSingleApp(
               )
             }
           }
+          // A dashboard table backed by this entity's records: a core app's own server code.
+          const backingDecl = entityDef.tableBacking as
+            | { parent?: unknown; provider?: unknown }
+            | undefined
+          const backingModule = backingDecl ? coreModuleFor(desc.name, bundlePath) : null
+          if (
+            backingDecl &&
+            backingModule &&
+            typeof backingDecl.parent === "string" &&
+            typeof backingDecl.provider === "string"
+          ) {
+            tableBackingRegistry.set([orgId, desc.name, entityName], {
+              parent: backingDecl.parent,
+              provider: backingDecl.provider,
+              load: backingModule.load,
+            })
+          }
         }
       }
 
@@ -4509,6 +4527,7 @@ const APP_KEYED_REGISTRIES = [
   entityRegistry,
   manifestFileParentRegistry,
   routineFlowRecordRegistry,
+  tableBackingRegistry,
   manifestAttentionRegistry,
   manifestAttentionAxesRegistry,
   dimensionDefRegistry,

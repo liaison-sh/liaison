@@ -749,6 +749,28 @@ export function routineFlowDeclarationErrors(app: unknown): string[] {
   return errors
 }
 
+/**
+ * `entities.<e>.tableBacking` names another entity of the app as its `parent` (the record whose
+ * children are a backed table's rows).
+ */
+export function tableBackingDeclarationErrors(app: unknown): string[] {
+  const root = asRecord(app)
+  const entities = asRecord(root?.entities)
+  if (!entities) return []
+  const errors: string[] = []
+  for (const [entityName, rawEntity] of Object.entries(entities)) {
+    const decl = asRecord(asRecord(rawEntity)?.tableBacking)
+    if (!decl) continue
+    const parent = typeof decl.parent === "string" ? decl.parent : ""
+    if (!asRecord(entities[parent]) || parent === entityName) {
+      errors.push(
+        `table_backing_invalid: entities.${entityName}.tableBacking.parent: "${parent}" is not another entity of this app`,
+      )
+    }
+  }
+  return errors
+}
+
 export function printDeclarationErrors(app: unknown): string[] {
   const root = asRecord(app)
   const entities = asRecord(root?.entities)
@@ -876,6 +898,7 @@ export function validateAppDescriptor(descriptor: any): ValidationResult {
   errors.push(...printDeclarationErrors(descriptor))
   errors.push(...pickDeclarationErrors(descriptor))
   errors.push(...routineFlowDeclarationErrors(descriptor))
+  errors.push(...tableBackingDeclarationErrors(descriptor))
 
   // Every tool scope must be prefixed with the app's scope namespace
   if (data.tools) {
@@ -1424,6 +1447,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...printDeclarationErrors(manifest))
   errors.push(...pickDeclarationErrors(manifest))
   errors.push(...routineFlowDeclarationErrors(manifest))
+  errors.push(...tableBackingDeclarationErrors(manifest))
 
   // Cross-field: searchable entities must declare tableName + readScope
   if (manifest.entities) {

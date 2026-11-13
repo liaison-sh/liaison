@@ -441,7 +441,7 @@ const editParams = z
       .nullable()
       .optional()
       .describe(
-        'create, alter: back the table by a project\'s tasks: {kind:"project_tasks", projectId, fields:[title|status|assignee|due|priority|<task field key>]}; null (alter) makes it plain',
+        'create, alter: make the rows the records of one parent record, e.g. a project\'s tasks {app:"projects", entity:"task", parentId:<project id>, fields:[title|status|assignee|due|priority|<task field key>]}; null (alter) makes it plain',
       ),
   })
   .strict()
@@ -625,7 +625,7 @@ export function registerTableTools(orgId: string): void {
     name: "tables_edit",
     deferLoading: true,
     description:
-      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {kind:"project_tasks", projectId, fields:[...]} makes the rows a project\'s tasks: fields names the task values read through (title, status, assignee, due, priority, or a task field key), edits to them change the task, and columns are the table\'s own, kept per task. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
+      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record, e.g. a project\'s tasks {app:"projects", entity:"task", parentId:<project id>}: fields names the record values read through (for tasks: title, status, assignee, due, priority, or a task field key), edits to them change the record in its app, and columns are the table\'s own, kept per record. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
     searchKeywords: ["table", "create", "créer", "column", "colonne", "tableau", "tracker"],
     requiredScopes: [WRITE_SCOPE],
     params: editParams,

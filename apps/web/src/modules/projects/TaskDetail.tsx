@@ -56,11 +56,7 @@ import { projectStore, type Task } from "~/modules/projects/project-store"
 import { fetchReleases } from "~/modules/projects/release-filter"
 import { StatusPillPopover } from "~/modules/projects/StatusPillPopover"
 import { TaskFieldsSection } from "~/modules/projects/TaskFieldsSection"
-import {
-  StatusSince,
-  TaskStatusHistory,
-  type TaskTransition,
-} from "~/modules/projects/TaskStatusHistory"
+import { TaskStatusHistory, type TaskTransition } from "~/modules/projects/TaskStatusHistory"
 import type { TaskLabel } from "~/modules/projects/task-labels"
 import { useApi } from "~/modules/shell/ApiContext"
 import { copyLink, entityRoute } from "~/modules/shell/entity-link"
@@ -571,9 +567,6 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                         }}
                       />
                     </span>
-                    <Show when={currentStatus()}>
-                      {(s) => <StatusSince status={s().label} since={t().statusEnteredAt} />}
-                    </Show>
                   </Show>
                   <MetaSeparator />
                   <AssigneeChip
@@ -620,6 +613,13 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   />
                 </div>
 
+                {/* Time in status + status history: one quiet line under the meta row. */}
+                <TaskStatusHistory
+                  transitions={t().transitions}
+                  status={currentStatus()?.label ?? null}
+                  since={t().statusEnteredAt}
+                />
+
                 {/* Fields: the project's typed task fields (hidden when it declares none). */}
                 <TaskFieldsSection
                   fields={project()?.fields ?? []}
@@ -627,8 +627,6 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   disabled={isArchived()}
                   onSave={(change) => patch({ fields: change })}
                 />
-
-                <TaskStatusHistory transitions={t().transitions} />
 
                 {/* Description — inline editable */}
                 <EditableDescription

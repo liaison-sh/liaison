@@ -104,16 +104,20 @@ The filter matches the value a task shows, including a value inherited from its 
 
 A project can declare up to 40 task fields: typed attributes every task of the project can carry, such as a "Problem type" choice, a serial number or an amount. A field has a key, a label and a type: text, number, amount (with its currency), date, choice, choices, checkbox, person or link. A field can be required.
 
-Ask an agent to set them (`fields_set`), or to create the project with them (`createProject` takes `fields`). Values are checked like the cells of a dashboard table: a value that does not fit its field, or a key the project does not declare, refuses the change and names the field. A required field must be filled when a person or an agent creates a task; imports, templates and moves never ask for it.
+To set them yourself, open the project and click **Fields** in its toolbar (on a phone, in the project menu). In **Task fields**, add a field with its label and type, tick **Required**, reorder fields with the arrows, edit a choice field's **Options** or remove a field, then click **Save fields**. Renaming an option renames it in every task that holds it. When the tasks' values stop a change, the dialog says which field and options are in the way.
+
+Or ask an agent to set them (`fields_set`), or to create the project with them (`createProject` takes `fields`). Values are checked like the cells of a dashboard table: a value that does not fit its field, or a key the project does not declare, refuses the change and names the field. A required field must be filled when a person or an agent creates a task; imports, templates and moves never ask for it.
 
 - Taking a field off the project keeps the tasks' values, hidden. Putting the same key back shows them again.
 - A field's type cannot change while tasks hold values of it, and a choice option cannot be removed while tasks use it, unless you rename it to a kept option: the values are rewritten.
 - A link value shows its label only to people who may open the linked app. Others see **Linked record**.
 - Moving a task to another project keeps the values that fit the destination's fields and puts the others aside. They come back if the task returns.
 
+On a task's page, the **Fields** section lists the project's fields under the status line. Click a value to edit it: it saves at once. **New task** asks for the required fields. A project without fields shows no **Fields** section.
+
 ## Status history
 
-Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. A task created straight into a status counts as entering it. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
+Every status change of a task is recorded: the status it left, the one it entered, who moved it (a person, their agent, a routine) and when. A task created straight into a status counts as entering it. On the task's page, the line under the status reads how long the task has been in its status (**In Review · 3d ago**); click **Status history** to list its changes, newest first. Agents read a task's history and how long it has been in its status with `get`, and every change emits the `projects:task:status_changed` event, which event routines can react to.
 
 ## Project templates
 

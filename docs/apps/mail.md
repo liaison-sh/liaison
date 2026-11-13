@@ -124,6 +124,8 @@ On a phone, tap **Open thread map** in the top bar (shown from 3 messages), or t
 
 To start a new message, click **Compose** in the sidebar, fill in **From**, **To**, **Cc/Bcc** and **Subject**, then **Send** or **Discard**. Email you write yourself is sent directly. Only agent drafts wait for approval.
 
+A message is sent once, however many times **Send** is pressed or retried: Liaison waits up to 2 minutes for Gmail or the SMTP server to accept it. While a send is under way, another **Send** of the same message says "This message is still being sent. Wait a moment, then check Sent." If the mail provider never confirms a message that had already left, the composer keeps it and says it may already have been delivered: check **Sent** first, then press **Send** again only if you want it sent anyway. A message the provider refused was not sent, and **Send** tries again.
+
 From a conversation you can also **Convert to ticket**, which moves it into [Tickets](tickets.md), or **Discuss**, which opens a chat with your agent about it.
 
 ## Have an agent draft a reply

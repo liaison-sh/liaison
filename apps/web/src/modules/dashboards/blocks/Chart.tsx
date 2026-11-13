@@ -13,6 +13,7 @@
 import { type Component, createEffect, For, on, onCleanup, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type { ValueFormat } from "../dashboards-client"
+import { blockSurface, markColor } from "./data-colour"
 import { formatAxisLabel, formatValue } from "./format"
 
 export type ChartKind = "bar" | "line" | "pie" | "area" | "combo"
@@ -121,10 +122,13 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback
 }
 
-/** A colour as the canvas can paint it: a `var(--token)` resolved against the theme. */
+/**
+ * A colour as the canvas can paint it: a `var(--token)` resolved against the theme, a data colour
+ * (a status's hex) made readable on the block surface in the theme shown.
+ */
 export function resolveColor(color: string): string {
   const m = /^var\((--[a-z0-9-]+)\)$/i.exec(color.trim())
-  return m?.[1] ? cssVar(m[1], "#888892") : color
+  return m?.[1] ? cssVar(m[1], "#888892") : markColor(color)
 }
 
 /** The chart palette's first `count` hues, in order (series without a colour of their own). */
@@ -466,6 +470,8 @@ export const Chart: Component<ChartProps> = (props) => {
           props.curve,
           props.inProgressIndex,
           locale(),
+          // The theme: token and data colours are read again for the new surface.
+          blockSurface(),
         ] as const,
       async () => {
         const mine = ++run

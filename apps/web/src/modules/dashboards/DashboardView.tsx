@@ -63,6 +63,7 @@ import { PopupMenu } from "~/ui/PopupMenu"
 import { Skeleton } from "~/ui/Skeleton"
 import { BlockDrillPanel, openRecordLink } from "./BlockDrillPanel"
 import { BlockCard } from "./blocks/BlockCard"
+import { ColourScopeProvider, createColourScope } from "./blocks/data-colour"
 import { EditableTableBlock } from "./blocks/EditableTableBlock"
 import { DashboardShareDialog } from "./DashboardShareDialog"
 import {
@@ -980,90 +981,96 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
             </Match>
             <Match when={loaded()}>
               {(d) => (
-                <div
-                  ref={grid}
-                  data-testid="dashboard-grid"
-                  class="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3"
-                >
-                  <For each={blockKeys()}>
-                    {(key) => {
-                      const id = key.slice(0, key.indexOf("\u0000"))
-                      const block = () => blocksById().get(id)!
-                      return (
-                        <Show when={blocksById().get(id)}>
-                          <BlockCard
-                            block={block()}
-                            class={cn(blockSpanClass(block().width))}
-                            today={d().today}
-                            timeZone={d().timeZone}
-                            onExport={(kind) => exportBlock(block(), kind)}
-                            edit={
-                              editing()
-                                ? {
-                                    busy: saving(),
-                                    rename: (title) =>
-                                      void applyEdit([
-                                        { op: "updateBlock", blockId: id, changes: { title } },
-                                      ]),
-                                    canMove: (dir) =>
-                                      moveTarget(d().spec.blocks, id, dir, gridColumns(grid)) !==
-                                      null,
-                                    move: (dir) => moveBlock(id, dir),
-                                    resize: (size) =>
-                                      void applyEdit([{ op: "resizeBlock", blockId: id, ...size }]),
-                                    duplicate: () =>
-                                      void applyEdit([{ op: "duplicateBlock", blockId: id }]),
-                                    remove: () =>
-                                      void applyEdit([{ op: "removeBlock", blockId: id }]),
-                                    onDragStart: () => {
-                                      dragged = id
-                                    },
-                                    onDragEnd: () => {
-                                      dragged = null
-                                    },
-                                    onDrop: () => dropOn(id),
-                                  }
-                                : undefined
-                            }
-                            refreshTick={tick()}
-                            rangeKey={follows(d(), id) ? rangeKey() : undefined}
-                            filtersKey={filterKey()}
-                            onDrill={(target) => openDrill(block(), target)}
-                            showOwnWindow={usesRange() && !follows(d(), id)}
-                            now={now()}
-                            visible={onScreen()}
-                            onRead={(info) => {
-                              const w = windowsFromInfo(info)
-                              if (w) setReported(w)
-                            }}
-                            content={(() => {
-                              const editable = editableTableOf(block())
-                              if (!editable) return undefined
-                              return (refreshes: () => number) => (
-                                <EditableTableBlock
-                                  tableId={editable.tableId}
-                                  columns={editable.columns}
-                                  staleAfterDays={editable.staleAfterDays}
-                                  reloadKey={refreshes()}
-                                  now={now()}
-                                  testid={`table-block-${id}`}
-                                />
-                              )
-                            })()}
-                            load={(refresh) =>
-                              getBlockData(api, d().id, id, {
-                                refresh,
-                                signal: reads.signal,
-                                ...(usesRange() && follows(d(), id) ? { range: choice() } : {}),
-                                ...(wireFilters() ? { filters: wireFilters() } : {}),
-                              })
-                            }
-                          />
-                        </Show>
-                      )
-                    }}
-                  </For>
-                </div>
+                // One colour scope for the whole dashboard: a status reads in one colour in
+                // every block.
+                <ColourScopeProvider value={createColourScope()}>
+                  <div
+                    ref={grid}
+                    data-testid="dashboard-grid"
+                    class="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3"
+                  >
+                    <For each={blockKeys()}>
+                      {(key) => {
+                        const id = key.slice(0, key.indexOf("\u0000"))
+                        const block = () => blocksById().get(id)!
+                        return (
+                          <Show when={blocksById().get(id)}>
+                            <BlockCard
+                              block={block()}
+                              class={cn(blockSpanClass(block().width))}
+                              today={d().today}
+                              timeZone={d().timeZone}
+                              onExport={(kind) => exportBlock(block(), kind)}
+                              edit={
+                                editing()
+                                  ? {
+                                      busy: saving(),
+                                      rename: (title) =>
+                                        void applyEdit([
+                                          { op: "updateBlock", blockId: id, changes: { title } },
+                                        ]),
+                                      canMove: (dir) =>
+                                        moveTarget(d().spec.blocks, id, dir, gridColumns(grid)) !==
+                                        null,
+                                      move: (dir) => moveBlock(id, dir),
+                                      resize: (size) =>
+                                        void applyEdit([
+                                          { op: "resizeBlock", blockId: id, ...size },
+                                        ]),
+                                      duplicate: () =>
+                                        void applyEdit([{ op: "duplicateBlock", blockId: id }]),
+                                      remove: () =>
+                                        void applyEdit([{ op: "removeBlock", blockId: id }]),
+                                      onDragStart: () => {
+                                        dragged = id
+                                      },
+                                      onDragEnd: () => {
+                                        dragged = null
+                                      },
+                                      onDrop: () => dropOn(id),
+                                    }
+                                  : undefined
+                              }
+                              refreshTick={tick()}
+                              rangeKey={follows(d(), id) ? rangeKey() : undefined}
+                              filtersKey={filterKey()}
+                              onDrill={(target) => openDrill(block(), target)}
+                              showOwnWindow={usesRange() && !follows(d(), id)}
+                              now={now()}
+                              visible={onScreen()}
+                              onRead={(info) => {
+                                const w = windowsFromInfo(info)
+                                if (w) setReported(w)
+                              }}
+                              content={(() => {
+                                const editable = editableTableOf(block())
+                                if (!editable) return undefined
+                                return (refreshes: () => number) => (
+                                  <EditableTableBlock
+                                    tableId={editable.tableId}
+                                    columns={editable.columns}
+                                    staleAfterDays={editable.staleAfterDays}
+                                    reloadKey={refreshes()}
+                                    now={now()}
+                                    testid={`table-block-${id}`}
+                                  />
+                                )
+                              })()}
+                              load={(refresh) =>
+                                getBlockData(api, d().id, id, {
+                                  refresh,
+                                  signal: reads.signal,
+                                  ...(usesRange() && follows(d(), id) ? { range: choice() } : {}),
+                                  ...(wireFilters() ? { filters: wireFilters() } : {}),
+                                })
+                              }
+                            />
+                          </Show>
+                        )
+                      }}
+                    </For>
+                  </div>
+                </ColourScopeProvider>
               )}
             </Match>
           </Switch>

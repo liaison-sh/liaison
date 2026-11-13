@@ -15,6 +15,7 @@ import { formatWindow } from "../time-range"
 import { barRowsForm, PeopleRows, PipelineBar } from "./BarRows"
 import { Chart, type ChartDataset } from "./Chart"
 import { ChartHeadline } from "./ChartHeadline"
+import { type ColourScope, useColourScope } from "./data-colour"
 import { FunnelBlock } from "./FunnelBlock"
 import { MetricBlock } from "./MetricBlock"
 import { TableBlock } from "./TableBlock"
@@ -64,6 +65,11 @@ export interface DatasetNames {
   rightAxis?: (name: string) => string
   /** What a stack adds up (the map's y): names its comparison total when no layer does. */
   total?: string
+  /**
+   * A split chart's series without a colour of their own take their name's slot here (the
+   * dashboard's scope), so one status keeps one colour in every block.
+   */
+  scope?: ColourScope
 }
 
 type PreviousOne = { name: string; values: Array<number | null> }
@@ -133,7 +139,11 @@ export function seriesDatasets(
   const current: ChartDataset[] = d.series.map((x, i) => ({
     label: lone ? (names.current as string) : shown(x.name),
     values: x.values,
-    ...(d.paint?.series?.[i] ? { color: d.paint.series[i] as string } : {}),
+    ...(d.paint?.series?.[i]
+      ? { color: d.paint.series[i] as string }
+      : names.scope && d.series.length > 1
+        ? { color: names.scope(x.name) }
+        : {}),
     ...(placeColors && d.series.length === 1 ? { colors: placeColors } : {}),
     ...(lines.has(x.name) ? { asLine: true } : {}),
     ...(right.has(x.name) ? { axis: "right" as const } : {}),
@@ -181,6 +191,12 @@ export function categoryColors(
     return person ? avatarColors(person).bg : null
   })
   return out.some((c) => c) ? out : null
+}
+
+/** A pie's slice colours: each its own (or its person's), else its label's slot in the scope. */
+export function pieColors(p: PieData, scope: ColourScope): string[] {
+  const own = categoryColors(p.paint, p.labels.length)
+  return p.labels.map((l, i) => own?.[i] ?? scope(String(l ?? "")))
 }
 
 /**
@@ -250,6 +266,7 @@ function withLayer(d: SeriesData, target: DrillTarget, name: string): DrillTarge
 /** Draws one block's mapped data, whatever its kind. */
 export const BlockRenderer: Component<BlockRendererProps> = (props) => {
   const i18n = useI18n()
+  const scope = useColourScope()
   const previousName = () =>
     props.compareMode === "previousPeriod"
       ? i18n.t("kernel.dashboards.comparePrevious")
@@ -372,6 +389,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
                   current: range(props.window),
                   total: props.map?.y,
                   rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
+                  scope,
                 })}
                 format={share() ? "percent" : (s().format ?? format())}
                 timeZone={props.timeZone}
@@ -457,9 +475,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
                 {
                   label: props.title ?? "",
                   values: share() ? sharesOf(p().values) : p().values,
-                  ...(categoryColors(p().paint, p().labels.length)
-                    ? { colors: categoryColors(p().paint, p().labels.length) ?? undefined }
-                    : {}),
+                  colors: pieColors(p(), scope),
                 },
               ]}
               format={share() ? "percent" : (p().format ?? format())}

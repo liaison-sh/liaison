@@ -11,9 +11,17 @@ import { describe, expect, it } from "vitest"
 
 const CSS = readFileSync(resolve(__dirname, "theme.css"), "utf8")
 
-function block(name: "dark" | "light"): string {
-  const start = name === "dark" ? CSS.indexOf("@theme {") : CSS.indexOf('[data-theme="light"] {')
+function slice(opener: string): string {
+  const start = CSS.indexOf(opener)
+  if (start < 0) return ""
   return CSS.slice(start, CSS.indexOf("\n}", start))
+}
+
+// The dark theme is the default: the @theme blocks (the palette sits in its static one).
+function block(name: "dark" | "light"): string {
+  return name === "dark"
+    ? `${slice("@theme {")}\n${slice("@theme static {")}`
+    : slice('[data-theme="light"] {')
 }
 
 function hex(name: "dark" | "light", variable: string): string {
@@ -57,4 +65,18 @@ describe("the chart palette", () => {
       expect(hues).not.toContain(hex(theme, "--color-accent"))
     })
   }
+})
+
+describe("the chart palette is always emitted", () => {
+  // Charts name a slot at run time (`var(--color-chart-${n})`), which Tailwind's scan cannot see:
+  // in a plain @theme block the unnamed slots were left out of the CSS and drew transparent in
+  // the dark theme. The palette lives in `@theme static`, which emits every variable.
+  it("declares the dark palette in a static theme block only", () => {
+    const plain = slice("@theme {")
+    const statics = slice("@theme static {")
+    for (const n of SLOTS) {
+      expect(plain).not.toMatch(new RegExp(`--color-chart-${n}:`))
+      expect(statics).toMatch(new RegExp(`--color-chart-${n}:\\s*#`))
+    }
+  })
 })

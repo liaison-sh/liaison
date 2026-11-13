@@ -52,6 +52,8 @@ app_mail.drafts.conversation_id
 app_mail.drafts.enc_key_id
 app_mail.drafts.reply_to_message_id
 app_mail.drafts.sent_by_user_id
+app_mail.drafts.sent_message_id
+app_mail.drafts.sent_thread_id
 app_mail.messages.account_id
 app_mail.messages.conversation_id
 app_mail.messages.enc_key_id

@@ -413,7 +413,9 @@ export interface TableRowFilter {
 }
 
 /** A routine's stored filter: a mail sender filter or a table row filter. */
-export type RoutineEventFilter = (MailSenderFilter & Partial<TableRowFilter>) | null
+export type RoutineEventFilter =
+  | (MailSenderFilter & Partial<TableRowFilter> & ProjectTaskFilter)
+  | null
 
 export const TABLE_ROW_EVENTS = [
   "kernel:dashboard_table_row:created",
@@ -491,4 +493,118 @@ export async function ownerTableRowFilterMatches(
   )
   if (!change) return false
   return tableRowFilterMatches(filter, evt, change)
+}
+
+// ── Projects task filter (0303) ─────────────────────────────────────────────
+
+/**
+ * The filter of a `projects:task:status_changed|updated|created` routine: one project, a status
+ * change (from, to; `fromStatusId: null` = a task created directly in `toStatusId`), and field
+ * values (a value, or a list of accepted values; null = the field is empty).
+ */
+export interface ProjectTaskFilter {
+  projectId?: string
+  fromStatusId?: string | null
+  toStatusId?: string
+  fields?: Record<string, unknown>
+}
+
+const PROJECT_TASK_FILTER_ACTIONS = new Set(["status_changed", "updated", "created"])
+
+export function isProjectTaskFilterEvent(
+  evt: Pick<GateEvent, "app" | "entity" | "action">,
+): boolean {
+  return (
+    evt.app === "projects" && evt.entity === "task" && PROJECT_TASK_FILTER_ACTIONS.has(evt.action)
+  )
+}
+
+/** Whether the filter names anything a projects task filter matches on. */
+export function isProjectTaskFilter(filter: unknown): filter is ProjectTaskFilter {
+  if (!filter || typeof filter !== "object") return false
+  const f = filter as ProjectTaskFilter
+  return (
+    f.projectId !== undefined ||
+    f.fromStatusId !== undefined ||
+    f.toStatusId !== undefined ||
+    f.fields !== undefined
+  )
+}
+
+/**
+ * Pure: does a task cell hold this filter value? Mirrors the projects field filter
+ * (fields.ts `fieldFilterConditions`): null matches an empty cell, a choices cell holds the value,
+ * a link cell's record id equals it, a person cell compares without case.
+ */
+export function taskCellMatches(cell: unknown, value: unknown): boolean {
+  const empty =
+    cell === undefined || cell === null || cell === "" || (Array.isArray(cell) && cell.length === 0)
+  if (value === null) return empty
+  if (empty) return false
+  if (Array.isArray(cell)) return cell.some((c) => sameValue(c, value))
+  if (typeof cell === "object" && cell !== null && "id" in cell) {
+    return String((cell as { id?: unknown }).id) === String(value)
+  }
+  if (typeof cell === "string" && typeof value === "string") {
+    return cell === value || cell.toLowerCase() === value.toLowerCase()
+  }
+  return sameValue(cell, value)
+}
+
+/**
+ * Pure: does this projects task event pass the filter? `data` is the event's data; `task` is the
+ * task as the owner reads it now (its project and fields), null when the owner cannot read it
+ * (nothing matches then). From/to status come from the event itself (each transition matters,
+ * not the task's current status).
+ */
+export function projectTaskFilterMatches(
+  filter: ProjectTaskFilter,
+  evt: Pick<GateEvent, "action" | "data">,
+  task: { projectId: string; fields: Record<string, unknown> } | null,
+): boolean {
+  if (!task) return false
+  const data = dataOf({ app: "", entity: "", action: "", orgId: "", data: evt.data })
+  if (filter.projectId !== undefined && task.projectId !== filter.projectId) return false
+  if (filter.fromStatusId !== undefined || filter.toStatusId !== undefined) {
+    if (evt.action !== "status_changed") return false
+    if (filter.toStatusId !== undefined && data.toStatusId !== filter.toStatusId) return false
+    if (filter.fromStatusId !== undefined && (data.fromStatusId ?? null) !== filter.fromStatusId) {
+      return false
+    }
+  }
+  for (const [key, want] of Object.entries(filter.fields ?? {})) {
+    const cell = task.fields[key]
+    const ok = Array.isArray(want)
+      ? want.some((w) => taskCellMatches(cell, w))
+      : taskCellMatches(cell, want)
+    if (!ok) return false
+  }
+  return true
+}
+
+/**
+ * Evaluates a projects task filter as the routine owner: the task is read fresh under the owner's
+ * RLS (its project and fields), so a task the owner cannot read never matches. Fails closed.
+ */
+export async function ownerProjectTaskFilterMatches(
+  owner: UserContext,
+  filter: ProjectTaskFilter,
+  evt: GateEvent,
+): Promise<boolean> {
+  const taskId = asUuid(evt.entityId) ?? asUuid(dataOf(evt).id)
+  if (!taskId) return false
+  const task = await withRlsContext(
+    owner,
+    async (tx) => {
+      const rows = extractRows<{ project_id: string; fields: Record<string, unknown> | null }>(
+        await tx.execute(drizzleSql`
+          SELECT project_id, fields FROM ${tableSql("app_projects", "tasks")}
+           WHERE id = ${taskId}::uuid AND org_id = ${owner.orgId}::uuid LIMIT 1`),
+      )
+      const r = rows[0]
+      return r ? { projectId: r.project_id, fields: r.fields ?? {} } : null
+    },
+    { pool: "jobs" },
+  )
+  return projectTaskFilterMatches(filter, evt, task)
 }

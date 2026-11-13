@@ -139,6 +139,8 @@ export interface RoutineTriggerEvent {
   eventId?: string | null
   /** Set by the reconciler: the nth time it fires the routine again for this event (1, 2, ...). */
   retryAttempt?: number
+  /** How many routine runs led to the event (its `metadata.hop`; absent = 0). The run carries it on. */
+  hop?: number
 }
 
 export interface RoutineTickOpts {
@@ -1328,6 +1330,7 @@ export async function runRoutineTick(opts: RoutineTickOpts): Promise<RoutineTick
           background: true,
           routineId: opts.routineId,
           routineRunId: tickRunId,
+          ...(opts.triggerEvent?.hop ? { eventHop: opts.triggerEvent.hop } : {}),
           ...(tokenAccount ? { tokenAccount } : {}),
           ...(mailboxReader ? { routineMailboxReaderUserId: mailboxReader } : {}),
           ...(mailboxWait ? { routineMailboxWait: mailboxWait } : {}),

@@ -124,8 +124,6 @@ knowledge sync input scope; ctx.knowledge_appSource / knowledge_appSourceWrite o
 App metadata kept across a reconnect by the same owner -> apps/api/src/modules/apps/connections/service.ts:3385 ; apps/api/src/modules/apps/connections/kernel-account-metadata.ts:10
 ctx.fetch convert xlsx-text; multipart related and base64 parts -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:107 ; apps/api/src/modules/apps/sandbox/bridge/multipart.ts:195
 ctx.db.batch expect guard rolls the batch back with precondition_failed; batchPreconditionFailure reads it -> packages/app-sdk/src/types.ts (DbBatchExpect, DbClient.batch) ; packages/app-sdk/src/db-batch.ts ; apps/api/src/modules/apps/sandbox/bridge/batch.ts (BatchPreconditionError)
-ctx.api for any app's one api-block connection; adapters keyed by app and connection; save/restore tools under the app; customerContext/importSource/provisionKey -> apps/api/src/modules/apps/connections/api/declarations.ts:1 ; apps/api/src/modules/apps/connections/api/bridge.ts:283 ; apps/api/src/modules/apps/runtime.ts:4509 ; apps/api/src/modules/apps/contract.ts:1077
-ctx.kernel.caller: system only for system ids; other non-person callers refused -> apps/api/src/modules/apps/sandbox/bridge/directory.ts:52
 
 Page widget: a page declares widget {kind, connection, route, tokenScopes}; the platform serves its script, the app gets only the picks; grant must be inside tokenScopes; org origin only; audited -> apps/api/src/modules/apps/page-widgets.ts:1 ; apps/api/src/modules/apps/app-pages.ts:378 ; apps/api/src/modules/apps/app-surface.ts:120
 Install screen lists widget pages -> apps/web/src/modules/settings/InstallAppDialog.tsx:105

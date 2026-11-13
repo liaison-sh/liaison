@@ -1,0 +1,1 @@
+The credentials step names the app, connection and slug of the API connection -> apps/api/src/modules/approvals/required-step.ts:52

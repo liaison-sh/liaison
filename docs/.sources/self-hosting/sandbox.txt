@@ -17,3 +17,10 @@ Firewall step install/apply/remove/check -> deploy/sandbox-firewall.sh
 Sizing 6+2 @256 MiB = 2 GiB, 10+2 3 GiB 3 CPUs; ~127 MiB measured for 6 processes -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/config.ts
 Accepted risks (shared host, no Spectre guard, Date.now live, performance.now 1 ms, SharedArrayBuffer) -> packages/sandbox-supervisor/test/probes.test.ts
 Dev/CI run the supervisor directly -> packages/sandbox-supervisor/src/main.ts ; apps/api/src/modules/apps/workers/__fixtures__/workerd-loader.ts
+Service image is the app's (anchor *liaison-image, LIAISON_IMAGE); registry override via LIAISON_IMAGE -> deploy/docker-compose.yml app image ; deploy/docker-compose.yml sandbox image
+check fails on image mismatch between service and app processes -> deploy/sandbox-firewall.sh check
+Firewall options -p/--env-file/-f, COMPOSE_PROJECT_NAME, settings from env then env files, default deploy/.env -> deploy/sandbox-firewall.sh option loop ; deploy/sandbox-firewall.sh setting
+Fail-closed rules on the bridge (app -> :8790, service -> bridge port, else drop) -> deploy/sandbox-firewall.sh apply
+apply/check stop when live subnet or service address differ -> deploy/sandbox-firewall.sh same_network ; deploy/sandbox-firewall.sh check
+Defaults 10.73.250.0/24 and 10.73.250.10, ranges avoided -> deploy/docker-compose.yml networks sandbox ; deploy/sandbox-firewall.test.ts
+Docker recreates the network on a subnet change; pin old 172.31.250.0/24 to keep it -> deploy/docker-compose.yml networks sandbox

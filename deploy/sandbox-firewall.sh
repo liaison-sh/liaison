@@ -31,20 +31,136 @@
 #                                               bridge port of each running app
 #                                               process answers
 #
-# Settings (the compose file's, same defaults): LIAISON_SANDBOX_IP
-# (172.31.250.10), LIAISON_SANDBOX_SUBNET (172.31.250.0/24),
-# LIAISON_SANDBOX_BRIDGE (liaison-sbx0), LIAISON_APP_BRIDGE_PORT (3100).
-# Change them in the compose environment and here together.
+# Compose options go before the command, as for `docker compose`, and must be
+# the ones the stack runs with: -p/--project-name, --env-file (repeatable),
+# -f/--file (repeatable; default deploy/docker-compose.yml). COMPOSE_PROJECT_NAME
+# in the environment or in the env file works as it does for compose:
+#   deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison.env check
+#
+# Settings, read like compose reads them (the environment first, then the env
+# files, the last one winning; without --env-file, the .env beside the first
+# compose file), with the compose file's defaults:
+#   LIAISON_SANDBOX_SUBNET   10.73.250.0/24  the sandbox network (a /24)
+#   LIAISON_SANDBOX_IP       10.73.250.10    the sandbox service's address in it
+#   LIAISON_SANDBOX_BRIDGE   liaison-sbx0    the network's bridge device
+#   LIAISON_APP_BRIDGE_PORT  3100            the app's bridge-only listener
+# `apply` and `check` refuse to run when the live network's subnet or the
+# service's address differs from these (the rules would protect nothing).
 set -eu
 
-SANDBOX_IP="${LIAISON_SANDBOX_IP:-172.31.250.10}"
-SUBNET="${LIAISON_SANDBOX_SUBNET:-172.31.250.0/24}"
-BRIDGE="${LIAISON_SANDBOX_BRIDGE:-liaison-sbx0}"
-BRIDGE_PORT="${LIAISON_APP_BRIDGE_PORT:-3100}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 CHAIN_FWD="LIAISON-SANDBOX-FWD"
 CHAIN_IN="LIAISON-SANDBOX-IN"
 UNIT="/etc/systemd/system/liaison-sandbox-firewall.service"
-HERE="$(cd "$(dirname "$0")" && pwd)"
+SANDBOX_PORT=8790
+
+die() {
+  echo "sandbox-firewall: $*" >&2
+  exit 1
+}
+
+# A single-quoted shell word, for the compose command built below.
+quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+DC="docker compose"
+ENV_FILES=""
+FIRST_FILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p | --project-name)
+      [ $# -ge 2 ] || die "$1 needs a value"
+      DC="$DC -p $(quote "$2")"
+      shift 2
+      ;;
+    --project-name=*)
+      DC="$DC -p $(quote "${1#*=}")"
+      shift
+      ;;
+    --env-file)
+      [ $# -ge 2 ] || die "$1 needs a value"
+      [ -f "$2" ] || die "env file not found: $2"
+      DC="$DC --env-file $(quote "$2")"
+      ENV_FILES="$ENV_FILES$2
+"
+      shift 2
+      ;;
+    --env-file=*)
+      [ -f "${1#*=}" ] || die "env file not found: ${1#*=}"
+      DC="$DC --env-file $(quote "${1#*=}")"
+      ENV_FILES="$ENV_FILES${1#*=}
+"
+      shift
+      ;;
+    -f | --file)
+      [ $# -ge 2 ] || die "$1 needs a value"
+      DC="$DC -f $(quote "$2")"
+      FIRST_FILE="${FIRST_FILE:-$2}"
+      shift 2
+      ;;
+    --file=*)
+      DC="$DC -f $(quote "${1#*=}")"
+      FIRST_FILE="${FIRST_FILE:-${1#*=}}"
+      shift
+      ;;
+    -*) die "unknown option $1 (usage: $0 [-p name] [--env-file file] [-f file] install|apply|remove|check)" ;;
+    *) break ;;
+  esac
+done
+if [ -z "$FIRST_FILE" ]; then
+  FIRST_FILE="$HERE/docker-compose.yml"
+  DC="$DC -f $(quote "$FIRST_FILE")"
+fi
+# Compose's own default env file: .env in the project directory.
+if [ -z "$ENV_FILES" ] && [ -f "$(dirname "$FIRST_FILE")/.env" ]; then
+  ENV_FILES="$(dirname "$FIRST_FILE")/.env
+"
+fi
+
+# A setting: the environment, else the last env file that sets it, else the
+# default. Surrounding quotes are dropped, as compose does.
+setting() {
+  eval "v=\${$1:-}"
+  if [ -z "$v" ] && [ -n "$ENV_FILES" ]; then
+    v="$(printf '%s' "$ENV_FILES" | while IFS= read -r f; do
+      [ -n "$f" ] && awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { print v }' "$f"
+    done | awk 'NF { v = $0 } END { print v }')"
+    v="$(printf '%s' "$v" | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+  fi
+  printf '%s' "${v:-$2}"
+}
+
+SUBNET="$(setting LIAISON_SANDBOX_SUBNET 10.73.250.0/24)"
+SANDBOX_IP="$(setting LIAISON_SANDBOX_IP 10.73.250.10)"
+BRIDGE="$(setting LIAISON_SANDBOX_BRIDGE liaison-sbx0)"
+BRIDGE_PORT="$(setting LIAISON_APP_BRIDGE_PORT 3100)"
+
+# The firewall and the probes take the network as a /24 (x.y.z.0/24) holding
+# the service's address.
+PREFIX="$(echo "$SUBNET" | sed -n 's|^\([0-9]*\.[0-9]*\.[0-9]*\.\)0/24$|\1|p')"
+[ -n "$PREFIX" ] || die "LIAISON_SANDBOX_SUBNET must be a /24 ending in .0/24 (got '$SUBNET')"
+case "$SANDBOX_IP" in
+  "$PREFIX"*) ;;
+  *) die "LIAISON_SANDBOX_IP ($SANDBOX_IP) is not in LIAISON_SANDBOX_SUBNET ($SUBNET): set both" ;;
+esac
+
+# The subnet of the live network on our bridge device, empty when Docker is not
+# running or the network does not exist yet.
+live_subnet() {
+  command -v docker >/dev/null 2>&1 || return 0
+  for id in $(docker network ls -q --filter driver=bridge 2>/dev/null); do
+    docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$id" 2>/dev/null |
+      awk -v b="$BRIDGE" '$1 == b { print $2 }'
+  done
+}
+
+# The rules are keyed on the configured subnet and address: on another network
+# they would protect nothing, so stop loudly.
+same_network() {
+  live="$(live_subnet | head -n 1)"
+  if [ -n "$live" ] && [ "$live" != "$SUBNET" ]; then
+    die "the sandbox network ($BRIDGE) runs on $live but the settings say $SUBNET. Set LIAISON_SANDBOX_SUBNET and LIAISON_SANDBOX_IP to the network's values in the env file the stack uses (or pass it with --env-file), or move the network (docs/self-hosting/sandbox.md, \"Network address\")."
+  fi
+}
 
 need_root() {
   if [ "$(id -u)" != "0" ]; then
@@ -66,6 +182,7 @@ own_chain() {
 
 apply() {
   need_root
+  same_network
   # Bridged traffic (container to container on one bridge) through iptables.
   modprobe br_netfilter 2>/dev/null || true
   if [ ! -e /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
@@ -84,12 +201,18 @@ apply() {
   # Nothing on the sandbox network opens a connection to the host.
   ipt -A "$CHAIN_IN" -i "$BRIDGE" -m conntrack --ctstate NEW -j DROP
 
-  # The sandbox service -> anything: the app's bridge-only port on the sandbox
-  # subnet, and replies on the app's own connections to it. Nothing else.
+  # On the sandbox network, two kinds of connection only: an app process to
+  # the service (:$SANDBOX_PORT), and the service to an app process's
+  # bridge-only port; then replies. Everything else entering from the bridge
+  # is dropped, so a service whose address moved (a network recreated on
+  # other settings) is cut off, not let through.
   own_chain DOCKER-USER "$CHAIN_FWD"
   ipt -A "$CHAIN_FWD" -s "$SANDBOX_IP" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
   ipt -A "$CHAIN_FWD" -s "$SANDBOX_IP" -d "$SUBNET" -p tcp --dport "$BRIDGE_PORT" -j RETURN
   ipt -A "$CHAIN_FWD" -s "$SANDBOX_IP" -j DROP
+  ipt -A "$CHAIN_FWD" -i "$BRIDGE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  ipt -A "$CHAIN_FWD" -i "$BRIDGE" -s "$SUBNET" -d "$SANDBOX_IP" -p tcp --dport "$SANDBOX_PORT" -j RETURN
+  ipt -A "$CHAIN_FWD" -i "$BRIDGE" -j DROP
 
   # No IPv6 on the sandbox network (the compose file disables it); drop any anyway.
   if command -v ip6tables >/dev/null 2>&1 && [ -e "/proc/sys/net/ipv6/conf/$BRIDGE" ]; then
@@ -118,7 +241,7 @@ Environment=LIAISON_SANDBOX_IP=$SANDBOX_IP
 Environment=LIAISON_SANDBOX_SUBNET=$SUBNET
 Environment=LIAISON_SANDBOX_BRIDGE=$BRIDGE
 Environment=LIAISON_APP_BRIDGE_PORT=$BRIDGE_PORT
-ExecStart=/bin/sh $HERE/sandbox-firewall.sh apply
+ExecStart=/bin/sh $HERE/sandbox-firewall.sh $(echo "$DC" | sed 's/^docker compose //') apply
 
 [Install]
 WantedBy=multi-user.target
@@ -146,25 +269,43 @@ remove() {
 
 # The sandbox-network address of every running app process (`app`, `api`,
 # `worker`), one per line.
+app_ids() {
+  eval "$DC --profile rolling ps -q app api worker" 2>/dev/null || :
+}
+
+# The sandbox-network address of a container (empty when it is not on it).
+ip_on_net() {
+  docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$1" |
+    tr ' ' '\n' | awk -v p="$PREFIX" 'index($0, p) == 1' || :
+}
+
 app_ips() {
-  prefix="$(echo "$SUBNET" | sed 's|\.0/[0-9]*$|.|')"
-  for id in $(docker compose -f "$HERE/docker-compose.yml" --profile rolling ps -q app api worker 2>/dev/null); do
-    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$id" |
-      tr ' ' '\n' | grep "^$prefix" || :
-  done
+  for id in $(app_ids); do ip_on_net "$id"; done
 }
 
 # From inside the sandbox container: only the bridge port of each app process
 # accepts a connection, and it serves a run's bridge call path only.
+# shellcheck disable=SC2120 # "$@" is the compose command, set inside.
 check() {
-  gateway="$(echo "$SUBNET" | sed 's|\.0/[0-9]*$|.1|')"
+  same_network
+  gateway="${PREFIX}1"
+  sid="$(eval "$DC --profile sandbox ps -q sandbox" 2>/dev/null | head -n 1 || :)"
+  [ -n "$sid" ] || die "no running sandbox service in this compose project ($DC); pass the -p/--env-file/-f the stack runs with"
+  sip="$(ip_on_net "$sid" | head -n 1)"
+  [ "$sip" = "$SANDBOX_IP" ] || die "the sandbox service is at '${sip}', the rules name $SANDBOX_IP: set LIAISON_SANDBOX_IP and LIAISON_SANDBOX_SUBNET to what the stack runs with"
   ips="$(app_ips | sort -u | tr '\n' ' ')"
-  if [ -z "$ips" ]; then
-    echo "sandbox-firewall: no app process on the sandbox network ($SUBNET)" >&2
-    exit 1
-  fi
+  [ -n "$ips" ] || die "no app process on the sandbox network ($SUBNET) in this compose project ($DC); pass the -p/--env-file/-f the stack runs with"
   echo "sandbox-firewall: app processes on the sandbox network: $ips"
-  docker compose -f "$HERE/docker-compose.yml" exec -T -e "APP_IPS=$ips" sandbox bun --eval "
+  # The service must run the app's own image (the release handshake refuses
+  # every run otherwise).
+  simage="$(docker inspect -f '{{.Image}}' "$sid")"
+  for id in $(app_ids); do
+    aimage="$(docker inspect -f '{{.Image}}' "$id")"
+    [ "$aimage" = "$simage" ] || die "the sandbox service runs image $simage but app process $id runs $aimage: recreate the sandbox with the app (docker compose up -d), both on LIAISON_IMAGE"
+  done
+  echo "sandbox-firewall: sandbox at $SANDBOX_IP on $SUBNET, same image as the app"
+  eval "set -- $DC"
+  "$@" exec -T -e "APP_IPS=$ips" sandbox bun --eval "
 // A TCP connect: 'open' when something accepted it, else 'blocked' (dropped,
 // refused or unroutable).
 const tcp = (hostname, port) => new Promise((done) => {
@@ -208,7 +349,7 @@ case "${1:-}" in
   remove) remove ;;
   check) check ;;
   *)
-    echo "usage: $0 install|apply|remove|check" >&2
+    echo "usage: $0 [-p name] [--env-file file] [-f file] install|apply|remove|check" >&2
     exit 2
     ;;
 esac

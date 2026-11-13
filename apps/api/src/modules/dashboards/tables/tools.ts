@@ -19,6 +19,7 @@ import { dashboards, dashboardTables } from "~/db/schema/kernel"
 import {
   type ApprovalSummarizer,
   approvalResourceOwnerRegistry,
+  tableBackingRegistry,
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
@@ -381,6 +382,7 @@ const rowOp = z.discriminatedUnion("op", [
     .object({
       op: z.literal("update"),
       id: z.string().min(1).max(200),
+      // 0: a backed table's row whose own cells were never written (tables/backing.ts).
       ifVersion: z.number().int().min(0).describe("The row's version from kernel__tables_query"),
       ifRecordVersion: z
         .string()
@@ -476,7 +478,7 @@ const editParams = z
       .nullable()
       .optional()
       .describe(
-        'create, alter: make the rows the records of one parent record, e.g. a project\'s tasks {app:"projects", entity:"task", parentId:<project id>, fields:[title|status|assignee|due|priority|<task field key>]}; null (alter) makes it plain',
+        "create, alter: make the rows the records of one parent record of an app that offers it (the tool's description lists them; the app's instructions name the fields); null (alter) makes it plain",
       ),
   })
   .strict()
@@ -495,6 +497,21 @@ interface EditParams {
   orgAccess?: "none" | "viewer" | "editor"
   columns?: unknown
   backing?: unknown
+}
+
+const TABLES_EDIT_DESCRIPTION =
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are the table\'s own, kept per record. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+
+/**
+ * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
+ * them: read from the registry, so the kernel's own text names no app.
+ */
+export function backingHint(orgId: string): string {
+  const offered = [...tableBackingRegistry.snapshotUnder([orgId]).entries()].map(([raw, decl]) => {
+    const [, app, entity] = raw.split("\0")
+    return `{app:"${app}", entity:"${entity}", parentId:<its ${decl.parent}'s id>}`
+  })
+  return offered.length > 0 ? ` Backings offered here: ${offered.join(", ")}.` : ""
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -565,7 +582,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({
@@ -614,7 +631,7 @@ export function registerTableTools(orgId: string): void {
     appName: "kernel",
     name: "tables_rows_write",
     deferLoading: true,
-    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry.`,
+    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry. In a table backed by an app's records, changing a read-through cell also takes ifRecordVersion, the row's recordVersion; a row cannot be deleted there.`,
     searchKeywords: ["table", "row", "ligne", "add", "ajouter", "update", "modifier", "statut"],
     requiredScopes: [WRITE_SCOPE],
     params: z.object({
@@ -662,8 +679,10 @@ export function registerTableTools(orgId: string): void {
     appName: "kernel",
     name: "tables_edit",
     deferLoading: true,
-    description:
-      'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record, e.g. a project\'s tasks {app:"projects", entity:"task", parentId:<project id>}: fields names the record values read through (for tasks: title, status, assignee, due, priority, or a task field key), edits to them change the record in its app, and columns are the table\'s own, kept per record. Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.',
+    // The backings this org's apps declare, named from the registry (the kernel names no app).
+    get description() {
+      return TABLES_EDIT_DESCRIPTION + backingHint(orgId)
+    },
     searchKeywords: ["table", "create", "créer", "column", "colonne", "tableau", "tracker"],
     requiredScopes: [WRITE_SCOPE],
     params: editParams,

@@ -920,12 +920,27 @@ function resolveString(e: ts.Expression, ctx: ZodCtx): string | undefined {
   }
   if (ts.isIdentifier(e)) return resolveIdentifierLiteral(e.text, ctx, 0, stringValue)
   if (ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) return resolveString(e.expression, ctx)
+  // `TEXT + hint(orgId)`: a constant with a suffix computed per org at runtime (a getter's
+  // description naming what the org's apps declare). The page shows the constant.
+  if (
+    ts.isBinaryExpression(e) &&
+    e.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+    ts.isCallExpression(e.right)
+  ) {
+    return resolveString(e.left, ctx)
+  }
   return undefined
 }
 
 function objectProps(o: ts.ObjectLiteralExpression): Map<string, ts.Expression> {
   const m = new Map<string, ts.Expression>()
   for (const p of o.properties) {
+    // `get description() { return ... }`: the value its one return statement computes.
+    if (ts.isGetAccessorDeclaration(p) && ts.isIdentifier(p.name) && p.body) {
+      const ret = p.body.statements.find(ts.isReturnStatement)
+      if (ret?.expression) m.set(p.name.text, ret.expression)
+      continue
+    }
     if (!ts.isPropertyAssignment(p)) continue
     if (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) m.set(p.name.text, p.initializer)
   }

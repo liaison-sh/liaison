@@ -289,6 +289,17 @@ function myRole(viewer: UserContext, loaded: LoadedTable): TableInfo["myRole"] {
   return loaded.canEdit ? "editor" : "viewer"
 }
 
+/** The rows a reader sees: a backed table's are its parent's records they can read. */
+async function rowCountOf(t: RlsClient, loaded: LoadedTable, own: number): Promise<number> {
+  const b = loaded.backing
+  if (!b) return own
+  if (!b.provider || !b.shape) return 0
+  const records = await b.provider.rows(t, loaded.row.orgId, b.def.parentId, [], {
+    max: MAX_BACKED_ROWS,
+  })
+  return records.length
+}
+
 async function rowCounts(t: RlsClient, orgId: string, ids: string[]): Promise<Map<string, number>> {
   if (ids.length === 0) return new Map()
   const rows = await t
@@ -361,7 +372,8 @@ export async function listTables(viewer: UserContext, tx?: RlsClient): Promise<T
         canEdit: f.canEdit === true,
         columns: f.row.columns as unknown as Column[],
       })
-      out.push(toInfo(viewer, loaded, counts.get(tableCollection(f.row.id)) ?? 0))
+      const own = counts.get(tableCollection(f.row.id)) ?? 0
+      out.push(toInfo(viewer, loaded, await rowCountOf(t, loaded, own)))
     }
     return out
   })
@@ -376,7 +388,7 @@ export async function getTable(
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
     const counts = await rowCounts(t, viewer.orgId, [id])
-    return toInfo(viewer, loaded, counts.get(tableCollection(id)) ?? 0)
+    return toInfo(viewer, loaded, await rowCountOf(t, loaded, counts.get(tableCollection(id)) ?? 0))
   })
 }
 
@@ -1899,7 +1911,9 @@ export async function updateTable(
       }
       await queueTableEvent(t, viewer, "updated", saved, await tableAudience(viewer.orgId, saved))
       const counts = await rowCounts(t, viewer.orgId, [id])
-      return toInfo(viewer, await loadTable(t, viewer, id), counts.get(tableCollection(id)) ?? 0)
+      const reloaded = await loadTable(t, viewer, id)
+      const own = counts.get(tableCollection(id)) ?? 0
+      return toInfo(viewer, reloaded, await rowCountOf(t, reloaded, own))
     }),
   )
 }

@@ -205,6 +205,9 @@ describe("a backed table reads the project's tasks", () => {
     // Shared with the org as editor, but without the projects read scope: no task, no row.
     expect((await listRows(dashOnly, id)).rows).toEqual([])
     expect((await listRows(reader, id)).rows).toHaveLength(2)
+    // The row count is the reader's: the tasks they can read, not the table's own cells.
+    expect((await getTable(owner, id)).rowCount).toBe(2)
+    expect((await getTable(dashOnly, id)).rowCount).toBe(0)
     // Filters, sort and the text search apply to the merged rows.
     expect(
       (await listRows(owner, id, { where: { status: "Doing" } })).rows.map((r) => r.id),

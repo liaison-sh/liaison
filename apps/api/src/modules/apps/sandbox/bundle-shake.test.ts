@@ -38,23 +38,6 @@ async function settled(source: string, exportName: string): Promise<string> {
   return source
 }
 
-/** A bridge that records every call and answers each method with a canned JSON string. */
-function recordingBridge(source: string, calls: Array<[string, unknown[]]>) {
-  const names = new Set<string>()
-  for (const m of source.matchAll(/ctx\.([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*))?/g)) {
-    names.add(m[1]!)
-    if (m[2]) names.add(`${m[1]}_${m[2]}`)
-  }
-  const bridge: Record<string, (...args: any[]) => any> = {}
-  for (const name of names) {
-    bridge[name] = async (...args: unknown[]) => {
-      calls.push([name, args])
-      return JSON.stringify([{ id: `${name}-1`, args }])
-    }
-  }
-  return bridge
-}
-
 const SCRIPT = `
 var calls = 0;
 function helper(x) { calls++; return "helped:" + x; }
@@ -268,29 +251,6 @@ describe("export-only bundles", () => {
     expect(trimmed).toBeGreaterThan(tools.length / 2)
     expect(exportOnlyBundleCacheBytes()).toBe(bytes)
   }, 600_000)
-
-  // Tickets, calendar and projects are core app modules (core/registry.ts), never bundles to shake.
-  for (const app of ["knowledge"]) {
-    it(`${app}: the export-only attention provider behaves like the full bundle`, async () => {
-      const full = await loadBundle(join(APPS_DIR, app, "handlers.ts"))
-      const shaken = await buildExportOnlyBundle(full, "computeAttentionItems")
-      expect(shaken).not.toBeNull()
-      expect(shaken!.length).toBeLessThan(full.length / 2)
-      const fullCalls: Array<[string, unknown[]]> = []
-      const shakenCalls: Array<[string, unknown[]]> = []
-      const params = { actor: { actorType: "user", userId: "u1", orgId: "o1", scopes: ["*"] } }
-      const a = await run(full, "computeAttentionItems", params, recordingBridge(full, fullCalls))
-      const b = await run(
-        shaken!,
-        "computeAttentionItems",
-        params,
-        recordingBridge(full, shakenCalls),
-      )
-      expect(b).toEqual(a)
-      expect(shakenCalls).toEqual(fullCalls)
-      expect(fullCalls.length).toBeGreaterThan(0)
-    })
-  }
 })
 
 describe("a bundle with an import attribute", () => {

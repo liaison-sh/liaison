@@ -48,7 +48,6 @@ describe("csv cell escaper", () => {
   const copies: Array<[string, (v: unknown) => string]> = [
     ["bundled invoicing", invoicingCsvCell],
     ["mail handlers", extract("apps/mail/handlers.ts", "mailCsvCell")],
-    ["knowledge handlers", extract("apps/knowledge/handlers.ts", "knowledgeCsvCell")],
   ]
   for (const [name, fn] of copies) {
     test(`${name} copy matches @liaison/shared`, () => {

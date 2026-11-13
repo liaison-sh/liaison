@@ -132,3 +132,106 @@ describe("lanes", () => {
     }
   }, 30_000)
 })
+
+describe("background queue bound (RunBody.queueMs)", () => {
+  test("a background run queued behind long ones still gets its whole deadline", async () => {
+    const sb = await startSandbox() // background cap 2
+    try {
+      // Six 0.8 s background runs with a 1.3 s deadline each, two at a time:
+      // the last two wait about 1.6 s, longer than their deadline. With their
+      // own queue bound they still start and get their whole 1.3 s; without
+      // one (the second batch) the wait spends their deadline in the queue.
+      const bounded = [1, 2, 3, 4, 5, 6].map((i) =>
+        sb.run("sleep", 800, {
+          orgId: `org-q${i}`,
+          deadlineMs: 1_300,
+          lane: "background",
+          queueMs: 10_000,
+        }),
+      )
+      const done = await Promise.all(bounded)
+      for (const r of done) expect(r.body).toMatchObject({ ok: true, result: 800 })
+      const waits = done.map((r) => Number(r.headers.get(QUEUE_HEADER)))
+      expect(Math.max(...waits)).toBeGreaterThan(1_300)
+      const recs = sb.sup.recent.filter((r) => r.lane === "background")
+      expect(recs).toHaveLength(6)
+      expect(recs.every((r) => r.queueLimitMs === 10_000 && r.deadlineFrom === "start")).toBe(true)
+
+      const unbounded = [1, 2, 3, 4, 5, 6].map((i) =>
+        sb.run("sleep", 800, { orgId: `org-u${i}`, deadlineMs: 1_300, lane: "background" }),
+      )
+      const late = await Promise.all(unbounded)
+      expect(late.filter((r) => r.body.ok === true)).toHaveLength(4)
+      const timedOut = late.filter((r) => r.body.ok !== true)
+      for (const r of timedOut) {
+        expect(r.body.error).toMatchObject({ kind: "timeout", code: "queue_timeout" })
+      }
+      expect(sb.sup.pool.stats().counters.lanes.background.queueTimeouts).toBe(2)
+    } finally {
+      await sb.stop()
+    }
+  }, 30_000)
+
+  test("past its queue bound a background run answers queue_timeout and never started", async () => {
+    const sb = await startSandbox()
+    try {
+      const hangs = [1, 2].map((i) =>
+        sb.run("hang", null, { orgId: `org-h${i}`, deadlineMs: 2_000, lane: "background" }),
+      )
+      await Bun.sleep(300)
+      const t0 = Date.now()
+      const late = await sb.run("echo", 1, {
+        orgId: "org-late",
+        deadlineMs: 60_000,
+        lane: "background",
+        queueMs: 400,
+      })
+      // Bounded by its queue bound, not by its (much longer) deadline.
+      expect(Date.now() - t0).toBeLessThan(1_500)
+      expect(late.body.error).toMatchObject({ kind: "timeout", code: "queue_timeout" })
+      expect(late.body.error.message).toMatch(/^Queued sandbox request timed out/)
+      expect(Number(late.headers.get(QUEUE_HEADER))).toBeGreaterThanOrEqual(350)
+      const rec = sb.sup.recent.find((r) => r.how === "queue_timeout")
+      expect(rec).toMatchObject({ proc: 0, wallMs: 0, queueLimitMs: 400, deadlineFrom: "start" })
+      expect(sb.sup.pool.stats().counters.lanes.background.queueTimeouts).toBe(1)
+      await Promise.all(hangs)
+    } finally {
+      await sb.stop()
+    }
+  }, 30_000)
+
+  test("an interactive run ignores queueMs: its deadline counts the wait", async () => {
+    const sb = await startSandbox({ poolSize: 3, reserved: 1, reservedInteractive: 1 })
+    try {
+      const hangs = [1, 2].map((i) =>
+        sb.run("hang", null, { orgId: `org-i${i}`, deadlineMs: 2_000 }),
+      )
+      await Bun.sleep(300)
+      const t0 = Date.now()
+      const tool = await sb.run("echo", 1, { orgId: "org-t", deadlineMs: 400, queueMs: 30_000 })
+      expect(Date.now() - t0).toBeLessThan(1_500)
+      expect(tool.body.error).toMatchObject({ kind: "timeout", code: "queue_timeout" })
+      const rec = sb.sup.recent.find((r) => r.how === "queue_timeout")
+      expect(rec).toMatchObject({ lane: "interactive", queueLimitMs: 400, deadlineFrom: "arrival" })
+      await Promise.all(hangs)
+    } finally {
+      await sb.stop()
+    }
+  }, 30_000)
+
+  test("/stats states each lane's queue limit; a bad queueMs is refused", async () => {
+    const sb = await startSandbox()
+    try {
+      const stats = (await (await fetch(`${sb.url}/stats`)).json()) as Record<string, any>
+      expect(stats.sizes.queueLimits).toMatchObject({
+        interactive: "deadline",
+        background: { maxMs: 60 * 60_000 },
+      })
+      const bad = await sb.run("echo", 1, { lane: "background", queueMs: -5 })
+      expect(bad.status).toBe(400)
+      expect(bad.body.error.message).toMatch(/queueMs/)
+    } finally {
+      await sb.stop()
+    }
+  }, 30_000)
+})

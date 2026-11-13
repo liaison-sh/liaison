@@ -59,7 +59,6 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_PRIVATE_DEMO_BOX` | `boolean` | `false` | no | LIAISON_PRIVATE_DEMO_BOX declares a demo-mode box PRIVATE: a throwaway QA box that runs the demo posture for a tester, reached only over an SSH tunnel, with no visitors. On such a box the seed may replace its own demo org and give the seeded people passwords, which the public demo refuses (`isPublicDemoInstance`). Declaring it is not enough: BASE_URL must also be a loopback origin, so a box with a public hostname stays public whatever this says. Off by default; never set it on a public instance. |
 | `LIAISON_SETUP_TOKEN` | `string` |  | no | One-time secret the FIRST registration of a fresh instance must present (see modules/auth/setup-token.ts). Unset: a value derived from JWT_SECRET is printed in the app log at boot until the instance is bootstrapped. Setting it also turns the requirement on outside production. |
 | `LIAISON_DEMO_SHOPIFY_FIXTURES` | `boolean` | `false` | no | LIAISON_DEMO_SHOPIFY_FIXTURES answers a DEMO MARKED org's Shopify calls from the demo fixtures on a box that is NOT the public demo instance. It exists for the private QA staging box, which runs the product exactly as it ships (demo mode OFF, no public signup route, no egress lockdown, no spend posture) and is filled with the demo world so a tester can walk it. Without this, a demo marked org on such a box has a Shopify connection carrying the inert sentinel token and a shop domain that resolves to nothing, so every Shopify screen is empty and the box cannot be validated at all. It is the NARROWEST thing that fixes that: it widens gate one of `maybeDemoShopifyResponse` and nothing else. Gate two is untouched, so an org with no demo marker is still never intercepted, on any box, whatever this is set to. Turning it on can only ever make traffic MORE contained: a demo marked org's `*.myshopify.com` call is answered from fixtures instead of being put on the wire with a sentinel token. Off by default, and off on the public demo box too, where LIAISON_DEMO_MODE already opens the same door. |
-| `LIAISON_DEMO_PAYMENTS_FIXTURES` | `boolean` | `false` | no | LIAISON_DEMO_PAYMENTS_FIXTURES turns on the card-payments stand-in's signed QA route (modules/demo/worlds/saas/payments/), which writes an outside object for a DEMO MARKED org on a box that is NOT the public demo instance (a private walk, bench or year box). The stand-in itself needs no flag: a demo marked org's call to the payments host, from any app, is answered or refused on every box and never put on the wire, and an org with no demo marker is never intercepted. Off by default, and off on the public demo box. |
 | `LIAISON_DEMO_WAREHOUSE` | `boolean` | `false` | no | LIAISON_DEMO_WAREHOUSE opts this deployment into the demo seed's warehouse part: the read-only analytics schema behind the `database` connector, built by the deploy-time seed and connected to every demo org. It needs LIAISON_DEMO_WAREHOUSE_DATABASE_URL (the warehouse's own login) and, where the warehouse is built, MIGRATION_DATABASE_URL. Off by default, and never inferred from those variables: a deployment without the warehouse seeds every other part and says the warehouse is off; a deployment with it on and the warehouse failing gets a failed seed, not a quietly thinner one. Leave it off on load and test boxes. |
 | `LIAISON_DEMO_VISITOR_TTL_HOURS` | `number` | `72` | no | The knobs below are read ONLY when LIAISON_DEMO_MODE is on. They are plain env so the demo box can be retuned without a release. How long a self-serve visitor org lives before it is considered expired (the marker's `expiresAt`). Reaping is a separate, later concern: this value is what a reaper reads. |
 | `LIAISON_DEMO_CONNECTED_TTL_HOURS` | `number` | `168` | no | How long a visitor org lives once it has completed a real outside connection (an MCP server reaching connected, an app account connected by OAuth or credentials): its `expiresAt` moves to max(current, now + this). The demo's own seeded connections do not count (demo-connected-ttl.ts). |
@@ -69,9 +68,6 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_DEMO_SYNTHETIC_PER_HOUR` | `number` | `60` | no | The load harness's own lane (LOAD_HARNESS_KEY boxes only): signed synthetic starts per hour, box-wide, counted apart from visitors' and applied to their signups, code sends and verifications alike. A load run spends this, never the visitor ceilings above, so it cannot lock real visitors out. |
 | `LIAISON_DEMO_SYNTHETIC_MAX_ORGS` | `number` | `500` | no | Cap on the load harness's synthetic workspaces alive at once, counted apart from LIAISON_DEMO_MAX_VISITOR_ORGS. At the cap, a signed start answers 503; visitors' signups are unaffected. |
 | `LIAISON_DEMO_POOL_SIZE` | `number` | `5` | no | Warm pool of pre-seeded visitor workspaces (demo-pool.ts). A background job keeps this many fully seeded orgs ready, seeding them one at a time, and a signup takes the oldest instead of seeding behind its response. 0 turns the pool off: every signup creates and seeds its own org. |
-| `LIAISON_DEMO_WORLDS` | `string` | `"products"` | no | The demo worlds this box runs, comma separated: products, saas, studio. A visitor's answer at the door picks one of them; the warm pool keeps workspaces of each. A world with no seed pack yet is dropped with one log line. Unset: products only. An unknown or repeated id fails boot. |
-| `LIAISON_DEMO_POOL_SIZES` | `string` | `""` | no | How the warm pool's workspaces split across the demo worlds, as world=count pairs (products=2,saas=2,studio=1). A world it leaves out, or one this box does not run, keeps none. Unset: LIAISON_DEMO_POOL_SIZE split evenly over the worlds the box runs, the remainder in the order products, saas, studio. A malformed value fails boot. |
-| `LIAISON_DEMO_POOL_MAX_AGE_HOURS` | `number` | `12` | no | The oldest a ready pooled workspace may be, in hours: an older one is never handed to a visitor and the next refill retires it. A workspace of a world whose story follows the month (saas, studio) also retires when the month turns in Europe/Paris. |
 | `LIAISON_DEMO_SEED_CONCURRENCY` | `number` | `2` | no | How many demo workspaces may be SEEDED at once on this box, across every API process (a Redis-backed gate, demo-seed-gate.ts). Shared by the warm pool's refill and by signups that found the pool empty; a visitor beyond the limit waits in a first-come queue with their workspace showing as still filling in, and the refill only takes a slot when no visitor waits. |
 | `LIAISON_DEMO_RESERVED_TOKEN_CEILING` | `number` | `200000` | no | The ONE demo org that spends real money: `variant: "reserved"`, the org handed to Apple's Beta App Review, which cannot be asked to paste a key. Every other demo org runs on its own BYOK key or not at all, so this is the only ceiling on the box. Denominated per rolling day (the window is a constant in demo-spend.ts): a lifetime total would lock App Review out permanently the first time a reviewer spent it. Low on purpose: the default is derived from Google's published price and the ECB rate so the worst case stays at or under 1 EUR a day, with the sources and the arithmetic in modules/demo/demo-spend-ceiling.ts. Raise it only past a re-derivation there. Empty reads as unset, which is how compose passes a variable nobody set. |
 | `LIAISON_DEMO_RESERVED_MODEL` | `string` | `"gemini-flash-lite-latest"` | no | The ONE model id every paid model call of the reserved org runs on, whatever its agents, threads or routines ask for (applied in `resolveModelForPreCheck`). Must be a row of the model catalog: an id the catalog lacks refuses the turn rather than falling back to anything dearer. The ceiling above is priced for a Flash-Lite model; naming a dearer one here needs the ceiling re-derived too. Empty reads as unset, which is how compose passes a variable nobody set. |
@@ -90,7 +86,6 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_SETUP_KICKOFF_ORG_MAX_AGE_DAYS` | `number` | `14` | no | A workspace older than this many days never gets the first-run card, whatever it holds: an org that runs on mail and tickets alone writes no chat message, and a deploy must not greet it as new. |
 | `BUG_REPORT_INBOX_ID` | `string` |  | no | In-app bug reports (POST /api/bug-reports) file a ticket into this inbox (UUID). Unset/empty → the org's default-for-create inbox. A bad id falls back to the default inbox at request time (logged), never drops a report. |
 | `LIAISON_CONSOLE_EMAIL_BODIES` | `boolean` | `false` | no | Without SMTP or Resend, mail goes to the log. Only its recipient and subject, unless this is set: then the body too, which holds sign-in codes, magic links, invite and reset links. For a local trial without a mail server (deploy/quickstart.sh sets it); never for an instance other people sign in to. |
-| `MAIL_SEND_GUARD_ENFORCE` | `boolean` | `true` | no | Operator-only, for an incident: 0 switches off the send check on staged mail, except the opt-out check. Off nowhere by default, logged at error on boot. |
 | `SMTP_HOST` | `string` |  | no | Email (SMTP) — optional. When SMTP_HOST is absent, emails are logged to console. |
 | `SMTP_PORT` | `number` | `587` | no |  |
 | `SMTP_USER` | `string` | `""` | no |  |
@@ -191,10 +186,6 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIVE_INSTANCE_TTL_MS` | `number` | `30000` | no | Instance liveness (infra/instance-registry.ts): every process writes a heartbeat record that lives this long without renewal. Entries a process owns in Redis (sockets, stream slots, live turns) are ignored once its record is gone, so a killed process drops out within about this long. |
 | `LIVE_INSTANCE_HEARTBEAT_MS` | `number` | `10000` | no | How often each process renews its heartbeat record. Keep it well under the TTL. |
 | `LIVE_SWEEP_INTERVAL_MS` | `number` | `10000` | no | How often the leader removes the entries of processes whose heartbeat is gone. |
-| `LIAISON_TOOL_MEANING` | `"on" \| "off"` |  | no | Tool search ranks by meaning as well as by words, with a small embedding model run once per host by the embedding process (`embedder`, modules/agent/tools/embedder-main.ts; about 1.1 GB of memory), which every API and worker process asks over a local socket. "on" \| "off"; unset, it follows the edition (on when managed, off when self-hosted; lib/edition.ts toolMeaningEnabled). Off, or while that process does not answer, the search ranks by words. |
-| `LIAISON_MODEL_CACHE_DIR` | `string` |  | no | Where tool search's model files are fetched, checked against their pinned hashes and read from. Unset: ~/.cache/liaison/models (the compose file sets /var/lib/liaison/models, on the data volume). Point it at a persistent volume, or at files shipped with the image for an install with no outside network. |
-| `LIAISON_EMBEDDER_SOCKET` | `string` |  | no | The embedding process's Unix socket (no network port): it listens there, and the API and worker processes of the host ask it there. Unset: liaison/embedder.sock under XDG_RUNTIME_DIR, else under the temporary folder (the compose file sets /var/lib/liaison/run/embedder.sock, on the data volume every container of the host mounts). |
-| `LIAISON_EMBEDDER_DEADLINE_MS` | `number` | `150` | no | How long a tool search waits for its query's vector from the embedding process, in ms, before it ranks by words alone for that search. |
 | `LIAISON_INTERNAL_PORT` | `number` | `0` | no | The internal listener every process starts, separate from PORT and never published: another process forwards a mailbox answer here when this one minted the request. 0 (default) takes any free port. It must be reachable from the other processes of the deployment (same host or compose network). |
 | `LIAISON_INTERNAL_HOST` | `string` |  | no | The name the other processes reach this one by on that port. Unset: the hostname (inside compose, the container's, which the network resolves); a hostname that does not resolve locally falls back to 127.0.0.1. |
 | `LIAISON_INTERNAL_BIND` | `string` |  | no | The address the internal listener binds. Unset: the address LIAISON_INTERNAL_HOST (or the hostname) resolves to here, so the listener is never on every interface by default. Set 0.0.0.0 only when the advertised address is not on this machine (NAT), with the port firewalled. |
@@ -210,6 +201,11 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_OPERATOR_ORG_ID` | `string (UUID)` |  | no | Installed apps are instance-wide, but `kernel:apps:admin` is org-scoped. On a multi-tenant instance (demo mode, managed edition) runtime app management (install, upgrade, uninstall, interface approval) is confined to the instance operator's org: this id when set, otherwise the instance's first org (modules/apps/operator-org.ts). Unused on a single-org self-host. Org ids are compared as strings, so the id is kept in the database's own lowercase. |
 | `BYOK_ENCRYPTION_KEY` | `string` |  | no | BYOK encryption key — 32 bytes expressed as 64 hex chars |
 | `MONITOR_TOKEN` | `string` | `""` | no | Bearer token guarding GET /diag (monitoring watchdog, ops/monitor/ in the monorepo). Empty default allowed in non-production; the production guard below rejects empty. |
+| `LIAISON_APP_HEALTH_TIMEOUTS_MIN` | `number` | `10` | no | App-run health checks (modules/apps/usage/run-health-checks.ts), judged over the last 15 minutes and reported in /diag `appRuns.alerts`. Interactive timeouts: at least this many, and this share of the interactive runs (critical). |
+| `LIAISON_APP_HEALTH_TIMEOUT_RATE` | `number` | `0.02` | no |  |
+| `LIAISON_APP_HEALTH_QUEUE_P95_MS` | `number` | `2000` | no | Interactive queue wait p95 above this many ms, over 20 queued runs at least. |
+| `LIAISON_APP_HEALTH_SATURATED_S` | `number` | `60` | no | A pool saturated this long without a break (or twice this long in all). |
+| `LIAISON_APP_HEALTH_P95_REGRESSION` | `number` | `2` | no | Interactive p95 this many times its 24-hour p95 (and 1 s above it). |
 | `MEILISEARCH_HOST` | `string` | `"http://localhost:7700"` | no | Phase 10: MeiliSearch |
 | `MEILISEARCH_API_KEY` | `string` | `""` | no |  |
 | `MEILI_INDEX_PREFIX` | `string` | `""` | no |  |
@@ -276,8 +272,8 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:766` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:76` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:52`, `apps/api/src/modules/apps/workers/admission.ts:58` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:46` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:55`, `apps/api/src/modules/apps/workers/admission.ts:61` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:49` |
 | `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
 | `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
@@ -302,14 +298,14 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1686` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1698` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
-| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
-| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:106` |
-| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:178`, `apps/api/src/middleware/maintenance.ts:23` |
-| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:185`, `apps/api/src/middleware/maintenance.ts:27` |
+| `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:307` |
+| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:105` |
+| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:174`, `apps/api/src/middleware/maintenance.ts:23` |
+| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:181`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:54` |
 | `MCP_MAX_RESPONSE_BYTES` | `apps/api/src/modules/mcp-client/call.ts:485` |
 | `MCP_MAX_TOOLS_PER_CONNECTION` | `apps/api/src/modules/mcp-client/projector.ts:51` |
@@ -327,18 +323,18 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:560`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:561`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:69` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:72` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:435` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:447` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:99` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
 | `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:97` |
-| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1322`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
-| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1323`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
+| `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1328`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
+| `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1329`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |
 | `VITE_API_BASE` | `apps/web/src/lib/env.ts:10` |
 | `VITE_API_TARGET` | `apps/web/src/lib/env.ts:68` |
@@ -347,4 +343,3 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `WEBHOOK_PROBE_STALE_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:157` |
 | `WEBHOOK_REJECT_SPAN_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:150` |
 | `WEBHOOK_REJECT_WARMUP_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:141` |
-| `XDG_RUNTIME_DIR` | `apps/api/src/modules/agent/tools/embedder-main.ts:22`, `apps/api/src/modules/agent/tools/tool-meaning.ts:268` |

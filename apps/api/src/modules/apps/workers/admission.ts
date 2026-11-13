@@ -7,8 +7,11 @@
 // pool connection open across internet round trips for its whole duration.
 //
 //   top-level runs  at most PER_ORG in flight per org; the rest wait in one
-//                   FIFO queue (bounded by the run's own timeout, and by its
-//                   caller's abort signal)
+//                   FIFO queue (bounded by `waitMs`, and by the caller's
+//                   abort signal). The executor (executor.ts) passes the
+//                   run's timeout, or a background run's own queue bound
+//                   (run-limits.ts runQueueBoundMs), whose deadline then
+//                   starts once admitted: the sandbox service's rule too.
 //   lanes           a run is interactive (a person or an agent waits on it)
 //                   or background (jobs, events, syncs; run-limits.ts
 //                   runLaneOf). Background runs may hold at most
@@ -30,7 +33,7 @@
 //                   point of view, are counted, and are bounded by a breadth
 //                   per parent execution; past it they are refused at once.
 
-import { sandboxCancelledError } from "~/lib/failure-severity"
+import { SandboxQueueTimeoutError, sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import type { RunLane } from "~/modules/apps/run-limits"
 
@@ -204,7 +207,7 @@ export class WorkersAdmission {
             { orgId: req.orgId, app: req.appName, lane, runHoldsTx: req.holdsTx, ...this.stats() },
             "Workers run timed out waiting for admission",
           )
-          reject(new Error("Queued sandbox request timed out waiting for a free worker"))
+          reject(new SandboxQueueTimeoutError())
           // A waiter that left may unblock the next one (FIFO head).
           this.drain()
         },

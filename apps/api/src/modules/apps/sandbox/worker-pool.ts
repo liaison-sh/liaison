@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Subprocess } from "bun"
-import { sandboxCancelledError } from "~/lib/failure-severity"
+import { SandboxQueueTimeoutError, sandboxCancelledError } from "~/lib/failure-severity"
 import { appsLogger as log } from "~/lib/logger"
 import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 import type { RunLane } from "~/modules/apps/run-limits"
@@ -309,6 +309,11 @@ export interface WorkerExecOptions {
   extraArgs?: unknown[]
   bridge: Record<string, (...args: any[]) => any>
   timeoutMs?: number
+  /**
+   * How long the request may wait for a free worker (a background run's own
+   * queue bound, run-limits.ts runQueueBoundMs). Unset: its timeout plus 30 s.
+   */
+  queueMs?: number
   memoryLimitBytes?: number
   /**
    * Called with the worker's QuickJS heap reading when the execution returns a
@@ -888,7 +893,9 @@ export class SandboxWorkerPool {
   ): Promise<unknown> {
     // Queue the request with a timeout so callers are not stranded forever if
     // the pool never frees up (e.g. all workers are hung or respawn is slow).
-    const queueTimeoutMs = (opts.timeoutMs ?? this.defaultTimeout) + 30_000
+    // A background run's own queue bound (run-limits.ts runQueueBoundMs), else
+    // its timeout plus a margin. Its timeout starts once a worker takes it.
+    const queueTimeoutMs = opts.queueMs ?? (opts.timeoutMs ?? this.defaultTimeout) + 30_000
     return new Promise<unknown>((resolve, reject) => {
       // The queue stores `wrappedResolve`/`wrappedReject` (not the raw executor
       // callbacks), so the timeout handler must splice the entry by its *stored*
@@ -925,7 +932,7 @@ export class SandboxWorkerPool {
         const idx = this.queue.findIndex((q) => q.resolve === wrappedResolve)
         if (idx !== -1) this.queue.splice(idx, 1)
         removeAbortListener()
-        reject(new Error("Queued sandbox request timed out waiting for a free worker"))
+        reject(new SandboxQueueTimeoutError())
       }, queueTimeoutMs)
 
       if (signal) signal.addEventListener("abort", onAbort, { once: true })

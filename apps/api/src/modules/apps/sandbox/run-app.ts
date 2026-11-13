@@ -57,7 +57,13 @@ import { flushRunLogs } from "~/modules/app-builder/logs"
 import { coreModuleFor } from "~/modules/apps/core/registry"
 import { runCoreHandler } from "~/modules/apps/core/run-core"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
-import { entryKindOf, type RunEntryKind, runLaneOf, runLimits } from "~/modules/apps/run-limits"
+import {
+  entryKindOf,
+  type RunEntryKind,
+  runLaneOf,
+  runLimits,
+  runQueueBoundMs,
+} from "~/modules/apps/run-limits"
 import {
   forWorkersRun,
   isWorkersRunBridge,
@@ -499,6 +505,12 @@ function workersCopyOf(bridge: AppBridge): AppBridge {
   return forWorkersRun(copy, { secretConfigKeys: secretConfigKeysOf(bridge) })
 }
 
+/** A background run's own queue bound (run-limits.ts runQueueBoundMs), when it has one. */
+function queueBoundOpt(opts: RunAppOptions): { queueMs?: number } {
+  const queueMs = runQueueBoundMs(opts)
+  return queueMs === undefined ? {} : { queueMs }
+}
+
 async function runOnExecutor(
   opts: RunAppOptions,
   executor: AppExecutor,
@@ -546,6 +558,7 @@ async function runOnExecutor(
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
         entryKind: runEntryKind(opts),
         lane: runLaneOf(opts),
+        ...queueBoundOpt(opts),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
         holdsTx: opts.holdsTx,
         nested: opts.nested === true,
@@ -593,6 +606,8 @@ async function runOnExecutor(
       if (opts.timeoutMs !== undefined) exec.timeoutMs = opts.timeoutMs
       if (opts.syncContext !== undefined) exec.syncContext = opts.syncContext
       exec.priority = runLaneOf(opts)
+      const queue = runQueueBoundMs(opts)
+      if (queue !== undefined) exec.queueMs = queue
       if (opts.backgroundGroup !== undefined) exec.backgroundGroup = opts.backgroundGroup
       if (opts.nested !== undefined) exec.nested = opts.nested
       if (opts.nestedParentKey !== undefined) exec.nestedParentKey = opts.nestedParentKey

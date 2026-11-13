@@ -17,8 +17,9 @@
 //    less `reservedInteractive` (config.ts laneCaps), so a burst of long
 //    background runs always leaves processes for interactive ones. A run
 //    that may not take one queues, first come first served within its lane,
-//    until its deadline; a freed process goes to the oldest waiter whose lane
-//    may take it. Nested runs
+//    until its queue bound (its deadline, or a background run's own
+//    `queueMs`, supervisor.ts runOn); a freed process goes to the oldest
+//    waiter whose lane may take it. Nested runs
 //    (depth 1..maxDepth: a cross-app call, a render, a summarizer started by
 //    another run) may take any process and, when the pool is full, start up to
 //    `overflow` more. They never queue (their parent holds a process while it
@@ -101,7 +102,7 @@ export interface LaneCounters {
   waitMsTotal: number
   /** The longest time a run of the lane waited (started or not). */
   waitMsMax: number
-  /** Runs of the lane whose deadline passed in the queue. */
+  /** Runs of the lane whose queue bound passed in the queue (they never started). */
   queueTimeouts: number
 }
 

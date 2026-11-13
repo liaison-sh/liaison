@@ -4,15 +4,18 @@
 // and keeps every env override working.
 import { describe, expect, it } from "bun:test"
 import {
+  DEFAULT_BACKGROUND_QUEUE_MS,
   egressLimits,
   entryKindOf,
   RUN_ENTRY_KINDS,
   RUN_LANE_OF_KIND,
+  resolveBackgroundQueueMs,
   resolveSandboxMemoryLimit,
   resolveToolTimeoutMs,
   resolveTransformCallBudgetMs,
   runLaneOf,
   runLimits,
+  runQueueBoundMs,
   workersLoaderLimits,
 } from "./run-limits"
 
@@ -127,5 +130,36 @@ describe("runLaneOf", () => {
     expect(runLaneOf({ entry: "webhook:onOrder" })).toBe("background")
     expect(runLaneOf({ entry: "tool:x", priority: "background" })).toBe("background")
     expect(runLaneOf({ entry: "job:sync", priority: "interactive" })).toBe("background")
+  })
+})
+
+describe("runQueueBoundMs: a background run's own queue bound", () => {
+  const env = {} as NodeJS.ProcessEnv
+  it("jobs and knowledge syncs wait on their own clock, 10 minutes by default", () => {
+    expect(DEFAULT_BACKGROUND_QUEUE_MS).toBe(600_000)
+    expect(runQueueBoundMs({ entry: "job:sync", holdsTx: false }, env)).toBe(600_000)
+    expect(runQueueBoundMs({ entry: "knowledge-sync:page", holdsTx: false }, env)).toBe(600_000)
+  })
+
+  it("every other run counts its wait in its wall clock", () => {
+    // A held transaction, a nested run, interactive kinds, and the background
+    // kinds a request or the event bus bounds.
+    expect(runQueueBoundMs({ entry: "job:sync", holdsTx: true }, env)).toBeUndefined()
+    expect(runQueueBoundMs({ entry: "job:sync", nested: true }, env)).toBeUndefined()
+    for (const entry of ["tool:x", "webhook:x", "event:x", "poll:x", "import:x", "attention:x"]) {
+      expect(runQueueBoundMs({ entry }, env)).toBeUndefined()
+    }
+    // A routine's background tool call: an agent still waits on it.
+    expect(runQueueBoundMs({ entry: "tool:x", priority: "background" }, env)).toBeUndefined()
+    expect(runQueueBoundMs({}, env)).toBeUndefined()
+  })
+
+  it("LIAISON_SANDBOX_BACKGROUND_QUEUE_MS sets it, between 1 s and 60 minutes", () => {
+    const at = (v: string) => ({ LIAISON_SANDBOX_BACKGROUND_QUEUE_MS: v }) as NodeJS.ProcessEnv
+    expect(resolveBackgroundQueueMs(at("120000"))).toBe(120_000)
+    expect(resolveBackgroundQueueMs(at("5"))).toBe(1_000)
+    expect(resolveBackgroundQueueMs(at("999999999"))).toBe(3_600_000)
+    expect(resolveBackgroundQueueMs(at("nope"))).toBe(600_000)
+    expect(runQueueBoundMs({ entry: "job:sync" }, at("90000"))).toBe(90_000)
   })
 })

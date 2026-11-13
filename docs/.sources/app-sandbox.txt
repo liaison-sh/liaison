@@ -95,7 +95,7 @@ LIAISON_FRAMED_APPS frames listed first-party apps -> apps/api/src/lib/app-frame
 Host API 1.3 calls and their limits -> packages/host-sdk/src/index.ts:209 ; apps/web/src/framework/host-app-calls.ts:93 ; apps/web/src/framework/isolated-app.tsx:395
 decideApproval: host confirm dialog, the app's own tool, payloadHash kept -> apps/web/src/framework/host-app-calls.ts:217 ; apps/web/src/modules/shell/app-approval-confirm.tsx:52
 Workers faults: loader-level (no kind, network, auth, loader_internal), app-level (load, bundle_missing, bundle_fetch_failed), final (limit, handler, timeout) -> apps/api/src/modules/apps/workers/faults.ts:32-45
-Retry once with jitter: zero bridge calls and twice the attempt's time left of the deadline -> apps/api/src/modules/apps/workers/executor.ts:262-290
+Retry once with jitter: zero bridge calls and twice the attempt's time left of the deadline -> apps/api/src/modules/apps/workers/executor.ts:278-355
 Breaker 5 faults / 60 s, open 60 s, one probe; app fallback per org:app@version for 10 minutes -> apps/api/src/modules/apps/workers/fallback.ts:29-33 ; apps/api/src/modules/apps/workers/fallback.ts:63-110
 Decided once before the bridge is built, recorded in the run line -> apps/api/src/modules/apps/sandbox/run-app.ts:211-226 ; apps/api/src/modules/apps/sandbox/run-app.ts:274
 Workers console capture: 200 lines / 64 KiB per run, 4 KiB per line, shared lines -> apps/api/src/modules/apps/workers/worker-core.ts:131-133 ; apps/api/src/modules/apps/workers/worker-core.ts:222
@@ -193,5 +193,6 @@ Version without a Worker module refused (app_worker_module_missing), back-fill f
 ctx.pdf.render template runs nested under the asking run -> apps/api/src/modules/pdf/sandbox-render.ts (runTemplateToPdf) ; apps/api/src/modules/apps/sandbox/bridge/platform.ts (pdf_render)
 Lanes per entry kind; routine/job tool calls background via priority -> apps/api/src/modules/apps/run-limits.ts (RUN_LANE_OF_KIND, runLaneOf)
 Lane sent to the sandbox service in the run body -> apps/api/src/modules/apps/workers/executor.ts (runBody.lane) ; packages/app-loader/src/protocol.ts (RunBody.lane)
+Background queue bound for jobs and knowledge syncs on every executor, deadline from start, queue_timeout job deferred -> apps/api/src/modules/apps/run-limits.ts (runQueueBoundMs) ; apps/api/src/modules/apps/workers/executor.ts (queueBoundMs) ; apps/api/src/modules/apps/sandbox/worker-pool.ts (enqueue queueMs) ; packages/app-loader/src/protocol.ts (RunBody.queueMs) ; apps/api/src/infra/jobs/jobs.ts (SandboxQueueTimeoutError)
 Timing record lane, admissionMs, loader.queueMs -> apps/api/src/modules/apps/workers/timings.ts (runTimingOf) ; apps/api/src/modules/apps/sandbox/run-app.ts (emitRunSettled)
 Workers admission 16 per org, background 12, holdsTx background cap -> apps/api/src/modules/apps/workers/admission.ts (WORKERS_INTERACTIVE_RESERVE_PER_ORG, holdsTxBackgroundCap)

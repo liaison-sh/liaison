@@ -101,6 +101,12 @@ export async function findHorizontalClipping(page: Page): Promise<{
     const nearestScrollAncestor = (el: Element) => {
       let node: Element | null = el.parentElement
       while (node) {
+        // An icon's <svg> clips its own drawing (overflow: hidden by default), not the layout:
+        // its paths scroll with whatever box holds the icon.
+        if (node instanceof SVGElement) {
+          node = node.parentElement
+          continue
+        }
         const overflowX = window.getComputedStyle(node).overflowX
         if (overflowX === "auto" || overflowX === "scroll" || overflowX === "hidden") {
           const rect = node.getBoundingClientRect()

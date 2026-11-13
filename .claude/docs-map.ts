@@ -217,6 +217,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/Dockerfile", pages: ["self-hosting/docker"] },
   { glob: "apps/api/scripts/entrypoint.sh", pages: ["self-hosting/docker", "admin/upgrades"] },
   { glob: "apps/api/scripts/cron-fanout-rollback.ts", pages: ["self-hosting/docker", "backend-overview"] },
+  { glob: "apps/api/scripts/kernel-queues-rollback.ts", pages: ["self-hosting/docker", "backend-overview"] },
   { glob: "apps/api/app-index-none.json", pages: ["self-hosting/docker"] },
   { glob: "scripts/build-app-catalog.ts", pages: ["self-hosting/docker"] },
 

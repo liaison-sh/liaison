@@ -173,7 +173,7 @@ describe("the tool-call guard", () => {
       'ctx.executeTool?.("calendar:list_events", "{}")',
       'ctx.executeTool ?.("calendar:list_events", "{}")',
       'ctx["executeTool"]("calendar:list_events", "{}")',
-      "ctx['executeTool']?.(\"calendar:list_events\", \"{}\")",
+      'ctx[\'executeTool\']?.("calendar:list_events", "{}")',
       'executeToolCore({ toolName: "calendar:list_events" })',
       'ctx.callTool("calendar:list_events")',
     ]

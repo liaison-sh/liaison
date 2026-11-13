@@ -481,7 +481,12 @@ describe("currencies", () => {
     expect(missing.error.details.next).toContain("currency")
     const list = await run(costRatesList, {})
     expect(list.rates.some((r: { userId: string }) => r.userId === someone.userId)).toBe(false)
-    await run(costRateSet, { userId: someone.userId, rate: 60, from: "2026-03-01", currency: "GBP" })
+    await run(costRateSet, {
+      userId: someone.userId,
+      rate: 60,
+      from: "2026-03-01",
+      currency: "GBP",
+    })
     const again = await run(costRateSet, { userId: someone.userId, rate: 65, from: "2026-03-01" })
     expect(again.error).toBeUndefined()
     expect(again.currency).toBe("GBP")
@@ -493,7 +498,12 @@ describe("currencies", () => {
     await call("projects_billingTermsSet", { projectId: odd, fixedPrice: 1000, currency: "EUR" })
     await call("projects_billingTermsSet", { projectId: spaced, fixedPrice: 1000, currency: "EUR" })
     const someone = await minimal.session(orgId, { role: "member" })
-    await run(costRateSet, { userId: someone.userId, rate: 60, from: "2026-02-01", currency: "USD" })
+    await run(costRateSet, {
+      userId: someone.userId,
+      rate: 60,
+      from: "2026-02-01",
+      currency: "USD",
+    })
     await db.execute(drizzleSql`
       UPDATE app_projects.project_billing_terms
          SET currency = CASE project_id WHEN ${odd}::uuid THEN ' eu' ELSE 'usd' END

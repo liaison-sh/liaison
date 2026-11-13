@@ -53,6 +53,8 @@ describe("the drill panel's rows", () => {
     const open = await waitFor(() => screen.getByTestId("dashboard-drill-open-0"))
     expect(open.getAttribute("aria-label")).toBeTruthy()
     expect(open.textContent?.trim()).toBe("")
+    // Beside the first cell, not a column of its own.
+    expect(open.closest("td")).toBe(screen.getByTestId("dashboard-drill-row-0").querySelector("td"))
     const row = screen.getByTestId("dashboard-drill-row-0")
     expect(row.textContent).toContain("Tobias Braun")
     // The date holds its width (no wrap); the text columns may wrap.

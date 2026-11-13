@@ -371,35 +371,55 @@ export async function supersedeOlderToolCards(params: {
  * whose own retention requires it. The call stays, so its ordinary row still draws. Answers how
  * many calls lost their card.
  */
-export async function clearToolCardsByKey(params: {
+export async function clearToolCardsByKey(params: ClearToolCardsParams): Promise<number> {
+  return withPrivilegedDb(params.orgId, "tool-card-clear", (tx) =>
+    clearToolCardsByKeyIn(tx, params),
+  )
+}
+
+interface ClearToolCardsParams {
   orgId: string
   actorId: string
-  threadId: string
+  /** The thread to clear; left out, every thread of the org that holds the key. */
+  threadId?: string
   app: string
   key: string
-}): Promise<number> {
+}
+
+/**
+ * `clearToolCardsByKey` inside the caller's own privileged transaction, so an app can clear a
+ * record's cards and delete the record in one write: both happen, or neither does.
+ */
+export async function clearToolCardsByKeyIn(
+  tx: PrivilegedDb,
+  params: ClearToolCardsParams,
+): Promise<number> {
   const { orgId, threadId, app, key } = params
-  return withPrivilegedDb(orgId, "tool-card-clear", async (tx) => {
-    const rows = await tx
-      .select(ROW_FACTS)
-      .from(messages)
-      .where(and(eq(messages.threadId, threadId), eq(messages.orgId, orgId), holdsKey(key)))
-      .orderBy(asc(messages.id))
-      .for("update")
-    let cleared = 0
-    for (const row of rows) {
-      let changed = false
-      const next = storedCalls(row.metadata).map((tc): StoredToolCall => {
-        if (tc.card?.latestKey !== key || appOfStoredToolName(tc.toolName) !== app) return tc
-        changed = true
-        cleared++
-        const { card: _card, cardRevision: _rev, cardSuperseded: _old, ...kept } = tc
-        return { ...kept, result: null }
-      })
-      if (changed) await writeToolCalls(tx, orgId, params.actorId, row, next)
-    }
-    return cleared
-  })
+  const rows = await tx
+    .select(ROW_FACTS)
+    .from(messages)
+    .where(
+      and(
+        eq(messages.orgId, orgId),
+        ...(threadId ? [eq(messages.threadId, threadId)] : []),
+        holdsKey(key),
+      ),
+    )
+    .orderBy(asc(messages.id))
+    .for("update")
+  let cleared = 0
+  for (const row of rows) {
+    let changed = false
+    const next = storedCalls(row.metadata).map((tc): StoredToolCall => {
+      if (tc.card?.latestKey !== key || appOfStoredToolName(tc.toolName) !== app) return tc
+      changed = true
+      cleared++
+      const { card: _card, cardRevision: _rev, cardSuperseded: _old, ...kept } = tc
+      return { ...kept, result: null }
+    })
+    if (changed) await writeToolCalls(tx, orgId, params.actorId, row, next)
+  }
+  return cleared
 }
 
 /** A request's `cardRef`: absent, well formed, or refused before anything runs. */

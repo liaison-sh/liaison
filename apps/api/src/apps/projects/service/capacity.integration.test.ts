@@ -332,6 +332,25 @@ describe("the week's figures", () => {
     expect(out.covers).toContain("projects that use time and budgets")
   })
 
+  it("who can take this reads a task key too, and refuses anything else by name", async () => {
+    const extra = await task(projectId, people["Mathis Perrin"] as string, "1 h", {
+      dueDate: addDays(day(0), 21),
+    })
+    const key = extractRows<{ key: string }>(
+      await db.execute(drizzleSql`
+        SELECT p.key || '-' || t.number::text AS key FROM app_projects.tasks t
+          JOIN app_projects.projects p ON p.id = t.project_id WHERE t.id = ${extra}::uuid`),
+    )[0]!.key
+    const byKey = await capacity({ taskId: key })
+    expect(byKey.error).toBeUndefined()
+    expect(byKey.taskId).toBe(extra)
+    for (const taskId of ["not a task", "NOPE-999"]) {
+      const out = await capacity({ taskId })
+      expect(["invalid_id", "not_found"]).toContain(out.error?.code)
+      expect(JSON.stringify(out)).not.toContain("22P02")
+    }
+  })
+
   it("a dashboard block on capacity_get saves and runs", async () => {
     const viewer = actorOf(owner.userId)
     const d = await createDashboard(viewer, {

@@ -33,18 +33,35 @@ async function person(tx: Tx, orgId: string, id: string): Promise<Person | undef
   )[0]
 }
 
-/** The calendars the caller can read and has selected, if the calendar app is there. */
-async function selectedCalendars(tx: Tx): Promise<Array<{ value: string; label: string }>> {
+/**
+ * The calendars the caller can read and has selected, if the calendar app is there, each with
+ * whether the org owns it. Only an org-owned calendar can be the company's days off: a person's
+ * own calendar is theirs, whoever can read it.
+ */
+async function selectedCalendars(
+  tx: Tx,
+): Promise<Array<{ value: string; label: string; shared: boolean }>> {
   const rel = `${schemaRef("app_calendar")}.calendars`
   const present = extractRows<{ t: string | null }>(
     await tx.execute(drizzleSql`SELECT to_regclass(${rel})::text AS t`),
   )[0]?.t
   if (!present) return []
-  return extractRows<{ value: string; label: string }>(
+  return extractRows<{ value: string; label: string; shared: boolean }>(
     await tx.execute(drizzleSql`
-      SELECT id::text AS value, name AS label FROM ${drizzleSql.raw(rel)}
-       WHERE selected ORDER BY name`),
+      SELECT c.id::text AS value, c.name AS label,
+             EXISTS (SELECT 1 FROM ${drizzleSql.raw(`${schemaRef("app_calendar")}.accounts`)} a
+                      WHERE a.id = c.account_id AND a.org_id = c.org_id
+                        AND a.owner_type = 'org') AS shared
+        FROM ${drizzleSql.raw(rel)} c
+       WHERE c.selected ORDER BY c.name`),
   )
+}
+
+/** The calendars that may be the company's days off. */
+async function sharedCalendars(tx: Tx): Promise<Array<{ value: string; label: string }>> {
+  return (await selectedCalendars(tx))
+    .filter((c) => c.shared)
+    .map(({ value, label }) => ({ value, label }))
 }
 
 function refuseOthers(): never {
@@ -79,7 +96,7 @@ export async function getTimeSettings(args: {
       SELECT count(*)::int AS n FROM ${drizzleSql.raw(schemaRef("app_projects"))}.projects
        WHERE org_id = ${orgId}::uuid AND time_budgets_on AND archived_at IS NULL`),
   )[0]?.n
-  const options = await selectedCalendars(tx)
+  const options = await sharedCalendars(tx)
   const calendarId = row?.daysOffCalendarId ?? null
   return {
     hoursPerDay: hpd / 60,
@@ -141,7 +158,15 @@ export async function setTimeSettings(args: {
   }
   if (calendarChanges && input.daysOffCalendarId) {
     const choices = await selectedCalendars(tx)
-    if (!choices.some((c) => c.value === input.daysOffCalendarId)) {
+    const choice = choices.find((c) => c.value === input.daysOffCalendarId)
+    if (choice && !choice.shared) {
+      throw new ProjectsServiceError(
+        422,
+        "calendar_not_found",
+        `${choice.label} is a person's own calendar, so it cannot be the company's days off. Nothing was changed; pick a calendar the organization connected.`,
+      )
+    }
+    if (!choice) {
       throw new ProjectsServiceError(
         422,
         "calendar_not_found",

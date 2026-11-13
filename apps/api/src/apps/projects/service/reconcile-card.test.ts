@@ -222,6 +222,38 @@ describe("the reconcile card", () => {
     const short = draw({ lines: lines.slice(0, 5) })
     expect(rows(short)[0]?.links).toHaveLength(3)
   })
+
+  it("forty lines with very long names still draw under the byte bound, each name shortened", () => {
+    for (const length of [500, 680]) {
+      const lines = Array.from({ length: TOOL_CARD_GROUPS_MAX_ROWS }, (_, i) =>
+        line(`20000000-0000-4000-8000-${String(i).padStart(12, "0")}`, {
+          position: i,
+          name: `Line ${i + 1} ${"export and monitoring of the supplier connector ".repeat(20)}`.slice(
+            0,
+            length,
+          ),
+          why: "Agreed with the client at the weekly review, then shipped and checked in production.",
+          proofs: Array.from({ length: 6 }, (_, k) => ({
+            label: `PR #${1000 + i * 6 + k}`,
+            url: `https://github.com/maison-delorme/platform/pull/${1000 + i * 6 + k}`,
+          })),
+        }),
+      )
+      // The fields alone, before any shortening, are past the bound: the case that used to vanish.
+      const raw = lines.map((l) => ({ name: l.name, why: l.why, proof: l.proofs }))
+      expect(new TextEncoder().encode(JSON.stringify(raw)).length).toBeGreaterThan(
+        TOOL_CARD_GROUPS_MAX_BYTES,
+      )
+      const card = draw({ lines })
+      expect(rows(card)).toHaveLength(TOOL_CARD_GROUPS_MAX_ROWS)
+      expect(new TextEncoder().encode(JSON.stringify(card)).length).toBeLessThan(
+        TOOL_CARD_GROUPS_MAX_BYTES,
+      )
+      for (const [i, r] of rows(card).entries()) {
+        expect(r.name).toContain(`Line ${i + 1} `)
+      }
+    }
+  })
 })
 
 /** The web renderer's own fixture: the card this resolver draws for the largest month. */

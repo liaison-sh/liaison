@@ -5,7 +5,7 @@
 // reload and on a phone. Every figure was computed by the server before it reaches here; this
 // only words it. No person is named anywhere on the card.
 import { TOOL_CARD_GROUPS_MAX_ROWS } from "@liaison/shared"
-import { NOT_EVERYTHING_SEEN, OTHER_LINE_NAME, worded } from "./reconcile-lines"
+import { cutText, NOT_EVERYTHING_SEEN, OTHER_LINE_NAME, worded } from "./reconcile-lines"
 import type { Basis } from "./time-plan"
 
 /** A stored line, as the card reads it. */
@@ -90,39 +90,45 @@ export const ROWS_BYTE_BUDGET = 17_000
 /** A row draws at most this many proof links: past it the line's proof is in the stored card. */
 export const PROOF_LINKS_SHOWN = 3
 
-type Row = { why?: string; proof: Array<{ label: string; href?: string }> } & Record<
+type Row = { name: string; why?: string; proof: Array<{ label: string; href?: string }> } & Record<
   string,
   unknown
 >
 
 /**
  * Keep the rows inside the card's bound, so a long month never falls back to the plain tool
- * row: fewer proof links first, then a shorter why. Every line stays; only its decoration goes.
+ * row: fewer proof links first, then a shorter why, then a shorter name. Every line stays; only
+ * its decoration goes, and the stored line keeps its whole wording.
  */
 function fitGroups<G extends { label: string; rows: Row[] }>(groups: G[]): G[] {
   const size = (gs: G[]) => new TextEncoder().encode(JSON.stringify(gs)).length
-  const shaped = (links: number, why: number | null) =>
+  const shaped = (links: number, why: number | null, name: number | null) =>
     groups.map((g) => ({
       ...g,
-      rows: g.rows.map((r) => ({
+      rows: g.rows.map(({ why: rowWhy, ...r }) => ({
         ...r,
+        ...(name !== null ? { name: cutText(r.name, name) } : {}),
         proof: r.proof.slice(0, links),
-        ...(r.why !== undefined && why !== null && r.why.length > why
-          ? { why: `${r.why.slice(0, why - 1).trimEnd()}…` }
+        ...(rowWhy !== undefined && why !== 0
+          ? { why: why === null ? rowWhy : cutText(rowWhy, why) }
           : {}),
       })),
     }))
-  for (const [links, why] of [
-    [PROOF_LINKS_SHOWN, null],
-    [1, null],
-    [1, 60],
-    [0, 60],
-    [0, 30],
-  ] as const) {
-    const out = shaped(links, why)
+  const steps = [
+    [PROOF_LINKS_SHOWN, null, null],
+    [1, null, null],
+    [1, 60, null],
+    [0, 60, null],
+    [0, 30, null],
+    [0, 30, 80],
+    [0, 0, 40],
+  ] as const
+  for (const [links, why, name] of steps) {
+    const out = shaped(links, why, name)
     if (size(out) <= ROWS_BYTE_BUDGET) return out
   }
-  return shaped(0, 30)
+  // The last step: forty rows of a 40-character name, with no proof and no why, always fit.
+  return shaped(0, 0, 40)
 }
 
 /** The fields the `reconcile` card template reads, beside the tool's own result. */

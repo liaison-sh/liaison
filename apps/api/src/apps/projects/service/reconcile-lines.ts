@@ -165,6 +165,16 @@ export interface ProposedLine {
 
 const bad = (message: string) => new ProjectsServiceError(400, "invalid_params", message)
 
+/** A line's name, as stored: past it the name is cut, so forty lines always fit the card. */
+export const LINE_NAME_MAX = 120
+/** A line's why, as stored. */
+export const LINE_WHY_MAX = 300
+
+/** Text cut to `max` characters, ending with an ellipsis when it was cut. */
+export function cutText(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
+}
+
 /**
  * A proposal's lines as the agent may send them: grouping, wording and proofs. A line that
  * carries a figure (planned, real, bill or anything else not listed) is refused whole: the
@@ -201,8 +211,10 @@ export function readProposedLines(raw: unknown): ProposedLine[] {
     if (!Array.isArray(proofs)) throw bad(`line ${i + 1}: proofs is a list.`)
     return {
       ...(typeof line.key === "string" ? { key: line.key } : {}),
-      name: line.name.trim(),
-      ...(typeof line.why === "string" && line.why.trim() !== "" ? { why: line.why.trim() } : {}),
+      name: cutText(line.name.trim(), LINE_NAME_MAX),
+      ...(typeof line.why === "string" && line.why.trim() !== ""
+        ? { why: cutText(line.why.trim(), LINE_WHY_MAX) }
+        : {}),
       taskIds: taskIds as string[],
       kind: line.kind,
       ...(line.reason !== undefined ? { reason: line.reason as LineReason } : {}),
@@ -228,6 +240,12 @@ function readProof(value: unknown, i: number, j: number): ProposedProof {
   if (typeof p.ref !== "string" || p.ref.trim() === "") {
     throw bad(`line ${i + 1}, proof ${j + 1} needs a ref.`)
   }
+  // A document's title is re-read under the asker's rows by its id; a slug or a title cannot be.
+  if (p.kind === "knowledge_doc" && !UUID_REF.test(p.ref.trim())) {
+    throw bad(
+      `line ${i + 1}, proof ${j + 1}: a knowledge document is cited by its id. Nothing was saved.`,
+    )
+  }
   return {
     kind: p.kind as ProofKind,
     ref: p.ref.trim().slice(0, 500),
@@ -237,6 +255,34 @@ function readProof(value: unknown, i: number, j: number): ProposedProof {
       ? { occurredOn: p.occurredOn }
       : {}),
   }
+}
+
+const UUID_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const PROOF_WORD: Record<ProofKind, string> = {
+  task: "Task",
+  commit: "Commit",
+  pull_request: "Pull request",
+  merge_request: "Merge request",
+  calendar_event: "Meeting",
+  knowledge_doc: "Document",
+  mail: "Mail",
+  ticket: "Ticket",
+  note: "Note",
+}
+
+/**
+ * A proof label that names no member: the label, else its reference, else the proof's kind
+ * ("Commit"). A billed line never carries who did the work, in its proof either.
+ */
+export function unnamedProofLabel(
+  label: string,
+  p: ProposedProof,
+  members: ReadonlyArray<{ name: string | null; email: string | null }>,
+): string {
+  if (!namedMember(label, members)) return label
+  const byRef = proofLabel({ ...p, label: p.ref })
+  return namedMember(byRef, members) ? PROOF_WORD[p.kind] : byRef
 }
 
 /** The member a text names, by full name or email, or null. A client's contact is not a member. */

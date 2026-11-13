@@ -345,6 +345,37 @@ describe("the October card of a project billed by the day", () => {
     expect(kept.lines[3].why).toBe("Nadia Perrin asked for it on 21 Oct.")
   })
 
+  it("a proof label naming a member falls back to its reference before it reaches the card", async () => {
+    await db.execute(
+      drizzleSql`UPDATE kernel.users SET name = 'Paul Garnier' WHERE id = ${finance.userId}::uuid`,
+    )
+    const email = extractRows<{ email: string }>(
+      await db.execute(drizzleSql`SELECT email FROM kernel.users WHERE id = ${owner.userId}::uuid`),
+    )[0]!.email
+    const named = proposal()
+    named.lines[1]!.proofs.push(
+      { kind: "commit", ref: "c0ffee1", label: "Export fix by Paul Garnier" } as never,
+      { kind: "ticket", ref: "SUP-41", label: `Raised by ${email}` } as never,
+      { kind: "pull_request", ref: "Paul Garnier", label: "Paul Garnier's branch" } as never,
+    )
+    const out = await call("projects_reconcilePropose", named)
+    expect(out.error).toBeUndefined()
+    const labels = (out.groups as Array<{ rows: Array<{ name: string; proof: Array<{ label: string }> }> }>)
+      .flatMap((g) => g.rows)
+      .find((r) => r.name === "Monitoring")
+      ?.proof.map((p) => p.label)
+    expect(labels?.sort()).toEqual(["Pull request", "SUP-41", "c0ffee1"])
+    const storedLabels = extractRows<{ label: string }>(
+      await db.execute(drizzleSql`
+        SELECT p.label FROM app_projects.reconciliation_proofs p
+          JOIN app_projects.reconciliation_lines l ON l.id = p.line_id
+         WHERE l.reconciliation_id = ${out.reconciliationId}::uuid`),
+    ).map((r) => r.label)
+    expect(storedLabels.some((l) => l.includes("Paul Garnier") || l.includes(email))).toBe(false)
+    // Put the card back the way the other cases read it.
+    await call("projects_reconcilePropose", proposal())
+  })
+
   it("a proposed reconciliation is visible to its creator only, whatever the reader holds", async () => {
     for (const scopes of [["*"], ["projects:reconcile:read", "projects:projects:read"]]) {
       const seen = await withRlsContext(actorOf(finance.userId, scopes), async (tx) =>

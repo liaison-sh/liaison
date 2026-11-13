@@ -238,6 +238,37 @@ describe("changing a line of the card", () => {
     expect(template.supersededLabel?.label).toBe("First version")
   })
 
+  it("a time-spent note stays its author's once the card leaves proposed", async () => {
+    const card = await tool("reconcile_get", {
+      reconciliationId: (await tool("reconcile_propose", proposal())).reconciliationId,
+    })
+    const noted = await tool(
+      "reconcile_line_update",
+      inlineCall(card, "Monitoring", "realNote", 4.5),
+      { origin: "human-ui" },
+    )
+    expect(noted.error).toBeUndefined()
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'drafted'
+       WHERE id = ${card.reconciliationId}::uuid`)
+    const monitoring = (c: Card) => (c.lines as Card[]).find((l) => l.name === "Monitoring")
+    const row = (c: Card) =>
+      (resolveToolCard(template, c)?.groups ?? [])
+        .flatMap((g) => g.rows)
+        .find((r) => r.name === "Monitoring")
+    const mine = await tool("reconcile_get", { reconciliationId: card.reconciliationId })
+    expect(monitoring(mine)?.real).toBe("4.5 d")
+    const theirs = await tool(
+      "reconcile_get",
+      { reconciliationId: card.reconciliationId },
+      { userId: other.userId },
+    )
+    expect(theirs.error).toBeUndefined()
+    expect(monitoring(theirs)?.real).toBe("4 d")
+    expect(row(theirs)?.cells.realNote).toBe("4 d")
+    expect(JSON.stringify(theirs)).not.toContain("4.5")
+  })
+
   it("wording that names a member is refused on a line change too", async () => {
     const card = await tool("reconcile_get", {
       reconciliationId: (await tool("reconcile_propose", proposal())).reconciliationId,

@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.25.0",
+  "version": "1.26.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1867,8 +1867,7 @@
         "temps",
         "saisir",
         "heures",
-        "hours",
-        "logged"
+        "hours"
       ],
       "writesToTable": "app_projects.task_time",
       "humanTurnOnly": true,
@@ -2619,6 +2618,7 @@
         "ligne"
       ],
       "writesToTable": "app_projects.reconciliation_lines",
+      "humanTurnOnly": true,
       "sinkReadersSelf": true,
       "requiredScopes": [
         "projects:reconcile:read"

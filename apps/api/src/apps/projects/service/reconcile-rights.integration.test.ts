@@ -72,7 +72,7 @@ const proposal = (why = "The export.") => ({
 type Outcome = { error?: { code?: string }; data?: unknown; [k: string]: unknown }
 
 async function viaTool(
-  name: "reconcile_facts" | "reconcile_propose",
+  name: "reconcile_facts" | "reconcile_propose" | "reconcile_line_update",
   params: Record<string, unknown>,
   opts: {
     origin: "in-app-agent" | "mcp"
@@ -264,5 +264,35 @@ describe("a turn that read another app's records", () => {
     } finally {
       toolRegistry.set(key, entry)
     }
+  })
+})
+
+describe("changing a line from outside a person's turn", () => {
+  it("a routine or a sub-run cannot change what a line bills", async () => {
+    const out = await viaTool("reconcile_propose", proposal(), {
+      origin: "in-app-agent",
+      threadId: dmThread,
+      frame: { humanTurn: true },
+    })
+    const card = (out.data ?? out) as Record<string, any>
+    expect(card.error).toBeUndefined()
+    const line = (card.lines as Array<{ lineId: string }>)[0]
+    for (const frame of [
+      { routineId: "00000000-0000-4000-8000-000000000001" },
+      { background: true },
+    ]) {
+      const out = await viaTool(
+        "reconcile_line_update",
+        { reconciliationId: card.reconciliationId, revision: card.revision, lineId: line?.lineId, bill: 9 },
+        { origin: "in-app-agent", threadId: dmThread, frame },
+      )
+      expect(out.error?.code).toBe("human_turn_only")
+    }
+    const onTurn = await viaTool(
+      "reconcile_line_update",
+      { reconciliationId: card.reconciliationId, revision: card.revision, lineId: line?.lineId, bill: 1 },
+      { origin: "in-app-agent", threadId: dmThread, frame: { humanTurn: true } },
+    )
+    expect(((onTurn.data ?? onTurn) as Record<string, any>).error).toBeUndefined()
   })
 })

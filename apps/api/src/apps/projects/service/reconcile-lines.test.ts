@@ -9,6 +9,8 @@ import {
   computeLines,
   defaultBill,
   keptProofUrl,
+  LINE_NAME_MAX,
+  LINE_WHY_MAX,
   lateNote,
   NO_PLAN_TAG,
   namedMember,
@@ -113,6 +115,28 @@ describe("what a line may carry", () => {
         ]),
       ),
     ).toBe("invalid_params")
+  })
+
+  it("a line's name and why are cut to their bound when read, so a long wording cannot push the card out", () => {
+    const [l] = readProposedLines([
+      { name: "n".repeat(700), why: "w".repeat(900), kind: "planned", taskIds: [] },
+    ])
+    expect(l?.name.length).toBeLessThanOrEqual(LINE_NAME_MAX)
+    expect(l?.name.endsWith("…")).toBe(true)
+    expect(l?.why?.length).toBeLessThanOrEqual(LINE_WHY_MAX)
+    const [short] = readProposedLines([{ name: "Export fix", kind: "planned" }])
+    expect(short?.name).toBe("Export fix")
+  })
+
+  it("a knowledge document cited by anything but its id is refused, so its title is always read again", () => {
+    const line = (ref: string) => ({
+      name: "Export",
+      kind: "planned",
+      proofs: [{ kind: "knowledge_doc", ref, label: "Pricing notes" }],
+    })
+    expect(() => readProposedLines([line("pricing-notes")])).toThrow(/knowledge document/)
+    const [ok] = readProposedLines([line("6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b")])
+    expect(ok?.proofs[0]?.kind).toBe("knowledge_doc")
   })
 
   it("wording naming a member is caught, a client contact is kept", () => {

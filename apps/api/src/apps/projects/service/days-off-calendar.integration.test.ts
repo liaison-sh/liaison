@@ -8,13 +8,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { deactivateUser } from "~/modules/users/service"
 import { seedContext } from "~/seed/context"
 import { type EventSpec, seedTeamCalendar } from "~/seed/factories/calendar/events"
 import * as minimal from "~/seed/tiers/minimal"
@@ -213,34 +211,56 @@ describe("the shared days-off calendar", () => {
     expect(await endedLines()).toHaveLength(count)
   })
 
-  it("a deactivated owner and a deselected calendar are not read as deleted events", async () => {
-    // A personal calendar whose owner leaves.
+  it("a person's own calendar cannot be chosen, and one set before is no longer read", async () => {
     await wipe()
     const member = await minimal.session(orgId, { role: "member" })
     const personal = await calendarWith(
       "Member days",
-      [allDay("p", "Team offsite", 2)],
+      [allDay("p", "Hospital", 2)],
       actorOf(member.userId),
       "person",
     )
-    await call(
+    // Not offered, and refused when named.
+    const settings = await call("projects_timeSettingsGet", {}, member.userId)
+    expect(settings.options.map((o: { value: string }) => o.value)).not.toContain(
+      personal.calendarId,
+    )
+    const refused = await call(
       "projects_timeSettingsSet",
       { daysOffCalendarId: personal.calendarId },
       member.userId,
     )
-    await syncDaysOffCalendar(orgId, new Date())
-    expect((await rows()).map((r) => r.source)).toEqual([personal.eventIds[0]])
-    await withPrivilegedDb(orgId, "test-deactivate", (tx) =>
-      deactivateUser(tx, {
-        targetId: member.userId,
-        actorId: owner.userId,
-        orgId,
-        actorScopes: ["*"],
-      }),
+    expect(refused.error?.code).toBe("calendar_not_found")
+    expect(refused.error?.message).toContain("a person's own calendar")
+    // A calendar chosen while the organization's, then turned into a person's own: the daily
+    // read stops, imports nothing more, removes what it read from it, and tells the settings
+    // admins without its titles.
+    const turned = await calendarWith(
+      "Studio days",
+      [allDay("s", "Hospital", 2)],
+      actorOf(owner.userId),
     )
-    expect(await syncDaysOffCalendar(orgId, new Date())).toMatchObject({ state: "ended", kept: 1 })
-    expect((await rows()).map((r) => [r.source, r.label])).toEqual([[null, "Team offsite"]])
+    await call("projects_timeSettingsSet", { daysOffCalendarId: turned.calendarId })
+    await syncDaysOffCalendar(orgId, new Date())
+    expect((await rows()).map((r) => r.label)).toEqual(["Hospital"])
+    await db.execute(drizzleSql`
+      UPDATE app_calendar.accounts SET owner_type = 'user', owner_id = ${member.userId}::uuid
+       WHERE id = (SELECT account_id FROM app_calendar.calendars
+                    WHERE id = ${turned.calendarId}::uuid)`)
+    expect(await syncDaysOffCalendar(orgId, new Date())).toMatchObject({ state: "ended", kept: 0 })
+    expect(await rows()).toEqual([])
+    const summaries = extractRows<{ summary: string }>(
+      await db.execute(drizzleSql`
+        SELECT summary FROM kernel.attention_events
+         WHERE org_id = ${orgId}::uuid AND kind = ${CALENDAR_ENDED_KIND}
+           AND entity_id = ${turned.calendarId}`),
+    ).map((r) => r.summary)
+    expect(summaries.length).toBeGreaterThan(0)
+    expect(summaries.join(" ")).not.toContain("Hospital")
+    expect(await syncDaysOffCalendar(orgId, new Date())).toEqual({ state: "none" })
+  })
 
+  it("a deselected calendar is not read as deleted events", async () => {
     // A calendar unticked (its events purged) keeps its days too.
     await wipe()
     const team = await calendarWith(

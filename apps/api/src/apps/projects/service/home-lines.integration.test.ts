@@ -406,6 +406,19 @@ describe("the capacity line", () => {
     expect(after[1]?.read_at).toBeNull()
   })
 
+  it("someone whose only task on the project is closed is not its lead", async () => {
+    const closed = await task(project, paul, "1 h")
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET completed_at = now() WHERE id = ${closed}::uuid`)
+    const later = new Date(Date.now() + 14 * 86_400_000)
+    await raiseCapacityLinesAll(later)
+    expect(await capacityLines(paul)).toEqual([])
+    // An open task makes them one.
+    await task(project, paul, "1 h")
+    await raiseCapacityLinesAll(new Date(Date.now() + 28 * 86_400_000))
+    expect((await capacityLines(paul)).length).toBeGreaterThan(0)
+  })
+
   it("the daily pass writes no capacity line for an org that is being moved", async () => {
     const later = new Date(Date.now() + 21 * 86_400_000)
     const week = isoWeekOf(later.toISOString().slice(0, 10))

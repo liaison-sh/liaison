@@ -3269,8 +3269,8 @@
     "set": "seed",
     "lang": "en",
     "say": "how much time went on the portal project this month",
-    "typed": ["time spent project", "project budget", "hours project", "timesheet"],
-    "any": ["projects__budget_get", "projects__timesheet_get"],
+    "typed": ["time spent project", "project budget", "hours project"],
+    "any": ["projects__budget_get"],
     "modelRun": true
   },
   {

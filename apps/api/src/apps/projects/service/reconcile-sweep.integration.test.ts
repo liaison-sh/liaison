@@ -15,7 +15,14 @@ import {
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { IDLE_PROPOSAL_DAYS, sweepClaims, sweepIdleProposals } from "./reconcile-sweep"
+import { orgTransferView } from "~/modules/org/transfer-state/state"
+import {
+  IDLE_PROPOSAL_DAYS,
+  idleCutoff,
+  sweepClaims,
+  sweepIdleProposals,
+  sweepOrgIdleProposals,
+} from "./reconcile-sweep"
 
 let orgId = ""
 let owner: minimal.Session
@@ -37,7 +44,7 @@ async function card(
   })
 }
 
-async function storeCard(id: string): Promise<void> {
+async function storeCard(id: string, inThread = threadId, inOrg = orgId, by = owner.userId): Promise<void> {
   const call = {
     toolCallId: `call-${id.slice(0, 8)}`,
     toolName: "projects__reconcile_propose",
@@ -45,7 +52,7 @@ async function storeCard(id: string): Promise<void> {
     result: { reconciliationId: id, lines: [{ proofs: [{ label: "Demo, 15 Oct" }] }] },
     card: { kind: "groups", pill: { label: "Projects: reconcile" }, latestKey: `reconcile:${id}` },
   }
-  await minimal.postUserMessage(orgId, threadId, owner.userId, "A card.", { toolCalls: [call] })
+  await minimal.postUserMessage(inOrg, inThread, by, "A card.", { toolCalls: [call] })
 }
 
 async function stillStored(id: string): Promise<{ row: boolean; card: boolean }> {
@@ -57,7 +64,7 @@ async function stillStored(id: string): Promise<{ row: boolean; card: boolean }>
   const cards = extractRows<{ n: number }>(
     await db.execute(drizzleSql`
       SELECT count(*)::int AS n FROM kernel.messages
-       WHERE thread_id = ${threadId}::uuid AND metadata::text LIKE ${`%"latestKey": "reconcile:${id}"%`}`),
+       WHERE metadata::text LIKE ${`%"latestKey": "reconcile:${id}"%`}`),
   )[0]?.n
   return { row: row === 1, card: (cards ?? 0) > 0 }
 }
@@ -99,6 +106,71 @@ describe("the hourly reconcile housekeeping", () => {
       .map((r) => r.m)
       .join("\n")
     expect(text.match(/Demo, 15 Oct/g)).toHaveLength(2)
+  })
+
+  it("an idle proposal drawn in two threads loses its cards in both", async () => {
+    const idle = await card("proposed", IDLE_PROPOSAL_DAYS + 1, "2026-06")
+    const other = await minimal.thread(orgId, owner.userId, { title: "Delorme billing" })
+    await storeCard(idle)
+    await storeCard(idle, other)
+    await sweepIdleProposals()
+    expect(await stillStored(idle)).toEqual({ row: false, card: false })
+  })
+
+  it("an org that starts moving keeps its idle proposal and its cards until a later sweep", async () => {
+    const idle = await card("proposed", IDLE_PROPOSAL_DAYS + 1, "2026-05")
+    await storeCard(idle)
+    await db.execute(drizzleSql`
+      UPDATE kernel.organizations
+         SET transfer_state = 'frozen', transfer_id = ${crypto.randomUUID()}, transfer_at = now()
+       WHERE id = ${orgId}::uuid`)
+    try {
+      await orgTransferView.refresh()
+      // The org's own step, as the sweep runs it after its first read: skipped whole.
+      expect(await sweepOrgIdleProposals(orgId, idleCutoff(new Date()))).toBe("skipped")
+      expect(await stillStored(idle)).toEqual({ row: true, card: true })
+    } finally {
+      await db.execute(drizzleSql`
+        UPDATE kernel.organizations
+           SET transfer_state = NULL, transfer_id = NULL, transfer_at = NULL
+         WHERE id = ${orgId}::uuid`)
+      await orgTransferView.refresh()
+    }
+    await sweepIdleProposals()
+    expect(await stillStored(idle)).toEqual({ row: false, card: false })
+  })
+
+  it("one org whose cards cannot be cleared keeps its proposal, and the next org is still swept", async () => {
+    const second = await minimal.secondOrg({ name: "Maison Ferrand" })
+    const otherOrg = second.orgId
+    const otherOwner = { userId: second.adminUserId }
+    const otherProject = await seedBareProject(otherOrg, {
+      name: "Maison Ferrand site",
+      key: "FERR",
+      ownerId: otherOwner.userId,
+    })
+    const otherThread = await minimal.agentDm(otherOrg, otherOwner.userId)
+    const broken = await card("proposed", IDLE_PROPOSAL_DAYS + 1, "2026-04")
+    await storeCard(broken)
+    const fine = await seedReconciliation(otherOrg, {
+      projectId: otherProject,
+      createdBy: otherOwner.userId,
+      threadId: otherThread,
+      state: "proposed",
+      month: "2026-04",
+      idleDays: IDLE_PROPOSAL_DAYS + 1,
+    })
+    await storeCard(fine, otherThread, otherOrg, otherOwner.userId)
+    const out = await sweepIdleProposals(new Date(), {
+      beforeClear: (o) => {
+        if (o === orgId) throw new Error("card store unavailable")
+      },
+    })
+    expect(out.failedOrgs).toBe(1)
+    expect(await stillStored(broken)).toEqual({ row: true, card: true })
+    expect(await stillStored(fine)).toEqual({ row: false, card: false })
+    await sweepIdleProposals()
+    expect(await stillStored(broken)).toEqual({ row: false, card: false })
   })
 
   it("a reservation with no document an hour on is released, and the sweep runs on empty claims", async () => {

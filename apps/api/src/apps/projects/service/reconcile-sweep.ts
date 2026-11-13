@@ -13,7 +13,7 @@ import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
-import { clearToolCardsByKey } from "~/modules/agent/runtime/tool-card-store"
+import { clearToolCardsByKeyIn } from "~/modules/agent/runtime/tool-card-store"
 import {
   SKIPPED_MOVING,
   sweepSkippingMoving,
@@ -80,45 +80,98 @@ export const RESERVATION_HOLD_HOURS = 1
 /** Document states in which a reserved claim is billed. */
 const ISSUED_STATES = ["issued", "paid", "overdue"] as const
 
+/** The moment before which an untouched proposal is idle. */
+export function idleCutoff(now: Date): string {
+  return new Date(now.getTime() - IDLE_PROPOSAL_DAYS * 86_400_000).toISOString()
+}
+
+interface IdleSweepHooks {
+  /** Runs in each org's write before its cards are cleared (a test makes one org fail here). */
+  beforeClear?: (orgId: string) => void
+}
+
 /**
- * Delete every proposed reconciliation untouched for 30 days, then clear the cards it drew in
- * its thread, so no proof label outlives it. A card that left `proposed` is never touched.
+ * One org's idle proposals: their cards are cleared in every thread that stored one, and the
+ * rows are deleted, in one write. A move that began since the sweep's first read skips the org
+ * whole (`"skipped"`), so the rows stay to be found again with their cards.
  */
-export async function sweepIdleProposals(now: Date = new Date()): Promise<{
-  deleted: number
-  cardsCleared: number
-}> {
-  const cutoff = new Date(now.getTime() - IDLE_PROPOSAL_DAYS * 86_400_000).toISOString()
-  const gone = await sweepSkippingMoving((notMoving) =>
-    withSystemDb("projects-reconcile-sweep", async (tx) =>
-      extractRows<{ id: string; org_id: string; created_by: string; thread_id: string | null }>(
+export async function sweepOrgIdleProposals(
+  orgId: string,
+  cutoff: string,
+  hooks: IdleSweepHooks = {},
+): Promise<{ deleted: number; cardsCleared: number } | "skipped"> {
+  const out = await writeUnlessMoving(orgId, () =>
+    withSystemDb("projects-reconcile-sweep", async (tx) => {
+      const idle = extractRows<{ id: string; created_by: string }>(
+        await tx.execute(drizzleSql`
+          SELECT id::text AS id, created_by::text AS created_by
+            FROM ${projectsRel("reconciliations")}
+           WHERE org_id = ${orgId}::uuid AND state = 'proposed'
+             AND updated_at < ${cutoff}::timestamptz
+           FOR UPDATE`),
+      )
+      if (idle.length === 0) return { deleted: 0, cardsCleared: 0 }
+      hooks.beforeClear?.(orgId)
+      let cardsCleared = 0
+      for (const r of idle) {
+        cardsCleared += await clearToolCardsByKeyIn(tx, {
+          orgId,
+          actorId: r.created_by,
+          app: "projects",
+          key: `reconcile:${r.id}`,
+        })
+      }
+      const deleted = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
           DELETE FROM ${projectsRel("reconciliations")}
+           WHERE org_id = ${orgId}::uuid AND id IN (${drizzleSql.join(
+             idle.map((r) => drizzleSql`${r.id}::uuid`),
+             drizzleSql`, `,
+           )})
+          RETURNING id::text AS id`),
+      ).length
+      return { deleted, cardsCleared }
+    }),
+  )
+  return out === SKIPPED_MOVING ? "skipped" : out
+}
+
+/**
+ * Delete every proposed reconciliation untouched for 30 days with the cards it drew, in every
+ * thread, so no proof label outlives it. A card that left `proposed` is never touched. Each org
+ * is its own write: one that fails or starts moving is left for the next run, and the others
+ * are still swept.
+ */
+export async function sweepIdleProposals(
+  now: Date = new Date(),
+  hooks: IdleSweepHooks = {},
+): Promise<{ deleted: number; cardsCleared: number; failedOrgs: number }> {
+  const cutoff = idleCutoff(now)
+  const orgIds = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("projects-reconcile-sweep", async (tx) =>
+      extractRows<{ org_id: string }>(
+        await tx.execute(drizzleSql`
+          SELECT DISTINCT org_id::text AS org_id FROM ${projectsRel("reconciliations")}
            WHERE state = 'proposed' AND updated_at < ${cutoff}::timestamptz
-             AND ${notMoving(drizzleSql.raw("org_id"))}
-          RETURNING id::text AS id, org_id::text AS org_id, created_by::text AS created_by,
-                    thread_id::text AS thread_id`),
-      ),
+             AND ${notMoving(drizzleSql.raw("org_id"))}`),
+      ).map((r) => r.org_id),
     ),
   )
+  let deleted = 0
   let cardsCleared = 0
-  for (const r of gone) {
-    const threadId = r.thread_id
-    if (!threadId) continue
-    // Each org's clear is its own write, checked again: a move frozen since the delete waits
-    // for nothing here, so the clear skips that org rather than writing into it.
-    const cleared = await writeUnlessMoving(r.org_id, () =>
-      clearToolCardsByKey({
-        orgId: r.org_id,
-        actorId: r.created_by,
-        threadId,
-        app: "projects",
-        key: `reconcile:${r.id}`,
-      }),
-    )
-    if (cleared !== SKIPPED_MOVING) cardsCleared += cleared
+  let failedOrgs = 0
+  for (const orgId of orgIds) {
+    try {
+      const out = await sweepOrgIdleProposals(orgId, cutoff, hooks)
+      if (out === "skipped") continue
+      deleted += out.deleted
+      cardsCleared += out.cardsCleared
+    } catch (err) {
+      failedOrgs++
+      log.warn({ err, orgId }, "idle reconcile proposals left for the next sweep")
+    }
   }
-  return { deleted: gone.length, cardsCleared }
+  return { deleted, cardsCleared, failedOrgs }
 }
 
 /**

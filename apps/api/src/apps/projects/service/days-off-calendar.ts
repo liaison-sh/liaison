@@ -10,9 +10,11 @@
 // on the same dates wins. An event gone from the calendar removes its row.
 //
 // Before reading, the job checks that the calendar still exists, is selected, its account is
-// connected and, for a personal connection, its owner is still active. If not, nothing is
-// deleted: the imported days become ordinary typed days, the setting clears, and the settings
-// admins get one Home line asking for a new source. A passing sync error skips the day quietly.
+// connected and belongs to the organization (a person's own calendar is never read, whoever
+// chose it). If not, nothing more is read and the setting clears: the imported days become
+// ordinary typed days, except those of a person's own calendar, which are removed (their titles
+// were never the company's), and the settings admins get one Home line asking for a new source.
+// A passing sync error skips the day quietly.
 import { addCalendarDays } from "@liaison/shared"
 import { and, sql as drizzleSql, eq, isNotNull } from "drizzle-orm"
 import { expandRecurringEvent, type RawEventRow } from "~/apps/calendar/tools"
@@ -47,7 +49,6 @@ interface CalendarState {
   sync_status: string
   disconnected: boolean
   owner_type: string
-  owner_status: string | null
 }
 
 interface WholeDay {
@@ -88,10 +89,9 @@ async function readState(
     extractRows<CalendarState>(
       await tx.execute(drizzleSql`
         SELECT c.selected, a.sync_status, (a.disconnected_at IS NOT NULL) AS disconnected,
-               a.owner_type, u.status::text AS owner_status
+               a.owner_type
           FROM ${cal()}.calendars c
           JOIN ${cal()}.accounts a ON a.id = c.account_id AND a.org_id = c.org_id
-          LEFT JOIN ${kernelRel("users")} u ON u.id = a.owner_id AND u.org_id = a.org_id
          WHERE c.org_id = ${orgId}::uuid AND c.id = ${calendarId}::uuid`),
     )[0] ?? null
   )
@@ -162,12 +162,16 @@ async function endSource(
   orgId: string,
   calendarId: string,
   why: string,
+  personal = false,
 ): Promise<number> {
-  const kept = await tx
-    .update(daysOff)
-    .set({ sourceEventId: null, updatedAt: new Date() })
-    .where(and(eq(daysOff.orgId, orgId), isNotNull(daysOff.sourceEventId)))
-    .returning({ id: daysOff.id })
+  const imported = and(eq(daysOff.orgId, orgId), isNotNull(daysOff.sourceEventId))
+  const kept = personal
+    ? await tx.delete(daysOff).where(imported).returning({ id: daysOff.id })
+    : await tx
+        .update(daysOff)
+        .set({ sourceEventId: null, updatedAt: new Date() })
+        .where(imported)
+        .returning({ id: daysOff.id })
   await tx.execute(drizzleSql`
     UPDATE ${projectsRel("time_settings")} SET days_off_calendar_id = NULL, updated_at = now()
      WHERE org_id = ${orgId}::uuid`)
@@ -179,9 +183,12 @@ async function endSource(
            AND entity_id = ${calendarId} AND kind = ${CALENDAR_ENDED_KIND}) AS told`),
   )[0]?.told
   if (told !== true) {
-    const summary = `The shared days-off calendar can no longer be read (${why}). Its ${kept.length} ${
-      kept.length === 1 ? "day stays" : "days stay"
-    } as typed company days off. Choose a new calendar in the Projects time settings, or keep typing days.`
+    const days = `${kept.length} ${kept.length === 1 ? "day" : "days"}`
+    const summary = personal
+      ? `The days-off calendar is no longer read (${why}). The ${days} read from it ${kept.length === 1 ? "was" : "were"} removed. Choose a calendar the organization connected in the Projects time settings, or type the days.`
+      : `The shared days-off calendar can no longer be read (${why}). Its ${days} ${
+          kept.length === 1 ? "stays" : "stay"
+        } as typed company days off. Choose a new calendar in the Projects time settings, or keep typing days.`
     for (const userId of await scopeHoldersInTx(tx, orgId, ENDED_AUDIENCE_SCOPE)) {
       await tx.execute(drizzleSql`
         INSERT INTO ${kernelRel("attention_events")}
@@ -229,11 +236,13 @@ export async function syncDaysOffCalendar(
           ? "it is no longer selected"
           : state.disconnected || ["reauth-required", "disconnected"].includes(state.sync_status)
             ? "its account is disconnected"
-            : state.owner_type === "user" && state.owner_status !== "active"
-              ? "the person who connected it has left"
+            : state.owner_type !== "org"
+              ? "it is a person's own calendar, not one the organization connected"
               : null
       if (why) {
-        return { state: "ended", calendarId, kept: await endSource(tx, orgId, calendarId, why) }
+        const personal = !!state && state.owner_type !== "org"
+        const kept = await endSource(tx, orgId, calendarId, why, personal)
+        return { state: "ended", calendarId, kept: personal ? 0 : kept } as const
       }
 
       const today = todayIn(await orgTimezone(tx, orgId), now)

@@ -97,7 +97,8 @@ describe("projects.manifest", () => {
     // 1.22.0: capacity, company days off, time settings, the capacity tab and the time section.
     // 1.24.0: merged with typed task fields, status transitions and templates v2.
     // 1.25.0: the dated sheet of a project and month, its export and its tab.
-    expect(projectsManifest.version).toBe("1.25.0")
+    // 1.26.0: a reconcile line changes only on a person's turn; search keywords trimmed.
+    expect(projectsManifest.version).toBe("1.26.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

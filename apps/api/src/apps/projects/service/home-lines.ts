@@ -320,8 +320,10 @@ export async function raiseCapacityLines(
                )})
                AND (u.id = p.owner_id OR EXISTS (
                  SELECT 1 FROM ${projectsRel("tasks")} t
+                   LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
                   WHERE t.project_id = p.id AND t.org_id = p.org_id
-                    AND t.assignee_id = u.id AND t.archived_at IS NULL))`),
+                    AND t.assignee_id = u.id AND t.archived_at IS NULL
+                    AND t.completed_at IS NULL AND NOT COALESCE(s.terminal, false)))`),
         )
           .map((r) => r.id)
           .filter((id) => id !== person.userId && readers.has(id))

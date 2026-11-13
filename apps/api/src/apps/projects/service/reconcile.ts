@@ -21,8 +21,10 @@ import {
   type ComputedLine,
   type ComputedProof,
   computeLines,
+  cutText,
   defaultBill,
   keptProofUrl,
+  LINE_NAME_MAX,
   type LineKind,
   lateNote,
   NOT_EVERYTHING_SEEN,
@@ -34,6 +36,7 @@ import {
   readProposedLines,
   repoHostsOf,
   resolvePeriod,
+  unnamedProofLabel,
   worded,
 } from "./reconcile-lines"
 import { resolveProjectId } from "./resolve"
@@ -860,7 +863,11 @@ export async function reconcilePropose(args: {
         proofsOut.push({
           kind: "task",
           ref: t.id,
-          label: proofLabel({ ...p, label: t.key ?? t.title }),
+          label: unnamedProofLabel(
+            proofLabel({ ...p, label: t.key ?? t.title }),
+            { ...p, ref: t.key ?? "Task" },
+            members,
+          ),
         })
         continue
       }
@@ -873,7 +880,7 @@ export async function reconcilePropose(args: {
       proofsOut.push({
         kind: p.kind,
         ref: p.ref,
-        label: proofLabel(p),
+        label: unnamedProofLabel(proofLabel(p), p, members),
         ...(url ? { url } : {}),
         ...(p.occurredOn ? { occurredOn: p.occurredOn } : {}),
       })
@@ -1142,6 +1149,7 @@ interface StoredHead {
   revision: number
   state: "proposed" | "drafted" | "invoiced" | "credited"
   basis: Basis
+  created_by: string
 }
 
 async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> {
@@ -1151,7 +1159,7 @@ async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> 
         await tx.execute(drizzleSql`
           SELECT id::text AS id, project_id::text AS project_id,
                  period_start::text AS period_start, period_end::text AS period_end,
-                 revision, state, basis
+                 revision, state, basis, created_by::text AS created_by
             FROM ${projectsRel("reconciliations")}
            WHERE id = ${uuid}::uuid AND org_id = ${orgId}::uuid`),
       )[0]
@@ -1281,7 +1289,7 @@ export async function reconcileLineUpdate(args: {
   }
   let wording = line.wording ?? null
   if (has("wording")) {
-    const text = typeof input.wording === "string" ? input.wording.trim().slice(0, 200) : ""
+    const text = typeof input.wording === "string" ? cutText(input.wording.trim(), LINE_NAME_MAX) : ""
     const members = extractRows<{ name: string | null; email: string | null }>(
       await tx.execute(drizzleSql`
         SELECT name, email FROM ${kernelRel("users")}
@@ -1410,13 +1418,23 @@ export async function reconcileGet(args: {
       next: "Answer from the billed lines; a correction goes through a credit note.",
     }
   }
+  const stored = await readStored(tx, orgId, head.id)
+  // A time-spent note is its author's alone: another reader of a card past proposed sees the
+  // time entered on the tasks.
+  const shape =
+    head.created_by === args.userId
+      ? stored
+      : {
+          ...stored,
+          lines: stored.lines.map(({ realNoteMinutes: _note, ...l }) => l),
+        }
   return cardData({
     c,
     id: head.id,
     revision: head.revision,
     outcome: "unchanged",
     state: head.state,
-    shape: await readStored(tx, orgId, head.id),
+    shape,
     said: `The card as stored, revision ${head.revision}.`,
   })
 }

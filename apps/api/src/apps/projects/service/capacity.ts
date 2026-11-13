@@ -17,6 +17,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { awayDays } from "~/modules/users/away"
+import { resolveTaskRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
 import { hoursPerDayMinutes, orgTimezone } from "./time-plan"
 import { todayIn } from "./took"
@@ -338,8 +339,10 @@ export async function getCapacity(args: {
       "Planned time from timeboxes on projects that use time and budgets; available time from hours in a day, days per week, company days off and away days. Nothing here comes from time entered or from activity.",
   }
   if (args.taskId) {
-    result.taskId = args.taskId
-    result.candidates = await candidatesFor(tx, orgId, args.taskId, out, rows)
+    // A key ("ATLAS-3") or an id; anything else is refused by name, never a raw cast error.
+    const taskId = await resolveTaskRef(tx, orgId, String(args.taskId).trim())
+    result.taskId = taskId
+    result.candidates = await candidatesFor(tx, orgId, taskId, out, rows)
   }
   return result
 }

@@ -16,6 +16,7 @@ import { userRoles } from "~/db/schema/kernel"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { isThreadTainted } from "~/modules/agent/scopes/taint"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import { decideApproval } from "~/modules/approvals/decide"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -314,8 +315,50 @@ describe("preview and sources", () => {
     expect(await isThreadTainted(storeThread, orgId)).toBe(true)
   })
 
+  it("on a turn that read scoped data, a personal create saves at once; an org one waits", async () => {
+    // Through the agent's tool bridge: the turn reads orders (a scope nobody else holds), so a
+    // write others could read parks; a personal dashboard is read by its author alone.
+    const author = (await minimal.person(orgId)).id
+    for (const scope of [WRITE, READ]) await minimal.grantScope(author, scope)
+    const tainted = await minimal.thread(orgId, author, { title: "Tainted build" })
+    const scopes = [WRITE, READ]
+    const runId = crypto.randomUUID()
+    const frame: RunContext = {
+      runId,
+      parentRunId: null,
+      rootRunId: runId,
+      nestingDepth: 0,
+      effectiveScope: scopes,
+      turnScopeAccumulator: createTurnScopeAccumulator(),
+    }
+    const spec = { v: 1, blocks: [pieBlock()] }
+    const tools = buildToolSet(
+      orgId,
+      as(author, scopes),
+      tainted,
+      ALL_DEFERRED_TOOLS_UNLOCKED,
+      "agent",
+      frame,
+    ) as unknown as Record<string, { execute: (p: unknown, o: unknown) => Promise<unknown> }>
+    const { personal, shared } = await runContextStore.run(frame, async () => {
+      await tools[`${APP}__orders_list`]!.execute({}, {})
+      expect(frame.turnScopeAccumulator?.snapshot()).toContain(READ)
+      const personal = (await tools.kernel__dashboards_create!.execute(
+        { title: "Mine after a read", visibility: "personal", spec },
+        {},
+      )) as { blocked?: unknown; visibility?: string }
+      const shared = (await tools.kernel__dashboards_create!.execute(
+        { title: "Everyone after a read", visibility: "org", spec },
+        {},
+      )) as { blocked?: unknown }
+      return { personal, shared }
+    })
+    expect(JSON.stringify(personal)).not.toContain("approval")
+    expect(personal.visibility).toBe("personal")
+    expect(shared.blocked).toBeTruthy()
+  })
+
   it("a parked create's card says personal or org from the call's visibility", async () => {
-    // A personal create parks too when the turn's taint parks it (scope-taint rule 8b).
     const card = (visibility: string) =>
       generateApprovalSummary(
         orgId,

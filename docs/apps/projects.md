@@ -129,7 +129,7 @@ Every status change of a task is recorded: the status it left, the one it entere
 
 ### A project overview dashboard
 
-Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, the pipeline (one bar split by status, in the board's order and colours, its legend giving each count), who has what (one row per handler with their avatar and a bar split by status), time in status (split by status), a metric of missed SLAs, and a table of overdue tasks that opens each task. A click on a segment lists its tasks. Example spec, with your project and status ids:
+Ask an agent for "a project overview of Website" and it creates one dashboard in one call: a metric of open tasks, the pipeline (one bar split by status, in the board's order and colours, its legend giving each count), who has what (one row per handler with their avatar and a bar split by status), time in status (split by status), a metric of missed SLAs, and a table of overdue tasks that opens each task. A click on a segment lists its tasks. Example spec, with your project and status ids:
 
 ```json
 {

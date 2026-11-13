@@ -41,6 +41,8 @@ const READERS: Record<string, string> = {
   "infra/jobs/webhook-worker.ts": JOB,
   "modules/agent/context/connected-systems.ts": AGENT,
   "modules/agent/context/context.ts": AGENT,
+  // Called by the routine create, update and template enable handlers (skills-routines-tools.ts).
+  "modules/agent/routines/flow-scopes.ts": AGENT,
   "modules/agent/routines/routine-incident.ts": JOB,
   "modules/agent/routines/routine-tick-outcome.ts": JOB,
   "modules/agent/runtime/turn-focus.ts": AGENT,

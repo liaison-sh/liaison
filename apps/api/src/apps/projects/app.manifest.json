@@ -95,7 +95,7 @@
       }
     ]
   },
-  "version": "1.10.2",
+  "version": "1.10.3",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2782,6 +2782,7 @@
       "event": "projects:task:status_changed",
       "promptTemplate": "When a task of this project moves to the chosen status, assign it and send the assignee a direct message with the task's link.",
       "scopes": [
+        "projects:projects:read",
         "projects:tasks:read",
         "projects:tasks:write",
         "kernel:threads:write"
@@ -2820,7 +2821,9 @@
       "event": "projects:task:status_changed",
       "promptTemplate": "When a task of this project enters the chosen status and is still there after two working days, remind its assignee.",
       "scopes": [
-        "projects:tasks:read"
+        "projects:projects:read",
+        "projects:tasks:read",
+        "projects:tasks:write"
       ],
       "enabledByDefault": false,
       "eventFilter": {
@@ -2861,6 +2864,7 @@
       "event": "projects:task:status_changed",
       "promptTemplate": "When a task is created in this project and has not reached the target status after three working days, tell the routine's owner.",
       "scopes": [
+        "projects:projects:read",
         "projects:tasks:read"
       ],
       "enabledByDefault": false,
@@ -2910,6 +2914,7 @@
       "event": "projects:task:status_changed",
       "promptTemplate": "When a task of this project reaches the chosen status, tell the routine's owner.",
       "scopes": [
+        "projects:projects:read",
         "projects:tasks:read"
       ],
       "enabledByDefault": false,

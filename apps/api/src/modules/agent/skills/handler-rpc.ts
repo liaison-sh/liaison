@@ -63,6 +63,7 @@ export function errToStatus(code: string): ContentfulStatusCode {
   switch (code) {
     case "forbidden":
     case "scope_escalation":
+    case "flow_scope_missing":
       return 403
     case "skill_not_found":
     case "routine_not_found":
@@ -74,6 +75,8 @@ export function errToStatus(code: string): ContentfulStatusCode {
     case "routine_not_runnable":
     case "app_run_routine":
       return 409
+    case "unknown_field":
+      return 422
     default:
       return 400
   }

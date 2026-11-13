@@ -233,6 +233,27 @@ describe("routine flows: actions", () => {
     expect(notes[0]!.n).toBe(1)
   }, 60_000)
 
+  it("a routine with a title signs its messages with the title, not its identifier", async () => {
+    const routineId = await flowRoutine("intake-titled-x7k2", {
+      version: 1,
+      steps: [
+        {
+          id: "dm",
+          type: "action",
+          action: "message",
+          args: { to: BOB, text: "Titled hello {{task.title}}" },
+        },
+      ],
+    })
+    await sql`UPDATE kernel.routines SET title = 'Ping Bob on intake' WHERE id = ${routineId}::uuid`
+    const taskId = await task("Titled")
+    await tickFor(routineId, taskId, [])
+    const [dm] = await sql<{ label: string }[]>`
+      SELECT metadata->>'agentAuthorLabel' AS label FROM kernel.messages
+       WHERE org_id = ${ORG}::uuid AND content = 'Titled hello Titled'`
+    expect(dm!.label).toBe("Routine Ping Bob on intake")
+  }, 60_000)
+
   it("a step whose condition does not hold is skipped; the flow goes on", async () => {
     const routineId = await flowRoutine("intake-cond", {
       version: 1,
@@ -300,6 +321,69 @@ describe("routine flows: actions", () => {
     expect(result.status).toBe("succeeded")
     const row = await runRow(result.runId!)
     expect(row.steps).toBeNull()
+  }, 60_000)
+
+  // No model key (or no credits): a flow with no agent step makes no model call, so it runs
+  // and the routine stays active; one that starts with an agent step is still refused.
+  const noModel = async () => ({ reason: "Auto has no model to run", pause: true })
+  it("an action-only flow runs with no model to run, and the routine is not paused", async () => {
+    const routineId = await flowRoutine("intake-no-model", {
+      version: 1,
+      steps: [
+        { id: "assign", type: "action", action: "assign", args: { to: ALICE } },
+        { id: "note", type: "action", action: "comment", args: { text: "No model needed" } },
+      ],
+    })
+    const taskId = await task("No model")
+    const result = await runRoutineTick({
+      orgId: ORG,
+      routineId,
+      scheduledAt: new Date().toISOString(),
+      triggerEvent: {
+        app: "projects",
+        entity: "task",
+        action: "status_changed",
+        entityId: taskId,
+        data: { id: taskId, projectId, fromStatusId: null, toStatusId: openStatus },
+        origin: "internal",
+      },
+      checkCredits: noModel,
+    })
+    expect(result.status).toBe("succeeded")
+    const [r] = await sql<{ status: string }[]>`
+      SELECT status FROM kernel.routines WHERE id = ${routineId}::uuid`
+    expect(r!.status).toBe("active")
+  }, 60_000)
+
+  it("a flow that starts with an agent step is still refused with no model to run", async () => {
+    const routineId = await flowRoutine("intake-no-model-agent", {
+      version: 1,
+      steps: [
+        {
+          id: "think",
+          type: "agent",
+          prompt: "Look at it",
+          outcomes: [{ kind: "field_set", field: "kind" }],
+        },
+      ],
+    })
+    const taskId = await task("No model agent")
+    const result = await runRoutineTick({
+      orgId: ORG,
+      routineId,
+      scheduledAt: new Date().toISOString(),
+      triggerEvent: {
+        app: "projects",
+        entity: "task",
+        action: "status_changed",
+        entityId: taskId,
+        data: { id: taskId, projectId, fromStatusId: null, toStatusId: openStatus },
+        origin: "internal",
+      },
+      checkCredits: noModel,
+      agentInvoker: async () => ({ turnsAdded: 1 }),
+    })
+    expect(result.status).toBe("skipped_no_credits")
   }, 60_000)
 
   for (const decision of ["approved", "denied"] as const) {

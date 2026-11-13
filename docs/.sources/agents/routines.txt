@@ -236,3 +236,7 @@ Run timeline state chip, waiting resumes -> apps/web/src/modules/agent/flow/Flow
 Run timeline state dots -> apps/web/src/modules/agent/flow/FlowRunTimeline.tsx:30
 Agent step report box under the timeline -> apps/web/src/modules/agent/flow/FlowRunTimeline.tsx:236
 Runs fired on one record across readable routines -> apps/api/src/modules/agent/routines/routines-routes.ts:314
+Flow messages signed with the routine's title -> apps/api/src/modules/agent/routines/routine-label.ts:7
+A flow leg with no agent step needs no credits -> apps/api/src/modules/agent/routines/routine-worker.ts:1424
+Flow scopes added at save, refused when the owner lacks one -> apps/api/src/modules/agent/routines/flow-scopes.ts:36
+Event filter field key checked against the project -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2839

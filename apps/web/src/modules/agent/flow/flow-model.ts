@@ -587,7 +587,7 @@ export type StatusTextPart =
 
 /**
  * Copy cut around the status references its template marked (statusName with `markStatuses`),
- * so each renders as a status pill ("a task in Repairs moves to [Received]"). Only marked
+ * so each renders as a status pill ("a task in Website moves to [In review]"). Only marked
  * references pill: a status name typed in free text (a description) stays text. A marked name
  * that is not one of the project's statuses reads as text.
  */

@@ -21,6 +21,7 @@
 // the run, never a reason to fail it.
 import { processWebhookRetry } from "~/infra/jobs/webhook-worker"
 import { rootLogger } from "~/lib/logger"
+import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { webhookHandlers } from "~/modules/apps/app-registries"
 
 const log = rootLogger.child({ module: "routine-incident" })
@@ -76,7 +77,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  */
 export async function reportRoutineRunIncident(input: {
   orgId: string
-  routine: { id: string; name: string }
+  routine: { id: string; name: string; title?: string | null }
   status: string
   error: string | null
   trigger: string | null
@@ -88,7 +89,7 @@ export async function reportRoutineRunIncident(input: {
     await send(input.orgId, {
       source: ROUTINE_INCIDENT_SOURCE,
       severity: "warning",
-      title: clip(`Routine "${input.routine.name}" could not handle an event`, 200),
+      title: clip(`Routine "${routineDisplayName(input.routine)}" could not handle an event`, 200),
       body: clip(
         `${input.error ?? "The run failed."}\nThe event is retried automatically (routine event reconciler).`,
         2000,
@@ -112,7 +113,7 @@ export async function reportRoutineRunIncident(input: {
 /** The reconciler's verdict for one routine: events that used up their retries, or none. */
 export async function reportUndeliveredEvents(input: {
   orgId: string
-  routine: { id: string; name: string }
+  routine: { id: string; name: string; title?: string | null }
   exhausted: Array<{ eventId: string; entityId: string | null; lastError: string | null }>
 }): Promise<void> {
   const ts = new Date().toISOString()
@@ -132,7 +133,7 @@ export async function reportUndeliveredEvents(input: {
     source: ROUTINE_INCIDENT_SOURCE,
     severity: "critical",
     title: clip(
-      `Routine "${input.routine.name}": ${input.exhausted.length} event(s) never handled after every retry`,
+      `Routine "${routineDisplayName(input.routine)}": ${input.exhausted.length} event(s) never handled after every retry`,
       200,
     ),
     body: clip(lines.join("\n"), 2000),

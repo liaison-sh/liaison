@@ -943,6 +943,7 @@ export async function settleRoutineRunForJob(
             routine: {
               id: routineId,
               name: routine.name,
+              title: routine.title,
               ownerUserId: routine.ownerUserId,
               ownerAgentId: routine.ownerAgentId,
               outputThreadId: routine.outputThreadId,

@@ -28,6 +28,7 @@ import { latencySnapshot } from "~/lib/latency-window"
 import { monitorLogger as log } from "~/lib/logger"
 import { creditPricingStatus } from "~/modules/agent/credits/credit-cost"
 import { orgRegistryGuardStats } from "~/modules/apps/org-registry-guard"
+import { appRunsDiag } from "~/modules/apps/usage/run-health-checks"
 import {
   type DepStatus,
   probeDb,
@@ -50,7 +51,7 @@ import {
 
 export const monitorDiagRoutes = new Hono()
 
-const DIAG_VERSION = 1
+const DIAG_VERSION = 2
 // Probe budget per dependency. 200ms proved far too tight for a health VERDICT: any
 // GC pause / busy event-loop tick / storage blip read as a down dep for that one poll,
 // flapping the watchdog's health-dep signal all day (prod 2026-08-07, 24 criticals +
@@ -524,18 +525,29 @@ monitorDiagRoutes.get("/", async (c) => {
     return c.json({ error: "unauthorized" }, 401)
   }
 
-  const [db, redisProbe, meili, storage, outbox, dbDiag, mailIngest, jobs, upstreamActivity] =
-    await Promise.all([
-      timedProbe(probeDb, DIAG_TIMEOUT_MS),
-      timedProbe(probeRedis, DIAG_TIMEOUT_MS),
-      timedProbe(probeMeili, DIAG_TIMEOUT_MS),
-      timedProbe(probeStorage, DIAG_TIMEOUT_MS),
-      getOutboxDiag(),
-      getDbDiag(),
-      getMailIngestDiag(),
-      getJobsDiag(),
-      getUpstreamActivityDiag(),
-    ])
+  const [
+    db,
+    redisProbe,
+    meili,
+    storage,
+    outbox,
+    dbDiag,
+    mailIngest,
+    jobs,
+    upstreamActivity,
+    appRuns,
+  ] = await Promise.all([
+    timedProbe(probeDb, DIAG_TIMEOUT_MS),
+    timedProbe(probeRedis, DIAG_TIMEOUT_MS),
+    timedProbe(probeMeili, DIAG_TIMEOUT_MS),
+    timedProbe(probeStorage, DIAG_TIMEOUT_MS),
+    getOutboxDiag(),
+    getDbDiag(),
+    getMailIngestDiag(),
+    getJobsDiag(),
+    getUpstreamActivityDiag(),
+    appRunsDiag(DIAG_TIMEOUT_MS),
+  ])
   const dbStatus = db.status
   const redisStatus = redisProbe.status
   const meiliStatus = meili.status
@@ -625,6 +637,11 @@ monitorDiagRoutes.get("/", async (c) => {
       upstreamActivity?.activity ?? null,
       upstreamActivity?.failures,
     ),
+    // App-run health (modules/apps/usage/run-health.ts): per app and lane over
+    // 15 minutes and 24 hours, this process's and the cell's (null when Redis
+    // did not answer in time), and the checks that fail (`alerts`, judged on
+    // the cell view when there is one; run-health-checks.ts). Added in v2.
+    appRuns,
     deps,
     // Per-dep probe latency, alongside the log.warn above -- the diagnostic that was
     // missing when 59 health-dep criticals fired with nothing to say which dep tripped.

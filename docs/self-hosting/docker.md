@@ -223,6 +223,25 @@ curl http://127.0.0.1:3000/readyz
 
 It answers 200 once the process has finished booting and is not shutting down, and 503 before that and while it drains. A process that serves the API counts as booted only after it has set up the organizations whose people have the app open (a live WebSocket on any process), for up to `LIAISON_READY_WARM_MS` (30 s, `0` skips it): during a deploy those people reconnect to it first, and they would otherwise wait while their organization is set up. A process sets up no other organization when it starts, so its start time stays the same however many organizations the instance holds: each one is set up the first time something needs it (a request, a job, an event). A process forgets a deleted organization within 5 minutes; it also forgets one nothing has used for `LIAISON_ORG_RUNTIME_IDLE_MINUTES` minutes (default `60`, `0` never), so its memory follows the organizations used recently rather than every one it ever served, and sets it up again at its next use. It also keeps at most `LIAISON_ORG_RUNTIME_MAX_ORGS` organizations set up (default `2000`, about 0.35 MB each; `0` no cap): past it, it forgets the least recently used one that nothing is using right now (no request, open socket, job, event or agent turn, and not being moved), and sets it up again at its next use. The setup step (`migrate`, and the start of each container) applies the files policy and search settings from the installed apps. The body is the same either way: `status` (`starting`, `ready` or `draining`), `role`, `instanceId` (this process, this boot) and `leader` (whether it runs the singletons right now). It needs no token and checks no dependency, so a load balancer can poll it every second. `/healthz` does not change.
 
+### Watch app runs
+
+Every app run (a tool call, an attention compute, a job, an event, a webhook) is counted as it ends, always, in a fixed amount of memory. `GET /diag` (with `MONITOR_TOKEN`) shows it under `appRuns`, for the last 15 minutes and the last 24 hours, for this process (`process`) and for every process of the instance through Redis (`cell`, `null` when Redis did not answer in time):
+
+- per lane (`interactive`: someone waits on it, such as a tool call; `background`: jobs, events, webhooks, syncs; `nested`: a run another run started) and per app: runs, the p50, p95 and p99 time, the wait for a sandbox slot (`queueP95Ms`, when the sandbox reports it), the share of time spent in bridge calls, the error and timeout rates, and the errors by kind (`timeout`, `queue_timeout`, `cancelled`, `tenant_busy`, `handler`, ...);
+- the slowest runs (app, entry, lane, time, error kind), never their arguments or data;
+- per sandbox pool held by the process, how many seconds it was saturated (every slot busy and a run waiting) and how full it was on average.
+
+`appRuns.alerts` lists the checks that fail, judged on the instance view. A watchdog that reads `/diag` can page on it without knowing the thresholds:
+
+| Check | Fires when (last 15 minutes) | Severity | Setting |
+|---|---|---|---|
+| `interactive_timeouts` | at least 10 interactive runs timed out, and at least 2 % of them | critical | `LIAISON_APP_HEALTH_TIMEOUTS_MIN`, `LIAISON_APP_HEALTH_TIMEOUT_RATE` |
+| `interactive_queue` | interactive runs waited more than 2000 ms (p95) for a sandbox slot, over 20 runs at least | warning | `LIAISON_APP_HEALTH_QUEUE_P95_MS` |
+| `pool_saturated` | a sandbox pool stayed saturated 60 s without a break, or 120 s in all | warning | `LIAISON_APP_HEALTH_SATURATED_S` |
+| `interactive_p95` | the interactive p95 is twice its 24-hour p95 and 1 s above it, over 30 runs | warning | `LIAISON_APP_HEALTH_P95_REGRESSION` |
+
+A check that starts to fail also writes one warning to the log, never an error. Admins see their own organization's app runs at `GET /api/admin/app-health`; the instance operator's admins see the whole instance and the checks there.
+
 ## Run several processes
 
 One container with the default `LIAISON_ROLE=all` runs everything, as before. To split the work, run the same image more than once, each with its own `LIAISON_ROLE`, all on the same Postgres and Redis.

@@ -3127,7 +3127,7 @@
     "lang": "en",
     "say": "which pull requests were merged on GitHub this week",
     "typed": ["github pull requests", "list pull requests"],
-    "any": ["github__github_list_pull_requests"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH05",
@@ -3143,7 +3143,7 @@
     "lang": "fr",
     "say": "les bugs ouverts sur GitHub pour le site",
     "typed": ["github issues", "bugs github"],
-    "any": ["github__github_list_issues"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH07",
@@ -3151,7 +3151,7 @@
     "lang": "fr",
     "say": "où en est le jalon de lancement sur GitHub",
     "typed": ["jalons github", "github milestones"],
-    "any": ["github__github_list_milestones"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH08",
@@ -3159,7 +3159,7 @@
     "lang": "en",
     "say": "what labels does the GitHub repository use",
     "typed": ["github labels", "list github labels"],
-    "any": ["github__github_list_labels"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH09",
@@ -3167,7 +3167,7 @@
     "lang": "en",
     "say": "what was in the last GitHub release",
     "typed": ["github releases", "github release notes"],
-    "any": ["github__github_list_releases"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH10",
@@ -3175,7 +3175,7 @@
     "lang": "en",
     "say": "which git tags are on the GitHub repository",
     "typed": ["github tags", "list github tags"],
-    "any": ["github__github_list_tags"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH11",
@@ -3191,7 +3191,7 @@
     "lang": "en",
     "say": "what is in the docs folder of the GitHub repository",
     "typed": ["github repository tree", "github folder files"],
-    "any": ["github__github_list_tree"]
+    "any": ["github__github_list"]
   },
   {
     "id": "GH13",

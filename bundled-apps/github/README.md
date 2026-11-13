@@ -9,11 +9,12 @@ fabricating data.
 ## Tools
 
 All tools are scoped `github:repo:read` and read-only. They mirror the GitLab
-connector's tools name for name.
+connector's tools name for name, plus `github_list`.
 
 | Tool | What it does |
 |------|--------------|
 | `github_list_repos` | List the owner's repositories (call this first). |
+| `github_list` | The one listing agents see: issues, pull requests, milestones, labels, releases, tags or tree, by `kind`, answered by that kind's own read. |
 | `github_list_commits` / `github_get_commit` | List/get commits (optionally with diff). |
 | `github_list_pull_requests` / `github_get_pull_request` | List/get pull requests (optionally with changed files). |
 | `github_list_issues` | List issues, pull requests left out (state, labels, milestone, last update). |
@@ -21,6 +22,11 @@ connector's tools name for name.
 | `github_list_releases` / `github_list_tags` | List releases / git tags. |
 | `github_read_file` / `github_list_tree` | Read a file / list a repository path. |
 | `github_search` | Search code, commits, issues or pull requests of the owner. |
+
+The kinds' own reads (`github_list_issues`, `github_list_pull_requests`,
+`github_list_milestones`, `github_list_labels`, `github_list_releases`,
+`github_list_tags`, `github_list_tree`) are off the agent's catalog
+(`agentVisible: false`, `useInstead: github_list`) and stay dashboard sources.
 
 Every text a tool returns (file content, diffs, commit messages, titles,
 bodies, search fragments) is secret-redacted (`src/client.ts`,

@@ -4,7 +4,9 @@
 // list or record read saves in a dashboard block and runs for the viewer, through the app's
 // real handler over a stand-in GitHub (the app's own test ctx), registered from its manifest
 // declaration since a bundled app is not installed in a fresh test org. The file read stays
-// off dashboards: one repository file's text, outside text with no rows.
+// off dashboards: one repository file's text, outside text with no rows. The reads kept off the
+// agent's catalog stay sources: a person's block runs them, and the agent building a dashboard
+// finds them in the source list.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -12,9 +14,10 @@ import { join } from "node:path"
 import { z } from "zod"
 import type { UserContext } from "~/db/rls"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
-import { checkToolSource } from "~/modules/dashboards/sources"
+import { checkToolSource, listEligibleSources } from "~/modules/dashboards/sources"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import type { GithubCtx } from "../../../../../bundled-apps/github/src/client"
@@ -36,7 +39,15 @@ const MANIFEST = JSON.parse(
     ),
     "utf8",
   ),
-) as { tools: Record<string, { handler: string; description: string; requiredScopes: string[] }> }
+) as {
+  tools: Record<
+    string,
+    { handler: string; description: string; requiredScopes: string[]; agentVisible?: boolean }
+  >
+}
+
+/** The reads the agent's catalog leaves out: dashboard sources only. */
+const HIDDEN = Object.keys(MANIFEST.tools).filter((n) => MANIFEST.tools[n]?.agentVisible === false)
 
 const OWNER = "maison-example"
 const R = `/repos/${OWNER}/site`
@@ -133,6 +144,7 @@ const SOURCES: Array<{
   rows: number
 }> = [
   { tool: "github_list_repos", rows: 2 },
+  { tool: "github_list", params: { kind: "labels", repo: "site" }, rows: 2 },
   { tool: "github_list_commits", params: { repo: "site" }, rows: 3 },
   {
     tool: "github_get_commit",
@@ -177,6 +189,7 @@ beforeAll(async () => {
       requiredScopes: t.requiredScopes,
       readOnly: true,
       trustBoundary: "user",
+      ...(t.agentVisible === false ? { agentVisible: false } : {}),
       params: z.record(z.string(), z.unknown()),
       handler: async (params: unknown) => handler(params, ctx),
     })
@@ -230,6 +243,29 @@ describe("GitHub reads as dashboard sources", () => {
       })
     })
   }
+
+  it("the reads kept off the agent's catalog are listed as sources, and an agent's call is refused", async () => {
+    expect(HIDDEN.length).toBe(7)
+    const listed = (
+      await listEligibleSources(
+        orgId,
+        { userId: viewer.userId as string, scopes: viewer.scopes },
+        "github",
+        200,
+      )
+    ).map((s) => s.tool)
+    for (const name of HIDDEN) {
+      expect(listed).toContain(`github:${name}`)
+      const env = await executeToolCore({
+        toolName: `github:${name}`,
+        orgId,
+        actor: { ...viewer, actorType: "agent" } as never,
+        params: { repo: "site" },
+        origin: "in-app-agent",
+      })
+      expect("error" in env && env.error.code).toBe("forbidden")
+    }
+  })
 
   it("a dashboard block on github_read_file is refused: one file's text, no rows", async () => {
     expect(

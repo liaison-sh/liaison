@@ -1,6 +1,6 @@
 {
   "name": "github",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "connector",
   "iconName": "folder",
   "description": "GitHub connector: read-only access to an organization's or a user's repositories, commits, pull requests, issues, releases and code.",
@@ -114,7 +114,7 @@
   "tools": {
     "github_list_repos": {
       "taintSource": true,
-      "description": "List the repositories of the connected GitHub owner. Call this first to discover repository names.",
+      "description": "List the connected GitHub owner's repositories. Call it first for repository names.",
       "searchKeywords": [
         "dépôts"
       ],
@@ -129,9 +129,92 @@
         "properties": {}
       }
     },
+    "github_list": {
+      "taintSource": true,
+      "description": "List a GitHub repository's issues (pull requests left out), pull requests, milestones, labels, releases, tags, or tree (files and folders at a path).",
+      "searchKeywords": [
+        "mr",
+        "pr",
+        "pull",
+        "merge",
+        "bug",
+        "bugs",
+        "jalons",
+        "étiquettes",
+        "version",
+        "versions",
+        "balises",
+        "dossier",
+        "arborescence"
+      ],
+      "readOnly": true,
+      "requiredScopes": [
+        "github:repo:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "githubList",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "issues",
+              "pull_requests",
+              "milestones",
+              "labels",
+              "releases",
+              "tags",
+              "tree"
+            ]
+          },
+          "repo": {
+            "type": "string",
+            "description": "owner/name, or name (connected owner)"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "all"
+            ],
+            "description": "issues, pull_requests (default: open)"
+          },
+          "since": {
+            "type": "string",
+            "description": "issues, pull_requests: ISO 8601, updated after"
+          },
+          "labels": {
+            "type": "string",
+            "description": "issues: comma-separated names"
+          },
+          "milestone": {
+            "type": "string",
+            "description": "issues: number or title, `*` any, `none` none"
+          },
+          "base": {
+            "type": "string",
+            "description": "pull_requests: base branch"
+          },
+          "path": {
+            "type": "string",
+            "description": "tree: directory (default: root)"
+          },
+          "ref": {
+            "type": "string",
+            "description": "tree: branch, tag or SHA (default: default branch)"
+          }
+        },
+        "required": [
+          "kind",
+          "repo"
+        ]
+      }
+    },
     "github_list_commits": {
       "taintSource": true,
-      "description": "List commits in a GitHub repository. Filter by branch/ref, file path, author, or date range.",
+      "description": "List a GitHub repository's commits, by ref, file path, author or dates.",
       "searchKeywords": [
         "révisions"
       ],
@@ -146,27 +229,27 @@
         "properties": {
           "repo": {
             "type": "string",
-            "description": "Repository as owner/name, or just its name (the connected owner's)"
+            "description": "owner/name, or name (connected owner)"
           },
           "ref": {
             "type": "string",
-            "description": "Branch, tag, or commit SHA (default: the default branch)"
+            "description": "Branch, tag or SHA (default: default branch)"
           },
           "path": {
             "type": "string",
-            "description": "Only commits touching this file path"
+            "description": "Only commits touching this path"
           },
           "since": {
             "type": "string",
-            "description": "ISO 8601 date — only commits after this date"
+            "description": "ISO 8601"
           },
           "until": {
             "type": "string",
-            "description": "ISO 8601 date — only commits before this date"
+            "description": "ISO 8601"
           },
           "author": {
             "type": "string",
-            "description": "GitHub login or email of the commit author"
+            "description": "Author's GitHub login or email"
           }
         },
         "required": [
@@ -176,7 +259,7 @@
     },
     "github_get_commit": {
       "taintSource": true,
-      "description": "Get a single GitHub commit by SHA, optionally with diff.",
+      "description": "Get one GitHub commit by SHA, its diff with withDiff.",
       "searchKeywords": [
         "modifications"
       ],
@@ -191,15 +274,13 @@
         "properties": {
           "repo": {
             "type": "string",
-            "description": "Repository as owner/name, or just its name (the connected owner's)"
+            "description": "owner/name, or name (connected owner)"
           },
           "sha": {
-            "type": "string",
-            "description": "Commit SHA"
+            "type": "string"
           },
           "withDiff": {
-            "type": "boolean",
-            "description": "Include file diffs"
+            "type": "boolean"
           }
         },
         "required": [
@@ -211,6 +292,8 @@
     "github_list_pull_requests": {
       "taintSource": true,
       "description": "List pull requests in a GitHub repository. Filter by state, base branch, or last update.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "mr",
         "pr",
@@ -255,7 +338,7 @@
     },
     "github_get_pull_request": {
       "taintSource": true,
-      "description": "Get a single GitHub pull request by number, optionally with its changed files.",
+      "description": "Get one GitHub pull request by number; withFiles adds its changed files and diffs.",
       "searchKeywords": [
         "mr",
         "pr",
@@ -273,15 +356,13 @@
         "properties": {
           "repo": {
             "type": "string",
-            "description": "Repository as owner/name, or just its name (the connected owner's)"
+            "description": "owner/name, or name (connected owner)"
           },
           "number": {
-            "type": "number",
-            "description": "Pull request number"
+            "type": "number"
           },
           "withFiles": {
-            "type": "boolean",
-            "description": "Include changed files with their diffs"
+            "type": "boolean"
           }
         },
         "required": [
@@ -293,6 +374,8 @@
     "github_list_issues": {
       "taintSource": true,
       "description": "List issues in a GitHub repository (pull requests left out). Filter by state, labels, milestone, or last update.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "bug",
         "bugs"
@@ -340,6 +423,8 @@
     "github_list_milestones": {
       "taintSource": true,
       "description": "List milestones in a GitHub repository, open and closed, with their issue counts.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "jalons"
       ],
@@ -365,6 +450,8 @@
     "github_list_labels": {
       "taintSource": true,
       "description": "List labels in a GitHub repository.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "étiquettes"
       ],
@@ -390,6 +477,8 @@
     "github_list_releases": {
       "taintSource": true,
       "description": "List releases in a GitHub repository.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "version",
         "versions"
@@ -416,6 +505,8 @@
     "github_list_tags": {
       "taintSource": true,
       "description": "List git tags in a GitHub repository.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "balises"
       ],
@@ -440,7 +531,7 @@
     },
     "github_read_file": {
       "taintSource": true,
-      "description": "Read a file from a GitHub repository. File content is secret-redacted.",
+      "description": "Read a file of a GitHub repository, secret-redacted.",
       "searchKeywords": [
         "code",
         "fichier",
@@ -457,15 +548,15 @@
         "properties": {
           "repo": {
             "type": "string",
-            "description": "Repository as owner/name, or just its name (the connected owner's)"
+            "description": "owner/name, or name (connected owner)"
           },
           "path": {
             "type": "string",
-            "description": "File path within the repository"
+            "description": "File path"
           },
           "ref": {
             "type": "string",
-            "description": "Branch, tag, or commit SHA (default: the default branch)"
+            "description": "Branch, tag or SHA (default: default branch)"
           }
         },
         "required": [
@@ -477,6 +568,8 @@
     "github_list_tree": {
       "taintSource": true,
       "description": "List files and directories at a path of a GitHub repository.",
+      "agentVisible": false,
+      "useInstead": "github_list",
       "searchKeywords": [
         "dossier",
         "arborescence"
@@ -510,7 +603,7 @@
     },
     "github_search": {
       "taintSource": true,
-      "description": "Search the connected owner's GitHub repositories. Scopes: code, commits, issues, pull_requests.",
+      "description": "Search the connected owner's GitHub code, commits, issues or pull requests.",
       "searchKeywords": [
         "code",
         "chercher",
@@ -532,12 +625,11 @@
               "commits",
               "issues",
               "pull_requests"
-            ],
-            "description": "What to search"
+            ]
           },
           "query": {
             "type": "string",
-            "description": "Search query (GitHub search syntax; it is limited to the connected owner)"
+            "description": "GitHub search syntax"
           }
         },
         "required": [

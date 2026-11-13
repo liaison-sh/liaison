@@ -134,3 +134,6 @@ resolve failure leaves a link as it was (SOURCE_UNAVAILABLE), not found marks it
 broadSearchEnabled per source via PATCH /knowledge/sources/:source -> apps/api/src/apps/knowledge/routes.ts (isRegisteredSource) ; apps/api/src/apps/knowledge/sources.ts (loadSearchPolicies)
 5 s default, 10 s at most -> apps/api/src/modules/apps/run-limits.ts (search) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeItems.timeoutMs)
 Route pageResult {summary 1-500, data <= 8 KiB}: taken out of the answer, posted as the person's line in the page's origin conversation, one agent turn; no origin posts nothing -> apps/api/src/modules/apps/app-pages.ts (withoutPageResult) ; apps/api/src/modules/apps/page-result.ts (parsePageResult, announcePageResult) ; apps/api/src/modules/apps/sandbox/bridge/pages.ts (origin from the run's thread and agent)
+pick params and tableBacking declaration -> apps/api/src/modules/apps/manifest-schema.ts:1343
+tableBacking parent is another entity -> apps/api/src/modules/apps/contract.ts:708
+tableBacking registered for core apps only -> apps/api/src/modules/apps/runtime.ts:4121

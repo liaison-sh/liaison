@@ -3658,6 +3658,39 @@ function dashboardNotAllowed(toolName: string, reason: string): ExecuteToolError
   }
 }
 
+/**
+ * The declarations the scope taint judges a call by (rule 6k): the tool's own, or, for a call
+ * its `taintJudgedAs` names another tool for, that tool's sink and readers (no row allowance, no
+ * post audience of its own). A throw or a tool not registered judges it as an undeclared write.
+ */
+async function taintJudgedTool<T extends NonNullable<ReturnType<typeof toolRegistry.get>>>(
+  tool: T,
+  orgId: string,
+  params: unknown,
+): Promise<T> {
+  if (!tool.taintJudgedAs) return tool
+  let as: string | null
+  try {
+    as = await tool.taintJudgedAs(params, { orgId })
+  } catch {
+    as = UNDECLARED_WRITE_TARGET
+  }
+  if (as === null) return tool
+  const i = as.indexOf(":")
+  const other = i > 0 ? toolRegistry.get([orgId, as.slice(0, i), as.slice(i + 1)]) : undefined
+  return {
+    ...tool,
+    readOnly: false,
+    writesToTable: other?.writesToTable,
+    sinkReadScope: other?.sinkReadScope,
+    sinkReadersSelf: other?.sinkReadersSelf,
+    sinkReadersConversation: other?.sinkReadersConversation,
+    sinkReadersResource: other?.sinkReadersResource,
+    targetRowParam: undefined,
+    taintPostAudience: undefined,
+  }
+}
+
 export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<ExecuteToolEnvelope> {
   const callChain = opts.callChain ?? []
   // A non-empty INCOMING chain means this dispatch was made from inside another
@@ -4012,15 +4045,20 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     opts.turnTaintScopes === undefined && opts.alsoJudgeTaintOnThreadId === undefined
       ? taintFrame?.turnScopeAccumulator
       : undefined
+  // A WRITE JUDGED AS THE TOOL IT WRITES THROUGH (scope-taint.ts, rule 6k). A tool whose sink
+  // depends on its arguments (`taintJudgedAs`: a dashboard table backed by an app's records,
+  // whose read-through cells land in that app) is judged below as that tool: its sink and its
+  // readers, not its own. Every other tool is judged as itself.
+  const taintTool = await taintJudgedTool(tool, opts.orgId, opts.params)
   if (
     turnTaintScopes !== undefined &&
-    !isReadOnlyTool(tool) &&
+    !isReadOnlyTool(taintTool) &&
     !isWebRead &&
     !approvalExecutingNestedCall &&
-    !carriesNoTurnContent(tool, opts.params) &&
-    tool.taintUnjudgedWrite !== true &&
+    !carriesNoTurnContent(taintTool, opts.params) &&
+    taintTool.taintUnjudgedWrite !== true &&
     !returnsToOwnMcpServer(opts.toolName, turnTaintScopes) &&
-    tool.taintEditsPendingApproval !== true
+    taintTool.taintEditsPendingApproval !== true
   ) {
     const knownTaint =
       Array.isArray(turnTaintScopes) && turnTaintScopes.every((s) => typeof s === "string")
@@ -4028,10 +4066,14 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         : [...UNKNOWN_TURN_TAINT]
     if (knownTaint.length > 0) judgedTurnTaint = [...new Set(knownTaint)].sort()
     try {
-      assertNoScopeTaintedWrite(tool.writesToTable ?? UNDECLARED_WRITE_TARGET, turnTaintScopes, {
-        rowIds: targetRowIds(tool, opts.params),
-        originRows: turnTaintOriginRows,
-      })
+      assertNoScopeTaintedWrite(
+        taintTool.writesToTable ?? UNDECLARED_WRITE_TARGET,
+        turnTaintScopes,
+        {
+          rowIds: targetRowIds(taintTool, opts.params),
+          originRows: turnTaintOriginRows,
+        },
+      )
     } catch (err) {
       if (!isScopeTaintBlockedWriteError(err)) throw err
       let audience: ScopeTaintAudience = "sink"
@@ -4045,13 +4087,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       // The no-decider refusal (rule 8d) of a sequenced step whose head could not be widened.
       let noDeciderRefusal: string | undefined
       if (
-        tool.gated !== true &&
-        typeof tool.sinkReadScope === "string" &&
-        err.writeTargetTable === tool.writesToTable
+        taintTool.gated !== true &&
+        typeof taintTool.sinkReadScope === "string" &&
+        err.writeTargetTable === taintTool.writesToTable
       ) {
         const readersGap = await readersTaintGap({
           orgId: opts.orgId,
-          readerScopes: sinkReaderScopes(tool.sinkReadScope),
+          readerScopes: sinkReaderScopes(taintTool.sinkReadScope),
           taintScopes: knownTaint,
         })
         allowedBySinkReaders = readersGap === null
@@ -4063,9 +4105,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       // A write read by the acting user alone (rule 6d, notify_user) runs when that user's own
       // grants hold what the turn read.
       if (
-        tool.gated !== true &&
-        tool.sinkReadersSelf === true &&
-        err.writeTargetTable === tool.writesToTable
+        taintTool.gated !== true &&
+        taintTool.sinkReadersSelf === true &&
+        err.writeTargetTable === taintTool.writesToTable
       ) {
         const selfGap =
           opts.actor.actorType === "user"
@@ -4085,9 +4127,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       // request_secret) runs when they all hold what the turn read: exactly the people its RLS
       // policy shows the row to.
       if (
-        tool.gated !== true &&
-        tool.sinkReadersConversation === true &&
-        err.writeTargetTable === tool.writesToTable &&
+        taintTool.gated !== true &&
+        taintTool.sinkReadersConversation === true &&
+        err.writeTargetTable === taintTool.writesToTable &&
         opts.actor.actorType === "user" &&
         typeof opts.threadId === "string"
       ) {
@@ -4106,11 +4148,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       // A write read by the readers of one shared resource (rule 6j, tables_rows_write: a
       // dashboard table's rows follow its sharing) runs when they all hold what the turn read.
       if (
-        tool.gated !== true &&
-        tool.sinkReadersResource &&
-        err.writeTargetTable === tool.writesToTable
+        taintTool.gated !== true &&
+        taintTool.sinkReadersResource &&
+        err.writeTargetTable === taintTool.writesToTable
       ) {
-        const resource = tool.sinkReadersResource
+        const resource = taintTool.sinkReadersResource
         const readersGap = await resourceReadersTaintGap({
           orgId: opts.orgId,
           resourceType: resource.type,
@@ -4174,7 +4216,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           ? { park: true, audience }
           : { park: false, audience: roomGap.audience, gap: roomGap }
       }
-      if (tool.gated === true) {
+      if (taintTool.gated === true) {
         // A sequenced @ref step is judged by its bundle head's audience (rule 8f,
         // `judgeSequencedStep`). Every other gated write PARKS (rule 8, 2026-10-20): the
         // approval is the disclosure decision. A shared ticket/mail draft (rule 6b) whose readers
@@ -4197,7 +4239,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             const appName = opts.toolName.split(":")[0] ?? ""
             draftGap = await readersTaintGap({
               orgId: opts.orgId,
-              readerScopes: [draftReadScope, decidingScopeForToolDef(tool, appName)],
+              readerScopes: [draftReadScope, decidingScopeForToolDef(taintTool, appName)],
               taintScopes: knownTaint,
             })
           }
@@ -4222,13 +4264,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       // readers lack the taint (rules 6a, 6d) or cannot be derived (an undeclared target, a
       // table outside the app's schema). The approval makes the disclosure a decision by a person
       // who holds the taint, exactly as for a gated write, and the approved re-entry runs the
-      // tool's own handler under the proposing turn's scopes. Judged like a gated write's card
+      // taintTool's own handler under the proposing turn's scopes. Judged like a gated write's card
       // first (rule 6c): the requester and the conversation's members see the card. A sequenced
       // @ref step is judged by its bundle head's audience (rule 8f, `judgeSequencedStep`).
       if (
         taintForcedApprovalScopes === null &&
         !allowedBySinkReaders &&
-        tool.gated !== true &&
+        taintTool.gated !== true &&
         findRefTokens(opts.params).length > 0
       ) {
         const judged = await judgeSequencedStep()
@@ -4241,7 +4283,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       } else if (
         taintForcedApprovalScopes === null &&
         !allowedBySinkReaders &&
-        tool.gated !== true
+        taintTool.gated !== true
       ) {
         const roomGap = await taintApprovalAudienceGapDetail({
           orgId: opts.orgId,
@@ -4273,7 +4315,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           // call refused here, and a handler returning the same code cannot pass for it.
           error: markPlatformTaintRefusal({
             code: err.code,
-            message: `tool ${opts.toolName}: ${noDeciderRefusal ?? SCOPE_TAINT_BLOCKED_MESSAGE(err.writeTargetTable, knownTaint, audience, audience === "readers" ? (sharedSurfaceDraftReadScope(opts.toolName) ?? tool.sinkReadScope) : tool.sinkReadScope, gap)}${contentParamsRetryHint(tool)}`,
+            message: `taintTool ${opts.toolName}: ${noDeciderRefusal ?? SCOPE_TAINT_BLOCKED_MESSAGE(err.writeTargetTable, knownTaint, audience, audience === "readers" ? (sharedSurfaceDraftReadScope(opts.toolName) ?? taintTool.sinkReadScope) : taintTool.sinkReadScope, gap)}${contentParamsRetryHint(taintTool)}`,
             retryable: false,
             // A refusal, not a fault: the seams log a 4xx at warn, and the agent is told why.
             status: 403,
@@ -4292,7 +4334,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     // requester could not read discloses nothing to anyone.
     const postAudience =
       opts.origin !== "human-ui" && taintForcedApprovalScopes === null && knownTaint.length > 0
-        ? (tool.taintPostAudience?.(opts.params) ?? null)
+        ? (taintTool.taintPostAudience?.(opts.params) ?? null)
         : null
     if (postAudience !== null) {
       const requesterUserId = opts.actor.actorType === "user" ? opts.actor.userId : ""
@@ -4316,7 +4358,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         return {
           error: markPlatformTaintRefusal({
             code: "E_SCOPE_TAINT_BLOCKED",
-            message: `tool ${opts.toolName}: ${SCOPE_TAINT_BLOCKED_MESSAGE(SINK_KERNEL_MESSAGES, knownTaint, "poster", undefined, decision)}`,
+            message: `taintTool ${opts.toolName}: ${SCOPE_TAINT_BLOCKED_MESSAGE(SINK_KERNEL_MESSAGES, knownTaint, "poster", undefined, decision)}`,
             retryable: false,
             status: 403,
           }),
@@ -4342,7 +4384,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           return {
             error: markPlatformTaintRefusal({
               code: "E_SCOPE_TAINT_BLOCKED",
-              message: `tool ${opts.toolName}: ${SCOPE_TAINT_BLOCKED_MESSAGE(SINK_KERNEL_MESSAGES, knownTaint, roomGap.audience, undefined, roomGap)}`,
+              message: `taintTool ${opts.toolName}: ${SCOPE_TAINT_BLOCKED_MESSAGE(SINK_KERNEL_MESSAGES, knownTaint, roomGap.audience, undefined, roomGap)}`,
               retryable: false,
               status: 403,
             }),
@@ -4374,7 +4416,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // 2026-11-12). The taint scopes say "dashboards" at most (and `kernel:dashboards:read`, held by
   // every member, classifies nothing), not "this table, shared with HR only": a turn that read a
   // restricted dashboard table may write only where every reader also reads that table. Judged
-  // whatever the scope taint holds. The write's readers, when the tool says who they are: the
+  // whatever the scope taint holds. The write's readers, when the taintTool says who they are: the
   // target resource's (tables_rows_write), the acting user's, the conversation's, a post's thread;
   // any other write's readers are unbounded. Outside them, the write parks for the requester
   // alone (never silently refused, never run inline).
@@ -4382,27 +4424,27 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     opts.origin !== "human-ui" &&
     !personClientUnjudged &&
     turnTaintOriginRows !== undefined &&
-    !isReadOnlyTool(tool) &&
+    !isReadOnlyTool(taintTool) &&
     !isWebRead &&
     !approvalExecutingNestedCall &&
-    !carriesNoTurnContent(tool, opts.params) &&
-    tool.taintUnjudgedWrite !== true &&
-    tool.taintEditsPendingApproval !== true
+    !carriesNoTurnContent(taintTool, opts.params) &&
+    taintTool.taintUnjudgedWrite !== true &&
+    taintTool.taintEditsPendingApproval !== true
   ) {
     const requesterUserId = opts.actor.actorType === "user" ? opts.actor.userId : ""
     const params = (opts.params ?? {}) as Record<string, unknown>
-    const postTarget = tool.taintPostAudience?.(opts.params) ?? null
+    const postTarget = taintTool.taintPostAudience?.(opts.params) ?? null
     let writeReaders: "everyone" | readonly string[] | null = null
-    if (tool.sinkReadersResource) {
+    if (taintTool.sinkReadersResource) {
       writeReaders = await resourceReaders(
         opts.orgId,
-        tool.sinkReadersResource.type,
-        params[tool.sinkReadersResource.idParam],
+        taintTool.sinkReadersResource.type,
+        params[taintTool.sinkReadersResource.idParam],
       ).catch(() => null)
-    } else if (tool.sinkReadersSelf === true && requesterUserId !== "") {
+    } else if (taintTool.sinkReadersSelf === true && requesterUserId !== "") {
       writeReaders = [requesterUserId]
     } else if (
-      tool.sinkReadersConversation === true &&
+      taintTool.sinkReadersConversation === true &&
       requesterUserId !== "" &&
       typeof opts.threadId === "string"
     ) {
@@ -4431,7 +4473,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         return {
           error: markPlatformTaintRefusal({
             code: "E_SCOPE_TAINT_BLOCKED",
-            message: `tool ${opts.toolName}: NOT EXECUTED: this conversation read a dashboard table shared with some people only, and this write would reach people it is not shared with. Nobody acting for a person asked for it, so nobody may decide it. Nothing was written.`,
+            message: `taintTool ${opts.toolName}: NOT EXECUTED: this conversation read a dashboard table shared with some people only, and this write would reach people it is not shared with. Nobody acting for a person asked for it, so nobody may decide it. Nothing was written.`,
             retryable: false,
             status: 403,
           }),

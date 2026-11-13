@@ -264,6 +264,12 @@ export const toolRegistry = createTypedRegistry<
      *  the call parameter naming it. On a tainted turn the write runs when every one of those
      *  readers holds every scope the turn read (scope-taint.ts, rule 6j). Host-only. */
     sinkReadersResource?: { type: string; idParam: string }
+    /** A write whose real sink depends on its arguments (a dashboard table backed by an app's
+     *  records writes read-through cells into that app): the tool (`<app>:<tool>`) this call
+     *  is judged as by the scope taint, its sink and readers taken from it, or null to judge it
+     *  as itself. A throw or an unknown tool judges it as an undeclared write (fails closed).
+     *  Host-only (scope-taint.ts, rule 6k). */
+    taintJudgedAs?: (params: unknown, ctx: { orgId: string }) => Promise<string | null>
     /** What a tainted proposal's card calls the place this call writes to, by name ("the table
      *  "Arrivages""), when the write target's table name would mean nothing to a person (a
      *  dashboard table's rows live in the data store). Null or absent: the generic label

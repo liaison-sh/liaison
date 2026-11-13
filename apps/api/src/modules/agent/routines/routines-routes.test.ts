@@ -1175,8 +1175,23 @@ describe("routines-routes — /api/agent/routines", () => {
             status: "waiting",
             error: "secret detail",
             steps: [
-              { id: "a", type: "action", state: "done", note: "private note", output: { x: 1 } },
-              { id: "b", type: "wait", state: "waiting" },
+              {
+                id: "a",
+                type: "action",
+                state: "done",
+                startedAt: null,
+                endedAt: "2026-11-13T09:00:00.000Z",
+                note: "private note",
+                output: { x: 1 },
+              },
+              {
+                id: "b",
+                type: "wait",
+                state: "waiting",
+                startedAt: null,
+                endedAt: null,
+                note: null,
+              },
             ],
           },
         ]),
@@ -1191,8 +1206,14 @@ describe("routines-routes — /api/agent/routines", () => {
       const row = body.data.find((r: any) => r.id === ran!.id)
       expect(row.lastRun.status).toBe("waiting")
       expect(row.lastRun.steps).toEqual([
-        { id: "a", type: "action", state: "done" },
-        { id: "b", type: "wait", state: "waiting" },
+        {
+          id: "a",
+          type: "action",
+          state: "done",
+          startedAt: null,
+          endedAt: "2026-11-13T09:00:00.000Z",
+        },
+        { id: "b", type: "wait", state: "waiting", startedAt: null, endedAt: null },
       ])
       expect(JSON.stringify(row.lastRun)).not.toContain("secret detail")
       expect(JSON.stringify(row.lastRun)).not.toContain("private note")

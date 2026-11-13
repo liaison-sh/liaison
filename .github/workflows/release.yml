@@ -134,17 +134,25 @@ jobs:
           bun-version: "1.4.x"
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # The client's major matches docker-compose's postgres: pg_dump refuses a
+      # newer server, and the runner's own packages stop at an older major.
+      - name: Install postgresql-common
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: postgresql-common
+      - name: Add the PostgreSQL apt repository
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        run: sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
       - name: Install postgres/redis CLIs
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
-        # The client's major matches docker-compose's postgres: pg_dump refuses a
-        # newer server, and the runner's own packages stop at an older major.
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y --no-install-recommends postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
-          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
-          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+        uses: ./.github/actions/apt-install
+        with:
+          packages: postgresql-client-17 redis-tools libxml2-utils
+      - name: Put the postgres 17 client first on PATH
+        if: env.LIAISON_RELEASE_DRY_RUN != '1'
+        # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+        run: echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Write .env.test
         if: env.LIAISON_RELEASE_DRY_RUN != '1'
         # The test env the repo documents (run-tests skill), with throwaway secrets

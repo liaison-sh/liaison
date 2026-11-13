@@ -46,7 +46,7 @@ import {
   tableErrorFrom,
   writeTableRows,
 } from "../dashboards-client"
-import { backingName } from "../table-backing"
+import { backingName, isUnknownActor } from "../table-backing"
 import { tableRevision } from "../tables-store"
 import { CellEditor } from "./CellEditor"
 import { RowHistoryPanel } from "./RowHistoryPanel"
@@ -233,17 +233,24 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   }
 
   /** A refused write, said under its row; a conflict reloads the row and names who changed it. */
-  async function refused(rowId: string, err: unknown): Promise<void> {
+  async function refused(rowId: string, err: unknown, sent?: TableRow): Promise<void> {
     const e = tableErrorFrom(err)
     if (e.code === "version_conflict") {
       if (e.current) replaceRow(e.current)
       const page = await reloadRows().catch(() => rows())
       const latest = e.current ?? page.find((r) => r.id === rowId)
+      // A backed row whose record moved (the task changed in its app): no table actor to name.
+      const recordMoved =
+        backing() !== undefined &&
+        latest !== undefined &&
+        (latest.recordVersion !== sent?.recordVersion || isUnknownActor(latest.updatedBy))
       setRowNotice({
         rowId,
-        text: latest
-          ? i18n.t("kernel.dashboards.tables.changedBy", { name: latest.updatedBy.label })
-          : i18n.t("kernel.dashboards.tables.rowGone"),
+        text: !latest
+          ? i18n.t("kernel.dashboards.tables.rowGone")
+          : recordMoved
+            ? i18n.t("kernel.dashboards.tables.recordChanged")
+            : i18n.t("kernel.dashboards.tables.changedBy", { name: latest.updatedBy.label }),
       })
       return
     }
@@ -287,7 +294,13 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     setRowNotice(null)
     try {
       const [out] = await writeTableRows(api, props.tableId, [
-        { op: "update", id: row.id, ifVersion: row.version, cells: { [column.key]: parsed.value } },
+        {
+          op: "update",
+          id: row.id,
+          ifVersion: row.version,
+          cells: { [column.key]: parsed.value },
+          ...(row.recordVersion !== undefined ? { ifRecordVersion: row.recordVersion } : {}),
+        },
       ])
       if (out && !isDeletedRow(out)) replaceRow(out)
     } catch (err) {
@@ -296,7 +309,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
         setRowNotice({ rowId: row.id, text: refusalText(e.code, column.key, e.message) })
         return
       }
-      await refused(row.id, err)
+      await refused(row.id, err, row)
     } finally {
       setSaving(false)
     }
@@ -727,10 +740,14 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                             class="flex items-center gap-1 whitespace-nowrap text-[12px] text-text-tertiary hover:text-text-secondary"
                           >
                             <History size={12} class="shrink-0" />
-                            {i18n.t("kernel.dashboards.tables.lastChangeBy", {
-                              name: row.updatedBy.label,
-                              when: relativeTime(row.updatedAt, now(), i18n.locale(), i18n.t),
-                            })}
+                            {backing() && isUnknownActor(row.updatedBy)
+                              ? i18n.t("kernel.dashboards.tables.recordLastChange", {
+                                  when: relativeTime(row.updatedAt, now(), i18n.locale(), i18n.t),
+                                })
+                              : i18n.t("kernel.dashboards.tables.lastChangeBy", {
+                                  name: row.updatedBy.label,
+                                  when: relativeTime(row.updatedAt, now(), i18n.locale(), i18n.t),
+                                })}
                           </button>
                         </td>
                         <td class="px-1 py-1.5 text-right">

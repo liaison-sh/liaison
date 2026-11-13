@@ -6758,7 +6758,9 @@
       "projectForbidden": "You can't change the tasks of {{name}}. Ask an admin for permission to edit tasks.",
       "deleteRowBacked": "Each row is a task of {{name}}. To remove one, archive the task in Projects.",
       "openLink": "Open {{label}}",
-      "addTask": "Add a task"
+      "addTask": "Add a task",
+      "recordChanged": "This task changed meanwhile. Reload and try again.",
+      "recordLastChange": "Task changed {{when}}"
     }
   },
   "appBuilder": {

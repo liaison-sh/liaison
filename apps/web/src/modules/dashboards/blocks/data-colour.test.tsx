@@ -121,7 +121,7 @@ describe("one status, one colour on a dashboard", () => {
     expect(people(1, 1)).toBe(received)
     expect(people(2, 2)).toBe(needs)
 
-    const ds = seriesDatasets(AGE, "Previous", { scope })
+    const ds = seriesDatasets(AGE, "Previous", { colourOf: scope })
     expect(ds.map((d) => d.color)).toEqual([
       scope("Received"),
       scope("Diagnosed"),

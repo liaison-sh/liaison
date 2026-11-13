@@ -69,7 +69,7 @@ export interface DatasetNames {
    * A split chart's series without a colour of their own take their name's slot here (the
    * dashboard's scope), so one status keeps one colour in every block.
    */
-  scope?: ColourScope
+  colourOf?: ColourScope
 }
 
 type PreviousOne = { name: string; values: Array<number | null> }
@@ -141,8 +141,8 @@ export function seriesDatasets(
     values: x.values,
     ...(d.paint?.series?.[i]
       ? { color: d.paint.series[i] as string }
-      : names.scope && d.series.length > 1
-        ? { color: names.scope(x.name) }
+      : names.colourOf && d.series.length > 1
+        ? { color: names.colourOf(x.name) }
         : {}),
     ...(placeColors && d.series.length === 1 ? { colors: placeColors } : {}),
     ...(lines.has(x.name) ? { asLine: true } : {}),
@@ -389,7 +389,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
                   current: range(props.window),
                   total: props.map?.y,
                   rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
-                  scope,
+                  colourOf: scope,
                 })}
                 format={share() ? "percent" : (s().format ?? format())}
                 timeZone={props.timeZone}

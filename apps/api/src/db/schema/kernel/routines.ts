@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import type { RoutineFlow } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import {
   boolean,
@@ -101,7 +102,15 @@ export const routines = kernel.table(
       tableId?: string
       column?: string
       to?: string | number | boolean | null
+      // Projects task events (0303).
+      projectId?: string
+      fromStatusId?: string | null
+      toStatusId?: string
+      fields?: Record<string, unknown>
     } | null>(),
+    // The routine's flow (0303): its steps after the trigger (routine-flow.ts). Null = a legacy
+    // routine whose one agent step is `prompt`.
+    flow: jsonb("flow").$type<RoutineFlow | null>(),
     // Who decides the gated drafts the routine raises (0131, S29): the tool's
     // deciding-scope audience, or the owner alone (only while the owner holds
     // the deciding scope; see approvals/resource-owner.ts).
@@ -179,7 +188,11 @@ export const routines = kernel.table(
     check("routines_model_len_chk", sql`${t.model} IS NULL OR char_length(${t.model}) <= 200`),
     check(
       "routines_event_filter_chk",
-      sql`${t.eventFilter} IS NULL OR (jsonb_typeof(${t.eventFilter}) = 'object' AND ${t.event} IN ('mail:message:create', 'kernel:dashboard_table_row:created', 'kernel:dashboard_table_row:updated', 'kernel:dashboard_table_row:deleted'))`,
+      sql`${t.eventFilter} IS NULL OR (jsonb_typeof(${t.eventFilter}) = 'object' AND ${t.event} IN ('mail:message:create', 'kernel:dashboard_table_row:created', 'kernel:dashboard_table_row:updated', 'kernel:dashboard_table_row:deleted', 'projects:task:status_changed', 'projects:task:updated', 'projects:task:created'))`,
+    ),
+    check(
+      "routines_flow_chk",
+      sql`${t.flow} IS NULL OR (jsonb_typeof(${t.flow}) = 'object' AND COALESCE(jsonb_typeof(${t.flow}->'steps'), '') = 'array')`,
     ),
     check(
       "routines_hard_token_limit_chk",

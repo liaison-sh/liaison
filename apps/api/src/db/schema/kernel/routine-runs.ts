@@ -43,6 +43,8 @@ export const routineRuns = kernel.table(
      * NULL for a run that never waited.
      */
     mailboxWait: jsonb("mailbox_wait").$type<RoutineRunMailboxWait>(),
+    /** A flow run's per-step state (0303, routine-flow.ts), updated after each step. NULL for a legacy run. */
+    steps: jsonb("steps").$type<RoutineRunStepState[]>(),
   },
   (t) => [
     index("routine_runs_routine_ran_idx").on(t.routineId, sql`ran_at DESC`),
@@ -54,7 +56,7 @@ export const routineRuns = kernel.table(
       .where(sql`event_entity_id IS NOT NULL`),
     check(
       "routine_runs_status_chk",
-      sql`${t.status} IN ('succeeded','failed','skipped_no_credits','skipped_overlap','skipped_scope_mismatch','output_thread_recreated','dispatched','waiting_approval','waiting_mailbox','mailbox_wait_expired','mailbox_wait_dismissed')`,
+      sql`${t.status} IN ('succeeded','failed','skipped_no_credits','skipped_overlap','skipped_scope_mismatch','output_thread_recreated','dispatched','waiting_approval','waiting_mailbox','mailbox_wait_expired','mailbox_wait_dismissed','running','waiting','flagged','skipped_condition')`,
     ),
     index("routine_runs_waiting_idx").on(t.routineId).where(sql`status = 'waiting_approval'`),
     check(
@@ -63,6 +65,27 @@ export const routineRuns = kernel.table(
     ),
   ],
 )
+
+/** One flow step's state in a run (0303). */
+export interface RoutineRunStepState {
+  id: string
+  type: "action" | "wait" | "agent"
+  state:
+    | "pending"
+    | "running"
+    | "done"
+    | "skipped"
+    | "failed"
+    | "flagged"
+    | "waiting"
+    | "awaiting_approval"
+  startedAt: string | null
+  endedAt: string | null
+  /** A plain sentence: why it was skipped, what it did, what is missing. */
+  note: string | null
+  /** What the step produced (an approval id, a deadline, the assignee picked...). */
+  output?: Record<string, unknown> | null
+}
 
 /** What a paused run keeps for its resume (routine-run-resume.ts). */
 export interface RoutineRunPauseState {
